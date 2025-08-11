@@ -39,14 +39,11 @@ Open the app in a browser (default: http://localhost:5000 or the HTTPS variant t
 - `Shared/` shared UI components
 - `wwwroot/` static assets (ROM test file, favicon, scripts)
 
-## ROMs
-You must supply your own legally obtained NES ROMs. The included `test.nes` (if present) is for internal testing only.
-
 ## Contributing
-Lightweight contributions welcome (bug reports, small fixes). Larger changes: please discuss first via an issue outlining intent.
+Don't even bother
 
 ## License
 [Digital Lifeform License 1.1](LICENSE.txt)
 
 ## Disclaimer
-This project is an educational emulator experiment and is not affiliated with or endorsed by Nintendo.
+The jank is normal.
