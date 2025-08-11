@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main NES body -->
+  <rect x="8" y="24" width="48" height="24" rx="4" fill="#b0b0b0" stroke="#333" stroke-width="2"/>
+  <!-- Cartridge slot -->
+  <rect x="24" y="28" width="16" height="8" fill="#888" stroke="#222" stroke-width="1"/>
+  <!-- Red stripe -->
+  <rect x="10" y="44" width="44" height="4" fill="#e74c3c"/>
+  <!-- Controller ports -->
+  <rect x="16" y="48" width="6" height="4" fill="#222"/>
+  <rect x="42" y="48" width="6" height="4" fill="#222"/>
+  <!-- Power/Reset buttons -->
+  <rect x="54" y="28" width="4" height="8" fill="#e74c3c"/>
+  <rect x="54" y="38" width="4" height="4" fill="#fff"/>
+  <!-- Details -->
+  <rect x="12" y="30" width="4" height="4" fill="#fff"/>
+  <rect x="48" y="30" width="4" height="4" fill="#fff"/>
+  <!-- Shadow -->
+  <ellipse cx="32" cy="54" rx="22" ry="4" fill="#888" opacity="0.3"/>
+</svg>

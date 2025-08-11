@@ -1,0 +1,1860 @@
+@page "/"
+@page "/nes"
+@using System.Timers
+@using System.Linq
+@using Microsoft.Extensions.Logging
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+@inject ILogger<Nes> Logger
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject StatusService Status
+
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>⚠️ SYSTEM ERROR:</strong> @errorMessage
+    </div>
+}
+
+@* Status moved to global StatusBar component *@
+
+<div class="nes-grid">
+    <section class="play-area">
+        <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
+            <div class="btn-group">
+                <button class="btn btn-success ctrl-btn" @onclick="StartEmulation" disabled="@(isRunning || nes == null)" title="Start (Play)" aria-label="Start">
+                    <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
+                </button>
+                <button class="btn btn-warning ctrl-btn" @onclick="PauseEmulation" disabled="@(!isRunning)" title="Pause" aria-label="Pause">
+                    <svg viewBox="0 0 100 100" class="ctrl-ico pause" role="img" focusable="false"><rect x="24" y="18" width="20" height="64" rx="6" /><rect x="56" y="18" width="20" height="64" rx="6" /></svg>
+                </button>
+                <button class="btn btn-danger ctrl-btn" @onclick="ResetEmulation" disabled="@(nes == null)" title="Reset" aria-label="Reset">
+                    <svg viewBox="0 0 100 100" class="ctrl-ico reset" role="img" focusable="false"><path d="M50 18a32 32 0 1 1-22.63 9.37" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 13 30 40 5 34" fill="currentColor" /></svg>
+                </button>
+            </div>
+            <div class="btn-group">
+                <select class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@activeShaderKey" aria-label="Video Shader">
+                    @foreach(var sh in shaderOptions){
+                        <option value="@sh.Key">@sh.Label</option>
+                    }
+                </select>
+                <select class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnFamicloneSelectChanged" value="@(famicloneOn ? "FMC" : "APU")" aria-label="Audio Core">
+                    <option value="FMC">FMC</option>
+                    <option value="APU">APU</option>
+                </select>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-load-state" @onclick="LoadState" disabled="@(nes==null)" title="Load state">Load</button>
+                <button class="btn btn-save-state" @onclick="SaveState" disabled="@(nes==null)" title="Save state">Save</button>
+            </div>
+        </div>
+    <div class="screen-shell @(emuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
+            <div class="overlay-status small">
+                <div class="badges d-flex flex-wrap">
+                    <span class="badge bg-dark-subtle text-dark me-1">FPS: @fps.ToString("F1")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">State: @(isRunning ? "Running" : "Paused")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@currentRomName</strong></span>
+                    <span class="badge bg-dark-subtle text-dark">Size: @FormatSize(lastLoadedRomSize)</span>
+                </div>
+                <div class="overlay-actions">
+                    <button type="button" class="ov-btn @(emuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>SetScale(0.5))">½×</button>
+                    <button type="button" class="ov-btn @(emuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>SetScale(1))">1×</button>
+                    <button type="button" class="ov-btn" title="Toggle Fullscreen" @onclick="ToggleFullscreen">⛶</button>
+                </div>
+            </div>
+            <div class="screen-aspect">
+                <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas"></canvas>
+            </div>
+            @* Inline mobile fullscreen portrait tab bar (only shown via CSS when .mobile-fs-active & portrait) *@
+            <div id="mobile-fs-view-bar">
+                <button data-view="controller" class="view-btn @(mobileFsView=="controller"?"active":string.Empty)" @onclick="ViewController">Controller</button>
+                <button data-view="rtc" class="view-btn @(mobileFsView=="rtc"?"active":string.Empty)" @onclick="ViewRtc">RTC</button>
+                <button data-view="gh" class="view-btn @(mobileFsView=="gh"?"active":string.Empty)" @onclick="ViewGh">Glitch Harvester</button>
+            </div>
+            @* Mobile fullscreen (portrait) views container: always present in fullscreen portrait; controller now lives inside instead of toggling container visibility *@
+            <div class="mobile-fs-extra-views">
+                @if (mobileFsView == "controller")
+                {
+                    <div class="mobile-view controller-view" id="touch-controller">
+                        <div class="controller-grid">
+                            <div class="upper-row">
+                                <div class="dpad">
+                                    <div class="pad-btn" data-btn="up">▲</div>
+                                    <div class="pad-btn" data-btn="left">◀</div>
+                                    <div class="pad-btn" data-btn="right">▶</div>
+                                    <div class="pad-btn" data-btn="down">▼</div>
+                                    <div class="center-dot"></div>
+                                </div>
+                                <div class="actions">
+                                    <div class="ab-cluster">
+                                        <div class="btn-b" data-btn="b">B</div>
+                                        <div class="btn-a" data-btn="a">A</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="start-select-row">
+                                <div class="small-btn" data-btn="select">SELECT</div>
+                                <div class="small-btn" data-btn="start">START</div>
+                            </div>
+                            <div class="system-row">
+                                <button class="sys-btn" data-act="exit">Exit Fullscreen</button>
+                                <button class="sys-btn" data-act="load">Load State</button>
+                                <button class="sys-btn" data-act="save">Save State</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (mobileFsView == "rtc")
+                {
+                    <div class="mobile-view rtc-view small">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <strong class="small mb-0">Real-Time Corruptor</strong>
+                            <span class="text-muted small">@lastBlastInfo</span>
+                        </div>
+                        <div class="row g-3 flex-wrap">
+                            <div class="col-12">
+                                <label class="form-label small mb-1">Memory Domains</label>
+                                <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
+                                    @foreach (var d in memoryDomains)
+                                    {
+                                        <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label mb-1 small">Intensity (@corruptIntensity)</label>
+                                <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptIntensity" @oninput="OnIntensityChange" />
+                                <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+                                    <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptIntensity" @onchange="OnIntensityBoxChange" />
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || autoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                                    <button class="btn btn-sm @(autoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(autoCorrupt ? "ON" : "OFF")</button>
+                                    @if (!letItRipUsed)
+                                    {
+                                        <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
+                                    }
+                                </div>
+                                <div class="row g-2 small">
+                                    <div class="col-6">
+                                        <label class="form-label mb-1 small">Blast Type</label>
+                                        <select class="form-select form-select-sm" value="@blastType" @onchange="OnBlastTypeChanged">
+                                            <option value="RANDOM">RANDOM</option>
+                                            <option value="TILT">TILT</option>
+                                            <option value="RANDOMTILT">RANDOMTILT</option>
+                                            <option value="NOP">NOP</option>
+                                            <option value="BITFLIP">BITFLIP</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
+                                </div>
+                                <div class="mt-2 small text-muted fst-italic">Last: @lastBlastInfo</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (mobileFsView == "gh")
+                {
+                    <div class="mobile-view gh-view small">
+                        <div class="gh-section mb-3">
+                            <div class="d-flex flex-wrap gap-2 align-items-end">
+                                <div class="flex-grow-1" style="min-width:140px;">
+                                    <label class="form-label mb-1 small">New Base Name</label>
+                                    <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="ghNewBaseName" />
+                                </div>
+                                <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
+                            </div>
+                            <div class="mt-2">
+                                <label class="form-label mb-1 small">Base States</label>
+                                <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@ghSelectedBaseId">
+                                    @foreach (var b in ghBaseStates)
+                                    {
+                                        <option value="@b.Id">@b.Name</option>
+                                    }
+                                </select>
+                                <div class="d-flex gap-1 mt-2 flex-wrap">
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!GhHasSelectedBase)">Load</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!GhHasSelectedBase)">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gh-section mb-3">
+                            <label class="form-label mb-1 small">Actions (uses RTC settings)</label>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(ghStash.Count==0)">Clear Stash</button>
+                            </div>
+                        </div>
+                        <div class="gh-section mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong class="small mb-0">Stash (@ghStash.Count)</strong>
+                            </div>
+                            @if (ghStash.Count==0)
+                            {
+                                <div class="text-muted small fst-italic">(empty)</div>
+                            }
+                            else
+                            {
+                                <div class="gh-list">
+                                    @foreach (var e in ghStash.OrderByDescending(e=>e.Created).Take(20))
+                                    {
+                                        <div class="gh-item">
+                                            <div class="gh-item-main">
+                                                <span class="gh-name" title="@e.Name">@e.Name</span>
+                                                <span class="gh-meta">@e.Writes.Count w @e.Created.ToLocalTime().ToString("HH:mm:ss")</span>
+                                            </div>
+                                            <div class="gh-actions btn-group btn-group-sm">
+                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:false))">▶</button>
+                                                <button class="btn btn-outline-success" title="Keep" @onclick="(()=>GhPromoteEntry(e))">Keep</button>
+                                                <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>GhDeleteStash(e.Id))">✕</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="gh-section">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong class="small mb-0">Stockpile (@ghStockpile.Count)</strong>
+                            </div>
+                            @if (ghStockpile.Count==0)
+                            {
+                                <div class="text-muted small fst-italic">(empty)</div>
+                            }
+                            else
+                            {
+                                <div class="gh-list">
+                                    @foreach (var e in ghStockpile.OrderByDescending(e=>e.Created).Take(20))
+                                    {
+                                        <div class="gh-item">
+                                            <div class="gh-item-main">
+                                                @if (GhIsRenaming(e.Id))
+                                                {
+                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@ghRenameText" @onchange="GhRenameChange" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="gh-name" title="@e.Name">@e.Name</span>
+                                                }
+                                                <span class="gh-meta">@e.Writes.Count w • @GhFindBaseName(e.BaseStateId)</span>
+                                            </div>
+                                            <div class="gh-actions btn-group btn-group-sm">
+                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:true))">▶</button>
+                                                @if (GhIsRenaming(e.Id))
+                                                {
+                                                    <button class="btn btn-outline-success" title="Save" @onclick="(()=>GhCommitRename(e.Id))">✔</button>
+                                                    <button class="btn btn-outline-warning" title="Cancel" @onclick="GhCancelRename">↺</button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-outline-info" title="Rename" @onclick="(()=>GhBeginRename(e))">✎</button>
+                                                }
+                                                <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>GhDeleteStock(e.Id))">✕</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+    <aside class="side-panels">
+    <details id="rom-manager-panel" class="panel-block" open>
+        <summary>ROM Manager</summary>
+        <div class="panel-content">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @oninput="OnRomSearchChanged" value="@romSearch" />
+                <button class="btn btn-sm btn-success" @onclick="TriggerFileDialog">Import</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(currentRomName))">Reload</button>
+                @* Removed standalone Delete and Clear Uploaded buttons (row deletion + per-ROM Del button sufficient) *@
+            </div>
+            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Drag .nes files onto this list to import.</div>
+            <div class="table-responsive" style="max-height:260px; overflow:auto;">
+                <table id="rom-table" class="table table-sm table-dark align-middle mb-0 rom-table">
+                    <thead class="table-secondary text-dark" style="position:sticky;top:0;">
+                        <tr>
+                            <th style="width:1%;"></th>
+                            <th>Name</th>
+                            <th style="width:90px;">Size</th>
+                            <th style="width:80px;">Source</th>
+                            <th style="width:70px;">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!FilteredRomOptions.Any())
+                        {
+                            <tr><td colspan="5" class="text-center text-muted small">No ROMs match filter.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var opt in FilteredRomOptions)
+                            {
+                                var isCurrent = opt.Key == currentRomName;
+                                var sizeDisplay = GetRomSizeDisplay(opt.Key);
+                                <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>OnRomRowClicked(opt))">
+                                    <td>@(isCurrent ? "▶" : "")</td>
+                                    <td class="text-truncate" style="max-width:200px;" title="@opt.Key">@opt.Label</td>
+                                    <td>@sizeDisplay</td>
+                                    <td>@(opt.BuiltIn ? "Built-in" : "Uploaded")</td>
+                                    <td><button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true" @onclick="(()=>DeleteRom(opt.Key))" disabled="@opt.BuiltIn">Del</button></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2 small d-flex flex-wrap gap-3 text-muted">
+                <div>Total: @FilteredRomOptions.Count() ROM(s)</div>
+                <div>Uploaded: @uploadedRoms.Count</div>
+                <div>Selected: @currentRomName</div>
+            </div>
+            <input @ref="fileInput" id="rom-upload" type="file" accept=".nes" class="d-none" @onchange="LoadRomUpload" multiple />
+        </div>
+    </details>
+
+    <details id="corruptor-panel" class="panel-block corruptor-panel">
+        <summary>Real-Time Corruptor</summary>
+        <div class="panel-content corruptor-content">
+            <div class="row g-3 flex-wrap">
+                <div class="col-12 col-sm-5">
+                    <label class="form-label small mb-1">Memory Domains</label>
+                    <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
+                        @foreach (var d in memoryDomains)
+                        {
+                            <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
+                        }
+                    </select>
+                    <div class="mt-2 small text-secondary">
+                        Crash Mode:
+                        <select class="form-select form-select-sm mt-1" @onchange="OnCrashBehaviorChanged" value="@crashBehavior">
+                            <option value="RedScreen">Red Screen</option>
+                            <option value="IgnoreErrors">Ignore Errors</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-7">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label mb-0 small">Intensity</label>
+                        <code class="small">@corruptIntensity</code>
+                    </div>
+                    <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptIntensity" @oninput="OnIntensityChange" />
+                    <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
+                        <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptIntensity" @onchange="OnIntensityBoxChange" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || autoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                        <button class="btn btn-sm @(autoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(autoCorrupt ? "ON" : "OFF")</button>
+                        @if (!letItRipUsed)
+                        {
+                            <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
+                        }
+                    </div>
+                    <div class="row g-2 small">
+                        <div class="col-6">
+                            <label class="form-label mb-1 small">Blast Type</label>
+                            <select class="form-select form-select-sm" value="@blastType" @onchange="OnBlastTypeChanged">
+                                <option value="RANDOM">RANDOM</option>
+                                <option value="TILT">TILT</option>
+                                <option value="RANDOMTILT">RANDOMTILT</option>
+                                <option value="NOP">NOP</option>
+                                <option value="BITFLIP">BITFLIP</option>
+                            </select>
+                        </div>
+                        <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
+                    </div>
+                    <div class="mt-2 small text-muted fst-italic">Last: @lastBlastInfo</div>
+                </div>
+            </div>
+        </div>
+    </details>
+
+    <details class="panel-block glitch-harvester-panel">
+        <summary>Glitch Harvester</summary>
+        <div class="panel-content glitch-harvester-content small">
+            <div class="gh-section mb-3">
+                <div class="d-flex flex-wrap gap-2 align-items-end">
+                    <div class="flex-grow-1" style="min-width:140px;">
+                        <label class="form-label mb-1 small">New Base Name</label>
+                        <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="ghNewBaseName" />
+                    </div>
+                    <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
+                </div>
+                <div class="mt-2">
+                    <label class="form-label mb-1 small">Base States</label>
+                    <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@ghSelectedBaseId">
+                        @foreach (var b in ghBaseStates)
+                        {
+                            <option value="@b.Id">@b.Name</option>
+                        }
+                    </select>
+                    <div class="d-flex gap-1 mt-2 flex-wrap">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!GhHasSelectedBase)">Load</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!GhHasSelectedBase)">Delete</button>
+                    </div>
+                </div>
+            </div>
+            <div class="gh-section mb-3">
+                <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(ghStash.Count==0)">Clear Stash</button>
+                </div>
+            </div>
+            <div class="gh-section mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="small mb-0">Stash History (@ghStash.Count)</strong>
+                </div>
+                @if (ghStash.Count==0)
+                {
+                    <div class="text-muted small fst-italic">(empty)</div>
+                }
+                else
+                {
+                    <div class="gh-list">
+                        @foreach (var e in ghStash.OrderByDescending(e=>e.Created).Take(25))
+                        {
+                            <div class="gh-item">
+                                <div class="gh-item-main">
+                                    <span class="gh-name" title="@e.Name">@e.Name</span>
+                                    <span class="gh-meta">@e.Writes.Count w @e.Created.ToLocalTime().ToString("HH:mm:ss")</span>
+                                </div>
+                                <div class="gh-actions btn-group btn-group-sm">
+                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:false))">▶</button>
+                                    <button class="btn btn-outline-success" title="Keep (move to stockpile)" @onclick="(()=>GhPromoteEntry(e))">Keep</button>
+                                    <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>GhDeleteStash(e.Id))">✕</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="gh-section">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="small mb-0">Stockpile (@ghStockpile.Count)</strong>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhExportStockpile" disabled="@(ghStockpile.Count==0)">Export</button>
+                        <label class="btn btn-sm btn-outline-secondary mb-0">
+                            Import<input type="file" class="d-none" accept="application/json" @onchange="GhImportStockpile" />
+                        </label>
+                    </div>
+                </div>
+                @if (ghStockpile.Count==0)
+                {
+                    <div class="text-muted small fst-italic">(empty)</div>
+                }
+                else
+                {
+                    <div class="gh-list">
+                        @foreach (var e in ghStockpile.OrderByDescending(e=>e.Created))
+                        {
+                            <div class="gh-item">
+                                <div class="gh-item-main">
+                                    @if (GhIsRenaming(e.Id))
+                                    {
+                                        <input class="form-control form-control-sm" style="min-width:120px" value="@ghRenameText" @onchange="GhRenameChange" />
+                                    }
+                                    else
+                                    {
+                                        <span class="gh-name" title="@e.Name">@e.Name</span>
+                                    }
+                                    <span class="gh-meta">@e.Writes.Count w • @GhFindBaseName(e.BaseStateId)</span>
+                                </div>
+                                <div class="gh-actions btn-group btn-group-sm">
+                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:true))">▶</button>
+                                    @if (GhIsRenaming(e.Id))
+                                    {
+                                        <button class="btn btn-outline-success" title="Save name" @onclick="(()=>GhCommitRename(e.Id))">✔</button>
+                                        <button class="btn btn-outline-warning" title="Cancel" @onclick="GhCancelRename">↺</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-info" title="Rename" @onclick="(()=>GhBeginRename(e))">✎</button>
+                                    }
+                                    <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>GhDeleteStock(e.Id))">✕</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </details>
+
+        <details class="panel-block">
+        <summary>Controls</summary>
+        <div class="panel-content key-grid">
+            <div>Arrows: D-Pad</div>
+            <div>Z: B</div>
+            <div>X: A</div>
+            <div>Space: Select</div>
+            <div>Enter: Start</div>
+        </div>
+    </details>
+
+        <details class="panel-block">
+        <summary>Debug</summary>
+        <div class="panel-content debug-mini">
+            <div>Frames: @frameCount</div>
+            <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
+            <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
+            @if (!string.IsNullOrEmpty(debugDump))
+            {
+                <div class="small text-monospace" style="white-space:pre-wrap;max-width:260px">@debugDump</div>
+            }
+        </div>
+    </details>
+    </aside>
+</div>
+
+@code {
+    // --- Save state persistence enhancements ---
+    // We compress (GZip) and, if still large, chunk state across multiple IndexedDB entries (kv store) to avoid size issues.
+    // Manifest key: SaveKey+".manifest" holds JSON {version, compressed, parts}
+    // Single-key format: prefix "GZ:" indicates base64 GZip payload.
+    private const int SaveChunkCharSize = 900_000; // conservative chunk size (< ~1MB characters) to fit storage limits
+
+    private NesEmulator.NES? nes;
+    private byte[] framebuffer = new byte[256 * 240 * 4];
+    // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
+    // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
+    private bool[] inputState = new bool[8]; // Up, Down, Left, Right, A, B, Select, Start
+    
+    private string errorMessage = "";
+    // status moved to StatusService
+    private bool isRunning = false;
+    private float fps = 0.0f;
+    private int frameCount = 0;
+    private DateTime lastFpsUpdate = DateTime.Now;
+    private int lastFrameCount = 0;
+    private string romFileName = "test.nes";
+    private string currentRomName = "None";
+    private string romSearch = string.Empty;
+    private int lastLoadedRomSize = 0; // bytes
+    private readonly Dictionary<string,int> builtInRomSizes = new();
+    private bool fastForward = false; // hold Tab to fast-forward
+    private int statsUpdateDivider = 6; // update stats/UI every N frames (visual draw still every frame)
+    // Shader system (dynamic)
+    private bool shaderOn = true; // legacy flag retained for status messaging (true if not the basic pass-through)
+    private string activeShaderKey = "RF"; // default key
+    private record ShaderOption(string Key, string Label);
+    private List<ShaderOption> shaderOptions = new();
+    private bool famicloneOn = true; // default ON per requirement
+    private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
+    private bool isFullscreen = false; // track fullscreen state
+    // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
+    private string mobileFsView = "controller";
+    private bool touchControllerInitialized = false;
+    private void SetMobileFsView(string v)
+    {
+        v = v.ToLowerInvariant();
+        if (v != "controller" && v != "rtc" && v != "gh") return;
+        if (mobileFsView == v) return;
+        mobileFsView = v;
+        if (mobileFsView == "controller")
+        {
+            // Will trigger OnAfterRender to initialize touch controller
+            touchControllerInitialized = false; // force re-init if markup re-rendered
+        }
+        StateHasChanged();
+    }
+    private void SelectMobileView(string v)
+    {
+        SetMobileFsView(v);
+        // notify JS (optional) so it can hide controller vs panels
+        try { JS.InvokeVoidAsync("nesInterop.syncMobileView", v); } catch {}
+    }
+    private void ViewController() => SelectMobileView("controller");
+    private void ViewRtc() => SelectMobileView("rtc");
+    private void ViewGh() => SelectMobileView("gh");
+
+    [JSInvokable]
+    public void JsSetMobileFsView(string v) => SetMobileFsView(v);
+    private const string SaveKey = "nes_state_slot0";
+    private bool stateBusy = false; // prevent overlapping save/load operations
+    private string debugDump = string.Empty;
+    // Corruptor state
+    private int corruptIntensity = 1; // default minimal intensity
+    private string lastBlastInfo = "";
+    private class DomainSel { public string Key=""; public string Label=""; public bool Selected=true; public int Size; }
+    private List<DomainSel> memoryDomains = new();
+    private string crashBehavior = "IgnoreErrors"; // default to ignore errors
+    private bool autoCorrupt = false;
+    private readonly Random corruptRnd = new();
+    private string blastType = "RANDOM"; // corruption mode
+    private bool letItRipUsed = false; // hide Let it rip button after first click
+    // ================= Glitch Harvester state =================
+    private class HarvesterBaseState { public string Id {get;set;} = Guid.NewGuid().ToString(); public string Name {get;set;} = string.Empty; public string State {get;set;} = string.Empty; public DateTime Created {get;set;} = DateTime.UtcNow; }
+    private class BlastInstruction { public string Domain {get;set;} = string.Empty; public int Address {get;set;} public byte Value {get;set;} }
+    private class HarvestEntry { public string Id {get;set;} = Guid.NewGuid().ToString(); public string Name {get;set;} = string.Empty; public string BaseStateId {get;set;} = string.Empty; public List<BlastInstruction> Writes {get;set;} = new(); public DateTime Created {get;set;} = DateTime.UtcNow; }
+    private List<HarvesterBaseState> ghBaseStates = new();
+    private List<HarvestEntry> ghStash = new();
+    private List<HarvestEntry> ghStockpile = new();
+    private string ghSelectedBaseId = string.Empty;
+    private string ghNewBaseName = string.Empty;
+    private int ghStashCounter = 0;
+    private int ghStockpileCounter = 0;
+    private string? ghRenamingId = null; private string ghRenameText = string.Empty;
+    private bool GhHasSelectedBase => ghBaseStates.Any(b=>b.Id==ghSelectedBaseId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                Logger.LogInformation("NES Emulator initializing...");
+                Status.Set("Loading default ROM...");
+
+                // Get shader list immediately (ensures dropdown populated even before WebGL init)
+                await RefreshShaderOptions();
+
+                // Load any previously stored uploaded ROMs from IndexedDB via JS
+                // Migrate any legacy localStorage ROM cache to IndexedDB
+                try { await JS.InvokeVoidAsync("nesInterop.migrateLocalStorageRoms"); } catch {}
+                var stored = await JS.InvokeAsync<UploadedRom[]>("nesInterop.getStoredRoms");
+                if (stored != null)
+                {
+                    int restored = 0;
+                    foreach (var r in stored)
+                    {
+                        if (string.IsNullOrWhiteSpace(r.name) || string.IsNullOrWhiteSpace(r.base64)) continue;
+                        try
+                        {
+                            var data = Convert.FromBase64String(r.base64);
+                            if (data.Length == 0) continue;
+                            uploadedRoms[r.name] = data;
+                            if (!romOptions.Any(o => o.Key == r.name))
+                            {
+                                romOptions.Add(new RomOption { Key = r.name, Label = r.name + " (uploaded)", BuiltIn = false });
+                                restored++;
+                            }
+                        }
+                        catch { }
+                    }
+                    if (restored > 0)
+                    {
+                        Status.Set($"Restored {restored} uploaded ROM(s).");
+                    }
+                }
+
+                // Initialize drag & drop on ROM table instead of dedicated zone
+                await JS.InvokeVoidAsync("nesInterop.initRomDragDrop", "rom-table", DotNetObjectReference.Create(this));
+
+                // Auto-load SMB1 ROM by default (after potential restoration)
+                await LoadRomFromServer();
+
+                // Provide dotnet ref to JS for fullscreen/control callbacks
+                try { await JS.InvokeVoidAsync("nesInterop.setMainRef", DotNetObjectReference.Create(this)); } catch {}
+
+                // Register for keyboard input events via JS interop
+                await JS.InvokeVoidAsync("nesInterop.registerInput", DotNetObjectReference.Create(this));
+
+                // Build memory domain list (after ROM load)
+                BuildMemoryDomains();
+
+                // Fetch shader registry options from JS and set initial active shader
+                await RefreshShaderOptions();
+                await SetShader(activeShaderKey);
+
+                Logger.LogInformation("NES Emulator initialized successfully");
+                // After initial render, verify scoped CSS applied; inject fallback if not
+                try { await JS.InvokeVoidAsync("nesInterop.ensureLayoutStyles"); } catch {}
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"Failed to initialize NES emulator. Exception: {ex}");
+                errorMessage = $"Initialization failed: {ex.Message}\n{ex.StackTrace}";
+                Status.Set("Failed to load default ROM. Please upload a ROM file above.");
+            }
+        }
+        // Initialize touch controller JS handlers when controller view visible
+        if (isFullscreen && mobileFsView == "controller" && !touchControllerInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("nesInterop.initTouchController", "touch-controller");
+                touchControllerInitialized = true;
+            }
+            catch { }
+        }
+    }
+
+    // ROM option model & storage for uploaded ROMs
+    private class RomOption
+    {
+        public string Key { get; set; } = string.Empty; // unique key (filename or generated)
+        public string Label { get; set; } = string.Empty; // display text
+        public bool BuiltIn { get; set; }
+    }
+
+    private List<RomOption> romOptions = new()
+    {
+    new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true}
+    };
+    private readonly Dictionary<string, byte[]> uploadedRoms = new();
+    private ElementReference fileInput;
+    private bool IsBuiltInSelected => romOptions.FirstOrDefault(o => o.Key == romFileName)?.BuiltIn ?? true;
+    private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(romSearch)
+        ? romOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
+        : romOptions.Where(o=>o.Label.Contains(romSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(romSearch, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label);
+
+    private async Task<byte[]> LoadRomFromWwwroot(string filename)
+    {
+        try
+        {
+            Logger.LogInformation($"Loading ROM: {filename}");
+            var romData = await Http.GetByteArrayAsync(filename);
+            Logger.LogInformation($"ROM loaded successfully: {romData.Length} bytes");
+            
+            // Debug: Log first few bytes
+            if (romData.Length >= 16)
+            {
+                var headerHex = string.Join(" ", romData.Take(16).Select(b => b.ToString("X2")));
+                Logger.LogInformation($"ROM Header: {headerHex}");
+            }
+            
+            return romData;
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, $"HTTP error loading ROM: {filename}");
+            return new byte[0]; // Return empty array instead of throwing
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to load ROM: {filename}");
+            return new byte[0]; // Return empty array instead of throwing
+        }
+    }
+
+    private void StartEmulation()
+    {
+        try
+        {
+            if (nes == null)
+            {
+                errorMessage = "NES emulator not initialized";
+                return;
+            }
+
+            Logger.LogInformation("Starting emulation");
+            isRunning = true;
+            errorMessage = "";
+            Status.Set("Emulation running...");
+
+            // Start JS requestAnimationFrame loop
+            JS.InvokeVoidAsync("nesInterop.startEmulationLoop", DotNetObjectReference.Create(this));
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to start emulation. Exception: {ex}");
+            errorMessage = $"Failed to start: {ex.Message}\n{ex.StackTrace}";
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void PauseEmulation()
+    {
+        try
+        {
+            Logger.LogInformation("Pausing emulation");
+            isRunning = false;
+            JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            Status.Set("Emulation paused");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to pause emulation. Exception: {ex}");
+            errorMessage = $"Failed to pause: {ex.Message}\n{ex.StackTrace}";
+        }
+    }
+
+    private async void ResetEmulation()
+    {
+        try
+        {
+            Logger.LogInformation("Resetting emulation");
+            bool wasRunning = isRunning;
+            PauseEmulation();
+            // Ensure auto corruption is disabled for a clean reset
+            if (autoCorrupt)
+            {
+                autoCorrupt = false;
+                lastBlastInfo = "Auto-corrupt disabled (reset)";
+            }
+            // Force a pristine reload of the current ROM bytes (discard in-memory mutated state)
+            if (!string.IsNullOrEmpty(currentRomName))
+            {
+                // If uploaded ROM, re-use original stored bytes; if built-in, refetch from server
+                romFileName = currentRomName; // sync selection
+                if (uploadedRoms.ContainsKey(currentRomName))
+                {
+                    // Manually reload without going through any cached emulator state
+                    var data = uploadedRoms[currentRomName];
+                    // Preserve previously selected audio backend; reuse existing NES instance if present
+                    if (nes == null)
+                    {
+                        nes = new NesEmulator.NES();
+                    }
+                    nes.LoadROM(data);
+                    // Ensure backend (famicloneOn true => legacy core; false => modern APU) stays the same
+                    if (famicloneOn != nes.GetFamicloneMode()) nes.SetFamicloneMode(famicloneOn);
+                    BuildMemoryDomains();
+                }
+                else
+                {
+                    await LoadRomFromServer(); // this rebuilds nes & memory domains
+                }
+            }
+            frameCount = 0;
+            lastFrameCount = 0;
+            fps = 0;
+            if (wasRunning)
+            {
+                StartEmulation();
+            }
+            Status.Set("Emulation reset (clean ROM reloaded)");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to reset emulation. Exception: {ex}");
+            errorMessage = $"Failed to reset: {ex.Message}\n{ex.StackTrace}";
+        }
+    }
+
+    private void SetScale(double scale)
+    {
+        if (scale != 0.5 && scale != 1.0) return;
+        emuScale = scale;
+    }
+
+    private async Task ToggleFullscreen()
+    {
+        try
+        {
+            var newState = await JS.InvokeAsync<bool>("nesInterop.toggleFullscreen");
+            isFullscreen = newState;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fullscreen toggle failed");
+        }
+    }
+
+    private async Task RefreshShaderOptions()
+    {
+        try
+        {
+            var opts = await JS.InvokeAsync<object>("nesInterop.getShaderOptions");
+            // opts is JS array => deserialize via System.Text.Json
+            var json = System.Text.Json.JsonSerializer.Serialize(opts);
+            var parsed = System.Text.Json.JsonDocument.Parse(json).RootElement;
+            shaderOptions.Clear();
+            foreach (var el in parsed.EnumerateArray())
+            {
+                string key = ""; string label = "";
+                if(el.TryGetProperty("key", out var keyProp)) key = keyProp.GetString() ?? "";
+                if(el.TryGetProperty("Key", out var keyProp2) && string.IsNullOrEmpty(key)) key = keyProp2.GetString() ?? ""; // fallback
+                if(el.TryGetProperty("label", out var labProp)) label = labProp.GetString() ?? "";
+                if(el.TryGetProperty("Label", out var labProp2) && string.IsNullOrEmpty(label)) label = labProp2.GetString() ?? ""; // fallback
+                if(string.IsNullOrEmpty(label)) label = key;
+                if(!string.IsNullOrEmpty(key)) shaderOptions.Add(new ShaderOption(key,label));
+            }
+            if(!shaderOptions.Any(o=>o.Key==activeShaderKey) && shaderOptions.Count>0){ activeShaderKey = shaderOptions[0].Key; }
+        }
+        catch (Exception ex) { Logger.LogWarning(ex, "Failed to refresh shader options"); }
+    }
+
+    private async Task SetShader(string key)
+    {
+        try
+        {
+            var displayName = await JS.InvokeAsync<string>("nesInterop.setShader", key);
+            if(!string.IsNullOrEmpty(displayName))
+            {
+                activeShaderKey = key;
+                shaderOn = key != "PX"; // consider PX the passthrough
+                Status.Set($"Shader: {displayName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"SetShader error for {key}");
+        }
+    }
+
+    // Called from JS every animation frame
+    [JSInvokable]
+    public async Task FrameTick()
+    {
+        if (!isRunning) return;
+        await RunFrame();
+    }
+
+    private async Task RunFrame()
+    {
+        if (nes == null || !isRunning) return;
+
+        try
+        {
+            // Auto static mode when special test ROM active
+            bool autoStatic = string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+            nes.EnableStatic(autoStatic);
+            nes.SetInput(inputState);
+            if (fastForward)
+            {
+                nes.RunFrames(3); // run multiple frames quickly
+            }
+            else
+            {
+                nes.RunFrame();
+            }
+            if (autoCorrupt)
+            {
+                // Perform corruption after CPU step but before frame buffer fetch so effects are visible quickly
+                await Blast();
+            }
+            frameCount++;
+
+            // Fetch audio EVERY emulation frame to maintain steady cadence
+            int queued = nes.GetQueuedAudioSamples();
+            // Target a chunk size aiming for ~12ms ( ~530 samples @44.1kHz ); adapt if backlog large
+            int targetChunk = queued > 4096 ? 2048 : (queued > 2048 ? 1024 : 768);
+            float[] audioBuffer = nes.GetAudioBuffer();
+            if (audioBuffer.Length > 0)
+            {
+                _ = JS.InvokeVoidAsync("nesInterop.playAudio", audioBuffer, nes.GetAudioSampleRate());
+            }
+
+            // Always draw current frame for smooth visuals
+            framebuffer = nes.GetFrameBuffer();
+            _ = JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+
+            // Throttle stats & Blazor UI updates separately
+            if (frameCount % statsUpdateDivider == 0)
+            {
+                var now = DateTime.Now;
+                if ((now - lastFpsUpdate).TotalSeconds >= 0.5)
+                {
+                    fps = (frameCount - lastFrameCount) / (float)(now - lastFpsUpdate).TotalSeconds;
+                    lastFrameCount = frameCount;
+                    lastFpsUpdate = now;
+                }
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error in RunFrame. Exception: {ex}");
+            await InvokeAsync(() =>
+            {
+                errorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
+                PauseEmulation();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void ToggleFamiclone()
+    {
+        if (nes == null) return;
+        nes.ToggleFamicloneMode();
+        famicloneOn = nes.GetFamicloneMode();
+    Status.Set(famicloneOn ? "Famiclone (legacy APU) active" : "APU (modern) active");
+    }
+
+    private async Task OnShaderSelectChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if(string.IsNullOrWhiteSpace(v)) return;
+        if(v != activeShaderKey)
+        {
+            await SetShader(v);
+        }
+    }
+
+    private void OnFamicloneSelectChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        bool wantFmc = string.Equals(v, "FMC", StringComparison.OrdinalIgnoreCase);
+        if (wantFmc != famicloneOn)
+        {
+            ToggleFamiclone();
+        }
+    }
+
+    [JSInvokable]
+    public void UpdateInput(bool[] state)
+    {
+        try
+        {
+            if (state.Length == 8)
+            {
+                for (int i = 0; i < 8; i++)
+                    inputState[i] = state[i];
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating input");
+        }
+    }
+
+    // Unused (InputFile component removed)
+    private async Task LoadRomFile(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            Logger.LogInformation($"Loading ROM file: {e.File.Name}");
+            Status.Set($"Loading {e.File.Name}...");
+
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024); // 2MB max
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var romData = memoryStream.ToArray();
+
+            Logger.LogInformation($"ROM file loaded: {romData.Length} bytes");
+            
+            // Debug: Log first few bytes
+            if (romData.Length >= 16)
+            {
+                var headerHex = string.Join(" ", romData.Take(16).Select(b => b.ToString("X2")));
+                Logger.LogInformation($"ROM Header: {headerHex}");
+            }
+
+            nes = new NesEmulator.NES();
+            nes.LoadROM(romData);
+            try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+            famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
+
+            BuildMemoryDomains();
+
+            currentRomName = e.File.Name;
+            Status.Set($"ROM '{e.File.Name}' loaded successfully.");
+            errorMessage = "";
+            if (!isRunning)
+            {
+                StartEmulation();
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to load ROM file: {e.File.Name}. Exception: {ex}");
+            errorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
+            Status.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadRomUpload(ChangeEventArgs e)
+    {
+        try
+        {
+            Status.Set("Reading ROM file(s)...");
+            errorMessage = string.Empty;
+
+            // Invoke JS to read selected files as base64
+            var files = await JS.InvokeAsync<UploadedRom[]>("nesInterop.readSelectedRoms", fileInput);
+            if (files == null || files.Length == 0)
+            {
+                Status.Set("No ROM files selected.");
+                return;
+            }
+
+            int added = 0;
+            foreach (var f in files)
+            {
+                if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
+                if (!f.name.EndsWith(".nes", StringComparison.OrdinalIgnoreCase)) continue;
+                byte[] data;
+                try { data = Convert.FromBase64String(f.base64); }
+                catch { continue; }
+                if (data.Length == 0) continue;
+
+                // size guard (<= 4MB typical)
+                if (data.Length > 4 * 1024 * 1024)
+                {
+                    Status.Set($"File '{f.name}' too large (>4MB). Skipped.");
+                    continue;
+                }
+                var key = f.name;
+                // If duplicate, overwrite existing bytes but not label duplication
+                uploadedRoms[key] = data;
+                if (!romOptions.Any(o => o.Key == key))
+                {
+                    romOptions.Add(new RomOption { Key = key, Label = $"{f.name} (uploaded)", BuiltIn = false });
+                }
+                added++;
+            }
+
+            if (added == 0)
+            {
+                Status.Set("No valid .nes files processed.");
+                return;
+            }
+
+            // Auto-select the last uploaded ROM
+            var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && uploadedRoms.ContainsKey(f.name));
+            if (last != null)
+            {
+                romFileName = last.name;
+                await LoadSelectedRom();
+            }
+
+            Status.Set(added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Upload failed");
+            errorMessage = $"Upload failed: {ex.Message}";
+            // clear status
+            StateHasChanged();
+        }
+    }
+
+    private async Task RomSelectionChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string value && !string.IsNullOrWhiteSpace(value))
+        {
+            romFileName = value.Trim();
+            await LoadSelectedRom();
+        }
+    }
+
+    private Task LoadRomEntry(string key)
+    {
+        romFileName = key;
+        return LoadSelectedRom();
+    }
+
+    private Task OnRomRowClicked(RomOption opt)
+    {
+        if (opt.Key == currentRomName) return Task.CompletedTask; // already active
+        return LoadRomEntry(opt.Key);
+    }
+
+    private string GetDefaultBuiltInRomKey()
+    {
+        return romOptions.FirstOrDefault(o => o.BuiltIn)?.Key ?? string.Empty;
+    }
+
+    private async Task DeleteRom(string key)
+    {
+        var opt = romOptions.FirstOrDefault(o=>o.Key==key);
+        if (opt == null || opt.BuiltIn) return;
+        if (uploadedRoms.Remove(key))
+        {
+            await JS.InvokeVoidAsync("nesInterop.removeStoredRom", key);
+        }
+        romOptions.Remove(opt);
+        if (currentRomName == key)
+        {
+            var fallback = GetDefaultBuiltInRomKey();
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                romFileName = fallback;
+                await LoadSelectedRom();
+            }
+            else
+            {
+                nes = null; // no ROM available
+                currentRomName = "None";
+                Status.Set("No built-in ROMs available. Please upload a ROM.");
+            }
+        }
+    Status.Set($"Deleted ROM {key}.");
+        StateHasChanged();
+    }
+
+    private async Task ClearAllUploaded()
+    {
+        var toDelete = romOptions.Where(o=>!o.BuiltIn).Select(o=>o.Key).ToList();
+        foreach (var k in toDelete)
+        {
+            await JS.InvokeVoidAsync("nesInterop.removeStoredRom", k);
+        }
+        romOptions = romOptions.Where(o=>o.BuiltIn).ToList();
+        uploadedRoms.Clear();
+        if (!IsBuiltInSelected)
+        {
+            var fallback = GetDefaultBuiltInRomKey();
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                romFileName = fallback;
+                await LoadSelectedRom();
+            }
+            else
+            {
+                nes = null;
+                currentRomName = "None";
+                Status.Set("No built-in ROMs available. Please upload a ROM.");
+            }
+        }
+    Status.Set("Cleared uploaded ROMs.");
+    }
+
+    private void OnRomSearchChanged(ChangeEventArgs e)
+    {
+        romSearch = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task TriggerFileDialog()
+    {
+        try { await fileInput.FocusAsync(); } catch {}
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch {}
+    }
+
+    private string GetRomSizeDisplay(string key)
+    {
+        if (uploadedRoms.TryGetValue(key, out var data)) return FormatSize(data.Length);
+        if (builtInRomSizes.TryGetValue(key, out var s)) return FormatSize(s);
+        return "?";
+    }
+
+    private static string FormatSize(int bytes)
+    {
+        if (bytes <= 0) return "0";
+        if (bytes < 1024) return bytes+" B";
+        if (bytes < 1024*1024) return (bytes/1024.0).ToString("F1")+" KB";
+        return (bytes/1024.0/1024.0).ToString("F2")+" MB";
+    }
+
+    private async Task LoadSelectedRom()
+    {
+        try
+        {
+            if (uploadedRoms.TryGetValue(romFileName, out var data))
+            {
+                Status.Set($"Loading uploaded ROM {romFileName}...");
+                nes = new NesEmulator.NES();
+                nes.LoadROM(data);
+                try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+                famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
+                BuildMemoryDomains();
+                currentRomName = romFileName;
+                lastLoadedRomSize = data.Length;
+                Status.Set($"ROM '{romFileName}' loaded from upload.");
+                errorMessage = "";
+                // Collapse ROM Manager and expand Corruptor panel (except test.nes)
+                if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
+                }
+                if (!isRunning)
+                {
+                    StartEmulation();
+                }
+                StateHasChanged();
+            }
+            else
+            {
+                Status.Set($"Loading built-in {romFileName}...");
+                await LoadRomFromServer();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load selected ROM: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private Task ReloadCurrentRom()
+    {
+        if (uploadedRoms.ContainsKey(romFileName))
+        {
+            return LoadSelectedRom();
+        }
+        else
+        {
+            return LoadRomFromServer();
+        }
+    }
+
+    private async Task DeleteCurrentRom()
+    {
+        try
+        {
+            if (IsBuiltInSelected) return;
+            if (uploadedRoms.Remove(romFileName))
+            {
+                await JS.InvokeVoidAsync("nesInterop.removeStoredRom", romFileName);
+                var opt = romOptions.FirstOrDefault(o => o.Key == romFileName);
+                if (opt != null) romOptions.Remove(opt);
+                Status.Set($"Deleted ROM {romFileName}.");
+                // fallback to first built-in
+                var fallback = GetDefaultBuiltInRomKey();
+                if (!string.IsNullOrEmpty(fallback))
+                {
+                    romFileName = fallback;
+                    await LoadSelectedRom();
+                }
+                else
+                {
+                    nes = null;
+                    currentRomName = "None";
+                    Status.Set("No built-in ROMs available. Please upload a ROM.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Delete failed: " + ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadRomFromServer()
+    {
+        try
+        {
+            Logger.LogInformation($"Loading ROM from server: {romFileName}");
+            Status.Set($"Loading {romFileName}...");
+
+            var romData = await LoadRomFromWwwroot(romFileName);
+            
+            if (romData.Length == 0)
+            {
+                throw new Exception($"ROM file '{romFileName}' not found or empty");
+            }
+
+            nes = new NesEmulator.NES();
+            nes.LoadROM(romData);
+            try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+            famicloneOn = nes.GetFamicloneMode();
+            currentRomName = romFileName;
+            lastLoadedRomSize = romData.Length;
+            if (!uploadedRoms.ContainsKey(romFileName))
+            {
+                // store built-in size cache
+                builtInRomSizes[romFileName] = romData.Length;
+            }
+            Status.Set($"ROM '{romFileName}' loaded successfully!");
+            errorMessage = "";
+            // Collapse ROM Manager and expand Corruptor panel (except test.nes)
+            if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+            {
+                try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
+            }
+            if (!isRunning)
+            {
+                StartEmulation();
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to load ROM from server: {romFileName}. Exception: {ex}");
+            errorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
+            Status.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private Task OnRawFileSelected(ChangeEventArgs e)
+    {
+        try
+        {
+            if (e.Value is not null)
+            {
+                // Not directly accessible to read file bytes without InputFile component.
+                // Provide status message placeholder.
+                Status.Set("File input selected (reload using server loader for now).");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveState()
+    {
+        if (nes == null || stateBusy) return; stateBusy = true;
+        try
+        {
+            var raw = nes.SaveState();
+            if (string.IsNullOrEmpty(raw)) { Status.Set("Empty state"); return; }
+
+            // Attempt compression
+            string payload = raw;
+            bool compressed = false;
+            try
+            {
+                var gz = CompressString(raw);
+                // Use compressed if smaller by >=5%
+                if (gz.Length < raw.Length * 0.95)
+                {
+                    payload = "GZ:" + gz; // prefix marker
+                    compressed = true;
+                }
+            }
+            catch { /* ignore compression failures */ }
+
+            // Clear any old chunked state
+            await RemoveExistingChunks();
+
+            if (payload.Length <= SaveChunkCharSize)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey, payload);
+                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
+                    Status.Set(compressed ? "State saved (compressed)" : "State saved");
+                }
+                catch (JSException jsex)
+                {
+                    errorMessage = "Save error: " + jsex.Message;
+                }
+                return;
+            }
+
+            // Chunk large state
+            var parts = new List<string>();
+            for (int i = 0; i < payload.Length; i += SaveChunkCharSize)
+            {
+                parts.Add(payload.Substring(i, Math.Min(SaveChunkCharSize, payload.Length - i)));
+            }
+            try
+            {
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + $".part{i}", parts[i]);
+                }
+                string manifest = $"{{\"version\":1,\"compressed\":{compressed.ToString().ToLowerInvariant()},\"parts\":{parts.Count}}}";
+                await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + ".manifest", manifest);
+                // Remove single-key (if any) to avoid duplication
+                await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey);
+                Status.Set(compressed ? $"State saved in {parts.Count} parts (compressed)" : $"State saved in {parts.Count} parts");
+            }
+            catch (JSException jsex)
+            {
+                errorMessage = "Save error (chunked): " + jsex.Message;
+                // Cleanup partial
+                await RemoveExistingChunks();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Save error: " + ex.Message;
+        }
+        finally { stateBusy = false; }
+    }
+
+    private async Task LoadState()
+    {
+        if (nes == null || stateBusy) return; stateBusy = true; bool running = isRunning;
+        try
+        {
+            // Check for manifest (chunked save)
+            var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
+            string full = string.Empty;
+            if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+            {
+                try
+                {
+                    int parts = ExtractInt(manifestJson, "parts");
+                    bool compressed = manifestJson.Contains("\"compressed\":true");
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < parts; i++)
+                    {
+                        var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
+                        if (part == null) { errorMessage = "Load error: missing part " + i; stateBusy = false; return; }
+                        sb.Append(part);
+                    }
+                    full = sb.ToString();
+                    if (compressed && full.StartsWith("GZ:"))
+                    {
+                        full = DecompressString(full.Substring(3));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = "Load error (chunked): " + ex.Message;
+                    return;
+                }
+            }
+            else
+            {
+                var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
+                if (string.IsNullOrWhiteSpace(single)) { Status.Set("No saved state"); return; }
+                if (single.StartsWith("GZ:"))
+                {
+                    try { full = DecompressString(single.Substring(3)); }
+                    catch (Exception ex) { errorMessage = "Decompress error: " + ex.Message; return; }
+                }
+                else full = single;
+            }
+
+            if (!string.IsNullOrEmpty(full))
+            {
+                nes.LoadState(full);
+                framebuffer = nes.GetFrameBuffer();
+                await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+                Status.Set("State loaded");
+                // Refresh famiclone/APU mode in case the loaded state differs from current UI toggle
+                try
+                {
+                    bool prev = famicloneOn;
+                    famicloneOn = nes.GetFamicloneMode();
+                    if (prev != famicloneOn || !running)
+                    {
+                        StateHasChanged();
+                    }
+                }
+                catch { if (!running) StateHasChanged(); }
+            }
+        }
+        catch (Exception ex) { errorMessage = "Load error: " + ex.Message; }
+        finally { stateBusy = false; }
+    }
+
+    private Task DumpState()
+    {
+        if (nes == null) return Task.CompletedTask;
+        try { debugDump = nes.GetStateDigest(); } catch (Exception ex) { debugDump = "dump err: "+ex.Message; }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void BuildMemoryDomains()
+    {
+        memoryDomains.Clear();
+        if (nes == null) return;
+        try {
+            memoryDomains.Add(new DomainSel{ Key="PRG", Label="PRG ROM", Size=GetApproxSize(idx=>nes.PeekPrg(idx)), Selected=false});
+            memoryDomains.Add(new DomainSel{ Key="PRGRAM", Label="PRG RAM", Size=GetApproxSize(idx=>nes.PeekPrgRam(idx)), Selected=false});
+            memoryDomains.Add(new DomainSel{ Key="CHR", Label="CHR", Size=GetApproxSize(idx=>nes.PeekChr(idx)), Selected=false});
+            memoryDomains.Add(new DomainSel{ Key="RAM", Label="System RAM", Size=2048, Selected=true});
+        } catch {}
+        StateHasChanged();
+    }
+
+    private void OnCrashBehaviorChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string v)
+        {
+            crashBehavior = v;
+            try
+            {
+                if (nes != null)
+                {
+                    if (v == "IgnoreErrors") nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors);
+                    else nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
+                }
+            }
+            catch { }
+        }
+    }
+
+    private int GetApproxSize(Func<int,byte> peek)
+    {
+        int size = 1024;
+        int lastNonZero = 0;
+        for (int i=0;i<size;i+=128){ if (peek(i)!=0) lastNonZero=i; }
+        for (int i=1024;i<=512*1024;i*=2)
+        {
+            byte v = peek(i-1);
+            if (v!=0) lastNonZero = i-1;
+            else { size = i; break; }
+        }
+        return Math.Max( (lastNonZero+256) & ~255, 0);
+    }
+
+    private void DomainsChanged(ChangeEventArgs e)
+    {
+        // TODO: implement manual multiple select tracking if needed
+    }
+    private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptIntensity = Math.Clamp(v,1,65535); }
+    private void OnIntensityBoxChange(ChangeEventArgs e) { OnIntensityChange(e); }
+    private void ToggleAutoCorruptButton() { autoCorrupt = !autoCorrupt; lastBlastInfo = autoCorrupt ? "Auto-corrupt enabled" : "Auto-corrupt disabled"; }
+    private void LetItRip()
+    {
+        corruptIntensity = 1;
+        foreach (var d in memoryDomains)
+        {
+            d.Selected = d.Key == "PRG" || d.Key == "RAM"; // Only PRG ROM & System RAM
+        }
+        if (!autoCorrupt)
+        {
+            autoCorrupt = true;
+            lastBlastInfo = "Auto-corrupt enabled (Let it rip)";
+        }
+        else
+        {
+            lastBlastInfo = "Let it rip engaged";
+        }
+    letItRipUsed = true;
+        StateHasChanged();
+    }
+
+    private Task Blast()
+    {
+        if (nes == null) return Task.CompletedTask;
+        var selected = memoryDomains.Where(d=>d.Selected && d.Size>0).ToList();
+        if (selected.Count==0) return Task.CompletedTask;
+        int writes = Math.Clamp(corruptIntensity,1,4096);
+        for (int i=0;i<writes;i++)
+        {
+            var d = selected[corruptRnd.Next(selected.Count)];
+            int addr = corruptRnd.Next(d.Size);
+            byte orig = 0;
+            switch (d.Key) {
+                case "PRG": orig = nes.PeekPrg(addr); break;
+                case "PRGRAM": orig = nes.PeekPrgRam(addr); break;
+                case "CHR": orig = nes.PeekChr(addr); break;
+                case "RAM": orig = nes.PeekSystemRam(addr); break;
+            }
+            string mode = blastType;
+            if (mode == "RANDOMTILT") mode = corruptRnd.Next(2)==0 ? "RANDOM" : "TILT";
+            byte newVal = orig;
+            switch (mode)
+            {
+                case "RANDOM":
+                    newVal = (byte)corruptRnd.Next(256);
+                    break;
+                case "TILT":
+                    // +/-1 with wrap
+                    newVal = (byte)(orig + (corruptRnd.Next(2)==0 ? 1 : 255));
+                    break;
+                case "NOP":
+                    newVal = 0xEA; // 6502 NOP
+                    break;
+                case "BITFLIP":
+                    int bit = corruptRnd.Next(8);
+                    newVal = (byte)(orig ^ (1 << bit));
+                    break;
+            }
+            switch (d.Key) {
+                case "PRG": nes.PokePrg(addr,newVal); break;
+                case "PRGRAM": nes.PokePrgRam(addr,newVal); break;
+                case "CHR": nes.PokeChr(addr,newVal); break;
+                case "RAM": nes.PokeSystemRam(addr,newVal); break;
+            }
+        }
+        lastBlastInfo = autoCorrupt ? $"Auto {writes} ({blastType})/{selected.Count} domain(s)" : $"{blastType}: {writes} writes over {selected.Count} domain(s)";
+        return Task.CompletedTask;
+    }
+
+    private void OnBlastTypeChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string v && !string.IsNullOrWhiteSpace(v))
+        {
+            blastType = v.Trim().ToUpperInvariant();
+        }
+    }
+
+    // ================ Glitch Harvester methods =================
+    private void GhAddBaseState()
+    {
+        if (nes == null) return;
+        try
+        {
+            var raw = nes.SaveState();
+            if (string.IsNullOrEmpty(raw)) return;
+            var name = string.IsNullOrWhiteSpace(ghNewBaseName) ? $"Base {ghBaseStates.Count+1}" : ghNewBaseName.Trim();
+            var b = new HarvesterBaseState { Name = name, State = raw };
+            ghBaseStates.Add(b);
+            ghSelectedBaseId = b.Id;
+            ghNewBaseName = string.Empty;
+        }
+    catch (Exception ex) { Status.Set("GH base add failed: "+ex.Message); }
+    }
+    private void GhOnBaseChanged(ChangeEventArgs e)
+    { if (e.Value is string v) ghSelectedBaseId = v; }
+    private async Task GhLoadSelectedBase()
+    {
+    if (nes == null) return; var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; try { nes.LoadState(b.State); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); Status.Set($"Loaded base '{b.Name}'"); } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
+    }
+    private void GhDeleteSelectedBase()
+    { var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; ghBaseStates.Remove(b); if (!ghBaseStates.Any()) ghSelectedBaseId = string.Empty; else ghSelectedBaseId = ghBaseStates.Last().Id; }
+    private List<BlastInstruction> GhGenerateBlastLayer(int writes)
+    {
+        var result = new List<BlastInstruction>();
+        var selected = memoryDomains.Where(d=>d.Selected && d.Size>0).ToList(); if (selected.Count==0) return result; writes = Math.Clamp(writes,1,4096);
+        for (int i=0;i<writes;i++)
+        {
+            var d = selected[corruptRnd.Next(selected.Count)];
+            int addr = corruptRnd.Next(d.Size);
+            byte orig = 0; try { switch(d.Key){ case "PRG": orig = nes?.PeekPrg(addr)??0; break; case "PRGRAM": orig = nes?.PeekPrgRam(addr)??0; break; case "CHR": orig = nes?.PeekChr(addr)??0; break; case "RAM": orig = nes?.PeekSystemRam(addr)??0; break; } } catch {}
+            string mode = blastType; if (mode=="RANDOMTILT") mode = corruptRnd.Next(2)==0?"RANDOM":"TILT"; byte newVal = orig; switch(mode){ case "RANDOM": newVal = (byte)corruptRnd.Next(256); break; case "TILT": newVal = (byte)(orig + (corruptRnd.Next(2)==0 ? 1 : 255)); break; case "NOP": newVal = 0xEA; break; case "BITFLIP": int bit = corruptRnd.Next(8); newVal = (byte)(orig ^ (1<<bit)); break; }
+            result.Add(new BlastInstruction{ Domain=d.Key, Address=addr, Value=newVal });
+        }
+        return result;
+    }
+    private void GhApplyBlastLayer(IEnumerable<BlastInstruction> writes)
+    {
+        if (nes==null) return; foreach (var w in writes){ try { switch(w.Domain){ case "PRG": nes.PokePrg(w.Address,w.Value); break; case "PRGRAM": nes.PokePrgRam(w.Address,w.Value); break; case "CHR": nes.PokeChr(w.Address,w.Value); break; case "RAM": nes.PokeSystemRam(w.Address,w.Value); break; } } catch {} }
+    }
+    private async Task GhCorruptAndStash()
+    {
+        if (nes==null || !GhHasSelectedBase) return; var baseState = ghBaseStates.First(b=>b.Id==ghSelectedBaseId);
+        try {
+            nes.LoadState(baseState.State); // ensure deterministic start
+            var writes = GhGenerateBlastLayer(Math.Clamp(corruptIntensity,1,1024));
+            GhApplyBlastLayer(writes);
+            var entry = new HarvestEntry { Name = $"Stash {++ghStashCounter}", BaseStateId = baseState.Id, Writes = writes };
+            ghStash.Add(entry);
+            Status.Set($"Stashed {writes.Count} writes based on '{baseState.Name}'");
+        } catch (Exception ex){ Status.Set("GH corrupt err: "+ex.Message); }
+        await InvokeAsync(StateHasChanged);
+    }
+    private string GhFindBaseName(string id) => ghBaseStates.FirstOrDefault(b=>b.Id==id)?.Name ?? "?";
+    private void GhDeleteStash(string id){ var e = ghStash.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStash.Remove(e); }
+    private void GhPromoteEntry(HarvestEntry e){ ghStash.Remove(e); e.Name = $"Entry {++ghStockpileCounter}"; ghStockpile.Add(e); }
+    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ var baseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); if (nes==null || baseState==null) return; try { nes.LoadState(baseState.State); GhApplyBlastLayer(e.Writes); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", framebuffer); Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } }
+    private void GhDeleteStock(string id){ var e = ghStockpile.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStockpile.Remove(e); if (ghRenamingId==id){ ghRenamingId=null; ghRenameText=""; } }
+    private void GhClearStash(){ ghStash.Clear(); }
+    private bool GhIsRenaming(string id) => ghRenamingId==id;
+    private void GhBeginRename(HarvestEntry e){ ghRenamingId = e.Id; ghRenameText = e.Name; }
+    private void GhCancelRename(){ ghRenamingId=null; ghRenameText=""; }
+    private void GhRenameChange(ChangeEventArgs e){ if (e.Value is string v) ghRenameText=v; }
+    private void GhCommitRename(string id){ var e = ghStockpile.FirstOrDefault(x=>x.Id==id); if (e!=null && !string.IsNullOrWhiteSpace(ghRenameText)) e.Name = ghRenameText.Trim(); GhCancelRename(); }
+    private async Task GhExportStockpile(){ try { var exportObj = ghStockpile.Select(e=> new { e.Id, e.Name, e.BaseStateId, e.Created, Writes=e.Writes, BaseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId)?.State }).ToList(); var json = System.Text.Json.JsonSerializer.Serialize(exportObj); await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json); Status.Set("Exported stockpile"); } catch (Exception ex){ Status.Set("Export failed: "+ex.Message); } }
+    private async Task GhImportStockpile(ChangeEventArgs e){ try { if (e.Value==null) return; // use JS to read file(s)
+            var files = await JS.InvokeAsync<object[]>("nesInterop.readFilesAsText", e.Value); if (files==null) return; int added=0; foreach (var f in files){ if (f is string json){ try { var doc = System.Text.Json.JsonDocument.Parse(json); foreach (var elem in doc.RootElement.EnumerateArray()){ var baseStateId = elem.GetProperty("BaseStateId").GetString()??""; var baseStateData = elem.TryGetProperty("BaseState", out var bsEl)? bsEl.GetString():null; if (!ghBaseStates.Any(b=>b.Id==baseStateId) && !string.IsNullOrEmpty(baseStateData)){ ghBaseStates.Add( new HarvesterBaseState{ Id=baseStateId, Name=$"Imported {ghBaseStates.Count+1}", State=baseStateData }); }
+                        var entry = new HarvestEntry { Id = elem.GetProperty("Id").GetString()??Guid.NewGuid().ToString(), Name = elem.GetProperty("Name").GetString()??$"Imp {++ghStockpileCounter}", BaseStateId = baseStateId, Created = elem.TryGetProperty("Created", out var cEl)? cEl.GetDateTime():DateTime.UtcNow, Writes = new List<BlastInstruction>() };
+                        if (elem.TryGetProperty("Writes", out var wArr)) { foreach (var w in wArr.EnumerateArray()){ entry.Writes.Add(new BlastInstruction{ Domain = w.GetProperty("Domain").GetString()??"", Address = w.GetProperty("Address").GetInt32(), Value = (byte)w.GetProperty("Value").GetInt32()}); } }
+                        ghStockpile.Add(entry); added++; }
+                    } catch {} } }
+            if (added>0) Status.Set($"Imported {added} entries"); }
+        catch (Exception ex){ Status.Set("Import failed: "+ex.Message); } }
+
+    public void Dispose()
+    {
+        try
+        {
+            JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            Logger.LogInformation("BrokenNes disposed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error disposing NES emulator");
+        }
+    }
+
+    public class UploadedRom
+    {
+        public string name { get; set; } = string.Empty; // JS property casing
+        public string base64 { get; set; } = string.Empty;
+    }
+
+    // ===== JS Invokable wrappers for mobile fullscreen bottom bar =====
+    [JSInvokable]
+    public Task JsSaveState() => SaveState();
+    [JSInvokable]
+    public Task JsLoadState() => LoadState();
+    [JSInvokable]
+    public void JsResetGame() => ResetEmulation();
+    [JSInvokable]
+    public void JsExitFullscreen()
+    {
+        isFullscreen = false;
+        StateHasChanged();
+    }
+
+    // Called from JS when ROMs dropped via drag & drop
+    [JSInvokable]
+    public async Task OnRomsDropped(UploadedRom[] roms)
+    {
+        if (roms == null || roms.Length == 0) return;
+        int added = 0;
+        foreach (var f in roms)
+        {
+            if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
+            try
+            {
+                var data = Convert.FromBase64String(f.base64);
+                if (data.Length == 0) continue;
+                uploadedRoms[f.name] = data;
+                if (!romOptions.Any(o => o.Key == f.name))
+                {
+                    romOptions.Add(new RomOption { Key = f.name, Label = f.name + " (uploaded)", BuiltIn = false });
+                }
+                added++;
+            }
+            catch { }
+        }
+        if (added > 0)
+        {
+            romFileName = roms.Last().name;
+            await LoadSelectedRom();
+            Status.Set($"Dropped {added} ROM(s).");
+            if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+            {
+                try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
+            }
+        }
+    }
+
+    // ================= Helper methods for compressed & chunked saves =================
+    private static string CompressString(string input)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+        using var ms = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Fastest, true))
+        {
+            gzip.Write(bytes, 0, bytes.Length);
+        }
+        return Convert.ToBase64String(ms.ToArray());
+    }
+
+    private static string DecompressString(string base64)
+    {
+        var data = Convert.FromBase64String(base64);
+        using var ms = new MemoryStream(data);
+        using var gzip = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionMode.Decompress);
+        using var outMs = new MemoryStream();
+        gzip.CopyTo(outMs);
+        return System.Text.Encoding.UTF8.GetString(outMs.ToArray());
+    }
+
+    private int ExtractInt(string json, string prop)
+    {
+        try
+        {
+            var token = "\"" + prop + "\":";
+            int idx = json.IndexOf(token, StringComparison.Ordinal);
+            if (idx >= 0)
+            {
+                idx += token.Length;
+                int end = idx;
+                while (end < json.Length && char.IsDigit(json[end])) end++;
+                if (int.TryParse(json.Substring(idx, end - idx), out var val)) return val;
+            }
+        }
+        catch { }
+        return 0;
+    }
+
+    private async Task RemoveExistingChunks()
+    {
+        try
+        {
+            var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
+            if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+            {
+                int parts = ExtractInt(manifestJson, "parts");
+                for (int i = 0; i < parts; i++)
+                {
+                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + $".part{i}");
+                }
+                await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
+            }
+        }
+        catch { }
+    }
+}

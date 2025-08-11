@@ -1,0 +1,15 @@
+﻿@inherits LayoutComponentBase
+@using BrokenNes.Layout
+@using BrokenNes
+@using BrokenNes.Shared
+<div class="app-shell">
+    <header class="app-bar">
+        <div class="brand">BrokenNes</div>
+    </header>
+    <div class="status-dock">
+        <StatusBar />
+    </div>
+    <main class="app-main">
+        @Body
+    </main>
+</div>

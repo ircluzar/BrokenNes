@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrokenNes</title>
+    <base href="/" />
+    <link rel="preload" id="webassembly" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <!-- Favicon / PWA Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#b0b0b0" />
+    <!-- Corrected rebrand: generated scoped CSS bundle follows AssemblyName -->
+    <link href="BrokenNes.styles.css" rel="stylesheet" />
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script src="shaders.js"></script>
+    <script src="nesInterop.js"></script>
+</body>
+
+</html>

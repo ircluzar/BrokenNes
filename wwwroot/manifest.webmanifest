@@ -1,0 +1,25 @@
+{
+	"name": "BrokenNes",
+	"short_name": "BrokenNes",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#000000",
+	"theme_color": "#b0b0b0",
+	"icons": [
+		{
+			"src": "favicon.png",
+			"sizes": "32x32",
+			"type": "image/png"
+		},
+		{
+			"src": "favicon-16.png",
+			"sizes": "16x16",
+			"type": "image/png"
+		},
+		{
+			"src": "icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png"
+		}
+	]
+}

@@ -1,0 +1,1231 @@
+/* Import retro 8-bit font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;700;900&display=swap');
+
+/* Root variables for NES color palette */
+:root {
+    /* Shift palette to deeper blacks / charcoal, with subtle desaturated blues */
+    --nes-dark-bg: #d0d0f;
+    --nes-darker-bg: #050506;
+    --nes-accent: #d63b52; /* slightly darker accent */
+    --nes-secondary: #c97a06; /* warmer orange toned down */
+    --nes-success: #06c39b; /* teal remains but muted */
+    --nes-text-light: #e0e0e0;
+    --nes-text-muted: #8a8a8a;
+    --nes-border: #1e1e22; /* near-black border */
+    --nes-shadow: rgba(214, 59, 82, 0.35);
+    --nes-glow: rgba(6, 195, 155, 0.35);
+    --nes-gray: #3a3a3d;
+    --nes-light-gray: #58585b;
+}
+
+html, body {
+    font-family: 'Orbitron', 'Courier New', monospace;
+    background: radial-gradient(circle at 30% 20%, #121214 0%, var(--nes-darker-bg) 70%) fixed;
+    color: var(--nes-text-light);
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden; /* Prevent horizontal scroll */
+    box-sizing: border-box;
+}
+
+/* Defensive: ensure any full-width blocks cannot exceed viewport */
+body * { max-width: 100vw; }
+/* Allow explicit horizontal scrolling only where we intentionally enable it (tables) */
+.table-responsive, .allow-x-scroll { max-width:100%; }
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* 8-bit style headers */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-accent);
+    text-shadow: 2px 2px 0px var(--nes-border);
+    margin-bottom: 1rem;
+}
+
+h1 { font-size: 1.5rem; line-height: 1.8; }
+h2 { font-size: 1.2rem; line-height: 1.6; }
+h3 { font-size: 1rem; line-height: 1.5; }
+h4 { font-size: 0.8rem; line-height: 1.4; }
+h5 { font-size: 0.7rem; line-height: 1.3; }
+
+h1:focus {
+    outline: none;
+}
+
+/* Links and buttons styling */
+a, .btn-link {
+    color: var(--nes-success);
+    text-decoration: none;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+a:hover, .btn-link:hover {
+    color: var(--nes-secondary);
+    text-shadow: 0 0 5px var(--nes-glow);
+}
+
+/* Retro button styling */
+.btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6rem;
+    padding: 8px 16px;
+    border: 3px solid;
+    border-radius: 0;
+    text-transform: uppercase;
+    position: relative;
+    background: none;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    margin: 2px;
+}
+
+.btn-primary {
+    color: var(--nes-text-light);
+    background: linear-gradient(45deg, var(--nes-accent), #ff6b8a);
+    border-color: var(--nes-accent);
+    box-shadow: 0 4px 0 var(--nes-border), 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: linear-gradient(45deg, #ff4757, var(--nes-accent));
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 var(--nes-border), 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.btn-success {
+    color: var(--nes-text-light);
+    background: linear-gradient(45deg, var(--nes-success), #00f5d4);
+    border-color: var(--nes-success);
+    box-shadow: 0 4px 0 #008b72, 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.btn-success:hover:not(:disabled) {
+    background: linear-gradient(45deg, #00f5d4, var(--nes-success));
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #008b72, 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.btn-warning {
+    color: var(--nes-text-light);
+    background: linear-gradient(45deg, var(--nes-secondary), #ffb84d);
+    border-color: var(--nes-secondary);
+    box-shadow: 0 4px 0 #cc7700, 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.btn-warning:hover:not(:disabled) {
+    background: linear-gradient(45deg, #ffb84d, var(--nes-secondary));
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #cc7700, 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.btn-danger {
+    color: var(--nes-text-light);
+    background: linear-gradient(45deg, #ff4757, #ff6b8a);
+    border-color: #ff4757;
+    box-shadow: 0 4px 0 #c23649, 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: linear-gradient(45deg, #ff6b8a, #ff4757);
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #c23649, 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.btn-outline-primary {
+    color: var(--nes-accent);
+    background: transparent;
+    border-color: var(--nes-accent);
+    box-shadow: 0 0 0 1px var(--nes-accent) inset;
+}
+
+.btn-outline-primary:hover:not(:disabled) {
+    color: var(--nes-text-light);
+    background: var(--nes-accent);
+    box-shadow: 0 0 10px var(--nes-shadow);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: 0 2px 0 var(--nes-gray), 0 2px 4px rgba(0,0,0,0.3) !important;
+}
+
+/* Form controls */
+.form-control, .form-select {
+    font-family: 'Orbitron', monospace;
+    background: var(--nes-darker-bg);
+    border: 2px solid var(--nes-border);
+    border-radius: 0;
+    color: var(--nes-text-light);
+    padding: 8px 12px;
+}
+
+.form-control:focus, .form-select:focus {
+    background: var(--nes-dark-bg);
+    border-color: var(--nes-accent);
+    box-shadow: 0 0 0 2px var(--nes-shadow);
+    color: var(--nes-text-light);
+}
+
+.form-control::placeholder {
+    color: var(--nes-text-muted);
+    font-style: italic;
+}
+
+.form-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6rem;
+    color: var(--nes-secondary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+/* Alert styling */
+.alert {
+    font-family: 'Orbitron', monospace;
+    border: 2px solid;
+    border-radius: 0;
+    padding: 12px 16px;
+    margin: 10px 0;
+    position: relative;
+}
+
+.alert-danger {
+    background: linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 71, 87, 0.2));
+    border-color: #ff4757;
+    color: #ff6b8a;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, rgba(0, 212, 170, 0.1), rgba(0, 212, 170, 0.2));
+    border-color: var(--nes-success);
+    color: #00f5d4;
+}
+
+/* Retro panel styling */
+.retro-panel {
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    border: 3px solid var(--nes-border);
+    padding: 20px;
+    margin: 10px 0;
+    position: relative;
+    box-shadow: 
+        inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.retro-panel::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, var(--nes-accent), var(--nes-success), var(--nes-secondary), var(--nes-accent));
+    z-index: -1;
+    border-radius: 4px;
+    opacity: 0.3;
+}
+
+/* Scanline effect for retro feel */
+.scanlines::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        transparent 0%,
+        rgba(0, 255, 0, 0.03) 50%,
+        transparent 100%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* Canvas styling for the NES display */
+canvas {
+    border: 4px solid var(--nes-border) !important;
+    background-color: #000 !important;
+    image-rendering: pixelated !important;
+    box-shadow: 
+        0 0 20px rgba(0, 0, 0, 0.8),
+        inset 0 0 20px rgba(233, 69, 96, 0.1);
+    position: relative;
+}
+
+/* Navigation styling */
+.navbar {
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg)) !important;
+    border-bottom: 3px solid var(--nes-border);
+    padding: 10px 0;
+}
+
+.navbar-brand {
+    font-family: 'Press Start 2P', monospace !important;
+    color: var(--nes-accent) !important;
+    font-size: 1rem !important;
+    text-shadow: 2px 2px 0px var(--nes-border);
+}
+
+.nav-link {
+    font-family: 'Orbitron', monospace !important;
+    color: var(--nes-text-light) !important;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover, .nav-link.active {
+    color: var(--nes-success) !important;
+    text-shadow: 0 0 5px var(--nes-glow);
+}
+
+/* Content area */
+.content {
+    padding: 2rem 1rem;
+    min-height: calc(100vh - 120px);
+}
+
+/* Debug info styling */
+.debug-info {
+    background: linear-gradient(135deg, rgba(15, 52, 96, 0.3), rgba(26, 26, 46, 0.3)) !important;
+    border: 2px solid var(--nes-border) !important;
+    border-radius: 0 !important;
+    backdrop-filter: blur(5px);
+}
+
+.debug-info p {
+    font-family: 'Courier New', monospace !important;
+    color: var(--nes-success) !important;
+    font-size: 0.7rem;
+    text-shadow: 0 0 3px rgba(0, 212, 170, 0.5);
+}
+
+/* Loading and error states */
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid var(--nes-success);
+}
+
+.invalid {
+    outline: 1px solid var(--nes-accent);
+}
+
+.validation-message {
+    color: var(--nes-accent);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.5rem;
+}
+
+/* Error UI */
+#blazor-error-ui {
+    background: linear-gradient(135deg, var(--nes-accent), #ff4757);
+    color: var(--nes-text-light);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6rem;
+    border-top: 3px solid var(--nes-border);
+    position: fixed; /* keep consistent with default template behavior */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.75rem 1rem;
+    z-index: 10000;
+    display: none; /* IMPORTANT: hidden unless error triggers it */
+}
+
+/* Blazor adds .show when an unhandled exception occurs */
+#blazor-error-ui.show { display: block; }
+
+.blazor-error-boundary {
+    background: linear-gradient(135deg, #ff4757, var(--nes-accent));
+    font-family: 'Orbitron', monospace;
+    border: 2px solid var(--nes-border);
+}
+
+.blazor-error-boundary::after {
+    content: "⚠ SYSTEM ERROR DETECTED ⚠";
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.6rem;
+}
+
+/* Loading progress */
+.loading-progress {
+    filter: hue-rotate(180deg) saturate(2);
+}
+
+.loading-progress-text {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-accent);
+    font-size: 0.7rem;
+}
+
+.loading-progress-text:after {
+    content: var(--blazor-load-percentage-text, "LOADING SYSTEM...");
+}
+
+/* Code blocks */
+code {
+    color: var(--nes-secondary);
+    background: var(--nes-darker-bg);
+    padding: 2px 6px;
+    border: 1px solid var(--nes-border);
+    font-family: 'Courier New', monospace;
+}
+
+/* Utility classes */
+.text-glow {
+    text-shadow: 0 0 10px currentColor;
+}
+
+.pixel-perfect {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+/* ============ HOME PAGE STYLES ============ */
+.hero-section {
+    text-align: center;
+    padding: 60px 30px;
+    background: linear-gradient(135deg, var(--nes-accent) 0%, var(--nes-secondary) 50%, var(--nes-success) 100%);
+    color: var(--nes-text-light);
+    margin-bottom: 40px;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        45deg,
+        transparent 25%,
+        rgba(255, 255, 255, 0.1) 25%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 50%,
+        transparent 75%,
+        rgba(255, 255, 255, 0.1) 75%
+    );
+    background-size: 20px 20px;
+    animation: retro-stripes 2s linear infinite;
+    opacity: 0.3;
+}
+
+@keyframes retro-stripes {
+    0% { transform: translateX(-20px); }
+    100% { transform: translateX(0); }
+}
+
+.hero-section h1 {
+    font-size: 3.5em;
+    margin-bottom: 10px;
+    font-weight: bold;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-section h2 {
+    font-size: 1.2em;
+    margin-bottom: 20px;
+    opacity: 0.9;
+    font-family: 'Orbitron', monospace;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-section .lead {
+    font-size: 1.1em;
+    margin-bottom: 10px;
+    position: relative;
+    z-index: 1;
+}
+
+.subtitle {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-bottom: 30px;
+    position: relative;
+    z-index: 1;
+}
+
+.cta-buttons {
+    margin-top: 30px;
+    position: relative;
+    z-index: 1;
+}
+
+.cta-buttons .btn {
+    margin: 0 10px 10px 0;
+    min-width: 180px;
+}
+
+.section-title {
+    text-align: center;
+    margin-bottom: 40px;
+    font-size: 2em;
+}
+
+.features-section {
+    margin: 40px 0;
+}
+
+.feature-card {
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    padding: 30px 20px;
+    text-align: center;
+    height: 100%;
+    margin-bottom: 20px;
+    transition: transform 0.2s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(233, 69, 96, 0.3);
+}
+
+.feature-icon {
+    font-size: 3em;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.feature-card h3 {
+    color: var(--nes-secondary);
+    margin-bottom: 15px;
+    font-size: 1em;
+}
+
+.feature-card p {
+    color: var(--nes-text-light);
+    line-height: 1.6;
+    font-family: 'Orbitron', monospace;
+    font-size: 0.8em;
+}
+
+.tech-specs {
+    margin: 40px 0;
+}
+
+.spec-list {
+    list-style: none;
+    padding: 0;
+}
+
+.spec-list li {
+    color: var(--nes-success);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    margin-bottom: 8px;
+    padding-left: 10px;
+}
+
+.tech-specs h4 {
+    color: var(--nes-accent);
+    margin-bottom: 20px;
+    font-size: 1.1em;
+}
+
+.getting-started {
+    margin: 40px 0;
+}
+
+.steps {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    border: 2px solid var(--nes-border);
+}
+
+.step-number {
+    flex: 0 0 60px;
+    height: 60px;
+    background: var(--nes-accent);
+    color: var(--nes-text-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+.step-content h4 {
+    color: var(--nes-secondary);
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+.step-content p {
+    color: var(--nes-text-light);
+    margin: 0;
+    font-family: 'Orbitron', monospace;
+    font-size: 0.9em;
+}
+
+/* ============ NES PAGE STYLES ============ */
+.nes-container {
+    display: flex;
+    gap: 30px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.display-section {
+    flex: 1;
+    min-width: 520px;
+}
+
+/* Override for ultra-narrow screens */
+@media (max-width: 380px) {
+  .display-section {
+    flex: 1;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+.crt-monitor {
+    position: relative;
+    display: inline-block;
+    padding: 20px;
+    background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+    border: 6px solid var(--nes-gray);
+    border-radius: 15px;
+    box-shadow: 
+        0 0 30px rgba(0, 0, 0, 0.8),
+        inset 0 0 20px rgba(233, 69, 96, 0.1);
+}
+
+.crt-monitor::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        transparent 0%,
+        rgba(0, 255, 0, 0.02) 50%,
+        transparent 100%
+    );
+    background-size: 100% 3px;
+    pointer-events: none;
+    border-radius: 10px;
+    z-index: 1;
+}
+
+.controls-panel {
+    max-width: 350px;
+    flex: 0 0 350px;
+}
+
+.control-instructions {
+    margin-bottom: 20px;
+}
+
+.control-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.control-item {
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    padding: 8px 12px;
+    border: 2px solid var(--nes-border);
+    font-family: 'Orbitron', monospace;
+    font-size: 0.8rem;
+    color: var(--nes-success);
+    text-align: center;
+}
+
+.emulator-controls {
+    margin: 20px 0;
+}
+
+.emulator-controls h4 {
+    margin-bottom: 15px;
+}
+
+.emulator-controls button {
+    margin-right: 10px;
+    margin-bottom: 10px;
+    width: 100%;
+    max-width: 120px;
+}
+
+.rom-loader h4 {
+    margin-bottom: 15px;
+    color: var(--nes-secondary);
+}
+
+/* ============ COUNTER PAGE STYLES ============ */
+.counter-display {
+    text-align: center;
+    padding: 30px;
+    margin: 30px 0;
+    background: linear-gradient(135deg, var(--nes-darker-bg), #000);
+    border: 3px solid var(--nes-success);
+}
+
+.counter-label {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-secondary);
+    font-size: 0.7em;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+}
+
+.counter-value {
+    font-family: 'Courier New', monospace;
+    font-size: 3em;
+    color: var(--nes-success);
+    font-weight: bold;
+    text-shadow: 0 0 15px var(--nes-glow);
+    letter-spacing: 0.1em;
+}
+
+.counter-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.counter-controls .btn {
+    padding: 15px 20px;
+    font-size: 0.8em;
+    white-space: nowrap;
+}
+
+.counter-stats {
+    margin-top: 30px;
+}
+
+.counter-stats h3 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--nes-accent);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    border: 2px solid var(--nes-border);
+}
+
+.stat-label {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-secondary);
+    font-size: 0.6em;
+}
+
+.stat-value {
+    font-family: 'Courier New', monospace;
+    color: var(--nes-success);
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+/* ============ WEATHER PAGE STYLES ============ */
+.loading-section {
+    text-align: center;
+    padding: 50px;
+    margin: 30px 0;
+}
+
+.pixel-loader {
+    width: 60px;
+    height: 60px;
+    border: 4px solid var(--nes-border);
+    border-top: 4px solid var(--nes-accent);
+    border-radius: 0;
+    animation: pixel-spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes pixel-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-secondary);
+    font-size: 0.7em;
+    margin-bottom: 10px;
+}
+
+.loading-dots span {
+    animation: pixel-blink 1.4s infinite both;
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-success);
+    font-size: 1.5em;
+}
+
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes pixel-blink {
+    0%, 80%, 100% { opacity: 0; }
+    40% { opacity: 1; }
+}
+
+.weather-header {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.weather-header h3 {
+    color: var(--nes-accent);
+    margin-bottom: 10px;
+}
+
+.data-source {
+    font-family: 'Courier New', monospace;
+    color: var(--nes-text-muted);
+    font-size: 0.8em;
+}
+
+.weather-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+}
+
+.weather-card {
+    padding: 20px;
+    transition: transform 0.2s ease;
+}
+
+.weather-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(233, 69, 96, 0.3);
+}
+
+.weather-date {
+    font-family: 'Press Start 2P', monospace;
+    color: var(--nes-secondary);
+    font-size: 0.6em;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.weather-temp {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.temp-celsius, .temp-fahrenheit {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1em;
+    margin: 5px 0;
+}
+
+.temp-celsius {
+    color: var(--nes-success);
+    font-weight: bold;
+}
+
+.temp-fahrenheit {
+    color: var(--nes-text-muted);
+    font-size: 0.9em;
+}
+
+.weather-summary {
+    text-align: center;
+    font-family: 'Orbitron', monospace;
+    color: var(--nes-text-light);
+    margin: 15px 0;
+    font-size: 0.9em;
+}
+
+.weather-bar {
+    background: var(--nes-darker-bg);
+    height: 6px;
+    border: 1px solid var(--nes-border);
+    margin-top: 15px;
+    position: relative;
+    overflow: hidden;
+}
+
+.temp-bar {
+    background: linear-gradient(90deg, var(--nes-success), var(--nes-secondary));
+    height: 100%;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.temp-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 100%
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.weather-stats {
+    margin-top: 30px;
+}
+
+.weather-stats h3 {
+    text-align: center;
+    color: var(--nes-accent);
+    margin-bottom: 20px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    h1 { font-size: 1.2rem; }
+    h2 { font-size: 1rem; }
+    h3 { font-size: 0.8rem; }
+    h4 { font-size: 0.7rem; }
+    
+    .btn {
+        font-size: 0.5rem;
+        padding: 6px 12px;
+    }
+    
+    .content {
+        padding: 1rem 0.5rem;
+    }
+    
+    .hero-section h1 {
+        font-size: 2.5em;
+    }
+    
+    .hero-section h2 {
+        font-size: 1em;
+    }
+    
+    .step {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-number {
+        margin-bottom: 10px;
+    }
+    
+    .nes-container {
+        flex-direction: column;
+    }
+    
+    .display-section {
+        min-width: auto;
+    }
+    
+    .controls-panel {
+        max-width: none;
+        flex: 1;
+    }
+    
+    .crt-monitor {
+        padding: 10px;
+    }
+    
+    #nes-canvas {
+        width: 100%;
+        height: auto;
+    }
+    
+    .counter-value {
+        font-size: 2em;
+    }
+    
+    .counter-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .weather-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ===== Simplified NES page new layout ===== */
+.nes-layout { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+.nes-layout.centered { justify-content:center; }
+.nes-layout .display-wrapper { flex:1 1 520px; min-width:280px; }
+
+/* Override for ultra-narrow screens */
+@media (max-width: 380px) {
+  .nes-layout .display-wrapper { 
+    flex:1 1 auto; 
+    min-width:0 !important; 
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+.nes-layout .panels { flex:0 0 300px; max-width:320px; display:flex; flex-direction:column; gap:12px; }
+.crt-monitor.minimal { padding:8px; border-radius:8px; }
+.responsive-canvas { width:100%; height:auto; max-width:100%; display:block; }
+.quick-controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.quick-controls .btn { flex:1 1 90px; max-width:140px; }
+.status-bar { margin-top:6px; display:flex; gap:12px; font-size:0.6rem; color:var(--nes-text-muted); flex-wrap:wrap; }
+.status-bar.slim { 
+    margin:0; 
+    padding:3px 10px 2px; 
+    border:1px solid var(--nes-border); 
+    background:linear-gradient(180deg, rgba(20,20,22,0.85), rgba(10,10,12,0.65)); 
+    backdrop-filter:blur(2px); 
+    align-items:center; 
+    gap:6px; 
+    font-size:0.58rem; 
+    line-height:1.15; 
+    font-family:'Orbitron', monospace; 
+    color: var(--nes-text-light); /* higher contrast */
+    letter-spacing:0.02em;
+    box-shadow:0 2px 4px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+.status-bar.slim .label { 
+    font-weight:600; 
+    letter-spacing:0.08em; 
+    color: var(--nes-secondary);
+    text-shadow:0 0 4px rgba(0,0,0,0.6);
+}
+.status-bar.slim .message { 
+    color: var(--nes-text-light); 
+    white-space:nowrap; 
+    overflow:hidden; 
+    text-overflow:ellipsis; 
+    max-width:55vw; 
+}
+@media (max-width:768px){
+    .status-bar.slim { font-size:0.52rem; padding:3px 8px 2px; }
+    .status-bar.slim .message { max-width:68vw; }
+}
+/* Dock container placing status just under navbar with slight overlap */
+.status-dock { 
+    position:relative; 
+    z-index:60; 
+    display:flex; 
+    justify-content:flex-start; 
+    padding:0 16px; 
+    margin-top:-2px; /* slight overlap */
+    pointer-events:none; 
+}
+.status-dock .status-bar.slim { 
+    border-top:none; 
+    border-radius:0 0 5px 5px; 
+    pointer-events:auto; 
+}
+.panel-block { border:2px solid var(--nes-border); background:rgba(0,0,0,0.25); padding:4px 8px; font-family:'Orbitron', monospace; }
+.panel-block > summary { cursor:pointer; font-size:0.65rem; font-family:'Press Start 2P', monospace; color:var(--nes-secondary); list-style:none; }
+.panel-block[open] { background:rgba(0,0,0,0.4); }
+.panel-content { margin-top:4px; font-size:0.55rem; display:flex; flex-direction:column; gap:4px; }
+.panel-content.key-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(70px,1fr)); gap:4px; }
+.panel-content.debug-mini { font-family:'Courier New', monospace; color:var(--nes-success); }
+.small-note { font-size:0.5rem; opacity:0.8; }
+.input-group.compact { display:flex; gap:4px; }
+.input-group.compact input { flex:1; }
+
+/* Portrait mobile: canvas full width, panels below */
+@media (max-width: 768px) and (orientation: portrait) {
+    .nes-layout { flex-direction:column; }
+    .nes-layout .display-wrapper { order:0; width:100%; }
+    .nes-layout .panels { order:1; width:100%; flex:1 1 auto; max-width:none; }
+    .panel-block { font-size:0.8rem; }
+    .panel-block > summary { font-size:0.7rem; }
+    .status-bar { font-size:0.55rem; }
+}
+
+/* ===== Tidy Home layout ===== */
+.home-hero.minimal-hero { padding:60px 20px 40px; text-align:center; background:linear-gradient(135deg,var(--nes-darker-bg),#111); border:2px solid var(--nes-border); }
+.home-hero h1 { font-size:2.2rem; margin:0 0 10px; }
+.home-hero .tagline { font-family:'Orbitron', monospace; font-size:0.9rem; color:var(--nes-text-muted); margin:0 0 20px; }
+.hero-actions { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+.stack-section { max-width:900px; margin:40px auto; display:flex; flex-direction:column; gap:14px; }
+.stack-block { border:2px solid var(--nes-border); background:rgba(0,0,0,0.25); padding:10px 14px; }
+.stack-block > summary { cursor:pointer; font-family:'Press Start 2P', monospace; font-size:0.7rem; color:var(--nes-secondary); }
+.inline-list { list-style:none; padding:0; margin:6px 0 0; display:flex; flex-wrap:wrap; gap:10px; font-size:0.55rem; }
+.inline-list li { background:rgba(255,255,255,0.04); padding:4px 8px; border:1px solid var(--nes-border); }
+.two-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px 24px; font-size:0.6rem; }
+.two-col ul { list-style:disc inside; margin:0; padding:0; }
+.steps-lite { list-style:decimal inside; margin:6px 0 0; padding:0; font-size:0.6rem; display:flex; gap:18px; flex-wrap:wrap; }
+.steps-lite li { background:rgba(255,255,255,0.04); padding:4px 10px; border:1px solid var(--nes-border); }
+@media (max-width:768px){
+    .home-hero h1 { font-size:1.6rem; }
+    .inline-list { font-size:0.6rem; }
+    .two-col { font-size:0.65rem; }
+    .steps-lite { font-size:0.65rem; }
+}
+
+/* Landscape narrow tablets: shrink side panels */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .nes-layout .panels { flex:0 0 240px; max-width:240px; }
+    .panel-block > summary { font-size:0.6rem; }
+}
+
+/* ===== Global tidy shell ===== */
+.app-shell { 
+  min-height:100vh; 
+  display:flex; 
+  flex-direction:column; 
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.app-bar { 
+  display:flex; 
+  align-items:center; 
+  gap:24px; 
+  padding:10px 18px; 
+  background:rgba(0,0,0,0.35); 
+  border-bottom:2px solid var(--nes-border); 
+  width: 100%;
+  box-sizing: border-box;
+}
+.app-bar .brand { 
+  font-family:'Press Start 2P', monospace; 
+  font-size:0.9rem; 
+  color:var(--nes-accent); 
+}
+.primary-nav { flex:1; }
+.nav-inline { 
+  margin:0; 
+  padding:0; 
+  list-style:none; 
+  display:flex; 
+  gap:18px; 
+}
+.nav-inline a { 
+  font-family:'Orbitron', monospace; 
+  font-size:0.6rem; 
+  text-transform:uppercase; 
+  letter-spacing:0.05em; 
+  color:var(--nes-text-light); 
+  position:relative; 
+}
+.nav-inline a:hover { color:var(--nes-success); }
+.app-main { 
+  flex:1; 
+  padding:0 1rem 2rem; 
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+.app-footer { 
+  text-align:center; 
+  font-size:0.55rem; 
+  padding:12px 0; 
+  opacity:0.6; 
+}
+
+@media (max-width:768px){
+  .app-bar { 
+    flex-wrap:wrap; 
+    gap:12px; 
+    padding: 8px 12px;
+  }
+  .nav-inline { 
+    flex-wrap:wrap; 
+    gap:12px; 
+  }
+  .app-main {
+    padding: 0 0.5rem 1rem;
+  }
+}
+
+/* Ultra-narrow screens - force everything to fit */
+@media (max-width: 380px) {
+  .app-bar {
+    padding: 4px 8px !important;
+    gap: 8px !important;
+  }
+  
+  .app-main {
+    padding: 0 0.25rem 0.5rem !important;
+  }
+  
+  .app-bar .brand {
+    font-size: 0.7rem !important;
+  }
+  
+  .nav-inline a {
+    font-size: 0.5rem !important;
+  }
+  
+  /* Override any minimum widths globally */
+  * {
+    min-width: 0 !important;
+  }
+  
+  body, html {
+    overflow-x: hidden !important;
+  }
+  
+  /* Fix Bootstrap utility classes that may cause overflow */
+  .gap-1, .gap-2, .gap-3 {
+    gap: 0.25rem !important;
+  }
+  
+  .mt-3, .my-3 {
+    margin-top: 0.5rem !important;
+  }
+  
+  .mb-3, .my-3 {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Force all containers to be 100% width */
+  .container, .container-fluid, .container-sm, .container-md, .container-lg, .container-xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+}

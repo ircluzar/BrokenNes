@@ -1,0 +1,121 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--nes-dark-bg) 0%, var(--nes-darker-bg) 100%);
+}
+
+main {
+    flex: 1;
+}
+
+.sidebar {
+    background: linear-gradient(180deg, var(--nes-accent) 0%, var(--nes-darker-bg) 100%);
+    border-right: 4px solid var(--nes-border);
+    box-shadow: 4px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.top-row {
+    background: linear-gradient(135deg, var(--nes-darker-bg), var(--nes-dark-bg));
+    border-bottom: 3px solid var(--nes-border);
+    justify-content: space-between;
+    height: 4rem;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+    .top-row ::deep a, .top-row ::deep .btn-link {
+        white-space: nowrap;
+        margin-left: 1.5rem;
+        text-decoration: none;
+        font-family: 'Orbitron', monospace;
+        color: var(--nes-success);
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.8em;
+        transition: all 0.2s ease;
+    }
+
+    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
+        color: var(--nes-secondary);
+        text-shadow: 0 0 5px var(--nes-glow);
+        text-decoration: none;
+    }
+
+    .top-row h2 {
+        margin: 0;
+        font-size: 1.2em;
+        color: var(--nes-accent);
+    }
+
+    .top-row ::deep a:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+/* Retro scanline effect for the entire page */
+.page::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        transparent 0%,
+        rgba(0, 255, 0, 0.02) 50%,
+        transparent 100%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 999;
+}
+
+@media (max-width: 640.98px) {
+    .top-row {
+        justify-content: space-between;
+        padding: 0 10px;
+    }
+
+    .top-row ::deep a, .top-row ::deep .btn-link {
+        margin-left: 0;
+        font-size: 0.7em;
+    }
+    
+    .top-row h2 {
+        font-size: 1em;
+    }
+}
+
+@media (min-width: 641px) {
+    .page {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 280px;
+        height: 100vh;
+        position: sticky;
+        top: 0;
+    }
+
+    .top-row {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .top-row.auth ::deep a:first-child {
+        flex: 1;
+        text-align: right;
+        width: 0;
+    }
+
+    .top-row, article {
+        padding-left: 2rem !important;
+        padding-right: 1.5rem !important;
+    }
+}

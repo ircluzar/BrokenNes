@@ -1,0 +1,29 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="alert alert-danger" role="alert" style="white-space: pre-wrap;">
+    <h4>🚨 Unhandled Exception</h4>
+    <p>@Exception?.Message</p>
+    <pre>@Exception?.StackTrace</pre>
+    @if (Exception?.InnerException != null)
+    {
+        <details>
+            <summary>Inner Exception</summary>
+            <p>@Exception.InnerException.Message</p>
+            <pre>@Exception.InnerException.StackTrace</pre>
+        </details>
+    }
+    <button class="btn btn-secondary" @onclick="Recover">Try to recover</button>
+</div>
+
+@code {
+    [Parameter]
+    public Exception? Exception { get; set; }
+
+    [CascadingParameter]
+    public ErrorBoundary? ErrorBoundary { get; set; }
+
+    private void Recover()
+    {
+        ErrorBoundary?.Recover();
+    }
+}
