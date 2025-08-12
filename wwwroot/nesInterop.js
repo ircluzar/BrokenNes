@@ -158,6 +158,20 @@ window.nesInterop = {
         } catch {}
     },
 
+    ensureAudioContext(){
+        try {
+            if(!window.nesAudioCtx){
+                window.nesAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = window.nesAudioCtx;
+            if(ctx.state === 'suspended'){
+                ctx.resume();
+            }
+            // Prime timeline so first buffer schedules slightly ahead
+            window._nesAudioTimeline = ctx.currentTime + 0.02;
+        } catch(e){ console.warn('ensureAudioContext failed', e); }
+    },
+
     _ensureCanvasCache(canvasId) {
         const c = document.getElementById(canvasId);
         if (!c) { console.error(`Canvas with id '${canvasId}' not found`); return null; }

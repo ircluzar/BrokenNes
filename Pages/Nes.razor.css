@@ -10,6 +10,14 @@
   --shadow-elev:0 4px 12px -2px rgba(0,0,0,.4),0 2px 4px -1px rgba(0,0,0,.3);
 }
 
+/* Boot overlay (shown before user clicks BOOT to unlock AudioContext) */
+.boot-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:12000; }
+.boot-btn { font-size:1rem; font-weight:800; letter-spacing:2px; padding:.9rem 2.2rem; border-radius:18px; border:3px solid #4fa3ff; background:#13202c; color:#e6edf3; cursor:pointer; text-transform:uppercase; position:relative; box-shadow:0 0 0 0 rgba(79,163,255,0); transition:.18s background,.18s box-shadow,.18s transform,.18s color; }
+.boot-btn:hover, .boot-btn:focus-visible { background:#4fa3ff; color:#04131e; box-shadow:0 0 0 6px rgba(79,163,255,.35),0 0 28px -4px #4fa3ff; }
+.boot-btn:active { transform:translateY(2px); }
+.boot-btn-large { font-size:clamp(1.8rem,6vw,3.2rem); padding:1.4rem 3.4rem; letter-spacing:3px; }
+@media (max-width:520px){ .boot-btn-large { width:80%; font-size:clamp(1.6rem,8vw,2.4rem); padding:1.15rem 2.2rem; } }
+
 .nes-page-header .page-title { font-size:clamp(1.5rem,5vw,2.25rem); letter-spacing:1px; font-weight:600; }
 .nes-page-header .subtitle { letter-spacing:.5px; }
 

@@ -23,6 +23,13 @@
 
 @* Status moved to global StatusBar component *@
 
+@if(!hasBooted)
+{
+    <div class="boot-overlay">
+        <button class="boot-btn boot-btn-large" @onclick="Boot" autofocus aria-label="Boot emulator">BOOT</button>
+    </div>
+}
+
 <div class="nes-grid">
     <section class="play-area">
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
@@ -543,6 +550,7 @@
     private string errorMessage = "";
     // status moved to StatusService
     private bool isRunning = false;
+    private bool hasBooted = false; // User must click BOOT before audio + emu start (autoplay policy compliance)
     private float fps = 0.0f;
     private int frameCount = 0;
     private DateTime lastFpsUpdate = DateTime.Now;
@@ -770,6 +778,11 @@
             if (nes == null)
             {
                 errorMessage = "NES emulator not initialized";
+                return;
+            }
+            if (!hasBooted)
+            {
+                // Guard against premature start (ensures AudioContext after user interaction)
                 return;
             }
 
@@ -1166,7 +1179,7 @@
             currentRomName = e.File.Name;
             Status.Set($"ROM '{e.File.Name}' loaded successfully.");
             errorMessage = "";
-            if (!isRunning)
+            if (hasBooted && !isRunning)
             {
                 StartEmulation();
             }
@@ -1378,7 +1391,7 @@
                 {
                     try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
                 }
-                if (!isRunning)
+                if (hasBooted && !isRunning)
                 {
                     StartEmulation();
                 }
@@ -1477,7 +1490,7 @@
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
             }
-            if (!isRunning)
+            if (hasBooted && !isRunning)
             {
                 StartEmulation();
             }
@@ -1896,6 +1909,19 @@
     {
         public string name { get; set; } = string.Empty; // JS property casing
         public string base64 { get; set; } = string.Empty;
+    }
+
+    private async Task Boot()
+    {
+        if (hasBooted) return;
+        hasBooted = true;
+        try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+        // If ROM already loaded, start now
+        if (nes != null && !isRunning)
+        {
+            StartEmulation();
+        }
+        StateHasChanged();
     }
 
     // ===== JS Invokable wrappers for mobile fullscreen bottom bar =====
