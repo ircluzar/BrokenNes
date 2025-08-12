@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_FMC : IPPU
+public class PPU_FIX : IPPU
 {
 	private Bus bus;
 
@@ -37,10 +37,10 @@ public class PPU_FMC : IPPU
 	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Removed unused staticLfsr field (was reserved for future static effect)
+	// Removed unused staticLfsr field (previously reserved)
 	private int staticFrameCounter = 0;
 
-	public PPU_FMC(Bus bus)
+	public PPU_FIX(Bus bus)
 	{
 		this.bus = bus;
 

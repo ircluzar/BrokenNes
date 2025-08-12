@@ -49,21 +49,19 @@
                 <div class="qc-select-stack">
                     <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
                     <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@apuCoreSel" aria-label="Audio Core">
-                        <option value="FMC">FMC</option>
-                        <option value="FIX">FIX</option>
-                        <option value="QN">QN</option>
+                        @foreach(var opt in apuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
                     <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="OnCpuCoreChanged" value="@cpuCoreSel" aria-label="CPU Core">
-                        <option value="FMC">FMC</option>
+                        @foreach(var opt in cpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
                     <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="OnPpuCoreChanged" value="@ppuCoreSel" aria-label="PPU Core">
-                        <option value="FMC">FMC</option>
+                        @foreach(var opt in ppuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
             </div>
@@ -563,8 +561,11 @@
     private List<ShaderOption> shaderOptions = new();
     private bool famicloneOn = true; // default ON per requirement
     private string apuCoreSel = "FMC"; // FMC (Jank), FIX (Modern), QN (QuickNes)
-    private string cpuCoreSel = "FMC"; // placeholder only core for now
-    private string ppuCoreSel = "FMC"; // placeholder only core for now
+    private string cpuCoreSel = "FMC"; // default
+    private string ppuCoreSel = "FMC"; // default
+    private List<string> apuCoreOptions = new();
+    private List<string> cpuCoreOptions = new();
+    private List<string> ppuCoreOptions = new();
     private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
     private bool isFullscreen = false; // track fullscreen state
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
@@ -630,6 +631,13 @@
             {
                 Logger.LogInformation("NES Emulator initializing...");
                 Status.Set("Loading default ROM...");
+                // Load persisted core & shader preferences
+                try {
+                    var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) activeShaderKey = pShader;
+                    var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) cpuCoreSel = pCpu;
+                    var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) ppuCoreSel = pPpu;
+                    var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) apuCoreSel = pApu;
+                } catch {}
 
                 // Get shader list immediately (ensures dropdown populated even before WebGL init)
                 await RefreshShaderOptions();
@@ -666,8 +674,9 @@
                 // Initialize drag & drop on ROM table instead of dedicated zone
                 await JS.InvokeVoidAsync("nesInterop.initRomDragDrop", "rom-table", DotNetObjectReference.Create(this));
 
-                // Auto-load SMB1 ROM by default (after potential restoration)
+                // Auto-load default ROM then apply persisted core selections
                 await LoadRomFromServer();
+                ApplySelectedCores();
 
                 // Provide dotnet ref to JS for fullscreen/control callbacks
                 try { await JS.InvokeVoidAsync("nesInterop.setMainRef", DotNetObjectReference.Create(this)); } catch {}
@@ -678,7 +687,7 @@
                 // Build memory domain list (after ROM load)
                 BuildMemoryDomains();
 
-                // Fetch shader registry options from JS and set initial active shader
+                // Fetch shader registry options from JS and set initial active shader (persisted or default)
                 await RefreshShaderOptions();
                 await SetShader(activeShaderKey);
 
@@ -960,12 +969,16 @@
             float[] audioBuffer = nes.GetAudioBuffer();
             if (audioBuffer.Length > 0)
             {
-                _ = JS.InvokeVoidAsync("nesInterop.playAudio", audioBuffer, nes.GetAudioSampleRate());
+#pragma warning disable CS4014 // intentional fire-and-forget for real-time audio scheduling
+                JS.InvokeVoidAsync("nesInterop.playAudio", audioBuffer, nes.GetAudioSampleRate());
+#pragma warning restore CS4014
             }
 
             // Always draw current frame for smooth visuals
             framebuffer = nes.GetFrameBuffer();
-            _ = JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+#pragma warning disable CS4014 // fire-and-forget to avoid blocking frame loop
+            JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+#pragma warning restore CS4014
 
             // Throttle stats & Blazor UI updates separately
             if (frameCount % statsUpdateDivider == 0)
@@ -1016,7 +1029,25 @@
         catch {}
     }
 
-    private void OnApuCoreChanged(ChangeEventArgs e)
+    // Apply currently selected (or persisted) core choices to emulator instance
+    private void ApplySelectedCores()
+    {
+        if (nes == null) return;
+        try
+        {
+            nes.SetCpuCore(cpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+            nes.SetPpuCore(ppuCoreSel == "FIX" ? NesEmulator.Bus.PpuCore.FIX : NesEmulator.Bus.PpuCore.FMC);
+            switch (apuCoreSel)
+            {
+                case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); famicloneOn = true; break;
+                case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); famicloneOn = false; break;
+                default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); famicloneOn = false; break;
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnApuCoreChanged(ChangeEventArgs e)
     {
         if (nes == null) return;
         var v = e.Value?.ToString() ?? string.Empty;
@@ -1040,22 +1071,37 @@
                 Status.Set("FIX QN (QuickNES-inspired) active");
                 break;
         }
+    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
     }
 
-    private void OnCpuCoreChanged(ChangeEventArgs e)
+    private async Task OnCpuCoreChanged(ChangeEventArgs e)
     {
-        // Future: switch CPU implementation (currently only FMC)
+        if (nes == null) return;
         var v = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(v)) cpuCoreSel = v;
-        // Hook for future hot-swap: save state, instantiate new core implementing ICPU, restore state
+        if (string.IsNullOrEmpty(v)) return;
+        if (v == cpuCoreSel) return;
+        cpuCoreSel = v;
+        // Save CPU state (future cross-core mapping could be added)
+        var state = nes.GetCpuState();
+        nes.SetCpuCore(v == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+        // Attempt to restore state into new core (best-effort)
+        try { nes.SetCpuState(state); } catch {}
+        Status.Set($"CPU core switched to {v}");
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", cpuCoreSel); } catch {}
     }
 
-    private void OnPpuCoreChanged(ChangeEventArgs e)
+    private async Task OnPpuCoreChanged(ChangeEventArgs e)
     {
-        // Future: switch PPU implementation (currently only FMC)
+        if (nes == null) return;
         var v = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(v)) ppuCoreSel = v;
-        // Similar hot-swap plan as CPU
+        if (string.IsNullOrEmpty(v)) return;
+        if (v == ppuCoreSel) return;
+        ppuCoreSel = v;
+        var state = nes.GetPpuState();
+        nes.SetPpuCore(v == "FIX" ? NesEmulator.Bus.PpuCore.FIX : NesEmulator.Bus.PpuCore.FMC);
+        try { nes.SetPpuState(state); } catch {}
+        Status.Set($"PPU core switched to {v}");
+    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", ppuCoreSel); } catch {}
     }
 
     private async Task OnShaderSelectChanged(ChangeEventArgs e)
@@ -1065,6 +1111,7 @@
         if(v != activeShaderKey)
         {
             await SetShader(v);
+            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_shader", activeShaderKey); } catch {}
         }
     }
 
@@ -1320,6 +1367,7 @@
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                 famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
                 SetApuCoreSelFromEmu();
+                ApplySelectedCores();
                 BuildMemoryDomains();
                 currentRomName = romFileName;
                 lastLoadedRomSize = data.Length;
@@ -1414,6 +1462,7 @@
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             famicloneOn = nes.GetFamicloneMode();
             SetApuCoreSelFromEmu();
+            ApplySelectedCores();
             currentRomName = romFileName;
             lastLoadedRomSize = romData.Length;
             if (!uploadedRoms.ContainsKey(romFileName))
@@ -1596,6 +1645,23 @@
                     }
                 }
                 catch { if (!running) StateHasChanged(); }
+                // Sync core selections from loaded state and persist
+                try {
+                    var cpuId = nes.GetCpuCoreId();
+                    var ppuId = nes.GetPpuCoreId();
+                    var apuId = nes.GetApuCoreId();
+                    string cpuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(cpuId, "CPU_");
+                    string ppuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(ppuId, "PPU_");
+                    string apuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
+                    string newCpu = cpuSuffix == "FIX" ? "FIX" : "FMC";
+                    string newPpu = ppuSuffix == "FIX" ? "FIX" : "FMC";
+                    string newApu = apuSuffix switch { "FMC" => "FMC", "QN" => "QN", _ => "FIX" };
+                    bool changed=false;
+                    if(newCpu!=cpuCoreSel){ cpuCoreSel=newCpu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",cpuCoreSel);}catch{} }
+                    if(newPpu!=ppuCoreSel){ ppuCoreSel=newPpu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore",ppuCoreSel);}catch{} }
+                    if(newApu!=apuCoreSel){ apuCoreSel=newApu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore",apuCoreSel);}catch{} }
+                    if(changed) StateHasChanged();
+                } catch {}
             }
         }
         catch (Exception ex) { errorMessage = "Load error: " + ex.Message; }
@@ -1936,5 +2002,18 @@
             }
         }
         catch { }
+    }
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Central registry discovery (cached)
+        cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
+        if (!cpuCoreOptions.Contains(cpuCoreSel) && cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
+        ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
+        if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0) ppuCoreSel = ppuCoreOptions[0];
+        apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.Where(k => k=="FMC"||k=="FIX"||k=="QN").ToList();
+        if (!apuCoreOptions.Contains(apuCoreSel) && apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
     }
 }

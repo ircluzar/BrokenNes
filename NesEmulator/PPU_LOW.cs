@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_FMC : IPPU
+public class PPU_LOW : IPPU
 {
 	private Bus bus;
 
@@ -37,10 +37,10 @@ public class PPU_FMC : IPPU
 	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	private uint staticLfsr = 0xACE1u; // state for emulator-driven noise
+	// Removed unused staticLfsr field (previously reserved)
 	private int staticFrameCounter = 0;
 
-	public PPU_FMC(Bus bus)
+	public PPU_LOW(Bus bus)
 	{
 		this.bus = bus;
 
@@ -872,16 +872,12 @@ public class PPU_FMC : IPPU
 		160,214,228, 160,162,160, 0,0,0, 0,0,0
 	};
 
-	private class PpuState {
-		public byte[] vram = new byte[2048]; public byte[] palette = new byte[32]; public byte[] oam = new byte[256]; public byte[] frame = new byte[256*240*4];
-		public byte PPUCTRL,PPUMASK,PPUSTATUS,OAMADDR,PPUSCROLLX,PPUSCROLLY,PPUDATA; public ushort PPUADDR; public byte fineX; public bool scrollLatch,addrLatch; public ushort v,t; public int scanlineCycle,scanline; public byte ppuDataBuffer; 
-	}
 	public object GetState() {
-		return new PpuState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer };
+		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter };
 	}
 	public void SetState(object state) {
-		if (state is PpuState s) {
-			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; return; }
+		if (state is PpuSharedState s) {
+			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }

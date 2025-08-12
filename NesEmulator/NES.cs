@@ -41,12 +41,21 @@ namespace NesEmulator
 			public bool famicloneMode; // legacy flag for UI backward-compatibility
 			public int apuCore; // 0=Modern,1=Jank,2=QuickNes
 			public int cpuCore; // 0=FMC (future cores enumerate)
+			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
 		}
 
 		private static string ComputeHash(byte[] data) {
 			using var sha = SHA256.Create();
 			return string.Concat(sha.ComputeHash(data).Select(b=>b.ToString("x2")));
 		}
+
+		// === UI Core Hot-Swap Helpers (CPU / PPU) ===
+		public object GetCpuState() => bus?.cpu.GetState() ?? new object();
+		public void SetCpuState(object state) { try { bus?.cpu.SetState(state); } catch { } }
+		public object GetPpuState() => bus?.ppu.GetState() ?? new object();
+		public void SetPpuState(object state) { try { bus?.ppu.SetState(state); } catch { } }
+		public void SetCpuCore(Bus.CpuCore core) { try { bus?.SetCpuCore(core); } catch { } }
+		public void SetPpuCore(Bus.PpuCore core) { try { bus?.SetPpuCore(core); } catch { } }
 
 		public string SaveState()
 		{
@@ -70,7 +79,10 @@ namespace NesEmulator
 				controllerStrobe = bus.input.DebugGetStrobe(),
 				famicloneMode = bus.GetFamicloneMode(),
 				apuCore = (int)bus.GetActiveApuCore(),
-				cpuCore = (int)bus.GetActiveCpuCore()
+				cpuCore = (int)bus.GetActiveCpuCore(),
+				cpuCoreId = bus.cpu.GetType().Name,
+				ppuCoreId = bus.ppu.GetType().Name,
+				apuCoreId = bus.ActiveAPU.GetType().Name
 			};
 			st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty;
 			var json = System.Text.Json.JsonSerializer.Serialize(st, new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
@@ -114,14 +126,45 @@ namespace NesEmulator
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);
 			if (st.chrRAM.Length == cartridge.chrRAM.Length) Array.Copy(st.chrRAM, cartridge.chrRAM, st.chrRAM.Length);
 			// Finally restore CPU/PPU/APU internal state
-			// Restore CPU core selection before applying CPU internal state
-			try { bus.SetCpuCore((Bus.CpuCore)st.cpuCore); } catch { }
-			bus.cpu.SetState(st.cpu);
-			bus.ppu.SetState(st.ppu);
-			// Restore APU selection before applying APU-specific state
+			// Restore CPU core selection (prefer reflection id if present)
 			try {
-				var core = (Bus.ApuCore)st.apuCore;
-				bus.SetApuCore(core);
+				if (!string.IsNullOrEmpty(st.cpuCoreId))
+				{
+					var suffix = CoreRegistry.ExtractSuffix(st.cpuCoreId, "CPU_");
+					// simple mapping: FMC/FIX only for now
+					bus.SetCpuCore(suffix == "FIX" ? Bus.CpuCore.FIX : Bus.CpuCore.FMC);
+				}
+				else bus.SetCpuCore((Bus.CpuCore)st.cpuCore);
+			} catch { }
+			bus.cpu.SetState(st.cpu);
+			// Restore PPU core selection (prefer reflection id if present)
+			try {
+				if (!string.IsNullOrEmpty(st.ppuCoreId)) {
+					var suffix = CoreRegistry.ExtractSuffix(st.ppuCoreId, "PPU_");
+					bus.SetPpuCore(suffix == "FIX" ? Bus.PpuCore.FIX : Bus.PpuCore.FMC);
+				} else {
+					bus.SetPpuCore(Bus.PpuCore.FMC); // legacy only had FMC
+				}
+			} catch { }
+			bus.ppu.SetState(st.ppu);
+			// Restore APU selection before applying APU-specific state (prefer reflection id)
+			try {
+				if (!string.IsNullOrEmpty(st.apuCoreId))
+				{
+					var suffix = CoreRegistry.ExtractSuffix(st.apuCoreId, "APU_");
+					// map suffix to enum
+					Bus.ApuCore ac = suffix switch {
+						"FMC" => Bus.ApuCore.Jank,
+						"FIX" => Bus.ApuCore.Modern,
+						"QN" => Bus.ApuCore.QuickNes,
+						_ => Bus.ApuCore.Modern
+					};
+					bus.SetApuCore(ac);
+				}
+				else {
+					var core = (Bus.ApuCore)st.apuCore;
+					bus.SetApuCore(core);
+				}
 			} catch { bus.SetFamicloneMode(st.famicloneMode); }
 			bus.ActiveAPU.SetState(st.apu);
 			// Restore controller
@@ -313,6 +356,11 @@ namespace NesEmulator
 			var r = bus.cpu.GetRegisters();
 			return (r.PC, r.A, r.X, r.Y, r.P, r.SP);
 		}
+
+		// New helpers: expose active core identifiers for UI (suffixes FMC/FIX etc.)
+		public string GetCpuCoreId() => bus?.cpu?.GetType().Name ?? string.Empty;
+		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
+		public string GetApuCoreId() => bus?.ActiveAPU?.GetType().Name ?? string.Empty;
 
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()

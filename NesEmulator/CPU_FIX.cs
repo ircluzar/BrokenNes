@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
-public class CPU_FMC : ICPU {
+public class CPU_FIX : ICPU {
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)
@@ -23,7 +23,7 @@ public class CPU_FMC : ICPU {
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
 
-	public CPU_FMC(Bus bus) {
+	public CPU_FIX(Bus bus) {
 		A = X = Y = 0;
 		PC = 0x0000;
 		SP = 0x0000;
@@ -99,6 +99,89 @@ public class CPU_FMC : ICPU {
 			case 0x0C: { Absolute(); return 4; }
 			// Absolute,X (adds page cross penalty like regular AbsoluteX addressing)
 			case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: { var ar = AbsoluteX(); return 4 + ar.extraCycles; }
+
+			// === Unofficial composite opcodes (improve compatibility) ===
+			// SLO (ASL + ORA)
+			case 0x07: return SLO(ZeroPage, 5); 
+			case 0x17: return SLO(ZeroPageX, 6); 
+			case 0x0F: return SLO(Absolute, 6); 
+			case 0x1F: return SLO(AbsoluteX, 7); 
+			case 0x1B: return SLO(AbsoluteY, 7); 
+			case 0x03: return SLO(IndirectX, 8); 
+			case 0x13: return SLO(IndirectY, 8);
+			// RLA (ROL + AND)
+			case 0x27: return RLA(ZeroPage, 5); 
+			case 0x37: return RLA(ZeroPageX, 6); 
+			case 0x2F: return RLA(Absolute, 6); 
+			case 0x3F: return RLA(AbsoluteX, 7); 
+			case 0x3B: return RLA(AbsoluteY, 7); 
+			case 0x23: return RLA(IndirectX, 8); 
+			case 0x33: return RLA(IndirectY, 8);
+			// SRE (LSR + EOR)
+			case 0x47: return SRE(ZeroPage, 5); 
+			case 0x57: return SRE(ZeroPageX, 6); 
+			case 0x4F: return SRE(Absolute, 6); 
+			case 0x5F: return SRE(AbsoluteX, 7); 
+			case 0x5B: return SRE(AbsoluteY, 7); 
+			case 0x43: return SRE(IndirectX, 8); 
+			case 0x53: return SRE(IndirectY, 8);
+			// RRA (ROR + ADC)
+			case 0x67: return RRA(ZeroPage, 5); 
+			case 0x77: return RRA(ZeroPageX, 6); 
+			case 0x6F: return RRA(Absolute, 6); 
+			case 0x7F: return RRA(AbsoluteX, 7); 
+			case 0x7B: return RRA(AbsoluteY, 7); 
+			case 0x63: return RRA(IndirectX, 8); 
+			case 0x73: return RRA(IndirectY, 8);
+			// DCP (DEC + CMP)
+			case 0xC7: return DCP(ZeroPage, 5); 
+			case 0xD7: return DCP(ZeroPageX, 6); 
+			case 0xCF: return DCP(Absolute, 6); 
+			case 0xDF: return DCP(AbsoluteX, 7); 
+			case 0xDB: return DCP(AbsoluteY, 7); 
+			case 0xC3: return DCP(IndirectX, 8); 
+			case 0xD3: return DCP(IndirectY, 8);
+			// ISB/INS (INC + SBC)
+			case 0xE7: return ISB(ZeroPage, 5); 
+			case 0xF7: return ISB(ZeroPageX, 6); 
+			case 0xEF: return ISB(Absolute, 6); 
+			case 0xFF: return ISB(AbsoluteX, 7); 
+			case 0xFB: return ISB(AbsoluteY, 7); 
+			case 0xE3: return ISB(IndirectX, 8); 
+			case 0xF3: return ISB(IndirectY, 8);
+			// LAX (LDA+LDX)
+			case 0xA7: return LAX(ZeroPage, 3); 
+			case 0xB7: return LAX(ZeroPageY, 4); 
+			case 0xAF: return LAX(Absolute, 4); 
+			case 0xBF: return LAX(AbsoluteY, 4); 
+			case 0xA3: return LAX(IndirectX, 6); 
+			case 0xB3: return LAX(IndirectY, 5); 
+			// SAX (A & X store)
+			case 0x87: return SAX(ZeroPage, 3); 
+			case 0x97: return SAX(ZeroPageY, 4); 
+			case 0x8F: return SAX(Absolute, 4); 
+			case 0x83: return SAX(IndirectX, 6);
+			// ANC (AND #imm then set C = N)
+			case 0x0B: case 0x2B: return ANC(Immediate, 2);
+			// ALR (AND #imm then LSR)
+			case 0x4B: return ALR(Immediate, 2);
+			// ARR (AND #imm then ROR with special flag logic)
+			case 0x6B: return ARR(Immediate, 2);
+			// AXS/SBX (A & X - imm -> X)
+			case 0xCB: return AXS(Immediate, 2);
+			// LAS (A,X,SP = A & X & M) (absY)
+			case 0xBB: return LAS(AbsoluteY, 4);
+			// SHY (SYA) Store Y & (high+1) at Absolute,X
+			case 0x9C: return SHY();
+			// SHX (SXH) Store X & (high+1) at Absolute,Y
+			case 0x9E: return SHX();
+			// TAS (SHS) SP = A & X; store (A & X & (high+1)) at Absolute,Y
+			case 0x9B: return TAS();
+			// AHX (AXA) Absolute,Y and (Indirect),Y variants
+			case 0x9F: return AHX_AbsY();
+			case 0x93: return AHX_IndY();
+			// XAA (ANE) Immediate (unstable; implement as A = X & imm)
+			case 0x8B: return XAA();
 			//BRK, NOP, RTI
 			case 0x00: return BRK();
 			case 0xEA: return NOP();
@@ -532,6 +615,60 @@ public class CPU_FMC : ICPU {
 
 		return baseCycles;
 	}
+
+	// ===== Unofficial Opcode Helpers =====
+	private int ReadModifyWrite(Func<AddrResult> mode, Func<byte, byte> transform, int cycles)
+	{
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		value = transform(value);
+		bus.Write(addr.address, value);
+		return cycles; // cycles pre-account for addressing
+	}
+
+	private int SLO(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { SetFlag(FLAG_C, (v & 0x80) != 0); v = (byte)(v << 1); A = (byte)(A | v); SetZN(A); return v; }, cycles);
+	private int RLA(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { bool oc = GetFlag(FLAG_C); SetFlag(FLAG_C, (v & 0x80) != 0); v = (byte)((v << 1) | (oc ? 1 : 0)); A &= v; SetZN(A); return v; }, cycles);
+	private int SRE(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { SetFlag(FLAG_C, (v & 0x01) != 0); v >>= 1; A ^= v; SetZN(A); return v; }, cycles);
+	private int RRA(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { bool oc = GetFlag(FLAG_C); SetFlag(FLAG_C, (v & 0x01) != 0); v = (byte)((v >> 1) | (oc ? 0x80 : 0)); // then ADC with v
+		ushort sum = (ushort)(A + v + (GetFlag(FLAG_C) ? 1 : 0));
+		SetFlag(FLAG_C, sum > 0xFF);
+		SetFlag(FLAG_Z, (sum & 0xFF) == 0);
+		SetFlag(FLAG_N, (sum & 0x80) != 0);
+		SetFlag(FLAG_V, (~(A ^ v) & (A ^ sum) & 0x80) != 0);
+		A = (byte)sum; return v; }, cycles);
+	private int DCP(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { v--; ushort temp = (ushort)(A - v); SetFlag(FLAG_C, A >= v); SetFlag(FLAG_Z, (temp & 0xFF) == 0); SetFlag(FLAG_N, (temp & 0x80) != 0); return v; }, cycles);
+	private int ISB(Func<AddrResult> mode, int cycles) => ReadModifyWrite(mode, v => { v++; // then SBC with v
+		ushort value = (ushort)(v ^ 0xFF); ushort sum = (ushort)(A + value + (GetFlag(FLAG_C) ? 1 : 0));
+		SetFlag(FLAG_C, sum > 0xFF); SetFlag(FLAG_Z, (sum & 0xFF) == 0); SetFlag(FLAG_N, (sum & 0x80) != 0); SetFlag(FLAG_V, ((A ^ sum) & (value ^ sum) & 0x80) != 0); A = (byte)sum; return v; }, cycles);
+
+	private int LAX(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = bus.Read(addr.address); A = X = v; SetZN(A); return baseCycles + addr.extraCycles; }
+	private int SAX(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = (byte)(A & X); bus.Write(addr.address, v); return baseCycles; }
+	private int ANC(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = bus.Read(addr.address); A = (byte)(A & v); SetZN(A); SetFlag(FLAG_C, (A & 0x80) != 0); return baseCycles; }
+	private int ALR(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = bus.Read(addr.address); A = (byte)(A & v); SetFlag(FLAG_C, (A & 0x01) != 0); A >>= 1; SetZN(A); return baseCycles; }
+	private int ARR(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = bus.Read(addr.address); A = (byte)(A & v); bool oldC = GetFlag(FLAG_C); byte result = (byte)((A >> 1) | (oldC ? 0x80 : 0)); A = result; SetZN(A); // Flag quirk
+		SetFlag(FLAG_C, (result & 0x40) != 0); SetFlag(FLAG_V, ((result & 0x40) ^ ((result & 0x20) << 1)) != 0); return baseCycles; }
+	private int AXS(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte v = bus.Read(addr.address); byte t = (byte)(A & X); ushort res = (ushort)(t - v); X = (byte)res; SetFlag(FLAG_C, t >= v); SetZN(X); return baseCycles; }
+	private int LAS(Func<AddrResult> mode, int baseCycles)
+	{ var addr = mode(); byte m = bus.Read(addr.address); byte v = (byte)(A & X & m); A = X = v; SP = v; SetZN(v); return baseCycles + addr.extraCycles; }
+	// === Additional unofficial store/bit-mangle ops (approximate behaviors) ===
+	private int SHY() { // opcode 0x9C Absolute,X (stores Y & (high+1) )
+		ushort addr = Fetch16Bits(); ushort target = (ushort)(addr + X); byte value = (byte)(Y & ((target >> 8)+1)); bus.Write(target, value); return 5; }
+	private int SHX() { // opcode 0x9E Absolute,Y
+		ushort addr = Fetch16Bits(); ushort target = (ushort)(addr + Y); byte value = (byte)(X & ((target >> 8)+1)); bus.Write(target, value); return 5; }
+	private int TAS() { // opcode 0x9B Absolute,Y
+		ushort addr = Fetch16Bits(); ushort target = (ushort)(addr + Y); SP = (ushort)(A & X); byte value = (byte)(SP & ((target >> 8) + 1)); bus.Write(target, value); return 5; }
+	private int AHX_AbsY() { // opcode 0x9F Absolute,Y
+		ushort addr = Fetch16Bits(); ushort target = (ushort)(addr + Y); byte value = (byte)(A & X & ((target >> 8) + 1)); bus.Write(target, value); return 5; }
+	private int AHX_IndY() { // opcode 0x93 (Indirect),Y
+		byte zp = Fetch(); ushort baseAddr = (ushort)(bus.Read(zp) | (bus.Read((byte)(zp + 1)) << 8)); ushort target = (ushort)(baseAddr + Y); byte value = (byte)(A & X & ((target >> 8) + 1)); bus.Write(target, value); return 6; }
+	private int XAA() { // opcode 0x8B Immediate (unstable, emulate stable subset)
+		byte imm = bus.Read(PC++); A = (byte)(X & imm); SetZN(A); return 2; }
 
 	//Jumps and Calls
 	private int JMP(Func<AddrResult> mode, int baseCycles) {
