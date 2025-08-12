@@ -1,7 +1,20 @@
 using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
-public class CPU {
+public interface ICPU
+{
+	bool IgnoreInvalidOpcodes { get; set; }
+	void Reset();
+	int ExecuteInstruction();
+	void RequestIRQ(bool line);
+	void RequestNMI();
+	object GetState();
+	void SetState(object state);
+	(ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters();
+	void AddToPC(int delta);
+}
+
+public class CPU : ICPU {
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)
@@ -34,6 +47,9 @@ public class CPU {
 		irqRequested = false;
 		nmiRequested = false;
 	}
+
+	public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters() => (PC, A, X, Y, status, SP);
+	public void AddToPC(int delta) { PC = (ushort)(PC + delta); }
 
 	public void Reset() {
 		A = X = Y = 0;

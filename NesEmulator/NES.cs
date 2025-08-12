@@ -51,7 +51,8 @@ namespace NesEmulator
 		{
 			if (bus == null || cartridge == null) return string.Empty;
 			#if DEBUG
-			Console.WriteLine($"[SaveState] PC={(bus.cpu.PC):X4} A={bus.cpu.A:X2} X={bus.cpu.X:X2} Y={bus.cpu.Y:X2} SP={bus.cpu.SP:X4} status={bus.cpu.status:X2}");
+			var regsDbg = (bus.cpu as ICPU)?.GetRegisters();
+			Console.WriteLine($"[SaveState] PC={(regsDbg?.PC ?? 0):X4} A={(regsDbg?.A ?? 0):X2} X={(regsDbg?.X ?? 0):X2} Y={(regsDbg?.Y ?? 0):X2} SP={(regsDbg?.SP ?? 0):X4} status={(regsDbg?.P ?? 0):X2}");
 			#endif
 			var st = new NesState {
 				cycleRemainder = cycleRemainder,
@@ -122,7 +123,8 @@ namespace NesEmulator
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
 			#if DEBUG
-			Console.WriteLine($"[LoadState] Restored PC={(bus.cpu.PC):X4} A={bus.cpu.A:X2} X={bus.cpu.X:X2} Y={bus.cpu.Y:X2} SP={bus.cpu.SP:X4} status={bus.cpu.status:X2}");
+			var regsDbg2 = (bus.cpu as ICPU)?.GetRegisters();
+			Console.WriteLine($"[LoadState] Restored PC={(regsDbg2?.PC ?? 0):X4} A={(regsDbg2?.A ?? 0):X2} X={(regsDbg2?.X ?? 0):X2} Y={(regsDbg2?.Y ?? 0):X2} SP={(regsDbg2?.SP ?? 0):X4} status={(regsDbg2?.P ?? 0):X2}");
 			#endif
 		}
 
@@ -174,11 +176,13 @@ namespace NesEmulator
 				if (crashBehavior == CrashBehavior.IgnoreErrors) {
 					// Treat crash as recovered; attempt to continue next frame.
 					// We could auto-advance PC one byte to avoid infinite loop on same bad opcode.
-					bus.cpu.PC++; // advance past offending opcode
+					// Advance PC by mutating CPU state (hot fix for interface abstraction)
+					try { bus.cpu.AddToPC(1); } catch {}
 					return; // frame ends early but emulator keeps running
 				}
 				crashed = true;
-				crashInfo = ex.Message + " PC=" + bus.cpu.PC.ToString("X4");
+				var regsCrash = bus.cpu.GetRegisters();
+				crashInfo = ex.Message + " PC=" + regsCrash.PC.ToString("X4");
 				RenderCrashScreen();
 				return;
 			}
@@ -302,7 +306,8 @@ namespace NesEmulator
 		public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetCpuRegs()
 		{
 			if (bus?.cpu == null) return (0,0,0,0,0,0);
-			return (bus.cpu.PC, bus.cpu.A, bus.cpu.X, bus.cpu.Y, bus.cpu.status, bus.cpu.SP);
+			var r = bus.cpu.GetRegisters();
+			return (r.PC, r.A, r.X, r.Y, r.P, r.SP);
 		}
 
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly

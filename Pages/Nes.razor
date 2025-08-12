@@ -38,16 +38,34 @@
                 </button>
             </div>
             <div class="btn-group">
-                <select class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@activeShaderKey" aria-label="Video Shader">
-                    @foreach(var sh in shaderOptions){
-                        <option value="@sh.Key">@sh.Label</option>
-                    }
-                </select>
-                <select class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@apuCoreSel" aria-label="Audio Core">
-                    <option value="FMC">FMC</option>
-                    <option value="FIX">FIX</option>
-                    <option value="QN">QN</option>
-                </select>
+                <div class="qc-select-stack">
+                    <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
+                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@activeShaderKey" aria-label="Video Shader">
+                        @foreach(var sh in shaderOptions){
+                            <option value="@sh.Key">@sh.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="qc-select-stack">
+                    <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
+                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@apuCoreSel" aria-label="Audio Core">
+                        <option value="FMC">FMC</option>
+                        <option value="FIX">FIX</option>
+                        <option value="QN">QN</option>
+                    </select>
+                </div>
+                <div class="qc-select-stack">
+                    <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
+                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="OnCpuCoreChanged" value="@cpuCoreSel" aria-label="CPU Core">
+                        <option value="FMC">FMC</option>
+                    </select>
+                </div>
+                <div class="qc-select-stack">
+                    <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
+                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="OnPpuCoreChanged" value="@ppuCoreSel" aria-label="PPU Core">
+                        <option value="FMC">FMC</option>
+                    </select>
+                </div>
             </div>
             <div class="btn-group">
                 <button class="btn btn-load-state" @onclick="LoadState" disabled="@(nes==null)" title="Load state">Load</button>
@@ -545,6 +563,8 @@
     private List<ShaderOption> shaderOptions = new();
     private bool famicloneOn = true; // default ON per requirement
     private string apuCoreSel = "FMC"; // FMC (Jank), FIX (Modern), QN (QuickNes)
+    private string cpuCoreSel = "FMC"; // placeholder only core for now
+    private string ppuCoreSel = "FMC"; // placeholder only core for now
     private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
     private bool isFullscreen = false; // track fullscreen state
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
@@ -1020,6 +1040,22 @@
                 Status.Set("FIX QN (QuickNES-inspired) active");
                 break;
         }
+    }
+
+    private void OnCpuCoreChanged(ChangeEventArgs e)
+    {
+        // Future: switch CPU implementation (currently only FMC)
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) cpuCoreSel = v;
+        // Hook for future hot-swap: save state, instantiate new core implementing ICPU, restore state
+    }
+
+    private void OnPpuCoreChanged(ChangeEventArgs e)
+    {
+        // Future: switch PPU implementation (currently only FMC)
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) ppuCoreSel = v;
+        // Similar hot-swap plan as CPU
     }
 
     private async Task OnShaderSelectChanged(ChangeEventArgs e)

@@ -8,8 +8,8 @@ public interface IBus
 
 public class Bus : IBus
 {
-		public CPU cpu;
-		public PPU ppu;
+		public ICPU cpu;
+		public IPPU ppu;
 		public APU_FIX apu; // modern core (renamed from APU)
 		public APU_FMB apuJank; // legacy core (renamed from APUJANK)
 		public APU_QN apuQN; // QuickNes core
