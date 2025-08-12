@@ -8,10 +8,15 @@ public interface IBus
 
 public class Bus : IBus
 {
-		public ICPU cpu;
-		public IPPU ppu;
+		// Active CPU core (public handle). Internally we may host multiple concrete cores and switch.
+		public ICPU cpu; // points to activeCpu
+		private CPU_FMC cpuFmc; // first (and currently only) CPU core implementation
+		private ICPU activeCpu; // mirror pointer used for core bookkeeping
+		public IPPU ppu; // points to activePpu
+		private PPU_FMC ppuFmc; // first (only) PPU core implementation
+		private IPPU activePpu;
 		public APU_FIX apu; // modern core (renamed from APU)
-		public APU_FMB apuJank; // legacy core (renamed from APUJANK)
+		public APU_FMC apuJank; // legacy core (renamed from APUJANK)
 		public APU_QN apuQN; // QuickNes core
 		private IAPU activeApu; // current active
 		private bool famicloneMode = true; // legacy flag: true when last user toggle selected famiclone; derived from activeApu for reporting
@@ -23,16 +28,60 @@ public class Bus : IBus
 	public Bus(Cartridge cartridge)
 	{
 		this.cartridge = cartridge;
-		cpu = new CPU(this);
-		ppu = new PPU(this);
+		cpuFmc = new CPU_FMC(this);
+		activeCpu = cpuFmc;
+		cpu = activeCpu; // expose
+		ppuFmc = new PPU_FMC(this); // instantiate FMC PPU core
+		activePpu = ppuFmc;
+		ppu = activePpu;
 		apu = new APU_FIX(this);
-		apuJank = new APU_FMB(this);
+		apuJank = new APU_FMC(this);
 		apuQN = new APU_QN(this);
 		activeApu = apuJank; // default famiclone
 		ram = new byte[2048];
 	}
 
+	// === CPU Core Hot-Swap Support (parallel to APU system) ===
+	public enum CpuCore { FMC = 0 /* future cores go here */ }
+
+	public void SetCpuCore(CpuCore core)
+	{
+		// Capture old state so we can migrate if switching between different implementations later
+		var prevState = cpu.GetState();
+		ICPU newCpu = core switch {
+			CpuCore.FMC => cpuFmc,
+			_ => cpuFmc
+		};
+		// If implementation object differs, attempt state transplant (best-effort)
+		if (!ReferenceEquals(newCpu, activeCpu))
+		{
+			try { newCpu.SetState(prevState); } catch { /* future: implement cross-core state mapping */ }
+		}
+		activeCpu = newCpu;
+		cpu = activeCpu; // update public handle
+	}
+
+	public CpuCore GetActiveCpuCore() => activeCpu == cpuFmc ? CpuCore.FMC : CpuCore.FMC;
+
 	public enum ApuCore { Modern, Jank, QuickNes }
+
+	// === PPU Core Hot-Swap Support ===
+	public enum PpuCore { FMC = 0 /* future cores */ }
+	public void SetPpuCore(PpuCore core)
+	{
+		var prevState = ppu.GetState();
+		IPPU newPpu = core switch {
+			PpuCore.FMC => ppuFmc,
+			_ => ppuFmc
+		};
+		if (!ReferenceEquals(newPpu, activePpu))
+		{
+			try { newPpu.SetState(prevState); } catch { }
+		}
+		activePpu = newPpu;
+		ppu = activePpu;
+	}
+	public PpuCore GetActivePpuCore() => activePpu == ppuFmc ? PpuCore.FMC : PpuCore.FMC;
 
 	public void SetApuCore(ApuCore core)
 	{
@@ -76,7 +125,7 @@ public class Bus : IBus
 		{
 		   var prev = GetActiveApuCore();
 		   apu = new APU_FIX(this);
-		   apuJank = new APU_FMB(this);
+		   apuJank = new APU_FMC(this);
 		   apuQN = new APU_QN(this);
 		   // Preserve the previously selected core
 		   SetApuCore(prev);

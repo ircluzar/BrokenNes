@@ -1,20 +1,7 @@
 namespace NesEmulator
 {
-public interface IPPU
-{
-	void Step();
-	void Step(int cycles);
-	byte[] GetFrameBuffer();
-	void UpdateFrameBuffer();
-	object GetState();
-	void SetState(object state);
-	byte ReadPPURegister(ushort address);
-	void WritePPURegister(ushort address, byte value);
-	void WriteOAMDMA(byte page);
-	void GenerateStaticFrame();
-}
-
-public class PPU : IPPU
+// Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
+public class PPU_FMC : IPPU
 {
 	private Bus bus;
 
@@ -53,7 +40,7 @@ public class PPU : IPPU
 	private uint staticLfsr = 0xACE1u; // state for emulator-driven noise
 	private int staticFrameCounter = 0;
 
-	public PPU(Bus bus)
+	public PPU_FMC(Bus bus)
 	{
 		this.bus = bus;
 
@@ -78,11 +65,6 @@ public class PPU : IPPU
 		InitializeTestFrameBuffer();
 	}
 
-	// Original single-cycle step kept (internal) for any existing call sites; now wraps batched version
-	public void Step()
-	{
-		Step(1);
-	}
 
 	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
 	public void Step(int elapsedCycles)

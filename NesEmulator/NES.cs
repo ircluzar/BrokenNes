@@ -40,6 +40,7 @@ namespace NesEmulator
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public bool famicloneMode; // legacy flag for UI backward-compatibility
 			public int apuCore; // 0=Modern,1=Jank,2=QuickNes
+			public int cpuCore; // 0=FMC (future cores enumerate)
 		}
 
 		private static string ComputeHash(byte[] data) {
@@ -68,7 +69,8 @@ namespace NesEmulator
 				controllerShift = bus.input.DebugGetShift(),
 				controllerStrobe = bus.input.DebugGetStrobe(),
 				famicloneMode = bus.GetFamicloneMode(),
-				apuCore = (int)bus.GetActiveApuCore()
+				apuCore = (int)bus.GetActiveApuCore(),
+				cpuCore = (int)bus.GetActiveCpuCore()
 			};
 			st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty;
 			var json = System.Text.Json.JsonSerializer.Serialize(st, new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
@@ -112,6 +114,8 @@ namespace NesEmulator
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);
 			if (st.chrRAM.Length == cartridge.chrRAM.Length) Array.Copy(st.chrRAM, cartridge.chrRAM, st.chrRAM.Length);
 			// Finally restore CPU/PPU/APU internal state
+			// Restore CPU core selection before applying CPU internal state
+			try { bus.SetCpuCore((Bus.CpuCore)st.cpuCore); } catch { }
 			bus.cpu.SetState(st.cpu);
 			bus.ppu.SetState(st.ppu);
 			// Restore APU selection before applying APU-specific state
@@ -172,7 +176,7 @@ namespace NesEmulator
 							bus.StepAPU(cpuCycles);
 					}
 				}
-			} catch (CPU.CpuCrashException ex) {
+			} catch (CPU_FMC.CpuCrashException ex) {
 				if (crashBehavior == CrashBehavior.IgnoreErrors) {
 					// Treat crash as recovered; attempt to continue next frame.
 					// We could auto-advance PC one byte to avoid infinite loop on same bad opcode.
