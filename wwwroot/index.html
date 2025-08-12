@@ -5,8 +5,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BrokenNes</title>
-    <base href="/" />
-    <link rel="preload" id="webassembly" />
+    <!-- Using relative base href so app can be hosted from a subdirectory (e.g., /rabbitwine/brokennes/) -->
+    <base href="./" />
+    <!-- Removed empty preload tag (was invalid without href) -->
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/app.css" />
     <!-- Favicon / PWA Icons -->
@@ -34,7 +35,8 @@
         <a href="." class="reload">Reload</a>
         <span class="dismiss">🗙</span>
     </div>
-    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <!-- Generic entry point; importmap (added during publish) maps to hashed file -->
+    <script src="./_framework/blazor.webassembly.js"></script>
     <script src="shaders.js"></script>
     <script src="nesInterop.js"></script>
 </body>

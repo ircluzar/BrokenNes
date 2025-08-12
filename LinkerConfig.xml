@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="BrokenNes">
+    <type fullname="BrokenNes.Layout.MainLayout" preserve="all" />
+    <type fullname="BrokenNes.Pages.NotFound" preserve="all" />
+  <type fullname="BrokenNes.Pages.*" preserve="all" />
+  <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
+  </assembly>
+</linker>
