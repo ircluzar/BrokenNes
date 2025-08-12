@@ -8,13 +8,14 @@ public interface IBus
 
 public class Bus : IBus
 {
-	public CPU cpu;
-	public PPU ppu;
-	public APU apu; // modern core
-	public APUJANK apuJank; // legacy core
-	private IAPU activeApu; // current active
-	private bool famicloneMode = true; // default ON -> APUJANK
-	private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
+		public CPU cpu;
+		public PPU ppu;
+		public APU_FIX apu; // modern core (renamed from APU)
+		public APU_FMB apuJank; // legacy core (renamed from APUJANK)
+		public APU_QN apuQN; // QuickNes core
+		private IAPU activeApu; // current active
+		private bool famicloneMode = true; // legacy flag: true when last user toggle selected famiclone; derived from activeApu for reporting
+		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
 	public Cartridge cartridge;
 	public byte[] ram; //2KB RAM
 	public Input input = new Input();
@@ -24,27 +25,47 @@ public class Bus : IBus
 		this.cartridge = cartridge;
 		cpu = new CPU(this);
 		ppu = new PPU(this);
-		apu = new APU(this);
-		apuJank = new APUJANK(this);
+		apu = new APU_FIX(this);
+		apuJank = new APU_FMB(this);
+		apuQN = new APU_QN(this);
 		activeApu = apuJank; // default famiclone
 		ram = new byte[2048];
 	}
 
-	public void SetFamicloneMode(bool on)
+	public enum ApuCore { Modern, Jank, QuickNes }
+
+	public void SetApuCore(ApuCore core)
 	{
-		if (famicloneMode == on) return;
-		famicloneMode = on;
-		activeApu = famicloneMode ? (IAPU)apuJank : apu;
-		// Reapply latched register values to newly active core so it picks up current configuration
+		switch(core)
+		{
+			case ApuCore.Modern: activeApu = apu; break;
+			case ApuCore.Jank: activeApu = apuJank; break;
+			case ApuCore.QuickNes: activeApu = apuQN; break;
+		}
+		// sync legacy flag for callers that still query famiclone boolean
+		famicloneMode = core == ApuCore.Jank;
+		// Reapply latched register values so the new core picks up current state
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{
 			ushort addr = (ushort)(0x4000 + i);
-			// Skip write-only DMA 0x4014 (i==0x14) since handled by CPU normally; but keep other registers
-			if (addr == 0x4014) continue;
+			if (addr == 0x4014) continue; // skip OAMDMA
 			activeApu.WriteAPURegister(addr, apuRegLatch[i]);
 		}
 	}
-	public bool GetFamicloneMode() => famicloneMode;
+
+	public ApuCore GetActiveApuCore()
+	{
+		if (activeApu == apuQN) return ApuCore.QuickNes;
+		if (activeApu == apuJank) return ApuCore.Jank;
+		return ApuCore.Modern;
+	}
+
+	public void SetFamicloneMode(bool on)
+	{
+		// Route to specific cores under the hood
+		SetApuCore(on ? ApuCore.Jank : ApuCore.Modern);
+	}
+	public bool GetFamicloneMode() => activeApu == apuJank;
 	public IAPU ActiveAPU => activeApu;
 
 		// --- APU Hard Reset Support ---
@@ -53,11 +74,13 @@ public class Bus : IBus
 		// Recreate both cores and clear latches so the new cartridge starts from a pristine state.
 		public void HardResetAPUs()
 		{
-			apu = new APU(this);
-			apuJank = new APUJANK(this);
-			// Preserve current famiclone mode selection but point to fresh instance
-			activeApu = famicloneMode ? (IAPU)apuJank : apu;
-			System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
+		   var prev = GetActiveApuCore();
+		   apu = new APU_FIX(this);
+		   apuJank = new APU_FMB(this);
+		   apuQN = new APU_QN(this);
+		   // Preserve the previously selected core
+		   SetApuCore(prev);
+		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
 		}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -129,5 +152,16 @@ public class Bus : IBus
 	public float[] GetAudioSamples(int max=0) => activeApu.GetAudioSamples(max);
 	public int GetQueuedSamples() => activeApu.GetQueuedSampleCount();
 	public int GetAudioSampleRate() => activeApu.GetSampleRate();
+
+	// --- QuickNes helpers ---
+	public void UseQuickNesAPU() => SetApuCore(ApuCore.QuickNes);
+	public void SetApuRegion(bool pal)
+	{
+		if (activeApu is APU_QN qn) qn.SetRegion(pal);
+	}
+	public void SetApuNonlinearMixing(bool enabled)
+	{
+		if (activeApu is APU_QN qn) qn.SetNonlinearMixing(enabled);
+	}
 }
 }

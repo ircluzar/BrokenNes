@@ -38,7 +38,8 @@ namespace NesEmulator
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
-			public bool famicloneMode; // active APU core mode
+			public bool famicloneMode; // legacy flag for UI backward-compatibility
+			public int apuCore; // 0=Modern,1=Jank,2=QuickNes
 		}
 
 		private static string ComputeHash(byte[] data) {
@@ -65,7 +66,8 @@ namespace NesEmulator
 				controllerState = bus.input.DebugGetRawState(),
 				controllerShift = bus.input.DebugGetShift(),
 				controllerStrobe = bus.input.DebugGetStrobe(),
-				famicloneMode = bus.GetFamicloneMode()
+				famicloneMode = bus.GetFamicloneMode(),
+				apuCore = (int)bus.GetActiveApuCore()
 			};
 			st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty;
 			var json = System.Text.Json.JsonSerializer.Serialize(st, new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
@@ -111,8 +113,11 @@ namespace NesEmulator
 			// Finally restore CPU/PPU/APU internal state
 			bus.cpu.SetState(st.cpu);
 			bus.ppu.SetState(st.ppu);
-			// restore APU mode before applying state
-			bus.SetFamicloneMode(st.famicloneMode);
+			// Restore APU selection before applying APU-specific state
+			try {
+				var core = (Bus.ApuCore)st.apuCore;
+				bus.SetApuCore(core);
+			} catch { bus.SetFamicloneMode(st.famicloneMode); }
 			bus.ActiveAPU.SetState(st.apu);
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
@@ -287,6 +292,11 @@ namespace NesEmulator
 		public bool GetFamicloneMode() => bus?.GetFamicloneMode() ?? true;
 		public void ToggleFamicloneMode() { if (bus==null) return; bus.SetFamicloneMode(!bus.GetFamicloneMode()); }
 		public void SetFamicloneMode(bool on) { if (bus==null) return; bus.SetFamicloneMode(on); }
+
+		// --- APU core selection (Modern/Jank/QN) ---
+		public enum ApuCore { Modern=0, Jank=1, QuickNes=2 }
+		public void SetApuCore(ApuCore core) { if (bus==null) return; bus.SetApuCore((Bus.ApuCore)core); }
+		public ApuCore GetApuCore() { if (bus==null) return ApuCore.Jank; return (ApuCore)bus.GetActiveApuCore(); }
 
 		// Debug helper: quick snapshot of CPU registers
 		public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetCpuRegs()

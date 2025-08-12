@@ -43,9 +43,10 @@
                         <option value="@sh.Key">@sh.Label</option>
                     }
                 </select>
-                <select class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnFamicloneSelectChanged" value="@(famicloneOn ? "FMC" : "APU")" aria-label="Audio Core">
+                <select class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@apuCoreSel" aria-label="Audio Core">
                     <option value="FMC">FMC</option>
-                    <option value="APU">APU</option>
+                    <option value="FIX">FIX</option>
+                    <option value="QN">QN</option>
                 </select>
             </div>
             <div class="btn-group">
@@ -543,6 +544,7 @@
     private record ShaderOption(string Key, string Label);
     private List<ShaderOption> shaderOptions = new();
     private bool famicloneOn = true; // default ON per requirement
+    private string apuCoreSel = "FMC"; // FMC (Jank), FIX (Modern), QN (QuickNes)
     private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
     private bool isFullscreen = false; // track fullscreen state
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
@@ -806,13 +808,18 @@
                         nes = new NesEmulator.NES();
                     }
                     nes.LoadROM(data);
-                    // Ensure backend (famicloneOn true => legacy core; false => modern APU) stays the same
-                    if (famicloneOn != nes.GetFamicloneMode()) nes.SetFamicloneMode(famicloneOn);
+                    // Re-apply selected APU core explicitly after reload
+                    try {
+                        if (apuCoreSel == "FMC") nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
+                        else if (apuCoreSel == "FIX") nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
+                        else if (apuCoreSel == "QN") nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
+                    } catch {}
                     BuildMemoryDomains();
                 }
                 else
                 {
                     await LoadRomFromServer(); // this rebuilds nes & memory domains
+                    SetApuCoreSelFromEmu();
                 }
             }
             frameCount = 0;
@@ -970,7 +977,49 @@
         if (nes == null) return;
         nes.ToggleFamicloneMode();
         famicloneOn = nes.GetFamicloneMode();
-    Status.Set(famicloneOn ? "Famiclone (legacy APU) active" : "APU (modern) active");
+    Status.Set(famicloneOn ? "Famiclone (legacy APU) active" : "FIX (modern) active");
+    }
+
+    private void SetApuCoreSelFromEmu()
+    {
+        if (nes == null) return;
+        try
+        {
+            var core = nes.GetApuCore();
+            apuCoreSel = core switch {
+                NesEmulator.NES.ApuCore.Jank => "FMC",
+                NesEmulator.NES.ApuCore.QuickNes => "QN",
+                _ => "FIX"
+            };
+            famicloneOn = nes.GetFamicloneMode();
+        }
+        catch {}
+    }
+
+    private void OnApuCoreChanged(ChangeEventArgs e)
+    {
+        if (nes == null) return;
+        var v = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(v)) return;
+        apuCoreSel = v;
+        switch (v)
+        {
+            case "FMC":
+                nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
+                famicloneOn = true;
+                Status.Set("Famiclone (legacy APU) active");
+                break;
+            case "FIX":
+                nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
+                famicloneOn = false;
+                Status.Set("FIX (modern) active");
+                break;
+            case "QN":
+                nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
+                famicloneOn = false;
+                Status.Set("FIX QN (QuickNES-inspired) active");
+                break;
+        }
     }
 
     private async Task OnShaderSelectChanged(ChangeEventArgs e)
@@ -983,15 +1032,7 @@
         }
     }
 
-    private void OnFamicloneSelectChanged(ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString();
-        bool wantFmc = string.Equals(v, "FMC", StringComparison.OrdinalIgnoreCase);
-        if (wantFmc != famicloneOn)
-        {
-            ToggleFamiclone();
-        }
-    }
+    // Old famiclone-only handler removed; see OnApuCoreChanged
 
     [JSInvokable]
     public void UpdateInput(bool[] state)
@@ -1242,6 +1283,7 @@
                 nes.LoadROM(data);
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                 famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
+                SetApuCoreSelFromEmu();
                 BuildMemoryDomains();
                 currentRomName = romFileName;
                 lastLoadedRomSize = data.Length;
@@ -1262,6 +1304,7 @@
             {
                 Status.Set($"Loading built-in {romFileName}...");
                 await LoadRomFromServer();
+                SetApuCoreSelFromEmu();
             }
         }
         catch (Exception ex)
@@ -1334,6 +1377,7 @@
             nes.LoadROM(romData);
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             famicloneOn = nes.GetFamicloneMode();
+            SetApuCoreSelFromEmu();
             currentRomName = romFileName;
             lastLoadedRomSize = romData.Length;
             if (!uploadedRoms.ContainsKey(romFileName))
