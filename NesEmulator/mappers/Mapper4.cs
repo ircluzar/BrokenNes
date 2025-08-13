@@ -221,9 +221,21 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         if (state is Mapper4State s) { bankSelect=s.bankSelect; Array.Copy(s.bankData, bankData, 8); prgMode=s.prgMode; chrMode=s.chrMode; prgRamEnable=s.prgRamEnable; prgRamWriteProtect=s.prgRamWriteProtect; irqLatch=s.irqLatch; irqCounter=s.irqCounter; irqEnable=s.irqEnable; irqReloadPending=s.irqReloadPending; irqAsserted=s.irqAsserted; ApplyBankMapping(); return; }
         if (state is System.Text.Json.JsonElement je) {
             try {
-                var s2 = System.Text.Json.JsonSerializer.Deserialize<Mapper4State>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions{ IncludeFields=true});
-                if (s2!=null) { bankSelect=s2.bankSelect; Array.Copy(s2.bankData, bankData, 8); prgMode=s2.prgMode; chrMode=s2.chrMode; prgRamEnable=s2.prgRamEnable; prgRamWriteProtect=s2.prgRamWriteProtect; irqLatch=s2.irqLatch; irqCounter=s2.irqCounter; irqEnable=s2.irqEnable; irqReloadPending=s2.irqReloadPending; irqAsserted=s2.irqAsserted; ApplyBankMapping(); }
-            } catch {}
+                if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
+                    if(je.TryGetProperty("bankSelect", out var v)) bankSelect = (byte)v.GetByte();
+                    if(je.TryGetProperty("bankData", out var bd) && bd.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in bd.EnumerateArray()){ if(i<8) bankData[i++] = (byte)el.GetByte(); else break; } }
+                    if(je.TryGetProperty("prgMode", out var pm)) prgMode = pm.GetBoolean();
+                    if(je.TryGetProperty("chrMode", out var cm)) chrMode = cm.GetBoolean();
+                    if(je.TryGetProperty("prgRamEnable", out var pre)) prgRamEnable = pre.GetBoolean();
+                    if(je.TryGetProperty("prgRamWriteProtect", out var prw)) prgRamWriteProtect = prw.GetBoolean();
+                    if(je.TryGetProperty("irqLatch", out var il)) irqLatch = (byte)il.GetByte();
+                    if(je.TryGetProperty("irqCounter", out var ic)) irqCounter = (byte)ic.GetByte();
+                    if(je.TryGetProperty("irqEnable", out var ie)) irqEnable = ie.GetBoolean();
+                    if(je.TryGetProperty("irqReloadPending", out var irp)) irqReloadPending = irp.GetBoolean();
+                    if(je.TryGetProperty("irqAsserted", out var ia)) irqAsserted = ia.GetBoolean();
+                    ApplyBankMapping();
+                }
+            } catch { }
         }
     }
 }

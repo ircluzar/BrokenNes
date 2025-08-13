@@ -32,6 +32,8 @@ FLAT_DIR="flatpublish"
 ZIP_FLAG=false
 VERIFY_ONLY=false
 EXCLUDE_ROMS=false
+NO_AOT=true
+DEV_MODE=false # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
 
 if [[ ${#} -gt 0 ]]; then
   for arg in "$@"; do
@@ -39,7 +41,9 @@ if [[ ${#} -gt 0 ]]; then
       --zip) ZIP_FLAG=true ;;
       --verify) VERIFY_ONLY=true ;;
       --exclude-roms) EXCLUDE_ROMS=true ;;
-      *) echo "Unknown argument: $arg" >&2; echo "Supported: --zip --verify --exclude-roms"; exit 2 ;;
+      --no-aot) NO_AOT=true ;;
+  --dev) DEV_MODE=true ;;
+  *) echo "Unknown argument: $arg" >&2; echo "Supported: --zip --verify --exclude-roms --no-aot --dev"; exit 2 ;;
     esac
   done
 fi
@@ -50,9 +54,19 @@ if ! $VERIFY_ONLY; then
     echo "==> Cleaning previous publish output ($OUT_DIR)"
     rm -rf "$OUT_DIR"
   fi
-  echo "==> Publishing (AOT/Release) ..."
-  # Use explicit output (OUT_DIR) so we know precisely where artifacts land.
-  dotnet publish "$CSProj" -c Release -o "$OUT_DIR" >/dev/null
+  if $DEV_MODE; then
+    # Mimic a standard build environment: Debug config, no trimming, no AOT, IL generation allowed.
+    OUT_DIR="bin/Debug/${TFM}/publish"
+    echo "==> Publishing (DEV MODE: Debug, no AOT, no trimming) ..."
+    dotnet publish "$CSProj" -c Debug -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true -p:PublishTrimmed=false -p:TrimMode=copyused >/dev/null
+  elif $NO_AOT; then
+    echo "==> Publishing (Release, AOT DISABLED) ..."
+    dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true >/dev/null
+  else
+    echo "==> Publishing (AOT/Release) ..."
+    # Use explicit output (OUT_DIR) so we know precisely where artifacts land.
+    dotnet publish "$CSProj" -c Release -o "$OUT_DIR" >/dev/null
+  fi
 else
   echo "==> Skipping publish (verify-only mode)"
 fi

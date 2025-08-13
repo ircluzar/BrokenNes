@@ -155,13 +155,32 @@ namespace NesEmulator
             if (st is ApuState s) { ApplyState(s); PostRestore(); return; }
             if (st is System.Text.Json.JsonElement je)
             {
-                try
-                {
-                    var opts = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
-                    var s2 = System.Text.Json.JsonSerializer.Deserialize<ApuState>(je.GetRawText(), opts);
-                    if (s2 != null) { ApplyState(s2); PostRestore(); }
-                }
-                catch { }
+                try {
+                    if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
+                        var tmp = new ApuState(); System.Text.Json.JsonElement v;
+                        if(je.TryGetProperty("pulse1_duty", out v)) tmp.pulse1_duty=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_length", out v)) tmp.pulse1_length=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_sweep", out v)) tmp.pulse1_sweep=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_timer", out v)) tmp.pulse1_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("pulse2_duty", out v)) tmp.pulse2_duty=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_length", out v)) tmp.pulse2_length=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_sweep", out v)) tmp.pulse2_sweep=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_timer", out v)) tmp.pulse2_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("triangle_linear", out v)) tmp.triangle_linear=(byte)v.GetByte();
+                        if(je.TryGetProperty("triangle_length", out v)) tmp.triangle_length=(byte)v.GetByte();
+                        if(je.TryGetProperty("triangle_timer", out v)) tmp.triangle_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("noise_length", out v)) tmp.noise_length=(byte)v.GetByte();
+                        if(je.TryGetProperty("noise_period", out v)) tmp.noise_period=(byte)v.GetByte();
+                        if(je.TryGetProperty("status", out v)) tmp.status=(byte)v.GetByte();
+                        if(je.TryGetProperty("noiseShiftRegister", out v)) tmp.noiseShiftRegister=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("pulse1_lengthCounter", out v)) tmp.pulse1_lengthCounter=v.GetInt32();
+                        if(je.TryGetProperty("pulse2_lengthCounter", out v)) tmp.pulse2_lengthCounter=v.GetInt32();
+                        if(je.TryGetProperty("triangle_lengthCounter", out v)) tmp.triangle_lengthCounter=v.GetInt32();
+                        if(je.TryGetProperty("noise_lengthCounter", out v)) tmp.noise_lengthCounter=v.GetInt32();
+                        if(je.TryGetProperty("fractionalSampleAccumulator", out v)) tmp.fractionalSampleAccumulator=v.GetDouble();
+                        ApplyState(tmp); PostRestore();
+                    }
+                } catch { }
             }
         }
         private void ApplyState(ApuState s)

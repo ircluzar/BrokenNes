@@ -1049,7 +1049,12 @@
         try
         {
             nes.SetCpuCore(cpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
-            nes.SetPpuCore(ppuCoreSel == "FIX" ? NesEmulator.Bus.PpuCore.FIX : NesEmulator.Bus.PpuCore.FMC);
+            // Support three-way selection: FMC (default), FIX, LQ
+            nes.SetPpuCore(ppuCoreSel switch {
+                "FIX" => NesEmulator.Bus.PpuCore.FIX,
+                "LQ" => NesEmulator.Bus.PpuCore.LQ,
+                _ => NesEmulator.Bus.PpuCore.FMC
+            });
             switch (apuCoreSel)
             {
                 case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); famicloneOn = true; break;
@@ -1111,7 +1116,11 @@
         if (v == ppuCoreSel) return;
         ppuCoreSel = v;
         var state = nes.GetPpuState();
-        nes.SetPpuCore(v == "FIX" ? NesEmulator.Bus.PpuCore.FIX : NesEmulator.Bus.PpuCore.FMC);
+        nes.SetPpuCore(v switch {
+            "FIX" => NesEmulator.Bus.PpuCore.FIX,
+            "LQ" => NesEmulator.Bus.PpuCore.LQ,
+            _ => NesEmulator.Bus.PpuCore.FMC
+        });
         try { nes.SetPpuState(state); } catch {}
         Status.Set($"PPU core switched to {v}");
     try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", ppuCoreSel); } catch {}
@@ -1526,74 +1535,94 @@
     private async Task SaveState()
     {
         if (nes == null || stateBusy) return; stateBusy = true;
+        DateTime diagStart = DateTime.UtcNow;
+        void Diag(string s){ try { Console.WriteLine($"[SaveStateUI] {{DateTime.UtcNow:O}} {s}"); } catch {} }
+        Diag("UI SaveState invoked");
         try
         {
+            Diag("Calling nes.SaveState()");
             var raw = nes.SaveState();
-            if (string.IsNullOrEmpty(raw)) { Status.Set("Empty state"); return; }
+            Diag(raw==null?"nes.SaveState returned null":"nes.SaveState returned length="+raw.Length);
+            if (string.IsNullOrEmpty(raw)) { Status.Set("Empty state"); Diag("Empty state early return"); return; }
 
             // Attempt compression
             string payload = raw;
             bool compressed = false;
             try
             {
+                Diag("Attempting compression");
                 var gz = CompressString(raw);
-                // Use compressed if smaller by >=5%
+                Diag("Compression produced length="+gz.Length);
                 if (gz.Length < raw.Length * 0.95)
                 {
                     payload = "GZ:" + gz; // prefix marker
                     compressed = true;
-                }
+                    Diag("Using compressed payload");
+                } else Diag("Compression not beneficial");
             }
-            catch { /* ignore compression failures */ }
+            catch (Exception ex) { Diag("Compression failed: "+ex.Message); }
 
             // Clear any old chunked state
+            Diag("Removing existing chunks (if any)");
             await RemoveExistingChunks();
+            Diag("Existing chunks removed");
 
             if (payload.Length <= SaveChunkCharSize)
             {
+                Diag("Payload fits single chunk length="+payload.Length);
                 try
                 {
+                    Diag("Saving single chunk to IndexedDB");
                     await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey, payload);
+                    Diag("Saved single chunk; removing old manifest if any");
                     await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
                     Status.Set(compressed ? "State saved (compressed)" : "State saved");
+                    Diag("Single chunk save complete");
                 }
                 catch (JSException jsex)
                 {
                     errorMessage = "Save error: " + jsex.Message;
+                    Diag("Single chunk save JSException: "+jsex.Message);
                 }
                 return;
             }
 
             // Chunk large state
+            Diag("Chunking payload length="+payload.Length+" chunkSize="+SaveChunkCharSize);
             var parts = new List<string>();
             for (int i = 0; i < payload.Length; i += SaveChunkCharSize)
             {
                 parts.Add(payload.Substring(i, Math.Min(SaveChunkCharSize, payload.Length - i)));
             }
+            Diag("Chunked into parts="+parts.Count);
             try
             {
                 for (int i = 0; i < parts.Count; i++)
                 {
+                    Diag($"Saving part {i+1}/{parts.Count} length={parts[i].Length}");
                     await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + $".part{i}", parts[i]);
                 }
                 string manifest = $"{{\"version\":1,\"compressed\":{compressed.ToString().ToLowerInvariant()},\"parts\":{parts.Count}}}";
+                Diag("Saving manifest: "+manifest);
                 await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + ".manifest", manifest);
-                // Remove single-key (if any) to avoid duplication
+                Diag("Removing single-key SaveKey if exists");
                 await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey);
                 Status.Set(compressed ? $"State saved in {parts.Count} parts (compressed)" : $"State saved in {parts.Count} parts");
+                Diag("Chunked save complete");
             }
             catch (JSException jsex)
             {
                 errorMessage = "Save error (chunked): " + jsex.Message;
-                // Cleanup partial
-                await RemoveExistingChunks();
+                Diag("Chunked save JSException: "+jsex.Message+" initiating cleanup");
+                try { await RemoveExistingChunks(); } catch {}
             }
         }
         catch (Exception ex)
         {
             errorMessage = "Save error: " + ex.Message;
+            Diag("Top-level SaveState exception: "+ex.Message+"\n"+ex.StackTrace);
         }
-        finally { stateBusy = false; }
+        finally { stateBusy = false; var elapsed = DateTime.UtcNow - diagStart; Diag("UI SaveState finished in "+elapsed.TotalMilliseconds.ToString("F2")+" ms"); }
     }
 
     private async Task LoadState()
@@ -1667,7 +1696,7 @@
                     string ppuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(ppuId, "PPU_");
                     string apuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
                     string newCpu = cpuSuffix == "FIX" ? "FIX" : "FMC";
-                    string newPpu = ppuSuffix == "FIX" ? "FIX" : "FMC";
+                    string newPpu = ppuSuffix switch { "FIX" => "FIX", "LQ" => "LQ", _ => "FMC" };
                     string newApu = apuSuffix switch { "FMC" => "FMC", "QN" => "QN", _ => "FIX" };
                     bool changed=false;
                     if(newCpu!=cpuCoreSel){ cpuCoreSel=newCpu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",cpuCoreSel);}catch{} }
@@ -2037,7 +2066,10 @@
         // Central registry discovery (cached)
         cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
         if (!cpuCoreOptions.Contains(cpuCoreSel) && cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
-        ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
+    ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
+    // Ensure stable ordering (FMC, FIX, LQ) if present
+    var desiredOrder = new List<string>{"FMC","FIX","LQ"};
+    ppuCoreOptions = ppuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
         if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0) ppuCoreSel = ppuCoreOptions[0];
         apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.Where(k => k=="FMC"||k=="FIX"||k=="QN").ToList();
         if (!apuCoreOptions.Contains(apuCoreSel) && apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];

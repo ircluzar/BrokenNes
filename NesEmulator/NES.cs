@@ -1,6 +1,8 @@
 using System;
 using System.Security.Cryptography;
 using System.Linq;
+using System.Text;
+using System.Reflection;
 namespace NesEmulator
 {
 	public class NES
@@ -32,14 +34,21 @@ namespace NesEmulator
 			crashed = true; crashInfo = reason; crashKind = CrashKind.Generic; RenderCrashScreen();
 		}
 
+		// NOTE: In NativeAOT/WebAssembly, System.Text.Json cannot generate serializers at runtime.
+		// Using object-typed polymorphic fields (cpu/ppu/apu/mapper) previously forced runtime
+		// dynamic IL emission when saving state, triggering a mono "method-builder-ilgen" assertion
+		// in flatpublish/native mode. To stay AOT-friendly, we capture each sub-system state as a
+		// pre-serialized JSON string instead of a raw object graph. The SetState() methods for
+		// subsystems already accept JsonElement, so on load we parse these strings back into
+		// JsonDocuments and hand root elements off without requiring polymorphic serialization.
 		private class NesState {
 			public double cycleRemainder; public byte[] ram = Array.Empty<byte>();
-			public object cpu = default!; public object ppu = default!; public object apu = default!; public object mapper = default!; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
+			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public bool famicloneMode; // legacy flag for UI backward-compatibility
-			public int apuCore; // 0=Modern,1=Jank,2=QuickNes
+			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (legacy integer, kept for backward compat if ever needed)
 			public int cpuCore; // 0=FMC (future cores enumerate)
 			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
 		}
@@ -59,43 +68,125 @@ namespace NesEmulator
 
 		public string SaveState()
 		{
-			if (bus == null || cartridge == null) return string.Empty;
+			// Verbose diagnostic logging to pinpoint any runtime that might attempt IL generation.
+			// This is TEMPORARY instrumentation and may be removed for performance once issue resolved.
+			var startTimestamp = DateTime.UtcNow;
+			void Log(string msg) { try { Console.WriteLine($"[SaveStateDiag] {{DateTime.UtcNow:O}} {msg}"); } catch {} }
+			Log("Begin SaveState() invocation");
+			if (bus == null || cartridge == null) { Log("Aborting: bus or cartridge is null"); return string.Empty; }
 			#if DEBUG
 			var regsDbg = (bus.cpu as ICPU)?.GetRegisters();
-			Console.WriteLine($"[SaveState] PC={(regsDbg?.PC ?? 0):X4} A={(regsDbg?.A ?? 0):X2} X={(regsDbg?.X ?? 0):X2} Y={(regsDbg?.Y ?? 0):X2} SP={(regsDbg?.SP ?? 0):X4} status={(regsDbg?.P ?? 0):X2}");
+			Log($"Initial CPU regs PC={(regsDbg?.PC ?? 0):X4} A={(regsDbg?.A ?? 0):X2} X={(regsDbg?.X ?? 0):X2} Y={(regsDbg?.Y ?? 0):X2} SP={(regsDbg?.SP ?? 0):X4} P={(regsDbg?.P ?? 0):X2}");
 			#endif
-			var st = new NesState {
-				cycleRemainder = cycleRemainder,
-				ram = (byte[])bus.ram.Clone(),
-				cpu = bus.cpu.GetState(),
-				ppu = bus.ppu.GetState(),
-				apu = bus.ActiveAPU.GetState(),
-				mapper = cartridge.mapper.GetMapperState(),
-				prgRAM = (byte[])cartridge.prgRAM.Clone(),
-				chrRAM = (byte[])cartridge.chrRAM.Clone(),
-				romData = (byte[])cartridge.rom.Clone(),
-				controllerState = bus.input.DebugGetRawState(),
-				controllerShift = bus.input.DebugGetShift(),
-				controllerStrobe = bus.input.DebugGetStrobe(),
-				famicloneMode = bus.GetFamicloneMode(),
-				apuCore = (int)bus.GetActiveApuCore(),
-				cpuCore = (int)bus.GetActiveCpuCore(),
-				cpuCoreId = bus.cpu.GetType().Name,
-				ppuCoreId = bus.ppu.GetType().Name,
-				apuCoreId = bus.ActiveAPU.GetType().Name
-			};
-			st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty;
-			var json = System.Text.Json.JsonSerializer.Serialize(st, new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
-			#if DEBUG
-			Console.WriteLine($"[SaveState] JSON length={json.Length}");
-			#endif
+			string cpuJson = string.Empty, ppuJson = string.Empty, apuJson = string.Empty, mapperJson = string.Empty;
+			try { Log("Serializing CPU state - start"); cpuJson = PlainSerialize(bus.cpu.GetState()); Log($"Serializing CPU state - done length={cpuJson.Length}"); } catch (Exception ex) { Log("CPU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { Log("Serializing PPU state - start"); ppuJson = PlainSerialize(bus.ppu.GetState()); Log($"Serializing PPU state - done length={ppuJson.Length}"); } catch (Exception ex) { Log("PPU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { Log("Serializing APU state - start"); apuJson = PlainSerialize(bus.ActiveAPU.GetState()); Log($"Serializing APU state - done length={apuJson.Length}"); } catch (Exception ex) { Log("APU state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { Log("Serializing Mapper state - start"); mapperJson = PlainSerialize(cartridge.mapper.GetMapperState()); Log($"Serializing Mapper state - done length={mapperJson.Length}"); } catch (Exception ex) { Log("Mapper state serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			NesState? st = null;
+			try {
+				Log("Cloning raw memory regions");
+				var ramClone = (byte[])bus.ram.Clone();
+				var prgClone = (byte[])cartridge.prgRAM.Clone();
+				var chrClone = (byte[])cartridge.chrRAM.Clone();
+				var romClone = (byte[])cartridge.rom.Clone();
+				Log($"Sizes ram={ramClone.Length} prgRAM={prgClone.Length} chrRAM={chrClone.Length} rom={romClone.Length}");
+				st = new NesState {
+					cycleRemainder = cycleRemainder,
+					ram = ramClone,
+					cpu = cpuJson,
+					ppu = ppuJson,
+					apu = apuJson,
+					mapper = mapperJson,
+					prgRAM = prgClone,
+					chrRAM = chrClone,
+					romData = romClone,
+					controllerState = bus.input.DebugGetRawState(),
+					controllerShift = bus.input.DebugGetShift(),
+					controllerStrobe = bus.input.DebugGetStrobe(),
+					famicloneMode = bus.GetFamicloneMode(),
+					apuCore = (int)bus.GetActiveApuCore(),
+					cpuCore = (int)bus.GetActiveCpuCore(),
+					cpuCoreId = bus.cpu.GetType().Name,
+					ppuCoreId = bus.ppu.GetType().Name,
+					apuCoreId = bus.ActiveAPU.GetType().Name
+				};
+				Log("NesState object constructed");
+			} catch (Exception ex) { Log("NesState construction FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { if (st != null) { st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty; Log("ROM hash computed length="+ (st.romHash?.Length ?? 0)); } } catch (Exception ex) { Log("ROM hash FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			string json = string.Empty;
+			try { Log("Serializing NesState root - start"); json = PlainSerialize(st!); Log($"Serializing NesState root - done length={json.Length}"); } catch (Exception ex) { Log("Root serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			var elapsed = DateTime.UtcNow - startTimestamp; Log("SaveState() complete in "+elapsed.TotalMilliseconds.ToString("F2")+" ms");
 			return json;
+		}
+
+		// Minimal reflection-based serializer supporting primitive fields and primitive arrays.
+		// Produces stable JSON without relying on System.Text.Json for AOT-problematic types.
+		private static string PlainSerialize(object? obj)
+		{
+			if (obj == null) return "null";
+			if (obj is string s) return '"' + Escape(s) + '"';
+			if (obj is byte b) return b.ToString();
+			if (obj is sbyte sb) return sb.ToString();
+			if (obj is short sh) return sh.ToString();
+			if (obj is ushort ush) return ush.ToString();
+			if (obj is int i) return i.ToString();
+			if (obj is uint ui) return ui.ToString();
+			if (obj is long l) return l.ToString();
+			if (obj is ulong ul) return ul.ToString();
+			if (obj is bool bo) return bo ? "true" : "false";
+			if (obj is double d) return d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			if (obj is float f) return f.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			if (obj is byte[] ba) { var sbArr = new StringBuilder(); sbArr.Append('['); for (int k=0;k<ba.Length;k++){ if(k>0) sbArr.Append(','); sbArr.Append(ba[k]); } sbArr.Append(']'); return sbArr.ToString(); }
+			if (obj is int[] ia) { var sbArr = new StringBuilder(); sbArr.Append('['); for (int k=0;k<ia.Length;k++){ if(k>0) sbArr.Append(','); sbArr.Append(ia[k]); } sbArr.Append(']'); return sbArr.ToString(); }
+			// Generic primitive array support
+			if (obj is System.Collections.IEnumerable enumerable && obj.GetType().IsArray)
+			{
+				var sbArr = new StringBuilder(); sbArr.Append('['); bool first=true; foreach (var el in enumerable) { if(!first) sbArr.Append(','); first=false; sbArr.Append(PlainSerialize(el)); } sbArr.Append(']'); return sbArr.ToString();
+			}
+			var type = obj.GetType();
+			// Limit to class/struct with only primitive/array fields
+			// Limit to public instance fields only (AOT: accessing non-public via reflection can trigger dynamic method generation).
+			var fields = type.GetFields(BindingFlags.Instance|BindingFlags.Public);
+			var sbObj = new StringBuilder(); sbObj.Append('{'); bool firstField=true;
+			foreach (var fi in fields)
+			{
+				if (fi.IsStatic) continue; var val = fi.GetValue(obj);
+				if(!firstField) sbObj.Append(','); firstField=false;
+				sbObj.Append('"').Append(Escape(fi.Name)).Append('"').Append(':').Append(PlainSerialize(val));
+			}
+			sbObj.Append('}'); return sbObj.ToString();
+			static string Escape(string raw) => raw.Replace("\\","\\\\").Replace("\"","\\\"");
 		}
 
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
-			var st = System.Text.Json.JsonSerializer.Deserialize<NesState>(json, new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
+			NesState? st = null;
+			try {
+				using var doc = System.Text.Json.JsonDocument.Parse(json);
+				var root = doc.RootElement;
+				st = new NesState();
+				if (root.TryGetProperty("cycleRemainder", out var cr)) st.cycleRemainder = cr.GetDouble();
+				if (root.TryGetProperty("ram", out var ramEl) && ramEl.ValueKind==System.Text.Json.JsonValueKind.Array){ var arr=ramEl; int len=arr.GetArrayLength(); st.ram=new byte[len]; int idx=0; foreach(var v in arr.EnumerateArray()){ if(idx>=len) break; st.ram[idx++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("cpu", out var cpuEl) && cpuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpu = cpuEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("ppu", out var ppuEl) && ppuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.ppu = ppuEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("apu", out var apuEl) && apuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.apu = apuEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("mapper", out var mapEl) && mapEl.ValueKind==System.Text.Json.JsonValueKind.String) st.mapper = mapEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("prgRAM", out var prgEl) && prgEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=prgEl.GetArrayLength(); st.prgRAM=new byte[len]; int i=0; foreach(var v in prgEl.EnumerateArray()){ if(i>=len) break; st.prgRAM[i++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("chrRAM", out var chrEl) && chrEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=chrEl.GetArrayLength(); st.chrRAM=new byte[len]; int i=0; foreach(var v in chrEl.EnumerateArray()){ if(i>=len) break; st.chrRAM[i++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("controllerState", out var csEl)) st.controllerState = (byte)csEl.GetByte();
+				if (root.TryGetProperty("controllerShift", out var cshEl)) st.controllerShift = (byte)cshEl.GetByte();
+				if (root.TryGetProperty("controllerStrobe", out var cstEl)) st.controllerStrobe = cstEl.GetBoolean();
+				if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("romHash", out var rhEl) && rhEl.ValueKind==System.Text.Json.JsonValueKind.String) st.romHash = rhEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("famicloneMode", out var fmEl)) st.famicloneMode = fmEl.GetBoolean();
+				if (root.TryGetProperty("apuCore", out var apcEl)) st.apuCore = apcEl.GetInt32();
+				if (root.TryGetProperty("cpuCore", out var cpcEl)) st.cpuCore = cpcEl.GetInt32();
+				if (root.TryGetProperty("cpuCoreId", out var ccidEl) && ccidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpuCoreId = ccidEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("ppuCoreId", out var ppidEl) && ppidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.ppuCoreId = ppidEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("apuCoreId", out var apidEl) && apidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.apuCoreId = apidEl.GetString() ?? string.Empty;
+			} catch { st=null; }
 			if (st == null) return;
 			// If ROM data was saved and either no cartridge loaded or ROM differs, rebuild cartridge+bus
 			bool needNewCartridge = false;
@@ -122,7 +213,7 @@ namespace NesEmulator
 			cycleRemainder = st.cycleRemainder;
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
-			if (st.mapper != null) cartridge.mapper.SetMapperState(st.mapper);
+			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);
 			if (st.chrRAM.Length == cartridge.chrRAM.Length) Array.Copy(st.chrRAM, cartridge.chrRAM, st.chrRAM.Length);
 			// Finally restore CPU/PPU/APU internal state
@@ -136,17 +227,17 @@ namespace NesEmulator
 				}
 				else bus.SetCpuCore((Bus.CpuCore)st.cpuCore);
 			} catch { }
-			bus.cpu.SetState(st.cpu);
+			try { if (!string.IsNullOrEmpty(st.cpu)) { using var cd = System.Text.Json.JsonDocument.Parse(st.cpu); bus.cpu.SetState(cd.RootElement); } } catch { }
 			// Restore PPU core selection (prefer reflection id if present)
 			try {
 				if (!string.IsNullOrEmpty(st.ppuCoreId)) {
 					var suffix = CoreRegistry.ExtractSuffix(st.ppuCoreId, "PPU_");
-					bus.SetPpuCore(suffix == "FIX" ? Bus.PpuCore.FIX : Bus.PpuCore.FMC);
+					bus.SetPpuCore(suffix switch { "FIX" => Bus.PpuCore.FIX, "LQ" => Bus.PpuCore.LQ, _ => Bus.PpuCore.FMC });
 				} else {
 					bus.SetPpuCore(Bus.PpuCore.FMC); // legacy only had FMC
 				}
 			} catch { }
-			bus.ppu.SetState(st.ppu);
+			try { if (!string.IsNullOrEmpty(st.ppu)) { using var pd = System.Text.Json.JsonDocument.Parse(st.ppu); bus.ppu.SetState(pd.RootElement); } } catch { }
 			// Restore APU selection before applying APU-specific state (prefer reflection id)
 			try {
 				if (!string.IsNullOrEmpty(st.apuCoreId))
@@ -166,7 +257,7 @@ namespace NesEmulator
 					bus.SetApuCore(core);
 				}
 			} catch { bus.SetFamicloneMode(st.famicloneMode); }
-			bus.ActiveAPU.SetState(st.apu);
+			try { if (!string.IsNullOrEmpty(st.apu)) { using var ad = System.Text.Json.JsonDocument.Parse(st.apu); bus.ActiveAPU.SetState(ad.RootElement); } } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
 			#if DEBUG

@@ -51,7 +51,9 @@ public class Mapper2 : IMapper { //UxROM (Experimental)
     public void SetMapperState(object state) {
         if (state is Mapper2State s) { prgBank = s.prgBank; return; }
         if (state is System.Text.Json.JsonElement je) {
-            try { var s2 = System.Text.Json.JsonSerializer.Deserialize<Mapper2State>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions{ IncludeFields=true}); if (s2!=null) prgBank = s2.prgBank; } catch {}
+            try {
+                if(je.ValueKind==System.Text.Json.JsonValueKind.Object && je.TryGetProperty("prgBank", out var pb)) prgBank = (byte)pb.GetByte();
+            } catch { }
         }
     }
 }

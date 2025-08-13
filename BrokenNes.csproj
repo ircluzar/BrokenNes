@@ -17,6 +17,9 @@
   <DebugType>portable</DebugType>
   <Optimize>true</Optimize>
   <DefineConstants>$(DefineConstants);FAST_EMU</DefineConstants>
+  <!-- Allow disabling AOT by setting -p:DisableAot=true on publish/build -->
+  <RunAOTCompilation Condition="'$(DisableAot)'=='true'">false</RunAOTCompilation>
+  <DefineConstants Condition="'$(DisableAot)'=='true'">$(DefineConstants);NO_AOT</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

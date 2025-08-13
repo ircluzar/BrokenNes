@@ -238,7 +238,16 @@ public class Mapper5 : IMapper
         { prgMode = s.prgMode; chrMode = s.chrMode; s.prgRegs.CopyTo(prgRegs,0); s.chrRegs.CopyTo(chrRegs,0); nametableControl = s.nametableControl; ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping(); return; }
         if (state is System.Text.Json.JsonElement je)
         {
-            try { var s2 = System.Text.Json.JsonSerializer.Deserialize<Mapper5State>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions{ IncludeFields = true}); if (s2!=null) { prgMode = s2.prgMode; chrMode = s2.chrMode; s2.prgRegs.CopyTo(prgRegs,0); s2.chrRegs.CopyTo(chrRegs,0); nametableControl = s2.nametableControl; ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping(); } } catch {}
+            try {
+                if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
+                    if(je.TryGetProperty("prgMode", out var pm)) prgMode = pm.GetInt32();
+                    if(je.TryGetProperty("chrMode", out var cm)) chrMode = cm.GetInt32();
+                    if(je.TryGetProperty("prgRegs", out var pr) && pr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pr.EnumerateArray()){ if(i<4) prgRegs[i++] = el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("chrRegs", out var cr) && cr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in cr.EnumerateArray()){ if(i<8) chrRegs[i++] = el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("nametableControl", out var nt)) nametableControl = (byte)nt.GetByte();
+                    ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping();
+                }
+            } catch { }
         }
     }
 }

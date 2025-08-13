@@ -163,9 +163,16 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
         if (stateObj is Mapper1State s) { shiftRegister = s.shiftRegister; control = s.control; chrBank0 = s.chrBank0; chrBank1 = s.chrBank1; prgBank = s.prgBank; shiftCount = s.shiftCount; ApplyMirroring(); ApplyBanks(); return; }
         if (stateObj is System.Text.Json.JsonElement je) {
             try {
-                var s2 = System.Text.Json.JsonSerializer.Deserialize<Mapper1State>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions{ IncludeFields=true});
-                if (s2!=null) { shiftRegister = s2.shiftRegister; control = s2.control; chrBank0 = s2.chrBank0; chrBank1 = s2.chrBank1; prgBank = s2.prgBank; shiftCount = s2.shiftCount; ApplyMirroring(); ApplyBanks(); }
-            } catch {}
+                if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
+                    if(je.TryGetProperty("shiftRegister", out var sr)) shiftRegister = (byte)sr.GetByte();
+                    if(je.TryGetProperty("control", out var c)) control = (byte)c.GetByte();
+                    if(je.TryGetProperty("chrBank0", out var cb0)) chrBank0 = (byte)cb0.GetByte();
+                    if(je.TryGetProperty("chrBank1", out var cb1)) chrBank1 = (byte)cb1.GetByte();
+                    if(je.TryGetProperty("prgBank", out var pb)) prgBank = (byte)pb.GetByte();
+                    if(je.TryGetProperty("shiftCount", out var sc)) shiftCount = sc.GetInt32();
+                    ApplyMirroring(); ApplyBanks();
+                }
+            } catch { }
         }
     }
 }

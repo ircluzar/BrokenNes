@@ -16,6 +16,7 @@ public class Bus : IBus
 		public IPPU ppu; // points to activePpu
 		private PPU_FMC ppuFmc; // first PPU core implementation
 		private PPU_FIX ppuFix; // placeholder FIX PPU core (mirrors FMC for now)
+		private PPU_LQ ppuLq; // low-quality degraded visual core
 		private IPPU activePpu;
 		public APU_FIX apu; // modern core (renamed from APU)
 		public APU_FMC apuJank; // legacy core (renamed from APUJANK)
@@ -34,9 +35,10 @@ public class Bus : IBus
 		cpuFix = new CPU_FIX(this); // instanced but unused until selection added
 		activeCpu = cpuFmc;
 		cpu = activeCpu; // expose
-		ppuFmc = new PPU_FMC(this); // instantiate FMC PPU core
-		ppuFix = new PPU_FIX(this); // instantiate FIX placeholder
-		activePpu = ppuFmc;
+			ppuFmc = new PPU_FMC(this); // instantiate FMC PPU core
+			ppuFix = new PPU_FIX(this); // instantiate FIX placeholder
+			ppuLq = new PPU_LQ(this); // instantiate LQ core
+			activePpu = ppuFmc;
 		ppu = activePpu;
 		apu = new APU_FIX(this);
 		apuJank = new APU_FMC(this);
@@ -73,13 +75,14 @@ public class Bus : IBus
 	public enum ApuCore { Modern, Jank, QuickNes }
 
 	// === PPU Core Hot-Swap Support ===
-	public enum PpuCore { FMC = 0, FIX = 1 /* future cores */ }
+	public enum PpuCore { FMC = 0, FIX = 1, LQ = 2 /* future cores */ }
 	public void SetPpuCore(PpuCore core)
 	{
 		var prevState = activePpu != null ? activePpu.GetState() : new object();
 		IPPU newPpu = core switch {
 			PpuCore.FMC => ppuFmc,
 			PpuCore.FIX => ppuFix,
+			PpuCore.LQ => ppuLq,
 			_ => ppuFmc
 		};
 		if (!ReferenceEquals(newPpu, activePpu))
@@ -89,7 +92,7 @@ public class Bus : IBus
 		activePpu = newPpu;
 		ppu = activePpu;
 	}
-	public PpuCore GetActivePpuCore() => activePpu == ppuFmc ? PpuCore.FMC : PpuCore.FIX;
+	public PpuCore GetActivePpuCore() => activePpu == ppuFmc ? PpuCore.FMC : (activePpu == ppuFix ? PpuCore.FIX : PpuCore.LQ);
 
 	public void SetApuCore(ApuCore core)
 	{
