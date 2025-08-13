@@ -19,4 +19,8 @@ public class PpuSharedState
     public int scanlineCycle, scanline;
     public byte ppuDataBuffer;
     public int staticFrameCounter; // include to avoid visual jumps when switching cores mid-static effect
+    // Background fade (PPU_BFR specific, harmless for others if left default)
+    public float backgroundFadeAlpha; // current alpha applied
+    public bool enableAutoFade; // auto sine oscillation flag
+    public long fadeFrameCounter; // frames elapsed for auto fade timing
 }

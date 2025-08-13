@@ -35,6 +35,30 @@ public class PPU_CUBE : IPPU
 	private int scanline;
 
 	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
+	// Cached precomputed gradient RGBA rows (lazy invalidated when universal bg color changes)
+	private byte[]? gradientCache; // length ScreenWidth*4*ScreenHeight
+	private byte lastUniversalBg = 0xFF; // impossible initial so first frame builds cache
+	// Cache of resolved RGB triples for the 32 paletteRAM entries (updated on writes)
+	private readonly byte[] paletteResolved = new byte[32 * 3];
+	// Runtime toggle for more expensive shadow effects (can be disabled for speed)
+#if FAST_EMU
+	private bool shadowsEnabled = true; // can be toggled at runtime
+#else
+	private bool shadowsEnabled = true;
+#endif
+	// Sprite scanline index (maps each scanline to relevant sprite indices)
+	private readonly byte[] spriteScanlineCounts = new byte[ScreenHeight];
+	private readonly byte[,] spriteScanlineIndices = new byte[ScreenHeight, 64];
+	private bool spriteIndexValid = false;
+	private bool oamDirty = true; // force initial build
+	private bool lastSprite8x16 = false; // track sprite height mode changes
+
+	// Pattern row cache (plane0+plane1 packed) to reduce CHR fetches: 2 pattern tables * 256 tiles * 8 rows
+	private const int PatternRowCacheSize = 2 * 256 * 8; // 4096
+	private readonly ushort[] patternRowPacked = new ushort[PatternRowCacheSize];
+	private readonly ushort[] patternRowGen = new ushort[PatternRowCacheSize];
+	private ushort patternGeneration = 1; // generation counter for invalidation
+	private bool chrDirty = true; // set when CHR memory / mapping changes
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
 	// Shadow configuration: shadow is projected bottom-left with vertical gap (distance)
@@ -49,6 +73,8 @@ public class PPU_CUBE : IPPU
 	private readonly bool[,] bgCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
+	// Precomputed darken lookup for shadow application (maps original 0-255 -> darkened value)
+	private static readonly byte[] DarkenLUT = BuildDarkenLUT();
 
 	// Removed advanced sprite FX (clusters, bevels, glows) – keeping only backdrop shadow & authentic sprite colors.
 
@@ -62,6 +88,7 @@ public class PPU_CUBE : IPPU
 
 		// Initialize palette RAM with some default values
 		InitializeDefaultPalette();
+		RebuildResolvedPalette();
 
 		PPUADDR = 0x0000;
 		PPUCTRL = 0x00;
@@ -89,6 +116,26 @@ public class PPU_CUBE : IPPU
 				// Clear coverage history at frame start
 				for (int r = 0; r < ShadowVerticalDistance; r++)
 					for (int x = 0; x < ScreenWidth; x++) { spriteCoverageHistory[r,x] = false; bgCoverageHistory[r,x] = false; }
+				// Handle CHR pattern cache invalidation
+				if (chrDirty)
+				{
+					patternGeneration++;
+					if (patternGeneration == 0) // wrap safeguard: reset all generations
+					{
+						Array.Clear(patternRowGen, 0, patternRowGen.Length);
+						patternGeneration = 1;
+					}
+					chrDirty = false;
+				}
+				// Build sprite scanline index if needed (OAM changed or sprite size mode toggled)
+				bool cur8x16 = (PPUCTRL & 0x20) != 0;
+				if (oamDirty || !spriteIndexValid || cur8x16 != lastSprite8x16)
+				{
+					BuildSpriteScanlineIndex(cur8x16);
+					lastSprite8x16 = cur8x16;
+					oamDirty = false;
+					spriteIndexValid = true;
+				}
 			}
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
@@ -166,37 +213,55 @@ public class PPU_CUBE : IPPU
 	private void PreFillGradientLine(int y)
 	{
 		byte ubIdx = paletteRAM[0];
+		if (gradientCache == null || ubIdx != lastUniversalBg)
+		{
+			BuildGradientCache(ubIdx);
+		}
+		// copy cached row
+		int srcOffset = y * ScreenWidth * 4;
+		Buffer.BlockCopy(gradientCache!, srcOffset, frameBuffer, srcOffset, ScreenWidth * 4);
+	}
+
+	private void BuildGradientCache(byte ubIdx)
+	{
+		lastUniversalBg = ubIdx;
+		gradientCache ??= new byte[ScreenWidth * ScreenHeight * 4];
 		int pTop = (ubIdx & 0x3F) * 3;
 		byte topR = PaletteBytes[pTop];
-		byte topG = PaletteBytes[pTop+1];
-		byte topB = PaletteBytes[pTop+2];
-		// Determine brightness (simple luma)
-		double brightness = 0.299 * topR + 0.587 * topG + 0.114 * topB;
+		byte topG = PaletteBytes[pTop + 1];
+		byte topB = PaletteBytes[pTop + 2];
+		// integer luma approximation (0.299,0.587,0.114) -> (77,150,29)/256
+		int brightness = (topR * 77 + topG * 150 + topB * 29) >> 8;
 		byte botR, botG, botB;
-		if (brightness >= 128) // light -> lighten bottom by +25% toward white
+		if (brightness >= 128)
 		{
-			botR = (byte)(topR + (int)((255 - topR) * 0.25));
-			botG = (byte)(topG + (int)((255 - topG) * 0.25));
-			botB = (byte)(topB + (int)((255 - topB) * 0.25));
+			botR = (byte)(topR + ((255 - topR) >> 2));
+			botG = (byte)(topG + ((255 - topG) >> 2));
+			botB = (byte)(topB + ((255 - topB) >> 2));
 		}
-		else // dark -> darken bottom by 50%
+		else
 		{
-			botR = (byte)(topR * 0.5);
-			botG = (byte)(topG * 0.5);
-			botB = (byte)(topB * 0.5);
+			botR = (byte)(topR >> 1);
+			botG = (byte)(topG >> 1);
+			botB = (byte)(topB >> 1);
 		}
-		float t = ScreenHeight <= 1 ? 0f : (float)y / (ScreenHeight - 1);
-		byte r = (byte)(topR + (int)((botR - topR) * t));
-		byte g = (byte)(topG + (int)((botG - topG) * t));
-		byte b = (byte)(topB + (int)((botB - topB) * t));
-		int baseIndex = y * ScreenWidth * 4;
-		for (int x = 0; x < ScreenWidth; x++)
+		// Precompute per scanline color then fill row via fast loop
+		for (int y = 0; y < ScreenHeight; y++)
 		{
-			int fi = baseIndex + x * 4;
-			frameBuffer[fi + 0] = r;
-			frameBuffer[fi + 1] = g;
-			frameBuffer[fi + 2] = b;
-			frameBuffer[fi + 3] = 255; // mark as filled
+			int tNum = y;
+			int tDen = ScreenHeight - 1;
+			int r = topR + ((botR - topR) * tNum) / tDen;
+			int g = topG + ((botG - topG) * tNum) / tDen;
+			int b = topB + ((botB - topB) * tNum) / tDen;
+			int baseIndex = y * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				int fi = baseIndex + (x << 2);
+				gradientCache[fi] = (byte)r;
+				gradientCache[fi + 1] = (byte)g;
+				gradientCache[fi + 2] = (byte)b;
+				gradientCache[fi + 3] = 255;
+			}
 		}
 	}
 
@@ -259,7 +324,7 @@ public class PPU_CUBE : IPPU
 		if ((PPUMASK & 0x08) == 0) return;
 
 		// Project background tile shadows from prior coverage before drawing current scanline
-		if (scanline >= ShadowVerticalDistance)
+		if (shadowsEnabled && scanline >= ShadowVerticalDistance)
 		{
 			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
 			int shadowY = scanline;
@@ -268,15 +333,11 @@ public class PPU_CUBE : IPPU
 			{
 				if (!bgCoverageHistory[srcRow, x]) continue;
 				int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance so shadowY already correct
-				if (sx < 0 || sx >= ScreenWidth) continue;
+				if ((uint)sx >= ScreenWidth) continue;
 				int fi = baseIndex + sx * 4;
-				byte or = frameBuffer[fi + 0]; byte og = frameBuffer[fi + 1]; byte ob = frameBuffer[fi + 2];
-				if (or==0 && og==0 && ob==0) continue;
-				float keep = 1f - ShadowOpacity;
-				frameBuffer[fi + 0] = (byte)(or * keep);
-				frameBuffer[fi + 1] = (byte)(og * keep);
-				frameBuffer[fi + 2] = (byte)(ob * keep);
+				frameBuffer[fi + 0] = DarkenLUT[frameBuffer[fi + 0]];
+				frameBuffer[fi + 1] = DarkenLUT[frameBuffer[fi + 1]];
+				frameBuffer[fi + 2] = DarkenLUT[frameBuffer[fi + 2]];
 			}
 		}
 
@@ -313,9 +374,19 @@ public class PPU_CUBE : IPPU
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 			int patternAddr = patternTable + (tileIndex * 16) + fineY;
 			
-			// Read the two bit planes for this row of the tile
-			byte plane0 = Read((ushort)patternAddr);
-			byte plane1 = Read((ushort)(patternAddr + 8));
+			// Pattern row cache lookup
+			int cacheIndex = (((patternAddr & 0x1000) != 0) ? 1 : 0) * 2048 + (tileIndex * 8) + fineY;
+			ushort packed = patternRowPacked[cacheIndex];
+			if (patternRowGen[cacheIndex] != patternGeneration)
+			{
+				byte p0 = Read((ushort)patternAddr);
+				byte p1 = Read((ushort)(patternAddr + 8));
+				packed = (ushort)(p0 | (p1 << 8));
+				patternRowPacked[cacheIndex] = packed;
+				patternRowGen[cacheIndex] = patternGeneration;
+			}
+			byte plane0 = (byte)packed;
+			byte plane1 = (byte)(packed >> 8);
 
 			// Get attribute byte for color palette
 			int attributeX = coarseX / 4;
@@ -331,39 +402,32 @@ public class PPU_CUBE : IPPU
 			int scanlineBase = scanline * ScreenWidth * 4;
 
 			// Render the 8 pixels of this tile
-			for (int i = 0; i < 8; i++)
+			// Unrolled 8-pixel loop with manual bounds & bit extraction
+			int paletteBaseLocal = 1 + (paletteIndex << 2);
+			unsafe
 			{
-				int pixel = tile * 8 + i - fineX;
-				if (pixel < 0 || pixel >= ScreenWidth) continue;
-
-				int bitIndex = 7 - i;
-				int bit0 = (plane0 >> bitIndex) & 1;
-				int bit1 = (plane1 >> bitIndex) & 1;
-				int colorIndex = bit0 | (bit1 << 1);
-
-				int frameIndex = scanlineBase + pixel * 4;
-				if (colorIndex == 0)
+				fixed (byte* fb = frameBuffer, palRes = paletteResolved, palRam = paletteRAM)
 				{
-					// Treat as transparent: only fill with universal bg if pixel hasn't been written yet (alpha check)
-					if (frameBuffer[frameIndex + 3] == 0)
+					for (int i = 0; i < 8; i++)
 					{
-						frameBuffer[frameIndex + 0] = ubR;
-						frameBuffer[frameIndex + 1] = ubG;
-						frameBuffer[frameIndex + 2] = ubB;
-						frameBuffer[frameIndex + 3] = 255;
+						int pixel = tile * 8 + i - fineX;
+						if ((uint)pixel >= ScreenWidth) continue;
+						int bitMask = 1 << (7 - i);
+						int colorIndex = ((plane0 & bitMask) != 0 ? 1 : 0) | (((plane1 & bitMask) != 0 ? 1 : 0) << 1);
+						if (colorIndex == 0) continue; // gradient already present
+						bgMask[pixel] = true;
+						bgCoverageHistory[coverageRowIndex, pixel] = true;
+						int palAddr = (paletteBaseLocal + colorIndex - 1) & 0x1F;
+						byte rawIdx = palRam[palAddr];
+						int resBase = (palAddr) * 3; // resolved cache parallels paletteRAM indices
+						int frameIndex = scanlineBase + (pixel << 2);
+						byte* dst = fb + frameIndex;
+						byte* src = palRes + resBase;
+						dst[0] = src[0];
+						dst[1] = src[1];
+						dst[2] = src[2];
+						dst[3] = 255;
 					}
-				}
-				else
-				{
-					bgMask[pixel] = true;
-					bgCoverageHistory[coverageRowIndex, pixel] = true; // mark opaque bg pixel for future shadow
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = (idx & 0x3F) * 3;
-					frameBuffer[frameIndex + 0] = PaletteBytes[p];
-					frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer[frameIndex + 3] = 255;
 				}
 			}
 
@@ -380,7 +444,7 @@ public class PPU_CUBE : IPPU
 
 		// Project shadows based on historical coverage ShadowVerticalDistance lines above.
 		// We draw shadows BEFORE sprites so they appear underneath with a visible gap.
-		if (scanline >= ShadowVerticalDistance)
+		if (shadowsEnabled && scanline >= ShadowVerticalDistance)
 		{
 			int sourceRowIndex = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
 			int shadowY = scanline; // landing row
@@ -391,19 +455,11 @@ public class PPU_CUBE : IPPU
 				{
 					if (!spriteCoverageHistory[sourceRowIndex, x]) continue;
 					int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance; no extra sy check needed
-					if (sx < 0 || sx >= ScreenWidth) continue;
+					if ((uint)sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
-					// Blend darkening instead of solid black: new = orig * (1 - opacity)
-					byte or = frameBuffer[fi + 0];
-					byte og = frameBuffer[fi + 1];
-					byte ob = frameBuffer[fi + 2];
-					if (or==0 && og==0 && ob==0) continue; // already black
-					float keep = 1f - ShadowOpacity; // same as transparency (0.69)
-					frameBuffer[fi + 0] = (byte)(or * keep);
-					frameBuffer[fi + 1] = (byte)(og * keep);
-					frameBuffer[fi + 2] = (byte)(ob * keep);
-					// alpha unchanged
+					frameBuffer[fi + 0] = DarkenLUT[frameBuffer[fi + 0]];
+					frameBuffer[fi + 1] = DarkenLUT[frameBuffer[fi + 1]];
+					frameBuffer[fi + 2] = DarkenLUT[frameBuffer[fi + 2]];
 				}
 			}
 		}
@@ -416,8 +472,11 @@ public class PPU_CUBE : IPPU
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
 		// Process all 64 sprites in OAM
-		for (int i = 0; i < 64; i++)
+		int count = spriteScanlineCounts[scanline];
+		if (count == 0) return; // no sprites intersect this scanline
+		for (int si = 0; si < count; si++)
 		{
+			int i = spriteScanlineIndices[scanline, si];
 			int offset = i * 4;
 			byte spriteY = oam[offset];
 			byte tileIndex = oam[offset + 1];
@@ -446,53 +505,53 @@ public class PPU_CUBE : IPPU
 				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 			int baseAddr = patternTable + subTileIndex * 16;
 
-			// Read pattern data for this row
-			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
-			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
+			int fineRow = subY % 8;
+			int rowAddr = baseAddr + fineRow;
+			int tileIndexUsed = subTileIndex; // for cache key
+			int cacheIndex = (((rowAddr & 0x1000) != 0) ? 1 : 0) * 2048 + (tileIndexUsed * 8) + fineRow;
+			ushort packed = patternRowPacked[cacheIndex];
+			if (patternRowGen[cacheIndex] != patternGeneration)
+			{
+				byte p0 = Read((ushort)rowAddr);
+				byte p1 = Read((ushort)(rowAddr + 8));
+				packed = (ushort)(p0 | (p1 << 8));
+				patternRowPacked[cacheIndex] = packed;
+				patternRowGen[cacheIndex] = patternGeneration;
+			}
+			byte plane0 = (byte)packed;
+			byte plane1 = (byte)(packed >> 8);
 
 			// Render 8 pixels of the sprite
-			for (int x = 0; x < 8; x++)
+			unsafe
 			{
-				int bit = flipX ? x : 7 - x;
-				int bit0 = (plane0 >> bit) & 1;
-				int bit1 = (plane1 >> bit) & 1;
-				int color = bit0 | (bit1 << 1);
-				if (color == 0) continue; // Transparent pixel
-
-				int px = spriteX + x;
-				if (px < 0 || px >= ScreenWidth) continue;
-
-				// Sprite 0 hit detection
-				if (i == 0 && bgMask[px] && color != 0)
+				fixed (byte* fb = frameBuffer, palRam = paletteRAM, palRes = paletteResolved)
 				{
-					PPUSTATUS |= 0x40;
+					for (int x = 0; x < 8; x++)
+					{
+						int bitPos = flipX ? x : 7 - x;
+						int mask = 1 << bitPos;
+						int color = ((plane0 & mask) != 0 ? 1 : 0) | (((plane1 & mask) != 0 ? 1 : 0) << 1);
+						if (color == 0) continue;
+						int px = spriteX + x;
+						if ((uint)px >= ScreenWidth) continue;
+						if (i == 0 && bgMask[px]) PPUSTATUS |= 0x40;
+						if (spritePixelDrawnReuse[px]) continue;
+						if (!priority && bgMask[px]) continue;
+						int paletteBase = 0x11 + (paletteIndex << 2);
+						int palEntry = paletteBase + color - 1;
+						byte rawIdx = palRam[palEntry];
+						int resBase = palEntry * 3;
+						int frameIndex = (scanline * ScreenWidth + px) * 4;
+						byte* dst = fb + frameIndex;
+						byte* src = palRes + resBase;
+						dst[0] = src[0];
+						dst[1] = src[1];
+						dst[2] = src[2];
+						dst[3] = 255;
+						spriteCoverageHistory[coverageRowIndex, px] = true;
+						spritePixelDrawnReuse[px] = true;
+					}
 				}
-
-				// Skip if another sprite already drew here
-				if (spritePixelDrawnReuse[px]) continue;
-
-				// Check sprite priority
-				bool shouldDraw = true;
-				if (!priority && bgMask[px])
-				{
-					shouldDraw = false;
-				}
-
-				if (!shouldDraw) continue;
-
-				// Raw sprite color (no extra shading)
-				var spriteColor = GetSpriteColor(color, paletteIndex);
-				spriteCoverageHistory[coverageRowIndex, px] = true;
-
-				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				if (frameIndex + 3 < frameBuffer.Length)
-				{
-					frameBuffer[frameIndex + 0] = spriteColor.r;
-					frameBuffer[frameIndex + 1] = spriteColor.g;
-					frameBuffer[frameIndex + 2] = spriteColor.b;
-					frameBuffer[frameIndex + 3] = 255;
-				}
-				spritePixelDrawnReuse[px] = true;
 			}
 		}
 	}
@@ -638,6 +697,7 @@ public class PPU_CUBE : IPPU
 			case 0x0004: // OAM Data
 				OAMDATA = value;
 				oam[OAMADDR++] = OAMDATA;
+				oamDirty = true;
 				break;
 			case 0x0005: // PPU Scroll
 				if (!scrollLatch)
@@ -707,6 +767,7 @@ public class PPU_CUBE : IPPU
 		if (address < 0x2000)
 		{
 			bus.cartridge.PPUWrite(address, value);
+			chrDirty = true; // pattern memory changed
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
@@ -718,7 +779,38 @@ public class PPU_CUBE : IPPU
 			ushort mirrored = (ushort)(address & 0x1F);
 			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 			paletteRAM[mirrored] = value;
+			// update resolved cache for this entry
+			UpdateResolvedPaletteEntry(mirrored);
 		}
+	}
+
+	private void RebuildResolvedPalette()
+	{
+		for (int i = 0; i < 32; i++) UpdateResolvedPaletteEntry(i);
+	}
+
+	private void UpdateResolvedPaletteEntry(int i)
+	{
+		int idx = paletteRAM[i] & 0x3F;
+		int p = idx * 3;
+		int rBase = i * 3;
+		paletteResolved[rBase] = PaletteBytes[p];
+		paletteResolved[rBase + 1] = PaletteBytes[p + 1];
+		paletteResolved[rBase + 2] = PaletteBytes[p + 2];
+	}
+
+	public void SetShadowsEnabled(bool enabled) { shadowsEnabled = enabled; }
+	public void InvalidatePatternCache() { chrDirty = true; }
+
+	private static byte[] BuildDarkenLUT()
+	{
+		// keep factor should match previous shadow implementation (keep = ShadowTransparency)
+		// since old code used keep = 1 - ShadowOpacity and ShadowOpacity = 1 - ShadowTransparency.
+		double keep = ShadowTransparency; // e.g. 0.69 -> mild darken
+		int keepFP = (int)Math.Round(keep * 256.0);
+		var lut = new byte[256];
+		for (int i = 0; i < 256; i++) lut[i] = (byte)((i * keepFP + 127) >> 8);
+		return lut;
 	}
 
 	private ushort MirrorVRAMAddress(ushort address)
@@ -750,6 +842,30 @@ public class PPU_CUBE : IPPU
 		{
 			byte value = bus.Read((ushort)(baseAddr + i));
 			oam[OAMADDR++] = value;
+		}
+		oamDirty = true;
+	}
+
+	private void BuildSpriteScanlineIndex(bool sprite8x16)
+	{
+		// Reset counts
+		Array.Clear(spriteScanlineCounts, 0, ScreenHeight);
+		int height = sprite8x16 ? 16 : 8;
+		for (int i = 0; i < 64; i++)
+		{
+			int offset = i * 4;
+			int y = oam[offset];
+			if (y >= ScreenHeight) continue; // off screen entirely (NES treats 0xEF wrap differently but fine here)
+			int yEnd = y + height;
+			if (yEnd <= 0) continue;
+			if (yEnd > ScreenHeight) yEnd = ScreenHeight; // clamp
+			for (int sy = y; sy < yEnd; sy++)
+			{
+				int c = spriteScanlineCounts[sy];
+				if (c >= 64) continue; // avoid overflow
+				spriteScanlineIndices[sy, c] = (byte)i;
+				spriteScanlineCounts[sy] = (byte)(c + 1);
+			}
 		}
 	}
 

@@ -63,5 +63,44 @@ namespace NesEmulator
             var idx = typeName.IndexOf('_');
             return idx > 0 && idx < typeName.Length - 1 ? typeName[(idx+1)..] : typeName;
         }
+
+        // Create (or recreate) instances of all discovered core implementations for a given interface.
+        // Tries to invoke a (Bus) constructor first; falls back to parameterless if present.
+        public static Dictionary<string, TIface> CreateInstances<TIface>(Bus bus, string prefix) where TIface : class
+        {
+            Initialize();
+            var dict = new Dictionary<string, TIface>(StringComparer.OrdinalIgnoreCase);
+            if (_assembly == null) return dict;
+            foreach (var t in _assembly.GetTypes())
+            {
+                if (!typeof(TIface).IsAssignableFrom(t) || t.IsAbstract || t.IsInterface) continue;
+                if (!t.Name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                try
+                {
+                    object? instance = null;
+                    // Prefer (Bus) constructor to let cores access the bus
+                    var ctorBus = t.GetConstructor(new[] { typeof(Bus) });
+                    if (ctorBus != null)
+                        instance = ctorBus.Invoke(new object[] { bus });
+                    else
+                    {
+                        var ctorDefault = t.GetConstructor(Type.EmptyTypes);
+                        if (ctorDefault != null)
+                            instance = ctorDefault.Invoke(null);
+                    }
+                    if (instance is TIface core)
+                    {
+                        var id = ExtractSuffix(t.Name, prefix);
+                        if (!dict.ContainsKey(id))
+                            dict[id] = core;
+                    }
+                }
+                catch
+                {
+                    // swallow – unsafe / experimental core types shouldn't break registry
+                }
+            }
+            return dict;
+        }
     }
 }

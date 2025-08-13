@@ -8,21 +8,19 @@ public interface IBus
 
 public class Bus : IBus
 {
-		// Active CPU core (public handle). Internally we may host multiple concrete cores and switch.
-		public ICPU cpu; // points to activeCpu
-		private CPU_FMC cpuFmc; // first CPU core implementation
-		private CPU_FIX cpuFix; // placeholder FIX CPU core (mirrors FMC for now)
-		private ICPU activeCpu; // mirror pointer used for core bookkeeping
-		public IPPU ppu; // points to activePpu
-		private PPU_FMC ppuFmc; // first PPU core implementation
-		private PPU_FIX ppuFix; // placeholder FIX PPU core (mirrors FMC for now)
-		private PPU_LQ ppuLq; // low-quality degraded visual core
-		private PPU_CUBE ppuCube; // enhanced pseudo-3D sprite core
+		// Automatic core dictionaries populated via reflection (CoreRegistry)
+		private readonly System.Collections.Generic.Dictionary<string, ICPU> _cpuCores;
+		private readonly System.Collections.Generic.Dictionary<string, IPPU> _ppuCores;
+		private readonly System.Collections.Generic.Dictionary<string, IAPU> _apuCores;
+		// Active instances & legacy public handles (kept for minimal external changes)
+		private ICPU activeCpu;
 		private IPPU activePpu;
-		public APU_FIX apu; // modern core (renamed from APU)
-		public APU_FMC apuJank; // legacy core (renamed from APUJANK)
-		public APU_QN apuQN; // QuickNes core
-		private IAPU activeApu; // current active
+		private IAPU activeApu;
+		public ICPU cpu; // points to activeCpu
+		public IPPU ppu; // points to activePpu
+		public IAPU apu; // default modern
+		public IAPU apuJank; // legacy famiclone
+		public IAPU apuQN; // QuickNes
 		private bool famicloneMode = true; // legacy flag: true when last user toggle selected famiclone; derived from activeApu for reporting
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
 	public Cartridge cartridge;
@@ -32,78 +30,125 @@ public class Bus : IBus
 	public Bus(Cartridge cartridge)
 	{
 		this.cartridge = cartridge;
-		cpuFmc = new CPU_FMC(this);
-		cpuFix = new CPU_FIX(this); // instanced but unused until selection added
-		activeCpu = cpuFmc;
-		cpu = activeCpu; // expose
-			ppuFmc = new PPU_FMC(this); // instantiate FMC PPU core
-			ppuFix = new PPU_FIX(this); // instantiate FIX placeholder
-			ppuLq = new PPU_LQ(this); // instantiate LQ core
-			ppuCube = new PPU_CUBE(this); // instantiate enhanced CUBE core
-			activePpu = ppuCube; // default to enhanced core for visual pop
+		_cpuCores = CoreRegistry.CreateInstances<ICPU>(this, "CPU_");
+		_ppuCores = CoreRegistry.CreateInstances<IPPU>(this, "PPU_");
+		_apuCores = CoreRegistry.CreateInstances<IAPU>(this, "APU_");
+		// Defaults
+		activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc) ? cpuFmc : (_cpuCores.Count>0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
+		cpu = activeCpu;
+		// Prefer FMC PPU by default; fall back to any available
+		activePpu = _ppuCores.TryGetValue("FMC", out var pFmc) ? pFmc : (_ppuCores.TryGetValue("CUBE", out var pCube) ? pCube : (_ppuCores.Count>0 ? System.Linq.Enumerable.First(_ppuCores.Values) : throw new System.Exception("No PPU cores found")));
 		ppu = activePpu;
-		apu = new APU_FIX(this);
-		apuJank = new APU_FMC(this);
-		apuQN = new APU_QN(this);
-		activeApu = apuJank; // default famiclone
+		apu = _apuCores.TryGetValue("FIX", out var aFix) ? aFix : (_apuCores.Count>0 ? System.Linq.Enumerable.First(_apuCores.Values) : throw new System.Exception("No APU cores found"));
+		apuJank = _apuCores.TryGetValue("FMC", out var aFmc) ? aFmc : apu;
+		apuQN = _apuCores.TryGetValue("QN", out var aQn) ? aQn : apu;
+		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
 	}
 
 	// === CPU Core Hot-Swap Support (parallel to APU system) ===
-	public enum CpuCore { FMC = 0, FIX = 1 /* future cores enumerate */ }
+	public enum CpuCore { FMC = 0, FIX = 1, LOW = 2 }
 
 	public void SetCpuCore(CpuCore core)
 	{
 		// capture current state for possible transfer
 		var prevState = activeCpu != null ? activeCpu.GetState() : new object();
 		bool ignoreInvalid = activeCpu?.IgnoreInvalidOpcodes ?? false;
-		ICPU newCpu = core switch {
-			CpuCore.FMC => cpuFmc,
-			CpuCore.FIX => cpuFix,
-			_ => cpuFmc
+		ICPU? newCpu = core switch {
+			CpuCore.FMC => GetCpu("FMC") ?? activeCpu,
+			CpuCore.FIX => GetCpu("FIX") ?? activeCpu,
+			CpuCore.LOW => GetCpu("LOW") ?? activeCpu,
+			_ => GetCpu("FMC") ?? activeCpu
 		};
-		if (!ReferenceEquals(newCpu, activeCpu))
+		if (newCpu != null && !ReferenceEquals(newCpu, activeCpu))
 		{
 			try { newCpu.SetState(prevState); } catch { }
 			// propagate current invalid opcode handling preference
 			newCpu.IgnoreInvalidOpcodes = ignoreInvalid;
 		}
-		activeCpu = newCpu;
-		cpu = activeCpu;
+		if (newCpu != null) { activeCpu = newCpu; cpu = activeCpu; }
 	}
 
-	public CpuCore GetActiveCpuCore() => activeCpu == cpuFmc ? CpuCore.FMC : CpuCore.FIX;
+	public CpuCore GetActiveCpuCore() {
+		var id = System.Linq.Enumerable.FirstOrDefault(_cpuCores, kv => object.ReferenceEquals(kv.Value, activeCpu)).Key;
+		return id switch { "FMC" => CpuCore.FMC, "FIX" => CpuCore.FIX, "LOW" => CpuCore.LOW, _ => CpuCore.FMC };
+	}
+	private ICPU? GetCpu(string id) => _cpuCores.TryGetValue(id, out var c)?c:null;
 
 	public enum ApuCore { Modern, Jank, QuickNes }
 
+	// === Generic reflection-driven core discovery helpers ===
+	public System.Collections.Generic.IReadOnlyList<string> GetCpuCoreIds() => _cpuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
+	public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => _ppuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
+	public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => _apuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
+
+	// Generic setters by suffix id (e.g. "FMC", "FIX", "NGTV") allowing new cores without editing enums
+	public bool SetCpuCoreById(string id)
+	{
+		if (string.IsNullOrWhiteSpace(id)) return false;
+		if (!_cpuCores.TryGetValue(id, out var newCpu) || ReferenceEquals(newCpu, activeCpu)) return false;
+		var prevState = activeCpu.GetState();
+		bool ignoreInvalid = activeCpu.IgnoreInvalidOpcodes;
+		try { newCpu.SetState(prevState); } catch { }
+		newCpu.IgnoreInvalidOpcodes = ignoreInvalid;
+		activeCpu = newCpu; cpu = activeCpu; return true;
+	}
+	public bool SetPpuCoreById(string id)
+	{
+		if (string.IsNullOrWhiteSpace(id)) return false;
+		if (!_ppuCores.TryGetValue(id, out var newPpu) || ReferenceEquals(newPpu, activePpu)) return false;
+		var prevState = activePpu.GetState();
+		try { newPpu.SetState(prevState); } catch { }
+		activePpu = newPpu; ppu = activePpu; return true;
+	}
+	public bool SetApuCoreById(string id)
+	{
+		if (string.IsNullOrWhiteSpace(id)) return false;
+		if (!_apuCores.TryGetValue(id, out var newApu) || ReferenceEquals(newApu, activeApu)) return false;
+		activeApu = newApu; // reapply latched registers so new core inherits state
+		for (int i=0;i<apuRegLatch.Length;i++)
+		{
+			ushort addr = (ushort)(0x4000 + i);
+			if (addr == 0x4014) continue;
+			try { activeApu.WriteAPURegister(addr, apuRegLatch[i]); } catch { }
+		}
+		famicloneMode = id.Equals("FMC", System.StringComparison.OrdinalIgnoreCase); // legacy semantic
+		return true;
+	}
+
 	// === PPU Core Hot-Swap Support ===
-		public enum PpuCore { FMC = 0, FIX = 1, LQ = 2, CUBE = 3 /* enhanced pseudo-3D */ }
+		public enum PpuCore { FMC = 0, FIX = 1, LQ = 2, CUBE = 3, LOW = 4, BFR = 5 }
 		public void SetPpuCore(PpuCore core)
 	{
 		var prevState = activePpu != null ? activePpu.GetState() : new object();
-			IPPU newPpu = core switch {
-				PpuCore.FMC => ppuFmc,
-				PpuCore.FIX => ppuFix,
-				PpuCore.LQ => ppuLq,
-				PpuCore.CUBE => ppuCube,
-				_ => ppuFmc
+			IPPU? newPpu = core switch {
+				PpuCore.FMC => GetPpu("FMC") ?? activePpu,
+				PpuCore.FIX => GetPpu("FIX") ?? activePpu,
+				PpuCore.LQ => GetPpu("LQ") ?? activePpu,
+				PpuCore.CUBE => GetPpu("CUBE") ?? activePpu,
+				PpuCore.LOW => GetPpu("LOW") ?? activePpu,
+				PpuCore.BFR => GetPpu("BFR") ?? activePpu,
+				_ => GetPpu("FMC") ?? activePpu
 			};
-		if (!ReferenceEquals(newPpu, activePpu))
+	if (newPpu != null && !ReferenceEquals(newPpu, activePpu))
 		{
-			try { newPpu.SetState(prevState); } catch { }
+		try { newPpu.SetState(prevState); } catch { }
 		}
-		activePpu = newPpu;
-		ppu = activePpu;
+	if (newPpu != null) { activePpu = newPpu; ppu = activePpu; }
 	}
-		public PpuCore GetActivePpuCore() => activePpu == ppuFmc ? PpuCore.FMC : (activePpu == ppuFix ? PpuCore.FIX : (activePpu == ppuLq ? PpuCore.LQ : PpuCore.CUBE));
+		public PpuCore GetActivePpuCore() {
+			var kv = System.Linq.Enumerable.FirstOrDefault(_ppuCores, kvp => object.ReferenceEquals(kvp.Value, activePpu));
+			return kv.Key switch { "FMC" => PpuCore.FMC, "FIX" => PpuCore.FIX, "LQ" => PpuCore.LQ, "CUBE" => PpuCore.CUBE, "LOW" => PpuCore.LOW, "BFR" => PpuCore.BFR, _ => PpuCore.FMC };
+		}
+		private IPPU? GetPpu(string id) => _ppuCores.TryGetValue(id, out var p)?p:null;
 
 	public void SetApuCore(ApuCore core)
 	{
 		switch(core)
 		{
-			case ApuCore.Modern: activeApu = apu; break;
-			case ApuCore.Jank: activeApu = apuJank; break;
-			case ApuCore.QuickNes: activeApu = apuQN; break;
+			case ApuCore.Modern: activeApu = apu ?? GetApu("FIX") ?? activeApu; break;
+			case ApuCore.Jank: activeApu = apuJank ?? GetApu("FMC") ?? activeApu; break;
+			case ApuCore.QuickNes: activeApu = apuQN ?? GetApu("QN") ?? activeApu; break;
 		}
 		// sync legacy flag for callers that still query famiclone boolean
 		famicloneMode = core == ApuCore.Jank;
@@ -138,13 +183,14 @@ public class Bus : IBus
 		public void HardResetAPUs()
 		{
 		   var prev = GetActiveApuCore();
-		   apu = new APU_FIX(this);
-		   apuJank = new APU_FMC(this);
-		   apuQN = new APU_QN(this);
-		   // Preserve the previously selected core
+		   // Remake selected known cores (without rebuilding entire dictionaries to keep references stable elsewhere)
+		   apu = GetApu("FIX") ?? apu;
+		   apuJank = GetApu("FMC") ?? apuJank;
+		   apuQN = GetApu("QN") ?? apuQN;
 		   SetApuCore(prev);
 		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
 		}
+		private IAPU? GetApu(string id) => _apuCores.TryGetValue(id, out var a)?a:null;
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)

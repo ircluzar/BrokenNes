@@ -37,18 +37,29 @@ public class PPU_BFR : IPPU
 	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Shadow configuration: shadow is projected bottom-left with vertical gap (distance)
-	private const int ShadowVerticalDistance = 2; // how many scanlines below original pixel the shadow lands
-	private const int ShadowOffsetX = -1;        // horizontal offset (negative = left)
-	private const int ShadowOffsetY = 2;         // vertical offset matches distance (ensures projection used)
-	private const float ShadowTransparency = 0.69f; // 69% transparent -> 31% opaque
-	private const float ShadowOpacity = 1f - ShadowTransparency; // 0.31 opacity used for darkening
-	// Rolling coverage history for previous sprite scanlines (only need ShadowVerticalDistance rows)
-	private readonly bool[,] spriteCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
-	// Background coverage history to project background tile shadows
-	private readonly bool[,] bgCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
+	// Removed shadow projection system (sprite/background darkening). Keeping transparent background effect.
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
+	// Configurable background fade factor (fraction of universal background color applied where tile pixel is transparent)
+	private float backgroundFadeAlpha = 0.15f; // 15% default
+	private int backgroundFadeAlpha256 = 38; // cached 0..256 integer (~0.148 * 256)
+	private bool enableAutoFade = true; // oscillate between 15% and 35%
+	private long fadeFrameCounter = 0; // counts rendered frames for sine phase
+	// Two-minute full cycle (there and back smoothly with sine). We'll map sine to 0..1, scale to range.
+	private const int TargetFps = 60; // approximate (actual might vary slightly)
+	private const double AutoFadePeriodSeconds = 120.0; // 2 minutes
+	private readonly double autoFadeAngularVelocity = (2.0 * System.Math.PI) / AutoFadePeriodSeconds; // radians per second
+	private const float AutoFadeMin = 0.15f;
+	private const float AutoFadeMax = 0.35f;
+	public void SetBackgroundFade(float alpha)
+	{
+		if (alpha < 0f) alpha = 0f; else if (alpha > 1f) alpha = 1f;
+		backgroundFadeAlpha = alpha;
+		backgroundFadeAlpha256 = (int)System.Math.Round(alpha * 256.0f);
+	}
+	public float GetBackgroundFade() => backgroundFadeAlpha;
+	public void EnableAutoFade(bool enable) => enableAutoFade = enable;
+	public bool IsAutoFadeEnabled() => enableAutoFade;
 
 	// Removed advanced sprite FX (clusters, bevels, glows) – keeping only backdrop shadow & authentic sprite colors.
 
@@ -86,6 +97,16 @@ public class PPU_BFR : IPPU
 			if (scanline == 0 && scanlineCycle == 0)
 			{
 				PPUSTATUS &= 0x3F;
+				// At very start of frame, update auto-fade if enabled
+				if (enableAutoFade)
+				{
+					// Compute time in seconds (approx) from frame counter; increment after applying
+					double seconds = (double)fadeFrameCounter / TargetFps;
+					// Sine oscillates -1..1; map to 0..1
+					double s = (System.Math.Sin(seconds * autoFadeAngularVelocity) + 1.0) * 0.5; // 0..1
+					float alpha = (float)(AutoFadeMin + s * (AutoFadeMax - AutoFadeMin));
+					SetBackgroundFade(alpha);
+				}
 			}
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
@@ -133,6 +154,8 @@ public class PPU_BFR : IPPU
 				if (scanline == TotalScanlines)
 				{
 					scanline = 0;
+					// Completed a frame
+					if (enableAutoFade) fadeFrameCounter++;
 				}
 			}
 		}
@@ -237,31 +260,6 @@ public class PPU_BFR : IPPU
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 
-		// Project background tile shadows from prior coverage before drawing current scanline
-		if (scanline >= ShadowVerticalDistance)
-		{
-			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int shadowY = scanline;
-			int baseIndex = shadowY * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				if (!bgCoverageHistory[srcRow, x]) continue;
-				int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance so shadowY already correct
-				if (sx < 0 || sx >= ScreenWidth) continue;
-				int fi = baseIndex + sx * 4;
-				byte or = frameBuffer[fi + 0]; byte og = frameBuffer[fi + 1]; byte ob = frameBuffer[fi + 2];
-				if (or==0 && og==0 && ob==0) continue;
-				float keep = 1f - ShadowOpacity;
-				frameBuffer[fi + 0] = (byte)(or * keep);
-				frameBuffer[fi + 1] = (byte)(og * keep);
-				frameBuffer[fi + 2] = (byte)(ob * keep);
-			}
-		}
-
-		// Current background coverage row index to record tiles (opaque bg pixels)
-		int coverageRowIndex = scanline % ShadowVerticalDistance;
-		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageHistory[coverageRowIndex, cx] = false;
 
 	// Cache universal background color once per scanline
 	byte ubIdx = paletteRAM[0];
@@ -309,42 +307,44 @@ public class PPU_BFR : IPPU
 			// Pre-calculate frame buffer base for this scanline
 			int scanlineBase = scanline * ScreenWidth * 4;
 
-			// Render the 8 pixels of this tile
-			for (int i = 0; i < 8; i++)
-			{
-				int pixel = tile * 8 + i - fineX;
-				if (pixel < 0 || pixel >= ScreenWidth) continue;
-
-				int bitIndex = 7 - i;
-				int bit0 = (plane0 >> bitIndex) & 1;
-				int bit1 = (plane1 >> bitIndex) & 1;
-				int colorIndex = bit0 | (bit1 << 1);
-
-				int frameIndex = scanlineBase + pixel * 4;
-				if (colorIndex == 0)
+				// Render the 8 pixels of this tile
+				for (int i = 0; i < 8; i++)
 				{
-					// Treat as transparent: only fill with universal bg if pixel hasn't been written yet (alpha check)
-					if (frameBuffer[frameIndex + 3] == 0)
+					int pixel = tile * 8 + i - fineX;
+					if (pixel < 0 || pixel >= ScreenWidth) continue;
+					int bitIndex = 7 - i;
+					int bit0 = (plane0 >> bitIndex) & 1;
+					int bit1 = (plane1 >> bitIndex) & 1;
+					int colorIndex = bit0 | (bit1 << 1);
+					int frameIndex = scanlineBase + pixel * 4;
+					if (colorIndex == 0)
 					{
-						frameBuffer[frameIndex + 0] = ubR;
-						frameBuffer[frameIndex + 1] = ubG;
-						frameBuffer[frameIndex + 2] = ubB;
+						// Instead of only filling once, gradually fade existing pixel toward universal background color.
+						// new = old*(1-a) + bg*a, applied every frame in transparent areas -> slow background restoration.
+						int a = backgroundFadeAlpha256; // 0..256
+						if (a > 0)
+						{
+							byte or = frameBuffer[frameIndex + 0];
+							byte og = frameBuffer[frameIndex + 1];
+							byte ob = frameBuffer[frameIndex + 2];
+							frameBuffer[frameIndex + 0] = (byte)((or * (256 - a) + ubR * a) >> 8);
+							frameBuffer[frameIndex + 1] = (byte)((og * (256 - a) + ubG * a) >> 8);
+							frameBuffer[frameIndex + 2] = (byte)((ob * (256 - a) + ubB * a) >> 8);
+							frameBuffer[frameIndex + 3] = 255;
+						}
+					}
+					else
+					{
+						bgMask[pixel] = true;
+						int paletteBase = 1 + (paletteIndex << 2);
+						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+						int p = (idx & 0x3F) * 3;
+						frameBuffer[frameIndex + 0] = PaletteBytes[p];
+						frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
+						frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
 						frameBuffer[frameIndex + 3] = 255;
 					}
 				}
-				else
-				{
-					bgMask[pixel] = true;
-					bgCoverageHistory[coverageRowIndex, pixel] = true; // mark opaque bg pixel for future shadow
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = (idx & 0x3F) * 3;
-					frameBuffer[frameIndex + 0] = PaletteBytes[p];
-					frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer[frameIndex + 3] = 255;
-				}
-			}
 
 			// Increment to next tile
 			IncrementX(ref renderV);
@@ -357,39 +357,6 @@ public class PPU_BFR : IPPU
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
 
-		// Project shadows based on historical coverage ShadowVerticalDistance lines above.
-		// We draw shadows BEFORE sprites so they appear underneath with a visible gap.
-		if (scanline >= ShadowVerticalDistance)
-		{
-			int sourceRowIndex = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int shadowY = scanline; // landing row
-			if (shadowY < ScreenHeight)
-			{
-				int shadowBase = shadowY * ScreenWidth * 4;
-				for (int x = 0; x < ScreenWidth; x++)
-				{
-					if (!spriteCoverageHistory[sourceRowIndex, x]) continue;
-					int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance; no extra sy check needed
-					if (sx < 0 || sx >= ScreenWidth) continue;
-					int fi = shadowBase + sx * 4;
-					// Blend darkening instead of solid black: new = orig * (1 - opacity)
-					byte or = frameBuffer[fi + 0];
-					byte og = frameBuffer[fi + 1];
-					byte ob = frameBuffer[fi + 2];
-					if (or==0 && og==0 && ob==0) continue; // already black
-					float keep = 1f - ShadowOpacity; // same as transparency (0.69)
-					frameBuffer[fi + 0] = (byte)(or * keep);
-					frameBuffer[fi + 1] = (byte)(og * keep);
-					frameBuffer[fi + 2] = (byte)(ob * keep);
-					// alpha unchanged
-				}
-			}
-		}
-
-		// Current coverage row index in ring buffer
-		int coverageRowIndex = scanline % ShadowVerticalDistance;
-		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageHistory[coverageRowIndex, cx] = false;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
@@ -461,7 +428,6 @@ public class PPU_BFR : IPPU
 
 				// Raw sprite color (no extra shading)
 				var spriteColor = GetSpriteColor(color, paletteIndex);
-				spriteCoverageHistory[coverageRowIndex, px] = true;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
 				if (frameIndex + 3 < frameBuffer.Length)
@@ -952,11 +918,11 @@ public class PPU_BFR : IPPU
 	};
 
 	public object GetState() {
-		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter };
+		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter, backgroundFadeAlpha=backgroundFadeAlpha, enableAutoFade=enableAutoFade, fadeFrameCounter=fadeFrameCounter };
 	}
 	public void SetState(object state) {
 		if (state is PpuSharedState s) {
-			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
+			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; if (s.backgroundFadeAlpha>0) SetBackgroundFade(s.backgroundFadeAlpha); enableAutoFade=s.enableAutoFade; fadeFrameCounter=s.fadeFrameCounter; return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }
@@ -964,6 +930,9 @@ public class PPU_BFR : IPPU
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer.Length) break; frameBuffer[i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			if (je.TryGetProperty("backgroundFadeAlpha", out var pFade) && pFade.ValueKind==System.Text.Json.JsonValueKind.Number) SetBackgroundFade((float)pFade.GetDouble());
+			if (je.TryGetProperty("enableAutoFade", out var pAuto) && pAuto.ValueKind==System.Text.Json.JsonValueKind.True || pAuto.ValueKind==System.Text.Json.JsonValueKind.False) enableAutoFade=pAuto.GetBoolean();
+			if (je.TryGetProperty("fadeFrameCounter", out var pFFC) && pFFC.ValueKind==System.Text.Json.JsonValueKind.Number) fadeFrameCounter=pFFC.GetInt64();
 		}
 	}
 }

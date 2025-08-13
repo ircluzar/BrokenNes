@@ -10,6 +10,7 @@
   <!-- Performance oriented tweaks -->
   <RunAOTCompilation>true</RunAOTCompilation>
   <WasmEnableSIMD>true</WasmEnableSIMD>
+  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   <InvariantGlobalization>true</InvariantGlobalization>
   <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
   <TrimMode>link</TrimMode>

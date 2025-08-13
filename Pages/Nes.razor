@@ -568,8 +568,8 @@
     private record ShaderOption(string Key, string Label);
     private List<ShaderOption> shaderOptions = new();
     private bool famicloneOn = true; // default ON per requirement
-    private string apuCoreSel = "FMC"; // FMC (Jank), FIX (Modern), QN (QuickNes)
-    private string cpuCoreSel = "FMC"; // default
+    private string apuCoreSel = ""; // dynamic suffix (e.g. FMC, FIX, QN, etc.)
+    private string cpuCoreSel = ""; // dynamic suffix
     private string ppuCoreSel = "FMC"; // default to enhanced CUBE core
     private List<string> apuCoreOptions = new();
     private List<string> cpuCoreOptions = new();
@@ -1031,15 +1031,12 @@
         if (nes == null) return;
         try
         {
-            var core = nes.GetApuCore();
-            apuCoreSel = core switch {
-                NesEmulator.NES.ApuCore.Jank => "FMC",
-                NesEmulator.NES.ApuCore.QuickNes => "QN",
-                _ => "FIX"
-            };
-            famicloneOn = nes.GetFamicloneMode();
+            var id = nes.GetApuCoreId();
+            var suffix = NesEmulator.CoreRegistry.ExtractSuffix(id, "APU_");
+            apuCoreSel = suffix;
+            famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nes.GetFamicloneMode();
         }
-        catch {}
+        catch { }
     }
 
     // Apply currently selected (or persisted) core choices to emulator instance
@@ -1048,19 +1045,39 @@
         if (nes == null) return;
         try
         {
-            nes.SetCpuCore(cpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
-            // Support three-way selection: FMC (default), FIX, LQ
-            nes.SetPpuCore(ppuCoreSel switch {
-                "FIX" => NesEmulator.Bus.PpuCore.FIX,
-                "LQ" => NesEmulator.Bus.PpuCore.LQ,
-                "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
-                _ => NesEmulator.Bus.PpuCore.FMC
-            });
-            switch (apuCoreSel)
+            // CPU core generic selection (fallback to legacy enum if generic fails)
+            if (!string.IsNullOrEmpty(cpuCoreSel))
             {
-                case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); famicloneOn = true; break;
-                case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); famicloneOn = false; break;
-                default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); famicloneOn = false; break;
+                if (!nes.SetCpuCore(cpuCoreSel))
+                {
+                    nes.SetCpuCore(cpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+                }
+            }
+            // Generic reflection-based PPU selection (fallback to legacy enum only if needed)
+            if (!nes.SetPpuCore(ppuCoreSel))
+            {
+                // fallback for older saved prefs
+                nes.SetPpuCore(ppuCoreSel switch {
+                    "FIX" => NesEmulator.Bus.PpuCore.FIX,
+                    "LQ" => NesEmulator.Bus.PpuCore.LQ,
+                    "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
+                    "BFR" => NesEmulator.Bus.PpuCore.BFR,
+                    _ => NesEmulator.Bus.PpuCore.FMC
+                });
+            }
+            if (!string.IsNullOrEmpty(apuCoreSel))
+            {
+                if (!nes.SetApuCore(apuCoreSel))
+                {
+                    // legacy fallback mapping for older core ids
+                    switch (apuCoreSel)
+                    {
+                        case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); famicloneOn = true; break;
+                        case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); famicloneOn = false; break;
+                        default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); famicloneOn = false; break;
+                    }
+                }
+                famicloneOn = apuCoreSel.Equals("FMC", StringComparison.OrdinalIgnoreCase) || famicloneOn;
             }
         }
         catch { }
@@ -1071,26 +1088,22 @@
         if (nes == null) return;
         var v = e.Value?.ToString() ?? string.Empty;
         if (string.IsNullOrEmpty(v)) return;
+        if (v == apuCoreSel) return;
         apuCoreSel = v;
-        switch (v)
+        bool ok = nes.SetApuCore(v);
+        if (!ok)
         {
-            case "FMC":
-                nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
-                famicloneOn = true;
-                Status.Set("Famiclone (legacy APU) active");
-                break;
-            case "FIX":
-                nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
-                famicloneOn = false;
-                Status.Set("FIX (modern) active");
-                break;
-            case "QN":
-                nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
-                famicloneOn = false;
-                Status.Set("FIX QN (QuickNES-inspired) active");
-                break;
+            // legacy fallback
+            switch (v)
+            {
+                case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); break;
+                case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); break;
+                default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); break;
+            }
         }
-    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
+        famicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nes.GetFamicloneMode();
+        Status.Set($"APU core switched to {v}");
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
     }
 
     private async Task OnCpuCoreChanged(ChangeEventArgs e)
@@ -1100,10 +1113,12 @@
         if (string.IsNullOrEmpty(v)) return;
         if (v == cpuCoreSel) return;
         cpuCoreSel = v;
-        // Save CPU state (future cross-core mapping could be added)
         var state = nes.GetCpuState();
-        nes.SetCpuCore(v == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
-        // Attempt to restore state into new core (best-effort)
+        bool ok = nes.SetCpuCore(v);
+        if (!ok)
+        {
+            nes.SetCpuCore(v == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+        }
         try { nes.SetCpuState(state); } catch {}
         Status.Set($"CPU core switched to {v}");
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", cpuCoreSel); } catch {}
@@ -1117,12 +1132,16 @@
         if (v == ppuCoreSel) return;
         ppuCoreSel = v;
         var state = nes.GetPpuState();
-        nes.SetPpuCore(v switch {
-            "FIX" => NesEmulator.Bus.PpuCore.FIX,
-            "LQ" => NesEmulator.Bus.PpuCore.LQ,
-            "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
-            _ => NesEmulator.Bus.PpuCore.FMC
-        });
+        if (!nes.SetPpuCore(v))
+        {
+            nes.SetPpuCore(v switch {
+                "FIX" => NesEmulator.Bus.PpuCore.FIX,
+                "LQ" => NesEmulator.Bus.PpuCore.LQ,
+                "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
+                "BFR" => NesEmulator.Bus.PpuCore.BFR,
+                _ => NesEmulator.Bus.PpuCore.FMC
+            });
+        }
         try { nes.SetPpuState(state); } catch {}
         Status.Set($"PPU core switched to {v}");
     try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", ppuCoreSel); } catch {}
@@ -2067,17 +2086,30 @@
     {
         // Central registry discovery (cached)
         cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
-        if (!cpuCoreOptions.Contains(cpuCoreSel) && cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
+        if (string.IsNullOrEmpty(cpuCoreSel) || !cpuCoreOptions.Contains(cpuCoreSel))
+        {
+            // Prefer FMC first (baseline), then FIX, then first
+            if (cpuCoreOptions.Contains("FMC")) cpuCoreSel = "FMC";
+            else if (cpuCoreOptions.Contains("FIX")) cpuCoreSel = "FIX";
+            else if (cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
+        }
         ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
-        // Ensure stable ordering (FMC, FIX, LQ, CUBE) if present
-        var desiredOrder = new List<string>{"FMC","FIX","LQ","CUBE"};
+    // Ensure stable ordering; include newer enhanced cores when present
+    var desiredOrder = new List<string>{"FMC","NGTV","CUBE","BFR","LQ","FIX","LOW"};
         ppuCoreOptions = ppuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
         if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0)
         {
-            // If CUBE present, prefer it as default enhancement
-            if (ppuCoreOptions.Contains("CUBE")) ppuCoreSel = "CUBE"; else ppuCoreSel = ppuCoreOptions[0];
+            // Prefer FMC baseline; else fall back to others
+			if (ppuCoreOptions.Contains("FMC")) ppuCoreSel = "FMC"; else if (ppuCoreOptions.Contains("NGTV")) ppuCoreSel = "NGTV"; else if (ppuCoreOptions.Contains("CUBE")) ppuCoreSel = "CUBE"; else ppuCoreSel = ppuCoreOptions[0];
         }
-        apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.Where(k => k=="FMC"||k=="FIX"||k=="QN").ToList();
-        if (!apuCoreOptions.Contains(apuCoreSel) && apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
+        apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.ToList();
+        // Ordering preference: FMC (legacy), FIX (modern), QN, then others alphabetical
+    apuCoreOptions = apuCoreOptions.OrderBy(id => id switch { "FMC" => 0, "FIX" => 1, "QN" => 2, _ => 3 }).ThenBy(id=>id).ToList();
+        if (string.IsNullOrEmpty(apuCoreSel) || !apuCoreOptions.Contains(apuCoreSel))
+        {
+            if (apuCoreOptions.Contains("FMC")) apuCoreSel = "FMC";
+            else if (apuCoreOptions.Contains("FIX")) apuCoreSel = "FIX";
+            else if (apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
+        }
     }
 }

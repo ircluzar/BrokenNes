@@ -65,6 +65,13 @@ namespace NesEmulator
 		public void SetPpuState(object state) { try { bus?.ppu.SetState(state); } catch { } }
 		public void SetCpuCore(Bus.CpuCore core) { try { bus?.SetCpuCore(core); } catch { } }
 		public void SetPpuCore(Bus.PpuCore core) { try { bus?.SetPpuCore(core); } catch { } }
+		// New generic reflection-based core selection (suffix id strings)
+		public bool SetCpuCore(string suffixId) { return bus!=null && bus.SetCpuCoreById(suffixId); }
+		public bool SetPpuCore(string suffixId) { return bus!=null && bus.SetPpuCoreById(suffixId); }
+		public bool SetApuCore(string suffixId) { return bus!=null && bus.SetApuCoreById(suffixId); }
+		public System.Collections.Generic.IReadOnlyList<string> GetCpuCoreIds() => bus?.GetCpuCoreIds() ?? System.Array.Empty<string>();
+		public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => bus?.GetPpuCoreIds() ?? System.Array.Empty<string>();
+		public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => bus?.GetApuCoreIds() ?? System.Array.Empty<string>();
 
 		public string SaveState()
 		{
@@ -222,8 +229,7 @@ namespace NesEmulator
 				if (!string.IsNullOrEmpty(st.cpuCoreId))
 				{
 					var suffix = CoreRegistry.ExtractSuffix(st.cpuCoreId, "CPU_");
-					// simple mapping: FMC/FIX only for now
-					bus.SetCpuCore(suffix == "FIX" ? Bus.CpuCore.FIX : Bus.CpuCore.FMC);
+					if(!bus.SetCpuCoreById(suffix)) bus.SetCpuCore((Bus.CpuCore)st.cpuCore);
 				}
 				else bus.SetCpuCore((Bus.CpuCore)st.cpuCore);
 			} catch { }
@@ -232,9 +238,12 @@ namespace NesEmulator
 			try {
 				if (!string.IsNullOrEmpty(st.ppuCoreId)) {
 					var suffix = CoreRegistry.ExtractSuffix(st.ppuCoreId, "PPU_");
-					bus.SetPpuCore(suffix switch { "FIX" => Bus.PpuCore.FIX, "LQ" => Bus.PpuCore.LQ, "CUBE" => Bus.PpuCore.CUBE, _ => Bus.PpuCore.FMC });
+					if(!bus.SetPpuCoreById(suffix)) bus.SetPpuCore(Bus.PpuCore.CUBE);
 				} else {
-					bus.SetPpuCore(Bus.PpuCore.CUBE); // prefer enhanced core by default now
+					// prefer FMC if present (user base preference), else fallback priority
+					var preferred = new[]{"FMC","CUBE","NGTV","BFR","FIX"};
+					bool set=false; foreach(var id in preferred){ if(bus.SetPpuCoreById(id)){ set=true; break; } }
+					if(!set) bus.SetPpuCore(Bus.PpuCore.FMC);
 				}
 			} catch { }
 			try { if (!string.IsNullOrEmpty(st.ppu)) { using var pd = System.Text.Json.JsonDocument.Parse(st.ppu); bus.ppu.SetState(pd.RootElement); } } catch { }
@@ -243,18 +252,12 @@ namespace NesEmulator
 				if (!string.IsNullOrEmpty(st.apuCoreId))
 				{
 					var suffix = CoreRegistry.ExtractSuffix(st.apuCoreId, "APU_");
-					// map suffix to enum
-					Bus.ApuCore ac = suffix switch {
-						"FMC" => Bus.ApuCore.Jank,
-						"FIX" => Bus.ApuCore.Modern,
-						"QN" => Bus.ApuCore.QuickNes,
-						_ => Bus.ApuCore.Modern
-					};
-					bus.SetApuCore(ac);
+					if(!bus.SetApuCoreById(suffix)) {
+						var core = (Bus.ApuCore)st.apuCore; bus.SetApuCore(core);
+					}
 				}
 				else {
-					var core = (Bus.ApuCore)st.apuCore;
-					bus.SetApuCore(core);
+					var core = (Bus.ApuCore)st.apuCore; bus.SetApuCore(core);
 				}
 			} catch { bus.SetFamicloneMode(st.famicloneMode); }
 			try { if (!string.IsNullOrEmpty(st.apu)) { using var ad = System.Text.Json.JsonDocument.Parse(st.apu); bus.ActiveAPU.SetState(ad.RootElement); } } catch { }
