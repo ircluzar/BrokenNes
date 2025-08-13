@@ -12,6 +12,7 @@
 @inject IJSRuntime JS
 @inject HttpClient Http
 @inject StatusService Status
+@inject NesEmulator.Shaders.IShaderProvider ShaderProvider
 
 
 @if (!string.IsNullOrEmpty(errorMessage))
@@ -695,7 +696,8 @@
                 // Build memory domain list (after ROM load)
                 BuildMemoryDomains();
 
-                // Fetch shader registry options from JS and set initial active shader (persisted or default)
+                // Register C#-generated shaders into JS registry, then fetch options and set initial active shader
+                await RegisterShadersFromCSharp();
                 await RefreshShaderOptions();
                 await SetShader(activeShaderKey);
 
@@ -719,6 +721,23 @@
                 touchControllerInitialized = true;
             }
             catch { }
+        }
+    }
+
+    // Bridge: push generated C# shader definitions into JS registry
+    private async Task RegisterShadersFromCSharp()
+    {
+        try
+        {
+            foreach (var s in ShaderProvider.All)
+            {
+                // key, displayName, fragmentSrc, options(null)
+                await JS.InvokeVoidAsync("nesInterop.registerShader", s.Id, s.DisplayName, s.FragmentSource, (object?)null);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to register shaders from C#");
         }
     }
 

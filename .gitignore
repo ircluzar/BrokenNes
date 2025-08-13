@@ -2,3 +2,5 @@
 .DS_Store
 /obj
 /flatpublish
+/Tools/BrokenNes.Shaders.Generator/obj
+/Tools/BrokenNes.Shaders.Generator/bin

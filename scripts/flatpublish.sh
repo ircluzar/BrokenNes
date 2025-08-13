@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # flatpublish.sh - Build and prepare a flat, static deployable folder for the Blazor WASM app.
 # Produces ./flatpublish containing everything needed to host the app from index.html on any static server.
-# Usage: ./scripts/flatpublish.sh [--zip]
-#   --zip : additionally create flatpublish.zip archive of the output.
+# Usage: ./scripts/flatpublish.sh [--zip] [--verify] [--exclude-roms] [--no-aot] [--dev] [--trim]
+#   --zip     : additionally create flatpublish.zip archive of the output.
+#   --verify  : skip publish, just rebuild flat dir from last publish.
+#   --exclude-roms : omit bundled ROMs.
+#   --no-aot  : disable AOT (default).
+#   --dev     : publish Debug, no trimming, no AOT.
+#   --trim    : enable trimming (requires LinkerConfig safety roots).
 #
 # Requirements: bash, dotnet CLI.
 
@@ -33,6 +38,7 @@ ZIP_FLAG=false
 VERIFY_ONLY=false
 EXCLUDE_ROMS=false
 NO_AOT=true
+TRIM=false
 DEV_MODE=false # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
 
 if [[ ${#} -gt 0 ]]; then
@@ -41,9 +47,10 @@ if [[ ${#} -gt 0 ]]; then
       --zip) ZIP_FLAG=true ;;
       --verify) VERIFY_ONLY=true ;;
       --exclude-roms) EXCLUDE_ROMS=true ;;
-      --no-aot) NO_AOT=true ;;
+  --no-aot) NO_AOT=true ;;
+  --trim) TRIM=true ;;
   --dev) DEV_MODE=true ;;
-  *) echo "Unknown argument: $arg" >&2; echo "Supported: --zip --verify --exclude-roms --no-aot --dev"; exit 2 ;;
+  *) echo "Unknown argument: $arg" >&2; echo "Supported: --zip --verify --exclude-roms --no-aot --dev --trim"; exit 2 ;;
     esac
   done
 fi
@@ -61,11 +68,19 @@ if ! $VERIFY_ONLY; then
     dotnet publish "$CSProj" -c Debug -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true -p:PublishTrimmed=false -p:TrimMode=copyused >/dev/null
   elif $NO_AOT; then
     echo "==> Publishing (Release, AOT DISABLED) ..."
-    dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true >/dev/null
+    if $TRIM; then
+      dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true -p:PublishTrimmed=true -p:TrimMode=link -p:TrimmerRootDescriptor=LinkerConfig.xml >/dev/null
+    else
+      dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true -p:PublishTrimmed=false >/dev/null
+    fi
   else
     echo "==> Publishing (AOT/Release) ..."
     # Use explicit output (OUT_DIR) so we know precisely where artifacts land.
-    dotnet publish "$CSProj" -c Release -o "$OUT_DIR" >/dev/null
+    if $TRIM; then
+      dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:PublishTrimmed=true -p:TrimMode=link -p:TrimmerRootDescriptor=LinkerConfig.xml >/dev/null
+    else
+      dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:PublishTrimmed=false >/dev/null
+    fi
   fi
 else
   echo "==> Skipping publish (verify-only mode)"

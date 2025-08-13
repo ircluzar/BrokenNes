@@ -10,7 +10,6 @@
   <!-- Performance oriented tweaks -->
   <RunAOTCompilation>true</RunAOTCompilation>
   <WasmEnableSIMD>true</WasmEnableSIMD>
-  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   <InvariantGlobalization>true</InvariantGlobalization>
   <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
   <TrimMode>link</TrimMode>
@@ -30,6 +29,18 @@
 
   <ItemGroup>
     <TrimmerRootDescriptor Include="LinkerConfig.xml" />
+  </ItemGroup>
+
+  <!-- Shader generator wiring -->
+  <ItemGroup>
+    <AdditionalFiles Include="Shaders/**/*.glsl" />
+  <ProjectReference Include="Tools/BrokenNes.Shaders.Generator/BrokenNes.Shaders.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Exclude tools/generator sources from app compilation -->
+  <ItemGroup>
+    <Compile Remove="Tools/**/*.cs" />
+    <None Include="Tools/**/*.cs" />
   </ItemGroup>
 
 

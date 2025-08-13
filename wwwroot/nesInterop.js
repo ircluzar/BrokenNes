@@ -368,17 +368,9 @@ window.nesInterop = {
     },
 
     _registerBuiltInShaders(){
-            if(Object.keys(this._shaderRegistry).length>0) return; // already registered (from shaders.js)
-            // If shaders.js hasn't loaded yet, register a minimal passthrough so rendering works.
-            this.registerShader('PX', 'PX', `precision mediump float;varying vec2 vTex;uniform sampler2D uTex;void main(){vec2 uv=vec2(vTex.x,1.0-vTex.y);gl_FragColor=texture2D(uTex,uv);}`);
-            // Optionally queue a retry to capture external shaders once available.
-            setTimeout(()=>{
-                try {
-                    if(window.nesInterop && Object.keys(window.nesInterop._shaderRegistry).length<=1 && window.registerAllShaders){
-                        window.registerAllShaders();
-                    }
-                } catch {}
-            }, 200);
+        if(Object.keys(this._shaderRegistry).length>0) return; // already registered via C# bridge
+        // Always ensure a safe passthrough exists.
+        this.registerShader('PX', 'PX', `precision mediump float;varying vec2 vTex;uniform sampler2D uTex;void main(){vec2 uv=vec2(vTex.x,1.0-vTex.y);gl_FragColor=texture2D(uTex,uv);}`);
     },
 
     _buildAllShaderPrograms(vs){

@@ -1,4 +1,5 @@
-// shaders.js - extracted built-in fragment shaders for NES emulator
+// Legacy shaders.js removed. This is a tiny no-op stub to avoid 404s for cached clients.
+(function(){ /* no-op */ })();
 // Registers shaders with nesInterop when both this script and nesInterop.js are loaded.
 (function(){
   function ensure(){ return window.nesInterop && typeof window.nesInterop.registerShader === 'function'; }

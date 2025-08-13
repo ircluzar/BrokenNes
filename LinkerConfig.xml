@@ -4,5 +4,14 @@
     <type fullname="BrokenNes.Pages.NotFound" preserve="all" />
   <type fullname="BrokenNes.Pages.*" preserve="all" />
   <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
+  <!-- Shader discovery safety net: keep marker attribute and registry -->
+  <type fullname="NesEmulator.Shaders.ShaderDefinitionAttribute" preserve="all" />
+  <type fullname="NesEmulator.Shaders.ShaderRegistry" preserve="all" />
+  <!-- Preserve generated shader classes for reflection-based discovery -->
+  <type fullname="NesEmulator.Shaders.Generated.*" preserve="all" />
+  <!-- Preserve core implementations discovered via reflection naming convention -->
+  <type fullname="NesEmulator.CPU_*" preserve="all" />
+  <type fullname="NesEmulator.PPU_*" preserve="all" />
+  <type fullname="NesEmulator.APU_*" preserve="all" />
   </assembly>
 </linker>
