@@ -232,9 +232,9 @@ namespace NesEmulator
 			try {
 				if (!string.IsNullOrEmpty(st.ppuCoreId)) {
 					var suffix = CoreRegistry.ExtractSuffix(st.ppuCoreId, "PPU_");
-					bus.SetPpuCore(suffix switch { "FIX" => Bus.PpuCore.FIX, "LQ" => Bus.PpuCore.LQ, _ => Bus.PpuCore.FMC });
+					bus.SetPpuCore(suffix switch { "FIX" => Bus.PpuCore.FIX, "LQ" => Bus.PpuCore.LQ, "CUBE" => Bus.PpuCore.CUBE, _ => Bus.PpuCore.FMC });
 				} else {
-					bus.SetPpuCore(Bus.PpuCore.FMC); // legacy only had FMC
+					bus.SetPpuCore(Bus.PpuCore.CUBE); // prefer enhanced core by default now
 				}
 			} catch { }
 			try { if (!string.IsNullOrEmpty(st.ppu)) { using var pd = System.Text.Json.JsonDocument.Parse(st.ppu); bus.ppu.SetState(pd.RootElement); } } catch { }

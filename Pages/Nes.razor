@@ -570,7 +570,7 @@
     private bool famicloneOn = true; // default ON per requirement
     private string apuCoreSel = "FMC"; // FMC (Jank), FIX (Modern), QN (QuickNes)
     private string cpuCoreSel = "FMC"; // default
-    private string ppuCoreSel = "FMC"; // default
+    private string ppuCoreSel = "FMC"; // default to enhanced CUBE core
     private List<string> apuCoreOptions = new();
     private List<string> cpuCoreOptions = new();
     private List<string> ppuCoreOptions = new();
@@ -1053,6 +1053,7 @@
             nes.SetPpuCore(ppuCoreSel switch {
                 "FIX" => NesEmulator.Bus.PpuCore.FIX,
                 "LQ" => NesEmulator.Bus.PpuCore.LQ,
+                "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
                 _ => NesEmulator.Bus.PpuCore.FMC
             });
             switch (apuCoreSel)
@@ -1119,6 +1120,7 @@
         nes.SetPpuCore(v switch {
             "FIX" => NesEmulator.Bus.PpuCore.FIX,
             "LQ" => NesEmulator.Bus.PpuCore.LQ,
+            "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
             _ => NesEmulator.Bus.PpuCore.FMC
         });
         try { nes.SetPpuState(state); } catch {}
@@ -2066,11 +2068,15 @@
         // Central registry discovery (cached)
         cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
         if (!cpuCoreOptions.Contains(cpuCoreSel) && cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
-    ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
-    // Ensure stable ordering (FMC, FIX, LQ) if present
-    var desiredOrder = new List<string>{"FMC","FIX","LQ"};
-    ppuCoreOptions = ppuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
-        if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0) ppuCoreSel = ppuCoreOptions[0];
+        ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
+        // Ensure stable ordering (FMC, FIX, LQ, CUBE) if present
+        var desiredOrder = new List<string>{"FMC","FIX","LQ","CUBE"};
+        ppuCoreOptions = ppuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
+        if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0)
+        {
+            // If CUBE present, prefer it as default enhancement
+            if (ppuCoreOptions.Contains("CUBE")) ppuCoreSel = "CUBE"; else ppuCoreSel = ppuCoreOptions[0];
+        }
         apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.Where(k => k=="FMC"||k=="FIX"||k=="QN").ToList();
         if (!apuCoreOptions.Contains(apuCoreSel) && apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
     }

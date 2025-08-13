@@ -40,6 +40,14 @@ public class PPU_LOW : IPPU
 	// Removed unused staticLfsr field (previously reserved)
 	private int staticFrameCounter = 0;
 
+	// Fast-path palette caches (32 palette entries actually used + packed 32-bit RGBA for NES 64-color indices)
+	private readonly uint[] paletteEntryCache32 = new uint[32]; // mirrors paletteRAM (auto-updated on writes)
+	private bool paletteDirty = true;
+	private readonly uint[] masterPalette32 = new uint[64]; // packed RGBA from PaletteBytes
+
+	// Cached universal background color (updated when palette index 0 changes)
+	private uint universalBgColor32;
+
 	public PPU_LOW(Bus bus)
 	{
 		this.bus = bus;
@@ -63,6 +71,14 @@ public class PPU_LOW : IPPU
 		
 		// Initialize framebuffer with a test gradient pattern
 		InitializeTestFrameBuffer();
+
+		// Precompute master palette (convert PaletteBytes -> 0xAABBGGRR for tight writes)
+		for (int i = 0, p = 0; i < 64; i++, p += 3)
+		{
+			byte r = PaletteBytes[p]; byte g = PaletteBytes[p + 1]; byte b = PaletteBytes[p + 2];
+			masterPalette32[i] = PackRGBA(r, g, b, 255);
+		}
+		RebuildPaletteEntryCache();
 	}
 
 
@@ -135,6 +151,9 @@ public class PPU_LOW : IPPU
 			return;
 		}
 
+		// Update palette cache lazily if changed via CPU writes since last scanline
+		if (paletteDirty) RebuildPaletteEntryCache();
+
 		// If both background & sprites are disabled this scanline, proactively clear it
 		// so the power-on test pattern from initialization doesn't visually linger and
 		// confuse debugging (otherwise the old pixels remain untouched).
@@ -158,12 +177,22 @@ public class PPU_LOW : IPPU
 			return; // nothing else to draw
 		}
 
-		// Clear scanline buffers
+		// Clear scanline buffers & prefill framebuffer with universal BG so we can skip writing transparent BG pixels
 		Array.Clear(bgMask, 0, ScreenWidth);
-		
-		// Render background first (if enabled)
+		int scanlineBase = scanline * ScreenWidth * 4;
+		// Write 256 pixels quickly (unrolled by 4 for fewer loop overheads)
+		uint ub = universalBgColor32;
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			int fi = scanlineBase + (x << 2);
+			frameBuffer[fi + 0] = (byte)ub;        // R
+			frameBuffer[fi + 1] = (byte)(ub >> 8); // G
+			frameBuffer[fi + 2] = (byte)(ub >> 16);// B
+			frameBuffer[fi + 3] = 255;             // A
+		}
+
+		// Render background first (if enabled) then sprites
 		if (bgEnabled) RenderBackground(scanline, bgMask);
-		// Then render sprites on top (if enabled)
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
@@ -222,89 +251,51 @@ public class PPU_LOW : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
-		// Check if background rendering is enabled
-		if ((PPUMASK & 0x08) == 0) return;
-
-	// Cache universal background color once per scanline
-	byte ubIdx = paletteRAM[0];
-	int ubp = (ubIdx & 0x3F) * 3;
-	byte ubR = PaletteBytes[ubp];
-	byte ubG = PaletteBytes[ubp+1];
-	byte ubB = PaletteBytes[ubp+2];
-
+		if ((PPUMASK & 0x08) == 0) return; // disabled
 		ushort renderV = v;
-
-		// Render 33 tiles (32 visible + 1 for scrolling)
+		int scanlineBase = scanline * ScreenWidth * 4;
+		// Determine background pattern table base once
+		int patternTableBase = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
+		// 33 tiles to cover fine scroll
 		for (int tile = 0; tile < 33; tile++)
 		{
-			// Extract nametable coordinates from current VRAM address
 			int coarseX = renderV & 0x001F;
 			int coarseY = (renderV >> 5) & 0x001F;
 			int nameTable = (renderV >> 10) & 0x0003;
-
-			// Calculate nametable address
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 			byte tileIndex = Read((ushort)tileAddr);
-
-			// Get fine Y scroll (which row within the 8x8 tile)
 			int fineY = (renderV >> 12) & 0x7;
-			
-			// Determine pattern table (background uses PPUCTRL bit 4)
-			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-			int patternAddr = patternTable + (tileIndex * 16) + fineY;
-			
-			// Read the two bit planes for this row of the tile
+			int patternAddr = patternTableBase + (tileIndex * 16) + fineY;
 			byte plane0 = Read((ushort)patternAddr);
 			byte plane1 = Read((ushort)(patternAddr + 8));
-
-			// Get attribute byte for color palette
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
 			byte attrByte = Read((ushort)attrAddr);
-
-			// Extract the 2-bit palette index for this tile
 			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-			int paletteIndex = (attrByte >> attrShift) & 0x03;
-
-			// Pre-calculate frame buffer base for this scanline
-			int scanlineBase = scanline * ScreenWidth * 4;
-
-			// Render the 8 pixels of this tile
+			int paletteIndex = (attrByte >> attrShift) & 0x03; // 0..3
+			// Each tile uses 4 palette entries at indices (1 + paletteIndex*4) .. +3 within palette RAM when non-zero pixel
+			int paletteBase = 1 + (paletteIndex << 2);
+			// Pre-fetch cached packed colors for the 3 non-transparent entries of this palette (colorIndex 1..3)
+			uint c1 = paletteEntryCache32[(paletteBase + 0) & 0x1F];
+			uint c2 = paletteEntryCache32[(paletteBase + 1) & 0x1F];
+			uint c3 = paletteEntryCache32[(paletteBase + 2) & 0x1F];
 			for (int i = 0; i < 8; i++)
 			{
 				int pixel = tile * 8 + i - fineX;
-				if (pixel < 0 || pixel >= ScreenWidth) continue;
-
-				int bitIndex = 7 - i;
-				int bit0 = (plane0 >> bitIndex) & 1;
-				int bit1 = (plane1 >> bitIndex) & 1;
-				int colorIndex = bit0 | (bit1 << 1);
-
-				int frameIndex = scanlineBase + pixel * 4;
-				if (colorIndex == 0)
-				{
-					// Universal background color
-					frameBuffer[frameIndex + 0] = ubR;
-					frameBuffer[frameIndex + 1] = ubG;
-					frameBuffer[frameIndex + 2] = ubB;
-					frameBuffer[frameIndex + 3] = 255;
-				}
-				else
-				{
-					bgMask[pixel] = true;
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = (idx & 0x3F) * 3;
-					frameBuffer[frameIndex + 0] = PaletteBytes[p];
-					frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer[frameIndex + 3] = 255;
-				}
+				if ((uint)pixel >= ScreenWidth) continue; // bounds check collapsed
+				int bit = 7 - i;
+				int colorIndex = ((plane0 >> bit) & 1) | (((plane1 >> bit) & 1) << 1); // 0..3
+				if (colorIndex == 0) continue; // already universal bg in buffer
+				bgMask[pixel] = true;
+				uint packed = colorIndex switch { 1 => c1, 2 => c2, _ => c3 };
+				int fi = scanlineBase + (pixel << 2);
+				frameBuffer[fi + 0] = (byte)packed;
+				frameBuffer[fi + 1] = (byte)(packed >> 8);
+				frameBuffer[fi + 2] = (byte)(packed >> 16);
+				// alpha already 255
 			}
-
-			// Increment to next tile
 			IncrementX(ref renderV);
 		}
 	}
@@ -618,6 +609,7 @@ public class PPU_LOW : IPPU
 			ushort mirrored = (ushort)(address & 0x1F);
 			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 			paletteRAM[mirrored] = value;
+			paletteDirty = true; // mark for cache refresh
 		}
 	}
 
@@ -850,6 +842,7 @@ public class PPU_LOW : IPPU
 		paletteRAM[0x1D] = 0x15; // Magenta
 		paletteRAM[0x1E] = 0x25; // Light magenta
 		paletteRAM[0x1F] = 0x35; // Very light magenta
+		paletteDirty = true; // ensure cache rebuild
 	}
 
 	//NES 64 Color Palette
@@ -885,7 +878,25 @@ public class PPU_LOW : IPPU
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer.Length) break; frameBuffer[i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			paletteDirty = true; // rebuild next frame
 		}
 	}
+
+	#region Palette Caching Helpers
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+	private static uint PackRGBA(byte r, byte g, byte b, byte a) => (uint)(r | (g << 8) | (b << 16) | (a << 24));
+
+	private void RebuildPaletteEntryCache()
+	{
+		// Convert each palette RAM entry to packed RGBA via masterPalette
+		for (int i = 0; i < 32; i++)
+		{
+			byte idx = paletteRAM[i];
+			paletteEntryCache32[i] = masterPalette32[idx & 0x3F];
+		}
+		universalBgColor32 = paletteEntryCache32[0];
+		paletteDirty = false;
+	}
+	#endregion
 }
 }

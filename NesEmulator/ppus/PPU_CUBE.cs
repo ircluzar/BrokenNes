@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_FIX : IPPU
+public class PPU_CUBE : IPPU
 {
 	private Bus bus;
 
@@ -33,32 +33,26 @@ public class PPU_FIX : IPPU
 
 	private int scanlineCycle;
 	private int scanline;
-	private ulong totalPpuCycles; // running total of PPU cycles (unused for now but kept for future)
-	private bool oddFrame; // track odd/even frame (skip disabled for stability)
-	private int nmiPendingPpuCycles; // deferred NMI countdown
-
-	// Feature flags to allow rollback of advanced behaviors if unstable
-	private const bool ENABLE_DEFERRED_NMI = false; // revert to immediate NMI
-	private const bool ENABLE_ODD_FRAME_SKIP = false; // keep consistent frame pacing
-	private const bool ENABLE_OPEN_BUS = false; // disable open bus simulation for now
-
-	// Open bus simulation (gated by ENABLE_OPEN_BUS)
-	private byte ppuOpenBus;
-	private readonly int[] ppuOpenBusDecay = new int[8];
-	private enum OpenBusDecayAction { None, All, High, Low }
 
 	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Removed unused staticLfsr field (previously reserved)
+	// Shadow configuration: shadow is projected bottom-left with vertical gap (distance)
+	private const int ShadowVerticalDistance = 1; // how many scanlines below original pixel the shadow lands
+	private const int ShadowOffsetX = -1;        // horizontal offset (negative = left)
+	private const int ShadowOffsetY = 1;         // vertical offset matches distance (ensures projection used)
+	private const float ShadowTransparency = 0.69f; // 69% transparent -> 31% opaque
+	private const float ShadowOpacity = 1f - ShadowTransparency; // 0.31 opacity used for darkening
+	// Rolling coverage history for previous sprite scanlines (only need ShadowVerticalDistance rows)
+	private readonly bool[,] spriteCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
+	// Background coverage history to project background tile shadows
+	private readonly bool[,] bgCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
+	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
-	// Palette cache (RGBA) to avoid per-pixel math & emphasis/grayscale recompute
-	private readonly uint[] paletteCache = new uint[64];
-	private bool paletteDirty = false; // mark when palette or emphasis/grayscale changes
-	private byte lastMaskBits = 0x00; // track PPUMASK bits affecting palette (grayscale & emphasis)
+	// Removed advanced sprite FX (clusters, bevels, glows) – keeping only backdrop shadow & authentic sprite colors.
 
-	public PPU_FIX(Bus bus)
+	public PPU_CUBE(Bus bus)
 	{
 		this.bus = bus;
 
@@ -78,11 +72,6 @@ public class PPU_FIX : IPPU
 
 		scanlineCycle = 0;
 		scanline = 0;
-		oddFrame = false;
-		totalPpuCycles = 0;
-		nmiPendingPpuCycles = 0;
-		ppuOpenBus = 0;
-		for (int i=0;i<8;i++) ppuOpenBusDecay[i]= 1786840; // only used if ENABLE_OPEN_BUS
 		
 		// Initialize framebuffer with a test gradient pattern
 		InitializeTestFrameBuffer();
@@ -94,70 +83,32 @@ public class PPU_FIX : IPPU
 	{
 		for (int c = 0; c < elapsedCycles; c++)
 		{
-			// Track changes to PPUMASK that impact palette (grayscale bit0, emphasis bits 5..7)
-			byte maskRelevant = (byte)(PPUMASK & 0xE1);
-			if (maskRelevant != lastMaskBits) { lastMaskBits = maskRelevant; paletteDirty = true; }
-			// Per-cycle events
-			if (scanline == 241 && scanlineCycle == 1)
+			if (scanline == 0 && scanlineCycle == 0)
 			{
-				// Entering VBlank
-				PPUSTATUS |= 0x80; // set VBlank
-				if ((PPUCTRL & 0x80) != 0)
-				{
-					if (ENABLE_DEFERRED_NMI)
-					{
-						if (nmiPendingPpuCycles == 0) nmiPendingPpuCycles = 6;
-					}
-					else
-					{
-						bus.cpu.RequestNMI();
-					}
-				}
-			}
-			if (scanline == 261 && scanlineCycle == 1)
-			{
-				// Pre-render: clear vblank (bit7), sprite 0 hit (bit6), overflow (bit5)
-				PPUSTATUS &= 0x1F;
+				PPUSTATUS &= 0x3F;
+				// Clear coverage history at frame start
+				for (int r = 0; r < ShadowVerticalDistance; r++)
+					for (int x = 0; x < ScreenWidth; x++) { spriteCoverageHistory[r,x] = false; bgCoverageHistory[r,x] = false; }
 			}
 
-			// MMC3 IRQ A12 edge approximation at cycle 260 (will refine later)
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
-				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4 mapper4)
+				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
 				{
-					mapper4.RunScanlineIRQ();
-					if (mapper4.IRQPending())
+					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
+					mmc3.RunScanlineIRQ();
+					if (mmc3.IRQPending())
 					{
 						bus.cpu.RequestIRQ(true);
-						mapper4.ClearIRQ();
+						mmc3.ClearIRQ();
 					}
 				}
 			}
 
-			// Deferred NMI countdown only if enabled
-			if (ENABLE_DEFERRED_NMI && nmiPendingPpuCycles > 0)
-			{
-				nmiPendingPpuCycles--;
-				if (nmiPendingPpuCycles == 0) bus.cpu.RequestNMI();
-			}
-
-			// Decay open bus if enabled
-			if (ENABLE_OPEN_BUS) DecayOpenBus(OpenBusDecayAction.None);
-
-			// Advance cycle
 			scanlineCycle++;
-			totalPpuCycles++;
-
-			// Optional odd frame skip disabled for now (accuracy requires fetch pipeline)
-			bool renderingEnabled = (PPUMASK & 0x18) != 0;
-			if (ENABLE_ODD_FRAME_SKIP && scanline == 261 && renderingEnabled && oddFrame && scanlineCycle == 340)
-			{
-				// would skip a cycle here if enabled
-			}
 
 			if (scanlineCycle >= 341)
 			{
-				// End of scanline
 				scanlineCycle = 0;
 
 				if (scanline >= 0 && scanline < 240)
@@ -166,44 +117,26 @@ public class PPU_FIX : IPPU
 					RenderScanline(scanline);
 					IncrementY();
 				}
-				else if (scanline == 261)
+
+				if (scanline == 241)
 				{
-					// Pre-render line end: copy vertical bits
+					PPUSTATUS |= 0x80;
+					if ((PPUCTRL & 0x80) != 0)
+					{
+						bus.cpu.RequestNMI();
+					}
+				}
+
+				if (scanline == 261)
+				{
 					v = t;
 				}
 
 				scanline++;
-				if (scanline >= TotalScanlines)
+				if (scanline == TotalScanlines)
 				{
 					scanline = 0;
-					oddFrame = !oddFrame;
 				}
-			}
-		}
-	}
-
-	private void DecayOpenBus(OpenBusDecayAction action)
-	{
-		// Simplified decay model inspired by BizHawk; timers reset on register touches.
-		switch(action)
-		{
-			case OpenBusDecayAction.All:
-				for (int i=0;i<8;i++) ppuOpenBusDecay[i]= 1786840; break;
-			case OpenBusDecayAction.High:
-				for (int i=5;i<8;i++) ppuOpenBusDecay[i]= 1786840; break;
-			case OpenBusDecayAction.Low:
-				for (int i=0;i<6;i++) ppuOpenBusDecay[i]= 1786840; break;
-		}
-		if (action == OpenBusDecayAction.None)
-		{
-			for (int b=0;b<8;b++)
-			{
-				if (ppuOpenBusDecay[b] == 0)
-				{
-					ppuOpenBus = (byte)(ppuOpenBus & ~(1<<b));
-					ppuOpenBusDecay[b] = 1786840;
-				}
-				else ppuOpenBusDecay[b]--;
 			}
 		}
 	}
@@ -211,36 +144,14 @@ public class PPU_FIX : IPPU
 	bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
-		// If no ROM is loaded, keep the test pattern
-		if (bus?.cartridge == null)
-		{
-			return;
-		}
+		// Always pre-fill gradient base each scanline (framebuffer redraw) using universal background color as top reference.
+		PreFillGradientLine(scanline);
 
-		if (paletteDirty) RebuildPaletteCache();
+		// If no ROM loaded, skip further drawing (gradient serves as base)
+		if (bus?.cartridge == null) return;
 
-		// If both background & sprites are disabled this scanline, proactively clear it
-		// so the power-on test pattern from initialization doesn't visually linger and
-		// confuse debugging (otherwise the old pixels remain untouched).
-		bool bgEnabled = (PPUMASK & 0x08) != 0; // bit 3
-		bool sprEnabled = (PPUMASK & 0x10) != 0; // bit 4
-		if (!bgEnabled && !sprEnabled)
-		{
-			// Universal background color
-			byte ubIdx = paletteRAM[0];
-			int p = (ubIdx & 0x3F) * 3;
-			byte r = PaletteBytes[p]; byte g = PaletteBytes[p+1]; byte b = PaletteBytes[p+2];
-			int baseIndex = scanline * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				int fi = baseIndex + x * 4;
-				frameBuffer[fi+0] = r;
-				frameBuffer[fi+1] = g;
-				frameBuffer[fi+2] = b;
-				frameBuffer[fi+3] = 255;
-			}
-			return; // nothing else to draw
-		}
+		bool bgEnabled = (PPUMASK & 0x08) != 0; // background enable bit 3
+		bool sprEnabled = (PPUMASK & 0x10) != 0; // sprites enable bit 4
 
 		// Clear scanline buffers
 		Array.Clear(bgMask, 0, ScreenWidth);
@@ -249,6 +160,44 @@ public class PPU_FIX : IPPU
 		if (bgEnabled) RenderBackground(scanline, bgMask);
 		// Then render sprites on top (if enabled)
 		if (sprEnabled) RenderSprites(scanline, bgMask);
+	}
+
+	// Compute and fill a gradient row from top color to lighter/darker bottom variant.
+	private void PreFillGradientLine(int y)
+	{
+		byte ubIdx = paletteRAM[0];
+		int pTop = (ubIdx & 0x3F) * 3;
+		byte topR = PaletteBytes[pTop];
+		byte topG = PaletteBytes[pTop+1];
+		byte topB = PaletteBytes[pTop+2];
+		// Determine brightness (simple luma)
+		double brightness = 0.299 * topR + 0.587 * topG + 0.114 * topB;
+		byte botR, botG, botB;
+		if (brightness >= 128) // light -> lighten bottom by +25% toward white
+		{
+			botR = (byte)(topR + (int)((255 - topR) * 0.25));
+			botG = (byte)(topG + (int)((255 - topG) * 0.25));
+			botB = (byte)(topB + (int)((255 - topB) * 0.25));
+		}
+		else // dark -> darken bottom by 50%
+		{
+			botR = (byte)(topR * 0.5);
+			botG = (byte)(topG * 0.5);
+			botB = (byte)(topB * 0.5);
+		}
+		float t = ScreenHeight <= 1 ? 0f : (float)y / (ScreenHeight - 1);
+		byte r = (byte)(topR + (int)((botR - topR) * t));
+		byte g = (byte)(topG + (int)((botG - topG) * t));
+		byte b = (byte)(topB + (int)((botB - topB) * t));
+		int baseIndex = y * ScreenWidth * 4;
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			int fi = baseIndex + x * 4;
+			frameBuffer[fi + 0] = r;
+			frameBuffer[fi + 1] = g;
+			frameBuffer[fi + 2] = b;
+			frameBuffer[fi + 3] = 255; // mark as filled
+		}
 	}
 
 	public byte[] GetFrameBuffer() => frameBuffer;
@@ -306,180 +255,271 @@ public class PPU_FIX : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
+
+		// Project background tile shadows from prior coverage before drawing current scanline
+		if (scanline >= ShadowVerticalDistance)
+		{
+			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
+			int shadowY = scanline;
+			int baseIndex = shadowY * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (!bgCoverageHistory[srcRow, x]) continue;
+				int sx = x + ShadowOffsetX;
+					// Vertical offset equals distance so shadowY already correct
+				if (sx < 0 || sx >= ScreenWidth) continue;
+				int fi = baseIndex + sx * 4;
+				byte or = frameBuffer[fi + 0]; byte og = frameBuffer[fi + 1]; byte ob = frameBuffer[fi + 2];
+				if (or==0 && og==0 && ob==0) continue;
+				float keep = 1f - ShadowOpacity;
+				frameBuffer[fi + 0] = (byte)(or * keep);
+				frameBuffer[fi + 1] = (byte)(og * keep);
+				frameBuffer[fi + 2] = (byte)(ob * keep);
+			}
+		}
+
+		// Current background coverage row index to record tiles (opaque bg pixels)
+		int coverageRowIndex = scanline % ShadowVerticalDistance;
+		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageHistory[coverageRowIndex, cx] = false;
+
+	// Cache universal background color once per scanline
+	byte ubIdx = paletteRAM[0];
+	int ubp = (ubIdx & 0x3F) * 3;
+	byte ubR = PaletteBytes[ubp];
+	byte ubG = PaletteBytes[ubp+1];
+	byte ubB = PaletteBytes[ubp+2];
+
 		ushort renderV = v;
-		uint ubRGBA = paletteCache[paletteRAM[0] & 0x3F];
-		int scanlineBase = scanline * ScreenWidth * 4;
+
+		// Render 33 tiles (32 visible + 1 for scrolling)
 		for (int tile = 0; tile < 33; tile++)
 		{
+			// Extract nametable coordinates from current VRAM address
 			int coarseX = renderV & 0x001F;
 			int coarseY = (renderV >> 5) & 0x001F;
 			int nameTable = (renderV >> 10) & 0x0003;
+
+			// Calculate nametable address
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 			byte tileIndex = Read((ushort)tileAddr);
+
+			// Get fine Y scroll (which row within the 8x8 tile)
 			int fineY = (renderV >> 12) & 0x7;
+			
+			// Determine pattern table (background uses PPUCTRL bit 4)
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 			int patternAddr = patternTable + (tileIndex * 16) + fineY;
+			
+			// Read the two bit planes for this row of the tile
 			byte plane0 = Read((ushort)patternAddr);
 			byte plane1 = Read((ushort)(patternAddr + 8));
+
+			// Get attribute byte for color palette
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
 			byte attrByte = Read((ushort)attrAddr);
+
+			// Extract the 2-bit palette index for this tile
 			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 			int paletteIndex = (attrByte >> attrShift) & 0x03;
-			int paletteBase = 1 + (paletteIndex << 2);
+
+			// Pre-calculate frame buffer base for this scanline
+			int scanlineBase = scanline * ScreenWidth * 4;
+
+			// Render the 8 pixels of this tile
 			for (int i = 0; i < 8; i++)
 			{
 				int pixel = tile * 8 + i - fineX;
-				if ((uint)pixel >= ScreenWidth) continue; // condense bounds check
-				if (pixel < 8 && (PPUMASK & 0x02) == 0) continue; // left clip
+				if (pixel < 0 || pixel >= ScreenWidth) continue;
+
 				int bitIndex = 7 - i;
 				int bit0 = (plane0 >> bitIndex) & 1;
 				int bit1 = (plane1 >> bitIndex) & 1;
 				int colorIndex = bit0 | (bit1 << 1);
+
 				int frameIndex = scanlineBase + pixel * 4;
-				uint rgba;
 				if (colorIndex == 0)
 				{
-					rgba = ubRGBA;
+					// Treat as transparent: only fill with universal bg if pixel hasn't been written yet (alpha check)
+					if (frameBuffer[frameIndex + 3] == 0)
+					{
+						frameBuffer[frameIndex + 0] = ubR;
+						frameBuffer[frameIndex + 1] = ubG;
+						frameBuffer[frameIndex + 2] = ubB;
+						frameBuffer[frameIndex + 3] = 255;
+					}
 				}
 				else
 				{
 					bgMask[pixel] = true;
-					byte palVal = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					rgba = paletteCache[palVal & 0x3F];
+					bgCoverageHistory[coverageRowIndex, pixel] = true; // mark opaque bg pixel for future shadow
+					int paletteBase = 1 + (paletteIndex << 2);
+					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+					int p = (idx & 0x3F) * 3;
+					frameBuffer[frameIndex + 0] = PaletteBytes[p];
+					frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
+					frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
+					frameBuffer[frameIndex + 3] = 255;
 				}
-				frameBuffer[frameIndex + 0] = (byte)(rgba);
-				frameBuffer[frameIndex + 1] = (byte)(rgba >> 8);
-				frameBuffer[frameIndex + 2] = (byte)(rgba >> 16);
-				frameBuffer[frameIndex + 3] = 255;
 			}
+
+			// Increment to next tile
 			IncrementX(ref renderV);
 		}
 	}
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
-		if ((PPUMASK & 0x10) == 0) return;
-		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
-		System.Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
-		// Evaluate sprites for this scanline (NES shows up to 8; overflow flag if more)
-		Span<int> spriteIndices = stackalloc int[8];
-		int found = 0; bool overflow = false;
-		for (int i = 0; i < 64; i++)
+		// Check if sprite rendering is enabled
+		bool showSprites = (PPUMASK & 0x10) != 0;
+		if (!showSprites) return;
+
+		// Project shadows based on historical coverage ShadowVerticalDistance lines above.
+		// We draw shadows BEFORE sprites so they appear underneath with a visible gap.
+		if (scanline >= ShadowVerticalDistance)
 		{
-			int offset = i * 4;
-			int spriteY = oam[offset];
-			int tileHeight = isSprite8x16 ? 16 : 8;
-			if (scanline >= spriteY && scanline < spriteY + tileHeight)
+			int sourceRowIndex = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
+			int shadowY = scanline; // landing row
+			if (shadowY < ScreenHeight)
 			{
-				if (found < 8) spriteIndices[found++] = i; else { overflow = true; break; }
+				int shadowBase = shadowY * ScreenWidth * 4;
+				for (int x = 0; x < ScreenWidth; x++)
+				{
+					if (!spriteCoverageHistory[sourceRowIndex, x]) continue;
+					int sx = x + ShadowOffsetX;
+					// Vertical offset equals distance; no extra sy check needed
+					if (sx < 0 || sx >= ScreenWidth) continue;
+					int fi = shadowBase + sx * 4;
+					// Blend darkening instead of solid black: new = orig * (1 - opacity)
+					byte or = frameBuffer[fi + 0];
+					byte og = frameBuffer[fi + 1];
+					byte ob = frameBuffer[fi + 2];
+					if (or==0 && og==0 && ob==0) continue; // already black
+					float keep = 1f - ShadowOpacity; // same as transparency (0.69)
+					frameBuffer[fi + 0] = (byte)(or * keep);
+					frameBuffer[fi + 1] = (byte)(og * keep);
+					frameBuffer[fi + 2] = (byte)(ob * keep);
+					// alpha unchanged
+				}
 			}
 		}
-		if (overflow) PPUSTATUS |= 0x20; // sprite overflow flag
-		bool sprite0HitSet = (PPUSTATUS & 0x40) != 0;
-		for (int si = 0; si < found; si++)
+
+		// Current coverage row index in ring buffer
+		int coverageRowIndex = scanline % ShadowVerticalDistance;
+		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageHistory[coverageRowIndex, cx] = false;
+
+		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
+		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
+
+		// Process all 64 sprites in OAM
+		for (int i = 0; i < 64; i++)
 		{
-			int i = spriteIndices[si];
 			int offset = i * 4;
 			byte spriteY = oam[offset];
 			byte tileIndex = oam[offset + 1];
 			byte attributes = oam[offset + 2];
 			byte spriteX = oam[offset + 3];
-			int paletteIndex = attributes & 0x03;
+
+			// Extract sprite attributes
+			int paletteIndex = attributes & 0b11;
 			bool flipX = (attributes & 0x40) != 0;
 			bool flipY = (attributes & 0x80) != 0;
-			bool priority = (attributes & 0x20) == 0; // 0=front
+			bool priority = (attributes & 0x20) == 0; // 0 = in front of background
+
+			// Check if sprite is on this scanline
 			int tileHeight = isSprite8x16 ? 16 : 8;
-			int subY = scanline - spriteY; if (flipY) subY = tileHeight - 1 - subY;
+			if (scanline < spriteY || scanline >= spriteY + tileHeight)
+				continue;
+
+			// Calculate which row of the sprite we're rendering
+			int subY = scanline - spriteY;
+			if (flipY) subY = tileHeight - 1 - subY;
+
+			// For 8x16 sprites, determine which tile and pattern table
 			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
-			int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
+			int patternTable = isSprite8x16
+				? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000)
+				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 			int baseAddr = patternTable + subTileIndex * 16;
+
+			// Read pattern data for this row
 			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
 			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
-			uint[] localPaletteCache = paletteCache; // local ref for JIT
-			uint ubRGBA = localPaletteCache[paletteRAM[0] & 0x3F];
+
+			// Render 8 pixels of the sprite
 			for (int x = 0; x < 8; x++)
 			{
 				int bit = flipX ? x : 7 - x;
 				int bit0 = (plane0 >> bit) & 1;
 				int bit1 = (plane1 >> bit) & 1;
 				int color = bit0 | (bit1 << 1);
-				if (color == 0) continue;
-				int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
-				if (px < 8 && (PPUMASK & 0x04) == 0) continue; // left clip
-				// Sprite 0 hit (respect left clipping conditions)
-				if (!sprite0HitSet && i == 0 && bgMask[px])
+				if (color == 0) continue; // Transparent pixel
+
+				int px = spriteX + x;
+				if (px < 0 || px >= ScreenWidth) continue;
+
+				// Sprite 0 hit detection
+				if (i == 0 && bgMask[px] && color != 0)
 				{
-					if (!(px < 8 && (((PPUMASK & 0x02) == 0) || ((PPUMASK & 0x04) == 0)))) { PPUSTATUS |= 0x40; sprite0HitSet = true; }
+					PPUSTATUS |= 0x40;
 				}
-				if (spritePixelDrawnReuse[px]) continue; // already drawn non-transparent sprite pixel
-				if (!priority && bgMask[px]) continue; // behind background
-				int paletteBase = 0x11 + (paletteIndex << 2);
-				byte palVal = paletteRAM[paletteBase + (color - 1)];
-				uint rgba = localPaletteCache[palVal & 0x3F];
+
+				// Skip if another sprite already drew here
+				if (spritePixelDrawnReuse[px]) continue;
+
+				// Check sprite priority
+				bool shouldDraw = true;
+				if (!priority && bgMask[px])
+				{
+					shouldDraw = false;
+				}
+
+				if (!shouldDraw) continue;
+
+				// Raw sprite color (no extra shading)
+				var spriteColor = GetSpriteColor(color, paletteIndex);
+				spriteCoverageHistory[coverageRowIndex, px] = true;
+
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				frameBuffer[frameIndex + 0] = (byte)(rgba);
-				frameBuffer[frameIndex + 1] = (byte)(rgba >> 8);
-				frameBuffer[frameIndex + 2] = (byte)(rgba >> 16);
-				frameBuffer[frameIndex + 3] = 255;
+				if (frameIndex + 3 < frameBuffer.Length)
+				{
+					frameBuffer[frameIndex + 0] = spriteColor.r;
+					frameBuffer[frameIndex + 1] = spriteColor.g;
+					frameBuffer[frameIndex + 2] = spriteColor.b;
+					frameBuffer[frameIndex + 3] = 255;
+				}
 				spritePixelDrawnReuse[px] = true;
 			}
 		}
 	}
 
-	private (byte r, byte g, byte b) GetSpriteColor(int colorIndex, int paletteIndex) // retained for potential external use (tools etc.)
+
+	private (byte r, byte g, byte b) GetSpriteColor(int colorIndex, int paletteIndex)
 	{
 		int paletteBase = 0x11 + (paletteIndex << 2);
 		byte idx = paletteRAM[paletteBase + (colorIndex - 1)];
-		uint rgba = paletteCache[idx & 0x3F];
-		return ((byte)rgba, (byte)(rgba >> 8), (byte)(rgba >> 16));
+		int p = (idx & 0x3F) * 3;
+		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
 	}
 
 	private (byte r, byte g, byte b) GetColorFromPalette(int colorIndex, int paletteIndex)
 	{
-		byte idx = colorIndex == 0 ? paletteRAM[0] : paletteRAM[(1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F];
-		uint rgba = paletteCache[idx & 0x3F];
-		return ((byte)rgba, (byte)(rgba >> 8), (byte)(rgba >> 16));
-	}
-
-	// Apply simple approximation of emphasis bits (PPUMASK bits 5-7). On hardware they modulate output; here we scale channels.
-	private void ApplyEmphasis(ref byte r, ref byte g, ref byte b) { /* legacy per-pixel emphasis removed (now baked into cache) */ }
-
-	// Rebuild cached RGBA values considering grayscale & emphasis bits
-	private void RebuildPaletteCache()
-	{
-		paletteDirty = false;
-		bool grayscale = (PPUMASK & 0x01) != 0;
-		bool emphR = (PPUMASK & 0x20) != 0;
-		bool emphG = (PPUMASK & 0x40) != 0;
-		bool emphB = (PPUMASK & 0x80) != 0;
-		// Precompute emphasis multipliers (approximation)
-		double mR = emphR ? 1.12 : 1.0;
-		double mG = emphG ? 1.12 : 1.0;
-		double mB = emphB ? 1.12 : 1.0;
-		if (!(emphR || emphG || emphB)) { mR = mG = mB = 1.0; }
-		// Slight global attenuation if any emphasis set (mimic hardware darkening of other channels)
-		if (emphR || emphG || emphB) { double att = 0.94; if (!emphR) mR *= att; if (!emphG) mG *= att; if (!emphB) mB *= att; }
-		for (int i = 0; i < 64; i++)
+		byte idx;
+		if (colorIndex == 0)
 		{
-			int p = i * 3;
-			byte r = PaletteBytes[p];
-			byte g = PaletteBytes[p + 1];
-			byte b = PaletteBytes[p + 2];
-			if (grayscale)
-			{
-				// Mask to 0x30 region as hardware does (use base index logic outside). Approx: average channels.
-				byte gray = (byte)((r * 30 + g * 59 + b * 11) / 100); // luma style
-				r = g = b = gray;
-			}
-			r = (byte)Math.Clamp((int)(r * mR), 0, 255);
-			g = (byte)Math.Clamp((int)(g * mG), 0, 255);
-			b = (byte)Math.Clamp((int)(b * mB), 0, 255);
-			paletteCache[i] = (uint)(r | (g << 8) | (b << 16) | (0xFFu << 24));
+			idx = paletteRAM[0];
 		}
+		else
+		{
+			int paletteBase = 1 + (paletteIndex << 2);
+			idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+		}
+		int p = (idx & 0x3F) * 3;
+		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
 	}
 
 	// Add some animated elements to make the test pattern more interesting
@@ -551,42 +591,29 @@ public class PPU_FIX : IPPU
 	public byte ReadPPURegister(ushort address)
 	{
 		byte result = 0x00;
-		int reg = address & 0x0007;
-		switch (reg)
+
+		switch (address & 0x0007)
 		{
-			case 0x0002: // PPUSTATUS
-				// Compose from flags + lower 5 bits of open bus
-				result = (byte)((PPUSTATUS & 0xE0) | (ppuOpenBus & 0x1F));
-				// Clear vblank & reset toggles
-				PPUSTATUS &= 0x1F;
-				scrollLatch = false; addrLatch = false;
-				ppuOpenBus = result; DecayOpenBus(OpenBusDecayAction.High);
+			case 0x0002: // PPU Status
+				result = PPUSTATUS;
+				PPUSTATUS &= 0x3F; // Clear VBlank flag on read
+				addrLatch = false; // Reset address latch
 				return result;
-			case 0x0004: // OAMDATA (reads from OAM at OAMADDR)
-				result = oam[OAMADDR];
-				ppuOpenBus = result; DecayOpenBus(OpenBusDecayAction.All);
-				return result;
-			case 0x0007: // PPUDATA
+			case 0x0004: // OAM Data
+				return oam[OAMADDR];
+			case 0x0007: // PPU Data
 				result = ppuDataBuffer;
 				ppuDataBuffer = Read(PPUADDR);
-				if (PPUADDR >= 0x3F00) // palette read returns immediately
+				
+				if (PPUADDR >= 0x3F00)
 				{
 					result = ppuDataBuffer;
-					// Merge with high bits of open bus (simulate) by keeping high 2 bits
-					result = (byte)((result & 0x3F) | (ppuOpenBus & 0xC0));
-					DecayOpenBus(OpenBusDecayAction.Low);
 				}
-				else
-				{
-					DecayOpenBus(OpenBusDecayAction.All);
-				}
-				ppuOpenBus = result;
-				PPUADDR += (ushort)(((PPUCTRL & 0x04) != 0) ? 32 : 1);
+				
+				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:
-				// read of write-only returns open bus value
-				DecayOpenBus(OpenBusDecayAction.None);
-				return ppuOpenBus;
+				return 0;
 		}
 	}
 
@@ -597,26 +624,20 @@ public class PPU_FIX : IPPU
 			case 0x0000: // PPU Control
 				PPUCTRL = value;
 				t = (ushort)((t & 0xF3FF) | ((value & 0x03) << 10));
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0001: // PPU Mask
 				PPUMASK = value;
-				paletteDirty = true; // grayscale/emphasis bits may change
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0002: // PPU Status
 				PPUSTATUS &= 0x7F;
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.High);
 				scrollLatch = false;
 				break;
 			case 0x0003: // OAM Address
 				OAMADDR = value;
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0004: // OAM Data
 				OAMDATA = value;
 				oam[OAMADDR++] = OAMDATA;
-				ppuOpenBus = OAMDATA; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0005: // PPU Scroll
 				if (!scrollLatch)
@@ -632,7 +653,6 @@ public class PPU_FIX : IPPU
 					t = (ushort)((t & 0xFC1F) | ((value & 0xF8) << 2));
 				}
 				scrollLatch = !scrollLatch;
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0006: // PPU Address
 				if (!addrLatch)
@@ -647,14 +667,12 @@ public class PPU_FIX : IPPU
 					v = t;
 				}
 				addrLatch = !addrLatch;
-				ppuOpenBus = value; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 			case 0x0007: // PPU Data
 				PPUDATA = value;
 				Write(PPUADDR, PPUDATA);
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				v = PPUADDR;
-				ppuOpenBus = PPUDATA; DecayOpenBus(OpenBusDecayAction.All);
 				break;
 		}
 	}
@@ -698,9 +716,8 @@ public class PPU_FIX : IPPU
 		else if (address >= 0x3F00 && address <= 0x3FFF)
 		{
 			ushort mirrored = (ushort)(address & 0x1F);
-			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; // palette mirrors
+			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 			paletteRAM[mirrored] = value;
-			paletteDirty = true;
 		}
 	}
 
