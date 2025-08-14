@@ -25,7 +25,6 @@ public class Bus : IBus
 		public IAPU apu; // default modern
 		public IAPU apuJank; // legacy famiclone
 		public IAPU apuQN; // QuickNes
-		private bool famicloneMode = true; // legacy flag: true when last user toggle selected famiclone; derived from activeApu for reporting
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
 	public Cartridge cartridge;
 	public byte[] ram; //2KB RAM
@@ -130,12 +129,7 @@ public class Bus : IBus
 		if (string.IsNullOrWhiteSpace(id)) return false;
 		var newApu = GetOrCreateApu(id);
 		if (newApu == null) return false;
-		if (ReferenceEquals(newApu, activeApu))
-		{
-			// Even if unchanged, update legacy flag deterministically
-			famicloneMode = id.Equals("FMC", System.StringComparison.OrdinalIgnoreCase);
-			return true;
-		}
+		if (ReferenceEquals(newApu, activeApu)) { return true; }
 		activeApu = newApu; // reapply latched registers so new core inherits state
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{
@@ -143,7 +137,6 @@ public class Bus : IBus
 			if (addr == 0x4014) continue;
 			try { activeApu.WriteAPURegister(addr, apuRegLatch[i]); } catch { }
 		}
-		famicloneMode = id.Equals("FMC", System.StringComparison.OrdinalIgnoreCase); // legacy semantic
 		return true;
 	}
 
@@ -226,8 +219,6 @@ public class Bus : IBus
 			case ApuCore.Jank: activeApu = apuJank ?? GetOrCreateApu("FMC") ?? activeApu; break;
 			case ApuCore.QuickNes: activeApu = apuQN ?? GetOrCreateApu("QN") ?? activeApu; break;
 		}
-		// sync legacy flag for callers that still query famiclone boolean
-		famicloneMode = core == ApuCore.Jank;
 		// Reapply latched register values so the new core picks up current state
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{
@@ -244,12 +235,6 @@ public class Bus : IBus
 		return ApuCore.Modern;
 	}
 
-	public void SetFamicloneMode(bool on)
-	{
-		// Route to specific cores under the hood
-		SetApuCore(on ? ApuCore.Jank : ApuCore.Modern);
-	}
-	public bool GetFamicloneMode() => activeApu == apuJank;
 	public IAPU ActiveAPU => activeApu;
 
 		// --- APU Hard Reset Support ---

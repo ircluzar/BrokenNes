@@ -47,7 +47,6 @@ namespace NesEmulator
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
-			public bool famicloneMode; // legacy flag for UI backward-compatibility
 			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (legacy integer, kept for backward compat if ever needed)
 			public int cpuCore; // 0=FMC (future cores enumerate)
 			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
@@ -111,7 +110,6 @@ namespace NesEmulator
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
-					famicloneMode = bus.GetFamicloneMode(),
 					apuCore = (int)bus.GetActiveApuCore(),
 					cpuCore = (int)bus.GetActiveCpuCore(),
 					cpuCoreId = bus.cpu.GetType().Name,
@@ -187,7 +185,6 @@ namespace NesEmulator
 				if (root.TryGetProperty("controllerStrobe", out var cstEl)) st.controllerStrobe = cstEl.GetBoolean();
 				if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
 				if (root.TryGetProperty("romHash", out var rhEl) && rhEl.ValueKind==System.Text.Json.JsonValueKind.String) st.romHash = rhEl.GetString() ?? string.Empty;
-				if (root.TryGetProperty("famicloneMode", out var fmEl)) st.famicloneMode = fmEl.GetBoolean();
 				if (root.TryGetProperty("apuCore", out var apcEl)) st.apuCore = apcEl.GetInt32();
 				if (root.TryGetProperty("cpuCore", out var cpcEl)) st.cpuCore = cpcEl.GetInt32();
 				if (root.TryGetProperty("cpuCoreId", out var ccidEl) && ccidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpuCoreId = ccidEl.GetString() ?? string.Empty;
@@ -260,7 +257,17 @@ namespace NesEmulator
 				else {
 					var core = (Bus.ApuCore)st.apuCore; bus.SetApuCore(core);
 				}
-			} catch { bus.SetFamicloneMode(st.famicloneMode); }
+			} catch {
+				// Back-compat: if no apuCoreId nor apuCore usable, attempt to infer from legacy boolean if present
+				try {
+					using var doc2 = System.Text.Json.JsonDocument.Parse(json);
+					if (doc2.RootElement.TryGetProperty("famicloneMode", out var fmEl))
+					{
+						bool fm = fmEl.GetBoolean();
+						bus.SetApuCore(fm ? Bus.ApuCore.Jank : Bus.ApuCore.Modern);
+					}
+				} catch { }
+			}
 			try { if (!string.IsNullOrEmpty(st.apu)) { using var ad = System.Text.Json.JsonDocument.Parse(st.apu); bus.ActiveAPU.SetState(ad.RootElement); } } catch { }
 			// Drop any queued audio/pacing so playback restarts cleanly after state load
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
@@ -283,11 +290,11 @@ namespace NesEmulator
 		public void LoadROM(byte[] romData)
 		{
 			try {
-				// Preserve currently selected famiclone/native APU mode across cartridge swaps
-				bool prevFamiClone = bus?.GetFamicloneMode() ?? true;
+				// Preserve currently selected APU core across cartridge swaps
+				var prevApu = bus?.GetActiveApuCore() ?? Bus.ApuCore.Jank;
 				cartridge = new Cartridge(romData);
 				bus = new Bus(cartridge);
-				bus.SetFamicloneMode(prevFamiClone); // restore user preference before clearing cores
+				bus.SetApuCore(prevApu); // restore user preference before clearing cores
 				// Ensure fresh audio cores (avoid previous game's APU state bleeding into new one or mode desync)
 				bus.HardResetAPUs();
 				try { bus.ppu?.ClearBuffers(); } catch { }
@@ -459,9 +466,7 @@ namespace NesEmulator
 		public int GetQueuedAudioSamples() => bus?.GetQueuedSamples() ?? 0;
 		public int GetAudioSampleRate() => bus?.GetAudioSampleRate() ?? 44100;
 
-		public bool GetFamicloneMode() => bus?.GetFamicloneMode() ?? true;
-		public void ToggleFamicloneMode() { if (bus==null) return; bus.SetFamicloneMode(!bus.GetFamicloneMode()); }
-		public void SetFamicloneMode(bool on) { if (bus==null) return; bus.SetFamicloneMode(on); }
+		// Removed famicloneMode boolean API; UI should query active APU id or GetApuCore()
 
 		// --- APU core selection (Modern/Jank/QN) ---
 		public enum ApuCore { Modern=0, Jank=1, QuickNes=2 }

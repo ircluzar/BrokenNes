@@ -790,7 +790,7 @@
         }
     }
 
-    private void StartEmulation()
+    private async Task StartEmulation()
     {
         try
         {
@@ -811,7 +811,7 @@
             Status.Set("Emulation running...");
 
             // Start JS requestAnimationFrame loop
-            JS.InvokeVoidAsync("nesInterop.startEmulationLoop", DotNetObjectReference.Create(this));
+            await JS.InvokeVoidAsync("nesInterop.startEmulationLoop", DotNetObjectReference.Create(this));
 
             StateHasChanged();
         }
@@ -824,13 +824,13 @@
         }
     }
 
-    private void PauseEmulation()
+    private async Task PauseEmulation()
     {
         try
         {
             Logger.LogInformation("Pausing emulation");
             isRunning = false;
-            JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
             Status.Set("Emulation paused");
             StateHasChanged();
         }
@@ -847,7 +847,7 @@
         {
             Logger.LogInformation("Resetting emulation");
             bool wasRunning = isRunning;
-            PauseEmulation();
+            await PauseEmulation();
             // Ensure auto corruption is disabled for a clean reset
             if (autoCorrupt)
             {
@@ -888,7 +888,7 @@
             fps = 0;
             if (wasRunning)
             {
-                StartEmulation();
+                await StartEmulation();
             }
             Status.Set("Emulation reset (clean ROM reloaded)");
             StateHasChanged();
@@ -1031,19 +1031,13 @@
             await InvokeAsync(() =>
             {
                 errorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
-                PauseEmulation();
+                _ = PauseEmulation();
                 StateHasChanged();
             });
         }
     }
 
-    private void ToggleFamiclone()
-    {
-        if (nes == null) return;
-        nes.ToggleFamicloneMode();
-        famicloneOn = nes.GetFamicloneMode();
-    Status.Set(famicloneOn ? "Famiclone (legacy APU) active" : "FIX (modern) active");
-    }
+    // Legacy famiclone toggle removed; use APU core selector instead
 
     private void SetApuCoreSelFromEmu()
     {
@@ -1053,7 +1047,7 @@
             var id = nes.GetApuCoreId();
             var suffix = NesEmulator.CoreRegistry.ExtractSuffix(id, "APU_");
             apuCoreSel = suffix;
-            famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nes.GetFamicloneMode();
+            famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
         }
         catch { }
     }
@@ -1120,7 +1114,7 @@
                 default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); break;
             }
         }
-        famicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nes.GetFamicloneMode();
+    famicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase);
         Status.Set($"APU core switched to {v}");
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
     }
@@ -1221,7 +1215,7 @@
             nes = new NesEmulator.NES();
             nes.LoadROM(romData);
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
-            famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
+            SetApuCoreSelFromEmu();
 
             BuildMemoryDomains();
 
@@ -1230,7 +1224,7 @@
             errorMessage = "";
             if (hasBooted && !isRunning)
             {
-                StartEmulation();
+                await StartEmulation();
             }
             StateHasChanged();
         }
@@ -1427,7 +1421,7 @@
                 nes = new NesEmulator.NES();
                 nes.LoadROM(data);
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
-                famicloneOn = nes.GetFamicloneMode(); // refresh UI toggle
+                SetApuCoreSelFromEmu();
                 SetApuCoreSelFromEmu();
                 ApplySelectedCores();
                 BuildMemoryDomains();
@@ -1442,7 +1436,7 @@
                 }
                 if (hasBooted && !isRunning)
                 {
-                    StartEmulation();
+                    await StartEmulation();
                 }
                 StateHasChanged();
             }
@@ -1522,7 +1516,7 @@
             nes = new NesEmulator.NES();
             nes.LoadROM(romData);
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
-            famicloneOn = nes.GetFamicloneMode();
+            SetApuCoreSelFromEmu();
             SetApuCoreSelFromEmu();
             ApplySelectedCores();
             currentRomName = romFileName;
@@ -1541,7 +1535,7 @@
             }
             if (hasBooted && !isRunning)
             {
-                StartEmulation();
+                await StartEmulation();
             }
             StateHasChanged();
         }
@@ -1723,12 +1717,11 @@
                 // Refresh famiclone/APU mode in case the loaded state differs from current UI toggle
                 try
                 {
+                    var apuId = nes.GetApuCoreId();
+                    var suffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
                     bool prev = famicloneOn;
-                    famicloneOn = nes.GetFamicloneMode();
-                    if (prev != famicloneOn || !running)
-                    {
-                        StateHasChanged();
-                    }
+                    famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
+                    if (prev != famicloneOn || !running) StateHasChanged();
                 }
                 catch { if (!running) StateHasChanged(); }
                 // Sync core selections from loaded state and persist
@@ -1992,7 +1985,7 @@
         // If ROM already loaded, start now
         if (nes != null && !isRunning)
         {
-            StartEmulation();
+            await StartEmulation();
         }
         StateHasChanged();
     }

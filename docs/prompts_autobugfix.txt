@@ -1,0 +1,85 @@
+
+#### INFO FOR HUMAN DEVELOPPER ####
+>> Before starting this workflow, make sure you have committed your code and don't have any pending changes.
+
+##########################################################################################################
+### Start by detailing the bug to fix.                                                                 ###
+##########################################################################################################
+
+Describe in detail the behavior that is currently happenning
+Explain why this is a problem
+Describe what would be the normal behavior you are expecting
+
+
+
+
+#### INFO FOR HUMAN DEVELOPPER ####
+>>> Put the information in bugs.txt
+
+##########################################################################################################
+### Creating categories for scanning.                                                                  ###
+##########################################################################################################
+
+We need to perform a deep dive in this program code to find a specific bug. 
+Can you list me the various program components we have to search through? 
+keep the list generic and simple
+put them in categories.
+
+
+
+
+#### INFO FOR HUMAN DEVELOPPER ####
+>>> Put the categories in categories.txt
+
+##########################################################################################################
+### Scanning the code for bugs.                                                                        ###
+##########################################################################################################
+
+## I need you to scan a portion of the program:
+
+$$_CATEGORY_$$
+
+## for the probable causes of the following bug:
+
+$$_BUG_$$
+
+## Come back to me with the probable causes of the bugs from your findings.
+
+
+
+
+
+#### INFO FOR HUMAN DEVELOPPER ####
+>>> Run this for every category in categories.txt
+>>> Put all the theories in raw to a file called results.txt
+
+##########################################################################################################
+### Creating bugsearch.md                                                                              ###
+##########################################################################################################
+
+## Using the results.txt file containing our previous scan of the entire codebase for the following bug:
+
+$$$_BUG_$$$
+
+## Scan the code once again to create one big markdown document of all the theories on what could solve this bug.
+
+Order the theories from most probable to less likely, number them and add a checkbox for marking which theories were confirmed.
+
+Output the final bug searching document in bugsearch.md
+
+
+
+
+
+##########################################################################################################
+### Attempt bugfix.                                                                                    ###
+##########################################################################################################
+
+Perform bugsearch. Let's attempt Theory $$. Create a fix for theory $$, i will perform the tests afterwards.
+
+
+#### INFO FOR HUMAN DEVELOPPER ####
+>> Run this prompt for every theory.
+>> Test the fix after it has done implementing a fix for the current theory
+>> If the fix did not work, discard the changes on the code files in your Git
+>> If the fix worked, contratulations.
