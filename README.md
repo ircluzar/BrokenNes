@@ -39,6 +39,15 @@ Open the app in a browser (default: http://localhost:5000 or the HTTPS variant t
 - `Shared/` shared UI components
 - `wwwroot/` static assets (ROM test file, favicon, scripts)
 
+## Core lifecycle and lazy cores
+- Cores are discovered by name (CPU_*, PPU_*, APU_*) and created via a small factory.
+- CPU is eager, while PPU/APU are created on first use to avoid large startup allocations.
+- PPU exposes `ClearBuffers()` to drop frame buffers when hot-swapping or after load.
+- APU exposes `ClearAudioBuffers()` and `Reset()` to drop queued audio and restart pacing without reallocation.
+- SaveState omits the framebuffer and uses pre-serialized subsystem JSON for AOT/WASM builds.
+
+See `docs/core-lifecycle.md` for details.
+
 ## Contributing
 Don't even bother
 

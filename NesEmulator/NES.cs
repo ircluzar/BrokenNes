@@ -262,6 +262,8 @@ namespace NesEmulator
 				}
 			} catch { bus.SetFamicloneMode(st.famicloneMode); }
 			try { if (!string.IsNullOrEmpty(st.apu)) { using var ad = System.Text.Json.JsonDocument.Parse(st.apu); bus.ActiveAPU.SetState(ad.RootElement); } } catch { }
+			// Drop any queued audio/pacing so playback restarts cleanly after state load
+			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
 			#if DEBUG
@@ -436,18 +438,15 @@ namespace NesEmulator
 				if (queued > backlogSoftCap)
 				{
 					int toDrop = queued - backlogSoftCap;
-					// Drain in 2048-sized chunks to avoid big allocations and to keep behavior smooth.
-					while (toDrop > 0)
-					{
-						int chunk = toDrop > 2048 ? 2048 : toDrop;
-						var _ = bus.GetAudioSamples(chunk);
-						toDrop -= chunk;
-					}
+					// Drain in a single allocation instead of multiple 2k chunks to reduce GC pressure.
+					_ = bus.GetAudioSamples(toDrop);
 				}
 				return bus.GetAudioSamples(2048);
 			}
-			var silentBuffer = new float[2048]; Array.Fill(silentBuffer,0f); return silentBuffer;
+			return Silent2048;
 		}
+
+		private static readonly float[] Silent2048 = new float[2048];
 
 		public int GetQueuedAudioSamples() => bus?.GetQueuedSamples() ?? 0;
 		public int GetAudioSampleRate() => bus?.GetAudioSampleRate() ?? 44100;

@@ -390,5 +390,11 @@ namespace NesEmulator
         {
             PostRestoreAudioResync();
         }
+
+        // Minimal Reset hook required by IAPU: clear audio buffers and pacing.
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
     }
 }

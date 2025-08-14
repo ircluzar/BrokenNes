@@ -372,5 +372,11 @@ namespace NesEmulator
         {
             PostRestoreAudioResync();
         }
+
+        // Minimal Reset: clear audio buffers and pacing; preserve register latches/state.
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
     }
 }

@@ -161,5 +161,30 @@ namespace NesEmulator
             }
             return dict;
         }
+
+        // Lightweight verification helper to assert discovery and ordering in debug builds.
+        // Returns true when CPU/PPU/APU suffix ids are unique and sorted case-insensitively.
+    public static bool VerifyIdsAndTypes()
+        {
+            Initialize();
+            bool ok = true;
+        static bool IsSortedUnique(List<string> list)
+            {
+                for (int i = 1; i < list.Count; i++)
+                {
+            if (string.Compare(list[i - 1], list[i], StringComparison.OrdinalIgnoreCase) > 0) return false;
+            if (string.Equals(list[i - 1], list[i], StringComparison.OrdinalIgnoreCase)) return false;
+                }
+                return true;
+            }
+            ok &= IsSortedUnique(_cpuIds);
+            ok &= IsSortedUnique(_ppuIds);
+            ok &= IsSortedUnique(_apuIds);
+            // Type maps must contain same keys
+            ok &= _cpuIds.All(id => _cpuTypes.ContainsKey(id));
+            ok &= _ppuIds.All(id => _ppuTypes.ContainsKey(id));
+            ok &= _apuIds.All(id => _apuTypes.ContainsKey(id));
+            return ok;
+        }
     }
 }

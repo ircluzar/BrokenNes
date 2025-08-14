@@ -222,6 +222,12 @@ namespace NesEmulator
             lpLast = 0; dcLastIn = 0; dcLastOut = 0;
         }
 
+        // Minimal Reset hook: drop queued audio and pacing
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
+
         // Step 1 CPU cycle convenience
         public void Step() => Step(1);
         public void Step(int cpuCycles)

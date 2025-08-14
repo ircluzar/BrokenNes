@@ -396,5 +396,11 @@ namespace NesEmulator
         {
             PostRestoreAudioResync();
         }
+
+        // Minimal Reset: drop host-facing audio and pacing so core can restart cleanly.
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
     }
 }

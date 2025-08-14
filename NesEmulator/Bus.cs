@@ -49,6 +49,18 @@ public class Bus : IBus
 		apuQN = GetOrCreateApu("QN") ?? apu;
 		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
+		// Optional: allow cores to run deferred initialization that requires a constructed Bus
+		TryInitializeCores();
+	}
+
+	// Optional extension point: cores may implement this to receive a post-ctor Bus reference
+	public interface IBusAware { void Initialize(Bus bus); }
+
+	private void TryInitializeCores()
+	{
+		try { foreach (var c in _cpuCores.Values) if (c is IBusAware ia) ia.Initialize(this); } catch {}
+		try { foreach (var kv in _ppuInstances) if (kv.Value is IBusAware ia) ia.Initialize(this); } catch {}
+		try { foreach (var kv in _apuInstances) if (kv.Value is IBusAware ia) ia.Initialize(this); } catch {}
 	}
 
 	// === CPU Core Hot-Swap Support (parallel to APU system) ===

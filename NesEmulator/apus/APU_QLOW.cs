@@ -558,6 +558,12 @@ namespace NesEmulator
             sampleFrac = 0;
         }
 
+        // Minimal Reset: drop audio queue and pacing values; keep internal regs intact.
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
+
     // Optional helper to compact internal timers at a frame boundary.
         // It compacts internal time counters to keep them small and, when nonlinear mixing is enabled,
         // zeroes channel last_amp values at the boundary to avoid discontinuities.
