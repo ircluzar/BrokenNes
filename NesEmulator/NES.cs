@@ -266,6 +266,14 @@ namespace NesEmulator
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
+#if DEBUG
+			try {
+				var activeCpuId = bus.cpu?.GetType().Name ?? "";
+				var activePpuId = bus.ppu?.GetType().Name ?? "";
+				var activeApuId = bus.ActiveAPU?.GetType().Name ?? "";
+				Console.WriteLine($"[LoadState] SavedCoreIds CPU={st.cpuCoreId} PPU={st.ppuCoreId} APU={st.apuCoreId} | Active CPU={activeCpuId} PPU={activePpuId} APU={activeApuId}");
+			} catch {}
+#endif
 			#if DEBUG
 			var regsDbg2 = (bus.cpu as ICPU)?.GetRegisters();
 			Console.WriteLine($"[LoadState] Restored PC={(regsDbg2?.PC ?? 0):X4} A={(regsDbg2?.A ?? 0):X2} X={(regsDbg2?.X ?? 0):X2} Y={(regsDbg2?.Y ?? 0):X2} SP={(regsDbg2?.SP ?? 0):X4} status={(regsDbg2?.P ?? 0):X2}");

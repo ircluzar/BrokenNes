@@ -103,7 +103,8 @@ public class Bus : IBus
 	public bool SetCpuCoreById(string id)
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
-		if (!_cpuCores.TryGetValue(id, out var newCpu) || ReferenceEquals(newCpu, activeCpu)) return false;
+		if (!_cpuCores.TryGetValue(id, out var newCpu)) return false;
+		if (ReferenceEquals(newCpu, activeCpu)) { cpu = activeCpu; return true; }
 		var prevState = activeCpu.GetState();
 		bool ignoreInvalid = activeCpu.IgnoreInvalidOpcodes;
 		try { newCpu.SetState(prevState); } catch { }
@@ -114,7 +115,8 @@ public class Bus : IBus
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
 		var newPpu = GetOrCreatePpu(id);
-		if (newPpu == null || ReferenceEquals(newPpu, activePpu)) return false;
+		if (newPpu == null) return false;
+		if (ReferenceEquals(newPpu, activePpu)) { ppu = activePpu; return true; }
 		var prevState = activePpu.GetState();
 		// Drop large transient buffers on the old PPU before switching to reduce memory
 		try { if (activePpu != null) activePpu.ClearBuffers(); } catch { }
@@ -127,7 +129,13 @@ public class Bus : IBus
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
 		var newApu = GetOrCreateApu(id);
-		if (newApu == null || ReferenceEquals(newApu, activeApu)) return false;
+		if (newApu == null) return false;
+		if (ReferenceEquals(newApu, activeApu))
+		{
+			// Even if unchanged, update legacy flag deterministically
+			famicloneMode = id.Equals("FMC", System.StringComparison.OrdinalIgnoreCase);
+			return true;
+		}
 		activeApu = newApu; // reapply latched registers so new core inherits state
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{

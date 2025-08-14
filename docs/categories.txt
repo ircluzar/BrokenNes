@@ -1,0 +1,35 @@
+Core
+-----
+NES core / main loop
+Clock & synchronization
+Processors
+
+CPU (instruction execution, interrupts)
+PPU (video rendering, scanlines, sprites, OAM)
+APU (audio channels, envelopes, frame counter)
+
+
+Memory & I/O
+-------------
+System bus / memory map (reads/writes, mirroring)
+Cartridge & mappers (PRG/CHR banking, mapper logic)
+DMA (OAM DMA transfers)
+I/O registers / hardware registers
+
+
+Timing & Control
+------------
+Timers, cycle counting, scanline/frame timing
+Interrupt handling (NMI, IRQ)
+
+
+Input & Output
+----------------
+Controller/input handling
+Audio output pipeline
+Video output pipeline / display integration
+
+Persistence & Tools
+-----------------------
+Save states / serialization / reset
+Debugging, logging, test harnesses, tooling
