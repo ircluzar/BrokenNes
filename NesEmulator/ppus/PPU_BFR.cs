@@ -918,7 +918,7 @@ public class PPU_BFR : IPPU
 	};
 
 	public object GetState() {
-		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter, backgroundFadeAlpha=backgroundFadeAlpha, enableAutoFade=enableAutoFade, fadeFrameCounter=fadeFrameCounter };
+		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), /* frame omitted */ PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter, backgroundFadeAlpha=backgroundFadeAlpha, enableAutoFade=enableAutoFade, fadeFrameCounter=fadeFrameCounter };
 	}
 	public void SetState(object state) {
 		if (state is PpuSharedState s) {

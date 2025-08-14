@@ -210,7 +210,8 @@ namespace NesEmulator
             pulse2_output = ComputePulseOutput(2);
             triangle_output = TriangleSequenceValue(triangle_sequenceIndex);
             noise_output = ((noiseShiftRegister & 0x01) == 0) ? (noise_constantVolume ? noise_volumeParam : noise_decayLevel) : 0;
-            ringRead = ringWrite = ringCount = 0; lpLast = 0; dcLastIn = 0; dcLastOut = 0;
+            // Clear audio buffers and filters so JS scheduling can restart without stale samples
+            ringRead = ringWrite = ringCount = 0; fractionalSampleAccumulator = 0; lpLast = 0; dcLastIn = 0; dcLastOut = 0;
         }
 
         // Step 1 CPU cycle convenience

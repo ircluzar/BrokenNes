@@ -873,7 +873,18 @@ public class PPU_FMC : IPPU
 	};
 
 	public object GetState() {
-		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), frame=(byte[])frameBuffer.Clone(), PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter };
+		// Do NOT serialize the large framebuffer; it can be regenerated. This keeps saves small and fast.
+		return new PpuSharedState {
+			vram=(byte[])vram.Clone(),
+			palette=(byte[])paletteRAM.Clone(),
+			oam=(byte[])oam.Clone(),
+			// frame omitted intentionally
+			PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,
+			PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,
+			fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,
+			scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer,
+			staticFrameCounter=staticFrameCounter
+		};
 	}
 	public void SetState(object state) {
 		if (state is PpuSharedState s) {

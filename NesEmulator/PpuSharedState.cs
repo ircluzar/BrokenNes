@@ -10,7 +10,8 @@ public class PpuSharedState
     public byte[] vram = new byte[2048];
     public byte[] palette = new byte[32];
     public byte[] oam = new byte[256];
-    public byte[] frame = new byte[256 * 240 * 4];
+    // Large framebuffer omitted from saves by default; keep field for backward compat but use empty array
+    public byte[] frame = System.Array.Empty<byte>();
     public byte PPUCTRL, PPUMASK, PPUSTATUS, OAMADDR, PPUSCROLLX, PPUSCROLLY, PPUDATA;
     public ushort PPUADDR;
     public byte fineX;

@@ -1713,6 +1713,10 @@
             if (!string.IsNullOrEmpty(full))
             {
                 nes.LoadState(full);
+                // After restoring emulator internals, reset JS audio scheduler timeline to prevent drift/stutter
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                // Drain any leftover audio buffered by the emulator so playback resumes cleanly from the restored timeline
+                try { var _ = nes.GetAudioBuffer(); } catch {}
                 framebuffer = nes.GetFrameBuffer();
                 await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
                 Status.Set("State loaded");

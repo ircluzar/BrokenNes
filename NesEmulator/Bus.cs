@@ -8,10 +8,14 @@ public interface IBus
 
 public class Bus : IBus
 {
-		// Automatic core dictionaries populated via reflection (CoreRegistry)
-		private readonly System.Collections.Generic.Dictionary<string, ICPU> _cpuCores;
-		private readonly System.Collections.Generic.Dictionary<string, IPPU> _ppuCores;
-		private readonly System.Collections.Generic.Dictionary<string, IAPU> _apuCores;
+		// Core dictionaries
+		private readonly System.Collections.Generic.Dictionary<string, ICPU> _cpuCores; // eager for now
+		// Lazy APU & PPU: cache types and create instances on demand to avoid early large buffer allocations
+		private readonly System.Collections.Generic.Dictionary<string, System.Type> _apuTypes;
+		private readonly System.Collections.Generic.Dictionary<string, IAPU> _apuInstances = new(System.StringComparer.OrdinalIgnoreCase);
+		// Lazy PPU: cache types and create instances on demand to avoid early large buffer allocations
+		private readonly System.Collections.Generic.Dictionary<string, System.Type> _ppuTypes;
+		private readonly System.Collections.Generic.Dictionary<string, IPPU> _ppuInstances = new(System.StringComparer.OrdinalIgnoreCase);
 		// Active instances & legacy public handles (kept for minimal external changes)
 		private ICPU activeCpu;
 		private IPPU activePpu;
@@ -31,17 +35,18 @@ public class Bus : IBus
 	{
 		this.cartridge = cartridge;
 		_cpuCores = CoreRegistry.CreateInstances<ICPU>(this, "CPU_");
-		_ppuCores = CoreRegistry.CreateInstances<IPPU>(this, "PPU_");
-		_apuCores = CoreRegistry.CreateInstances<IAPU>(this, "APU_");
+		_apuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.ApuTypes, System.StringComparer.OrdinalIgnoreCase);
+		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);
 		// Defaults
 		activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc) ? cpuFmc : (_cpuCores.Count>0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
 		cpu = activeCpu;
-		// Prefer FMC PPU by default; fall back to any available
-		activePpu = _ppuCores.TryGetValue("FMC", out var pFmc) ? pFmc : (_ppuCores.TryGetValue("CUBE", out var pCube) ? pCube : (_ppuCores.Count>0 ? System.Linq.Enumerable.First(_ppuCores.Values) : throw new System.Exception("No PPU cores found")));
+		// Prefer FMC PPU by default; fall back to any available. Create lazily.
+		activePpu = GetOrCreatePpu("FMC") ?? GetOrCreatePpu("CUBE") ?? (CreateFirstAvailablePpu() ?? throw new System.Exception("No PPU cores found"));
 		ppu = activePpu;
-		apu = _apuCores.TryGetValue("FIX", out var aFix) ? aFix : (_apuCores.Count>0 ? System.Linq.Enumerable.First(_apuCores.Values) : throw new System.Exception("No APU cores found"));
-		apuJank = _apuCores.TryGetValue("FMC", out var aFmc) ? aFmc : apu;
-		apuQN = _apuCores.TryGetValue("QN", out var aQn) ? aQn : apu;
+		// APU defaults (lazy)
+		apu = GetOrCreateApu("FIX") ?? CreateFirstAvailableApu() ?? throw new System.Exception("No APU cores found");
+		apuJank = GetOrCreateApu("FMC") ?? apu;
+		apuQN = GetOrCreateApu("QN") ?? apu;
 		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
 	}
@@ -79,8 +84,8 @@ public class Bus : IBus
 
 	// === Generic reflection-driven core discovery helpers ===
 	public System.Collections.Generic.IReadOnlyList<string> GetCpuCoreIds() => _cpuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
-	public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => _ppuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
-	public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => _apuCores.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
+	public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => _ppuTypes.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
+	public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => _apuTypes.Keys.OrderBy(k=>k, System.StringComparer.OrdinalIgnoreCase).ToList();
 
 	// Generic setters by suffix id (e.g. "FMC", "FIX", "NGTV") allowing new cores without editing enums
 	public bool SetCpuCoreById(string id)
@@ -96,7 +101,8 @@ public class Bus : IBus
 	public bool SetPpuCoreById(string id)
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
-		if (!_ppuCores.TryGetValue(id, out var newPpu) || ReferenceEquals(newPpu, activePpu)) return false;
+		var newPpu = GetOrCreatePpu(id);
+		if (newPpu == null || ReferenceEquals(newPpu, activePpu)) return false;
 		var prevState = activePpu.GetState();
 		try { newPpu.SetState(prevState); } catch { }
 		activePpu = newPpu; ppu = activePpu; return true;
@@ -104,7 +110,8 @@ public class Bus : IBus
 	public bool SetApuCoreById(string id)
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
-		if (!_apuCores.TryGetValue(id, out var newApu) || ReferenceEquals(newApu, activeApu)) return false;
+		var newApu = GetOrCreateApu(id);
+		if (newApu == null || ReferenceEquals(newApu, activeApu)) return false;
 		activeApu = newApu; // reapply latched registers so new core inherits state
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{
@@ -137,18 +144,59 @@ public class Bus : IBus
 	if (newPpu != null) { activePpu = newPpu; ppu = activePpu; }
 	}
 		public PpuCore GetActivePpuCore() {
-			var kv = System.Linq.Enumerable.FirstOrDefault(_ppuCores, kvp => object.ReferenceEquals(kvp.Value, activePpu));
-			return kv.Key switch { "FMC" => PpuCore.FMC, "FIX" => PpuCore.FIX, "LQ" => PpuCore.LQ, "CUBE" => PpuCore.CUBE, "LOW" => PpuCore.LOW, "BFR" => PpuCore.BFR, _ => PpuCore.FMC };
+			// Find by instance dictionary
+			foreach (var kv in _ppuInstances)
+				if (object.ReferenceEquals(kv.Value, activePpu))
+					return kv.Key switch { "FMC" => PpuCore.FMC, "FIX" => PpuCore.FIX, "LQ" => PpuCore.LQ, "CUBE" => PpuCore.CUBE, "LOW" => PpuCore.LOW, "BFR" => PpuCore.BFR, _ => PpuCore.FMC };
+			return PpuCore.FMC;
 		}
-		private IPPU? GetPpu(string id) => _ppuCores.TryGetValue(id, out var p)?p:null;
+
+		private IPPU? GetPpu(string id) => GetOrCreatePpu(id);
+		private IPPU? GetOrCreatePpu(string id)
+		{
+			if (_ppuInstances.TryGetValue(id, out var existing)) return existing;
+			if (!_ppuTypes.TryGetValue(id, out var type)) return null;
+			var created = CoreRegistry.CreateInstance<IPPU>(type, this);
+			if (created != null) _ppuInstances[id] = created;
+			return created;
+		}
+
+		private IPPU? CreateFirstAvailablePpu()
+		{
+			foreach (var id in _ppuTypes.Keys)
+			{
+				var p = GetOrCreatePpu(id);
+				if (p != null) return p;
+			}
+			return null;
+		}
+
+		private IAPU? GetOrCreateApu(string id)
+		{
+			if (_apuInstances.TryGetValue(id, out var existing)) return existing;
+			if (!_apuTypes.TryGetValue(id, out var type)) return null;
+			var created = CoreRegistry.CreateInstance<IAPU>(type, this);
+			if (created != null) _apuInstances[id] = created;
+			return created;
+		}
+
+		private IAPU? CreateFirstAvailableApu()
+		{
+			foreach (var id in _apuTypes.Keys)
+			{
+				var a = GetOrCreateApu(id);
+				if (a != null) return a;
+			}
+			return null;
+		}
 
 	public void SetApuCore(ApuCore core)
 	{
 		switch(core)
 		{
-			case ApuCore.Modern: activeApu = apu ?? GetApu("FIX") ?? activeApu; break;
-			case ApuCore.Jank: activeApu = apuJank ?? GetApu("FMC") ?? activeApu; break;
-			case ApuCore.QuickNes: activeApu = apuQN ?? GetApu("QN") ?? activeApu; break;
+			case ApuCore.Modern: activeApu = apu ?? GetOrCreateApu("FIX") ?? activeApu; break;
+			case ApuCore.Jank: activeApu = apuJank ?? GetOrCreateApu("FMC") ?? activeApu; break;
+			case ApuCore.QuickNes: activeApu = apuQN ?? GetOrCreateApu("QN") ?? activeApu; break;
 		}
 		// sync legacy flag for callers that still query famiclone boolean
 		famicloneMode = core == ApuCore.Jank;
@@ -179,18 +227,25 @@ public class Bus : IBus
 		// --- APU Hard Reset Support ---
 		// When switching games rapidly, leftover ring buffer audio or latched register values
 		// could audibly "bleed" into the next title or cause famiclone/native mode confusion.
-		// Recreate both cores and clear latches so the new cartridge starts from a pristine state.
+		// Recreate cores and clear latches so the new cartridge starts from a pristine state.
 		public void HardResetAPUs()
 		{
 		   var prev = GetActiveApuCore();
-		   // Remake selected known cores (without rebuilding entire dictionaries to keep references stable elsewhere)
-		   apu = GetApu("FIX") ?? apu;
-		   apuJank = GetApu("FMC") ?? apuJank;
-		   apuQN = GetApu("QN") ?? apuQN;
+		   // Drop and recreate known instances
+		   void Recreate(string key, ref IAPU field)
+		   {
+		       _apuInstances.Remove(key);
+		       var inst = GetOrCreateApu(key);
+		       if (inst != null) field = inst;
+		   }
+		   Recreate("FIX", ref apu);
+		   Recreate("FMC", ref apuJank);
+		   Recreate("QN", ref apuQN);
+		   // Restore previously selected active core (will reapply register latches next)
 		   SetApuCore(prev);
+		   // Clear latches to avoid carrying old writes between games
 		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
 		}
-		private IAPU? GetApu(string id) => _apuCores.TryGetValue(id, out var a)?a:null;
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)

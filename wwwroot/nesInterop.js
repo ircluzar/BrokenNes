@@ -171,6 +171,19 @@ window.nesInterop = {
             window._nesAudioTimeline = ctx.currentTime + 0.02;
         } catch(e){ console.warn('ensureAudioContext failed', e); }
     },
+    resetAudioTimeline(){
+        try{
+            if(!window.nesAudioCtx){
+                window.nesAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = window.nesAudioCtx;
+            if(ctx.state === 'suspended'){
+                ctx.resume();
+            }
+            // Reset scheduling to just ahead of current time to avoid gaps/overlaps after state loads
+            window._nesAudioTimeline = ctx.currentTime + 0.02;
+        }catch(e){ console.warn('resetAudioTimeline failed', e); }
+    },
 
     _ensureCanvasCache(canvasId) {
         const c = document.getElementById(canvasId);
