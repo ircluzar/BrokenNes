@@ -631,6 +631,8 @@
     private int ghStockpileCounter = 0;
     private string? ghRenamingId = null; private string ghRenameText = string.Empty;
     private bool GhHasSelectedBase => ghBaseStates.Any(b=>b.Id==ghSelectedBaseId);
+    // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
+    private DotNetObjectReference<Nes>? _selfRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -640,6 +642,8 @@
             {
                 Logger.LogInformation("NES Emulator initializing...");
                 Status.Set("Loading default ROM...");
+                // Create a single reusable DotNetObjectReference for all JS callbacks
+                _selfRef = DotNetObjectReference.Create(this);
                 // Load persisted core & shader preferences
                 try {
                     var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) activeShaderKey = pShader;
@@ -681,17 +685,23 @@
                 }
 
                 // Initialize drag & drop on ROM table instead of dedicated zone
-                await JS.InvokeVoidAsync("nesInterop.initRomDragDrop", "rom-table", DotNetObjectReference.Create(this));
+                if (_selfRef != null)
+                {
+                    await JS.InvokeVoidAsync("nesInterop.initRomDragDrop", "rom-table", _selfRef);
+                }
 
                 // Auto-load default ROM then apply persisted core selections
                 await LoadRomFromServer();
                 ApplySelectedCores();
 
                 // Provide dotnet ref to JS for fullscreen/control callbacks
-                try { await JS.InvokeVoidAsync("nesInterop.setMainRef", DotNetObjectReference.Create(this)); } catch {}
+                try { if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.setMainRef", _selfRef); } catch {}
 
                 // Register for keyboard input events via JS interop
-                await JS.InvokeVoidAsync("nesInterop.registerInput", DotNetObjectReference.Create(this));
+                if (_selfRef != null)
+                {
+                    await JS.InvokeVoidAsync("nesInterop.registerInput", _selfRef);
+                }
 
                 // Build memory domain list (after ROM load)
                 BuildMemoryDomains();
@@ -811,7 +821,8 @@
             Status.Set("Emulation running...");
 
             // Start JS requestAnimationFrame loop
-            await JS.InvokeVoidAsync("nesInterop.startEmulationLoop", DotNetObjectReference.Create(this));
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("nesInterop.startEmulationLoop", _selfRef);
 
             StateHasChanged();
         }
@@ -1963,6 +1974,9 @@
         try
         {
             JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            // Dispose shared DotNetObjectReference to avoid leaks (Theory 2)
+            _selfRef?.Dispose();
+            _selfRef = null;
             Logger.LogInformation("BrokenNes disposed");
         }
         catch (Exception ex)
