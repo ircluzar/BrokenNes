@@ -551,6 +551,13 @@ namespace NesEmulator
     public int GetQueuedSampleCount() => ringCount;
     public int GetSampleRate() => SampleRate;
 
+        // Optional hook for bus resets/hot-swaps to drop any queued audio and fractional pacing
+        public void ClearAudioBuffers()
+        {
+            ringRead = ringWrite = ringCount = 0;
+            sampleFrac = 0;
+        }
+
     // Optional helper to compact internal timers at a frame boundary.
         // It compacts internal time counters to keep them small and, when nonlinear mixing is enabled,
         // zeroes channel last_amp values at the boundary to avoid discontinuities.

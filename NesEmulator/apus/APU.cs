@@ -384,5 +384,11 @@ namespace NesEmulator
 
         // Backward compatibility for existing calls (old GetAudioBuffer/WriteAPURegister/ReadAPURegister kept)
         // NOTE: Reset routine (if needed externally) can call ResetInternal()
+
+        // Optional hook for bus resets/hot-swaps
+        public void ClearAudioBuffers()
+        {
+            PostRestoreAudioResync();
+        }
     }
 }

@@ -34,7 +34,8 @@ public class PPU_FMC : IPPU
 	private int scanlineCycle;
 	private int scanline;
 
-	private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
+	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
+	private byte[]? frameBuffer = null;
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
 	// Removed unused staticLfsr field (was reserved for future static effect)
@@ -61,8 +62,15 @@ public class PPU_FMC : IPPU
 		scanlineCycle = 0;
 		scanline = 0;
 		
-		// Initialize framebuffer with a test gradient pattern
-		InitializeTestFrameBuffer();
+		// Defer framebuffer allocation and any test pattern generation until first use
+	}
+
+	private void EnsureFrameBuffer()
+	{
+		if (frameBuffer == null || frameBuffer.Length != ScreenWidth * ScreenHeight * 4)
+		{
+			frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
+		}
 	}
 
 
@@ -129,6 +137,8 @@ public class PPU_FMC : IPPU
 	bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
+		// Ensure a framebuffer exists before writing pixels
+		EnsureFrameBuffer();
 		// If no ROM is loaded, keep the test pattern
 		if (bus?.cartridge == null)
 		{
@@ -142,6 +152,7 @@ public class PPU_FMC : IPPU
 		bool sprEnabled = (PPUMASK & 0x10) != 0; // bit 4
 		if (!bgEnabled && !sprEnabled)
 		{
+			EnsureFrameBuffer();
 			// Universal background color
 			byte ubIdx = paletteRAM[0];
 			int p = (ubIdx & 0x3F) * 3;
@@ -150,10 +161,10 @@ public class PPU_FMC : IPPU
 			for (int x = 0; x < ScreenWidth; x++)
 			{
 				int fi = baseIndex + x * 4;
-				frameBuffer[fi+0] = r;
-				frameBuffer[fi+1] = g;
-				frameBuffer[fi+2] = b;
-				frameBuffer[fi+3] = 255;
+				frameBuffer![fi+0] = r;
+				frameBuffer![fi+1] = g;
+				frameBuffer![fi+2] = b;
+				frameBuffer![fi+3] = 255;
 			}
 			return; // nothing else to draw
 		}
@@ -167,10 +178,17 @@ public class PPU_FMC : IPPU
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
-	public byte[] GetFrameBuffer() => frameBuffer;
+	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
+
+	public void ClearBuffers()
+	{
+		// Release framebuffer so it will be recreated lazily on demand.
+		frameBuffer = null;
+	}
 
 	public void GenerateStaticFrame()
 	{
+		EnsureFrameBuffer();
 		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
 		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
 		int w = ScreenWidth; int h = ScreenHeight;
@@ -200,10 +218,10 @@ public class PPU_FMC : IPPU
 				// Rare bright spark
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
 				int idx = (y * w + x) * 4;
-				frameBuffer[idx + 0] = r;
-				frameBuffer[idx + 1] = g;
-				frameBuffer[idx + 2] = b;
-				frameBuffer[idx + 3] = 255;
+				frameBuffer![idx + 0] = r;
+				frameBuffer![idx + 1] = g;
+				frameBuffer![idx + 2] = b;
+				frameBuffer![idx + 3] = 255;
 			}
 		}
 		staticFrameCounter++;
@@ -214,6 +232,7 @@ public class PPU_FMC : IPPU
 		// This method is called after rendering a frame
 		// The frame buffer is already updated in RenderScanline
 		// Add some animated elements for testing
+		EnsureFrameBuffer();
 		if (bus?.cartridge == null)
 		{
 			AddAnimatedTestElements();
@@ -224,6 +243,8 @@ public class PPU_FMC : IPPU
 	{
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
+
+		EnsureFrameBuffer();
 
 	// Cache universal background color once per scanline
 	byte ubIdx = paletteRAM[0];
@@ -286,10 +307,10 @@ public class PPU_FMC : IPPU
 				if (colorIndex == 0)
 				{
 					// Universal background color
-					frameBuffer[frameIndex + 0] = ubR;
-					frameBuffer[frameIndex + 1] = ubG;
-					frameBuffer[frameIndex + 2] = ubB;
-					frameBuffer[frameIndex + 3] = 255;
+					frameBuffer![frameIndex + 0] = ubR;
+					frameBuffer![frameIndex + 1] = ubG;
+					frameBuffer![frameIndex + 2] = ubB;
+					frameBuffer![frameIndex + 3] = 255;
 				}
 				else
 				{
@@ -297,10 +318,10 @@ public class PPU_FMC : IPPU
 					int paletteBase = 1 + (paletteIndex << 2);
 					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
 					int p = (idx & 0x3F) * 3;
-					frameBuffer[frameIndex + 0] = PaletteBytes[p];
-					frameBuffer[frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer[frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer[frameIndex + 3] = 255;
+					frameBuffer![frameIndex + 0] = PaletteBytes[p];
+					frameBuffer![frameIndex + 1] = PaletteBytes[p+1];
+					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
+					frameBuffer![frameIndex + 3] = 255;
 				}
 			}
 
@@ -314,6 +335,8 @@ public class PPU_FMC : IPPU
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
+
+		EnsureFrameBuffer();
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
@@ -385,12 +408,12 @@ public class PPU_FMC : IPPU
 				{
 					var spriteColor = GetSpriteColor(color, paletteIndex);
 					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					if (frameIndex + 3 < frameBuffer.Length)
+					if (frameIndex + 3 < frameBuffer!.Length)
 					{
-						frameBuffer[frameIndex + 0] = spriteColor.r;
-						frameBuffer[frameIndex + 1] = spriteColor.g;
-						frameBuffer[frameIndex + 2] = spriteColor.b;
-						frameBuffer[frameIndex + 3] = 255;
+						frameBuffer![frameIndex + 0] = spriteColor.r;
+						frameBuffer![frameIndex + 1] = spriteColor.g;
+						frameBuffer![frameIndex + 2] = spriteColor.b;
+						frameBuffer![frameIndex + 3] = 255;
 					}
 						spritePixelDrawnReuse[px] = true;
 				}
@@ -425,6 +448,7 @@ public class PPU_FMC : IPPU
 	// Add some animated elements to make the test pattern more interesting
 	private void AddAnimatedTestElements()
 	{
+		EnsureFrameBuffer();
 		int frame = scanline + scanlineCycle / 100;
 		
 		// Add moving "sprites" for testing
@@ -441,11 +465,11 @@ public class PPU_FMC : IPPU
 		for (int x = 0; x < ScreenWidth; x++)
 		{
 			int index = (scanLineY * ScreenWidth + x) * 4;
-			if (index + 3 < frameBuffer.Length)
+			if (index + 3 < frameBuffer!.Length)
 			{
-				frameBuffer[index + 0] = 255; // Bright white scan line
-				frameBuffer[index + 1] = 255;
-				frameBuffer[index + 2] = 255;
+				frameBuffer![index + 0] = 255; // Bright white scan line
+				frameBuffer![index + 1] = 255;
+				frameBuffer![index + 2] = 255;
 			}
 		}
 	}
@@ -453,6 +477,7 @@ public class PPU_FMC : IPPU
 	// Draw a simple test sprite
 	private void DrawTestSprite(int x, int y, int spriteType)
 	{
+		EnsureFrameBuffer();
 		int[] indices = {0x0F,0x16,0x2A,0x12};
 		int idx = indices[spriteType % 4] & 0x3F;
 		int p = idx * 3;
@@ -475,12 +500,12 @@ public class PPU_FMC : IPPU
 					if (shouldDraw)
 					{
 						int index = (py * ScreenWidth + px) * 4;
-						if (index + 3 < frameBuffer.Length)
+						if (index + 3 < frameBuffer!.Length)
 						{
-							frameBuffer[index + 0] = color.r;
-							frameBuffer[index + 1] = color.g;
-							frameBuffer[index + 2] = color.b;
-							frameBuffer[index + 3] = 255;
+							frameBuffer![index + 0] = color.r;
+							frameBuffer![index + 1] = color.g;
+							frameBuffer![index + 2] = color.b;
+							frameBuffer![index + 3] = 255;
 						}
 					}
 				}
@@ -698,107 +723,7 @@ public class PPU_FMC : IPPU
 		v = (ushort)((v & 0xFBE0) | (t & 0x041F));
 	}
 
-	// Initialize framebuffer with a beautiful test gradient pattern
-	private void InitializeTestFrameBuffer()
-	{
-		for (int y = 0; y < ScreenHeight; y++)
-		{
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				int index = (y * ScreenWidth + x) * 4;
-				
-				// Create a comprehensive NES-style test pattern
-				byte r, g, b;
-				
-				if (y < 60) // Top section - NES palette showcase
-				{
-					int paletteIndex = (x / 4) % 64;
-					int p = (paletteIndex & 0x3F) * 3; r = PaletteBytes[p]; g = PaletteBytes[p+1]; b = PaletteBytes[p+2];
-				}
-				else if (y < 120) // Upper middle - horizontal gradient bars
-				{
-					int barHeight = 10;
-					int barIndex = (y - 60) / barHeight;
-					int barPos = (y - 60) % barHeight;
-					
-					switch (barIndex % 6)
-					{
-						case 0: // Red gradient
-							r = (byte)(x * 255 / ScreenWidth);
-							g = (byte)(barPos * 255 / barHeight);
-							b = 0;
-							break;
-						case 1: // Green gradient
-							r = 0;
-							g = (byte)(x * 255 / ScreenWidth);
-							b = (byte)(barPos * 255 / barHeight);
-							break;
-						case 2: // Blue gradient
-							r = (byte)(barPos * 255 / barHeight);
-							g = 0;
-							b = (byte)(x * 255 / ScreenWidth);
-							break;
-						case 3: // Cyan gradient
-							r = 0;
-							g = (byte)(x * 255 / ScreenWidth);
-							b = (byte)(x * 255 / ScreenWidth);
-							break;
-						case 4: // Magenta gradient
-							r = (byte)(x * 255 / ScreenWidth);
-							g = 0;
-							b = (byte)(x * 255 / ScreenWidth);
-							break;
-						case 5: // Yellow gradient
-							r = (byte)(x * 255 / ScreenWidth);
-							g = (byte)(x * 255 / ScreenWidth);
-							b = 0;
-							break;
-						default:
-							r = g = b = 128;
-							break;
-					}
-				}
-				else if (y < 180) // Middle section - NES color strips and patterns
-				{
-					int strip = (x / 32) % 8;
-					int nesColorIndex = strip * 8 + ((y - 120) / 8);
-					if (nesColorIndex < 64)
-					{
-						int p2 = (nesColorIndex & 0x3F) * 3; r = PaletteBytes[p2]; g = PaletteBytes[p2+1]; b = PaletteBytes[p2+2];
-					}
-					else
-					{
-						r = g = b = 64;
-					}
-				}
-				else // Bottom section - geometric patterns and checker
-				{
-					bool checker = ((x / 8) + (y / 8)) % 2 == 0;
-					if (checker)
-					{
-						// Radial pattern
-						double centerX = ScreenWidth / 2.0;
-						double centerY = 200;
-						double distance = Math.Sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY));
-						int colorIndex = ((int)distance / 4) % 64;
-						int p3 = (colorIndex & 0x3F) * 3; r = PaletteBytes[p3]; g = PaletteBytes[p3+1]; b = PaletteBytes[p3+2];
-					}
-					else
-					{
-						// Alternating pattern
-						r = (byte)(128 + Math.Sin(x * 0.1) * 127);
-						g = (byte)(128 + Math.Sin(y * 0.1) * 127);
-						b = (byte)(128 + Math.Sin((x + y) * 0.05) * 127);
-					}
-				}
-				
-				frameBuffer[index + 0] = r;     // Red
-				frameBuffer[index + 1] = g;     // Green
-				frameBuffer[index + 2] = b;     // Blue
-				frameBuffer[index + 3] = 255;   // Alpha
-			}
-		}
-	}
+	// Removed eager test pattern generation; rendering occurs only when needed
 
 	// Initialize palette RAM with reasonable defaults
 	private void InitializeDefaultPalette()
@@ -888,12 +813,15 @@ public class PPU_FMC : IPPU
 	}
 	public void SetState(object state) {
 		if (state is PpuSharedState s) {
-			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
+			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
+			// Legacy compatibility: if a frame is present and matches expected length, copy it; otherwise leave empty
+			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("oam", out var pOam) && pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } }
-			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer.Length) break; frameBuffer[i++]=(byte)el.GetInt32(); } }
+			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
 		}

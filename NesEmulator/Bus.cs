@@ -104,7 +104,11 @@ public class Bus : IBus
 		var newPpu = GetOrCreatePpu(id);
 		if (newPpu == null || ReferenceEquals(newPpu, activePpu)) return false;
 		var prevState = activePpu.GetState();
+		// Drop large transient buffers on the old PPU before switching to reduce memory
+		try { if (activePpu != null) activePpu.ClearBuffers(); } catch { }
 		try { newPpu.SetState(prevState); } catch { }
+		// Ensure the new PPU starts with clean buffers for a fresh redraw
+		try { newPpu.ClearBuffers(); } catch { }
 		activePpu = newPpu; ppu = activePpu; return true;
 	}
 	public bool SetApuCoreById(string id)
@@ -137,9 +141,13 @@ public class Bus : IBus
 				PpuCore.BFR => GetPpu("BFR") ?? activePpu,
 				_ => GetPpu("FMC") ?? activePpu
 			};
-	if (newPpu != null && !ReferenceEquals(newPpu, activePpu))
+		if (newPpu != null && !ReferenceEquals(newPpu, activePpu))
 		{
-		try { newPpu.SetState(prevState); } catch { }
+			// Drop buffers on old core to reduce memory pressure during swaps
+			try { if (activePpu != null) activePpu.ClearBuffers(); } catch { }
+			try { newPpu.SetState(prevState); } catch { }
+			// Ensure clean start on the new core too
+			try { newPpu.ClearBuffers(); } catch { }
 		}
 	if (newPpu != null) { activePpu = newPpu; ppu = activePpu; }
 	}
@@ -231,6 +239,8 @@ public class Bus : IBus
 		public void HardResetAPUs()
 		{
 		   var prev = GetActiveApuCore();
+		   // Drop queued audio on the currently active core to avoid bleed into next game
+		   try { activeApu?.ClearAudioBuffers(); } catch {}
 		   // Drop and recreate known instances
 		   void Recreate(string key, ref IAPU field)
 		   {

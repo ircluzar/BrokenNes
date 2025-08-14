@@ -550,6 +550,13 @@ namespace NesEmulator
 
     public int GetQueuedSampleCount() => ringCount;
     public int GetSampleRate() => SampleRate;
+    
+        // Optional hook for bus resets/hot-swaps to drop any queued audio and fractional pacing
+        public void ClearAudioBuffers()
+        {
+            ringRead = ringWrite = ringCount = 0;
+            sampleFrac = 0;
+        }
 
     // Optional helper to compact internal timers at a frame boundary.
         // It compacts internal time counters to keep them small and, when nonlinear mixing is enabled,
@@ -594,11 +601,12 @@ namespace NesEmulator
         }
 
     // === Save / Load (expanded) ===
-    private class State { public int v=2; public int oscEnables, frameMode, frameDelay, frame, framePeriod; public bool irqFlag; public double sampleFrac; public QnSquare? s1,s2; public QnTriangle? tri; public QnNoise? noi; public QnDmc? d; public int ringWrite,ringRead,ringCount; public float[]? ring; public bool frame5StepMode, frameIrqInhibit; public bool nonlinear; public bool pal; public int nextIrqCycle, earliestIrqCycle, lastTime, lastDmcTime; }
+    private class State { public int v=2; public int oscEnables, frameMode, frameDelay, frame, framePeriod; public bool irqFlag; public double sampleFrac; public QnSquare? s1,s2; public QnTriangle? tri; public QnNoise? noi; public QnDmc? d; public int ringWrite,ringRead,ringCount; public bool frame5StepMode, frameIrqInhibit; public bool nonlinear; public bool pal; public int nextIrqCycle, earliestIrqCycle, lastTime, lastDmcTime; }
         public object GetState()=> new State { oscEnables=oscEnables, frameMode=frameMode, frameDelay=frameDelay, frame=frame, framePeriod=framePeriod, irqFlag=irqFlag, sampleFrac=sampleFrac,
-            s1=Clone(square1), s2=Clone(square2), tri=Clone(triangle), noi=Clone(noise), d=Clone(dmc), ringWrite=ringWrite, ringRead=ringRead, ringCount=ringCount, ring=(float[])audioRing.Clone(),
+            s1=Clone(square1), s2=Clone(square2), tri=Clone(triangle), noi=Clone(noise), d=Clone(dmc), ringWrite=ringWrite, ringRead=ringRead, ringCount=ringCount,
             frame5StepMode=frame5StepMode, frameIrqInhibit=frameIrqInhibit, nonlinear=nonlinearMixing, pal=dmc.palMode, nextIrqCycle=nextIrqCycle, earliestIrqCycle=earliestIrqCycle, lastTime=lastTime, lastDmcTime=lastDmcTime };
-        public void SetState(object state){ if(state is State s && s.s1!=null && s.s2!=null && s.tri!=null && s.noi!=null && s.d!=null && s.ring!=null){ oscEnables=s.oscEnables; frameMode=s.frameMode; frameDelay=s.frameDelay; frame=s.frame; framePeriod=s.framePeriod; irqFlag=s.irqFlag; sampleFrac=s.sampleFrac; square1 = s.s1; square2 = s.s2; triangle = s.tri; noise = s.noi; dmc = s.d; ringWrite=s.ringWrite; ringRead=s.ringRead; ringCount=s.ringCount; Array.Copy(s.ring,audioRing, Math.Min(s.ring.Length,audioRing.Length)); frame5StepMode=s.frame5StepMode; frameIrqInhibit=s.frameIrqInhibit; nonlinearMixing=s.nonlinear; nextIrqCycle=s.nextIrqCycle; earliestIrqCycle=s.earliestIrqCycle; lastTime=s.lastTime; lastDmcTime=s.lastDmcTime; if(dmc.palMode!=s.pal){ SetRegion(s.pal); } } }
+        public void SetState(object state){ if(state is State s && s.s1!=null && s.s2!=null && s.tri!=null && s.noi!=null && s.d!=null){ oscEnables=s.oscEnables; frameMode=s.frameMode; frameDelay=s.frameDelay; frame=s.frame; framePeriod=s.framePeriod; irqFlag=s.irqFlag; sampleFrac=0; square1 = s.s1; square2 = s.s2; triangle = s.tri; noise = s.noi; dmc = s.d; // clear any serialized audio backlog to avoid stutter
+            ringWrite=ringRead=ringCount=0; frame5StepMode=s.frame5StepMode; frameIrqInhibit=s.frameIrqInhibit; nonlinearMixing=s.nonlinear; nextIrqCycle=s.nextIrqCycle; earliestIrqCycle=s.earliestIrqCycle; lastTime=s.lastTime; lastDmcTime=s.lastDmcTime; if(dmc.palMode!=s.pal){ SetRegion(s.pal); } } }
 
         // Set region without full logical reset; updates timing tables and pacing
         public void SetRegion(bool pal)

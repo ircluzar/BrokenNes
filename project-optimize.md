@@ -51,45 +51,46 @@ Reduce startup/time/memory overhead by avoiding eager construction of all discov
 - [ ] Unit: validate that discovery still returns correct suffix ids and ordering.
 
 ### 3) Bus: adopt lazy instantiation and minimize eager allocations
-- [ ] Replace `_cpuCores/_ppuCores/_apuCores` eager-dict fill with:
-  - [x] internal dictionaries mapping suffix -> Type (or factory), and (PPU only in this batch)
-  - [x] lazy instance dictionary suffix -> TIface? (null until requested) (PPU only in this batch)
+- [x] Replace `_cpuCores/_ppuCores/_apuCores` eager-dict fill with:
+  - [x] internal dictionaries mapping suffix -> Type (or factory), and (PPU + APU)
+  - [x] lazy instance dictionary suffix -> TIface? (null until requested)
 - [x] Implement GetCpu/GetPpu/GetApu that:
-  - [x] If instance exists, return it. (PPU)
-  - [x] Else construct via cached Type/ctor (prefer Bus ctor), store in instance dictionary and return. (PPU)
-- [x] Update all existing callers that assumed all _ppuCores/_apuCores keys existed (expose GetXCoreIds() from cached Type-suffix map). (PPU IDs)
-- [x] Ensure reference-equality-based hot-swap detection still works (active pointers reference created instance). (PPU)
-- [x] Keep legacy public fields (cpu/ppu/apu/) updated to point to active instances. (PPU)
+  - [x] If instance exists, return it.
+  - [x] Else construct via cached Type/ctor (prefer Bus ctor), store in instance dictionary and return.
+- [x] Update all existing callers that assumed all _ppuCores/_apuCores keys existed (expose GetXCoreIds() from cached Type-suffix map).
+- [x] Ensure reference-equality-based hot-swap detection still works (active pointers reference created instance).
+- [x] Keep legacy public fields (cpu/ppu/apu/) updated to point to active instances.
 - [ ] Add optional disposal hook for cores if appropriate (IDisposable or ClearLargeBuffers()).
-  
-  Note: CPU/APU remain eager in this batch to minimize risk; will convert to lazy in a follow-up.
+  - [x] APU: Standardized ClearAudioBuffers() on IAPU; Bus now calls it directly (no reflection) during HardResetAPUs.
+
+  Note: CPU remains eager for stability; APU and PPU are lazy in the current implementation.
 
 ### 4) PPU: avoid large per-core allocation until active
-- [ ] Modify PPU implementations (start with PPU_FMC) to defer allocating `frameBuffer` and other large buffers until first Render/GetFrameBuffer call or until ctor receives a flag.
-  - [ ] Add lazy init within `GetFrameBuffer()`, `Step()` entry or explicit `InitializeForBus(Bus)` called by Bus when creating instance.
+- [x] Modify PPU implementations (start with PPU_FMC) to defer allocating `frameBuffer` and other large buffers until first Render/GetFrameBuffer call or until ctor receives a flag.
   - [ ] Optionally move shared temporary buffers (bgMask, spritePixelDrawnReuse) into reusable pool or `static readonly` for reuse.
+  - [x] Extend lazy framebuffer allocation to `PPU_CUBE`, `PPU_BFR`, and `PPU_LQ` with SetState tolerance for legacy frames.
 - [ ] Add `Reset()` / `ClearBuffers()` method to clear large arrays when disposing or on HardReset as needed.
-- [ ] Ensure `GetState()` does not include `frame` unless a debug flag forces snapshot.
+- [x] Ensure `GetState()` does not include `frame` unless a debug flag forces snapshot.
 
 ### 5) APU: lazy creation + HardResetAPUs correctness
 - [x] Apply same lazy pattern to APUs (defer ring buffers and audio queues) via cached type map and lazy instance creation in `Bus`.
   - [x] Implemented `HardResetAPUs()` to recreate instances for known suffixes (FIX, FMC, QN) by dropping cached instances and re-instantiating.
   - [x] Clear apuRegLatch state after recreation to prevent carryover writes between ROMs.
 - [ ] Add an optional `Reset()` on APU implementations to clear internal buffers if recreation is undesirable.
-- [ ] Make APU savestate load deterministic and allocation-friendly:
-  - [ ] In each APU `SetState`/`RestoreState`, do NOT restore ring indices/count into an assumed-valid buffer. Instead clear audio queue or call an internal reset.
-  - [ ] Do not serialize raw PCM from the audio ring in `GetState()` (keeps save size small and avoids perf regressions).
+- [x] Make APU savestate load deterministic and allocation-friendly:
+  - [x] In each APU `SetState`/`RestoreState`, do NOT restore ring indices/count into an assumed-valid buffer. Instead clear audio queue or call an internal reset.
+  - [x] Do not serialize raw PCM from the audio ring in `GetState()` (keeps save size small and avoids perf regressions).
   - [ ] Consider pooling temporary arrays via `ArrayPool<float>` if any transient copies are introduced (measure first).
-- [ ] Performance hygiene:
-  - [ ] Cap `GetAudioSamples(max)` to a stable chunk size to reduce jitter and allocation variance.
+- [x] Performance hygiene (partial):
+  - [x] Cap `GetAudioSamples(max)` to a stable chunk size to reduce jitter and allocation variance.
   - [ ] If ring backlog exceeds a threshold, drop oldest frames to catch up — prefer recovery over unbounded latency.
 
 ### 6) Save/Load: remove large framebuffer serialization
- [x] Update PPU `GetState()` to not include raw `frame` by default; include VRAM/PALETTE/OAM and register state only.
- [x] Update NES.Save/Load changes: stop serializing PPU framebuffer; ensure determinism still preserved.
-- [ ] Update LoadState to not expect `frame`; ensure UpdateFrameBuffer regenerates visuals as needed.
+- [x] Update PPU `GetState()` to not include raw `frame` by default; include VRAM/PALETTE/OAM and register state only.
+- [x] Update NES.Save/Load changes: stop serializing PPU framebuffer; ensure determinism still preserved.
+- [x] Update LoadState to not expect `frame`; ensure UpdateFrameBuffer regenerates visuals as needed.
 - [ ] Add acceptance test: saved .nes state size reduced; load restores deterministic state.
-- [ ] After LoadState, clear APU audio queue (per 5) and reset browser audio timeline so host and core stay aligned.
+- [x] After LoadState, clear APU audio queue (per 5) and reset browser audio timeline so host and core stay aligned.
 
 ### 7) Reuse / Bus wiring improvements
 - [ ] Consider deferring Bus-specific heavy wiring from core ctor to an `Initialize(Bus)` method so cores can be created cheaply and bound later — implement if design requires.
@@ -106,7 +107,7 @@ Reduce startup/time/memory overhead by avoiding eager construction of all discov
 - [ ] Later: Load a ROM, hot-swap cores, save/load state checks, audio reset checks.
 
 ### 10) Audio scheduling & JS interop robustness (WebAudio)
-- [ ] Add `nesInterop.resetAudioTimeline()` and call it after savestate loads and hard resets.
+- [x] Add `nesInterop.resetAudioTimeline()` and call it after savestate loads and hard resets.
 - [ ] Keep audio chunk duration stable; clamp when falling behind.
 
 ## Prioritization & estimates (rough)
@@ -166,3 +167,24 @@ Update (Audio post-load stutter fix):
 - Implemented JS `resetAudioTimeline()` and invoked it after `NES.LoadState()` in `Pages/Nes.razor`.
 - Modified all APU cores to clear their host-facing audio ring buffers and fractional accumulators on `SetState` to avoid restoring stale PCM samples. The QuickNES APU no longer serializes the raw ring buffer.
 - Outcome: Eliminates the “flip-flop” hitch where loading a state could start stuttering until a second load; scheduling now restarts cleanly from the restored internal APU state.
+
+### Batch 4 — FMC PPU lazy framebuffer allocation (Done)
+- Changed `PPU_FMC` to allocate its framebuffer lazily. Added `EnsureFrameBuffer()` and guarded all pixel write paths (background, sprites, test elements, static frame, and blank-scanline clear).
+- Removed eager test pattern generation from constructor; `GetFrameBuffer()` now allocates on demand.
+- Maintained backward compatibility in `SetState`: if legacy saves include a frame and the length matches 256x240x4, we allocate and copy; otherwise we keep the buffer unallocated until needed.
+- Status: Release build green; behavior unchanged for consumers.
+
+### Batch 5 — CUBE/BFR/LQ PPUs lazy framebuffer allocation (Done)
+- Applied the same lazy framebuffer allocation pattern to `PPU_CUBE`, `PPU_BFR`, and `PPU_LQ`.
+- Added `EnsureFrameBuffer()` to each and guarded all pixel write paths (background, sprites, test/effects, static frames).
+- `GetFrameBuffer()` now allocates on-demand for these PPUs.
+- `SetState` and JSON restore paths copy legacy frame data only when present and correctly sized, keeping saves lean while staying backward compatible.
+- Status: Release build green.
+
+### Batch 6 — APU SetState hygiene (Done)
+- After LoadState or core hot-swap, APU ring buffers and filter accumulators are cleared to prevent replaying pre-save audio and to avoid stutter:
+  - Modern APUs (`APU`, `APU_FIX`, `APU_LOW`) perform `PostRestoreAudioResync()` in `SetState`.
+  - QuickNES-style APUs (`APU_QLOW`, `APU_QN`) drop any serialized audio backlog and reset pacing on restore.
+- Defensive caps on `GetAudioSamples(max)` exist across cores; default cap remains 4096 when `max==0`.
+- Introduced optional `ClearAudioBuffers()` on concrete APUs; now standardized via `IAPU.ClearAudioBuffers()` and invoked directly by `Bus.HardResetAPUs()` prior to recreation and latch clearing (removed reflection).
+- Status: Release build green; UI continues to reset the WebAudio timeline after LoadState, aligning with APU-side buffer clears.

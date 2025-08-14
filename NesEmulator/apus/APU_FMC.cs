@@ -213,6 +213,14 @@ namespace NesEmulator
             // Clear audio buffers and filters so JS scheduling can restart without stale samples
             ringRead = ringWrite = ringCount = 0; fractionalSampleAccumulator = 0; lpLast = 0; dcLastIn = 0; dcLastOut = 0;
         }
+        
+        // Optional hook for bus resets/hot-swaps
+        public void ClearAudioBuffers()
+        {
+            ringRead = ringWrite = ringCount = 0;
+            fractionalSampleAccumulator = 0;
+            lpLast = 0; dcLastIn = 0; dcLastOut = 0;
+        }
 
         // Step 1 CPU cycle convenience
         public void Step() => Step(1);

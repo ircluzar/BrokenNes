@@ -10,5 +10,7 @@ namespace NesEmulator
         int GetSampleRate();
         object GetState();
         void SetState(object state);
+    // Optional lifecycle hook: drop queued audio and reset pacing filters
+    void ClearAudioBuffers();
     }
 }

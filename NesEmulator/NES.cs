@@ -247,6 +247,7 @@ namespace NesEmulator
 				}
 			} catch { }
 			try { if (!string.IsNullOrEmpty(st.ppu)) { using var pd = System.Text.Json.JsonDocument.Parse(st.ppu); bus.ppu.SetState(pd.RootElement); } } catch { }
+			try { bus.ppu?.ClearBuffers(); } catch { }
 			// Restore APU selection before applying APU-specific state (prefer reflection id)
 			try {
 				if (!string.IsNullOrEmpty(st.apuCoreId))
@@ -279,6 +280,7 @@ namespace NesEmulator
 				bus.SetFamicloneMode(prevFamiClone); // restore user preference before clearing cores
 				// Ensure fresh audio cores (avoid previous game's APU state bleeding into new one or mode desync)
 				bus.HardResetAPUs();
+				try { bus.ppu?.ClearBuffers(); } catch { }
 				bus.cpu.Reset();
 				// Apply current crash behavior to fresh CPU instance
 				bus.cpu.IgnoreInvalidOpcodes = crashBehavior == CrashBehavior.IgnoreErrors;
@@ -427,7 +429,23 @@ namespace NesEmulator
 		public float[] GetAudioBuffer()
 		{
 			if (bus != null)
+			{
+				// Soft-flush policy: if backlog exceeds ~6k samples (~136ms @44.1kHz), drop oldest to recover.
+				int queued = bus.GetQueuedSamples();
+				const int backlogSoftCap = 6144;
+				if (queued > backlogSoftCap)
+				{
+					int toDrop = queued - backlogSoftCap;
+					// Drain in 2048-sized chunks to avoid big allocations and to keep behavior smooth.
+					while (toDrop > 0)
+					{
+						int chunk = toDrop > 2048 ? 2048 : toDrop;
+						var _ = bus.GetAudioSamples(chunk);
+						toDrop -= chunk;
+					}
+				}
 				return bus.GetAudioSamples(2048);
+			}
 			var silentBuffer = new float[2048]; Array.Fill(silentBuffer,0f); return silentBuffer;
 		}
 

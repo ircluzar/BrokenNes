@@ -33,7 +33,8 @@ public class PPU_LQ : IPPU
     private byte fineX; private bool scrollLatch; private ushort v; private ushort t;
     private int scanlineCycle; private int scanline;
 
-    private byte[] frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
+    // Lazy framebuffer allocation to reduce memory; allocate on first use
+    private byte[]? frameBuffer = null;
     private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
     private int staticFrameCounter;
     private readonly bool[] bgMask = new bool[ScreenWidth];
@@ -58,7 +59,13 @@ public class PPU_LQ : IPPU
         this.bus = bus;
         vram = new byte[2048]; paletteRAM = new byte[32]; oam = new byte[256];
         InitializeDefaultPalette();
-        InitializeTestFrameBuffer(); // includes degradation pass per line
+        // Defer framebuffer allocation until first rendering or access
+    }
+
+    private void EnsureFrameBuffer()
+    {
+        if (frameBuffer == null || frameBuffer.Length != ScreenWidth * ScreenHeight * 4)
+            frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
     }
 
     public void Step(int elapsedCycles)
@@ -80,12 +87,13 @@ public class PPU_LQ : IPPU
                 scanlineCycle = 0;
                 if (scanline >= 0 && scanline < 240)
                 {
+                    EnsureFrameBuffer();
                     CopyXFromTToV();
                     PrepareScanlineBandwidth(scanline);
                     if (duplicateScanlineFromPrevious && scanline > 0)
                     {
                         // DRAM refresh stall: duplicate the previous scanline (looks like vertical shimmer on motion)
-                        System.Buffer.BlockCopy(frameBuffer, (scanline - 1) * ScreenWidth * 4, frameBuffer, scanline * ScreenWidth * 4, ScreenWidth * 4);
+                        System.Buffer.BlockCopy(frameBuffer!, (scanline - 1) * ScreenWidth * 4, frameBuffer!, scanline * ScreenWidth * 4, ScreenWidth * 4);
                     }
                     else
                     {
@@ -105,6 +113,7 @@ public class PPU_LQ : IPPU
 
     private void RenderScanline(int y)
     {
+    EnsureFrameBuffer();
         if (bus?.cartridge == null) return; // test pattern only
         bool bgEnabled = (PPUMASK & 0x08) != 0;
         bool sprEnabled = (PPUMASK & 0x10) != 0;
@@ -113,7 +122,7 @@ public class PPU_LQ : IPPU
             // Fill with universal background color so stale pixels not shown
             byte ubIdx = paletteRAM[0]; int p = (ubIdx & 0x3F) * 3; byte r = PaletteBytes[p], g = PaletteBytes[p + 1], b = PaletteBytes[p + 2];
             int baseIndex = y * ScreenWidth * 4;
-            for (int x = 0; x < ScreenWidth; x++) { int fi = baseIndex + x * 4; frameBuffer[fi] = r; frameBuffer[fi + 1] = g; frameBuffer[fi + 2] = b; frameBuffer[fi + 3] = 255; }
+            for (int x = 0; x < ScreenWidth; x++) { int fi = baseIndex + x * 4; frameBuffer![fi] = r; frameBuffer![fi + 1] = g; frameBuffer![fi + 2] = b; frameBuffer![fi + 3] = 255; }
             ApplyLowQualityScanline(y);
             return;
         }
@@ -136,9 +145,9 @@ public class PPU_LQ : IPPU
         for (int x = 0; x < ScreenWidth; x++)
         {
             int idx = baseIdx + x * 4;
-            byte r = frameBuffer[idx]; byte g = frameBuffer[idx + 1]; byte b = frameBuffer[idx + 2];
+            byte r = frameBuffer![idx]; byte g = frameBuffer![idx + 1]; byte b = frameBuffer![idx + 2];
             QuantizeColor(ref r, ref g, ref b);
-            frameBuffer[idx] = r; frameBuffer[idx + 1] = g; frameBuffer[idx + 2] = b; frameBuffer[idx + 3] = 255;
+            frameBuffer![idx] = r; frameBuffer![idx + 1] = g; frameBuffer![idx + 2] = b; frameBuffer![idx + 3] = 255;
         }
     }
 
@@ -151,10 +160,20 @@ public class PPU_LQ : IPPU
         r = (byte)(r * 5 / 6); g = (byte)(g * 5 / 6); b = (byte)(b * 5 / 6);
     }
 
-    public byte[] GetFrameBuffer() => frameBuffer;
+    public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
+
+    public void ClearBuffers()
+    {
+        // Release framebuffer so it is lazily reallocated on next use.
+        frameBuffer = null;
+        // Reset minor per-frame flags so next frame starts cleanly.
+        duplicateScanlineFromPrevious = false;
+        currentBgFetchBudget = 0;
+    }
 
     public void GenerateStaticFrame()
     {
+    EnsureFrameBuffer();
         int w = ScreenWidth; int h = ScreenHeight;
         uint frameSeed = (uint)staticFrameCounter * 0x9E3779B1u + 0xB5297A4Du;
         for (int y = 0; y < h; y++)
@@ -168,7 +187,7 @@ public class PPU_LQ : IPPU
                 byte r = intensity, g = intensity, b = intensity;
                 QuantizeColor(ref r, ref g, ref b);
                 int idx = (y * w + x) * 4;
-                frameBuffer[idx] = r; frameBuffer[idx + 1] = g; frameBuffer[idx + 2] = b; frameBuffer[idx + 3] = 255;
+                frameBuffer![idx] = r; frameBuffer![idx + 1] = g; frameBuffer![idx + 2] = b; frameBuffer![idx + 3] = 255;
             }
             ApplyLowQualityScanline(y);
         }
@@ -182,6 +201,7 @@ public class PPU_LQ : IPPU
 
     private void RenderBackground(int scanline, bool[] bgMask)
     {
+    EnsureFrameBuffer();
         if ((PPUMASK & 0x08) == 0) return;
         byte ubIdx = paletteRAM[0]; int ubp = (ubIdx & 0x3F) * 3; byte ubR = PaletteBytes[ubp], ubG = PaletteBytes[ubp + 1], ubB = PaletteBytes[ubp + 2];
         ushort renderV = v;
@@ -197,7 +217,7 @@ public class PPU_LQ : IPPU
                 {
                     if (pixel < 0) continue;
                     int fi = scanlineBaseFill + pixel * 4;
-                    frameBuffer[fi] = ubR; frameBuffer[fi + 1] = ubG; frameBuffer[fi + 2] = ubB; frameBuffer[fi + 3] = 255;
+                    frameBuffer![fi] = ubR; frameBuffer![fi + 1] = ubG; frameBuffer![fi + 2] = ubB; frameBuffer![fi + 3] = 255;
                 }
                 return;
             }
@@ -218,13 +238,13 @@ public class PPU_LQ : IPPU
                 int frameIndex = scanlineBase + pixel * 4;
                 if (colorIndex == 0)
                 {
-                    frameBuffer[frameIndex] = ubR; frameBuffer[frameIndex + 1] = ubG; frameBuffer[frameIndex + 2] = ubB; frameBuffer[frameIndex + 3] = 255;
+                    frameBuffer![frameIndex] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
                 }
                 else
                 {
                     bgMask[pixel] = true;
                     int paletteBase = 1 + (paletteIndex << 2); byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F]; int p = (idx & 0x3F) * 3;
-                    frameBuffer[frameIndex] = PaletteBytes[p]; frameBuffer[frameIndex + 1] = PaletteBytes[p + 1]; frameBuffer[frameIndex + 2] = PaletteBytes[p + 2]; frameBuffer[frameIndex + 3] = 255;
+                    frameBuffer![frameIndex] = PaletteBytes[p]; frameBuffer![frameIndex + 1] = PaletteBytes[p + 1]; frameBuffer![frameIndex + 2] = PaletteBytes[p + 2]; frameBuffer![frameIndex + 3] = 255;
                 }
                 fetchedPixels++;
                 if (fetchedPixels >= currentBgFetchBudget) break; // after writing this pixel we may be out
@@ -235,7 +255,8 @@ public class PPU_LQ : IPPU
 
     private void RenderSprites(int scanline, bool[] bgMask)
     {
-        bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
+    EnsureFrameBuffer();
+    bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
         bool isSprite8x16 = (PPUCTRL & 0x20) != 0; System.Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
         int drawnThisLine = 0;
         for (int i = 0; i < 64; i++)
@@ -256,7 +277,7 @@ public class PPU_LQ : IPPU
                 if (spritePixelDrawnReuse[px]) continue;
                 if (!priority && bgMask[px]) continue;
                 var sc = GetSpriteColor(color, paletteIndex); int frameIndex = (scanline * ScreenWidth + px) * 4;
-                frameBuffer[frameIndex] = sc.r; frameBuffer[frameIndex + 1] = sc.g; frameBuffer[frameIndex + 2] = sc.b; frameBuffer[frameIndex + 3] = 255; spritePixelDrawnReuse[px] = true;
+                frameBuffer![frameIndex] = sc.r; frameBuffer![frameIndex + 1] = sc.g; frameBuffer![frameIndex + 2] = sc.b; frameBuffer![frameIndex + 3] = 255; spritePixelDrawnReuse[px] = true;
             }
             drawnThisLine++;
         }
@@ -268,7 +289,8 @@ public class PPU_LQ : IPPU
     private void AddAnimatedTestElements()
     {
         int frame = scanline + scanlineCycle / 100;
-        for (int i = 0; i < 2; i++)
+    EnsureFrameBuffer();
+    for (int i = 0; i < 2; i++)
         {
             int spriteX = (32 + i * 96 + frame * (i + 1)) % (ScreenWidth - 16);
             int spriteY = 160 + (int)(System.Math.Sin(frame * 0.05 + i) * 30);
@@ -279,7 +301,8 @@ public class PPU_LQ : IPPU
     private void DrawTestSprite(int x, int y, int spriteType)
     {
         int[] indices = { 0x0F, 0x16, 0x2A, 0x12 }; int idx = indices[spriteType % 4] & 0x3F; int p = idx * 3; (byte r, byte g, byte b) color = (PaletteBytes[p], PaletteBytes[p + 1], PaletteBytes[p + 2]);
-        for (int dy = 0; dy < 8; dy++) for (int dx = 0; dx < 8; dx++) { int px = x + dx; int py = y + dy; if (px < 0 || px >= ScreenWidth || py < 0 || py >= ScreenHeight) continue; bool draw = (dx == 4) || (dy == 4) || (dx == dy) || (dx == 7 - dy); if (!draw) continue; int index = (py * ScreenWidth + px) * 4; frameBuffer[index] = color.r; frameBuffer[index + 1] = color.g; frameBuffer[index + 2] = color.b; frameBuffer[index + 3] = 255; }
+    EnsureFrameBuffer();
+    for (int dy = 0; dy < 8; dy++) for (int dx = 0; dx < 8; dx++) { int px = x + dx; int py = y + dy; if (px < 0 || px >= ScreenWidth || py < 0 || py >= ScreenHeight) continue; bool draw = (dx == 4) || (dy == 4) || (dx == dy) || (dx == 7 - dy); if (!draw) continue; int index = (py * ScreenWidth + px) * 4; frameBuffer![index] = color.r; frameBuffer![index + 1] = color.g; frameBuffer![index + 2] = color.b; frameBuffer![index + 3] = 255; }
     }
 
     public byte ReadPPURegister(ushort address)
@@ -357,6 +380,7 @@ public class PPU_LQ : IPPU
 
     private void InitializeTestFrameBuffer()
     {
+        EnsureFrameBuffer();
         for (int y = 0; y < ScreenHeight; y++)
         {
             for (int x = 0; x < ScreenWidth; x++)
@@ -366,7 +390,7 @@ public class PPU_LQ : IPPU
                 else if (y < 120) { int barHeight = 10; int barIndex = (y - 60) / barHeight; int barPos = (y - 60) % barHeight; switch (barIndex % 6) { case 0: r = (byte)(x * 255 / ScreenWidth); g = (byte)(barPos * 255 / barHeight); b = 0; break; case 1: r = 0; g = (byte)(x * 255 / ScreenWidth); b = (byte)(barPos * 255 / barHeight); break; case 2: r = (byte)(barPos * 255 / barHeight); g = 0; b = (byte)(x * 255 / ScreenWidth); break; case 3: r = 0; g = (byte)(x * 255 / ScreenWidth); b = (byte)(x * 255 / ScreenWidth); break; case 4: r = (byte)(x * 255 / ScreenWidth); g = 0; b = (byte)(x * 255 / ScreenWidth); break; case 5: r = (byte)(x * 255 / ScreenWidth); g = (byte)(x * 255 / ScreenWidth); b = 0; break; default: r = g = b = 128; break; } }
                 else if (y < 180) { int strip = (x / 32) % 8; int nesColorIndex = strip * 8 + ((y - 120) / 8); if (nesColorIndex < 64) { int p2 = (nesColorIndex & 0x3F) * 3; r = PaletteBytes[p2]; g = PaletteBytes[p2 + 1]; b = PaletteBytes[p2 + 2]; } else r = g = b = 64; }
                 else { bool checker = ((x / 8) + (y / 8)) % 2 == 0; if (checker) { double centerX = ScreenWidth / 2.0; double centerY = 200; double distance = System.Math.Sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY)); int colorIndex = ((int)distance / 4) % 64; int p3 = (colorIndex & 0x3F) * 3; r = PaletteBytes[p3]; g = PaletteBytes[p3 + 1]; b = PaletteBytes[p3 + 2]; } else { r = (byte)(128 + System.Math.Sin(x * 0.1) * 127); g = (byte)(128 + System.Math.Sin(y * 0.1) * 127); b = (byte)(128 + System.Math.Sin((x + y) * 0.05) * 127); } }
-                frameBuffer[index] = r; frameBuffer[index + 1] = g; frameBuffer[index + 2] = b; frameBuffer[index + 3] = 255;
+                frameBuffer![index] = r; frameBuffer![index + 1] = g; frameBuffer![index + 2] = b; frameBuffer![index + 3] = 255;
             }
             ApplyLowQualityScanline(y); // degrade pattern too
         }
@@ -424,14 +448,14 @@ public class PPU_LQ : IPPU
     {
         if (state is PpuSharedState s)
         {
-            vram=(byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame.Length==frameBuffer.Length) frameBuffer=(byte[])s.frame.Clone(); PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v;t=s.t;scanline=s.scanline;scanlineCycle=s.scanlineCycle;ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return;
+            vram=(byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone(); if (s.frame != null && s.frame.Length==ScreenWidth*ScreenHeight*4) { EnsureFrameBuffer(); frameBuffer=(byte[])s.frame.Clone(); } PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v;t=s.t;scanline=s.scanline;scanlineCycle=s.scanlineCycle;ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return;
         }
         if (state is System.Text.Json.JsonElement je)
         {
             if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
             if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }
             if (je.TryGetProperty("oam", out var pOam) && pOam.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } }
-            if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer.Length) break; frameBuffer[i++]=(byte)el.GetInt32(); } }
+            if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array){ EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
             byte GetB(string name)=>je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0; ushort GetU16(string name)=>je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;
             PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t"); if(je.TryGetProperty("scanline", out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle", out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
         }
