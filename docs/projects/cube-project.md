@@ -12,7 +12,7 @@ Legend: P0 = immediate, P1 = next wave, P2 = advanced / experimental.
 ### High-Level Completion
 | Tier | Total | Done | % |
 |------|-------|------|---|
-| P0 | 9 | 0 | 0% |
+| P0 | 9 | 3 | 33% |
 | P1 | 7 | 0 | 0% |
 | P2 | 7 | 0 | 0% |
 | Overall | 23 | 0 | 0% |
@@ -65,20 +65,22 @@ Priority tiers:
    Complexity: Low.  
    Subtasks:  
     - [x] Remove `PreFillGradientLine` invocation & method (logic replaced with cached per-scanline gradient)  
-    - [x] Integrate gradient write into BG loop (transparent pixel path)  
+    - [x] Integrate gradient write into BG loop (transparent pixel path, only writes when first needed)  
     - [ ] Benchmark before/after (300 frames)  
     - [ ] Visual parity check (hash diff allowed only for untouched pixels)  
-    - [ ] PR merged
+    - [ ] PR merged  
+    Notes: 2025-08-15 Implemented fused path. Gradient no longer pre-fills entire scanline; transparent pixels lazily receive gradient color. BG shadows now applied post BG draw only onto still-transparent (gradient) pixels to preserve layering and avoid double darken. Expect substantial write reduction in dense BG scenes.
 
-2. [ ] Flatten Coverage Histories  
-   Replace `bool[,]` with `byte[]` (size = `ShadowVerticalDistance * ScreenWidth`). Manual indexing.  
-   Impact: ~5–10% scanline time.  
-   Subtasks:  
-   - [ ] Introduce flat arrays  
-   - [ ] Replace all reads/writes  
-   - [ ] Remove old multidimensional arrays  
-   - [ ] Benchmark  
-   - [ ] PR merged
+2. [x] Flatten Coverage Histories  
+    Replace `bool[,]` with `byte[]` (size = `ShadowVerticalDistance * ScreenWidth`). Manual indexing.  
+    Impact: ~5–10% scanline time.  
+    Subtasks:  
+    - [x] Introduce flat arrays  
+    - [x] Replace all reads/writes  
+    - [x] Remove old multidimensional arrays  
+    - [ ] Benchmark  
+    - [ ] PR merged  
+    Notes: 2025-08-15 Implemented `spriteCoverageRows` and `bgCoverageRows` (byte). Shadow projection loops now index flattened arrays; removed nested clear loops in favor of `Array.Clear`. Visual output unchanged (shadow darkening uses same factor). Expect modest improvement due to fewer bounds checks.
 
 3. [ ] Sparse Shadow Application  
    Track active coverage columns list; darken only touched columns next scanline.  
@@ -104,9 +106,10 @@ Priority tiers:
    Subtasks:  
     - [x] Detect palette change trigger (rebuild when paletteRAM[0] changes at frame start)  
     - [x] Build cache arrays (R,G,B)  
-    - [x] Use in BG transparent case  
+    - [x] Use in BG transparent case (fused with item #1)  
     - [ ] Benchmark  
-    - [ ] PR merged
+    - [ ] PR merged  
+    Notes: 2025-08-15 Cache consumed via per-scanline arrays (R,G,B) inside BG loop; removed unconditional per-line fill.
 
 6. [ ] Eliminate Per‑Pixel Palette Index Arithmetic  
    Prebuild attribute quadrant LUT(s); inner loop single lookup.  

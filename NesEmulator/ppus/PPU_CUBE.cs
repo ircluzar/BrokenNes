@@ -53,10 +53,9 @@ public class PPU_CUBE : IPPU
 	private const int ShadowOffsetY = 1;         // vertical offset matches distance (ensures projection used)
 	private const float ShadowTransparency = 0.69f; // 69% transparent -> 31% opaque
 	private const float ShadowOpacity = 1f - ShadowTransparency; // 0.31 opacity used for darkening
-	// Rolling coverage history for previous sprite scanlines (only need ShadowVerticalDistance rows)
-	private readonly bool[,] spriteCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
-	// Background coverage history to project background tile shadows
-	private readonly bool[,] bgCoverageHistory = new bool[ShadowVerticalDistance, ScreenWidth];
+	// Flattened coverage histories (row-major) to replace bool[,] (P0 #2)
+	private readonly byte[] spriteCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
+	private readonly byte[] bgCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
@@ -104,15 +103,13 @@ public class PPU_CUBE : IPPU
 			if (scanline == 0 && scanlineCycle == 0)
 			{
 				PPUSTATUS &= 0x3F;
-				// Rebuild gradient cache at frame start if needed (P0 #5)
 				int ub = paletteRAM[0];
 				if (!gradientCacheValid || ub != lastGradientBaseColor)
 				{
 					BuildGradientCache();
 				}
-				// Clear coverage history at frame start
-				for (int r = 0; r < ShadowVerticalDistance; r++)
-					for (int x = 0; x < ScreenWidth; x++) { spriteCoverageHistory[r,x] = false; bgCoverageHistory[r,x] = false; }
+				System.Array.Clear(spriteCoverageRows, 0, spriteCoverageRows.Length);
+				System.Array.Clear(bgCoverageRows, 0, bgCoverageRows.Length);
 			}
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
@@ -250,7 +247,9 @@ public class PPU_CUBE : IPPU
 		paletteCacheBuilt = false;
 		// Reset coverage histories to avoid ghosting from previous frames.
 		for (int r = 0; r < ShadowVerticalDistance; r++)
-			for (int x = 0; x < ScreenWidth; x++) { spriteCoverageHistory[r,x] = false; bgCoverageHistory[r,x] = false; }
+			for (int x = 0; x < ScreenWidth; x++) { spriteCoverageRows[r * ScreenWidth + x] = 0; bgCoverageRows[r * ScreenWidth + x] = 0; }
+		System.Array.Clear(spriteCoverageRows, 0, spriteCoverageRows.Length);
+		System.Array.Clear(bgCoverageRows, 0, bgCoverageRows.Length);
 	}
 
 	public void GenerateStaticFrame()
@@ -308,41 +307,23 @@ public class PPU_CUBE : IPPU
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
 		EnsureFrameBuffer();
-		// Check if background rendering is enabled
-		if ((PPUMASK & 0x08) == 0) return;
-		// Fill gradient base first so shadow darken (previous coverage) applies on top of gradient, then opaque BG pixels overwrite (restores original visual layering)
-		FillFullGradientScanline(scanline);
-
-		// Project background tile shadows from prior coverage before drawing current scanline
-		if (scanline >= ShadowVerticalDistance)
+		// Check if background rendering is enabled; if disabled we still want a gradient baseline for sprites/shadows
+		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
+		if (!bgEnabledFlag)
 		{
-			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int shadowY = scanline;
-			int baseIndex = shadowY * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				if (!bgCoverageHistory[srcRow, x]) continue;
-				int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance so shadowY already correct
-				if (sx < 0 || sx >= ScreenWidth) continue;
-				int fi = baseIndex + sx * 4;
-				// Simple darken LUT (keep=0.69) to avoid color inversion
-				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
-			}
+			FillFullGradientScanline(scanline);
+			return;
 		}
 
 		// Current background coverage row index to record tiles (opaque bg pixels)
 		int coverageRowIndex = scanline % ShadowVerticalDistance;
-		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageHistory[coverageRowIndex, cx] = false;
+		int bgRowBase = coverageRowIndex * ScreenWidth;
+		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageRows[bgRowBase + cx] = 0;
 
-	// Cache universal background color once per scanline
-	byte ubIdx = paletteRAM[0];
-	int ubp = (ubIdx & 0x3F) * 3;
-	byte ubR = PaletteBytes[ubp];
-	byte ubG = PaletteBytes[ubp+1];
-	byte ubB = PaletteBytes[ubp+2];
+		// We'll lazily write gradient pixels only when BG pixel transparent (fused gradient path P0 #1)
+		byte gradR = gradientR[scanline];
+		byte gradG = gradientG[scanline];
+		byte gradB = gradientB[scanline];
 
 		ushort renderV = v;
 
@@ -391,12 +372,22 @@ public class PPU_CUBE : IPPU
 				if ((uint)pixel >= ScreenWidth) continue;
 				int bit = 1 << (7 - i);
 				int colorIndex = ((plane0 & bit) != 0 ? 1 : 0) | (((plane1 & bit) != 0 ? 1 : 0) << 1);
-				if (colorIndex == 0) continue; // gradient already present
+				int frameIndex = scanlineBase + (pixel << 2);
+				if (colorIndex == 0)
+				{
+					if (!bgMask[pixel])
+					{
+						frameBuffer![frameIndex + 0] = gradR;
+						frameBuffer![frameIndex + 1] = gradG;
+						frameBuffer![frameIndex + 2] = gradB;
+						frameBuffer![frameIndex + 3] = 255;
+					}
+					continue;
+				}
 				bgMask[pixel] = true;
-				bgCoverageHistory[coverageRowIndex, pixel] = true;
+				bgCoverageRows[bgRowBase + pixel] = 1;
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
 				int pBase = palEntry * 3;
-				int frameIndex = scanlineBase + (pixel << 2);
 				frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
 				frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
 				frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
@@ -405,6 +396,27 @@ public class PPU_CUBE : IPPU
 
 			// Increment to next tile
 			IncrementX(ref renderV);
+		}
+
+		// After BG pixels drawn, project previous scanline BG shadows ONLY onto gradient (non-opaque BG) pixels to preserve prior visual semantics.
+		if (scanline >= ShadowVerticalDistance)
+		{
+			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
+			int srcBase = srcRow * ScreenWidth;
+			int shadowY = scanline;
+			int baseIndex = shadowY * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (bgCoverageRows[srcBase + x] == 0) continue;
+				int sx = x + ShadowOffsetX;
+				if (sx < 0 || sx >= ScreenWidth) continue;
+				// Only darken if current pixel remained gradient (no opaque BG drawn)
+				if (bgMask[sx]) continue;
+				int fi = baseIndex + sx * 4;
+				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
+				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
+				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+			}
 		}
 	}
 
@@ -420,28 +432,27 @@ public class PPU_CUBE : IPPU
 		if (scanline >= ShadowVerticalDistance)
 		{
 			int sourceRowIndex = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
+			int srcBase = sourceRowIndex * ScreenWidth;
 			int shadowY = scanline; // landing row
 			if (shadowY < ScreenHeight)
 			{
 				int shadowBase = shadowY * ScreenWidth * 4;
 				for (int x = 0; x < ScreenWidth; x++)
 				{
-					if (!spriteCoverageHistory[sourceRowIndex, x]) continue;
+					if (spriteCoverageRows[srcBase + x] == 0) continue;
 					int sx = x + ShadowOffsetX;
-					// Vertical offset equals distance; no extra sy check needed
 					if (sx < 0 || sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
 					frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
 					frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
 					frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
-					// alpha unchanged
 				}
 			}
 		}
 
-		// Current coverage row index in ring buffer
 		int coverageRowIndex = scanline % ShadowVerticalDistance;
-		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageHistory[coverageRowIndex, cx] = false;
+		int spriteRowBase = coverageRowIndex * ScreenWidth;
+		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageRows[spriteRowBase + cx] = 0;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
@@ -516,7 +527,7 @@ public class PPU_CUBE : IPPU
 				int palBase = 0x11 + (paletteIndex << 2) + color - 1;
 				palBase &= 0x1F;
 				int pBase = palBase * 3;
-				spriteCoverageHistory[coverageRowIndex, px] = true;
+				spriteCoverageRows[spriteRowBase + px] = 1;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
 				if (frameIndex + 3 < frameBuffer!.Length)
@@ -846,7 +857,7 @@ public class PPU_CUBE : IPPU
 				int index = (y * ScreenWidth + x) * 4;
 				
 				// Create a comprehensive NES-style test pattern
-				byte r, g, b;
+			 byte r, g, b;
 				
 				if (y < 60) // Top section - NES palette showcase
 				{
@@ -887,13 +898,13 @@ public class PPU_CUBE : IPPU
 							b = (byte)(x * 255 / ScreenWidth);
 							break;
 						case 5: // Yellow gradient
-							r = (byte)(x * 255 / ScreenWidth);
-							g = (byte)(x * 255 / ScreenWidth);
-							b = 0;
-							break;
+						 r = (byte)(x * 255 / ScreenWidth);
+						 g = (byte)(x * 255 / ScreenWidth);
+						 b = 0;
+						 break;
 						default:
-							r = g = b = 128;
-							break;
+						 r = g = b = 128;
+						 break;
 					}
 				}
 				else if (y < 180) // Middle section - NES color strips and patterns
@@ -911,7 +922,7 @@ public class PPU_CUBE : IPPU
 				}
 				else // Bottom section - geometric patterns and checker
 				{
-					bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+				 bool checker = ((x / 8) + (y / 8)) % 2 == 0;
 					if (checker)
 					{
 						// Radial pattern
