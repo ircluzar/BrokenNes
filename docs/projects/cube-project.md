@@ -1,8 +1,30 @@
-# PPU_CUBE Performance Optimization Project
+# PPU_CUBE Performance Optimization Project – Work Tracker
 
 Goal: Substantially reduce CPU time and memory bandwidth of `PPU_CUBE` while preserving (or controllably degrading) its visual feature set (gradient backdrops + shadow projection) and timing‑critical side effects (NMI, IRQ timing, sprite 0 hit).
 
-This document inventories current hotspots and proposes a prioritized roadmap of optimizations with estimated impact. Focus is on changes likely to yield real performance wins (especially on WebAssembly / Blazor) rather than micro‑premature tweaks.
+This living document is now a progress tracker with actionable checklists. Mark tasks as completed (`[x]`). Do not remove historical rationale; instead append notes beneath each item. Add measurements & decisions inline.
+
+---
+## Quick Status Dashboard
+
+Legend: P0 = immediate, P1 = next wave, P2 = advanced / experimental.
+
+### High-Level Completion
+| Tier | Total | Done | % |
+|------|-------|------|---|
+| P0 | 9 | 0 | 0% |
+| P1 | 7 | 0 | 0% |
+| P2 | 7 | 0 | 0% |
+| Overall | 23 | 0 | 0% |
+
+Update counts manually when boxes are checked.
+
+### Fast Toggles
+- [ ] Feature flags implemented (`EnableShadows`, `EnableGradient`, etc.)
+- [ ] Benchmark harness created (scenes: heavy sprites, scrolling BG, static)
+- [ ] Frame correctness hashing baseline captured
+
+---
 
 ---
 ## 1. Current Characteristics / Hotspots
@@ -33,108 +55,195 @@ Priority tiers:
 * P2: Lower impact or higher complexity / risk, optional / experimental
 
 ---
-## 3. Roadmap (Actionable Items)
+## 3. Roadmap (Actionable Items with Checkboxes)
 
 ### P0 (Do First)
-1. Fuse Gradient With Background Render
-   * Current: fill whole scanline then overwrite non‑transparent BG pixels.
-   * Change: Remove `PreFillGradientLine` pass. During BG tile loop, when `colorIndex==0`, compute gradient color for that (y) only once (cache `gradR/gradG/gradB` per scanline) and write it. For pixels untouched by BG (outside 256 or unrendered areas), lazy fill only if needed.
-   * Impact: Eliminate ~240 * 256 * 4 ≈ 245K channel writes per frame (nearly full extra framebuffer pass) => large bandwidth & cache win.
-   * Complexity: Low.
+1. [x] Fuse Gradient With Background Render  
+   Current: fill whole scanline then overwrite non‑transparent BG pixels.  
+   Change: Remove `PreFillGradientLine` pass; in BG loop when `colorIndex==0` write gradient color (cached per scanline). Lazy fill only if needed outside 256px.  
+   Impact: Eliminates ~245K channel writes per frame.  
+   Complexity: Low.  
+   Subtasks:  
+    - [x] Remove `PreFillGradientLine` invocation & method (logic replaced with cached per-scanline gradient)  
+    - [x] Integrate gradient write into BG loop (transparent pixel path)  
+    - [ ] Benchmark before/after (300 frames)  
+    - [ ] Visual parity check (hash diff allowed only for untouched pixels)  
+    - [ ] PR merged
 
-2. Flatten Coverage Histories
-   * Replace `bool[,] spriteCoverageHistory` & `bgCoverageHistory` with `byte[]` sized `ShadowVerticalDistance * ScreenWidth` and manual indexing: `rowOffset + x`.
-   * Removes multidimensional array overhead & simplifies clears (use `Array.Clear` over row slice or generation counters).
-   * Impact: Fewer bound checks & pointer chasing; ~5–10% of scanline time.
+2. [ ] Flatten Coverage Histories  
+   Replace `bool[,]` with `byte[]` (size = `ShadowVerticalDistance * ScreenWidth`). Manual indexing.  
+   Impact: ~5–10% scanline time.  
+   Subtasks:  
+   - [ ] Introduce flat arrays  
+   - [ ] Replace all reads/writes  
+   - [ ] Remove old multidimensional arrays  
+   - [ ] Benchmark  
+   - [ ] PR merged
 
-3. Sparse Shadow Application
-   * Track active coverage columns in a compact list instead of scanning 256 wide each shadow pass.
-   * For each coverage row maintain `int count` and an `int[MaxShadowPixelsPerLine] columns` populated during sprite/bg rendering (only when a pixel is first made opaque). Apply shadow only to those positions next scanline.
-   * Impact: When coverage < ~128 columns (typical), halves shadow loop time; big gain in sparse scenes.
+3. [ ] Sparse Shadow Application  
+   Track active coverage columns list; darken only touched columns next scanline.  
+   Impact: Big when coverage sparse (<128 columns).  
+   Subtasks:  
+   - [ ] Implement per-scanline column list (bg + sprites)  
+   - [ ] Integrate with coverage arrays  
+   - [ ] Benchmark sparse vs dense scenes  
+   - [ ] PR merged
 
-4. Hoist `EnsureFrameBuffer()`
-   * Call once at frame start (scanline 0 cycle 0). Remove redundant calls inside render functions.
-   * Impact: Branch + call removal (small but free) & improves inlining chances.
+4. [ ] Hoist `EnsureFrameBuffer()`  
+   Call once at frame start; remove from hot paths.  
+   Impact: Small free win.  
+   Subtasks:  
+   - [ ] Add single call at frame init  
+   - [ ] Remove redundant calls  
+   - [ ] Validate no regressions  
+   - [ ] PR merged
 
-5. Precompute Gradient Table
-   * Compute a 240‑entry gradient row color array (R,G,B) at frame start (or when universal background palette index changes). Use lookup in BG transparent case.
-   * Impact: Avoid recomputing luma & interpolation per scanline. Saves ~240 * (math ops) per frame.
+5. [x] Precompute Gradient Table  
+   240-entry gradient row cache recomputed at frame start or palette change.  
+   Impact: Saves per-scanline math.  
+   Subtasks:  
+    - [x] Detect palette change trigger (rebuild when paletteRAM[0] changes at frame start)  
+    - [x] Build cache arrays (R,G,B)  
+    - [x] Use in BG transparent case  
+    - [ ] Benchmark  
+    - [ ] PR merged
 
-6. Eliminate Per‑Pixel Palette Index Arithmetic
-   * Prebuild a 32-entry palette RGBA table (already have `paletteResolved`) but also build 8 background attribute quadrant tables of 4 resolved colors (mapping `(paletteIndex, colorIndex)` -> 3 bytes). Then inside pixel loop just `p = bgPaletteLUT[(paletteIndex<<2)|colorIndex]`.
-   * Impact: Removes shifts / adds / masks in inner loop (~5–7% BG time).
+6. [ ] Eliminate Per‑Pixel Palette Index Arithmetic  
+   Prebuild attribute quadrant LUT(s); inner loop single lookup.  
+   Impact: ~5–7% BG time.  
+   Subtasks:  
+   - [ ] Design LUT layout  
+   - [ ] Precompute at palette or attribute change  
+   - [ ] Replace shifts/masks in loop  
+   - [ ] Benchmark  
+   - [ ] PR merged
 
-7. Batch Step to Whole Scanlines
-   * New `StepScanlines(int scanlines)` path: while elapsed cycles >= 341 run one scanline iteration (handling MMC3 IRQ at cycle 260 manually). Keep existing cycle granularity for partial lines.
-   * Host code can convert CPU cycles (approx) to scanlines to reduce loop iterations from ~89K to 240 + remainder.
-   * Impact: Large in WASM / interpreter (~10–20%).
+7. [ ] Batch Step to Whole Scanlines  
+   Introduce `StepScanlines(int)`; handle MMC3 IRQ at cycle 260 within batch.  
+   Impact: ~10–20% (WASM).  
+   Subtasks:  
+   - [ ] API design & docs  
+   - [ ] Implement cycle accumulation & scanline dispatch  
+   - [ ] Ensure NMI / IRQ / sprite 0 semantics unchanged  
+   - [ ] Benchmark  
+   - [ ] PR merged
 
-8. Replace `Array.Clear(bgMask)` With Generation Stamp
-   * Keep `ushort[] bgMaskGen` & a frame-global incrementing `ushort currentGen`; per scanline set `bgMaskGen[px]=currentGen` when opaque BG drawn; test by comparing generation value instead of bool. Reset only when `currentGen` overflows (rare) or frame start.
-   * Impact: Avoid 256 zero writes * 240 (~61K writes) per frame.
+8. [ ] Replace `Array.Clear(bgMask)` With Generation Stamp  
+   `ushort[] bgMaskGen`, increment per scanline.  
+   Impact: Avoid ~61K writes/frame.  
+   Subtasks:  
+   - [ ] Add generation array & counter  
+   - [ ] Integrate into BG opaque set/test  
+   - [ ] Overflow handling strategy  
+   - [ ] Benchmark  
+   - [ ] PR merged
 
-9. Remove Palette Cache Flag Branch
-   * Build palette once at init & on writes (already done in `Write()` via `UpdateResolvedPaletteEntry`). Remove `if (!paletteCacheBuilt)` checks inside render loops.
-   * Impact: Minor but free.
+9. [ ] Remove Palette Cache Flag Branch  
+   Palette built on writes; drop runtime branch.  
+   Impact: Minor.  
+   Subtasks:  
+   - [ ] Confirm write paths always update cache  
+   - [ ] Remove flag & conditionals  
+   - [ ] Benchmark (sanity)  
+   - [ ] PR merged
 
 ### P1 (Next Wave)
-10. Tile Row Decode Cache
-    * Cache decoded 8‑pixel colorIndex rows for pattern+fineY: key `(patternAddr)` or `(tileIndex, fineY, tableBank)`. Invalidate on CHR bank switch or pattern memory write.
-    * Store as `byte[8]` entries; BG loop then just copies or tests zeros. Could also pre-evaluate transparency bitmask as a byte.
-    * Impact: Reduces `Read` calls & bit arithmetic by ~40–60% in scroll‑static scenes.
+10. [ ] Tile Row Decode Cache  
+    Cache `(patternAddr)` rows; invalidate on CHR write/bank change.  
+    Impact: 40–60% reduction in pattern fetch work (static scenes).  
+    Subtasks:  
+    - [ ] Cache data structure & key  
+    - [ ] Invalidation hooks (mapper events)  
+    - [ ] Integrate BG loop  
+    - [ ] Benchmark scrolling vs static  
+    - [ ] PR merged
 
-11. Attribute Prefetch per Tile Column
-    * For each 2x2 tile group compute palette index once per scanline row; reuse for the two tiles horizontally encountered.
-    * Impact: ~3–4% BG loop.
+11. [ ] Attribute Prefetch per Tile Column  
+    Compute palette index once per 2x2 tile group.  
+    Impact: ~3–4% BG loop.  
+    Subtasks:  
+    - [ ] Prefetch logic  
+    - [ ] Integrate with row decode cache  
+    - [ ] Benchmark  
+    - [ ] PR merged
 
-12. Sprite Scanline Candidate List
-    * Pre-pass each scanline: evaluate which sprites overlap (like actual NES). Build small array (<= 64). Inner render loop iterates only candidates.
-    * Impact: Large on lines with few sprites (common). CPU time drops proportional to average active sprites per line.
+12. [ ] Sprite Scanline Candidate List  
+    Pre-pass to build candidate sprite indices per scanline.  
+    Impact: Large on sparse lines.  
+    Subtasks:  
+    - [ ] Pre-pass implementation  
+    - [ ] Replace full iteration in render loop  
+    - [ ] Validate 8-sprite-per-line limit behavior  
+    - [ ] Benchmark varied sprite counts  
+    - [ ] PR merged
 
-13. Bitset Coverage + Shadow Vectorization
-    * Store coverage in `ulong[ShadowVerticalDistance * (ScreenWidth/64)]`. Iterate 64 bits at a time; if word nonzero apply darken only to set bits (bit scan loop). Potential for SIMD mask expansion.
-    * Impact: Additional reduction vs sparse lists for dense rows or when using bit intrinsics.
+13. [ ] Bitset Coverage + Shadow Vectorization  
+    Use `ulong` bitsets; process words only when nonzero.  
+    Impact: Additional reduction in dense or mixed cases.  
+    Subtasks:  
+    - [ ] Bitset layout  
+    - [ ] Darken iteration logic  
+    - [ ] Compare vs sparse list (retain best)  
+    - [ ] Benchmark  
+    - [ ] PR merged
 
-14. Unsafe / Span Fast Paths
-    * Introduce `unsafe` block for per-pixel loops to eliminate bounds checks & repeated index + null suppression.
-    * Impact: 5–15% depending on JIT. (WASM may benefit less but still some gain.)
+14. [ ] Unsafe / Span Fast Paths  
+    Introduce `unsafe` per-pixel loops & potential inlining.  
+    Impact: 5–15%.  
+    Subtasks:  
+    - [ ] Add conditional compilation (`#if CUBE_UNSAFE`)  
+    - [ ] Implement unsafe versions  
+    - [ ] Benchmark WASM vs desktop  
+    - [ ] PR merged
 
-15. Merge Shadow Darken & Pixel Write
-    * Instead of darkening previous coverage next scanline, darken immediately when coverage written (store pre-darkened color to shadow landing position with an offset ring buffer). Requires storing original color for potential subsequent overwrites (riskier) or performing a single delayed pass only on touched columns (P0 sparse approach already). This is an alternative path—evaluate trade-offs.
-    * Impact: Potentially removes an extra pass; complexity moderate/high.
+15. [ ] Merge Shadow Darken & Pixel Write (Alternative)  
+    Evaluate immediate darken approach; may supersede sparse pass.  
+    Impact: Potential extra pass removal.  
+    Subtasks:  
+    - [ ] Prototype ring buffer method  
+    - [ ] Validate ordering correctness  
+    - [ ] Benchmark vs existing  
+    - [ ] Decision recorded  
+    - [ ] PR merged (if adopted)
 
-16. Adaptive Feature Level
-    * Runtime toggle: if frame time > threshold disable shadows or reduce gradient to simple fill until time recovers.
-    * Impact: Stability on low-power devices.
+16. [ ] Adaptive Feature Level  
+    Runtime toggles to degrade (disable shadows / simplify gradient).  
+    Impact: Frame time stability.  
+    Subtasks:  
+    - [ ] Threshold logic  
+    - [ ] Toggle plumbing & config keys  
+    - [ ] Benchmark dynamic response  
+    - [ ] PR merged
 
 ### P2 (Advanced / Experimental)
-17. Multi-threaded Scanline Batching (Desktop Only)
-    * Partition frame into N bands; background pass parallelized (since stateful scroll increments complicate correctness). Requires replicating/deriving per-band VRAM addressing from starting `v`. Complex and may break cycle-exact side effects; likely out of scope unless targeting high-refresh.
-    * Impact: Potential 2–3× on multi-core, but high risk.
+17. [ ] Multi-threaded Scanline Batching (Desktop Only)  
+    Parallelize bands; high complexity.  
+    Impact: 2–3× on multi-core (risk).  
+    Notes: Cycle-exact side effects risk; may be deferred.
 
-18. JIT-Time Code Generation / Source Generators
-    * Emit specialized render loops based on feature flags (shadows on/off, sprite size, pattern table base) to remove branches.
-    * Impact: Moderate; complexity high.
+18. [ ] JIT-Time Code Generation / Source Generators  
+    Specialized loops per feature set.  
+    Impact: Moderate; high complexity.
 
-19. GPU Blit / WebGL Shader Path
-    * Offload gradient + shadow compositing to WebGL/WebGPU fragment shader after uploading a simpler BG + sprite layer buffer.
-    * Impact: Big on browsers; complexity & portability trade-offs.
+19. [ ] GPU Blit / WebGL Shader Path  
+    Offload gradient + shadow to GPU.  
+    Impact: Large on browsers.
 
-20. Frame Difference (Dirty Rect) Streaming
-    * Only redraw changed scanlines (if scroll static and no sprite changes). Maintain hash/CRC per scanline to detect unchanged lines.
-    * Impact: Large for pause/static scenes.
+20. [ ] Frame Difference (Dirty Rect) Streaming  
+    Only redraw changed scanlines.  
+    Impact: Large for static scenes.
 
-21. Pattern Decode Ahead-of-Time (CHR ROM)
-    * For CHR ROM (immutable), decode all tiles into 8x8 2bpp -> 8 bytes of packed colorIndex arrays once; BG render becomes simple array indexing.
-    * Impact: BG render cost drops drastically for ROM-backed content. Additional memory (~8 bytes * tiles) acceptable.
+21. [ ] Pattern Decode Ahead-of-Time (CHR ROM)  
+    Decode immutable tiles once.  
+    Impact: Big BG render speed in ROM cases.
 
-22. Sprite Palette + Priority Precomputation
-    * For each sprite row, construct an 8-element struct array with resolved RGBA & transparency mask before per-pixel loop.
-    * Impact: Reduces per-pixel branching, moderate gain.
+22. [ ] Sprite Palette + Priority Precomputation  
+    Precompute row structs.  
+    Impact: Moderate.
 
-23. Branchless Darken
-    * For shadow darken apply integer multiply via LUT: prebuild 256-entry table for 69% darken (value*69/100). Replaces 3 multiplies per darkened pixel with 3 table lookups (could be faster or slower; benchmark). Might integrate with palette pre-darkened variants.
-    * Impact: Small; measure.
+23. [ ] Branchless Darken  
+    LUT-based darken (or pre-darkened palette variants).  
+    Impact: Small; needs measurement.
 
 ---
 ## 4. Implementation Order & Bundling
@@ -232,4 +341,4 @@ Environment / config keys:
 Proceed with P0 batch #1 PR (gradient removal + cached gradient rows) and benchmark. Use this document as living roadmap; update estimates with real measurements.
 
 ---
-_Last updated: 2025-08-15_
+_Last updated: 2025-08-15 (converted to checklist format)_

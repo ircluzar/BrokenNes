@@ -39,6 +39,12 @@ public class PPU_CUBE : IPPU
 	// Palette resolved RGB cache (mirroring aware)
 	private readonly byte[] paletteResolved = new byte[32*3];
 	private bool paletteCacheBuilt = false;
+	// Gradient cache (P0 #5) – precomputed per-scanline RGB from universal background color
+	private readonly byte[] gradientR = new byte[ScreenHeight];
+	private readonly byte[] gradientG = new byte[ScreenHeight];
+	private readonly byte[] gradientB = new byte[ScreenHeight];
+	private int lastGradientBaseColor = -1; // tracks paletteRAM[0] to know when to rebuild
+	private bool gradientCacheValid = false;
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
 	// Shadow configuration: shadow is projected bottom-left with vertical gap (distance)
@@ -98,6 +104,12 @@ public class PPU_CUBE : IPPU
 			if (scanline == 0 && scanlineCycle == 0)
 			{
 				PPUSTATUS &= 0x3F;
+				// Rebuild gradient cache at frame start if needed (P0 #5)
+				int ub = paletteRAM[0];
+				if (!gradientCacheValid || ub != lastGradientBaseColor)
+				{
+					BuildGradientCache();
+				}
 				// Clear coverage history at frame start
 				for (int r = 0; r < ShadowVerticalDistance; r++)
 					for (int x = 0; x < ScreenWidth; x++) { spriteCoverageHistory[r,x] = false; bgCoverageHistory[r,x] = false; }
@@ -158,11 +170,15 @@ public class PPU_CUBE : IPPU
 	{
 		// Ensure framebuffer exists before writing
 		EnsureFrameBuffer();
-		// Always pre-fill gradient base each scanline (framebuffer redraw) using universal background color as top reference.
-		PreFillGradientLine(scanline);
+		// Gradient no longer prefilled for whole line; background loop writes gradient on transparent BG pixels (P0 #1 & #5)
 
 		// If no ROM loaded, skip further drawing (gradient serves as base)
-		if (bus?.cartridge == null) return;
+		if (bus?.cartridge == null)
+		{
+			// Still fill gradient so user sees backdrop when no cart mounted
+			FillFullGradientScanline(scanline);
+			return;
+		}
 
 		bool bgEnabled = (PPUMASK & 0x08) != 0; // background enable bit 3
 		bool sprEnabled = (PPUMASK & 0x10) != 0; // sprites enable bit 4
@@ -176,42 +192,52 @@ public class PPU_CUBE : IPPU
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
-	// Compute and fill a gradient row from top color to lighter/darker bottom variant.
-	private void PreFillGradientLine(int y)
+	// Fill entire scanline with gradient (used only for no-cartridge case)
+	private void FillFullGradientScanline(int y)
+	{
+		int baseIndex = y * ScreenWidth * 4;
+		byte r = gradientR[y]; byte g = gradientG[y]; byte b = gradientB[y];
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			int fi = baseIndex + (x << 2);
+			frameBuffer![fi + 0] = r;
+			frameBuffer![fi + 1] = g;
+			frameBuffer![fi + 2] = b;
+			frameBuffer![fi + 3] = 255;
+		}
+	}
+
+	// Build per-scanline gradient cache (top color to lightened/darkened bottom) – matches old PreFillGradientLine output
+	private void BuildGradientCache()
 	{
 		byte ubIdx = paletteRAM[0];
+		lastGradientBaseColor = ubIdx;
 		int pTop = (ubIdx & 0x3F) * 3;
 		byte topR = PaletteBytes[pTop];
 		byte topG = PaletteBytes[pTop+1];
 		byte topB = PaletteBytes[pTop+2];
-		// Determine brightness (simple luma)
 		double brightness = 0.299 * topR + 0.587 * topG + 0.114 * topB;
 		byte botR, botG, botB;
-		if (brightness >= 128) // light -> lighten bottom by +25% toward white
+		if (brightness >= 128)
 		{
 			botR = (byte)(topR + (int)((255 - topR) * 0.25));
 			botG = (byte)(topG + (int)((255 - topG) * 0.25));
 			botB = (byte)(topB + (int)((255 - topB) * 0.25));
 		}
-		else // dark -> darken bottom by 50%
+		else
 		{
 			botR = (byte)(topR * 0.5);
 			botG = (byte)(topG * 0.5);
 			botB = (byte)(topB * 0.5);
 		}
-		float t = ScreenHeight <= 1 ? 0f : (float)y / (ScreenHeight - 1);
-		byte r = (byte)(topR + (int)((botR - topR) * t));
-		byte g = (byte)(topG + (int)((botG - topG) * t));
-		byte b = (byte)(topB + (int)((botB - topB) * t));
-		int baseIndex = y * ScreenWidth * 4;
-		for (int x = 0; x < ScreenWidth; x++)
+		for (int y = 0; y < ScreenHeight; y++)
 		{
-			int fi = baseIndex + x * 4;
-			frameBuffer![fi + 0] = r;
-			frameBuffer![fi + 1] = g;
-			frameBuffer![fi + 2] = b;
-			frameBuffer![fi + 3] = 255; // mark as filled
+			float tt = ScreenHeight <= 1 ? 0f : (float)y / (ScreenHeight - 1);
+			gradientR[y] = (byte)(topR + (int)((botR - topR) * tt));
+			gradientG[y] = (byte)(topG + (int)((botG - topG) * tt));
+			gradientB[y] = (byte)(topB + (int)((botB - topB) * tt));
 		}
+		gradientCacheValid = true;
 	}
 
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
@@ -284,6 +310,8 @@ public class PPU_CUBE : IPPU
 		EnsureFrameBuffer();
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
+		// Fill gradient base first so shadow darken (previous coverage) applies on top of gradient, then opaque BG pixels overwrite (restores original visual layering)
+		FillFullGradientScanline(scanline);
 
 		// Project background tile shadows from prior coverage before drawing current scanline
 		if (scanline >= ShadowVerticalDistance)
@@ -363,7 +391,7 @@ public class PPU_CUBE : IPPU
 				if ((uint)pixel >= ScreenWidth) continue;
 				int bit = 1 << (7 - i);
 				int colorIndex = ((plane0 & bit) != 0 ? 1 : 0) | (((plane1 & bit) != 0 ? 1 : 0) << 1);
-				if (colorIndex == 0) continue; // keep gradient
+				if (colorIndex == 0) continue; // gradient already present
 				bgMask[pixel] = true;
 				bgCoverageHistory[coverageRowIndex, pixel] = true;
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
