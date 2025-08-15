@@ -1,10 +1,20 @@
 // DisplayName: EXE
+// Category: Distort
 precision mediump float;
+
+// EXE — Energetic beam / data exfiltration effect
+// Goal: Animated vertical beam attracts pixels, adds chromatic shear, particles & glitches.
+// - Moving beam center w/ exponential attraction field
+// - Swirl + noise driven displacement & chromatic shear
+// - Vertical particle streak accumulation along beam
+// - Intermittent horizontal glitch slices & scanline/stripe overlays
+// - Grading pass for cohesive palette
+// uStrength: 0..3 scales displacement, particles, stripes & glitch amplitude
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;        // seconds
-uniform vec2 uTexSize;      // NES source size
-uniform float uStrength;    // effect intensity 0..3
+uniform sampler2D uTex;     // Source frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source size
+uniform float uStrength;    // 0..3 strength
 
 float hash(vec2 p){ p=fract(p*vec2(125.34, 417.13)); p+=dot(p,p+23.17); return fract(p.x*p.y); }
 float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); float a=hash(i); float b=hash(i+vec2(1,0)); float c=hash(i+vec2(0,1)); float d=hash(i+vec2(1,1)); return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
@@ -29,19 +39,22 @@ void main(){
   float t = uTime;
   float strength = clamp(uStrength, 0.0, 3.0);
 
+  // --- Beam center & base field ---
   float beamSpeed = 0.07 + 0.05*sin(t*0.31);
   float beamX = fract(t*beamSpeed + 0.25 + 0.1*sin(t*0.17));
   float dBeam = abs(uv.x - beamX);
   float attract = exp(-pow(dBeam* uTexSize.x * (0.8 + 0.6*strength), 1.15));
-  float ang = noise(vec2(uv.y*40.0 + t*1.2, uv.x*18.0 - t*0.8))*6.28318;
+  float ang = noise(vec2(uv.y*40.0 + t*1.2, uv.x*18.0 - t*0.8))*6.28318; // swirl angle
   vec2 swirl = vec2(cos(ang), sin(ang));
 
   float jitter = (hash(floor(uv*vec2(uTexSize.x, uTexSize.y)) + t*2.37) - 0.5);
+  // Pull direction combines attraction + vertical sinus + swirl
   vec2 pullDir = normalize(vec2(beamX - uv.x, 0.0005 + 0.12*sin(t*0.9 + uv.y*6.0)) + swirl*0.2);
   float pullMag = attract * (0.55 + 0.45*sin(t*3.0 + uv.y*25.0)) * (0.25 + 0.75*strength);
   pullMag += jitter * 0.04 * strength;
   vec2 disp = pullDir * pullMag * texel * (4.0 + 10.0*strength);
 
+  // Chromatic shear proportional to attraction & strength
   float shear = (0.20 + 0.35*strength) * attract;
   vec2 rOff = disp + vec2(+shear, 0.0)*texel;
   vec2 gOff = disp;
@@ -53,6 +66,7 @@ void main(){
   col.b = texture2D(uTex, clamp(uv + bOff, 0.0, 1.0)).b;
 
   float L = luma(col);
+  // --- Particle streak accumulation ---
   float partSeed = hash(vec2(floor(uv* uTexSize)) + t);
   float spawn = smoothstep(0.55, 0.9, L) * step(0.35, partSeed);
   vec3 partAccum = vec3(0.0);
@@ -69,6 +83,7 @@ void main(){
   vec3 particles = mix(col, partAccum, 0.65) * spawn * (0.4 + 0.8*strength);
   col += particles;
 
+  // --- Vertical stripe modulation ---
   float colId = uv.x * uTexSize.x;
   float vPhase = fract(colId*0.5);
   float stripe = smoothstep(0.15,0.0, min(vPhase, 1.0 - vPhase));
@@ -76,10 +91,12 @@ void main(){
   float vMask = 1.0 - vStrength * (1.0 - stripe);
   col *= vMask;
 
+  // --- Horizontal scanline modulation ---
   float hPhase = fract(uv.y * uTexSize.y);
   float hScan = 0.85 + 0.15 * pow(sin(3.14159 * hPhase), 2.0);
   col *= (0.94 + 0.06*hScan);
 
+  // --- Intermittent glitch slice ---
   float seg = floor(t*1.2);
   float segT = fract(t*1.2);
   float gChance = hash(vec2(seg, 91.2));
@@ -91,6 +108,7 @@ void main(){
     col += (hash(vec2(uv.y*400.0, t*120.0)) - 0.5) * 0.25 * glitchEnv;
   }
 
+  // --- Grain & vignette ---
   float grain = noise(uv * vec2(360.0, 240.0) + t*2.7) - 0.5;
   col += grain * (0.04 + 0.08*strength);
   float r = length((uv - 0.5) * vec2(1.15,1.05));

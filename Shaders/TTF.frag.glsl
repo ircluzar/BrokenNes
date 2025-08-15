@@ -1,6 +1,14 @@
 // DisplayName: TTF
-// Category: Subpixel
+// Category: Utility
 precision mediump float;
+
+// TTF — TrueType-style subpixel enhancement
+// Goal: Subpixel sampling for sharper vertical features without heavy color fringing.
+// - Per-channel offsets based on derivatives / texel fallback
+// - Edge gating along X to avoid color bleed in flat areas
+// - Small Gaussian gather per channel
+// - Mild contrast pop
+// uStrength: 0..3 scales blend toward subpixel result & contrast
 // Default derivatives availability to off; JS will define HAS_DERIVATIVES=1 when supported
 #ifndef HAS_DERIVATIVES
 #define HAS_DERIVATIVES 0

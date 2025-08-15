@@ -1,6 +1,14 @@
 // DisplayName: LAT
-// Category: Stylize
+// Category: Refraction
 precision mediump float;
+
+// LAT — Lattice facet refraction
+// Goal: Micro-facet lattice per NES tile generating refracted & sparkling look.
+// - Operate in 8x8 tile space then subdivide into jittered micro-facets
+// - Per-facet random normal drives chromatic refraction & sparkle
+// - Edge seams darken boundaries; sparkle modulated by facet & time
+// - Strength scales facet density & refraction offset range
+// uStrength: 0..3 (internally remapped to 0.15..0.60 offset blend)
 
 // Lattice: transforms the image into tiny crystalline facets that catch and scatter light.
 // Design goals:
@@ -9,10 +17,10 @@ precision mediump float;
 // - Avoid heavy loops and non-portable features; WebGL1-friendly.
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;
-uniform vec2 uTexSize;   // expected 256x240
-uniform float uStrength; // host maps ~0..3; we'll remap to a conservative 0.15..0.6
+uniform sampler2D uTex;    // Source frame
+uniform float uTime;       // Seconds
+uniform vec2 uTexSize;     // Expected 256x240
+uniform float uStrength;   // 0..3 strength (remapped internally)
 
 // --- Small utilities ---
 float hash12(vec2 p)

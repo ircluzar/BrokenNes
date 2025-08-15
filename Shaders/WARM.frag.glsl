@@ -1,6 +1,13 @@
-// DisplayName: Warm
+// DisplayName: WARM
 // Category: Color
 precision mediump float;
+
+// WARM — Subtle warmth & phosphor tilt
+// Goal: Gentle red bias & contrast softening while preserving luminance.
+// - Convert to pseudo YUV; shift chroma toward warmth
+// - Channel-specific gamma tilt + green cross-talk
+// - Strength remapped to limited 0.15..0.50 warmth range
+// uStrength: 0..3 (remapped)
 
 // A subtle warm color filter reminiscent of slightly aged CRT phosphors.
 // Goals:
@@ -16,10 +23,10 @@ precision mediump float;
 //   uniform float uStrength;          // 0..3 (mapped by host). We remap to a small 0..~0.5 range.
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;
-uniform vec2 uTexSize;
-uniform float uStrength;
+uniform sampler2D uTex;    // Source frame
+uniform float uTime;       // Unused (reserved)
+uniform vec2 uTexSize;     // Source size
+uniform float uStrength;   // 0..3 strength
 
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 

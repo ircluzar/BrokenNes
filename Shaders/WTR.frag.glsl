@@ -1,10 +1,19 @@
 // DisplayName: WTR
+// Category: Distort
 precision mediump float;
+
+// WTR — Multi-field vector displacement (water energy)
+// Goal: Complex compound vector field warping with chromatic shear.
+// - Vertical & horizontal beam fields (VCOUNT/HCOUNT lines)
+// - Sine wiggle lines & moving radial lens fields
+// - Displacement clamped then converted to chromatic shear offsets
+// - Sparkle noise, pulsing brightness & grading
+// uStrength: 0..3 scales field magnitude, shear & sparkle
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;
-uniform vec2 uTexSize;
-uniform float uStrength;
+uniform sampler2D uTex;    // Source frame
+uniform float uTime;       // Seconds
+uniform vec2 uTexSize;     // Source size
+uniform float uStrength;   // 0..3 strength
 const int COUNT = 69;
 const int VCOUNT = 34;
 const int HCOUNT = 34;

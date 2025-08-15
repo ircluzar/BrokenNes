@@ -3,6 +3,15 @@
 precision mediump float;
 
 // DOT — Overlapping circular refraction shards
+// Goal: Circular shard field with directional shear & chromatic dispersion.
+// - Square lattice nearest-center selection
+// - Overlapping circles (radius > half diagonal) ensure coverage
+// - Direction per shard hashed + temporal wobble
+// - Shear component adds planar gradient swirl
+// - Boundary darkening (crack suggestion) & gentle contrast lift
+// uStrength: 0..3 scales shard density, refraction magnitude, crack depth
+
+// DOT — Overlapping circular refraction shards
 // Partitions screen by Voronoi over a square lattice (nearest cell center).
 // Each cell center defines an overlapping circle (radius > 0.707 cell) so the
 // entire plane is covered with slight overlap (no gaps). Per-circle hashed
@@ -11,10 +20,10 @@ precision mediump float;
 // Strength (uStrength 0..3) scales shard density and refraction magnitude.
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;        // seconds
-uniform vec2 uTexSize;      // NES source size
-uniform float uStrength;    // 0..3
+uniform sampler2D uTex;     // Source frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source size
+uniform float uStrength;    // 0..3 strength
 
 // --- Hash helpers ---
 float hash21(vec2 p){
@@ -30,7 +39,7 @@ void main(){
   if (s <= 1e-5) { gl_FragColor = vec4(texture2D(uTex, uv).rgb, 1.0); return; }
   float k = s / 3.0; // 0..1
 
-  // ===== Square lattice setup =====
+  // --- Square lattice setup ---
   float cellCount = mix(8.0, 42.0, k); // density vs strength
   vec2 gp = uv * cellCount;            // grid space
   vec2 ij = floor(gp);
@@ -66,7 +75,7 @@ void main(){
   float dist = sqrt(bestDist) * cellCount;   // distance in cell units (0.0 at center)
   vec2 rel = (uv - bestCenter) * cellCount;  // relative coordinates in cell units
 
-  // ===== Refraction model =====
+  // --- Refraction model ---
   float ang = 6.2831853 * hash21(bestKey);
   float wob = 0.45 * sin(uTime * (0.18 + 0.55*hash21(bestKey+2.7)) + ang*0.40);
   float ang2 = ang + wob;
@@ -92,7 +101,7 @@ void main(){
   col.g = texture2D(uTex, uvG).g;
   col.b = texture2D(uTex, uvB).b;
 
-  // ===== Edge treatment (circle boundary) =====
+  // --- Edge treatment (circle boundary) ---
   // All pixels lie inside at least one circle (radius > half-diagonal). Darken near boundary.
   float edgeW = mix(0.020, 0.050, 1.0 - k); // thinner at higher density
   float crackAmt = mix(0.14, 0.38, k);

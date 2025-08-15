@@ -1,14 +1,20 @@
 // DisplayName: CRZ
+// Category: Refraction
 precision mediump float;
 
-// Crystalline glass refraction shader
-// makes the screen appear like seen through sharp irregular crystalline glass
+// CRZ — Crystalline glass refraction
+// Goal: Sharp irregular glass facets refract & disperse pixels with edge glints.
+// - Voronoi-like shard field with quantized normals (facets)
+// - Edge & center driven displacement + per-cell jitter
+// - Mild chromatic dispersion and inter-shard bleed
+// - Sparkle/glint and vignette + faint micro-scratch noise
+// uStrength: 0..3 scales cell density, displacement, glints & bleed
 
 varying vec2 vTex;
-uniform sampler2D uTex;    // NES frame (nearest / pixel perfect)
-uniform float uTime;      // seconds
-uniform vec2 uTexSize;    // source pixel dimensions
-uniform float uStrength;  // effect intensity (1.0 base)
+uniform sampler2D uTex;    // Source NES frame
+uniform float uTime;       // Seconds
+uniform vec2 uTexSize;     // Source pixel dimensions
+uniform float uStrength;   // 0..3 strength
 
 // Simple hashing / random
 float hash21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 78.233); return fract(p.x * p.y); }
@@ -56,53 +62,52 @@ void main(){
     vec2 uv = vec2(vTex.x, 1.0 - vTex.y);
     float strength = clamp(uStrength, 0.0, 3.0);
 
-    // choose shard density based on strength
+    // --- Shard density ---
     float minCells = 18.0;
     float maxCells = 56.0;
     float cells = mix(minCells, maxCells, clamp(strength/2.0, 0.0, 1.0));
 
-    // grid-space coordinate
+    // Grid-space coordinate
     vec2 gp = uv * cells;
 
-    // wobble whole glass slowly
+    // Slow global wobble
     vec2 globalJiggle = (vec2(sin(uTime*0.6), cos(uTime*0.45)) * 0.02) * strength;
     gp += globalJiggle * cells;
 
-    // get distance to nearest site and edge factor
+    // Distance to nearest site & edge factor
     vec2 info = cellInfo(gp, cells);
     float minD = info.x;        // [0..~1]
     float edgeF = info.y;       // [0..1]
 
-    // normal approximated from distance field (points from inside -> out)
+    // Distance field normal
     vec2 n = fieldNormal(gp, cells);
 
-    // make normals more angular for crystalline look
-    // add a quantization to normals to make facets
+    // Quantize normals into angular facets
     float facets = mix(3.0, 7.0, clamp(strength/2.0, 0.0, 1.0));
     float ang = atan(n.y, n.x);
     float q = floor((ang / 6.2831853) * facets);
     float angQ = (q + 0.5) * (6.2831853 / facets);
     n = vec2(cos(angQ), sin(angQ));
 
-    // compute refraction-like displacement
+    // Refraction-like displacement magnitude
     // displacement strength scales with how close to a shard center (minD small -> center) and edgeF (sharper edges)
     float centerInfluence = 1.0 - smoothstep(0.0, 0.6, minD*2.0);
     float edgeInfluence = pow(edgeF, 1.8);
     float dispAmount = 0.0025 * mix(0.6, 2.2, strength) * (0.6 + centerInfluence*1.2) * (0.4 + edgeInfluence*1.6);
 
-    // directional displacement simulating refraction through facet normal
+    // Directional displacement
     vec2 disp = n * dispAmount;
 
-    // add small jitter per cell for irregularity
+    // Per-cell jitter
     vec2 jitter = (hash22(floor(gp)).xy - 0.5) * 0.5 * dispAmount * 4.0;
     disp += jitter;
 
-    // chromatic dispersion: slightly different offsets per channel
+    // Chromatic dispersion
     vec2 uvR = clamp(uv + disp * 1.10, vec2(0.0), vec2(1.0));
     vec2 uvG = clamp(uv + disp * 0.00, vec2(0.0), vec2(1.0));
     vec2 uvB = clamp(uv + disp * -0.80, vec2(0.0), vec2(1.0));
 
-    // sample with nearest/pixel-perfect look
+    // Pixel-perfect sampling
     vec2 texel = 1.0 / uTexSize;
     uvR = floor(uvR * uTexSize) * texel + texel*0.5;
     uvG = floor(uvG * uTexSize) * texel + texel*0.5;
@@ -113,7 +118,7 @@ void main(){
     col.g = texture2D(uTex, uvG).g;
     col.b = texture2D(uTex, uvB).b;
 
-    // add bright glints along facet edges
+    // Edge glints & sparkle
     float edgeHighlight = smoothstep(0.04, 0.0, minD) * pow(edgeF, 0.8);
     // moving sparkle along edges
     float sparkle = pow(max(0.0, 1.0 - minD*6.0), 3.0) * (0.25 + 0.75 * edgeF);
@@ -121,7 +126,7 @@ void main(){
     float glint = edgeHighlight * sparkle * (0.6 + 0.4 * shimmer);
     col += vec3(1.0, 0.95, 0.85) * glint * 0.9 * strength;
 
-    // subtle blur between shards (mix with local 3x3 average) to emulate light bleeding through glass
+    // Inter-shard bleed (local blur)
     vec3 blurAccum = vec3(0.0); float w=0.0;
     for(int x=-1;x<=1;x++){
         for(int y=-1;y<=1;y++){
@@ -134,12 +139,12 @@ void main(){
     float bleedMix = smoothstep(0.0, 0.5, minD) * 0.25 * strength;
     col = mix(col, localAvg, bleedMix);
 
-    // vignette and slight contrast
+    // Vignette & contrast
     float r = length((uv - 0.5) * vec2(1.0, 1.0));
     float vign = smoothstep(0.85, 0.25, r);
     col *= vign;
 
-    // add fine noise to simulate micro-scratches in the crystal
+    // Micro-scratch noise
     float noiseVal = hash21(gl_FragCoord.xy * 0.5 + vec2(uTime*12.0));
     col += vec3((noiseVal - 0.5) * 0.01 * strength);
 

@@ -1,24 +1,20 @@
 // DisplayName: BLD
-// Category: Diffuse
+// Category: Stylize
 precision mediump float;
 
-// BLD — 4-direction color bleed ("color poisoning")
-// -----------------------------------------------------------------------------
-// Single-pass directional diffusion that lets saturated pixels leak outward
-// horizontally & vertically while keeping core detail readable.
-// Approach:
-//  * Gather chains of samples in +/-X and +/-Y (4 rays) with exponential falloff.
-//  * Weight samples by saturation and diminish across strong luminance edges so
-//    very bright/dark boundaries don't smear too much.
-//  * Combine the directional accumulations and blend back with original based
-//    on strength. Adds a mild contrast restoration to counter softening.
-// uStrength: 0..3 — controls ray length, bleed amount, and contrast recovery.
+// BLD — 4‑direction color bleed (edge‑aware directional diffusion)
+// Goal: Let saturated pixels softly “poison” neighbors while keeping edges legible.
+// - Gather chains of samples in +/‑X and +/‑Y (4 rays) with exponential falloff
+// - Weight by saturation; gate across large luminance edges to avoid heavy smears
+// - Merge directional contributions and restore a touch of contrast & saturation
+// - Strength scales ray length, bleed weight, and contrast recovery
+// uStrength: 0..3 overall effect intensity
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;        // seconds (unused but reserved for future animation)
-uniform vec2 uTexSize;      // NES frame size
-uniform float uStrength;    // 0..3
+uniform sampler2D uTex;     // Source NES frame
+uniform float uTime;        // Seconds (unused; reserved)
+uniform vec2 uTexSize;      // Source size in pixels
+uniform float uStrength;    // 0..3 strength
 
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 
@@ -35,7 +31,7 @@ void main(){
   vec3 base = texture2D(uTex, uv).rgb;
   float baseLum = luma(base);
 
-  // Ray configuration
+  // --- Ray configuration ---
   int maxSteps = int(2.0 + floor(k * 4.0)); // 2..6 samples each direction
   float falloff = mix(1.35, 0.55, k);       // faster falloff at low strength
   float satBoost = mix(1.2, 1.8, k);        // higher saturation influence
@@ -44,7 +40,7 @@ void main(){
   vec3 accum = base * 1.0; // include self
   float wSum = 1.0;
 
-  // Iterate four cardinal directions
+  // --- Directional diffusion accumulate (4 cardinal rays) ---
   for(int dirIdx=0; dirIdx<4; ++dirIdx){
     vec2 dir = (dirIdx==0)? vec2( 1.0, 0.0) :
                (dirIdx==1)? vec2(-1.0, 0.0) :
@@ -76,7 +72,7 @@ void main(){
 
   vec3 bleedCol = accum / max(wSum, 1e-5);
 
-  // Contrast & saturation restoration so diffused image stays lively
+  // --- Contrast & saturation restoration ---
   float Lb = luma(bleedCol);
   vec3 L3 = vec3(Lb);
   float satAmt = mix(1.05, 1.25, k); // gentle
@@ -84,7 +80,7 @@ void main(){
   float contrast = mix(1.00, 1.08 + 0.10*k, k); // increasing micro-contrast
   vec3 restored = (satCol - 0.5) * contrast + 0.5;
 
-  // Blend with base; higher strength favors diffused result
+  // --- Blend & finalize ---
   float blend = mix(0.30, 0.85, k);
   vec3 outCol = mix(base, restored, blend);
 

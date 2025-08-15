@@ -1,6 +1,14 @@
 // DisplayName: RGBX
-// Category: Aberration
+// Category: Color
 precision mediump float;
+
+// RGBX — Animated chromatic vector split
+// Goal: Psychedelic, readable chromatic aberration with channel-specific motion.
+// - Radial/tangential/inverse radial channel directions with wobble
+// - Edge-weighted magnitude & temporal modulation
+// - Directional gathers per channel for soft bleed
+// - Mild hue rotation + contrast pop
+// uStrength: 0..3 scales separation magnitude & bleed
 
 // RGB channel splitter with animated chromatic aberration and psychedelic bleed.
 // - Separates R, G, B into different motion fields (radial, tangential, inverse radial)
@@ -8,10 +16,10 @@ precision mediump float;
 // - Directional gathers per channel produce soft, trippy color bleeding while keeping detail readable
 
 varying vec2 vTex;
-uniform sampler2D uTex;     // NES frame (nearest/pixel perfect)
-uniform float uTime;        // seconds
-uniform vec2 uTexSize;      // source pixel dimensions
-uniform float uStrength;    // 0..3
+uniform sampler2D uTex;     // Source NES frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source pixel dimensions
+uniform float uStrength;    // 0..3 strength
 
 float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 
@@ -21,14 +29,14 @@ void main(){
   float t = uTime;
   float s = clamp(uStrength, 0.0, 3.0);
 
-  // Center-relative geometry
+  // --- Center-relative geometry ---
   vec2 toC = uv - 0.5;
   float r = length(toC) + 1e-6;
   vec2 nrm = toC / r;                 // outward radial
   vec2 tanv = vec2(-nrm.y, nrm.x);    // tangential (CCW)
   float ang = atan(toC.y, toC.x);
 
-  // Time-varying channel directions (keep coherent but distinct)
+  // --- Time-varying channel directions ---
   // R: mostly radial outward with swirling wobble
   // G: mostly tangential sweep
   // B: inward radial with different wobble phase
@@ -39,11 +47,11 @@ void main(){
   vec2 dirG = normalize(tanv + wigG * vec2(cos(ang*4.0 - t*1.1), sin(ang*4.0 - t*1.1)));
   vec2 dirB = normalize(-nrm + wigB * vec2(cos(ang*5.0 + t*1.2), sin(ang*5.0 + t*1.2)));
 
-  // Base magnitude in texels: stronger toward edges and with strength
+  // --- Base magnitude in texels ---
   float edgeBoost = smoothstep(0.0, 0.6, r*1.6);
   float mag = (0.45 + 1.35*s) * (0.5 + 0.7*edgeBoost);
 
-  // Temporal modulation to keep motion alive
+  // --- Temporal modulation ---
   float mR = (1.0 + 0.45*sin(t*1.7 + r*22.0 + ang*3.0));
   float mG = (1.0 + 0.45*sin(t*1.4 + r*19.0 - ang*4.0));
   float mB = (1.0 + 0.45*sin(t*1.9 + r*25.0 + ang*2.0));
@@ -52,7 +60,7 @@ void main(){
   vec2 offG = dirG * texel * (mag * 0.85) * mG;
   vec2 offB = dirB * texel * (mag * 1.10) * mB;
 
-  // Directional bleeding: small gathers along each channel's path
+  // --- Directional bleeding gathers ---
   // Keep loops tiny for performance. Bleed grows with strength but stays readable.
   float bleed = mix(0.18, 0.70, clamp(s/3.0, 0.0, 1.0));
   int taps = 2; // [-2..2]
@@ -92,7 +100,7 @@ void main(){
 
   vec3 col = vec3(R, G, B);
 
-  // Optional: mild time-based color rotation for extra psychedelia (small to keep image legible)
+  // --- Mild hue rotation ---
   float rot = 0.18 * clamp(s*0.6, 0.0, 1.0) * sin(t*0.9);
   mat3 hue = mat3(
     0.95+0.05*cos(rot+0.0), 0.05*sin(rot+1.7),     0.05*sin(rot+3.1),
@@ -101,7 +109,7 @@ void main(){
   );
   col = clamp(hue * col, 0.0, 1.0);
 
-  // Gentle contrast curve to pop colors slightly
+  // --- Contrast pop ---
   float L = luma(col);
   col = mix(vec3(L), col, 1.06);
   col = (col - 0.5) * 1.06 + 0.5;

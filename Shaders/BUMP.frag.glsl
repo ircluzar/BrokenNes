@@ -1,11 +1,20 @@
 // DisplayName: BUMP
 // Category: Lighting
 precision mediump float;
+
+// BUMP — Pseudo bump/relief lighting from native NES color data
+// Goal: Derive a height field from brightness + hue ripple and shade with a moving light.
+// - Convert RGB to HSV; build height from value plus sinusoidal hue modulation
+// - Sample neighbor heights to compute gradients (central differences)
+// - Form a perturbed normal and evaluate simple diffuse + specular shading
+// - Animate light direction slowly using uTime; saturate specular by colorfulness
+// uStrength: 0..3 (maps to bumpScale 1.2..7.0) — controls relief intensity
+
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform vec2 uTexSize;     // (width,height) in pixels; used for neighbor sampling
-uniform float uTime;       // optional; used for light motion
-uniform float uStrength;   // generic intensity knob (if provided by host)
+uniform sampler2D uTex;    // Source frame
+uniform vec2 uTexSize;     // (width,height) pixels
+uniform float uTime;       // Seconds
+uniform float uStrength;   // 0..3 strength (relief intensity)
 
 // Convert RGB to HSV (h in [0,1], s in [0,1], v in [0,1])
 vec3 rgb2hsv(vec3 c){
@@ -59,20 +68,20 @@ void main(){
   float dx = (hR - hL);
   float dy = (hU - hD);
 
-  // Map host strength (approx 0.2..3.0 typical) into a nice bump scale
+  // --- Strength mapping to bump scale ---
   float s = uStrength; if (!(s > 0.0)) s = 1.0; // if uniform missing or zero, default 1
   float bumpScale = mix(1.2, 7.0, clamp(s, 0.2, 3.0) / 3.0);
 
   // Build perturbed normal; Z kept positive
   vec3 n = normalize(vec3(-dx * bumpScale, -dy * bumpScale, 1.0));
 
-  // Animated light direction (slow swirl) or static if uTime unused
+  // --- Animated light direction ---
   float a = uTime * 0.35;
   vec3 L = normalize(vec3(0.6 * cos(a) - 0.3, 0.6 * sin(a) + 0.5, 0.8));
   vec3 V = vec3(0.0, 0.0, 1.0); // view direction
   vec3 H = normalize(L + V);
 
-  // Shading terms
+  // --- Shading terms ---
   float diff = max(dot(n, L), 0.0);
   float spec = pow(max(dot(n, H), 0.0), 24.0);
 
@@ -82,6 +91,7 @@ void main(){
   float kd = 0.9;
   float ks = mix(0.05, 0.25, sat);
 
+  // --- Compose lit color ---
   vec3 lit = col * (ambient + kd * diff) + vec3(1.0) * (ks * spec);
   lit = clamp(lit, 0.0, 1.0);
   gl_FragColor = vec4(lit, 1.0);

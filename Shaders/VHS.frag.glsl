@@ -1,6 +1,14 @@
 // DisplayName: VHS
-// Category: Corruption
+// Category: Retro
 precision mediump float;
+
+// VHS — Analog videotape degradation
+// Goal: Emulate VHS timebase errors, chroma/luma separation & noise artifacts.
+// - Line wobble, top flagging, bottom head-switch jitter
+// - Chroma low-pass & phase wander + crawl on edges
+// - Horizontal bleed, AC hum bands, speckle & dropout lines
+// - Scanlines, halation, vignette & analog grain
+// uStrength: 0..3 scales displacement, chroma blur, bleed & artifact intensity
 
 // Analog VHS look:
 // - Timebase wobble, flagging at top, head-switch noise at bottom
@@ -10,10 +18,10 @@ precision mediump float;
 // - Soft scanlines and halation around brights
 
 varying vec2 vTex;
-uniform sampler2D uTex;     // NES frame (nearest/pixel perfect)
-uniform float uTime;        // seconds
-uniform vec2 uTexSize;      // source pixel dimensions
-uniform float uStrength;    // 0..3
+uniform sampler2D uTex;     // Source frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source pixel dimensions
+uniform float uStrength;    // 0..3 strength
 
 float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
 float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); float a=hash(i); float b=hash(i+vec2(1,0)); float c=hash(i+vec2(0,1)); float d=hash(i+vec2(1,1)); return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }

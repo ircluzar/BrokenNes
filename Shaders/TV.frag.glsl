@@ -1,10 +1,19 @@
 // DisplayName: TV
+// Category: Retro
 precision mediump float;
+
+// TV — CRT tube simulation (lightweight)
+// Goal: Barrel distortion, shadow mask triads, beam persistence & subtle bleed.
+// - Barrel warp + chroma convergence wobble
+// - Beam simulation (persistence + scanline envelope)
+// - Shadow mask triads modulated by beam intensity
+// - Halo, vignette, mild bleed & noise
+// uStrength: 0..3 scales convergence, persistence shaping, bleed & halo
 varying vec2 vTex;
-uniform sampler2D uTex; // NES frame (already nearest / pixel perfect)
-uniform float uTime;    // seconds
-uniform vec2 uTexSize;  // source pixel dimensions
-uniform float uStrength; // effect intensity (1.0 base)
+uniform sampler2D uTex;     // Source frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source pixel dimensions
+uniform float uStrength;    // 0..3 strength
 
 float hash(vec2 p){ p = fract(p*vec2(123.34, 415.21)); p += dot(p,p+19.19); return fract(p.x*p.y); }
 float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); float a=hash(i); float b=hash(i+vec2(1,0)); float c=hash(i+vec2(0,1)); float d=hash(i+vec2(1,1)); return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }

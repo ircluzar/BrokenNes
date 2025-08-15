@@ -1,11 +1,20 @@
-// DisplayName: MOSH
+// DisplayName: MSH
+// Category: Distort
 precision mediump float;
+
+// MSH — Temporal pixel mosh & block freeze
+// Goal: Recombine previous frame blocks with motion/edge gating & glitch timing.
+// - Block grid sampling w/ per-block seeds & motion search
+// - Previous frame displacement + chroma shear
+// - Timed glitch envelope controls block replacement probability
+// - Edge & motion gating preserve detail; noise & borders for texture
+// uStrength: 0..3 scales block size reduction, shear, glitch weight & noise
 varying vec2 vTex;
-uniform sampler2D uTex;       // current frame
-uniform sampler2D uPrevTex;   // previous frame (bound only for MSH)
-uniform float uTime;
-uniform vec2 uTexSize;
-uniform float uStrength;      // 0..3
+uniform sampler2D uTex;       // Current frame
+uniform sampler2D uPrevTex;   // Previous frame
+uniform float uTime;          // Seconds
+uniform vec2 uTexSize;        // Source size
+uniform float uStrength;      // 0..3 strength
 float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
 float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); float a=hash(i); float b=hash(i+vec2(1,0)); float c=hash(i+vec2(0,1)); float d=hash(i+vec2(1,1)); return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
 float luma(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }
@@ -22,11 +31,13 @@ void main(){
   float Ly1 = luma(texture2D(uTex, clamp(uv - vec2(0.0,texel.y),0.0,1.0)).rgb);
   float Ly2 = luma(texture2D(uTex, clamp(uv + vec2(0.0,texel.y),0.0,1.0)).rgb);
   float edge = clamp(length(vec2(Lx2 - Lx1, Ly2 - Ly1)) * 2.2, 0.0, 1.0);
+  // --- Glitch envelope ---
   float seg = floor(t * 0.9);
   float segT = fract(t * 0.9);
   float chance = hash(vec2(seg, 77.31));
   float env = step(0.58, chance) * smoothstep(0.05, 0.22, segT) * (1.0 - smoothstep(0.55, 0.95, segT));
   float glitch = env * clamp(s/3.0, 0.0, 1.0);
+  // --- Block size mapping ---
   float baseBlock = mix(12.0, 6.0, clamp(s*0.5, 0.0, 1.0));
   float wob = 1.0 + 0.02 * sin(t * 0.01);
   float bSize = baseBlock * wob;
@@ -35,6 +46,7 @@ void main(){
   vec2 scaled = uvc * grid;
   vec2 bCoord = floor(scaled);
   vec2 bCenter = (bCoord + 0.5) / grid + 0.5;
+  // --- Per-block seed & motion search ---
   float bSeed = hash(bCoord + vec2(seg, 19.7));
   vec3 prevHere = texture2D(uPrevTex, prevUv).rgb;
   float Lp = luma(prevHere);
@@ -51,6 +63,7 @@ void main(){
       if (d < bestD){ bestD = d; bestOff = off; }
     }
   }
+  // --- Block drift & jitter ---
   float ang = hash(bCoord + vec2(31.7, 12.1)) * 6.28318;
   vec2 dir = vec2(cos(ang), sin(ang));
   float phase = hash(bCoord + vec2(9.1, 4.7)) * 6.28318;
@@ -74,6 +87,7 @@ void main(){
   shearPrev.g = moshCol.g;
   shearPrev.b = texture2D(uPrevTex, clamp(prevUv + vec2(delta.x + ch.y, -(delta.y)), 0.0, 1.0)).b;
   moshCol = mix(moshCol, shearPrev, 0.5);
+  // --- Composite ---
   vec3 col = cur;
   col = mix(col, pixCol, pixW);
   col = mix(col, moshCol, moshW);
@@ -81,6 +95,7 @@ void main(){
   float border = min(min(cell.x, 1.0-cell.x), min(cell.y, 1.0-cell.y));
   float ring = smoothstep(0.0, 0.08, border);
   col *= 0.92 + 0.08*ring;
+  // --- Noise ---
   float gn = noise(uv * uTexSize * 0.75 + t*1.7) - 0.5;
   col += gn * 0.018 * (0.5 + 0.5*s);
   col = clamp(col, 0.0, 1.0);

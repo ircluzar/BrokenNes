@@ -2,15 +2,20 @@
 // Category: Color
 precision mediump float;
 
-// Color Cycle Carousel (CCC)
-// Continuously cycles hues via HSV, occasionally blending to an inverted palette.
-// uStrength controls speed and depth; 0 => passthrough.
+// CCC — Color Cycle Carousel
+// Goal: Cycle palette hues over time with occasional inversion breaths for flair.
+// - Convert source to HSV and rotate hue at a strength‑scaled rate
+// - Add gentle stochastic wobble for non‑uniform motion
+// - Maintain alternate inverted path with offset hue rotation
+// - LFO blends toward inverted palette; stronger strength increases max blend
+// - Apply mild contrast curve for pop; strength also boosts saturation/value
+// uStrength: 0..3 (0 passthrough)
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;        // seconds
-uniform vec2 uTexSize;      // source dimensions (unused but provided for consistency)
-uniform float uStrength;    // 0..3
+uniform sampler2D uTex;     // Source frame
+uniform float uTime;        // Seconds
+uniform vec2 uTexSize;      // Source size (unused)
+uniform float uStrength;    // 0..3 strength
 
 // RGB <-> HSV helpers (all components in 0..1)
 vec3 rgb2hsv(vec3 c){
@@ -58,22 +63,22 @@ void main(){
 
   float k = s / 3.0; // normalize strength to 0..1
 
-  // Base hue rotation speed (cycles per second). Scales with strength.
+  // --- Base hue rotation speed (cycles per second) ---
   // ~0.10 cps at k=0.2, up to ~0.45 cps at k=1.0
   float cps = mix(0.10, 0.45, k);
   float hueShift = fract(uTime * cps);
 
-  // Slight extra hue wobble to avoid perfectly uniform sweep
+  // --- Additional hue wobble ---
   float wob = 0.03 * sin(uTime * 1.7) + 0.02 * sin(uTime * 0.9);
 
-  // Normal path: rotate hue, push saturation/brightness a bit with strength
+  // --- Normal (non inverted) path ---
   vec3 hsvN = rgb2hsv(src);
   hsvN.x = fract(hsvN.x + hueShift + wob);
   hsvN.y = clamp(hsvN.y * (1.0 + 0.35*k), 0.0, 1.0);
   hsvN.z = clamp(hsvN.z * (0.95 + 0.25*k), 0.0, 1.0);
   vec3 colN = hsv2rgb(hsvN);
 
-  // Invert path: invert source, then rotate hue with a slightly offset rate
+  // --- Inverted path ---
   vec3 inv = 1.0 - src;
   vec3 hsvI = rgb2hsv(inv);
   hsvI.x = fract(hsvI.x + hueShift * (1.15 + 0.25*k) + 0.17);
@@ -81,12 +86,12 @@ void main(){
   hsvI.z = clamp(hsvI.z * (0.90 + 0.35*k), 0.0, 1.0);
   vec3 colI = hsv2rgb(hsvI);
 
-  // Time envelope for blending toward inverted palette (slow breathe)
+  // --- Time envelope (LFO) for inversion mix ---
   // At k=1, blend peaks near 0.85; at lower strengths, stays subtle.
   float lfo = 0.5 + 0.5 * sin(uTime * 0.5);
   float invertMix = pow(lfo, 2.0) * (0.85 * k);
 
-  // Combine and apply a gentle contrast curve for pop
+  // --- Combine & contrast ---
   vec3 col = mix(colN, colI, invertMix);
   col = (col - 0.5) * (1.0 + 0.10*k) + 0.5;
   col = clamp(col, 0.0, 1.0);

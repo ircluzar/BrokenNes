@@ -2,6 +2,14 @@
 // Category: Color
 precision mediump float;
 
+// HUE — Slow hue inversion & rotation
+// Goal: Invert hue but preserve near-gray & near-luma-extreme regions; then apply ultra-slow rotation.
+// - Convert to HSL; build protection masks for low saturation & near-black/white
+// - Invert hue (add 180°) then add period-based rotation (default 1 hour)
+// - Mix only where mask permits; preserve saturation & lightness
+// - Parameters allow tuning saturation & luminance protection thresholds
+// uHuePeriod: seconds per 360° (<=0 uses 3600s) | uProtectSat 0..1 | uProtectLum 0..0.5
+
 // HUE — invert hue but avoid affecting near-black/near-white (no touchout to B/W)
 // Then apply an extremely slow hue rotation over time so the change is
 // imperceptible short-term but noticeable across many minutes.
@@ -14,11 +22,11 @@ precision mediump float;
 //  - uProtectLum: luminance edge threshold to protect near-black/white (0..0.5)
 
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;
-uniform float uHuePeriod;
-uniform float uProtectSat;
-uniform float uProtectLum;
+uniform sampler2D uTex;      // Source frame
+uniform float uTime;         // Seconds
+uniform float uHuePeriod;    // Period in seconds (<=0 defaults)
+uniform float uProtectSat;   // 0..1 saturation protect threshold
+uniform float uProtectLum;   // 0..0.5 luminance protect threshold
 
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 

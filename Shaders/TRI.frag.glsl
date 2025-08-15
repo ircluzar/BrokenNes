@@ -1,10 +1,19 @@
 // DisplayName: TRI
+// Category: Lighting
 precision mediump float;
+
+// TRI — Parallax faux extrusion shading
+// Goal: Height-from-luma pseudo 3D tilt with dynamic parallax & rim lighting.
+// - Derive height from biased luma; compute gradients for normal
+// - Animated camera direction & moving light
+// - Parallax offset sampling & side visibility shading
+// - Grid border darkening + AO & subtle noise
+// uStrength: 0..3 scales height/extrusion, saturation boost, parallax & rim
 varying vec2 vTex;
-uniform sampler2D uTex;
-uniform float uTime;      // seconds
-uniform vec2 uTexSize;    // NES pixel dimensions
-uniform float uStrength;  // 0..3
+uniform sampler2D uTex;    // Source frame
+uniform float uTime;       // Seconds
+uniform vec2 uTexSize;     // Source size
+uniform float uStrength;   // 0..3 strength
 float luma(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }
 float hash(vec2 p){ p=fract(p*vec2(137.13,317.77)); p+=dot(p,p+23.7); return fract(p.x*p.y); }
 float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f); float a=hash(i); float b=hash(i+vec2(1,0)); float c=hash(i+vec2(0,1)); float d=hash(i+vec2(1,1)); return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
