@@ -337,6 +337,11 @@ window.nesInterop = {
             const gl = canvas.getContext('webgl', { premultipliedAlpha:false }) || canvas.getContext('experimental-webgl');
             if (!gl) return false;
             this._gl = gl;
+            // Try enabling standard derivatives for shaders that use dFdx/dFdy (WebGL1)
+            try {
+                this._oesDerivatives = gl.getExtension('OES_standard_derivatives') || null;
+                if (this._oesDerivatives) { console.log('[NES] OES_standard_derivatives enabled'); }
+            } catch { this._oesDerivatives = null; }
             // Ensure built-in shaders registered before compile
             this._registerBuiltInShaders();
             const vs=this._compile(gl, gl.VERTEX_SHADER, this._sharedVertexSource);
@@ -393,7 +398,14 @@ window.nesInterop = {
         if(!vs){ vs=this._compile(gl, gl.VERTEX_SHADER, this._sharedVertexSource); if(!vs) return; }
         for(const key of Object.keys(this._shaderRegistry)){
             if(this._shaderPrograms[key]) continue; // already built
-            const fragSrc = this._shaderRegistry[key].fragment;
+            let fragSrc = this._shaderRegistry[key].fragment;
+            // Inject a tiny prelude: enable extension and define HAS_DERIVATIVES when supported.
+            // Guard the define to avoid redefinition warnings if the shader sets it.
+            const hasDerivatives = !!this._oesDerivatives;
+            const prelude = hasDerivatives
+                ? `#extension GL_OES_standard_derivatives : enable\n#ifndef HAS_DERIVATIVES\n#define HAS_DERIVATIVES 1\n#endif\n`
+                : `#ifndef HAS_DERIVATIVES\n#define HAS_DERIVATIVES 0\n#endif\n`;
+            fragSrc = prelude + fragSrc;
             const fs = this._compile(gl, gl.FRAGMENT_SHADER, fragSrc);
             if(!fs){ console.warn('Fragment compile failed for', key); continue; }
             const prog = gl.createProgram();
@@ -425,7 +437,14 @@ window.nesInterop = {
     },
 
     _compile: function(gl,type,src){
-        const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.warn('Shader compile error',gl.getShaderInfoLog(s));return null;}return s;
+        const s=gl.createShader(type);
+        gl.shaderSource(s,src);
+        gl.compileShader(s);
+        if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){
+            console.warn('Shader compile error', gl.getShaderInfoLog(s));
+            return null;
+        }
+        return s;
     },
 
     startEmulationLoop: function (dotNetRef) {
