@@ -880,6 +880,9 @@
                         nes = new NesEmulator.NES();
                     }
                     nes.LoadROM(data);
+                    // Re-apply selected CPU/PPU/APU cores so the active cores match the UI selection after reload
+                    // (Without this, the PPU would revert to the default core internally while the UI still shows the previous selection.)
+                    ApplySelectedCores();
                     // Re-apply selected APU core explicitly after reload
                     try {
                         if (apuCoreSel == "FMC") nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
@@ -1426,6 +1429,8 @@
     {
         try
         {
+            bool wasRunning = isRunning;
+            if (wasRunning) await PauseEmulation();
             if (uploadedRoms.TryGetValue(romFileName, out var data))
             {
                 Status.Set($"Loading uploaded ROM {romFileName}...");
@@ -1436,6 +1441,8 @@
                 SetApuCoreSelFromEmu();
                 ApplySelectedCores();
                 BuildMemoryDomains();
+                // Warm-up one frame to let subsystems settle before any follow-up actions
+                try { nes.RunFrame(); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
                 currentRomName = romFileName;
                 lastLoadedRomSize = data.Length;
                 Status.Set($"ROM '{romFileName}' loaded from upload.");
@@ -1445,10 +1452,7 @@
                 {
                     try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
                 }
-                if (hasBooted && !isRunning)
-                {
-                    await StartEmulation();
-                }
+                if (hasBooted && wasRunning) { await StartEmulation(); }
                 StateHasChanged();
             }
             else
@@ -1524,6 +1528,8 @@
                 throw new Exception($"ROM file '{romFileName}' not found or empty");
             }
 
+            bool wasRunning = isRunning;
+            if (wasRunning) await PauseEmulation();
             nes = new NesEmulator.NES();
             nes.LoadROM(romData);
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
@@ -1537,6 +1543,8 @@
                 // store built-in size cache
                 builtInRomSizes[romFileName] = romData.Length;
             }
+            // Warm-up one frame to let subsystems settle before any follow-up actions
+            try { nes.RunFrame(); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
             Status.Set($"ROM '{romFileName}' loaded successfully!");
             errorMessage = "";
             // Collapse ROM Manager and expand Corruptor panel (except test.nes)
@@ -1544,10 +1552,7 @@
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
             }
-            if (hasBooted && !isRunning)
-            {
-                await StartEmulation();
-            }
+            if (hasBooted && wasRunning) { await StartEmulation(); }
             StateHasChanged();
         }
         catch (Exception ex)
@@ -1632,7 +1637,6 @@
                 return;
             }
 
-            // Chunk large state
             Diag("Chunking payload length="+payload.Length+" chunkSize="+SaveChunkCharSize);
             var parts = new List<string>();
             for (int i = 0; i < payload.Length; i += SaveChunkCharSize)
@@ -1672,9 +1676,12 @@
 
     private async Task LoadState()
     {
-        if (nes == null || stateBusy) return; stateBusy = true; bool running = isRunning;
+        if (nes == null || stateBusy) return; stateBusy = true; bool wasRunning = isRunning;
         try
         {
+            // Pause to stop RAF loop and CPU while we swap ROM/state
+            if (wasRunning) await PauseEmulation();
+
             // Check for manifest (chunked save)
             var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
             string full = string.Empty;
@@ -1717,41 +1724,69 @@
 
             if (!string.IsNullOrEmpty(full))
             {
+                // Ensure correct ROM is loaded first and run one warm-up frame
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(full);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        int len = romEl.GetArrayLength();
+                        if (len > 0)
+                        {
+                            var romBytes = new byte[len];
+                            int idx = 0; foreach (var v in romEl.EnumerateArray()) { if (idx >= len) break; romBytes[idx++] = (byte)v.GetByte(); }
+                            nes = new NesEmulator.NES();
+                            nes.LoadROM(romBytes);
+                            try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+                            // Warm-up frame
+                            try { nes.RunFrame(); } catch {}
+                            try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+                            BuildMemoryDomains();
+                        }
+                    }
+                }
+                catch {}
+
+                // Now load the savestate
                 nes.LoadState(full);
-                // After restoring emulator internals, reset JS audio scheduler timeline to prevent drift/stutter
+                // Reset audio timeline and draw
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
-                // Drain any leftover audio buffered by the emulator so playback resumes cleanly from the restored timeline
                 try { var _ = nes.GetAudioBuffer(); } catch {}
                 framebuffer = nes.GetFrameBuffer();
                 await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
                 Status.Set("State loaded");
-                // Refresh famiclone/APU mode in case the loaded state differs from current UI toggle
+
+                // Sync UI core selections from emulator
                 try
                 {
                     var apuId = nes.GetApuCoreId();
                     var suffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
                     bool prev = famicloneOn;
                     famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
-                    if (prev != famicloneOn || !running) StateHasChanged();
+                    if (prev != famicloneOn || !wasRunning) StateHasChanged();
                 }
-                catch { if (!running) StateHasChanged(); }
-                // Sync core selections from loaded state and persist
+                catch { if (!wasRunning) StateHasChanged(); }
+
                 try {
                     var cpuId = nes.GetCpuCoreId();
                     var ppuId = nes.GetPpuCoreId();
                     var apuId = nes.GetApuCoreId();
-                    string cpuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(cpuId, "CPU_");
-                    string ppuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(ppuId, "PPU_");
-                    string apuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
-                    string newCpu = cpuSuffix == "FIX" ? "FIX" : "FMC";
-                    string newPpu = ppuSuffix switch { "FIX" => "FIX", "LQ" => "LQ", _ => "FMC" };
-                    string newApu = apuSuffix switch { "FMC" => "FMC", "QN" => "QN", _ => "FIX" };
-                    bool changed=false;
-                    if(newCpu!=cpuCoreSel){ cpuCoreSel=newCpu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",cpuCoreSel);}catch{} }
-                    if(newPpu!=ppuCoreSel){ ppuCoreSel=newPpu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore",ppuCoreSel);}catch{} }
-                    if(newApu!=apuCoreSel){ apuCoreSel=newApu; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore",apuCoreSel);}catch{} }
-                    if(changed) StateHasChanged();
+                    var cpuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(cpuId, "CPU_");
+                    var ppuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(ppuId, "PPU_");
+                    var apuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
+                    bool changed = false;
+                    if(!string.IsNullOrWhiteSpace(cpuSuffix) && cpuCoreOptions.Contains(cpuSuffix) && cpuSuffix!=cpuCoreSel){ cpuCoreSel=cpuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",cpuCoreSel);}catch{} }
+                    if(!string.IsNullOrWhiteSpace(ppuSuffix) && ppuCoreOptions.Contains(ppuSuffix) && ppuSuffix!=ppuCoreSel){ ppuCoreSel=ppuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore",ppuCoreSel);}catch{} }
+                    if(!string.IsNullOrWhiteSpace(apuSuffix) && apuCoreOptions.Contains(apuSuffix) && apuSuffix!=apuCoreSel){ apuCoreSel=apuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore",apuCoreSel);}catch{} }
+                    if (changed) StateHasChanged();
                 } catch {}
+
+                // Resume if previously running
+                if (hasBooted && wasRunning)
+                {
+                    await StartEmulation();
+                }
             }
         }
         catch (Exception ex) { errorMessage = "Load error: " + ex.Message; }
