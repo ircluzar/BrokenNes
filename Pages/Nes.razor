@@ -900,6 +900,8 @@
             frameCount = 0;
             lastFrameCount = 0;
             fps = 0;
+            // Reset the JS audio scheduling timeline so A/V stays aligned after a clean reset
+            try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch {}
             if (wasRunning)
             {
                 await StartEmulation();
@@ -1676,7 +1678,7 @@
 
     private async Task LoadState()
     {
-        if (nes == null || stateBusy) return; stateBusy = true; bool wasRunning = isRunning;
+        if (stateBusy) return; stateBusy = true; bool wasRunning = isRunning;
         try
         {
             // Pause to stop RAF loop and CPU while we swap ROM/state
@@ -1743,6 +1745,10 @@
                             try { nes.RunFrame(); } catch {}
                             try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
                             BuildMemoryDomains();
+                            // Mark current ROM name away from test.nes to disable auto static visuals
+                            currentRomName = "(state)";
+                            romFileName = "(state)";
+                            lastLoadedRomSize = romBytes.Length;
                         }
                     }
                 }
@@ -1750,6 +1756,8 @@
 
                 // Now load the savestate
                 nes.LoadState(full);
+                // If state restored into a crash/unsupported mapper mode, force IgnoreErrors to best-effort recover
+                try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
                 // Reset audio timeline and draw
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes.GetAudioBuffer(); } catch {}
@@ -2075,15 +2083,12 @@
             }
             catch { }
         }
-        if (added > 0)
+        romFileName = roms.Last().name;
+        await LoadSelectedRom();
+        Status.Set($"Dropped {added} ROM(s).");
+        if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
         {
-            romFileName = roms.Last().name;
-            await LoadSelectedRom();
-            Status.Set($"Dropped {added} ROM(s).");
-            if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
-            {
-                try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
-            }
+            try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
         }
     }
 
