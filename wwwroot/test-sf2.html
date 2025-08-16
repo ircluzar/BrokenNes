@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FluidSynth Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin: 5px; padding: 10px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>FluidSynth Integration Test</h1>
+    
+    <div>
+        <button id="enable">Enable SF2</button>
+        <button id="disable">Disable SF2</button>
+        <button id="testNote">Play Test Note</button>
+        <button id="clearLog">Clear Log</button>
+    </div>
+    
+    <div id="log" class="log"></div>
+    
+    <script>
+        // Override console.log to capture logs
+        const logDiv = document.getElementById('log');
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+        
+        function addToLog(type, ...args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            logDiv.textContent += `[${timestamp}] ${type}: ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        console.log = (...args) => {
+            originalLog.apply(console, args);
+            addToLog('LOG', ...args);
+        };
+        
+        console.warn = (...args) => {
+            originalWarn.apply(console, args);
+            addToLog('WARN', ...args);
+        };
+        
+        console.error = (...args) => {
+            originalError.apply(console, args);
+            addToLog('ERROR', ...args);
+        };
+        
+        document.getElementById('clearLog').onclick = () => {
+            logDiv.textContent = '';
+        };
+    </script>
+    
+    <script src="mnesSf2.js"></script>
+    
+    <script>
+        document.getElementById('enable').onclick = async () => {
+            console.log('=== ENABLING SF2 ===');
+            try {
+                await window.mnesSf2.enable();
+                console.log('SF2 enable completed');
+            } catch(e) {
+                console.error('SF2 enable failed:', e);
+            }
+        };
+        
+        document.getElementById('disable').onclick = () => {
+            console.log('=== DISABLING SF2 ===');
+            window.mnesSf2.disable();
+            console.log('SF2 disabled');
+        };
+        
+        document.getElementById('testNote').onclick = async () => {
+            console.log('=== TESTING NOTE ===');
+            try {
+                // Play a middle C on pulse 1 channel
+                await window.mnesSf2.handleNote('P1', 80, 60, 100, true);
+                console.log('Note on sent');
+                
+                setTimeout(async () => {
+                    await window.mnesSf2.handleNote('P1', 80, 60, 100, false);
+                    console.log('Note off sent');
+                }, 1000);
+            } catch(e) {
+                console.error('Note test failed:', e);
+            }
+        };
+        
+        console.log('Test page loaded');
+    </script>
+</body>
+</html>

@@ -7,7 +7,8 @@
     let outputGain; // master gain for easy mute/fade
     let initialized = false;
     let enabled = false; // runtime enable flag (SoundFontMode from .NET)
-    let preferSampleBased = true; // attempt to use external soundfont-player when available
+    // Disable remote sample library (reduces console noise / network failures in offline/PWA)
+    let preferSampleBased = false; // set true to attempt external soundfont-player
     const REQUIRED_PROGRAMS = [80,81,32,0]; // P1,P2,TRI, fallback piano
     const LIB_URL = "https://unpkg.com/soundfont-player@0.15.2/dist/soundfont-player.js";
     let libLoadingPromise = null;

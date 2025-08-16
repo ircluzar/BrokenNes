@@ -637,12 +637,18 @@ window.nesInterop = {
         }
     }
     ,
-    // ==== SoundFont note event bridge (APU_WF SoundFontMode) ====
+    // ==== SoundFont note event bridge (APU_WF / APU_MNES SoundFontMode) ====
     noteEvent: function(channel, program, midiNote, velocity, on){
         try {
+            // Legacy oscillator / external soundfont-player path
             if(window.nesSoundFont){
                 if(on){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
                 window.nesSoundFont.handleNote && window.nesSoundFont.handleNote(channel, program, midiNote, velocity, !!on);
+            }
+            // MNES js-synthesizer real-time SoundFont path
+            if(window.mnesSf2){
+                if(on){ window.mnesSf2.enable && window.mnesSf2.enable(); }
+                window.mnesSf2.handleNote && window.mnesSf2.handleNote(channel, program, midiNote, velocity, !!on);
             }
         } catch(e){ console.warn('noteEvent failed', e); }
     }
@@ -651,6 +657,9 @@ window.nesInterop = {
         try {
             if(window.nesSoundFont){
                 window.nesSoundFont.disable && window.nesSoundFont.disable();
+            }
+            if(window.mnesSf2){
+                window.mnesSf2.disable && window.mnesSf2.disable();
             }
         } catch(e){ console.warn('flushSoundFont failed', e); }
     }

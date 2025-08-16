@@ -947,7 +947,7 @@
     private List<DiffRow> recentDiffRows = new();
     private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
     private bool compareNormalize = true; // per-target normalization to 0..100% range
-    // SoundFont mode toggle (APU_WF only)
+    // SoundFont mode toggle (APU_WF & APU_MNES)
     private bool soundFontMode = false;
     private bool sampleFont = true; // attempt external sample instruments
     // Automatically configure SoundFont/sample mode when selecting specific APU core (WF)
@@ -971,9 +971,24 @@
                 try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
                 try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
             }
+            else if (string.Equals(apuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
+            {
+                // MNES core also uses note-event mode, but may rely on an alternate JS synth/library.
+                // We just enable the generic note-event bridge; library-specific init (if any) can be added later.
+                if (!soundFontMode)
+                {
+                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) =>
+                    {
+                        try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { }
+                    });
+                }
+                // Kick JS MNES SoundFont bridge (lazy loads MNES.sf2)
+                try { JS.InvokeVoidAsync("eval", "window.mnesSf2 && mnesSf2.enable && mnesSf2.enable();"); } catch {}
+                // Do NOT force nesSoundFont sample mode here since MNES may target a different playback engine.
+            }
             else
             {
-                // Leaving WF core -> disable SoundFont path if currently enabled (revert to PCM from other cores)
+                // Leaving WF/MNES note-event cores -> disable SoundFont path if currently enabled (revert to PCM from other cores)
                 if (soundFontMode)
                 {
                     nes.EnableSoundFontMode(false, null);

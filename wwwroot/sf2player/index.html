@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini SoundFont MIDI Player</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --accent-2: #3b82f6;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% 0%, #111827 0%, var(--bg) 50%, #0b1220 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: start center;
+    }
+    .wrap { width: min(920px, 94vw); margin: 28px auto; }
+    h1 { font-size: 22px; font-weight: 700; letter-spacing: .2px; margin: 10px 0 14px; }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 14px; padding: 16px; backdrop-filter: blur(4px);
+      box-shadow: 0 8px 30px rgba(0,0,0,.25);
+    }
+    .grid { display: grid; gap: 12px; }
+    .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .file { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    .file input[type="file"] { width: 100%; padding: 8px; background: #0b1020; color: var(--text); border: 1px dashed rgba(255,255,255,.2); border-radius: 10px; }
+    label.small { font-size: 12px; color: var(--muted); }
+    button, input[type="range"], select, .pill {
+      border-radius: 10px; border: 1px solid rgba(255,255,255,.12); background: #0b1020; color: var(--text);
+    }
+    button { padding: 10px 14px; cursor: pointer; font-weight: 600; letter-spacing: .2px; }
+    button.primary { background: linear-gradient(180deg, rgba(59,130,246,.35), rgba(37,99,235,.35)); border-color: rgba(59,130,246,.6); }
+    button.success { background: linear-gradient(180deg, rgba(34,197,94,.35), rgba(22,163,74,.35)); border-color: rgba(34,197,94,.6); }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .pill { padding: 6px 10px; font-size: 12px; color: var(--muted); }
+    .timeline { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+    input[type="range"] { width: 100%; height: 6px; }
+    .status { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: var(--muted); height: 110px; overflow: auto; padding: 10px; border-radius: 10px; background: #0b1020; border: 1px solid rgba(255,255,255,.06); }
+    .bad { color: var(--danger); }
+    footer { margin-top: 14px; text-align: center; color: var(--muted); font-size: 12px; }
+  </style>
+  <!-- Libraries required by js-synthesizer -->
+  <script src="libfluidsynth-2.0.2.js"></script>
+  <script src="js-synthesizer.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mini SoundFont MIDI Player</h1>
+    <div class="panel grid" role="application" aria-label="MIDI player">
+
+      <div class="file">
+        <div class="grid">
+          <label class="small" for="sf2">SoundFont (.sf2)</label>
+          <input id="sf2" type="file" accept=".sf2" />
+          <div id="sf2Name" class="pill">No SoundFont loaded</div>
+        </div>
+        <button id="btnDefaults" class="ghost" title="Load included example files">Load defaults</button>
+      </div>
+
+      <div class="file">
+        <div class="grid">
+          <label class="small" for="midi">MIDI file (.mid/.midi)</label>
+          <input id="midi" type="file" accept=".mid,.midi" />
+          <div id="midiName" class="pill">No MIDI loaded</div>
+        </div>
+        <div class="row">
+          <label class="small" for="loop"><input id="loop" type="checkbox" /> Loop</label>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="row">
+          <button id="play" class="primary" disabled>Play</button>
+          <button id="stop" disabled>Stop</button>
+        </div>
+        <div class="row" style="justify-self:end">
+          <label class="small" for="vol">Vol</label>
+          <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5" />
+          <div id="volPct" class="pill" style="min-width:38px;text-align:center">50</div>
+        </div>
+        <div class="row" style="justify-self:end">
+          <span id="engine" class="pill" title="Audio backend">Engine: -</span>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <span id="tCur" class="pill">0:00</span>
+        <input id="seek" type="range" min="0" max="100" step="1" value="0" />
+        <span id="tMax" class="pill">0:00</span>
+      </div>
+
+      <div id="log" class="status" aria-live="polite"></div>
+    </div>
+    <footer>Local-only demo. Drop your .sf2 and .mid files and press Play.</footer>
+  </div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const logEl = $('log');
+  const log = (msg, isErr=false) => {
+    const d = document.createElement('div');
+    d.textContent = msg; if (isErr) d.classList.add('bad');
+    logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+  };
+  const fmt = (ms=0) => {
+    ms = Math.max(0, Math.floor(ms));
+    const s = Math.floor(ms/1000); const m = Math.floor(s/60); const r = s%60;
+    return `${m}:${r<10? '0'+r : r}`;
+  };
+
+  class MiniMidiPlayer {
+    constructor(){
+      this.context = null;
+      this.synth = null;
+      this.node = null;
+      this.sf2Buffer = null; this.sf2Name = '';
+      this.midiBuffer = null; this.midiName = '';
+      this.timer = null; this.dragging = false; this.usingWorklet = false;
+      this.totalMs = 0; this.loop = false; this.prevPlaying = false;
+    }
+
+    async ensureEngine(){
+      if (!this.context) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) throw new Error('Web Audio is not supported in this browser');
+        this.context = new AC();
+      }
+      if (this.synth) return; // already created
+
+      if (this.context.audioWorklet && this.context.audioWorklet.addModule) {
+        // Load worklet modules for better latency
+        await this.context.audioWorklet.addModule('soundfont/js/libfluidsynth-2.0.2.js');
+        await this.context.audioWorklet.addModule('soundfont/js/js-synthesizer.worklet.min.js');
+        this.synth = new JSSynth.AudioWorkletNodeSynthesizer();
+        this.synth.init(this.context.sampleRate);
+        this.node = this.synth.createAudioNode(this.context);
+        this.node.connect(this.context.destination);
+        this.usingWorklet = true;
+      } else {
+        // Fallback to ScriptProcessor
+        this.synth = new JSSynth.Synthesizer();
+        this.synth.init(this.context.sampleRate);
+        this.node = this.synth.createAudioNode(this.context, 8192);
+        this.node.connect(this.context.destination);
+        this.usingWorklet = false;
+      }
+      $('engine').textContent = 'Engine: ' + (this.usingWorklet? 'AudioWorklet' : 'ScriptProcessor');
+    }
+
+    async loadSf2FromFile(file){
+      const buf = await file.arrayBuffer();
+      this.sf2Buffer = buf; this.sf2Name = file.name || 'SoundFont';
+      $('sf2Name').textContent = `SF2: ${this.sf2Name}`;
+      log('SoundFont ready: ' + this.sf2Name);
+      this.updateControls();
+    }
+
+    async loadMidiFromFile(file){
+      const buf = await file.arrayBuffer();
+      this.midiBuffer = buf; this.midiName = file.name || 'MIDI';
+      $('midiName').textContent = `MIDI: ${this.midiName}`;
+      log('MIDI ready: ' + this.midiName);
+      this.updateControls();
+    }
+
+    async loadDefaults(){
+      try {
+        const [sf2, mid] = await Promise.all([
+          fetch('MNES.sf2').then(r=>{ if(!r.ok) throw new Error('Missing MNES.sf2'); return r.arrayBuffer(); }),
+          fetch('MNES.mid').then(r=>{ if(!r.ok) throw new Error('Missing MNES.mid'); return r.arrayBuffer(); }),
+        ]);
+        this.sf2Buffer = sf2; this.sf2Name = 'MNES.sf2';
+        this.midiBuffer = mid; this.midiName = 'MNES.mid';
+        $('sf2Name').textContent = 'SF2: ' + this.sf2Name;
+        $('midiName').textContent = 'MIDI: ' + this.midiName;
+        log('Defaults loaded');
+        this.updateControls();
+      } catch (e) {
+        log('Failed to load defaults: ' + e.message, true);
+      }
+    }
+
+    async play(){
+      try {
+        if (!this.sf2Buffer) throw new Error('Select a SoundFont (.sf2) first');
+        if (!this.midiBuffer) throw new Error('Select a MIDI (.mid) first');
+        await this.ensureEngine();
+
+        // If already playing, restart with current buffers
+        if (this.synth.isPlayerPlaying()) {
+          await this.synth.stopPlayer();
+        }
+
+        // If first start or after SF change, (re)load the SoundFont
+        // We reload SF2 when there is no channel data loaded yet
+        await this.synth.loadSFont(this.sf2Buffer);
+
+        await this.synth.resetPlayer();
+        await this.synth.addSMFDataToPlayer(this.midiBuffer);
+        await this.synth.playPlayer();
+
+        // Apply volume
+        this.setVolume(parseFloat($('vol').value));
+
+        log('Playing...');
+        this.prevPlaying = true;
+        this.startTimer();
+        this.updateControls();
+      } catch (e) {
+        log('Play error: ' + e.message, true);
+      }
+    }
+
+    async stop(){
+      try {
+        if (this.synth) await this.synth.stopPlayer();
+        this.prevPlaying = false;
+        this.updateControls();
+      } catch (e) { log('Stop error: ' + e.message, true); }
+    }
+
+    setVolume(v){
+      if (this.synth && typeof this.synth.setGain === 'function') {
+        this.synth.setGain(v);
+      }
+      $('volPct').textContent = Math.round(v*100);
+      try { localStorage.setItem('mini_vol', String(v)); } catch {}
+    }
+
+    startTimer(){
+      if (this.timer) clearInterval(this.timer);
+      this.timer = setInterval(async () => {
+        if (!this.synth) return;
+        try {
+          const total = await this.synth.retrievePlayerTotalTicks();
+          const cur = await this.synth.retrievePlayerCurrentTick();
+          if (Number.isFinite(total)) this.totalMs = total;
+          if (!$('seek').hasAttribute('data-drag')) {
+            $('seek').max = String(this.totalMs || 0);
+            $('seek').value = String(cur || 0);
+            $('tCur').textContent = fmt(cur || 0);
+            $('tMax').textContent = fmt(this.totalMs || 0);
+          }
+
+          // Looping: detect transition from playing -> stopped at end and restart
+          let isPlaying = false;
+          try { isPlaying = !!this.synth.isPlayerPlaying(); } catch {}
+
+          if (this.loop && total>0 && cur >= total - 1) {
+            if (!isPlaying && this.prevPlaying) {
+              // playback just finished — restart
+              try {
+                await this.synth.resetPlayer();
+                await this.synth.addSMFDataToPlayer(this.midiBuffer);
+                await this.synth.playPlayer();
+                this.prevPlaying = true;
+                log('Looping: restarted');
+              } catch (e) {
+                // ignore restart errors
+              }
+            }
+          }
+
+          // update prevPlaying state for next tick
+          this.prevPlaying = isPlaying;
+        } catch {}
+        this.updateControls();
+      }, 200);
+    }
+
+    async seekTo(ms){
+      if (!this.synth) return;
+      try { await this.synth.seekPlayer(ms); } catch {}
+    }
+
+    updateControls(){
+      const ready = !!(this.sf2Buffer && this.midiBuffer);
+      $('play').disabled = !ready || (this.synth && this.synth.isPlayerPlaying());
+      $('stop').disabled = !ready || !(this.synth && this.synth.isPlayerPlaying());
+    }
+
+    async changeSoundFont(file){
+      await this.loadSf2FromFile(file);
+      if (this.synth) {
+        // Close and recreate engine to ensure a fresh state
+        try { await this.synth.stopPlayer(); } catch {}
+        try { this.synth.close && this.synth.close(); } catch {}
+        try { if (this.node) { this.node.disconnect(); this.node = null; } } catch {}
+        this.synth = null;
+        await this.ensureEngine();
+        // If a MIDI is present, prepare it for immediate play
+        if (this.midiBuffer) {
+          await this.synth.loadSFont(this.sf2Buffer);
+          await this.synth.resetPlayer();
+          await this.synth.addSMFDataToPlayer(this.midiBuffer);
+          this.updateControls();
+        }
+      }
+    }
+  }
+
+  const app = new MiniMidiPlayer();
+
+  // Wire UI
+  $('sf2').addEventListener('change', async (e)=>{
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    await app.changeSoundFont(f);
+  });
+
+  $('midi').addEventListener('change', async (e)=>{
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    await app.loadMidiFromFile(f);
+    app.updateControls();
+  });
+
+  $('btnDefaults').addEventListener('click', ()=> app.loadDefaults());
+
+  $('play').addEventListener('click', ()=> app.play());
+  $('stop').addEventListener('click', ()=> app.stop());
+
+  $('vol').addEventListener('input', (e)=> app.setVolume(parseFloat(e.target.value)) );
+
+  // Seek handling
+  $('seek').addEventListener('input', (e)=>{
+    $('seek').setAttribute('data-drag', '1');
+    const v = Number(e.target.value||0);
+    $('tCur').textContent = fmt(v);
+  });
+  const endDrag = async ()=>{
+    const v = Number($('seek').value||0);
+    $('seek').removeAttribute('data-drag');
+    await app.seekTo(v);
+  };
+  $('seek').addEventListener('change', endDrag);
+  $('seek').addEventListener('mouseup', endDrag);
+  $('seek').addEventListener('touchend', endDrag);
+
+  $('loop').addEventListener('change', (e)=> app.loop = !!e.target.checked);
+
+  // Restore volume
+  try { const v = parseFloat(localStorage.getItem('mini_vol')||'0.5'); if (!Number.isNaN(v)) { $('vol').value = String(v); app.setVolume(v); } } catch {}
+
+  log('Ready. Load a SoundFont and a MIDI to begin.');
+})();
+</script>
+</body>
+</html>
