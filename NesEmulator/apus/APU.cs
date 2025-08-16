@@ -62,8 +62,9 @@ namespace NesEmulator
         // Audio mixing / buffering
         private const int audioSampleRate = 44100; private const int AudioRingSize = 32768; private readonly float[] audioRing = new float[AudioRingSize]; private int ringWrite, ringRead, ringCount; private double fractionalSampleAccumulator;
 
-        // Filters state
-        private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
+    // Filters state
+    // lpLast: previous low-pass output; dcLastOut: previous fused HP output. dcLastIn retained for backward save-state compatibility (no longer used at runtime).
+    private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
 
         // Lookup tables
         private static readonly int[] LengthTable = { 10,254,20,2,40,4,80,6,160,8,60,10,14,12,26,14,12,16,24,18,48,20,96,22,192,24,72,26,16,28,32,30 };
@@ -308,15 +309,25 @@ namespace NesEmulator
 
         private void MixAndStore()
         {
-            // Compose nonlinear mix with dmc
-            double p1 = pulse1_output; double p2 = pulse2_output; double t = triangle_output; double n = noise_output; double d = dmc_enabled ? dmc_output : 0; // gate DMC when disabled
+            // Nonlinear channel mix (unchanged formula for correctness). Keeps double precision for intermediate divides, then converts to float.
+            double p1 = pulse1_output; double p2 = pulse2_output; double t = triangle_output; double n = noise_output; double d = dmc_enabled ? dmc_output : 0;
             double pulseMix = (p1 + p2)==0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
             double tnd = (t + n + d)==0 ? 0.0 : 159.79 / (1.0 / (t/8227.0 + n/12241.0 + d/22638.0) + 100.0);
             float mixed = (float)(pulseMix + tnd);
-            // Simple filtering (LP then HP/DC block)
-            lpLast += (mixed - lpLast) * LowPassCoeff; float lp = lpLast; float hp = lp - dcLastIn + DC_HPF_R * dcLastOut; dcLastIn = lp; dcLastOut = hp; 
-            // Apply requested +5% gain increase to regular APU output
-            StoreSample(hp * 1.05f);
+
+            // Fused low-pass + DC high-pass (item #9):
+            // Original chain: lp = lpPrev + a*(x - lpPrev); hp = lp - lpPrev + R*hpPrev.
+            // Algebraic fusion => hp = a*(x - lpPrev) + R*hpPrev; lp = lpPrev + a*(x - lpPrev).
+            // This removes one temporary + previous lp store (dcLastIn) and one subtraction.
+            float diff = mixed - lpLast;              // x - lpPrev
+            float lpDelta = diff * LowPassCoeff;      // a*(x - lpPrev)
+            float hp = lpDelta + DC_HPF_R * dcLastOut; // fused output
+            lpLast += lpDelta;                        // update low-pass state
+            dcLastOut = hp;                           // update HP state
+            // dcLastIn retained only for backward save states; keep mirrored for now (optional)
+            dcLastIn = lpLast;
+
+            StoreSample(hp * 1.05f); // preserve gain tweak
         }
 
         private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)

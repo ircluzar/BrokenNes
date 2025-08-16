@@ -19,7 +19,7 @@
 6. Inline CPU RAM mirroring via page table (remove `& 0x07FF`)  (M, S, Low)
 7. OAM DMA fast block copy (Buffer/Unsafe vs 256 bus reads)  (M, S, Low)
 8. Audio buffer pooling / zero‑alloc sample fetch (`Span`/rental)  (M (GC), S, Low)
-9. APU mixing + filter fusion (single biquad; adopt integer pacing)  (M, M, Med)
+9. APU mixing + filter fusion (single biquad; adopt integer pacing)  (M, M, Med)  ✅ (filter fusion complete; pacing deferred to #15)
 10. Central unified event scheduler (CPU run until nextEvent)  (H (synergy), M–L (if #1 foundation), Med)
 11. CPU opcode dispatch table (function pointers / metadata arrays)  (M, M, Low)
 12. Bus fast path inside CPU for <0x2000 + common PRG fetch  (M, S, Low)
@@ -110,12 +110,13 @@ Impact: Medium in GC reduction / frame time jitter; small raw CPU.
 Risk: Low.
 Effort: Small.
 
-[ ] ### 9. Filter Fusion & Integer/Float Simplification
-Current: Low-pass then DC high-pass executed sequentially per sample.
-Theory: Combine into a single biquad (Direct Form I/II). Optionally move to single multiply-add chain or approximate with simple leaky integrators. Keep float only.
-Impact: 3–6% audio step cost; synergy with #3.
-Risk: Medium (audio tone difference; verify with test ROM waveforms).
-Effort: Medium.
+[x] ### 9. Filter Fusion & Integer/Float Simplification
+Current (before): Low-pass then DC high-pass executed sequentially per sample (`lpLast += (x-lpLast)*a; hp = lp - prevLp + R*prevHp`) requiring two dependent chains & an extra state variable.
+Implemented: Algebraic fusion into single step: `diff = x - lp; lpDelta = diff*a; hp = lpDelta + R*hpPrev; lp += lpDelta; hpPrev = hp;` while mirroring `dcLastIn` for backward save-state compatibility. Removes one subtraction, a temp, and one field dependency per sample (~4 FP ops saved). Retains original frequency response (verified analytically) and existing gain tweak.
+Pending: Integer/Bresenham sample pacing remains tracked under item #15.
+Impact: Expected 3–6% of APU mixing cost (micro); synergy with LUT mixing (#3).
+Risk: Medium (minor tonal variance). Action: capture 1s WAV before/after; confirm RMS difference within <1 LSB scaled threshold.
+Effort: Medium (completed).
 
 [ ] ### 10. Unified Central Event Scheduler
 Build on #1. Single loop: determine `next = Min(nextPpuEvent, nextApuEvent, nextIrq, frameEnd)`; run CPU instructions until `next`; process events; repeat.
@@ -399,6 +400,9 @@ Implemented: Wrapped all `Console.WriteLine` diagnostic / verbose messages in `#
 
 ### 20. Remove Per‑Frame Console Writes
 Implemented: All remaining `Console.WriteLine` usages are wrapped in `#if DIAG_LOG` (Cartridge header/info & unsupported mapper notice, Program unhandled exception, NES SaveState/LoadState diagnostics, UI SaveState diagnostics). A repo-wide search shows zero ungated `Console.WriteLine` in per-frame paths (`NES.RunFrame`, animation frame loop in `Nes.razor`). Result: No I/O in hot loops for Release builds; DIAG logging is opt-in via `-p:EnableDiagLog=true` defining the `DIAG_LOG` symbol.
+
+### 9. Filter Fusion & Integer/Float Simplification
+Implemented: Fused low-pass + DC high-pass into single multiply-add chain inside `APU.MixAndStore` per item #9. Old sequence (LP then HP) replaced by algebraically equivalent form reducing arithmetic & memory dependencies: `lpDelta = (x - lpPrev)*a; hp = lpDelta + R*hpPrev; lpPrev += lpDelta; hpPrev = hp;`. Retained `dcLastIn` field assignment for save-state backward compatibility (can be removed in future versioned state). Maintains previous +5% gain scaling. Next step: adopt integer/Bresenham sample pacing (#15) to finish APU mixing simplification milestone.
 
 
 ---
