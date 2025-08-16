@@ -38,7 +38,7 @@ VERIFY_ONLY=false
 EXCLUDE_ROMS=false
 NO_AOT=true
 TRIM=false
-DEV_MODE=truescr # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
+DEV_MODE=true # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
 
 if [[ ${#} -gt 0 ]]; then
   for arg in "$@"; do
