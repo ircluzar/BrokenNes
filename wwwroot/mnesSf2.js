@@ -215,6 +215,8 @@
     }
 
     api.handleNote = async function(channel, program, midiNote, velocity, on){
+    // Defensive gating: if a different core is marked active and layering disabled, early return.
+    if(window._nesActiveSoundFontCore && window._nesActiveSoundFontCore !== 'MNES' && !window._nesAllowLayering){ return; }
         if(fatalInitError) return;
         if(!enabled){
             if(on && options.autoEnableOnNote){

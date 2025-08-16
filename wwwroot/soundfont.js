@@ -135,6 +135,8 @@
     };
 
     g.handleNote = async function(channel, program, midiNote, velocity, on){
+    // Defensive gating: skip if MNES is active and layering disabled.
+    if(window._nesActiveSoundFontCore && window._nesActiveSoundFontCore !== 'WF' && !window._nesAllowLayering){ return; }
         if(!enabled) return; ensureCtx();
         if(ctx.state==='suspended'){ try{ await ctx.resume(); }catch{} }
         if(channel==='NOI'){

@@ -640,15 +640,41 @@ window.nesInterop = {
     // ==== SoundFont note event bridge (APU_WF / APU_MNES SoundFontMode) ====
     noteEvent: function(channel, program, midiNote, velocity, on){
         try {
-            // Legacy oscillator / external soundfont-player path
+            const active = window._nesActiveSoundFontCore; // undefined => compatibility dual dispatch
+            const layering = !!window._nesAllowLayering;
+            const wantMnes = !active || active === 'MNES';
+            const wantWf = !active || active === 'WF';
+            // WF path
             if(window.nesSoundFont){
-                if(on){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
-                window.nesSoundFont.handleNote && window.nesSoundFont.handleNote(channel, program, midiNote, velocity, !!on);
+                if(wantWf){
+                    if(on){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
+                    window.nesSoundFont.handleNote && window.nesSoundFont.handleNote(channel, program, midiNote, velocity, !!on);
+                    if(active === 'WF' || (!active && layering)){ this._sfCounters.wf++; }
+                } else {
+                    this._sfCounters.suppressedWf++;
+                }
             }
-            // MNES js-synthesizer real-time SoundFont path
+            // MNES path
             if(window.mnesSf2){
-                if(on){ window.mnesSf2.enable && window.mnesSf2.enable(); }
-                window.mnesSf2.handleNote && window.mnesSf2.handleNote(channel, program, midiNote, velocity, !!on);
+                if(wantMnes){
+                    if(on){ window.mnesSf2.enable && window.mnesSf2.enable(); }
+                    window.mnesSf2.handleNote && window.mnesSf2.handleNote(channel, program, midiNote, velocity, !!on);
+                    if(active === 'MNES' || (!active && layering)){ this._sfCounters.mnes++; }
+                } else {
+                    this._sfCounters.suppressedMnes++;
+                }
+            }
+            // Warning if suppressed events accumulate (indicates potential mis-set active core)
+            if(active){
+                const { suppressedMnes, suppressedWf } = this._sfCounters;
+                if(active === 'MNES' && suppressedWf >= this._sfWarnThreshold){
+                    console.warn('[NES] WF events suppressed while MNES active (', suppressedWf, ')');
+                    this._sfCounters.suppressedWf = 0; // avoid log spam
+                }
+                if(active === 'WF' && suppressedMnes >= this._sfWarnThreshold){
+                    console.warn('[NES] MNES events suppressed while WF active (', suppressedMnes, ')');
+                    this._sfCounters.suppressedMnes = 0;
+                }
             }
         } catch(e){ console.warn('noteEvent failed', e); }
     }
@@ -664,6 +690,54 @@ window.nesInterop = {
         } catch(e){ console.warn('flushSoundFont failed', e); }
     }
     ,
+    // === SoundFont active core management & telemetry ===
+    // Global flag (also duplicated on window for defensive guards inside individual synth scripts)
+    _sfCounters: { mnes:0, wf:0, suppressedMnes:0, suppressedWf:0 },
+    _sfWarnThreshold: 3,
+    setActiveSoundFontCore: function(coreId, options){
+        // coreId: 'MNES' | 'WF' | null/undefined (dual dispatch compatibility mode)
+        const prev = window._nesActiveSoundFontCore;
+        if(coreId !== 'MNES' && coreId !== 'WF'){ coreId = undefined; }
+        if(prev === coreId) return coreId || '';
+        // Disable previous core explicitly when switching (unless layering allowed and core unset)
+        if(prev && coreId && prev !== coreId){
+            try {
+                if(prev === 'MNES' && window.mnesSf2){ window.mnesSf2.disable && window.mnesSf2.disable(); }
+                if(prev === 'WF' && window.nesSoundFont){ window.nesSoundFont.disable && window.nesSoundFont.disable(); }
+            } catch{}
+        }
+        window._nesActiveSoundFontCore = coreId; // public global
+        // Optionally enable new core eagerly (default true)
+        const eager = options?.eager !== false;
+        if(eager && coreId){
+            try {
+                if(coreId === 'MNES' && window.mnesSf2){ window.mnesSf2.enable && window.mnesSf2.enable(); }
+                if(coreId === 'WF' && window.nesSoundFont){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
+            } catch{}
+        }
+        // Flush inactive synth to avoid linger tails when switching (optional)
+        if(options?.flush !== false && prev && prev !== coreId){
+            try { this.flushSoundFont(); } catch{}
+            // Re-enable chosen core if flush disabled it
+            if(coreId){
+                try {
+                    if(coreId === 'MNES' && window.mnesSf2){ window.mnesSf2.enable && window.mnesSf2.enable(); }
+                    if(coreId === 'WF' && window.nesSoundFont){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
+                } catch{}
+            }
+        }
+        return coreId || '';
+    },
+    getActiveSoundFontCore(){ return window._nesActiveSoundFontCore || ''; },
+    setSoundFontLayering(on){ window._nesAllowLayering = !!on; return window._nesAllowLayering; },
+    debugReport(){
+        return {
+            activeCore: window._nesActiveSoundFontCore || null,
+            layering: !!window._nesAllowLayering,
+            counters: { ...this._sfCounters }
+        };
+    },
+    resetSoundFontCounters(){ this._sfCounters = { mnes:0, wf:0, suppressedMnes:0, suppressedWf:0 }; },
     readSelectedRoms: async function (inputElement) {
         try {
             const el = inputElement instanceof Element ? inputElement : (inputElement && inputElement.id ? document.getElementById(inputElement.id) : null);
