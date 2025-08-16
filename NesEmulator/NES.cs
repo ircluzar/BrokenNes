@@ -391,16 +391,32 @@ namespace NesEmulator
 				targetCycles -= overshootCarry; overshootCarry = 0;
 			}
 			int executed = 0;
+			int batchCpu = 0; // accumulate CPU cycles for batch stepping
 			try {
 				while (executed < targetCycles)
 				{
-					for (int i = 0; i < 8 && executed < targetCycles; i++)
+					// Execute up to ConfigMaxInstructionsPerBatch instructions before flushing PPU/APU
+					for (int i = 0; i < ConfigMaxInstructionsPerBatch && executed < targetCycles; i++)
 					{
 						int cpuCycles = bus.cpu.ExecuteInstruction();
 						executed += cpuCycles;
-						int ppuCycles = cpuCycles * 3;
-						bus.ppu.Step(ppuCycles);
-						bus.StepAPU(cpuCycles);
+						batchCpu += cpuCycles;
+						if (batchCpu >= ConfigBatchCycleThreshold)
+						{
+							// Flush accumulated cycles to PPU/APU once per batch
+							bus.ppu.Step(batchCpu * 3);
+							bus.StepAPU(batchCpu);
+							bus.CountBatchFlush();
+							batchCpu = 0;
+						}
+					}
+					// If loop ended because target reached but leftover batchCpu pending, flush
+					if (batchCpu > 0 && (executed >= targetCycles || executed + ConfigMinRemainingFlushGuard >= targetCycles))
+					{
+						bus.ppu.Step(batchCpu * 3);
+						bus.StepAPU(batchCpu);
+						bus.CountBatchFlush();
+						batchCpu = 0;
 					}
 				}
 			}
@@ -420,6 +436,14 @@ namespace NesEmulator
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus.ppu.UpdateFrameBuffer();
 		}
+
+		// --- Batch scheduler configuration (Item #1 partial) ---
+		// Maximum instructions to execute before forcing a flush even if cycle threshold not reached.
+		private const int ConfigMaxInstructionsPerBatch = 32; // tune experimentally
+		// Cycle threshold: once accumulated CPU cycles exceed this, we flush to PPU/APU.
+		private const int ConfigBatchCycleThreshold = 24; // allows combining several short (2-3 cycle) ops
+		// If remaining cycles to frame end are below this guard after a loop, flush leftover to keep timing bounded.
+		private const int ConfigMinRemainingFlushGuard = 16;
 
 		// Allow caller to rapidly run multiple frames (used for fast-forward / warm-up)
 		public void RunFrames(int frames)

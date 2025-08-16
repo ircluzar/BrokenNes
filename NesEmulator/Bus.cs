@@ -36,13 +36,16 @@ public class Bus : IBus
 		// --- Lightweight instrumentation (Theory #38) ---
 		public struct Instrumentation
 		{
-			public long Reads; public long Writes; public long ApuSteps; public long OamDmaWrites;
-			public void Reset(){ Reads=Writes=ApuSteps=OamDmaWrites=0; }
+			public long Reads; public long Writes; public long ApuSteps; public long OamDmaWrites; public long BatchFlushes;
+			public void Reset(){ Reads=Writes=ApuSteps=OamDmaWrites=BatchFlushes=0; }
 			public Instrumentation Snapshot() => this; // value copy
 		}
 		private Instrumentation instr;
 		public Instrumentation GetInstrumentation() => instr.Snapshot();
 		public void ResetInstrumentation() => instr.Reset();
+		// Count a PPU/APU batch flush (Item #1 partial implementation)
+		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+		public void CountBatchFlush() { instr.BatchFlushes++; }
 		// Core dictionaries
 		private readonly System.Collections.Generic.Dictionary<string, ICPU> _cpuCores; // eager for now
 		// Lazy APU & PPU: cache types and create instances on demand to avoid early large buffer allocations

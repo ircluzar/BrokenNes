@@ -55,12 +55,13 @@
 ---
 ## Detailed Theories & Rationale
 
-[ ] ### 1. Batch / Event Scheduler (Collapse per‑instruction stepping)
-Current: `NES.RunFrame` executes each instruction then calls `ppu.Step(ppuCycles)` and `bus.StepAPU(cpuCycles)`. APU core loops per cycle internally. This produces extremely high cross‑subsystem call frequency.
-Theory: Accumulate CPU cycles; only advance PPU/APU in coarse batches or by event boundaries. Better: Maintain global `currentCpuCycle`, schedule `nextPpuEvent`, `nextApuEvent`, `frameEnd`, `nextIrq`. CPU runs a tight loop executing instructions until reaching the next boundary.
-Impact: Large reduction in call overhead / branch churn. 15–30% plausible. Especially beneficial on WASM due to function call overhead & instruction cache locality.
-Risk: Moderate—must preserve cycle accuracy for test ROMs (NMI/IRQ alignment). Add regression tests computing state hash after N frames.
-Effort: Medium—central loop refactor plus public interface adjustments.
+[~] ### 1. Batch / Event Scheduler (Collapse per‑instruction stepping)
+Current (before): `NES.RunFrame` executed each instruction then immediately called `ppu.Step(ppuCycles)` and `bus.StepAPU(cpuCycles)`; APU cores loop per cycle internally—very high cross‑subsystem call frequency.
+Partial Implementation (2025‑08‑16): Introduced intra-frame batching in `NES.RunFrame` with configurable thresholds (`ConfigMaxInstructionsPerBatch=32`, `ConfigBatchCycleThreshold=24`). CPU instructions now accumulate cycles in a local `batchCpu`; PPU/APU are stepped once per batch rather than every instruction. Added `Bus.CountBatchFlush()` instrumentation counter (`BatchFlushes`) to quantify reduction. Leftover partial batch flushed at frame boundary. This is a first step (micro-batching) paving way for full event-driven scheduler.
+Next Steps to fully complete item: (a) Track global `currentCpuCycle` field; (b) Replace heuristic batching with explicit future event times (`nextPpuScanline`, `nextApuEvent`, `frameEnd`, `nextIrq`); (c) Allow CPU to run until min(nextEvent, frameEnd); (d) Integrate interrupt scheduling (#17) and APU event system (#2) once implemented. After those, replace batch constants with event deltas and remove per-frame flush guard heuristics.
+Impact Expectation: Initial partial should cut PPU/APU step call count roughly by ~4‑10× depending on instruction mix (to be measured via new instrumentation). Full event scheduler still expected to deliver remaining gains.
+Risk: Low–Med for partial (cycle ordering unchanged within batch, only consolidation). Full version remains Moderate due to interrupt timing accuracy.
+Effort Remaining: Medium.
 
 [ ] ### 2. Event‑Driven APU Timers (Remove per‑CPU cycle loop)
 Current: `APU_LOW.Step(int cpuCycles)` (and similar) iterates for each CPU cycle, decrementing multiple counters and possibly generating samples.
