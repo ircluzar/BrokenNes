@@ -526,6 +526,95 @@
             <div>Frames: @frameCount</div>
             <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
             <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
+            <div class="mt-2">
+                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":"Run Benchmarks")</button>
+            </div>
+            @if (benchModalOpen)
+            {
+                <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
+                    <div class="card shadow-lg" style="max-width:960px;width:95%;margin-top:2.5rem;">
+                        <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <strong class="small mb-0">Benchmarks</strong>
+                                <span class="badge rounded-pill bg-dark text-light small">@benchHistory.Count saved</span>
+                                <div class="input-group input-group-sm" style="width:150px;">
+                                    <span class="input-group-text">Weight</span>
+                                    <input type="number" min="1" max="20" class="form-control" @bind="benchWeight" @bind:after="(()=>{ if(benchWeight<1) benchWeight=1; if(benchWeight>20) benchWeight=20; })" />
+                                </div>
+                                @if (benchRunning)
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                }
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":$"Run (x{benchWeight})")</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseBenchModal" aria-label="Close">Close</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="max-height:80vh;overflow:auto;">
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="small text-uppercase text-muted mb-0">Current Run</h6>
+                                    @if (!string.IsNullOrEmpty(benchResultsText))
+                                    {
+                                        <button class="btn btn-sm btn-outline-success" title="Copy results" @onclick="CopyBenchResults">Copy</button>
+                                    }
+                                </div>
+                                @if (string.IsNullOrEmpty(benchResultsText))
+                                {
+                                    <div class="small fst-italic text-muted">@(benchRunning?"Running benchmarks...":"No run yet this session. Click 'Run Again'.")</div>
+                                }
+                                else
+                                {
+                                    <pre class="small mb-0" style="white-space:pre;">@benchResultsText</pre>
+                                }
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2 mt-2">
+                                <h6 class="small text-uppercase text-muted mb-0">History</h6>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-danger" title="Clear all benchmark history" @onclick="ClearBenchHistory" disabled="@(benchHistory.Count==0)">Clear</button>
+                                </div>
+                            </div>
+                            @if (benchHistory.Count==0)
+                            {
+                                <div class="small text-muted fst-italic">(no previous runs saved)</div>
+                            }
+                            else
+                            {
+                                <table class="table table-sm table-dark align-middle small mb-0" style="--bs-table-bg:#1e1e1e;">
+                                    <thead class="table-secondary text-dark">
+                                        <tr>
+                                            <th style="width:1%;">#</th>
+                                            <th style="min-width:130px;">When</th>
+                                            <th style="min-width:160px;">ROM</th>
+                                            <th style="width:140px;">Cores</th>
+                                            <th style="width:1%;">View</th>
+                                            <th style="width:1%;">Del</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var (entry,idx) in benchHistory.Select((e,i)=>(e,i)))
+                                    {
+                                        <tr class="@(currentBenchHistoryId==entry.Id?"table-primary":"")">
+                                            <td>@(idx+1)</td>
+                                            <td title="UTC: @entry.TimestampUtc.ToString("u")">@entry.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+                                            <td class="text-truncate" style="max-width:220px;" title="@entry.Rom">@entry.Rom</td>
+                                            <td class="text-nowrap" title="CPU @entry.CpuCore / PPU @entry.PpuCore / APU @entry.ApuCore">@entry.CpuCore/@entry.PpuCore/@entry.ApuCore</td>
+                                            <td><button class="btn btn-sm btn-outline-light" @onclick="(()=>ShowHistoryEntry(entry.Id))" title="View results">@(currentBenchHistoryId==entry.Id?"▾":"▶")</button></td>
+                                            <td><button class="btn btn-sm btn-outline-danger" @onclick="(()=>DeleteBenchEntry(entry.Id))" title="Delete this entry">✕</button></td>
+                                        </tr>
+                                        @if (currentBenchHistoryId==entry.Id)
+                                        {
+                                            <tr class="table-secondary text-dark"><td colspan="6"><pre class="small mb-0" style="white-space:pre-wrap;max-height:320px;overflow:auto;">@entry.Display</pre></td></tr>
+                                        }
+                                    }
+                                    </tbody>
+                                </table>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
             @if (!string.IsNullOrEmpty(debugDump))
             {
                 <div class="small text-monospace" style="white-space:pre-wrap;max-width:260px">@debugDump</div>
@@ -608,6 +697,13 @@
     private const string SaveKey = "nes_state_slot0";
     private bool stateBusy = false; // prevent overlapping save/load operations
     private string debugDump = string.Empty;
+    // Benchmark modal state
+    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1;
+    // Persistent benchmark history
+    private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
+    private List<BenchHistoryEntry> benchHistory = new();
+    private string? currentBenchHistoryId = null;
+    private const string BenchHistoryKey = "bench_history_v1"; // single JSON array stored in IndexedDB
     // Corruptor state
     private int corruptIntensity = 1; // default minimal intensity
     private string lastBlastInfo = "";
@@ -650,6 +746,7 @@
                     var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) cpuCoreSel = pCpu;
                     var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) ppuCoreSel = pPpu;
                     var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) apuCoreSel = pApu;
+                    await LoadBenchHistory();
                 } catch {}
 
                 // Get shader list immediately (ensures dropdown populated even before WebGL init)
@@ -1807,6 +1904,149 @@
         try { debugDump = nes.GetStateDigest(); } catch (Exception ex) { debugDump = "dump err: "+ex.Message; }
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    private async Task RunBenchmarks()
+    {
+        if (nes == null || benchRunning) { benchModalOpen = true; return; }
+        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; StateHasChanged();
+        try {
+            bool wasRunning = isRunning; // pause emulator for deterministic timing
+            if (wasRunning) await PauseEmulation();
+            // Attempt to load savestate slot 0 (baseline) for deterministic benchmark start
+            // This uses the same underlying storage as manual Load, but is silent if absent.
+            await TryLoadBaselineStateForBenchmarks();
+            int w = benchWeight; if (w<1) w=1; if (w>20) w=20; benchWeight = w;
+            var results = nes.RunBenchmarks(w);
+            benchResultsText = nes.FormatBenchmarksForDisplay(results);
+            var entry = new BenchHistoryEntry {
+                TimestampUtc = DateTime.UtcNow,
+                Rom = currentRomName,
+                CpuCore = nes.GetCpuCoreId(),
+                PpuCore = nes.GetPpuCoreId(),
+                ApuCore = nes.GetApuCoreId(),
+                Display = benchResultsText
+            };
+            benchHistory.Insert(0, entry);
+            currentBenchHistoryId = entry.Id;
+            await PersistBenchHistory();
+            if (wasRunning) await StartEmulation();
+        } catch (Exception ex) { benchResultsText = "Benchmark error: "+ex.Message; }
+        finally { benchRunning = false; StateHasChanged(); }
+    }
+
+    // Silent baseline state loader used exclusively for benchmarks to improve result stability.
+    // Returns true if a savestate was found & loaded; false if none or on failure.
+    private async Task<bool> TryLoadBaselineStateForBenchmarks()
+    {
+        try
+        {
+            // If another save/load op is in progress, skip to avoid contention.
+            if (stateBusy) return false;
+            // Detect manifest (chunked) first
+            var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
+            string full = string.Empty;
+            if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+            {
+                int parts = ExtractInt(manifestJson, "parts");
+                bool compressed = manifestJson.Contains("\"compressed\":true");
+                var sb = new System.Text.StringBuilder();
+                for (int i = 0; i < parts; i++)
+                {
+                    var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
+                    if (string.IsNullOrEmpty(part)) return false; // missing part -> abort silently
+                    sb.Append(part);
+                }
+                full = sb.ToString();
+                if (compressed && full.StartsWith("GZ:"))
+                {
+                    full = DecompressString(full.Substring(3));
+                }
+            }
+            else
+            {
+                var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
+                if (string.IsNullOrWhiteSpace(single)) return false; // no baseline saved
+                if (single.StartsWith("GZ:"))
+                {
+                    full = DecompressString(single.Substring(3));
+                }
+                else full = single;
+            }
+
+            if (string.IsNullOrEmpty(full)) return false;
+
+            // If state embeds ROM data, ensure we load it (mirrors logic in LoadState but without UI noise)
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(full);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    int len = romEl.GetArrayLength();
+                    if (len > 0)
+                    {
+                        var romBytes = new byte[len];
+                        int idx = 0; foreach (var v in romEl.EnumerateArray()) { if (idx >= len) break; romBytes[idx++] = (byte)v.GetByte(); }
+                        nes = new NesEmulator.NES();
+                        nes.LoadROM(romBytes);
+                        try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+                        // Warm-up a frame
+                        try { nes.RunFrame(); } catch {}
+                        try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+                        BuildMemoryDomains();
+                        // Preserve visible ROM name; do not overwrite currentRomName to avoid confusing UI.
+                    }
+                }
+            }
+            catch { /* ignore parse errors */ }
+
+            nes?.LoadState(full);
+            try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+            try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+            try { framebuffer = nes!.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+            return true;
+        }
+        catch
+        {
+            return false; // silent failure acceptable for benchmarks
+        }
+    }
+    private void CloseBenchModal(){ benchModalOpen = false; }
+    private async Task CopyBenchResults()
+    {
+        try { if (!string.IsNullOrEmpty(benchResultsText)) await JS.InvokeVoidAsync("navigator.clipboard.writeText", benchResultsText); } catch { }
+    }
+
+    private async Task PersistBenchHistory()
+    {
+        try {
+            var payload = System.Text.Json.JsonSerializer.Serialize(benchHistory);
+            await JS.InvokeVoidAsync("nesInterop.idbSetItem", BenchHistoryKey, payload);
+        } catch {}
+    }
+    private async Task LoadBenchHistory()
+    {
+        try {
+            var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", BenchHistoryKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<BenchHistoryEntry>>(json);
+                if (list != null) { benchHistory = list.OrderByDescending(e=>e.TimestampUtc).ToList(); }
+            }
+        } catch {}
+    }
+    private async Task ClearBenchHistory()
+    {
+        benchHistory.Clear(); currentBenchHistoryId=null; await PersistBenchHistory();
+    }
+    private void ShowHistoryEntry(string id)
+    {
+        currentBenchHistoryId = id == currentBenchHistoryId ? null : id;
+    }
+    private async Task DeleteBenchEntry(string id)
+    {
+        var e = benchHistory.FirstOrDefault(x=>x.Id==id); if (e!=null){ benchHistory.Remove(e); if (currentBenchHistoryId==id) currentBenchHistoryId=null; await PersistBenchHistory(); }
     }
 
     private void BuildMemoryDomains()

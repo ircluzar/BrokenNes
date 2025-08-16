@@ -8,6 +8,16 @@ public interface IBus
 
 public class Bus : IBus
 {
+		// --- Lightweight instrumentation (Theory #38) ---
+		public struct Instrumentation
+		{
+			public long Reads; public long Writes; public long ApuSteps; public long OamDmaWrites;
+			public void Reset(){ Reads=Writes=ApuSteps=OamDmaWrites=0; }
+			public Instrumentation Snapshot() => this; // value copy
+		}
+		private Instrumentation instr;
+		public Instrumentation GetInstrumentation() => instr.Snapshot();
+		public void ResetInstrumentation() => instr.Reset();
 		// Core dictionaries
 		private readonly System.Collections.Generic.Dictionary<string, ICPU> _cpuCores; // eager for now
 		// Lazy APU & PPU: cache types and create instances on demand to avoid early large buffer allocations
@@ -267,22 +277,23 @@ public class Bus : IBus
 	{
 		// Fast-path internal RAM (most frequent)
 		if (address < 0x2000)
-			return ram[address & 0x07FF];
+			{ instr.Reads++; return ram[address & 0x07FF]; }
 
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
+			instr.Reads++;
 			return ppu.ReadPPURegister(reg);
 		}
 
 		if (address == 0x4016)
-			return input.Read4016();
+			{ instr.Reads++; return input.Read4016(); }
 
 		if (address <= 0x4017 && address >= 0x4000)
-			return activeApu.ReadAPURegister(address);
+			{ instr.Reads++; return activeApu.ReadAPURegister(address); }
 
 		if (address >= 0x6000)
-			return cartridge.CPURead(address);
+			{ instr.Reads++; return cartridge.CPURead(address); }
 
 		return 0; // open bus behavior simplified
 	}
@@ -292,32 +303,32 @@ public class Bus : IBus
 	{
 		if (address < 0x2000)
 		{
-			ram[address & 0x07FF] = value;
+			ram[address & 0x07FF] = value; instr.Writes++;
 			return;
 		}
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
-			ppu.WritePPURegister(reg, value);
+			ppu.WritePPURegister(reg, value); instr.Writes++;
 			return;
 		}
 		if (address == 0x4016)
 		{
-			input.Write4016(value); return;
+			input.Write4016(value); instr.Writes++; return;
 		}
 		if (address == 0x4014)
 		{
-			ppu.WriteOAMDMA(value); return;
+			ppu.WriteOAMDMA(value); instr.OamDmaWrites++; instr.Writes++; return;
 		}
 		if (address <= 0x4017 && address >= 0x4000)
 		{
 			int idx = address - 0x4000;
 			if (idx >=0 && idx < apuRegLatch.Length) apuRegLatch[idx] = value;
-			activeApu.WriteAPURegister(address, value); return;
+			activeApu.WriteAPURegister(address, value); instr.Writes++; return;
 		}
 		if (address >= 0x6000)
 		{
-			cartridge.CPUWrite(address, value); return;
+			cartridge.CPUWrite(address, value); instr.Writes++; return;
 		}
 	}
 
@@ -327,7 +338,7 @@ public class Bus : IBus
 	public byte PeekRam(int index) => (index >=0 && index < ram.Length) ? ram[index] : (byte)0;
 	public void PokeRam(int index, byte value) { if (index>=0 && index < ram.Length) ram[index]=value; }
 
-	public void StepAPU(int cpuCycles) => activeApu.Step(cpuCycles);
+	public void StepAPU(int cpuCycles) { activeApu.Step(cpuCycles); instr.ApuSteps += cpuCycles; }
 	public float[] GetAudioSamples(int max=0) => activeApu.GetAudioSamples(max);
 	public int GetQueuedSamples() => activeApu.GetQueuedSampleCount();
 	public int GetAudioSampleRate() => activeApu.GetSampleRate();

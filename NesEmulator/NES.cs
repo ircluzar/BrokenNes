@@ -335,6 +335,7 @@ namespace NesEmulator
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
+			framesExecutedTotal++;
 			// Determine cycles target for this frame (carry fractional remainder)
 			double targetCycles = CyclesPerFrame + cycleRemainder;
 			int targetInt = (int)targetCycles;
@@ -375,6 +376,55 @@ namespace NesEmulator
 		public void RunFrames(int frames)
 		{
 			for (int i = 0; i < frames; i++) RunFrame();
+		}
+
+		// === Instrumentation & Benchmarks (Theory #38) ===
+		private long framesExecutedTotal = 0;
+		public record BenchResult(string Name, int Iterations, double MsTotal, double MsPerIter, long CpuReads, long CpuWrites, long ApuCycles, long OamDmaWrites);
+		public IReadOnlyList<BenchResult> RunBenchmarks(int weight = 1)
+		{
+			if (weight <= 0) weight = 1; // clamp
+			var list = new System.Collections.Generic.List<BenchResult>();
+			if (bus == null) return list;
+			// Helper local function
+			BenchResult Run(string name, System.Action body, int iters)
+			{
+				bus.ResetInstrumentation();
+				var sw = System.Diagnostics.Stopwatch.StartNew();
+				for (int i=0;i<iters;i++) body();
+				sw.Stop();
+				var instr = bus.GetInstrumentation();
+				return new BenchResult(name, iters, sw.Elapsed.TotalMilliseconds, sw.Elapsed.TotalMilliseconds/iters, instr.Reads, instr.Writes, instr.ApuSteps, instr.OamDmaWrites);
+			}
+			try {
+				// 1. Run N frames baseline (uses current ROM & state)
+				int frameIters = 120 * weight;
+				list.Add( Run($"Frame({frameIters})", () => RunFrame(), frameIters) );
+				// 2. CPU instruction burst (simulate by executing slices until ~target instructions)
+				if (bus?.cpu != null)
+				{
+					int targetInstr = 10_000 * weight;
+					list.Add( Run($"Instr({targetInstr/1000}k)", () => {
+						int executed=0; while (executed < targetInstr) { int cyc = bus.cpu.ExecuteInstruction(); executed += cyc; bus.ppu.Step(cyc*3); bus.StepAPU(cyc); }
+					}, 10)); // keep iterations constant for stable averaging
+				}
+				// 3. Audio pacing: approximate N seconds (weight seconds)
+				list.Add( Run($"Audio({weight}s est)", () => {
+					long targetCycles=(long)CpuFrequency * weight; long done=0; while(done<targetCycles){ int c=bus.cpu.ExecuteInstruction(); done+=c; bus.ppu.Step(c*3); bus.StepAPU(c);} }, 1));
+			}
+			catch { }
+			return list;
+		}
+		public string FormatBenchmarksForDisplay(IReadOnlyList<BenchResult> results)
+		{
+			var sb = new System.Text.StringBuilder();
+			sb.AppendLine("Benchmark Results");
+			sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA");
+			foreach (var r in results)
+			{
+				sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+			}
+			return sb.ToString();
 		}
 
 		public byte[] GetFrameBuffer()
