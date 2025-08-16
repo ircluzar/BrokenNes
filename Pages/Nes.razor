@@ -528,6 +528,7 @@
             <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
             <div class="mt-2">
                 <button class="btn btn-sm btn-outline-primary" @onclick="OpenBenchModal" disabled="@(nes==null /* allow opening even if benchRunning? keep disabled only if no nes */)">@(benchRunning?"Running...":"Run Benchmarks")</button>
+                <button class="btn btn-sm btn-outline-info ms-1" @onclick="OpenCompareModal" disabled="@(benchHistory.Count<2)">Compare Results</button>
             </div>
             @if (benchModalOpen)
             {
@@ -615,6 +616,154 @@
                                     }
                                     </tbody>
                                 </table>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (compareModalOpen)
+            {
+                <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
+                    <div class="card shadow-lg" style="max-width:1100px;width:98%;margin-top:2rem;">
+                        <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <strong class="small mb-0">Benchmark Comparison</strong>
+                                <span class="badge bg-dark small">@benchHistory.Count total</span>
+                                <span class="small text-muted">(oldest on left in charts)</span>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="PlayDiffAnimation" disabled="@(diffAnimating || recentDiffRows.Count==0)">@((diffAnimating?"Playing...":"Play Diff"))</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseCompareModal">Close</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="max-height:85vh;overflow:auto;">
+                            @if (recentDiffRows.Count==0)
+                            {
+                                <div class="small text-muted fst-italic">Need at least two benchmark entries with structured metrics.</div>
+                            }
+                            else
+                            {
+                                <h6 class="small text-uppercase text-muted">Latest vs Previous</h6>
+                                <div class="mb-2 small text-muted">Below: numeric diff table. A future update will render a side-by-side frame playback of the two benchmark runs for visual comparison.</div>
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-sm table-dark align-middle small mb-0" style="--bs-table-bg:#1e1e1e;">
+                                        <thead class="table-secondary text-dark">
+                                            <tr>
+                                                <th>Target</th>
+                                                <th title="Current ms per iteration">Cur ms/iter</th>
+                                                <th title="Prev ms per iteration">Prev ms/iter</th>
+                                                <th title="Delta ms (negative is faster)">Δ ms</th>
+                                                <th title="Percent change (negative is faster)">Δ %</th>
+                                                <th title="CPU Reads delta">Reads Δ</th>
+                                                <th title="CPU Writes delta">Writes Δ</th>
+                                                <th title="APU Cycles delta">APU Δ</th>
+                                                <th title="OAM DMA Writes delta">OAM Δ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach (var row in recentDiffRows)
+                                        {
+                                            var cls = highlightMetricName==row.Name?"table-primary":"";
+                                            <tr class="@cls">
+                                                <td>@row.Name</td>
+                                                <td>@row.CurMs:F3</td>
+                                                <td>@row.PrevMs:F3</td>
+                                                <td class="@(row.DeltaMs<0?"text-success":row.DeltaMs>0?"text-danger":"")">@row.DeltaMs:F3</td>
+                                                <td class="@(row.DeltaPct<0?"text-success":row.DeltaPct>0?"text-danger":"")">@row.DeltaPct:F2%</td>
+                                                <td class="@(row.ReadsDelta<0?"text-success":row.ReadsDelta>0?"text-danger":"")">@row.ReadsDelta</td>
+                                                <td class="@(row.WritesDelta<0?"text-success":row.WritesDelta>0?"text-danger":"")">@row.WritesDelta</td>
+                                                <td class="@(row.ApuDelta<0?"text-success":row.ApuDelta>0?"text-danger":"")">@row.ApuDelta</td>
+                                                <td class="@(row.OamDelta<0?"text-success":row.OamDelta>0?"text-danger":"")">@row.OamDelta</td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            <div class="d-flex justify-content-between align-items-center mt-4 mb-1">
+                                <h6 class="small text-uppercase text-muted mb-0">Timeline (@(compareNormalize?"% of range":"ms/iter"))</h6>
+                                <div class="form-check form-switch small">
+                                    <input class="form-check-input" type="checkbox" id="cmpNorm" @bind="compareNormalize" />
+                                    <label class="form-check-label" for="cmpNorm">Normalize</label>
+                                </div>
+                            </div>
+                            @if (timelineSeries.Count==0)
+                            {
+                                <div class="small text-muted fst-italic">No timeline data.</div>
+                            }
+                            else
+                            {
+                                <div class="d-flex flex-wrap gap-3 mb-2">
+                                    @foreach (var s in allTargets)
+                                    {
+                                        <label class="form-check-label small me-2">
+                                            <input type="checkbox" class="form-check-input me-1" @onchange="(()=>ToggleTarget(s))" checked="@visibleTargets.Contains(s)" /> @s
+                                        </label>
+                                    }
+                                </div>
+                                <div style="overflow:auto;">
+                                    <svg width="1000" height="240" style="background:#111;border:1px solid #333;">
+                                        @if (visibleTargets.Count>0)
+                                        {
+                                            double globalMax = 0;
+                                            foreach (var t in visibleTargets)
+                                            {
+                                                foreach (var v in timelineSeries[t])
+                                                {
+                                                    if (!double.IsNaN(v.MsPerIter) && v.MsPerIter > globalMax) globalMax = v.MsPerIter;
+                                                }
+                                            }
+                                            if (globalMax<=0) { globalMax = 1; }
+                                            var count = timelineOrder.Count;
+                                            var plotW = 960.0; var plotH = 200.0; var left=30; var top=20;
+                                            // axes
+                                            <line x1="@left" y1="@(top)" x2="@left" y2="@(top+plotH)" stroke="#555" stroke-width="1" />
+                                            <line x1="@left" y1="@(top+plotH)" x2="@(left+plotW)" y2="@(top+plotH)" stroke="#555" stroke-width="1" />
+                                            // y labels
+                                            @if (!compareNormalize) {
+                                                for (int i=0;i<=4;i++){
+                                                    var yVal = globalMax*i/4.0; var y = top+plotH - (yVal/globalMax)*plotH;
+                                                    @:<text x="5" y="@(y+4)" font-size="9" fill="#888">@yVal.ToString("F2")</text>
+                                                    <line x1="@left" y1="@y" x2="@(left+plotW)" y2="@y" stroke="#222" stroke-width="1" />
+                                                }
+                                            } else {
+                                                for (int i=0;i<=4;i++){
+                                                    var yPct = i*25; var y = top+plotH - (i/4.0)*plotH;
+                                                    @:<text x="5" y="@(y+4)" font-size="9" fill="#888">@yPct%</text>
+                                                    <line x1="@left" y1="@y" x2="@(left+plotW)" y2="@y" stroke="#222" stroke-width="1" />
+                                                }
+                                            }
+                                            // x labels
+                                            @for (int i=0;i<count;i++){
+                                                var x = left + plotW*(i/(double)Math.Max(1,count-1)); var label = timelineOrder[i].ToLocalTime().ToString("HH:mm:ss");
+                                                @:<text x="@x" y="@(top+plotH+12)" font-size="8" fill="#666" text-anchor="middle">@label</text>
+                                                <line x1="@x" y1="@(top+plotH)" x2="@x" y2="@(top+plotH+4)" stroke="#444" stroke-width="1" />
+                                            }
+                                            // series lines
+                                            @foreach (var t in visibleTargets)
+                                            {
+                                                var color = ColorForTarget(t);
+                                                double minT = double.MaxValue; double maxT = double.MinValue;
+                                                if (compareNormalize){
+                                                    foreach (var v in timelineSeries[t]){ if (!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
+                                                    if (minT==double.MaxValue){ minT=0; maxT=1; }
+                                                    if (Math.Abs(maxT-minT) < 1e-9) { maxT = minT + 1; }
+                                                }
+                                                var pts = string.Join(' ', timelineSeries[t].Select((v,idx)=>{
+                                                    var x = left + plotW*(idx/(double)Math.Max(1,count-1));
+                                                    double normVal;
+                                                    if (compareNormalize){
+                                                        if (double.IsNaN(v.MsPerIter)) normVal = 0; else normVal = (v.MsPerIter - minT)/(maxT-minT); // 0..1
+                                                        var y = top+plotH - normVal*plotH; return $"{x:F1},{y:F1}";
+                                                    } else {
+                                                        var y = top+plotH - (v.MsPerIter/globalMax)*plotH; return $"{x:F1},{y:F1}";
+                                                    }
+                                                }));
+                                                <polyline points="@pts" fill="none" stroke="@color" stroke-width="2" />
+                                            }
+                                        }
+                                    </svg>
+                                </div>
                             }
                         </div>
                     </div>
@@ -711,6 +860,17 @@
     private List<BenchHistoryEntry> benchHistory = new();
     private string? currentBenchHistoryId = null;
     private const string BenchHistoryKey = "bench_history_v1"; // single JSON array stored in IndexedDB
+    // Comparison modal state & derived datasets
+    private bool compareModalOpen = false;
+    private HashSet<string> visibleTargets = new();
+    private List<string> allTargets = new();
+    private List<DateTime> timelineOrder = new();
+    private Dictionary<string,List<(DateTime When,double MsPerIter)>> timelineSeries = new();
+    private record DiffRow(string Name,double CurMs,double PrevMs,double DeltaMs,double DeltaPct,long ReadsDelta,long WritesDelta,long ApuDelta,long OamDelta);
+    private List<DiffRow> recentDiffRows = new();
+    private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
+    private bool compareNormalize = true; // per-target normalization to 0..100% range
+
     // Corruptor state
     private int corruptIntensity = 1; // default minimal intensity
     private string lastBlastInfo = "";
@@ -2152,6 +2312,96 @@
     {
         var e = benchHistory.FirstOrDefault(x=>x.Id==id); if (e!=null){ benchHistory.Remove(e); if (currentBenchHistoryId==id) currentBenchHistoryId=null; await PersistBenchHistory(); }
     }
+
+    // === Comparison Modal Logic ===
+    private void OpenCompareModal()
+    {
+        BuildComparisonDatasets();
+        compareModalOpen = true; StateHasChanged();
+    }
+    private void CloseCompareModal()
+    {
+        compareModalOpen = false; CancelDiffAnim();
+    }
+    private void BuildComparisonDatasets()
+    {
+        recentDiffRows.Clear(); timelineSeries.Clear(); allTargets.Clear(); timelineOrder.Clear(); visibleTargets.Clear(); highlightMetricName=null;
+        // Need chronological order (oldest -> newest) for timeline
+        var chrono = benchHistory.OrderBy(e=>e.TimestampUtc).ToList();
+        if (chrono.Count < 2) return;
+        // Parse each entry's structured table lines; format: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA
+        var parsed = new List<(DateTime When, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
+        foreach (var h in chrono)
+        {
+            var dict = new Dictionary<string,(double,long,long,long,long)>();
+            try {
+                using var sr = new System.IO.StringReader(h.Display);
+                string? line; bool inTable=false;
+                while ((line = sr.ReadLine()) != null)
+                {
+                    if (line.StartsWith("Target Cat")) { inTable=true; continue; }
+                    if (!inTable) continue;
+                    if (string.IsNullOrWhiteSpace(line)) break; // end of table
+                    var parts = line.Split('\t');
+                    if (parts.Length < 8) continue;
+                    string name = parts[0].Trim();
+                    if (!double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var msPer)) continue;
+                    long.TryParse(parts[4], out var reads); long.TryParse(parts[5], out var writes); long.TryParse(parts[6], out var apu); long.TryParse(parts[7], out var oam);
+                    dict[name]=(msPer,reads,writes,apu,oam);
+                }
+            } catch { }
+            if (dict.Count>0) parsed.Add((h.TimestampUtc, dict));
+        }
+        if (parsed.Count < 2) return;
+        // Timeline order & targets
+        timelineOrder = parsed.Select(p=>p.When).ToList();
+        allTargets = parsed.SelectMany(p=>p.Item2.Keys).Distinct().OrderBy(k=>k).ToList();
+        foreach (var t in allTargets)
+        {
+            timelineSeries[t] = new List<(DateTime,double)>();
+            foreach (var entry in parsed)
+            {
+                if (entry.Item2.TryGetValue(t, out var v)) timelineSeries[t].Add((entry.When, v.MsPerIter));
+                else timelineSeries[t].Add((entry.When, double.NaN));
+            }
+            visibleTargets.Add(t);
+        }
+        // Diff: latest vs previous
+        var last = parsed[^1]; var prev = parsed[^2];
+        foreach (var kv in last.Item2)
+        {
+            var name = kv.Key; var cur = kv.Value; if (!prev.Item2.TryGetValue(name, out var p)) continue;
+            double deltaMs = cur.MsPerIter - p.MsPerIter;
+            double deltaPct = p.MsPerIter != 0 ? (deltaMs / p.MsPerIter) * 100.0 : 0;
+            recentDiffRows.Add(new DiffRow(name, cur.MsPerIter, p.MsPerIter, deltaMs, deltaPct, cur.Reads - p.Reads, cur.Writes - p.Writes, cur.Apu - p.Apu, cur.Oam - p.Oam));
+        }
+        recentDiffRows = recentDiffRows.OrderBy(r=>r.Name).ToList();
+    }
+    private void ToggleTarget(string target)
+    {
+        if (visibleTargets.Contains(target)) visibleTargets.Remove(target); else visibleTargets.Add(target); StateHasChanged();
+    }
+    private string ColorForTarget(string target)
+    {
+        // Simple stable hash -> color palette
+        int h=0; foreach (var c in target){ h = (h*31 + c) & 0xFFFFFF; }
+        int r = (h & 0xFF0000)>>16; int g=(h & 0x00FF00)>>8; int b=h&0xFF;
+        // boost brightness
+        r = (r+128)/2; g=(g+128)/2; b=(b+128)/2;
+        return $"rgb({r},{g},{b})";
+    }
+    private async Task PlayDiffAnimation()
+    {
+        if (diffAnimating || recentDiffRows.Count==0) return; CancelDiffAnim(); diffAnimating=true; diffAnimCts = new CancellationTokenSource();
+        try {
+            foreach (var row in recentDiffRows)
+            {
+                highlightMetricName = row.Name; StateHasChanged(); await Task.Delay(900, diffAnimCts.Token);
+            }
+        } catch { }
+        finally { diffAnimating=false; highlightMetricName=null; StateHasChanged(); }
+    }
+    private void CancelDiffAnim(){ try { diffAnimCts?.Cancel(); } catch {} diffAnimating=false; highlightMetricName=null; }
 
     private void BuildMemoryDomains()
     {
