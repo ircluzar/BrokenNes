@@ -701,18 +701,14 @@
                                         </label>
                                     }
                                 </div>
-                                <div style="overflow:auto;">
-                                    <svg width="1000" height="240" style="background:#111;border:1px solid #333;">
+                                <div style="overflow:auto; position:relative;" @onmouseleave="TimelineMouseLeave">
+                                    <svg width="1000" height="240" style="background:#111;border:1px solid #333;" @onmousemove="TimelineMouseMove">
                                         @if (visibleTargets.Count>0)
                                         {
                                             double globalMax = 0;
                                             foreach (var t in visibleTargets)
-                                            {
                                                 foreach (var v in timelineSeries[t])
-                                                {
                                                     if (!double.IsNaN(v.MsPerIter) && v.MsPerIter > globalMax) globalMax = v.MsPerIter;
-                                                }
-                                            }
                                             if (globalMax<=0) { globalMax = 1; }
                                             var count = timelineOrder.Count;
                                             var plotW = 960.0; var plotH = 200.0; var left=30; var top=20;
@@ -760,6 +756,48 @@
                                                     }
                                                 }));
                                                 <polyline points="@pts" fill="none" stroke="@color" stroke-width="2" />
+                                            }
+                                            @if (hoverIndex.HasValue && hoverIndex.Value>=0 && hoverIndex.Value < count && hoverPointTooltip != null)
+                                            {
+                                                var idx = hoverIndex.Value;
+                                                var hoverX = left + plotW*(idx/(double)Math.Max(1,count-1));
+                                                <line x1="@hoverX" y1="@top" x2="@hoverX" y2="@(top+plotH)" stroke="#666" stroke-dasharray="3 3" stroke-width="1" />
+                                                foreach (var t in visibleTargets)
+                                                {
+                                                    var pt = timelineSeries[t][idx]; if (double.IsNaN(pt.MsPerIter)) continue;
+                                                    double minT = double.MaxValue; double maxT = double.MinValue;
+                                                    if (compareNormalize){
+                                                        foreach (var v in timelineSeries[t]){ if(!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
+                                                        if (minT==double.MaxValue){ minT=0; maxT=1; }
+                                                        if (Math.Abs(maxT-minT) < 1e-9) { maxT = minT + 1; }
+                                                    }
+                                                    double y;
+                                                    if (compareNormalize){
+                                                        var normVal = (pt.MsPerIter - minT)/(maxT-minT);
+                                                        y = top+plotH - normVal*plotH;
+                                                    } else {
+                                                        y = top+plotH - (pt.MsPerIter/globalMax)*plotH;
+                                                    }
+                                                    var color = ColorForTarget(t);
+                                                    var r = hoverTarget == t ? 5 : 3;
+                                                    <circle cx="@hoverX" cy="@y" r="@r" fill="@color" stroke="#000" stroke-width="1" />
+                                                }
+                                                // Inline tooltip box (fixed near top-left of plot)
+                                                var boxX = left + 5; var boxY = top + 5; var lineH = 11; var lines = new List<string>{ $"{hoverPointTooltip.TimeLabel}", $"CPU {hoverPointTooltip.CpuCore} | PPU {hoverPointTooltip.PpuCore} | APU {hoverPointTooltip.ApuCore}", $"{hoverPointTooltip.Target}: {hoverPointTooltip.MsPerIter:F3} ms/iter", $"R {hoverPointTooltip.Reads} W {hoverPointTooltip.Writes}", $"APU {hoverPointTooltip.ApuCycles} OAM {hoverPointTooltip.OamWrites}"};
+                                                var boxW = 0.0;
+                                                foreach(var l in lines){ boxW = Math.Max(boxW, 6 + l.Length * 5.3); }
+                                                var boxH = lines.Count * lineH + 6;
+                                                <rect x="@boxX" y="@boxY" width="@boxW" height="@boxH" fill="#222" stroke="#555" stroke-width="1" rx="4" />
+                                                {
+                                                    // Razor reserves <text>; build SVG text elements manually
+                                                    var sbTxt = new System.Text.StringBuilder();
+                                                    for (int i=0;i<lines.Count;i++)
+                                                    {
+                                                        var txt = lines[i]; var ty = boxY + 4 + (i+1)*lineH - 3; var fill = i==0?"#fff":(i==1?"#bbb":"#ddd");
+                                                        sbTxt.Append($"<text x='{boxX+4}' y='{ty}' font-size='10' fill='{fill}'>{txt}</text>");
+                                                    }
+                                                    @((MarkupString)sbTxt.ToString())
+                                                }
                                             }
                                         }
                                     </svg>
@@ -865,7 +903,9 @@
     private HashSet<string> visibleTargets = new();
     private List<string> allTargets = new();
     private List<DateTime> timelineOrder = new();
-    private Dictionary<string,List<(DateTime When,double MsPerIter)>> timelineSeries = new();
+    // Enhanced timeline series includes rich point data for hover tooltips
+    private record TimelinePoint(DateTime When,double MsPerIter,long Reads,long Writes,long Apu,long Oam,string CpuCore,string PpuCore,string ApuCore);
+    private Dictionary<string,List<TimelinePoint>> timelineSeries = new();
     private record DiffRow(string Name,double CurMs,double PrevMs,double DeltaMs,double DeltaPct,long ReadsDelta,long WritesDelta,long ApuDelta,long OamDelta);
     private List<DiffRow> recentDiffRows = new();
     private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
@@ -2340,12 +2380,12 @@
     }
     private void BuildComparisonDatasets()
     {
-        recentDiffRows.Clear(); timelineSeries.Clear(); allTargets.Clear(); timelineOrder.Clear(); visibleTargets.Clear(); highlightMetricName=null;
+        recentDiffRows.Clear(); timelineSeries.Clear(); allTargets.Clear(); timelineOrder.Clear(); visibleTargets.Clear(); highlightMetricName=null; hoverIndex=null; hoverTarget=null; hoverPointTooltip=null;
         // Need chronological order (oldest -> newest) for timeline
         var chrono = benchHistory.OrderBy(e=>e.TimestampUtc).ToList();
         if (chrono.Count < 2) return;
         // Parse each entry's structured table lines; format: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA
-        var parsed = new List<(DateTime When, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
+        var parsed = new List<(BenchHistoryEntry Entry, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
         foreach (var h in chrono)
         {
             var dict = new Dictionary<string,(double,long,long,long,long)>();
@@ -2365,19 +2405,21 @@
                     dict[name]=(msPer,reads,writes,apu,oam);
                 }
             } catch { }
-            if (dict.Count>0) parsed.Add((h.TimestampUtc, dict));
+            if (dict.Count>0) parsed.Add((h, dict));
         }
         if (parsed.Count < 2) return;
         // Timeline order & targets
-        timelineOrder = parsed.Select(p=>p.When).ToList();
+        timelineOrder = parsed.Select(p=>p.Entry.TimestampUtc).ToList();
         allTargets = parsed.SelectMany(p=>p.Item2.Keys).Distinct().OrderBy(k=>k).ToList();
         foreach (var t in allTargets)
         {
-            timelineSeries[t] = new List<(DateTime,double)>();
+            timelineSeries[t] = new List<TimelinePoint>();
             foreach (var entry in parsed)
             {
-                if (entry.Item2.TryGetValue(t, out var v)) timelineSeries[t].Add((entry.When, v.MsPerIter));
-                else timelineSeries[t].Add((entry.When, double.NaN));
+                if (entry.Item2.TryGetValue(t, out var v))
+                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, v.MsPerIter, v.Reads, v.Writes, v.Apu, v.Oam, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore));
+                else
+                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, double.NaN, 0,0,0,0, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore));
             }
             visibleTargets.Add(t);
         }
@@ -2395,6 +2437,51 @@
     private void ToggleTarget(string target)
     {
         if (visibleTargets.Contains(target)) visibleTargets.Remove(target); else visibleTargets.Add(target); StateHasChanged();
+    }
+    // Hover state & handlers for timeline tooltip
+    private int? hoverIndex = null; private string? hoverTarget = null; private HoverTooltip? hoverPointTooltip = null; private double hoverTooltipLeftPx=0; private double hoverTooltipTopPx=0;
+    private record HoverTooltip(string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore);
+    private void TimelineMouseLeave(){ hoverIndex=null; hoverTarget=null; hoverPointTooltip=null; }
+    private void TimelineMouseMove(MouseEventArgs e)
+    {
+        if (timelineOrder.Count==0 || visibleTargets.Count==0) return;
+        double plotW=960, plotH=200, left=30, top=20; int count = timelineOrder.Count;
+        double mouseX = e.OffsetX; double mouseY = e.OffsetY;
+        if (mouseX < left-5 || mouseX > left+plotW+5 || mouseY < top-5 || mouseY > top+plotH+15) { TimelineMouseLeave(); StateHasChanged(); return; }
+        var frac = (mouseX - left)/Math.Max(1,plotW); frac = Math.Clamp(frac,0,1); int idx = (int)Math.Round(frac*(count-1));
+        if (idx<0 || idx>=count) { TimelineMouseLeave(); StateHasChanged(); return; }
+        string? bestTarget=null; double bestDy=double.MaxValue; double bestY=0; double globalMax=0;
+        if (!compareNormalize)
+        {
+            foreach (var t in visibleTargets)
+                foreach (var v in timelineSeries[t]) if (!double.IsNaN(v.MsPerIter) && v.MsPerIter>globalMax) globalMax=v.MsPerIter;
+            if (globalMax<=0) globalMax=1;
+        }
+        foreach (var t in visibleTargets)
+        {
+            var pt = timelineSeries[t][idx]; if (double.IsNaN(pt.MsPerIter)) continue;
+            double y;
+            if (compareNormalize){
+                double minT=double.MaxValue,maxT=double.MinValue; foreach (var v in timelineSeries[t]) if(!double.IsNaN(v.MsPerIter)){ if(v.MsPerIter<minT) minT=v.MsPerIter; if(v.MsPerIter>maxT) maxT=v.MsPerIter; }
+                if (minT==double.MaxValue){ minT=0; maxT=1; }
+                if (Math.Abs(maxT-minT) < 1e-9) maxT = minT+1;
+                var norm = (pt.MsPerIter - minT)/(maxT-minT);
+                y = top+plotH - norm*plotH;
+            } else {
+                y = top+plotH - (pt.MsPerIter/globalMax)*plotH;
+            }
+            var dy = Math.Abs(y - mouseY);
+            if (dy < bestDy){ bestDy=dy; bestTarget=t; bestY=y; }
+        }
+        if (bestTarget==null){ TimelineMouseLeave(); StateHasChanged(); return; }
+        hoverIndex = idx; hoverTarget = bestTarget;
+        var hpt = timelineSeries[bestTarget][idx];
+        var timeLabel = timelineOrder[idx].ToLocalTime().ToString("HH:mm:ss");
+        hoverPointTooltip = new HoverTooltip(bestTarget,timeLabel,hpt.MsPerIter,hpt.Reads,hpt.Writes,hpt.Apu,hpt.Oam,hpt.CpuCore,hpt.PpuCore,hpt.ApuCore);
+        double hoverX = left + plotW*(idx/(double)Math.Max(1,count-1));
+        hoverTooltipLeftPx = Math.Clamp(hoverX + 12, 0, 1000-190);
+        hoverTooltipTopPx = Math.Clamp(bestY - 10, 0, 240-120);
+        StateHasChanged();
     }
     private string ColorForTarget(string target)
     {

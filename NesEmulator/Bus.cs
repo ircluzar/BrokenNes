@@ -8,6 +8,31 @@ public interface IBus
 
 public class Bus : IBus
 {
+		// === Page Table (Optimization Items #5 & #6) ===
+		// 256 pages of 256 bytes each cover full 64KB CPU address space.
+		// Pages pointing to internal RAM or other linear data regions allow direct index without mirror masking.
+		// Callback pages fall back to legacy branch logic (ReadSlow/WriteSlow) until deeper refactors (PPU/APU/cartridge specific delegates) are introduced.
+		private struct Page { public byte[]? data; public int offset; public bool writable; }
+		private Page[] pages = new Page[256];
+		private bool pageTableInitialized;
+		private void BuildPageTable()
+		{
+			// Internal 2KB RAM mirrored every 0x0800 up to 0x1FFF
+			for (int p = 0x00; p <= 0x1F; p++)
+			{
+				pages[p].data = ram; // single backing array
+				pages[p].offset = (p % 0x08) * 0x100; // mirror by 2KB (8 pages)
+				pages[p].writable = true;
+			}
+			// PPU registers 0x2000-0x3FFF mirrored every 8 bytes: leave as callback (data=null)
+			for (int p = 0x20; p <= 0x3F; p++) pages[p] = default;
+			// APU + IO + Expansion 0x4000-0x5FFF remain callback (future fine pages possible)
+			for (int p = 0x40; p <= 0x5F; p++) pages[p] = default;
+			// Cartridge space 0x6000-0xFFFF: callback (mappers may later patch with direct data spans for common banks)
+			for (int p = 0x60; p <= 0xFF; p++) pages[p] = default;
+			pageTableInitialized = true;
+		}
+
 		// --- Lightweight instrumentation (Theory #38) ---
 		public struct Instrumentation
 		{
@@ -58,6 +83,7 @@ public class Bus : IBus
 		apuQN = GetOrCreateApu("QN") ?? apu;
 		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
+		BuildPageTable();
 		// Optional: allow cores to run deferred initialization that requires a constructed Bus
 		TryInitializeCores();
 	}
@@ -275,61 +301,84 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
-		// Fast-path internal RAM (most frequent)
-		if (address < 0x2000)
-			{ instr.Reads++; return ram[address & 0x07FF]; }
+		instr.Reads++;
+		// Page table fast path: internal RAM and any future linear mapped regions
+		var page = pages[address >> 8];
+		if (page.data != null)
+		{
+			// address & 0xFF + page.offset gives direct index (mirroring handled in offset computation)
+			return page.data[page.offset + (address & 0xFF)];
+		}
+		return ReadSlow(address);
+	}
 
+	private byte ReadSlow(ushort address)
+	{
+		// PPU registers 0x2000-0x3FFF (mirrored every 8)
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
-			instr.Reads++;
 			return ppu.ReadPPURegister(reg);
 		}
-
-		if (address == 0x4016)
-			{ instr.Reads++; return input.Read4016(); }
-
-		if (address <= 0x4017 && address >= 0x4000)
-			{ instr.Reads++; return activeApu.ReadAPURegister(address); }
-
-		if (address >= 0x6000)
-			{ instr.Reads++; return cartridge.CPURead(address); }
-
-		return 0; // open bus behavior simplified
+		if (address == 0x4016) return input.Read4016();
+		if (address <= 0x4017 && address >= 0x4000) return activeApu.ReadAPURegister(address);
+		if (address >= 0x6000) return cartridge.CPURead(address);
+		return 0; // simplified open bus
 	}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public void Write(ushort address, byte value)
 	{
-		if (address < 0x2000)
+		instr.Writes++;
+		var page = pages[address >> 8];
+		if (page.data != null && page.writable)
 		{
-			ram[address & 0x07FF] = value; instr.Writes++;
-			return;
+			page.data[page.offset + (address & 0xFF)] = value; return; // RAM fast path (mirrors handled)
 		}
+		WriteSlow(address, value);
+	}
+
+	private void WriteSlow(ushort address, byte value)
+	{
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
-			ppu.WritePPURegister(reg, value); instr.Writes++;
-			return;
+			ppu.WritePPURegister(reg, value); return;
 		}
-		if (address == 0x4016)
-		{
-			input.Write4016(value); instr.Writes++; return;
-		}
-		if (address == 0x4014)
-		{
-			ppu.WriteOAMDMA(value); instr.OamDmaWrites++; instr.Writes++; return;
-		}
+		if (address == 0x4016) { input.Write4016(value); return; }
+		if (address == 0x4014) { ppu.WriteOAMDMA(value); instr.OamDmaWrites++; return; }
 		if (address <= 0x4017 && address >= 0x4000)
 		{
 			int idx = address - 0x4000;
 			if (idx >=0 && idx < apuRegLatch.Length) apuRegLatch[idx] = value;
-			activeApu.WriteAPURegister(address, value); instr.Writes++; return;
+			activeApu.WriteAPURegister(address, value); return;
 		}
-		if (address >= 0x6000)
+		if (address >= 0x6000) { cartridge.CPUWrite(address, value); return; }
+	}
+
+	// === OAM DMA Fast Path (Item #7) ===
+	// If source page is internal RAM (0x0000-0x1FFF mirrors) perform a single BlockCopy instead of 256 bus.Read calls.
+	// For now only RAM pages fast path; future: detect linear PRG ROM banks for immediate copy.
+	public void FastOamDma(byte page, byte[] destOam, ref byte oamAddr)
+	{
+		ushort baseAddr = (ushort)(page << 8);
+		if (!pageTableInitialized) { // safety fallback
+			for (int i=0;i<256;i++) destOam[oamAddr++] = Read((ushort)(baseAddr + i));
+			return;
+		}
+		int pageIndex = baseAddr >> 8;
+		var srcPage = pages[pageIndex];
+		bool isRam = srcPage.data == ram; // all mirrors point to same array
+		if (isRam)
 		{
-			cartridge.CPUWrite(address, value); instr.Writes++; return;
+			// Compute linear offset inside 2KB RAM mirroring
+			int mirrorBase = (pageIndex % 0x08) * 0x100; // same as BuildPageTable
+			System.Buffer.BlockCopy(ram, mirrorBase, destOam, oamAddr, 256);
+			oamAddr = (byte)(oamAddr + 256);
+			return;
 		}
+		// Fallback per-byte for non-linear / mapper controlled sources
+		for (int i=0;i<256;i++) destOam[oamAddr++] = Read((ushort)(baseAddr + i));
 	}
 
 	// === Debug Peek/Poke (raw CPU address space) ===

@@ -83,20 +83,20 @@ Impact: 2–5% (minor alone but synergistic with scheduler cleanliness; reduces 
 Risk: Low.
 Effort: Small.
 
-[ ] ### 5. Page Table Memory Dispatch
+[x] ### 5. Page Table Memory Dispatch
 Current: `Bus.Read`/`Write` contain branches customizing RAM, PPU regs, APU regs, cartridge dispatch each access.
 Theory: Build 256-entry `Page` descriptors at mapper init / bank switch: struct `{ byte[] data; int base; bool writable; Func<ushort,byte>? readCb; Action<ushort,byte>? writeCb; }`. Resolve via `var page = pages[addr>>8];` If `readCb==null`, data access; else invoke callback for PPU/APU/mapper side-effects. Set all RAM mirror pages (0x00–0x1F) to same underlying array with distinct base offsets eliminating `&0x07FF`.
 Impact: 15–30% if bus hits dominate (post-scheduler). Realistic combined with other changes.
 Risk: Moderate (ensure side-effects for PPU open bus, mapper IRQ counters still fire in callback pages).
 Effort: Medium.
 
-[ ] ### 6. Inline RAM Mirroring Removal via Page Table
+[x] ### 6. Inline RAM Mirroring Removal via Page Table
 By mapping mirrored addresses to same physical RAM pages you remove `(address & 0x07FF)` bitmask per access.
 Impact: 3–6% CPU time inside memory ops.
 Risk: Low.
 Effort: Small (done concurrently with #5).
 
-[ ] ### 7. OAM DMA Fast Path
+[x] ### 7. OAM DMA Fast Path
 Current: Likely loops 256 `bus.Read` + `ppu.WriteOAMByte` (presently `ppu.WriteOAMDMA(page)` just invoked with page value then loops inside PPU/BUS).
 Theory: If source page is linear (RAM / PRG) perform a single `Buffer.BlockCopy` or `Unsafe.CopyBlockUnaligned`. Simulate CPU stall cycles by adding 513/514 to cycle counter instead of literal per byte timing.
 Impact: 2–4% (once per frame typical). More in sprite heavy scenarios.
@@ -394,6 +394,15 @@ Keep `optimize.md` under version control and update Impact/Risk estimates after 
 
 ---
 ## Done Items (Move here as changes land)
+
+### 5. Page Table Memory Dispatch
+Implemented: Added 256-entry page table (`Bus.pages`) with direct RAM page mappings for 0x0000-0x1FFF mirrors (8 physical pages mirrored across 0x00-0x1F) eliminating branch cascade and bitmasking in hot path. `Bus.Read/Write` now first consult page table; fallback (`ReadSlow/WriteSlow`) handles PPU, APU, IO, cartridge. Prepped for future mapper direct page insertion. Risk mitigated by keeping legacy logic intact for non-linear regions.
+
+### 6. Inline RAM Mirroring Removal via Page Table
+Implemented: Mirror handling moved to page table offsets (`offset = (p % 0x08) * 0x100`), removing `(address & 0x07FF)` from hot path. Fast path now single array index. Preparatory groundwork for later CPU opcode dispatch improvements (#11) and potential mapper bank direct mapping (#33).
+
+### 7. OAM DMA Fast Path
+Implemented: Added `Bus.FastOamDma` performing `Buffer.BlockCopy` for internal RAM source pages; all PPU cores' `WriteOAMDMA` updated to call this, removing 256 per-byte bus reads. Fallback per-byte copy retained for non-RAM sources (future PRG direct copy optimization pending). Metrics: expect ~2–4% reduction in frame CPU on typical frame (once-per-frame DMA). Instrumentation counter (`instr.OamDmaWrites`) unchanged.
 
 ### 19. Reflection & Verbose Logging Stripping
 Implemented: Wrapped all `Console.WriteLine` diagnostic / verbose messages in `#if DIAG_LOG` (toggle via `-p:EnableDiagLog=true`). Program global exception handler, Cartridge ctor, NES SaveState/LoadState diagnostics, UI SaveState in `Nes.razor`. Default builds exclude these writes, reducing I/O overhead and string interpolation cost.

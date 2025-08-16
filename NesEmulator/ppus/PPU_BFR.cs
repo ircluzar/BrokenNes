@@ -710,12 +710,7 @@ public class PPU_BFR : IPPU
 
 	public void WriteOAMDMA(byte page)
 	{
-		ushort baseAddr = (ushort)(page << 8);
-		for (int i = 0; i < 256; i++)
-		{
-			byte value = bus.Read((ushort)(baseAddr + i));
-			oam[OAMADDR++] = value;
-		}
+		bus.FastOamDma(page, oam, ref OAMADDR);
 	}
 
 	private void IncrementY()
