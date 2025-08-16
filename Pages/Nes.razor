@@ -547,6 +547,7 @@
                                 }
                             </div>
                             <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks5x" disabled="@(nes==null || benchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(benchRunning?"Running...":"Run 5×")</button>
                                 <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":$"Run (x{benchWeight})")</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="CloseBenchModal" aria-label="Close">Close</button>
                             </div>
@@ -666,6 +667,8 @@
     private List<string> ppuCoreOptions = new();
     private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
     private bool isFullscreen = false; // track fullscreen state
+    // Flag to disable automatic test ROM static after any savestate load
+    private bool autoStaticSuppressed = false;
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
     private string mobileFsView = "controller";
     private bool touchControllerInitialized = false;
@@ -1088,8 +1091,8 @@
 
         try
         {
-            // Auto static mode when special test ROM active
-            bool autoStatic = string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+            // Auto static only for default test ROM and only before a savestate has been shown
+            bool autoStatic = string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !autoStaticSuppressed;
             nes.EnableStatic(autoStatic);
             nes.SetInput(inputState);
             if (fastForward)
@@ -1327,6 +1330,7 @@
 
             nes = new NesEmulator.NES();
             nes.LoadROM(romData);
+            autoStaticSuppressed = false;
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
 
@@ -1535,6 +1539,7 @@
                 Status.Set($"Loading uploaded ROM {romFileName}...");
                 nes = new NesEmulator.NES();
                 nes.LoadROM(data);
+                autoStaticSuppressed = false; // new ROM -> allow static again if test.nes
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                 SetApuCoreSelFromEmu();
                 SetApuCoreSelFromEmu();
@@ -1853,6 +1858,7 @@
 
                 // Now load the savestate
                 nes.LoadState(full);
+                autoStaticSuppressed = true; // prevent returning to static noise after manual load
                 // If state restored into a crash/unsupported mapper mode, force IgnoreErrors to best-effort recover
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
                 // Reset audio timeline and draw
@@ -1935,6 +1941,82 @@
         finally { benchRunning = false; StateHasChanged(); }
     }
 
+    // Runs five benchmark passes sequentially, reloading the baseline state before each pass.
+    private async Task RunBenchmarks5x()
+    {
+        if (nes == null || benchRunning) { benchModalOpen = true; return; }
+        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; StateHasChanged();
+        bool wasRunning = isRunning;
+        try {
+            if (wasRunning) await PauseEmulation();
+            int w = benchWeight; if (w<1) w=1; if (w>20) w=20; benchWeight = w;
+            const int passes = 5;
+            var passResults = new List<IReadOnlyList<NesEmulator.NES.BenchResult>>();
+            for (int i=1;i<=passes;i++)
+            {
+                await TryLoadBaselineStateForBenchmarks();
+                var res = nes.RunBenchmarks(w);
+                passResults.Add(res);
+                benchResultsText = $"Running pass {i}/{passes}..."; // live status
+                StateHasChanged();
+            }
+            // Aggregate: assume all passes produced same sequence lengths & names
+            var averaged = new List<NesEmulator.NES.BenchResult>();
+            if (passResults.Count>0)
+            {
+                var first = passResults[0];
+                for (int idx=0; idx<first.Count; idx++)
+                {
+                    var name = first[idx].Name;
+                    int iters = first[idx].Iterations; // assumed constant
+                    double msTotalAvg = passResults.Average(p=>p[idx].MsTotal);
+                    double msPerIterAvg = passResults.Average(p=>p[idx].MsPerIter);
+                    long cpuReadsAvg = (long)passResults.Average(p=>p[idx].CpuReads);
+                    long cpuWritesAvg = (long)passResults.Average(p=>p[idx].CpuWrites);
+                    long apuCyclesAvg = (long)passResults.Average(p=>p[idx].ApuCycles);
+                    long oamDmaWritesAvg = (long)passResults.Average(p=>p[idx].OamDmaWrites);
+                    averaged.Add(new NesEmulator.NES.BenchResult(name, iters, msTotalAvg, msPerIterAvg, cpuReadsAvg, cpuWritesAvg, apuCyclesAvg, oamDmaWritesAvg));
+                }
+            }
+            // Build display text summarizing passes and averaged table
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Benchmark Results (5-pass average)");
+            sb.AppendLine($"Each pass weight={w}; fields averaged over {passes} passes.");
+            sb.AppendLine();
+            sb.AppendLine("Averaged Table:");
+            sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA");
+            foreach (var r in averaged)
+            {
+                sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Raw Pass Summaries:");
+            for (int i=0;i<passes;i++)
+            {
+                sb.AppendLine($"-- Pass {i+1} --");
+                foreach (var r in passResults[i])
+                {
+                    sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+                }
+                sb.AppendLine();
+            }
+            benchResultsText = sb.ToString().TrimEnd();
+            // Single history entry containing averaged + raw details
+            var historyEntry = new BenchHistoryEntry {
+                TimestampUtc = DateTime.UtcNow,
+                Rom = currentRomName,
+                CpuCore = nes.GetCpuCoreId(),
+                PpuCore = nes.GetPpuCoreId(),
+                ApuCore = nes.GetApuCoreId(),
+                Display = benchResultsText
+            };
+            benchHistory.Insert(0, historyEntry);
+            currentBenchHistoryId = historyEntry.Id;
+            await PersistBenchHistory();
+        } catch (Exception ex) { benchResultsText = "Benchmark 5x error: "+ex.Message; }
+        finally { benchRunning = false; if (wasRunning) await StartEmulation(); StateHasChanged(); }
+    }
+
     // Silent baseline state loader used exclusively for benchmarks to improve result stability.
     // Returns true if a savestate was found & loaded; false if none or on failure.
     private async Task<bool> TryLoadBaselineStateForBenchmarks()
@@ -2002,6 +2084,7 @@
             catch { /* ignore parse errors */ }
 
             nes?.LoadState(full);
+            autoStaticSuppressed = true; // ensure benchmarks display real frames
             try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
             try { framebuffer = nes!.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
@@ -2196,7 +2279,7 @@
     { if (e.Value is string v) ghSelectedBaseId = v; }
     private async Task GhLoadSelectedBase()
     {
-    if (nes == null) return; var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; try { nes.LoadState(b.State); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); Status.Set($"Loaded base '{b.Name}'"); } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
+    if (nes == null) return; var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; try { nes.LoadState(b.State); autoStaticSuppressed = true; framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); Status.Set($"Loaded base '{b.Name}'"); } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
     }
     private void GhDeleteSelectedBase()
     { var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; ghBaseStates.Remove(b); if (!ghBaseStates.Any()) ghSelectedBaseId = string.Empty; else ghSelectedBaseId = ghBaseStates.Last().Id; }
@@ -2222,7 +2305,7 @@
     {
         if (nes==null || !GhHasSelectedBase) return; var baseState = ghBaseStates.First(b=>b.Id==ghSelectedBaseId);
         try {
-            nes.LoadState(baseState.State); // ensure deterministic start
+            nes.LoadState(baseState.State); autoStaticSuppressed = true; // ensure deterministic start (disable static)
             var writes = GhGenerateBlastLayer(Math.Clamp(corruptIntensity,1,1024));
             GhApplyBlastLayer(writes);
             var entry = new HarvestEntry { Name = $"Stash {++ghStashCounter}", BaseStateId = baseState.Id, Writes = writes };
@@ -2234,7 +2317,7 @@
     private string GhFindBaseName(string id) => ghBaseStates.FirstOrDefault(b=>b.Id==id)?.Name ?? "?";
     private void GhDeleteStash(string id){ var e = ghStash.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStash.Remove(e); }
     private void GhPromoteEntry(HarvestEntry e){ ghStash.Remove(e); e.Name = $"Entry {++ghStockpileCounter}"; ghStockpile.Add(e); }
-    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ var baseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); if (nes==null || baseState==null) return; try { nes.LoadState(baseState.State); GhApplyBlastLayer(e.Writes); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", framebuffer); Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } }
+    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ var baseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); if (nes==null || baseState==null) return; try { nes.LoadState(baseState.State); autoStaticSuppressed = true; GhApplyBlastLayer(e.Writes); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", framebuffer); Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } }
     private void GhDeleteStock(string id){ var e = ghStockpile.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStockpile.Remove(e); if (ghRenamingId==id){ ghRenamingId=null; ghRenameText=""; } }
     private void GhClearStash(){ ghStash.Clear(); }
     private bool GhIsRenaming(string id) => ghRenamingId==id;
