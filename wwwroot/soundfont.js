@@ -54,7 +54,8 @@
         if(!ctx){ ctx = new (window.AudioContext||window.webkitAudioContext)(); }
         if(!outputGain){
             outputGain = ctx.createGain();
-            outputGain.gain.value = 1.0;
+            // Master output gain (reduced to 50% per request to make entire soundfont quieter)
+            outputGain.gain.value = 0.5;
             outputGain.connect(ctx.destination);
         }
         initialized = true;
@@ -140,7 +141,8 @@
             const dur = 0.12;
             const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate*dur), ctx.sampleRate);
             const data = buffer.getChannelData(0);
-            for(let i=0;i<data.length;i++){ data[i] = (Math.random()*2-1)* (velocity/127)*0.35; }
+            // 25% quieter noise channel (0.35 * 0.75 = 0.2625)
+            for(let i=0;i<data.length;i++){ data[i] = (Math.random()*2-1)* (velocity/127)*0.2625; }
             const src = ctx.createBufferSource(); src.buffer = buffer;
             const gNode = ctx.createGain(); gNode.gain.setValueAtTime(1, ctx.currentTime);
             gNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+dur);
