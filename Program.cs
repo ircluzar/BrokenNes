@@ -27,7 +27,9 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
     var logger = app.Services.GetService<ILogger<Program>>();
     logger?.LogCritical(e.ExceptionObject as Exception, "Unhandled exception occurred");
+    #if DIAG_LOG // Controlled via -p:EnableDiagLog=true
     Console.WriteLine($"Unhandled exception: {e.ExceptionObject}");
+    #endif
 };
 
 await app.RunAsync();

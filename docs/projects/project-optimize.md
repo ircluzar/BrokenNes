@@ -76,7 +76,7 @@ Impact: Medium–High (44.1k×samples per second * ~2 divides).
 Risk: Low (tables replicate formula exactly; or generate at startup to avoid code size bloat).
 Effort: Small.
 
-[ ] ### 4. Fixed‑Point Frame Timing (Remove double in `RunFrame`)
+[x] ### 4. Fixed‑Point Frame Timing (Remove double in `RunFrame`)
 Current: Frame loop uses `double CyclesPerFrame + cycleRemainder` each call.
 Theory: Maintain 64‑bit integer accumulator or 32.32 fixed for fractional cycles: accumulate CPU cycles per frame (1789773 for NTSC); subtract target (29780.5 × 60) or use precomputed per‑frame integer remainder elimination algorithm. Avoid double conversions.
 Impact: 2–5% (minor alone but synergistic with scheduler cleanliness; reduces GC of boxing doubles if any and FP pipeline pressure in WASM).
@@ -172,13 +172,13 @@ Impact: Strong when frequent savestates / rewind; negligible otherwise.
 Risk: Low.
 Effort: Medium.
 
-[ ] ### 19. Reflection & Verbose Logging Stripping
+[x] ### 19. Reflection & Verbose Logging Stripping
 Use `#if DEBUG` around diagnostic `Console.WriteLine` (observed in `LoadState` and likely elsewhere).
 Impact: Small steady; prevents I/O stalls & log noise; improves startup JIT locality.
 Risk: Low.
 Effort: Small.
 
-### 20. Remove Per‑Frame Console Writes
+[x] ### 20. Remove Per‑Frame Console Writes
 Ensure no `Console.WriteLine` inside hot loops (scan showed prints in state load; verify none in `RunFrame`).
 Impact: Small but crucial to avoid perf cliffs.
 Risk: Low.
@@ -393,7 +393,13 @@ Keep `optimize.md` under version control and update Impact/Risk estimates after 
 
 ---
 ## Done Items (Move here as changes land)
-*(Empty initially)*
+
+### 19. Reflection & Verbose Logging Stripping
+Implemented: Wrapped all `Console.WriteLine` diagnostic / verbose messages in `#if DIAG_LOG` (toggle via `-p:EnableDiagLog=true`). Program global exception handler, Cartridge ctor, NES SaveState/LoadState diagnostics, UI SaveState in `Nes.razor`. Default builds exclude these writes, reducing I/O overhead and string interpolation cost.
+
+### 20. Remove Per‑Frame Console Writes
+Implemented: All remaining `Console.WriteLine` usages are wrapped in `#if DIAG_LOG` (Cartridge header/info & unsupported mapper notice, Program unhandled exception, NES SaveState/LoadState diagnostics, UI SaveState diagnostics). A repo-wide search shows zero ungated `Console.WriteLine` in per-frame paths (`NES.RunFrame`, animation frame loop in `Nes.razor`). Result: No I/O in hot loops for Release builds; DIAG logging is opt-in via `-p:EnableDiagLog=true` defining the `DIAG_LOG` symbol.
+
 
 ---
 Generated: (initial version) – Update date/time as list evolves.

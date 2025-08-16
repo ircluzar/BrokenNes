@@ -1854,7 +1854,11 @@
     {
         if (nes == null || stateBusy) return; stateBusy = true;
         DateTime diagStart = DateTime.UtcNow;
-        void Diag(string s){ try { Console.WriteLine($"[SaveStateUI] {{DateTime.UtcNow:O}} {s}"); } catch {} }
+    #if DIAG_LOG
+    void Diag(string s){ try { Console.WriteLine($"[SaveStateUI] {{DateTime.UtcNow:O}} {s}"); } catch {} }
+    #else
+    void Diag(string s) { }
+    #endif
         Diag("UI SaveState invoked");
         try
         {

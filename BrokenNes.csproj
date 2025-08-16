@@ -16,7 +16,13 @@
   <PublishTrimmed>true</PublishTrimmed>
   <DebugType>portable</DebugType>
   <Optimize>true</Optimize>
-  <DefineConstants>$(DefineConstants);FAST_EMU</DefineConstants>
+  <!-- Persistent manual toggle: set EnableDiagLog true to append ;DIAG_LOG to DefineConstants -->
+  <EnableDiagLog>false</EnableDiagLog>
+  <!-- Intermediate property expands to ;DIAG_LOG only when enabled -->
+  <DiagLogDefine Condition="'$(EnableDiagLog)'=='true'">;DIAG_LOG</DiagLogDefine>
+  <!-- Consolidated constants (no conditional element) -->
+  <DefineConstants>$(DefineConstants);FAST_EMU$(DiagLogDefine)</DefineConstants>
+  <!-- (Removed conditional DefineConstants element; handled via DiagLogDefine above) -->
   <!-- Allow disabling AOT by setting -p:DisableAot=true on publish/build -->
   <RunAOTCompilation Condition="'$(DisableAot)'=='true'">false</RunAOTCompilation>
   <DefineConstants Condition="'$(DisableAot)'=='true'">$(DefineConstants);NO_AOT</DefineConstants>

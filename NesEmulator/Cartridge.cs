@@ -37,14 +37,15 @@ public class Cartridge
 	public Cartridge(byte[] romData)
 	{
 		rom = romData;
-		
-		// Debug: Log ROM data information
+		#if DIAG_LOG
+		// Debug: Log ROM data information (stripped in Release for perf / noise reduction)
 		Console.WriteLine($"ROM Data Length: {rom.Length}");
 		if (rom.Length >= 16)
 		{
 			Console.WriteLine($"Header bytes: {rom[0]:X2} {rom[1]:X2} {rom[2]:X2} {rom[3]:X2}");
 			Console.WriteLine($"Expected: 4E 45 53 1A (NES\\x1A)");
 		}
+		#endif
 		
 		if (rom.Length < 16)
 		{
@@ -113,7 +114,9 @@ public class Cartridge
 			}
 		}
 		
+		#if DIAG_LOG
 		Console.WriteLine($"Cartridge loaded: PRG={prgBanks}x16KB, CHR={chrBanks}x8KB, Mapper={mapperID}, Trainer={(hasTrainer?"Yes":"No")}, Battery={(hasBattery?"Yes":"No")}");
+		#endif
 		
 		string mapperName = GetMapperName(mapperID);
 		switch (mapperID) {
@@ -139,7 +142,9 @@ public class Cartridge
 					mapper = new Mapper7(this);
 					break;
 			default:
+				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
+				#endif
 				throw new UnsupportedMapperException(mapperID, mapperName);
 		}
 		mapper.Reset();
