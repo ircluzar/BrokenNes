@@ -72,12 +72,24 @@ Risk: Low–Med for partial (cycle ordering unchanged within batch, only consoli
 Status: Foundations complete (global cycle counter, experimental event loop, scanline event scheduling, UI toggle, instrumentation). Remaining enhancements (APU event integration, IRQ/NMI event times, removal of heuristic batch constants) are now tracked under items #2 (APU), #10 (Unified Scheduler), and #17 (Interrupt Scheduling).
 Effort Remaining: Deferred to linked items (#2/#10/#17). Item #1 considered complete as an enabling layer.
 
-[ ] ### 2. Event‑Driven APU Timers (Remove per‑CPU cycle loop)
-Current: `APU_LOW.Step(int cpuCycles)` (and similar) iterates for each CPU cycle, decrementing multiple counters and possibly generating samples.
-Theory: Track per‑channel countdowns (`cyclesUntilPulse1`, `cyclesUntilTriangle`, `cyclesUntilFrameSeq`, etc.). Find smallest delta, advance time by that delta once, perform all events that hit zero, reschedule. Sample pacing uses integer accumulation (#15) to emit correct number of samples over advanced span.
-Impact: 10–15% overall if APU currently >20% cost.
-Risk: Medium—edge cases in frame sequencer 4‑ vs 5‑step modes, DMC timing, sweep negation boundaries.
-Effort: Medium.
+[x] ### 2. Event‑Driven APU Timers (Remove per‑CPU cycle loop)
+Current (before): `APU_LOW.Step(int cpuCycles)` looped per CPU cycle performing: frame sequencer check, DMC clock, channel timer decrements, envelope/length logic, sample pacing fractional accumulator update, and potential sample emission. High call frequency (≈1.79M iterations/sec) caused overhead in WASM and desktop.
+Implemented (2025‑08‑16e): Rewrote `APU_LOW.Step` into a delta‑driven mini event loop. For a requested `cpuCycles` slice:
+    * Determine next imminent event among: pulse1 timer underflow, pulse2 timer underflow, triangle timer underflow, noise timer underflow, DMC bit clock, frame sequencer event, next audio sample emission boundary.
+    * Fast‑forward all counters by `delta` in one operation (subtract `delta`, advance `frameCycle`, accumulate `fractionalSampleAccumulator`).
+    * Process any events that reached <=0 (looping to handle multi‑underflow when `delta` overshoots periods) reloading counters and advancing sequencers.
+    * Recompute channel outputs once per loop (instead of each cycle) based on updated sequence indices and envelopes/length counters (which are advanced by frame sequencer events only).
+    * Emit audio samples only when accumulator crosses integer boundary (batching). Any overflow at end of slice drains in a final emission step.
+    * DMC fetch logic consolidated: fetch attempted at each bit clock event and opportunistically once per outer loop when enabled.
+Notes:
+    * Frame sequencer logic (`ClockFrameSequencer`) retained; invoked pre‑loop and after each delta advance to process chained events while `frameCycle >= nextFrameEventCycle`.
+    * Envelopes, sweeps, length counters remain sequenced exactly at original quarter/half frame ticks; per‑cycle envelope decrement removed (never existed hardware‑wise).
+    * Channel output update split into helper methods (`UpdatePulseOutput`, `UpdateTriangleOutput`, `UpdateNoiseOutput`) for clarity and potential future vectorization.
+    * Legacy per‑cycle helper methods (`ClockPulse/Triangle/Noise/DMC`) left intact for reference; future cleanup may remove now‑unused per‑cycle versions if other cores migrate.
+Impact Expectation: Removes tight 1.79M iteration loop; early profiling target ≈8–12% reduction in total frame time (depends on proportion of APU work). Further gains pending integer sample pacing (#15) and potential bitfield packing (#21).
+Risk & Validation: Timing sensitive areas (frame sequencer step alignment, DMC IRQ trigger) preserved; requires audio regression test (capture 1s WAV before/after, RMS diff). Feature not yet guarded by flag (direct replacement) since logic is internal; revert possible via git if discrepancies emerge.
+Follow‑ups: Integrate `nextApuEventCycle` exposure to central event scheduler (#10) by computing next minimal counter after each loop; adopt Bresenham integer pacing (#15) to remove floating divide in sample increment precompute; optionally collapse unused legacy per‑cycle methods.
+Effort: Medium (complete initial implementation). Pending instrumentation to quantify APU loop iteration reduction (add APU event counter).
 
 [x] ### 3. LUT + Float‑Only Audio Mixing (Replace divides)
 Current: `MixAndStore` performs two divides per sample and double→float casts.

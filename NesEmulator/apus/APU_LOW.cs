@@ -119,29 +119,194 @@ namespace NesEmulator
         public void Step() => Step(1);
         public void Step(int cpuCycles)
         {
-            const double CpuFreq = 1789773.0; // NTSC
+            if (cpuCycles <= 0) return;
+            const double CpuFreq = 1789773.0; // NTSC CPU frequency
             double sampleIncrement = audioSampleRate / CpuFreq; // samples per CPU cycle (~0.02466)
-            for (int i = 0; i < cpuCycles; i++)
-            {
-                ClockFrameSequencer();
-                ClockDMC();
-                bool p1SweepMute = SweepWouldMute(pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, true);
-                bool p2SweepMute = SweepWouldMute(pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, false);
-                ClockPulse(ref pulse1_timer, ref pulse1_timerCounter, ref pulse1_seqIndex, ref pulse1_output, pulse1_enabled, pulse1_lengthCounter, pulse1_timer < 8, p1SweepMute, pulse1_duty, pulse1_constantVolume, pulse1_volumeParam, pulse1_envDecay, true);
-                ClockPulse(ref pulse2_timer, ref pulse2_timerCounter, ref pulse2_seqIndex, ref pulse2_output, pulse2_enabled, pulse2_lengthCounter, pulse2_timer < 8, p2SweepMute, pulse2_duty, pulse2_constantVolume, pulse2_volumeParam, pulse2_envDecay, false);
-                ClockTriangle();
-                ClockNoise();
-                frameCycle++;
 
-                // Sample generation
-                fractionalSampleAccumulator += sampleIncrement;
+            int remaining = cpuCycles;
+            // Process any immediately due frame sequencer events (rare) before starting
+            ClockFrameSequencer();
+
+            while (remaining > 0)
+            {
+                // Emit any pending samples first (can happen if accumulator carried over >1)
                 if (fractionalSampleAccumulator >= 1.0)
                 {
-                    int emit = (int)fractionalSampleAccumulator; // usually 0 or 1, occasionally 2
-                    fractionalSampleAccumulator -= emit;
-                    for (int s = 0; s < emit; s++) MixAndStore();
+                    int emitPre = (int)fractionalSampleAccumulator;
+                    fractionalSampleAccumulator -= emitPre;
+                    for (int s = 0; s < emitPre; s++) MixAndStore();
                 }
+
+                // Determine cycles until next sample boundary
+                int cyclesToSample;
+                if (fractionalSampleAccumulator <= 0)
+                {
+                    // Need enough cycles so that (frac + delta*inc) >= 1 => delta >= (1-frac)/inc
+                    double needed = (1.0 - fractionalSampleAccumulator) / sampleIncrement;
+                    cyclesToSample = (int)Math.Ceiling(needed);
+                    if (cyclesToSample <= 0) cyclesToSample = 1;
+                }
+                else
+                {
+                    double needed = (1.0 - fractionalSampleAccumulator) / sampleIncrement;
+                    cyclesToSample = needed <= 0 ? 1 : (int)Math.Ceiling(needed);
+                }
+
+                // Cycles until next frame sequencer event
+                int cyclesToFrameEvent = nextFrameEventCycle - frameCycle;
+                if (cyclesToFrameEvent <= 0) cyclesToFrameEvent = 0; // will trigger immediately after delta advance (or immediate if all others large)
+
+                // Gather per-channel timer counters (already count down to 0)
+                int p1 = pulse1_timerCounter > 0 ? pulse1_timerCounter : 0;
+                int p2 = pulse2_timerCounter > 0 ? pulse2_timerCounter : 0;
+                int tri = triangle_timerCounter > 0 ? triangle_timerCounter : 0;
+                int noi = noise_timerCounter > 0 ? noise_timerCounter : 0;
+                int dmc = dmc_enabled && dmc_timer > 0 ? dmc_timer : 0;
+
+                int delta = remaining; // start with remaining, tighten below
+                if (p1 > 0 && p1 < delta) delta = p1;
+                if (p2 > 0 && p2 < delta) delta = p2;
+                if (tri > 0 && tri < delta) delta = tri;
+                if (noi > 0 && noi < delta) delta = noi;
+                if (dmc > 0 && dmc < delta) delta = dmc;
+                if (cyclesToFrameEvent > 0 && cyclesToFrameEvent < delta) delta = cyclesToFrameEvent;
+                if (cyclesToSample > 0 && cyclesToSample < delta) delta = cyclesToSample;
+
+                if (delta <= 0)
+                {
+                    // An immediate event (some counter already zero). Force delta = 0 path.
+                    delta = 0;
+                }
+
+                if (delta > 0)
+                {
+                    // Fast-forward all counters by delta
+                    if (pulse1_timerCounter > 0) pulse1_timerCounter -= delta;
+                    if (pulse2_timerCounter > 0) pulse2_timerCounter -= delta;
+                    if (triangle_timerCounter > 0) triangle_timerCounter -= delta;
+                    if (noise_timerCounter > 0) noise_timerCounter -= delta;
+                    if (dmc_timer > 0) dmc_timer -= delta;
+                    frameCycle += delta;
+                    fractionalSampleAccumulator += sampleIncrement * delta;
+                    remaining -= delta;
+                }
+
+                // Process frame sequencer events (may chain). Keep semantics: events occur when frameCycle >= nextFrameEventCycle
+                ClockFrameSequencer();
+
+                // Channel timer events (those that reached <=0)
+                if (pulse1_timerCounter <= 0)
+                {
+                    // Each underflow advances sequence and reloads until counter >0
+                    int period = (pulse1_timer + 1) * 2;
+                    do { pulse1_timerCounter += period; pulse1_seqIndex = (pulse1_seqIndex + 1) & 7; } while (pulse1_timerCounter <= 0);
+                }
+                if (pulse2_timerCounter <= 0)
+                {
+                    int period = (pulse2_timer + 1) * 2;
+                    do { pulse2_timerCounter += period; pulse2_seqIndex = (pulse2_seqIndex + 1) & 7; } while (pulse2_timerCounter <= 0);
+                }
+                if (triangle_timerCounter <= 0)
+                {
+                    int period = triangle_timer + 1;
+                    do { triangle_timerCounter += period; triangle_seqIndex = (triangle_seqIndex + 1) & 31; } while (triangle_timerCounter <= 0);
+                }
+                if (noise_timerCounter <= 0)
+                {
+                    do
+                    {
+                        int period = NoisePeriods[noise_periodReg & 0x0F];
+                        noise_timerCounter += period;
+                        // Tick LFSR once per timer underflow
+                        int bit0 = noiseShiftRegister & 1;
+                        int tap = ((noise_periodReg & 0x80) != 0) ? ((noiseShiftRegister >> 6) & 1) : ((noiseShiftRegister >> 1) & 1);
+                        int fb = bit0 ^ tap;
+                        noiseShiftRegister = (ushort)((noiseShiftRegister >> 1) | (fb << 14));
+                    } while (noise_timerCounter <= 0);
+                }
+                if (dmc_enabled && dmc_timer <= 0)
+                {
+                    do
+                    {
+                        dmc_timer += dmc_timerPeriod;
+                        if (!dmc_silence)
+                        {
+                            if ((dmc_shiftReg & 1) != 0) { if (dmc_deltaCounter <= 125) dmc_deltaCounter += 2; }
+                            else { if (dmc_deltaCounter >= 2) dmc_deltaCounter -= 2; }
+                        }
+                        dmc_shiftReg >>= 1;
+                        dmc_bitsRemaining--;
+                        if (dmc_bitsRemaining == 0)
+                        {
+                            if (dmc_sampleBufferFilled)
+                            {
+                                dmc_silence = false; dmc_shiftReg = dmc_sampleBuffer; dmc_bitsRemaining = 8; dmc_sampleBufferFilled = false;
+                            }
+                            else
+                            {
+                                dmc_silence = true; dmc_bitsRemaining = 8;
+                            }
+                            TryDmcFetch();
+                        }
+                        // Fetch attempt each bit event
+                        TryDmcFetch();
+                    } while (dmc_timer <= 0);
+                    dmc_output = dmc_deltaCounter;
+                }
+                else if (dmc_enabled)
+                {
+                    // Periodic prefetch (less often than legacy per-cycle fetch). Attempt once per outer loop.
+                    TryDmcFetch();
+                    dmc_output = dmc_deltaCounter;
+                }
+
+                // Recompute channel outputs (similar conditions as legacy per-cycle loop)
+                bool p1SweepMute = SweepWouldMute(pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, true);
+                bool p2SweepMute = SweepWouldMute(pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, false);
+                UpdatePulseOutput(true, p1SweepMute);
+                UpdatePulseOutput(false, p2SweepMute);
+                UpdateTriangleOutput();
+                UpdateNoiseOutput();
             }
+
+            // Emit trailing samples if accumulator exceeded 1.0 during final delta
+            if (fractionalSampleAccumulator >= 1.0)
+            {
+                int emit = (int)fractionalSampleAccumulator;
+                fractionalSampleAccumulator -= emit;
+                for (int s = 0; s < emit; s++) MixAndStore();
+            }
+        }
+
+        private void UpdatePulseOutput(bool first, bool sweepMute)
+        {
+            if (first)
+            {
+                if (!pulse1_enabled || pulse1_lengthCounter == 0 || pulse1_timer < 8 || sweepMute) { pulse1_output = 0; return; }
+                var pattern = PulseDutyTable[pulse1_duty & 3];
+                int bit = pattern[pulse1_seqIndex];
+                int vol = pulse1_constantVolume ? pulse1_volumeParam : pulse1_envDecay;
+                pulse1_output = bit == 1 ? vol : 0;
+            }
+            else
+            {
+                if (!pulse2_enabled || pulse2_lengthCounter == 0 || pulse2_timer < 8 || sweepMute) { pulse2_output = 0; return; }
+                var pattern = PulseDutyTable[pulse2_duty & 3];
+                int bit = pattern[pulse2_seqIndex];
+                int vol = pulse2_constantVolume ? pulse2_volumeParam : pulse2_envDecay;
+                pulse2_output = bit == 1 ? vol : 0;
+            }
+        }
+        private void UpdateTriangleOutput()
+        {
+            if (!triangle_enabled || triangle_lengthCounter == 0 || triangle_linearCounter == 0 || triangle_timer < 2) { triangle_output = 0; return; }
+            triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
+        }
+        private void UpdateNoiseOutput()
+        {
+            if (!noise_enabled || noise_lengthCounter == 0) { noise_output = 0; return; }
+            int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay;
+            noise_output = ((noiseShiftRegister & 1) == 0) ? vol : 0;
         }
 
         // ===== Writes =====
