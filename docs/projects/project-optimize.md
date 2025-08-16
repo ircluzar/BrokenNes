@@ -69,7 +69,7 @@ Impact: 10–15% overall if APU currently >20% cost.
 Risk: Medium—edge cases in frame sequencer 4‑ vs 5‑step modes, DMC timing, sweep negation boundaries.
 Effort: Medium.
 
-[ ] ### 3. LUT + Float‑Only Audio Mixing (Replace divides)
+[x] ### 3. LUT + Float‑Only Audio Mixing (Replace divides)
 Current: `MixAndStore` performs two divides per sample and double→float casts.
 Theory: Precompute `pulseMixLut[0..30]` and `tndLut[0..(15+15+127)]`. Keep channel outputs as ints or small floats; final `mixed = pulseMixLut[p1+p2] + tndLut[t+n+d]`. Convert pipelines to float only; optional pre-scaling to preserve amplitude.
 Impact: Medium–High (44.1k×samples per second * ~2 divides).
@@ -286,7 +286,7 @@ Impact: 1–3% PPU rendering overhead.
 Risk: Low.
 Effort: Small.
 
-[ ] ### 38. Instrumentation & Benchmark Harness
+[x] ### 38. Instrumentation & Benchmark Harness
 Add counters: `cpuInstrCount`, `busReadsRam`, `busWritesRam`, `ppuScanlines`, `apuEvents`, `dmaFastCopies`, `dmaFallbackCopies`. Provide `BenchmarkDotNet` harness: run 10k instructions, run 600 frames, audio mixing of 1 second.
 Impact: Foundational (enables safe optimization & regression detection).
 Risk: Low.

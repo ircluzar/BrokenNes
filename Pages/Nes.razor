@@ -2264,6 +2264,17 @@
             catch { /* ignore parse errors */ }
 
             nes?.LoadState(full);
+            // Benchmark-specific behavior: force cores selected in the UI rather than those stored in the savestate.
+            // This allows benchmarking different core implementations against the exact same memory/map baseline
+            // without the savestate auto-switching cores under us. We intentionally reapply the selected cores
+            // AFTER memory + mapper + ROM state are restored so that RAM/PRG/CHR data reflects the saved snapshot
+            // while CPU/PPU/APU internal register state will correspond to a freshly switched core (cold state).
+            // If in the future we want to attempt cross-core transfer of internal CPU/PPU/APU state, we could
+            // extend ApplySelectedCores to capture and translate compatible fields, but for now the goal is
+            // comparative performance, so a consistent memory baseline is sufficient.
+            try { ApplySelectedCores(); } catch {}
+            // Optional tiny warm-up to stabilize any core-initial one-time work before timing begins.
+            try { nes?.RunFrame(); } catch {}
             try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; currentRomName = savedName; romFileName = savedName; } } } catch {}
             autoStaticSuppressed = true; // ensure benchmarks display real frames
             try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
