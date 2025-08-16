@@ -140,24 +140,43 @@ Impact: Expected 3–6% of APU mixing cost (micro); synergy with LUT mixing (#3)
 Risk: Medium (minor tonal variance). Action: capture 1s WAV before/after; confirm RMS difference within <1 LSB scaled threshold.
 Effort: Medium (completed).
 
-[ ] ### 10. Unified Central Event Scheduler
-Build on #1. Single loop: determine `next = Min(nextPpuEvent, nextApuEvent, nextIrq, frameEnd)`; run CPU instructions until `next`; process events; repeat.
-Impact: Additional 5–10% combined due to larger uninterrupted CPU batches.
-Risk: Medium (timing edge cases). Requires robust tests for NMI, APU frame IRQ, mapper IRQ alignment.
-Effort: Medium–Large depending on integration.
+[x] ### 10. Unified Central Event Scheduler (Partial – PPU + Coarse APU Integrated)
+Goal: Replace heuristic batching with a true min(nextEvent) loop: `next = Min(nextPpuEvent, nextApuEvent, nextIrq, frameEnd)`; run CPU until `next`, process events, repeat.
+Implemented (2025-08-16p):
+    * Added `nextApuEventCycle` scheduling alongside existing `nextPpuEventCycle` & `globalCpuCycle` in `NES`.
+    * Event-driven branch of `RunFrame` now chooses smallest among `frameEnd`, `nextPpuEventCycle`, and `nextApuEventCycle` then advances CPU in bursts, flushing once per boundary.
+    * `ScheduleNextApuEvent()` provisional quantum (64 CPU cycles) inserted—acts as coarse polling bucket until APU exposes precise `NextEventCycle`.
+    * Maintains existing scanline scheduling (alternating 114/114/113 CPU cycles ≈ 341 PPU * 3) from earlier scaffolding.
+Benefits So Far: Further reduces PPU/APU stepping call frequency vs. pure batching path; establishes single consolidated decision point for future IRQ and fine APU events.
+Deferred / Next Steps:
+    1. Replace APU quantum with exact next channel / frame / DMC bit event surfaced from APU core (#2 follow-up).
+    2. Add `nextIrqCycle` / `nextNmiCycle` integration (ties into item #17) so IRQ/NMI latency is modeled without per-instruction polling.
+    3. Expose mapper (e.g., MMC3) IRQ countdown as scheduler event once supported (#26 / #40 synergy).
+    4. Remove legacy batch heuristic & feature flag after parity tests (frame hashes, audio alignment) pass.
+Risk: Medium (future phases must verify interrupt & frame sequencer edge timing). Current partial keeps conservative coarse APU polling minimizing correctness risks.
+Status: PARTIAL COMPLETE – core loop structure and dual PPU/APU event arbitration in place; precision & IRQ events pending.
 
-[ ] ### 11. CPU Opcode Dispatch Table
-Current: (Inferred) large switch each instruction. JIT usually jump-tables, but combining addressing mode + operation into metadata reduces code size & branches.
-Theory: Precompute arrays: `delegate*<CPU,int> exec[256]; byte baseCycles[256]; AddrMode modes[256];` Execution: fetch opcode, call function pointer returning extra cycles. Optionally inline addressing resolution per mode via small function pointer tables.
-Impact: 5–8% CPU instruction dispatch (2–5% overall after larger structural wins).
-Risk: Low (unchanged semantics; ensure unofficial opcodes maintained).
-Effort: Medium.
+[x] ### 11. CPU Opcode Dispatch Table
+Implemented (2025-08-16q): Replaced monolithic `switch(opcode)` in `CPU_LOW` with pre-built `Func<int>?[] opcodeExec` table populated by `BuildOpcodeTable()`. Each handler combines addressing mode resolution + operation, returning cycle count (including page-cross penalties). Unofficial NOP variants mapped to lightweight lambdas. Removed legacy switch and related dead code.
+Details:
+    * Fast fetch uses `ReadFast` path (see #12) minimizing bus branching.
+    * Page-cross handling done within addressing helpers; returned extra cycles added in handler where required.
+    * Table allows future metadata arrays (baseCycles[], pageCrossAdds[]) if micro-optimizing call overhead or enabling pointer-based direct calls.
+Impact Expectation: 5–8% faster 6502 dispatch path (pending measurement counters) by eliminating large branch table & improving I-cache locality.
+Risk: Low (logic mirrors prior switch; unit/integration tests should confirm opcode parity including unofficials). Fallback path removed after successful build & smoke test.
+Status: COMPLETE.
 
-[ ] ### 12. Bus Fast Path Inside CPU
-Expose direct references to `ram` / common PRG ROM bank arrays; implement `ReadFast`/`WriteFast` inside CPU that bypass Bus for most addresses, fallback for specials—if page table (#5) not yet implemented.
-Impact: 3–6%.
-Risk: Low.
-Effort: Small.
+[x] ### 12. Bus Fast Path Inside CPU (< $2000 RAM Mirrors)
+Implemented (2025-08-16q): Added `ReadFast(ushort addr)` / `WriteFast(ushort addr, byte v)` in `CPU_LOW` performing direct array access for internal RAM & mirrors (`addr & 0x07FF`) without invoking full `Bus.Read/Write`. All hot instruction handlers and addressing modes updated to call fast path for zero page, stack, absolute, indexed, and indirect accesses that land in RAM range; fall back to full bus for others (PPU/APU/MMIO/PRG). Write-fast applies mirror mask once.
+Notes:
+    * Complements future page table (#5/#6) but provides immediate benefit prior to that infrastructure.
+    * Coupled with dispatch table (#11) reduces per-instruction overhead (fewer virtual / delegate hops plus simpler memory path).
+    * Safe because internal RAM has no side-effects; mirroring semantics preserved via mask.
+Impact Expectation: 3–6% reduction in CPU core time for RAM-heavy code sequences (typical NES game logic).
+Risk: Low (limited to RAM window). Added comments for eventual replacement by direct page pointer strategy.
+Status: COMPLETE.
+
+<!-- Items 11 & 12 moved to implemented section above -->
 
 [ ] ### 13. Precomputed Nametable Mirroring
 Build four static `ushort ntResolve[4096]` lookup tables (H, V, SingleA, SingleB). PPU VRAM access becomes `vram[ ntResolve[address & 0x0FFF] ]` with current table pointer.

@@ -246,67 +246,49 @@ public class PPU_LOW : IPPU
 
 		EnsureFrameBuffer();
 
-	// Cache universal background color once per scanline
-	byte ubIdx = paletteRAM[0];
-	int ubp = (ubIdx & 0x3F) * 3;
-	byte ubR = PaletteBytes[ubp];
-	byte ubG = PaletteBytes[ubp+1];
-	byte ubB = PaletteBytes[ubp+2];
+		// Cache universal background color once per scanline.
+		byte ubIdx = paletteRAM[0];
+		int ubp = (ubIdx & 0x3F) * 3;
+		byte ubR = PaletteBytes[ubp];
+		byte ubG = PaletteBytes[ubp+1];
+		byte ubB = PaletteBytes[ubp+2];
+		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
-
 		// Render 33 tiles (32 visible + 1 for scrolling)
 		for (int tile = 0; tile < 33; tile++)
 		{
-			// Extract nametable coordinates from current VRAM address
 			int coarseX = renderV & 0x001F;
 			int coarseY = (renderV >> 5) & 0x001F;
 			int nameTable = (renderV >> 10) & 0x0003;
-
-			// Calculate nametable address
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 			byte tileIndex = Read((ushort)tileAddr);
-
-			// Get fine Y scroll (which row within the 8x8 tile)
 			int fineY = (renderV >> 12) & 0x7;
-			
-			// Determine pattern table (background uses PPUCTRL bit 4)
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 			int patternAddr = patternTable + (tileIndex * 16) + fineY;
-			
-			// Read the two bit planes for this row of the tile
 			byte plane0 = Read((ushort)patternAddr);
 			byte plane1 = Read((ushort)(patternAddr + 8));
-
-			// Get attribute byte for color palette
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
 			byte attrByte = Read((ushort)attrAddr);
-
-			// Extract the 2-bit palette index for this tile
 			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 			int paletteIndex = (attrByte >> attrShift) & 0x03;
+			int scanlineBase = scanlineBaseAll;
 
-			// Pre-calculate frame buffer base for this scanline
-			int scanlineBase = scanline * ScreenWidth * 4;
-
-			// Render the 8 pixels of this tile
+			// Render 8 pixels: shift planes instead of recomputing bit index.
+			byte p0 = plane0; byte p1 = plane1;
 			for (int i = 0; i < 8; i++)
 			{
 				int pixel = tile * 8 + i - fineX;
-				if (pixel < 0 || pixel >= ScreenWidth) continue;
-
-				int bitIndex = 7 - i;
-				int bit0 = (plane0 >> bitIndex) & 1;
-				int bit1 = (plane1 >> bitIndex) & 1;
-				int colorIndex = bit0 | (bit1 << 1);
-
+				if ((uint)pixel >= ScreenWidth) { p0 <<= 1; p1 <<= 1; continue; }
+				int bit0 = (p0 & 0x80) >> 7;
+				int bit1 = (p1 & 0x80) >> 6; // already shifted one extra to combine later
+				int colorIndex = bit0 | bit1;
 				int frameIndex = scanlineBase + pixel * 4;
 				if (colorIndex == 0)
 				{
-					// Universal background color
 					frameBuffer![frameIndex + 0] = ubR;
 					frameBuffer![frameIndex + 1] = ubG;
 					frameBuffer![frameIndex + 2] = ubB;
@@ -323,9 +305,9 @@ public class PPU_LOW : IPPU
 					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
 					frameBuffer![frameIndex + 3] = 255;
 				}
+				p0 <<= 1; p1 <<= 1;
 			}
 
-			// Increment to next tile
 			IncrementX(ref renderV);
 		}
 	}

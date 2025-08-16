@@ -398,12 +398,14 @@ namespace NesEmulator
 				// --- Experimental event-driven path (Feature flag gated) ---
 				// Ensure first PPU event is scheduled (scanline end) if not already or stale
 				if (nextPpuEventCycle <= globalCpuCycle) ScheduleNextPpuScanline();
+				if (nextApuEventCycle <= globalCpuCycle) ScheduleNextApuEvent();
 				try {
 					while (globalCpuCycle < frameEndCycle)
 					{
 						long next = frameEndCycle;
 						if (nextPpuEventCycle > globalCpuCycle && nextPpuEventCycle < next) next = nextPpuEventCycle;
-						// (APU / IRQ events will be integrated later)
+						if (nextApuEventCycle > globalCpuCycle && nextApuEventCycle < next) next = nextApuEventCycle;
+						// (IRQ events to be integrated later)
 						long remaining = next - globalCpuCycle;
 						int batchCpu = 0;
 						// Execute instructions until we reach or exceed the next event boundary
@@ -417,10 +419,8 @@ namespace NesEmulator
 						}
 						FlushBatch(batchCpu);
 						// Process PPU scanline event if reached
-						if (globalCpuCycle >= nextPpuEventCycle)
-						{
-							ScheduleNextPpuScanline();
-						}
+						if (globalCpuCycle >= nextPpuEventCycle) ScheduleNextPpuScanline();
+						if (globalCpuCycle >= nextApuEventCycle) ScheduleNextApuEvent();
 					}
 				}
 				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
@@ -486,6 +486,16 @@ namespace NesEmulator
 			int delta = PpuScanlineCpuPattern[ppuScanlinePatternIndex];
 			ppuScanlinePatternIndex++; if (ppuScanlinePatternIndex >= PpuScanlineCpuPattern.Length) ppuScanlinePatternIndex = 0;
 			nextPpuEventCycle = globalCpuCycle + delta;
+		}
+
+		// APU event scheduling (placeholder granularity: every 1 CPU cycle batch up to small quantum)
+		// Future: expose fine-grained events (frame sequencer, DMC IRQ) from active APU core.
+		private const int ApuEventQuantum = 64; // re-schedule APU mixing/check every 64 CPU cycles
+		private void ScheduleNextApuEvent()
+		{
+			long target = globalCpuCycle + ApuEventQuantum;
+			if (target <= globalCpuCycle) target = globalCpuCycle + 1;
+			nextApuEventCycle = target;
 		}
 		// Consolidated flush helper so later event-based stepping can reuse it
 		private void FlushBatch(int cpuCycles)
