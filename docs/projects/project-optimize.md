@@ -202,11 +202,12 @@ Impact: Removes two divides and several FP ops per sample (~88K divisions/sec at
 Risk: Low (tables replicate canonical formula exactly).
 Effort: Small (done).
 
-[ ] ### 17. Interrupt Boundary Scheduling
-Maintain `nextIrqCycle`, `nextNmiCycle`; CPU batch loop only checks when surpassing those cycles. Removes per‑instruction flag checks.
-Impact: 1–3%.
-Risk: Low–Med (must not overshoot hardware latency expectations).
-Effort: Small.
+[x] ### 17. Interrupt Boundary Scheduling
+Implemented (2025-08-16r): Added scheduler-based servicing of NMI/IRQ at batch/event boundaries in `NES` when event scheduler enabled. `CPU_LOW` gained `InlineInterruptChecks` flag (default true) and `ServicePendingInterrupts()` method. In event loop mode we set `InlineInterruptChecks=false`, execute instruction batches until next event (PPU/APU/IRQ/frame), then call `ServicePendingInterrupts()` once per boundary, appending any interrupt cycle costs to the flushed batch. Placeholder `nextIrqCycle` integrated into min-event selection (currently one-shot cleared after service; real IRQ time computation pending mapper/CPU sources). NMI prioritization preserved; IRQ ignored if I flag is set at service time. Legacy inline pathway retained for non-event-scheduler mode.
+Impact Expectation: ~1–2% reduction in CPU dispatch overhead by removing two conditional checks per instruction under event scheduler; improves branch predictability. Further gains when precise `nextIrqCycle` scheduling (mapper IRQ countdown) replaces per-instruction polling fully.
+Risk: Low–Medium: must ensure no user-visible increase in effective NMI/IRQ latency (currently bounded by event quantum and batch burst cap 1024 cycles). Future refinement will schedule interrupts at exact cycle (mapper-supplied) to eliminate latency window.
+Follow-ups: (a) Provide real IRQ cycle scheduling hook from Mapper4 scanline IRQ to set `nextIrqCycle`; (b) unify NMI scheduling (vblank start) with existing PPU event generation for exact cycle alignment; (c) add instrumentation counters for serviced NMIs/IRQs and latency measurements.
+Status: COMPLETE (initial boundary servicing); precision scheduling deferred.
 
 [ ] ### 18. SaveState Serializer Specialization
 Current: Reflection heavy (PlainSerialize). Replace with source-generated partial or cached FieldInfo arrays once, or custom struct writers.

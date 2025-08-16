@@ -399,13 +399,15 @@ namespace NesEmulator
 				// Ensure first PPU event is scheduled (scanline end) if not already or stale
 				if (nextPpuEventCycle <= globalCpuCycle) ScheduleNextPpuScanline();
 				if (nextApuEventCycle <= globalCpuCycle) ScheduleNextApuEvent();
+				// Disable inline interrupt polling to rely on boundary servicing
+				try { (bus.cpu as CPU_LOW)!.InlineInterruptChecks = false; } catch {}
 				try {
 					while (globalCpuCycle < frameEndCycle)
 					{
 						long next = frameEndCycle;
 						if (nextPpuEventCycle > globalCpuCycle && nextPpuEventCycle < next) next = nextPpuEventCycle;
 						if (nextApuEventCycle > globalCpuCycle && nextApuEventCycle < next) next = nextApuEventCycle;
-						// (IRQ events to be integrated later)
+						if (nextIrqCycle > globalCpuCycle && nextIrqCycle < next) next = nextIrqCycle;
 						long remaining = next - globalCpuCycle;
 						int batchCpu = 0;
 						// Execute instructions until we reach or exceed the next event boundary
@@ -417,10 +419,14 @@ namespace NesEmulator
 							// Safety: prevent huge single batches if a very long instruction sequence occurs (unlikely)
 							if (batchCpu >= ConfigMaxEventLoopInstructionBurstCycles) break;
 						}
+						// Service pending interrupts at boundary (adds their cycles to batch before flush)
+						int irqCycles = (bus.cpu as CPU_LOW)!.ServicePendingInterrupts();
+						if (irqCycles > 0) { batchCpu += irqCycles; executed += irqCycles; }
 						FlushBatch(batchCpu);
 						// Process PPU scanline event if reached
 						if (globalCpuCycle >= nextPpuEventCycle) ScheduleNextPpuScanline();
 						if (globalCpuCycle >= nextApuEventCycle) ScheduleNextApuEvent();
+						if (globalCpuCycle >= nextIrqCycle) { nextIrqCycle = long.MaxValue; } // simple one-shot until real scheduling
 					}
 				}
 				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }

@@ -44,6 +44,8 @@ public sealed class CPU_LOW : ICPU {
 
 	private bool irqRequested;
 	private bool nmiRequested;
+	// When false, ExecuteInstruction skips inline interrupt polling so scheduler can service at batch boundaries (#17)
+	public bool InlineInterruptChecks { get; set; } = true;
 
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
@@ -97,14 +99,9 @@ public sealed class CPU_LOW : ICPU {
 	public void RequestNMI() { nmiRequested = true; }
 
 	public int ExecuteInstruction() {
-		if (nmiRequested) {
-			nmiRequested = false;
-			return NMI();
-		}
-
-		if (GetFlag(FLAG_I) == false && irqRequested) {
-			irqRequested = false;
-			return IRQ();
+		if (InlineInterruptChecks) {
+			if (nmiRequested) { nmiRequested = false; return NMI(); }
+			if (!GetFlag(FLAG_I) && irqRequested) { irqRequested = false; return IRQ(); }
 		}
 
 		byte opcode = Fetch();
@@ -538,6 +535,16 @@ public sealed class CPU_LOW : ICPU {
 		PC = (ushort)((high << 8) | low);
 
 		return 7;
+	}
+
+	// Scheduler-driven interrupt servicing (used when InlineInterruptChecks=false)
+	public int ServicePendingInterrupts() {
+		int cycles = 0;
+		// NMI has priority over IRQ
+		if (nmiRequested) { nmiRequested = false; cycles += NMI(); }
+		// After NMI, IRQ may still be pending and allowed
+		if (irqRequested && !GetFlag(FLAG_I)) { irqRequested = false; cycles += IRQ(); }
+		return cycles;
 	}
 
 	private struct AddrResult {
