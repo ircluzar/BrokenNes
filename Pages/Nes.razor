@@ -604,7 +604,16 @@
                                         <tr class="@(currentBenchHistoryId==entry.Id?"table-primary":"")">
                                             <td>@(idx+1)</td>
                                             <td title="UTC: @entry.TimestampUtc.ToString("u")">@entry.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</td>
-                                            <td class="text-truncate" style="max-width:220px;" title="@entry.Rom">@entry.Rom</td>
+                                            <td class="text-truncate" style="max-width:220px;" title="@entry.Rom">
+                                                @if (editingBenchRomId == entry.Id)
+                                                {
+                                                    <input class="form-control form-control-sm" style="min-width:160px;font-size:.65rem;padding:.15rem .25rem;" @bind="editingBenchRomValue" @onkeydown="(e)=>HandleBenchRomEditKey(e, entry.Id)" @onblur="(()=>CommitBenchRomEdit(entry.Id))" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="d-inline-block text-truncate" style="max-width:220px; cursor:text;" @onclick="(()=>StartBenchRomEdit(entry))" title="Click to edit note">@entry.Rom</span>
+                                                }
+                                            </td>
                                             <td class="text-nowrap" title="CPU @entry.CpuCore / PPU @entry.PpuCore / APU @entry.ApuCore">@entry.CpuCore/@entry.PpuCore/@entry.ApuCore</td>
                                             <td><button class="btn btn-sm btn-outline-light" @onclick="(()=>ShowHistoryEntry(entry.Id))" title="View results">@(currentBenchHistoryId==entry.Id?"▾":"▶")</button></td>
                                             <td><button class="btn btn-sm btn-outline-danger" @onclick="(()=>DeleteBenchEntry(entry.Id))" title="Delete this entry">✕</button></td>
@@ -783,9 +792,8 @@
                                                     <circle cx="@hoverX" cy="@y" r="@r" fill="@color" stroke="#000" stroke-width="1" />
                                                 }
                                                 // Inline tooltip box (fixed near top-left of plot)
-                                                var boxX = left + 5; var boxY = top + 5; var lineH = 11; var lines = new List<string>{ $"{hoverPointTooltip.TimeLabel}", $"CPU {hoverPointTooltip.CpuCore} | PPU {hoverPointTooltip.PpuCore} | APU {hoverPointTooltip.ApuCore}", $"{hoverPointTooltip.Target}: {hoverPointTooltip.MsPerIter:F3} ms/iter", $"R {hoverPointTooltip.Reads} W {hoverPointTooltip.Writes}", $"APU {hoverPointTooltip.ApuCycles} OAM {hoverPointTooltip.OamWrites}"};
-                                                var boxW = 0.0;
-                                                foreach(var l in lines){ boxW = Math.Max(boxW, 6 + l.Length * 5.3); }
+                                                var boxX = left + 5; var boxY = top + 5; var lineH = 11; var lines = new List<string>{ $"{hoverPointTooltip.TimeLabel}", $"ROM: {hoverPointTooltip.Rom}", $"CPU {hoverPointTooltip.CpuCore} | PPU {hoverPointTooltip.PpuCore} | APU {hoverPointTooltip.ApuCore}", $"{hoverPointTooltip.Target}: {hoverPointTooltip.MsPerIter:F3} ms/iter", $"R {hoverPointTooltip.Reads} W {hoverPointTooltip.Writes}", $"APU {hoverPointTooltip.ApuCycles} OAM {hoverPointTooltip.OamWrites}"};
+                                                var boxW = 160.0; foreach(var l in lines){ boxW = Math.Max(boxW, 12 + l.Length * 6.0); }
                                                 var boxH = lines.Count * lineH + 6;
                                                 <rect x="@boxX" y="@boxY" width="@boxW" height="@boxH" fill="#222" stroke="#555" stroke-width="1" rx="4" />
                                                 {
@@ -793,7 +801,7 @@
                                                     var sbTxt = new System.Text.StringBuilder();
                                                     for (int i=0;i<lines.Count;i++)
                                                     {
-                                                        var txt = lines[i]; var ty = boxY + 4 + (i+1)*lineH - 3; var fill = i==0?"#fff":(i==1?"#bbb":"#ddd");
+                                                        var txt = lines[i]; var ty = boxY + 4 + (i+1)*lineH - 3; string fill; if (i==0) fill="#fff"; else if (i==1) fill="#9cf"; else if (i==2) fill="#bbb"; else fill="#ddd";
                                                         sbTxt.Append($"<text x='{boxX+4}' y='{ty}' font-size='10' fill='{fill}'>{txt}</text>");
                                                     }
                                                     @((MarkupString)sbTxt.ToString())
@@ -904,7 +912,7 @@
     private List<string> allTargets = new();
     private List<DateTime> timelineOrder = new();
     // Enhanced timeline series includes rich point data for hover tooltips
-    private record TimelinePoint(DateTime When,double MsPerIter,long Reads,long Writes,long Apu,long Oam,string CpuCore,string PpuCore,string ApuCore);
+    private record TimelinePoint(DateTime When,double MsPerIter,long Reads,long Writes,long Apu,long Oam,string CpuCore,string PpuCore,string ApuCore,string Rom);
     private Dictionary<string,List<TimelinePoint>> timelineSeries = new();
     private record DiffRow(string Name,double CurMs,double PrevMs,double DeltaMs,double DeltaPct,long ReadsDelta,long WritesDelta,long ApuDelta,long OamDelta);
     private List<DiffRow> recentDiffRows = new();
@@ -2417,9 +2425,9 @@
             foreach (var entry in parsed)
             {
                 if (entry.Item2.TryGetValue(t, out var v))
-                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, v.MsPerIter, v.Reads, v.Writes, v.Apu, v.Oam, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore));
+                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, v.MsPerIter, v.Reads, v.Writes, v.Apu, v.Oam, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore, entry.Entry.Rom));
                 else
-                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, double.NaN, 0,0,0,0, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore));
+                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, double.NaN, 0,0,0,0, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore, entry.Entry.Rom));
             }
             visibleTargets.Add(t);
         }
@@ -2440,7 +2448,7 @@
     }
     // Hover state & handlers for timeline tooltip
     private int? hoverIndex = null; private string? hoverTarget = null; private HoverTooltip? hoverPointTooltip = null; private double hoverTooltipLeftPx=0; private double hoverTooltipTopPx=0;
-    private record HoverTooltip(string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore);
+    private record HoverTooltip(string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore,string Rom);
     private void TimelineMouseLeave(){ hoverIndex=null; hoverTarget=null; hoverPointTooltip=null; }
     private void TimelineMouseMove(MouseEventArgs e)
     {
@@ -2477,7 +2485,7 @@
         hoverIndex = idx; hoverTarget = bestTarget;
         var hpt = timelineSeries[bestTarget][idx];
         var timeLabel = timelineOrder[idx].ToLocalTime().ToString("HH:mm:ss");
-        hoverPointTooltip = new HoverTooltip(bestTarget,timeLabel,hpt.MsPerIter,hpt.Reads,hpt.Writes,hpt.Apu,hpt.Oam,hpt.CpuCore,hpt.PpuCore,hpt.ApuCore);
+    hoverPointTooltip = new HoverTooltip(bestTarget,timeLabel,hpt.MsPerIter,hpt.Reads,hpt.Writes,hpt.Apu,hpt.Oam,hpt.CpuCore,hpt.PpuCore,hpt.ApuCore,hpt.Rom);
         double hoverX = left + plotW*(idx/(double)Math.Max(1,count-1));
         hoverTooltipLeftPx = Math.Clamp(hoverX + 12, 0, 1000-190);
         hoverTooltipTopPx = Math.Clamp(bestY - 10, 0, 240-120);
@@ -2516,6 +2524,39 @@
             memoryDomains.Add(new DomainSel{ Key="RAM", Label="System RAM", Size=2048, Selected=true});
         } catch {}
         StateHasChanged();
+    }
+
+    // Inline editing of benchmark ROM/note
+    private string? editingBenchRomId = null; private string editingBenchRomValue = string.Empty;
+    private void StartBenchRomEdit(BenchHistoryEntry entry)
+    {
+        editingBenchRomId = entry.Id; editingBenchRomValue = entry.Rom; StateHasChanged();
+    }
+    private async Task CommitBenchRomEdit(string id)
+    {
+        if (editingBenchRomId != id) { editingBenchRomId=null; return; }
+        var e = benchHistory.FirstOrDefault(x=>x.Id==id);
+        if (e!=null)
+        {
+            var newVal = editingBenchRomValue?.Trim() ?? string.Empty;
+            if (newVal.Length>0 && newVal != e.Rom)
+            {
+                e.Rom = newVal;
+                // Update first line in Display if starts with ROM:
+                if (!string.IsNullOrEmpty(e.Display))
+                {
+                    var lines = e.Display.Split('\n');
+                    if (lines.Length>0 && lines[0].StartsWith("ROM:")) { lines[0] = $"ROM: {newVal}"; e.Display = string.Join('\n', lines); }
+                }
+                await PersistBenchHistory();
+                if (compareModalOpen) BuildComparisonDatasets();
+            }
+        }
+        editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged();
+    }
+    private async void HandleBenchRomEditKey(KeyboardEventArgs e, string id)
+    {
+        if (e.Key=="Enter") await CommitBenchRomEdit(id); else if (e.Key=="Escape") { editingBenchRomId=null; StateHasChanged(); }
     }
 
     private void OnCrashBehaviorChanged(ChangeEventArgs e)
