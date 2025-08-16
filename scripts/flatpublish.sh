@@ -31,15 +31,14 @@ fi
 
 echo "==> Target Framework: $TFM"
 
-OUT_DIR="bin/Release/${TFM}/publish"
-WWWROOT_DIR="$OUT_DIR/wwwroot"
+OUT_DIR="bin/Release/${TFM}/publish" # will be overridden for dev mode after arg parsing
 FLAT_DIR="flatpublish"
 ZIP_FLAG=false
 VERIFY_ONLY=false
 EXCLUDE_ROMS=false
 NO_AOT=true
 TRIM=false
-DEV_MODE=false # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
+DEV_MODE=truescr # emulate standard 'dotnet build' (no AOT, no trimming, debug config) but still flatten output
 
 if [[ ${#} -gt 0 ]]; then
   for arg in "$@"; do
@@ -55,6 +54,12 @@ if [[ ${#} -gt 0 ]]; then
   done
 fi
 
+if $DEV_MODE; then
+  OUT_DIR="bin/Debug/${TFM}/publish"
+else
+  OUT_DIR="bin/Release/${TFM}/publish"
+fi
+
 if ! $VERIFY_ONLY; then
   # Clean previous publish output to avoid stale leftover files (e.g., removed ROMs)
   if [[ -d "$OUT_DIR" ]]; then
@@ -62,8 +67,6 @@ if ! $VERIFY_ONLY; then
     rm -rf "$OUT_DIR"
   fi
   if $DEV_MODE; then
-    # Mimic a standard build environment: Debug config, no trimming, no AOT, IL generation allowed.
-    OUT_DIR="bin/Debug/${TFM}/publish"
     echo "==> Publishing (DEV MODE: Debug, no AOT, no trimming) ..."
     dotnet publish "$CSProj" -c Debug -o "$OUT_DIR" -p:RunAOTCompilation=false -p:DisableAot=true -p:PublishTrimmed=false -p:TrimMode=copyused >/dev/null
   elif $NO_AOT; then
@@ -75,7 +78,6 @@ if ! $VERIFY_ONLY; then
     fi
   else
     echo "==> Publishing (AOT/Release) ..."
-    # Use explicit output (OUT_DIR) so we know precisely where artifacts land.
     if $TRIM; then
       dotnet publish "$CSProj" -c Release -o "$OUT_DIR" -p:PublishTrimmed=true -p:TrimMode=link -p:TrimmerRootDescriptor=LinkerConfig.xml >/dev/null
     else
@@ -86,9 +88,13 @@ else
   echo "==> Skipping publish (verify-only mode)"
 fi
 
-echo "==> Checking publish output layout..."
+WWWROOT_DIR="$OUT_DIR/wwwroot"
+
+echo "==> Checking publish output layout... (OUT_DIR=$OUT_DIR)"
 if [[ ! -d "$WWWROOT_DIR" ]]; then
   echo "Error: Expected $WWWROOT_DIR to exist after publish (or from previous run)." >&2
+  echo "Debug info: contents of $(dirname "$OUT_DIR"):" >&2
+  ls -1 $(dirname "$OUT_DIR") >&2 || true
   exit 1
 fi
 if [[ ! -f "$WWWROOT_DIR/index.html" ]]; then
