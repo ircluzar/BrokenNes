@@ -11,6 +11,40 @@ namespace NesEmulator
     {
         private readonly Bus bus;
 
+        // Optimization #3: LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate
+        // per-sample divisions. Pulse sum range 0..30, triangle 0..15, noise 0..15, DMC 0..127.
+        // TND LUT size: 16*16*128 = 32768 (128KB as float). Acceptable for desktop; if size is a
+        // concern for WASM we can conditionally generate or compress later.
+        private static readonly float[] PulseMixLut = new float[31];
+        private static readonly float[] TndMixLut = new float[16 * 16 * 128];
+        static APU_QLOW()
+        {
+            for (int sum = 0; sum < PulseMixLut.Length; sum++)
+            {
+                PulseMixLut[sum] = sum == 0 ? 0f : (95.88f / (8128f / sum + 100f));
+            }
+            int idx = 0;
+            for (int t = 0; t < 16; t++)
+            {
+                float tf = t / 8227f;
+                for (int n = 0; n < 16; n++)
+                {
+                    float nf = n / 12241f;
+                    for (int d = 0; d < 128; d++, idx++)
+                    {
+                        if (t == 0 && n == 0 && d == 0)
+                            TndMixLut[idx] = 0f;
+                        else
+                        {
+                            float df = d / 22638f;
+                            float inv = (1.0f / (tf + nf + df)) + 100f;
+                            TndMixLut[idx] = 159.79f / inv;
+                        }
+                    }
+                }
+            }
+        }
+
     // --- Core state ---
         // Channel objects (to be implemented)
         private QnSquare square1, square2;
@@ -352,28 +386,28 @@ namespace NesEmulator
 
         private void MixAndStoreOutput()
         {
-            double p1 = square1.lastAmp; double p2 = square2.lastAmp; double t = triangle.lastAmp; double n = noise.lastAmp; double d = dmc.lastAmp;
+            int p1 = square1.lastAmp; int p2 = square2.lastAmp; int t = triangle.lastAmp; int n = noise.lastAmp; int d = dmc.lastAmp;
             float mixed;
-            if(nonlinearMixing)
+            if (nonlinearMixing)
             {
-                double pulseMix = (p1 + p2)==0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
-                double tnd = (t + n + d)==0 ? 0.0 : 159.79 / (1.0 / (t/8227.0 + n/12241.0 + d/22638.0) + 100.0);
-                mixed = (float)(pulseMix + tnd);
+                int pulseSum = p1 + p2; // 0..30
+                float pulseMix = PulseMixLut[pulseSum];
+                int tndIndex = (t << 11) | (n << 7) | d; // (t*(16*128)) + (n*128) + d
+                float tnd = TndMixLut[tndIndex];
+                mixed = pulseMix + tnd;
             }
             else
             {
-                // Linear gains approximating common mixer constants
-                // square: 0.1128/15, triangle: 0.12765/15, noise: 0.0741/15, dmc: 0.42545/127
+                // Linear approximation path retained
                 double sum = (0.1128 / 15.0) * (p1 + p2)
                            + (0.12765 / 15.0) * t
                            + (0.0741 / 15.0) * n
                            + (0.42545 / 127.0) * d;
                 mixed = (float)sum;
             }
-            // Apply master output gain
             mixed *= OutputGain;
-            if(ringCount >= AudioRingSize){ ringRead = (ringRead+1) & (AudioRingSize-1); ringCount--; }
-            audioRing[ringWrite]=mixed; ringWrite = (ringWrite+1)&(AudioRingSize-1); ringCount++;
+            if (ringCount >= AudioRingSize) { ringRead = (ringRead + 1) & (AudioRingSize - 1); ringCount--; }
+            audioRing[ringWrite] = mixed; ringWrite = (ringWrite + 1) & (AudioRingSize - 1); ringCount++;
         }
 
     // (Removed obsolete RunFrameSequencer skeleton; integrated in ClockFrameSequencerInternal)

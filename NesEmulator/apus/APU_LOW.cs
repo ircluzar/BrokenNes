@@ -7,6 +7,48 @@ namespace NesEmulator
         private readonly Bus bus;
         public APU_LOW(Bus bus) { this.bus = bus; }
 
+        // Optimization #3 (project-optimize.md):
+        // Precompute nonlinear audio mixing lookup tables to remove per-sample divides
+        // and keep the path float-only. Pulse channels (p1+p2) sum 0..30. Triangle (0..15),
+        // Noise (0..15), DMC (0..127) -> 16*16*128 = 32768 combinations. This LUT replicates
+        // the canonical NES mixing approximation exactly. Memory cost ~128KB (32768 * 4 bytes).
+        // If later a smaller footprint is desired for WASM, we can optionally collapse to a
+        // single (t+n+d) sum table (approximation) or generate on-demand. For now we prioritize
+        // accuracy + removing divides per sample.
+        private static readonly float[] PulseMixLut = new float[31];
+        private static readonly float[] TndMixLut = new float[16 * 16 * 128];
+        static APU_LOW()
+        {
+            // Pulse LUT
+            for (int sum = 0; sum < PulseMixLut.Length; sum++)
+            {
+                PulseMixLut[sum] = sum == 0 ? 0f : (95.88f / (8128f / sum + 100f));
+            }
+            // TND LUT (triangle, noise, dmc)
+            int idx = 0;
+            for (int t = 0; t < 16; t++)
+            {
+                float tf = t / 8227f;
+                for (int n = 0; n < 16; n++)
+                {
+                    float nf = n / 12241f;
+                    for (int d = 0; d < 128; d++, idx++)
+                    {
+                        if (t == 0 && n == 0 && d == 0)
+                        {
+                            TndMixLut[idx] = 0f;
+                        }
+                        else
+                        {
+                            float df = d / 22638f;
+                            float inv = (1.0f / (tf + nf + df)) + 100f;
+                            TndMixLut[idx] = 159.79f / inv;
+                        }
+                    }
+                }
+            }
+        }
+
         // ===== Channel core registers & state =====
         // Pulse 1
         private byte pulse1_duty, pulse1_lengthIdx, pulse1_sweepRaw; private ushort pulse1_timer; // registers
@@ -300,11 +342,22 @@ namespace NesEmulator
 
         private void MixAndStore()
         {
-            double p1 = pulse1_output; double p2 = pulse2_output; double t = triangle_output; double n = noise_output; double d = dmc_enabled ? dmc_output : 0;
-            double pulseMix = (p1 + p2)==0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
-            double tnd = (t + n + d)==0 ? 0.0 : 159.79 / (1.0 / (t/8227.0 + n/12241.0 + d/22638.0) + 100.0);
-            float mixed = (float)(pulseMix + tnd);
-            lpLast += (mixed - lpLast) * LowPassCoeff; float lp = lpLast; float hp = lp - dcLastIn + DC_HPF_R * dcLastOut; dcLastIn = lp; dcLastOut = hp; 
+            // LUT-based nonlinear mixing (float-only)
+            int p1 = pulse1_output;
+            int p2 = pulse2_output;
+            int pulseSum = p1 + p2; // 0..30
+            float pulseMix = PulseMixLut[pulseSum];
+
+            int t = triangle_output; // 0..15
+            int n = noise_output;    // 0..15
+            int d = dmc_enabled ? dmc_output : 0; // 0..127
+            // Index layout: (t << (4+7)) | (n << 7) | d
+            int tndIndex = (t << 11) | (n << 7) | d;
+            float tnd = TndMixLut[tndIndex];
+
+            float mixed = pulseMix + tnd;
+            // Existing simple low-pass + DC high-pass chain kept intact
+            lpLast += (mixed - lpLast) * LowPassCoeff; float lp = lpLast; float hp = lp - dcLastIn + DC_HPF_R * dcLastOut; dcLastIn = lp; dcLastOut = hp;
             StoreSample(hp * 1.05f);
         }
 
