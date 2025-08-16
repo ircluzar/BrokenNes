@@ -698,7 +698,26 @@ window.nesInterop = {
         // coreId: 'MNES' | 'WF' | null/undefined (dual dispatch compatibility mode)
         const prev = window._nesActiveSoundFontCore;
         if(coreId !== 'MNES' && coreId !== 'WF'){ coreId = undefined; }
-        if(prev === coreId) return coreId || '';
+        const now = performance.now();
+        // Micro-throttle: ignore duplicate set within 900ms to reduce churn (unless options.force)
+        if(prev === coreId){
+            if(!this._sfLastSetCoreTs) this._sfLastSetCoreTs = 0;
+            if(!options || !options.force){
+                if(now - this._sfLastSetCoreTs < 900){
+                    if(window._nesSfDevLogging){ console.log('[SF] setActiveSoundFontCore duplicate ignored:', coreId||'(compat)'); }
+                    return coreId || '';
+                }
+            }
+        }
+        this._sfLastSetCoreTs = now;
+        // Active time accounting: close out prev core time span
+        if(!this._sfActiveTimeMs){ this._sfActiveTimeMs = { mnes:0, wf:0 }; }
+        if(!this._sfActiveStart){ this._sfActiveStart = { mnes:0, wf:0 }; }
+        const nowTs = performance.now();
+        if(prev){
+            if(prev === 'MNES' && this._sfActiveStart.mnes){ this._sfActiveTimeMs.mnes += (nowTs - this._sfActiveStart.mnes); this._sfActiveStart.mnes = 0; }
+            if(prev === 'WF' && this._sfActiveStart.wf){ this._sfActiveTimeMs.wf += (nowTs - this._sfActiveStart.wf); this._sfActiveStart.wf = 0; }
+        }
         // Disable previous core explicitly when switching (unless layering allowed and core unset)
         if(prev && coreId && prev !== coreId){
             try {
@@ -707,6 +726,7 @@ window.nesInterop = {
             } catch{}
         }
         window._nesActiveSoundFontCore = coreId; // public global
+    if(window._nesSfDevLogging){ console.log('[SF] Core change', prev||'(none)','=>', coreId||'(compat)', 'flush=', options?.flush !== false, 'eager=', options?.eager !== false); }
         // Optionally enable new core eagerly (default true)
         const eager = options?.eager !== false;
         if(eager && coreId){
@@ -726,18 +746,87 @@ window.nesInterop = {
                 } catch{}
             }
         }
+        // Start timing for new active core
+        if(coreId === 'MNES'){ this._sfActiveStart.mnes = performance.now(); }
+        if(coreId === 'WF'){ this._sfActiveStart.wf = performance.now(); }
         return coreId || '';
     },
     getActiveSoundFontCore(){ return window._nesActiveSoundFontCore || ''; },
     setSoundFontLayering(on){ window._nesAllowLayering = !!on; return window._nesAllowLayering; },
     debugReport(){
+        const nowTs = performance.now();
+        if(this._sfActiveStart){
+            if(this._sfActiveStart.mnes){
+                if(!this._sfActiveTimeMs) this._sfActiveTimeMs = { mnes:0, wf:0 };
+                // Add a non-persisted live delta for report only
+            }
+        }
+        const live = { mnes:0, wf:0 };
+        if(this._sfActiveTimeMs){ live.mnes = this._sfActiveTimeMs.mnes; live.wf = this._sfActiveTimeMs.wf; }
+        if(this._sfActiveStart){
+            if(this._sfActiveStart.mnes){ live.mnes += (nowTs - this._sfActiveStart.mnes); }
+            if(this._sfActiveStart.wf){ live.wf += (nowTs - this._sfActiveStart.wf); }
+        }
         return {
             activeCore: window._nesActiveSoundFontCore || null,
             layering: !!window._nesAllowLayering,
-            counters: { ...this._sfCounters }
+            counters: { ...this._sfCounters },
+            activeTimeMs: live,
+            audioLeadMs: this.getAudioLeadMs ? this.getAudioLeadMs() : null
         };
     },
     resetSoundFontCounters(){ this._sfCounters = { mnes:0, wf:0, suppressedMnes:0, suppressedWf:0 }; },
+    // === Dev diagnostics (ring buffer lead + overlay) ===
+    getAudioLeadMs(){
+        try {
+            if(!window.nesAudioCtx || !window._nesAudioTimeline) return 0;
+            const ctx = window.nesAudioCtx;
+            const lead = (window._nesAudioTimeline - ctx.currentTime) * 1000.0;
+            return Math.max(0, lead);
+        } catch { return 0; }
+    },
+    _sfDiagTimer:null,
+    _sfDiagOverlay:null,
+    enableSoundFontDevLogging(on){ window._nesSfDevLogging = !!on; return window._nesSfDevLogging; },
+    startSoundFontAudioOverlay(){
+        if(this._sfDiagOverlay) return true; // already
+        try {
+            const div = document.createElement('div');
+            div.id = 'sf-audio-overlay';
+            div.style.position='fixed';
+            div.style.bottom='4px';
+            div.style.right='4px';
+            div.style.font='11px monospace';
+            div.style.background='rgba(0,0,0,0.55)';
+            div.style.color='#fff';
+            div.style.padding='4px 6px';
+            div.style.borderRadius='4px';
+            div.style.zIndex='9999';
+            div.style.pointerEvents='none';
+            div.textContent='SF diag…';
+            document.body.appendChild(div);
+            this._sfDiagOverlay = div;
+            const update = ()=>{
+                if(!this._sfDiagOverlay){ return; }
+                const rep = this.debugReport();
+                const lead = this.getAudioLeadMs();
+                const core = rep.activeCore || 'DUAL';
+                const m = Math.round(rep.counters.mnes);
+                const w = Math.round(rep.counters.wf);
+                let color = '#6cf';
+                if(lead < 25) color = '#f66'; else if(lead < 45) color = '#fc6'; else if(lead > 120) color = '#6f6';
+                this._sfDiagOverlay.style.border = '1px solid '+color;
+                this._sfDiagOverlay.textContent = `SF ${core} L=${lead.toFixed(0)}ms M:${m} W:${w}`;
+            };
+            this._sfDiagTimer = setInterval(update, 500);
+            update();
+            return true;
+        } catch(e){ console.warn('startSoundFontAudioOverlay failed', e); return false; }
+    },
+    stopSoundFontAudioOverlay(){
+        try { if(this._sfDiagTimer){ clearInterval(this._sfDiagTimer); this._sfDiagTimer=null; } } catch{}
+        if(this._sfDiagOverlay){ try { this._sfDiagOverlay.remove(); } catch{} this._sfDiagOverlay=null; }
+    },
     readSelectedRoms: async function (inputElement) {
         try {
             const el = inputElement instanceof Element ? inputElement : (inputElement && inputElement.id ? document.getElementById(inputElement.id) : null);

@@ -552,6 +552,14 @@
                         <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="ToggleSoundFontLayering" checked="@soundFontLayering" />
                         <label class="form-check-label" for="sfLayerToggle" title="Experimental: allow both MNES & WF SoundFont cores to process notes simultaneously (debug/compare)">Layering</label>
                     </div>
+                    <div class="form-check form-switch mt-2 small">
+                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="ToggleSfDevLogging" checked="@sfDevLogging" />
+                        <label class="form-check-label" for="sfDevLogToggle" title="Verbose console logs for SoundFont core routing & throttling">SF Dev Logging</label>
+                    </div>
+                    <div class="form-check form-switch mt-2 small">
+                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="ToggleSfOverlay" checked="@sfOverlay" />
+                        <label class="form-check-label" for="sfOverlayToggle" title="Display on-screen SoundFont diagnostics overlay (lead ms, counters)">SF Overlay</label>
+                    </div>
                     <div class="mt-2 d-flex flex-wrap gap-2">
                         <button class="btn btn-sm btn-outline-warning" @onclick="FlushSoundFont" title="Force immediate silence of inactive/active SoundFont synths">SF Flush</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="ShowSfDebug" title="Log SoundFont routing counters to console">SF Debug</button>
@@ -964,6 +972,8 @@
     private bool soundFontMode = false;
     private bool sampleFont = true; // attempt external sample instruments
     private bool soundFontLayering = false; // layering off by default
+    private bool sfDevLogging = false; // dev logging toggle
+    private bool sfOverlay = false; // overlay toggle
     private string activeSfCoreDisplay => string.IsNullOrEmpty(activeSfCore) ? (soundFontMode ? "(compat)" : "None") : activeSfCore;
     private string activeSfCore = string.Empty; // WF or MNES
     private async Task UpdateActiveSoundFontCoreAsync()
@@ -1000,6 +1010,23 @@
             var rep = await JS.InvokeAsync<object>("nesInterop.debugReport");
             Logger.LogInformation($"SF Debug: {System.Text.Json.JsonSerializer.Serialize(rep)}");
         } catch {}
+    }
+    private async void ToggleSfDevLogging(ChangeEventArgs e)
+    {
+        bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var parsed)) desired = parsed;
+        sfDevLogging = desired;
+        try { await JS.InvokeVoidAsync("nesInterop.enableSoundFontDevLogging", sfDevLogging); } catch {}
+        StateHasChanged();
+    }
+    private async void ToggleSfOverlay(ChangeEventArgs e)
+    {
+        bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var parsed)) desired = parsed;
+        if(desired == sfOverlay) return;
+        sfOverlay = desired;
+        try {
+            if(sfOverlay) await JS.InvokeVoidAsync("nesInterop.startSoundFontAudioOverlay"); else await JS.InvokeVoidAsync("nesInterop.stopSoundFontAudioOverlay");
+        } catch {}
+        StateHasChanged();
     }
     // Automatically configure SoundFont/sample mode when selecting specific APU core (WF)
     private void AutoConfigureForApuCore()

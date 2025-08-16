@@ -16,7 +16,12 @@
     const MAIN_LIB = 'sf2player/js-synthesizer.min.js';
     const FLUID_LIB = 'sf2player/libfluidsynth-2.0.2.js';
     const WORKLET_LIB = 'sf2player/js-synthesizer.worklet.min.js';
-    const CHANNEL_MAP = { P1:0, P2:1, TRI:2 }; // NOI handled separately (white-noise burst)
+    const CHANNEL_MAP = { P1:0, P2:1, TRI:2, DPCM:3 }; // NOI handled separately (white-noise burst); DPCM uses channel 3
+    // Bank logic: Core SF2 layout uses bank 0 for standard APU voices and bank 128 (combined) for DPCM (program 0).
+    // MIDI Bank number = MSB*128 + LSB. Thus bank 128 => MSB=1, LSB=0. We'll emit CC0=1 then (optionally) CC32=0.
+    const BANK_COMBINED_DPCM = 128;
+    const BANK_MSB_DPCM = 1; // since 1*128 + 0 = 128
+    const BANK_LSB_DPCM = 0;
 
     let ctx;            // AudioContext
     let synth;          // AudioWorkletNodeSynthesizer instance
@@ -26,9 +31,12 @@
     let enabling = false;
     let fatalInitError = false;
     let channelPrograms = new Array(16).fill(-1);
+    let channelBanks = new Array(16).fill(-1); // combined bank numbers we believe are active
     let lastEnableAttempt = 0;
     const ENABLE_THROTTLE_MS = 1500;
     const WORKLET_BLOCK_SIZE = 128; // Lower = lower latency, higher CPU. Was 1024 (~21ms). 128 @48k ~2.7ms.
+    // Track active notes so we can force release on disable (prevents lingering tails when switching cores)
+    const activeNotes = new Map(); // channel(int) -> Set(midiNote)
 
     // Queue note/program events that arrive before SF2 fully loaded to prevent hearing FluidSynth's internal fallback tones.
     const pendingEvents = [];
@@ -37,7 +45,8 @@
     const options = {
         noiseChannel: true,          // set false to disable white-noise fallback for 'NOI'
         autoEnableOnNote: true,
-        debug: false
+    debug: false,
+    dpcmFallbackProgram: null // set to a number (e.g. 5 for Noise) to override DPCM instrument if SF2 problematic
     };
     api.options = options;
 
@@ -152,9 +161,17 @@
             const buf = await resp.arrayBuffer();
             await s.loadSFont(buf);
             sfLoaded = true;
-            // Set initial programs 0
-            for(const ch of Object.values(CHANNEL_MAP)){
-                try { s.midiProgramChange(ch,0); channelPrograms[ch]=0; } catch{}
+            // Set initial programs 0 (bank 0) for standard voices; DPCM gets bank 128
+            for(const [k,ch] of Object.entries(CHANNEL_MAP)){
+                try {
+                    if(k === 'DPCM'){
+                        try { s.midiControlChange(ch,0,BANK_MSB_DPCM); channelBanks[ch]=BANK_MSB_DPCM*128; } catch{}
+                        try { s.midiControlChange(ch,32,BANK_LSB_DPCM); } catch{}
+                        try { s.midiProgramChange(ch,0); channelPrograms[ch]=0; } catch{}
+                    } else {
+                        s.midiProgramChange(ch,0); channelPrograms[ch]=0; channelBanks[ch]=0;
+                    }
+                } catch{}
             }
             console.log('[MNES] SoundFont loaded');
             flushPending();
@@ -175,6 +192,19 @@
 
     api.disable = function(){
         enabled = false;
+        // Send note-off for any tracked active notes to encourage quick tail release
+        try {
+            if(synth){
+                for(const [ch,set] of activeNotes.entries()){
+                    if(!set) continue;
+                    for(const n of set){
+                        try { synth.midiNoteOff(ch, n); } catch{}
+                    }
+                    set.clear();
+                }
+            }
+        } catch{}
+        if(window._nesSfDevLogging){ console.log('[MNES] Disabled (note offs sent)'); }
         // We keep node connected for reuse; could disconnect if desired
     };
 
@@ -200,16 +230,30 @@
             } catch{}
             return;
         }
-        const ch = CHANNEL_MAP[channel];
+    const ch = CHANNEL_MAP[channel];
         if(ch == null) return;
-        if(program != null && program>=0 && program<=127 && channelPrograms[ch]!==program){
-            try { synth.midiProgramChange(ch, program); channelPrograms[ch]=program; } catch{}
+        // Ensure bank selection for DPCM channel before program changes; optional fallback
+        let effectiveProgram = program;
+        if(channel === 'DPCM'){
+            if(options.dpcmFallbackProgram != null){ effectiveProgram = options.dpcmFallbackProgram; }
+            const desiredCombined = BANK_COMBINED_DPCM;
+            if(channelBanks[ch] !== desiredCombined){
+                try { synth.midiControlChange(ch,0,BANK_MSB_DPCM); channelBanks[ch]=BANK_MSB_DPCM*128; } catch{}
+                try { synth.midiControlChange(ch,32,BANK_LSB_DPCM); } catch{}
+            }
+        }
+        if(effectiveProgram != null && effectiveProgram>=0 && effectiveProgram<=127 && channelPrograms[ch]!==effectiveProgram){
+            try { synth.midiProgramChange(ch, effectiveProgram); channelPrograms[ch]=effectiveProgram; if(options.debug) console.log('[MNES] prog ch', channel, effectiveProgram); } catch(e){ if(options.debug) console.log('[MNES] prog fail', e); }
         }
         try {
             if(on){
                 if(velocity>0) synth.midiNoteOn(ch, midiNote, Math.min(127, Math.max(1, velocity)));
+                // Track active note
+                let set = activeNotes.get(ch); if(!set){ set = new Set(); activeNotes.set(ch,set); }
+                set.add(midiNote);
             } else {
                 synth.midiNoteOff(ch, midiNote);
+                const set = activeNotes.get(ch); if(set){ set.delete(midiNote); }
             }
         } catch{}
     }

@@ -39,6 +39,20 @@ Open the app in a browser (default: http://localhost:5000 or the HTTPS variant t
 - `Shared/` shared UI components
 - `wwwroot/` static assets (ROM test file, favicon, scripts)
 
+## SoundFont Core Switching (WF vs MNES)
+BrokenNes supports two SoundFont playback paths for APU note events:
+- WF: Lightweight WebAudio oscillator / optional sampled instruments (`nesSoundFont`).
+- MNES: FluidSynth (SF2) via js-synthesizer AudioWorklet (`mnesSf2`).
+
+Routing is gated by a global active core flag managed in JS (`nesInterop.setActiveSoundFontCore`). Only the selected core receives note events unless layering is explicitly enabled (debug toggle in the Debug panel). A debug badge shows the active core (WF, MNES, None). Use the Flush button to immediately silence lingering tails when switching.
+
+Troubleshooting double audio:
+1. Open browser console and run `nesInterop.debugReport()`.
+2. If both wf and mnes counters increment while layering is off, the active-core flag wasn't set early enough—toggle APU core again or flush.
+3. Use the Flush button (or `nesInterop.flushSoundFont()`) then reselect desired core.
+
+Program mapping docs: see `docs/soundfont-mapping.md` (stub) for channel->program conventions.
+
 ## Core lifecycle and lazy cores
 - Cores are discovered by name (CPU_*, PPU_*, APU_*) and created via a small factory.
 - CPU is eager, while PPU/APU are created on first use to avoid large startup allocations.

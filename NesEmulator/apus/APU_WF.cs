@@ -140,6 +140,12 @@ namespace NesEmulator
         public int ProgramPulse2 { get; set; } = 81; // Lead 2 (saw)
         public int ProgramTriangle { get; set; } = 32; // Acoustic Bass (triangle often used as bass line)
         public int ProgramNoise { get; set; } = 0;  // Percussion (channel 10) – still send for uniformity
+    // Runtime-adjustable attenuation applied to noise channel (both PCM mix and SoundFont velocity mapping)
+    // 1.0 = original level, 0.5 = half volume (current default), smaller values further reduce loudness
+    public double NoiseAttenuationFactor { get; set; } = 0.5;
+    // Additional velocity scaling applied ONLY in SoundFont mode after perceptual mapping.
+    // Use to tame perceived loudness of noise relative to tonal channels. 1.0 = unchanged.
+    public double SoundFontNoiseVelocityScale { get; set; } = 0.45; // strong default reduction
 
     // Active note tracking so we send balanced NoteOff messages and support pitch bend
     private int? activePulse1Note, activePulse2Note, activeTriangleNote;
@@ -240,7 +246,7 @@ namespace NesEmulator
             const double PulseGain = 0.1128; // gain at full volume (vol=15, duty fraction 1.0)
             const double TriangleGain = 0.12765; // reference max
             const double NoiseGain = 0.0741; // reference before intentional reduction
-            const double NoiseAttenuation = 0.50; // additional attenuation factor (makes noise quieter vs previous 0.6 scaling)
+            double NoiseAttenuation = 0.50 * NoiseAttenuationFactor; // base attenuation (legacy 0.50) scaled by user factor
             const double MaxRefGain = TriangleGain; // largest among the base gains
 
             // Capture attack flags early (they'll clear on envelope tick)
@@ -371,7 +377,9 @@ namespace NesEmulator
             int rawVol = noise_constantVolume ? noise_volumeParam : noise_decayLevel;
             double amp = NoiseGain * (rawVol / 15.0) * NoiseAttenuation; // further reduced
             int vel = AmplitudeToVelocity(amp, MaxRefGain);
-            if (vel > 0) vel = Math.Max(vel - 8, 1); // slight bias down
+            // Apply extra user-configurable velocity scaling for noise perceptual loudness control
+            vel = (int)Math.Round(vel * SoundFontNoiseVelocityScale);
+            if (vel > 0) vel = Math.Max(vel - 8, 1); // slight bias down after scaling
                     if (vel < 1) vel = 1;
                     NoteEvent?.Invoke(new NesNoteEvent("NOI", drumNote, vel, true, ProgramNoise));
                     NoteEvent?.Invoke(new NesNoteEvent("NOI", drumNote, 0, false, ProgramNoise));
@@ -545,7 +553,8 @@ namespace NesEmulator
             double p1 = (pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
             double p2 = (pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
             double t = (triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
-            double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
+            // Halved noise channel volume for waveform (PCM) output per request (soundFontMode path already attenuates separately)
+            double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output * NoiseAttenuationFactor : 0.0;
             double pulseMix = (p1 + p2) == 0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
             double tnd = (t + n) == 0 ? 0.0 : 159.79 / (1.0 / (t / 8227.0 + n / 12241.0) + 100.0);
             float mixed = (float)(pulseMix + tnd);

@@ -93,14 +93,17 @@ namespace NesEmulator
         private float lpLast = 0f, dcLastIn = 0f, dcLastOut = 0f;
         // Channel enables
         private bool pulse1_enabled = false, pulse2_enabled = false, triangle_enabled = false, noise_enabled = false;
-        // Constants
-        private const float LowPassCoeff = 0.15f; // simple 1-pole low-pass coefficient
-                                                  // Standard NES length table (32 entries). Previous version missed the final value (30) causing
-                                                  // IndexOutOfRangeException when games used length index 31 (e.g. Kirby's Adventure / MMC3 titles).
-        private static readonly int[] LengthTable = new int[]
-        { 10,254,20, 2,40, 4,80, 6,160, 8,60,10,14,12,26,14,12,16,24,18,48,20,96,22,192,24,72,26,16,28,32,30 };
-        private static readonly int[] NoisePeriods = new int[]
-        { 4,8,16,32,64,96,128,160,202,254,380,508,762,1016,2034,4068 }; // NTSC noise periods
+        // DPCM (DMC) channel minimal state for SoundFont note-event representation
+        private bool dpcm_enabled = false; // bit 4 of 0x4015
+        private bool dpcm_loop = false;
+        private int dpcm_rateIndex = 0; // 0..15
+        private byte dpcm_outputLevel = 0; // 0..127 (raw DAC load approximation)
+        private ushort dpcm_sampleAddress = 0; // base CPU address (not fully emulated)
+        private int dpcm_sampleLengthBytes = 0; // in bytes (value*16+1)
+        private bool dpcm_active = false; // currently “playing” sample
+        private long dpcm_remainingCycles = 0; // countdown until stop/loop
+        private const int ProgramDpcm = 0; // Bank 128 Program 0 (bank not yet emitted; future: CC0=128)
+        private int? activeDpcmNote; // synthetic MIDI note representing DPCM playback
 
         // ================== SoundFont / WebAudio NOTE EVENT MODE ==================
         // When enabled, the APU stops producing PCM samples and instead emits high-level
@@ -171,13 +174,16 @@ namespace NesEmulator
             basePulse1Freq = basePulse2Freq = baseTriangleFreq = 0;
             lastPulse1Pitch = lastPulse2Pitch = lastTrianglePitch = 0;
             lastPulse1Program = lastPulse2Program = -1; lastTriangleProgram = ProgramTriangle;
+            activeDpcmNote = null; dpcm_active = false; dpcm_remainingCycles = 0; dpcm_enabled = false;
         }
         private void EmitAllNoteOff()
         {
             if (activePulse1Note.HasValue) NoteEvent?.Invoke(new NesNoteEvent("P1", activePulse1Note.Value, 0, false, lastPulse1Program >= 0 ? lastPulse1Program : ProgramForPulseDuty(pulse1_duty)));
             if (activePulse2Note.HasValue) NoteEvent?.Invoke(new NesNoteEvent("P2", activePulse2Note.Value, 0, false, lastPulse2Program >= 0 ? lastPulse2Program : ProgramForPulseDuty(pulse2_duty)));
             if (activeTriangleNote.HasValue) NoteEvent?.Invoke(new NesNoteEvent("TRI", activeTriangleNote.Value, 0, false, ProgramTriangle));
+            if (activeDpcmNote.HasValue) NoteEvent?.Invoke(new NesNoteEvent("DPCM", activeDpcmNote.Value, 0, false, ProgramDpcm));
             activePulse1Note = activePulse2Note = activeTriangleNote = null;
+            activeDpcmNote = null; dpcm_active = false; dpcm_remainingCycles = 0;
         }
         private static int VolumeToVelocity(int vol4bit)
         {
@@ -242,11 +248,14 @@ namespace NesEmulator
                 int vel = (int)Math.Round(8 + perceptual * 119); // reserve 0..7 for silence safety
                 if (vel > 127) vel = 127; return vel;
             }
-            const double PulseGain = 0.1128; // gain at full volume (vol=15, duty fraction 1.0)
-            const double TriangleGain = 0.12765; // reference max
-            const double NoiseGain = 0.0741; // reference before intentional reduction
-            const double NoiseAttenuation = 0.50; // additional attenuation factor (makes noise quieter vs previous 0.6 scaling)
-            const double MaxRefGain = TriangleGain; // largest among the base gains
+            const double PulseGain = 0.25; // gain at full volume (vol=15, duty fraction 1.0)
+            const double TriangleGain = 0.25; // reference max (used as normalization reference)
+            const double TriangleAttenuation = 0.69; // pre-velocity amplitude attenuation (feeds perceptual curve)
+            const double TriangleVelocityScale = 0.69; // post-velocity hard scaling to guarantee ~50% perceived cut
+            const double NoiseGain = 0.069; // reference before intentional reduction
+            const double NoiseAttenuation = 0.25; // pre-velocity attenuation (feeds perceptual curve)
+            const double NoiseVelocityScale = 0.69; // post-velocity scaling (extra safety if perceptual curve reduces effect)
+            const double MaxRefGain = TriangleGain; // keep normalization reference so other channel scaling unchanged
 
             // Capture attack flags early (they'll clear on envelope tick)
             bool p1Attack = pulse1_envelopeStart;
@@ -345,7 +354,11 @@ namespace NesEmulator
             {
                 double freq = 1789773.0 / (32.0 * (triangle_timer + 1));
                 int targetNote = FreqToMidi(freq);
-                int triVel = AmplitudeToVelocity(TriangleGain, MaxRefGain); // constant amplitude
+                // Apply attenuation factor so triangle no longer always maps to max velocity (was 127)
+                int triVel = AmplitudeToVelocity(TriangleGain * TriangleAttenuation, MaxRefGain);
+                // Enforce final velocity scaling (after perceptual curve) to ensure ~50% reduction regardless of sqrt shaping
+                triVel = (int)Math.Round(triVel * TriangleVelocityScale);
+                if (triVel > 0 && triVel < 1) triVel = 1; // guard (probably redundant)
                 if (!activeTriangleNote.HasValue)
                 {
                     EmitNoteOn("TRI", ref activeTriangleNote, targetNote, triVel, ProgramTriangle, freq);
@@ -382,9 +395,11 @@ namespace NesEmulator
                     int periodIdx = noise_period & 0x0F;
                     int drumNote = periodIdx < 4 ? 35 : (periodIdx < 8 ? 38 : 42);
             int rawVol = noise_constantVolume ? noise_volumeParam : noise_decayLevel;
-            double amp = NoiseGain * (rawVol / 15.0) * NoiseAttenuation; // further reduced
+            double amp = NoiseGain * (rawVol / 15.0) * NoiseAttenuation * NoiseAttenuationFactor; // attenuated + user factor
             int vel = AmplitudeToVelocity(amp, MaxRefGain);
-            if (vel > 0) vel = Math.Max(vel - 8, 1); // slight bias down
+            // Post perceptual scaling for guaranteed 50% cut
+            vel = (int)Math.Round(vel * NoiseVelocityScale);
+            if (vel > 0) vel = Math.Max(vel - 8, 1); // slight bias down after scaling
                     if (vel < 1) vel = 1;
                     NoteEvent?.Invoke(new NesNoteEvent("NOI", drumNote, vel, true, ProgramNoise));
                     NoteEvent?.Invoke(new NesNoteEvent("NOI", drumNote, 0, false, ProgramNoise));
@@ -397,6 +412,32 @@ namespace NesEmulator
             prevTriangleLength = triangle_lengthCounter;
             prevTriangleLinear = triangle_linearCounter; // kept for potential future use
             prevNoiseLength = noise_lengthCounter;
+
+            // ---------- DPCM (simplified) ----------
+            if (dpcm_active && dpcm_remainingCycles <= 0)
+            {
+                if (activeDpcmNote.HasValue)
+                {
+                    NoteEvent?.Invoke(new NesNoteEvent("DPCM", activeDpcmNote.Value, 0, false, ProgramDpcm));
+                    activeDpcmNote = null;
+                }
+                if (!dpcm_loop)
+                {
+                    dpcm_active = false; dpcm_enabled = false;
+                }
+                else
+                {
+                    dpcm_remainingCycles = EstimateDpcmCycles();
+                }
+            }
+            if (dpcm_active && !activeDpcmNote.HasValue)
+            {
+                int midi = 60 + (dpcm_rateIndex - 8); // center around middle C
+                if (midi < 36) midi = 36; if (midi > 84) midi = 84;
+                int vel = 30 + (int)Math.Round((dpcm_outputLevel / 127.0) * 90.0); if (vel > 127) vel = 127; if (vel < 1) vel = 1;
+                NoteEvent?.Invoke(new NesNoteEvent("DPCM", midi, vel, true, ProgramDpcm));
+                activeDpcmNote = midi;
+            }
         }
 
         // ====== SAVE STATE SUPPORT ======
@@ -536,10 +577,10 @@ namespace NesEmulator
                 ClockPulse(ref pulse2_timer, ref pulse2_timerCounter, ref pulse2_sequenceIndex);
                 ClockTriangle();
                 ClockNoise();
+                if (dpcm_active && dpcm_remainingCycles > 0) dpcm_remainingCycles--; // countdown
             }
             if (soundFontMode)
             {
-                // Translate to note events only; skip PCM mixing for this batch
                 ProcessSoundFontNotes();
                 return;
             }
@@ -559,6 +600,9 @@ namespace NesEmulator
             double p2 = (pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
             double t = (triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
             double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
+            // Apply PCM attenuation scaling (independent of SoundFont note-event path)
+            if (t != 0.0) t *= PcmTriangleGainScale;
+            if (n != 0.0) n *= PcmNoiseGainScale * NoiseAttenuationFactor;
             double pulseMix = (p1 + p2) == 0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
             double tnd = (t + n) == 0 ? 0.0 : 159.79 / (1.0 / (t / 8227.0 + n / 12241.0) + 100.0);
             float mixed = (float)(pulseMix + tnd);
@@ -575,6 +619,42 @@ namespace NesEmulator
             new byte[8]{0,1,1,1,1,0,0,0},
             new byte[8]{1,0,0,1,1,1,1,1},
         };
+
+        // ================= NES CONSTANT TABLES & FILTER COEFFICIENTS =================
+        // Standard length counter table (NTSC) – values in frames. See NesDev APU docs.
+        private static readonly int[] LengthTable = new int[32]
+        {
+            10, 254, 20,  2, 40,  4, 80,  6,
+            160,  8, 60, 10, 14, 12, 26, 14,
+            12, 16, 24, 18, 48, 20, 96, 22,
+            192, 24, 72, 26, 16, 28, 32, 30
+        };
+
+        // Noise channel period table in CPU cycles (NTSC).
+        private static readonly int[] NoisePeriods = new int[16]
+        { 4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068 };
+
+        // DPCM (DMC) rate table in CPU cycles per bit (NTSC).
+        private static readonly int[] DpcmRateTable = new int[16]
+        { 428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 85, 72, 54 };
+
+        // Simple one-pole low-pass smoothing coefficient used before DC high-pass.
+        // Tuned by ear (rough ~4-5 kHz corner at 44.1k) – not cycle accurate, just taming aliasing harshness.
+        private const float LowPassCoeff = 0.045f;
+    // PCM output per-channel gain scaling (post envelope but pre non-linear mix) for balancing
+    private const float PcmTriangleGainScale = 0.50f; // 50% triangle reduction in PCM path
+    private const float PcmNoiseGainScale = 0.50f;    // 50% noise reduction in PCM path
+    // Runtime-adjustable attenuation for noise channel (applied multiplicatively on top of PcmNoiseGainScale for PCM
+    // and integrated into SoundFont velocity mapping). 1.0 = keep current scaling, <1 further reduces loudness.
+    public double NoiseAttenuationFactor { get; set; } = 0.5; // start at additional 50% cut
+
+        private long EstimateDpcmCycles()
+        {
+            if (dpcm_sampleLengthBytes <= 0) return 0;
+            int rateCycles = DpcmRateTable[dpcm_rateIndex & 0x0F];
+            // Each sample byte encodes 8 delta bits emitted at the selected rate.
+            return (long)rateCycles * dpcm_sampleLengthBytes * 8L;
+        }
 
         public void WriteAPURegister(ushort address, byte value)
         {
@@ -604,8 +684,31 @@ namespace NesEmulator
                 case 0x400E: noise_period = value; break;
                 case 0x400F:
                     noise_length = value; int nIdx = (value >> 3) & 0x1F; if (nIdx < LengthTable.Length) noise_lengthCounter = LengthTable[nIdx]; noise_envelopeStart = true; break;
+                case 0x4010: // DPCM control
+                    dpcm_loop = (value & 0x40) != 0; dpcm_rateIndex = value & 0x0F; break; // ignore IRQ flag
+                case 0x4011: // DPCM direct load
+                    dpcm_outputLevel = (byte)(value & 0x7F); break;
+                case 0x4012: // DPCM sample address
+                    dpcm_sampleAddress = (ushort)(0xC000 + value * 64); break;
+                case 0x4013: // DPCM sample length
+                    dpcm_sampleLengthBytes = value * 16 + 1; break;
                 case 0x4015:
-                    status = value; if ((value & 0x01) == 0) pulse1_enabled = false; if ((value & 0x02) == 0) pulse2_enabled = false; if ((value & 0x04) == 0) triangle_enabled = false; if ((value & 0x08) == 0) noise_enabled = false; break;
+                    status = value; if ((value & 0x01) == 0) pulse1_enabled = false; if ((value & 0x02) == 0) pulse2_enabled = false; if ((value & 0x04) == 0) triangle_enabled = false; if ((value & 0x08) == 0) noise_enabled = false;
+                    bool dEnable = (value & 0x10) != 0;
+                    if (dEnable && !dpcm_active && dpcm_sampleLengthBytes > 0)
+                    {
+                        dpcm_enabled = true; dpcm_active = true; dpcm_remainingCycles = EstimateDpcmCycles();
+                    }
+                    else if (!dEnable && dpcm_active)
+                    {
+                        if (activeDpcmNote.HasValue)
+                        {
+                            NoteEvent?.Invoke(new NesNoteEvent("DPCM", activeDpcmNote.Value, 0, false, ProgramDpcm));
+                            activeDpcmNote = null;
+                        }
+                        dpcm_active = false; dpcm_enabled = false; dpcm_remainingCycles = 0;
+                    }
+                    break;
                 case 0x4017:
                     frameSequencerMode5 = (value & 0x80) != 0; frameIRQInhibit = (value & 0x40) != 0; break;
             }

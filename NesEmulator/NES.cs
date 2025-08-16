@@ -695,6 +695,24 @@ namespace NesEmulator
 		// ===== SoundFont / Note Event Mode (APU_WF & APU_MNES) =====
 		private bool soundFontEnabled = false;
 		private Delegate? noteSub; // retains delegate reference for unsubscribe
+		private void EmitAllNoteOffInternal()
+		{
+			try
+			{
+				if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
+				{
+					// use reflection to invoke EmitAllNoteOff (private) if needed
+					var mi = typeof(NesEmulator.APU_WF).GetMethod("EmitAllNoteOff", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+					mi?.Invoke(wf, null);
+				}
+				else if (bus?.ActiveAPU is NesEmulator.APU_MNES mn)
+				{
+					var mi = typeof(NesEmulator.APU_MNES).GetMethod("EmitAllNoteOff", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+					mi?.Invoke(mn, null);
+				}
+			}
+			catch { }
+		}
 		public void FlushSoundFont()
 		{
 			if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
@@ -734,6 +752,8 @@ namespace NesEmulator
 			}
 			else
 			{
+				// Proactively emit note-off for currently active APU before detaching
+				EmitAllNoteOffInternal();
 				if (active is NesEmulator.APU_WF wf2)
 				{
 					wf2.SoundFontMode = false;

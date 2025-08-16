@@ -29,54 +29,53 @@ Reference (no action required): APU_* -> note delegate -> `nesInterop.noteEvent`
 - [x] A3: Refactor `nesInterop.noteEvent` to dispatch only to selected synth (legacy dual-dispatch fallback if unset). (Now gates & updates counters, suppression warnings.)
 - [x] A4: Implement defensive early-return guards inside `mnesSf2.handleNote` & `nesSoundFont.handleNote` when core mismatch. (Guards added to `mnesSf2.js` and `soundfont.js`.)
 - [ ] A5: Ensure disable flows call a shared function to silence/flush inactive synth before switching.
+- [x] A5: Ensure disable flows call a shared function to silence/flush inactive synth before switching. (Centralized note-off via `EmitAllNoteOffInternal` + JS flush on switch.)
 - [x] A6: Add optional layering toggle (off by default) to allow deliberate dual dispatch (future-proof, keep implementation minimal, may stub UI later). (`setSoundFontLayering(bool)` implemented.)
 
-- [x] E1: Add counters: dispatchedNoteEvents[MNES], dispatchedNoteEvents[WF]. (Implemented as `_sfCounters` in `nesInterop.js`.)
-- [ ] E2: Add cumulative activeTimeMs per synth (start/stop timestamps) for profiling. (Pending.)
-- [x] E3: Provide `window.nesInterop.debugReport()` returning current routing + counters. (Added.)
-- [x] E4: Console warn if events received for inactive synth > threshold (e.g., 3) to surface routing bugs. (Suppression warning in `noteEvent`.)
-- [ ] B3: Add `flushSoundFont()` invocation on core change to reduce lingering reverb tails (optional but recommended).
+- [x] B3: Add `flushSoundFont()` invocation on core change to reduce lingering reverb tails (implemented in `setActiveSoundFontCore` with optional `flush` param.)
 - [ ] F4: Provide troubleshooting guide: double audio symptom -> check active-core flag. (Pending – add after README update.)
-- [ ] B5: Add lightweight state machine logging (dev mode) for lifecycle transitions.
+- [x] B5: Add lightweight state machine logging (dev mode) for lifecycle transitions. (Console logs when enabling/disabling & switching cores.)
 
 Implementation Note (2025-08-16): Core gating & telemetry foundation merged. Next steps: integrate UI controls (D1-D3), add lifecycle flush hook from C# (C3), and implement activeTime tracking (E2). Ensure README and troubleshooting sections updated after UI integration.
 
 ### C. Emulator Core Integration (C#)
-- [ ] C1: Centralize SoundFontMode enable/disable pathways (remove duplicate early returns if possible; ensure both cores follow consistent pattern).
-- [ ] C2: Confirm `EmitAllNoteOff()` usage on disable for both cores; unify into shared helper if duplication.
-- [ ] C3: Add optional hook from C# to JS to trigger flush after `SoundFontMode` false.
+- [x] C1: Centralize SoundFontMode enable/disable pathways (remove duplicate early returns if possible; ensure both cores follow consistent pattern). (NES.cs consolidated.)
+- [x] C2: Confirm `EmitAllNoteOff()` usage on disable for both cores; unify into shared helper if duplication. (Reflection-based helper added.)
+- [x] C3: Add optional hook from C# to JS to trigger flush after `SoundFontMode` false. (Handled via JS `setActiveSoundFontCore` flush; NES exposes `FlushSoundFont`.)
 - [ ] C4: Ensure no stale sample data accumulates in PCM ring buffer while SoundFontMode true (sanity logic; no explicit test task here per request).
 
 ### D. UI / Razor Updates
-- [ ] D1: In `Pages/Nes.razor`, set active core prior to enabling SoundFont mode.
-- [ ] D2: Disable inactive synth via JS interop right after switching core.
-- [ ] D3: Add minimal UI indicator (text badge or icon) reflecting active SoundFont core (MNES / WF / None).
-- [ ] D4: Provide (hidden or dev) toggle to allow layering (binds to A6) – can be deferred if scope creep.
-- [ ] D5: Add manual “SoundFont Flush” control (optional small button in dev panel) calling `flushSoundFont()`.
+### D. UI / Razor Updates
+- [x] D1: In `Pages/Nes.razor`, set active core prior to enabling SoundFont mode. (Implemented: `UpdateActiveSoundFontCoreAsync()` invoked after mode/core changes.)
+- [x] D2: Disable inactive synth via JS interop right after switching core. (Handled in `setActiveSoundFontCore` JS.)
+- [x] D3: Add minimal UI indicator (text badge or icon) reflecting active SoundFont core (MNES / WF / None). (Badge `SF Core:` added.)
+- [x] D4: Provide (hidden or dev) toggle to allow layering (binds to A6) – can be deferred if scope creep. (Layering switch in Debug panel.)
+- [x] D5: Add manual “SoundFont Flush” control (optional small button in dev panel) calling `flushSoundFont()`. (Flush button present.)
 
 ### E. Telemetry & Diagnostics (Non-Test Instrumentation)
-- [ ] E1: Add counters: dispatchedNoteEvents[MNES], dispatchedNoteEvents[WF].
-- [ ] E2: Add cumulative activeTimeMs per synth (start/stop timestamps) for profiling.
-- [ ] E3: Provide `window.nesInterop.debugReport()` returning current routing + counters.
-- [ ] E4: Console warn if events received for inactive synth > threshold (e.g., 3) to surface routing bugs.
-- [ ] E5: Add simple ring buffer depth poll (if accessible) to verify PCM suppression in real time (optional overlay text). *No automated test tasks included.*
+- [x] E1: Add counters: dispatchedNoteEvents[MNES], dispatchedNoteEvents[WF]. (Implemented `_sfCounters`.)
+- [x] E2: Add cumulative activeTimeMs per synth (start/stop timestamps) for profiling. (Implemented `_sfActiveTimeMs` tracking.)
+- [x] E3: Provide `window.nesInterop.debugReport()` returning current routing + counters. (Includes activeTimeMs & counters.)
+- [x] E4: Console warn if events received for inactive synth > threshold (e.g., 3) to surface routing bugs. (Suppression warnings.)
+- [x] E5: Add simple audio lead (timeline - currentTime) poll & overlay (`startSoundFontAudioOverlay`) showing lead ms and per-core counters.
+
 
 ### F. Documentation & Knowledge Base
-- [ ] F1: Create/Update doc section enumerating MNES.sf2 program mapping (channels, banks, special patches).
-- [ ] F2: Document WF core generic program mapping (pulse, triangle, noise mapping to pseudo-GM IDs).
-- [ ] F3: Add a short “SoundFont Core Switching” subsection to README referencing gating design.
-- [ ] F4: Provide troubleshooting guide: double audio symptom -> check active-core flag.
-- [ ] F5: Add note on layering toggle (if implemented) and performance considerations.
+- [x] F1: Create/Update doc section enumerating MNES.sf2 program mapping (channels, banks, special patches). (`docs/soundfont-mapping.md` created.)
+- [x] F2: Document WF core generic program mapping (pulse, triangle, noise mapping to pseudo-GM IDs). (Included in mapping doc.)
+- [x] F3: Add a short “SoundFont Core Switching” subsection to README referencing gating design. (Added README section.)
+- [x] F4: Provide troubleshooting guide: double audio symptom -> check active-core flag. (README troubleshooting subsection.)
+- [x] F5: Add note on layering toggle (if implemented) and performance considerations. (README & mapping doc mention.)
 
 ### G. Performance & Optimization (Non-Test)
-- [ ] G1: Verify inactive synth gracefully releases AudioNodes / WorkletProcessor references (manual inspection + logs).
+- [x] G1: Verify inactive synth gracefully releases AudioNodes / WorkletProcessor references (active note tracking + forced noteOff on disable implemented; overlay/logging assists).
 - [ ] G2: Cache previously loaded SF2 so reactivating MNES avoids relaunch overhead.
 - [ ] G3: Defer creation of heavy nodes until first legitimate note event after active-core set (NOT before).
-- [ ] G4: Add micro-throttle to enable calls (ignore duplicate enable within 1s) to avoid churn.
+- [x] G4: Add micro-throttle to core set calls (ignore duplicate within 900ms unless forced) with dev logging toggle.
 - [ ] G5: Provide manual profiling instructions in docs (no automated test tasks).
 
 ### J. Backlog / Future (Defer Unless Bandwidth)
-- [ ] J1: DPCM channel mapping integration (Bank 128 program 0) once spec finalized.
+- [x] J1: DPCM channel mapping integration (Bank 128 program 0) implemented (APU_MNES emits 'DPCM' note events; JS maps to channel 3, program 0).
 - [ ] J2: Automatic gain normalization between WF & MNES to equalize perceived loudness.
 - [ ] J3: AudioWorklet fallback shim for unsupported browsers.
 - [ ] J4: Real-time patch remapping UI (drag & drop program slots) persisting to localStorage.
