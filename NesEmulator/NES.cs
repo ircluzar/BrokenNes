@@ -10,11 +10,23 @@ namespace NesEmulator
 		private Cartridge? cartridge;
 		private Bus? bus;
 		private bool forceStatic = false; // when true, draw animated gray static instead of PPU output
-		private double cycleRemainder = 0; // leftover CPU cycles from previous frame
+		// --- Fixed-point frame timing (Optimization #4) ---
+		// Replaces prior double-based fractional cycle accounting. We model CPU cycles per frame as:
+		//   CpuFrequencyInt = BaseCyclesPerFrame * 60 + ExtraCyclesNumerator
+		// Each frame: target = BaseCyclesPerFrame plus one extra cycle on ExtraCyclesNumerator of 60 frames
+		// (Exact ratio 1789773 / 60 = 29829 + 33/60; simplifies to 29829 + 11/20).
+		// We also carry instruction overshoot (cycles executed beyond frame target) to the next frame.
+		// Fields are persisted for savestates (see NesState.extraCycleAcc / overshootCarry for new integers).
+		private int extraCycleAccumulator = 0; // 0..ExtraCyclesDenominator-1 scaled accumulator
+		private int overshootCarry = 0; // cycles executed beyond prior frame's target, subtract from next target
+		private double cycleRemainder = 0; // legacy field kept for backward-compat load of old states
 		// Removed frameskip to maintain consistent visual cadence
-		private const double CpuFrequency = 1789773.0; // NTSC CPU frequency
-		private const double TargetFps = 60.0;
-		private const double CyclesPerFrame = CpuFrequency / TargetFps; // ~29829.55
+		private const double CpuFrequency = 1789773.0; // NTSC CPU frequency (double kept for benchmarks)
+		private const int CpuFrequencyInt = 1789773; // integer form for fixed-point arithmetic
+		private const int TargetFpsInt = 60;
+		private const int BaseCyclesPerFrame = CpuFrequencyInt / TargetFpsInt; // 29829
+		private const int ExtraCyclesNumerator = CpuFrequencyInt % TargetFpsInt; // 33
+		private const int ExtraCyclesDenominator = TargetFpsInt; // 60
 
 		public NES() { }
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
@@ -43,7 +55,10 @@ namespace NesEmulator
 		// subsystems already accept JsonElement, so on load we parse these strings back into
 		// JsonDocuments and hand root elements off without requiring polymorphic serialization.
 		private class NesState {
-			public double cycleRemainder; public byte[] ram = Array.Empty<byte>();
+			public double cycleRemainder; // legacy (pre fixed-point). Retained for backward compatibility.
+			public int extraCycleAcc; // new: accumulator for fractional cycles (0..ExtraCyclesDenominator-1)
+			public int overshootCarry; // new: instruction overshoot carry to next frame
+			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
@@ -100,7 +115,9 @@ namespace NesEmulator
 				var romClone = (byte[])cartridge.rom.Clone();
 				Log($"Sizes ram={ramClone.Length} prgRAM={prgClone.Length} chrRAM={chrClone.Length} rom={romClone.Length}");
 				st = new NesState {
-					cycleRemainder = cycleRemainder,
+					cycleRemainder = overshootCarry, // store overshoot in legacy field for older loaders
+					extraCycleAcc = extraCycleAccumulator,
+					overshootCarry = overshootCarry,
 					ram = ramClone,
 					cpu = cpuJson,
 					ppu = ppuJson,
@@ -242,7 +259,18 @@ namespace NesEmulator
 				} catch { return; }
 			}
 			if (bus == null || cartridge == null) return; // still cannot proceed
-			cycleRemainder = st.cycleRemainder;
+			// Restore fixed-point timing accumulators (fallback to legacy double if new ints absent)
+			if (st.extraCycleAcc != 0 || st.overshootCarry != 0)
+			{
+				extraCycleAccumulator = st.extraCycleAcc;
+				overshootCarry = st.overshootCarry;
+			}
+			else
+			{
+				// Legacy state: interpret positive cycleRemainder as overshoot carry
+				overshootCarry = st.cycleRemainder > 0 ? (int)st.cycleRemainder : 0;
+				extraCycleAccumulator = 0;
+			}
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
 			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
@@ -345,30 +373,38 @@ namespace NesEmulator
 		{
 			if (bus == null || crashed) return;
 			framesExecutedTotal++;
-			// Determine cycles target for this frame (carry fractional remainder)
-			double targetCycles = CyclesPerFrame + cycleRemainder;
-			int targetInt = (int)targetCycles;
+			// Compute target cycles for this frame using integer fixed-point method.
+			// Base cycles plus an extra cycle on frames where accumulator crosses denominator.
+			int targetCycles = BaseCyclesPerFrame;
+			extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
+			if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			// Apply any overshoot carry from last frame (can reduce target this frame)
+			if (overshootCarry > 0) {
+				if (overshootCarry >= targetCycles) {
+					// Edge case: previous overshoot larger than base frame; clamp to leave minimum work
+					overshootCarry -= targetCycles;
+					return; // skip running CPU this frame; leftover overshoot still pending
+				}
+				targetCycles -= overshootCarry; overshootCarry = 0;
+			}
 			int executed = 0;
-			// Loop unrolled in small batches to reduce loop condition checks
 			try {
-				while (executed < targetInt)
+				while (executed < targetCycles)
 				{
-					for (int i = 0; i < 8 && executed < targetInt; i++)
+					for (int i = 0; i < 8 && executed < targetCycles; i++)
 					{
 						int cpuCycles = bus.cpu.ExecuteInstruction();
 						executed += cpuCycles;
 						int ppuCycles = cpuCycles * 3;
 						bus.ppu.Step(ppuCycles);
-							bus.StepAPU(cpuCycles);
+						bus.StepAPU(cpuCycles);
 					}
 				}
-			} catch (CPU_FMC.CpuCrashException ex) {
+			}
+			catch (CPU_FMC.CpuCrashException ex) {
 				if (crashBehavior == CrashBehavior.IgnoreErrors) {
-					// Treat crash as recovered; attempt to continue next frame.
-					// We could auto-advance PC one byte to avoid infinite loop on same bad opcode.
-					// Advance PC by mutating CPU state (hot fix for interface abstraction)
 					try { bus.cpu.AddToPC(1); } catch {}
-					return; // frame ends early but emulator keeps running
+					return;
 				}
 				crashed = true;
 				var regsCrash = bus.cpu.GetRegisters();
@@ -376,7 +412,8 @@ namespace NesEmulator
 				RenderCrashScreen();
 				return;
 			}
-			cycleRemainder = executed - targetCycles; // may be negative or small positive
+			// If we executed beyond the frame target, carry over to next frame
+			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus.ppu.UpdateFrameBuffer();
 		}
