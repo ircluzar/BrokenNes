@@ -153,13 +153,33 @@ namespace NesEmulator
 			// Limit to class/struct with only primitive/array fields
 			// Limit to public instance fields only (AOT: accessing non-public via reflection can trigger dynamic method generation).
 			var fields = type.GetFields(BindingFlags.Instance|BindingFlags.Public);
-			var sbObj = new StringBuilder(); sbObj.Append('{'); bool firstField=true;
+			var sbObj = new StringBuilder(); sbObj.Append('{'); bool firstMember=true;
 			foreach (var fi in fields)
 			{
 				if (fi.IsStatic) continue; var val = fi.GetValue(obj);
-				if(!firstField) sbObj.Append(','); firstField=false;
+				if(!firstMember) sbObj.Append(','); firstMember=false;
 				sbObj.Append('"').Append(Escape(fi.Name)).Append('"').Append(':').Append(PlainSerialize(val));
 			}
+			// Theory 3 fix: also include eligible public properties (primitive, string, primitive arrays) with both getter and setter
+			try {
+				var props = type.GetProperties(BindingFlags.Instance|BindingFlags.Public);
+				foreach (var pi in props)
+				{
+					if (!pi.CanRead || !pi.CanWrite) continue; // require read/write to restore later
+					var pt = pi.PropertyType;
+					bool include = false;
+					if (pt.IsPrimitive || pt == typeof(string)) include = true;
+					else if (pt.IsArray) {
+						var et = pt.GetElementType();
+						if (et != null && (et.IsPrimitive || et == typeof(string))) include = true;
+					}
+					if (!include) continue;
+					object? val;
+					try { val = pi.GetValue(obj); } catch { continue; }
+					if(!firstMember) sbObj.Append(','); firstMember=false;
+					sbObj.Append('"').Append(Escape(pi.Name)).Append('"').Append(':').Append(PlainSerialize(val));
+				}
+			} catch { /* ignore reflection issues; keep serializer robust */ }
 			sbObj.Append('}'); return sbObj.ToString();
 			static string Escape(string raw) => raw.Replace("\\","\\\\").Replace("\"","\\\"");
 		}
