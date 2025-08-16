@@ -315,15 +315,43 @@ public class PPU_CUBE : IPPU
 			return;
 		}
 
-		// Current background coverage row index to record tiles (opaque bg pixels)
-		int coverageRowIndex = scanline % ShadowVerticalDistance;
-		int bgRowBase = coverageRowIndex * ScreenWidth;
-		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageRows[bgRowBase + cx] = 0;
-
-		// We'll lazily write gradient pixels only when BG pixel transparent (fused gradient path P0 #1)
+		// 1. Pre-fill entire scanline with gradient so we can project shadows BEFORE drawing tiles (matches sprite shadow layering semantics)
 		byte gradR = gradientR[scanline];
 		byte gradG = gradientG[scanline];
 		byte gradB = gradientB[scanline];
+		int gradBase = scanline * ScreenWidth * 4;
+		for (int gx = 0; gx < ScreenWidth; gx++)
+		{
+			int gi = gradBase + (gx << 2);
+			frameBuffer![gi + 0] = gradR;
+			frameBuffer![gi + 1] = gradG;
+			frameBuffer![gi + 2] = gradB;
+			frameBuffer![gi + 3] = 255;
+		}
+
+		// 2. Project shadow from previous scanline's opaque background pixels (down + left) BEFORE current BG tiles draw
+		if (scanline >= ShadowVerticalDistance)
+		{
+			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance; // always 0 with distance=1 but kept for clarity
+			int srcBase = srcRow * ScreenWidth;
+			int shadowBase = scanline * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (bgCoverageRows[srcBase + x] == 0) continue; // only project from previously opaque bg pixels
+				int sx = x + ShadowOffsetX; // shift left
+				if ((uint)sx >= ScreenWidth) continue;
+				int fi = shadowBase + (sx << 2);
+				// Darken existing gradient pixel to form shadow (avoid double-darkening by simple multiplicative pass)
+				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
+				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
+				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+			}
+		}
+
+		// 3. Clear coverage buffer AFTER projecting so previous row data was available
+		int coverageRowIndex = scanline % ShadowVerticalDistance;
+		int bgRowBase = coverageRowIndex * ScreenWidth;
+		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageRows[bgRowBase + cx] = 0;
 
 		ushort renderV = v;
 
@@ -372,22 +400,12 @@ public class PPU_CUBE : IPPU
 				if ((uint)pixel >= ScreenWidth) continue;
 				int bit = 1 << (7 - i);
 				int colorIndex = ((plane0 & bit) != 0 ? 1 : 0) | (((plane1 & bit) != 0 ? 1 : 0) << 1);
-				int frameIndex = scanlineBase + (pixel << 2);
-				if (colorIndex == 0)
-				{
-					if (!bgMask[pixel])
-					{
-						frameBuffer![frameIndex + 0] = gradR;
-						frameBuffer![frameIndex + 1] = gradG;
-						frameBuffer![frameIndex + 2] = gradB;
-						frameBuffer![frameIndex + 3] = 255;
-					}
-					continue;
-				}
+				if (colorIndex == 0) continue; // keep existing (possibly shadow-darkened) gradient pixel
 				bgMask[pixel] = true;
 				bgCoverageRows[bgRowBase + pixel] = 1;
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
 				int pBase = palEntry * 3;
+				int frameIndex = scanlineBase + (pixel << 2);
 				frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
 				frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
 				frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
@@ -398,26 +416,7 @@ public class PPU_CUBE : IPPU
 			IncrementX(ref renderV);
 		}
 
-		// After BG pixels drawn, project previous scanline BG shadows ONLY onto gradient (non-opaque BG) pixels to preserve prior visual semantics.
-		if (scanline >= ShadowVerticalDistance)
-		{
-			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int srcBase = srcRow * ScreenWidth;
-			int shadowY = scanline;
-			int baseIndex = shadowY * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				if (bgCoverageRows[srcBase + x] == 0) continue;
-				int sx = x + ShadowOffsetX;
-				if (sx < 0 || sx >= ScreenWidth) continue;
-				// Only darken if current pixel remained gradient (no opaque BG drawn)
-				if (bgMask[sx]) continue;
-				int fi = baseIndex + sx * 4;
-				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
-			}
-		}
+		// (Shadow projection for BG already handled before drawing tiles.)
 	}
 
 	private void RenderSprites(int scanline, bool[] bgMask)
