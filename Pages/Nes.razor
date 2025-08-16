@@ -537,17 +537,13 @@
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <strong class="small mb-0">Benchmarks</strong>
                                 <span class="badge rounded-pill bg-dark text-light small">@benchHistory.Count saved</span>
-                                <div class="input-group input-group-sm" style="width:150px;">
-                                    <span class="input-group-text">Weight</span>
-                                    <input type="number" min="1" max="20" class="form-control" @bind="benchWeight" @bind:after="(()=>{ if(benchWeight<1) benchWeight=1; if(benchWeight>20) benchWeight=20; })" />
+                                <div class="input-group input-group-sm" style="width:60px;">
+                                    <span class="input-group-text">W</span>
+                                    <input type="number" min="1" max="9" class="form-control" style="padding-left:2px;padding-right:2px;font-size:.65rem;" @bind="benchWeight" @bind:after="(()=>{ if(benchWeight<1) benchWeight=1; if(benchWeight>9) benchWeight=9; })" />
                                 </div>
-                                <div class="form-check form-check-inline small">
-                                    <input class="form-check-input" type="checkbox" id="benchAutoLoadChk" @bind="benchAutoLoadState" />
-                                    <label class="form-check-label" for="benchAutoLoadChk" title="Load baseline savestate before each benchmark run">Auto-Load</label>
-                                </div>
-                                <div class="form-check form-check-inline small">
-                                    <input class="form-check-input" type="checkbox" id="benchSimple5xChk" @bind="benchSimple5x" />
-                                    <label class="form-check-label" for="benchSimple5xChk" title="5x benchmark shows only averaged results (no raw passes)">Simple 5x</label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Benchmark options" style="gap:2px;">
+                                    <button type="button" class="btn @(benchAutoLoadState?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="ToggleBenchAutoLoad" title="Load baseline savestate before each run">Auto</button>
+                                    <button type="button" class="btn @(benchSimple5x?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="ToggleBenchSimple5x" title="5× shows only averaged results">5×Avg</button>
                                 </div>
                                 @if (benchRunning)
                                 {
@@ -556,7 +552,7 @@
                             </div>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks5x" disabled="@(nes==null || benchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(benchRunning?"Running...":"Run 5×")</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":$"Run (x{benchWeight})")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":$"Run {benchWeight}x")</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="CloseBenchModal" aria-label="Close">Close</button>
                             </div>
                         </div>
@@ -709,7 +705,7 @@
     private bool stateBusy = false; // prevent overlapping save/load operations
     private string debugDump = string.Empty;
     // Benchmark modal state
-    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = false; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
+    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
     // Persistent benchmark history
     private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
     private List<BenchHistoryEntry> benchHistory = new();
@@ -1921,6 +1917,8 @@
     }
 
     private void OpenBenchModal(){ benchModalOpen = true; StateHasChanged(); }
+    private void ToggleBenchAutoLoad(){ benchAutoLoadState = !benchAutoLoadState; }
+    private void ToggleBenchSimple5x(){ benchSimple5x = !benchSimple5x; }
 
     private async Task RunBenchmarks()
     {
@@ -1934,7 +1932,7 @@
                 // Attempt to load savestate slot 0 (baseline)
                 await TryLoadBaselineStateForBenchmarks();
             }
-            int w = benchWeight; if (w<1) w=1; if (w>20) w=20; benchWeight = w;
+            int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
             var results = nes.RunBenchmarks(w);
             benchResultsText = nes.FormatBenchmarksForDisplay(results);
             // Prepend ROM info if we resolved a baseline name
@@ -1964,7 +1962,7 @@
         bool wasRunning = isRunning;
         try {
             if (wasRunning) await PauseEmulation();
-            int w = benchWeight; if (w<1) w=1; if (w>20) w=20; benchWeight = w;
+            int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
             const int passes = 5;
             var passResults = new List<IReadOnlyList<NesEmulator.NES.BenchResult>>();
             for (int i=1;i<=passes;i++)
