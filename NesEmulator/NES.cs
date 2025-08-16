@@ -390,48 +390,71 @@ namespace NesEmulator
 				}
 				targetCycles -= overshootCarry; overshootCarry = 0;
 			}
-			int executed = 0;
-			int batchCpu = 0; // accumulate CPU cycles for batch stepping
-			try {
-				while (executed < targetCycles)
-				{
-					// Execute up to ConfigMaxInstructionsPerBatch instructions before flushing PPU/APU
-					for (int i = 0; i < ConfigMaxInstructionsPerBatch && executed < targetCycles; i++)
+			int executed = 0; // cycles executed this frame (relative)
+			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
+			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
+			if (EnableEventScheduler)
+			{
+				// --- Experimental event-driven path (Feature flag gated) ---
+				// Ensure first PPU event is scheduled (scanline end) if not already or stale
+				if (nextPpuEventCycle <= globalCpuCycle) ScheduleNextPpuScanline();
+				try {
+					while (globalCpuCycle < frameEndCycle)
 					{
-						int cpuCycles = bus.cpu.ExecuteInstruction();
-						executed += cpuCycles;
-						batchCpu += cpuCycles;
-						if (batchCpu >= ConfigBatchCycleThreshold)
+						long next = frameEndCycle;
+						if (nextPpuEventCycle > globalCpuCycle && nextPpuEventCycle < next) next = nextPpuEventCycle;
+						// (APU / IRQ events will be integrated later)
+						long remaining = next - globalCpuCycle;
+						int batchCpu = 0;
+						// Execute instructions until we reach or exceed the next event boundary
+						while (batchCpu < remaining)
 						{
-							// Flush accumulated cycles to PPU/APU once per batch
-							bus.ppu.Step(batchCpu * 3);
-							bus.StepAPU(batchCpu);
-							bus.CountBatchFlush();
+							int cpuCycles = bus.cpu.ExecuteInstruction();
+							batchCpu += cpuCycles;
+							executed += cpuCycles;
+							// Safety: prevent huge single batches if a very long instruction sequence occurs (unlikely)
+							if (batchCpu >= ConfigMaxEventLoopInstructionBurstCycles) break;
+						}
+						FlushBatch(batchCpu);
+						// Process PPU scanline event if reached
+						if (globalCpuCycle >= nextPpuEventCycle)
+						{
+							ScheduleNextPpuScanline();
+						}
+					}
+				}
+				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
+			}
+			else
+			{
+				// --- Legacy batch heuristic path (current default) ---
+				int batchCpu = 0;
+				if (nextPpuEventCycle < globalCpuCycle) nextPpuEventCycle = globalCpuCycle; // keep monotonic (placeholder)
+				try {
+					while (globalCpuCycle < frameEndCycle)
+					{
+						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
+						{
+							int cpuCycles = bus.cpu.ExecuteInstruction();
+							executed += cpuCycles;
+							batchCpu += cpuCycles;
+							if (batchCpu >= ConfigBatchCycleThreshold)
+							{
+								FlushBatch(batchCpu);
+								batchCpu = 0;
+							}
+						}
+						if (batchCpu > 0 && (globalCpuCycle + batchCpu >= frameEndCycle || (frameEndCycle - (globalCpuCycle + batchCpu)) <= ConfigMinRemainingFlushGuard))
+						{
+							FlushBatch(batchCpu);
 							batchCpu = 0;
 						}
 					}
-					// If loop ended because target reached but leftover batchCpu pending, flush
-					if (batchCpu > 0 && (executed >= targetCycles || executed + ConfigMinRemainingFlushGuard >= targetCycles))
-					{
-						bus.ppu.Step(batchCpu * 3);
-						bus.StepAPU(batchCpu);
-						bus.CountBatchFlush();
-						batchCpu = 0;
-					}
 				}
+				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
 			}
-			catch (CPU_FMC.CpuCrashException ex) {
-				if (crashBehavior == CrashBehavior.IgnoreErrors) {
-					try { bus.cpu.AddToPC(1); } catch {}
-					return;
-				}
-				crashed = true;
-				var regsCrash = bus.cpu.GetRegisters();
-				crashInfo = ex.Message + " PC=" + regsCrash.PC.ToString("X4");
-				RenderCrashScreen();
-				return;
-			}
-			// If we executed beyond the frame target, carry over to next frame
+			// (Exceptions already handled within each scheduling branch)
+			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for legacy compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus.ppu.UpdateFrameBuffer();
@@ -444,6 +467,47 @@ namespace NesEmulator
 		private const int ConfigBatchCycleThreshold = 24; // allows combining several short (2-3 cycle) ops
 		// If remaining cycles to frame end are below this guard after a loop, flush leftover to keep timing bounded.
 		private const int ConfigMinRemainingFlushGuard = 16;
+		// Limit for a single event-loop CPU instruction burst to avoid extremely large batches when events are sparse.
+		private const int ConfigMaxEventLoopInstructionBurstCycles = 1024; // conservative; tuned later
+		// Global absolute CPU cycle counter (monotonic across frames) for upcoming event scheduler.
+		private long globalCpuCycle = 0;
+		// Event scheduler scaffolding fields (will be populated by PPU/APU once they provide event times)
+		private long nextPpuEventCycle = 0;
+		private long nextApuEventCycle = 0;
+		private long nextIrqCycle = long.MaxValue; // placeholder until IRQ scheduling implemented (#17)
+		private long nextFrameBoundaryCycle = 0;
+		// Feature flag to toggle experimental event loop
+		public bool EnableEventScheduler { get; set; } = false;
+		// PPU scanline scheduling pattern (114,114,113) CPU cycles approximates 341 PPU cycles per scanline (341/3=113.667)
+		private static readonly int[] PpuScanlineCpuPattern = new int[]{114,114,113};
+		private int ppuScanlinePatternIndex = 0;
+		private void ScheduleNextPpuScanline()
+		{
+			int delta = PpuScanlineCpuPattern[ppuScanlinePatternIndex];
+			ppuScanlinePatternIndex++; if (ppuScanlinePatternIndex >= PpuScanlineCpuPattern.Length) ppuScanlinePatternIndex = 0;
+			nextPpuEventCycle = globalCpuCycle + delta;
+		}
+		// Consolidated flush helper so later event-based stepping can reuse it
+		private void FlushBatch(int cpuCycles)
+		{
+			// Advance subsystems for accumulated cycles; order: PPU (3x), APU, then advance global cycle.
+			bus.ppu.Step(cpuCycles * 3);
+			bus.StepAPU(cpuCycles);
+			bus.CountBatchFlush();
+			globalCpuCycle += cpuCycles;
+		}
+		private void HandleCpuCrash(CPU_FMC.CpuCrashException ex)
+		{
+			if (crashBehavior == CrashBehavior.IgnoreErrors)
+			{
+				try { bus.cpu.AddToPC(1); } catch {}
+				return;
+			}
+			crashed = true;
+			var regsCrash = bus.cpu.GetRegisters();
+			crashInfo = ex.Message + " PC=" + regsCrash.PC.ToString("X4");
+			RenderCrashScreen();
+		}
 
 		// Allow caller to rapidly run multiple frames (used for fast-forward / warm-up)
 		public void RunFrames(int frames)
@@ -453,7 +517,10 @@ namespace NesEmulator
 
 		// === Instrumentation & Benchmarks (Theory #38) ===
 		private long framesExecutedTotal = 0;
-		public record BenchResult(string Name, int Iterations, double MsTotal, double MsPerIter, long CpuReads, long CpuWrites, long ApuCycles, long OamDmaWrites);
+		public record BenchResult(string Name, int Iterations, double MsTotal, double MsPerIter, long CpuReads, long CpuWrites, long ApuCycles, long OamDmaWrites, long BatchFlushes)
+		{
+			public double AvgBatchSize => BatchFlushes > 0 ? (double)ApuCycles / BatchFlushes : 0.0; // APU cycles == CPU cycles stepped in batches
+		}
 		public IReadOnlyList<BenchResult> RunBenchmarks(int weight = 1)
 		{
 			if (weight <= 0) weight = 1; // clamp
@@ -467,7 +534,7 @@ namespace NesEmulator
 				for (int i=0;i<iters;i++) body();
 				sw.Stop();
 				var instr = bus.GetInstrumentation();
-				return new BenchResult(name, iters, sw.Elapsed.TotalMilliseconds, sw.Elapsed.TotalMilliseconds/iters, instr.Reads, instr.Writes, instr.ApuSteps, instr.OamDmaWrites);
+				return new BenchResult(name, iters, sw.Elapsed.TotalMilliseconds, sw.Elapsed.TotalMilliseconds/iters, instr.Reads, instr.Writes, instr.ApuSteps, instr.OamDmaWrites, instr.BatchFlushes);
 			}
 			try {
 				// 1. Run N frames baseline (uses current ROM & state)
@@ -492,10 +559,10 @@ namespace NesEmulator
 		{
 			var sb = new System.Text.StringBuilder();
 			sb.AppendLine("Benchmark Results");
-			sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA");
+			sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA\tBatches\tAvgBatch");
 			foreach (var r in results)
 			{
-				sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+				sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}\t{r.BatchFlushes}\t{r.AvgBatchSize:F1}");
 			}
 			return sb.ToString();
 		}

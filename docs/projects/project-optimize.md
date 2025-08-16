@@ -55,13 +55,22 @@
 ---
 ## Detailed Theories & Rationale
 
-[~] ### 1. Batch / Event Scheduler (Collapse per‑instruction stepping)
+[x] ### 1. Batch / Event Scheduler (Collapse per‑instruction stepping)
 Current (before): `NES.RunFrame` executed each instruction then immediately called `ppu.Step(ppuCycles)` and `bus.StepAPU(cpuCycles)`; APU cores loop per cycle internally—very high cross‑subsystem call frequency.
 Partial Implementation (2025‑08‑16): Introduced intra-frame batching in `NES.RunFrame` with configurable thresholds (`ConfigMaxInstructionsPerBatch=32`, `ConfigBatchCycleThreshold=24`). CPU instructions now accumulate cycles in a local `batchCpu`; PPU/APU are stepped once per batch rather than every instruction. Added `Bus.CountBatchFlush()` instrumentation counter (`BatchFlushes`) to quantify reduction. Leftover partial batch flushed at frame boundary. This is a first step (micro-batching) paving way for full event-driven scheduler.
-Next Steps to fully complete item: (a) Track global `currentCpuCycle` field; (b) Replace heuristic batching with explicit future event times (`nextPpuScanline`, `nextApuEvent`, `frameEnd`, `nextIrq`); (c) Allow CPU to run until min(nextEvent, frameEnd); (d) Integrate interrupt scheduling (#17) and APU event system (#2) once implemented. After those, replace batch constants with event deltas and remove per-frame flush guard heuristics.
-Impact Expectation: Initial partial should cut PPU/APU step call count roughly by ~4‑10× depending on instruction mix (to be measured via new instrumentation). Full event scheduler still expected to deliver remaining gains.
-Risk: Low–Med for partial (cycle ordering unchanged within batch, only consolidation). Full version remains Moderate due to interrupt timing accuracy.
-Effort Remaining: Medium.
+Progress (2025‑08‑16b): Added `globalCpuCycle` and event scaffolding fields plus batch flush helper. Legacy batching still drives timing.
+Progress (2025‑08‑16c): Implemented experimental feature flag `EnableEventScheduler` with an alternate event-loop path. Added provisional PPU scanline scheduling using repeating CPU cycle pattern (114,114,113) ≈ 341 PPU cycles. Loop advances CPU to min(nextPpuEvent, frameEnd) in bursts (capped at 1024 cycles) then flushes once. On each scanline boundary schedules the next. APU/IRQ events still pending; fallback legacy batching remains default (flag off). Benchmark instrumentation extended with batch counts + average batch size.
+Progress (2025‑08‑16d): Added UI toggle (Debug panel “Event Scheduler”) persisting preference to IndexedDB. This enables interactive A/B testing of legacy batching vs early event loop. No functional timing change yet beyond scanline boundary granularity.
+Planned Next Subtasks:
+    a. Add `globalCpuCycle` + event fields to `NES` (scaffolding only, no behavior change except tracking).
+    b. Refactor `RunFrame` loop to compute `frameEndCycle = globalCpuCycle + targetCycles` then run while `globalCpuCycle < frameEndCycle` using batch heuristic; update both `globalCpuCycle` and `executed` simultaneously.
+    c. Introduce helper `FlushBatch(int cpuCycles)` consolidating duplicated flush logic and incrementing `globalCpuCycle` after stepping subsystems (ensuring consistent ordering).
+    d. Instrument: add to benchmark output the average batch size = `(executed / BatchFlushes)` to validate improvement; update doc with empirical numbers.
+    e. (Subsequent) Replace heuristic stop with min(nextEventCycle, frameEndCycle) once APU provides `NextEventCycle` (#2) and PPU exposes scanline/event schedule (#14/#40).
+Impact Expectation: Initial partial should cut PPU/APU step call count roughly by ~4‑10× depending on instruction mix (to be measured via instrumentation). Global cycle tracking + early-exit by frame boundary forms 30–40% of groundwork for full event scheduler. Full event scheduler still expected to deliver remaining gains.
+Risk: Low–Med for partial (cycle ordering unchanged within batch, only consolidation). Incremental risk when moving to event deltas (ensure no drift in NMI/APU frame sequencer alignment). Provide feature flag `USE_EVENT_SCHEDULER` before removing the old path.
+Status: Foundations complete (global cycle counter, experimental event loop, scanline event scheduling, UI toggle, instrumentation). Remaining enhancements (APU event integration, IRQ/NMI event times, removal of heuristic batch constants) are now tracked under items #2 (APU), #10 (Unified Scheduler), and #17 (Interrupt Scheduling).
+Effort Remaining: Deferred to linked items (#2/#10/#17). Item #1 considered complete as an enabling layer.
 
 [ ] ### 2. Event‑Driven APU Timers (Remove per‑CPU cycle loop)
 Current: `APU_LOW.Step(int cpuCycles)` (and similar) iterates for each CPU cycle, decrementing multiple counters and possibly generating samples.

@@ -529,6 +529,10 @@
             <div class="mt-2">
                 <button class="btn btn-sm btn-outline-primary" @onclick="OpenBenchModal" disabled="@(nes==null /* allow opening even if benchRunning? keep disabled only if no nes */)">@(benchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="OpenCompareModal" disabled="@(benchHistory.Count<2)">Compare Results</button>
+                <div class="form-check form-switch mt-2 small">
+                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @onchange="ToggleEventScheduler" checked="@eventSchedulerOn" disabled="@(nes==null)" />
+                    <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
+                </div>
             </div>
             @if (benchModalOpen)
             {
@@ -901,6 +905,20 @@
     private string debugDump = string.Empty;
     // Benchmark modal state
     private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
+    // Event scheduler UI state (mirrors nes.EnableEventScheduler)
+    private bool eventSchedulerOn = false;
+    private void ToggleEventScheduler(ChangeEventArgs e)
+    {
+        if (nes == null) return;
+        bool desired = e.Value is bool b && b;
+        // Some browsers send string "true"/"false"
+        if (e.Value is string sv) { if (bool.TryParse(sv, out var parsed)) desired = parsed; }
+        eventSchedulerOn = desired;
+        try { nes.EnableEventScheduler = eventSchedulerOn; } catch {}
+        // Persist preference (optional)
+        try { JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_eventScheduler", eventSchedulerOn?"1":"0"); } catch {}
+        StateHasChanged();
+    }
     // Persistent benchmark history
     private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
     private List<BenchHistoryEntry> benchHistory = new();
@@ -2200,7 +2218,8 @@
                     long cpuWritesAvg = (long)passResults.Average(p=>p[idx].CpuWrites);
                     long apuCyclesAvg = (long)passResults.Average(p=>p[idx].ApuCycles);
                     long oamDmaWritesAvg = (long)passResults.Average(p=>p[idx].OamDmaWrites);
-                    averaged.Add(new NesEmulator.NES.BenchResult(name, iters, msTotalAvg, msPerIterAvg, cpuReadsAvg, cpuWritesAvg, apuCyclesAvg, oamDmaWritesAvg));
+                    long batchFlushesAvg = (long)passResults.Average(p=>p[idx].BatchFlushes);
+                    averaged.Add(new NesEmulator.NES.BenchResult(name, iters, msTotalAvg, msPerIterAvg, cpuReadsAvg, cpuWritesAvg, apuCyclesAvg, oamDmaWritesAvg, batchFlushesAvg));
                 }
             }
             // Build display text summarizing passes and averaged table
@@ -2210,10 +2229,10 @@
             sb.AppendLine("Benchmark Results (5-pass average)");
             sb.AppendLine($"Each pass weight={w}; fields averaged over {passes} passes.");
             sb.AppendLine();
-            sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA");
+            sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA\tBatches\tAvgBatch");
             foreach (var r in averaged)
             {
-                sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+                sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}\t{r.BatchFlushes}\t{r.AvgBatchSize:F1}");
             }
             if (!benchSimple5x)
             {
@@ -2224,7 +2243,7 @@
                     sb.AppendLine($"-- Pass {i+1} --");
                     foreach (var r in passResults[i])
                     {
-                        sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+                        sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}\t{r.BatchFlushes}\t{r.AvgBatchSize:F1}");
                     }
                     sb.AppendLine();
                 }
@@ -2392,7 +2411,7 @@
         // Need chronological order (oldest -> newest) for timeline
         var chrono = benchHistory.OrderBy(e=>e.TimestampUtc).ToList();
         if (chrono.Count < 2) return;
-        // Parse each entry's structured table lines; format: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA
+    // Parse each entry's structured table lines; format now includes extra columns: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA\tBatches\tAvgBatch (older entries may lack last 2)
         var parsed = new List<(BenchHistoryEntry Entry, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
         foreach (var h in chrono)
         {
@@ -2406,7 +2425,7 @@
                     if (!inTable) continue;
                     if (string.IsNullOrWhiteSpace(line)) break; // end of table
                     var parts = line.Split('\t');
-                    if (parts.Length < 8) continue;
+                    if (parts.Length < 8) continue; // need at least legacy columns
                     string name = parts[0].Trim();
                     if (!double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var msPer)) continue;
                     long.TryParse(parts[4], out var reads); long.TryParse(parts[5], out var writes); long.TryParse(parts[6], out var apu); long.TryParse(parts[7], out var oam);
@@ -2918,5 +2937,18 @@
             else if (apuCoreOptions.Contains("FIX")) apuCoreSel = "FIX";
             else if (apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
         }
+        // Load persisted event scheduler preference asynchronously (fire and forget)
+        _ = Task.Run(async () => {
+            try {
+                var val = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_eventScheduler");
+                if (!string.IsNullOrEmpty(val))
+                {
+                    bool on = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    await InvokeAsync(()=>{
+                        eventSchedulerOn = on; if (nes!=null) nes.EnableEventScheduler = on; StateHasChanged();
+                    });
+                }
+            } catch { }
+        });
     }
 }
