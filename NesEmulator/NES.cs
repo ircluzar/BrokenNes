@@ -17,6 +17,7 @@ namespace NesEmulator
 		private const double CyclesPerFrame = CpuFrequency / TargetFps; // ~29829.55
 
 		public NES() { }
+		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
 		private bool crashed = false; private string crashInfo = string.Empty; private CrashKind crashKind = CrashKind.Generic;
 		private enum CrashKind { Generic, UnsupportedMapper }
 		public enum CrashBehavior { RedScreen, IgnoreErrors }
@@ -47,6 +48,7 @@ namespace NesEmulator
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
+			public string romName = string.Empty; // optional metadata for UI labeling
 			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (legacy integer, kept for backward compat if ever needed)
 			public int cpuCore; // 0=FMC (future cores enumerate)
 			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
@@ -107,6 +109,7 @@ namespace NesEmulator
 					prgRAM = prgClone,
 					chrRAM = chrClone,
 					romData = romClone,
+					romName = RomName,
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
@@ -123,6 +126,11 @@ namespace NesEmulator
 			try { Log("Serializing NesState root - start"); json = PlainSerialize(st!); Log($"Serializing NesState root - done length={json.Length}"); } catch (Exception ex) { Log("Root serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			var elapsed = DateTime.UtcNow - startTimestamp; Log("SaveState() complete in "+elapsed.TotalMilliseconds.ToString("F2")+" ms");
 			return json;
+		}
+
+		public string GetSavedRomName(string stateJson)
+		{
+			try { using var doc = System.Text.Json.JsonDocument.Parse(stateJson); if (doc.RootElement.TryGetProperty("romName", out var rn) && rn.ValueKind==System.Text.Json.JsonValueKind.String) return rn.GetString()??string.Empty; } catch {} return string.Empty;
 		}
 
 		// Minimal reflection-based serializer supporting primitive fields and primitive arrays.
@@ -314,6 +322,7 @@ namespace NesEmulator
 				var prevApu = bus?.GetActiveApuCore() ?? Bus.ApuCore.Jank;
 				cartridge = new Cartridge(romData);
 				bus = new Bus(cartridge);
+				if (string.IsNullOrEmpty(RomName)) RomName = "(ROM)"; // fallback label if UI doesn't set
 				bus.SetApuCore(prevApu); // restore user preference before clearing cores
 				// Ensure fresh audio cores (avoid previous game's APU state bleeding into new one or mode desync)
 				bus.HardResetAPUs();

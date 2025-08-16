@@ -527,7 +527,7 @@
             <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
             <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
             <div class="mt-2">
-                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":"Run Benchmarks")</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="OpenBenchModal" disabled="@(nes==null /* allow opening even if benchRunning? keep disabled only if no nes */)">@(benchRunning?"Running...":"Run Benchmarks")</button>
             </div>
             @if (benchModalOpen)
             {
@@ -540,6 +540,14 @@
                                 <div class="input-group input-group-sm" style="width:150px;">
                                     <span class="input-group-text">Weight</span>
                                     <input type="number" min="1" max="20" class="form-control" @bind="benchWeight" @bind:after="(()=>{ if(benchWeight<1) benchWeight=1; if(benchWeight>20) benchWeight=20; })" />
+                                </div>
+                                <div class="form-check form-check-inline small">
+                                    <input class="form-check-input" type="checkbox" id="benchAutoLoadChk" @bind="benchAutoLoadState" />
+                                    <label class="form-check-label" for="benchAutoLoadChk" title="Load baseline savestate before each benchmark run">Auto-Load</label>
+                                </div>
+                                <div class="form-check form-check-inline small">
+                                    <input class="form-check-input" type="checkbox" id="benchSimple5xChk" @bind="benchSimple5x" />
+                                    <label class="form-check-label" for="benchSimple5xChk" title="5x benchmark shows only averaged results (no raw passes)">Simple 5x</label>
                                 </div>
                                 @if (benchRunning)
                                 {
@@ -701,7 +709,7 @@
     private bool stateBusy = false; // prevent overlapping save/load operations
     private string debugDump = string.Empty;
     // Benchmark modal state
-    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1;
+    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = false; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
     // Persistent benchmark history
     private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
     private List<BenchHistoryEntry> benchHistory = new();
@@ -977,7 +985,7 @@
                     // Preserve previously selected audio backend; reuse existing NES instance if present
                     if (nes == null)
                     {
-                        nes = new NesEmulator.NES();
+                        nes = new NesEmulator.NES { RomName = currentRomName };
                     }
                     nes.LoadROM(data);
                     // Re-apply selected CPU/PPU/APU cores so the active cores match the UI selection after reload
@@ -1328,7 +1336,7 @@
                 Logger.LogInformation($"ROM Header: {headerHex}");
             }
 
-            nes = new NesEmulator.NES();
+            nes = new NesEmulator.NES { RomName = romFileName };
             nes.LoadROM(romData);
             autoStaticSuppressed = false;
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
@@ -1537,7 +1545,7 @@
             if (uploadedRoms.TryGetValue(romFileName, out var data))
             {
                 Status.Set($"Loading uploaded ROM {romFileName}...");
-                nes = new NesEmulator.NES();
+                nes = new NesEmulator.NES { RomName = romFileName };
                 nes.LoadROM(data);
                 autoStaticSuppressed = false; // new ROM -> allow static again if test.nes
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
@@ -1634,7 +1642,7 @@
 
             bool wasRunning = isRunning;
             if (wasRunning) await PauseEmulation();
-            nes = new NesEmulator.NES();
+            nes = new NesEmulator.NES { RomName = romFileName };
             nes.LoadROM(romData);
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
@@ -1847,9 +1855,8 @@
                             try { nes.RunFrame(); } catch {}
                             try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
                             BuildMemoryDomains();
-                            // Mark current ROM name away from test.nes to disable auto static visuals
-                            currentRomName = "(state)";
-                            romFileName = "(state)";
+                            // Capture romName metadata for UI labeling if present (deferred until after parse below)
+                            try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) { nes.RomName = rnEl.GetString() ?? nes.RomName; } } catch {}
                             lastLoadedRomSize = romBytes.Length;
                         }
                     }
@@ -1858,6 +1865,7 @@
 
                 // Now load the savestate
                 nes.LoadState(full);
+                try { var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; currentRomName = savedName; romFileName = savedName; } } catch {}
                 autoStaticSuppressed = true; // prevent returning to static noise after manual load
                 // If state restored into a crash/unsupported mapper mode, force IgnoreErrors to best-effort recover
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
@@ -1912,22 +1920,29 @@
         return Task.CompletedTask;
     }
 
+    private void OpenBenchModal(){ benchModalOpen = true; StateHasChanged(); }
+
     private async Task RunBenchmarks()
     {
         if (nes == null || benchRunning) { benchModalOpen = true; return; }
-        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; StateHasChanged();
+        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
         try {
             bool wasRunning = isRunning; // pause emulator for deterministic timing
             if (wasRunning) await PauseEmulation();
-            // Attempt to load savestate slot 0 (baseline) for deterministic benchmark start
-            // This uses the same underlying storage as manual Load, but is silent if absent.
-            await TryLoadBaselineStateForBenchmarks();
+            if (benchAutoLoadState)
+            {
+                // Attempt to load savestate slot 0 (baseline)
+                await TryLoadBaselineStateForBenchmarks();
+            }
             int w = benchWeight; if (w<1) w=1; if (w>20) w=20; benchWeight = w;
             var results = nes.RunBenchmarks(w);
             benchResultsText = nes.FormatBenchmarksForDisplay(results);
+            // Prepend ROM info if we resolved a baseline name
+            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? currentRomName : benchBaselineRomName;
+            benchResultsText = $"ROM: {displayRom}\n" + benchResultsText;
             var entry = new BenchHistoryEntry {
                 TimestampUtc = DateTime.UtcNow,
-                Rom = currentRomName,
+                Rom = displayRom,
                 CpuCore = nes.GetCpuCoreId(),
                 PpuCore = nes.GetPpuCoreId(),
                 ApuCore = nes.GetApuCoreId(),
@@ -1945,7 +1960,7 @@
     private async Task RunBenchmarks5x()
     {
         if (nes == null || benchRunning) { benchModalOpen = true; return; }
-        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; StateHasChanged();
+        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
         bool wasRunning = isRunning;
         try {
             if (wasRunning) await PauseEmulation();
@@ -1954,7 +1969,7 @@
             var passResults = new List<IReadOnlyList<NesEmulator.NES.BenchResult>>();
             for (int i=1;i<=passes;i++)
             {
-                await TryLoadBaselineStateForBenchmarks();
+                if (benchAutoLoadState) await TryLoadBaselineStateForBenchmarks();
                 var res = nes.RunBenchmarks(w);
                 passResults.Add(res);
                 benchResultsText = $"Running pass {i}/{passes}..."; // live status
@@ -1980,31 +1995,35 @@
             }
             // Build display text summarizing passes and averaged table
             var sb = new System.Text.StringBuilder();
+            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? currentRomName : benchBaselineRomName;
+            sb.AppendLine($"ROM: {displayRom}");
             sb.AppendLine("Benchmark Results (5-pass average)");
             sb.AppendLine($"Each pass weight={w}; fields averaged over {passes} passes.");
             sb.AppendLine();
-            sb.AppendLine("Averaged Table:");
             sb.AppendLine("Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA");
             foreach (var r in averaged)
             {
                 sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
             }
-            sb.AppendLine();
-            sb.AppendLine("Raw Pass Summaries:");
-            for (int i=0;i<passes;i++)
+            if (!benchSimple5x)
             {
-                sb.AppendLine($"-- Pass {i+1} --");
-                foreach (var r in passResults[i])
-                {
-                    sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
-                }
                 sb.AppendLine();
+                sb.AppendLine("Raw Pass Summaries:");
+                for (int i=0;i<passes;i++)
+                {
+                    sb.AppendLine($"-- Pass {i+1} --");
+                    foreach (var r in passResults[i])
+                    {
+                        sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}");
+                    }
+                    sb.AppendLine();
+                }
             }
             benchResultsText = sb.ToString().TrimEnd();
             // Single history entry containing averaged + raw details
             var historyEntry = new BenchHistoryEntry {
                 TimestampUtc = DateTime.UtcNow,
-                Rom = currentRomName,
+                Rom = displayRom,
                 CpuCore = nes.GetCpuCoreId(),
                 PpuCore = nes.GetPpuCoreId(),
                 ApuCore = nes.GetApuCoreId(),
@@ -2063,6 +2082,8 @@
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(full);
                 var root = doc.RootElement;
+                // Capture romName metadata for benchmark labeling (do not change currentRomName here)
+                try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) benchBaselineRomName = rnEl.GetString() ?? benchBaselineRomName; } catch {}
                 if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
                     int len = romEl.GetArrayLength();
@@ -2070,20 +2091,22 @@
                     {
                         var romBytes = new byte[len];
                         int idx = 0; foreach (var v in romEl.EnumerateArray()) { if (idx >= len) break; romBytes[idx++] = (byte)v.GetByte(); }
-                        nes = new NesEmulator.NES();
+                        nes = new NesEmulator.NES { RomName = currentRomName };
                         nes.LoadROM(romBytes);
                         try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                         // Warm-up a frame
                         try { nes.RunFrame(); } catch {}
                         try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
                         BuildMemoryDomains();
-                        // Preserve visible ROM name; do not overwrite currentRomName to avoid confusing UI.
+                        // If state contains romName metadata, capture for later UI update
+                        try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) { nes.RomName = rnEl.GetString() ?? nes.RomName; } } catch {}
                     }
                 }
             }
             catch { /* ignore parse errors */ }
 
             nes?.LoadState(full);
+            try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; currentRomName = savedName; romFileName = savedName; } } } catch {}
             autoStaticSuppressed = true; // ensure benchmarks display real frames
             try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
