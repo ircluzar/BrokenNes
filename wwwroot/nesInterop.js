@@ -637,6 +637,24 @@ window.nesInterop = {
         }
     }
     ,
+    // ==== SoundFont note event bridge (APU_WF SoundFontMode) ====
+    noteEvent: function(channel, program, midiNote, velocity, on){
+        try {
+            if(window.nesSoundFont){
+                if(on){ window.nesSoundFont.enable && window.nesSoundFont.enable(); }
+                window.nesSoundFont.handleNote && window.nesSoundFont.handleNote(channel, program, midiNote, velocity, !!on);
+            }
+        } catch(e){ console.warn('noteEvent failed', e); }
+    }
+    ,
+    flushSoundFont: function(){
+        try {
+            if(window.nesSoundFont){
+                window.nesSoundFont.disable && window.nesSoundFont.disable();
+            }
+        } catch(e){ console.warn('flushSoundFont failed', e); }
+    }
+    ,
     readSelectedRoms: async function (inputElement) {
         try {
             const el = inputElement instanceof Element ? inputElement : (inputElement && inputElement.id ? document.getElementById(inputElement.id) : null);

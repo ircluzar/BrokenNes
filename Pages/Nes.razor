@@ -533,6 +533,17 @@
                     <input class="form-check-input" type="checkbox" id="evtSchedToggle" @onchange="ToggleEventScheduler" checked="@eventSchedulerOn" disabled="@(nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
+                <div class="form-check form-switch mt-2 small">
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="ToggleSoundFontMode" checked="@soundFontMode" disabled="@(nes==null)" />
+                    <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
+                </div>
+                @if (soundFontMode)
+                {
+                    <div class="form-check form-switch mt-2 small">
+                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="ToggleSampleFont" checked="@sampleFont" />
+                        <label class="form-check-label" for="sfSampleToggle" title="Use external sampled SoundFont library (falls back to oscillators if unavailable)">Sampled Instruments</label>
+                    </div>
+                }
             </div>
             @if (benchModalOpen)
             {
@@ -936,6 +947,72 @@
     private List<DiffRow> recentDiffRows = new();
     private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
     private bool compareNormalize = true; // per-target normalization to 0..100% range
+    // SoundFont mode toggle (APU_WF only)
+    private bool soundFontMode = false;
+    private bool sampleFont = true; // attempt external sample instruments
+    // Automatically configure SoundFont/sample mode when selecting specific APU core (WF)
+    private void AutoConfigureForApuCore()
+    {
+        if (nes == null) return;
+        try
+        {
+            if (string.Equals(apuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
+            {
+                // Enable SoundFont note-event path if not already
+                if (!soundFontMode)
+                {
+                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) =>
+                    {
+                        try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { }
+                    });
+                }
+                // Force sample-based mode preference
+                sampleFont = true;
+                try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
+                try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
+            }
+            else
+            {
+                // Leaving WF core -> disable SoundFont path if currently enabled (revert to PCM from other cores)
+                if (soundFontMode)
+                {
+                    nes.EnableSoundFontMode(false, null);
+                    soundFontMode = false;
+                }
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+    private void ToggleSoundFontMode(ChangeEventArgs e)
+    {
+        if (nes == null) return;
+        bool desired = e.Value is bool b && b;
+        if (e.Value is string sv && bool.TryParse(sv, out var parsed)) desired = parsed;
+        if (desired == soundFontMode) return;
+        soundFontMode = nes.EnableSoundFontMode(desired, (ch, prog, midi, vel, on, _)=>
+        {
+            try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch {}
+        });
+        if (soundFontMode && sampleFont)
+        {
+            // Kick off sample-based mode (fire-and-forget)
+            try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
+        }
+        StateHasChanged();
+    }
+    private void ToggleSampleFont(ChangeEventArgs e)
+    {
+        bool desired = e.Value is bool b && b;
+        if (e.Value is string sv && bool.TryParse(sv, out var parsed)) desired = parsed;
+        if (desired == sampleFont) return;
+        sampleFont = desired;
+        try { JS.InvokeVoidAsync("eval", $"window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased({(sampleFont?"true":"false")});"); } catch {}
+        if (sampleFont && soundFontMode)
+        {
+            try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
+        }
+    }
 
     // Corruptor state
     private int corruptIntensity = 1; // default minimal intensity
@@ -1172,6 +1249,9 @@
             Logger.LogInformation("Pausing emulation");
             isRunning = false;
             await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            // Flush SoundFont notes if WF mode active
+            try { nes?.FlushSoundFont(); } catch {}
+            try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
             Status.Set("Emulation paused");
             StateHasChanged();
         }
@@ -1190,6 +1270,9 @@
             bool wasRunning = isRunning;
             await PauseEmulation();
             // Ensure auto corruption is disabled for a clean reset
+                // Additional explicit SoundFont flush (PauseEmulation already attempts, but safe)
+                try { nes?.FlushSoundFont(); } catch {}
+                try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
             if (autoCorrupt)
             {
                 autoCorrupt = false;
@@ -1440,6 +1523,8 @@
             }
         }
         catch { }
+    // After core selection, auto-handle SoundFont if WF chosen
+    AutoConfigureForApuCore();
     }
 
     private async Task OnApuCoreChanged(ChangeEventArgs e)
@@ -1463,6 +1548,7 @@
     famicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase);
         Status.Set($"APU core switched to {v}");
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
+    AutoConfigureForApuCore();
     }
 
     private async Task OnCpuCoreChanged(ChangeEventArgs e)

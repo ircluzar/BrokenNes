@@ -21,13 +21,19 @@ Each has: rationale, experiment, instrumentation needed, status checkbox.
 Rationale: Most authoritative documentation ties SMB3 anomalies to failure to simulate the hardware’s implicit frame counter reset/write a few cycles pre-boot. Without correct phase, first frame IRQ timing is wrong.
 Experiment: Add a dedicated `Apu.InitializePowerOn(cpuCycleOffset= -10)` that queues a `$4017=$00` write effect (with 3–4 cycle delay) before cycle 0. Run SMB3; if it progresses further / boots, confirm by toggling feature off.
 Instrumentation: Log at boot: (a) CPU cycle when power-on write effect latched; (b) first quarter/half-frame events; (c) first frame IRQ assert & clear.
-[ ] Implement power-on write simulation & test.
+[x] Implement power-on write simulation & test.
 
 ### 2. Frame Counter Phase Offset (First Sequencer Step Misaligned)
 Rationale: Even with implicit write, using the wrong base cycle (e.g., starting counting at cycle 0 instead of the hardware’s post-write alignment) shifts quarter/half-frame events & IRQ.
 Experiment: Parameterize initial frame counter tick offset; binary search offsets (0..20 cycles) to find a phase that lets SMB3 continue. Expect a very narrow valid window.
 Instrumentation: Timeline diff of expected vs actual event cycles (quarter at 3729?, half at 7457?, etc.).
-[ ] Add adjustable `FrameCounterInitialOffset` + trace.
+[x] Add adjustable `FrameCounterInitialOffset` + trace.
+Notes: `APU_FMC` now exposes `int FrameCounterInitialOffset {get;set;}` (clamped < 7457). Also added `StartFrameSequencerTrace(maxEvents)` and `GetFrameSequencerTrace()` to capture early quarter/half/IRQ events with their absolute CPU cycle (as seen by the APU step loop). For a write to $4017 that immediately clocks Q+H (5-step mode), a combined event (Kind=3) is logged. In 4-step step3 the Q & H are logged individually plus a combined Q+H+IRQ (Kind=5) marker.
+Binary Search Procedure (manual for now):
+1. Before boot, cast active APU to `APU_FMC` and call `StartFrameSequencerTrace(32)` and set `FrameCounterInitialOffset = X`.
+2. Reset/power-on, let first ~30k CPU cycles run, then dump `GetFrameSequencerTrace()` and compare to reference table.
+3. Adjust X (0..20) moving toward alignment where first quarter/half & IRQ match hardware expectations and SMB3 advances further.
+Future: Add automated diff & CSV export (see Cross-Cutting Diagnostic Tasks).
 
 ### 3. Incorrect 4-Step Sequence Event Timing (3728/3729 Pattern / NTSC specifics)
 Rationale: If event schedule (envelope & length counter clocks) is off by even one CPU cycle early, a SMB3 spin-wait observing status ($4015) may not exit.

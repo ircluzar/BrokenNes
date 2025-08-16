@@ -692,6 +692,46 @@ namespace NesEmulator
 		public int GetQueuedAudioSamples() => bus?.GetQueuedSamples() ?? 0;
 		public int GetAudioSampleRate() => bus?.GetAudioSampleRate() ?? 44100;
 
+		// ===== SoundFont / Note Event Mode (APU_WF only) =====
+		private bool soundFontEnabled = false;
+		private Action<NesEmulator.APU_WF.NesNoteEvent>? noteSub; // retain delegate reference for unsubscribe
+		public void FlushSoundFont()
+		{
+			if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
+			{
+				try { wf.SoundFontMode = false; } catch { }
+				if (noteSub != null) { try { wf.NoteEvent -= noteSub; } catch { } noteSub = null; }
+				soundFontEnabled = false;
+			}
+		}
+		public bool EnableSoundFontMode(bool enable, System.Action<string,int,int,int,bool,int>? noteCallback = null)
+		{
+			if (bus?.ActiveAPU is not NesEmulator.APU_WF wf)
+			{
+				// If switching away from WF core, disable and detach
+				soundFontEnabled = false;
+				return false;
+			}
+			if (enable == soundFontEnabled) return soundFontEnabled;
+			soundFontEnabled = enable;
+			if (enable)
+			{
+				wf.SoundFontMode = true;
+				// Subscribe once
+				noteSub = (ev) => {
+					try { noteCallback?.Invoke(ev.Channel, ev.Program, ev.MidiNote, ev.Velocity, ev.On, 0); } catch { }
+				};
+				wf.NoteEvent += noteSub;
+			}
+			else
+			{
+				wf.SoundFontMode = false;
+				if (noteSub != null) try { wf.NoteEvent -= noteSub; } catch { }
+				noteSub = null;
+			}
+			return soundFontEnabled;
+		}
+
 		// Removed famicloneMode boolean API; UI should query active APU id or GetApuCore()
 
 		// --- APU core selection (Modern/Jank/QN) ---
