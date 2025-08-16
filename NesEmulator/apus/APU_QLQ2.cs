@@ -133,7 +133,7 @@ namespace NesEmulator
     // Simple low-pass + proper two-state DC high-pass filter (matches other cores) to avoid buzz
     private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
 
-        public APU_QLOW(Bus bus)
+    public APU_QLQ2(Bus bus)
         {
             this.bus = bus;
             square1 = new QnSquare();
