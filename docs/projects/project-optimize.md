@@ -25,8 +25,8 @@
 12. Bus fast path inside CPU for <0x2000 + common PRG fetch  (M, S, Low)
 13. Nametable mirroring precomputed tables  (M, S, Low)
 14. PPU scanline (or sub‑scanline) batching  (H, M, Med)
-15. APU integer Bresenham sample pacing  (S, Low, pairs w/ #2/#9)  (S, Low)
-16. Audio nonlinear mix precomputed (with existing LUT)  (S, Low)
+15. APU integer Bresenham sample pacing  (S, Low, pairs w/ #2/#9)  (S, Low) ✅ (2025-08-16): Implemented in both `APU` and `APU_LOW` cores: added `samplePhase += sampleRate` per CPU cycle; emit while `samplePhase >= CpuFreq`; legacy `fractionalSampleAccumulator` retained only for backward save-state compatibility.
+16. Audio nonlinear mix precomputed (with existing LUT)  (S, Low) ✅ (2025-08-16): Added `PulseMixLut[31]` + `TndMixLut[16*16*128]` to legacy `APU` (already present in `APU_LOW`). Replaced per-sample divides with LUT lookup; preserves exact mixing formula.
 17. IRQ/NMI scheduled boundary (avoid per‑instr tests)  (S, Low)
 18. SaveState source‑generated / cached serializer  (M (state-heavy use only), M, Low)
 19. Reflection & logging stripping / `#if DEBUG`  (S, Low)
@@ -171,17 +171,17 @@ Impact: 5–15% depending on per-pixel cost & overhead removed.
 Risk: Medium (mid‑scanline effects; may require sub‑segments for precise `sprite 0` hit / MMC3 IRQ cycle numbers if supporting later).
 Effort: Medium.
 
-[ ] ### 15. Integer Bresenham Sample Pacing
-Replace fractional double accumulator: accumulate `sampleAcc += elapsedCycles * sampleRate; while(sampleAcc >= cpuClock){ Emit(); sampleAcc -= cpuClock; }`.
-Impact: 2–4% plus lower FP pressure.
-Risk: Low.
-Effort: Small.
+[x] ### 15. Integer Bresenham Sample Pacing
+Implemented (2025-08-16): Replaced floating fractional accumulator with integer Bresenham approach in both APU cores (`samplePhase += sampleRate; while(samplePhase >= cpuFreq) { samplePhase -= cpuFreq; MixAndStore(); }`). Keeps old `fractionalSampleAccumulator` field solely for backward save-state deserialization. Removes one double multiply + branch per CPU cycle and eliminates occasional multi-sample emission loop using double math.
+Impact: Expected 2–4% APU path reduction (to be validated in perf harness).
+Risk: Low (emit cadence mathematically equivalent within 1 CPU cycle jitter, imperceptible at audio rates).
+Effort: Small (done).
 
-[ ] ### 16. Nonlinear Mix Table Precompute (if not done in #3)
-If nonlinear portions not fully LUT’d, build extended LUTs keyed by channel sums.
-Impact: Included in #3; item stands only if partial implementation chosen.
-Risk: Low.
-Effort: Small.
+[x] ### 16. Nonlinear Mix Table Precompute (if not done in #3)
+Implemented (2025-08-16): Legacy `APU` now mirrors `APU_LOW` LUT strategy with `PulseMixLut` (0..30) and full `TndMixLut` (triangle, noise, DMC). Removed per-sample divides and double intermediates; mix path now float-only before filter fusion. LUT build guarded by one-time flag; memory ~128KB. Consider optional runtime generation in WASM size-constrained mode later.
+Impact: Removes two divides and several FP ops per sample (~88K divisions/sec at 44.1KHz stereo-equivalent mixing).
+Risk: Low (tables replicate canonical formula exactly).
+Effort: Small (done).
 
 [ ] ### 17. Interrupt Boundary Scheduling
 Maintain `nextIrqCycle`, `nextNmiCycle`; CPU batch loop only checks when surpassing those cycles. Removes per‑instruction flag checks.

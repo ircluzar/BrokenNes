@@ -101,8 +101,11 @@ namespace NesEmulator
         private int frameStep; // current step in sequence (0..3 or 0..4)
         private int nextFrameEventCycle = 7457; // next CPU cycle (relative to frameCycle) at which a quarter/half frame event occurs
 
-        // Audio mixing / buffering
-        private const int audioSampleRate = 44100; private const int AudioRingSize = 32768; private readonly float[] audioRing = new float[AudioRingSize]; private int ringWrite, ringRead, ringCount; private double fractionalSampleAccumulator;
+    // Audio mixing / buffering
+    private const int audioSampleRate = 44100; private const int AudioRingSize = 32768; private readonly float[] audioRing = new float[AudioRingSize]; private int ringWrite, ringRead, ringCount; private double fractionalSampleAccumulator; // legacy save-state compatibility
+    // Integer Bresenham pacing (Optimization #15)
+    private const int CpuFreqInt = 1789773; // NTSC CPU frequency (Hz)
+    private int samplePhase; // accumulates +audioSampleRate each CPU cycle, emit while >= CpuFreqInt
 
         // Filters state
         private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
@@ -119,8 +122,7 @@ namespace NesEmulator
         public void Step() => Step(1);
         public void Step(int cpuCycles)
         {
-            const double CpuFreq = 1789773.0; // NTSC
-            double sampleIncrement = audioSampleRate / CpuFreq; // samples per CPU cycle (~0.02466)
+            if (cpuCycles <= 0) return;
             for (int i = 0; i < cpuCycles; i++)
             {
                 ClockFrameSequencer();
@@ -132,16 +134,44 @@ namespace NesEmulator
                 ClockTriangle();
                 ClockNoise();
                 frameCycle++;
-
-                // Sample generation
-                fractionalSampleAccumulator += sampleIncrement;
-                if (fractionalSampleAccumulator >= 1.0)
+                samplePhase += audioSampleRate;
+                while (samplePhase >= CpuFreqInt)
                 {
-                    int emit = (int)fractionalSampleAccumulator; // usually 0 or 1, occasionally 2
-                    fractionalSampleAccumulator -= emit;
-                    for (int s = 0; s < emit; s++) MixAndStore();
+                    samplePhase -= CpuFreqInt;
+                    MixAndStore();
                 }
             }
+        }
+
+        private void UpdatePulseOutput(bool first, bool sweepMute)
+        {
+            if (first)
+            {
+                if (!pulse1_enabled || pulse1_lengthCounter == 0 || pulse1_timer < 8 || sweepMute) { pulse1_output = 0; return; }
+                var pattern = PulseDutyTable[pulse1_duty & 3];
+                int bit = pattern[pulse1_seqIndex];
+                int vol = pulse1_constantVolume ? pulse1_volumeParam : pulse1_envDecay;
+                pulse1_output = bit == 1 ? vol : 0;
+            }
+            else
+            {
+                if (!pulse2_enabled || pulse2_lengthCounter == 0 || pulse2_timer < 8 || sweepMute) { pulse2_output = 0; return; }
+                var pattern = PulseDutyTable[pulse2_duty & 3];
+                int bit = pattern[pulse2_seqIndex];
+                int vol = pulse2_constantVolume ? pulse2_volumeParam : pulse2_envDecay;
+                pulse2_output = bit == 1 ? vol : 0;
+            }
+        }
+        private void UpdateTriangleOutput()
+        {
+            if (!triangle_enabled || triangle_lengthCounter == 0 || triangle_linearCounter == 0 || triangle_timer < 2) { triangle_output = 0; return; }
+            triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
+        }
+        private void UpdateNoiseOutput()
+        {
+            if (!noise_enabled || noise_lengthCounter == 0) { noise_output = 0; return; }
+            int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay;
+            noise_output = ((noiseShiftRegister & 1) == 0) ? vol : 0;
         }
 
         // ===== Writes =====
@@ -375,10 +405,10 @@ namespace NesEmulator
         public float[] GetAudioSamples(int maxSamples=0){ if(ringCount==0) return Array.Empty<float>(); int toRead = ringCount; if(maxSamples>0 && maxSamples<toRead) toRead=maxSamples; if(toRead>4096 && maxSamples==0) toRead=4096; float[] result=new float[toRead]; int first = Math.Min(toRead, AudioRingSize - ringRead); Array.Copy(audioRing, ringRead, result,0, first); int rem=toRead-first; if(rem>0) Array.Copy(audioRing,0,result,first,rem); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return result; }
         public float[] GetAudioBuffer()=>GetAudioSamples(); public int GetQueuedSampleCount()=>ringCount; public int GetSampleRate()=>audioSampleRate;
 
-        private void ResetInternal(){ ringRead=ringWrite=ringCount=0; fractionalSampleAccumulator=0; lpLast=dcLastIn=dcLastOut=0; frameCycle=0; frameIRQFlag=false; dmc_irqFlag=false; }
+    private void ResetInternal(){ ringRead=ringWrite=ringCount=0; fractionalSampleAccumulator=0; samplePhase=0; lpLast=dcLastIn=dcLastOut=0; frameCycle=0; frameIRQFlag=false; dmc_irqFlag=false; }
 
-        private class ApuState { public byte pulse1_duty,pulse1_lengthIdx,pulse1_sweepRaw; public ushort pulse1_timer; public byte pulse2_duty,pulse2_lengthIdx,pulse2_sweepRaw; public ushort pulse2_timer; public byte triangle_linearReg,triangle_lengthIdx; public ushort triangle_timer; public byte noise_lengthIdx,noise_periodReg; public byte dmc_ctrl,dmc_directLoad,dmc_addrReg,dmc_lenReg; public byte statusWriteLatch; public bool pulse1_enabled,pulse2_enabled,triangle_enabled,noise_enabled,dmc_enabled; public int p1Len,p2Len,tLen,nLen; public bool p1EnvStart,p2EnvStart,nEnvStart; public int p1EnvDiv,p1EnvDecay,p2EnvDiv,p2EnvDecay,nEnvDiv,nEnvDecay; public bool p1Const,p2Const,nConst,p1LenH,p2LenH,nLenH,tLenH; public int p1Vol,p2Vol,nVol; public bool p1SwNeg,p2SwNeg; public int p1SwShift,p2SwShift,p1SwPeriod,p2SwPeriod; public bool p1SwReload,p2SwReload; public int p1SwDiv,p2SwDiv; public int triLinCtr; public bool triLinReload; public ushort noiseShift; public int noiseTimer; public int p1TimerCtr,p2TimerCtr,p1Seq,p2Seq; public int triTimerCtr,triSeq; public int p1Out,p2Out,triOut,noiseOut,dmcOut; public int dmc_timer,dmc_timerPeriod,dmc_sampleAddress,dmc_sampleLengthRemaining,dmc_shiftReg,dmc_bitsRemaining,dmc_deltaCounter,dmc_sampleBuffer; public bool dmc_sampleBufferFilled,dmc_silence,dmc_irqEnable,dmc_loop,dmc_irqFlag; public int frameCycle; public bool frameMode5,frameIRQInhibit,frameIRQFlag; public float lpLast,dcLastIn,dcLastOut; public int ringWrite,ringRead,ringCount; public double frac; }
-        public object GetState()=> new ApuState { pulse1_duty=pulse1_duty,pulse1_lengthIdx=pulse1_lengthIdx,pulse1_sweepRaw=pulse1_sweepRaw,pulse1_timer=pulse1_timer,pulse2_duty=pulse2_duty,pulse2_lengthIdx=pulse2_lengthIdx,pulse2_sweepRaw=pulse2_sweepRaw,pulse2_timer=pulse2_timer,triangle_linearReg=triangle_linearReg,triangle_lengthIdx=triangle_lengthIdx,triangle_timer=triangle_timer,noise_lengthIdx=noise_lengthIdx,noise_periodReg=noise_periodReg,dmc_ctrl=dmc_ctrl,dmc_directLoad=dmc_directLoad,dmc_addrReg=dmc_addrReg,dmc_lenReg=dmc_lenReg,statusWriteLatch=statusWriteLatch,pulse1_enabled=pulse1_enabled,pulse2_enabled=pulse2_enabled,triangle_enabled=triangle_enabled,noise_enabled=noise_enabled,dmc_enabled=dmc_enabled,p1Len=pulse1_lengthCounter,p2Len=pulse2_lengthCounter,tLen=triangle_lengthCounter,nLen=noise_lengthCounter,p1EnvStart=pulse1_envStart,p2EnvStart=pulse2_envStart,nEnvStart=noise_envStart,p1EnvDiv=pulse1_envDivider,p1EnvDecay=pulse1_envDecay,p2EnvDiv=pulse2_envDivider,p2EnvDecay=pulse2_envDecay,nEnvDiv=noise_envDivider,nEnvDecay=noise_envDecay,p1Const=pulse1_constantVolume,p2Const=pulse2_constantVolume,nConst=noise_constantVolume,p1LenH=pulse1_lengthHalt,p2LenH=pulse2_lengthHalt,nLenH=noise_lengthHalt,tLenH=triangle_lengthHalt,p1Vol=pulse1_volumeParam,p2Vol=pulse2_volumeParam,nVol=noise_volumeParam,p1SwNeg=pulse1_sweepNegate,p2SwNeg=pulse2_sweepNegate,p1SwShift=pulse1_sweepShift,p2SwShift=pulse2_sweepShift,p1SwPeriod=pulse1_sweepPeriod,p2SwPeriod=pulse2_sweepPeriod,p1SwReload=pulse1_sweepReload,p2SwReload=pulse2_sweepReload,p1SwDiv=pulse1_sweepDivider,p2SwDiv=pulse2_sweepDivider,triLinCtr=triangle_linearCounter,triLinReload=triangle_linearReloadFlag,noiseShift=noiseShiftRegister,noiseTimer=noise_timerCounter,p1TimerCtr=pulse1_timerCounter,p2TimerCtr=pulse2_timerCounter,p1Seq=pulse1_seqIndex,p2Seq=pulse2_seqIndex,triTimerCtr=triangle_timerCounter,triSeq=triangle_seqIndex,p1Out=pulse1_output,p2Out=pulse2_output,triOut=triangle_output,noiseOut=noise_output,dmcOut=dmc_output,dmc_timer=dmc_timer,dmc_timerPeriod=dmc_timerPeriod,dmc_sampleAddress=dmc_sampleAddress,dmc_sampleLengthRemaining=dmc_sampleLengthRemaining,dmc_shiftReg=dmc_shiftReg,dmc_bitsRemaining=dmc_bitsRemaining,dmc_deltaCounter=dmc_deltaCounter,dmc_sampleBuffer=dmc_sampleBuffer,dmc_sampleBufferFilled=dmc_sampleBufferFilled,dmc_silence=dmc_silence,dmc_irqEnable=dmc_irqEnable,dmc_loop=dmc_loop,dmc_irqFlag=dmc_irqFlag,frameCycle=frameCycle,frameMode5=frameMode5,frameIRQInhibit=frameIRQInhibit,frameIRQFlag=frameIRQFlag,lpLast=lpLast,dcLastIn=dcLastIn,dcLastOut=dcLastOut,ringWrite=ringWrite,ringRead=ringRead,ringCount=ringCount,frac=fractionalSampleAccumulator };
+    private class ApuState { public byte pulse1_duty,pulse1_lengthIdx,pulse1_sweepRaw; public ushort pulse1_timer; public byte pulse2_duty,pulse2_lengthIdx,pulse2_sweepRaw; public ushort pulse2_timer; public byte triangle_linearReg,triangle_lengthIdx; public ushort triangle_timer; public byte noise_lengthIdx,noise_periodReg; public byte dmc_ctrl,dmc_directLoad,dmc_addrReg,dmc_lenReg; public byte statusWriteLatch; public bool pulse1_enabled,pulse2_enabled,triangle_enabled,noise_enabled,dmc_enabled; public int p1Len,p2Len,tLen,nLen; public bool p1EnvStart,p2EnvStart,nEnvStart; public int p1EnvDiv,p1EnvDecay,p2EnvDiv,p2EnvDecay,nEnvDiv,nEnvDecay; public bool p1Const,p2Const,nConst,p1LenH,p2LenH,nLenH,tLenH; public int p1Vol,p2Vol,nVol; public bool p1SwNeg,p2SwNeg; public int p1SwShift,p2SwShift,p1SwPeriod,p2SwPeriod; public bool p1SwReload,p2SwReload; public int p1SwDiv,p2SwDiv; public int triLinCtr; public bool triLinReload; public ushort noiseShift; public int noiseTimer; public int p1TimerCtr,p2TimerCtr,p1Seq,p2Seq; public int triTimerCtr,triSeq; public int p1Out,p2Out,triOut,noiseOut,dmcOut; public int dmc_timer,dmc_timerPeriod,dmc_sampleAddress,dmc_sampleLengthRemaining,dmc_shiftReg,dmc_bitsRemaining,dmc_deltaCounter,dmc_sampleBuffer; public bool dmc_sampleBufferFilled,dmc_silence,dmc_irqEnable,dmc_loop,dmc_irqFlag; public int frameCycle; public bool frameMode5,frameIRQInhibit,frameIRQFlag; public float lpLast,dcLastIn,dcLastOut; public int ringWrite,ringRead,ringCount; public double frac; public int samplePhase; }
+    public object GetState()=> new ApuState { pulse1_duty=pulse1_duty,pulse1_lengthIdx=pulse1_lengthIdx,pulse1_sweepRaw=pulse1_sweepRaw,pulse1_timer=pulse1_timer,pulse2_duty=pulse2_duty,pulse2_lengthIdx=pulse2_lengthIdx,pulse2_sweepRaw=pulse2_sweepRaw,pulse2_timer=pulse2_timer,triangle_linearReg=triangle_linearReg,triangle_lengthIdx=triangle_lengthIdx,triangle_timer=triangle_timer,noise_lengthIdx=noise_lengthIdx,noise_periodReg=noise_periodReg,dmc_ctrl=dmc_ctrl,dmc_directLoad=dmc_directLoad,dmc_addrReg=dmc_addrReg,dmc_lenReg=dmc_lenReg,statusWriteLatch=statusWriteLatch,pulse1_enabled=pulse1_enabled,pulse2_enabled=pulse2_enabled,triangle_enabled=triangle_enabled,noise_enabled=noise_enabled,dmc_enabled=dmc_enabled,p1Len=pulse1_lengthCounter,p2Len=pulse2_lengthCounter,tLen=triangle_lengthCounter,nLen=noise_lengthCounter,p1EnvStart=pulse1_envStart,p2EnvStart=pulse2_envStart,nEnvStart=noise_envStart,p1EnvDiv=pulse1_envDivider,p1EnvDecay=pulse1_envDecay,p2EnvDiv=pulse2_envDivider,p2EnvDecay=pulse2_envDecay,nEnvDiv=noise_envDivider,nEnvDecay=noise_envDecay,p1Const=pulse1_constantVolume,p2Const=pulse2_constantVolume,nConst=noise_constantVolume,p1LenH=pulse1_lengthHalt,p2LenH=pulse2_lengthHalt,nLenH=noise_lengthHalt,tLenH=triangle_lengthHalt,p1Vol=pulse1_volumeParam,p2Vol=pulse2_volumeParam,nVol=noise_volumeParam,p1SwNeg=pulse1_sweepNegate,p2SwNeg=pulse2_sweepNegate,p1SwShift=pulse1_sweepShift,p2SwShift=pulse2_sweepShift,p1SwPeriod=pulse1_sweepPeriod,p2SwPeriod=pulse2_sweepPeriod,p1SwReload=pulse1_sweepReload,p2SwReload=pulse2_sweepReload,p1SwDiv=pulse1_sweepDivider,p2SwDiv=pulse2_sweepDivider,triLinCtr=triangle_linearCounter,triLinReload=triangle_linearReloadFlag,noiseShift=noiseShiftRegister,noiseTimer=noise_timerCounter,p1TimerCtr=pulse1_timerCounter,p2TimerCtr=pulse2_timerCounter,p1Seq=pulse1_seqIndex,p2Seq=pulse2_seqIndex,triTimerCtr=triangle_timerCounter,triSeq=triangle_seqIndex,p1Out=pulse1_output,p2Out=pulse2_output,triOut=triangle_output,noiseOut=noise_output,dmcOut=dmc_output,dmc_timer=dmc_timer,dmc_timerPeriod=dmc_timerPeriod,dmc_sampleAddress=dmc_sampleAddress,dmc_sampleLengthRemaining=dmc_sampleLengthRemaining,dmc_shiftReg=dmc_shiftReg,dmc_bitsRemaining=dmc_bitsRemaining,dmc_deltaCounter=dmc_deltaCounter,dmc_sampleBuffer=dmc_sampleBuffer,dmc_sampleBufferFilled=dmc_sampleBufferFilled,dmc_silence=dmc_silence,dmc_irqEnable=dmc_irqEnable,dmc_loop=dmc_loop,dmc_irqFlag=dmc_irqFlag,frameCycle=frameCycle,frameMode5=frameMode5,frameIRQInhibit=frameIRQInhibit,frameIRQFlag=frameIRQFlag,lpLast=lpLast,dcLastIn=dcLastIn,dcLastOut=dcLastOut,ringWrite=ringWrite,ringRead=ringRead,ringCount=ringCount,frac=fractionalSampleAccumulator,samplePhase=samplePhase };
         public void SetState(object state){
             if(state is ApuState s){ RestoreState(s); PostRestoreAudioResync(); return; }
             if(state is System.Text.Json.JsonElement je){
@@ -412,12 +442,12 @@ namespace NesEmulator
                 }catch{}
             }
         }
-        private void RestoreState(ApuState s){ pulse1_duty=s.pulse1_duty; pulse1_lengthIdx=s.pulse1_lengthIdx; pulse1_sweepRaw=s.pulse1_sweepRaw; pulse1_timer=s.pulse1_timer; pulse2_duty=s.pulse2_duty; pulse2_lengthIdx=s.pulse2_lengthIdx; pulse2_sweepRaw=s.pulse2_sweepRaw; pulse2_timer=s.pulse2_timer; triangle_linearReg=s.triangle_linearReg; triangle_lengthIdx=s.triangle_lengthIdx; triangle_timer=s.triangle_timer; noise_lengthIdx=s.noise_lengthIdx; noise_periodReg=s.noise_periodReg; dmc_ctrl=s.dmc_ctrl; dmc_directLoad=s.dmc_directLoad; dmc_addrReg=s.dmc_addrReg; dmc_lenReg=s.dmc_lenReg; statusWriteLatch=s.statusWriteLatch; pulse1_enabled=s.pulse1_enabled; pulse2_enabled=s.pulse2_enabled; triangle_enabled=s.triangle_enabled; noise_enabled=s.noise_enabled; dmc_enabled=s.dmc_enabled; pulse1_lengthCounter=s.p1Len; pulse2_lengthCounter=s.p2Len; triangle_lengthCounter=s.tLen; noise_lengthCounter=s.nLen; pulse1_envStart=s.p1EnvStart; pulse2_envStart=s.p2EnvStart; noise_envStart=s.nEnvStart; pulse1_envDivider=s.p1EnvDiv; pulse1_envDecay=s.p1EnvDecay; pulse2_envDivider=s.p2EnvDiv; pulse2_envDecay=s.p2EnvDecay; noise_envDivider=s.nEnvDiv; noise_envDecay=s.nEnvDecay; pulse1_constantVolume=s.p1Const; pulse2_constantVolume=s.p2Const; noise_constantVolume=s.nConst; pulse1_lengthHalt=s.p1LenH; pulse2_lengthHalt=s.p2LenH; noise_lengthHalt=s.nLenH; triangle_lengthHalt=s.tLenH; pulse1_volumeParam=s.p1Vol; pulse2_volumeParam=s.p2Vol; noise_volumeParam=s.nVol; pulse1_sweepNegate=s.p1SwNeg; pulse2_sweepNegate=s.p2SwNeg; pulse1_sweepShift=s.p1SwShift; pulse2_sweepShift=s.p2SwShift; pulse1_sweepPeriod=s.p1SwPeriod; pulse2_sweepPeriod=s.p2SwPeriod; pulse1_sweepReload=s.p1SwReload; pulse2_sweepReload=s.p2SwReload; pulse1_sweepDivider=s.p1SwDiv; pulse2_sweepDivider=s.p2SwDiv; triangle_linearCounter=s.triLinCtr; triangle_linearReloadFlag=s.triLinReload; noiseShiftRegister=s.noiseShift; noise_timerCounter=s.noiseTimer; pulse1_timerCounter=s.p1TimerCtr; pulse2_timerCounter=s.p2TimerCtr; pulse1_seqIndex=s.p1Seq; pulse2_seqIndex=s.p2Seq; triangle_timerCounter=s.triTimerCtr; triangle_seqIndex=s.triSeq; pulse1_output=s.p1Out; pulse2_output=s.p2Out; triangle_output=s.triOut; noise_output=s.noiseOut; dmc_output=s.dmcOut; dmc_timer=s.dmc_timer; dmc_timerPeriod=s.dmc_timerPeriod; dmc_sampleAddress=s.dmc_sampleAddress; dmc_sampleLengthRemaining=s.dmc_sampleLengthRemaining; dmc_shiftReg=s.dmc_shiftReg; dmc_bitsRemaining=s.dmc_bitsRemaining; dmc_deltaCounter=s.dmc_deltaCounter; dmc_sampleBuffer=s.dmc_sampleBuffer; dmc_sampleBufferFilled=s.dmc_sampleBufferFilled; dmc_silence=s.dmc_silence; dmc_irqEnable=s.dmc_irqEnable; dmc_loop=s.dmc_loop; dmc_irqFlag=s.dmc_irqFlag; frameCycle=s.frameCycle; frameMode5=s.frameMode5; frameIRQInhibit=s.frameIRQInhibit; frameIRQFlag=s.frameIRQFlag; lpLast=s.lpLast; dcLastIn=s.dcLastIn; dcLastOut=s.dcLastOut; ringWrite=s.ringWrite; ringRead=s.ringRead; ringCount=s.ringCount; fractionalSampleAccumulator=s.frac; }
+    private void RestoreState(ApuState s){ pulse1_duty=s.pulse1_duty; pulse1_lengthIdx=s.pulse1_lengthIdx; pulse1_sweepRaw=s.pulse1_sweepRaw; pulse1_timer=s.pulse1_timer; pulse2_duty=s.pulse2_duty; pulse2_lengthIdx=s.pulse2_lengthIdx; pulse2_sweepRaw=s.pulse2_sweepRaw; pulse2_timer=s.pulse2_timer; triangle_linearReg=s.triangle_linearReg; triangle_lengthIdx=s.triangle_lengthIdx; triangle_timer=s.triangle_timer; noise_lengthIdx=s.noise_lengthIdx; noise_periodReg=s.noise_periodReg; dmc_ctrl=s.dmc_ctrl; dmc_directLoad=s.dmc_directLoad; dmc_addrReg=s.dmc_addrReg; dmc_lenReg=s.dmc_lenReg; statusWriteLatch=s.statusWriteLatch; pulse1_enabled=s.pulse1_enabled; pulse2_enabled=s.pulse2_enabled; triangle_enabled=s.triangle_enabled; noise_enabled=s.noise_enabled; dmc_enabled=s.dmc_enabled; pulse1_lengthCounter=s.p1Len; pulse2_lengthCounter=s.p2Len; triangle_lengthCounter=s.tLen; noise_lengthCounter=s.nLen; pulse1_envStart=s.p1EnvStart; pulse2_envStart=s.p2EnvStart; noise_envStart=s.nEnvStart; pulse1_envDivider=s.p1EnvDiv; pulse1_envDecay=s.p1EnvDecay; pulse2_envDivider=s.p2EnvDiv; pulse2_envDecay=s.p2EnvDecay; noise_envDivider=s.nEnvDiv; noise_envDecay=s.nEnvDecay; pulse1_constantVolume=s.p1Const; pulse2_constantVolume=s.p2Const; noise_constantVolume=s.nConst; pulse1_lengthHalt=s.p1LenH; pulse2_lengthHalt=s.p2LenH; noise_lengthHalt=s.nLenH; triangle_lengthHalt=s.tLenH; pulse1_volumeParam=s.p1Vol; pulse2_volumeParam=s.p2Vol; noise_volumeParam=s.nVol; pulse1_sweepNegate=s.p1SwNeg; pulse2_sweepNegate=s.p2SwNeg; pulse1_sweepShift=s.p1SwShift; pulse2_sweepShift=s.p2SwShift; pulse1_sweepPeriod=s.p1SwPeriod; pulse2_sweepPeriod=s.p2SwPeriod; pulse1_sweepReload=s.p1SwReload; pulse2_sweepReload=s.p2SwReload; pulse1_sweepDivider=s.p1SwDiv; pulse2_sweepDivider=s.p2SwDiv; triangle_linearCounter=s.triLinCtr; triangle_linearReloadFlag=s.triLinReload; noiseShiftRegister=s.noiseShift; noise_timerCounter=s.noiseTimer; pulse1_timerCounter=s.p1TimerCtr; pulse2_timerCounter=s.p2TimerCtr; pulse1_seqIndex=s.p1Seq; pulse2_seqIndex=s.p2Seq; triangle_timerCounter=s.triTimerCtr; triangle_seqIndex=s.triSeq; pulse1_output=s.p1Out; pulse2_output=s.p2Out; triangle_output=s.triOut; noise_output=s.noiseOut; dmc_output=s.dmcOut; dmc_timer=s.dmc_timer; dmc_timerPeriod=s.dmc_timerPeriod; dmc_sampleAddress=s.dmc_sampleAddress; dmc_sampleLengthRemaining=s.dmc_sampleLengthRemaining; dmc_shiftReg=s.dmc_shiftReg; dmc_bitsRemaining=s.dmc_bitsRemaining; dmc_deltaCounter=s.dmc_deltaCounter; dmc_sampleBuffer=s.dmc_sampleBuffer; dmc_sampleBufferFilled=s.dmc_sampleBufferFilled; dmc_silence=s.dmc_silence; dmc_irqEnable=s.dmc_irqEnable; dmc_loop=s.dmc_loop; dmc_irqFlag=s.dmc_irqFlag; frameCycle=s.frameCycle; frameMode5=s.frameMode5; frameIRQInhibit=s.frameIRQInhibit; frameIRQFlag=s.frameIRQFlag; lpLast=s.lpLast; dcLastIn=s.dcLastIn; dcLastOut=s.dcLastOut; ringWrite=s.ringWrite; ringRead=s.ringRead; ringCount=s.ringCount; fractionalSampleAccumulator=s.frac; samplePhase = s.samplePhase; }
 
         private void PostRestoreAudioResync()
         {
             ringRead = ringWrite = ringCount = 0;
-            fractionalSampleAccumulator = 0;
+            fractionalSampleAccumulator = 0; samplePhase = 0;
             lpLast = 0; dcLastIn = 0; dcLastOut = 0;
         }
 
