@@ -51,5 +51,6 @@ public class Mapper0 : IMapper { //NROM
     private class Mapper0State { }
     public object GetMapperState() => new Mapper0State();
     public void SetMapperState(object state) { /* stateless */ }
+        public uint GetChrBankSignature() => 0;
 }
 }

@@ -74,5 +74,6 @@ public class Mapper7 : IMapper
             ApplyMirroring();
         }
     }
+    public uint GetChrBankSignature() => 0;
 }
 }

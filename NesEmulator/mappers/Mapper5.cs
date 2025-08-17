@@ -250,5 +250,12 @@ public class Mapper5 : IMapper
             } catch { }
         }
     }
+    public uint GetChrBankSignature() {
+        unchecked {
+            uint sig = (uint)(chrMode & 0x07);
+            for(int i=0;i<8;i++) sig = (sig * 16777619u) ^ (uint)(chrRegs[i] & 0xFF);
+            return sig;
+        }
+    }
 }
 }

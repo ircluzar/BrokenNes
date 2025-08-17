@@ -56,5 +56,6 @@ public class Mapper2 : IMapper { //UxROM (Experimental)
             } catch { }
         }
     }
+        public uint GetChrBankSignature() => 0;
 }
 }

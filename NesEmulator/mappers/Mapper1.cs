@@ -175,5 +175,14 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
             } catch { }
         }
     }
+    public uint GetChrBankSignature() {
+        int chrMode = (control >> 4) & 1;
+        unchecked {
+            uint sig = (uint)(chrMode | ((control & 0x03) << 1));
+            sig = (sig * 16777619u) ^ (uint)(chrBankOffset0 >> 10);
+            sig = (sig * 16777619u) ^ (uint)(chrBankOffset1 >> 10);
+            return sig;
+        }
+    }
 }
 }

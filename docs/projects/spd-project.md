@@ -76,6 +76,12 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [x] Simplified sprite 0 hit (Impact:L-M Risk:L-M)
 - [x] Immediate MMC3 scanline IRQ at cycle 260 (Impact:M Risk:M)
 - [x] Fast OAM DMA bulk copy (Impact:M Risk:L)
+ - [x] Nametable mirroring lookup table (0x1000 precomputed map) (Impact:M Risk:L) — replaces per-access switch
+ - [x] Fast nametable & attribute fetch path (direct `vram[ntMirror[..]]`) (Impact:M Risk:L)
+ - [x] Direct pattern table CHR reads (<$2000) bypass generic Read path (Impact:L-M Risk:L)
+ - [x] Inlined sprite palette lookup (removed per-pixel tuple/method call) (Impact:L Risk:L)
+ - [x] Condensed PPU Read/Write fast path (range short-circuit) (Impact:L Risk:L)
+ - [x] Auto mirroring-map rebuild on mapper mode change (Impact:L Risk:L)
 
 ### 2.2 Active / Planned Tasks
 - [x] Background tile fetch batching (Impact:M Risk:L)  
@@ -96,12 +102,21 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Coarse sprite 0 hit shortcut (Impact:L Risk:M Optional)
 - [ ] Optional sprite limit removal + fast iteration (Impact:L Risk:M Optional)
 - [ ] Fast palette read path (unsafe optional) (Impact:L Risk:None Optional)
+- [ ] 32-bit packed RGBA palette + single uint stores (Impact:M Risk:L Optional)
+- [ ] FineX==0 specialized background loop (Impact:L Risk:L) — eliminates per-pixel subtraction
+- [ ] Sprite visibility pre-pass (build scanline sprite list, cap / optional 8-sprite emulation) (Impact:M Risk:M)
+- [ ] Row-level pattern invalidation (invalidate only touched row instead of whole tile) (Impact:L Risk:M)
+- [ ] SIMD blank scanline fill (Vector<byte>/SIMD) (Impact:L Risk:L Optional)
 
 ### 2.3 Prioritization Snapshot
-- [ ] Phase 1: Background tile batching
-- [ ] Phase 1: Pattern line expansion
+- [x] Phase 1: Background tile batching
+- [x] Phase 1: Pattern line expansion
+- [x] Phase 1: Blank scanline skip fast fill
 - [ ] Phase 2: Dirty column rendering
 - [ ] Phase 2: Sprite evaluation skip / palette cache
+- [ ] Phase 2: Packed RGBA & FineX specialization
+- [ ] Phase 3: Sprite pre-pass & row-level invalidation
+- [ ] Phase 3: SIMD blank fill (optional)
 
 ---
 ## 3. APU (APU_SPD)
@@ -186,14 +201,18 @@ Phase 1 (Foundational & High ROI):
 - [x] `SpeedConfig` scaffolding
 - [x] CPU idle loop detection (experimental; metrics pending)
 - [ ] CPU batch execution base
-- [ ] PPU background tile batching
+- [x] PPU background tile batching
 - [ ] APU silent channel skip
+ - [x] PPU pattern line expansion cache
+ - [x] PPU blank scanline skip fast fill
 
 Phase 2 (Broad Caching & Rendering Optimizations):
-- [ ] PPU pattern line expansion
 - [ ] PPU dirty column rendering
 - [ ] APU reduced LUT mixer (memory saver)
 - [ ] CPU zero-page hot cache
+ - [ ] PPU packed RGBA & FineX specialization
+ - [ ] Sprite evaluation skip when disabled
+ - [ ] Palette & attribute quadrant cache
 
 Phase 3 (Optional / Higher Risk / Platform Specific):
 - [ ] Frame skip system
@@ -202,6 +221,8 @@ Phase 3 (Optional / Higher Risk / Platform Specific):
 - [ ] APU lower sample rate toggle
 - [ ] DMC pre-buffer queue
 - [ ] SIMD audio mixing (desktop)
+ - [ ] Sprite visibility pre-pass & row-level pattern invalidation
+ - [ ] SIMD blank scanline fill (PPU)
 
 Phase 4 (Experimental / Advanced):
 - [ ] Dynamic throttle scheduler

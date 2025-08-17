@@ -12,5 +12,6 @@ public interface IMapper {
     // Save/Load mapper-specific state (PRG/CHR RAM handled at cartridge level separately)
     object GetMapperState();
     void SetMapperState(object state);
+        uint GetChrBankSignature();
 }
 }

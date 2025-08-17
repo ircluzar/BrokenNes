@@ -238,5 +238,14 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
             } catch { }
         }
     }
+    public uint GetChrBankSignature() {
+        unchecked {
+            uint sig = (uint)(chrMode ? 1 : 0);
+            for(int i=0;i<8;i++) {
+                sig = (sig * 16777619u) ^ bankData[i];
+            }
+            return sig;
+        }
+    }
 }
 }

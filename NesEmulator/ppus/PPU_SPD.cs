@@ -34,6 +34,10 @@ public class PPU_SPD : IPPU
 	private int scanlineCycle;
 	private int scanline;
 
+	// Cached nametable mirroring map (0x1000 bytes covering $2000-$2FFF)
+	private readonly ushort[] ntMirror = new ushort[0x1000];
+	private Mirroring lastMirroringMode; // track last mode to rebuild map only when changed
+
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
 	private byte[]? frameBuffer = null;
 	// Reusable arrays to avoid per-scanline allocations
@@ -45,6 +49,7 @@ public class PPU_SPD : IPPU
 	// 512 tiles (256 per pattern table) * 8 rows each
 	private readonly ulong[] patternRowCache = new ulong[512 * 8];
 	private readonly bool[] patternRowValid = new bool[512 * 8];
+	private uint lastChrSignature = 0; // dynamic CHR banking signature for cache invalidation
 
 	// Speedhack: scanline tile batching buffers (33 tiles: 32 visible + 1 overflow)
 	private readonly ulong[] batchRowBits = new ulong[33];
@@ -90,6 +95,8 @@ public class PPU_SPD : IPPU
 		scanline = 0;
 		
 		// Defer framebuffer allocation and any test pattern generation until first use
+		lastMirroringMode = bus.cartridge.mirroringMode;
+		RebuildNtMirror(lastMirroringMode);
 	}
 
 	private void EnsureFrameBuffer()
@@ -285,6 +292,19 @@ public class PPU_SPD : IPPU
 		bool usePatternCache = bus?.SpeedConfig?.PpuPatternCache == true;
 		bool useBatch = bus?.SpeedConfig?.PpuTileBatching == true;
 		bool skipBlank = bus?.SpeedConfig?.PpuSkipBlankScanlines == true;
+		if (usePatternCache && bus?.cartridge?.mapper != null)
+		{
+			uint sig = bus.cartridge.mapper.GetChrBankSignature();
+			if (sig != lastChrSignature)
+			{
+				System.Array.Clear(patternRowValid, 0, patternRowValid.Length);
+				lastChrSignature = sig;
+			}
+		}
+
+		// Rebuild nametable mirroring map if mapper changed mirroring mid-frame
+		var curMode = bus.cartridge.mirroringMode;
+		if (curMode != lastMirroringMode) { RebuildNtMirror(curMode); lastMirroringMode = curMode; }
 
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
 		if (twoPass)
@@ -298,7 +318,8 @@ public class PPU_SPD : IPPU
 				int nameTable = (renderV >> 10) & 0x0003;
 				int baseNTAddr = 0x2000 + (nameTable * 0x400);
 				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-				byte tileIndex = Read((ushort)tileAddr);
+				// Fast path: pattern index fetch (nametable region) - avoid full Read overhead
+				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]];
 				int fineY = (renderV >> 12) & 0x7;
 				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				ulong rowBits;
@@ -309,8 +330,9 @@ public class PPU_SPD : IPPU
 					if (!patternRowValid[rowIndex])
 					{
 						int patternAddr = patternTable + (tileIndex * 16) + fineY;
-						byte plane0 = Read((ushort)patternAddr);
-						byte plane1 = Read((ushort)(patternAddr + 8));
+						// Pattern table (<$2000) so direct CHR read
+						byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+						byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
 						ulong bits = 0UL;
 						for (int k = 0; k < 8; k++)
 						{
@@ -329,8 +351,8 @@ public class PPU_SPD : IPPU
 				else
 				{
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
-					byte plane0 = Read((ushort)patternAddr);
-					byte plane1 = Read((ushort)(patternAddr + 8));
+					byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+					byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
 					ulong bits = 0UL;
 					for (int k = 0; k < 8; k++)
 					{
@@ -345,7 +367,7 @@ public class PPU_SPD : IPPU
 				int attributeX = coarseX / 4;
 				int attributeY = coarseY / 4;
 				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = Read((ushort)attrAddr);
+				byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
 				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 				int paletteIndex = (attrByte >> attrShift) & 0x03;
 				batchRowBits[tile] = rowBits;
@@ -408,7 +430,7 @@ public class PPU_SPD : IPPU
 				int nameTable = (rv2 >> 10) & 0x0003;
 				int baseNTAddr = 0x2000 + (nameTable * 0x400);
 				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-				byte tileIndex = Read((ushort)tileAddr);
+				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
 				int fineY = (rv2 >> 12) & 0x7;
 				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				int patternAddr = patternTable + (tileIndex * 16) + fineY;
@@ -420,8 +442,8 @@ public class PPU_SPD : IPPU
 					int rowIndex = globalTile * 8 + fineY;
 					if (!patternRowValid[rowIndex])
 					{
-						plane0 = Read((ushort)patternAddr);
-						plane1 = Read((ushort)(patternAddr + 8));
+						plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+						plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
 						ulong bits = 0UL;
 						for (int k = 0; k < 8; k++)
 						{
@@ -436,8 +458,8 @@ public class PPU_SPD : IPPU
 				}
 				else
 				{
-					plane0 = Read((ushort)patternAddr);
-					plane1 = Read((ushort)(patternAddr + 8));
+					plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+					plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
 					ulong bits = 0UL;
 					for (int k = 0; k < 8; k++)
 					{
@@ -451,7 +473,7 @@ public class PPU_SPD : IPPU
 				int attributeX = coarseX / 4;
 				int attributeY = coarseY / 4;
 				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = Read((ushort)attrAddr);
+				byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast attribute fetch
 				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 				int paletteIndex = (attrByte >> attrShift) & 0x03;
 				int scanlineBase = scanlineBaseAll;
@@ -527,9 +549,10 @@ public class PPU_SPD : IPPU
 				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 			int baseAddr = patternTable + subTileIndex * 16;
 
-			// Read pattern data for this row
-			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
-			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
+			// Read pattern data for this row (pattern tables < $2000)
+			ushort rowAddr = (ushort)(baseAddr + (subY % 8));
+			byte plane0 = bus.cartridge.PPURead(rowAddr);
+			byte plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
 
 			// Render 8 pixels of the sprite
 			for (int x = 0; x < 8; x++)
@@ -561,16 +584,19 @@ public class PPU_SPD : IPPU
 
 				if (shouldDraw)
 				{
-					var spriteColor = GetSpriteColor(color, paletteIndex);
+					// Fast palette lookup (sprite palettes start at 0x10; paletteBase 0x11)
+					int palBase = 0x11 + (paletteIndex << 2);
+					byte idx = paletteRAM[palBase + (color - 1)];
+					int ci = idx & 0x3F;
 					int frameIndex = (scanline * ScreenWidth + px) * 4;
 					if (frameIndex + 3 < frameBuffer!.Length)
 					{
-						frameBuffer![frameIndex + 0] = spriteColor.r;
-						frameBuffer![frameIndex + 1] = spriteColor.g;
-						frameBuffer![frameIndex + 2] = spriteColor.b;
+						frameBuffer![frameIndex + 0] = PaletteR[ci];
+						frameBuffer![frameIndex + 1] = PaletteG[ci];
+						frameBuffer![frameIndex + 2] = PaletteB[ci];
 						frameBuffer![frameIndex + 3] = 255;
 					}
-						spritePixelDrawnReuse[px] = true;
+					spritePixelDrawnReuse[px] = true;
 				}
 			}
 		}
@@ -760,47 +786,31 @@ public class PPU_SPD : IPPU
 	public byte Read(ushort address)
 	{
 		address = (ushort)(address & 0x3FFF);
-
 		if (address < 0x2000)
-		{
 			return bus.cartridge.PPURead(address);
-		}
-		else if (address >= 0x2000 && address <= 0x3EFF)
-		{
-			ushort mirrored = MirrorVRAMAddress(address);
-			return vram[mirrored];
-		}
-		else if (address >= 0x3F00 && address <= 0x3FFF)
-		{
-			ushort mirrored = (ushort)(address & 0x1F);
-			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
-			return paletteRAM[mirrored];
-		}
-
-		return 0;
+		if (address < 0x3F00)
+			return vram[ntMirror[address & 0x0FFF]]; // nametable & mirrors
+		ushort mirrored = (ushort)(address & 0x1F);
+		if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
+		return paletteRAM[mirrored];
 	}
 
 	public void Write(ushort address, byte value)
 	{
 		address = (ushort)(address & 0x3FFF);
-
 		if (address < 0x2000)
 		{
 			bus.cartridge.PPUWrite(address, value);
-			// Invalidate pattern cache for modified tile (CHR RAM only; harmless for CHR ROM)
-			InvalidatePatternAddress(address);
+			InvalidatePatternAddress(address); // CHR RAM invalidation
+			return;
 		}
-		else if (address >= 0x2000 && address <= 0x3EFF)
+		if (address < 0x3F00)
 		{
-			ushort mirrored = MirrorVRAMAddress(address);
-			vram[mirrored] = value;
+			vram[ntMirror[address & 0x0FFF]] = value; return;
 		}
-		else if (address >= 0x3F00 && address <= 0x3FFF)
-		{
-			ushort mirrored = (ushort)(address & 0x1F);
-			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
-			paletteRAM[mirrored] = value;
-		}
+		ushort mirrored = (ushort)(address & 0x1F);
+		if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
+		paletteRAM[mirrored] = value;
 	}
 
 	private void InvalidatePatternAddress(ushort address)
@@ -814,25 +824,21 @@ public class PPU_SPD : IPPU
 		for (int r = 0; r < 8; r++) patternRowValid[baseRow + r] = false;
 	}
 
-	private ushort MirrorVRAMAddress(ushort address)
+	private void RebuildNtMirror(Mirroring mode)
 	{
-		ushort offset = (ushort)(address & 0x0FFF);
-
-		int ntIndex = offset / 0x400;
-		int innerOffset = offset % 0x400;
-
-		switch (bus.cartridge.mirroringMode)
+		for (int offset = 0; offset < 0x1000; offset++)
 		{
-			case Mirroring.Vertical:
-				return (ushort)((ntIndex % 2) * 0x400 + innerOffset);
-			case Mirroring.Horizontal:
-				return (ushort)(((ntIndex / 2) * 0x400) + innerOffset);
-			case Mirroring.SingleScreenA:
-				return (ushort)(innerOffset);
-			case Mirroring.SingleScreenB:
-				return (ushort)(0x400 + innerOffset);
-			default:
-				return offset;
+			int ntIndex = offset / 0x400;
+			int innerOffset = offset & 0x3FF;
+			ushort mapped = mode switch
+			{
+				Mirroring.Vertical => (ushort)(((ntIndex & 1) * 0x400) + innerOffset),
+				Mirroring.Horizontal => (ushort)(((ntIndex >> 1) * 0x400) + innerOffset),
+				Mirroring.SingleScreenA => (ushort)innerOffset,
+				Mirroring.SingleScreenB => (ushort)(0x400 + innerOffset),
+				_ => (ushort)offset
+			};
+			ntMirror[offset] = mapped;
 		}
 	}
 

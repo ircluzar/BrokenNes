@@ -86,5 +86,6 @@ public class Mapper3 : IMapper
         if (state is Mapper3State s) { chrBank = s.chrBank; return; }
         if (state is System.Text.Json.JsonElement je && je.TryGetProperty("chrBank", out var cb)) chrBank = cb.GetInt32();
     }
+    public uint GetChrBankSignature() => (uint)chrBank;
 }
 }
