@@ -1,6 +1,6 @@
 namespace NesEmulator
 {
-public class Mapper1 : IMapper { //MMC1 (Experimenal)
+public class Mapper1_SPD : IMapper { //MMC1 (Experimenal)
     private Cartridge cartridge;
 
     private byte shiftRegister = 0x10;
@@ -11,7 +11,7 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
     private int prgBankOffset0, prgBankOffset1;
     private int chrBankOffset0, chrBankOffset1;
 
-    public Mapper1(Cartridge cart) {
+    public Mapper1_SPD(Cartridge cart) {
         cartridge = cart;
     }
 
@@ -64,8 +64,8 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
                     ApplyMirroring();
                     break;
                 case 1:
+                    // CHR bank 0 update (4KB or lower 8KB slice). Does not affect mirroring.
                     chrBank0 = (byte)(shiftRegister & 0x1F);
-                    ApplyMirroring();
                     break;
                 case 2:
                     chrBank1 = (byte)(shiftRegister & 0x1F);
@@ -119,11 +119,20 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
     private void ApplyBanks() {
         int chrMode = (control >> 4) & 1;
         if (chrMode == 0) {
-            chrBankOffset0 = (chrBank0 & 0x1E) * 0x1000;
+            // 8KB CHR mode: ignore low bit, select even 4KB pair.
+            int maxPairs = (cartridge.chrROM.Length / 0x2000); // number of 8KB chunks
+            int evenBank = (chrBank0 & 0x1E) >> 1; // pair index
+            if (maxPairs > 0) evenBank = Math.Min(evenBank, maxPairs - 1);
+            chrBankOffset0 = evenBank * 0x2000;        // full 8KB window start
+            // Internally still treat as two 4KB slices for renderer logic
             chrBankOffset1 = chrBankOffset0 + 0x1000;
         } else {
-            chrBankOffset0 = chrBank0 * 0x1000;
-            chrBankOffset1 = chrBank1 * 0x1000;
+            // 4KB CHR banking
+            int max4k = cartridge.chrROM.Length / 0x1000;
+            int b0 = chrBank0 % Math.Max(1, max4k);
+            int b1 = chrBank1 % Math.Max(1, max4k);
+            chrBankOffset0 = b0 * 0x1000;
+            chrBankOffset1 = b1 * 0x1000;
         }
 
         if (cartridge.chrBanks > 0) {
@@ -137,8 +146,15 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
         switch (prgMode) {
             case 0:
             case 1:
-                int bank = (prgBank & 0x0E) % Math.Max(1, prgBankCount);
-                prgBankOffset0 = bank * 0x4000;
+                // 32KB mode: ignore low bit; map selected even bank and the next one.
+                if (prgBankCount == 0) { prgBankOffset0 = prgBankOffset1 = 0; break; }
+                int even = (prgBank & 0x0E) >> 1; // pair index
+                // Maximum pair index is prgBankCount/2 - 1 when prgBankCount even.
+                int maxPair = (prgBankCount / 2) - 1;
+                if (maxPair < 0) maxPair = 0;
+                if (even > maxPair) even = maxPair;
+                // Derive 32KB window start (two 16KB banks)
+                prgBankOffset0 = even * 2 * 0x4000;
                 prgBankOffset1 = prgBankOffset0 + 0x4000;
                 break;
             case 2:

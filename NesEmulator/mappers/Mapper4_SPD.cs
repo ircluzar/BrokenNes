@@ -1,6 +1,6 @@
 namespace NesEmulator
 {
-public class Mapper4 : IMapper { //MMC3 (Experimental)
+public class Mapper4_SPD : IMapper { //MMC3 (Experimental)
     private Cartridge cartridge;
 
     private byte bankSelect;
@@ -19,7 +19,7 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
     private bool irqReloadPending;
     private bool irqAsserted;
 
-    public Mapper4(Cartridge cart) {
+    public Mapper4_SPD(Cartridge cart) {
         cartridge = cart;
     }
 
@@ -160,6 +160,11 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
     }
 
     private void ApplyBankMapping() {        
+    // NOTE: This implementation is a simplified MMC3 and may cause visual artifacts
+    // in games with tight mid-scanline split IRQ timing. We only clock IRQ once per
+    // scanline via PPU hook (approx at cycle 260). If corruption persists in MMC3 titles
+    // we likely need to implement true A12 rising-edge based IRQ counting.
+
         if (chrMode) {
             chrBankOffsets[0] = bankData[2] * 0x400;
             chrBankOffsets[1] = bankData[3] * 0x400;
@@ -183,20 +188,23 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
 
         int bankCount = cartridge.prgROM.Length / 0x2000;
+        if (bankCount <= 0) bankCount = 1; // defensive (shouldn't happen)
         int lastBank = bankCount - 1;
 
         int bank6 = bankData[6] % bankCount;
         int bank7 = bankData[7] % bankCount;
 
         if (prgMode) {
-            prgBankOffsets[0] = (lastBank - 1) * 0x2000;
+            int secondLast = lastBank - 1; if (secondLast < 0) secondLast = 0;
+            prgBankOffsets[0] = secondLast * 0x2000; // fixed second last
             prgBankOffsets[1] = bank7 * 0x2000;
             prgBankOffsets[2] = bank6 * 0x2000;
             prgBankOffsets[3] = lastBank * 0x2000;
         } else {
             prgBankOffsets[0] = bank6 * 0x2000;
             prgBankOffsets[1] = bank7 * 0x2000;
-            prgBankOffsets[2] = (lastBank - 1) * 0x2000;
+            int secondLast = lastBank - 1; if (secondLast < 0) secondLast = 0;
+            prgBankOffsets[2] = secondLast * 0x2000; // fixed second last
             prgBankOffsets[3] = lastBank * 0x2000;
         }
 
@@ -207,20 +215,31 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
         
         for (int i = 0; i < 4; i++) {
-            prgBankOffsets[i] %= cartridge.prgROM.Length;
+            int len = cartridge.prgROM.Length;
+            if (len == 0) { prgBankOffsets[i] = 0; continue; }
+            int off = prgBankOffsets[i];
+            if ((uint)off >= (uint)len) {
+                // Wrap safely instead of modulo on negative (shouldn't be negative now)
+                off %= len; if (off < 0) off += len;
+            }
+            prgBankOffsets[i] = off;
         }
     }
 
     private class Mapper4State {
-        public byte bankSelect; public byte[] bankData = new byte[8]; public bool prgMode, chrMode, prgRamEnable, prgRamWriteProtect; public byte irqLatch, irqCounter; public bool irqEnable, irqReloadPending, irqAsserted;                                                                               }
+        public byte bankSelect; public byte[] bankData = new byte[8]; public bool prgMode, chrMode, prgRamEnable, prgRamWriteProtect; public byte irqLatch, irqCounter; public bool irqEnable, irqReloadPending, irqAsserted;
+    }
     public object GetMapperState() {
-        return new Mapper4State { bankSelect=this.bankSelect, bankData=(byte[])this.bankData.Clone(), prgMode=this.prgMode, chrMode=this.chrMode, prgRamEnable=this.prgRamEnable, prgRamWriteProtect=this.prgRamWriteProtect, irqLatch=this.irqLatch, irqCounter=this.irqCounter, irqEnable=this.irqEnable, irqReloadPending=this.irqReloadPending, irqAsserted=this.irqAsserted };                                                                             }
+        return new Mapper4State { bankSelect=this.bankSelect, bankData=(byte[])this.bankData.Clone(), prgMode=this.prgMode, chrMode=this.chrMode, prgRamEnable=this.prgRamEnable, prgRamWriteProtect=this.prgRamWriteProtect, irqLatch=this.irqLatch, irqCounter=this.irqCounter, irqEnable=this.irqEnable, irqReloadPending=this.irqReloadPending, irqAsserted=this.irqAsserted };
+    }
     public void SetMapperState(object state) {
-        if (state is Mapper4State s) { bankSelect=s.bankSelect; Array.Copy(s.bankData, bankData, 8); prgMode=s.prgMode; chrMode=s.chrMode; prgRamEnable=s.prgRamEnable; prgRamWriteProtect=s.prgRamWriteProtect; irqLatch=s.irqLatch; irqCounter=s.irqCounter; irqEnable=s.irqEnable; irqReloadPending=s.irqReloadPending; irqAsserted=s.irqAsserted; ApplyBankMapping(); return; }                                                                                 if (state is System.Text.Json.JsonElement je) {
+        if (state is Mapper4State s) { bankSelect=s.bankSelect; Array.Copy(s.bankData, bankData, 8); prgMode=s.prgMode; chrMode=s.chrMode; prgRamEnable=s.prgRamEnable; prgRamWriteProtect=s.prgRamWriteProtect; irqLatch=s.irqLatch; irqCounter=s.irqCounter; irqEnable=s.irqEnable; irqReloadPending=s.irqReloadPending; irqAsserted=s.irqAsserted; ApplyBankMapping(); return; }
+        if (state is System.Text.Json.JsonElement je) {
             try {
                 if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
                     if(je.TryGetProperty("bankSelect", out var v)) bankSelect = (byte)v.GetByte();
-                    if(je.TryGetProperty("bankData", out var bd) && bd.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in bd.EnumerateArray()){ if(i<8) bankData[i++] = (byte)el.GetByte(); else break; } }                       if(je.TryGetProperty("prgMode", out var pm)) prgMode = pm.GetBoolean();
+                    if(je.TryGetProperty("bankData", out var bd) && bd.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in bd.EnumerateArray()){ if(i<8) bankData[i++] = (byte)el.GetByte(); else break; } }
+                    if(je.TryGetProperty("prgMode", out var pm)) prgMode = pm.GetBoolean();
                     if(je.TryGetProperty("chrMode", out var cm)) chrMode = cm.GetBoolean();
                     if(je.TryGetProperty("prgRamEnable", out var pre)) prgRamEnable = pre.GetBoolean();
                     if(je.TryGetProperty("prgRamWriteProtect", out var prw)) prgRamWriteProtect = prw.GetBoolean();
