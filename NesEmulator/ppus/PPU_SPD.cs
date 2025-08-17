@@ -75,6 +75,11 @@ public class PPU_SPD : IPPU
 	private readonly ulong[] spritePatternRowCache = new ulong[512 * 8];
 	private readonly bool[] spritePatternRowValid = new bool[512 * 8];
 
+	// Lookup table: expands a pattern plane byte into 16 bits (stored sparsely in a 64-bit)
+	// Each pixel i (0..7) contributes its bit as the LSB of a 2-bit pair at (i*2).
+	// To combine planes: rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
+	private static readonly ulong[] PlaneExpand = new ulong[256];
+
 	static PPU_SPD()
 	{
 		PaletteR = new byte[64]; PaletteG = new byte[64]; PaletteB = new byte[64]; PaletteRGBA = new uint[64];
@@ -85,6 +90,18 @@ public class PPU_SPD : IPPU
 			PaletteR[i] = r; PaletteG[i] = g; PaletteB[i] = b;
 			// In memory frameBuffer uses little endian order R,G,B,A sequential bytes; pack for uint writes
 			PaletteRGBA[i] = (uint)r | ((uint)g << 8) | ((uint)b << 16) | 0xFF000000u;
+		}
+		// Build plane expansion table (once)
+		for (int v = 0; v < 256; v++)
+		{
+			ulong exp = 0UL;
+			for (int k = 0; k < 8; k++)
+			{
+				int bitIndex = 7 - k; // NES bit order: leftmost pixel is bit 7
+				if (((v >> bitIndex) & 1) != 0)
+					exp |= 1UL << (k * 2); // set LSB of 2-bit color slot
+			}
+			PlaneExpand[v] = exp;
 		}
 	}
 
@@ -333,7 +350,7 @@ public class PPU_SPD : IPPU
 		// Always begin by clearing the scanline to universal background color to avoid stale pixels
 		{
 			Span<uint> clearLine = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
-			for (int i = 0; i < clearLine.Length; i++) clearLine[i] = ubPacked;
+			clearLine.Fill(ubPacked); // vectorized fill
 		}
 		if (twoPass)
 		{
@@ -358,21 +375,10 @@ public class PPU_SPD : IPPU
 					if (!patternRowValid[rowIndex])
 					{
 						int patternAddr = patternTable + (tileIndex * 16) + fineY;
-						// Pattern table (<$2000) so direct CHR read
 						byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
 						byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
-						ulong bits = 0UL;
-						for (int k = 0; k < 8; k++)
-						{
-							int bitIndex = 7 - k;
-							int bit0 = (plane0 >> bitIndex) & 1;
-							int bit1 = (plane1 >> bitIndex) & 1;
-							int cidx = bit0 | (bit1 << 1);
-							bits |= (ulong)cidx << (k * 2);
-						}
-						patternRowCache[rowIndex] = bits;
-						patternRowValid[rowIndex] = true;
-						rowBits = bits;
+						ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
+						patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
 					}
 					else rowBits = patternRowCache[rowIndex];
 				}
@@ -381,16 +387,7 @@ public class PPU_SPD : IPPU
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
 					byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
 					byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
-					ulong bits = 0UL;
-					for (int k = 0; k < 8; k++)
-					{
-						int bitIndex = 7 - k;
-						int bit0 = (plane0 >> bitIndex) & 1;
-						int bit1 = (plane1 >> bitIndex) & 1;
-						int cidx = bit0 | (bit1 << 1);
-						bits |= (ulong)cidx << (k * 2);
-					}
-					rowBits = bits;
+					rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 				}
 				int attributeX = coarseX / 4;
 				int attributeY = coarseY / 4;
@@ -465,31 +462,16 @@ public class PPU_SPD : IPPU
 						{
 							byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
 							byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
-							ulong bits = 0UL;
-							for (int k = 0; k < 8; k++)
-							{
-								int bitIndex = 7 - k;
-								int bit0 = (plane0 >> bitIndex) & 1;
-								int bit1 = (plane1 >> bitIndex) & 1;
-								bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
-							}
+							ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 							patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
 						}
 						else rowBits = patternRowCache[rowIndex];
 					}
 					else
 					{
-						byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-						byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
-						ulong bits = 0UL;
-						for (int k = 0; k < 8; k++)
-						{
-							int bitIndex = 7 - k;
-							int bit0 = (plane0 >> bitIndex) & 1;
-							int bit1 = (plane1 >> bitIndex) & 1;
-							bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
-						}
-						rowBits = bits;
+							byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+							byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+							rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 					}
 					int paletteIndex = 0;
 					if (!deferAttr || rowBits != 0UL)
@@ -568,14 +550,14 @@ public class PPU_SPD : IPPU
 					if (!spritePatternRowValid[rowIndex])
 					{
 						plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
-						ulong bits = 0UL; for (int k = 0; k < 8; k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; bits |= (ulong)(b0 | (b1<<1)) << (k*2);} spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits = bits;
+						ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits = bits;
 					}
 					else rowBits = spritePatternRowCache[rowIndex];
 				}
 				else
 				{
-					plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
-					for (int k = 0; k < 8; k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; rowBits |= (ulong)(b0 | (b1<<1)) << (k*2);} 
+						plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+						rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 				}
 				uint pal1=0, pal2=0, pal3=0; if (fastSprite){int basePal = 0x11 + (paletteIndex << 2); pal1 = FetchPaletteEntryPacked((byte)basePal); pal2 = FetchPaletteEntryPacked((byte)(basePal+1)); pal3 = FetchPaletteEntryPacked((byte)(basePal+2)); }
 				for (int x = 0; x < 8; x++)
@@ -591,11 +573,21 @@ public class PPU_SPD : IPPU
 			}
 			return;
 		}
-		// Legacy full sprite pass
+		// Legacy full sprite pass (still used when evaluation disabled)
 		for (int i = 0; i < 64; i++)
 		{
-			int off = i*4; byte spriteY = oam[off]; byte tileIndex = oam[off+1]; byte attributes = oam[off+2]; byte spriteX = oam[off+3]; int paletteIndex = attributes & 0x03; bool flipX = (attributes & 0x40)!=0; bool flipY=(attributes & 0x80)!=0; bool priority=(attributes & 0x20)==0; int tileH=isSprite8x16?16:8; if (scanline < spriteY || scanline >= spriteY+tileH) continue; int subY = scanline - spriteY; if (flipY) subY = tileH -1 - subY; int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE)+(subY/8) : tileIndex; int patternTable = isSprite8x16 ? ((tileIndex & 1)!=0?0x1000:0x0000) : ((PPUCTRL & 0x08)!=0?0x1000:0x0000); int baseAddr = patternTable + subTileIndex*16; ushort rowAddr = (ushort)(baseAddr + (subY % 8)); byte plane0, plane1; ulong rowBits=0UL; int fineY = subY % 8; if (usePatternCache){int globalTile=((patternTable>>12)&1)*256+subTileIndex; int rowIndex=globalTile*8+fineY; if(!spritePatternRowValid[rowIndex]){plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); ulong bits=0UL; for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; bits|=(ulong)(b0 | (b1<<1)) << (k*2);} spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex]; }
-			else { plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; rowBits|=(ulong)(b0 | (b1<<1)) << (k*2);} }
+			int off = i*4; byte spriteY = oam[off]; byte tileIndex = oam[off+1]; byte attributes = oam[off+2]; byte spriteX = oam[off+3];
+			int paletteIndex = attributes & 0x03; bool flipX = (attributes & 0x40)!=0; bool flipY=(attributes & 0x80)!=0; bool priority=(attributes & 0x20)==0;
+			int tileH=isSprite8x16?16:8; if (scanline < spriteY || scanline >= spriteY+tileH) continue;
+			int subY = scanline - spriteY; if (flipY) subY = tileH -1 - subY; int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE)+(subY/8) : tileIndex;
+			int patternTable = isSprite8x16 ? ((tileIndex & 1)!=0?0x1000:0x0000) : ((PPUCTRL & 0x08)!=0?0x1000:0x0000);
+			int baseAddr = patternTable + subTileIndex*16; ushort rowAddr = (ushort)(baseAddr + (subY % 8)); byte plane0, plane1; ulong rowBits; int fineY = subY % 8;
+			if (usePatternCache)
+			{
+				int globalTile=((patternTable>>12)&1)*256+subTileIndex; int rowIndex=globalTile*8+fineY;
+				if(!spritePatternRowValid[rowIndex]){plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); ulong bits=PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex];
+			}
+			else { plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); }
 			uint pal1=0,pal2=0,pal3=0; if(fastSprite){int basePal=0x11 + (paletteIndex<<2); pal1=FetchPaletteEntryPacked((byte)basePal); pal2=FetchPaletteEntryPacked((byte)(basePal+1)); pal3=FetchPaletteEntryPacked((byte)(basePal+2)); }
 			Span<uint> legacyLineU32 = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanline * ScreenWidth * 4, ScreenWidth * 4));
 			for(int x=0;x<8;x++){int srcPixel = flipX ? (7 - x) : x; int color=(int)((rowBits>>(srcPixel*2)) & 0x3); if(color==0) continue; int px=spriteX+x; if((uint)px>=ScreenWidth) continue; if(i==0 && bgMask[px]) PPUSTATUS |= 0x40; if(spritePixelDrawnReuse[px]) continue; if(!priority && bgMask[px]) continue; uint packed; if(fastSprite){packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1};} else {int palBase=0x11+(paletteIndex<<2); byte idx=paletteRAM[palBase + (color-1)]; packed=PaletteRGBA[idx & 0x3F];} legacyLineU32[px]=packed; spritePixelDrawnReuse[px]=true; }

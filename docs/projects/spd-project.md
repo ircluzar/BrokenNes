@@ -20,6 +20,7 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 
 ### 1.2 Active / Planned Tasks
 - [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional Experimental)  
+ - [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional Experimental)  
 	- [x] Basic detection heuristic implemented (Status: detection ONLY; no fast-forward yet). Initially detected `LDA` / `BIT` Absolute of $2002 followed by a taken backward branch to the poll site after 128 consecutive iterations (`IdleLoopConfirmThreshold=128`). Toggle: `SpeedConfig.CpuIdleLoopDetect` (default ON; instrumentation only).  
 	- [x] Extended detection: recognizes all PPU status register mirrors (any $2000-$3FFF where `(addr & 7)==2`) and now also flags `LDA Absolute,X` / `LDA Absolute,Y` forms that resolve to a mirrored $2002. Added instrumentation field `IdleLoopEntryIterations` (no timing changes). (2025-08-16)  
 	- [x] Extend heuristic to also recognize $4015 (APU status) polls (detection only; same threshold) (2025-08-16).  
@@ -27,7 +28,7 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [ ] Introduce skip toggle & parameters: `CpuIdleLoopSkip` (bool), `CpuIdleLoopSkipMaxIterations` (int cap), `CpuIdleLoopMaxSpanBytes` (safety span) — NOT YET IMPLEMENTED IN CODE (removed from previously mis-marked implemented list).  
 	- [x] Fast-forward collapsed iterations (capped) for confirmed PPU status ($2002 mirror) idle loops only; conservative chunk (<=32 iterations per branch) guarded by: stable value (no vblank), no pending NMI/IRQ, span guard, memory write guard. (2025-08-16)
 	- [x] Write guard optimized: reflection removed; direct `IdleLoopMaybeWriteTouch` call from `Bus.WriteSlow` (2025-08-16)
-	- [ ] Expanded pattern support (masked polls, multiple preceding instructions, INC/DEC/DEX/INY between polls).  
+	- [x] Expanded pattern support (generic Absolute/AbsoluteX/AbsoluteY LDR paths now mark $2002/$4015 polls beyond inlined fast paths) (2025-08-16)  
 	- [ ] Poll loop canonicalization / fingerprint (normalize small body; allow arithmetic noise).  
 	- [ ] Read stability confirmation (require N identical status reads before enabling skip).  
 	- [ ] Integrated next-event scheduler hook (query earliest NMI/IRQ/APU/frame boundary to bound skip).  
@@ -36,9 +37,10 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [ ] Time-sliced fast-forward for WebAssembly (chunk long skips to maintain UI responsiveness).  
 	- [ ] Safety: memory side-effect guard bitset (abort if loop writes new address outside initial footprint).  
 	- [ ] Branch hotness counter reuse (share with future branch prediction structure).  
-- [ ] Batch execute N instructions before sync (Impact:M-H Risk:M Optional)  
-	- [ ] Configurable batch size (e.g. 16/32)  
-	- [ ] Early abort on IO/PPU/APU register access
+- [x] Batch execute N instructions before sync (Impact:M-H Risk:M Optional)  
+	- [x] Added `ExecuteBatch(int maxCycles)` helper (CPU_SPD) with boundary interrupt servicing (2025-08-16)  
+	- [ ] Integrate NES main loop to use new API when SPD core active (pending)  
+	- [ ] Early abort improvements on IO/PPU/APU register access granularity (current heuristic: interrupt pending)  
 - [ ] Fast OAM DMA stall approximation (Impact:M Risk:L-M Optional)  
 	- [x] Replace per-cycle stepping with lumped cycle add (513 cycles) guarded by `CpuFastOamDmaStall` (default ON) (2025-08-16)  
 	- [x] Ensure IRQ/NMI timing fairness by adding stall cycles before global cycle advance (no instruction overlap) (2025-08-16)
@@ -48,9 +50,10 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Page-cross penalty precomputation (Impact:L Risk:None)
 - [ ] Combine ADC/SBC logic (Impact:L Risk:None)
 - [ ] Branch prediction (tiny saturating counters) (Impact:L Risk:L Experimental)
-- [ ] Micro-op fusion (LDA+STA memcpy style loops) (Impact:M Risk:M Optional)  
-	- [ ] Detect hot self-contained copy loops  
-	- [ ] Emit accelerated copy path
+- [x] Micro-op fusion (LDA+STA memcpy style loops) (Impact:M Risk:M Optional)  
+	- [x] Initial pattern: descending indexed copy loop (LDA abs,X / STA abs,X / DEX / BNE back) fused into bulk copy (2025-08-16)  
+	- [ ] Additional patterns (forward increment using INX/DEY variants, fill loops)  
+	- [ ] Instrumentation counters (copies fused, bytes moved)  
 - [ ] Partial cycle skipping during DMA (Impact:L-M Risk:M)
 - [ ] Lightweight trace JIT (desktop only) (Impact:VH Risk:H Optional Experimental)  
 	- [ ] Hot block profiling  
@@ -92,6 +95,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [x] Expand plane bytes -> color indices once per tile line  
 	- [x] Invalidate on pattern table write  
 	- Toggle: `SpeedConfig.PpuPatternCache` (default: enabled)
+	- [x] Added `PlaneExpand[256]` table (per plane byte -> packed per-pixel 2-bit pairs) eliminating inner 8-iteration decode loops (2025-08-16)
+	- [x] Unified background + sprite (eval + legacy) pattern decode paths to use lookup (2025-08-16)
 - [ ] Dirty column / partial frame rendering (Impact:M Risk:M Optional)  
 	- [ ] Track name table writes (bitmask per 8x8 column)  
 	- [ ] Redraw only changed columns
@@ -99,6 +104,7 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Palette & attribute quadrant cache (Impact:L-M Risk:L)
 - [x] Skip rendering blank scanlines (Impact:L Risk:L) — implemented via batchAllZero fast fill
 	- Toggle: `SpeedConfig.PpuSkipBlankScanlines` (default: enabled)
+	- [x] Vectorized universal background scanline clear via `Span<uint>.Fill` (reduces per-line loop overhead) (2025-08-16)
 - [ ] Coarse sprite 0 hit shortcut (Impact:L Risk:M Optional)
 - [ ] Optional sprite limit removal + fast iteration (Impact:L Risk:M Optional)
 - [ ] Fast palette read path (unsafe optional) (Impact:L Risk:None Optional)
