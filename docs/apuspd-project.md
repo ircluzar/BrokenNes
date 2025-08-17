@@ -36,23 +36,23 @@ Missing / Divergent (targets for migration):
 ---
 ## Task Checklist
 ### Phase 1: Core Functional Parity
-- [ ] P1: Introduce absolute-cycle frame sequencer (track `frameCycle` + `nextFrameEventCycle` like `APU_LOW`).
-- [ ] P1: Implement immediate Quarter + Half frame tick when writing $4017 with bit7=1 in 5-step mode.
-- [ ] P1: Add sweep mute prediction (`SweepWouldMute`) and integrate into pulse output gating.
-- [ ] P1: Implement DMC channel core (delta counter, shift reg, sample buffer, IRQ/loop flags, memory fetch).
-- [ ] P1: Add canonical DMC rate table (NTSC) and hook to timer period calculation.
-- [ ] P1: Wire DMC enable/disable via $4015 with proper length counter semantics & IRQ flag clearing.
-- [ ] P1: Add DMC IRQ request to CPU (`bus.cpu.RequestIRQ(true)`) when enabled and sample depletion with IRQ flag set.
-- [ ] P1: Persist DMC state in save state object (serialization parity with `APU_LOW`). (Pending follow-up serialization extension)
+- [x] P1: Introduce absolute-cycle frame sequencer (track `frameCycle` + `nextFrameEventCycle` like `APU_LOW`).
+- [x] P1: Implement immediate Quarter + Half frame tick when writing $4017 with bit7=1 in 5-step mode.
+- [x] P1: Add sweep mute prediction (`SweepWouldMute`) and integrate into pulse output gating.
+- [x] P1: Implement DMC channel core (delta counter, shift reg, sample buffer, loop flags, memory fetch).
+- [x] P1: Add canonical DMC rate table (NTSC) and hook to timer period calculation.
+- [x] P1: Wire DMC enable/disable via $4015 with proper length counter semantics & IRQ flag clearing.
+- [x] P1: Add DMC IRQ request to CPU (`bus.cpu.RequestIRQ(true)`) when IRQ enabled and sample depletion sets flag.
+- [x] P1: Persist DMC state in save state object (serialization parity with `APU_LOW`).
 
 ### Phase 2: Mixing Fidelity
-- [ ] P2: Add precomputed Pulse mixing LUT (size 31) (95.88 / (8128 / sum + 100)).
-- [ ] P2: Add precomputed full TND LUT (16 * 16 * 128 = 32768 entries) (159.79 / (1/(t/8227 + n/12241 + d/22638) + 100)).
-- [ ] P2: Add constant describing LUT index layout (t<<11 | n<<7 | d) with documentation comment.
-- [ ] P2: Replace per-sample division mixing path with LUT lookup + accumulation.
-- [ ] P2: Remove (or bypass) runtime divides behind a feature flag `UseLutMixing` (default on).
+- [x] P2: Add precomputed Pulse mixing LUT (size 31) (95.88 / (8128 / sum + 100)).
+- [x] P2: Add precomputed full TND LUT (16 * 16 * 128 = 32768 entries) (159.79 / (1/(t/8227 + n/12241 + d/22638) + 100)).
+- [x] P2: Add constant describing LUT index layout (t<<11 | n<<7 | d) with documentation comment.
+- [/] P2: Replace per-sample division mixing path with LUT lookup + accumulation. (LUT path implemented; legacy path retained behind flag)
+- [x] P2: Remove (or bypass) runtime divides behind a feature flag `UseLutMixing` (renamed to ApuFeat_LutMixing).
 - [ ] P2: Normalize output scaling to match `APU_LOW` (remove tanh soft clip or make configurable).
-- [ ] P2: Add configuration toggle to retain legacy soft clip for backwards compatibility / subjective preference.
+- [x] P2: Add configuration toggle to retain legacy soft clip for backwards compatibility / subjective preference. (ApuFeat_SoftClip added; needs doc finalize)
 
 ### Phase 3: Validation & Regression
 - [ ] P3: Integrate blargg APU test ROM harness (timing, sweep, length, IRQ) and record pass/fail.
@@ -93,10 +93,10 @@ Missing / Divergent (targets for migration):
 
 ## Status Snapshot (initialize all unchecked)
 (Keep this section concise; main detail lives above.)
-- Core Parity: 80% (frame sequencer, sweep mute, DMC core done; save-state pending)
-- Mixing Fidelity: 100% (LUT path & toggles implemented)
+- Core Parity: 100% (Phase 1 tasks complete)
+- Mixing Fidelity: 0% (LUT path pending)
 - Validation: 0% (pending)
-- Performance: 10% (initial LUT integration; benchmarks pending)
+- Performance: 10% (baseline silent skip & envelope skip)
 
 ---
-_Last updated: 2025-08-16 – reflects implementation of frame sequencer revamp, DMC, LUT mixer, config toggles._
+_Last updated: 2025-08-17 – Phase 1 complete (frame sequencer, immediate tick, sweep mute, DMC core + IRQ + save-state)._

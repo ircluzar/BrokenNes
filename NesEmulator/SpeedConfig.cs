@@ -4,12 +4,38 @@ namespace NesEmulator
     // Keep fields simple public bools for low overhead access from hot paths.
     public class SpeedConfig
     {
+    // === Stepwise APU feature migration flags ===
+    // Step 1: Absolute-cycle frame sequencer enable
+    public bool ApuFeat_FrameSequencer = true; // enable first migrated feature
+    // Step 2: Immediate Quarter+Half tick on $4017 write with bit7=1 (5-step mode)
+    public bool ApuFeat_4017ImmediateTick = true;
+    // Step 3: Sweep mute prediction (mute pulse channel if sweep target invalid)
+    public bool ApuFeat_SweepMutePrediction = true;
+    // Step 4: DMC channel core (delta counter, sample fetch, loop) – IRQ gated separately later
+    public bool ApuFeat_DmcChannel = true;
+    // Step 5: DMC IRQ enable (separate so we can validate channel mixing first without interrupt timing side-effects)
+    public bool ApuFeat_DmcIrq = true; // enabled after validation of core channel
+    // Phase 2: Nonlinear LUT mixing (pulse + TND) to remove per-sample divides
+    public bool ApuFeat_LutMixing = true; // enable LUT path by default
+    // Optional soft clip (legacy tanh). When false, output is un-clipped (relies on LUT normalization)
+    public bool ApuFeat_SoftClip = true; // keep legacy sound character until validated
+
         // APU: Skip per-cycle channel stepping & mixing when all channels are silent.
         // Fast-forwards frame sequencer and accumulates silence samples in bulk.
         public bool ApuSilentChannelSkip = true; // default enabled (safe; no audible difference when channels off)
 
     // APU: Skip envelope decay processing when constant volume flag set (value is static).
     public bool ApuSkipEnvelopeOnConstantVolume = true; // low-risk micro-optimization
+
+    // Toggle for recent APU hot path optimizations (batched sample generation, block silence fill,
+    // inlined pulse output, single DMC fetch). Disable to isolate regressions.
+    public bool ApuOpt_NewHotPaths = false; // set false to fall back to legacy per-sample path
+
+    // Granular toggles for isolating individual recent optimizations (override umbrella flag when false)
+    public bool ApuOpt_BatchSampleMix = false;      // batched GenerateAudioSamplesBatch
+    public bool ApuOpt_BlockSilenceFill = false;    // block-based WriteSilenceSamples
+    public bool ApuOpt_InlinePulseOutput = false;   // inline ComputePulseOutput logic in ClockPulse
+    public bool ApuOpt_SingleDmcFetch = false;      // remove duplicate TryDmcFetch call
 
     // Minimum CPU cycles in a batch before attempting silent fast-forward (avoids overhead on tiny batches)
     public int ApuSilentSkipMinCycles = 128; // tuned experimentally; adjust via UI
