@@ -67,6 +67,14 @@ public class PPU_SPD : IPPU
 	// Packed RGBA (little endian) 0xAABBGGRR for direct uint stores (alpha always 255)
 	private static readonly uint[] PaletteRGBA; // length 64
 
+	// Palette entry RGBA cache (32 palette RAM bytes -> packed RGBA) + dirty flags
+	private readonly uint[] paletteEntryCache = new uint[32];
+	private readonly bool[] paletteEntryDirty = new bool[32];
+
+	// Sprite pattern row cache (optional) separate from BG to allow independent invalidation policy
+	private readonly ulong[] spritePatternRowCache = new ulong[512 * 8];
+	private readonly bool[] spritePatternRowValid = new bool[512 * 8];
+
 	static PPU_SPD()
 	{
 		PaletteR = new byte[64]; PaletteG = new byte[64]; PaletteB = new byte[64]; PaletteRGBA = new uint[64];
@@ -90,6 +98,8 @@ public class PPU_SPD : IPPU
 
 		// Initialize palette RAM with some default values
 		InitializeDefaultPalette();
+		// Ensure palette cache starts valid (all dirty so first fetch builds entries)
+		for (int i = 0; i < 32; i++) paletteEntryDirty[i] = true;
 
 		PPUADDR = 0x0000;
 		PPUCTRL = 0x00;
@@ -296,15 +306,18 @@ public class PPU_SPD : IPPU
 		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
-		bool usePatternCache = bus?.SpeedConfig?.PpuPatternCache == true;
-		bool useBatch = bus?.SpeedConfig?.PpuTileBatching == true;
-		bool skipBlank = bus?.SpeedConfig?.PpuSkipBlankScanlines == true;
+		var cfg = bus.SpeedConfig; // snapshot
+		bool usePatternCache = cfg?.PpuPatternCache == true;
+		bool useBatch = cfg?.PpuTileBatching == true;
+		bool skipBlank = cfg?.PpuSkipBlankScanlines == true;
 		if (usePatternCache && bus?.cartridge?.mapper != null)
 		{
 			uint sig = bus.cartridge.mapper.GetChrBankSignature();
 			if (sig != lastChrSignature)
 			{
 				System.Array.Clear(patternRowValid, 0, patternRowValid.Length);
+				if (bus?.SpeedConfig?.PpuSpritePatternCache == true)
+					System.Array.Clear(spritePatternRowValid, 0, spritePatternRowValid.Length);
 				lastChrSignature = sig;
 			}
 		}
@@ -314,8 +327,8 @@ public class PPU_SPD : IPPU
 		if (curMode != lastMirroringMode) { RebuildNtMirror(curMode); lastMirroringMode = curMode; }
 
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
-		bool unsafeScan = bus?.SpeedConfig?.PpuUnsafeScanline == true;
-		bool deferAttr = bus?.SpeedConfig?.PpuDeferAttributeFetch != false; // default on
+		bool unsafeScan = cfg?.PpuUnsafeScanline == true;
+		bool deferAttr = cfg?.PpuDeferAttributeFetch != false; // default on
 		if (twoPass)
 		{
 			batchAllZero = true;
@@ -394,63 +407,81 @@ public class PPU_SPD : IPPU
 				return; // nothing else to draw
 			}
 			// Second pass: render
+			bool usePalCache = bus?.SpeedConfig?.PpuPaletteCache == true;
 			for (int tile = 0; tile < 33; tile++)
 			{
 				ulong rowBits = batchRowBits[tile];
 				int paletteIndex = batchPaletteIndex[tile];
 				int scanlineBase = scanlineBaseAll;
-				for (int i = 0; i < 8; i++)
-				{
-					int pixel = tile * 8 + i - fineX;
-					if ((uint)pixel >= ScreenWidth) continue;
-					int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-					int frameIndex = scanlineBase + pixel * 4;
-					if (colorIndex == 0)
+				// Precompute packed RGBA for colorIndex 1..3 for this tile
+				uint p1=0,p2=0,p3=0; // color 0 uses ubPacked
+				if (rowBits != 0UL) {
+					int paletteBase = 1 + (paletteIndex << 2);
+					byte e1 = (byte)((paletteBase + 0) & 0x1F);
+					byte e2 = (byte)((paletteBase + 1) & 0x1F);
+					byte e3 = (byte)((paletteBase + 2) & 0x1F);
+					p1 = usePalCache ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
+					p2 = usePalCache ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
+					p3 = usePalCache ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
+				}
+				unsafe {
+					fixed (byte* fb = frameBuffer)
 					{
-						// write background color
-						frameBuffer![frameIndex + 0] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
-					}
-					else
-					{
-						bgMask[pixel] = true;
-						int paletteBase = 1 + (paletteIndex << 2);
-						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-						int ci = idx & 0x3F;
-						uint packed = PaletteRGBA[ci];
-						// Manual expand avoids endian assumptions when indexing bytes
-						frameBuffer![frameIndex + 0] = (byte)(packed & 0xFF);
-						frameBuffer![frameIndex + 1] = (byte)((packed >> 8) & 0xFF);
-						frameBuffer![frameIndex + 2] = (byte)((packed >> 16) & 0xFF);
-						frameBuffer![frameIndex + 3] = 255;
+						byte* linePtr = fb + scanlineBase;
+						for (int i = 0; i < 8; i++)
+						{
+							int pixel = tile * 8 + i - fineX; if ((uint)pixel >= ScreenWidth) continue;
+							int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+							uint packed = colorIndex switch {0 => ubPacked, 1 => p1, 2 => p2, 3 => p3, _ => ubPacked};
+							if (colorIndex != 0) bgMask[pixel] = true;
+							byte* px = linePtr + pixel * 4;
+							px[0] = (byte)(packed & 0xFF); px[1] = (byte)((packed >> 8) & 0xFF); px[2] = (byte)((packed >> 16) & 0xFF); px[3] = 255;
+						}
 					}
 				}
 			}
 		}
 		else
 		{
-			// Single-pass path (with optional pattern cache)
-			ushort rv2 = v;
-			for (int tile = 0; tile < 33; tile++)
-			{
-				int coarseX = rv2 & 0x001F;
-				int coarseY = (rv2 >> 5) & 0x001F;
-				int nameTable = (rv2 >> 10) & 0x0003;
-				int baseNTAddr = 0x2000 + (nameTable * 0x400);
-				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
-				int fineY = (rv2 >> 12) & 0x7;
-				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-				int patternAddr = patternTable + (tileIndex * 16) + fineY;
-				byte plane0 = 0, plane1 = 0;
-				ulong rowBits;
-				if (usePatternCache)
+				// Single-pass path (with optional pattern cache)
+				ushort rv2 = v;
+				bool usePalCache2 = bus?.SpeedConfig?.PpuPaletteCache == true;
+				for (int tile = 0; tile < 33; tile++)
 				{
-					int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex;
-					int rowIndex = globalTile * 8 + fineY;
-					if (!patternRowValid[rowIndex])
+					int coarseX = rv2 & 0x001F;
+					int coarseY = (rv2 >> 5) & 0x001F;
+					int nameTable = (rv2 >> 10) & 0x0003;
+					int baseNTAddr = 0x2000 + (nameTable * 0x400);
+					int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+					byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
+					int fineY = (rv2 >> 12) & 0x7;
+					int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
+					int patternAddr = patternTable + (tileIndex * 16) + fineY;
+					ulong rowBits;
+					if (usePatternCache)
 					{
-						plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-						plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+						int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex;
+						int rowIndex = globalTile * 8 + fineY;
+						if (!patternRowValid[rowIndex])
+						{
+							byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+							byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+							ulong bits = 0UL;
+							for (int k = 0; k < 8; k++)
+							{
+								int bitIndex = 7 - k;
+								int bit0 = (plane0 >> bitIndex) & 1;
+								int bit1 = (plane1 >> bitIndex) & 1;
+								bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
+							}
+							patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
+						}
+						else rowBits = patternRowCache[rowIndex];
+					}
+					else
+					{
+						byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
+						byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
 						ulong bits = 0UL;
 						for (int k = 0; k < 8; k++)
 						{
@@ -459,205 +490,169 @@ public class PPU_SPD : IPPU
 							int bit1 = (plane1 >> bitIndex) & 1;
 							bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
 						}
-						patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
+						rowBits = bits;
 					}
-					else rowBits = patternRowCache[rowIndex];
-				}
-				else
-				{
-					plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-					plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
-					ulong bits = 0UL;
-					for (int k = 0; k < 8; k++)
+					int paletteIndex = 0;
+					if (!deferAttr || rowBits != 0UL)
 					{
-						int bitIndex = 7 - k;
-						int bit0 = (plane0 >> bitIndex) & 1;
-						int bit1 = (plane1 >> bitIndex) & 1;
-						bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
+						int attributeX = coarseX / 4;
+						int attributeY = coarseY / 4;
+						int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+						byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+						int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+						paletteIndex = (attrByte >> attrShift) & 0x03;
 					}
-					rowBits = bits;
-				}
-				int paletteIndex = 0;
-				if (!deferAttr || rowBits != 0UL)
-				{
-					int attributeX = coarseX / 4;
-					int attributeY = coarseY / 4;
-					int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-					byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
-					int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-					paletteIndex = (attrByte >> attrShift) & 0x03;
-				}
-				int scanlineBase = scanlineBaseAll;
-				if (unsafeScan)
-				{
-					unsafe
+					if (rowBits == 0UL)
 					{
-						fixed (byte* fb = frameBuffer)
+						IncrementX(ref rv2);
+						continue; // all background color
+					}
+					uint p1=0,p2=0,p3=0; // lazy init
+					if (unsafeScan)
+					{
+						unsafe
 						{
-							byte* linePtr = fb + scanlineBase;
-							for (int i = 0; i < 8; i++)
+							fixed (byte* fb = frameBuffer)
 							{
-								int pixel = tile * 8 + i - fineX;
-								if ((uint)pixel >= ScreenWidth) continue;
-								int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-								byte* pxPtr = linePtr + pixel * 4;
-								if (colorIndex == 0)
+								byte* linePtr = fb + scanlineBaseAll;
+								for (int i = 0; i < 8; i++)
 								{
-									pxPtr[0] = ubR; pxPtr[1] = ubG; pxPtr[2] = ubB; pxPtr[3] = 255;
-								}
-								else
-								{
-									bgMask[pixel] = true;
-									int paletteBase = 1 + (paletteIndex << 2);
-									byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-									int ci = idx & 0x3F; uint packed = PaletteRGBA[ci];
-									pxPtr[0] = (byte)(packed & 0xFF); pxPtr[1] = (byte)((packed >> 8) & 0xFF); pxPtr[2] = (byte)((packed >> 16) & 0xFF); pxPtr[3] = 255;
+									int pixel = tile * 8 + i - fineX;
+									if ((uint)pixel >= ScreenWidth) continue;
+									int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+									byte* pxPtr = linePtr + pixel * 4;
+									if (colorIndex == 0)
+									{
+										pxPtr[0] = ubR; pxPtr[1] = ubG; pxPtr[2] = ubB; pxPtr[3] = 255;
+									}
+									else
+									{
+										bgMask[pixel] = true;
+										if (p1==0 && p2==0 && p3==0)
+										{
+											int basePal = 1 + (paletteIndex << 2);
+											byte e1=(byte)(basePal & 0x1F); byte e2=(byte)((basePal+1)&0x1F); byte e3=(byte)((basePal+2)&0x1F);
+											p1 = usePalCache2 ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
+											p2 = usePalCache2 ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
+											p3 = usePalCache2 ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
+										}
+										uint packed = colorIndex switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
+										pxPtr[0]=(byte)(packed & 0xFF); pxPtr[1]=(byte)((packed>>8)&0xFF); pxPtr[2]=(byte)((packed>>16)&0xFF); pxPtr[3]=255;
+									}
 								}
 							}
 						}
 					}
-				}
-				else
-				{
-					for (int i = 0; i < 8; i++)
+					else
 					{
-						int pixel = tile * 8 + i - fineX;
-						if ((uint)pixel >= ScreenWidth) continue;
-						int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-						int frameIndex = scanlineBase + pixel * 4;
-						if (colorIndex == 0)
+						for (int i = 0; i < 8; i++)
 						{
-							frameBuffer![frameIndex + 0] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
-						}
-						else
-						{
-							bgMask[pixel] = true;
-							int paletteBase = 1 + (paletteIndex << 2);
-							byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-							int ci = idx & 0x3F;
-							uint packed = PaletteRGBA[ci];
-							frameBuffer![frameIndex + 0] = (byte)(packed & 0xFF);
-							frameBuffer![frameIndex + 1] = (byte)((packed >> 8) & 0xFF);
-							frameBuffer![frameIndex + 2] = (byte)((packed >> 16) & 0xFF);
-							frameBuffer![frameIndex + 3] = 255;
+							int pixel = tile * 8 + i - fineX;
+							if ((uint)pixel >= ScreenWidth) continue;
+							int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+							int frameIndex = scanlineBaseAll + pixel * 4;
+							if (colorIndex == 0)
+							{
+								frameBuffer![frameIndex+0]=ubR; frameBuffer![frameIndex+1]=ubG; frameBuffer![frameIndex+2]=ubB; frameBuffer![frameIndex+3]=255;
+							}
+							else
+							{
+								bgMask[pixel] = true;
+								if (p1==0 && p2==0 && p3==0)
+								{
+									int basePal = 1 + (paletteIndex << 2);
+									byte e1=(byte)(basePal & 0x1F); byte e2=(byte)((basePal+1)&0x1F); byte e3=(byte)((basePal+2)&0x1F);
+									p1 = usePalCache2 ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
+									p2 = usePalCache2 ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
+									p3 = usePalCache2 ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
+								}
+								uint packed = colorIndex switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
+								frameBuffer![frameIndex+0]=(byte)(packed & 0xFF);
+								frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF);
+								frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF);
+								frameBuffer![frameIndex+3]=255;
+							}
 						}
 					}
+					IncrementX(ref rv2);
 				}
-				IncrementX(ref rv2);
 			}
-		}
+		// End RenderBackground
 	}
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
-		// Check if sprite rendering is enabled
-		bool showSprites = (PPUMASK & 0x10) != 0;
-		if (!showSprites) return;
-
+		bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
 		EnsureFrameBuffer();
-
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
-
 		var cfg = bus.SpeedConfig;
-		bool eval = cfg?.PpuSpriteLineEvaluation != false; // default on
+		bool eval = cfg?.PpuSpriteLineEvaluation != false;
+		bool usePatternCache = cfg?.PpuSpritePatternCache == true && bus?.cartridge?.mapper != null;
+		bool fastSprite = cfg?.PpuSpriteFastPath == true;
+		bool palCache = cfg?.PpuPaletteCache == true;
 		int spritesToDraw = 64;
 		if (eval)
 		{
-			int count = 0;
-			bool overflow = false;
+			int count = 0; bool overflow = false;
 			for (int i = 0; i < 64; i++)
 			{
-				int offset = i * 4;
-				byte spriteY = oam[offset];
-				int tileHeight = isSprite8x16 ? 16 : 8;
-				if (scanline < spriteY || scanline >= spriteY + tileHeight) continue;
+				int off = i * 4; byte sY = oam[off]; int tileH = isSprite8x16 ? 16 : 8;
+				if (scanline < sY || scanline >= sY + tileH) continue;
 				if (count < 8) spriteLineList[count++] = i; else { overflow = true; break; }
 			}
-			if (overflow) PPUSTATUS |= 0x20; // sprite overflow flag
-			spritesToDraw = count;
+			if (overflow) PPUSTATUS |= 0x20; spritesToDraw = count;
 			for (int si = 0; si < spritesToDraw; si++)
 			{
-				int i = spriteLineList[si];
-				int offset = i * 4;
-				byte spriteY = oam[offset];
-				byte tileIndex = oam[offset + 1];
-				byte attributes = oam[offset + 2];
-				byte spriteX = oam[offset + 3];
-				int paletteIndex = attributes & 0b11;
-				bool flipX = (attributes & 0x40) != 0;
-				bool flipY = (attributes & 0x80) != 0;
-				bool priority = (attributes & 0x20) == 0;
-				int tileHeight = isSprite8x16 ? 16 : 8;
-				int subY = scanline - spriteY; if (flipY) subY = tileHeight - 1 - subY;
+				int i = spriteLineList[si]; int off = i * 4;
+				byte spriteY = oam[off]; byte tileIndex = oam[off + 1]; byte attributes = oam[off + 2]; byte spriteX = oam[off + 3];
+				int paletteIndex = attributes & 0x03; bool flipX = (attributes & 0x40) != 0; bool flipY = (attributes & 0x80) != 0; bool priority = (attributes & 0x20) == 0;
+				int tileH = isSprite8x16 ? 16 : 8; int subY = scanline - spriteY; if (flipY) subY = tileH - 1 - subY;
 				int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
 				int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
-				int baseAddr = patternTable + subTileIndex * 16;
-				ushort rowAddr = (ushort)(baseAddr + (subY % 8));
-				byte plane0 = bus.cartridge.PPURead(rowAddr);
-				byte plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+				int baseAddr = patternTable + subTileIndex * 16; ushort rowAddr = (ushort)(baseAddr + (subY % 8));
+				byte plane0, plane1; ulong rowBits = 0UL; int fineY = subY % 8;
+				if (usePatternCache)
+				{
+					int globalTile = ((patternTable >> 12) & 1) * 256 + subTileIndex; int rowIndex = globalTile * 8 + fineY;
+					if (!spritePatternRowValid[rowIndex])
+					{
+						plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+						ulong bits = 0UL; for (int k = 0; k < 8; k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; bits |= (ulong)(b0 | (b1<<1)) << (k*2);} spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits = bits;
+					}
+					else rowBits = spritePatternRowCache[rowIndex];
+				}
+				else
+				{
+					plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+					for (int k = 0; k < 8; k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; rowBits |= (ulong)(b0 | (b1<<1)) << (k*2);} 
+				}
+				uint pal1=0, pal2=0, pal3=0; if (fastSprite){int basePal = 0x11 + (paletteIndex << 2); pal1 = FetchPaletteEntryPacked((byte)basePal); pal2 = FetchPaletteEntryPacked((byte)(basePal+1)); pal3 = FetchPaletteEntryPacked((byte)(basePal+2)); }
 				for (int x = 0; x < 8; x++)
 				{
-					int bit = flipX ? x : 7 - x;
-					int color = ((plane0 >> bit) & 1) | (((plane1 >> bit) & 1) << 1);
-					if (color == 0) continue;
-					int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
-					if (i == 0 && bgMask[px]) PPUSTATUS |= 0x40; // sprite 0 hit
-					if (spritePixelDrawnReuse[px]) continue;
-					if (!priority && bgMask[px]) continue;
-					int palBase = 0x11 + (paletteIndex << 2);
-					byte idx = paletteRAM[palBase + (color - 1)];
-					int ci = idx & 0x3F;
-					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					frameBuffer![frameIndex + 0] = PaletteR[ci];
-					frameBuffer![frameIndex + 1] = PaletteG[ci];
-					frameBuffer![frameIndex + 2] = PaletteB[ci];
-					frameBuffer![frameIndex + 3] = 255;
-					spritePixelDrawnReuse[px] = true;
+					int srcPixel = flipX ? (7 - x) : x; int color = (int)((rowBits >> (srcPixel * 2)) & 0x3); if (color==0) continue; int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
+					if (i==0 && bgMask[px]) PPUSTATUS |= 0x40; if (spritePixelDrawnReuse[px]) continue; if (!priority && bgMask[px]) continue;
+					int frameIndex = (scanline * ScreenWidth + px)*4;
+					if (fastSprite)
+					{
+						uint packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1}; frameBuffer![frameIndex]=(byte)(packed & 0xFF); frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF); frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF); frameBuffer![frameIndex+3]=255;
+					}
+					else
+					{
+						int palBase = 0x11 + (paletteIndex << 2); byte idx = paletteRAM[palBase + (color -1)]; int ci = idx & 0x3F; frameBuffer![frameIndex]=PaletteR[ci]; frameBuffer![frameIndex+1]=PaletteG[ci]; frameBuffer![frameIndex+2]=PaletteB[ci]; frameBuffer![frameIndex+3]=255;
+					}
+					spritePixelDrawnReuse[px]=true;
 				}
 			}
-			return; // done
+			return;
 		}
-		// Fallback: legacy path draws all 64 sprites
+		// Legacy full sprite pass
 		for (int i = 0; i < 64; i++)
 		{
-			int offset = i * 4;
-			byte spriteY = oam[offset];
-			byte tileIndex = oam[offset + 1];
-			byte attributes = oam[offset + 2];
-			byte spriteX = oam[offset + 3];
-			int paletteIndex = attributes & 0b11;
-			bool flipX = (attributes & 0x40) != 0;
-			bool flipY = (attributes & 0x80) != 0;
-			bool priority = (attributes & 0x20) == 0;
-			int tileHeight = isSprite8x16 ? 16 : 8;
-			if (scanline < spriteY || scanline >= spriteY + tileHeight) continue;
-			int subY = scanline - spriteY; if (flipY) subY = tileHeight - 1 - subY;
-			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
-			int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
-			int baseAddr = patternTable + subTileIndex * 16;
-			ushort rowAddr = (ushort)(baseAddr + (subY % 8));
-			byte plane0 = bus.cartridge.PPURead(rowAddr);
-			byte plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
-			for (int x = 0; x < 8; x++)
-			{
-				int bit = flipX ? x : 7 - x;
-				int bit0 = (plane0 >> bit) & 1; int bit1 = (plane1 >> bit) & 1; int color = bit0 | (bit1 << 1);
-				if (color == 0) continue;
-				int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
-				if (i == 0 && bgMask[px]) PPUSTATUS |= 0x40;
-				if (spritePixelDrawnReuse[px]) continue;
-				if (!priority && bgMask[px]) continue;
-				int palBase = 0x11 + (paletteIndex << 2);
-				byte idx = paletteRAM[palBase + (color - 1)];
-				int ci = idx & 0x3F;
-				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				frameBuffer![frameIndex + 0] = PaletteR[ci];
-				frameBuffer![frameIndex + 1] = PaletteG[ci];
-				frameBuffer![frameIndex + 2] = PaletteB[ci];
-				frameBuffer![frameIndex + 3] = 255;
-				spritePixelDrawnReuse[px] = true;
-			}
+			int off = i*4; byte spriteY = oam[off]; byte tileIndex = oam[off+1]; byte attributes = oam[off+2]; byte spriteX = oam[off+3]; int paletteIndex = attributes & 0x03; bool flipX = (attributes & 0x40)!=0; bool flipY=(attributes & 0x80)!=0; bool priority=(attributes & 0x20)==0; int tileH=isSprite8x16?16:8; if (scanline < spriteY || scanline >= spriteY+tileH) continue; int subY = scanline - spriteY; if (flipY) subY = tileH -1 - subY; int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE)+(subY/8) : tileIndex; int patternTable = isSprite8x16 ? ((tileIndex & 1)!=0?0x1000:0x0000) : ((PPUCTRL & 0x08)!=0?0x1000:0x0000); int baseAddr = patternTable + subTileIndex*16; ushort rowAddr = (ushort)(baseAddr + (subY % 8)); byte plane0, plane1; ulong rowBits=0UL; int fineY = subY % 8; if (usePatternCache){int globalTile=((patternTable>>12)&1)*256+subTileIndex; int rowIndex=globalTile*8+fineY; if(!spritePatternRowValid[rowIndex]){plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); ulong bits=0UL; for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; bits|=(ulong)(b0 | (b1<<1)) << (k*2);} spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex]; }
+			else { plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; rowBits|=(ulong)(b0 | (b1<<1)) << (k*2);} }
+			uint pal1=0,pal2=0,pal3=0; if(fastSprite){int basePal=0x11 + (paletteIndex<<2); pal1=FetchPaletteEntryPacked((byte)basePal); pal2=FetchPaletteEntryPacked((byte)(basePal+1)); pal3=FetchPaletteEntryPacked((byte)(basePal+2)); }
+			for(int x=0;x<8;x++){int srcPixel = flipX ? (7 - x) : x; int color=(int)((rowBits>>(srcPixel*2)) & 0x3); if(color==0) continue; int px=spriteX+x; if((uint)px>=ScreenWidth) continue; if(i==0 && bgMask[px]) PPUSTATUS |= 0x40; if(spritePixelDrawnReuse[px]) continue; if(!priority && bgMask[px]) continue; int frameIndex=(scanline*ScreenWidth+px)*4; if(fastSprite){uint packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1}; frameBuffer![frameIndex]=(byte)(packed & 0xFF); frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF); frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF); frameBuffer![frameIndex+3]=255;} else {int palBase=0x11+(paletteIndex<<2); byte idx=paletteRAM[palBase + (color-1)]; int ci=idx & 0x3F; frameBuffer![frameIndex]=PaletteR[ci]; frameBuffer![frameIndex+1]=PaletteG[ci]; frameBuffer![frameIndex+2]=PaletteB[ci]; frameBuffer![frameIndex+3]=255;} spritePixelDrawnReuse[px]=true; }
 		}
 	}
 
@@ -870,6 +865,7 @@ public class PPU_SPD : IPPU
 		ushort mirrored = (ushort)(address & 0x1F);
 		if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 		paletteRAM[mirrored] = value;
+		if (bus?.SpeedConfig?.PpuPaletteCache == true) paletteEntryDirty[mirrored] = true;
 	}
 
 	private void InvalidatePatternAddress(ushort address)
@@ -881,6 +877,8 @@ public class PPU_SPD : IPPU
 		// If writing only one byte of a tile row, we conservatively invalidate all 8 rows of the tile.
 		int baseRow = tileIndex * 8;
 		for (int r = 0; r < 8; r++) patternRowValid[baseRow + r] = false;
+		if (bus?.SpeedConfig?.PpuSpritePatternCache == true)
+			for (int r = 0; r < 8; r++) spritePatternRowValid[baseRow + r] = false;
 	}
 
 	private void RebuildNtMirror(Mirroring mode)
@@ -1005,6 +1003,28 @@ public class PPU_SPD : IPPU
 		paletteRAM[0x1F] = 0x35; // Very light magenta
 	}
 
+	private void RefreshAllPaletteCache()
+	{
+		if (bus?.SpeedConfig?.PpuPaletteCache == true)
+		{
+			for (int i = 0; i < 32; i++) paletteEntryDirty[i] = true; // lazy fill on demand
+		}
+	}
+
+	// Obtain packed RGBA from paletteRAM index with caching if enabled
+	private uint FetchPaletteEntryPacked(byte paletteIndex)
+	{
+		if (bus?.SpeedConfig?.PpuPaletteCache == true)
+		{
+			if (paletteEntryDirty[paletteIndex])
+			{
+				byte idx = paletteRAM[paletteIndex]; int ci = idx & 0x3F; paletteEntryCache[paletteIndex] = PaletteRGBA[ci]; paletteEntryDirty[paletteIndex] = false;
+			}
+			return paletteEntryCache[paletteIndex];
+		}
+		return PaletteRGBA[paletteRAM[paletteIndex] & 0x3F];
+	}
+
 	//NES 64 Color Palette
 	static readonly byte[] PaletteBytes = new byte[] {
 		84,84,84, 0,30,116, 8,16,144, 48,0,136,
@@ -1044,14 +1064,14 @@ public class PPU_SPD : IPPU
 			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
 			// Legacy compatibility: if a frame is present and matches expected length, copy it; otherwise leave empty
 			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
-			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; RefreshAllPaletteCache(); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("oam", out var pOam) && pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } }
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
-			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32(); RefreshAllPaletteCache();
 		}
 	}
 }

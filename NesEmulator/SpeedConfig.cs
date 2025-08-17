@@ -27,6 +27,13 @@ namespace NesEmulator
     // PPU: Defer attribute fetch until non-zero tile bits known (saves reads on blank tiles)
     public bool PpuDeferAttributeFetch = true; // default on; small gain in blank-heavy scenes
 
+    // PPU: Cache paletteRAM entries expanded to packed RGBA (updates on writes)
+    public bool PpuPaletteCache = true; // trivial & safe
+    // PPU: Reuse pattern row cache for sprites too (currently only BG path uses it)
+    public bool PpuSpritePatternCache = true; // safe: same invalidation as BG
+    // PPU: Fast sprite color mapping (preload three RGBA entries per sprite row)
+    public bool PpuSpriteFastPath = true; // micro-optimization layer
+
         // Future toggles (placeholders):
     // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.
     // Safe default is off; when enabled it only annotates state (no timing changes) so other systems can observe it.
