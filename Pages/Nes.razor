@@ -958,6 +958,8 @@
     private const string BenchHistoryKey = "bench_history_v1"; // single JSON array stored in IndexedDB
     // Comparison modal state & derived datasets
     private bool compareModalOpen = false;
+    // Limit the number of historical points rendered in the benchmark trend graph to avoid overcrowding.
+    private const int MaxTimelineTrendPoints = 69; // show only the latest 69 data points in timeline graph
     private HashSet<string> visibleTargets = new();
     private List<string> allTargets = new();
     private List<DateTime> timelineOrder = new();
@@ -2606,6 +2608,11 @@
         recentDiffRows.Clear(); timelineSeries.Clear(); allTargets.Clear(); timelineOrder.Clear(); visibleTargets.Clear(); highlightMetricName=null; hoverIndex=null; hoverTarget=null; hoverPointTooltip=null;
         // Need chronological order (oldest -> newest) for timeline
         var chrono = benchHistory.OrderBy(e=>e.TimestampUtc).ToList();
+        // Only keep the last MaxTimelineTrendPoints entries for timeline/graphing to reduce clutter
+        if (chrono.Count > MaxTimelineTrendPoints)
+        {
+            chrono = chrono.Skip(chrono.Count - MaxTimelineTrendPoints).ToList();
+        }
         if (chrono.Count < 2) return;
     // Parse each entry's structured table lines; format now includes extra columns: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA\tBatches\tAvgBatch (older entries may lack last 2)
         var parsed = new List<(BenchHistoryEntry Entry, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
