@@ -62,9 +62,10 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [x] Fast OAM DMA bulk copy (Impact:M Risk:L)
 
 ### 2.2 Active / Planned Tasks
-- [ ] Background tile fetch batching (Impact:M Risk:L)  
-	- [ ] Pre-decode 32 tiles -> scanline cache  
-	- [ ] Reuse across fine X shifts within line
+- [x] Background tile fetch batching (Impact:M Risk:L)  
+	- [x] Pre-decode 32 tiles -> scanline cache (metadata arrays)  
+	- [x] Reuse across fine X shifts within line (rowBits reused)  
+	- Toggle: `SpeedConfig.PpuTileBatching` (default: enabled)
 - [x] Precomputed pattern line expansion cache (Impact:M Risk:L)  
 	- [x] Expand plane bytes -> color indices once per tile line  
 	- [x] Invalidate on pattern table write  
@@ -74,7 +75,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [ ] Redraw only changed columns
 - [ ] Sprite evaluation skip when sprites disabled (Impact:L Risk:None)
 - [ ] Palette & attribute quadrant cache (Impact:L-M Risk:L)
-- [ ] Skip rendering blank scanlines (Impact:L Risk:L)
+- [x] Skip rendering blank scanlines (Impact:L Risk:L) — implemented via batchAllZero fast fill
+	- Toggle: `SpeedConfig.PpuSkipBlankScanlines` (default: enabled)
 - [ ] Coarse sprite 0 hit shortcut (Impact:L Risk:M Optional)
 - [ ] Optional sprite limit removal + fast iteration (Impact:L Risk:M Optional)
 - [ ] Fast palette read path (unsafe optional) (Impact:L Risk:None Optional)
@@ -84,8 +86,6 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Phase 1: Pattern line expansion
 - [ ] Phase 2: Dirty column rendering
 - [ ] Phase 2: Sprite evaluation skip / palette cache
-- [ ] Phase 3: Frame skip toggle
-- [ ] Phase 3: Static frame reuse
 
 ---
 ## 3. APU (APU_SPD)

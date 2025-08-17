@@ -46,6 +46,28 @@ public class PPU_SPD : IPPU
 	private readonly ulong[] patternRowCache = new ulong[512 * 8];
 	private readonly bool[] patternRowValid = new bool[512 * 8];
 
+	// Speedhack: scanline tile batching buffers (33 tiles: 32 visible + 1 overflow)
+	private readonly ulong[] batchRowBits = new ulong[33];
+	private readonly byte[] batchPaletteIndex = new byte[33];
+	private bool batchAllZero; // helper flag for blank scanline fast fill
+
+	// Pre-split RGB palette components for faster inner-loop access
+	private static readonly byte[] PaletteR;
+	private static readonly byte[] PaletteG;
+	private static readonly byte[] PaletteB;
+
+	static PPU_SPD()
+	{
+		PaletteR = new byte[64]; PaletteG = new byte[64]; PaletteB = new byte[64];
+		for (int i = 0; i < 64; i++)
+		{
+			int p = i * 3;
+			PaletteR[i] = PaletteBytes[p];
+			PaletteG[i] = PaletteBytes[p+1];
+			PaletteB[i] = PaletteBytes[p+2];
+		}
+	}
+
 	public PPU_SPD(Bus bus)
 	{
 		this.bus = bus;
@@ -253,30 +275,58 @@ public class PPU_SPD : IPPU
 
 		// Cache universal background color once per scanline.
 		byte ubIdx = paletteRAM[0];
-		int ubp = (ubIdx & 0x3F) * 3;
-		byte ubR = PaletteBytes[ubp];
-		byte ubG = PaletteBytes[ubp+1];
-		byte ubB = PaletteBytes[ubp+2];
+		int ubPal = ubIdx & 0x3F;
+		byte ubR = PaletteR[ubPal];
+		byte ubG = PaletteG[ubPal];
+		byte ubB = PaletteB[ubPal];
 		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
-		bool usePatternCache = bus?.SpeedConfig?.PpuPatternCache == true; // toggle
-		for (int tile = 0; tile < 33; tile++)
+		bool usePatternCache = bus?.SpeedConfig?.PpuPatternCache == true;
+		bool useBatch = bus?.SpeedConfig?.PpuTileBatching == true;
+		bool skipBlank = bus?.SpeedConfig?.PpuSkipBlankScanlines == true;
+
+		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
+		if (twoPass)
 		{
-			int coarseX = renderV & 0x001F;
-			int coarseY = (renderV >> 5) & 0x001F;
-			int nameTable = (renderV >> 10) & 0x0003;
-			int baseNTAddr = 0x2000 + (nameTable * 0x400);
-			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-			byte tileIndex = Read((ushort)tileAddr);
-			int fineY = (renderV >> 12) & 0x7;
-			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-			ulong rowBits;
-			if (usePatternCache)
+			batchAllZero = true;
+			// First pass: decode metadata for 33 tiles
+			for (int tile = 0; tile < 33; tile++)
 			{
-				int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex; // 0..511
-				int rowIndex = globalTile * 8 + fineY;
-				if (!patternRowValid[rowIndex])
+				int coarseX = renderV & 0x001F;
+				int coarseY = (renderV >> 5) & 0x001F;
+				int nameTable = (renderV >> 10) & 0x0003;
+				int baseNTAddr = 0x2000 + (nameTable * 0x400);
+				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+				byte tileIndex = Read((ushort)tileAddr);
+				int fineY = (renderV >> 12) & 0x7;
+				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
+				ulong rowBits;
+				if (usePatternCache)
+				{
+					int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex; // 0..511
+					int rowIndex = globalTile * 8 + fineY;
+					if (!patternRowValid[rowIndex])
+					{
+						int patternAddr = patternTable + (tileIndex * 16) + fineY;
+						byte plane0 = Read((ushort)patternAddr);
+						byte plane1 = Read((ushort)(patternAddr + 8));
+						ulong bits = 0UL;
+						for (int k = 0; k < 8; k++)
+						{
+							int bitIndex = 7 - k;
+							int bit0 = (plane0 >> bitIndex) & 1;
+							int bit1 = (plane1 >> bitIndex) & 1;
+							int cidx = bit0 | (bit1 << 1);
+							bits |= (ulong)cidx << (k * 2);
+						}
+						patternRowCache[rowIndex] = bits;
+						patternRowValid[rowIndex] = true;
+						rowBits = bits;
+					}
+					else rowBits = patternRowCache[rowIndex];
+				}
+				else
 				{
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
 					byte plane0 = Read((ushort)patternAddr);
@@ -290,67 +340,148 @@ public class PPU_SPD : IPPU
 						int cidx = bit0 | (bit1 << 1);
 						bits |= (ulong)cidx << (k * 2);
 					}
-					patternRowCache[rowIndex] = bits;
-					patternRowValid[rowIndex] = true;
 					rowBits = bits;
 				}
-				else
+				int attributeX = coarseX / 4;
+				int attributeY = coarseY / 4;
+				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+				byte attrByte = Read((ushort)attrAddr);
+				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+				int paletteIndex = (attrByte >> attrShift) & 0x03;
+				batchRowBits[tile] = rowBits;
+				batchPaletteIndex[tile] = (byte)paletteIndex;
+				if (rowBits != 0UL) batchAllZero = false;
+				IncrementX(ref renderV);
+			}
+			// Fast fill if entire scanline row bits are zero (all colorIndex 0)
+			if (skipBlank && batchAllZero)
+			{
+				int baseIndex = scanline * ScreenWidth * 4;
+				for (int x = 0; x < ScreenWidth; x++)
 				{
-					rowBits = patternRowCache[rowIndex];
+					int fi = baseIndex + x * 4;
+					frameBuffer![fi+0] = ubR; frameBuffer![fi+1] = ubG; frameBuffer![fi+2] = ubB; frameBuffer![fi+3] = 255;
+				}
+				return; // nothing else to draw
+			}
+			// Second pass: render
+			for (int tile = 0; tile < 33; tile++)
+			{
+				ulong rowBits = batchRowBits[tile];
+				int paletteIndex = batchPaletteIndex[tile];
+				int scanlineBase = scanlineBaseAll;
+				for (int i = 0; i < 8; i++)
+				{
+					int pixel = tile * 8 + i - fineX;
+					if ((uint)pixel >= ScreenWidth) continue;
+					int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+					int frameIndex = scanlineBase + pixel * 4;
+					if (colorIndex == 0)
+					{
+						frameBuffer![frameIndex + 0] = ubR;
+						frameBuffer![frameIndex + 1] = ubG;
+						frameBuffer![frameIndex + 2] = ubB;
+						frameBuffer![frameIndex + 3] = 255;
+					}
+					else
+					{
+						bgMask[pixel] = true;
+						int paletteBase = 1 + (paletteIndex << 2);
+						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+						int ci = idx & 0x3F;
+						frameBuffer![frameIndex + 0] = PaletteR[ci];
+						frameBuffer![frameIndex + 1] = PaletteG[ci];
+						frameBuffer![frameIndex + 2] = PaletteB[ci];
+						frameBuffer![frameIndex + 3] = 255;
+					}
 				}
 			}
-			else
+		}
+		else
+		{
+			// Single-pass path (with optional pattern cache)
+			ushort rv2 = v;
+			for (int tile = 0; tile < 33; tile++)
 			{
+				int coarseX = rv2 & 0x001F;
+				int coarseY = (rv2 >> 5) & 0x001F;
+				int nameTable = (rv2 >> 10) & 0x0003;
+				int baseNTAddr = 0x2000 + (nameTable * 0x400);
+				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+				byte tileIndex = Read((ushort)tileAddr);
+				int fineY = (rv2 >> 12) & 0x7;
+				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				int patternAddr = patternTable + (tileIndex * 16) + fineY;
-				byte plane0 = Read((ushort)patternAddr);
-				byte plane1 = Read((ushort)(patternAddr + 8));
-				ulong bits = 0UL;
-				for (int k = 0; k < 8; k++)
+				byte plane0 = 0, plane1 = 0;
+				ulong rowBits;
+				if (usePatternCache)
 				{
-					int bitIndex = 7 - k;
-					int bit0 = (plane0 >> bitIndex) & 1;
-					int bit1 = (plane1 >> bitIndex) & 1;
-					int cidx = bit0 | (bit1 << 1);
-					bits |= (ulong)cidx << (k * 2);
-				}
-				rowBits = bits;
-			}
-
-			int attributeX = coarseX / 4;
-			int attributeY = coarseY / 4;
-			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-			byte attrByte = Read((ushort)attrAddr);
-			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-			int paletteIndex = (attrByte >> attrShift) & 0x03;
-			int scanlineBase = scanlineBaseAll;
-
-			for (int i = 0; i < 8; i++)
-			{
-				int pixel = tile * 8 + i - fineX;
-				if ((uint)pixel >= ScreenWidth) continue;
-				int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-				int frameIndex = scanlineBase + pixel * 4;
-				if (colorIndex == 0)
-				{
-					frameBuffer![frameIndex + 0] = ubR;
-					frameBuffer![frameIndex + 1] = ubG;
-					frameBuffer![frameIndex + 2] = ubB;
-					frameBuffer![frameIndex + 3] = 255;
+					int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex;
+					int rowIndex = globalTile * 8 + fineY;
+					if (!patternRowValid[rowIndex])
+					{
+						plane0 = Read((ushort)patternAddr);
+						plane1 = Read((ushort)(patternAddr + 8));
+						ulong bits = 0UL;
+						for (int k = 0; k < 8; k++)
+						{
+							int bitIndex = 7 - k;
+							int bit0 = (plane0 >> bitIndex) & 1;
+							int bit1 = (plane1 >> bitIndex) & 1;
+							bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
+						}
+						patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
+					}
+					else rowBits = patternRowCache[rowIndex];
 				}
 				else
 				{
-					bgMask[pixel] = true;
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = (idx & 0x3F) * 3;
-					frameBuffer![frameIndex + 0] = PaletteBytes[p];
-					frameBuffer![frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer![frameIndex + 3] = 255;
+					plane0 = Read((ushort)patternAddr);
+					plane1 = Read((ushort)(patternAddr + 8));
+					ulong bits = 0UL;
+					for (int k = 0; k < 8; k++)
+					{
+						int bitIndex = 7 - k;
+						int bit0 = (plane0 >> bitIndex) & 1;
+						int bit1 = (plane1 >> bitIndex) & 1;
+						bits |= (ulong)(bit0 | (bit1 << 1)) << (k * 2);
+					}
+					rowBits = bits;
 				}
+				int attributeX = coarseX / 4;
+				int attributeY = coarseY / 4;
+				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+				byte attrByte = Read((ushort)attrAddr);
+				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+				int paletteIndex = (attrByte >> attrShift) & 0x03;
+				int scanlineBase = scanlineBaseAll;
+				for (int i = 0; i < 8; i++)
+				{
+					int pixel = tile * 8 + i - fineX;
+					if ((uint)pixel >= ScreenWidth) continue;
+					int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+					int frameIndex = scanlineBase + pixel * 4;
+					if (colorIndex == 0)
+					{
+						frameBuffer![frameIndex + 0] = ubR;
+						frameBuffer![frameIndex + 1] = ubG;
+						frameBuffer![frameIndex + 2] = ubB;
+						frameBuffer![frameIndex + 3] = 255;
+					}
+					else
+					{
+						bgMask[pixel] = true;
+						int paletteBase = 1 + (paletteIndex << 2);
+						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+						int ci = idx & 0x3F;
+						frameBuffer![frameIndex + 0] = PaletteR[ci];
+						frameBuffer![frameIndex + 1] = PaletteG[ci];
+						frameBuffer![frameIndex + 2] = PaletteB[ci];
+						frameBuffer![frameIndex + 3] = 255;
+					}
+				}
+				IncrementX(ref rv2);
 			}
-
-			IncrementX(ref renderV);
 		}
 	}
 

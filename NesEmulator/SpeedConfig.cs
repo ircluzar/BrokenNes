@@ -16,6 +16,10 @@ namespace NesEmulator
 
         // PPU: Enable pattern line expansion cache (per tile row 2-bit packing)
         public bool PpuPatternCache = true; // safe; invalidated on pattern writes
+        // PPU: Batch prefetch of 33 tiles per scanline (metadata first pass, render second)
+        public bool PpuTileBatching = true; // pairs well with pattern cache
+        // PPU: Skip fully blank scanlines (all background color & no sprites) via batch detection
+        public bool PpuSkipBlankScanlines = true; // requires batching to detect
 
         // Future toggles (placeholders):
         // public bool CpuIdleLoopSkip;
