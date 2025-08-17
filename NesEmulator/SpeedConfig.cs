@@ -22,7 +22,9 @@ namespace NesEmulator
         public bool PpuSkipBlankScanlines = true; // requires batching to detect
 
         // Future toggles (placeholders):
-        // public bool CpuIdleLoopSkip;
+    // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.
+    // Safe default is off; when enabled it only annotates state (no timing changes) so other systems can observe it.
+    public bool CpuIdleLoopDetect = true; // extremely safe: detection only, no skipping/fast-forward
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }

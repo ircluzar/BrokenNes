@@ -17,10 +17,23 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [x] Decimal flag semantics eliminated (Impact:L Risk:None)
 
 ### 1.2 Active / Planned Tasks
-- [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional)  
-	- [ ] Heuristic: detect tight polling on $2002/$4015 with backward branch.  
-	- [ ] Fast-forward until triggering event (NMI/IRQ flag set)
-	- [ ] Metrics: loops skipped, cycles saved
+- [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional Experimental)  
+	- [x] Basic detection heuristic implemented (Status: detection ONLY; no fast-forward yet). Detects LDA/BIT Absolute of $2002 followed by a taken backward branch to poll site after 128 consecutive iterations (constant `IdleLoopConfirmThreshold=128`). Toggle: `SpeedConfig.CpuIdleLoopDetect` (default ON; instrumentation only).  
+	- [ ] Extend heuristic to also recognize $4015 (APU status) polls.  
+	- [ ] Introduce skip toggle & parameters: `CpuIdleLoopSkip` (bool), `CpuIdleLoopSkipMaxIterations` (int cap), `CpuIdleLoopMaxSpanBytes` (safety span) — NOT YET IMPLEMENTED IN CODE (removed from previously mis-marked implemented list).  
+	- [ ] Fast-forward collapsed iterations (capped) until triggering event (vblank flag / APU activity / pending IRQ/NMI).  
+	- [ ] Metrics: loops detected, loops skipped, cycles saved, abort reasons (event, instability, span exceeded).  
+	- [ ] Expanded pattern support (masked polls, multiple preceding instructions, INC/DEC/DEX/INY between polls).  
+	- [ ] Poll loop canonicalization / fingerprint (normalize small body; allow arithmetic noise).  
+	- [ ] Read stability confirmation (require N identical status reads before enabling skip).  
+	- [ ] Integrated next-event scheduler hook (query earliest NMI/IRQ/APU/frame boundary to bound skip).  
+	- [ ] Adaptive iteration cap (raise/lower based on prior safe skips & mapper IRQ activity).  
+	- [ ] Cross-frame persistence heuristic (if identical loop recurs each frame at same PC, accelerate earlier).  
+	- [ ] Telemetry-driven auto-disable for low-ROI loop sites (never saves threshold cycles).  
+	- [ ] Time-sliced fast-forward for WebAssembly (chunk long skips to maintain UI responsiveness).  
+	- [ ] Safety: memory side-effect guard bitset (abort if loop writes new address outside initial footprint).  
+	- [ ] Branch hotness counter reuse (share with future branch prediction structure).  
+	- NOTE: Guarded + conservative; treat as experimental until regression suite passes.
 - [ ] Batch execute N instructions before sync (Impact:M-H Risk:M Optional)  
 	- [ ] Configurable batch size (e.g. 16/32)  
 	- [ ] Early abort on IO/PPU/APU register access
@@ -43,7 +56,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [ ] State sync & invalidation strategy
 
 ### 1.3 Prioritization Snapshot
-- [ ] Phase 1: Idle loop fast-forward
+- [x] Phase 1: Idle loop detection instrumentation (implemented; fast-forward pending)
+- [ ] Phase 1: Idle loop fast-forward (experimental, metrics pending)
 - [ ] Phase 1: Batch execution core scaffolding
 - [ ] Phase 1: Fast OAM DMA stall approximation
 - [ ] Phase 2: Zero-page hot cache
@@ -139,6 +153,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 ## 5. Configuration & Telemetry Infrastructure
 - [ ] Introduce `SpeedConfig` struct (Impact:L Risk:None)
 	- [x] Basic `SpeedConfig` class added (`SpeedConfig.cs`) with `ApuSilentChannelSkip` toggle default enabled
+	- [x] Added CPU idle loop detection toggle: `CpuIdleLoopDetect` (default ON; detection only)
+	- [ ] Add CPU idle loop skip toggles: `CpuIdleLoopSkip`, `CpuIdleLoopSkipMaxIterations`, `CpuIdleLoopMaxSpanBytes` (NOT YET IMPLEMENTED IN CODE)
 - [ ] Central registry to propagate config to cores (Impact:L Risk:None)
 - [ ] Presets (Accurate / Balanced / Fast / Turbo) (Impact:M Risk:M)
 - [ ] Per-hack enable flags serialization (Impact:L Risk:None)
@@ -165,8 +181,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 ---
 ## 8. Phased Roadmap (Execution Order)
 Phase 1 (Foundational & High ROI):
-- [ ] `SpeedConfig` scaffolding
-- [ ] CPU idle loop detection
+- [x] `SpeedConfig` scaffolding
+- [x] CPU idle loop detection (experimental; metrics pending)
 - [ ] CPU batch execution base
 - [ ] PPU background tile batching
 - [ ] APU silent channel skip
