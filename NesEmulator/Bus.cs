@@ -43,6 +43,9 @@ public class Bus : IBus
 		private Instrumentation instr;
 		public Instrumentation GetInstrumentation() => instr.Snapshot();
 		public void ResetInstrumentation() => instr.Reset();
+		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
+		internal int PendingCpuStallCycles = 0;
+		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
 		// Count a PPU/APU batch flush (Item #1 partial implementation)
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		public void CountBatchFlush() { instr.BatchFlushes++; }
@@ -347,15 +350,19 @@ public class Bus : IBus
 
 	private void WriteSlow(ushort address, byte value)
 	{
-		// Touch idle loop detector (safe: no-op if not CPU_SPD)
-		try { if (cpu is CPU_SPD spd) { spd.GetType().GetMethod("IdleLoopWriteTouch", System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)?.Invoke(spd, new object[]{ address }); } } catch { }
+		// Touch idle loop detector (direct call; avoids reflection cost)
+		if (cpu is CPU_SPD spdCpu) spdCpu.IdleLoopMaybeWriteTouch(address);
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
 			ppu.WritePPURegister(reg, value); return;
 		}
 		if (address == 0x4016) { input.Write4016(value); return; }
-		if (address == 0x4014) { ppu.WriteOAMDMA(value); instr.OamDmaWrites++; return; }
+		if (address == 0x4014) {
+			ppu.WriteOAMDMA(value); instr.OamDmaWrites++;
+			// Approximate 513 CPU cycle stall (NES hardware: 513 or 514 depending on alignment) if enabled
+			if (SpeedConfig.CpuFastOamDmaStall) PendingCpuStallCycles += 513;
+			return; }
 		if (address <= 0x4017 && address >= 0x4000)
 		{
 			int idx = address - 0x4000;

@@ -163,11 +163,12 @@ public sealed class CPU_SPD : ICPU {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private void IdleLoopWriteTouch(ushort addr)
+	public void IdleLoopMaybeWriteTouch(ushort addr)
 	{
+		// Fast bail if detection disabled
 		if (!(bus?.SpeedConfig?.CpuIdleLoopDetect ?? false)) return;
-		// If in detection window (streak >0 but not yet confirmed OR confirmed) and a write occurs to an address
-		// other than the status register itself, treat loop as unsafe and reset.
+		// If an unrelated memory location is written while we're accumulating streak, invalidate loop.
+		// (Covers both unconfirmed and confirmed loops; ensures safety if body mutates state.)
 		if (idleLoopStreak > 0 && addr != 0x2002 && addr != 0x4015)
 		{
 			idleLoopStreak = 0; idleLoopFlag = false; idleLoopBranchPC = 0; idleLoopEntryIterations = 0; stablePollCount = 0; idleLoopIterationCostCycles = 0;
@@ -236,9 +237,15 @@ public sealed class CPU_SPD : ICPU {
 			case 0x40: return RTI();
 			
 			//LDA, LDX, LDY, STA, STX, STY
-			case 0xA9: return LDR(ref A, AddressMode.Immediate, 2);
-			case 0xA5: return LDR(ref A, AddressMode.ZeroPage, 3);
-			case 0xB5: return LDR(ref A, AddressMode.ZeroPageX, 4);
+			case 0xA9: { // LDA #imm (inlined hot path)
+				A = Fetch(); SetZNFast(A); return 2;
+			}
+			case 0xA5: { // LDA zp (inlined)
+				ushort addr = Fetch(); A = bus.Read(addr); SetZNFast(A); return 3;
+			}
+			case 0xB5: { // LDA zp,X (inlined)
+				ushort addr = (byte)(Fetch() + X); A = bus.Read(addr); SetZNFast(A); return 4;
+			}
 			case 0xAD: { // LDA Absolute (inline to capture status polls)
 				ushort addr = Fetch16Bits();
 				A = bus.Read(addr); SetZN(A);
@@ -261,27 +268,37 @@ public sealed class CPU_SPD : ICPU {
 			case 0xA1: return LDR(ref A, AddressMode.IndirectX, 6);
 			case 0xB1: return LDR(ref A, AddressMode.IndirectY, 5);
 			case 0xA2: return LDR(ref X, AddressMode.Immediate, 2);
-			case 0xA6: return LDR(ref X, AddressMode.ZeroPage, 3);      
-			case 0xB6: return LDR(ref X, AddressMode.ZeroPageY, 4);
+			case 0xA6: { ushort addr=Fetch(); X=bus.Read(addr); SetZNFast(X); return 3; }
 			case 0xAE: return LDR(ref X, AddressMode.Absolute, 4);
 			case 0xBE: return LDR(ref X, AddressMode.AbsoluteY, 4);
 			case 0xA0: return LDR(ref Y, AddressMode.Immediate, 2);
-			case 0xA4: return LDR(ref Y, AddressMode.ZeroPage, 3);      
-			case 0xB4: return LDR(ref Y, AddressMode.ZeroPageX, 4);
+			case 0xA4: { ushort addr=Fetch(); Y=bus.Read(addr); SetZNFast(Y); return 3; }
 			case 0xAC: return LDR(ref Y, AddressMode.Absolute, 4);
 			case 0xBC: return LDR(ref Y, AddressMode.AbsoluteX, 4);
-			case 0x85: return STR(ref A, AddressMode.ZeroPage, 3);
-			case 0x95: return STR(ref A, AddressMode.ZeroPageX, 4);
+			case 0x85: { ushort addr=Fetch(); bus.Write(addr, A); return 3; }
+			case 0x95: { // STA zp,X (inlined)
+				ushort addr = (byte)(Fetch() + X); bus.Write(addr, A); return 4;
+			}
+			case 0xB6: { // LDX zp,Y (inlined)
+				ushort addr = (byte)(Fetch() + Y); X = bus.Read(addr); SetZNFast(X); return 4;
+			}
+			case 0xB4: { // LDY zp,X (inlined)
+				ushort addr = (byte)(Fetch() + X); Y = bus.Read(addr); SetZNFast(Y); return 4;
+			}
 			case 0x8D: return STR(ref A, AddressMode.Absolute, 4);
 			case 0x9D: return STR(ref A, AddressMode.AbsoluteX, 5);
 			case 0x99: return STR(ref A, AddressMode.AbsoluteY, 5);
 			case 0x81: return STR(ref A, AddressMode.IndirectX, 6);
 			case 0x91: return STR(ref A, AddressMode.IndirectY, 6);
-			case 0x86: return STR(ref X, AddressMode.ZeroPage, 3);
-			case 0x96: return STR(ref X, AddressMode.ZeroPageY, 4);
+			case 0x86: { ushort addr=Fetch(); bus.Write(addr, X); return 3; }
 			case 0x8E: return STR(ref X, AddressMode.Absolute, 4);
-			case 0x84: return STR(ref Y, AddressMode.ZeroPage, 3);
-			case 0x94: return STR(ref Y, AddressMode.ZeroPageX, 4);
+			case 0x84: { ushort addr=Fetch(); bus.Write(addr, Y); return 3; }
+			case 0x94: { // STY zp,X (inlined)
+				ushort addr = (byte)(Fetch() + X); bus.Write(addr, Y); return 4;
+			}
+			case 0x96: { // STX zp,Y (inlined)
+				ushort addr = (byte)(Fetch() + Y); bus.Write(addr, X); return 4;
+			}
 			case 0x8C: return STR(ref Y, AddressMode.Absolute, 4);
 			
 			//TAX, TAY, TXA, TYA

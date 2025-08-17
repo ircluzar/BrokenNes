@@ -519,11 +519,13 @@ namespace NesEmulator
 		// Consolidated flush helper so later event-based stepping can reuse it
 		private void FlushBatch(int cpuCycles)
 		{
-			// Advance subsystems for accumulated cycles; order: PPU (3x), APU, then advance global cycle.
-			bus.ppu.Step(cpuCycles * 3);
-			bus.StepAPU(cpuCycles);
+			// Advance subsystems for accumulated cycles; incorporate any pending stall cycles (e.g., fast OAM DMA) as pure CPU delay.
+			int stall = bus.ConsumePendingCpuStallCycles();
+			int total = cpuCycles + stall;
+			bus.ppu.Step(total * 3);
+			bus.StepAPU(total);
 			bus.CountBatchFlush();
-			globalCpuCycle += cpuCycles;
+			globalCpuCycle += total;
 		}
 		private void HandleCpuCrash(CPU_FMC.CpuCrashException ex)
 		{

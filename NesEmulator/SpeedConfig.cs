@@ -29,6 +29,9 @@ namespace NesEmulator
     public bool CpuIdleLoopSkip = false; // when enabled and heuristic confident, may fast-forward confirmed loops (future)
     public int CpuIdleLoopSkipMaxIterations = 8; // conservative initial cap for safe testing
     public int CpuIdleLoopMaxSpanBytes = 16; // maximum byte span between poll and branch for eligibility (future safety)
+    // CPU: Approximate OAM DMA stall by lumping 513 cycles instead of per-cycle stepping loop.
+    // Safe accuracy trade: exact parity (513 vs 514) minor; negligible gameplay impact while saving loop overhead.
+    public bool CpuFastOamDmaStall = true; // default enabled
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }

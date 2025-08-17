@@ -15,6 +15,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [x] Optional ignore invalid opcodes (Impact:L Risk:L) — treat unknown as 2-cycle NOP when enabled.
 - [x] Configurable inline interrupt polling (Impact:L-M Risk:None)
 - [x] Decimal flag semantics eliminated (Impact:L Risk:None)
+ - [x] Inlined additional hot zero-page indexed opcodes (LDA/STA/LDX/LDY/STX/STY zp,X / zp,Y) (Impact:L Risk:None) (2025-08-16)
+ - [x] Removed reflection from idle loop write guard (direct method call) (Impact:L Risk:None) (2025-08-16)
 
 ### 1.2 Active / Planned Tasks
 - [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional Experimental)  
@@ -23,7 +25,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [x] Extend heuristic to also recognize $4015 (APU status) polls (detection only; same threshold) (2025-08-16).  
 	- [x] Added stability requirement (>=8 identical status values) + byte span guard (`CpuIdleLoopMaxSpanBytes`) + memory write guard (abort on unrelated write) + per-iteration cycle cost instrumentation (`IdleLoopIterationCostCycles`). (2025-08-16)  
 	- [ ] Introduce skip toggle & parameters: `CpuIdleLoopSkip` (bool), `CpuIdleLoopSkipMaxIterations` (int cap), `CpuIdleLoopMaxSpanBytes` (safety span) — NOT YET IMPLEMENTED IN CODE (removed from previously mis-marked implemented list).  
-	- [x] Fast-forward collapsed iterations (capped) for confirmed PPU status ($2002 mirror) idle loops only; conservative chunk (<=32 iterations per branch) guarded by: stable value (no vblank), no pending NMI/IRQ, span guard, memory write guard. (2025-08-16)  
+	- [x] Fast-forward collapsed iterations (capped) for confirmed PPU status ($2002 mirror) idle loops only; conservative chunk (<=32 iterations per branch) guarded by: stable value (no vblank), no pending NMI/IRQ, span guard, memory write guard. (2025-08-16)
+	- [x] Write guard optimized: reflection removed; direct `IdleLoopMaybeWriteTouch` call from `Bus.WriteSlow` (2025-08-16)
 	- [ ] Expanded pattern support (masked polls, multiple preceding instructions, INC/DEC/DEX/INY between polls).  
 	- [ ] Poll loop canonicalization / fingerprint (normalize small body; allow arithmetic noise).  
 	- [ ] Read stability confirmation (require N identical status reads before enabling skip).  
@@ -37,8 +40,8 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 	- [ ] Configurable batch size (e.g. 16/32)  
 	- [ ] Early abort on IO/PPU/APU register access
 - [ ] Fast OAM DMA stall approximation (Impact:M Risk:L-M Optional)  
-	- [ ] Replace per-cycle stepping with lumped cycle add  
-	- [ ] Ensure IRQ/NMI timing fairness
+	- [x] Replace per-cycle stepping with lumped cycle add (513 cycles) guarded by `CpuFastOamDmaStall` (default ON) (2025-08-16)  
+	- [x] Ensure IRQ/NMI timing fairness by adding stall cycles before global cycle advance (no instruction overlap) (2025-08-16)
 - [ ] Zero-page hot cache (Impact:L-M Risk:L)  
 	- [ ] Shadow 256B;  
 	- [ ] Invalidate on DMA/mapper writes overlapping ZP
