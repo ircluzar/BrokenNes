@@ -77,7 +77,9 @@ public class Bus : IBus
 		_apuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.ApuTypes, System.StringComparer.OrdinalIgnoreCase);
 		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);
 		// Defaults
-		activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc) ? cpuFmc : (_cpuCores.Count>0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
+		// Prefer speed-optimized core (SPD) for immediate benchmarking if available; fallback to FMC then first.
+		if (!_cpuCores.TryGetValue("SPD", out activeCpu))
+			activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc) ? cpuFmc : (_cpuCores.Count>0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
 		cpu = activeCpu;
 		// Prefer FMC PPU by default; fall back to any available. Create lazily.
 		activePpu = GetOrCreatePpu("FMC") ?? GetOrCreatePpu("CUBE") ?? (CreateFirstAvailablePpu() ?? throw new System.Exception("No PPU cores found"));
@@ -345,6 +347,8 @@ public class Bus : IBus
 
 	private void WriteSlow(ushort address, byte value)
 	{
+		// Touch idle loop detector (safe: no-op if not CPU_SPD)
+		try { if (cpu is CPU_SPD spd) { spd.GetType().GetMethod("IdleLoopWriteTouch", System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)?.Invoke(spd, new object[]{ address }); } } catch { }
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));

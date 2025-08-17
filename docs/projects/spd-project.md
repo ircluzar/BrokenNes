@@ -18,22 +18,21 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 
 ### 1.2 Active / Planned Tasks
 - [ ] Idle loop detection & fast-forward (Impact:H Risk:M Optional Experimental)  
-	- [x] Basic detection heuristic implemented (Status: detection ONLY; no fast-forward yet). Detects LDA/BIT Absolute of $2002 followed by a taken backward branch to poll site after 128 consecutive iterations (constant `IdleLoopConfirmThreshold=128`). Toggle: `SpeedConfig.CpuIdleLoopDetect` (default ON; instrumentation only).  
-	- [ ] Extend heuristic to also recognize $4015 (APU status) polls.  
+	- [x] Basic detection heuristic implemented (Status: detection ONLY; no fast-forward yet). Initially detected `LDA` / `BIT` Absolute of $2002 followed by a taken backward branch to the poll site after 128 consecutive iterations (`IdleLoopConfirmThreshold=128`). Toggle: `SpeedConfig.CpuIdleLoopDetect` (default ON; instrumentation only).  
+	- [x] Extended detection: recognizes all PPU status register mirrors (any $2000-$3FFF where `(addr & 7)==2`) and now also flags `LDA Absolute,X` / `LDA Absolute,Y` forms that resolve to a mirrored $2002. Added instrumentation field `IdleLoopEntryIterations` (no timing changes). (2025-08-16)  
+	- [x] Extend heuristic to also recognize $4015 (APU status) polls (detection only; same threshold) (2025-08-16).  
+	- [x] Added stability requirement (>=8 identical status values) + byte span guard (`CpuIdleLoopMaxSpanBytes`) + memory write guard (abort on unrelated write) + per-iteration cycle cost instrumentation (`IdleLoopIterationCostCycles`). (2025-08-16)  
 	- [ ] Introduce skip toggle & parameters: `CpuIdleLoopSkip` (bool), `CpuIdleLoopSkipMaxIterations` (int cap), `CpuIdleLoopMaxSpanBytes` (safety span) — NOT YET IMPLEMENTED IN CODE (removed from previously mis-marked implemented list).  
-	- [ ] Fast-forward collapsed iterations (capped) until triggering event (vblank flag / APU activity / pending IRQ/NMI).  
-	- [ ] Metrics: loops detected, loops skipped, cycles saved, abort reasons (event, instability, span exceeded).  
+	- [x] Fast-forward collapsed iterations (capped) for confirmed PPU status ($2002 mirror) idle loops only; conservative chunk (<=32 iterations per branch) guarded by: stable value (no vblank), no pending NMI/IRQ, span guard, memory write guard. (2025-08-16)  
 	- [ ] Expanded pattern support (masked polls, multiple preceding instructions, INC/DEC/DEX/INY between polls).  
 	- [ ] Poll loop canonicalization / fingerprint (normalize small body; allow arithmetic noise).  
 	- [ ] Read stability confirmation (require N identical status reads before enabling skip).  
 	- [ ] Integrated next-event scheduler hook (query earliest NMI/IRQ/APU/frame boundary to bound skip).  
 	- [ ] Adaptive iteration cap (raise/lower based on prior safe skips & mapper IRQ activity).  
 	- [ ] Cross-frame persistence heuristic (if identical loop recurs each frame at same PC, accelerate earlier).  
-	- [ ] Telemetry-driven auto-disable for low-ROI loop sites (never saves threshold cycles).  
 	- [ ] Time-sliced fast-forward for WebAssembly (chunk long skips to maintain UI responsiveness).  
 	- [ ] Safety: memory side-effect guard bitset (abort if loop writes new address outside initial footprint).  
 	- [ ] Branch hotness counter reuse (share with future branch prediction structure).  
-	- NOTE: Guarded + conservative; treat as experimental until regression suite passes.
 - [ ] Batch execute N instructions before sync (Impact:M-H Risk:M Optional)  
 	- [ ] Configurable batch size (e.g. 16/32)  
 	- [ ] Early abort on IO/PPU/APU register access
@@ -154,7 +153,7 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Introduce `SpeedConfig` struct (Impact:L Risk:None)
 	- [x] Basic `SpeedConfig` class added (`SpeedConfig.cs`) with `ApuSilentChannelSkip` toggle default enabled
 	- [x] Added CPU idle loop detection toggle: `CpuIdleLoopDetect` (default ON; detection only)
-	- [ ] Add CPU idle loop skip toggles: `CpuIdleLoopSkip`, `CpuIdleLoopSkipMaxIterations`, `CpuIdleLoopMaxSpanBytes` (NOT YET IMPLEMENTED IN CODE)
+	- [x] Add CPU idle loop skip toggles: `CpuIdleLoopSkip`, `CpuIdleLoopSkipMaxIterations`, `CpuIdleLoopMaxSpanBytes` (placeholders added in `SpeedConfig`; logic not yet active)
 - [ ] Central registry to propagate config to cores (Impact:L Risk:None)
 - [ ] Presets (Accurate / Balanced / Fast / Turbo) (Impact:M Risk:M)
 - [ ] Per-hack enable flags serialization (Impact:L Risk:None)

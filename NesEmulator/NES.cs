@@ -87,6 +87,19 @@ namespace NesEmulator
 		public bool SetApuCore(string suffixId) { return bus!=null && bus.SetApuCoreById(suffixId); }
 		public System.Collections.Generic.IReadOnlyList<string> GetCpuCoreIds() => bus?.GetCpuCoreIds() ?? System.Array.Empty<string>();
 		public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => bus?.GetPpuCoreIds() ?? System.Array.Empty<string>();
+
+		// === Idle Loop Skip Controls (benchmark convenience) ===
+		public void EnableCpuIdleLoopSkip(bool enable, int? maxIterations = null)
+		{
+			if (bus == null) return;
+			bus.SpeedConfig.CpuIdleLoopSkip = enable;
+			if (maxIterations.HasValue && maxIterations.Value > 0) bus.SpeedConfig.CpuIdleLoopSkipMaxIterations = maxIterations.Value;
+		}
+		public (bool detect, bool skip, int maxIterations, int span) GetCpuIdleLoopConfig()
+		{
+			if (bus == null) return (false,false,0,0);
+			var sc = bus.SpeedConfig; return (sc.CpuIdleLoopDetect, sc.CpuIdleLoopSkip, sc.CpuIdleLoopSkipMaxIterations, sc.CpuIdleLoopMaxSpanBytes);
+		}
 		public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => bus?.GetApuCoreIds() ?? System.Array.Empty<string>();
 
 		public string SaveState()

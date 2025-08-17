@@ -25,6 +25,10 @@ namespace NesEmulator
     // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.
     // Safe default is off; when enabled it only annotates state (no timing changes) so other systems can observe it.
     public bool CpuIdleLoopDetect = true; // extremely safe: detection only, no skipping/fast-forward
+    // Placeholder skip controls (NOT ACTIVE YET). Kept for future guarded implementation.
+    public bool CpuIdleLoopSkip = false; // when enabled and heuristic confident, may fast-forward confirmed loops (future)
+    public int CpuIdleLoopSkipMaxIterations = 8; // conservative initial cap for safe testing
+    public int CpuIdleLoopMaxSpanBytes = 16; // maximum byte span between poll and branch for eligibility (future safety)
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }
