@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
-public sealed class CPU_LOW : ICPU {
+public sealed class CPU_SPD : ICPU {
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)
@@ -50,7 +50,7 @@ public sealed class CPU_LOW : ICPU {
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
 
-	public CPU_LOW(Bus bus) {
+	public CPU_SPD(Bus bus) {
 		A = X = Y = 0;
 		PC = 0x0000;
 		SP = 0x0000;

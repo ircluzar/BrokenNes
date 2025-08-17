@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_LOW : IPPU
+public class PPU_SPD : IPPU
 {
 	private Bus bus;
 
@@ -41,7 +41,7 @@ public class PPU_LOW : IPPU
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
-	public PPU_LOW(Bus bus)
+	public PPU_SPD(Bus bus)
 	{
 		this.bus = bus;
 

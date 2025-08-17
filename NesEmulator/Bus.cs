@@ -67,6 +67,8 @@ public class Bus : IBus
 	public Cartridge cartridge;
 	public byte[] ram; //2KB RAM
 	public Input input = new Input();
+	// Global speed configuration instance (mutable toggles)
+	public SpeedConfig SpeedConfig { get; } = new SpeedConfig();
 
 	public Bus(Cartridge cartridge)
 	{
