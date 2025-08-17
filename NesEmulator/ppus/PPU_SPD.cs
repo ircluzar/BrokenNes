@@ -329,6 +329,12 @@ public class PPU_SPD : IPPU
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
 		bool unsafeScan = cfg?.PpuUnsafeScanline == true;
 		bool deferAttr = cfg?.PpuDeferAttributeFetch != false; // default on
+
+		// Always begin by clearing the scanline to universal background color to avoid stale pixels
+		{
+			Span<uint> clearLine = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
+			for (int i = 0; i < clearLine.Length; i++) clearLine[i] = ubPacked;
+		}
 		if (twoPass)
 		{
 			batchAllZero = true;
@@ -406,38 +412,30 @@ public class PPU_SPD : IPPU
 				for (int i = 0; i < lineU32.Length; i++) lineU32[i] = ubPacked;
 				return; // nothing else to draw
 			}
-			// Second pass: render
+			// Second pass: render using packed 32-bit writes
 			bool usePalCache = bus?.SpeedConfig?.PpuPaletteCache == true;
+			Span<uint> lineU32Pass = MemoryMarshal.Cast<byte, uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
 			for (int tile = 0; tile < 33; tile++)
 			{
 				ulong rowBits = batchRowBits[tile];
+				if (rowBits == 0UL) continue; // already cleared to ubPacked
 				int paletteIndex = batchPaletteIndex[tile];
-				int scanlineBase = scanlineBaseAll;
-				// Precompute packed RGBA for colorIndex 1..3 for this tile
 				uint p1=0,p2=0,p3=0; // color 0 uses ubPacked
-				if (rowBits != 0UL) {
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte e1 = (byte)((paletteBase + 0) & 0x1F);
-					byte e2 = (byte)((paletteBase + 1) & 0x1F);
-					byte e3 = (byte)((paletteBase + 2) & 0x1F);
-					p1 = usePalCache ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
-					p2 = usePalCache ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
-					p3 = usePalCache ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
-				}
-				unsafe {
-					fixed (byte* fb = frameBuffer)
-					{
-						byte* linePtr = fb + scanlineBase;
-						for (int i = 0; i < 8; i++)
-						{
-							int pixel = tile * 8 + i - fineX; if ((uint)pixel >= ScreenWidth) continue;
-							int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-							uint packed = colorIndex switch {0 => ubPacked, 1 => p1, 2 => p2, 3 => p3, _ => ubPacked};
-							if (colorIndex != 0) bgMask[pixel] = true;
-							byte* px = linePtr + pixel * 4;
-							px[0] = (byte)(packed & 0xFF); px[1] = (byte)((packed >> 8) & 0xFF); px[2] = (byte)((packed >> 16) & 0xFF); px[3] = 255;
-						}
-					}
+				int paletteBase = 1 + (paletteIndex << 2);
+				byte e1 = (byte)(paletteBase & 0x1F);
+				byte e2 = (byte)((paletteBase + 1) & 0x1F);
+				byte e3 = (byte)((paletteBase + 2) & 0x1F);
+				p1 = usePalCache ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
+				p2 = usePalCache ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
+				p3 = usePalCache ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
+				for (int i = 0; i < 8; i++)
+				{
+					int pixel = tile * 8 + i - fineX; if ((uint)pixel >= ScreenWidth) continue;
+					int ci = (int)((rowBits >> (i * 2)) & 0x3);
+					if (ci == 0) continue; // leave ubPacked
+					bgMask[pixel] = true;
+					uint packed = ci switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
+					lineU32Pass[pixel] = packed;
 				}
 			}
 		}
@@ -446,6 +444,7 @@ public class PPU_SPD : IPPU
 				// Single-pass path (with optional pattern cache)
 				ushort rv2 = v;
 				bool usePalCache2 = bus?.SpeedConfig?.PpuPaletteCache == true;
+				Span<uint> lineU32 = MemoryMarshal.Cast<byte, uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
 				for (int tile = 0; tile < 33; tile++)
 				{
 					int coarseX = rv2 & 0x001F;
@@ -508,71 +507,21 @@ public class PPU_SPD : IPPU
 						continue; // all background color
 					}
 					uint p1=0,p2=0,p3=0; // lazy init
-					if (unsafeScan)
+					for (int i = 0; i < 8; i++)
 					{
-						unsafe
+						int pixel = tile * 8 + i - fineX; if ((uint)pixel >= ScreenWidth) continue;
+						int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+						if (colorIndex == 0) { lineU32[pixel] = ubPacked; continue; }
+						bgMask[pixel] = true;
+						if (p1==0 && p2==0 && p3==0)
 						{
-							fixed (byte* fb = frameBuffer)
-							{
-								byte* linePtr = fb + scanlineBaseAll;
-								for (int i = 0; i < 8; i++)
-								{
-									int pixel = tile * 8 + i - fineX;
-									if ((uint)pixel >= ScreenWidth) continue;
-									int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-									byte* pxPtr = linePtr + pixel * 4;
-									if (colorIndex == 0)
-									{
-										pxPtr[0] = ubR; pxPtr[1] = ubG; pxPtr[2] = ubB; pxPtr[3] = 255;
-									}
-									else
-									{
-										bgMask[pixel] = true;
-										if (p1==0 && p2==0 && p3==0)
-										{
-											int basePal = 1 + (paletteIndex << 2);
-											byte e1=(byte)(basePal & 0x1F); byte e2=(byte)((basePal+1)&0x1F); byte e3=(byte)((basePal+2)&0x1F);
-											p1 = usePalCache2 ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
-											p2 = usePalCache2 ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
-											p3 = usePalCache2 ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
-										}
-										uint packed = colorIndex switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
-										pxPtr[0]=(byte)(packed & 0xFF); pxPtr[1]=(byte)((packed>>8)&0xFF); pxPtr[2]=(byte)((packed>>16)&0xFF); pxPtr[3]=255;
-									}
-								}
-							}
+							int basePal = 1 + (paletteIndex << 2);
+							byte e1=(byte)(basePal & 0x1F); byte e2=(byte)((basePal+1)&0x1F); byte e3=(byte)((basePal+2)&0x1F);
+							p1 = usePalCache2 ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
+							p2 = usePalCache2 ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
+							p3 = usePalCache2 ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
 						}
-					}
-					else
-					{
-						for (int i = 0; i < 8; i++)
-						{
-							int pixel = tile * 8 + i - fineX;
-							if ((uint)pixel >= ScreenWidth) continue;
-							int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-							int frameIndex = scanlineBaseAll + pixel * 4;
-							if (colorIndex == 0)
-							{
-								frameBuffer![frameIndex+0]=ubR; frameBuffer![frameIndex+1]=ubG; frameBuffer![frameIndex+2]=ubB; frameBuffer![frameIndex+3]=255;
-							}
-							else
-							{
-								bgMask[pixel] = true;
-								if (p1==0 && p2==0 && p3==0)
-								{
-									int basePal = 1 + (paletteIndex << 2);
-									byte e1=(byte)(basePal & 0x1F); byte e2=(byte)((basePal+1)&0x1F); byte e3=(byte)((basePal+2)&0x1F);
-									p1 = usePalCache2 ? FetchPaletteEntryPacked(e1) : PaletteRGBA[paletteRAM[e1] & 0x3F];
-									p2 = usePalCache2 ? FetchPaletteEntryPacked(e2) : PaletteRGBA[paletteRAM[e2] & 0x3F];
-									p3 = usePalCache2 ? FetchPaletteEntryPacked(e3) : PaletteRGBA[paletteRAM[e3] & 0x3F];
-								}
-								uint packed = colorIndex switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
-								frameBuffer![frameIndex+0]=(byte)(packed & 0xFF);
-								frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF);
-								frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF);
-								frameBuffer![frameIndex+3]=255;
-							}
-						}
+						lineU32[pixel] = colorIndex switch {1=>p1,2=>p2,3=>p3,_=>ubPacked};
 					}
 					IncrementX(ref rv2);
 				}
@@ -602,6 +551,7 @@ public class PPU_SPD : IPPU
 				if (count < 8) spriteLineList[count++] = i; else { overflow = true; break; }
 			}
 			if (overflow) PPUSTATUS |= 0x20; spritesToDraw = count;
+			Span<uint> spriteLineU32 = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanline * ScreenWidth * 4, ScreenWidth * 4));
 			for (int si = 0; si < spritesToDraw; si++)
 			{
 				int i = spriteLineList[si]; int off = i * 4;
@@ -632,15 +582,10 @@ public class PPU_SPD : IPPU
 				{
 					int srcPixel = flipX ? (7 - x) : x; int color = (int)((rowBits >> (srcPixel * 2)) & 0x3); if (color==0) continue; int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
 					if (i==0 && bgMask[px]) PPUSTATUS |= 0x40; if (spritePixelDrawnReuse[px]) continue; if (!priority && bgMask[px]) continue;
-					int frameIndex = (scanline * ScreenWidth + px)*4;
-					if (fastSprite)
-					{
-						uint packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1}; frameBuffer![frameIndex]=(byte)(packed & 0xFF); frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF); frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF); frameBuffer![frameIndex+3]=255;
-					}
-					else
-					{
-						int palBase = 0x11 + (paletteIndex << 2); byte idx = paletteRAM[palBase + (color -1)]; int ci = idx & 0x3F; frameBuffer![frameIndex]=PaletteR[ci]; frameBuffer![frameIndex+1]=PaletteG[ci]; frameBuffer![frameIndex+2]=PaletteB[ci]; frameBuffer![frameIndex+3]=255;
-					}
+					uint packed;
+					if (fastSprite) packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1};
+					else { int palBase = 0x11 + (paletteIndex << 2); byte idx = paletteRAM[palBase + (color -1)]; packed = PaletteRGBA[idx & 0x3F]; }
+					spriteLineU32[px] = packed;
 					spritePixelDrawnReuse[px]=true;
 				}
 			}
@@ -652,7 +597,8 @@ public class PPU_SPD : IPPU
 			int off = i*4; byte spriteY = oam[off]; byte tileIndex = oam[off+1]; byte attributes = oam[off+2]; byte spriteX = oam[off+3]; int paletteIndex = attributes & 0x03; bool flipX = (attributes & 0x40)!=0; bool flipY=(attributes & 0x80)!=0; bool priority=(attributes & 0x20)==0; int tileH=isSprite8x16?16:8; if (scanline < spriteY || scanline >= spriteY+tileH) continue; int subY = scanline - spriteY; if (flipY) subY = tileH -1 - subY; int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE)+(subY/8) : tileIndex; int patternTable = isSprite8x16 ? ((tileIndex & 1)!=0?0x1000:0x0000) : ((PPUCTRL & 0x08)!=0?0x1000:0x0000); int baseAddr = patternTable + subTileIndex*16; ushort rowAddr = (ushort)(baseAddr + (subY % 8)); byte plane0, plane1; ulong rowBits=0UL; int fineY = subY % 8; if (usePatternCache){int globalTile=((patternTable>>12)&1)*256+subTileIndex; int rowIndex=globalTile*8+fineY; if(!spritePatternRowValid[rowIndex]){plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); ulong bits=0UL; for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; bits|=(ulong)(b0 | (b1<<1)) << (k*2);} spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex]; }
 			else { plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); for(int k=0;k<8;k++){int bi=7-k; int b0=(plane0>>bi)&1; int b1=(plane1>>bi)&1; rowBits|=(ulong)(b0 | (b1<<1)) << (k*2);} }
 			uint pal1=0,pal2=0,pal3=0; if(fastSprite){int basePal=0x11 + (paletteIndex<<2); pal1=FetchPaletteEntryPacked((byte)basePal); pal2=FetchPaletteEntryPacked((byte)(basePal+1)); pal3=FetchPaletteEntryPacked((byte)(basePal+2)); }
-			for(int x=0;x<8;x++){int srcPixel = flipX ? (7 - x) : x; int color=(int)((rowBits>>(srcPixel*2)) & 0x3); if(color==0) continue; int px=spriteX+x; if((uint)px>=ScreenWidth) continue; if(i==0 && bgMask[px]) PPUSTATUS |= 0x40; if(spritePixelDrawnReuse[px]) continue; if(!priority && bgMask[px]) continue; int frameIndex=(scanline*ScreenWidth+px)*4; if(fastSprite){uint packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1}; frameBuffer![frameIndex]=(byte)(packed & 0xFF); frameBuffer![frameIndex+1]=(byte)((packed>>8)&0xFF); frameBuffer![frameIndex+2]=(byte)((packed>>16)&0xFF); frameBuffer![frameIndex+3]=255;} else {int palBase=0x11+(paletteIndex<<2); byte idx=paletteRAM[palBase + (color-1)]; int ci=idx & 0x3F; frameBuffer![frameIndex]=PaletteR[ci]; frameBuffer![frameIndex+1]=PaletteG[ci]; frameBuffer![frameIndex+2]=PaletteB[ci]; frameBuffer![frameIndex+3]=255;} spritePixelDrawnReuse[px]=true; }
+			Span<uint> legacyLineU32 = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanline * ScreenWidth * 4, ScreenWidth * 4));
+			for(int x=0;x<8;x++){int srcPixel = flipX ? (7 - x) : x; int color=(int)((rowBits>>(srcPixel*2)) & 0x3); if(color==0) continue; int px=spriteX+x; if((uint)px>=ScreenWidth) continue; if(i==0 && bgMask[px]) PPUSTATUS |= 0x40; if(spritePixelDrawnReuse[px]) continue; if(!priority && bgMask[px]) continue; uint packed; if(fastSprite){packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1};} else {int palBase=0x11+(paletteIndex<<2); byte idx=paletteRAM[palBase + (color-1)]; packed=PaletteRGBA[idx & 0x3F];} legacyLineU32[px]=packed; spritePixelDrawnReuse[px]=true; }
 		}
 	}
 
