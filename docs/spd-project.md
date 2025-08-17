@@ -65,15 +65,13 @@ Legend (inline tags): (Impact: L/M/H/VH) (Risk: None/L/M/H) Optional = needs run
 - [ ] Background tile fetch batching (Impact:M Risk:L)  
 	- [ ] Pre-decode 32 tiles -> scanline cache  
 	- [ ] Reuse across fine X shifts within line
-- [ ] Precomputed pattern line expansion cache (Impact:M Risk:L)  
-	- [ ] Expand plane bytes -> color indices once per tile line  
-	- [ ] Invalidate on pattern table write
+- [x] Precomputed pattern line expansion cache (Impact:M Risk:L)  
+	- [x] Expand plane bytes -> color indices once per tile line  
+	- [x] Invalidate on pattern table write  
+	- Toggle: `SpeedConfig.PpuPatternCache` (default: enabled)
 - [ ] Dirty column / partial frame rendering (Impact:M Risk:M Optional)  
 	- [ ] Track name table writes (bitmask per 8x8 column)  
 	- [ ] Redraw only changed columns
-- [ ] Frame skip (user configurable N) (Impact:H Risk:H Optional)
-- [ ] Scanline skip / static frame reuse (Impact:M Risk:M Optional)  
-	- [ ] Hash VRAM + palette writes per frame
 - [ ] Sprite evaluation skip when sprites disabled (Impact:L Risk:None)
 - [ ] Palette & attribute quadrant cache (Impact:L-M Risk:L)
 - [ ] Skip rendering blank scanlines (Impact:L Risk:L)

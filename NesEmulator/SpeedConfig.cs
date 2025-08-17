@@ -14,6 +14,9 @@ namespace NesEmulator
     // Minimum CPU cycles in a batch before attempting silent fast-forward (avoids overhead on tiny batches)
     public int ApuSilentSkipMinCycles = 128; // tuned experimentally; adjust via UI
 
+        // PPU: Enable pattern line expansion cache (per tile row 2-bit packing)
+        public bool PpuPatternCache = true; // safe; invalidated on pattern writes
+
         // Future toggles (placeholders):
         // public bool CpuIdleLoopSkip;
         // public bool CpuBatchExecute;

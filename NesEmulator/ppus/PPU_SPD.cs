@@ -41,6 +41,11 @@ public class PPU_SPD : IPPU
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
+	// Speedhack: pattern line expansion cache (tile row -> packed 2-bit color indices)
+	// 512 tiles (256 per pattern table) * 8 rows each
+	private readonly ulong[] patternRowCache = new ulong[512 * 8];
+	private readonly bool[] patternRowValid = new bool[512 * 8];
+
 	public PPU_SPD(Bus bus)
 	{
 		this.bus = bus;
@@ -255,7 +260,7 @@ public class PPU_SPD : IPPU
 		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
-		// Render 33 tiles (32 visible + 1 for scrolling)
+		bool usePatternCache = bus?.SpeedConfig?.PpuPatternCache == true; // toggle
 		for (int tile = 0; tile < 33; tile++)
 		{
 			int coarseX = renderV & 0x001F;
@@ -266,9 +271,51 @@ public class PPU_SPD : IPPU
 			byte tileIndex = Read((ushort)tileAddr);
 			int fineY = (renderV >> 12) & 0x7;
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-			int patternAddr = patternTable + (tileIndex * 16) + fineY;
-			byte plane0 = Read((ushort)patternAddr);
-			byte plane1 = Read((ushort)(patternAddr + 8));
+			ulong rowBits;
+			if (usePatternCache)
+			{
+				int globalTile = ((patternTable >> 12) & 1) * 256 + tileIndex; // 0..511
+				int rowIndex = globalTile * 8 + fineY;
+				if (!patternRowValid[rowIndex])
+				{
+					int patternAddr = patternTable + (tileIndex * 16) + fineY;
+					byte plane0 = Read((ushort)patternAddr);
+					byte plane1 = Read((ushort)(patternAddr + 8));
+					ulong bits = 0UL;
+					for (int k = 0; k < 8; k++)
+					{
+						int bitIndex = 7 - k;
+						int bit0 = (plane0 >> bitIndex) & 1;
+						int bit1 = (plane1 >> bitIndex) & 1;
+						int cidx = bit0 | (bit1 << 1);
+						bits |= (ulong)cidx << (k * 2);
+					}
+					patternRowCache[rowIndex] = bits;
+					patternRowValid[rowIndex] = true;
+					rowBits = bits;
+				}
+				else
+				{
+					rowBits = patternRowCache[rowIndex];
+				}
+			}
+			else
+			{
+				int patternAddr = patternTable + (tileIndex * 16) + fineY;
+				byte plane0 = Read((ushort)patternAddr);
+				byte plane1 = Read((ushort)(patternAddr + 8));
+				ulong bits = 0UL;
+				for (int k = 0; k < 8; k++)
+				{
+					int bitIndex = 7 - k;
+					int bit0 = (plane0 >> bitIndex) & 1;
+					int bit1 = (plane1 >> bitIndex) & 1;
+					int cidx = bit0 | (bit1 << 1);
+					bits |= (ulong)cidx << (k * 2);
+				}
+				rowBits = bits;
+			}
+
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
@@ -277,15 +324,11 @@ public class PPU_SPD : IPPU
 			int paletteIndex = (attrByte >> attrShift) & 0x03;
 			int scanlineBase = scanlineBaseAll;
 
-			// Render 8 pixels: shift planes instead of recomputing bit index.
-			byte p0 = plane0; byte p1 = plane1;
 			for (int i = 0; i < 8; i++)
 			{
 				int pixel = tile * 8 + i - fineX;
-				if ((uint)pixel >= ScreenWidth) { p0 <<= 1; p1 <<= 1; continue; }
-				int bit0 = (p0 & 0x80) >> 7;
-				int bit1 = (p1 & 0x80) >> 6; // already shifted one extra to combine later
-				int colorIndex = bit0 | bit1;
+				if ((uint)pixel >= ScreenWidth) continue;
+				int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
 				int frameIndex = scanlineBase + pixel * 4;
 				if (colorIndex == 0)
 				{
@@ -305,7 +348,6 @@ public class PPU_SPD : IPPU
 					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
 					frameBuffer![frameIndex + 3] = 255;
 				}
-				p0 <<= 1; p1 <<= 1;
 			}
 
 			IncrementX(ref renderV);
@@ -614,6 +656,8 @@ public class PPU_SPD : IPPU
 		if (address < 0x2000)
 		{
 			bus.cartridge.PPUWrite(address, value);
+			// Invalidate pattern cache for modified tile (CHR RAM only; harmless for CHR ROM)
+			InvalidatePatternAddress(address);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
@@ -626,6 +670,17 @@ public class PPU_SPD : IPPU
 			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 			paletteRAM[mirrored] = value;
 		}
+	}
+
+	private void InvalidatePatternAddress(ushort address)
+	{
+		if (bus?.SpeedConfig?.PpuPatternCache != true) return;
+		// Pattern tables at $0000-$1FFF (two 4KB tables). Each tile = 16 bytes.
+		int tileIndex = address / 16; // 0..511
+		if ((uint)tileIndex >= 512) return;
+		// If writing only one byte of a tile row, we conservatively invalidate all 8 rows of the tile.
+		int baseRow = tileIndex * 8;
+		for (int r = 0; r < 8; r++) patternRowValid[baseRow + r] = false;
 	}
 
 	private ushort MirrorVRAMAddress(ushort address)
