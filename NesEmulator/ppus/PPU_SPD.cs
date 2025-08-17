@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
@@ -42,6 +44,8 @@ public class PPU_SPD : IPPU
 	private byte[]? frameBuffer = null;
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
+	// Reusable list for sprite indices visible on a given scanline (sprite evaluation)
+	private readonly int[] spriteLineList = new int[64];
 	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
@@ -60,16 +64,19 @@ public class PPU_SPD : IPPU
 	private static readonly byte[] PaletteR;
 	private static readonly byte[] PaletteG;
 	private static readonly byte[] PaletteB;
+	// Packed RGBA (little endian) 0xAABBGGRR for direct uint stores (alpha always 255)
+	private static readonly uint[] PaletteRGBA; // length 64
 
 	static PPU_SPD()
 	{
-		PaletteR = new byte[64]; PaletteG = new byte[64]; PaletteB = new byte[64];
+		PaletteR = new byte[64]; PaletteG = new byte[64]; PaletteB = new byte[64]; PaletteRGBA = new uint[64];
 		for (int i = 0; i < 64; i++)
 		{
 			int p = i * 3;
-			PaletteR[i] = PaletteBytes[p];
-			PaletteG[i] = PaletteBytes[p+1];
-			PaletteB[i] = PaletteBytes[p+2];
+			byte r = PaletteBytes[p]; byte g = PaletteBytes[p+1]; byte b = PaletteBytes[p+2];
+			PaletteR[i] = r; PaletteG[i] = g; PaletteB[i] = b;
+			// In memory frameBuffer uses little endian order R,G,B,A sequential bytes; pack for uint writes
+			PaletteRGBA[i] = (uint)r | ((uint)g << 8) | ((uint)b << 16) | 0xFF000000u;
 		}
 	}
 
@@ -138,11 +145,17 @@ public class PPU_SPD : IPPU
 			{
 				scanlineCycle = 0;
 
+				// Visible scanlines: perform operations in closer-to-hardware order:
+				// 1. Render scanline using current v (fine X already latched)
+				// 2. Increment Y (equivalent to cycle 256)
+				// 3. Copy horizontal bits from t to v (equivalent to cycle 257)
+				// NOTE: We keep a scanline-level granularity, but ordering matters for
+				// games relying on split scrolling / MMC1 title effects (e.g., Zelda II).
 				if (scanline >= 0 && scanline < 240)
 				{
-					CopyXFromTToV();
 					RenderScanline(scanline);
 					IncrementY();
+					CopyXFromTToV();
 				}
 
 				if (scanline == 241)
@@ -187,19 +200,12 @@ public class PPU_SPD : IPPU
 		if (!bgEnabled && !sprEnabled)
 		{
 			EnsureFrameBuffer();
-			// Universal background color
-			byte ubIdx = paletteRAM[0];
-			int p = (ubIdx & 0x3F) * 3;
-			byte r = PaletteBytes[p]; byte g = PaletteBytes[p+1]; byte b = PaletteBytes[p+2];
+			// Universal background color fast fill
+			uint ub = PaletteRGBA[paletteRAM[0] & 0x3F];
 			int baseIndex = scanline * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				int fi = baseIndex + x * 4;
-				frameBuffer![fi+0] = r;
-				frameBuffer![fi+1] = g;
-				frameBuffer![fi+2] = b;
-				frameBuffer![fi+3] = 255;
-			}
+			Span<byte> line = frameBuffer!.AsSpan(baseIndex, ScreenWidth * 4);
+			var lineU32 = MemoryMarshal.Cast<byte,uint>(line);
+			for (int i = 0; i < lineU32.Length; i++) lineU32[i] = ub;
 			return; // nothing else to draw
 		}
 
@@ -286,6 +292,7 @@ public class PPU_SPD : IPPU
 		byte ubR = PaletteR[ubPal];
 		byte ubG = PaletteG[ubPal];
 		byte ubB = PaletteB[ubPal];
+		uint ubPacked = PaletteRGBA[ubPal];
 		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
@@ -307,6 +314,8 @@ public class PPU_SPD : IPPU
 		if (curMode != lastMirroringMode) { RebuildNtMirror(curMode); lastMirroringMode = curMode; }
 
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
+		bool unsafeScan = bus?.SpeedConfig?.PpuUnsafeScanline == true;
+		bool deferAttr = bus?.SpeedConfig?.PpuDeferAttributeFetch != false; // default on
 		if (twoPass)
 		{
 			batchAllZero = true;
@@ -379,11 +388,9 @@ public class PPU_SPD : IPPU
 			if (skipBlank && batchAllZero)
 			{
 				int baseIndex = scanline * ScreenWidth * 4;
-				for (int x = 0; x < ScreenWidth; x++)
-				{
-					int fi = baseIndex + x * 4;
-					frameBuffer![fi+0] = ubR; frameBuffer![fi+1] = ubG; frameBuffer![fi+2] = ubB; frameBuffer![fi+3] = 255;
-				}
+				Span<byte> line = frameBuffer!.AsSpan(baseIndex, ScreenWidth * 4);
+				var lineU32 = MemoryMarshal.Cast<byte,uint>(line);
+				for (int i = 0; i < lineU32.Length; i++) lineU32[i] = ubPacked;
 				return; // nothing else to draw
 			}
 			// Second pass: render
@@ -400,10 +407,8 @@ public class PPU_SPD : IPPU
 					int frameIndex = scanlineBase + pixel * 4;
 					if (colorIndex == 0)
 					{
-						frameBuffer![frameIndex + 0] = ubR;
-						frameBuffer![frameIndex + 1] = ubG;
-						frameBuffer![frameIndex + 2] = ubB;
-						frameBuffer![frameIndex + 3] = 255;
+						// write background color
+						frameBuffer![frameIndex + 0] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
 					}
 					else
 					{
@@ -411,9 +416,11 @@ public class PPU_SPD : IPPU
 						int paletteBase = 1 + (paletteIndex << 2);
 						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
 						int ci = idx & 0x3F;
-						frameBuffer![frameIndex + 0] = PaletteR[ci];
-						frameBuffer![frameIndex + 1] = PaletteG[ci];
-						frameBuffer![frameIndex + 2] = PaletteB[ci];
+						uint packed = PaletteRGBA[ci];
+						// Manual expand avoids endian assumptions when indexing bytes
+						frameBuffer![frameIndex + 0] = (byte)(packed & 0xFF);
+						frameBuffer![frameIndex + 1] = (byte)((packed >> 8) & 0xFF);
+						frameBuffer![frameIndex + 2] = (byte)((packed >> 16) & 0xFF);
 						frameBuffer![frameIndex + 3] = 255;
 					}
 				}
@@ -470,36 +477,70 @@ public class PPU_SPD : IPPU
 					}
 					rowBits = bits;
 				}
-				int attributeX = coarseX / 4;
-				int attributeY = coarseY / 4;
-				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast attribute fetch
-				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-				int paletteIndex = (attrByte >> attrShift) & 0x03;
-				int scanlineBase = scanlineBaseAll;
-				for (int i = 0; i < 8; i++)
+				int paletteIndex = 0;
+				if (!deferAttr || rowBits != 0UL)
 				{
-					int pixel = tile * 8 + i - fineX;
-					if ((uint)pixel >= ScreenWidth) continue;
-					int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
-					int frameIndex = scanlineBase + pixel * 4;
-					if (colorIndex == 0)
+					int attributeX = coarseX / 4;
+					int attributeY = coarseY / 4;
+					int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+					byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+					int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+					paletteIndex = (attrByte >> attrShift) & 0x03;
+				}
+				int scanlineBase = scanlineBaseAll;
+				if (unsafeScan)
+				{
+					unsafe
 					{
-						frameBuffer![frameIndex + 0] = ubR;
-						frameBuffer![frameIndex + 1] = ubG;
-						frameBuffer![frameIndex + 2] = ubB;
-						frameBuffer![frameIndex + 3] = 255;
+						fixed (byte* fb = frameBuffer)
+						{
+							byte* linePtr = fb + scanlineBase;
+							for (int i = 0; i < 8; i++)
+							{
+								int pixel = tile * 8 + i - fineX;
+								if ((uint)pixel >= ScreenWidth) continue;
+								int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+								byte* pxPtr = linePtr + pixel * 4;
+								if (colorIndex == 0)
+								{
+									pxPtr[0] = ubR; pxPtr[1] = ubG; pxPtr[2] = ubB; pxPtr[3] = 255;
+								}
+								else
+								{
+									bgMask[pixel] = true;
+									int paletteBase = 1 + (paletteIndex << 2);
+									byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+									int ci = idx & 0x3F; uint packed = PaletteRGBA[ci];
+									pxPtr[0] = (byte)(packed & 0xFF); pxPtr[1] = (byte)((packed >> 8) & 0xFF); pxPtr[2] = (byte)((packed >> 16) & 0xFF); pxPtr[3] = 255;
+								}
+							}
+						}
 					}
-					else
+				}
+				else
+				{
+					for (int i = 0; i < 8; i++)
 					{
-						bgMask[pixel] = true;
-						int paletteBase = 1 + (paletteIndex << 2);
-						byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-						int ci = idx & 0x3F;
-						frameBuffer![frameIndex + 0] = PaletteR[ci];
-						frameBuffer![frameIndex + 1] = PaletteG[ci];
-						frameBuffer![frameIndex + 2] = PaletteB[ci];
-						frameBuffer![frameIndex + 3] = 255;
+						int pixel = tile * 8 + i - fineX;
+						if ((uint)pixel >= ScreenWidth) continue;
+						int colorIndex = (int)((rowBits >> (i * 2)) & 0x3);
+						int frameIndex = scanlineBase + pixel * 4;
+						if (colorIndex == 0)
+						{
+							frameBuffer![frameIndex + 0] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
+						}
+						else
+						{
+							bgMask[pixel] = true;
+							int paletteBase = 1 + (paletteIndex << 2);
+							byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+							int ci = idx & 0x3F;
+							uint packed = PaletteRGBA[ci];
+							frameBuffer![frameIndex + 0] = (byte)(packed & 0xFF);
+							frameBuffer![frameIndex + 1] = (byte)((packed >> 8) & 0xFF);
+							frameBuffer![frameIndex + 2] = (byte)((packed >> 16) & 0xFF);
+							frameBuffer![frameIndex + 3] = 255;
+						}
 					}
 				}
 				IncrementX(ref rv2);
@@ -518,7 +559,66 @@ public class PPU_SPD : IPPU
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
-		// Process all 64 sprites in OAM
+		var cfg = bus.SpeedConfig;
+		bool eval = cfg?.PpuSpriteLineEvaluation != false; // default on
+		int spritesToDraw = 64;
+		if (eval)
+		{
+			int count = 0;
+			bool overflow = false;
+			for (int i = 0; i < 64; i++)
+			{
+				int offset = i * 4;
+				byte spriteY = oam[offset];
+				int tileHeight = isSprite8x16 ? 16 : 8;
+				if (scanline < spriteY || scanline >= spriteY + tileHeight) continue;
+				if (count < 8) spriteLineList[count++] = i; else { overflow = true; break; }
+			}
+			if (overflow) PPUSTATUS |= 0x20; // sprite overflow flag
+			spritesToDraw = count;
+			for (int si = 0; si < spritesToDraw; si++)
+			{
+				int i = spriteLineList[si];
+				int offset = i * 4;
+				byte spriteY = oam[offset];
+				byte tileIndex = oam[offset + 1];
+				byte attributes = oam[offset + 2];
+				byte spriteX = oam[offset + 3];
+				int paletteIndex = attributes & 0b11;
+				bool flipX = (attributes & 0x40) != 0;
+				bool flipY = (attributes & 0x80) != 0;
+				bool priority = (attributes & 0x20) == 0;
+				int tileHeight = isSprite8x16 ? 16 : 8;
+				int subY = scanline - spriteY; if (flipY) subY = tileHeight - 1 - subY;
+				int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
+				int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
+				int baseAddr = patternTable + subTileIndex * 16;
+				ushort rowAddr = (ushort)(baseAddr + (subY % 8));
+				byte plane0 = bus.cartridge.PPURead(rowAddr);
+				byte plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+				for (int x = 0; x < 8; x++)
+				{
+					int bit = flipX ? x : 7 - x;
+					int color = ((plane0 >> bit) & 1) | (((plane1 >> bit) & 1) << 1);
+					if (color == 0) continue;
+					int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
+					if (i == 0 && bgMask[px]) PPUSTATUS |= 0x40; // sprite 0 hit
+					if (spritePixelDrawnReuse[px]) continue;
+					if (!priority && bgMask[px]) continue;
+					int palBase = 0x11 + (paletteIndex << 2);
+					byte idx = paletteRAM[palBase + (color - 1)];
+					int ci = idx & 0x3F;
+					int frameIndex = (scanline * ScreenWidth + px) * 4;
+					frameBuffer![frameIndex + 0] = PaletteR[ci];
+					frameBuffer![frameIndex + 1] = PaletteG[ci];
+					frameBuffer![frameIndex + 2] = PaletteB[ci];
+					frameBuffer![frameIndex + 3] = 255;
+					spritePixelDrawnReuse[px] = true;
+				}
+			}
+			return; // done
+		}
+		// Fallback: legacy path draws all 64 sprites
 		for (int i = 0; i < 64; i++)
 		{
 			int offset = i * 4;
@@ -526,78 +626,37 @@ public class PPU_SPD : IPPU
 			byte tileIndex = oam[offset + 1];
 			byte attributes = oam[offset + 2];
 			byte spriteX = oam[offset + 3];
-
-			// Extract sprite attributes
 			int paletteIndex = attributes & 0b11;
 			bool flipX = (attributes & 0x40) != 0;
 			bool flipY = (attributes & 0x80) != 0;
-			bool priority = (attributes & 0x20) == 0; // 0 = in front of background
-
-			// Check if sprite is on this scanline
+			bool priority = (attributes & 0x20) == 0;
 			int tileHeight = isSprite8x16 ? 16 : 8;
-			if (scanline < spriteY || scanline >= spriteY + tileHeight)
-				continue;
-
-			// Calculate which row of the sprite we're rendering
-			int subY = scanline - spriteY;
-			if (flipY) subY = tileHeight - 1 - subY;
-
-			// For 8x16 sprites, determine which tile and pattern table
+			if (scanline < spriteY || scanline >= spriteY + tileHeight) continue;
+			int subY = scanline - spriteY; if (flipY) subY = tileHeight - 1 - subY;
 			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
-			int patternTable = isSprite8x16
-				? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000)
-				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
+			int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 			int baseAddr = patternTable + subTileIndex * 16;
-
-			// Read pattern data for this row (pattern tables < $2000)
 			ushort rowAddr = (ushort)(baseAddr + (subY % 8));
 			byte plane0 = bus.cartridge.PPURead(rowAddr);
 			byte plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
-
-			// Render 8 pixels of the sprite
 			for (int x = 0; x < 8; x++)
 			{
 				int bit = flipX ? x : 7 - x;
-				int bit0 = (plane0 >> bit) & 1;
-				int bit1 = (plane1 >> bit) & 1;
-				int color = bit0 | (bit1 << 1);
-				if (color == 0) continue; // Transparent pixel
-
-				int px = spriteX + x;
-				if (px < 0 || px >= ScreenWidth) continue;
-
-				// Sprite 0 hit detection
-				if (i == 0 && bgMask[px] && color != 0)
-				{
-					PPUSTATUS |= 0x40;
-				}
-
-				// Skip if another sprite already drew here
+				int bit0 = (plane0 >> bit) & 1; int bit1 = (plane1 >> bit) & 1; int color = bit0 | (bit1 << 1);
+				if (color == 0) continue;
+				int px = spriteX + x; if ((uint)px >= ScreenWidth) continue;
+				if (i == 0 && bgMask[px]) PPUSTATUS |= 0x40;
 				if (spritePixelDrawnReuse[px]) continue;
-
-				// Check sprite priority
-				bool shouldDraw = true;
-				if (!priority && bgMask[px])
-				{
-					shouldDraw = false;
-				}
-
-				if (shouldDraw)
-				{
-					// Fast palette lookup (sprite palettes start at 0x10; paletteBase 0x11)
-					int palBase = 0x11 + (paletteIndex << 2);
-					byte idx = paletteRAM[palBase + (color - 1)];
-					int ci = idx & 0x3F;
-					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					if (frameIndex + 3 < frameBuffer!.Length)
-					{
-						frameBuffer![frameIndex + 0] = PaletteR[ci];
-						frameBuffer![frameIndex + 1] = PaletteG[ci];
-						frameBuffer![frameIndex + 2] = PaletteB[ci];
-						frameBuffer![frameIndex + 3] = 255;
-					}
-					spritePixelDrawnReuse[px] = true;
-				}
+				if (!priority && bgMask[px]) continue;
+				int palBase = 0x11 + (paletteIndex << 2);
+				byte idx = paletteRAM[palBase + (color - 1)];
+				int ci = idx & 0x3F;
+				int frameIndex = (scanline * ScreenWidth + px) * 4;
+				frameBuffer![frameIndex + 0] = PaletteR[ci];
+				frameBuffer![frameIndex + 1] = PaletteG[ci];
+				frameBuffer![frameIndex + 2] = PaletteB[ci];
+				frameBuffer![frameIndex + 3] = 255;
+				spritePixelDrawnReuse[px] = true;
 			}
 		}
 	}

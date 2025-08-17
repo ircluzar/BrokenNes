@@ -160,6 +160,11 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
     }
 
     private void ApplyBankMapping() {        
+    // NOTE: This implementation is a simplified MMC3 and may cause visual artifacts
+    // in games with tight mid-scanline split IRQ timing. We only clock IRQ once per
+    // scanline via PPU hook (approx at cycle 260). If corruption persists in MMC3 titles
+    // we likely need to implement true A12 rising-edge based IRQ counting.
+
         if (chrMode) {
             chrBankOffsets[0] = bankData[2] * 0x400;
             chrBankOffsets[1] = bankData[3] * 0x400;
@@ -183,20 +188,23 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
 
         int bankCount = cartridge.prgROM.Length / 0x2000;
+        if (bankCount <= 0) bankCount = 1; // defensive (shouldn't happen)
         int lastBank = bankCount - 1;
 
         int bank6 = bankData[6] % bankCount;
         int bank7 = bankData[7] % bankCount;
 
         if (prgMode) {
-            prgBankOffsets[0] = (lastBank - 1) * 0x2000;
+            int secondLast = lastBank - 1; if (secondLast < 0) secondLast = 0;
+            prgBankOffsets[0] = secondLast * 0x2000; // fixed second last
             prgBankOffsets[1] = bank7 * 0x2000;
             prgBankOffsets[2] = bank6 * 0x2000;
             prgBankOffsets[3] = lastBank * 0x2000;
         } else {
             prgBankOffsets[0] = bank6 * 0x2000;
             prgBankOffsets[1] = bank7 * 0x2000;
-            prgBankOffsets[2] = (lastBank - 1) * 0x2000;
+            int secondLast = lastBank - 1; if (secondLast < 0) secondLast = 0;
+            prgBankOffsets[2] = secondLast * 0x2000; // fixed second last
             prgBankOffsets[3] = lastBank * 0x2000;
         }
 
@@ -207,7 +215,14 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
         
         for (int i = 0; i < 4; i++) {
-            prgBankOffsets[i] %= cartridge.prgROM.Length;
+            int len = cartridge.prgROM.Length;
+            if (len == 0) { prgBankOffsets[i] = 0; continue; }
+            int off = prgBankOffsets[i];
+            if ((uint)off >= (uint)len) {
+                // Wrap safely instead of modulo on negative (shouldn't be negative now)
+                off %= len; if (off < 0) off += len;
+            }
+            prgBankOffsets[i] = off;
         }
     }
 

@@ -7,6 +7,7 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
   <RootNamespace>BrokenNes</RootNamespace>
   <AssemblyName>BrokenNes</AssemblyName>
+  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   <!-- Performance oriented tweaks -->
   <RunAOTCompilation>true</RunAOTCompilation>
   <WasmEnableSIMD>true</WasmEnableSIMD>

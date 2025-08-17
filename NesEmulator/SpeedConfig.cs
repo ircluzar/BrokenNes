@@ -20,6 +20,12 @@ namespace NesEmulator
         public bool PpuTileBatching = true; // pairs well with pattern cache
         // PPU: Skip fully blank scanlines (all background color & no sprites) via batch detection
         public bool PpuSkipBlankScanlines = true; // requires batching to detect
+    // PPU: Evaluate only up to first 8 sprites on a scanline instead of all 64 (sets overflow flag when exceeded)
+    public bool PpuSpriteLineEvaluation = true; // hardware-accurate cap; improves sprite rendering performance
+    // PPU: Use unsafe pointer-based scanline renderer (avoids bounds checks)
+    public bool PpuUnsafeScanline = true; // default enabled (guards ensure buffer allocated)
+    // PPU: Defer attribute fetch until non-zero tile bits known (saves reads on blank tiles)
+    public bool PpuDeferAttributeFetch = true; // default on; small gain in blank-heavy scenes
 
         // Future toggles (placeholders):
     // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.
