@@ -135,6 +135,57 @@ for asset in "${critical_assets[@]}"; do
   fi
 done
 
+# Additional required assets for APU_WF (waveform SoundFont bridge) and APU_MNES (MNES FluidSynth bridge)
+# These power the note-event SoundFont playback paths. We validate presence so a publish error is obvious.
+apu_assets=(
+  "soundfont.js"
+  "mnesSf2.js"
+  "sf2player/MNES.sf2"
+  "sf2player/js-synthesizer.min.js"
+  "sf2player/js-synthesizer.worklet.min.js"
+  "sf2player/libfluidsynth-2.0.2.js"
+)
+echo "==> Verifying APU_WF / APU_MNES SoundFont assets..."
+for asset in "${apu_assets[@]}"; do
+  if [[ ! -f "$FLAT_DIR/$asset" ]]; then
+    echo "  MISSING: $asset"
+    missing=1
+  else
+    echo "  found: $asset"
+  fi
+done
+
+# Opportunistic compression (Brotli + gzip) for large / frequently requested MNES assets if not already present.
+# Skips if tools unavailable. Does not treat absence as fatal.
+compress_candidates=(
+  "mnesSf2.js"
+  "soundfont.js"
+  "nesInterop.js"
+  "sf2player/js-synthesizer.min.js"
+  "sf2player/js-synthesizer.worklet.min.js"
+  "sf2player/libfluidsynth-2.0.2.js"
+  "sf2player/MNES.sf2"
+)
+echo "==> Ensuring compressed (brotli/gzip) variants for core SoundFont assets (best-effort)"
+for f in "${compress_candidates[@]}"; do
+  src="$FLAT_DIR/$f"
+  [[ -f "$src" ]] || continue
+  # Brotli
+  if command -v brotli >/dev/null 2>&1; then
+    if [[ ! -f "$src.br" ]]; then
+      echo "  brotli: $f"
+      brotli -f -q 11 "$src" -o "$src.br" || echo "    (brotli failed for $f)"
+    fi
+  fi
+  # Gzip
+  if command -v gzip >/dev/null 2>&1; then
+    if [[ ! -f "$src.gz" ]]; then
+      echo "  gzip:   $f"
+      gzip -c -9 "$src" > "$src.gz" || echo "    (gzip failed for $f)"
+    fi
+  fi
+done
+
 # Ensure base href is relative for subdirectory hosting
 INDEX_HTML="$FLAT_DIR/index.html"
 if grep -q "<base href=\"/\"" "$INDEX_HTML" 2>/dev/null; then
