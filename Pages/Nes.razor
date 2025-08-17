@@ -1384,11 +1384,16 @@
                     // Manually reload without going through any cached emulator state
                     var data = uploadedRoms[currentRomName];
                     // Preserve previously selected audio backend; reuse existing NES instance if present
-                    if (nes == null)
-                    {
-                        nes = new NesEmulator.NES { RomName = currentRomName };
-                    }
+                    if (nes == null) nes = new NesEmulator.NES();
+                    nes.RomName = currentRomName;
+                    // Preserve currently selected APU suffix before load
+                    var prevApuSuffix = apuCoreSel;
                     nes.LoadROM(data);
+                    if (!string.IsNullOrEmpty(prevApuSuffix))
+                    {
+                        // Reapply user preference explicitly (LoadROM recreates internal cores)
+                        try { nes.SetApuCore(prevApuSuffix); } catch { }
+                    }
                     // Re-apply selected CPU/PPU/APU cores so the active cores match the UI selection after reload
                     // (Without this, the PPU would revert to the default core internally while the UI still shows the previous selection.)
                     ApplySelectedCores();
@@ -1740,8 +1745,11 @@
                 Logger.LogInformation($"ROM Header: {headerHex}");
             }
 
-            nes = new NesEmulator.NES { RomName = romFileName };
+            if (nes == null) nes = new NesEmulator.NES();
+            nes.RomName = romFileName;
+            var prevApuSuffix = apuCoreSel;
             nes.LoadROM(romData);
+            if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
             autoStaticSuppressed = false;
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
@@ -1949,8 +1957,11 @@
             if (uploadedRoms.TryGetValue(romFileName, out var data))
             {
                 Status.Set($"Loading uploaded ROM {romFileName}...");
-                nes = new NesEmulator.NES { RomName = romFileName };
+                if (nes == null) nes = new NesEmulator.NES();
+                nes.RomName = romFileName;
+                var prevApuSuffix = apuCoreSel;
                 nes.LoadROM(data);
+                if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
                 autoStaticSuppressed = false; // new ROM -> allow static again if test.nes
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                 SetApuCoreSelFromEmu();
@@ -2046,8 +2057,11 @@
 
             bool wasRunning = isRunning;
             if (wasRunning) await PauseEmulation();
-            nes = new NesEmulator.NES { RomName = romFileName };
+            if (nes == null) nes = new NesEmulator.NES();
+            nes.RomName = romFileName;
+            var prevApuSuffix = apuCoreSel;
             nes.LoadROM(romData);
+            if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
             SetApuCoreSelFromEmu();

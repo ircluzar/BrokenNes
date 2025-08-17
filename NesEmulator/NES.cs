@@ -372,14 +372,28 @@ namespace NesEmulator
 		public void LoadROM(byte[] romData)
 		{
 			try {
-				// Preserve currently selected APU core across cartridge swaps
-				var prevApu = bus?.GetActiveApuCore() ?? Bus.ApuCore.Jank;
+				// Preserve the exact previously selected APU core suffix (not just enum bucket) so we don't
+				// collapse custom selections (e.g., SPD, WF, MNES) back to FMC when a new game loads.
+				string prevApuTypeName = bus?.ActiveAPU?.GetType().Name ?? string.Empty; // e.g. "APU_SPD"
+				string prevApuSuffix = string.Empty;
+				if (!string.IsNullOrEmpty(prevApuTypeName)) {
+					try { prevApuSuffix = CoreRegistry.ExtractSuffix(prevApuTypeName, "APU_"); } catch { prevApuSuffix = string.Empty; }
+				}
+				// Also capture enum bucket as fallback (Modern/Jank/QuickNes)
+				var prevApuEnum = bus?.GetActiveApuCore() ?? Bus.ApuCore.Jank;
 				cartridge = new Cartridge(romData);
 				bus = new Bus(cartridge);
 				if (string.IsNullOrEmpty(RomName)) RomName = "(ROM)"; // fallback label if UI doesn't set
-				bus.SetApuCore(prevApu); // restore user preference before clearing cores
-				// Ensure fresh audio cores (avoid previous game's APU state bleeding into new one or mode desync)
+				// Perform hard reset (recreates core triad and clears latches)
 				bus.HardResetAPUs();
+				// Attempt to restore the exact previous suffix first; if unavailable fall back to enum bucket
+				bool restored = false;
+				if (!string.IsNullOrEmpty(prevApuSuffix)) {
+					try { restored = bus.SetApuCoreById(prevApuSuffix); } catch { restored = false; }
+				}
+				if (!restored) {
+					try { bus.SetApuCore(prevApuEnum); } catch { }
+				}
 				try { bus.ppu?.ClearBuffers(); } catch { }
 				bus.cpu.Reset();
 				// Apply current crash behavior to fresh CPU instance
