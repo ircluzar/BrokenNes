@@ -25,13 +25,28 @@ namespace NesEmulator
     // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.
     // Safe default is off; when enabled it only annotates state (no timing changes) so other systems can observe it.
     public bool CpuIdleLoopDetect = true; // extremely safe: detection only, no skipping/fast-forward
-    // Placeholder skip controls (NOT ACTIVE YET). Kept for future guarded implementation.
-    public bool CpuIdleLoopSkip = false; // when enabled and heuristic confident, may fast-forward confirmed loops (future)
+    // Idle loop skip (PPU status loops) now ready for testing (safe subset with heavy guards)
+    public bool CpuIdleLoopSkip = true; // enabled by default for testing
     public int CpuIdleLoopSkipMaxIterations = 8; // conservative initial cap for safe testing
     public int CpuIdleLoopMaxSpanBytes = 16; // maximum byte span between poll and branch for eligibility (future safety)
     // CPU: Approximate OAM DMA stall by lumping 513 cycles instead of per-cycle stepping loop.
     // Safe accuracy trade: exact parity (513 vs 514) minor; negligible gameplay impact while saving loop overhead.
     public bool CpuFastOamDmaStall = true; // default enabled
+    // CPU: Allow skipping confirmed APU status ($4015) idle loops (higher risk; disabled by default)
+    public bool CpuIdleLoopSkipApuStatus = true; // now enabled after completing safeguards
+    // CPU: Separate conservative cap for APU status loop bursts (APU IRQ flags may appear unpredictably)
+    public int CpuIdleLoopSkipApuMaxIterations = 4; // very conservative initial value
+    // CPU: Adaptive burst sizing for idle loop skip (ramps iterations on long stable loops)
+    public bool CpuIdleLoopSkipAdaptive = true;
+    // CPU: Branch hotness instrumentation (taken/total counters per hashed PC)
+    public bool CpuBranchHotness = true; // enable instrumentation by default for profiling
+    // CPU: Direct zero-page RAM access in inlined opcodes (bypass bus.Read)
+    public bool CpuZeroPageDirect = true;
+    // CPU: Adaptive batching (dynamically adjust cycle threshold)
+    public bool CpuAdaptiveBatching = true;
+    public int CpuAdaptiveBatchTargetCycles = 24; // desired average batch size cycles
+    public int CpuAdaptiveBatchMinCycles = 12;
+    public int CpuAdaptiveBatchMaxCycles = 64;
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }

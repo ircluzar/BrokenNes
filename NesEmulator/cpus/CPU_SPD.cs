@@ -86,6 +86,11 @@ public sealed class CPU_SPD : ICPU {
 	public int IdleLoopEntryIterations => idleLoopEntryIterations;
 	public string IdleLoopPollKind => lastPollKind.ToString();
 
+	// Telemetry counters
+	private ulong idleLoopSkippedIterations = 0; // simulated iterations skipped (cycles accelerated / per-iteration cost)
+	private ulong idleLoopSkipBursts = 0; // number of skip bursts executed
+	public (ulong iterations, ulong bursts) GetIdleLoopSkipStats() => (idleLoopSkippedIterations, idleLoopSkipBursts);
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool IsPpuStatusAddress(ushort addr) => addr >= 0x2000 && addr < 0x4000 && (addr & 0x0007) == 0x0002; // mirrors every 8 bytes
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,22 +138,42 @@ public sealed class CPU_SPD : ICPU {
 			}
 			// --- Optional fast-forward skip (safe subset) ---
 			int extraCycles = 0;
-			if (idleLoopFlag && (bus?.SpeedConfig?.CpuIdleLoopSkip ?? false) && lastPollKind == IdlePollKind.PpuStatus)
+			if (idleLoopFlag && (bus?.SpeedConfig?.CpuIdleLoopSkip ?? false) &&
+			   (lastPollKind == IdlePollKind.PpuStatus || (lastPollKind == IdlePollKind.ApuStatus && (bus?.SpeedConfig?.CpuIdleLoopSkipApuStatus ?? false))))
 			{
 				// Only skip while vblank bit still 0 in last observed value; skipping across set could delay NMI/vblank detection.
-				if ((lastPollValue & 0x80) == 0 && idleLoopIterationCostCycles > 0 && !nmiRequested && !(irqRequested && !GetFlag(FLAG_I)))
+				bool safePpu = lastPollKind != IdlePollKind.PpuStatus || (lastPollValue & 0x80) == 0;
+				if (safePpu && idleLoopIterationCostCycles > 0 && !nmiRequested && !(irqRequested && !GetFlag(FLAG_I)))
 				{
 					// Determine burst count (conservative chunking).
 					int maxCfg = bus!.SpeedConfig.CpuIdleLoopSkipMaxIterations;
+					if (bus.SpeedConfig.CpuIdleLoopSkipAdaptive)
+					{
+						// Simple adaptive policy: if stablePollCount very high, increase local burst (bounded)
+						int adaptive = stablePollCount / 256; // grows slowly
+						if (adaptive > 0) {
+							int proposed = maxCfg + adaptive;
+							if (proposed > maxCfg * 4) proposed = maxCfg * 4; // cap growth
+							maxCfg = proposed;
+						}
+					}
 					if (maxCfg > 0)
 					{
-						const int MaxBurst = 32; // hard cap per branch to maintain responsiveness
-						int burst = maxCfg < MaxBurst ? maxCfg : MaxBurst;
+						int maxBurstCap = 32;
+						if (lastPollKind == IdlePollKind.ApuStatus) {
+							// Use separate tighter cap for APU status loops
+							maxCfg = bus.SpeedConfig.CpuIdleLoopSkipApuMaxIterations;
+							if (maxCfg <= 0) return 0; // nothing to skip
+							maxBurstCap = 8; // keep small due to possible rapid status flag changes
+						}
+						int burst = maxCfg < maxBurstCap ? maxCfg : maxBurstCap;
 						// Simulate 'burst' iterations: each iteration executes poll+branch returning to poll site.
 						// We cannot predict vblank arrival; we assume stable value remains until next real poll.
 						idleLoopStreak += burst;
 						stablePollCount += burst;
 						extraCycles = burst * idleLoopIterationCostCycles;
+						idleLoopSkippedIterations += (ulong)burst;
+						idleLoopSkipBursts++;
 					}
 				}
 			}
@@ -173,6 +198,36 @@ public sealed class CPU_SPD : ICPU {
 		{
 			idleLoopStreak = 0; idleLoopFlag = false; idleLoopBranchPC = 0; idleLoopEntryIterations = 0; stablePollCount = 0; idleLoopIterationCostCycles = 0;
 		}
+	}
+
+	// === Branch Hotness (optional) ===
+	private const int BranchHotTableSize = 256; // power-of-two for mask
+	private struct BranchHotEntry { public ushort pc; public uint taken; public uint total; }
+	private BranchHotEntry[] branchHot = new BranchHotEntry[BranchHotTableSize];
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private void RecordBranch(ushort pc, bool taken)
+	{
+		if (!(bus?.SpeedConfig?.CpuBranchHotness ?? false)) return;
+		int idx = pc & (BranchHotTableSize - 1);
+		ref var e = ref branchHot[idx];
+		if (e.pc != pc) { e.pc = pc; e.taken = 0; e.total = 0; }
+		if (e.total < uint.MaxValue) e.total++;
+		if (taken && e.taken < uint.MaxValue) e.taken++;
+	}
+	public (uint taken, uint total) GetBranchHotness(ushort pc)
+	{
+		int idx = pc & (BranchHotTableSize - 1); var e = branchHot[idx]; if (e.pc != pc) return (0,0); return (e.taken, e.total);
+	}
+	public System.Collections.Generic.List<(ushort pc, uint taken, uint total, float ratio)> SnapshotHotBranches(float minRatio=0.8f, uint minTotal=32)
+	{
+		var list = new System.Collections.Generic.List<(ushort,uint,uint,float)>();
+		if (!(bus?.SpeedConfig?.CpuBranchHotness ?? false)) return list;
+		for (int i=0;i<branchHot.Length;i++)
+		{
+			var e = branchHot[i]; if (e.total < minTotal || e.pc==0) continue; float r = e.total==0?0f:(float)e.taken/e.total; if (r >= minRatio) list.Add((e.pc, e.taken, e.total, r));
+		}
+		list.Sort((a,b)=> b.Item4.CompareTo(a.Item4));
+		return list;
 	}
 
 	public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters() => (PC, A, X, Y, status, SP);
@@ -241,8 +296,11 @@ public sealed class CPU_SPD : ICPU {
 				A = Fetch(); SetZNFast(A); return 2;
 			}
 			case 0xA5: { // LDA zp (inlined)
-				ushort addr = Fetch(); A = bus.Read(addr); SetZNFast(A); return 3;
-			}
+				ushort addr = Fetch();
+				if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) { // internal RAM mirrors
+					A = bus.ram[addr & 0x07FF];
+				} else A = bus.Read(addr);
+				SetZNFast(A); return 3; }
 			case 0xB5: { // LDA zp,X (inlined)
 				ushort addr = (byte)(Fetch() + X); A = bus.Read(addr); SetZNFast(A); return 4;
 			}
@@ -268,14 +326,14 @@ public sealed class CPU_SPD : ICPU {
 			case 0xA1: return LDR(ref A, AddressMode.IndirectX, 6);
 			case 0xB1: return LDR(ref A, AddressMode.IndirectY, 5);
 			case 0xA2: return LDR(ref X, AddressMode.Immediate, 2);
-			case 0xA6: { ushort addr=Fetch(); X=bus.Read(addr); SetZNFast(X); return 3; }
+			case 0xA6: { ushort addr=Fetch(); if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) X = bus.ram[addr & 0x07FF]; else X=bus.Read(addr); SetZNFast(X); return 3; }
 			case 0xAE: return LDR(ref X, AddressMode.Absolute, 4);
 			case 0xBE: return LDR(ref X, AddressMode.AbsoluteY, 4);
 			case 0xA0: return LDR(ref Y, AddressMode.Immediate, 2);
-			case 0xA4: { ushort addr=Fetch(); Y=bus.Read(addr); SetZNFast(Y); return 3; }
+			case 0xA4: { ushort addr=Fetch(); if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) Y = bus.ram[addr & 0x07FF]; else Y=bus.Read(addr); SetZNFast(Y); return 3; }
 			case 0xAC: return LDR(ref Y, AddressMode.Absolute, 4);
 			case 0xBC: return LDR(ref Y, AddressMode.AbsoluteX, 4);
-			case 0x85: { ushort addr=Fetch(); bus.Write(addr, A); return 3; }
+			case 0x85: { ushort addr=Fetch(); if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) bus.ram[addr & 0x07FF] = A; else bus.Write(addr, A); return 3; }
 			case 0x95: { // STA zp,X (inlined)
 				ushort addr = (byte)(Fetch() + X); bus.Write(addr, A); return 4;
 			}
@@ -290,9 +348,9 @@ public sealed class CPU_SPD : ICPU {
 			case 0x99: return STR(ref A, AddressMode.AbsoluteY, 5);
 			case 0x81: return STR(ref A, AddressMode.IndirectX, 6);
 			case 0x91: return STR(ref A, AddressMode.IndirectY, 6);
-			case 0x86: { ushort addr=Fetch(); bus.Write(addr, X); return 3; }
+			case 0x86: { ushort addr=Fetch(); if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) bus.ram[addr & 0x07FF] = X; else bus.Write(addr, X); return 3; }
 			case 0x8E: return STR(ref X, AddressMode.Absolute, 4);
-			case 0x84: { ushort addr=Fetch(); bus.Write(addr, Y); return 3; }
+			case 0x84: { ushort addr=Fetch(); if (bus.SpeedConfig.CpuZeroPageDirect && addr < 0x2000) bus.ram[addr & 0x07FF] = Y; else bus.Write(addr, Y); return 3; }
 			case 0x94: { // STY zp,X (inlined)
 				ushort addr = (byte)(Fetch() + X); bus.Write(addr, Y); return 4;
 			}
@@ -428,14 +486,14 @@ public sealed class CPU_SPD : ICPU {
 			
 			//BCC, BCS, BEQ, BMI, BNE, BPL, BVC, BVS
 			// --- Optimized branches (inline relative addressing & penalty) ---
-			case 0x90: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_C)==0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BCC
-			case 0xB0: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_C)!=0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BCS
-			case 0xF0: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_Z)!=0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BEQ
-			case 0x30: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_N)!=0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BMI
-			case 0xD0: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_Z)==0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BNE
-			case 0x10: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_N)==0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BPL
-			case 0x50: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_V)==0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BVC
-			case 0x70: { sbyte off = (sbyte)Fetch(); ushort branchPc = (ushort)(PC - 2); bool take = (status & MASK_V)!=0; ushort old=PC; if (take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old ^ PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true, target, branchPc, bc); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); return 2; } // BVS
+			case 0x90: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_C)==0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BCC
+			case 0xB0: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_C)!=0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BCS
+			case 0xF0: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_Z)!=0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BEQ
+			case 0x30: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_N)!=0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BMI
+			case 0xD0: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_Z)==0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BNE
+			case 0x10: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_N)==0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BPL
+			case 0x50: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_V)==0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BVC
+			case 0x70: { sbyte off=(sbyte)Fetch(); ushort branchPc=(ushort)(PC-2); bool take=(status & MASK_V)!=0; ushort old=PC; if(take){ ushort target=(ushort)(PC+off); PC=target; int bc=2+1+(((old^PC)&0xFF00)!=0?1:0); int extra=BranchIdleCheck(true,target,branchPc,bc); RecordBranch(branchPc,true); return bc+extra;} BranchIdleCheck(false,0,branchPc,0); RecordBranch(branchPc,false); return 2;} // BVS
 
 			//CLC, CLD, CLI, CLV, SEC, SED, SEI
 			case 0x18: return FSC(FLAG_C, false, AddressMode.Implied, 2);

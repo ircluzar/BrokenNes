@@ -100,6 +100,16 @@ namespace NesEmulator
 			if (bus == null) return (false,false,0,0);
 			var sc = bus.SpeedConfig; return (sc.CpuIdleLoopDetect, sc.CpuIdleLoopSkip, sc.CpuIdleLoopSkipMaxIterations, sc.CpuIdleLoopMaxSpanBytes);
 		}
+		public (ulong iterations, ulong bursts) GetCpuIdleLoopSkipStats()
+		{
+			if (bus?.cpu is CPU_SPD spd) return spd.GetIdleLoopSkipStats();
+			return (0,0);
+		}
+		public System.Collections.Generic.List<(ushort pc, uint taken, uint total, float ratio)> GetHotBranches(float minRatio=0.8f, uint minTotal=32)
+		{
+			if (bus?.cpu is CPU_SPD spd) return spd.SnapshotHotBranches(minRatio, minTotal);
+			return new System.Collections.Generic.List<(ushort,uint,uint,float)>();
+		}
 		public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => bus?.GetApuCoreIds() ?? System.Array.Empty<string>();
 
 		public string SaveState()
@@ -450,6 +460,8 @@ namespace NesEmulator
 				int batchCpu = 0;
 				if (nextPpuEventCycle < globalCpuCycle) nextPpuEventCycle = globalCpuCycle; // keep monotonic (placeholder)
 				try {
+					int dynamicThreshold = ConfigBatchCycleThreshold;
+					int adaptiveAccumulator = 0;
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
@@ -457,10 +469,22 @@ namespace NesEmulator
 							int cpuCycles = bus.cpu.ExecuteInstruction();
 							executed += cpuCycles;
 							batchCpu += cpuCycles;
-							if (batchCpu >= ConfigBatchCycleThreshold)
+							adaptiveAccumulator += cpuCycles;
+							if (batchCpu >= dynamicThreshold)
 							{
 								FlushBatch(batchCpu);
 								batchCpu = 0;
+								if (bus.SpeedConfig.CpuAdaptiveBatching)
+								{
+									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
+									int target = bus.SpeedConfig.CpuAdaptiveBatchTargetCycles;
+									if (adaptiveAccumulator > 0)
+									{
+										if (adaptiveAccumulator > target + 4 && dynamicThreshold > bus.SpeedConfig.CpuAdaptiveBatchMinCycles) dynamicThreshold -= 2;
+										else if (adaptiveAccumulator < target - 4 && dynamicThreshold < bus.SpeedConfig.CpuAdaptiveBatchMaxCycles) dynamicThreshold += 2;
+									}
+									adaptiveAccumulator = 0;
+								}
 							}
 						}
 						if (batchCpu > 0 && (globalCpuCycle + batchCpu >= frameEndCycle || (frameEndCycle - (globalCpuCycle + batchCpu)) <= ConfigMinRemainingFlushGuard))
