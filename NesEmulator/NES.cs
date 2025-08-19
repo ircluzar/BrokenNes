@@ -647,6 +647,47 @@ namespace NesEmulator
 			return new byte[256 * 240 * 4];
 		}
 
+		// --- Zero-copy framebuffer support (HotPot: Zero/Low-Copy Framebuffer Transfer) ---
+		// We pin the underlying managed byte[] used as the active PPU framebuffer and expose
+		// its linear memory address (offset) to JS so WebGL can upload via tex(Sub)Image2D
+		// directly from WASM memory without marshalling a fresh array each frame.
+		// The pin is refreshed automatically if the PPU reallocates (e.g. after savestate load
+		// or ClearBuffers()). Call ReleaseFrameBufferPin() during teardown to avoid leaks.
+		private System.Runtime.InteropServices.GCHandle _fbHandle;
+		private bool _fbPinned = false;
+		private byte[]? _fbPinnedArray;
+
+		public int GetFrameBufferAddress(out int length)
+		{
+			var fb = GetFrameBuffer();
+			length = fb.Length;
+			if (!_fbPinned || !ReferenceEquals(fb, _fbPinnedArray))
+			{
+				// Re-pin new framebuffer instance
+				if (_fbPinned)
+				{
+					try { _fbHandle.Free(); } catch { }
+					_fbPinned = false; _fbPinnedArray = null;
+				}
+				_fbHandle = System.Runtime.InteropServices.GCHandle.Alloc(fb, System.Runtime.InteropServices.GCHandleType.Pinned);
+				_fbPinnedArray = fb; _fbPinned = true;
+			}
+			unsafe {
+				var addr = _fbHandle.AddrOfPinnedObject();
+				// In WASM the pointer comfortably fits in 32 bits; return as int (JS Number exact for 32 bits)
+				return (int)addr;
+			}
+		}
+
+		public void ReleaseFrameBufferPin()
+		{
+			if (_fbPinned)
+			{
+				try { _fbHandle.Free(); } catch { }
+				_fbPinned = false; _fbPinnedArray = null;
+			}
+		}
+
 		private byte[] crashFrameBuffer = new byte[256*240*4];
 		private void RenderCrashScreen() {
 			for (int i=0;i<256*240;i++) { crashFrameBuffer[i*4+0]=200; crashFrameBuffer[i*4+1]=0; crashFrameBuffer[i*4+2]=0; crashFrameBuffer[i*4+3]=255; }

@@ -869,6 +869,9 @@
 
     private NesEmulator.NES? nes;
     private byte[] framebuffer = new byte[256 * 240 * 4];
+    // Zero-copy framebuffer feature flag (enable via URL ?zcfb=1)
+    private bool zeroCopyFb = false;
+    private int fbAddress = 0; private int fbLength = 0; private int fbFrameCounter = 0;
     // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
     // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
     private bool[] inputState = new bool[8]; // Up, Down, Left, Right, A, B, Select, Start
@@ -1142,6 +1145,8 @@
     {
         if (firstRender)
         {
+            // Detect zero-copy framebuffer flag early (query string: zcfb=1)
+            try { zeroCopyFb = await JS.InvokeAsync<bool>("nesInterop.hasQueryFlag", "zcfb"); } catch { zeroCopyFb = false; }
             try
             {
                 Logger.LogInformation("NES Emulator initializing...");
@@ -1198,6 +1203,16 @@
                 // Auto-load default ROM then apply persisted core selections
                 await LoadRomFromServer();
                 ApplySelectedCores();
+
+                if (zeroCopyFb && nes != null)
+                {
+                    try
+                    {
+                        fbAddress = nes.GetFrameBufferAddress(out fbLength);
+                        await JS.InvokeVoidAsync("nesInterop.initZeroCopyFrame", "nes-canvas", fbAddress, fbLength, 256, 240);
+                    }
+                    catch { zeroCopyFb = false; }
+                }
 
                 // Provide dotnet ref to JS for fullscreen/control callbacks
                 try { if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.setMainRef", _selfRef); } catch {}
@@ -1539,10 +1554,27 @@
             }
 
             // Always draw current frame for smooth visuals
-            framebuffer = nes.GetFrameBuffer();
-#pragma warning disable CS4014 // fire-and-forget to avoid blocking frame loop
-            JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+            if (zeroCopyFb)
+            {
+                // Ensure address still valid (PPU may have reallocated after core swap / savestate)
+                int len;
+                int addr = nes.GetFrameBufferAddress(out len);
+                if (addr != fbAddress || len != fbLength)
+                {
+                    fbAddress = addr; fbLength = len;
+                    try { await JS.InvokeVoidAsync("nesInterop.updateZeroCopyFrameBuffer", fbAddress, fbLength); } catch {}
+                }
+                fbFrameCounter++;
+                // Fire-and-forget notify; JS will upload using cached Uint8Array view
+                try { JS.InvokeVoidAsync("nesInterop.presentZeroCopyFrame", fbFrameCounter); } catch {}
+            }
+            else
+            {
+                framebuffer = nes.GetFrameBuffer();
+#pragma warning disable CS4014
+                JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
 #pragma warning restore CS4014
+            }
 
             // Throttle stats & Blazor UI updates separately
             if (frameCount % statsUpdateDivider == 0)
