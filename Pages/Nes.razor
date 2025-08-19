@@ -1546,14 +1546,10 @@
             // Target a chunk size aiming for ~12ms ( ~530 samples @44.1kHz ); adapt if backlog large
             int targetChunk = queued > 4096 ? 2048 : (queued > 2048 ? 1024 : 768);
             float[] audioBuffer = nes.GetAudioBuffer();
-            if (audioBuffer.Length > 0)
-            {
-#pragma warning disable CS4014 // intentional fire-and-forget for real-time audio scheduling
-                JS.InvokeVoidAsync("nesInterop.playAudio", audioBuffer, nes.GetAudioSampleRate());
-#pragma warning restore CS4014
-            }
+            bool queuedAudio = audioBuffer.Length > 0;
+            int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
 
-            // Always draw current frame for smooth visuals
+            // Always draw current frame for smooth visuals / present output
             if (zeroCopyFb)
             {
                 // Ensure address still valid (PPU may have reallocated after core swap / savestate)
@@ -1572,7 +1568,8 @@
             {
                 framebuffer = nes.GetFrameBuffer();
 #pragma warning disable CS4014
-                JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+                // Coalesced present call (audio + video) to reduce JS interop calls per frame (HotPot HOTPOT-02)
+                JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
 #pragma warning restore CS4014
             }
 

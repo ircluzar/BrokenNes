@@ -318,6 +318,19 @@ window.nesInterop = {
             gl.viewport(0,0,canvas.width,canvas.height);
         }
     },
+    // Coalesced per-frame present: combines audio scheduling + framebuffer draw to reduce one interop boundary (HotPot HOTPOT-02)
+    presentFrame: function(canvasId, framebuffer, audioBuffer, sampleRate){
+        try {
+            if (audioBuffer && audioBuffer.length > 0) {
+                this.playAudio(audioBuffer, sampleRate);
+            }
+        } catch(e){ console.warn('presentFrame audio failed', e); }
+        try {
+            if (framebuffer) {
+                this.drawFrame(canvasId, framebuffer);
+            }
+        } catch(e){ console.warn('presentFrame draw failed', e); }
+    },
     // --- Zero-copy framebuffer support ---
     // Detect query flag (utility used from C#)
     hasQueryFlag: function(flag){
