@@ -185,6 +185,102 @@ window.nesInterop = {
             window._nesAudioTimeline = ctx.currentTime + 0.02;
         }catch(e){ console.warn('resetAudioTimeline failed', e); }
     },
+    // ====== SharedArrayBuffer + AudioWorklet ring (HotPot HOTPOT-04) ======
+    _awEnabled: false,
+    _awFailed: false,
+    _awCtrl: null, // Int32Array [read, write, capacity, dropped]
+    _awBuf: null, // Float32Array ring
+    _awCapacity: 0,
+    _awPendingWorklet: false,
+    _awFeatureFlagChecked: false,
+    _awMinLeadSamples: 2048, // attempt to keep at least this many queued (approx 46ms @44.1k)
+    async _initAudioWorkletIfNeeded(sampleRate){
+        if(this._awEnabled || this._awFailed || this._awPendingWorklet) return this._awEnabled;
+        // Feature flag via query (?featureAudioSAB=1) to allow progressive rollout
+        if(!this._awFeatureFlagChecked){
+            try { this._awOn = await this.hasQueryFlag('featureAudioSAB'); } catch { this._awOn=false; }
+            this._awFeatureFlagChecked = true;
+        }
+        if(!this._awOn) return false;
+        try {
+            if(!window.crossOriginIsolated){
+                console.warn('[NES] SharedArrayBuffer unavailable (missing COOP/COEP); falling back.');
+                this._awFailed = true; return false;
+            }
+            if(!window.nesAudioCtx){
+                window.nesAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate || 44100});
+            }
+            const ctx = window.nesAudioCtx;
+            if(ctx.audioWorklet){
+                this._awPendingWorklet = true;
+                // Ring capacity: 0.25s of audio rounded to power-of-two
+                const targetSamples = Math.ceil((sampleRate||44100) * 0.25);
+                let cap = 1; while(cap < targetSamples) cap <<=1; // P2 for cheap wrap
+                const sab = new SharedArrayBuffer(cap * 4); // Float32
+                const ctrl = new SharedArrayBuffer(4*4); // 4 Int32 slots
+                this._awBuf = new Float32Array(sab);
+                this._awCtrl = new Int32Array(ctrl);
+                this._awCapacity = cap;
+                Atomics.store(this._awCtrl,0,0); // read
+                Atomics.store(this._awCtrl,1,0); // write
+                Atomics.store(this._awCtrl,2,cap); // capacity
+                Atomics.store(this._awCtrl,3,0); // dropped
+                try { await ctx.audioWorklet.addModule('audio-worklet.js'); } catch(e){ console.warn('worklet addModule failed', e); throw e; }
+                const node = new AudioWorkletNode(ctx, 'nes-ring-proc', { processorOptions: { sab, ctrl } });
+                node.connect(ctx.destination);
+                this._awEnabled = true;
+                console.log('[NES] AudioWorklet ring enabled. Capacity', cap);
+            } else {
+                this._awFailed = true; return false;
+            }
+        } catch(e){
+            console.warn('[NES] AudioWorklet init failed; fallback to buffer scheduling.', e);
+            this._awFailed = true;
+        } finally { this._awPendingWorklet = false; }
+        return this._awEnabled;
+    },
+    _awWrite(samples){
+        const ctrl = this._awCtrl; const buf = this._awBuf; if(!ctrl||!buf) return false;
+        let r = Atomics.load(ctrl,0); let w = Atomics.load(ctrl,1); const cap = buf.length;
+        for(let i=0;i<samples.length;i++){
+            const nextW = (w+1) === cap ? 0 : (w+1);
+            if(nextW === r){
+                // Buffer full -> drop sample
+                const dropped = Atomics.add(ctrl,3,1);
+                break; // stop writing more to avoid spinning
+            }
+            buf[w] = samples[i];
+            w = nextW;
+        }
+        Atomics.store(ctrl,1,w);
+        return true;
+    },
+    audioDiag(){
+        const ctrl = this._awCtrl; return {
+            enabled: this._awEnabled,
+            failed: this._awFailed,
+            capacity: this._awCapacity,
+            dropped: ctrl? Atomics.load(ctrl,3):0,
+            read: ctrl? Atomics.load(ctrl,0):0,
+            write: ctrl? Atomics.load(ctrl,1):0
+        };
+    },
+    // Unified presentFrame: canvas draw + optional audio buffer write (legacy OR ring)
+    presentFrame: async function(canvasId, framebuffer, audioBuffer, sampleRate){
+        try {
+            // Attempt worklet init (once) when first audio arrives
+            if(audioBuffer && audioBuffer.length){
+                await this._initAudioWorkletIfNeeded(sampleRate);
+            }
+            if(this._awEnabled && audioBuffer && audioBuffer.length){
+                this._awWrite(audioBuffer);
+            } else if(audioBuffer && audioBuffer.length) {
+                // legacy path -> schedule buffer copy
+                this.playAudio(audioBuffer, sampleRate||44100);
+            }
+            if(framebuffer){ this.drawFrame(canvasId, framebuffer); }
+        } catch(e){ console.warn('presentFrame failed', e); }
+    },
 
     _ensureCanvasCache(canvasId) {
         const c = document.getElementById(canvasId);
@@ -317,19 +413,6 @@ window.nesInterop = {
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.viewport(0,0,canvas.width,canvas.height);
         }
-    },
-    // Coalesced per-frame present: combines audio scheduling + framebuffer draw to reduce one interop boundary (HotPot HOTPOT-02)
-    presentFrame: function(canvasId, framebuffer, audioBuffer, sampleRate){
-        try {
-            if (audioBuffer && audioBuffer.length > 0) {
-                this.playAudio(audioBuffer, sampleRate);
-            }
-        } catch(e){ console.warn('presentFrame audio failed', e); }
-        try {
-            if (framebuffer) {
-                this.drawFrame(canvasId, framebuffer);
-            }
-        } catch(e){ console.warn('presentFrame draw failed', e); }
     },
     // --- Zero-copy framebuffer support ---
     // Detect query flag (utility used from C#)
