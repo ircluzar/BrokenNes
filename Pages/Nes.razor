@@ -869,8 +869,7 @@
 
     private NesEmulator.NES? nes;
     private byte[] framebuffer = new byte[256 * 240 * 4]; // Legacy framebuffer path only (HOTPOT-05 zero-copy removed)
-    // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
-    // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
+    // Frame timing now driven purely by a managed .NET loop (previous JS requestAnimationFrame bridge removed)
     private bool[] inputState = new bool[8]; // Up, Down, Left, Right, A, B, Select, Start
     
     private string errorMessage = "";
@@ -1326,11 +1325,10 @@
             isRunning = true;
             errorMessage = "";
             Status.Set("Emulation running...");
-
-            // Start JS requestAnimationFrame loop
+            // Ensure DotNetObjectReference for other JS callbacks (input, etc.)
             _selfRef ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("nesInterop.startEmulationLoop", _selfRef);
-
+            // Start managed timing loop (promoted from previous JS rAF loop)
+            StartManagedEmulationLoop();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -1348,7 +1346,7 @@
         {
             Logger.LogInformation("Pausing emulation");
             isRunning = false;
-            await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            StopManagedEmulationLoop();
             // Flush SoundFont notes if WF mode active
             try { nes?.FlushSoundFont(); } catch {}
             try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
@@ -1495,12 +1493,53 @@
         }
     }
 
-    // Called from JS every animation frame
-    [JSInvokable]
-    public async Task FrameTick()
+    // JS-driven FrameTick removed; .NET now owns frame timing loop.
+
+    // Managed emulation loop state
+    private CancellationTokenSource? _emuLoopCts;
+    private Task? _emuLoopTask;
+
+    private void StartManagedEmulationLoop()
     {
-        if (!isRunning) return;
-        await RunFrame();
+        // Idempotent start
+        if (_emuLoopTask != null && !_emuLoopTask.IsCompleted) return;
+        _emuLoopCts = new CancellationTokenSource();
+        var token = _emuLoopCts.Token;
+        _emuLoopTask = EmulationLoop(token);
+    }
+
+    private void StopManagedEmulationLoop()
+    {
+        try { _emuLoopCts?.Cancel(); } catch { }
+        _emuLoopCts = null;
+        _emuLoopTask = null; // Fire-and-forget loop will exit on cancellation flag
+    }
+
+    private async Task EmulationLoop(CancellationToken token)
+    {
+        // Target ~60Hz (JS rAF equivalent). Fast-forward still runs multiple NES frames per iteration.
+        const double targetFrameMs = 1000.0 / 60.0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        double nextFrameMs = sw.Elapsed.TotalMilliseconds;
+        while (!token.IsCancellationRequested && isRunning)
+        {
+            await RunFrame();
+            nextFrameMs += targetFrameMs;
+            var now = sw.Elapsed.TotalMilliseconds;
+            var delay = nextFrameMs - now;
+            if (delay > 0)
+            {
+                try { await Task.Delay((int)delay, token); } catch (TaskCanceledException) { break; }
+            }
+            else
+            {
+                // If we're far behind (e.g., tab throttling), resync to avoid runaway catch-up loop
+                if (-delay > targetFrameMs * 8)
+                {
+                    nextFrameMs = now;
+                }
+            }
+        }
     }
 
     private async Task RunFrame()
@@ -1535,12 +1574,25 @@
             float[] audioBuffer = nes.GetAudioBuffer();
             bool queuedAudio = audioBuffer.Length > 0;
             int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
+            if (suppressNextAudioFrame)
+            {
+                // Drop this frame's audio to bleed backlog (video still updates)
+                queuedAudio = false; suppressNextAudioFrame = false; audioBacklogDrops++;
+            }
 
             // Always draw current frame for smooth visuals / present output (legacy path only)
             framebuffer = nes.GetFrameBuffer();
 #pragma warning disable CS4014
             // Coalesced present call (audio + video) to reduce JS interop calls per frame (HotPot HOTPOT-02)
             JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
+
+            // Periodic audio sync check (fire-and-forget to avoid stalling frame pacing)
+            if ((frameCount & 0x1F) == 0) // every 32 frames ~0.5s
+            {
+#pragma warning disable CS4014
+                CheckAudioSync();
+#pragma warning restore CS4014
+            }
 #pragma warning restore CS4014
 
             // Throttle stats & Blazor UI updates separately
@@ -1566,6 +1618,45 @@
                 StateHasChanged();
             });
         }
+    }
+
+    // === Audio sync heuristics ===
+    private bool suppressNextAudioFrame = false;
+    private int audioResyncs = 0;
+    private int audioBacklogDrops = 0;
+    private const double AudioLeadLowMs = 14;   // below -> risk of underrun
+    private const double AudioLeadHighMs = 190; // above -> excessive latency backlog
+    private const double AudioLeadTargetMs = 55; // desired midpoint (worklet path may ignore)
+
+    private async Task CheckAudioSync()
+    {
+        if (!isRunning) return;
+        try
+        {
+            // Query lead; if worklet ring active, we still get a rough value (0 if unsupported)
+            double lead = 0;
+            try { lead = await JS.InvokeAsync<double>("nesInterop.getAudioLeadMs"); } catch { }
+            // High backlog: start dropping one buffer next frame until we trend downward
+            if (lead > AudioLeadHighMs)
+            {
+                suppressNextAudioFrame = true;
+            }
+            // Underrun risk: forcibly reset timeline so next scheduled buffer anchors near now
+            else if (lead > 0 && lead < AudioLeadLowMs)
+            {
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); audioResyncs++; } catch { }
+            }
+            // Soft drift correction: if lead drifts far from target (>+/-80ms span) we damp it
+            else if (lead > 0 && (lead - AudioLeadTargetMs) > 90)
+            {
+                suppressNextAudioFrame = true;
+            }
+            else if (lead > 0 && (AudioLeadTargetMs - lead) > 35)
+            {
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); audioResyncs++; } catch { }
+            }
+        }
+        catch { }
     }
 
     // Legacy famiclone toggle removed; use APU core selector instead
@@ -2974,7 +3065,7 @@
     {
         try
         {
-            JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+            StopManagedEmulationLoop();
             // Dispose shared DotNetObjectReference to avoid leaks (Theory 2)
             _selfRef?.Dispose();
             _selfRef = null;

@@ -548,38 +548,10 @@ window.nesInterop = {
         return s;
     },
 
-    startEmulationLoop: function (dotNetRef) {
-        // Always set the latest .NET ref
-        this._dotNetRef = dotNetRef;
-        // Proactively cancel any orphan rAF to ensure single producer
-        if (this._rafId != null) {
-            try { cancelAnimationFrame(this._rafId); } catch {}
-            this._rafId = null;
-        }
-        if (this._loopActive) return; // idempotent start
-        this._loopActive = true;
-        const step = () => {
-            if (!this._loopActive) return;
-            if (this._dotNetRef) {
-                // Fire and forget; timing not awaited to avoid jank
-                try { this._dotNetRef.invokeMethodAsync('FrameTick'); } catch {}
-            }
-            this._rafId = requestAnimationFrame(step);
-        };
-        this._rafId = requestAnimationFrame(step);
-    },
-
-    stopEmulationLoop: function () {
-        // Flip flag first so any in-flight step sees false
-        this._loopActive = false;
-        // Cancel pending animation frame if any
-        if (this._rafId != null) {
-            try { cancelAnimationFrame(this._rafId); } catch {}
-            this._rafId = null;
-        }
-        // Clear reference to avoid stray calls on stale refs
-        this._dotNetRef = null;
-    },
+    // startEmulationLoop / stopEmulationLoop removed; .NET owns timing now.
+    // Provide graceful no-op shims for backward compatibility (older cached pages / service worker assets)
+    startEmulationLoop: function(dotNetRef){ this._dotNetRef = dotNetRef; /* no-op */ },
+    stopEmulationLoop: function(){ this._dotNetRef = null; /* no-op */ },
 
     registerInput: function (dotNetRef) {
         if (!dotNetRef) {
