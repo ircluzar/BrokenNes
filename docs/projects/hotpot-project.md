@@ -8,6 +8,29 @@ Scope: BrokenNes (Blazor WASM NES emulator + SoundFont bridges)
 ## 1. Executive Summary
 Profiling + code inspection show our worst perf multipliers stem from (a) high-frequency, small-payload interop (`IJSRuntime.Invoke*` / `[JSInvokable]`) inside the frame + audio + note event loops and (b) redundant marshalling (arrays copied each boundary). Largest wins will come from eliminating per-event calls and moving bulk data via shared memory or batched codecs. This document lists concrete improvements ranked by estimated payoff vs effort.
 
+### 1.1 Progress Snapshot (Updated 2025-08-19)
+Implemented / prototyped since initial draft:
+* ✅ HOTPOT-02: Coalesced `presentFrame` unified JS call (see `Nes.razor` & `nesInterop.presentFrame`).
+* 🚧 HOTPOT-04: AudioWorklet + SharedArrayBuffer ring prototype auto-inits on first audio buffer (fallback preserved).
+* 🚧 HOTPOT-05: Zero-copy framebuffer path (`presentZeroCopyFrame`, `updateZeroCopyFrameBuffer`) with WebGL texture upload directly from WASM memory.
+* 🚧 HOTPOT-07: Partial async/state machine reduction (coalesced present reduces awaits; full ValueTask refactor pending).
+* 🔍 Instrumentation: Basic audio diagnostics (`audioDiag`) & zero-copy enable logs present.
+
+Not yet started / pending major work:
+* ⭕ HOTPOT-01 Packed input bitmask (`UpdateInputPacked`).
+* ⭕ HOTPOT-03 Note event batching (still per-event invokes).
+* ⭕ HOTPOT-X1 Comprehensive interop call/byte counter decorator service.
+* Finalization tasks for HOTPOT-04/05 (make new paths default + retire legacy paths where safe).
+
+### 1.2 Updated Top 5 Remaining High-Leverage Improvements
+1. HOTPOT-03 Note event batching (or shared memory polling) – remove bursty micro invokes.
+2. HOTPOT-01 Packed input bitmask (and optionally JS polling) – shrink input marshaling & spikes.
+3. HOTPOT-04 Complete SAB ring integration on .NET side; eliminate legacy per-frame audio buffer on supported browsers.
+4. HOTPOT-05 Promote zero-copy framebuffer to default path; minimize/guard legacy blit path.
+5. HOTPOT-X1 Metrics + automated bench harness (X1 + X2) – enables safe iteration & regression gating.
+
+Runners-up: Finish HOTPOT-07 ValueTask refactor; consider HOTPOT-06 loop inversion only if inbound invoke remains material after above; HOTPOT-08 unmarshalled primitives if still justified post-batching.
+
 ---
 
 ## 2. Current Hot Boundaries (Simplified Map)
@@ -30,27 +53,27 @@ Other hidden CLR boundaries: delegate invocation for note events (APU cores) and
 ## 3. Ranked Optimization Opportunities (Highest Estimated Gain First)
 
 ### Tier A – High Impact / Strategic
-1. Replace per-frame `float[]` audio marshaling with SharedArrayBuffer + AudioWorklet (pull model)
+1. Replace per-frame `float[]` audio marshaling with SharedArrayBuffer + AudioWorklet (pull model) – Prototype active; finalize managed writer + feature flag / fallback.
    - Estimated gain: 8–20% total frame time reduction & lower GC churn; smoother audio under load.
    - Rationale: Copying ~1–8 KB 60 times/second + scheduling JS each frame induces GC + blocking; AudioWorklet can read directly from a ring buffer in WASM memory (or a SharedArrayBuffer we fill via `Unsafe` span copy). Frees main thread and reduces latency jitter.
-2. Zero/Low-Copy Framebuffer Transfer via WebGL texture upload from shared WASM memory (remove marshalled `byte[]`/`int[]` per frame)
+2. Zero/Low-Copy Framebuffer Transfer via WebGL texture upload from shared WASM memory – Prototype active (`presentZeroCopyFrame`); needs default rollout + validation.
    - Estimated gain: 8–15% (depends on resolution and current copy cost). 
    - Strategy: Expose framebuffer as pinned `Span<byte>`; JS obtains a `Uint8Array` view into the WASM linear memory (via `Blazor.platform._memory` in legacy, or upcoming `dotnet.runtime.memory` APIs) and calls `texSubImage2D` with a typed array view; .NET stops sending the array parameter—only signals dirty/ready (or JS drives the loop and reads directly each RAF).
-3. Batch Note Events (SoundFont) into a per-frame ring buffer (single interop call)
+3. Batch Note Events (SoundFont) into a per-frame ring buffer (single interop call) – Not started.
    - Estimated gain: 5–12% (workload-dependent; spikes smoothed). 
    - Approach: Accumulate events in a preallocated struct array or unmanaged ring; at frame end (or audio tick), send count & maybe pointer. JS drains synchronously. Eliminates many small allocations + await overhead.
-4. Invert Frame Loop Ownership (JS polls, .NET stays in compute loop) OR Coalesce Frame JS Calls
+4. Invert Frame Loop Ownership (JS polls, .NET stays in compute loop) OR Coalesce Frame JS Calls – Coalesced call DONE; loop inversion TBD (may defer pending new profiling).
    - Estimated gain: 4–8%. 
    - Option A: Keep `requestAnimationFrame` in JS but collapse `playAudio` + `drawFrame` + any metrics into one invoke (one boundary crossing vs two). Option B: Run continuous .NET loop (timed) and only call a single JS `present(framePtr,audioPtr,len,...)` method.
 
 ### Tier B – Medium Impact
-5. Unmarshalled Interop for Small Primitives (note events if not batching yet; packed input bitmask)
+5. Unmarshalled Interop for Small Primitives (note events if not batching yet; packed input bitmask) – Defer until batching + packed input implemented; may be unnecessary.
    - Gain: 2–5%. Use `IJSUnmarshalledRuntime` / .NET 8 `JSMarshaler` to avoid JSON/serializer overhead for primitive bursts while interim migrating to ring buffer.
-6. Pack Controller State into a Single Byte
+6. Pack Controller State into a Single Byte – Not started.
    - Gain: ~1–2% (micro) but reduces GC & simplifies `[JSInvokable] UpdateInput` path. Accepts `byte` bitmask instead of `bool[8]` (eight marshalled booleans currently). Combine with unmarshalled call or polling.
-7. Reduce Async State Machine Allocations in Hot Path
+7. Reduce Async State Machine Allocations in Hot Path – Partial; convert remaining frame loop methods to `ValueTask`.
    - Gain: 1–3%. Convert `FrameTick` to `ValueTask`, remove `async`/`await` in `RunFrame` where possible (synchronous path except when blasting). Fire-and-forget JS calls already used; ensure they are not capturing unnecessary state.
-8. Pre-sized / Reused Buffers (Audio & Frame) with Manual Length Semantics
+8. Pre-sized / Reused Buffers (Audio & Frame) with Manual Length Semantics – Ongoing verification (ensure no hidden per-frame allocations remain).
    - Gain: 1–2%. Avoid new arrays if emulator already writes into stable buffers; ensure we do not allocate per frame (confirm via profiling). If currently producing a new `float[]`/`int[]` each call, reuse.
 
 ### Tier C – Lower Impact / Polish
@@ -109,7 +132,7 @@ Empirical data from similar Blazor WASM emulators indicates:
 ## 6. Quick Wins (Do First)
 1. Pack controller input to byte; add new `[JSInvokable] UpdateInputPacked(byte s)`; keep legacy for fallback.
 2. Batch note events per frame (simple managed `List<NoteEvent>` + single interop call) before pursuing SAB.
-3. Coalesce audio + video interop into single `presentFrame(frameBuf,audioBuf,sampleRate)` to immediately reduce calls from 2→1 per frame.
+3. Coalesce audio + video interop into single `presentFrame(frameBuf,audioBuf,sampleRate)` to immediately reduce calls from 2→1 per frame. (DONE)
 4. Convert `FrameTick` to `ValueTask` & remove unnecessary awaits.
 5. Debounce shader & preference JS calls (non-critical but trivial).
 
@@ -183,7 +206,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
 - [ ] Metrics
    - [ ] Record interop count before/after (should be identical but payload smaller)
 
-#### HOTPOT-02 (M→H quick) Coalesced Frame Present Call
+#### HOTPOT-02 (M→H quick) Coalesced Frame Present Call ✅ (Implemented)
 - [ ] Design
    - [ ] Decide API signature `presentFrame(frameBuffer, audioBuffer, sampleRate, meta)` OR pointer-based (phase 2)
    - [ ] Identify metadata bits (e.g. flags: FastForward, CorruptApplied)
@@ -200,7 +223,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
 - [ ] Metrics
    - [ ] Interop calls/frame reduced from 2→1
 
-#### HOTPOT-03 (H) Note Event Batching (Phase 1: Marshalled List)
+#### HOTPOT-03 (H) Note Event Batching (Phase 1: Marshalled List) ⭕
 - [ ] Design
    - [ ] Define struct `NoteEv { byte Ch; byte Prog; byte Midi; byte Vel; byte Flags; }`
    - [ ] Determine max events/frame (e.g. 512) & fallback if overflow (drop vs flush early)
@@ -220,7 +243,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
    - [ ] Interop note event calls: N → 1
    - [ ] GC alloc/frame reduction (record)
 
-#### HOTPOT-04 (H) Audio SharedArrayBuffer + AudioWorklet (Phase 1 Prototype)
+#### HOTPOT-04 (H) Audio SharedArrayBuffer + AudioWorklet (Phase 1 Prototype) 🚧
 - [ ] Pre-Req
    - [ ] Confirm COOP/COEP headers present (SAB allowed)
    - [ ] Add feature flag `?featureAudioSAB=1`
@@ -243,7 +266,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
    - [ ] CPU usage diff (Chrome Performance sampling)
    - [ ] Interop audio calls removed (0/frame)
 
-#### HOTPOT-05 (H) Zero-Copy Framebuffer (WebGL2) – Phase 1 Read View
+#### HOTPOT-05 (H) Zero-Copy Framebuffer (WebGL2) – Phase 1 Read View 🚧
 - [ ] Exploration
    - [ ] Determine current framebuffer pixel format (RGBA8888?) size constant
    - [ ] Expose pointer address via new .NET method `GetFrameBufferAddress()`
@@ -278,7 +301,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
    - [ ] Jank measurement (stddev frame interval) vs baseline
    - [ ] CPU idle % when tab backgrounded (no runaway loop)
 
-#### HOTPOT-07 (M) Remove Async State Machines in Hot Loop
+#### HOTPOT-07 (M) Remove Async State Machines in Hot Loop 🚧
 - [ ] Convert `FrameTick` to `ValueTask`
 - [ ] Change `RunFrame()` to non-async; move corruption async features off critical path (queue to background if needed)
 - [ ] Replace `await` with synchronous where no I/O
@@ -286,7 +309,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
 
 ### Theme B: Efficiency & Cleanups
 
-#### HOTPOT-08 (M) Unmarshalled Interop for Packed Primitives (Interim)
+#### HOTPOT-08 (M) Unmarshalled Interop for Packed Primitives (Interim) (Deferred until after HOTPOT-03/01 to reassess necessity)
 - [ ] Assess feasibility in current .NET version (IJSUnmarshalledRuntime still supported?)
 - [ ] Implement specialized path for `UpdateInputPacked` (if not replaced by polling)
 - [ ] Potentially for batched note events (phase 1 -> JSON, phase 2 -> unmarshalled)
@@ -350,7 +373,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
 
 ## 12. Execution Order Recommendation (Phase Plan)
 Phase 0 (Instrumentation): HOTPOT-X1, baseline metrics.
-Phase 1 (Quick Wins): HOTPOT-01, HOTPOT-02, HOTPOT-03.
+Phase 1 (Quick Wins): HOTPOT-01, HOTPOT-02 (DONE), HOTPOT-03.
 Phase 2 (Strategic Buffers): HOTPOT-04, HOTPOT-05.
 Phase 3 (Loop & Async Cleanup): HOTPOT-07, HOTPOT-06 (decide necessity after gains), HOTPOT-08 (if still beneficial).
 Phase 4 (Polish): HOTPOT-09, HOTPOT-10, HOTPOT-11, HOTPOT-12.
@@ -379,3 +402,15 @@ Phase 5 (Stretch / Future): HOTPOT-13 → HOTPOT-15, plus X2, X3 continuous.
 ---
 
 Prepared for: Performance tuning initiative to push frame stability & headroom for future features (e.g., advanced shaders, higher audio polyphony).
+
+---
+
+### Appendix: AudioWorklet Test Procedure (HotPot Early Validation)
+1. Open app with dev tools console.
+2. Start emulation; wait 2–3 seconds for ring to fill.
+3. Run `nesInterop.audioDiag()` – expect `{ enabled:true, failed:false, underruns:0 }` (underruns may spike briefly at start then stabilize).
+4. Capture baseline (legacy path) by forcing fallback: temporarily set `window.nesInterop._awFailed=true` and refresh; compare CPU usage in Performance panel over 10s.
+5. Measure:
+   - Interop calls marked `playAudio` should disappear (search in performance flame graph).
+   - GC pressure: fewer array allocations per frame.
+6. Stress: enable fast-forward and ensure underruns remain near zero (acceptable occasional increment <1 per second). If sustained underruns, consider increasing capacity.
