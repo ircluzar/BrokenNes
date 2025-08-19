@@ -12,7 +12,7 @@ Profiling + code inspection show our worst perf multipliers stem from (a) high-f
 Implemented / prototyped since initial draft:
 * ✅ HOTPOT-02: Coalesced `presentFrame` unified JS call (see `Nes.razor` & `nesInterop.presentFrame`).
 * 🚧 HOTPOT-04: AudioWorklet + SharedArrayBuffer ring prototype auto-inits on first audio buffer (fallback preserved).
-* ❌ HOTPOT-05: Zero-copy framebuffer path (prototype removed / rolled back; legacy marshalled framebuffer restored as sole path).
+* 🔄 HOTPOT-05: Low-copy / pull framebuffer path (WebGL1-compatible; redesign underway – minimize interop & copy without WebGL2-only features).
 * 🚧 HOTPOT-07: Partial async/state machine reduction (coalesced present reduces awaits; full ValueTask refactor pending).
 * 🔍 Instrumentation: Basic audio diagnostics (`audioDiag`) & zero-copy enable logs present.
 
@@ -26,7 +26,7 @@ Not yet started / pending major work:
 1. HOTPOT-03 Note event batching (or shared memory polling) – remove bursty micro invokes.
 2. HOTPOT-01 Packed input bitmask (and optionally JS polling) – shrink input marshaling & spikes.
 3. HOTPOT-04 Complete SAB ring integration on .NET side; eliminate legacy per-frame audio buffer on supported browsers.
-4. (Removed) HOTPOT-05 Zero-copy framebuffer promotion deferred indefinitely; feature rolled back.
+4. HOTPOT-05 Reintroduce (WebGL1) low-copy framebuffer pull path with progressive bandwidth optimizations.
 5. HOTPOT-X1 Metrics + automated bench harness (X1 + X2) – enables safe iteration & regression gating.
 
 Runners-up: Finish HOTPOT-07 ValueTask refactor; consider HOTPOT-06 loop inversion only if inbound invoke remains material after above; HOTPOT-08 unmarshalled primitives if still justified post-batching.
@@ -56,7 +56,7 @@ Other hidden CLR boundaries: delegate invocation for note events (APU cores) and
 1. Replace per-frame `float[]` audio marshaling with SharedArrayBuffer + AudioWorklet (pull model) – Prototype active; finalize managed writer + feature flag / fallback.
    - Estimated gain: 8–20% total frame time reduction & lower GC churn; smoother audio under load.
    - Rationale: Copying ~1–8 KB 60 times/second + scheduling JS each frame induces GC + blocking; AudioWorklet can read directly from a ring buffer in WASM memory (or a SharedArrayBuffer we fill via `Unsafe` span copy). Frees main thread and reduces latency jitter.
-2. Zero/Low-Copy Framebuffer Transfer – Rolled back (prototype removed). Revisit only if future perf profiling justifies reintroduction.
+2. Low-Copy Framebuffer Pull Path (WebGL1) – New redesign: eliminate per-frame marshalled array; JS polls WASM memory view & uploads with texSubImage2D.
    - Estimated gain: 8–15% (depends on resolution and current copy cost). 
    - Strategy: Expose framebuffer as pinned `Span<byte>`; JS obtains a `Uint8Array` view into the WASM linear memory (via `Blazor.platform._memory` in legacy, or upcoming `dotnet.runtime.memory` APIs) and calls `texSubImage2D` with a typed array view; .NET stops sending the array parameter—only signals dirty/ready (or JS drives the loop and reads directly each RAF).
 3. Batch Note Events (SoundFont) into a per-frame ring buffer (single interop call) – Not started.
@@ -266,27 +266,112 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
    - [ ] CPU usage diff (Chrome Performance sampling)
    - [ ] Interop audio calls removed (0/frame)
 
-#### HOTPOT-05 (H) Zero-Copy Framebuffer (WebGL2) – Phase 1 Read View 🚧
-- [ ] Exploration
-   - [ ] Determine current framebuffer pixel format (RGBA8888?) size constant
-   - [ ] Expose pointer address via new .NET method `GetFrameBufferAddress()`
-- [ ] JS Changes
-   - [ ] Acquire WASM memory buffer reference (runtime API)
-   - [ ] Create `Uint8Array(memory.buffer, addr, len)` each frame (or reuse singleton view if memory stable)
-   - [ ] Use `texSubImage2D` with the view
-- [ ] .NET Changes
-   - [ ] Stop passing framebuffer array; only compute & mark dirty (increment `frameCounter` Int32)
-- [ ] Sync Model
-   - [ ] JS polls `frameCounter` each RAF; if changed → upload
-- [ ] Fallback Path
-   - [ ] Keep marshalled path behind flag toggle
-- [ ] Testing
-   - [ ] Visual parity pixel diff (capture canvas vs marshalled path for 10 frames)
-   - [ ] Confirm no memory corruption after 5 min run
-   - [ ] Mobile device test (if WebGL2 available)
-- [ ] Metrics
-   - [ ] Interop payload size/frame → near zero
-   - [ ] CPU copy time reduced
+#### HOTPOT-05 (H) Low-Copy Framebuffer (WebGL1-Compatible Pull Path) 🔄
+Goal: Remove large per-frame marshalled byte[] transfer while remaining 100% WebGL1 compatible. Achieve near zero JS interop payload, minimize CPU copy & enable optional bandwidth reductions (palette / dirty scanlines) incrementally.
+
+Principles:
+1. Progressive enhancement: baseline (Phase 1) lands quick win with minimal risk; later phases gated by profiling.
+2. Always maintain a trivial fallback (legacy marshalled path) behind a feature flag / runtime heuristic.
+3. Avoid WebGL2 / PBO dependencies; rely only on tex(Sub)Image2D + Uint8Array views.
+4. Keep architecture modular so palette or tile optimizations can be bolted on without touching core emulator logic.
+
+Data Model:
+| Name | Purpose | Location |
+|------|---------|----------|
+| Framebuffer | RGBA8888 (256x240) | Fixed unmanaged / pinned byte[] (stable address) |
+| Control Block | 32 bytes: frameCounter (Int32), status (byte), fbGeneration (Int32), optional dirtyRowCount, feature flags | Adjacent to framebuffer or separate static |
+| Optional Dirty Bitset | 240 bits (~30 bytes) marking modified scanlines | After control block |
+
+Phases:
+Phase 0 (Current): Legacy marshalled array each frame via presentFrame().
+Phase 1 (Low-Copy Push): Keep presentFrame() invoke but drop framebuffer array parameter. Instead pass only counter + audio (temporary). JS holds a persistent Uint8Array(memory.buffer, fbAddr, len) and always uploads that memory on signal. (Removes large array marshal; 1 invoke remains.)
+Phase 2 (Pure Pull): Remove per-frame invoke entirely. JS rAF loop polls frameCounter (atomic int) from control block. When changed -> texSubImage2D upload + draw. Audio path already coalesced separately / or integrated if SAB ready.
+Phase 3 (Dirty Rows): Populate dirty bitset per scanline during PPU writes. JS groups consecutive dirty spans; if dirty coverage < threshold (e.g., 60%) perform batched texSubImage2D sub-rectangle uploads (row runs). Else full frame upload.
+Phase 4 (Palette Mode Optional): Switch internal storage to 8-bit index + 256xRGBA palette (uploaded rarely). JS shader expands color. Upload cost drops from 256*240*4=245,760 bytes to 61,440 bytes/frame worst-case. Guard behind capability + perf flag.
+Phase 5 (Tile Delta Optional): Hash 8x8 tiles; upload only changed tiles into an atlas texture. Extra CPU hashing; only enable if profiling on low-bandwidth devices shows bottleneck after earlier phases.
+
+Synchronization Strategy:
+Write ordering: Emulator writes full frame, then increments frameCounter (volatile write) then sets status=1 (ready). JS: reads frameCounter; if new and status=1 -> upload; optionally sets status=0 post-upload (or rely solely on counter).
+Tearing avoidance: Optionally use double buffering (two framebuffers + active index) if partial updates ever observable; likely unnecessary with sequential write then counter store.
+WASM Memory Growth Handling: JS every rAF compares cachedBuffer !== runtime.getMemory(); if changed, recreate view. If fbGeneration changed (emulator reallocated), request fresh metadata via single interop call getFbMeta().
+
+API Surface (initial minimal):
+`getFbMeta()` -> { addr, length, width, height, controlAddr, flags }
+Optional: `enableLowCopyFb(mode)` to toggle fallback.
+
+Heuristics / Auto Fallback:
+If average upload time (moving window 120 frames) > 4ms OR WebGL context lost twice in <30s → revert to legacy for session.
+If memory growth occurs >3 times in 5 minutes while low-copy active → log & fallback (indicates instability / fragmentation).
+
+Dirty Row Implementation Notes (Phase 3):
+PPU marks dirty row i when first pixel of row differs from previous frame OR any sprite/background write touches that row. Bitset OR operations only; cleared at frame start.
+JS groups runs: For each contiguous run R: gl.texSubImage2D with height=runLength starting at y=startRow.
+Threshold: If (uploadedRows * width) >= 0.6 * totalPixels OR numberOfRuns > 40 → fallback to single full-frame upload that frame.
+
+Palette Mode (Phase 4) Details:
+Internal PPU continues producing RGBA; conversion pass builds index buffer & palette while computing a 256-entry usage histogram. If unique colors > 256 OR conversion cost >1.2ms (guard) revert to RGBA for that frame. Cache palette CRC to avoid re-upload when unchanged.
+Shader fragment snippet:
+```
+uniform sampler2D uIndexTex; // LUMINANCE or ALPHA based, width=256,height=240
+uniform sampler2D uPalTex;   // 256x1 RGBA
+vec4 fetchColor(vec2 uv){
+   float idx = texture2D(uIndexTex, uv).r * 255.0;
+   float x = (idx + 0.5) / 256.0;
+   return texture2D(uPalTex, vec2(x, 0.5));
+}
+```
+
+Metrics to Capture per Phase:
+| Metric | Target Improvement |
+|--------|--------------------|
+| JS interop bytes/frame | -100% vs legacy (after Phase 1) |
+| CPU time copying framebuffer (.NET) | Near zero (single in-place write) |
+| Upload time (gl.tex(Sub)Image2D) | <2.0 ms on mid device (full) / <1.0 ms with palette or dirty rows |
+| GC alloc/frame (video path) | Drop large byte[] alloc (should already be amortized) |
+| Frame time stddev | No regression >5% |
+
+Testing Plan:
+1. Pixel Equivalence: Capture 10 sequential frames both paths (legacy vs low-copy) → byte diff tool (expected identical).
+2. Long Soak: 10 min autoplay; record max diff in frame interval vs baseline.
+3. Memory Growth: Force a WASM memory growth (load large ROM) mid-run; ensure view rebind correctly.
+4. Dirty Row Efficacy: Simulated test ROM writing only HUD region; confirm <20% rows uploaded.
+5. Palette Mode Guard: Test ROM with >256 colors (intentional corruption) triggers automatic fallback.
+
+Task Breakdown:
+- [ ] Phase 1 Implementation (push variant)  
+   - [ ] Expose GetFrameBufferAddress()+length+control block pointer  
+   - [ ] Add frameCounter increment in RunFrame() after rendering  
+   - [ ] JS: getFbMeta(), create persistent view, modify presentFrame to ignore framebuffer arg when low-copy active  
+   - [ ] Feature flag (?lcfb=1)  
+- [ ] Phase 2 Pure Pull  
+   - [ ] Remove per-frame invoke (JS rAF polls counter)  
+   - [ ] Add fallback timer (if counter not advanced >500ms while running → re-request interop path for diagnostics)  
+- [ ] Phase 3 Dirty Rows  
+   - [ ] Add dirty bitset + instrumentation (#dirtyRows/frame)  
+   - [ ] JS sub-run uploader + heuristic threshold  
+- [ ] Phase 4 Palette Mode (optional)  
+   - [ ] Color quantization & palette build (fast path early exit)  
+   - [ ] Dual-texture shader path & registration  
+   - [ ] Auto-enable only if upload time > target AND unique colors <=256 median last 120 frames  
+- [ ] Phase 5 Tile Delta (stretch)  
+   - [ ] 8x8 tile hashing + changed tile atlas uploads  
+   - [ ] Compare CPU hashing cost vs bandwidth saving  
+- [ ] Metrics & Telemetry  
+   - [ ] Record upload bytes/frame, upload ms, dirty coverage %, fallback reasons  
+   - [ ] Expose in debug overlay  
+- [ ] Documentation  
+   - [ ] Update README & hotpot doc after Phase 2 stable  
+
+Risks & Mitigations:
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| WASM memory growth invalidates buffer | Black frame / stale view | Buffer identity check + auto rebind; generation counter validation |
+| Dirty row overhead > savings | Wasted CPU | Heuristic threshold + instrumentation gating; auto disable if no win |
+| Palette quantization jitter | Color flicker | CRC stable palette; require color set stability window before enabling |
+| Extra complexity | Maintenance | Strict phase gates; keep legacy path for rapid disable |
+| Mobile GPU anomalies (subimage perf) | Slower than full upload | Detect average subimage cost > full; fallback that frame |
+
+Exit Criteria (declare HOTPOT-05 complete): Phase 2 stable + measured ≥8% total frame time reduction OR GPU upload <1.5 ms @ 60 FPS on reference mid device with no visual regressions.
 
 #### HOTPOT-06 (M) Frame Loop Ownership Inversion (JS Polling)
 - [ ] Design
