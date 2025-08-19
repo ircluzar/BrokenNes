@@ -414,67 +414,10 @@ window.nesInterop = {
             gl.viewport(0,0,canvas.width,canvas.height);
         }
     },
-    // --- Zero-copy framebuffer support ---
-    // Detect query flag (utility used from C#)
+    // Zero-copy framebuffer support removed (HOTPOT-05 rollback). Using legacy marshalled framebuffer path only.
+    // Retained generic query flag helper (used by other feature gates like Audio SAB)
     hasQueryFlag: function(flag){
         try { const u=new URL(window.location.href); const v=u.searchParams.get(flag); return v==="1"||v==="true"||v==="yes"; } catch { return false; }
-    },
-    _zcfb:{ enabled:false, canvasId:null, addr:0, len:0, view:null, frameCounter:-1 },
-    initZeroCopyFrame: function(canvasId, addr, len, width, height){
-        // Acquire WASM memory buffer from modern .NET runtime helper if available
-        let memBuf = null;
-        try {
-            if (globalThis.getDotnetRuntime){ memBuf = globalThis.getDotnetRuntime(0).getMemory(); }
-            else if (globalThis.dotnet && dotnet.instance){ memBuf = dotnet.instance.exports.memory.buffer; }
-            // Legacy (pre .NET 8) path
-            else if (globalThis.BINDING && BINDING.wasm_memory){ memBuf = BINDING.wasm_memory.buffer; }
-        } catch {}
-        if (!memBuf){ console.warn('[NES] Zero-copy FB: memory buffer not found; falling back'); return; }
-        const cache = this._ensureCanvasCache(canvasId); if(!cache) return;
-        this._zcfb.enabled=true; this._zcfb.canvasId=canvasId; this._zcfb.addr=addr; this._zcfb.len=len; this._zcfb.view=new Uint8Array(memBuf, addr, len);
-        // Force WebGL init so we can reuse shader path
-        this._initWebGL(cache.canvas);
-        // Prime initial upload
-        this._zcfb.width=width; this._zcfb.height=height; this._zcfb.frameCounter=-1;
-        console.log('[NES] Zero-copy framebuffer enabled @0x'+addr.toString(16)+' len='+len);
-    },
-    updateZeroCopyFrameBuffer: function(addr,len){
-        if(!this._zcfb.enabled) return;
-        let memBuf=null; try {
-            if (globalThis.getDotnetRuntime){ memBuf = globalThis.getDotnetRuntime(0).getMemory(); }
-            else if (globalThis.dotnet && dotnet.instance){ memBuf = dotnet.instance.exports.memory.buffer; }
-            else if (globalThis.BINDING && BINDING.wasm_memory){ memBuf = BINDING.wasm_memory.buffer; }
-        } catch {}
-        if(!memBuf){ console.warn('[NES] updateZeroCopyFrameBuffer: memory missing'); return; }
-        this._zcfb.addr=addr; this._zcfb.len=len; this._zcfb.view=new Uint8Array(memBuf, addr, len);
-        this._zcfb.frameCounter=-1;
-        console.log('[NES] Zero-copy framebuffer address updated');
-    },
-    presentZeroCopyFrame: function(frameCounter){
-        const z=this._zcfb; if(!z.enabled) return; if (frameCounter===z.frameCounter) return; // already uploaded
-        const cache=this._ensureCanvasCache(z.canvasId); if(!cache) return; if(!this._initWebGL(cache.canvas)) return;
-        const gl=this._gl; const glRes=this._glObjects; if(!gl||!glRes) return;
-        // Upload (initial texImage2D then texSub subsequent)
-        gl.bindTexture(gl.TEXTURE_2D, glRes.texture);
-        if(!glRes.initialized){
-            gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
-            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,240,0,gl.RGBA,gl.UNSIGNED_BYTE,z.view);
-            glRes.initialized=true;
-        } else {
-            gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,256,240,gl.RGBA,gl.UNSIGNED_BYTE,z.view);
-        }
-        // Reuse existing shader draw pipeline
-        gl.viewport(0,0,cache.canvas.width,cache.canvas.height);
-        if(Object.keys(this._shaderPrograms).length===0){ this._buildAllShaderPrograms(); }
-        const progInfo=this._shaderPrograms[this._activeShaderKey]||this._shaderPrograms['PX'];
-        const program=progInfo?progInfo.program:glRes.basicProgram; gl.useProgram(program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, glRes.vbo);
-        const aPos=progInfo?progInfo.aPos:glRes.aPosBasic; const aTex=progInfo?progInfo.aTex:glRes.aTexBasic;
-        gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,16,0);
-        gl.enableVertexAttribArray(aTex); gl.vertexAttribPointer(aTex,2,gl.FLOAT,false,16,8);
-        if(progInfo){ if(progInfo.uTime) gl.uniform1f(progInfo.uTime, performance.now()/1000.0); if(progInfo.uTexSize) gl.uniform2f(progInfo.uTexSize,256.0,240.0); if(progInfo.uStrength) gl.uniform1f(progInfo.uStrength,this._rfStrength); if (progInfo.options && typeof progInfo.options.onBind==='function'){ try{ progInfo.options.onBind(gl,progInfo,this);}catch{}} }
-        gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-        z.frameCounter=frameCounter;
     },
     // (toggleShader kept above for backwards compat via new implementation)
 

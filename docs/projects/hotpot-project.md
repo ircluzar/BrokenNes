@@ -12,7 +12,7 @@ Profiling + code inspection show our worst perf multipliers stem from (a) high-f
 Implemented / prototyped since initial draft:
 * ✅ HOTPOT-02: Coalesced `presentFrame` unified JS call (see `Nes.razor` & `nesInterop.presentFrame`).
 * 🚧 HOTPOT-04: AudioWorklet + SharedArrayBuffer ring prototype auto-inits on first audio buffer (fallback preserved).
-* 🚧 HOTPOT-05: Zero-copy framebuffer path (`presentZeroCopyFrame`, `updateZeroCopyFrameBuffer`) with WebGL texture upload directly from WASM memory.
+* ❌ HOTPOT-05: Zero-copy framebuffer path (prototype removed / rolled back; legacy marshalled framebuffer restored as sole path).
 * 🚧 HOTPOT-07: Partial async/state machine reduction (coalesced present reduces awaits; full ValueTask refactor pending).
 * 🔍 Instrumentation: Basic audio diagnostics (`audioDiag`) & zero-copy enable logs present.
 
@@ -26,7 +26,7 @@ Not yet started / pending major work:
 1. HOTPOT-03 Note event batching (or shared memory polling) – remove bursty micro invokes.
 2. HOTPOT-01 Packed input bitmask (and optionally JS polling) – shrink input marshaling & spikes.
 3. HOTPOT-04 Complete SAB ring integration on .NET side; eliminate legacy per-frame audio buffer on supported browsers.
-4. HOTPOT-05 Promote zero-copy framebuffer to default path; minimize/guard legacy blit path.
+4. (Removed) HOTPOT-05 Zero-copy framebuffer promotion deferred indefinitely; feature rolled back.
 5. HOTPOT-X1 Metrics + automated bench harness (X1 + X2) – enables safe iteration & regression gating.
 
 Runners-up: Finish HOTPOT-07 ValueTask refactor; consider HOTPOT-06 loop inversion only if inbound invoke remains material after above; HOTPOT-08 unmarshalled primitives if still justified post-batching.
@@ -56,7 +56,7 @@ Other hidden CLR boundaries: delegate invocation for note events (APU cores) and
 1. Replace per-frame `float[]` audio marshaling with SharedArrayBuffer + AudioWorklet (pull model) – Prototype active; finalize managed writer + feature flag / fallback.
    - Estimated gain: 8–20% total frame time reduction & lower GC churn; smoother audio under load.
    - Rationale: Copying ~1–8 KB 60 times/second + scheduling JS each frame induces GC + blocking; AudioWorklet can read directly from a ring buffer in WASM memory (or a SharedArrayBuffer we fill via `Unsafe` span copy). Frees main thread and reduces latency jitter.
-2. Zero/Low-Copy Framebuffer Transfer via WebGL texture upload from shared WASM memory – Prototype active (`presentZeroCopyFrame`); needs default rollout + validation.
+2. Zero/Low-Copy Framebuffer Transfer – Rolled back (prototype removed). Revisit only if future perf profiling justifies reintroduction.
    - Estimated gain: 8–15% (depends on resolution and current copy cost). 
    - Strategy: Expose framebuffer as pinned `Span<byte>`; JS obtains a `Uint8Array` view into the WASM linear memory (via `Blazor.platform._memory` in legacy, or upcoming `dotnet.runtime.memory` APIs) and calls `texSubImage2D` with a typed array view; .NET stops sending the array parameter—only signals dirty/ready (or JS drives the loop and reads directly each RAF).
 3. Batch Note Events (SoundFont) into a per-frame ring buffer (single interop call) – Not started.
