@@ -6,6 +6,11 @@ namespace NesEmulator
     // THIS IS A BACKUP OF THE PREVIOUS APU WHICH HAD ISSUES. DO NOT DELETE WITHOUT REVIEW.
     public class APU_LQ : IAPU
     {
+    // Core metadata
+    public string CoreName => "Low Quality";
+    public string Description => "Based on the Famiclone (FMC) core, this core adds optimizations that result is degraded experience.";
+    public int Performance => 0;
+    public int Rating => 1;
         private Bus bus;
     public APU_LQ(Bus bus)
         {

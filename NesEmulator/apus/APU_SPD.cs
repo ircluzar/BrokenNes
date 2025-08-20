@@ -6,6 +6,11 @@ namespace NesEmulator
     // THIS IS A BACKUP OF THE PREVIOUS APU WHICH HAD ISSUES. DO NOT DELETE WITHOUT REVIEW.
     public class APU_SPD : IAPU
     {
+        // Core metadata
+        public string CoreName => "Speed";
+        public string Description => "Based on the Low Power (LOW) core, this variant adds speedhacks for faster emulation.";
+        public int Performance => 0;
+        public int Rating => 5;
         private Bus bus;
     public APU_SPD(Bus bus)
     {

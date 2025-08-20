@@ -2,6 +2,11 @@ namespace NesEmulator;
 
 public interface IPPU
 {
+	// Core metadata (new)
+	string CoreName { get; }
+	string Description { get; }
+	int Performance { get; } // relative performance score (higher=faster)
+	int Rating { get; } // subjective quality rating 1..N
 	void Step(int cycles);
 	byte[] GetFrameBuffer();
 	void UpdateFrameBuffer();

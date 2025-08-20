@@ -9,6 +9,11 @@ namespace NesEmulator
     // - Implementation aims for reasonable fidelity and stable mixing; not guaranteed cycle-accurate.
     public class APU_QLQ2 : IAPU
     {
+    // Core metadata (new interface contract)
+    public string CoreName => "UNIMPLEMENTED";
+    public string Description => "UNIMPLEMENTED";
+    public int Performance => 0;
+    public int Rating => 1;
         private readonly Bus bus;
 
         // Optimization #3: LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate

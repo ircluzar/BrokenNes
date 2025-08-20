@@ -5,6 +5,11 @@ namespace NesEmulator
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
 public class PPU_EIL : IPPU
 {
+	// Core metadata
+	public string CoreName => "Emit IL";
+	public string Description => "Based on the Speed (SPD) core, this core adds hyper-optimizations at the CLR Assembly level, resulting sometimes in less compatibility.";
+	public int Performance => 0;
+	public int Rating => 2;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

@@ -5,6 +5,11 @@ namespace NesEmulator
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
 public class PPU_SPD : IPPU
 {
+	// Core metadata (new IPPU contract)
+	public string CoreName => "Speed";
+	public string Description => "Based on the Low Power (LOW) core, this variant adds speedhacks for faster emulation.";
+	public int Performance => 0;
+	public int Rating => 5;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

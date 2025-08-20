@@ -4,6 +4,11 @@ namespace NesEmulator
 {
     public class APU_LOW : IAPU
     {
+        // Core metadata
+        public string CoreName => "UNIMPLEMENTED";
+        public string Description => "UNIMPLEMENTED";
+        public int Performance => 0;
+        public int Rating => 1;
         private readonly Bus bus;
         public APU_LOW(Bus bus) { this.bus = bus; }
 

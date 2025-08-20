@@ -9,6 +9,11 @@ namespace NesEmulator
     // - Implementation aims for reasonable fidelity and stable mixing; not guaranteed cycle-accurate.
     public class APU_QN : IAPU
     {
+    // Core metadata
+    public string CoreName => "UNIMPLEMENTED";
+    public string Description => "UNIMPLEMENTED";
+    public int Performance => 0;
+    public int Rating => 1;
         private readonly Bus bus;
 
     // --- Core state ---

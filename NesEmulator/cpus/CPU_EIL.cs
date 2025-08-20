@@ -2,6 +2,11 @@ using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
 public sealed class CPU_EIL : ICPU {
+	// Core metadata
+	public string CoreName => "Emit IL";
+	public string Description => "Based on the Speed (SPD) core, this core adds hyper-optimizations at the CLR Assembly level, resulting sometimes in less compatibility.";
+	public int Performance => 0;
+	public int Rating => 2;
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

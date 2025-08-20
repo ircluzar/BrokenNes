@@ -3,6 +3,11 @@ namespace NesEmulator
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
 public class PPU_FMC : IPPU
 {
+	// Core metadata (new IPPU contract)
+	public string CoreName => "Famiclone";
+	public string Description => "The standard control component for measuring emulation progress. This core is based on NET-NES by BotRandomness.";
+	public int Performance => 0;
+	public int Rating => 3;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

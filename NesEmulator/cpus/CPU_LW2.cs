@@ -3,6 +3,11 @@ using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
 public sealed class CPU_LW2 : ICPU {
+	// Metadata defaults
+	public string CoreName => "UNIMPLEMENTED";
+	public string Description => "UNIMPLEMENTED";
+	public int Performance => 0;
+	public int Rating => 1;
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

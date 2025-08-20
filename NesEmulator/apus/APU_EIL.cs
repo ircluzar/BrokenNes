@@ -6,6 +6,11 @@ namespace NesEmulator
     // THIS IS A BACKUP OF THE PREVIOUS APU WHICH HAD ISSUES. DO NOT DELETE WITHOUT REVIEW.
     public class APU_EIL : IAPU
     {
+    // Core metadata
+    public string CoreName => "Emit IL";
+    public string Description => "Based on the Speed (SPD) core, this core adds hyper-optimizations at the CLR Assembly level, resulting sometimes in less compatibility.";
+    public int Performance => 0;
+    public int Rating => 2;
         private Bus bus;
     public APU_EIL(Bus bus)
     {

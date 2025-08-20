@@ -3,6 +3,11 @@ namespace NesEmulator
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
 public class PPU_BFR : IPPU
 {
+	// Core metadata
+	public string CoreName => "UNIMPLEMENTED";
+	public string Description => "UNIMPLEMENTED";
+	public int Performance => 0;
+	public int Rating => 1;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

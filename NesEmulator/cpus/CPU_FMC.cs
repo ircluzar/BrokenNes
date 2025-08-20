@@ -2,6 +2,11 @@ using System.Runtime.CompilerServices;
 namespace NesEmulator
 {
 public class CPU_FMC : ICPU {
+	// Metadata defaults
+	public string CoreName => "Famiclone";
+	public string Description => "The standard control component for measuring emulation progress. This core is based on NET-NES by BotRandomness.";
+	public int Performance => 0;
+	public int Rating => 3;
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

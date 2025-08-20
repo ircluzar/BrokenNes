@@ -6,6 +6,11 @@ namespace NesEmulator
     // THIS IS A BACKUP OF THE PREVIOUS APU WHICH HAD ISSUES. DO NOT DELETE WITHOUT REVIEW.
     public class APU_SPD2 : IAPU
     {
+        // Core metadata
+        public string CoreName => "UNIMPLEMENTED";
+        public string Description => "UNIMPLEMENTED";
+        public int Performance => 0;
+        public int Rating => 1;
         private Bus bus;
     public APU_SPD2(Bus bus)
     {

@@ -110,6 +110,11 @@ public sealed class ShaderGenerator : IIncrementalGenerator
             sb.AppendLine($"    public string Id => \"{id}\";");
             var displayName = string.IsNullOrWhiteSpace(parts.DisplayName) ? id : parts.DisplayName!;
             sb.AppendLine($"    public string DisplayName => \"{Verbatim(displayName)}\";");
+            // Added core metadata default implementations to satisfy extended IShader interface
+            sb.AppendLine("    public string CoreName => \"UNIMPLEMENTED\";");
+            sb.AppendLine("    public string Description => \"UNIMPLEMENTED\";");
+            sb.AppendLine("    public int Performance => 0;");
+            sb.AppendLine("    public int Rating => 1;");
             if (parts.Vertex is null) sb.AppendLine("    public string? VertexSource => null;");
             else sb.AppendLine($"    public string? VertexSource => @\"{Verbatim(parts.Vertex)}\";");
             sb.AppendLine($"    public string FragmentSource => @\"{Verbatim(parts.Fragment!)}\";");
