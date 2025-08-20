@@ -2,6 +2,7 @@
 @inject IJSRuntime JS
 
 <div class="options-root">
+    <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
     <h2 class="opt-title">OPTIONS</h2>
     <div class="opt-sections">
         <section class="opt-section">
@@ -36,6 +37,8 @@
     {
         // Keep audio context alive when visiting options
         try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    // Ensure animated background is started (shared with Home)
+    try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
     }
 
     private void OnVolChange(ChangeEventArgs e)

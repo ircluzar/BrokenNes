@@ -361,15 +361,54 @@ canvas {
     filter: hue-rotate(180deg) saturate(2);
 }
 
-.loading-progress-text {
-    font-family: 'Press Start 2P', monospace;
-    color: var(--nes-accent);
-    font-size: 0.7rem;
+/* Simple centered loading layout */
+.loading-center {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--nes-darker-bg, #000);
+    z-index: 9999;
 }
 
-.loading-progress-text:after {
-    content: var(--blazor-load-percentage-text, "LOADING SYSTEM...");
+.loader-ring {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
+
+.loader-ring .loading-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.loader-ring .lp-fill {
+    fill: #000;
+    stroke: #000;
+}
+
+.loading-progress-text {
+    font-family: 'Press Start 2P', monospace;
+    color: #b80f1f; /* darker red */
+    font-size: 3rem;
+    text-align: center;
+    line-height: 1;
+    text-shadow: 0 0 4px #000;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+}
+
+body.loaded .loading-center { display: none; }
 
 /* Code blocks */
 code {

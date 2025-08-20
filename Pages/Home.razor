@@ -6,6 +6,8 @@
 @if (!showHealthWarning)
 {
     <div class="home-hero hero-fade-in">
+        <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
+        <div class="pixel-vignette" aria-hidden="true"></div>
         <div class="hero-inner title-screen">
             <h1 class="hero-title fade-seq" data-seq="0">Broken<span>Nes</span></h1>
             <div class="title-buttons">
@@ -14,6 +16,9 @@
                     <button class="title-secondary fade-seq" data-seq="2" @onclick="BootAndEnter" aria-label="Open Emulator">BrokenNes Emulator</button>
                     <button class="title-secondary fade-seq" data-seq="3" @onclick="NavigateOptions" aria-label="Options">Options</button>
                     <button class="title-secondary fade-seq" data-seq="4" @onclick="ShowAbout" aria-label="About">About</button>
+                </div>
+                <div class="title-footer fade-seq" data-seq="5">
+                    <a href="https://redscientist.com" target="_blank" rel="noopener noreferrer" aria-label="Visit Redscientist Labs website">2025 - Redscientist Labs</a>
                 </div>
             </div>
         </div>
@@ -56,6 +61,8 @@
     private bool aboutVisible = false;
     private string BuildVersion => typeof(Program).Assembly.GetName().Version?.ToString() ?? "?";
     private bool _titleStarted = false;
+    // (Inline DateTime used now; keeping property optional if needed later)
+    private int CurrentYear => DateTime.UtcNow.Year; // unused currently
 
     protected override void OnInitialized()
     {
@@ -79,6 +86,10 @@
             _titleStarted = true;
             try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
             try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch { }
+            // Start pixel background after title sequence starts
+            try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+            // Safety delayed retry (in case container not yet in DOM due to render timing)
+            try { await JS.InvokeVoidAsync("eval", "setTimeout(()=>{window.homePixelBgEnsure && window.homePixelBgEnsure();}, 350);"); } catch { }
         }
     }
 
@@ -99,6 +110,8 @@
             // Fade out title music before entering emulator
             try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch {}
             try { await JS.InvokeVoidAsync("eval", "window.__brokenNesPreBoot=1"); } catch {}
+            // Stop pixel background before leaving page
+            try { await JS.InvokeVoidAsync("eval", "window.homePixelBg && window.homePixelBg.stop()"); } catch { }
         }
         catch { }
     Nav.NavigateTo(BuildRel("nes"), forceLoad: false);
@@ -106,11 +119,13 @@
 
     private void OpenDeckBuilder()
     {
+    // Keep animated background alive between Home and Deck Builder
     Nav.NavigateTo(BuildRel("deck-builder"), forceLoad: false);
     }
 
     private void NavigateOptions()
     {
+    // Keep animated background alive between Home and Options
     Nav.NavigateTo(BuildRel("options"), forceLoad: false);
     }
 
@@ -126,5 +141,7 @@
         showHealthWarning = false;
     // Start looping title music (fade in handled in JS)
     try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch {}
+    // Start pixel background now that hero will appear
+    try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure(); setTimeout(()=>{window.homePixelBgEnsure && window.homePixelBgEnsure();}, 350);"); } catch { }
     }
 }

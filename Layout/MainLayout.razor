@@ -23,7 +23,8 @@
 @code {
     private void NavigateHome()
     {
-        Nav.NavigateTo("/?skipHW=1", forceLoad: false);
+        // Use relative navigation (no leading slash) so subfolder hosting works (avoids resetting to domain root)
+        Nav.NavigateTo("./?skipHW=1", forceLoad: false);
     }
 
     private void OnBrandKey(KeyboardEventArgs e)

@@ -2,6 +2,7 @@
 @inject IJSRuntime JS
 
 <div class="deck-root">
+    <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
     <h2 class="deck-title">DECK BUILDER</h2>
     <p class="deck-note">(Prototype) Configure a virtual control deck layout. Features coming soon.</p>
     <div class="deck-grid">
@@ -24,5 +25,7 @@
     {
         // Keep audio context alive when visiting deck builder
         try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    // Ensure animated background is started (shared with Home)
+    try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
     }
 }

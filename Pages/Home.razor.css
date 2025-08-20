@@ -1,4 +1,17 @@
-.home-hero{min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:2rem;background:#000;text-align:center;image-rendering:pixelated;}
+.home-hero{min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:2rem;background:#000;text-align:center;image-rendering:pixelated;position:relative;overflow:hidden;}
+.pixel-bg-host{position:absolute;inset:0;z-index:0;pointer-events:none;}
+.pixel-bg-host .hp-tile{position:absolute;will-change:opacity;}
+.home-hero > .hero-inner{position:relative;z-index:10;}
+.pixel-vignette{position:absolute;inset:0;z-index:5;pointer-events:none;background:
+	radial-gradient(circle at center,rgba(0,0,0,0) 55%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0.85) 100%),
+	repeating-conic-gradient(from 45deg,rgba(0,0,0,0) 0deg,rgba(0,0,0,0) 15deg,rgba(30,0,0,0.35) 15deg,rgba(30,0,0,0.35) 30deg);
+	mix-blend-mode:normal;animation:vignetteSpin 180s linear infinite;}
+@keyframes vignetteSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+/* Hard square dither mask at edges */
+.pixel-vignette:after{content:"";position:absolute;inset:0;background:
+	repeating-linear-gradient(90deg,rgba(0,0,0,0) 0 6px,rgba(0,0,0,0.6) 6px 12px),
+	repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 6px,rgba(0,0,0,0.65) 6px 12px);
+	opacity:.55;mask:radial-gradient(circle at center, #000 60%, transparent 100%);}
 .hero-inner{max-width:760px;}
 .hero-title{font-family:'Press Start 2P', monospace;font-size:clamp(2.1rem,6vw,4rem);line-height:1.05;margin:0 0 1rem;font-weight:400;letter-spacing:2px;color:#ff5a26;text-shadow:none;filter:none;}
 .hero-title span{color:#ffffff;}
@@ -25,11 +38,13 @@
 
 /* Title screen specific (8-bit flat style) */
 .title-screen{display:flex;flex-direction:column;align-items:center;gap:1.5rem;padding:1.25rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:#000;box-shadow:none;}
-.title-buttons{display:flex;flex-direction:column;align-items:center;gap:1.25rem;width:100%;}
+.title-buttons{display:flex;flex-direction:column;align-items:center;gap:1.9rem;width:100%;}/* increased gap to give more air between Deck Builder and first secondary button */
 .title-primary{font-family:'Press Start 2P', monospace;font-size:clamp(1.4rem,3.8vw,2.4rem);padding:1.1rem 2.2rem;border:4px solid #ff5a26;background:#000;color:#ffffff;letter-spacing:2px;box-shadow:none;border-radius:0;cursor:pointer;transition:background .05s steps(2,end),transform .05s steps(2,end),color .05s steps(2,end);}
 .title-primary:hover,.title-primary:focus{background:#ff5a26;color:#000;transform:translateY(-3px);}
 .title-primary:active{background:#b23f1a;color:#fff;transform:translateY(0);}
-.title-secondary-group{display:flex;flex-direction:column;align-items:center;gap:.6rem;}
+.title-secondary-group{display:flex;flex-direction:column;align-items:center;gap:.6rem;}/* base gap unchanged for first two secondary buttons */
+/* Add extra vertical space specifically before the About button without affecting other secondary button spacing */
+.title-secondary-group .title-secondary:last-child{margin-top:.55rem;} /* effective space Options->About: .6rem + .55rem = 1.15rem */
 .title-secondary{font-family:'Press Start 2P', monospace;font-size:clamp(.7rem,1.4vw,.95rem);padding:.7rem 1.25rem;border:3px solid #ffffff;background:#000;color:#ffffff;letter-spacing:1px;box-shadow:none;border-radius:0;cursor:pointer;transition:background .05s steps(2,end),color .05s steps(2,end),transform .05s steps(2,end);}
 .title-secondary:hover,.title-secondary:focus{background:#ffffff;color:#000;transform:translateY(-2px);}
 .title-secondary:active{background:#c0c0c0;color:#000;transform:translateY(0);}
@@ -43,11 +58,13 @@
 .fade-seq[data-seq="2"]{animation-delay:.68s;}
 .fade-seq[data-seq="3"]{animation-delay:.86s;}
 .fade-seq[data-seq="4"]{animation-delay:1.02s;}
+.fade-seq[data-seq="5"]{animation-delay:1.18s;}
 
 @media (max-width:620px){
 		.title-primary{font-size:clamp(1.2rem,5vw,2.1rem);padding:1rem 1.6rem;}
 		.title-secondary{font-size:.65rem;padding:.65rem 1rem;}
-		.title-buttons{gap:1rem;}
+		.title-buttons{gap:1.5rem;} /* still add extra air on small screens */
+		.title-secondary-group .title-secondary:last-child{margin-top:.5rem;} /* slightly smaller additive gap on narrow layouts */
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -83,3 +100,11 @@
 .about-close{margin-top:1.25rem;display:inline-block;padding:.65rem 1.25rem;border:3px solid #ff5a26;background:#000;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;cursor:pointer;transition:background .05s steps(2,end),color .05s steps(2,end);} 
 .about-close:hover,.about-close:focus{background:#ff5a26;color:#000;}
 .about-close:active{background:#b23f1a;color:#fff;}
+
+/* Title footer link */
+.title-footer{margin-top:.8rem;font-family:'Press Start 2P', monospace;font-size:clamp(.5rem,.9vw,.65rem);letter-spacing:1px;/* opacity controlled by fade animation; removed base .85 so it can start at 0 */}
+.title-footer.fade-seq[data-seq="5"]{animation-name:fadeSeqFooter;}
+@keyframes fadeSeqFooter{0%{opacity:0;transform:translateY(18px) scale(.97);}50%{opacity:.65;}100%{opacity:.85;transform:translateY(0) scale(1);} }
+.title-footer a{color:#c0c0c0;text-decoration:none;transition:color .1s steps(2,end);}
+.title-footer a:hover,.title-footer a:focus{color:#ffffff;text-decoration:underline;}
+.title-footer a:active{color:#ff5a26;}

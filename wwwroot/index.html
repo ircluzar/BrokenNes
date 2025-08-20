@@ -22,11 +22,14 @@
 
 <body>
     <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
+        <div class="loading-center">
+            <div class="loader-ring">
+                <svg class="loading-progress" viewBox="0 0 100 100" role="img" aria-label="Loading">
+                    <circle class="lp-fill" r="48" cx="50" cy="50" />
+                </svg>
+                <div class="loading-progress-text" aria-live="polite">0%</div>
+            </div>
+        </div>
     </div>
 
     <div id="blazor-error-ui">
@@ -36,9 +39,30 @@
     </div>
     <!-- Generic entry point; importmap (added during publish) maps to hashed file -->
     <script src="./_framework/blazor.webassembly.js"></script>
+    <script>
+        // Mirror Blazor's CSS variable (--blazor-load-percentage-text) into visible text content.
+        (function () {
+            const el = document.querySelector('.loading-progress-text');
+            if (!el) return;
+            let last = '';
+            function readVar() {
+                const raw = getComputedStyle(document.documentElement).getPropertyValue('--blazor-load-percentage-text');
+                if (raw) {
+                    const cleaned = raw.replace(/["']/g, '').trim();
+                    if (cleaned && cleaned !== last) {
+                        el.textContent = cleaned;
+                        last = cleaned;
+                    }
+                }
+                if (!document.body.classList.contains('loaded')) requestAnimationFrame(readVar);
+            }
+            requestAnimationFrame(readVar);
+        })();
+    </script>
     <script src="soundfont.js"></script>
     <script src="mnesSf2.js"></script>
     <script src="nesInterop.js"></script>
+    <script src="homePixelBg.js"></script>
 </body>
 
 </html>

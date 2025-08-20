@@ -1,4 +1,5 @@
 .deck-root{max-width:860px;margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:#000;color:#fff;font-family:'Press Start 2P', monospace;}
+.deck-root{position:relative;overflow:hidden;}
 .deck-title{margin:0 0 1rem;font-size:1.7rem;color:#ff5a26;}
 .deck-note{font-size:.65rem;margin:0 0 1.5rem;color:#c0c0c0;}
 .deck-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:.75rem;}
