@@ -7,6 +7,8 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.WebAssembly.Services
+@using BrokenNes.Models
+@using BrokenNes.CorruptorModels
 @inject ILogger<Nes> Logger
 @inject IJSRuntime JS
 @inject HttpClient Http
@@ -856,49 +858,140 @@
 </div>
 
 @code {
+    // --- Controller instances ---
+    private NesController nesController = new();
+    private Corruptor corruptor = new();
+
     // --- Save state persistence enhancements ---
     // We compress (GZip) and, if still large, chunk state across multiple IndexedDB entries (kv store) to avoid size issues.
     // Manifest key: SaveKey+".manifest" holds JSON {version, compressed, parts}
     // Single-key format: prefix "GZ:" indicates base64 GZip payload.
     private const int SaveChunkCharSize = 900_000; // conservative chunk size (< ~1MB characters) to fit storage limits
 
-    private NesEmulator.NES? nes;
-    private byte[] framebuffer = new byte[256 * 240 * 4]; // Legacy framebuffer path only (HOTPOT-05 zero-copy removed)
+    private NesEmulator.NES? nes
+    {
+        get => nesController.nes;
+        set => nesController.nes = value;
+    }
+    private byte[] framebuffer
+    {
+        get => nesController.framebuffer;
+        set => nesController.framebuffer = value;
+    }
     // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
     // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
-    private bool[] inputState = new bool[8]; // Up, Down, Left, Right, A, B, Select, Start
+    private bool[] inputState => nesController.inputState; // Up, Down, Left, Right, A, B, Select, Start
     
-    private string errorMessage = "";
+    private string errorMessage
+    {
+        get => nesController.ErrorMessage;
+        set => nesController.ErrorMessage = value;
+    }
     // status moved to StatusService
-    private bool isRunning = false;
-    private bool hasBooted = true; // Auto-boot enabled (was previously gated by user BOOT click)
-    private float fps = 0.0f;
-    private int frameCount = 0;
-    private DateTime lastFpsUpdate = DateTime.Now;
-    private int lastFrameCount = 0;
-    private string romFileName = "test.nes";
-    private string currentRomName = "None";
-    private string romSearch = string.Empty;
-    private int lastLoadedRomSize = 0; // bytes
-    private readonly Dictionary<string,int> builtInRomSizes = new();
-    private bool fastForward = false; // hold Tab to fast-forward
-    private int statsUpdateDivider = 6; // update stats/UI every N frames (visual draw still every frame)
+    private bool isRunning
+    {
+        get => nesController.IsRunning;
+        set => nesController.IsRunning = value;
+    }
+    private bool hasBooted => nesController.HasBooted; // Auto-boot enabled (was previously gated by user BOOT click)
+    private float fps
+    {
+        get => nesController.Fps;
+        set => nesController.Fps = value;
+    }
+    private int frameCount
+    {
+        get => nesController.FrameCount;
+        set => nesController.FrameCount = value;
+    }
+    private DateTime lastFpsUpdate
+    {
+        get => nesController.LastFpsUpdate;
+        set => nesController.LastFpsUpdate = value;
+    }
+    private int lastFrameCount
+    {
+        get => nesController.LastFrameCount;
+        set => nesController.LastFrameCount = value;
+    }
+    private string romFileName
+    {
+        get => nesController.RomFileName;
+        set => nesController.RomFileName = value;
+    }
+    private string currentRomName
+    {
+        get => nesController.CurrentRomName;
+        set => nesController.CurrentRomName = value;
+    }
+    private string romSearch
+    {
+        get => nesController.RomSearch;
+        set => nesController.RomSearch = value;
+    }
+    private int lastLoadedRomSize
+    {
+        get => nesController.LastLoadedRomSize;
+        set => nesController.LastLoadedRomSize = value;
+    }
+    private Dictionary<string,int> builtInRomSizes => nesController.BuiltInRomSizes;
+    private bool fastForward
+    {
+        get => nesController.FastForward;
+        set => nesController.FastForward = value;
+    }
+    private int statsUpdateDivider => nesController.StatsUpdateDivider; // update stats/UI every N frames (visual draw still every frame)
     // Shader system (dynamic)
-    private bool shaderOn = true; // legacy flag retained for status messaging (true if not the basic pass-through)
-    private string activeShaderKey = "RF"; // default key
-    private record ShaderOption(string Key, string Label);
-    private List<ShaderOption> shaderOptions = new();
-    private bool famicloneOn = true; // default ON per requirement
-    private string apuCoreSel = ""; // dynamic suffix (e.g. FMC, FIX, QN, etc.)
-    private string cpuCoreSel = ""; // dynamic suffix
-    private string ppuCoreSel = "FMC"; // default to enhanced CUBE core
-    private List<string> apuCoreOptions = new();
-    private List<string> cpuCoreOptions = new();
-    private List<string> ppuCoreOptions = new();
-    private double emuScale = 1.0; // 1.0 or 0.5 (desktop only)
-    private bool isFullscreen = false; // track fullscreen state
+    private bool shaderOn
+    {
+        get => nesController.ShaderOn;
+        set => nesController.ShaderOn = value;
+    }
+    private string activeShaderKey
+    {
+        get => nesController.ActiveShaderKey;
+        set => nesController.ActiveShaderKey = value;
+    }
+    private List<ShaderOption> shaderOptions => nesController.ShaderOptions;
+    private bool famicloneOn
+    {
+        get => nesController.FamicloneOn;
+        set => nesController.FamicloneOn = value;
+    }
+    private string apuCoreSel
+    {
+        get => nesController.ApuCoreSel;
+        set => nesController.ApuCoreSel = value;
+    }
+    private string cpuCoreSel
+    {
+        get => nesController.CpuCoreSel;
+        set => nesController.CpuCoreSel = value;
+    }
+    private string ppuCoreSel
+    {
+        get => nesController.PpuCoreSel;
+        set => nesController.PpuCoreSel = value;
+    }
+    private List<string> apuCoreOptions => nesController.ApuCoreOptions;
+    private List<string> cpuCoreOptions => nesController.CpuCoreOptions;
+    private List<string> ppuCoreOptions => nesController.PpuCoreOptions;
+    private double emuScale
+    {
+        get => nesController.EmuScale;
+        set => nesController.EmuScale = value;
+    }
+    private bool isFullscreen
+    {
+        get => nesController.IsFullscreen;
+        set => nesController.IsFullscreen = value;
+    }
     // Flag to disable automatic test ROM static after any savestate load
-    private bool autoStaticSuppressed = false;
+    private bool autoStaticSuppressed
+    {
+        get => nesController.AutoStaticSuppressed;
+        set => nesController.AutoStaticSuppressed = value;
+    }
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
     private string mobileFsView = "controller";
     private bool touchControllerInitialized = false;
@@ -1107,29 +1200,74 @@
         }
     }
 
-    // Corruptor state
-    private int corruptIntensity = 1; // default minimal intensity
-    private string lastBlastInfo = "";
-    private class DomainSel { public string Key=""; public string Label=""; public bool Selected=true; public int Size; }
-    private List<DomainSel> memoryDomains = new();
-    private string crashBehavior = "IgnoreErrors"; // default to ignore errors
-    private bool autoCorrupt = false;
-    private readonly Random corruptRnd = new();
-    private string blastType = "RANDOM"; // corruption mode
-    private bool letItRipUsed = false; // hide Let it rip button after first click
+    // Corruptor state - delegate to corruptor instance
+    private int corruptIntensity 
+    {
+        get => corruptor.CorruptIntensity;
+        set => corruptor.CorruptIntensity = value;
+    }
+    private string lastBlastInfo
+    {
+        get => corruptor.LastBlastInfo;
+        set => corruptor.LastBlastInfo = value;
+    }
+    private List<DomainSel> memoryDomains => corruptor.MemoryDomains;
+    private string crashBehavior
+    {
+        get => corruptor.CrashBehavior;
+        set => corruptor.CrashBehavior = value;
+    }
+    private bool autoCorrupt
+    {
+        get => corruptor.AutoCorrupt;
+        set => corruptor.AutoCorrupt = value;
+    }
+    private Random corruptRnd => corruptor.CorruptRnd;
+    private string blastType
+    {
+        get => corruptor.BlastType;
+        set => corruptor.BlastType = value;
+    }
+    private bool letItRipUsed
+    {
+        get => corruptor.LetItRipUsed;
+        set => corruptor.LetItRipUsed = value;
+    }
     // ================= Glitch Harvester state =================
-    private class HarvesterBaseState { public string Id {get;set;} = Guid.NewGuid().ToString(); public string Name {get;set;} = string.Empty; public string State {get;set;} = string.Empty; public DateTime Created {get;set;} = DateTime.UtcNow; }
-    private class BlastInstruction { public string Domain {get;set;} = string.Empty; public int Address {get;set;} public byte Value {get;set;} }
-    private class HarvestEntry { public string Id {get;set;} = Guid.NewGuid().ToString(); public string Name {get;set;} = string.Empty; public string BaseStateId {get;set;} = string.Empty; public List<BlastInstruction> Writes {get;set;} = new(); public DateTime Created {get;set;} = DateTime.UtcNow; }
-    private List<HarvesterBaseState> ghBaseStates = new();
-    private List<HarvestEntry> ghStash = new();
-    private List<HarvestEntry> ghStockpile = new();
-    private string ghSelectedBaseId = string.Empty;
-    private string ghNewBaseName = string.Empty;
-    private int ghStashCounter = 0;
-    private int ghStockpileCounter = 0;
-    private string? ghRenamingId = null; private string ghRenameText = string.Empty;
-    private bool GhHasSelectedBase => ghBaseStates.Any(b=>b.Id==ghSelectedBaseId);
+    private List<HarvesterBaseState> ghBaseStates => corruptor.GhBaseStates;
+    private List<HarvestEntry> ghStash => corruptor.GhStash;
+    private List<HarvestEntry> ghStockpile => corruptor.GhStockpile;
+    private string ghSelectedBaseId
+    {
+        get => corruptor.GhSelectedBaseId;
+        set => corruptor.GhSelectedBaseId = value;
+    }
+    private string ghNewBaseName
+    {
+        get => corruptor.GhNewBaseName;
+        set => corruptor.GhNewBaseName = value;
+    }
+    private int ghStashCounter
+    {
+        get => corruptor.GhStashCounter;
+        set => corruptor.GhStashCounter = value;
+    }
+    private int ghStockpileCounter
+    {
+        get => corruptor.GhStockpileCounter;
+        set => corruptor.GhStockpileCounter = value;
+    }
+    private string? ghRenamingId
+    {
+        get => corruptor.GhRenamingId;
+        set => corruptor.GhRenamingId = value;
+    }
+    private string ghRenameText
+    {
+        get => corruptor.GhRenameText;
+        set => corruptor.GhRenameText = value;
+    }
+    private bool GhHasSelectedBase => corruptor.GhHasSelectedBase;
     // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
     private DotNetObjectReference<Nes>? _selfRef;
 
@@ -1260,18 +1398,8 @@
     }
 
     // ROM option model & storage for uploaded ROMs
-    private class RomOption
-    {
-        public string Key { get; set; } = string.Empty; // unique key (filename or generated)
-        public string Label { get; set; } = string.Empty; // display text
-        public bool BuiltIn { get; set; }
-    }
-
-    private List<RomOption> romOptions = new()
-    {
-    new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true}
-    };
-    private readonly Dictionary<string, byte[]> uploadedRoms = new();
+    private List<RomOption> romOptions => nesController.RomOptions;
+    private Dictionary<string, byte[]> uploadedRoms => nesController.UploadedRoms;
     private ElementReference fileInput;
     private bool IsBuiltInSelected => romOptions.FirstOrDefault(o => o.Key == romFileName)?.BuiltIn ?? true;
     private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(romSearch)
@@ -1901,7 +2029,7 @@
         {
             await JS.InvokeVoidAsync("nesInterop.removeStoredRom", k);
         }
-        romOptions = romOptions.Where(o=>o.BuiltIn).ToList();
+        nesController.RomOptions = nesController.RomOptions.Where(o=>o.BuiltIn).ToList();
         uploadedRoms.Clear();
         if (!IsBuiltInSelected)
         {
@@ -2734,13 +2862,13 @@
 
     private void BuildMemoryDomains()
     {
-        memoryDomains.Clear();
+        corruptor.MemoryDomains.Clear();
         if (nes == null) return;
         try {
-            memoryDomains.Add(new DomainSel{ Key="PRG", Label="PRG ROM", Size=GetApproxSize(idx=>nes.PeekPrg(idx)), Selected=false});
-            memoryDomains.Add(new DomainSel{ Key="PRGRAM", Label="PRG RAM", Size=GetApproxSize(idx=>nes.PeekPrgRam(idx)), Selected=false});
-            memoryDomains.Add(new DomainSel{ Key="CHR", Label="CHR", Size=GetApproxSize(idx=>nes.PeekChr(idx)), Selected=false});
-            memoryDomains.Add(new DomainSel{ Key="RAM", Label="System RAM", Size=2048, Selected=true});
+            corruptor.MemoryDomains.Add(new DomainSel{ Key="PRG", Label="PRG ROM", Size=GetApproxSize(idx=>nes.PeekPrg(idx)), Selected=false});
+            corruptor.MemoryDomains.Add(new DomainSel{ Key="PRGRAM", Label="PRG RAM", Size=GetApproxSize(idx=>nes.PeekPrgRam(idx)), Selected=false});
+            corruptor.MemoryDomains.Add(new DomainSel{ Key="CHR", Label="CHR", Size=GetApproxSize(idx=>nes.PeekChr(idx)), Selected=false});
+            corruptor.MemoryDomains.Add(new DomainSel{ Key="RAM", Label="System RAM", Size=2048, Selected=true});
         } catch {}
         StateHasChanged();
     }
@@ -2813,74 +2941,33 @@
     {
         // TODO: implement manual multiple select tracking if needed
     }
-    private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptIntensity = Math.Clamp(v,1,65535); }
+    private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptor.CorruptIntensity = Math.Clamp(v,1,65535); }
     private void OnIntensityBoxChange(ChangeEventArgs e) { OnIntensityChange(e); }
-    private void ToggleAutoCorruptButton() { autoCorrupt = !autoCorrupt; lastBlastInfo = autoCorrupt ? "Auto-corrupt enabled" : "Auto-corrupt disabled"; }
+    private void ToggleAutoCorruptButton() { corruptor.AutoCorrupt = !corruptor.AutoCorrupt; corruptor.LastBlastInfo = corruptor.AutoCorrupt ? "Auto-corrupt enabled" : "Auto-corrupt disabled"; }
     private void LetItRip()
     {
-        corruptIntensity = 1;
+        corruptor.CorruptIntensity = 1;
         foreach (var d in memoryDomains)
         {
             d.Selected = d.Key == "PRG" || d.Key == "RAM"; // Only PRG ROM & System RAM
         }
-        if (!autoCorrupt)
+        if (!corruptor.AutoCorrupt)
         {
-            autoCorrupt = true;
-            lastBlastInfo = "Auto-corrupt enabled (Let it rip)";
+            corruptor.AutoCorrupt = true;
+            corruptor.LastBlastInfo = "Auto-corrupt enabled (Let it rip)";
         }
         else
         {
-            lastBlastInfo = "Let it rip engaged";
+            corruptor.LastBlastInfo = "Let it rip engaged";
         }
-    letItRipUsed = true;
+        letItRipUsed = true;
         StateHasChanged();
     }
 
     private Task Blast()
     {
         if (nes == null) return Task.CompletedTask;
-        var selected = memoryDomains.Where(d=>d.Selected && d.Size>0).ToList();
-        if (selected.Count==0) return Task.CompletedTask;
-        int writes = Math.Clamp(corruptIntensity,1,4096);
-        for (int i=0;i<writes;i++)
-        {
-            var d = selected[corruptRnd.Next(selected.Count)];
-            int addr = corruptRnd.Next(d.Size);
-            byte orig = 0;
-            switch (d.Key) {
-                case "PRG": orig = nes.PeekPrg(addr); break;
-                case "PRGRAM": orig = nes.PeekPrgRam(addr); break;
-                case "CHR": orig = nes.PeekChr(addr); break;
-                case "RAM": orig = nes.PeekSystemRam(addr); break;
-            }
-            string mode = blastType;
-            if (mode == "RANDOMTILT") mode = corruptRnd.Next(2)==0 ? "RANDOM" : "TILT";
-            byte newVal = orig;
-            switch (mode)
-            {
-                case "RANDOM":
-                    newVal = (byte)corruptRnd.Next(256);
-                    break;
-                case "TILT":
-                    // +/-1 with wrap
-                    newVal = (byte)(orig + (corruptRnd.Next(2)==0 ? 1 : 255));
-                    break;
-                case "NOP":
-                    newVal = 0xEA; // 6502 NOP
-                    break;
-                case "BITFLIP":
-                    int bit = corruptRnd.Next(8);
-                    newVal = (byte)(orig ^ (1 << bit));
-                    break;
-            }
-            switch (d.Key) {
-                case "PRG": nes.PokePrg(addr,newVal); break;
-                case "PRGRAM": nes.PokePrgRam(addr,newVal); break;
-                case "CHR": nes.PokeChr(addr,newVal); break;
-                case "RAM": nes.PokeSystemRam(addr,newVal); break;
-            }
-        }
-        lastBlastInfo = autoCorrupt ? $"Auto {writes} ({blastType})/{selected.Count} domain(s)" : $"{blastType}: {writes} writes over {selected.Count} domain(s)";
+        corruptor.Blast(nes);
         return Task.CompletedTask;
     }
 
@@ -2888,7 +2975,7 @@
     {
         if (e.Value is string v && !string.IsNullOrWhiteSpace(v))
         {
-            blastType = v.Trim().ToUpperInvariant();
+            corruptor.BlastType = v.Trim().ToUpperInvariant();
         }
     }
 
@@ -2898,72 +2985,75 @@
         if (nes == null) return;
         try
         {
-            var raw = nes.SaveState();
-            if (string.IsNullOrEmpty(raw)) return;
-            var name = string.IsNullOrWhiteSpace(ghNewBaseName) ? $"Base {ghBaseStates.Count+1}" : ghNewBaseName.Trim();
-            var b = new HarvesterBaseState { Name = name, State = raw };
-            ghBaseStates.Add(b);
-            ghSelectedBaseId = b.Id;
-            ghNewBaseName = string.Empty;
+            corruptor.GhAddBaseState(nes);
         }
-    catch (Exception ex) { Status.Set("GH base add failed: "+ex.Message); }
+        catch (Exception ex) { Status.Set("GH base add failed: "+ex.Message); }
     }
     private void GhOnBaseChanged(ChangeEventArgs e)
-    { if (e.Value is string v) ghSelectedBaseId = v; }
+    { 
+        if (e.Value is string v) 
+            corruptor.GhSelectedBaseId = v; 
+    }
     private async Task GhLoadSelectedBase()
     {
-    if (nes == null) return; var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; try { nes.LoadState(b.State); autoStaticSuppressed = true; framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); Status.Set($"Loaded base '{b.Name}'"); } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
+        if (nes == null) return; 
+        var b = corruptor.GhBaseStates.FirstOrDefault(x=>x.Id==corruptor.GhSelectedBaseId); 
+        if (b==null) return; 
+        try { 
+            nes.LoadState(b.State); 
+            nesController.AutoStaticSuppressed = true; 
+            nesController.framebuffer = nes.GetFrameBuffer(); 
+            await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); 
+            Status.Set($"Loaded base '{b.Name}'"); 
+        } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
     }
     private void GhDeleteSelectedBase()
-    { var b = ghBaseStates.FirstOrDefault(x=>x.Id==ghSelectedBaseId); if (b==null) return; ghBaseStates.Remove(b); if (!ghBaseStates.Any()) ghSelectedBaseId = string.Empty; else ghSelectedBaseId = ghBaseStates.Last().Id; }
-    private List<BlastInstruction> GhGenerateBlastLayer(int writes)
-    {
-        var result = new List<BlastInstruction>();
-        var selected = memoryDomains.Where(d=>d.Selected && d.Size>0).ToList(); if (selected.Count==0) return result; writes = Math.Clamp(writes,1,4096);
-        for (int i=0;i<writes;i++)
-        {
-            var d = selected[corruptRnd.Next(selected.Count)];
-            int addr = corruptRnd.Next(d.Size);
-            byte orig = 0; try { switch(d.Key){ case "PRG": orig = nes?.PeekPrg(addr)??0; break; case "PRGRAM": orig = nes?.PeekPrgRam(addr)??0; break; case "CHR": orig = nes?.PeekChr(addr)??0; break; case "RAM": orig = nes?.PeekSystemRam(addr)??0; break; } } catch {}
-            string mode = blastType; if (mode=="RANDOMTILT") mode = corruptRnd.Next(2)==0?"RANDOM":"TILT"; byte newVal = orig; switch(mode){ case "RANDOM": newVal = (byte)corruptRnd.Next(256); break; case "TILT": newVal = (byte)(orig + (corruptRnd.Next(2)==0 ? 1 : 255)); break; case "NOP": newVal = 0xEA; break; case "BITFLIP": int bit = corruptRnd.Next(8); newVal = (byte)(orig ^ (1<<bit)); break; }
-            result.Add(new BlastInstruction{ Domain=d.Key, Address=addr, Value=newVal });
-        }
-        return result;
-    }
-    private void GhApplyBlastLayer(IEnumerable<BlastInstruction> writes)
-    {
-        if (nes==null) return; foreach (var w in writes){ try { switch(w.Domain){ case "PRG": nes.PokePrg(w.Address,w.Value); break; case "PRGRAM": nes.PokePrgRam(w.Address,w.Value); break; case "CHR": nes.PokeChr(w.Address,w.Value); break; case "RAM": nes.PokeSystemRam(w.Address,w.Value); break; } } catch {} }
+    { 
+        corruptor.GhDeleteSelectedBase();
     }
     private async Task GhCorruptAndStash()
     {
-        if (nes==null || !GhHasSelectedBase) return; var baseState = ghBaseStates.First(b=>b.Id==ghSelectedBaseId);
+        if (nes==null || !corruptor.GhHasSelectedBase) return; 
+        var baseState = corruptor.GhBaseStates.First(b=>b.Id==corruptor.GhSelectedBaseId);
         try {
-            nes.LoadState(baseState.State); autoStaticSuppressed = true; // ensure deterministic start (disable static)
-            var writes = GhGenerateBlastLayer(Math.Clamp(corruptIntensity,1,1024));
-            GhApplyBlastLayer(writes);
-            var entry = new HarvestEntry { Name = $"Stash {++ghStashCounter}", BaseStateId = baseState.Id, Writes = writes };
-            ghStash.Add(entry);
+            nes.LoadState(baseState.State); 
+            nesController.AutoStaticSuppressed = true; // ensure deterministic start (disable static)
+            var writes = corruptor.GenerateBlastLayer(Math.Clamp(corruptor.CorruptIntensity,1,1024));
+            corruptor.ApplyBlastLayer(writes, nes);
+            var entry = new HarvestEntry { Name = $"Stash {++corruptor.GhStashCounter}", BaseStateId = baseState.Id, Writes = writes };
+            corruptor.GhStash.Add(entry);
             Status.Set($"Stashed {writes.Count} writes based on '{baseState.Name}'");
         } catch (Exception ex){ Status.Set("GH corrupt err: "+ex.Message); }
         await InvokeAsync(StateHasChanged);
     }
-    private string GhFindBaseName(string id) => ghBaseStates.FirstOrDefault(b=>b.Id==id)?.Name ?? "?";
-    private void GhDeleteStash(string id){ var e = ghStash.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStash.Remove(e); }
-    private void GhPromoteEntry(HarvestEntry e){ ghStash.Remove(e); e.Name = $"Entry {++ghStockpileCounter}"; ghStockpile.Add(e); }
-    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ var baseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); if (nes==null || baseState==null) return; try { nes.LoadState(baseState.State); autoStaticSuppressed = true; GhApplyBlastLayer(e.Writes); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", framebuffer); Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } }
-    private void GhDeleteStock(string id){ var e = ghStockpile.FirstOrDefault(x=>x.Id==id); if (e!=null) ghStockpile.Remove(e); if (ghRenamingId==id){ ghRenamingId=null; ghRenameText=""; } }
-    private void GhClearStash(){ ghStash.Clear(); }
-    private bool GhIsRenaming(string id) => ghRenamingId==id;
-    private void GhBeginRename(HarvestEntry e){ ghRenamingId = e.Id; ghRenameText = e.Name; }
-    private void GhCancelRename(){ ghRenamingId=null; ghRenameText=""; }
-    private void GhRenameChange(ChangeEventArgs e){ if (e.Value is string v) ghRenameText=v; }
-    private void GhCommitRename(string id){ var e = ghStockpile.FirstOrDefault(x=>x.Id==id); if (e!=null && !string.IsNullOrWhiteSpace(ghRenameText)) e.Name = ghRenameText.Trim(); GhCancelRename(); }
-    private async Task GhExportStockpile(){ try { var exportObj = ghStockpile.Select(e=> new { e.Id, e.Name, e.BaseStateId, e.Created, Writes=e.Writes, BaseState = ghBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId)?.State }).ToList(); var json = System.Text.Json.JsonSerializer.Serialize(exportObj); await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json); Status.Set("Exported stockpile"); } catch (Exception ex){ Status.Set("Export failed: "+ex.Message); } }
+    private string GhFindBaseName(string id) => corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==id)?.Name ?? "?";
+    private void GhDeleteStash(string id){ corruptor.GhDeleteStash(id); }
+    private void GhPromoteEntry(HarvestEntry e){ corruptor.GhPromoteEntry(e); }
+    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ 
+        var baseState = corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); 
+        if (nes==null || baseState==null) return; 
+        try { 
+            nes.LoadState(baseState.State); 
+            nesController.AutoStaticSuppressed = true; 
+            corruptor.ApplyBlastLayer(e.Writes, nes); 
+            nesController.framebuffer = nes.GetFrameBuffer(); 
+            await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer); 
+            Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); 
+        } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } 
+    }
+    private void GhDeleteStock(string id){ corruptor.GhDeleteStock(id); }
+    private void GhClearStash(){ corruptor.GhClearStash(); }
+    private bool GhIsRenaming(string id) => corruptor.GhRenamingId == id;
+    private void GhBeginRename(HarvestEntry e){ corruptor.GhBeginRename(e); }
+    private void GhCancelRename(){ corruptor.GhCancelRename(); }
+    private void GhRenameChange(ChangeEventArgs e){ if (e.Value is string v) corruptor.GhRenameText = v; }
+    private void GhCommitRename(string id){ corruptor.GhCommitRename(id); }
+    private async Task GhExportStockpile(){ try { var exportObj = corruptor.GhStockpile.Select(e=> new { e.Id, e.Name, e.BaseStateId, e.Created, Writes=e.Writes, BaseState = corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId)?.State }).ToList(); var json = System.Text.Json.JsonSerializer.Serialize(exportObj); await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json); Status.Set("Exported stockpile"); } catch (Exception ex){ Status.Set("Export failed: "+ex.Message); } }
     private async Task GhImportStockpile(ChangeEventArgs e){ try { if (e.Value==null) return; // use JS to read file(s)
-            var files = await JS.InvokeAsync<object[]>("nesInterop.readFilesAsText", e.Value); if (files==null) return; int added=0; foreach (var f in files){ if (f is string json){ try { var doc = System.Text.Json.JsonDocument.Parse(json); foreach (var elem in doc.RootElement.EnumerateArray()){ var baseStateId = elem.GetProperty("BaseStateId").GetString()??""; var baseStateData = elem.TryGetProperty("BaseState", out var bsEl)? bsEl.GetString():null; if (!ghBaseStates.Any(b=>b.Id==baseStateId) && !string.IsNullOrEmpty(baseStateData)){ ghBaseStates.Add( new HarvesterBaseState{ Id=baseStateId, Name=$"Imported {ghBaseStates.Count+1}", State=baseStateData }); }
-                        var entry = new HarvestEntry { Id = elem.GetProperty("Id").GetString()??Guid.NewGuid().ToString(), Name = elem.GetProperty("Name").GetString()??$"Imp {++ghStockpileCounter}", BaseStateId = baseStateId, Created = elem.TryGetProperty("Created", out var cEl)? cEl.GetDateTime():DateTime.UtcNow, Writes = new List<BlastInstruction>() };
+            var files = await JS.InvokeAsync<object[]>("nesInterop.readFilesAsText", e.Value); if (files==null) return; int added=0; foreach (var f in files){ if (f is string json){ try { var doc = System.Text.Json.JsonDocument.Parse(json); foreach (var elem in doc.RootElement.EnumerateArray()){ var baseStateId = elem.GetProperty("BaseStateId").GetString()??""; var baseStateData = elem.TryGetProperty("BaseState", out var bsEl)? bsEl.GetString():null; if (!corruptor.GhBaseStates.Any(b=>b.Id==baseStateId) && !string.IsNullOrEmpty(baseStateData)){ corruptor.GhBaseStates.Add( new HarvesterBaseState{ Id=baseStateId, Name=$"Imported {corruptor.GhBaseStates.Count+1}", State=baseStateData }); }
+                        var entry = new HarvestEntry { Id = elem.GetProperty("Id").GetString()??Guid.NewGuid().ToString(), Name = elem.GetProperty("Name").GetString()??$"Imp {++corruptor.GhStockpileCounter}", BaseStateId = baseStateId, Created = elem.TryGetProperty("Created", out var cEl)? cEl.GetDateTime():DateTime.UtcNow, Writes = new List<BlastInstruction>() };
                         if (elem.TryGetProperty("Writes", out var wArr)) { foreach (var w in wArr.EnumerateArray()){ entry.Writes.Add(new BlastInstruction{ Domain = w.GetProperty("Domain").GetString()??"", Address = w.GetProperty("Address").GetInt32(), Value = (byte)w.GetProperty("Value").GetInt32()}); } }
-                        ghStockpile.Add(entry); added++; }
+                        corruptor.GhStockpile.Add(entry); added++; }
                     } catch {} } }
             if (added>0) Status.Set($"Imported {added} entries"); }
         catch (Exception ex){ Status.Set("Import failed: "+ex.Message); } }
@@ -3100,36 +3190,42 @@
 @code {
     protected override void OnInitialized()
     {
+        // Initialize ROM options
+        nesController.RomOptions = new()
+        {
+            new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true}
+        };
+        
     // Subscribe to navigation changes so that leaving /nes triggers a hard page reload.
     // This guarantees the entire WebAssembly app (and emulator state) is torn down when
     // navigating to any other route, satisfying the requirement that other pages load cleanly.
     try { Nav.LocationChanged += HandleLocationChanged; } catch {}
         // Central registry discovery (cached)
-        cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
-        if (string.IsNullOrEmpty(cpuCoreSel) || !cpuCoreOptions.Contains(cpuCoreSel))
+        nesController.CpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
+        if (string.IsNullOrEmpty(nesController.CpuCoreSel) || !nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
         {
             // Prefer FMC first (baseline), then FIX, then first
-            if (cpuCoreOptions.Contains("FMC")) cpuCoreSel = "FMC";
-            else if (cpuCoreOptions.Contains("FIX")) cpuCoreSel = "FIX";
-            else if (cpuCoreOptions.Count>0) cpuCoreSel = cpuCoreOptions[0];
+            if (nesController.CpuCoreOptions.Contains("FMC")) nesController.CpuCoreSel = "FMC";
+            else if (nesController.CpuCoreOptions.Contains("FIX")) nesController.CpuCoreSel = "FIX";
+            else if (nesController.CpuCoreOptions.Count>0) nesController.CpuCoreSel = nesController.CpuCoreOptions[0];
         }
-        ppuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
+        nesController.PpuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
     // Ensure stable ordering; include newer enhanced cores when present
     var desiredOrder = new List<string>{"FMC","NGTV","CUBE","BFR","LQ","FIX","LOW"};
-        ppuCoreOptions = ppuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
-        if (!ppuCoreOptions.Contains(ppuCoreSel) && ppuCoreOptions.Count>0)
+        nesController.PpuCoreOptions = nesController.PpuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
+        if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel) && nesController.PpuCoreOptions.Count>0)
         {
             // Prefer FMC baseline; else fall back to others
-			if (ppuCoreOptions.Contains("FMC")) ppuCoreSel = "FMC"; else if (ppuCoreOptions.Contains("NGTV")) ppuCoreSel = "NGTV"; else if (ppuCoreOptions.Contains("CUBE")) ppuCoreSel = "CUBE"; else ppuCoreSel = ppuCoreOptions[0];
+			if (nesController.PpuCoreOptions.Contains("FMC")) nesController.PpuCoreSel = "FMC"; else if (nesController.PpuCoreOptions.Contains("NGTV")) nesController.PpuCoreSel = "NGTV"; else if (nesController.PpuCoreOptions.Contains("CUBE")) nesController.PpuCoreSel = "CUBE"; else nesController.PpuCoreSel = nesController.PpuCoreOptions[0];
         }
-        apuCoreOptions = NesEmulator.CoreRegistry.ApuIds.ToList();
+        nesController.ApuCoreOptions = NesEmulator.CoreRegistry.ApuIds.ToList();
         // Ordering preference: FMC (legacy), FIX (modern), QN, then others alphabetical
-    apuCoreOptions = apuCoreOptions.OrderBy(id => id switch { "FMC" => 0, "FIX" => 1, "QN" => 2, _ => 3 }).ThenBy(id=>id).ToList();
-        if (string.IsNullOrEmpty(apuCoreSel) || !apuCoreOptions.Contains(apuCoreSel))
+    nesController.ApuCoreOptions = nesController.ApuCoreOptions.OrderBy(id => id switch { "FMC" => 0, "FIX" => 1, "QN" => 2, _ => 3 }).ThenBy(id=>id).ToList();
+        if (string.IsNullOrEmpty(nesController.ApuCoreSel) || !nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
         {
-            if (apuCoreOptions.Contains("FMC")) apuCoreSel = "FMC";
-            else if (apuCoreOptions.Contains("FIX")) apuCoreSel = "FIX";
-            else if (apuCoreOptions.Count>0) apuCoreSel = apuCoreOptions[0];
+            if (nesController.ApuCoreOptions.Contains("FMC")) nesController.ApuCoreSel = "FMC";
+            else if (nesController.ApuCoreOptions.Contains("FIX")) nesController.ApuCoreSel = "FIX";
+            else if (nesController.ApuCoreOptions.Count>0) nesController.ApuCoreSel = nesController.ApuCoreOptions[0];
         }
         // Load persisted event scheduler preference asynchronously (fire and forget)
         _ = Task.Run(async () => {
