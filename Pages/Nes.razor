@@ -17,10 +17,10 @@
 @inject NavigationManager Nav
 
 
-@if (!string.IsNullOrEmpty(errorMessage))
+@if (!string.IsNullOrEmpty(nesController.ErrorMessage))
 {
     <div class="alert alert-danger" role="alert">
-        <strong>⚠️ SYSTEM ERROR:</strong> @errorMessage
+        <strong>⚠️ SYSTEM ERROR:</strong> @nesController.ErrorMessage
     </div>
 }
 
@@ -32,10 +32,10 @@
     <section class="play-area">
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
-                <button class="btn btn-success ctrl-btn" @onclick="StartEmulation" disabled="@(isRunning || nes == null)" title="Start (Play)" aria-label="Start">
+                <button class="btn btn-success ctrl-btn" @onclick="StartEmulation" disabled="@(nesController.IsRunning || nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
-                <button class="btn btn-warning ctrl-btn" @onclick="PauseEmulation" disabled="@(!isRunning)" title="Pause" aria-label="Pause">
+                <button class="btn btn-warning ctrl-btn" @onclick="PauseEmulation" disabled="@(!nesController.IsRunning)" title="Pause" aria-label="Pause">
                     <svg viewBox="0 0 100 100" class="ctrl-ico pause" role="img" focusable="false"><rect x="24" y="18" width="20" height="64" rx="6" /><rect x="56" y="18" width="20" height="64" rx="6" /></svg>
                 </button>
                 <button class="btn btn-danger ctrl-btn" @onclick="ResetEmulation" disabled="@(nes == null)" title="Reset" aria-label="Reset">
@@ -45,28 +45,28 @@
             <div class="btn-group">
                 <div class="qc-select-stack">
                     <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
-                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@activeShaderKey" aria-label="Video Shader">
-                        @foreach(var sh in shaderOptions){
+                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@nesController.ActiveShaderKey" aria-label="Video Shader">
+                        @foreach(var sh in nesController.ShaderOptions){
                             <option value="@sh.Key">@sh.Label</option>
                         }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@apuCoreSel" aria-label="Audio Core">
-                        @foreach(var opt in apuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@nesController.ApuCoreSel" aria-label="Audio Core">
+                        @foreach(var opt in nesController.ApuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="OnCpuCoreChanged" value="@cpuCoreSel" aria-label="CPU Core">
-                        @foreach(var opt in cpuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="OnCpuCoreChanged" value="@nesController.CpuCoreSel" aria-label="CPU Core">
+                        @foreach(var opt in nesController.CpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="OnPpuCoreChanged" value="@ppuCoreSel" aria-label="PPU Core">
-                        @foreach(var opt in ppuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="OnPpuCoreChanged" value="@nesController.PpuCoreSel" aria-label="PPU Core">
+                        @foreach(var opt in nesController.PpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
             </div>
@@ -75,13 +75,13 @@
                 <button class="btn btn-save-state" @onclick="SaveState" disabled="@(nes==null)" title="Save state">Save</button>
             </div>
         </div>
-    <div class="screen-shell @(emuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
+    <div class="screen-shell @(nesController.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
             <div class="overlay-status small">
                 <div class="badges d-flex flex-wrap">
-                    <span class="badge bg-dark-subtle text-dark me-1">FPS: @fps.ToString("F1")</span>
-                    <span class="badge bg-dark-subtle text-dark me-1">State: @(isRunning ? "Running" : "Paused")</span>
-                    <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@currentRomName</strong></span>
-                    <span class="badge bg-dark-subtle text-dark">Size: @FormatSize(lastLoadedRomSize)</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">FPS: @nesController.Fps.ToString("F1")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">State: @(nesController.IsRunning ? "Running" : "Paused")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@nesController.CurrentRomName</strong></span>
+                    <span class="badge bg-dark-subtle text-dark">Size: @FormatSize(nesController.LastLoadedRomSize)</span>
                     <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @activeSfCoreDisplay</span>
                     @if (soundFontLayering)
                     {
@@ -89,8 +89,8 @@
                     }
                 </div>
                 <div class="overlay-actions">
-                    <button type="button" class="ov-btn @(emuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>SetScale(0.5))">½×</button>
-                    <button type="button" class="ov-btn @(emuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>SetScale(1))">1×</button>
+                    <button type="button" class="ov-btn @(nesController.EmuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>SetScale(0.5))">½×</button>
+                    <button type="button" class="ov-btn @(nesController.EmuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>SetScale(1))">1×</button>
                     <button type="button" class="ov-btn" title="Toggle Fullscreen" @onclick="ToggleFullscreen">⛶</button>
                 </div>
             </div>
@@ -141,26 +141,26 @@
                     <div class="mobile-view rtc-view small">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <strong class="small mb-0">Real-Time Corruptor</strong>
-                            <span class="text-muted small">@lastBlastInfo</span>
+                            <span class="text-muted small">@corruptor.LastBlastInfo</span>
                         </div>
                         <div class="row g-3 flex-wrap">
                             <div class="col-12">
                                 <label class="form-label small mb-1">Memory Domains</label>
                                 <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
-                                    @foreach (var d in memoryDomains)
+                                    @foreach (var d in corruptor.MemoryDomains)
                                     {
                                         <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
                                     }
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label mb-1 small">Intensity (@corruptIntensity)</label>
-                                <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptIntensity" @oninput="OnIntensityChange" />
+                                <label class="form-label mb-1 small">Intensity (@corruptor.CorruptIntensity)</label>
+                                <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                                 <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
-                                    <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptIntensity" @onchange="OnIntensityBoxChange" />
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || autoCorrupt)" title="Apply one-time corruption now">Blast</button>
-                                    <button class="btn btn-sm @(autoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(autoCorrupt ? "ON" : "OFF")</button>
-                                    @if (!letItRipUsed)
+                                    <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || corruptor.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                                    <button class="btn btn-sm @(corruptor.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(corruptor.AutoCorrupt ? "ON" : "OFF")</button>
+                                    @if (!corruptor.LetItRipUsed)
                                     {
                                         <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                                     }
@@ -168,7 +168,7 @@
                                 <div class="row g-2 small">
                                     <div class="col-6">
                                         <label class="form-label mb-1 small">Blast Type</label>
-                                        <select class="form-select form-select-sm" value="@blastType" @onchange="OnBlastTypeChanged">
+                                        <select class="form-select form-select-sm" value="@corruptor.BlastType" @onchange="OnBlastTypeChanged">
                                             <option value="RANDOM">RANDOM</option>
                                             <option value="TILT">TILT</option>
                                             <option value="RANDOMTILT">RANDOMTILT</option>
@@ -178,7 +178,7 @@
                                     </div>
                                     <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                                 </div>
-                                <div class="mt-2 small text-muted fst-italic">Last: @lastBlastInfo</div>
+                                <div class="mt-2 small text-muted fst-italic">Last: @corruptor.LastBlastInfo</div>
                             </div>
                         </div>
                     </div>
@@ -190,43 +190,43 @@
                             <div class="d-flex flex-wrap gap-2 align-items-end">
                                 <div class="flex-grow-1" style="min-width:140px;">
                                     <label class="form-label mb-1 small">New Base Name</label>
-                                    <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="ghNewBaseName" />
+                                    <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                                 </div>
                                 <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
                             </div>
                             <div class="mt-2">
                                 <label class="form-label mb-1 small">Base States</label>
-                                <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@ghSelectedBaseId">
-                                    @foreach (var b in ghBaseStates)
+                                <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@corruptor.GhSelectedBaseId">
+                                    @foreach (var b in corruptor.GhBaseStates)
                                     {
                                         <option value="@b.Id">@b.Name</option>
                                     }
                                 </select>
                                 <div class="d-flex gap-1 mt-2 flex-wrap">
-                                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!GhHasSelectedBase)">Load</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!GhHasSelectedBase)">Delete</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Load</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Delete</button>
                                 </div>
                             </div>
                         </div>
                         <div class="gh-section mb-3">
                             <label class="form-label mb-1 small">Actions (uses RTC settings)</label>
                             <div class="d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(ghStash.Count==0)">Clear Stash</button>
+                                <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!corruptor.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                             </div>
                         </div>
                         <div class="gh-section mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <strong class="small mb-0">Stash (@ghStash.Count)</strong>
+                                <strong class="small mb-0">Stash (@corruptor.GhStash.Count)</strong>
                             </div>
-                            @if (ghStash.Count==0)
+                            @if (corruptor.GhStash.Count==0)
                             {
                                 <div class="text-muted small fst-italic">(empty)</div>
                             }
                             else
                             {
                                 <div class="gh-list">
-                                    @foreach (var e in ghStash.OrderByDescending(e=>e.Created).Take(20))
+                                    @foreach (var e in corruptor.GhStash.OrderByDescending(e=>e.Created).Take(20))
                                     {
                                         <div class="gh-item">
                                             <div class="gh-item-main">
@@ -245,22 +245,22 @@
                         </div>
                         <div class="gh-section">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <strong class="small mb-0">Stockpile (@ghStockpile.Count)</strong>
+                                <strong class="small mb-0">Stockpile (@corruptor.GhStockpile.Count)</strong>
                             </div>
-                            @if (ghStockpile.Count==0)
+                            @if (corruptor.GhStockpile.Count==0)
                             {
                                 <div class="text-muted small fst-italic">(empty)</div>
                             }
                             else
                             {
                                 <div class="gh-list">
-                                    @foreach (var e in ghStockpile.OrderByDescending(e=>e.Created).Take(20))
+                                    @foreach (var e in corruptor.GhStockpile.OrderByDescending(e=>e.Created).Take(20))
                                     {
                                         <div class="gh-item">
                                             <div class="gh-item-main">
                                                 @if (GhIsRenaming(e.Id))
                                                 {
-                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@ghRenameText" @onchange="GhRenameChange" />
+                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="GhRenameChange" />
                                                 }
                                                 else
                                                 {
@@ -296,9 +296,9 @@
         <summary>ROM Manager</summary>
         <div class="panel-content">
             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @oninput="OnRomSearchChanged" value="@romSearch" />
+                <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @oninput="OnRomSearchChanged" value="@nesController.RomSearch" />
                 <button class="btn btn-sm btn-success" @onclick="TriggerFileDialog">Import</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(currentRomName))">Reload</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(nesController.CurrentRomName))">Reload</button>
                 @* Removed standalone Delete and Clear Uploaded buttons (row deletion + per-ROM Del button sufficient) *@
             </div>
             <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Drag .nes files onto this list to import.</div>
@@ -322,7 +322,7 @@
                         {
                             @foreach (var opt in FilteredRomOptions)
                             {
-                                var isCurrent = opt.Key == currentRomName;
+                                var isCurrent = opt.Key == nesController.CurrentRomName;
                                 var sizeDisplay = GetRomSizeDisplay(opt.Key);
                                 <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>OnRomRowClicked(opt))">
                                     <td>@(isCurrent ? "▶" : "")</td>
@@ -338,8 +338,8 @@
             </div>
             <div class="mt-2 small d-flex flex-wrap gap-3 text-muted">
                 <div>Total: @FilteredRomOptions.Count() ROM(s)</div>
-                <div>Uploaded: @uploadedRoms.Count</div>
-                <div>Selected: @currentRomName</div>
+                <div>Uploaded: @nesController.UploadedRoms.Count</div>
+                <div>Selected: @nesController.CurrentRomName</div>
             </div>
             <input @ref="fileInput" id="rom-upload" type="file" accept=".nes" class="d-none" @onchange="LoadRomUpload" multiple />
         </div>
@@ -352,14 +352,14 @@
                 <div class="col-12 col-sm-5">
                     <label class="form-label small mb-1">Memory Domains</label>
                     <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
-                        @foreach (var d in memoryDomains)
+                        @foreach (var d in corruptor.MemoryDomains)
                         {
                             <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
                         }
                     </select>
                     <div class="mt-2 small text-secondary">
                         Crash Mode:
-                        <select class="form-select form-select-sm mt-1" @onchange="OnCrashBehaviorChanged" value="@crashBehavior">
+                        <select class="form-select form-select-sm mt-1" @onchange="OnCrashBehaviorChanged" value="@corruptor.CrashBehavior">
                             <option value="RedScreen">Red Screen</option>
                             <option value="IgnoreErrors">Ignore Errors</option>
                         </select>
@@ -368,14 +368,14 @@
                 <div class="col-12 col-sm-7">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                         <label class="form-label mb-0 small">Intensity</label>
-                        <code class="small">@corruptIntensity</code>
+                        <code class="small">@corruptor.CorruptIntensity</code>
                     </div>
-                    <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptIntensity" @oninput="OnIntensityChange" />
+                    <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                     <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
-                        <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptIntensity" @onchange="OnIntensityBoxChange" />
-                        <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || autoCorrupt)" title="Apply one-time corruption now">Blast</button>
-                        <button class="btn btn-sm @(autoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(autoCorrupt ? "ON" : "OFF")</button>
-                        @if (!letItRipUsed)
+                        <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || corruptor.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                        <button class="btn btn-sm @(corruptor.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(corruptor.AutoCorrupt ? "ON" : "OFF")</button>
+                        @if (!corruptor.LetItRipUsed)
                         {
                             <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                         }
@@ -383,7 +383,7 @@
                     <div class="row g-2 small">
                         <div class="col-6">
                             <label class="form-label mb-1 small">Blast Type</label>
-                            <select class="form-select form-select-sm" value="@blastType" @onchange="OnBlastTypeChanged">
+                            <select class="form-select form-select-sm" value="@corruptor.BlastType" @onchange="OnBlastTypeChanged">
                                 <option value="RANDOM">RANDOM</option>
                                 <option value="TILT">TILT</option>
                                 <option value="RANDOMTILT">RANDOMTILT</option>
@@ -393,7 +393,7 @@
                         </div>
                         <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                     </div>
-                    <div class="mt-2 small text-muted fst-italic">Last: @lastBlastInfo</div>
+                    <div class="mt-2 small text-muted fst-italic">Last: @corruptor.LastBlastInfo</div>
                 </div>
             </div>
         </div>
@@ -406,43 +406,43 @@
                 <div class="d-flex flex-wrap gap-2 align-items-end">
                     <div class="flex-grow-1" style="min-width:140px;">
                         <label class="form-label mb-1 small">New Base Name</label>
-                        <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="ghNewBaseName" />
+                        <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                     </div>
                     <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
                 </div>
                 <div class="mt-2">
                     <label class="form-label mb-1 small">Base States</label>
-                    <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@ghSelectedBaseId">
-                        @foreach (var b in ghBaseStates)
+                    <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@corruptor.GhSelectedBaseId">
+                        @foreach (var b in corruptor.GhBaseStates)
                         {
                             <option value="@b.Id">@b.Name</option>
                         }
                     </select>
                     <div class="d-flex gap-1 mt-2 flex-wrap">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!GhHasSelectedBase)">Load</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!GhHasSelectedBase)">Delete</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Load</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Delete</button>
                     </div>
                 </div>
             </div>
             <div class="gh-section mb-3">
                 <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(ghStash.Count==0)">Clear Stash</button>
+                    <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!corruptor.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                 </div>
             </div>
             <div class="gh-section mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <strong class="small mb-0">Stash History (@ghStash.Count)</strong>
+                    <strong class="small mb-0">Stash History (@corruptor.GhStash.Count)</strong>
                 </div>
-                @if (ghStash.Count==0)
+                @if (corruptor.GhStash.Count==0)
                 {
                     <div class="text-muted small fst-italic">(empty)</div>
                 }
                 else
                 {
                     <div class="gh-list">
-                        @foreach (var e in ghStash.OrderByDescending(e=>e.Created).Take(25))
+                        @foreach (var e in corruptor.GhStash.OrderByDescending(e=>e.Created).Take(25))
                         {
                             <div class="gh-item">
                                 <div class="gh-item-main">
@@ -461,28 +461,28 @@
             </div>
             <div class="gh-section">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <strong class="small mb-0">Stockpile (@ghStockpile.Count)</strong>
+                    <strong class="small mb-0">Stockpile (@corruptor.GhStockpile.Count)</strong>
                     <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhExportStockpile" disabled="@(ghStockpile.Count==0)">Export</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhExportStockpile" disabled="@(corruptor.GhStockpile.Count==0)">Export</button>
                         <label class="btn btn-sm btn-outline-secondary mb-0">
                             Import<input type="file" class="d-none" accept="application/json" @onchange="GhImportStockpile" />
                         </label>
                     </div>
                 </div>
-                @if (ghStockpile.Count==0)
+                @if (corruptor.GhStockpile.Count==0)
                 {
                     <div class="text-muted small fst-italic">(empty)</div>
                 }
                 else
                 {
                     <div class="gh-list">
-                        @foreach (var e in ghStockpile.OrderByDescending(e=>e.Created))
+                        @foreach (var e in corruptor.GhStockpile.OrderByDescending(e=>e.Created))
                         {
                             <div class="gh-item">
                                 <div class="gh-item-main">
                                     @if (GhIsRenaming(e.Id))
                                     {
-                                        <input class="form-control form-control-sm" style="min-width:120px" value="@ghRenameText" @onchange="GhRenameChange" />
+                                        <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="GhRenameChange" />
                                     }
                                     else
                                     {
@@ -525,7 +525,7 @@
         <details class="panel-block">
         <summary>Debug</summary>
         <div class="panel-content debug-mini">
-            <div>Frames: @frameCount</div>
+            <div>Frames: @nesController.FrameCount</div>
             <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
             <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
             <div class="mt-2">
@@ -873,125 +873,13 @@
         get => nesController.nes;
         set => nesController.nes = value;
     }
-    private byte[] framebuffer
-    {
-        get => nesController.framebuffer;
-        set => nesController.framebuffer = value;
-    }
+    // Framebuffer is now accessed directly via nesController.framebuffer
     // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
     // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
     private bool[] inputState => nesController.inputState; // Up, Down, Left, Right, A, B, Select, Start
     
-    private string errorMessage
-    {
-        get => nesController.ErrorMessage;
-        set => nesController.ErrorMessage = value;
-    }
-    // status moved to StatusService
-    private bool isRunning
-    {
-        get => nesController.IsRunning;
-        set => nesController.IsRunning = value;
-    }
-    private bool hasBooted => nesController.HasBooted; // Auto-boot enabled (was previously gated by user BOOT click)
-    private float fps
-    {
-        get => nesController.Fps;
-        set => nesController.Fps = value;
-    }
-    private int frameCount
-    {
-        get => nesController.FrameCount;
-        set => nesController.FrameCount = value;
-    }
-    private DateTime lastFpsUpdate
-    {
-        get => nesController.LastFpsUpdate;
-        set => nesController.LastFpsUpdate = value;
-    }
-    private int lastFrameCount
-    {
-        get => nesController.LastFrameCount;
-        set => nesController.LastFrameCount = value;
-    }
-    private string romFileName
-    {
-        get => nesController.RomFileName;
-        set => nesController.RomFileName = value;
-    }
-    private string currentRomName
-    {
-        get => nesController.CurrentRomName;
-        set => nesController.CurrentRomName = value;
-    }
-    private string romSearch
-    {
-        get => nesController.RomSearch;
-        set => nesController.RomSearch = value;
-    }
-    private int lastLoadedRomSize
-    {
-        get => nesController.LastLoadedRomSize;
-        set => nesController.LastLoadedRomSize = value;
-    }
-    private Dictionary<string,int> builtInRomSizes => nesController.BuiltInRomSizes;
-    private bool fastForward
-    {
-        get => nesController.FastForward;
-        set => nesController.FastForward = value;
-    }
-    private int statsUpdateDivider => nesController.StatsUpdateDivider; // update stats/UI every N frames (visual draw still every frame)
-    // Shader system (dynamic)
-    private bool shaderOn
-    {
-        get => nesController.ShaderOn;
-        set => nesController.ShaderOn = value;
-    }
-    private string activeShaderKey
-    {
-        get => nesController.ActiveShaderKey;
-        set => nesController.ActiveShaderKey = value;
-    }
-    private List<ShaderOption> shaderOptions => nesController.ShaderOptions;
-    private bool famicloneOn
-    {
-        get => nesController.FamicloneOn;
-        set => nesController.FamicloneOn = value;
-    }
-    private string apuCoreSel
-    {
-        get => nesController.ApuCoreSel;
-        set => nesController.ApuCoreSel = value;
-    }
-    private string cpuCoreSel
-    {
-        get => nesController.CpuCoreSel;
-        set => nesController.CpuCoreSel = value;
-    }
-    private string ppuCoreSel
-    {
-        get => nesController.PpuCoreSel;
-        set => nesController.PpuCoreSel = value;
-    }
-    private List<string> apuCoreOptions => nesController.ApuCoreOptions;
-    private List<string> cpuCoreOptions => nesController.CpuCoreOptions;
-    private List<string> ppuCoreOptions => nesController.PpuCoreOptions;
-    private double emuScale
-    {
-        get => nesController.EmuScale;
-        set => nesController.EmuScale = value;
-    }
-    private bool isFullscreen
-    {
-        get => nesController.IsFullscreen;
-        set => nesController.IsFullscreen = value;
-    }
-    // Flag to disable automatic test ROM static after any savestate load
-    private bool autoStaticSuppressed
-    {
-        get => nesController.AutoStaticSuppressed;
-        set => nesController.AutoStaticSuppressed = value;
-    }
+    // All NES controller state is now accessed directly via nesController instance
+    
     // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
     private string mobileFsView = "controller";
     private bool touchControllerInitialized = false;
@@ -1075,8 +963,8 @@
             return;
         }
         string? core = null;
-        if (string.Equals(apuCoreSel, "WF", StringComparison.OrdinalIgnoreCase)) core = "WF";
-        else if (string.Equals(apuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase)) core = "MNES";
+        if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase)) core = "WF";
+        else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase)) core = "MNES";
         activeSfCore = core ?? string.Empty;
         try { await JS.InvokeVoidAsync("nesInterop.setActiveSoundFontCore", core, new { eager = true, flush = true }); } catch {}
         try { await JS.InvokeVoidAsync("nesInterop.setSoundFontLayering", soundFontLayering); } catch {}
@@ -1124,7 +1012,7 @@
         if (nes == null) return;
         try
         {
-            if (string.Equals(apuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
             {
                 // Enable SoundFont note-event path if not already
                 if (!soundFontMode)
@@ -1139,7 +1027,7 @@
                 try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
                 try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
             }
-            else if (string.Equals(apuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
             {
                 // MNES core also uses note-event mode, but may rely on an alternate JS synth/library.
                 // We just enable the generic note-event bridge; library-specific init (if any) can be added later.
@@ -1200,74 +1088,7 @@
         }
     }
 
-    // Corruptor state - delegate to corruptor instance
-    private int corruptIntensity 
-    {
-        get => corruptor.CorruptIntensity;
-        set => corruptor.CorruptIntensity = value;
-    }
-    private string lastBlastInfo
-    {
-        get => corruptor.LastBlastInfo;
-        set => corruptor.LastBlastInfo = value;
-    }
-    private List<DomainSel> memoryDomains => corruptor.MemoryDomains;
-    private string crashBehavior
-    {
-        get => corruptor.CrashBehavior;
-        set => corruptor.CrashBehavior = value;
-    }
-    private bool autoCorrupt
-    {
-        get => corruptor.AutoCorrupt;
-        set => corruptor.AutoCorrupt = value;
-    }
-    private Random corruptRnd => corruptor.CorruptRnd;
-    private string blastType
-    {
-        get => corruptor.BlastType;
-        set => corruptor.BlastType = value;
-    }
-    private bool letItRipUsed
-    {
-        get => corruptor.LetItRipUsed;
-        set => corruptor.LetItRipUsed = value;
-    }
-    // ================= Glitch Harvester state =================
-    private List<HarvesterBaseState> ghBaseStates => corruptor.GhBaseStates;
-    private List<HarvestEntry> ghStash => corruptor.GhStash;
-    private List<HarvestEntry> ghStockpile => corruptor.GhStockpile;
-    private string ghSelectedBaseId
-    {
-        get => corruptor.GhSelectedBaseId;
-        set => corruptor.GhSelectedBaseId = value;
-    }
-    private string ghNewBaseName
-    {
-        get => corruptor.GhNewBaseName;
-        set => corruptor.GhNewBaseName = value;
-    }
-    private int ghStashCounter
-    {
-        get => corruptor.GhStashCounter;
-        set => corruptor.GhStashCounter = value;
-    }
-    private int ghStockpileCounter
-    {
-        get => corruptor.GhStockpileCounter;
-        set => corruptor.GhStockpileCounter = value;
-    }
-    private string? ghRenamingId
-    {
-        get => corruptor.GhRenamingId;
-        set => corruptor.GhRenamingId = value;
-    }
-    private string ghRenameText
-    {
-        get => corruptor.GhRenameText;
-        set => corruptor.GhRenameText = value;
-    }
-    private bool GhHasSelectedBase => corruptor.GhHasSelectedBase;
+    // All corruptor and glitch harvester state is now accessed directly via corruptor instance
     // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
     private DotNetObjectReference<Nes>? _selfRef;
 
@@ -1283,10 +1104,10 @@
                 _selfRef = DotNetObjectReference.Create(this);
                 // Load persisted core & shader preferences
                 try {
-                    var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) activeShaderKey = pShader;
-                    var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) cpuCoreSel = pCpu;
-                    var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) ppuCoreSel = pPpu;
-                    var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) apuCoreSel = pApu;
+                    var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) nesController.ActiveShaderKey = pShader;
+                    var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) nesController.CpuCoreSel = pCpu;
+                    var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) nesController.PpuCoreSel = pPpu;
+                    var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) nesController.ApuCoreSel = pApu;
                     await LoadBenchHistory();
                 } catch {}
 
@@ -1307,7 +1128,7 @@
                         {
                             var data = Convert.FromBase64String(r.base64);
                             if (data.Length == 0) continue;
-                            uploadedRoms[r.name] = data;
+                            nesController.UploadedRoms[r.name] = data;
                             if (!romOptions.Any(o => o.Key == r.name))
                             {
                                 romOptions.Add(new RomOption { Key = r.name, Label = r.name + " (uploaded)", BuiltIn = false });
@@ -1349,14 +1170,14 @@
                 // Register C#-generated shaders into JS registry, then fetch options and set initial active shader
                 await RegisterShadersFromCSharp();
                 await RefreshShaderOptions();
-                await SetShader(activeShaderKey);
+                await SetShader(nesController.ActiveShaderKey);
 
                 Logger.LogInformation("NES Emulator initialized successfully");
                 // After initial render, verify scoped CSS applied; inject fallback if not
                 try { await JS.InvokeVoidAsync("nesInterop.ensureLayoutStyles"); } catch {}
                 // Auto-start emulation (audio context may have been pre-warmed on Home page)
                 try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch {}
-                if (nes != null && !isRunning)
+                if (nes != null && !nesController.IsRunning)
                 {
                     try { await StartEmulation(); } catch { }
                 }
@@ -1364,12 +1185,12 @@
             catch (Exception ex)
             {
                 Logger.LogError(ex, $"Failed to initialize NES emulator. Exception: {ex}");
-                errorMessage = $"Initialization failed: {ex.Message}\n{ex.StackTrace}";
+                nesController.ErrorMessage = $"Initialization failed: {ex.Message}\n{ex.StackTrace}";
                 Status.Set("Failed to load default ROM. Please upload a ROM file above.");
             }
         }
         // Initialize touch controller JS handlers when controller view visible
-        if (isFullscreen && mobileFsView == "controller" && !touchControllerInitialized)
+        if (nesController.IsFullscreen && mobileFsView == "controller" && !touchControllerInitialized)
         {
             try
             {
@@ -1401,10 +1222,10 @@
     private List<RomOption> romOptions => nesController.RomOptions;
     private Dictionary<string, byte[]> uploadedRoms => nesController.UploadedRoms;
     private ElementReference fileInput;
-    private bool IsBuiltInSelected => romOptions.FirstOrDefault(o => o.Key == romFileName)?.BuiltIn ?? true;
-    private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(romSearch)
+    private bool IsBuiltInSelected => romOptions.FirstOrDefault(o => o.Key == nesController.RomFileName)?.BuiltIn ?? true;
+    private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
         ? romOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
-        : romOptions.Where(o=>o.Label.Contains(romSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(romSearch, StringComparison.OrdinalIgnoreCase))
+        : romOptions.Where(o=>o.Label.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase))
             .OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label);
 
     private async Task<byte[]> LoadRomFromWwwroot(string filename)
@@ -1442,15 +1263,15 @@
         {
             if (nes == null)
             {
-                errorMessage = "NES emulator not initialized";
+                nesController.ErrorMessage = "NES emulator not initialized";
                 return;
             }
             // hasBooted gating removed (audio context prepared on Home page; fallback ensure here)
             try { JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch {}
 
             Logger.LogInformation("Starting emulation");
-            isRunning = true;
-            errorMessage = "";
+            nesController.IsRunning = true;
+            nesController.ErrorMessage = "";
             Status.Set("Emulation running...");
 
             // Start JS requestAnimationFrame loop
@@ -1462,8 +1283,8 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Failed to start emulation. Exception: {ex}");
-            errorMessage = $"Failed to start: {ex.Message}\n{ex.StackTrace}";
-            isRunning = false;
+            nesController.ErrorMessage = $"Failed to start: {ex.Message}\n{ex.StackTrace}";
+            nesController.IsRunning = false;
             StateHasChanged();
         }
     }
@@ -1473,7 +1294,7 @@
         try
         {
             Logger.LogInformation("Pausing emulation");
-            isRunning = false;
+            nesController.IsRunning = false;
             await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
             // Flush SoundFont notes if WF mode active
             try { nes?.FlushSoundFont(); } catch {}
@@ -1484,7 +1305,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Failed to pause emulation. Exception: {ex}");
-            errorMessage = $"Failed to pause: {ex.Message}\n{ex.StackTrace}";
+            nesController.ErrorMessage = $"Failed to pause: {ex.Message}\n{ex.StackTrace}";
         }
     }
 
@@ -1493,31 +1314,31 @@
         try
         {
             Logger.LogInformation("Resetting emulation");
-            bool wasRunning = isRunning;
+            bool wasRunning = nesController.IsRunning;
             await PauseEmulation();
             // Ensure auto corruption is disabled for a clean reset
                 // Additional explicit SoundFont flush (PauseEmulation already attempts, but safe)
                 try { nes?.FlushSoundFont(); } catch {}
                 try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
-            if (autoCorrupt)
+            if (corruptor.AutoCorrupt)
             {
-                autoCorrupt = false;
-                lastBlastInfo = "Auto-corrupt disabled (reset)";
+                corruptor.AutoCorrupt = false;
+                corruptor.LastBlastInfo = "Auto-corrupt disabled (reset)";
             }
             // Force a pristine reload of the current ROM bytes (discard in-memory mutated state)
-            if (!string.IsNullOrEmpty(currentRomName))
+            if (!string.IsNullOrEmpty(nesController.CurrentRomName))
             {
                 // If uploaded ROM, re-use original stored bytes; if built-in, refetch from server
-                romFileName = currentRomName; // sync selection
-                if (uploadedRoms.ContainsKey(currentRomName))
+                nesController.RomFileName = nesController.CurrentRomName; // sync selection
+                if (nesController.UploadedRoms.ContainsKey(nesController.CurrentRomName))
                 {
                     // Manually reload without going through any cached emulator state
-                    var data = uploadedRoms[currentRomName];
+                    var data = nesController.UploadedRoms[nesController.CurrentRomName];
                     // Preserve previously selected audio backend; reuse existing NES instance if present
                     if (nes == null) nes = new NesEmulator.NES();
-                    nes.RomName = currentRomName;
+                    nes.RomName = nesController.CurrentRomName;
                     // Preserve currently selected APU suffix before load
-                    var prevApuSuffix = apuCoreSel;
+                    var prevApuSuffix = nesController.ApuCoreSel;
                     nes.LoadROM(data);
                     if (!string.IsNullOrEmpty(prevApuSuffix))
                     {
@@ -1529,9 +1350,9 @@
                     ApplySelectedCores();
                     // Re-apply selected APU core explicitly after reload
                     try {
-                        if (apuCoreSel == "FMC") nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
-                        else if (apuCoreSel == "FIX") nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
-                        else if (apuCoreSel == "QN") nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
+                        if (nesController.ApuCoreSel == "FMC") nes.SetApuCore(NesEmulator.NES.ApuCore.Jank);
+                        else if (nesController.ApuCoreSel == "FIX") nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
+                        else if (nesController.ApuCoreSel == "QN") nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
                     } catch {}
                     BuildMemoryDomains();
                 }
@@ -1541,9 +1362,9 @@
                     SetApuCoreSelFromEmu();
                 }
             }
-            frameCount = 0;
-            lastFrameCount = 0;
-            fps = 0;
+            nesController.FrameCount = 0;
+            nesController.LastFrameCount = 0;
+            nesController.Fps = 0;
             // Reset the JS audio scheduling timeline so A/V stays aligned after a clean reset
             try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch {}
             if (wasRunning)
@@ -1556,14 +1377,14 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Failed to reset emulation. Exception: {ex}");
-            errorMessage = $"Failed to reset: {ex.Message}\n{ex.StackTrace}";
+            nesController.ErrorMessage = $"Failed to reset: {ex.Message}\n{ex.StackTrace}";
         }
     }
 
     private void SetScale(double scale)
     {
         if (scale != 0.5 && scale != 1.0) return;
-        emuScale = scale;
+        nesController.EmuScale = scale;
     }
 
     private async Task ToggleFullscreen()
@@ -1571,7 +1392,7 @@
         try
         {
             var newState = await JS.InvokeAsync<bool>("nesInterop.toggleFullscreen");
-            isFullscreen = newState;
+            nesController.IsFullscreen = newState;
         }
         catch (Exception ex)
         {
@@ -1587,7 +1408,7 @@
             // opts is JS array => deserialize via System.Text.Json
             var json = System.Text.Json.JsonSerializer.Serialize(opts);
             var parsed = System.Text.Json.JsonDocument.Parse(json).RootElement;
-            shaderOptions.Clear();
+            nesController.ShaderOptions.Clear();
             foreach (var el in parsed.EnumerateArray())
             {
                 string key = ""; string label = "";
@@ -1596,9 +1417,9 @@
                 if(el.TryGetProperty("label", out var labProp)) label = labProp.GetString() ?? "";
                 if(el.TryGetProperty("Label", out var labProp2) && string.IsNullOrEmpty(label)) label = labProp2.GetString() ?? ""; // fallback
                 if(string.IsNullOrEmpty(label)) label = key;
-                if(!string.IsNullOrEmpty(key)) shaderOptions.Add(new ShaderOption(key,label));
+                if(!string.IsNullOrEmpty(key)) nesController.ShaderOptions.Add(new ShaderOption(key,label));
             }
-            if(!shaderOptions.Any(o=>o.Key==activeShaderKey) && shaderOptions.Count>0){ activeShaderKey = shaderOptions[0].Key; }
+            if(!nesController.ShaderOptions.Any(o=>o.Key==nesController.ActiveShaderKey) && nesController.ShaderOptions.Count>0){ nesController.ActiveShaderKey = nesController.ShaderOptions[0].Key; }
         }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to refresh shader options"); }
     }
@@ -1610,8 +1431,8 @@
             var displayName = await JS.InvokeAsync<string>("nesInterop.setShader", key);
             if(!string.IsNullOrEmpty(displayName))
             {
-                activeShaderKey = key;
-                shaderOn = key != "PX"; // consider PX the passthrough
+                nesController.ActiveShaderKey = key;
+                nesController.ShaderOn = key != "PX"; // consider PX the passthrough
                 Status.Set($"Shader: {displayName}");
             }
         }
@@ -1625,21 +1446,21 @@
     [JSInvokable]
     public async Task FrameTick()
     {
-        if (!isRunning) return;
+        if (!nesController.IsRunning) return;
         await RunFrame();
     }
 
     private async Task RunFrame()
     {
-        if (nes == null || !isRunning) return;
+        if (nes == null || !nesController.IsRunning) return;
 
         try
         {
             // Auto static only for default test ROM and only before a savestate has been shown
-            bool autoStatic = string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !autoStaticSuppressed;
+            bool autoStatic = string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !nesController.AutoStaticSuppressed;
             nes.EnableStatic(autoStatic);
             nes.SetInput(inputState);
-            if (fastForward)
+            if (nesController.FastForward)
             {
                 nes.RunFrames(3); // run multiple frames quickly
             }
@@ -1647,12 +1468,12 @@
             {
                 nes.RunFrame();
             }
-            if (autoCorrupt)
+            if (corruptor.AutoCorrupt)
             {
                 // Perform corruption after CPU step but before frame buffer fetch so effects are visible quickly
                 await Blast();
             }
-            frameCount++;
+            nesController.FrameCount++;
 
             // Fetch audio EVERY emulation frame to maintain steady cadence
             int queued = nes.GetQueuedAudioSamples();
@@ -1663,21 +1484,21 @@
             int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
 
             // Always draw current frame for smooth visuals / present output (legacy path only)
-            framebuffer = nes.GetFrameBuffer();
+            nesController.framebuffer = nes.GetFrameBuffer();
 #pragma warning disable CS4014
             // Coalesced present call (audio + video) to reduce JS interop calls per frame (HotPot HOTPOT-02)
-            JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
+            JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", nesController.framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
 #pragma warning restore CS4014
 
             // Throttle stats & Blazor UI updates separately
-            if (frameCount % statsUpdateDivider == 0)
+            if (nesController.FrameCount % nesController.StatsUpdateDivider == 0)
             {
                 var now = DateTime.Now;
-                if ((now - lastFpsUpdate).TotalSeconds >= 0.5)
+                if ((now - nesController.LastFpsUpdate).TotalSeconds >= 0.5)
                 {
-                    fps = (frameCount - lastFrameCount) / (float)(now - lastFpsUpdate).TotalSeconds;
-                    lastFrameCount = frameCount;
-                    lastFpsUpdate = now;
+                    nesController.Fps = (nesController.FrameCount - nesController.LastFrameCount) / (float)(now - nesController.LastFpsUpdate).TotalSeconds;
+                    nesController.LastFrameCount = nesController.FrameCount;
+                    nesController.LastFpsUpdate = now;
                 }
                 StateHasChanged();
             }
@@ -1687,7 +1508,7 @@
             Logger.LogError(ex, $"Error in RunFrame. Exception: {ex}");
             await InvokeAsync(() =>
             {
-                errorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
+                nesController.ErrorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
                 _ = PauseEmulation();
                 StateHasChanged();
             });
@@ -1703,8 +1524,8 @@
         {
             var id = nes.GetApuCoreId();
             var suffix = NesEmulator.CoreRegistry.ExtractSuffix(id, "APU_");
-            apuCoreSel = suffix;
-            famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
+            nesController.ApuCoreSel = suffix;
+            nesController.FamicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
         }
         catch { }
     }
@@ -1716,18 +1537,18 @@
         try
         {
             // CPU core generic selection (fallback to legacy enum if generic fails)
-            if (!string.IsNullOrEmpty(cpuCoreSel))
+            if (!string.IsNullOrEmpty(nesController.CpuCoreSel))
             {
-                if (!nes.SetCpuCore(cpuCoreSel))
+                if (!nes.SetCpuCore(nesController.CpuCoreSel))
                 {
-                    nes.SetCpuCore(cpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+                    nes.SetCpuCore(nesController.CpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
                 }
             }
             // Generic reflection-based PPU selection (fallback to legacy enum only if needed)
-            if (!nes.SetPpuCore(ppuCoreSel))
+            if (!nes.SetPpuCore(nesController.PpuCoreSel))
             {
                 // fallback for older saved prefs
-                nes.SetPpuCore(ppuCoreSel switch {
+                nes.SetPpuCore(nesController.PpuCoreSel switch {
                     "FIX" => NesEmulator.Bus.PpuCore.FIX,
                     "LQ" => NesEmulator.Bus.PpuCore.LQ,
                     "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
@@ -1735,19 +1556,19 @@
                     _ => NesEmulator.Bus.PpuCore.FMC
                 });
             }
-            if (!string.IsNullOrEmpty(apuCoreSel))
+            if (!string.IsNullOrEmpty(nesController.ApuCoreSel))
             {
-                if (!nes.SetApuCore(apuCoreSel))
+                if (!nes.SetApuCore(nesController.ApuCoreSel))
                 {
                     // legacy fallback mapping for older core ids
-                    switch (apuCoreSel)
+                    switch (nesController.ApuCoreSel)
                     {
-                        case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); famicloneOn = true; break;
-                        case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); famicloneOn = false; break;
-                        default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); famicloneOn = false; break;
+                        case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); nesController.FamicloneOn = true; break;
+                        case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); nesController.FamicloneOn = false; break;
+                        default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); nesController.FamicloneOn = false; break;
                     }
                 }
-                famicloneOn = apuCoreSel.Equals("FMC", StringComparison.OrdinalIgnoreCase) || famicloneOn;
+                nesController.FamicloneOn = nesController.ApuCoreSel.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nesController.FamicloneOn;
             }
         }
         catch { }
@@ -1760,8 +1581,8 @@
         if (nes == null) return;
         var v = e.Value?.ToString() ?? string.Empty;
         if (string.IsNullOrEmpty(v)) return;
-        if (v == apuCoreSel) return;
-        apuCoreSel = v;
+        if (v == nesController.ApuCoreSel) return;
+        nesController.ApuCoreSel = v;
         bool ok = nes.SetApuCore(v);
         if (!ok)
         {
@@ -1773,9 +1594,9 @@
                 default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); break;
             }
         }
-    famicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase);
+    nesController.FamicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase);
         Status.Set($"APU core switched to {v}");
-        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", apuCoreSel); } catch {}
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", nesController.ApuCoreSel); } catch {}
     AutoConfigureForApuCore();
     }
 
@@ -1784,8 +1605,8 @@
         if (nes == null) return;
         var v = e.Value?.ToString();
         if (string.IsNullOrEmpty(v)) return;
-        if (v == cpuCoreSel) return;
-        cpuCoreSel = v;
+        if (v == nesController.CpuCoreSel) return;
+        nesController.CpuCoreSel = v;
         var state = nes.GetCpuState();
         bool ok = nes.SetCpuCore(v);
         if (!ok)
@@ -1794,7 +1615,7 @@
         }
         try { nes.SetCpuState(state); } catch {}
         Status.Set($"CPU core switched to {v}");
-        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", cpuCoreSel); } catch {}
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", nesController.CpuCoreSel); } catch {}
     }
 
     private async Task OnPpuCoreChanged(ChangeEventArgs e)
@@ -1802,8 +1623,8 @@
         if (nes == null) return;
         var v = e.Value?.ToString();
         if (string.IsNullOrEmpty(v)) return;
-        if (v == ppuCoreSel) return;
-        ppuCoreSel = v;
+        if (v == nesController.PpuCoreSel) return;
+        nesController.PpuCoreSel = v;
         var state = nes.GetPpuState();
         if (!nes.SetPpuCore(v))
         {
@@ -1817,17 +1638,17 @@
         }
         try { nes.SetPpuState(state); } catch {}
         Status.Set($"PPU core switched to {v}");
-    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", ppuCoreSel); } catch {}
+    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", nesController.PpuCoreSel); } catch {}
     }
 
     private async Task OnShaderSelectChanged(ChangeEventArgs e)
     {
         var v = e.Value?.ToString();
         if(string.IsNullOrWhiteSpace(v)) return;
-        if(v != activeShaderKey)
+        if(v != nesController.ActiveShaderKey)
         {
             await SetShader(v);
-            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_shader", activeShaderKey); } catch {}
+            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_shader", nesController.ActiveShaderKey); } catch {}
         }
     }
 
@@ -1873,20 +1694,20 @@
             }
 
             if (nes == null) nes = new NesEmulator.NES();
-            nes.RomName = romFileName;
-            var prevApuSuffix = apuCoreSel;
+            nes.RomName = nesController.RomFileName;
+            var prevApuSuffix = nesController.ApuCoreSel;
             nes.LoadROM(romData);
             if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
-            autoStaticSuppressed = false;
+            nesController.AutoStaticSuppressed = false;
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
 
             BuildMemoryDomains();
 
-            currentRomName = e.File.Name;
+            nesController.CurrentRomName = e.File.Name;
             Status.Set($"ROM '{e.File.Name}' loaded successfully.");
-            errorMessage = "";
-            if (!isRunning)
+            nesController.ErrorMessage = "";
+            if (!nesController.IsRunning)
             {
                 await StartEmulation();
             }
@@ -1895,7 +1716,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Failed to load ROM file: {e.File.Name}. Exception: {ex}");
-            errorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
+            nesController.ErrorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
             Status.Clear();
             StateHasChanged();
         }
@@ -1906,7 +1727,7 @@
         try
         {
             Status.Set("Reading ROM file(s)...");
-            errorMessage = string.Empty;
+            nesController.ErrorMessage = string.Empty;
 
             // Invoke JS to read selected files as base64
             var files = await JS.InvokeAsync<UploadedRom[]>("nesInterop.readSelectedRoms", fileInput);
@@ -1934,7 +1755,7 @@
                 }
                 var key = f.name;
                 // If duplicate, overwrite existing bytes but not label duplication
-                uploadedRoms[key] = data;
+                nesController.UploadedRoms[key] = data;
                 if (!romOptions.Any(o => o.Key == key))
                 {
                     romOptions.Add(new RomOption { Key = key, Label = $"{f.name} (uploaded)", BuiltIn = false });
@@ -1952,7 +1773,7 @@
             var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && uploadedRoms.ContainsKey(f.name));
             if (last != null)
             {
-                romFileName = last.name;
+                nesController.RomFileName = last.name;
                 await LoadSelectedRom();
             }
 
@@ -1962,7 +1783,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Upload failed");
-            errorMessage = $"Upload failed: {ex.Message}";
+            nesController.ErrorMessage = $"Upload failed: {ex.Message}";
             // clear status
             StateHasChanged();
         }
@@ -1972,20 +1793,20 @@
     {
         if (e.Value is string value && !string.IsNullOrWhiteSpace(value))
         {
-            romFileName = value.Trim();
+            nesController.RomFileName = value.Trim();
             await LoadSelectedRom();
         }
     }
 
     private Task LoadRomEntry(string key)
     {
-        romFileName = key;
+        nesController.RomFileName = key;
         return LoadSelectedRom();
     }
 
     private Task OnRomRowClicked(RomOption opt)
     {
-        if (opt.Key == currentRomName) return Task.CompletedTask; // already active
+        if (opt.Key == nesController.CurrentRomName) return Task.CompletedTask; // already active
         return LoadRomEntry(opt.Key);
     }
 
@@ -2003,18 +1824,18 @@
             await JS.InvokeVoidAsync("nesInterop.removeStoredRom", key);
         }
         romOptions.Remove(opt);
-        if (currentRomName == key)
+        if (nesController.CurrentRomName == key)
         {
             var fallback = GetDefaultBuiltInRomKey();
             if (!string.IsNullOrEmpty(fallback))
             {
-                romFileName = fallback;
+                nesController.RomFileName = fallback;
                 await LoadSelectedRom();
             }
             else
             {
                 nes = null; // no ROM available
-                currentRomName = "None";
+                nesController.CurrentRomName = "None";
                 Status.Set("No built-in ROMs available. Please upload a ROM.");
             }
         }
@@ -2036,13 +1857,13 @@
             var fallback = GetDefaultBuiltInRomKey();
             if (!string.IsNullOrEmpty(fallback))
             {
-                romFileName = fallback;
+                nesController.RomFileName = fallback;
                 await LoadSelectedRom();
             }
             else
             {
                 nes = null;
-                currentRomName = "None";
+                nesController.CurrentRomName = "None";
                 Status.Set("No built-in ROMs available. Please upload a ROM.");
             }
         }
@@ -2051,7 +1872,7 @@
 
     private void OnRomSearchChanged(ChangeEventArgs e)
     {
-        romSearch = e.Value?.ToString() ?? string.Empty;
+        nesController.RomSearch = e.Value?.ToString() ?? string.Empty;
     }
 
     private async Task TriggerFileDialog()
@@ -2062,8 +1883,8 @@
 
     private string GetRomSizeDisplay(string key)
     {
-        if (uploadedRoms.TryGetValue(key, out var data)) return FormatSize(data.Length);
-        if (builtInRomSizes.TryGetValue(key, out var s)) return FormatSize(s);
+        if (nesController.UploadedRoms.TryGetValue(key, out var data)) return FormatSize(data.Length);
+        if (nesController.BuiltInRomSizes.TryGetValue(key, out var s)) return FormatSize(s);
         return "?";
     }
 
@@ -2079,30 +1900,30 @@
     {
         try
         {
-            bool wasRunning = isRunning;
+            bool wasRunning = nesController.IsRunning;
             if (wasRunning) await PauseEmulation();
-            if (uploadedRoms.TryGetValue(romFileName, out var data))
+            if (nesController.UploadedRoms.TryGetValue(nesController.RomFileName, out var data))
             {
-                Status.Set($"Loading uploaded ROM {romFileName}...");
+                Status.Set($"Loading uploaded ROM {nesController.RomFileName}...");
                 if (nes == null) nes = new NesEmulator.NES();
-                nes.RomName = romFileName;
-                var prevApuSuffix = apuCoreSel;
+                nes.RomName = nesController.RomFileName;
+                var prevApuSuffix = nesController.ApuCoreSel;
                 nes.LoadROM(data);
                 if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
-                autoStaticSuppressed = false; // new ROM -> allow static again if test.nes
+                nesController.AutoStaticSuppressed = false; // new ROM -> allow static again if test.nes
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                 SetApuCoreSelFromEmu();
                 SetApuCoreSelFromEmu();
                 ApplySelectedCores();
                 BuildMemoryDomains();
                 // Warm-up one frame to let subsystems settle before any follow-up actions
-                try { nes.RunFrame(); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
-                currentRomName = romFileName;
-                lastLoadedRomSize = data.Length;
-                Status.Set($"ROM '{romFileName}' loaded from upload.");
-                errorMessage = "";
+                try { nes.RunFrame(); nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
+                nesController.CurrentRomName = nesController.RomFileName;
+                nesController.LastLoadedRomSize = data.Length;
+                Status.Set($"ROM '{nesController.RomFileName}' loaded from upload.");
+                nesController.ErrorMessage = "";
                 // Collapse ROM Manager and expand Corruptor panel (except test.nes)
-                if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
                 {
                     try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
                 }
@@ -2111,21 +1932,21 @@
             }
             else
             {
-                Status.Set($"Loading built-in {romFileName}...");
+                Status.Set($"Loading built-in {nesController.RomFileName}...");
                 await LoadRomFromServer();
                 SetApuCoreSelFromEmu();
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Failed to load selected ROM: {ex.Message}";
+            nesController.ErrorMessage = $"Failed to load selected ROM: {ex.Message}";
             StateHasChanged();
         }
     }
 
     private Task ReloadCurrentRom()
     {
-        if (uploadedRoms.ContainsKey(romFileName))
+        if (nesController.UploadedRoms.ContainsKey(nesController.RomFileName))
         {
             return LoadSelectedRom();
         }
@@ -2140,30 +1961,30 @@
         try
         {
             if (IsBuiltInSelected) return;
-            if (uploadedRoms.Remove(romFileName))
+            if (nesController.UploadedRoms.Remove(nesController.RomFileName))
             {
-                await JS.InvokeVoidAsync("nesInterop.removeStoredRom", romFileName);
-                var opt = romOptions.FirstOrDefault(o => o.Key == romFileName);
+                await JS.InvokeVoidAsync("nesInterop.removeStoredRom", nesController.RomFileName);
+                var opt = romOptions.FirstOrDefault(o => o.Key == nesController.RomFileName);
                 if (opt != null) romOptions.Remove(opt);
-                Status.Set($"Deleted ROM {romFileName}.");
+                Status.Set($"Deleted ROM {nesController.RomFileName}.");
                 // fallback to first built-in
                 var fallback = GetDefaultBuiltInRomKey();
                 if (!string.IsNullOrEmpty(fallback))
                 {
-                    romFileName = fallback;
+                    nesController.RomFileName = fallback;
                     await LoadSelectedRom();
                 }
                 else
                 {
                     nes = null;
-                    currentRomName = "None";
+                    nesController.CurrentRomName = "None";
                     Status.Set("No built-in ROMs available. Please upload a ROM.");
                 }
             }
         }
         catch (Exception ex)
         {
-            errorMessage = "Delete failed: " + ex.Message;
+            nesController.ErrorMessage = "Delete failed: " + ex.Message;
         }
         StateHasChanged();
     }
@@ -2172,50 +1993,50 @@
     {
         try
         {
-            Logger.LogInformation($"Loading ROM from server: {romFileName}");
-            Status.Set($"Loading {romFileName}...");
+            Logger.LogInformation($"Loading ROM from server: {nesController.RomFileName}");
+            Status.Set($"Loading {nesController.RomFileName}...");
 
-            var romData = await LoadRomFromWwwroot(romFileName);
+            var romData = await LoadRomFromWwwroot(nesController.RomFileName);
             
             if (romData.Length == 0)
             {
-                throw new Exception($"ROM file '{romFileName}' not found or empty");
+                throw new Exception($"ROM file '{nesController.RomFileName}' not found or empty");
             }
 
-            bool wasRunning = isRunning;
+            bool wasRunning = nesController.IsRunning;
             if (wasRunning) await PauseEmulation();
             if (nes == null) nes = new NesEmulator.NES();
-            nes.RomName = romFileName;
-            var prevApuSuffix = apuCoreSel;
+            nes.RomName = nesController.RomFileName;
+            var prevApuSuffix = nesController.ApuCoreSel;
             nes.LoadROM(romData);
             if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             SetApuCoreSelFromEmu();
             SetApuCoreSelFromEmu();
             ApplySelectedCores();
-            currentRomName = romFileName;
-            lastLoadedRomSize = romData.Length;
-            if (!uploadedRoms.ContainsKey(romFileName))
+            nesController.CurrentRomName = nesController.RomFileName;
+            nesController.LastLoadedRomSize = romData.Length;
+            if (!nesController.UploadedRoms.ContainsKey(nesController.RomFileName))
             {
                 // store built-in size cache
-                builtInRomSizes[romFileName] = romData.Length;
+                nesController.BuiltInRomSizes[nesController.RomFileName] = romData.Length;
             }
             // Warm-up one frame to let subsystems settle before any follow-up actions
-            try { nes.RunFrame(); framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
-            Status.Set($"ROM '{romFileName}' loaded successfully!");
-            errorMessage = "";
+            try { nes.RunFrame(); nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
+            Status.Set($"ROM '{nesController.RomFileName}' loaded successfully!");
+            nesController.ErrorMessage = "";
             // Collapse ROM Manager and expand Corruptor panel (except test.nes)
-            if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
             }
-            if (hasBooted && wasRunning) { await StartEmulation(); }
+            if (nesController.HasBooted && wasRunning) { await StartEmulation(); }
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"Failed to load ROM from server: {romFileName}. Exception: {ex}");
-            errorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
+            Logger.LogError(ex, $"Failed to load ROM from server: {nesController.RomFileName}. Exception: {ex}");
+            nesController.ErrorMessage = $"Failed to load ROM: {ex.Message}\n{ex.StackTrace}";
             Status.Clear();
             StateHasChanged();
         }
@@ -2234,7 +2055,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = ex.Message;
+            nesController.ErrorMessage = ex.Message;
         }
         return Task.CompletedTask;
     }
@@ -2292,7 +2113,7 @@
                 }
                 catch (JSException jsex)
                 {
-                    errorMessage = "Save error: " + jsex.Message;
+                    nesController.ErrorMessage = "Save error: " + jsex.Message;
                     Diag("Single chunk save JSException: "+jsex.Message);
                 }
                 return;
@@ -2322,14 +2143,14 @@
             }
             catch (JSException jsex)
             {
-                errorMessage = "Save error (chunked): " + jsex.Message;
+                nesController.ErrorMessage = "Save error (chunked): " + jsex.Message;
                 Diag("Chunked save JSException: "+jsex.Message+" initiating cleanup");
                 try { await RemoveExistingChunks(); } catch {}
             }
         }
         catch (Exception ex)
         {
-            errorMessage = "Save error: " + ex.Message;
+            nesController.ErrorMessage = "Save error: " + ex.Message;
             Diag("Top-level SaveState exception: "+ex.Message+"\n"+ex.StackTrace);
         }
         finally { stateBusy = false; var elapsed = DateTime.UtcNow - diagStart; Diag("UI SaveState finished in "+elapsed.TotalMilliseconds.ToString("F2")+" ms"); }
@@ -2337,7 +2158,7 @@
 
     private async Task LoadState()
     {
-        if (stateBusy) return; stateBusy = true; bool wasRunning = isRunning;
+        if (stateBusy) return; stateBusy = true; bool wasRunning = nesController.IsRunning;
         try
         {
             // Pause to stop RAF loop and CPU while we swap ROM/state
@@ -2356,7 +2177,7 @@
                     for (int i = 0; i < parts; i++)
                     {
                         var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
-                        if (part == null) { errorMessage = "Load error: missing part " + i; stateBusy = false; return; }
+                        if (part == null) { nesController.ErrorMessage = "Load error: missing part " + i; stateBusy = false; return; }
                         sb.Append(part);
                     }
                     full = sb.ToString();
@@ -2367,7 +2188,7 @@
                 }
                 catch (Exception ex)
                 {
-                    errorMessage = "Load error (chunked): " + ex.Message;
+                    nesController.ErrorMessage = "Load error (chunked): " + ex.Message;
                     return;
                 }
             }
@@ -2378,7 +2199,7 @@
                 if (single.StartsWith("GZ:"))
                 {
                     try { full = DecompressString(single.Substring(3)); }
-                    catch (Exception ex) { errorMessage = "Decompress error: " + ex.Message; return; }
+                    catch (Exception ex) { nesController.ErrorMessage = "Decompress error: " + ex.Message; return; }
                 }
                 else full = single;
             }
@@ -2402,11 +2223,11 @@
                             try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                             // Warm-up frame
                             try { nes.RunFrame(); } catch {}
-                            try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+                            try { nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
                             BuildMemoryDomains();
                             // Capture romName metadata for UI labeling if present (deferred until after parse below)
                             try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) { nes.RomName = rnEl.GetString() ?? nes.RomName; } } catch {}
-                            lastLoadedRomSize = romBytes.Length;
+                            nesController.LastLoadedRomSize = romBytes.Length;
                         }
                     }
                 }
@@ -2414,15 +2235,15 @@
 
                 // Now load the savestate
                 nes.LoadState(full);
-                try { var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; currentRomName = savedName; romFileName = savedName; } } catch {}
-                autoStaticSuppressed = true; // prevent returning to static noise after manual load
+                try { var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } catch {}
+                nesController.AutoStaticSuppressed = true; // prevent returning to static noise after manual load
                 // If state restored into a crash/unsupported mapper mode, force IgnoreErrors to best-effort recover
                 try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
                 // Reset audio timeline and draw
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes.GetAudioBuffer(); } catch {}
-                framebuffer = nes.GetFrameBuffer();
-                await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer);
+                nesController.framebuffer = nes.GetFrameBuffer();
+                await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                 Status.Set("State loaded");
 
                 // Sync UI core selections from emulator
@@ -2430,9 +2251,9 @@
                 {
                     var apuId = nes.GetApuCoreId();
                     var suffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
-                    bool prev = famicloneOn;
-                    famicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
-                    if (prev != famicloneOn || !wasRunning) StateHasChanged();
+                    bool prev = nesController.FamicloneOn;
+                    nesController.FamicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
+                    if (prev != nesController.FamicloneOn || !wasRunning) StateHasChanged();
                 }
                 catch { if (!wasRunning) StateHasChanged(); }
 
@@ -2444,9 +2265,9 @@
                     var ppuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(ppuId, "PPU_");
                     var apuSuffix = NesEmulator.CoreRegistry.ExtractSuffix(apuId, "APU_");
                     bool changed = false;
-                    if(!string.IsNullOrWhiteSpace(cpuSuffix) && cpuCoreOptions.Contains(cpuSuffix) && cpuSuffix!=cpuCoreSel){ cpuCoreSel=cpuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",cpuCoreSel);}catch{} }
-                    if(!string.IsNullOrWhiteSpace(ppuSuffix) && ppuCoreOptions.Contains(ppuSuffix) && ppuSuffix!=ppuCoreSel){ ppuCoreSel=ppuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore",ppuCoreSel);}catch{} }
-                    if(!string.IsNullOrWhiteSpace(apuSuffix) && apuCoreOptions.Contains(apuSuffix) && apuSuffix!=apuCoreSel){ apuCoreSel=apuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore",apuCoreSel);}catch{} }
+                    if(!string.IsNullOrWhiteSpace(cpuSuffix) && nesController.CpuCoreOptions.Contains(cpuSuffix) && cpuSuffix!=nesController.CpuCoreSel){ nesController.CpuCoreSel=cpuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore",nesController.CpuCoreSel);}catch{} }
+                    if(!string.IsNullOrWhiteSpace(ppuSuffix) && nesController.PpuCoreOptions.Contains(ppuSuffix) && ppuSuffix!=nesController.PpuCoreSel){ nesController.PpuCoreSel=ppuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore",nesController.PpuCoreSel);}catch{} }
+                    if(!string.IsNullOrWhiteSpace(apuSuffix) && nesController.ApuCoreOptions.Contains(apuSuffix) && apuSuffix!=nesController.ApuCoreSel){ nesController.ApuCoreSel=apuSuffix; changed=true; try{ await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore",nesController.ApuCoreSel);}catch{} }
                     if (changed) StateHasChanged();
                 } catch {}
 
@@ -2457,7 +2278,7 @@
                 }
             }
         }
-        catch (Exception ex) { errorMessage = "Load error: " + ex.Message; }
+        catch (Exception ex) { nesController.ErrorMessage = "Load error: " + ex.Message; }
         finally { stateBusy = false; }
     }
 
@@ -2478,7 +2299,7 @@
         if (nes == null || benchRunning) { benchModalOpen = true; return; }
         benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
         try {
-            bool wasRunning = isRunning; // pause emulator for deterministic timing
+            bool wasRunning = nesController.IsRunning; // pause emulator for deterministic timing
             if (wasRunning) await PauseEmulation();
             if (benchAutoLoadState)
             {
@@ -2489,7 +2310,7 @@
             var results = nes.RunBenchmarks(w);
             benchResultsText = nes.FormatBenchmarksForDisplay(results);
             // Prepend ROM info if we resolved a baseline name
-            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? currentRomName : benchBaselineRomName;
+            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? nesController.CurrentRomName : benchBaselineRomName;
             benchResultsText = $"ROM: {displayRom}\n" + benchResultsText;
             var entry = new BenchHistoryEntry {
                 TimestampUtc = DateTime.UtcNow,
@@ -2512,7 +2333,7 @@
     {
         if (nes == null || benchRunning) { benchModalOpen = true; return; }
         benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
-        bool wasRunning = isRunning;
+        bool wasRunning = nesController.IsRunning;
         try {
             if (wasRunning) await PauseEmulation();
             int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
@@ -2547,7 +2368,7 @@
             }
             // Build display text summarizing passes and averaged table
             var sb = new System.Text.StringBuilder();
-            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? currentRomName : benchBaselineRomName;
+            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? nesController.CurrentRomName : benchBaselineRomName;
             sb.AppendLine($"ROM: {displayRom}");
             sb.AppendLine("Benchmark Results (5-pass average)");
             sb.AppendLine($"Each pass weight={w}; fields averaged over {passes} passes.");
@@ -2643,12 +2464,12 @@
                     {
                         var romBytes = new byte[len];
                         int idx = 0; foreach (var v in romEl.EnumerateArray()) { if (idx >= len) break; romBytes[idx++] = (byte)v.GetByte(); }
-                        nes = new NesEmulator.NES { RomName = currentRomName };
+                        nes = new NesEmulator.NES { RomName = nesController.CurrentRomName };
                         nes.LoadROM(romBytes);
                         try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
                         // Warm-up a frame
                         try { nes.RunFrame(); } catch {}
-                        try { framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+                        try { nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
                         BuildMemoryDomains();
                         // If state contains romName metadata, capture for later UI update
                         try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) { nes.RomName = rnEl.GetString() ?? nes.RomName; } } catch {}
@@ -2669,11 +2490,11 @@
             try { ApplySelectedCores(); } catch {}
             // Optional tiny warm-up to stabilize any core-initial one-time work before timing begins.
             try { nes?.RunFrame(); } catch {}
-            try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; currentRomName = savedName; romFileName = savedName; } } } catch {}
-            autoStaticSuppressed = true; // ensure benchmarks display real frames
+            try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } } catch {}
+            nesController.AutoStaticSuppressed = true; // ensure benchmarks display real frames
             try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
             try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
-            try { framebuffer = nes!.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", framebuffer); } catch {}
+            try { nesController.framebuffer = nes!.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
             return true;
         }
         catch
@@ -2910,7 +2731,7 @@
     {
         if (e.Value is string v)
         {
-            crashBehavior = v;
+            corruptor.CrashBehavior = v;
             try
             {
                 if (nes != null)
@@ -2947,7 +2768,7 @@
     private void LetItRip()
     {
         corruptor.CorruptIntensity = 1;
-        foreach (var d in memoryDomains)
+        foreach (var d in corruptor.MemoryDomains)
         {
             d.Selected = d.Key == "PRG" || d.Key == "RAM"; // Only PRG ROM & System RAM
         }
@@ -2960,7 +2781,7 @@
         {
             corruptor.LastBlastInfo = "Let it rip engaged";
         }
-        letItRipUsed = true;
+        corruptor.LetItRipUsed = true;
         StateHasChanged();
     }
 
@@ -3093,7 +2914,7 @@
     [JSInvokable]
     public void JsExitFullscreen()
     {
-        isFullscreen = false;
+        nesController.IsFullscreen = false;
         StateHasChanged();
     }
 
@@ -3119,10 +2940,10 @@
             }
             catch { }
         }
-        romFileName = roms.Last().name;
+        nesController.RomFileName = roms.Last().name;
         await LoadSelectedRom();
         Status.Set($"Dropped {added} ROM(s).");
-        if (!string.Equals(currentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
         {
             try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
         }
