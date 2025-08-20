@@ -1,14 +1,123 @@
-﻿@* Home page kept minimal intentionally. Root route handled by Nes.razor. *@
-@* Minimal placeholder (avoid feature marketing; subject to change). *@
+﻿@page "/"
 
-<div class="minimal-home">
-    <h1>BrokenNes</h1>
-    <p class="small-note">A very normal NES emulator</p>
-    <p>
-        <a href="/nes" class="btn btn-primary">Launch Emulator</a>
-    </p>
-</div>
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (!showHealthWarning)
+{
+    <div class="home-hero hero-fade-in">
+        <div class="hero-inner title-screen">
+            <h1 class="hero-title fade-seq" data-seq="0">Broken<span>Nes</span></h1>
+            <div class="title-buttons">
+                <button class="title-primary fade-seq" data-seq="1" @onclick="OpenDeckBuilder" aria-label="Open Deck Builder">Deck Builder</button>
+                <div class="title-secondary-group">
+                    <button class="title-secondary fade-seq" data-seq="2" @onclick="BootAndEnter" aria-label="Open Emulator">BrokenNes Emulator</button>
+                    <button class="title-secondary fade-seq" data-seq="3" @onclick="NavigateOptions" aria-label="Options">Options</button>
+                    <button class="title-secondary fade-seq" data-seq="4" @onclick="ShowAbout" aria-label="About">About</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showHealthWarning)
+{
+    <div class="modal-backdrop hw-center" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6000;">
+        <div class="card shadow-xl health-warning-modal">
+            <div class="card-body">
+                <h2 class="hw-title">Health Warning</h2>
+                <div class="hw-text">
+                    This software can and will generate flashing images and loud noises. Avoid using this software if you are prone to seizures.
+                </div>
+                <button class="hero-btn hw-ok-btn" @onclick="OnHealthOk" aria-label="Acknowledge health warning">OK</button>
+                <audio id="plateWav" src="plates.m4a" preload="auto"></audio>
+            </div>
+        </div>
+    </div>
+}
+
+@if (aboutVisible)
+{
+    <div class="modal-backdrop about-backdrop" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6500;">
+        <div class="about-modal">
+            <div class="about-body">
+                <h2 class="about-title">ABOUT</h2>
+                <p class="about-text">BrokenNes is an experimental NES emulator & tooling sandbox. This modal replaces a full page to keep audio alive.</p>
+                <p class="about-text small">Build: @BuildVersion</p>
+                <button class="about-close" @onclick="HideAbout" aria-label="Close About">CLOSE</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
-    // Intentionally empty: keep page lightweight.
+    private bool _booting = false;
+    private bool showHealthWarning = true; // Always show on load (could be persisted with localStorage later if desired)
+    private bool aboutVisible = false;
+    private string BuildVersion => typeof(Program).Assembly.GetName().Version?.ToString() ?? "?";
+    private bool _titleStarted = false;
+
+    protected override void OnInitialized()
+    {
+        // Detect query parameter to optionally skip health warning
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            if (!string.IsNullOrEmpty(uri.Query) && uri.Query.Contains("skipHW"))
+            {
+                showHealthWarning = false; // Skip immediately
+            }
+        }
+        catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Auto-start title music when health warning skipped (either via param or after OK)
+        if (!showHealthWarning && !_titleStarted)
+        {
+            _titleStarted = true;
+            try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+            try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch { }
+        }
+    }
+
+    private async Task BootAndEnter()
+    {
+        if (_booting) return; _booting = true;
+        try
+        {
+            await JS.InvokeVoidAsync("nesInterop.ensureAudioContext");
+            // Fade out title music before entering emulator
+            try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch {}
+            try { await JS.InvokeVoidAsync("eval", "window.__brokenNesPreBoot=1"); } catch {}
+        }
+        catch { }
+        Nav.NavigateTo("/nes", forceLoad: false);
+    }
+
+    private void OpenDeckBuilder()
+    {
+        // Placeholder navigation - adjust path when deck builder implemented
+        Nav.NavigateTo("/deck-builder", forceLoad: false);
+    }
+
+    private void NavigateOptions()
+    {
+        Nav.NavigateTo("/options", forceLoad: false);
+    }
+
+    private void ShowAbout() => aboutVisible = true;
+    private void HideAbout() => aboutVisible = false;
+
+    private async Task OnHealthOk()
+    {
+        // Ensure audio context is ready before playing sound
+        try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+        // Attempt to play the plate.wav sound; ignore failures (e.g., missing file)
+        try { await JS.InvokeVoidAsync("eval", "(function(){var a=document.getElementById('plateWav'); if(a){ a.currentTime=0; a.play().catch(()=>{}); }})();"); } catch { }
+        showHealthWarning = false;
+    // Start looping title music (fade in handled in JS)
+    try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch {}
+    }
 }

@@ -1,0 +1,85 @@
+.home-hero{min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:2rem;background:#000;text-align:center;image-rendering:pixelated;}
+.hero-inner{max-width:760px;}
+.hero-title{font-family:'Press Start 2P', monospace;font-size:clamp(2.1rem,6vw,4rem);line-height:1.05;margin:0 0 1rem;font-weight:400;letter-spacing:2px;color:#ff5a26;text-shadow:none;filter:none;}
+.hero-title span{color:#ffffff;}
+.hero-sub{font-family:'Orbitron', monospace;font-size:clamp(.9rem,1.6vw,1.15rem);letter-spacing:2px;text-transform:uppercase;color:#c0c0c0;margin-bottom:2.2rem;opacity:1;}
+.hero-btn{display:inline-block;font-family:'Press Start 2P', monospace;padding:1rem 1.75rem;font-size:.9rem;letter-spacing:1px;color:#fff;border:4px solid #ff5a26;text-decoration:none;background:#000;box-shadow:none;border-radius:0;transition:background .05s steps(2,end),transform .05s steps(2,end);}
+.hero-btn:hover,.hero-btn:focus{transform:translateY(-2px);background:#ff5a26;color:#000;}
+.hero-btn:active{transform:translateY(0);background:#b23f1a;color:#fff;}
+@media (max-width:540px){.hero-btn{width:100%;}}
+
+/* Health warning modal overrides */
+.health-warning-modal{width:clamp(300px,80vw,960px);max-height:85vh;}
+.health-warning-modal .card-body{background:#000;color:#e0e0e0;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;border-radius:0;padding:clamp(1.25rem,3vw,2.5rem);overflow:auto;box-shadow:none;font-family:'Press Start 2P', monospace;}
+.health-warning-modal .hw-title{font-family:'Press Start 2P', monospace;font-size:clamp(1.1rem,2.6vw,1.8rem);letter-spacing:2px;margin:0 0 1rem;color:#ff5a26;text-shadow:none;}
+.health-warning-modal .hw-text{font-family:'Press Start 2P', monospace;font-size:clamp(.65rem,1.2vw,.85rem);line-height:1.55;letter-spacing:1px;margin-bottom:1.4rem;color:#c0c0c0;}
+.health-warning-modal .hw-ok-btn{display:block;width:100%;margin-top:.25rem;font-size:clamp(.65rem,1vw,.8rem);padding:1rem 1.2rem;border:3px solid #ff5a26;background:#000;color:#fff;border-radius:0;transition:background .05s steps(2,end),color .05s steps(2,end);}
+.health-warning-modal .hw-ok-btn:hover,.health-warning-modal .hw-ok-btn:focus{background:#ff5a26;color:#000;}
+.health-warning-modal .hw-ok-btn:active{background:#b23f1a;color:#fff;}
+.hw-center{animation:fadeInBg .35s ease;}
+
+/* Fade-in for hero after accepting warning */
+.hero-fade-in{opacity:0;animation:heroAppear .6s ease forwards .05s;}
+@keyframes heroAppear{to{opacity:1;transform:none;}from{opacity:0;transform:translateY(10px);}}
+@keyframes fadeInBg{from{background:#0000;}to{background:#000c;}}
+
+/* Title screen specific (8-bit flat style) */
+.title-screen{display:flex;flex-direction:column;align-items:center;gap:1.5rem;padding:1.25rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:#000;box-shadow:none;}
+.title-buttons{display:flex;flex-direction:column;align-items:center;gap:1.25rem;width:100%;}
+.title-primary{font-family:'Press Start 2P', monospace;font-size:clamp(1.4rem,3.8vw,2.4rem);padding:1.1rem 2.2rem;border:4px solid #ff5a26;background:#000;color:#ffffff;letter-spacing:2px;box-shadow:none;border-radius:0;cursor:pointer;transition:background .05s steps(2,end),transform .05s steps(2,end),color .05s steps(2,end);}
+.title-primary:hover,.title-primary:focus{background:#ff5a26;color:#000;transform:translateY(-3px);}
+.title-primary:active{background:#b23f1a;color:#fff;transform:translateY(0);}
+.title-secondary-group{display:flex;flex-direction:column;align-items:center;gap:.6rem;}
+.title-secondary{font-family:'Press Start 2P', monospace;font-size:clamp(.7rem,1.4vw,.95rem);padding:.7rem 1.25rem;border:3px solid #ffffff;background:#000;color:#ffffff;letter-spacing:1px;box-shadow:none;border-radius:0;cursor:pointer;transition:background .05s steps(2,end),color .05s steps(2,end),transform .05s steps(2,end);}
+.title-secondary:hover,.title-secondary:focus{background:#ffffff;color:#000;transform:translateY(-2px);}
+.title-secondary:active{background:#c0c0c0;color:#000;transform:translateY(0);}
+
+/* Staggered overlapping fade sequence (smooth) */
+.fade-seq{opacity:0;animation:fadeSeq .75s cubic-bezier(.22,.61,.36,1) forwards;}
+@keyframes fadeSeq{0%{opacity:0;transform:translateY(18px) scale(.97);}50%{opacity:.85;}100%{opacity:1;transform:translateY(0) scale(1);} }
+/* Overlapping offsets (each starts before previous finishes) */
+.fade-seq[data-seq="0"]{animation-delay:.15s;}
+.fade-seq[data-seq="1"]{animation-delay:.45s;}
+.fade-seq[data-seq="2"]{animation-delay:.68s;}
+.fade-seq[data-seq="3"]{animation-delay:.86s;}
+.fade-seq[data-seq="4"]{animation-delay:1.02s;}
+
+@media (max-width:620px){
+		.title-primary{font-size:clamp(1.2rem,5vw,2.1rem);padding:1rem 1.6rem;}
+		.title-secondary{font-size:.65rem;padding:.65rem 1rem;}
+		.title-buttons{gap:1rem;}
+}
+
+@media (prefers-reduced-motion:reduce){
+		.fade-seq{animation:none;opacity:1;transform:none;}
+		.title-primary,.title-secondary,.hero-btn{transition:none;}
+	}
+
+/* Focus visibility (keyboard) */
+.title-primary:focus-visible,.title-secondary:focus-visible,.hero-btn:focus-visible,.health-warning-modal .hw-ok-btn:focus-visible{outline:3px solid #ffff00;outline-offset:2px;}
+
+/* CRT optional (commented out to obey no gradients/glow) */
+/* .home-hero:after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(transparent 0 2px,rgba(255,255,255,0.05) 2px 3px);} */
+
+@media (max-width:720px){
+	.health-warning-modal{width:92vw;max-height:88vh;}
+	.health-warning-modal .card-body{padding:1.5rem 1.25rem 1.75rem;}
+	.health-warning-modal .hw-title{font-size:clamp(1.4rem,5vw,1.9rem);}
+	.health-warning-modal .hw-text{font-size:.9rem;}
+}
+
+@media (max-width:420px){
+	.health-warning-modal .card-body{padding:1.15rem 1rem 1.4rem;border-radius:14px;}
+	.health-warning-modal .hw-title{margin-bottom:.9rem;letter-spacing:1px;}
+	.health-warning-modal .hw-text{margin-bottom:1.4rem;line-height:1.45;}
+	.health-warning-modal .hw-ok-btn{padding:1rem 1.2rem;}
+}
+
+/* About modal (8-bit flat) */
+.about-modal{background:#000;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;padding:1.5rem 2rem;max-width:640px;width:clamp(300px,80vw,640px);font-family:'Press Start 2P', monospace;color:#fff;}
+.about-title{margin:0 0 1rem;font-size:1.4rem;color:#ff5a26;}
+.about-text{font-size:.62rem;line-height:1.4;margin:.4rem 0;color:#c0c0c0;}
+.about-text.small{opacity:.7;}
+.about-close{margin-top:1.25rem;display:inline-block;padding:.65rem 1.25rem;border:3px solid #ff5a26;background:#000;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;cursor:pointer;transition:background .05s steps(2,end),color .05s steps(2,end);} 
+.about-close:hover,.about-close:focus{background:#ff5a26;color:#000;}
+.about-close:active{background:#b23f1a;color:#fff;}

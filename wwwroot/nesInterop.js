@@ -185,6 +185,65 @@ window.nesInterop = {
             window._nesAudioTimeline = ctx.currentTime + 0.02;
         }catch(e){ console.warn('resetAudioTimeline failed', e); }
     },
+    // ================= Title Screen Music =================
+    _titleMusicEl: null,
+    _titleMusicGain: null,
+    _titleMusicSrc: null,
+    ensureTitleMusic(){
+        try {
+            this.ensureAudioContext();
+            const ctx = window.nesAudioCtx;
+            if(!this._titleMusicEl){
+                const el = document.getElementById('titleMusic');
+                if(!el){
+                    // Fallback create (hidden)
+                    const created = document.createElement('audio');
+                    created.id='titleMusic';
+                    created.src='TitleScreen.mp3';
+                    created.loop=true; created.preload='auto';
+                    created.style.display='none';
+                    document.body.appendChild(created);
+                    this._titleMusicEl = created;
+                } else { this._titleMusicEl = el; }
+            }
+            if(!this._titleMusicGain){
+                this._titleMusicGain = ctx.createGain();
+                this._titleMusicGain.gain.value = 0; // will fade in
+            }
+            if(!this._titleMusicSrc){
+                this._titleMusicSrc = ctx.createMediaElementSource(this._titleMusicEl);
+                this._titleMusicSrc.connect(this._titleMusicGain).connect(ctx.destination);
+            }
+        } catch(e){ console.warn('ensureTitleMusic failed', e); }
+    },
+    playTitleMusic(){
+        try {
+            this.ensureTitleMusic();
+            const ctx = window.nesAudioCtx;
+            const g = this._titleMusicGain;
+            if(ctx.state==='suspended') ctx.resume();
+            const el = this._titleMusicEl;
+            if(el && el.paused){ el.currentTime=0; el.play().catch(()=>{}); }
+            const now = ctx.currentTime;
+            g.gain.cancelScheduledValues(now);
+            g.gain.setValueAtTime(g.gain.value, now);
+            g.gain.linearRampToValueAtTime(0.42, now + 1.0);
+        } catch(e){ console.warn('playTitleMusic failed', e); }
+    },
+    fadeOutAndStopTitleMusic(){
+        try {
+            if(!this._titleMusicGain || !window.nesAudioCtx) return;
+            const ctx = window.nesAudioCtx;
+            const g = this._titleMusicGain;
+            const el = this._titleMusicEl;
+            const now = ctx.currentTime;
+            g.gain.cancelScheduledValues(now);
+            g.gain.setValueAtTime(g.gain.value, now);
+            g.gain.linearRampToValueAtTime(0.0, now + 1.2);
+            // After fade complete, pause element
+            setTimeout(()=>{ try { if(el) el.pause(); } catch{} }, 1250);
+        } catch(e){ console.warn('fadeOutAndStopTitleMusic failed', e); }
+    },
     // ====== SharedArrayBuffer + AudioWorklet ring (HotPot HOTPOT-04) ======
     _awEnabled: false,
     _awFailed: false,

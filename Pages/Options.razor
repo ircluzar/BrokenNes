@@ -1,0 +1,45 @@
+@page "/options"
+@inject IJSRuntime JS
+
+<div class="options-root">
+    <h2 class="opt-title">OPTIONS</h2>
+    <div class="opt-sections">
+        <section class="opt-section">
+            <h3 class="opt-h3">AUDIO</h3>
+            <div class="opt-row">
+                <label>Master Volume</label>
+                <input type="range" min="0" max="100" value="100" @oninput="OnVolChange" />
+            </div>
+            <div class="opt-row small-note">(Placeholder controls)</div>
+        </section>
+        <section class="opt-section">
+            <h3 class="opt-h3">VIDEO</h3>
+            <div class="opt-row">
+                <label>Shader Pass</label>
+                <select disabled>
+                    <option>Default</option>
+                </select>
+            </div>
+        </section>
+        <section class="opt-section">
+            <h3 class="opt-h3">INPUT</h3>
+            <div class="opt-row"><button disabled>Rebind Keys (Coming Soon)</button></div>
+        </section>
+    </div>
+    <div class="opt-footer">
+    <a href="/?skipHW=1" class="opt-link">RETURN</a>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Keep audio context alive when visiting options
+        try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    }
+
+    private void OnVolChange(ChangeEventArgs e)
+    {
+        // Placeholder for future volume binding
+    }
+}

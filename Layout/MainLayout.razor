@@ -2,9 +2,10 @@
 @using BrokenNes.Layout
 @using BrokenNes
 @using BrokenNes.Shared
+@using Microsoft.AspNetCore.Components.Web
 <div class="app-shell">
     <header class="app-bar">
-        <div class="brand">BrokenNes</div>
+        <div class="brand" @onclick="NavigateHome" @onkeydown="OnBrandKey" role="button" tabindex="0" aria-label="Return to home">BrokenNes</div>
     </header>
     <div class="status-dock">
         <StatusBar />
@@ -13,3 +14,23 @@
         @Body
     </main>
 </div>
+
+<!-- Persistent title music element (moved from Home.razor so early navigation during fade-in doesn't kill audio) -->
+<audio id="titleMusic" src="TitleScreen.mp3" preload="auto" loop style="display:none"></audio>
+
+@inject NavigationManager Nav
+
+@code {
+    private void NavigateHome()
+    {
+        Nav.NavigateTo("/?skipHW=1", forceLoad: false);
+    }
+
+    private void OnBrandKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            NavigateHome();
+        }
+    }
+}
