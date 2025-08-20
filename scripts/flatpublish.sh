@@ -238,6 +238,81 @@ if (( missing )); then
   exit 3
 fi
 
+# (Home page CSS fallback will be added after route generation if needed)
+
+# ---- Route Static Copies & Audio Asset Verification ----
+# For static hosting (e.g., GitHub Pages, S3 without rewrite rules) we create per-route
+# folders so direct navigation to /nes, /options, /deckbuilder works without server-side
+# fallback. Each folder gets an index.html cloned from the root one with a modified
+# <base href> so relative framework/script paths resolve to the root.
+routes=(nes options deckbuilder)
+echo "==> Generating static route entry points (${routes[*]})"
+for r in "${routes[@]}"; do
+  route_dir="$FLAT_DIR/$r"
+  mkdir -p "$route_dir"
+  cp "$INDEX_HTML" "$route_dir/index.html"
+  # Adjust base href from ./ to ../ (only if present) so ./_framework resolves to root _framework
+  if grep -q '<base href="\./"' "$route_dir/index.html" 2>/dev/null; then
+    sed -i '' -e 's#<base href="\./"#<base href="../"#' "$route_dir/index.html" || true
+  fi
+done
+routes+=(deck-builder) # Add deck-builder route
+# Home page CSS fallback (unconditional copy from source if exists + link insertion)
+if [[ -f "Pages/Home.razor.css" ]]; then
+  echo "==> Adding fallback home-page.css"
+  mkdir -p "$FLAT_DIR/css"; cp "Pages/Home.razor.css" "$FLAT_DIR/css/home-page.css" || true
+  for html in "$INDEX_HTML" "$FLAT_DIR/nes/index.html" "$FLAT_DIR/options/index.html" "$FLAT_DIR/deckbuilder/index.html" "$FLAT_DIR/deck-builder/index.html"; do
+    [[ -f "$html" ]] || continue
+    if ! grep -q 'home-page.css' "$html"; then
+      sed -i '' -e 's#</head>#  <link rel="stylesheet" href="css/home-page.css" />\n</head>#' "$html" || true
+    fi
+  done
+fi
+# Also provide a 404.html fallback (GitHub Pages serves this for unknown routes allowing SPA to boot)
+if [[ ! -f "$FLAT_DIR/404.html" ]]; then
+  cp "$INDEX_HTML" "$FLAT_DIR/404.html"
+fi
+
+
+# Verify audio/media assets explicitly (added music / sfx). Mark missing but not fatal unless core media missing.
+echo "==> Verifying media assets..."
+media_missing=0
+media_assets=(
+  "TitleScreen.mp3"
+  "Options.mp3"
+  "DeckBuilder.mp3"
+  "plates.m4a"
+)
+for a in "${media_assets[@]}"; do
+  if [[ -f "$FLAT_DIR/$a" ]]; then
+    echo "  found: $a"
+  else
+    echo "  MISSING: $a"
+    media_missing=1
+  fi
+done
+if (( media_missing )); then
+  echo "WARNING: One or more media assets were not found. Continue anyway." >&2
+fi
+
+# Opportunistically compress (brotli/gzip) large audio files if not already compressed (best-effort)
+echo "==> Ensuring compressed variants for media assets (best-effort)"
+for a in "${media_assets[@]}"; do
+  src="$FLAT_DIR/$a"; [[ -f "$src" ]] || continue
+  # Skip if already smaller than 16KB (likely no win) or already have .br/.gz
+  size=$(stat -f%z "$src" 2>/dev/null || echo 0)
+  if (( size > 16384 )); then
+    if command -v brotli >/dev/null 2>&1 && [[ ! -f "$src.br" ]]; then
+      echo "  brotli: $a"
+      brotli -f -q 5 "$src" -o "$src.br" || echo "    (brotli failed for $a)"
+    fi
+    if command -v gzip >/dev/null 2>&1 && [[ ! -f "$src.gz" ]]; then
+      echo "  gzip:   $a"
+      gzip -c -9 "$src" > "$src.gz" || echo "    (gzip failed for $a)"
+    fi
+  fi
+done
+
 # Sanity report
 COUNT_FILES=$(find "$FLAT_DIR" -type f | wc -l | tr -d ' ')
 SIZE_TOTAL=$(du -sh "$FLAT_DIR" | awk '{print $1}')

@@ -82,6 +82,14 @@
         }
     }
 
+    private string BuildRel(string path){
+        // Ensure we respect possible subdirectory base (<base href="./"> becomes current folder). Use relative no-leading-slash navigation.
+        if(string.IsNullOrWhiteSpace(path)) return "";
+        // Trim any leading slash so NavigateTo doesn't reset to domain root under subfolder hosting.
+        path = path.TrimStart('/');
+        return path;
+    }
+
     private async Task BootAndEnter()
     {
         if (_booting) return; _booting = true;
@@ -93,18 +101,17 @@
             try { await JS.InvokeVoidAsync("eval", "window.__brokenNesPreBoot=1"); } catch {}
         }
         catch { }
-        Nav.NavigateTo("/nes", forceLoad: false);
+    Nav.NavigateTo(BuildRel("nes"), forceLoad: false);
     }
 
     private void OpenDeckBuilder()
     {
-        // Placeholder navigation - adjust path when deck builder implemented
-        Nav.NavigateTo("/deck-builder", forceLoad: false);
+    Nav.NavigateTo(BuildRel("deck-builder"), forceLoad: false);
     }
 
     private void NavigateOptions()
     {
-        Nav.NavigateTo("/options", forceLoad: false);
+    Nav.NavigateTo(BuildRel("options"), forceLoad: false);
     }
 
     private void ShowAbout() => aboutVisible = true;

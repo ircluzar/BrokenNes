@@ -12,6 +12,7 @@
 @inject HttpClient Http
 @inject StatusService Status
 @inject NesEmulator.Shaders.IShaderProvider ShaderProvider
+@inject NavigationManager Nav
 
 
 @if (!string.IsNullOrEmpty(errorMessage))
@@ -2975,6 +2976,7 @@
             // Dispose shared DotNetObjectReference to avoid leaks (Theory 2)
             _selfRef?.Dispose();
             _selfRef = null;
+            try { Nav.LocationChanged -= HandleLocationChanged; } catch {}
             Logger.LogInformation("BrokenNes disposed");
         }
         catch (Exception ex)
@@ -3098,6 +3100,10 @@
 @code {
     protected override void OnInitialized()
     {
+    // Subscribe to navigation changes so that leaving /nes triggers a hard page reload.
+    // This guarantees the entire WebAssembly app (and emulator state) is torn down when
+    // navigating to any other route, satisfying the requirement that other pages load cleanly.
+    try { Nav.LocationChanged += HandleLocationChanged; } catch {}
         // Central registry discovery (cached)
         cpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
         if (string.IsNullOrEmpty(cpuCoreSel) || !cpuCoreOptions.Contains(cpuCoreSel))
@@ -3138,5 +3144,26 @@
                 }
             } catch { }
         });
+    }
+
+    private bool _hardUnloadNavActive = false;
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (_hardUnloadNavActive) return;
+        try
+        {
+            // If the destination path is NOT /nes, force a full browser reload to ensure
+            // the emulator is completely unloaded (rather than just Blazor component disposal).
+            var dest = new Uri(e.Location);
+            if (!string.Equals(dest.AbsolutePath, "/nes", StringComparison.OrdinalIgnoreCase))
+            {
+                _hardUnloadNavActive = true;
+                // Use direct location assignment for hard reload (avoids SPA interception).
+                // (Escape single quotes defensively.)
+                var safe = e.Location.Replace("'", "\\'");
+                _ = JS.InvokeVoidAsync("eval", $"window.location.href='" + safe + "'");
+            }
+        }
+        catch { }
     }
 }

@@ -38,6 +38,7 @@
     <TrimmerRootDescriptor Include="LinkerConfig.xml" />
   </ItemGroup>
 
+
   <!-- Shader generator wiring -->
   <ItemGroup>
     <AdditionalFiles Include="Shaders/**/*.glsl" />
