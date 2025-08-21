@@ -858,9 +858,27 @@
 </div>
 
 @code {
-    // --- Controller instances ---
-    private NesController nesController = new();
-    private Corruptor corruptor = new();
+    // === Refactor Step 1: Introduce Emulator instance (will progressively replace inline logic) ===
+    // We keep existing fields/methods temporarily; upcoming steps will delegate to 'emu'.
+    private Emulator? emu;
+    protected override void OnInitialized()
+    {
+        // Initialize emulator host if not already; reuse existing OnInitialized logic later migrated.
+        if (emu == null)
+        {
+            emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav)
+            {
+                OnStateChanged = () => InvokeAsync(StateHasChanged)
+            };
+            emu.Initialize();
+        }
+        // Preserve original OnInitialized body below (will be removed once parity verified)
+        // ORIGINAL OnInitialized logic follows ↓
+    }
+    // --- ORIGINAL FIELDS & METHODS (to be migrated/removed) ---
+    // --- Controller instances now delegated to Emulator host ---
+    private NesController nesController => emu!.Controller;
+    private Corruptor corruptor => emu!.Corruptor;
 
     // --- Save state persistence enhancements ---
     // We compress (GZip) and, if still large, chunk state across multiple IndexedDB entries (kv store) to avoid size issues.
@@ -2887,7 +2905,7 @@
             // Dispose shared DotNetObjectReference to avoid leaks (Theory 2)
             _selfRef?.Dispose();
             _selfRef = null;
-            try { Nav.LocationChanged -= HandleLocationChanged; } catch {}
+            // Navigation change detach handled inside Emulator after migration; legacy handler removal suppressed.
             Logger.LogInformation("BrokenNes disposed");
         }
         catch (Exception ex)
@@ -3008,79 +3026,3 @@
     }
 }
 
-@code {
-    protected override void OnInitialized()
-    {
-        // Initialize ROM options
-        nesController.RomOptions = new()
-        {
-            new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true}
-        };
-        
-    // Subscribe to navigation changes so that leaving /nes triggers a hard page reload.
-    // This guarantees the entire WebAssembly app (and emulator state) is torn down when
-    // navigating to any other route, satisfying the requirement that other pages load cleanly.
-    try { Nav.LocationChanged += HandleLocationChanged; } catch {}
-        // Central registry discovery (cached)
-        nesController.CpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
-        if (string.IsNullOrEmpty(nesController.CpuCoreSel) || !nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
-        {
-            // Prefer FMC first (baseline), then FIX, then first
-            if (nesController.CpuCoreOptions.Contains("FMC")) nesController.CpuCoreSel = "FMC";
-            else if (nesController.CpuCoreOptions.Contains("FIX")) nesController.CpuCoreSel = "FIX";
-            else if (nesController.CpuCoreOptions.Count>0) nesController.CpuCoreSel = nesController.CpuCoreOptions[0];
-        }
-        nesController.PpuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
-    // Ensure stable ordering; include newer enhanced cores when present
-    var desiredOrder = new List<string>{"FMC","NGTV","CUBE","BFR","LQ","FIX","LOW"};
-        nesController.PpuCoreOptions = nesController.PpuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
-        if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel) && nesController.PpuCoreOptions.Count>0)
-        {
-            // Prefer FMC baseline; else fall back to others
-			if (nesController.PpuCoreOptions.Contains("FMC")) nesController.PpuCoreSel = "FMC"; else if (nesController.PpuCoreOptions.Contains("NGTV")) nesController.PpuCoreSel = "NGTV"; else if (nesController.PpuCoreOptions.Contains("CUBE")) nesController.PpuCoreSel = "CUBE"; else nesController.PpuCoreSel = nesController.PpuCoreOptions[0];
-        }
-        nesController.ApuCoreOptions = NesEmulator.CoreRegistry.ApuIds.ToList();
-        // Ordering preference: FMC (legacy), FIX (modern), QN, then others alphabetical
-    nesController.ApuCoreOptions = nesController.ApuCoreOptions.OrderBy(id => id switch { "FMC" => 0, "FIX" => 1, "QN" => 2, _ => 3 }).ThenBy(id=>id).ToList();
-        if (string.IsNullOrEmpty(nesController.ApuCoreSel) || !nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
-        {
-            if (nesController.ApuCoreOptions.Contains("FMC")) nesController.ApuCoreSel = "FMC";
-            else if (nesController.ApuCoreOptions.Contains("FIX")) nesController.ApuCoreSel = "FIX";
-            else if (nesController.ApuCoreOptions.Count>0) nesController.ApuCoreSel = nesController.ApuCoreOptions[0];
-        }
-        // Load persisted event scheduler preference asynchronously (fire and forget)
-        _ = Task.Run(async () => {
-            try {
-                var val = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_eventScheduler");
-                if (!string.IsNullOrEmpty(val))
-                {
-                    bool on = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                    await InvokeAsync(()=>{
-                        eventSchedulerOn = on; if (nes!=null) nes.EnableEventScheduler = on; StateHasChanged();
-                    });
-                }
-            } catch { }
-        });
-    }
-
-    private bool _hardUnloadNavActive = false;
-    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
-    {
-        if (_hardUnloadNavActive) return;
-        try
-        {
-            // If the destination path is NOT /nes, force a full browser reload to ensure
-            // the emulator is completely unloaded (rather than just Blazor component disposal).
-            var dest = new Uri(e.Location);
-            if (!string.Equals(dest.AbsolutePath, "/nes", StringComparison.OrdinalIgnoreCase))
-            {
-                _hardUnloadNavActive = true;
-                // Use direct location assignment for hard reload (avoids SPA interception).
-                // (Escape single quotes defensively.)
-                var safe = e.Location.Replace("'", "\\'");
-                _ = JS.InvokeVoidAsync("eval", $"window.location.href='" + safe + "'");
-            }
-        }
-        catch { }
-    }
-}

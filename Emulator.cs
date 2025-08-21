@@ -27,7 +27,7 @@ namespace BrokenNes
     public partial class Emulator : IDisposable
     {
         // --- Injected dependencies (mirrors Nes.razor @inject list) ---
-        private readonly ILogger<Emulator> Logger;
+    private readonly ILogger Logger;
         private readonly IJSRuntime JS;
         private readonly HttpClient Http;
         private readonly StatusService Status;
@@ -39,7 +39,7 @@ namespace BrokenNes
         private Corruptor corruptor = new();
 
         // Constructor
-        public Emulator(ILogger<Emulator> logger,
+    public Emulator(ILogger logger,
                         IJSRuntime js,
                         HttpClient http,
                         StatusService status,

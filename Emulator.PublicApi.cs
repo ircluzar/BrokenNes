@@ -30,6 +30,23 @@ namespace BrokenNes
         public IEnumerable<string> AllTargets => allTargets;
         public IEnumerable<BenchDiffRowView> RecentDiffRows => recentDiffRows.Select(r=>new BenchDiffRowView(r.Name,r.CurMs,r.PrevMs,r.DeltaMs,r.DeltaPct,r.ReadsDelta,r.WritesDelta,r.ApuDelta,r.OamDelta));
         public IReadOnlyDictionary<string,List<BenchTimelinePoint>> TimelineSeries => timelineSeries.ToDictionary(k=>k.Key,v=>v.Value.Select(tp=>new BenchTimelinePoint(tp.When,tp.MsPerIter,tp.Reads,tp.Writes,tp.Apu,tp.Oam,tp.CpuCore,tp.PpuCore,tp.ApuCore,tp.Rom)).ToList());
+        public IReadOnlyList<DateTime> TimelineOrder => timelineOrder;
+
+        // Additional benchmark UI state exposure (for phased Nes.razor refactor)
+        public bool DiffAnimating => diffAnimating;
+        public string? HighlightMetricName => highlightMetricName;
+        public int? HoverIndex => hoverIndex;
+        public string? HoverTarget => hoverTarget;
+        public (string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore,string Rom)? HoverPointTooltipData
+            => hoverPointTooltip == null ? null : (hoverPointTooltip.Target, hoverPointTooltip.TimeLabel, hoverPointTooltip.MsPerIter, hoverPointTooltip.Reads, hoverPointTooltip.Writes, hoverPointTooltip.ApuCycles, hoverPointTooltip.OamWrites, hoverPointTooltip.CpuCore, hoverPointTooltip.PpuCore, hoverPointTooltip.ApuCore, hoverPointTooltip.Rom);
+        public string? EditingBenchRomId => editingBenchRomId;
+        public string EditingBenchRomValue => editingBenchRomValue;
+        public void StartBenchRomEditPublic(string id)
+        {
+            var e = benchHistory.FirstOrDefault(x=>x.Id==id); if (e==null) return; StartBenchRomEdit(e);
+        }
+        public Task CommitBenchRomEditPublic(string id) => CommitBenchRomEdit(id);
+        public void CancelBenchRomEditPublic() { editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged(); }
 
         public Task RunBenchmarksAsync() => RunBenchmarks();
         public Task RunBenchmarks5xAsync() => RunBenchmarks5x();

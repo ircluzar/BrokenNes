@@ -21,15 +21,60 @@ Goal: Finish extracting logic from `Pages/Nes.razor` into the existing C# classe
 9. Utilities (FormatSize, ExtractInt, compression helpers) – present in other partials; remove duplicates from page.
 
 ## Remaining Actions
-- [ ] Create an `EmulatorHost` (or reuse existing) service / or instantiate `Emulator` inside `Nes.razor` with DI injected dependencies (ILogger<Emulator>, IJSRuntime, HttpClient, StatusService, IShaderProvider, NavigationManager).
-- [ ] In `Nes.razor @code`, replace large field set with:
-  - `private Emulator emu;` plus lightweight properties referencing `emu.Controller` & `emu.Corruptor` for existing bindings (e.g., `nesController` variable name used in markup). Option: keep variable name `nesController` by returning `emu.Controller`.
-  - Provide properties/expressions for fields referenced in bindings that moved (e.g., `benchModalOpen`, etc.) referencing emulator internals (confirm availability; if not yet exposed, add public getters in partial classes rather than re-implement logic in Razor).
-- [ ] Ensure every JSInvokable method referenced in JS (e.g., `JsSaveState`, `JsLoadState`, `JsResetGame`, mobile view events, `UpdateInput`, `FrameTick`) is present on the `Emulator` instance registered to JS. Remove duplicates in Razor.
-- [ ] Register DotNetObjectReference: currently done inside `Emulator.OnAfterRenderAsync`; confirm no leftover page code still creating its own reference.
-- [ ] Rewire event handlers in markup (`@onclick="StartEmulation"`, etc.) to call thin wrappers that forward to `emu.StartAsync()` etc., or rename wrappers to keep existing method names but delegate.
-- [ ] Remove: duplicated save/load chunk logic, benchmark history lists, diff building, timeline logic from page if already migrated. If not migrated yet, plan sub-migration (future step) – for this pass, focus only on code already clearly duplicated.
-- [ ] Update using statements: remove usings no longer needed once code block shrinks.
+- [x] Instantiate `Emulator` inside `Nes.razor` with dependencies (ILogger, IJSRuntime, HttpClient, StatusService, IShaderProvider, NavigationManager).
+- [x] Replace direct controller / corruptor fields with delegating properties (`nesController`, `corruptor`).
+- [ ] Expose / alias benchmark & UI state via emulator getters (partially done; finish when swapping bindings).
+- [ ] Delegate core control handlers (StartEmulation, PauseEmulation, ResetEmulation, SaveState, LoadState, DumpState) to emulator public API.
+- [ ] Delegate shader/core selection & soundfont toggles to emulator.
+- [ ] Delegate benchmark modal actions & state; remove duplicate benchmark fields/methods.
+- [ ] Delegate corruptor & Glitch Harvester methods; prune duplicates.
+- [ ] Remove duplicated save/load (chunked) implementation in Razor.
+- [ ] Remove utility helpers now duplicated (compression, FormatSize, ExtractInt) once unused.
+- [ ] Confirm all JSInvokable methods exist only on emulator and are registered; remove Razor copies.
+- [ ] Purge obsolete navigation & disposal code replaced by emulator.
+- [ ] Delete unused private fields and trim using directives.
+- [ ] Build & manual test after each delegation batch.
+
+### Detailed Delegation Breakdown (Upcoming Batches)
+Batch A (Core Control / Loop):
+- Replace body of `StartEmulation` with call to `emu.StartAsync()` (if method name differs, add wrapper in Emulator) and remove RAF loop JS calls from Razor (handled in emulator).
+- Replace `PauseEmulation` with `emu.PauseAsync()`; remove manual SoundFont flush (emulator handles / add if missing).
+- Replace `ResetEmulation` logic with `emu.HardResetAsync()` (expose if not present) or a new `ResetAsync()` that encapsulates pause, ROM reload, corruption disable, core reapply, resume.
+- Update `JsResetGame` to call emulator public method; remove local reset function after bindings updated.
+- Remove local frame scheduling / `[JSInvokable] FrameTick` (if still present) post verification.
+
+Batch B (State Persistence):
+- Replace `SaveState` body with `await emu.SaveStateAsyncPublic()`.
+- Replace `LoadState` body with `await emu.LoadStateAsyncPublic()`.
+- Replace `DumpState` with `emu.DumpStateAsyncPublic()` and expose `emu.DebugDumpText` for UI binding.
+- Remove chunking/compression helpers (CompressString, DecompressString, RemoveExistingChunks, ExtractInt, constants like `SaveChunkCharSize`, `SaveKey`) once Razor no longer references them (verify equivalents exist in `StatePersistence.cs`).
+- Update `JsSaveState` / `JsLoadState` to delegate to emulator public methods.
+
+Batch C (Benchmarks):
+- Swap all uses of `benchRunning`, `benchModalOpen`, `benchResultsText`, `benchWeight`, `benchAutoLoadState`, `benchSimple5x`, history and diff collections to emulator public projections (`emu.BenchRunning`, etc.).
+- Replace `OpenBenchModal`, `RunBenchmarks`, `RunBenchmarks5x`, `CloseBench*`, compare modal handlers, diff animation, history edit/delete methods with emulator wrappers (`OpenBenchmarks`, `RunBenchmarksAsync`, `RunBenchmarks5xAsync`, etc.).
+- Remove benchmark local fields and methods after markup updated.
+
+Batch D (Corruptor & Glitch Harvester):
+- Replace `Blast`, `LetItRip`, auto-corrupt toggle, intensity / blast type setters with emulator public surface (`emu.BlastAsync()`, `emu.LetItRipPublic()`, `emu.ToggleAutoCorrupt()`, property accessors).
+- Replace GH methods (GhAddBaseState, GhCorruptAndStash, GhReplayEntry, rename/edit flows) with emulator `Gh*Public` counterparts.
+- Remove local corruptor/GH fields/methods after bindings swapped.
+
+Batch E (Cores / Shader / Audio / View):
+- Swap core selection handlers with `emu.SetCpuCorePublic`, `emu.SetPpuCorePublic`, `emu.SetApuCorePublic`.
+- Swap shader selection with `emu.SetShaderPublic` and remove local persistence JS calls.
+- Replace fullscreen toggle with `emu.ToggleFullscreenPublic`.
+- Replace scale change logic with `emu.SetScalePublic`.
+- Replace SoundFont toggles & debug actions with `emu.ToggleSoundFontModePublic`, `emu.ToggleSampleFontPublic`, `emu.ToggleSoundFontLayeringPublic`, etc.
+- Remove local soundfont state fields (soundFontMode, sampleFont, layering, overlay, logging) after swap.
+
+Batch F (Misc / Cleanup):
+- Remove navigation/location change handlers superseded by emulator.
+- Ensure only one `DotNetObjectReference` (in emulator) and remove `_selfRef` usage from Razor if redundant.
+- Remove remaining utility methods replaced by emulator (BuildMemoryDomains, ApplySelectedCores, SetApuCoreSelFromEmu) if fully internalized.
+- Final pass to trim usings and leftover comments.
+
+Execution Order Rationale: Start with least disruptive (Batch A) to stabilize core loop delegation, then persistence (B) to consolidate state logic, proceed to benchmarks and corruptor which have broader field usage, finishing with audio/view and cleanup.
 
 ## Mapping of Razor Methods -> Emulator / Controller
 | Razor Method | New Location | Action |
@@ -80,4 +125,6 @@ Add public getters (if missing) in `Emulator` partials for:
 - Unit tests for Corruptor domain size detection & blast layering.
 
 ---
-End of plan.
+Progress Note: Step 1 complete (Emulator integrated). Beginning Step 2 (delegations & pruning) with a batch approach: control handlers -> persistence -> benchmarks -> corruptor -> utilities cleanup.
+
+End of plan (updated).
