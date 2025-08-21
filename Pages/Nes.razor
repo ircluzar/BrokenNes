@@ -323,7 +323,7 @@
                             @foreach (var opt in FilteredRomOptions)
                             {
                                 var isCurrent = opt.Key == nesController.CurrentRomName;
-                                var sizeDisplay = GetRomSizeDisplay(opt.Key);
+                                var sizeDisplay = nesController.GetRomSizeDisplay(opt.Key);
                                 <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>OnRomRowClicked(opt))">
                                     <td>@(isCurrent ? "▶" : "")</td>
                                     <td class="text-truncate" style="max-width:200px;" title="@opt.Key">@opt.Label</td>
@@ -532,7 +532,7 @@
                 <button class="btn btn-sm btn-outline-primary" @onclick="OpenBenchModal" disabled="@(nes==null /* allow opening even if benchRunning? keep disabled only if no nes */)">@(benchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="OpenCompareModal" disabled="@(benchHistory.Count<2)">Compare Results</button>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @onchange="ToggleEventScheduler" checked="@eventSchedulerOn" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @onchange="OnEventSchedulerChanged" checked="@emu?.EventSchedulerOn" disabled="@(nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
@@ -930,20 +930,10 @@
     private bool stateBusy = false; // prevent overlapping save/load operations
     // Benchmark modal state
     private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
-    // Event scheduler UI state (mirrors nes.EnableEventScheduler)
-    private bool eventSchedulerOn = false;
-    private void ToggleEventScheduler(ChangeEventArgs e)
+    // Event scheduler delegated handler
+    private void OnEventSchedulerChanged(ChangeEventArgs e)
     {
-        if (nes == null) return;
-        bool desired = e.Value is bool b && b;
-        // Some browsers send string "true"/"false"
-        if (e.Value is string sv) { if (bool.TryParse(sv, out var parsed)) desired = parsed; }
-        eventSchedulerOn = desired;
-        try { nes.EnableEventScheduler = eventSchedulerOn; } catch {}
-        // Persist preference (optional)
-        try { JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_eventScheduler", eventSchedulerOn?"1":"0"); } catch {}
-        StateHasChanged();
-    }
+        if (emu == null) return; bool desired = e.Value is bool b && b; if (e.Value is string sv && bool.TryParse(sv,out var parsed)) desired=parsed; if (desired==emu.EventSchedulerOn) return; emu.EventSchedulerOn = desired; }
     // Persistent benchmark history
     private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
     private List<BenchHistoryEntry> benchHistory = new();
@@ -1426,151 +1416,28 @@
 
     private async Task LoadRomUpload(ChangeEventArgs e)
     {
-        try
-        {
-            Status.Set("Reading ROM file(s)...");
-            nesController.ErrorMessage = string.Empty;
-
-            // Invoke JS to read selected files as base64
-            var files = await JS.InvokeAsync<UploadedRom[]>("nesInterop.readSelectedRoms", fileInput);
-            if (files == null || files.Length == 0)
-            {
-                Status.Set("No ROM files selected.");
-                return;
-            }
-
-            int added = 0;
-            foreach (var f in files)
-            {
-                if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
-                if (!f.name.EndsWith(".nes", StringComparison.OrdinalIgnoreCase)) continue;
-                byte[] data;
-                try { data = Convert.FromBase64String(f.base64); }
-                catch { continue; }
-                if (data.Length == 0) continue;
-
-                // size guard (<= 4MB typical)
-                if (data.Length > 4 * 1024 * 1024)
-                {
-                    Status.Set($"File '{f.name}' too large (>4MB). Skipped.");
-                    continue;
-                }
-                var key = f.name;
-                // If duplicate, overwrite existing bytes but not label duplication
-                nesController.UploadedRoms[key] = data;
-                if (!romOptions.Any(o => o.Key == key))
-                {
-                    romOptions.Add(new RomOption { Key = key, Label = $"{f.name} (uploaded)", BuiltIn = false });
-                }
-                added++;
-            }
-
-            if (added == 0)
-            {
-                Status.Set("No valid .nes files processed.");
-                return;
-            }
-
-            // Auto-select the last uploaded ROM
-            var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && uploadedRoms.ContainsKey(f.name));
-            if (last != null)
-            {
-                nesController.RomFileName = last.name;
-                await LoadSelectedRom();
-            }
-
-            Status.Set(added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.");
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Upload failed");
-            nesController.ErrorMessage = $"Upload failed: {ex.Message}";
-            // clear status
-            StateHasChanged();
-        }
+        if (emu == null) return;
+        await nesController.LoadRomUpload(
+            async () => await JS.InvokeAsync<UploadedRom[]>("nesInterop.readSelectedRoms", fileInput),
+            s => Status.Set(s),
+            () => StateHasChanged(),
+            async (romKey) => { nesController.RomFileName = romKey; await LoadSelectedRom(); });
     }
 
     private async Task RomSelectionChanged(ChangeEventArgs e)
-    {
-        if (e.Value is string value && !string.IsNullOrWhiteSpace(value))
-        {
-            nesController.RomFileName = value.Trim();
-            await LoadSelectedRom();
-        }
-    }
+    { if (e.Value is string value && !string.IsNullOrWhiteSpace(value)) { await nesController.RomSelectionChanged(value, async (rk)=> { nesController.RomFileName = rk; await LoadSelectedRom(); }); } }
 
-    private Task LoadRomEntry(string key)
-    {
-        nesController.RomFileName = key;
-        return LoadSelectedRom();
-    }
+    private Task LoadRomEntry(string key) { nesController.RomFileName = key; return LoadSelectedRom(); }
 
-    private Task OnRomRowClicked(RomOption opt)
-    {
-        if (opt.Key == nesController.CurrentRomName) return Task.CompletedTask; // already active
-        return LoadRomEntry(opt.Key);
-    }
+    private Task OnRomRowClicked(RomOption opt) => opt.Key == nesController.CurrentRomName ? Task.CompletedTask : nesController.OnRomRowClicked(opt, async k => { nesController.RomFileName = k; await LoadSelectedRom(); });
 
-    private string GetDefaultBuiltInRomKey()
-    {
-        return romOptions.FirstOrDefault(o => o.BuiltIn)?.Key ?? string.Empty;
-    }
+    private string GetDefaultBuiltInRomKey() => nesController.GetDefaultBuiltInRomKey();
 
     private async Task DeleteRom(string key)
-    {
-        var opt = romOptions.FirstOrDefault(o=>o.Key==key);
-        if (opt == null || opt.BuiltIn) return;
-        if (uploadedRoms.Remove(key))
-        {
-            await JS.InvokeVoidAsync("nesInterop.removeStoredRom", key);
-        }
-        romOptions.Remove(opt);
-        if (nesController.CurrentRomName == key)
-        {
-            var fallback = GetDefaultBuiltInRomKey();
-            if (!string.IsNullOrEmpty(fallback))
-            {
-                nesController.RomFileName = fallback;
-                await LoadSelectedRom();
-            }
-            else
-            {
-                nes = null; // no ROM available
-                nesController.CurrentRomName = "None";
-                Status.Set("No built-in ROMs available. Please upload a ROM.");
-            }
-        }
-    Status.Set($"Deleted ROM {key}.");
-        StateHasChanged();
-    }
+    { await nesController.DeleteRom(key, s=>Status.Set(s), ()=>StateHasChanged(), async removed => await JS.InvokeVoidAsync("nesInterop.removeStoredRom", removed), async rk => { nesController.RomFileName = rk; await LoadSelectedRom(); }, ()=>GetDefaultBuiltInRomKey()); }
 
     private async Task ClearAllUploaded()
-    {
-        var toDelete = romOptions.Where(o=>!o.BuiltIn).Select(o=>o.Key).ToList();
-        foreach (var k in toDelete)
-        {
-            await JS.InvokeVoidAsync("nesInterop.removeStoredRom", k);
-        }
-        nesController.RomOptions = nesController.RomOptions.Where(o=>o.BuiltIn).ToList();
-        uploadedRoms.Clear();
-        if (!IsBuiltInSelected)
-        {
-            var fallback = GetDefaultBuiltInRomKey();
-            if (!string.IsNullOrEmpty(fallback))
-            {
-                nesController.RomFileName = fallback;
-                await LoadSelectedRom();
-            }
-            else
-            {
-                nes = null;
-                nesController.CurrentRomName = "None";
-                Status.Set("No built-in ROMs available. Please upload a ROM.");
-            }
-        }
-    Status.Set("Cleared uploaded ROMs.");
-    }
+    { await nesController.ClearAllUploaded(s=>Status.Set(s), ()=>StateHasChanged(), async k=> await JS.InvokeVoidAsync("nesInterop.removeStoredRom", k), async rk => { nesController.RomFileName=rk; await LoadSelectedRom(); }, ()=>GetDefaultBuiltInRomKey(), ()=>IsBuiltInSelected); }
 
     private void OnRomSearchChanged(ChangeEventArgs e)
     {
@@ -1583,60 +1450,10 @@
         try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch {}
     }
 
-    private string GetRomSizeDisplay(string key)
-    {
-        if (nesController.UploadedRoms.TryGetValue(key, out var data)) return NesController.FormatSize(data.Length);
-        if (nesController.BuiltInRomSizes.TryGetValue(key, out var s)) return NesController.FormatSize(s);
-        return "?";
-    }
+    // Local GetRomSizeDisplay removed; using nesController.GetRomSizeDisplay
 
     private async Task LoadSelectedRom()
-    {
-        try
-        {
-            bool wasRunning = nesController.IsRunning;
-            if (wasRunning) await PauseEmulation();
-            if (nesController.UploadedRoms.TryGetValue(nesController.RomFileName, out var data))
-            {
-                Status.Set($"Loading uploaded ROM {nesController.RomFileName}...");
-                if (nes == null) nes = new NesEmulator.NES();
-                nes.RomName = nesController.RomFileName;
-                var prevApuSuffix = nesController.ApuCoreSel;
-                nes.LoadROM(data);
-                if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
-                nesController.AutoStaticSuppressed = false; // new ROM -> allow static again if test.nes
-                try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
-                SetApuCoreSelFromEmu();
-                SetApuCoreSelFromEmu();
-                ApplySelectedCores();
-                BuildMemoryDomains();
-                // Warm-up one frame to let subsystems settle before any follow-up actions
-                try { nes.RunFrame(); nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
-                nesController.CurrentRomName = nesController.RomFileName;
-                nesController.LastLoadedRomSize = data.Length;
-                Status.Set($"ROM '{nesController.RomFileName}' loaded from upload.");
-                nesController.ErrorMessage = "";
-                // Collapse ROM Manager and expand Corruptor panel (except test.nes)
-                if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
-                {
-                    try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
-                }
-                if (wasRunning) { await StartEmulation(); }
-                StateHasChanged();
-            }
-            else
-            {
-                Status.Set($"Loading built-in {nesController.RomFileName}...");
-                await LoadRomFromServer();
-                SetApuCoreSelFromEmu();
-            }
-        }
-        catch (Exception ex)
-        {
-            nesController.ErrorMessage = $"Failed to load selected ROM: {ex.Message}";
-            StateHasChanged();
-        }
-    }
+    { if (emu==null) return; await nesController.LoadSelectedRom(async fn=> await emu.Controller.LoadRomFromWwwroot(fn, f=>Http.GetByteArrayAsync(f), s=>Logger.LogInformation(s), s=>Logger.LogError(new Exception(s), s)), s=>Status.Set(s), ()=>StateHasChanged(), async (canvas)=> await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer), async ()=> { BuildMemoryDomains(); await Task.CompletedTask; }, async ()=> await StartEmulation()); }
 
     private Task ReloadCurrentRom()
     {
@@ -1651,37 +1468,7 @@
     }
 
     private async Task DeleteCurrentRom()
-    {
-        try
-        {
-            if (IsBuiltInSelected) return;
-            if (nesController.UploadedRoms.Remove(nesController.RomFileName))
-            {
-                await JS.InvokeVoidAsync("nesInterop.removeStoredRom", nesController.RomFileName);
-                var opt = romOptions.FirstOrDefault(o => o.Key == nesController.RomFileName);
-                if (opt != null) romOptions.Remove(opt);
-                Status.Set($"Deleted ROM {nesController.RomFileName}.");
-                // fallback to first built-in
-                var fallback = GetDefaultBuiltInRomKey();
-                if (!string.IsNullOrEmpty(fallback))
-                {
-                    nesController.RomFileName = fallback;
-                    await LoadSelectedRom();
-                }
-                else
-                {
-                    nes = null;
-                    nesController.CurrentRomName = "None";
-                    Status.Set("No built-in ROMs available. Please upload a ROM.");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            nesController.ErrorMessage = "Delete failed: " + ex.Message;
-        }
-        StateHasChanged();
-    }
+    { if (IsBuiltInSelected) return; await DeleteRom(nesController.RomFileName); }
 
     private async Task LoadRomFromServer()
     {
@@ -2367,11 +2154,7 @@
         }
     }
 
-    public class UploadedRom
-    {
-        public string name { get; set; } = string.Empty; // JS property casing
-        public string base64 { get; set; } = string.Empty;
-    }
+    // Local UploadedRom class removed; using BrokenNes.Models.UploadedRom
 
     // (Boot method removed; auto-start handled in OnAfterRenderAsync and StartEmulation safeguards)
 

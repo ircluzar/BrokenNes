@@ -26,12 +26,12 @@ Goal: Finish extracting logic from `Pages/Nes.razor` into the existing C# classe
 - [x] Delegate core control handlers (Start/Pause/Reset) to emulator (Batch A complete – wrappers now call `emu.StartAsync()`, `emu.PauseAsync()`, `emu.ResetAsyncPublic()`).
 - [ ] Expose / alias benchmark & UI state via emulator getters (partially done; finish when swapping bindings).
 - [x] Delegate state persistence handlers (SaveState, LoadState, DumpState + JS wrappers) to emulator (wrappers done; dump binding + helper cleanup pending in Batch B steps 2–3).
-- [ ] Delegate shader/core selection & soundfont toggles to emulator.
+- [x] Delegate shader/core selection, fullscreen, scale & soundfont toggles to emulator.
 - [ ] Delegate benchmark modal actions & state; remove duplicate benchmark fields/methods.
 - [ ] Delegate corruptor & Glitch Harvester methods; prune duplicates.
 - [ ] Remove duplicated save/load (chunked) implementation & helpers from Razor once no references remain (after benchmark migration, since local benchmark code currently references helpers).
-- [ ] Remove utility helpers now duplicated (compression, FormatSize, ExtractInt) once unused.
-- [ ] Confirm all JSInvokable methods exist only on emulator and are registered; remove Razor copies (FrameTick, UpdateInput, JsSave/Load/Reset once rewired to emulator reference only).
+- [ ] Remove remaining utility helpers now duplicated (compression, ExtractInt) once unused (FormatSize already removed from page).
+- [ ] Confirm all JSInvokable methods exist only on emulator and are registered; remove Razor copies (FrameTick, UpdateInput; JsSave/Load/Reset already delegated).
 - [ ] Purge obsolete navigation & disposal code replaced by emulator.
 - [ ] Delete unused private fields and trim using directives.
 - [ ] Build & manual test after each delegation batch.
@@ -41,7 +41,7 @@ Batch A (Core Control / Loop) [COMPLETED]:
 - Delegated Start/Pause/Reset to emulator. Full reset logic moved into new `Emulator.ResetAsync` (Control partial). Page now only calls wrappers.
 - Next sub-step (deferred): migrate frame loop & input JS callbacks entirely to emulator (will remove `FrameTick`/`UpdateInput` after JS reference shift).
 
-Batch B (State Persistence) [IN PROGRESS]:
+Batch B (State Persistence & Ancillary Safe Delegations) [IN PROGRESS]:
 - Step 1: (DONE) Wrapped `SaveState`, `LoadState`, `DumpState`, `JsSaveState`, `JsLoadState` to call emulator public API.
 - Step 2: After benchmark migration (which currently reuses helper methods) remove local persistence helpers/constants.
 - Step 3: Swap UI dump binding to `emu.DebugDumpText` and drop local `debugDump` field.
@@ -56,13 +56,8 @@ Batch D (Corruptor & Glitch Harvester):
 - Replace GH methods (GhAddBaseState, GhCorruptAndStash, GhReplayEntry, rename/edit flows) with emulator `Gh*Public` counterparts.
 - Remove local corruptor/GH fields/methods after bindings swapped.
 
-Batch E (Cores / Shader / Audio / View):
-- Swap core selection handlers with `emu.SetCpuCorePublic`, `emu.SetPpuCorePublic`, `emu.SetApuCorePublic`.
-- Swap shader selection with `emu.SetShaderPublic` and remove local persistence JS calls.
-- Replace fullscreen toggle with `emu.ToggleFullscreenPublic`.
-- Replace scale change logic with `emu.SetScalePublic`.
-- Replace SoundFont toggles & debug actions with `emu.ToggleSoundFontModePublic`, `emu.ToggleSampleFontPublic`, `emu.ToggleSoundFontLayeringPublic`, etc.
-- Remove local soundfont state fields (soundFontMode, sampleFont, layering, overlay, logging) after swap.
+Batch E (Cores / Shader / Audio / View) [COMPLETED EARLY]:
+Completed delegation of core (CPU/PPU/APU) selection, shader selection, fullscreen toggle, scale setter, soundfont toggles & overlay/logging, plus event scheduler toggle. Removed local soundfont fields & debug dump duplication.
 
 Batch F (Misc / Cleanup):
 - Remove navigation/location change handlers superseded by emulator.
@@ -121,6 +116,6 @@ Add public getters (if missing) in `Emulator` partials for:
 - Unit tests for Corruptor domain size detection & blast layering.
 
 ---
-Progress Note: Step 1 complete (Emulator integrated). Beginning Step 2 (delegations & pruning) with a batch approach: control handlers -> persistence -> benchmarks -> corruptor -> utilities cleanup.
+Progress Note: Control, persistence (step 1), cores/shader/fullscreen/scale, soundfont, event scheduler, ROM management, debug dump, size formatting delegations complete. Next focus: benchmark (Batch C) then corruptor/GH (Batch D), then purge remaining persistence helper duplication and JS frame/input handlers.
 
 End of plan (updated).
