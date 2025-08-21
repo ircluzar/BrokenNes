@@ -151,12 +151,13 @@ namespace BrokenNes
             return "?";
         }
     
-        public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> startEmulation)
+    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation)
         {
             try
             {
                 bool wasRunning = IsRunning;
-                if (wasRunning) await PauseEmulation(() => Task.CompletedTask, () => Task.CompletedTask, setStatus, stateHasChanged, _ => { }, _ => { });
+        // Theory 1: ensure the JS rAF loop is fully stopped before loading a new ROM
+        if (wasRunning) await pauseEmulation();
                 if (UploadedRoms.TryGetValue(RomFileName, out var data))
                 {
                     setStatus($"Loading uploaded ROM {RomFileName}...");

@@ -1295,7 +1295,7 @@
     // Local GetRomSizeDisplay removed; using nesController.GetRomSizeDisplay
 
     private async Task LoadSelectedRom()
-    { if (emu==null) return; await nesController.LoadSelectedRom(async fn=> await emu.Controller.LoadRomFromWwwroot(fn, f=>Http.GetByteArrayAsync(f), s=>Logger.LogInformation(s), s=>Logger.LogError(new Exception(s), s)), s=>Status.Set(s), ()=>StateHasChanged(), async (canvas)=> await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer), async ()=> { BuildMemoryDomains(); await Task.CompletedTask; }, async ()=> await StartEmulation()); }
+    { if (emu==null) return; await nesController.LoadSelectedRom(async fn=> await emu.Controller.LoadRomFromWwwroot(fn, f=>Http.GetByteArrayAsync(f), s=>Logger.LogInformation(s), s=>Logger.LogError(new Exception(s), s)), s=>Status.Set(s), ()=>StateHasChanged(), async (canvas)=> await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer), async ()=> { BuildMemoryDomains(); await Task.CompletedTask; }, async ()=> await PauseEmulation(), async ()=> await StartEmulation()); }
 
     private Task ReloadCurrentRom()
     {
