@@ -975,97 +975,10 @@
     {
         if (firstRender)
         {
-            try
+            // Delegate first-render setup and JS registrations to Emulator to avoid duplicates.
+            if (emu != null)
             {
-                Logger.LogInformation("NES Emulator initializing...");
-                Status.Set("Loading default ROM...");
-                // Create a single reusable DotNetObjectReference for all JS callbacks
-                _selfRef = DotNetObjectReference.Create(this);
-                // Load persisted core & shader preferences
-                try {
-                    var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) nesController.ActiveShaderKey = pShader;
-                    var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) nesController.CpuCoreSel = pCpu;
-                    var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) nesController.PpuCoreSel = pPpu;
-                    var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) nesController.ApuCoreSel = pApu;
-                    await LoadBenchHistory();
-                } catch {}
-
-                // Get shader list immediately (ensures dropdown populated even before WebGL init)
-                await RefreshShaderOptions();
-
-                // Load any previously stored uploaded ROMs from IndexedDB via JS
-                // Migrate any legacy localStorage ROM cache to IndexedDB
-                try { await JS.InvokeVoidAsync("nesInterop.migrateLocalStorageRoms"); } catch {}
-                var stored = await JS.InvokeAsync<UploadedRom[]>("nesInterop.getStoredRoms");
-                if (stored != null)
-                {
-                    int restored = 0;
-                    foreach (var r in stored)
-                    {
-                        if (string.IsNullOrWhiteSpace(r.name) || string.IsNullOrWhiteSpace(r.base64)) continue;
-                        try
-                        {
-                            var data = Convert.FromBase64String(r.base64);
-                            if (data.Length == 0) continue;
-                            nesController.UploadedRoms[r.name] = data;
-                            if (!romOptions.Any(o => o.Key == r.name))
-                            {
-                                romOptions.Add(new RomOption { Key = r.name, Label = r.name + " (uploaded)", BuiltIn = false });
-                                restored++;
-                            }
-                        }
-                        catch { }
-                    }
-                    if (restored > 0)
-                    {
-                        Status.Set($"Restored {restored} uploaded ROM(s).");
-                    }
-                }
-
-                // Initialize drag & drop on ROM table instead of dedicated zone
-                if (_selfRef != null)
-                {
-                    await JS.InvokeVoidAsync("nesInterop.initRomDragDrop", "rom-table", _selfRef);
-                }
-
-                // Auto-load default ROM then apply persisted core selections
-                await LoadRomFromServer();
-                ApplySelectedCores();
-
-                // Zero-copy framebuffer initialization removed (rollback HOTPOT-05); legacy copy path always active.
-
-                // Provide dotnet ref to JS for fullscreen/control callbacks
-                try { if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.setMainRef", _selfRef); } catch {}
-
-                // Register for keyboard input events via JS interop
-                if (_selfRef != null)
-                {
-                    await JS.InvokeVoidAsync("nesInterop.registerInput", _selfRef);
-                }
-
-                // Build memory domain list (after ROM load)
-                BuildMemoryDomains();
-
-                // Register C#-generated shaders into JS registry, then fetch options and set initial active shader
-                await RegisterShadersFromCSharp();
-                await RefreshShaderOptions();
-                await SetShader(nesController.ActiveShaderKey);
-
-                Logger.LogInformation("NES Emulator initialized successfully");
-                // After initial render, verify scoped CSS applied; inject fallback if not
-                try { await JS.InvokeVoidAsync("nesInterop.ensureLayoutStyles"); } catch {}
-                // Auto-start emulation (audio context may have been pre-warmed on Home page)
-                try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch {}
-                if (nes != null && !nesController.IsRunning)
-                {
-                    try { await StartEmulation(); } catch { }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, $"Failed to initialize NES emulator. Exception: {ex}");
-                nesController.ErrorMessage = $"Initialization failed: {ex.Message}\n{ex.StackTrace}";
-                Status.Set("Failed to load default ROM. Please upload a ROM file above.");
+                await emu.EnsureInitialRenderAsync(true);
             }
         }
         // Initialize touch controller JS handlers when controller view visible
@@ -1180,78 +1093,7 @@
 
     private Task SetShader(string key) => emu?.SetShaderPublic(key) ?? Task.CompletedTask;
 
-    // Called from JS every animation frame
-    [JSInvokable]
-    public async Task FrameTick()
-    {
-        if (!nesController.IsRunning) return;
-        await RunFrame();
-    }
-
-    private async Task RunFrame()
-    {
-        if (nes == null || !nesController.IsRunning) return;
-
-        try
-        {
-            // Auto static only for default test ROM and only before a savestate has been shown
-            bool autoStatic = string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !nesController.AutoStaticSuppressed;
-            nes.EnableStatic(autoStatic);
-            nes.SetInput(inputState);
-            if (nesController.FastForward)
-            {
-                nes.RunFrames(3); // run multiple frames quickly
-            }
-            else
-            {
-                nes.RunFrame();
-            }
-            if (corruptor.AutoCorrupt)
-            {
-                // Perform corruption after CPU step but before frame buffer fetch so effects are visible quickly
-                await Blast();
-            }
-            nesController.FrameCount++;
-
-            // Fetch audio EVERY emulation frame to maintain steady cadence
-            int queued = nes.GetQueuedAudioSamples();
-            // Target a chunk size aiming for ~12ms ( ~530 samples @44.1kHz ); adapt if backlog large
-            int targetChunk = queued > 4096 ? 2048 : (queued > 2048 ? 1024 : 768);
-            float[] audioBuffer = nes.GetAudioBuffer();
-            bool queuedAudio = audioBuffer.Length > 0;
-            int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
-
-            // Always draw current frame for smooth visuals / present output (legacy path only)
-            nesController.framebuffer = nes.GetFrameBuffer();
-#pragma warning disable CS4014
-            // Coalesced present call (audio + video) to reduce JS interop calls per frame (HotPot HOTPOT-02)
-            JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", nesController.framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
-#pragma warning restore CS4014
-
-            // Throttle stats & Blazor UI updates separately
-            if (nesController.FrameCount % nesController.StatsUpdateDivider == 0)
-            {
-                var now = DateTime.Now;
-                if ((now - nesController.LastFpsUpdate).TotalSeconds >= 0.5)
-                {
-                    nesController.Fps = (nesController.FrameCount - nesController.LastFrameCount) / (float)(now - nesController.LastFpsUpdate).TotalSeconds;
-                    nesController.LastFrameCount = nesController.FrameCount;
-                    nesController.LastFpsUpdate = now;
-                }
-                StateHasChanged();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"Error in RunFrame. Exception: {ex}");
-            await InvokeAsync(() =>
-            {
-                nesController.ErrorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
-                _ = PauseEmulation();
-                StateHasChanged();
-            });
-        }
-    }
+    // Duplicate FrameTick/RunFrame removed; Emulator hosts the JS-invokable frame loop.
 
     // Legacy famiclone toggle removed; use APU core selector instead
 
