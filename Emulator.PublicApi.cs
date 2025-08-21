@@ -146,5 +146,66 @@ namespace BrokenNes
         public Task DumpStateAsyncPublic() => DumpStateAsync();
         public string DebugDumpText => debugDump;
     public Task ResetAsyncFacade() => ResetAsyncPublic();
+
+        // --- ROM management public wrappers ---
+        // Load the currently selected ROM (uploaded or built-in) using controller plumbing and present a warm-up frame.
+        public async Task LoadSelectedRomPublic()
+        {
+            await Controller.LoadSelectedRom(
+                async fn => await Controller.LoadRomFromWwwroot(fn, f => Http.GetByteArrayAsync(f), s => Logger.LogInformation(s), s => Logger.LogError(new Exception(s), s)),
+                s => Status.Set(s),
+                () => StateHasChanged(),
+                async _ => await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", Controller.framebuffer),
+                async () => { BuildMemoryDomains(); await Task.CompletedTask; },
+                () => PauseAsync(),
+                () => StartAsync()
+            );
+        }
+
+        // Delete a specific uploaded ROM and reload a fallback if necessary.
+        public async Task DeleteRomPublic(string key)
+        {
+            await Controller.DeleteRom(
+                key,
+                s => Status.Set(s),
+                () => StateHasChanged(),
+                async removed => await JS.InvokeVoidAsync("nesInterop.removeStoredRom", removed),
+                async rk => { Controller.RomFileName = rk; await LoadSelectedRomPublic(); },
+                () => Controller.GetDefaultBuiltInRomKey()
+            );
+        }
+
+        // Clear all uploaded ROMs and reload fallback if needed.
+        public async Task ClearAllUploadedPublic()
+        {
+            await Controller.ClearAllUploaded(
+                s => Status.Set(s),
+                () => StateHasChanged(),
+                async k => await JS.InvokeVoidAsync("nesInterop.removeStoredRom", k),
+                async rk => { Controller.RomFileName = rk; await LoadSelectedRomPublic(); },
+                () => Controller.GetDefaultBuiltInRomKey(),
+                () => IsBuiltInSelected
+            );
+        }
+
+        // Import ROMs selected in the hidden <input type="file"> and auto-load the last one.
+        public async Task ImportRomsFromInputAsync(ElementReference fileInput)
+        {
+            await Controller.LoadRomUpload(
+                async () => await JS.InvokeAsync<UploadedRom[]>("nesInterop.readSelectedRoms", fileInput),
+                s => Status.Set(s),
+                () => StateHasChanged(),
+                async romKey => { Controller.RomFileName = romKey; await LoadSelectedRomPublic(); }
+            );
+        }
+
+        // Open the hidden import dialog in the UI by clicking the input element via JS.
+        public async Task TriggerRomImportDialogPublic()
+        {
+            try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch { }
+        }
+
+    // Expose memory domain rebuild for UI triggers (avoids duplicated logic in Razor)
+    public void RebuildMemoryDomainsPublic() => BuildMemoryDomains();
     }
 }
