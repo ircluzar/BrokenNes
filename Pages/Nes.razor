@@ -82,8 +82,8 @@
                     <span class="badge bg-dark-subtle text-dark me-1">State: @(nesController.IsRunning ? "Running" : "Paused")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@nesController.CurrentRomName</strong></span>
                     <span class="badge bg-dark-subtle text-dark">Size: @FormatSize(nesController.LastLoadedRomSize)</span>
-                    <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @activeSfCoreDisplay</span>
-                    @if (soundFontLayering)
+                    <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu?.ActiveSfCoreDisplay</span>
+                    @if (emu?.SoundFontLayering == true)
                     {
                         <span class="badge bg-warning text-dark ms-1" title="Layering enabled: both cores may receive note events">Layering</span>
                     }
@@ -536,25 +536,25 @@
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="ToggleSoundFontMode" checked="@soundFontMode" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="OnSoundFontModeChanged" checked="@emu?.SoundFontMode" disabled="@(nes==null)" />
                     <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
                 </div>
-                @if (soundFontMode)
+                @if (emu?.SoundFontMode == true)
                 {
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="ToggleSampleFont" checked="@sampleFont" />
+                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="ToggleSampleFont" checked="@emu?.SampleFont" />
                         <label class="form-check-label" for="sfSampleToggle" title="Use external sampled SoundFont library (falls back to oscillators if unavailable)">Sampled Instruments</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="ToggleSoundFontLayering" checked="@soundFontLayering" />
+                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="OnSoundFontLayeringChanged" checked="@emu?.SoundFontLayering" />
                         <label class="form-check-label" for="sfLayerToggle" title="Experimental: allow both MNES & WF SoundFont cores to process notes simultaneously (debug/compare)">Layering</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="ToggleSfDevLogging" checked="@sfDevLogging" />
+                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="ToggleSfDevLogging" checked="@emu?.SfDevLogging" />
                         <label class="form-check-label" for="sfDevLogToggle" title="Verbose console logs for SoundFont core routing & throttling">SF Dev Logging</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="ToggleSfOverlay" checked="@sfOverlay" />
+                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="ToggleSfOverlay" checked="@emu?.SfOverlay" />
                         <label class="form-check-label" for="sfOverlayToggle" title="Display on-screen SoundFont diagnostics overlay (lead ms, counters)">SF Overlay</label>
                     </div>
                     <div class="mt-2 d-flex flex-wrap gap-2">
@@ -964,147 +964,19 @@
     private List<DiffRow> recentDiffRows = new();
     private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
     private bool compareNormalize = true; // per-target normalization to 0..100% range
-    // SoundFont mode toggle (APU_WF & APU_MNES)
-    private bool soundFontMode = false;
-    private bool sampleFont = true; // attempt external sample instruments
-    private bool soundFontLayering = false; // layering off by default
-    private bool sfDevLogging = false; // dev logging toggle
-    private bool sfOverlay = false; // overlay toggle
-    private string activeSfCoreDisplay => string.IsNullOrEmpty(activeSfCore) ? (soundFontMode ? "(compat)" : "None") : activeSfCore;
-    private string activeSfCore = string.Empty; // WF or MNES
-    private async Task UpdateActiveSoundFontCoreAsync()
-    {
-        if (!soundFontMode)
-        {
-            activeSfCore = string.Empty;
-            try { await JS.InvokeVoidAsync("nesInterop.setActiveSoundFontCore", (object?)null); } catch {}
-            return;
-        }
-        string? core = null;
-        if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase)) core = "WF";
-        else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase)) core = "MNES";
-        activeSfCore = core ?? string.Empty;
-        try { await JS.InvokeVoidAsync("nesInterop.setActiveSoundFontCore", core, new { eager = true, flush = true }); } catch {}
-        try { await JS.InvokeVoidAsync("nesInterop.setSoundFontLayering", soundFontLayering); } catch {}
-    }
-    private async void ToggleSoundFontLayering(ChangeEventArgs e)
-    {
-        bool desired = e.Value is bool b && b;
-        if (e.Value is string sv && bool.TryParse(sv, out var parsed)) desired = parsed;
-        soundFontLayering = desired;
-        try { await JS.InvokeVoidAsync("nesInterop.setSoundFontLayering", soundFontLayering); } catch {}
-        StateHasChanged();
-    }
-    private async Task FlushSoundFont()
-    {
-        try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
-        try { nes?.FlushSoundFont(); } catch {}
-    }
-    private async Task ShowSfDebug()
-    {
-        try {
-            var rep = await JS.InvokeAsync<object>("nesInterop.debugReport");
-            Logger.LogInformation($"SF Debug: {System.Text.Json.JsonSerializer.Serialize(rep)}");
-        } catch {}
-    }
-    private async void ToggleSfDevLogging(ChangeEventArgs e)
-    {
-        bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var parsed)) desired = parsed;
-        sfDevLogging = desired;
-        try { await JS.InvokeVoidAsync("nesInterop.enableSoundFontDevLogging", sfDevLogging); } catch {}
-        StateHasChanged();
-    }
-    private async void ToggleSfOverlay(ChangeEventArgs e)
-    {
-        bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var parsed)) desired = parsed;
-        if(desired == sfOverlay) return;
-        sfOverlay = desired;
-        try {
-            if(sfOverlay) await JS.InvokeVoidAsync("nesInterop.startSoundFontAudioOverlay"); else await JS.InvokeVoidAsync("nesInterop.stopSoundFontAudioOverlay");
-        } catch {}
-        StateHasChanged();
-    }
-    // Automatically configure SoundFont/sample mode when selecting specific APU core (WF)
-    private void AutoConfigureForApuCore()
-    {
-        if (nes == null) return;
-        try
-        {
-            if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
-            {
-                // Enable SoundFont note-event path if not already
-                if (!soundFontMode)
-                {
-                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) =>
-                    {
-                        try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { }
-                    });
-                }
-                // Force sample-based mode preference
-                sampleFont = true;
-                try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
-                try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
-            }
-            else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
-            {
-                // MNES core also uses note-event mode, but may rely on an alternate JS synth/library.
-                // We just enable the generic note-event bridge; library-specific init (if any) can be added later.
-                if (!soundFontMode)
-                {
-                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) =>
-                    {
-                        try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { }
-                    });
-                }
-                // Kick JS MNES SoundFont bridge (lazy loads MNES.sf2)
-                try { JS.InvokeVoidAsync("eval", "window.mnesSf2 && mnesSf2.enable && mnesSf2.enable();"); } catch {}
-                // Do NOT force nesSoundFont sample mode here since MNES may target a different playback engine.
-            }
-            else
-            {
-                // Leaving WF/MNES note-event cores -> disable SoundFont path if currently enabled (revert to PCM from other cores)
-                if (soundFontMode)
-                {
-                    nes.EnableSoundFontMode(false, null);
-                    soundFontMode = false;
-                }
-            }
-        }
-        catch { }
-    // After enabling/disabling SoundFontMode update active core flag in JS
-    _ = UpdateActiveSoundFontCoreAsync();
-        StateHasChanged();
-    }
-    private void ToggleSoundFontMode(ChangeEventArgs e)
-    {
-        if (nes == null) return;
-        bool desired = e.Value is bool b && b;
-        if (e.Value is string sv && bool.TryParse(sv, out var parsed)) desired = parsed;
-        if (desired == soundFontMode) return;
-        soundFontMode = nes.EnableSoundFontMode(desired, (ch, prog, midi, vel, on, _)=>
-        {
-            try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch {}
-        });
-        if (soundFontMode && sampleFont)
-        {
-            // Kick off sample-based mode (fire-and-forget)
-            try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
-        }
-    _ = UpdateActiveSoundFontCoreAsync();
-        StateHasChanged();
-    }
+    // SoundFont delegated handlers
+    private void OnSoundFontModeChanged(ChangeEventArgs e)
+    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SoundFontMode) return; emu.ToggleSoundFontModePublic(); }
+    private async void OnSoundFontLayeringChanged(ChangeEventArgs e)
+    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SoundFontLayering) return; await emu.ToggleSoundFontLayeringPublic(); }
     private void ToggleSampleFont(ChangeEventArgs e)
-    {
-        bool desired = e.Value is bool b && b;
-        if (e.Value is string sv && bool.TryParse(sv, out var parsed)) desired = parsed;
-        if (desired == sampleFont) return;
-        sampleFont = desired;
-        try { JS.InvokeVoidAsync("eval", $"window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased({(sampleFont?"true":"false")});"); } catch {}
-        if (sampleFont && soundFontMode)
-        {
-            try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
-        }
-    }
+    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SampleFont) return; emu.ToggleSampleFontPublic(); }
+    private void ToggleSfDevLogging(ChangeEventArgs e)
+    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SfDevLogging) return; emu.ToggleSfDevLoggingPublic(); }
+    private void ToggleSfOverlay(ChangeEventArgs e)
+    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SfOverlay) return; emu.ToggleSfOverlayPublic(); }
+    private Task FlushSoundFont() => emu?.FlushSoundFontPublic() ?? Task.CompletedTask;
+    private Task ShowSfDebug() => emu?.ShowSfDebugPublic() ?? Task.CompletedTask;
 
     // All corruptor and glitch harvester state is now accessed directly via corruptor instance
     // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
@@ -1281,21 +1153,16 @@
 
     private void SetScale(double scale)
     {
-        if (scale != 0.5 && scale != 1.0) return;
-        nesController.EmuScale = scale;
+        // Delegated to emulator public API
+        if (emu == null) return;
+        if (scale != 0.5 && scale != 1.0) return; // preserve original guard
+        emu.SetScalePublic(scale);
     }
 
     private async Task ToggleFullscreen()
     {
-        try
-        {
-            var newState = await JS.InvokeAsync<bool>("nesInterop.toggleFullscreen");
-            nesController.IsFullscreen = newState;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Fullscreen toggle failed");
-        }
+        if (emu == null) return;
+        await emu.ToggleFullscreenPublic();
     }
 
     private async Task RefreshShaderOptions()
@@ -1322,23 +1189,7 @@
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to refresh shader options"); }
     }
 
-    private async Task SetShader(string key)
-    {
-        try
-        {
-            var displayName = await JS.InvokeAsync<string>("nesInterop.setShader", key);
-            if(!string.IsNullOrEmpty(displayName))
-            {
-                nesController.ActiveShaderKey = key;
-                nesController.ShaderOn = key != "PX"; // consider PX the passthrough
-                Status.Set($"Shader: {displayName}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"SetShader error for {key}");
-        }
-    }
+    private Task SetShader(string key) => emu?.SetShaderPublic(key) ?? Task.CompletedTask;
 
     // Called from JS every animation frame
     [JSInvokable]
@@ -1471,83 +1322,37 @@
         }
         catch { }
     // After core selection, auto-handle SoundFont if WF chosen
-    AutoConfigureForApuCore();
     }
 
     private async Task OnApuCoreChanged(ChangeEventArgs e)
     {
-        if (nes == null) return;
-        var v = e.Value?.ToString() ?? string.Empty;
-        if (string.IsNullOrEmpty(v)) return;
-        if (v == nesController.ApuCoreSel) return;
-        nesController.ApuCoreSel = v;
-        bool ok = nes.SetApuCore(v);
-        if (!ok)
-        {
-            // legacy fallback
-            switch (v)
-            {
-                case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); break;
-                case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); break;
-                default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); break;
-            }
-        }
-    nesController.FamicloneOn = v.Equals("FMC", StringComparison.OrdinalIgnoreCase);
-        Status.Set($"APU core switched to {v}");
-        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", nesController.ApuCoreSel); } catch {}
-    AutoConfigureForApuCore();
+        if (emu == null) return;
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v) || v == nesController.ApuCoreSel) return;
+        await emu.SetApuCorePublic(v);
     }
 
     private async Task OnCpuCoreChanged(ChangeEventArgs e)
     {
-        if (nes == null) return;
+        if (emu == null) return;
         var v = e.Value?.ToString();
-        if (string.IsNullOrEmpty(v)) return;
-        if (v == nesController.CpuCoreSel) return;
-        nesController.CpuCoreSel = v;
-        var state = nes.GetCpuState();
-        bool ok = nes.SetCpuCore(v);
-        if (!ok)
-        {
-            nes.SetCpuCore(v == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
-        }
-        try { nes.SetCpuState(state); } catch {}
-        Status.Set($"CPU core switched to {v}");
-        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", nesController.CpuCoreSel); } catch {}
+        if (string.IsNullOrWhiteSpace(v) || v == nesController.CpuCoreSel) return;
+        await emu.SetCpuCorePublic(v);
     }
 
     private async Task OnPpuCoreChanged(ChangeEventArgs e)
     {
-        if (nes == null) return;
+        if (emu == null) return;
         var v = e.Value?.ToString();
-        if (string.IsNullOrEmpty(v)) return;
-        if (v == nesController.PpuCoreSel) return;
-        nesController.PpuCoreSel = v;
-        var state = nes.GetPpuState();
-        if (!nes.SetPpuCore(v))
-        {
-            nes.SetPpuCore(v switch {
-                "FIX" => NesEmulator.Bus.PpuCore.FIX,
-                "LQ" => NesEmulator.Bus.PpuCore.LQ,
-                "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
-                "BFR" => NesEmulator.Bus.PpuCore.BFR,
-                _ => NesEmulator.Bus.PpuCore.FMC
-            });
-        }
-        try { nes.SetPpuState(state); } catch {}
-        Status.Set($"PPU core switched to {v}");
-    try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", nesController.PpuCoreSel); } catch {}
+        if (string.IsNullOrWhiteSpace(v) || v == nesController.PpuCoreSel) return;
+        await emu.SetPpuCorePublic(v);
     }
 
     private async Task OnShaderSelectChanged(ChangeEventArgs e)
     {
         var v = e.Value?.ToString();
-        if(string.IsNullOrWhiteSpace(v)) return;
-        if(v != nesController.ActiveShaderKey)
-        {
-            await SetShader(v);
-            try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_shader", nesController.ActiveShaderKey); } catch {}
-        }
+        if (string.IsNullOrWhiteSpace(v) || v == nesController.ActiveShaderKey) return;
+        await SetShader(v);
     }
 
     // Old famiclone-only handler removed; see OnApuCoreChanged

@@ -25,7 +25,7 @@ Goal: Finish extracting logic from `Pages/Nes.razor` into the existing C# classe
 - [x] Replace direct controller / corruptor fields with delegating properties (`nesController`, `corruptor`).
 - [x] Delegate core control handlers (Start/Pause/Reset) to emulator (Batch A complete – wrappers now call `emu.StartAsync()`, `emu.PauseAsync()`, `emu.ResetAsyncPublic()`).
 - [ ] Expose / alias benchmark & UI state via emulator getters (partially done; finish when swapping bindings).
-- [ ] Delegate state persistence handlers (SaveState, LoadState, DumpState + JS wrappers) to emulator (Batch B in progress).
+- [x] Delegate state persistence handlers (SaveState, LoadState, DumpState + JS wrappers) to emulator (wrappers done; dump binding + helper cleanup pending in Batch B steps 2–3).
 - [ ] Delegate shader/core selection & soundfont toggles to emulator.
 - [ ] Delegate benchmark modal actions & state; remove duplicate benchmark fields/methods.
 - [ ] Delegate corruptor & Glitch Harvester methods; prune duplicates.
