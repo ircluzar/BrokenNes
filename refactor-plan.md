@@ -23,32 +23,28 @@ Goal: Finish extracting logic from `Pages/Nes.razor` into the existing C# classe
 ## Remaining Actions
 - [x] Instantiate `Emulator` inside `Nes.razor` with dependencies (ILogger, IJSRuntime, HttpClient, StatusService, IShaderProvider, NavigationManager).
 - [x] Replace direct controller / corruptor fields with delegating properties (`nesController`, `corruptor`).
+- [x] Delegate core control handlers (Start/Pause/Reset) to emulator (Batch A complete – wrappers now call `emu.StartAsync()`, `emu.PauseAsync()`, `emu.ResetAsyncPublic()`).
 - [ ] Expose / alias benchmark & UI state via emulator getters (partially done; finish when swapping bindings).
-- [ ] Delegate core control handlers (StartEmulation, PauseEmulation, ResetEmulation, SaveState, LoadState, DumpState) to emulator public API.
+- [ ] Delegate state persistence handlers (SaveState, LoadState, DumpState + JS wrappers) to emulator (Batch B in progress).
 - [ ] Delegate shader/core selection & soundfont toggles to emulator.
 - [ ] Delegate benchmark modal actions & state; remove duplicate benchmark fields/methods.
 - [ ] Delegate corruptor & Glitch Harvester methods; prune duplicates.
-- [ ] Remove duplicated save/load (chunked) implementation in Razor.
+- [ ] Remove duplicated save/load (chunked) implementation & helpers from Razor once no references remain (after benchmark migration, since local benchmark code currently references helpers).
 - [ ] Remove utility helpers now duplicated (compression, FormatSize, ExtractInt) once unused.
-- [ ] Confirm all JSInvokable methods exist only on emulator and are registered; remove Razor copies.
+- [ ] Confirm all JSInvokable methods exist only on emulator and are registered; remove Razor copies (FrameTick, UpdateInput, JsSave/Load/Reset once rewired to emulator reference only).
 - [ ] Purge obsolete navigation & disposal code replaced by emulator.
 - [ ] Delete unused private fields and trim using directives.
 - [ ] Build & manual test after each delegation batch.
 
 ### Detailed Delegation Breakdown (Upcoming Batches)
-Batch A (Core Control / Loop):
-- Replace body of `StartEmulation` with call to `emu.StartAsync()` (if method name differs, add wrapper in Emulator) and remove RAF loop JS calls from Razor (handled in emulator).
-- Replace `PauseEmulation` with `emu.PauseAsync()`; remove manual SoundFont flush (emulator handles / add if missing).
-- Replace `ResetEmulation` logic with `emu.HardResetAsync()` (expose if not present) or a new `ResetAsync()` that encapsulates pause, ROM reload, corruption disable, core reapply, resume.
-- Update `JsResetGame` to call emulator public method; remove local reset function after bindings updated.
-- Remove local frame scheduling / `[JSInvokable] FrameTick` (if still present) post verification.
+Batch A (Core Control / Loop) [COMPLETED]:
+- Delegated Start/Pause/Reset to emulator. Full reset logic moved into new `Emulator.ResetAsync` (Control partial). Page now only calls wrappers.
+- Next sub-step (deferred): migrate frame loop & input JS callbacks entirely to emulator (will remove `FrameTick`/`UpdateInput` after JS reference shift).
 
-Batch B (State Persistence):
-- Replace `SaveState` body with `await emu.SaveStateAsyncPublic()`.
-- Replace `LoadState` body with `await emu.LoadStateAsyncPublic()`.
-- Replace `DumpState` with `emu.DumpStateAsyncPublic()` and expose `emu.DebugDumpText` for UI binding.
-- Remove chunking/compression helpers (CompressString, DecompressString, RemoveExistingChunks, ExtractInt, constants like `SaveChunkCharSize`, `SaveKey`) once Razor no longer references them (verify equivalents exist in `StatePersistence.cs`).
-- Update `JsSaveState` / `JsLoadState` to delegate to emulator public methods.
+Batch B (State Persistence) [IN PROGRESS]:
+- Step 1: (DONE) Wrapped `SaveState`, `LoadState`, `DumpState`, `JsSaveState`, `JsLoadState` to call emulator public API.
+- Step 2: After benchmark migration (which currently reuses helper methods) remove local persistence helpers/constants.
+- Step 3: Swap UI dump binding to `emu.DebugDumpText` and drop local `debugDump` field.
 
 Batch C (Benchmarks):
 - Swap all uses of `benchRunning`, `benchModalOpen`, `benchResultsText`, `benchWeight`, `benchAutoLoadState`, `benchSimple5x`, history and diff collections to emulator public projections (`emu.BenchRunning`, etc.).
