@@ -81,7 +81,7 @@
                     <span class="badge bg-dark-subtle text-dark me-1">FPS: @nesController.Fps.ToString("F1")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">State: @(nesController.IsRunning ? "Running" : "Paused")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@nesController.CurrentRomName</strong></span>
-                    <span class="badge bg-dark-subtle text-dark">Size: @FormatSize(nesController.LastLoadedRomSize)</span>
+                    <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(nesController.LastLoadedRomSize)</span>
                     <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu?.ActiveSfCoreDisplay</span>
                     @if (emu?.SoundFontLayering == true)
                     {
@@ -848,9 +848,9 @@
                     </div>
                 </div>
             }
-            @if (!string.IsNullOrEmpty(debugDump))
+            @if (!string.IsNullOrEmpty(emu?.DebugDumpText))
             {
-                <div class="small text-monospace" style="white-space:pre-wrap;max-width:260px">@debugDump</div>
+                <div class="small text-monospace" style="white-space:pre-wrap;max-width:260px">@emu!.DebugDumpText</div>
             }
         </div>
     </details>
@@ -928,7 +928,6 @@
     public void JsSetMobileFsView(string v) => SetMobileFsView(v);
     private const string SaveKey = "nes_state_slot0";
     private bool stateBusy = false; // prevent overlapping save/load operations
-    private string debugDump = string.Empty;
     // Benchmark modal state
     private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
     // Event scheduler UI state (mirrors nes.EnableEventScheduler)
@@ -1586,17 +1585,9 @@
 
     private string GetRomSizeDisplay(string key)
     {
-        if (nesController.UploadedRoms.TryGetValue(key, out var data)) return FormatSize(data.Length);
-        if (nesController.BuiltInRomSizes.TryGetValue(key, out var s)) return FormatSize(s);
+        if (nesController.UploadedRoms.TryGetValue(key, out var data)) return NesController.FormatSize(data.Length);
+        if (nesController.BuiltInRomSizes.TryGetValue(key, out var s)) return NesController.FormatSize(s);
         return "?";
-    }
-
-    private static string FormatSize(int bytes)
-    {
-        if (bytes <= 0) return "0";
-        if (bytes < 1024) return bytes+" B";
-        if (bytes < 1024*1024) return (bytes/1024.0).ToString("F1")+" KB";
-        return (bytes/1024.0/1024.0).ToString("F2")+" MB";
     }
 
     private async Task LoadSelectedRom()
