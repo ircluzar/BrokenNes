@@ -10,6 +10,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddSingleton<StatusService>();
 builder.Services.AddSingleton<NesEmulator.Shaders.IShaderProvider, NesEmulator.Shaders.ShaderProvider>();
+builder.Services.AddScoped<Emulator>();
 
 // Add comprehensive logging
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
