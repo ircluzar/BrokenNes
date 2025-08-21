@@ -145,5 +145,6 @@ namespace BrokenNes
         public Task LoadStateAsyncPublic() => LoadStateAsync();
         public Task DumpStateAsyncPublic() => DumpStateAsync();
         public string DebugDumpText => debugDump;
+    public Task ResetAsyncFacade() => ResetAsyncPublic();
     }
 }
