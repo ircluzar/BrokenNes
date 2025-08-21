@@ -32,13 +32,13 @@
     <section class="play-area">
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
-                <button class="btn btn-success ctrl-btn" @onclick="StartEmulation" disabled="@(nesController.IsRunning || nes == null)" title="Start (Play)" aria-label="Start">
+                <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(nesController.IsRunning || nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
-                <button class="btn btn-warning ctrl-btn" @onclick="PauseEmulation" disabled="@(!nesController.IsRunning)" title="Pause" aria-label="Pause">
+                <button class="btn btn-warning ctrl-btn" @onclick="(()=>emu!.PauseAsync())" disabled="@(!nesController.IsRunning)" title="Pause" aria-label="Pause">
                     <svg viewBox="0 0 100 100" class="ctrl-ico pause" role="img" focusable="false"><rect x="24" y="18" width="20" height="64" rx="6" /><rect x="56" y="18" width="20" height="64" rx="6" /></svg>
                 </button>
-                <button class="btn btn-danger ctrl-btn" @onclick="ResetEmulation" disabled="@(nes == null)" title="Reset" aria-label="Reset">
+                <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(nes == null)" title="Reset" aria-label="Reset">
                     <svg viewBox="0 0 100 100" class="ctrl-ico reset" role="img" focusable="false"><path d="M50 18a32 32 0 1 1-22.63 9.37" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 13 30 40 5 34" fill="currentColor" /></svg>
                 </button>
             </div>
@@ -1049,9 +1049,7 @@
         }
     }
 
-    private Task StartEmulation() => emu?.StartAsync() ?? Task.CompletedTask;
-    private Task PauseEmulation() => emu?.PauseAsync() ?? Task.CompletedTask;
-    private async void ResetEmulation() { if (emu != null) await emu.ResetAsyncPublic(); }
+    // Quick Win 2: local Start/Pause/Reset wrappers removed. UI now calls emu.StartAsync/emu.PauseAsync/emu.ResetAsyncFacade directly.
 
     private void SetScale(double scale)
     {
@@ -1241,9 +1239,9 @@
             nesController.CurrentRomName = e.File.Name;
             Status.Set($"ROM '{e.File.Name}' loaded successfully.");
             nesController.ErrorMessage = "";
-            if (!nesController.IsRunning)
+            if (!nesController.IsRunning && emu!=null)
             {
-                await StartEmulation();
+                await emu.StartAsync();
             }
             StateHasChanged();
         }
@@ -1295,7 +1293,7 @@
     // Local GetRomSizeDisplay removed; using nesController.GetRomSizeDisplay
 
     private async Task LoadSelectedRom()
-    { if (emu==null) return; await nesController.LoadSelectedRom(async fn=> await emu.Controller.LoadRomFromWwwroot(fn, f=>Http.GetByteArrayAsync(f), s=>Logger.LogInformation(s), s=>Logger.LogError(new Exception(s), s)), s=>Status.Set(s), ()=>StateHasChanged(), async (canvas)=> await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer), async ()=> { BuildMemoryDomains(); await Task.CompletedTask; }, async ()=> await PauseEmulation(), async ()=> await StartEmulation()); }
+    { if (emu==null) return; await nesController.LoadSelectedRom(async fn=> await emu.Controller.LoadRomFromWwwroot(fn, f=>Http.GetByteArrayAsync(f), s=>Logger.LogInformation(s), s=>Logger.LogError(new Exception(s), s)), s=>Status.Set(s), ()=>StateHasChanged(), async (canvas)=> await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer), async ()=> { BuildMemoryDomains(); await Task.CompletedTask; }, () => emu!.PauseAsync(), () => emu!.StartAsync()); }
 
     private Task ReloadCurrentRom()
     {
@@ -1327,7 +1325,7 @@
             }
 
             bool wasRunning = nesController.IsRunning;
-            if (wasRunning) await PauseEmulation();
+            if (wasRunning && emu!=null) await emu.PauseAsync();
             if (nes == null) nes = new NesEmulator.NES();
             nes.RomName = nesController.RomFileName;
             var prevApuSuffix = nesController.ApuCoreSel;
@@ -1353,7 +1351,7 @@
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
             }
-            if (nesController.HasBooted && wasRunning) { await StartEmulation(); }
+            if (nesController.HasBooted && wasRunning && emu!=null) { await emu.StartAsync(); }
             StateHasChanged();
         }
         catch (Exception ex)
@@ -1400,7 +1398,7 @@
         benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
         try {
             bool wasRunning = nesController.IsRunning; // pause emulator for deterministic timing
-            if (wasRunning) await PauseEmulation();
+            if (wasRunning && emu!=null) await emu.PauseAsync();
             if (benchAutoLoadState)
             {
                 // Attempt to load savestate slot 0 (baseline)
@@ -1423,7 +1421,7 @@
             benchHistory.Insert(0, entry);
             currentBenchHistoryId = entry.Id;
             await PersistBenchHistory();
-            if (wasRunning) await StartEmulation();
+            if (wasRunning && emu!=null) await emu.StartAsync();
         } catch (Exception ex) { benchResultsText = "Benchmark error: "+ex.Message; }
         finally { benchRunning = false; StateHasChanged(); }
     }
@@ -1435,7 +1433,7 @@
         benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
         bool wasRunning = nesController.IsRunning;
         try {
-            if (wasRunning) await PauseEmulation();
+            if (wasRunning && emu!=null) await emu.PauseAsync();
             int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
             const int passes = 5;
             var passResults = new List<IReadOnlyList<NesEmulator.NES.BenchResult>>();
@@ -1506,7 +1504,7 @@
             currentBenchHistoryId = historyEntry.Id;
             await PersistBenchHistory();
         } catch (Exception ex) { benchResultsText = "Benchmark 5x error: "+ex.Message; }
-        finally { benchRunning = false; if (wasRunning) await StartEmulation(); StateHasChanged(); }
+    finally { benchRunning = false; if (wasRunning && emu!=null) await emu.StartAsync(); StateHasChanged(); }
     }
 
     // Silent baseline state loader used exclusively for benchmarks to improve result stability.
@@ -2006,7 +2004,7 @@
     [JSInvokable]
     public Task JsLoadState() => LoadState();
     [JSInvokable]
-    public void JsResetGame() => ResetEmulation();
+    public Task JsResetGame() => emu?.ResetAsyncFacade() ?? Task.CompletedTask;
     [JSInvokable]
     public void JsExitFullscreen()
     {

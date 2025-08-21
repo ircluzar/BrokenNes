@@ -13,7 +13,7 @@ Keep batches SMALL (each item should be reviewable in < ~5–10 mins). Execute i
 ---
 ## Quick Wins / Low Risk
 1. [x] QS Remove duplicate FrameTick / RunFrame in `Nes.razor` (already implemented in `Emulator`). Replace JS registration to point only to `Emulator.FrameTick`; delete local copies.
-2. [ ] QS Replace local Start/Pause/Reset wrappers (`StartEmulation`, `PauseEmulation`, `ResetEmulation`) with direct calls to `emu.StartAsync()`, `emu.PauseAsync()`, `emu.ResetAsyncFacade()`; then delete local wrapper methods.
+2. [x] QS Replace local Start/Pause/Reset wrappers (`StartEmulation`, `PauseEmulation`, `ResetEmulation`) with direct calls to `emu.StartAsync()`, `emu.PauseAsync()`, `emu.ResetAsyncFacade()`; then delete local wrapper methods.
 3. [ ] QS Remove local shader option refresh & registration (`RegisterShadersFromCSharp`, `RefreshShaderOptions`, `SetShader`) now duplicated in `Emulator`; call `emu.SetShaderPublic` + rely on initialization inside `Emulator.Initialize`.
 4. [ ] QS Delete duplicated ROM loading helpers in `Nes.razor` (`LoadRomFromServer`, `LoadRomFromWwwroot`, `LoadSelectedRom`, `LoadRomUpload`, `LoadRomFile`, `ReloadCurrentRom`, `DeleteRom`, `ClearAllUploaded`, `TriggerFileDialog`) after exposing minimal public API on `Emulator` (e.g. `LoadUploadedRomsAsync`, `ImportRomsAsync`, `DeleteRomAsync`, `ReloadCurrentRomPublic`). Update UI bindings.
 5. [ ] QS Remove duplicated memory domain building (`BuildMemoryDomains`) from `Nes.razor` (exists in `Emulator`); call a public `emu.RebuildMemoryDomains()` (to expose) if UI needs manual rebuild.
