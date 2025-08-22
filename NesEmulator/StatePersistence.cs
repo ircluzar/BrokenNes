@@ -141,6 +141,21 @@ namespace BrokenNes
                     }
                     catch {}
                     nes?.LoadState(full);
+                    // Theory 1: Sync UI core selections and side-effects after LoadState
+                    try
+                    {
+                        if (nes != null)
+                        {
+                            nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
+                            nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
+                            nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
+                            // Ensure FamicloneOn flag follows the active APU
+                            SetApuCoreSelFromEmu();
+                            // Re-apply SoundFont/JS bridges according to selected APU core
+                            AutoConfigureForApuCore();
+                        }
+                    }
+                    catch { }
                     try { var savedName = nes?.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName) && nes!=null) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } catch {}
                     nesController.AutoStaticSuppressed = true;
                     try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
@@ -152,6 +167,7 @@ namespace BrokenNes
                         await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                     }
                     Status.Set("State loaded");
+                    StateHasChanged();
                     if (wasRunning) await StartEmulation();
                 }
             }
