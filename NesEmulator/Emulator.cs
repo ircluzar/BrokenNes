@@ -187,9 +187,10 @@ namespace BrokenNes
                     Status.Set("Failed to load default ROM. Please upload a ROM file above.");
                 }
             }
-            if (nesController.IsFullscreen && MobileFullscreenView == "controller" && !touchControllerInitialized)
+            if (nesController.IsFullscreen && MobileFullscreenView == "controller")
             {
-                try { await JS.InvokeVoidAsync("nesInterop.initTouchController", "touch-controller"); touchControllerInitialized = true; } catch { }
+                // Idempotent init each render while in controller view; JS guards per-element via _nesBound
+                try { await JS.InvokeVoidAsync("nesInterop.initTouchController", "touch-controller"); } catch { }
             }
         }
 

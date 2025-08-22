@@ -1104,6 +1104,8 @@ window.nesInterop = {
                         // controller markup now rendered server-side; init only when requested elsewhere
             // initial view sync (CSS controls visibility)
             this._syncMobileViews('controller');
+            // Ensure touch controller is bound after the DOM is in its fullscreen layout
+            try { this.initTouchController('touch-controller'); } catch {}
         } else {
             rootShell.classList.remove('mobile-fs-active');
             document.documentElement.classList.remove('mobile-no-scroll');
