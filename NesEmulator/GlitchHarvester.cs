@@ -39,6 +39,21 @@ namespace BrokenNes
                 if (b == null) return;
                 nes.LoadState(b.State);
                 nesController.AutoStaticSuppressed = true;
+                // Post-load sync to mirror top-level LoadState: update core selections, audio, and domains
+                try
+                {
+                    nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
+                    nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
+                    nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
+                    SetApuCoreSelFromEmu();
+                    AutoConfigureForApuCore();
+                }
+                catch { }
+                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                // Reset audio pipeline like top Load does (fire-and-forget to keep method signature)
+                try { _ = JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                try { var _ = nes?.GetAudioBuffer(); } catch { }
+                BuildMemoryDomains();
                 nesController.framebuffer = nes.GetFrameBuffer();
                 _ = JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                 Status.Set($"Loaded base '{b.Name}'");
@@ -60,6 +75,20 @@ namespace BrokenNes
             {
                 nes.LoadState(baseState.State);
                 nesController.AutoStaticSuppressed = true;
+                // Post-load sync to ensure cores/UI/audio are consistent before corruption writes
+                try
+                {
+                    nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
+                    nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
+                    nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
+                    SetApuCoreSelFromEmu();
+                    AutoConfigureForApuCore();
+                }
+                catch { }
+                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                try { var _ = nes?.GetAudioBuffer(); } catch { }
+                BuildMemoryDomains();
                 var writes = corruptor.GenerateBlastLayer(corruptor.CorruptIntensity);
                 corruptor.ApplyBlastLayer(writes, nes);
                 var entry = new HarvestEntry { Name = $"Stash {++corruptor.GhStashCounter}", BaseStateId = baseState.Id, Writes = writes };
@@ -80,6 +109,20 @@ namespace BrokenNes
             {
                 nes.LoadState(baseState.State);
                 nesController.AutoStaticSuppressed = true;
+                // Post-load sync to mirror top-level LoadState before applying writes
+                try
+                {
+                    nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
+                    nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
+                    nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
+                    SetApuCoreSelFromEmu();
+                    AutoConfigureForApuCore();
+                }
+                catch { }
+                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                try { var _ = nes?.GetAudioBuffer(); } catch { }
+                BuildMemoryDomains();
                 corruptor.ApplyBlastLayer(e.Writes, nes);
                 nesController.framebuffer = nes.GetFrameBuffer();
                 await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
