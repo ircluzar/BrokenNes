@@ -789,6 +789,44 @@ namespace NesEmulator
 		// ===== SoundFont / Note Event Mode (APU_WF & APU_MNES) =====
 		private bool soundFontEnabled = false;
 		private Delegate? noteSub; // retains delegate reference for unsubscribe
+		// Track which APU instance we're currently wired to, so switches between WF/MNES properly detach/rebind
+		private object? soundFontBoundApu;
+
+		private void EmitAllNoteOffFor(object? apu)
+		{
+			try
+			{
+				if (apu is NesEmulator.APU_WF wf)
+				{
+					var mi = typeof(NesEmulator.APU_WF).GetMethod("EmitAllNoteOff", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+					mi?.Invoke(wf, null);
+				}
+				else if (apu is NesEmulator.APU_MNES mn)
+				{
+					var mi = typeof(NesEmulator.APU_MNES).GetMethod("EmitAllNoteOff", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+					mi?.Invoke(mn, null);
+				}
+			}
+			catch { }
+		}
+
+		private void DetachSoundFontBinding(object? apu)
+		{
+			try
+			{
+				if (apu is NesEmulator.APU_WF wf)
+				{
+					try { wf.SoundFontMode = false; } catch { }
+					if (noteSub is Action<NesEmulator.APU_WF.NesNoteEvent> d1) { try { wf.NoteEvent -= d1; } catch { } }
+				}
+				else if (apu is NesEmulator.APU_MNES mn)
+				{
+					try { mn.SoundFontMode = false; } catch { }
+					if (noteSub is Action<NesEmulator.APU_MNES.NesNoteEvent> d2) { try { mn.NoteEvent -= d2; } catch { } }
+				}
+			}
+			catch { }
+		}
 		private void EmitAllNoteOffInternal()
 		{
 			try
@@ -809,58 +847,54 @@ namespace NesEmulator
 		}
 		public void FlushSoundFont()
 		{
-			if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
-			{
-				try { wf.SoundFontMode = false; } catch { }
-				if (noteSub is Action<NesEmulator.APU_WF.NesNoteEvent> d1) { try { wf.NoteEvent -= d1; } catch { } }
-				noteSub = null; soundFontEnabled = false; return;
-			}
-			if (bus?.ActiveAPU is NesEmulator.APU_MNES mn)
-			{
-				try { mn.SoundFontMode = false; } catch { }
-				if (noteSub is Action<NesEmulator.APU_MNES.NesNoteEvent> d2) { try { mn.NoteEvent -= d2; } catch { } }
-				noteSub = null; soundFontEnabled = false; return;
-			}
+			// Always detach from the actually bound APU instance (may differ from current ActiveAPU during switches)
+			EmitAllNoteOffFor(soundFontBoundApu);
+			DetachSoundFontBinding(soundFontBoundApu);
+			noteSub = null; soundFontBoundApu = null; soundFontEnabled = false;
 		}
 		public bool EnableSoundFontMode(bool enable, System.Action<string,int,int,int,bool,int>? noteCallback = null)
 		{
 			var active = bus?.ActiveAPU;
 			if (active is not NesEmulator.APU_WF && active is not NesEmulator.APU_MNES)
-			{ soundFontEnabled = false; return false; }
-			if (enable == soundFontEnabled) return soundFontEnabled;
-			soundFontEnabled = enable;
+			{
+				// No soundfont-capable APU active: ensure we are fully detached
+				if (soundFontEnabled || soundFontBoundApu != null) FlushSoundFont();
+				return false;
+			}
 			if (enable)
 			{
+				// If already enabled and bound to this exact APU instance, nothing to do
+				if (soundFontEnabled && ReferenceEquals(soundFontBoundApu, active)) return true;
+				// If we were bound to a different APU, detach cleanly first
+				if (soundFontBoundApu != null && !ReferenceEquals(soundFontBoundApu, active))
+				{
+					EmitAllNoteOffFor(soundFontBoundApu);
+					DetachSoundFontBinding(soundFontBoundApu);
+					noteSub = null; soundFontBoundApu = null;
+				}
+				// Attach to the currently active APU
 				if (active is NesEmulator.APU_WF wf)
 				{
 					wf.SoundFontMode = true;
 					Action<NesEmulator.APU_WF.NesNoteEvent> del = (ev)=>{ try { noteCallback?.Invoke(ev.Channel, ev.Program, ev.MidiNote, ev.Velocity, ev.On, 0); } catch { } };
-					wf.NoteEvent += del; noteSub = del;
+					wf.NoteEvent += del; noteSub = del; soundFontBoundApu = wf; soundFontEnabled = true; return true;
 				}
-				else if (active is NesEmulator.APU_MNES mn)
+				if (active is NesEmulator.APU_MNES mn)
 				{
 					mn.SoundFontMode = true;
 					Action<NesEmulator.APU_MNES.NesNoteEvent> del2 = (ev)=>{ try { noteCallback?.Invoke(ev.Channel, ev.Program, ev.MidiNote, ev.Velocity, ev.On, 0); } catch { } };
-					mn.NoteEvent += del2; noteSub = del2;
+					mn.NoteEvent += del2; noteSub = del2; soundFontBoundApu = mn; soundFontEnabled = true; return true;
 				}
+				// Should not reach here, but be safe
+				soundFontEnabled = false; soundFontBoundApu = null; noteSub = null; return false;
 			}
 			else
 			{
-				// Proactively emit note-off for currently active APU before detaching
-				EmitAllNoteOffInternal();
-				if (active is NesEmulator.APU_WF wf2)
-				{
-					wf2.SoundFontMode = false;
-					if (noteSub is Action<NesEmulator.APU_WF.NesNoteEvent> d1) { try { wf2.NoteEvent -= d1; } catch { } }
-				}
-				else if (active is NesEmulator.APU_MNES mn2)
-				{
-					mn2.SoundFontMode = false;
-					if (noteSub is Action<NesEmulator.APU_MNES.NesNoteEvent> d2) { try { mn2.NoteEvent -= d2; } catch { } }
-				}
-				noteSub = null;
+				// Disabling: emit note-off and detach from whichever APU we were bound to
+				EmitAllNoteOffFor(soundFontBoundApu);
+				DetachSoundFontBinding(soundFontBoundApu);
+				noteSub = null; soundFontBoundApu = null; soundFontEnabled = false; return false;
 			}
-			return soundFontEnabled;
 		}
 
 		// Removed famicloneMode boolean API; UI should query active APU id or GetApuCore()

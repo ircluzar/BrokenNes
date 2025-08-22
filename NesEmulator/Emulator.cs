@@ -379,22 +379,19 @@ namespace BrokenNes
             if (nes == null) return;
             try
             {
+                // Always flush JS-side soundfont when changing cores to avoid stale processors/ports
+                try { JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
                 if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!soundFontMode)
-                    {
-                        soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
-                    }
+                    // Force rebind even if previously enabled to ensure switching WF<->MNES reattaches delegates
+                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
                     sampleFont = true;
                     try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.setPreferSampleBased && nesSoundFont.setPreferSampleBased(true);"); } catch {}
                     try { JS.InvokeVoidAsync("eval", "window.nesSoundFont && nesSoundFont.enableSampleMode && nesSoundFont.enableSampleMode();"); } catch {}
                 }
                 else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!soundFontMode)
-                    {
-                        soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
-                    }
+                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
                     try { JS.InvokeVoidAsync("eval", "window.mnesSf2 && mnesSf2.enable && mnesSf2.enable();"); } catch {}
                 }
                 else
