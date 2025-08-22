@@ -19,15 +19,18 @@ Purpose: remove duplicated logic from `Pages/Nes.razor` and wire the UI to the c
 - Remove core selection helpers duplication
   - [x] Delete page `ApplySelectedCores()` and `SetApuCoreSelFromEmu()`; rely on `Emulator` implementations.
 
-- Remove lifecycle/touch-controller duplication
-  - [ ] In `OnAfterRenderAsync`, keep only `await emu.EnsureInitialRenderAsync(true);` on first render.
-  - [ ] Remove page-side touch controller init block (handled in `Emulator` `OnAfterRenderAsync`).
+- [x] Remove lifecycle/touch-controller duplication
+  - [x] In `OnAfterRenderAsync`, keep only `await emu.EnsureInitialRenderAsync(true);` on first render.
+  - [x] Remove page-side touch controller init block (handled in `Emulator` `OnAfterRenderAsync`).
 
-- Remove local emulator fields from page
-  - [ ] Remove page `nes` property, `inputState`, `stateBusy` fields (owned by `Emulator`).
+- [x] Remove local emulator fields from page
+  - [x] Remove page `nes` property, `inputState`, `stateBusy` fields (owned by `Emulator`).
+  - [x] Replace all `nes == null` references with `nesController.nes == null`.
+  - [x] Add `SetCrashBehavior()` method to `Emulator.PublicApi.cs` to handle crash behavior settings.
 
-- Remove page-owned interop reference/Dispose
-  - [ ] Remove page `_selfRef` and custom `Dispose()`; `Emulator.Dispose()` already stops the loop and cleans up.
+- [x] Remove page-owned interop reference/Dispose
+  - [x] Remove page `_selfRef` and custom `Dispose()`; `Emulator.Dispose()` already stops the loop and cleans up.
+  - [x] Simplify page `Dispose()` to delegate to `emu?.Dispose()`.
 
 - Rewire ROM manager bindings
   - [ ] Replace page wrappers (`RomSelectionChanged`, `LoadRomEntry`, `OnRomRowClicked`, `GetDefaultBuiltInRomKey`, `DeleteCurrentRom`, `OnRomSearchChanged`) with calls to:

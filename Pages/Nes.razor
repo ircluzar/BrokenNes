@@ -32,13 +32,13 @@
     <section class="play-area">
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
-                <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(nesController.IsRunning || nes == null)" title="Start (Play)" aria-label="Start">
+                <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(nesController.IsRunning || nesController.nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
                 <button class="btn btn-warning ctrl-btn" @onclick="(()=>emu!.PauseAsync())" disabled="@(!nesController.IsRunning)" title="Pause" aria-label="Pause">
                     <svg viewBox="0 0 100 100" class="ctrl-ico pause" role="img" focusable="false"><rect x="24" y="18" width="20" height="64" rx="6" /><rect x="56" y="18" width="20" height="64" rx="6" /></svg>
                 </button>
-                <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(nes == null)" title="Reset" aria-label="Reset">
+                <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(nesController.nes == null)" title="Reset" aria-label="Reset">
                     <svg viewBox="0 0 100 100" class="ctrl-ico reset" role="img" focusable="false"><path d="M50 18a32 32 0 1 1-22.63 9.37" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 13 30 40 5 34" fill="currentColor" /></svg>
                 </button>
             </div>
@@ -71,8 +71,8 @@
                 </div>
             </div>
             <div class="btn-group">
-                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(nes==null)" title="Load state">Load</button>
-                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(nes==null)" title="Save state">Save</button>
+                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(nesController.nes==null)" title="Load state">Load</button>
+                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(nesController.nes==null)" title="Save state">Save</button>
             </div>
         </div>
     <div class="screen-shell @(nesController.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
@@ -158,7 +158,7 @@
                                 <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                                 <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
                                     <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nesController.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
                                     <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
                                     @if (!corruptor.LetItRipUsed)
                                     {
@@ -192,7 +192,7 @@
                                     <label class="form-label mb-1 small">New Base Name</label>
                                     <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                                 </div>
-                                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nes==null)">Add Base</button>
+                                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nesController.nes==null)">Add Base</button>
                             </div>
                             <div class="mt-2">
                                 <label class="form-label mb-1 small">Base States</label>
@@ -211,7 +211,7 @@
                         <div class="gh-section mb-3">
                             <label class="form-label mb-1 small">Actions (uses RTC settings)</label>
                             <div class="d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                                <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nesController.nes==null)">Corrupt &amp; Stash</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                             </div>
                         </div>
@@ -373,7 +373,7 @@
                     <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                     <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
                         <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nesController.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
                         <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
                         @if (!corruptor.LetItRipUsed)
                         {
@@ -408,7 +408,7 @@
                         <label class="form-label mb-1 small">New Base Name</label>
                         <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                     </div>
-                    <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nes==null)">Add Base</button>
+                    <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nesController.nes==null)">Add Base</button>
                 </div>
                 <div class="mt-2">
                     <label class="form-label mb-1 small">Base States</label>
@@ -427,7 +427,7 @@
             <div class="gh-section mb-3">
                 <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                    <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nesController.nes==null)">Corrupt &amp; Stash</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                 </div>
             </div>
@@ -526,17 +526,17 @@
         <summary>Debug</summary>
         <div class="panel-content debug-mini">
             <div>Frames: @nesController.FrameCount</div>
-            <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
-            <div><button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.DumpStateAsyncPublic())" disabled="@(nes==null)">Dump State</button></div>
+            <div>ROM Loaded: @(nesController.nes != null ? "Yes" : "No")</div>
+            <div><button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.DumpStateAsyncPublic())" disabled="@(nesController.nes==null)">Dump State</button></div>
             <div class="mt-2">
-                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(nesController.nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="(()=>emu!.OpenComparison())" disabled="@(emu!.BenchHistory.Count()<2)">Compare Results</button>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(nesController.nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(nesController.nes==null)" />
                     <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
                 </div>
                 @if (emu?.SoundFontMode == true)
@@ -585,8 +585,8 @@
                                 }
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarks5xAsync())" disabled="@(nes==null || emu!.BenchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(emu!.BenchRunning?"Running...":"Run 5×")</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarksAsync())" disabled="@(nes==null || emu!.BenchRunning)">@(emu!.BenchRunning?"Running...":$"Run {emu!.BenchWeight}x")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarks5xAsync())" disabled="@(nesController.nes==null || emu!.BenchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(emu!.BenchRunning?"Running...":"Run 5×")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarksAsync())" disabled="@(nesController.nes==null || emu!.BenchRunning)">@(emu!.BenchRunning?"Running...":$"Run {emu!.BenchWeight}x")</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseBenchmarks())" aria-label="Close">Close</button>
                             </div>
                         </div>
@@ -881,15 +881,9 @@
     private NesController nesController => emu!.Controller;
     private Corruptor corruptor => emu!.Corruptor;
 
-    private NesEmulator.NES? nes
-    {
-        get => nesController.nes;
-        set => nesController.nes = value;
-    }
     // Framebuffer is now accessed directly via nesController.framebuffer
     // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
     // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
-    private bool[] inputState => nesController.inputState; // Up, Down, Left, Right, A, B, Select, Start
     
     // All NES controller state is now accessed directly via nesController instance
 
@@ -899,8 +893,6 @@
 
 
     // All corruptor and glitch harvester state is now accessed directly via corruptor instance
-    // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
-    private DotNetObjectReference<Nes>? _selfRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -911,16 +903,6 @@
             {
                 await emu.EnsureInitialRenderAsync(true);
             }
-        }
-        // Initialize touch controller JS handlers when controller view visible
-        if (nesController.IsFullscreen && emu!.UI.MobileFullscreenView == "controller" && !emu.UI.TouchControllerInitialized)
-        {
-            try
-            {
-                await JS.InvokeVoidAsync("nesInterop.initTouchController", "touch-controller");
-                emu.UI.SetTouchControllerInitialized(true);
-            }
-            catch { }
         }
     }
 
@@ -1030,16 +1012,7 @@
     {
         if (e.Value is string v)
         {
-            corruptor.CrashBehavior = v;
-            try
-            {
-                if (nes != null)
-                {
-                    if (v == "IgnoreErrors") nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors);
-                    else nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
-                }
-            }
-            catch { }
+            emu.SetCrashBehavior(v);
         }
     }
 
@@ -1059,12 +1032,8 @@
     {
         try
         {
-            JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
-            // Dispose shared DotNetObjectReference to avoid leaks (Theory 2)
-            _selfRef?.Dispose();
-            _selfRef = null;
-            // Navigation change detach handled inside Emulator after migration; legacy handler removal suppressed.
-            Logger.LogInformation("BrokenNes disposed");
+            // Delegate disposal to Emulator which handles all cleanup
+            emu?.Dispose();
         }
         catch (Exception ex)
         {

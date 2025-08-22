@@ -87,6 +87,23 @@ namespace BrokenNes
         public void SetBenchResultsText(string value) { benchResultsText = value; StateHasChanged(); }
         public void SetCurrentBenchHistoryId(string? value) { currentBenchHistoryId = value; StateHasChanged(); }
         public void SetCompareModalOpen(bool value) { compareModalOpen = value; StateHasChanged(); }
+
+        // Crash behavior management
+        public void SetCrashBehavior(string crashBehavior)
+        {
+            Corruptor.CrashBehavior = crashBehavior;
+            try
+            {
+                if (nesController.nes != null)
+                {
+                    if (crashBehavior == "IgnoreErrors")
+                        nesController.nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors);
+                    else
+                        nesController.nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
+                }
+            }
+            catch { }
+        }
         
         // Helper method to create a bench history entry from the outside
         public void AddBenchHistoryEntry(string rom, string display)
