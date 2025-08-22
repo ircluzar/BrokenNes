@@ -39,15 +39,17 @@ Purpose: remove duplicated logic from `Pages/Nes.razor` and wire the UI to the c
   - [x] Remove unused local wrapper methods: `RomSelectionChanged`, `LoadRomEntry`, `OnRomRowClicked`, `GetDefaultBuiltInRomKey`, `OnRomSearchChanged`
   - [x] Keep minimal local delegation methods for existing UI: `LoadSelectedRom`, `ReloadCurrentRom`, `DeleteCurrentRom`
 
-- Wire Corruptor & Glitch Harvester to Emulator
-  - [ ] Replace page handlers with: `emu.BlastAsync()`, `emu.ToggleAutoCorrupt()`, `emu.SetBlastTypePublic(t)`, `emu.LetItRipPublic()`.
-  - [ ] Replace GH handlers with: `emu.GhAddBase()`, `emu.GhOnBaseChangedPublic(e)`, `emu.GhLoadSelected()`, `emu.GhDeleteSelected()`, `emu.GhCorruptAndStashAsync()`, `emu.GhClearStashPublic()`, `emu.GhReplayEntryAsync(e, fromStockpile)`, `emu.GhPromote(e)`, `emu.Gh*Rename*`, `emu.GhDeleteStash(id)`, `emu.GhDeleteStock(id)`.
+- [x] Wire Corruptor & Glitch Harvester to Emulator
+  - [x] Already completed: All handlers use `emu.BlastAsync()`, `emu.ToggleAutoCorrupt()`, `emu.SetBlastTypePublic()`, `emu.LetItRipPublic()`
+  - [x] Already completed: All GH handlers use `emu.GhAddBase()`, `emu.GhOnBaseChangedPublic()`, `emu.GhLoadSelected()`, `emu.GhDeleteSelected()`, `emu.GhCorruptAndStashAsync()`, `emu.GhClearStashPublic()`, `emu.GhReplayEntryAsync()`, `emu.GhPromote()`, `emu.GhDeleteStash()`, `emu.GhDeleteStock()`
+  - [x] No local wrapper methods found - UI directly calls Emulator public API
 
-- Wire shader/cores/fullscreen/scale/audio to Emulator
-  - [ ] Use `emu.SetShaderPublic`, `emu.SetCpuCorePublic`, `emu.SetPpuCorePublic`, `emu.SetApuCorePublic`.
-  - [ ] Use `emu.ToggleFullscreenPublic()`, `emu.SetScalePublic(...)`.
-  - [ ] Use `emu.ToggleSoundFontModePublic()`, `emu.ToggleSampleFontPublic()`, `emu.ToggleSoundFontLayeringPublic()`, `emu.ToggleSfDevLoggingPublic()`, `emu.ToggleSfOverlayPublic()`, `emu.FlushSoundFontPublic()`, `emu.ShowSfDebugPublic()`.
-  - [ ] Bind Event Scheduler to `emu.EventSchedulerOn`.
+- [x] Wire shader/cores/fullscreen/scale/audio to Emulator
+  - [x] Already completed: Shader/core selectors use `emu.SetShaderPublic`, `emu.SetCpuCorePublic`, `emu.SetPpuCorePublic`, `emu.SetApuCorePublic`
+  - [x] Replaced scale/fullscreen wrappers with direct calls: `emu.SetScalePublic(...)`, `emu.ToggleFullscreenPublic()`
+  - [x] Already completed: SoundFont toggles use `emu.ToggleSoundFontModePublic()`, `emu.ToggleSampleFontPublic()`, `emu.ToggleSoundFontLayeringPublic()`, `emu.ToggleSfDevLoggingPublic()`, `emu.ToggleSfOverlayPublic()`, `emu.FlushSoundFontPublic()`, `emu.ShowSfDebugPublic()`
+  - [x] Already completed: Event Scheduler bound to `emu.EventSchedulerOn`
+  - [x] Removed local wrapper methods: `SetScale`, `ToggleFullscreen`
 
 - JSInvokable routing cleanup
   - [ ] Move `[JSInvokable]` methods `JsSaveState`, `JsLoadState`, `JsResetGame`, `OnRomsDropped`, `JsSetMobileFsView` into `Emulator` and update JS to call the emulator reference (`nesInterop.setMainRef`).

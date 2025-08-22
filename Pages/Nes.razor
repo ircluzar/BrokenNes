@@ -89,9 +89,9 @@
                     }
                 </div>
                 <div class="overlay-actions">
-                    <button type="button" class="ov-btn @(nesController.EmuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>SetScale(0.5))">½×</button>
-                    <button type="button" class="ov-btn @(nesController.EmuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>SetScale(1))">1×</button>
-                    <button type="button" class="ov-btn" title="Toggle Fullscreen" @onclick="ToggleFullscreen">⛶</button>
+                    <button type="button" class="ov-btn @(nesController.EmuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>emu!.SetScalePublic(0.5))">½×</button>
+                    <button type="button" class="ov-btn @(nesController.EmuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>emu!.SetScalePublic(1))">1×</button>
+                    <button type="button" class="ov-btn" title="Toggle Fullscreen" @onclick="(()=>emu!.ToggleFullscreenPublic())">⛶</button>
                 </div>
             </div>
             <div class="screen-aspect">
@@ -922,19 +922,7 @@
 
     // Quick Win 2: local Start/Pause/Reset wrappers removed. UI now calls emu.StartAsync/emu.PauseAsync/emu.ResetAsyncFacade directly.
 
-    private void SetScale(double scale)
-    {
-        // Delegated to emulator public API
-        if (emu == null) return;
-        if (scale != 0.5 && scale != 1.0) return; // preserve original guard
-        emu.SetScalePublic(scale);
-    }
-
-    private async Task ToggleFullscreen()
-    {
-        if (emu == null) return;
-        await emu.ToggleFullscreenPublic();
-    }
+    // Scale/fullscreen methods now call Emulator public API directly
 
     // RefreshShaderOptions removed (now centralized in Emulator)
 
