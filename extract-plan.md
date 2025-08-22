@@ -5,15 +5,15 @@ Purpose: remove duplicated logic from `Pages/Nes.razor` and wire the UI to the c
 ## Tasks (checklist)
 
 - Remove save-state duplication from `Pages/Nes.razor`
-  - [ ] Delete local `SaveChunkCharSize` and `SaveKey` constants (use ones in `Emulator`).
-  - [ ] Delete `CompressString`, `DecompressString`, `ExtractInt`, `RemoveExistingChunks` helpers.
-  - [ ] Replace any page calls with `emu.SaveStateAsyncPublic()` / `emu.LoadStateAsyncPublic()` / `emu.DumpStateAsyncPublic()`.
+  - [x] Delete local `SaveChunkCharSize` and `SaveKey` constants (use ones in `Emulator`).
+  - [x] Delete `CompressString`, `DecompressString`, `ExtractInt`, `RemoveExistingChunks` helpers.
+  - [x] Replace any page calls with `emu.SaveStateAsyncPublic()` / `emu.LoadStateAsyncPublic()` / `emu.DumpStateAsyncPublic()`.
 
 - Remove benchmark subsystem duplication
-  - [ ] Delete page methods: `RunBenchmarks`, `RunBenchmarks5x`, `PersistBenchHistory`, `LoadBenchHistory`, `ClearBenchHistory`, `CopyBenchResults`.
+  - [x] Delete page methods: `RunBenchmarks`, `RunBenchmarks5x`, `PersistBenchHistory`, `LoadBenchHistory`, `ClearBenchHistory`, `CopyBenchResults`.
   - [ ] Delete page methods: `OpenBenchModal`, `CloseBenchModal`, `ToggleBenchAutoLoad`, `ToggleBenchSimple5x`.
   - [ ] Delete page methods: `ShowHistoryEntry`, `DeleteBenchEntry`, `StartBenchRomEdit`, `CommitBenchRomEdit`, `HandleBenchRomEditKey`.
-  - [ ] Delete page method: `TryLoadBaselineStateForBenchmarks`.
+  - [x] Delete page method: `TryLoadBaselineStateForBenchmarks`.
   - [ ] Bind markup directly to `emu.Bench*` properties/methods exposed in `Emulator.PublicApi.cs`.
 
 - Remove core selection helpers duplication
