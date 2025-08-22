@@ -11,13 +11,13 @@ Purpose: remove duplicated logic from `Pages/Nes.razor` and wire the UI to the c
 
 - Remove benchmark subsystem duplication
   - [x] Delete page methods: `RunBenchmarks`, `RunBenchmarks5x`, `PersistBenchHistory`, `LoadBenchHistory`, `ClearBenchHistory`, `CopyBenchResults`.
-  - [ ] Delete page methods: `OpenBenchModal`, `CloseBenchModal`, `ToggleBenchAutoLoad`, `ToggleBenchSimple5x`.
-  - [ ] Delete page methods: `ShowHistoryEntry`, `DeleteBenchEntry`, `StartBenchRomEdit`, `CommitBenchRomEdit`, `HandleBenchRomEditKey`.
+  - [x] Delete page methods: `OpenBenchModal`, `CloseBenchModal`, `ToggleBenchAutoLoad`, `ToggleBenchSimple5x`.
+  - [x] Delete page methods: `ShowHistoryEntry`, `DeleteBenchEntry`, `StartBenchRomEdit`, `CommitBenchRomEdit`, `HandleBenchRomEditKey`.
   - [x] Delete page method: `TryLoadBaselineStateForBenchmarks`.
-  - [ ] Bind markup directly to `emu.Bench*` properties/methods exposed in `Emulator.PublicApi.cs`.
+  - [x] Bind markup directly to `emu.Bench*` properties/methods exposed in `Emulator.PublicApi.cs`.
 
 - Remove core selection helpers duplication
-  - [ ] Delete page `ApplySelectedCores()` and `SetApuCoreSelFromEmu()`; rely on `Emulator` implementations.
+  - [x] Delete page `ApplySelectedCores()` and `SetApuCoreSelFromEmu()`; rely on `Emulator` implementations.
 
 - Remove lifecycle/touch-controller duplication
   - [ ] In `OnAfterRenderAsync`, keep only `await emu.EnsureInitialRenderAsync(true);` on first render.

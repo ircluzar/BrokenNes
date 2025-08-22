@@ -640,7 +640,7 @@
                                             <td class="text-truncate" style="max-width:220px;" title="@entry.Rom">
                                                 @if (emu!.EditingBenchRomId == entry.Id)
                                                 {
-                                                    <input class="form-control form-control-sm" style="min-width:160px;font-size:.65rem;padding:.15rem .25rem;" @bind="emu!.EditingBenchRomValue" @onkeydown="(e)=>HandleBenchRomEditKey(e, entry.Id)" @onblur="(()=>emu!.CommitBenchRomEditPublic(entry.Id))" />
+                                                    <input class="form-control form-control-sm" style="min-width:160px;font-size:.65rem;padding:.15rem .25rem;" @bind="emu!.EditingBenchRomValue" @onkeydown="(e)=>emu!.HandleBenchRomEditKeyPublic(e, entry.Id)" @onblur="(()=>emu!.CommitBenchRomEditPublic(entry.Id))" />
                                                 }
                                                 else
                                                 {
@@ -962,67 +962,7 @@
 
     // Legacy famiclone toggle removed; use APU core selector instead
 
-    private void SetApuCoreSelFromEmu()
-    {
-        if (nes == null) return;
-        try
-        {
-            var id = nes.GetApuCoreId();
-            var suffix = NesEmulator.CoreRegistry.ExtractSuffix(id, "APU_");
-            nesController.ApuCoreSel = suffix;
-            nesController.FamicloneOn = suffix.Equals("FMC", StringComparison.OrdinalIgnoreCase);
-        }
-        catch { }
-    }
-
-    // Apply currently selected (or persisted) core choices to emulator instance
-    private void ApplySelectedCores()
-    {
-        if (nes == null) return;
-        try
-        {
-            // CPU core generic selection (fallback to legacy enum if generic fails)
-            if (!string.IsNullOrEmpty(nesController.CpuCoreSel))
-            {
-                if (!nes.SetCpuCore(nesController.CpuCoreSel))
-                {
-                    nes.SetCpuCore(nesController.CpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
-                }
-            }
-            // Generic reflection-based PPU selection (fallback to legacy enum only if needed)
-            if (!nes.SetPpuCore(nesController.PpuCoreSel))
-            {
-                // fallback for older saved prefs
-                nes.SetPpuCore(nesController.PpuCoreSel switch {
-                    "FIX" => NesEmulator.Bus.PpuCore.FIX,
-                    "LQ" => NesEmulator.Bus.PpuCore.LQ,
-                    "CUBE" => NesEmulator.Bus.PpuCore.CUBE,
-                    "BFR" => NesEmulator.Bus.PpuCore.BFR,
-                    _ => NesEmulator.Bus.PpuCore.FMC
-                });
-            }
-            if (!string.IsNullOrEmpty(nesController.ApuCoreSel))
-            {
-                if (!nes.SetApuCore(nesController.ApuCoreSel))
-                {
-                    // legacy fallback mapping for older core ids
-                    switch (nesController.ApuCoreSel)
-                    {
-                        case "FMC": nes.SetApuCore(NesEmulator.NES.ApuCore.Jank); nesController.FamicloneOn = true; break;
-                        case "QN": nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes); nesController.FamicloneOn = false; break;
-                        default: nes.SetApuCore(NesEmulator.NES.ApuCore.Modern); nesController.FamicloneOn = false; break;
-                    }
-                }
-                nesController.FamicloneOn = nesController.ApuCoreSel.Equals("FMC", StringComparison.OrdinalIgnoreCase) || nesController.FamicloneOn;
-            }
-        }
-        catch { }
-    // After core selection, auto-handle SoundFont if WF chosen
-    }
-
-
-
-
+    // Core selection helpers moved to Emulator; use emu.SetCpuCorePublic(), emu.SetPpuCorePublic(), emu.SetApuCorePublic()
 
     // Old famiclone-only handler removed; see OnApuCoreChanged
 
@@ -1084,81 +1024,7 @@
 
 
 
-    private void OpenBenchModal(){ emu!.SetBenchModalOpen(true); StateHasChanged(); }
-    private void ToggleBenchAutoLoad(){ emu!.BenchAutoLoadState = !emu!.BenchAutoLoadState; }
-    private void ToggleBenchSimple5x(){ emu!.BenchSimple5x = !emu!.BenchSimple5x; }
-
-    private void CloseBenchModal(){ emu!.SetBenchModalOpen(false); }
-    private async Task CopyBenchResults()
-    {
-        try { if (!string.IsNullOrEmpty(emu!.BenchResultsText)) await JS.InvokeVoidAsync("navigator.clipboard.writeText", emu!.BenchResultsText); } catch { }
-    }
-
-    private async Task PersistBenchHistory()
-    {
-        try {
-            var payload = System.Text.Json.JsonSerializer.Serialize(emu!.BenchHistory);
-            await JS.InvokeVoidAsync("nesInterop.idbSetItem", Emulator.BenchHistoryKey, payload);
-        } catch {}
-    }
-    private async Task LoadBenchHistory()
-    {
-        try {
-            var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", Emulator.BenchHistoryKey);
-            if (!string.IsNullOrWhiteSpace(json))
-            {
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<BenchHistoryEntry>>(json);
-                if (list != null) { emu!.SetBenchHistoryItems(list.OrderByDescending(e=>e.TimestampUtc).ToList()); }
-            }
-        } catch {}
-    }
-    private async Task ClearBenchHistory()
-    {
-        emu!.ClearBenchHistoryItems(); await PersistBenchHistory();
-    }
-    private void ShowHistoryEntry(string id)
-    {
-        emu!.SetCurrentBenchHistoryId(id == emu!.CurrentBenchHistoryId ? null : id);
-    }
-    private async Task DeleteBenchEntry(string id)
-    {
-        var e = emu!.BenchHistory.FirstOrDefault(x=>x.Id==id); if (e!=null){ emu!.RemoveBenchHistoryItem(id); await PersistBenchHistory(); }
-    }
-
-    // === Comparison Modal Logic ===
-    private void OpenCompareModal()
-    {
-        emu!.OpenComparison();
-    }
-    private void CloseCompareModal()
-    {
-        emu!.CloseComparison(); 
-    }
-
     // Memory domain building now centralized in Emulator.BuildMemoryDomains; use emu.RebuildMemoryDomainsPublic()
-
-    // Inline editing of benchmark ROM/note
-    private string? editingBenchRomId = null; private string editingBenchRomValue = string.Empty;
-    private void StartBenchRomEdit(BenchHistoryEntry entry)
-    {
-        editingBenchRomId = entry.Id; editingBenchRomValue = entry.Rom; StateHasChanged();
-    }
-    private async Task CommitBenchRomEdit(string id)
-    {
-        if (editingBenchRomId != id) { editingBenchRomId=null; return; }
-        // Delegate edit to Emulator to avoid modifying init-only record properties.
-        var newVal = editingBenchRomValue?.Trim() ?? string.Empty;
-        if (!string.IsNullOrEmpty(newVal))
-        {
-            emu!.EditingBenchRomValue = newVal;
-            await emu!.CommitBenchRomEditPublic(id);
-        }
-        editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged();
-    }
-    private async void HandleBenchRomEditKey(KeyboardEventArgs e, string id)
-    {
-        if (e.Key=="Enter") await emu!.CommitBenchRomEditPublic(id); else if (e.Key=="Escape") emu!.CancelBenchRomEditPublic();
-    }
 
     private void OnCrashBehaviorChanged(ChangeEventArgs e)
     {

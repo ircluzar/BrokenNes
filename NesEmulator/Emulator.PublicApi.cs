@@ -50,6 +50,11 @@ namespace BrokenNes
         }
         public Task CommitBenchRomEditPublic(string id) => CommitBenchRomEdit(id);
         public void CancelBenchRomEditPublic() { editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged(); }
+        public async Task HandleBenchRomEditKeyPublic(KeyboardEventArgs e, string id)
+        {
+            if (e.Key=="Enter") await CommitBenchRomEdit(id); 
+            else if (e.Key=="Escape") { editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged(); }
+        }
 
 
 
