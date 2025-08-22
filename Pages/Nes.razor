@@ -1012,51 +1012,8 @@
 
     // (Boot method removed; auto-start handled in OnAfterRenderAsync and StartEmulation safeguards)
 
-    // ===== JS Invokable wrappers for mobile fullscreen bottom bar =====
-    [JSInvokable]
-    public Task JsSaveState() => emu!.SaveStateAsyncPublic();
-    [JSInvokable]
-    public Task JsLoadState() => emu!.LoadStateAsyncPublic();
-    [JSInvokable]
-    public Task JsResetGame() => emu?.ResetAsyncFacade() ?? Task.CompletedTask;
-    [JSInvokable]
-    public void JsExitFullscreen()
-    {
-        nesController.IsFullscreen = false;
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void JsSetMobileFsView(string v) => emu?.UI.JsSetMobileFsView(v);
-    [JSInvokable]
-    public async Task OnRomsDropped(UploadedRom[] roms)
-    {
-        if (roms == null || roms.Length == 0) return;
-        int added = 0;
-        foreach (var f in roms)
-        {
-            if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
-            try
-            {
-                var data = Convert.FromBase64String(f.base64);
-                if (data.Length == 0) continue;
-                uploadedRoms[f.name] = data;
-                if (!romOptions.Any(o => o.Key == f.name))
-                {
-                    romOptions.Add(new RomOption { Key = f.name, Label = f.name + " (uploaded)", BuiltIn = false });
-                }
-                added++;
-            }
-            catch { }
-        }
-        nesController.RomFileName = roms.Last().name;
-        await LoadSelectedRom();
-        Status.Set($"Dropped {added} ROM(s).");
-        if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
-        {
-            try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
-        }
-    }
+    // ===== JSInvokable methods moved to Emulator.PublicApi.cs =====
+    // JavaScript should now call the emulator reference via nesInterop.setMainRef(emu)
 
 }
 

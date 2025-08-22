@@ -333,6 +333,53 @@ namespace BrokenNes
             try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch { }
         }
 
+        // === JSInvokable methods for mobile fullscreen bottom bar and drag-drop ===
+        [JSInvokable]
+        public Task JsSaveState() => SaveStateAsyncPublic();
+        
+        [JSInvokable]
+        public Task JsLoadState() => LoadStateAsyncPublic();
+        
+        [JSInvokable]
+        public Task JsResetGame() => ResetAsyncFacade();
+        
+        [JSInvokable]
+        public void JsExitFullscreen()
+        {
+            Controller.IsFullscreen = false;
+            StateHasChanged();
+        }
+
+        [JSInvokable]
+        public async Task OnRomsDropped(UploadedRom[] roms)
+        {
+            if (roms == null || roms.Length == 0) return;
+            int added = 0;
+            foreach (var f in roms)
+            {
+                if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
+                try
+                {
+                    var data = Convert.FromBase64String(f.base64);
+                    if (data.Length == 0) continue;
+                    Controller.UploadedRoms[f.name] = data;
+                    if (!Controller.RomOptions.Any(o => o.Key == f.name))
+                    {
+                        Controller.RomOptions.Add(new RomOption { Key = f.name, Label = f.name + " (uploaded)", BuiltIn = false });
+                    }
+                    added++;
+                }
+                catch { }
+            }
+            Controller.RomFileName = roms.Last().name;
+            await LoadSelectedRomPublic();
+            Status.Set($"Dropped {added} ROM(s).");
+            if (!string.Equals(Controller.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+            {
+                try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
+            }
+        }
+
     // Expose memory domain rebuild for UI triggers (avoids duplicated logic in Razor)
     public void RebuildMemoryDomainsPublic() => BuildMemoryDomains();
     }
