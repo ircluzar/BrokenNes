@@ -24,9 +24,7 @@
     </div>
 }
 
-@* Status moved to global StatusBar component *@
 
-@* Boot overlay removed: auto-boot enabled (audio context primed on Home page) *@
 
 <div class="nes-grid">
     <section class="play-area">
@@ -97,13 +95,11 @@
             <div class="screen-aspect">
                 <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas"></canvas>
             </div>
-            @* Inline mobile fullscreen portrait tab bar (only shown via CSS when .mobile-fs-active & portrait) *@
             <div id="mobile-fs-view-bar">
                 <button data-view="controller" class="view-btn @(emu!.UI.MobileFullscreenView=="controller"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewController())">Controller</button>
                 <button data-view="rtc" class="view-btn @(emu!.UI.MobileFullscreenView=="rtc"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewRtc())">RTC</button>
                 <button data-view="gh" class="view-btn @(emu!.UI.MobileFullscreenView=="gh"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewGh())">Glitch Harvester</button>
             </div>
-            @* Mobile fullscreen (portrait) views container: always present in fullscreen portrait; controller now lives inside instead of toggling container visibility *@
             <div class="mobile-fs-extra-views">
                 @if (emu!.UI.MobileFullscreenView == "controller")
                 {
@@ -299,7 +295,6 @@
                 <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @bind="emu!.RomSearch" @bind:event="oninput" />
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(nesController.CurrentRomName))">Reload</button>
-                @* Removed standalone Delete and Clear Uploaded buttons (row deletion + per-ROM Del button sufficient) *@
             </div>
             <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Drag .nes files onto this list to import.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
@@ -859,12 +854,9 @@
 </div>
 
 @code {
-    // === Refactor Step 1: Introduce Emulator instance (will progressively replace inline logic) ===
-    // We keep existing fields/methods temporarily; upcoming steps will delegate to 'emu'.
     private Emulator? emu;
     protected override void OnInitialized()
     {
-        // Initialize emulator host if not already; reuse existing OnInitialized logic later migrated.
         if (emu == null)
         {
             emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav)
@@ -873,32 +865,15 @@
             };
             emu.Initialize();
         }
-        // Preserve original OnInitialized body below (will be removed once parity verified)
-        // ORIGINAL OnInitialized logic follows ↓
     }
-    // --- ORIGINAL FIELDS & METHODS (to be migrated/removed) ---
-    // --- Controller instances now delegated to Emulator host ---
     private NesController nesController => emu!.Controller;
     private Corruptor corruptor => emu!.Corruptor;
 
-    // Framebuffer is now accessed directly via nesController.framebuffer
-    // Replaced timer-based loop with requestAnimationFrame loop for smoother timing
-    // Removed unused System.Timers.Timer to eliminate warning (requestAnimationFrame loop used instead)
-    
-    // All NES controller state is now accessed directly via nesController instance
-
-
-
-    // Comparison modal delegates to Emulator methods
-
-
-    // All corruptor and glitch harvester state is now accessed directly via corruptor instance
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // Delegate first-render setup and JS registrations to Emulator to avoid duplicates.
             if (emu != null)
             {
                 await emu.EnsureInitialRenderAsync(true);
@@ -906,9 +881,6 @@
         }
     }
 
-    // Shader registration/refresh handled in Emulator.Initialize()/OnAfterRender; local duplicates removed.
-
-    // ROM option model & storage for uploaded ROMs
     private List<RomOption> romOptions => nesController.RomOptions;
     private Dictionary<string, byte[]> uploadedRoms => nesController.UploadedRoms;
     private ElementReference fileInput;
@@ -918,40 +890,15 @@
         : romOptions.Where(o=>o.Label.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase))
             .OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label);
 
-    // Local ROM fetch removed (centralized in Emulator/NesController)
-
-    // Quick Win 2: local Start/Pause/Reset wrappers removed. UI now calls emu.StartAsync/emu.PauseAsync/emu.ResetAsyncFacade directly.
-
-    // Scale/fullscreen methods now call Emulator public API directly
-
-    // RefreshShaderOptions removed (now centralized in Emulator)
-
-    // SetShader convenience removed; call emu.SetShaderPublic directly.
-
-    // Duplicate FrameTick/RunFrame removed; Emulator hosts the JS-invokable frame loop.
-
-    // Legacy famiclone toggle removed; use APU core selector instead
-
-    // Core selection helpers moved to Emulator; use emu.SetCpuCorePublic(), emu.SetPpuCorePublic(), emu.SetApuCorePublic()
-
-    // Old famiclone-only handler removed; see OnApuCoreChanged
-
-
-
-    // Unused (InputFile component removed)
-    // Local InputFile handling removed (we import via JS in Emulator wrapper)
-
-    // LoadRomUpload handler removed; input change calls emu.ImportRomsFromInputAsync(fileInput)
-
-    // ROM manager methods now delegated to Emulator public API
     private Task LoadSelectedRom() => emu?.LoadSelectedRomPublic() ?? Task.CompletedTask;
-
     private Task ReloadCurrentRom() => emu?.ReloadCurrentRomPublic() ?? Task.CompletedTask;
-
     private Task DeleteCurrentRom()
-    { if (IsBuiltInSelected) return Task.CompletedTask; return emu?.DeleteRomPublic(nesController.RomFileName) ?? Task.CompletedTask; }
+    { 
+        if (IsBuiltInSelected) return Task.CompletedTask; 
+        return emu?.DeleteRomPublic(nesController.RomFileName) ?? Task.CompletedTask; 
+    }
 
-    // LoadRomFromServer removed; use emu.ReloadCurrentRomPublic or emu.LoadSelectedRomPublic
+
 
     private Task OnRawFileSelected(ChangeEventArgs e)
     {
@@ -971,10 +918,6 @@
         return Task.CompletedTask;
     }
 
-
-
-    // Memory domain building now centralized in Emulator.BuildMemoryDomains; use emu.RebuildMemoryDomainsPublic()
-
     private void OnCrashBehaviorChanged(ChangeEventArgs e)
     {
         if (e.Value is string v)
@@ -983,11 +926,8 @@
         }
     }
 
-    // GetApproxSize moved into Emulator as a helper for memory domain sizing.
-
     private void DomainsChanged(ChangeEventArgs e)
     {
-        // TODO: implement manual multiple select tracking if needed
     }
     private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptor.CorruptIntensity = Math.Clamp(v,1,65535); }
     private void OnIntensityBoxChange(ChangeEventArgs e) { OnIntensityChange(e); }
@@ -999,7 +939,6 @@
     {
         try
         {
-            // Delegate disposal to Emulator which handles all cleanup
             emu?.Dispose();
         }
         catch (Exception ex)
@@ -1007,13 +946,6 @@
             Logger.LogError(ex, "Error disposing NES emulator");
         }
     }
-
-    // Local UploadedRom class removed; using BrokenNes.Models.UploadedRom
-
-    // (Boot method removed; auto-start handled in OnAfterRenderAsync and StartEmulation safeguards)
-
-    // ===== JSInvokable methods moved to Emulator.PublicApi.cs =====
-    // JavaScript should now call the emulator reference via nesInterop.setMainRef(emu)
 
 }
 
