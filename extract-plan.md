@@ -32,11 +32,12 @@ Purpose: remove duplicated logic from `Pages/Nes.razor` and wire the UI to the c
   - [x] Remove page `_selfRef` and custom `Dispose()`; `Emulator.Dispose()` already stops the loop and cleans up.
   - [x] Simplify page `Dispose()` to delegate to `emu?.Dispose()`.
 
-- Rewire ROM manager bindings
-  - [ ] Replace page wrappers (`RomSelectionChanged`, `LoadRomEntry`, `OnRomRowClicked`, `GetDefaultBuiltInRomKey`, `DeleteCurrentRom`, `OnRomSearchChanged`) with calls to:
-    - `emu.LoadSelectedRomPublic()` / `emu.ReloadCurrentRomPublic()` / `emu.DeleteRomPublic(key)`.
-    - `emu.Controller.RomSelectionChanged(...)`, `emu.Controller.OnRomRowClicked(...)` as needed.
-    - Bind `value`/`onchange` directly to `emu.Controller.RomSearch`.
+- [x] Rewire ROM manager bindings
+  - [x] Added public API methods: `RomSelectionChangedPublic`, `LoadRomEntryPublic`, `OnRomRowClickedPublic`, `GetDefaultBuiltInRomKeyPublic`
+  - [x] Replace page ROM search binding with direct `@bind="emu!.RomSearch"` (no wrapper needed)
+  - [x] Replace page ROM row click handler with `emu!.OnRomRowClickedPublic(opt)`
+  - [x] Remove unused local wrapper methods: `RomSelectionChanged`, `LoadRomEntry`, `OnRomRowClicked`, `GetDefaultBuiltInRomKey`, `OnRomSearchChanged`
+  - [x] Keep minimal local delegation methods for existing UI: `LoadSelectedRom`, `ReloadCurrentRom`, `DeleteCurrentRom`
 
 - Wire Corruptor & Glitch Harvester to Emulator
   - [ ] Replace page handlers with: `emu.BlastAsync()`, `emu.ToggleAutoCorrupt()`, `emu.SetBlastTypePublic(t)`, `emu.LetItRipPublic()`.

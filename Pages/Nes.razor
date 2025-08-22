@@ -296,7 +296,7 @@
         <summary>ROM Manager</summary>
         <div class="panel-content">
             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @oninput="OnRomSearchChanged" value="@nesController.RomSearch" />
+                <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @bind="emu!.RomSearch" @bind:event="oninput" />
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(nesController.CurrentRomName))">Reload</button>
                 @* Removed standalone Delete and Clear Uploaded buttons (row deletion + per-ROM Del button sufficient) *@
@@ -324,7 +324,7 @@
                             {
                                 var isCurrent = opt.Key == nesController.CurrentRomName;
                                 var sizeDisplay = nesController.GetRomSizeDisplay(opt.Key);
-                                <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>OnRomRowClicked(opt))">
+                                <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>emu!.OnRomRowClickedPublic(opt))">
                                     <td>@(isCurrent ? "▶" : "")</td>
                                     <td class="text-truncate" style="max-width:200px;" title="@opt.Key">@opt.Label</td>
                                     <td>@sizeDisplay</td>
@@ -955,28 +955,7 @@
 
     // LoadRomUpload handler removed; input change calls emu.ImportRomsFromInputAsync(fileInput)
 
-    private async Task RomSelectionChanged(ChangeEventArgs e)
-    { if (e.Value is string value && !string.IsNullOrWhiteSpace(value)) { await nesController.RomSelectionChanged(value, async (rk)=> { nesController.RomFileName = rk; await LoadSelectedRom(); }); } }
-
-    private Task LoadRomEntry(string key) { nesController.RomFileName = key; return LoadSelectedRom(); }
-
-    private Task OnRomRowClicked(RomOption opt) => opt.Key == nesController.CurrentRomName ? Task.CompletedTask : nesController.OnRomRowClicked(opt, async k => { nesController.RomFileName = k; await LoadSelectedRom(); });
-
-    private string GetDefaultBuiltInRomKey() => nesController.GetDefaultBuiltInRomKey();
-
-    // DeleteRom removed; call emu.DeleteRomPublic(key)
-
-    // ClearAllUploaded removed; call emu.ClearAllUploadedPublic()
-
-    private void OnRomSearchChanged(ChangeEventArgs e)
-    {
-        nesController.RomSearch = e.Value?.ToString() ?? string.Empty;
-    }
-
-    // TriggerFileDialog removed; call emu.TriggerRomImportDialogPublic()
-
-    // Local GetRomSizeDisplay removed; using nesController.GetRomSizeDisplay
-
+    // ROM manager methods now delegated to Emulator public API
     private Task LoadSelectedRom() => emu?.LoadSelectedRomPublic() ?? Task.CompletedTask;
 
     private Task ReloadCurrentRom() => emu?.ReloadCurrentRomPublic() ?? Task.CompletedTask;

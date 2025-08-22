@@ -296,6 +296,37 @@ namespace BrokenNes
             );
         }
 
+        // ROM selection and management methods for UI
+        public async Task RomSelectionChangedPublic(string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                await Controller.RomSelectionChanged(value, async rk => {
+                    Controller.RomFileName = rk;
+                    await LoadSelectedRomPublic();
+                });
+            }
+        }
+
+        public async Task LoadRomEntryPublic(string key)
+        {
+            Controller.RomFileName = key;
+            await LoadSelectedRomPublic();
+        }
+
+        public async Task OnRomRowClickedPublic(RomOption opt)
+        {
+            if (opt.Key != Controller.CurrentRomName)
+            {
+                await Controller.OnRomRowClicked(opt, async k => {
+                    Controller.RomFileName = k;
+                    await LoadSelectedRomPublic();
+                });
+            }
+        }
+
+        public string GetDefaultBuiltInRomKeyPublic() => Controller.GetDefaultBuiltInRomKey();
+
         // Open the hidden import dialog in the UI by clicking the input element via JS.
         public async Task TriggerRomImportDialogPublic()
         {
