@@ -45,7 +45,7 @@
             <div class="btn-group">
                 <div class="qc-select-stack">
                     <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
-                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="OnShaderSelectChanged" value="@nesController.ActiveShaderKey" aria-label="Video Shader">
+                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="(e)=>emu!.SetShaderPublic(e.Value?.ToString()??string.Empty)" value="@nesController.ActiveShaderKey" aria-label="Video Shader">
                         @foreach(var sh in nesController.ShaderOptions){
                             <option value="@sh.Key">@sh.Label</option>
                         }
@@ -53,26 +53,26 @@
                 </div>
                 <div class="qc-select-stack">
                     <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="OnApuCoreChanged" value="@nesController.ApuCoreSel" aria-label="Audio Core">
+                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="(e)=>emu!.SetApuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.ApuCoreSel" aria-label="Audio Core">
                         @foreach(var opt in nesController.ApuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="OnCpuCoreChanged" value="@nesController.CpuCoreSel" aria-label="CPU Core">
+                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="(e)=>emu!.SetCpuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.CpuCoreSel" aria-label="CPU Core">
                         @foreach(var opt in nesController.CpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="OnPpuCoreChanged" value="@nesController.PpuCoreSel" aria-label="PPU Core">
+                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="(e)=>emu!.SetPpuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.PpuCoreSel" aria-label="PPU Core">
                         @foreach(var opt in nesController.PpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
             </div>
             <div class="btn-group">
-                <button class="btn btn-load-state" @onclick="LoadState" disabled="@(nes==null)" title="Load state">Load</button>
-                <button class="btn btn-save-state" @onclick="SaveState" disabled="@(nes==null)" title="Save state">Save</button>
+                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(nes==null)" title="Load state">Load</button>
+                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(nes==null)" title="Save state">Save</button>
             </div>
         </div>
     <div class="screen-shell @(nesController.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
@@ -99,13 +99,13 @@
             </div>
             @* Inline mobile fullscreen portrait tab bar (only shown via CSS when .mobile-fs-active & portrait) *@
             <div id="mobile-fs-view-bar">
-                <button data-view="controller" class="view-btn @(mobileFsView=="controller"?"active":string.Empty)" @onclick="ViewController">Controller</button>
-                <button data-view="rtc" class="view-btn @(mobileFsView=="rtc"?"active":string.Empty)" @onclick="ViewRtc">RTC</button>
-                <button data-view="gh" class="view-btn @(mobileFsView=="gh"?"active":string.Empty)" @onclick="ViewGh">Glitch Harvester</button>
+                <button data-view="controller" class="view-btn @(emu!.UI.MobileFullscreenView=="controller"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewController())">Controller</button>
+                <button data-view="rtc" class="view-btn @(emu!.UI.MobileFullscreenView=="rtc"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewRtc())">RTC</button>
+                <button data-view="gh" class="view-btn @(emu!.UI.MobileFullscreenView=="gh"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewGh())">Glitch Harvester</button>
             </div>
             @* Mobile fullscreen (portrait) views container: always present in fullscreen portrait; controller now lives inside instead of toggling container visibility *@
             <div class="mobile-fs-extra-views">
-                @if (mobileFsView == "controller")
+                @if (emu!.UI.MobileFullscreenView == "controller")
                 {
                     <div class="mobile-view controller-view" id="touch-controller">
                         <div class="controller-grid">
@@ -136,7 +136,7 @@
                         </div>
                     </div>
                 }
-                else if (mobileFsView == "rtc")
+                else if (emu!.UI.MobileFullscreenView == "rtc")
                 {
                     <div class="mobile-view rtc-view small">
                         <div class="d-flex align-items-center justify-content-between mb-2">
@@ -158,17 +158,17 @@
                                 <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                                 <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
                                     <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || corruptor.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
-                                    <button class="btn btn-sm @(corruptor.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(corruptor.AutoCorrupt ? "ON" : "OFF")</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                                    <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
                                     @if (!corruptor.LetItRipUsed)
                                     {
-                                        <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
+                                        <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="(()=>emu!.LetItRipPublic())" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                                     }
                                 </div>
                                 <div class="row g-2 small">
                                     <div class="col-6">
                                         <label class="form-label mb-1 small">Blast Type</label>
-                                        <select class="form-select form-select-sm" value="@corruptor.BlastType" @onchange="OnBlastTypeChanged">
+                                        <select class="form-select form-select-sm" value="@emu!.BlastType" @onchange="(e)=>emu!.SetBlastTypePublic(e.Value?.ToString()??string.Empty)">
                                             <option value="RANDOM">RANDOM</option>
                                             <option value="TILT">TILT</option>
                                             <option value="RANDOMTILT">RANDOMTILT</option>
@@ -183,7 +183,7 @@
                         </div>
                     </div>
                 }
-                else if (mobileFsView == "gh")
+                else if (emu!.UI.MobileFullscreenView == "gh")
                 {
                     <div class="mobile-view gh-view small">
                         <div class="gh-section mb-3">
@@ -192,27 +192,27 @@
                                     <label class="form-label mb-1 small">New Base Name</label>
                                     <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                                 </div>
-                                <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
+                                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nes==null)">Add Base</button>
                             </div>
                             <div class="mt-2">
                                 <label class="form-label mb-1 small">Base States</label>
-                                <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@corruptor.GhSelectedBaseId">
+                                <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@corruptor.GhSelectedBaseId">
                                     @foreach (var b in corruptor.GhBaseStates)
                                     {
                                         <option value="@b.Id">@b.Name</option>
                                     }
                                 </select>
                                 <div class="d-flex gap-1 mt-2 flex-wrap">
-                                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Load</button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Delete</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhLoadSelected())" disabled="@(!emu!.GhHasSelectedBase)">Load</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.GhDeleteSelected())" disabled="@(!emu!.GhHasSelectedBase)">Delete</button>
                                 </div>
                             </div>
                         </div>
                         <div class="gh-section mb-3">
                             <label class="form-label mb-1 small">Actions (uses RTC settings)</label>
                             <div class="d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!corruptor.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
+                                <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                             </div>
                         </div>
                         <div class="gh-section mb-3">
@@ -234,9 +234,9 @@
                                                 <span class="gh-meta">@e.Writes.Count w @e.Created.ToLocalTime().ToString("HH:mm:ss")</span>
                                             </div>
                                             <div class="gh-actions btn-group btn-group-sm">
-                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:false))">▶</button>
-                                                <button class="btn btn-outline-success" title="Keep" @onclick="(()=>GhPromoteEntry(e))">Keep</button>
-                                                <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>GhDeleteStash(e.Id))">✕</button>
+                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>emu!.GhReplayEntryAsync(e, false))">▶</button>
+                                                <button class="btn btn-outline-success" title="Keep" @onclick="(()=>emu!.GhPromote(e))">Keep</button>
+                                                <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>emu!.GhDeleteStash(e.Id))">✕</button>
                                             </div>
                                         </div>
                                     }
@@ -258,28 +258,28 @@
                                     {
                                         <div class="gh-item">
                                             <div class="gh-item-main">
-                                                @if (GhIsRenaming(e.Id))
+                                                @if (emu!.GhIsRenaming(e.Id))
                                                 {
-                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="GhRenameChange" />
+                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
                                                 }
                                                 else
                                                 {
                                                     <span class="gh-name" title="@e.Name">@e.Name</span>
                                                 }
-                                                <span class="gh-meta">@e.Writes.Count w • @GhFindBaseName(e.BaseStateId)</span>
+                                                <span class="gh-meta">@e.Writes.Count w • @emu!.GhFindBaseName(e.BaseStateId)</span>
                                             </div>
                                             <div class="gh-actions btn-group btn-group-sm">
-                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:true))">▶</button>
-                                                @if (GhIsRenaming(e.Id))
+                                                <button class="btn btn-outline-light" title="Replay" @onclick="(()=>emu!.GhReplayEntryAsync(e, true))">▶</button>
+                                                @if (emu!.GhIsRenaming(e.Id))
                                                 {
-                                                    <button class="btn btn-outline-success" title="Save" @onclick="(()=>GhCommitRename(e.Id))">✔</button>
-                                                    <button class="btn btn-outline-warning" title="Cancel" @onclick="GhCancelRename">↺</button>
+                                                    <button class="btn btn-outline-success" title="Save" @onclick="(()=>emu!.GhCommitRename(e.Id))">✔</button>
+                                                    <button class="btn btn-outline-warning" title="Cancel" @onclick="emu!.GhCancelRename">↺</button>
                                                 }
                                                 else
                                                 {
-                                                    <button class="btn btn-outline-info" title="Rename" @onclick="(()=>GhBeginRename(e))">✎</button>
+                                                    <button class="btn btn-outline-info" title="Rename" @onclick="(()=>emu!.GhBeginRename(e))">✎</button>
                                                 }
-                                                <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>GhDeleteStock(e.Id))">✕</button>
+                                                <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>emu!.GhDeleteStock(e.Id))">✕</button>
                                             </div>
                                         </div>
                                     }
@@ -373,17 +373,17 @@
                     <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
                     <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
                         <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                        <button class="btn btn-sm btn-outline-danger" @onclick="Blast" disabled="@(nes==null || corruptor.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
-                        <button class="btn btn-sm @(corruptor.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="ToggleAutoCorruptButton" title="Toggle auto-corruption each frame">Auto: @(corruptor.AutoCorrupt ? "ON" : "OFF")</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                        <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
                         @if (!corruptor.LetItRipUsed)
                         {
-                            <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="LetItRip" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
+                            <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="(()=>emu!.LetItRipPublic())" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                         }
                     </div>
                     <div class="row g-2 small">
                         <div class="col-6">
                             <label class="form-label mb-1 small">Blast Type</label>
-                            <select class="form-select form-select-sm" value="@corruptor.BlastType" @onchange="OnBlastTypeChanged">
+                            <select class="form-select form-select-sm" value="@emu!.BlastType" @onchange="(e)=>emu!.SetBlastTypePublic(e.Value?.ToString()??string.Empty)">
                                 <option value="RANDOM">RANDOM</option>
                                 <option value="TILT">TILT</option>
                                 <option value="RANDOMTILT">RANDOMTILT</option>
@@ -408,27 +408,27 @@
                         <label class="form-label mb-1 small">New Base Name</label>
                         <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
                     </div>
-                    <button class="btn btn-sm btn-primary mt-3" @onclick="GhAddBaseState" disabled="@(nes==null)">Add Base</button>
+                    <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nes==null)">Add Base</button>
                 </div>
                 <div class="mt-2">
                     <label class="form-label mb-1 small">Base States</label>
-                    <select class="form-select form-select-sm" size="4" @onchange="GhOnBaseChanged" value="@corruptor.GhSelectedBaseId">
+                    <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@corruptor.GhSelectedBaseId">
                         @foreach (var b in corruptor.GhBaseStates)
                         {
                             <option value="@b.Id">@b.Name</option>
                         }
                     </select>
                     <div class="d-flex gap-1 mt-2 flex-wrap">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhLoadSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Load</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="GhDeleteSelectedBase" disabled="@(!corruptor.GhHasSelectedBase)">Delete</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhLoadSelected())" disabled="@(!emu!.GhHasSelectedBase)">Load</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.GhDeleteSelected())" disabled="@(!emu!.GhHasSelectedBase)">Delete</button>
                     </div>
                 </div>
             </div>
             <div class="gh-section mb-3">
                 <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-warning" @onclick="GhCorruptAndStash" disabled="@(!corruptor.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="GhClearStash" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
+                    <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nes==null)">Corrupt &amp; Stash</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
                 </div>
             </div>
             <div class="gh-section mb-3">
@@ -450,9 +450,9 @@
                                     <span class="gh-meta">@e.Writes.Count w @e.Created.ToLocalTime().ToString("HH:mm:ss")</span>
                                 </div>
                                 <div class="gh-actions btn-group btn-group-sm">
-                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:false))">▶</button>
-                                    <button class="btn btn-outline-success" title="Keep (move to stockpile)" @onclick="(()=>GhPromoteEntry(e))">Keep</button>
-                                    <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>GhDeleteStash(e.Id))">✕</button>
+                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>emu!.GhReplayEntryAsync(e, false))">▶</button>
+                                    <button class="btn btn-outline-success" title="Keep (move to stockpile)" @onclick="(()=>emu!.GhPromote(e))">Keep</button>
+                                    <button class="btn btn-outline-danger" title="Discard" @onclick="(()=>emu!.GhDeleteStash(e.Id))">✕</button>
                                 </div>
                             </div>
                         }
@@ -463,9 +463,9 @@
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <strong class="small mb-0">Stockpile (@corruptor.GhStockpile.Count)</strong>
                     <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="GhExportStockpile" disabled="@(corruptor.GhStockpile.Count==0)">Export</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhExportStockpileAsync())" disabled="@(corruptor.GhStockpile.Count==0)">Export</button>
                         <label class="btn btn-sm btn-outline-secondary mb-0">
-                            Import<input type="file" class="d-none" accept="application/json" @onchange="GhImportStockpile" />
+                            Import<input type="file" class="d-none" accept="application/json" @onchange="emu!.GhImportStockpile" />
                         </label>
                     </div>
                 </div>
@@ -480,28 +480,28 @@
                         {
                             <div class="gh-item">
                                 <div class="gh-item-main">
-                                    @if (GhIsRenaming(e.Id))
+                                    @if (emu!.GhIsRenaming(e.Id))
                                     {
-                                        <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="GhRenameChange" />
+                                        <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
                                     }
                                     else
                                     {
                                         <span class="gh-name" title="@e.Name">@e.Name</span>
                                     }
-                                    <span class="gh-meta">@e.Writes.Count w • @GhFindBaseName(e.BaseStateId)</span>
+                                    <span class="gh-meta">@e.Writes.Count w • @emu!.GhFindBaseName(e.BaseStateId)</span>
                                 </div>
                                 <div class="gh-actions btn-group btn-group-sm">
-                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>GhReplayEntry(e, fromStockpile:true))">▶</button>
-                                    @if (GhIsRenaming(e.Id))
+                                    <button class="btn btn-outline-light" title="Replay" @onclick="(()=>emu!.GhReplayEntryAsync(e, true))">▶</button>
+                                    @if (emu!.GhIsRenaming(e.Id))
                                     {
-                                        <button class="btn btn-outline-success" title="Save name" @onclick="(()=>GhCommitRename(e.Id))">✔</button>
-                                        <button class="btn btn-outline-warning" title="Cancel" @onclick="GhCancelRename">↺</button>
+                                        <button class="btn btn-outline-success" title="Save name" @onclick="(()=>emu!.GhCommitRename(e.Id))">✔</button>
+                                        <button class="btn btn-outline-warning" title="Cancel" @onclick="emu!.GhCancelRename">↺</button>
                                     }
                                     else
                                     {
-                                        <button class="btn btn-outline-info" title="Rename" @onclick="(()=>GhBeginRename(e))">✎</button>
+                                        <button class="btn btn-outline-info" title="Rename" @onclick="(()=>emu!.GhBeginRename(e))">✎</button>
                                     }
-                                    <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>GhDeleteStock(e.Id))">✕</button>
+                                    <button class="btn btn-outline-danger" title="Delete" @onclick="(()=>emu!.GhDeleteStock(e.Id))">✕</button>
                                 </div>
                             </div>
                         }
@@ -527,94 +527,94 @@
         <div class="panel-content debug-mini">
             <div>Frames: @nesController.FrameCount</div>
             <div>ROM Loaded: @(nes != null ? "Yes" : "No")</div>
-            <div><button class="btn btn-sm btn-outline-secondary" @onclick="DumpState" disabled="@(nes==null)">Dump State</button></div>
+            <div><button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.DumpStateAsyncPublic())" disabled="@(nes==null)">Dump State</button></div>
             <div class="mt-2">
-                <button class="btn btn-sm btn-outline-primary" @onclick="OpenBenchModal" disabled="@(nes==null /* allow opening even if benchRunning? keep disabled only if no nes */)">@(benchRunning?"Running...":"Run Benchmarks")</button>
-                <button class="btn btn-sm btn-outline-info ms-1" @onclick="OpenCompareModal" disabled="@(benchHistory.Count<2)">Compare Results</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
+                <button class="btn btn-sm btn-outline-info ms-1" @onclick="(()=>emu!.OpenComparison())" disabled="@(emu!.BenchHistory.Count()<2)">Compare Results</button>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @onchange="OnEventSchedulerChanged" checked="@emu?.EventSchedulerOn" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="OnSoundFontModeChanged" checked="@emu?.SoundFontMode" disabled="@(nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(nes==null)" />
                     <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
                 </div>
                 @if (emu?.SoundFontMode == true)
                 {
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="ToggleSampleFont" checked="@emu?.SampleFont" />
+                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="(e)=>{if(emu?.SampleFont != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSampleFontPublic();}" checked="@emu?.SampleFont" />
                         <label class="form-check-label" for="sfSampleToggle" title="Use external sampled SoundFont library (falls back to oscillators if unavailable)">Sampled Instruments</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="OnSoundFontLayeringChanged" checked="@emu?.SoundFontLayering" />
+                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="(e)=>{if(emu?.SoundFontLayering != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontLayeringPublic();}" checked="@emu?.SoundFontLayering" />
                         <label class="form-check-label" for="sfLayerToggle" title="Experimental: allow both MNES & WF SoundFont cores to process notes simultaneously (debug/compare)">Layering</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="ToggleSfDevLogging" checked="@emu?.SfDevLogging" />
+                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="(e)=>{if(emu?.SfDevLogging != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSfDevLoggingPublic();}" checked="@emu?.SfDevLogging" />
                         <label class="form-check-label" for="sfDevLogToggle" title="Verbose console logs for SoundFont core routing & throttling">SF Dev Logging</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="ToggleSfOverlay" checked="@emu?.SfOverlay" />
+                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="(e)=>{if(emu?.SfOverlay != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSfOverlayPublic();}" checked="@emu?.SfOverlay" />
                         <label class="form-check-label" for="sfOverlayToggle" title="Display on-screen SoundFont diagnostics overlay (lead ms, counters)">SF Overlay</label>
                     </div>
                     <div class="mt-2 d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-warning" @onclick="FlushSoundFont" title="Force immediate silence of inactive/active SoundFont synths">SF Flush</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ShowSfDebug" title="Log SoundFont routing counters to console">SF Debug</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="(()=>emu?.FlushSoundFontPublic())" title="Force immediate silence of inactive/active SoundFont synths">SF Flush</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu?.ShowSfDebugPublic())" title="Log SoundFont routing counters to console">SF Debug</button>
                     </div>
                 }
             </div>
-            @if (benchModalOpen)
+            @if (emu!.BenchModalOpen)
             {
                 <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
                     <div class="card shadow-lg" style="max-width:960px;width:95%;margin-top:2.5rem;">
                         <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <strong class="small mb-0">Benchmarks</strong>
-                                <span class="badge rounded-pill bg-dark text-light small">@benchHistory.Count saved</span>
+                                <span class="badge rounded-pill bg-dark text-light small">@emu!.BenchHistory.Count() saved</span>
                                 <div class="input-group input-group-sm" style="width:60px;">
                                     <span class="input-group-text">W</span>
-                                    <input type="number" min="1" max="9" class="form-control" style="padding-left:2px;padding-right:2px;font-size:.65rem;" @bind="benchWeight" @bind:after="(()=>{ if(benchWeight<1) benchWeight=1; if(benchWeight>9) benchWeight=9; })" />
+                                    <input type="number" min="1" max="9" class="form-control" style="padding-left:2px;padding-right:2px;font-size:.65rem;" @bind="emu!.BenchWeight" />
                                 </div>
                                 <div class="btn-group btn-group-sm" role="group" aria-label="Benchmark options" style="gap:2px;">
-                                    <button type="button" class="btn @(benchAutoLoadState?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="ToggleBenchAutoLoad" title="Load baseline savestate before each run">Auto</button>
-                                    <button type="button" class="btn @(benchSimple5x?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="ToggleBenchSimple5x" title="5× shows only averaged results">5×Avg</button>
+                                    <button type="button" class="btn @(emu!.BenchAutoLoadState?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="(()=>emu!.ToggleBenchAutoLoadState())" title="Load baseline savestate before each run">Auto</button>
+                                    <button type="button" class="btn @(emu!.BenchSimple5x?"btn-primary":"btn-outline-primary")" style="font-size:.60rem;padding:2px 4px;line-height:1.1;" @onclick="(()=>emu!.ToggleBenchSimpleMode())" title="5× shows only averaged results">5×Avg</button>
                                 </div>
-                                @if (benchRunning)
+                                @if (emu!.BenchRunning)
                                 {
                                     <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
                                 }
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks5x" disabled="@(nes==null || benchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(benchRunning?"Running...":"Run 5×")</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="RunBenchmarks" disabled="@(nes==null || benchRunning)">@(benchRunning?"Running...":$"Run {benchWeight}x")</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseBenchModal" aria-label="Close">Close</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarks5xAsync())" disabled="@(nes==null || emu!.BenchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(emu!.BenchRunning?"Running...":"Run 5×")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarksAsync())" disabled="@(nes==null || emu!.BenchRunning)">@(emu!.BenchRunning?"Running...":$"Run {emu!.BenchWeight}x")</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseBenchmarks())" aria-label="Close">Close</button>
                             </div>
                         </div>
                         <div class="card-body" style="max-height:80vh;overflow:auto;">
                             <div class="mb-4">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <h6 class="small text-uppercase text-muted mb-0">Current Run</h6>
-                                    @if (!string.IsNullOrEmpty(benchResultsText))
+                                    @if (!string.IsNullOrEmpty(emu!.BenchResultsText))
                                     {
-                                        <button class="btn btn-sm btn-outline-success" title="Copy results" @onclick="CopyBenchResults">Copy</button>
+                                        <button class="btn btn-sm btn-outline-success" title="Copy results" @onclick="(()=>emu!.CopyBenchResultsAsync())">Copy</button>
                                     }
                                 </div>
-                                @if (string.IsNullOrEmpty(benchResultsText))
+                                @if (string.IsNullOrEmpty(emu!.BenchResultsText))
                                 {
-                                    <div class="small fst-italic text-muted">@(benchRunning?"Running benchmarks...":"No run yet this session. Click 'Run Again'.")</div>
+                                    <div class="small fst-italic text-muted">@(emu!.BenchRunning?"Running benchmarks...":"No run yet this session. Click 'Run Again'.")</div>
                                 }
                                 else
                                 {
-                                    <pre class="small mb-0" style="white-space:pre;">@benchResultsText</pre>
+                                    <pre class="small mb-0" style="white-space:pre;">@emu!.BenchResultsText</pre>
                                 }
                             </div>
                             <div class="d-flex justify-content-between align-items-center mb-2 mt-2">
                                 <h6 class="small text-uppercase text-muted mb-0">History</h6>
                                 <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-danger" title="Clear all benchmark history" @onclick="ClearBenchHistory" disabled="@(benchHistory.Count==0)">Clear</button>
+                                    <button class="btn btn-outline-danger" title="Clear all benchmark history" @onclick="(()=>emu!.ClearBenchHistoryAsync())" disabled="@(emu!.BenchHistory.Count()==0)">Clear</button>
                                 </div>
                             </div>
-                            @if (benchHistory.Count==0)
+                            @if (emu!.BenchHistory.Count()==0)
                             {
                                 <div class="small text-muted fst-italic">(no previous runs saved)</div>
                             }
@@ -632,26 +632,26 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                    @foreach (var (entry,idx) in benchHistory.Select((e,i)=>(e,i)))
+                                    @foreach (var (entry,idx) in emu!.BenchHistory.Select((e,i)=>(e,i)))
                                     {
-                                        <tr class="@(currentBenchHistoryId==entry.Id?"table-primary":"")">
+                                        <tr class="@(emu!.CurrentBenchHistoryId==entry.Id?"table-primary":"")">
                                             <td>@(idx+1)</td>
                                             <td title="UTC: @entry.TimestampUtc.ToString("u")">@entry.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</td>
                                             <td class="text-truncate" style="max-width:220px;" title="@entry.Rom">
-                                                @if (editingBenchRomId == entry.Id)
+                                                @if (emu!.EditingBenchRomId == entry.Id)
                                                 {
-                                                    <input class="form-control form-control-sm" style="min-width:160px;font-size:.65rem;padding:.15rem .25rem;" @bind="editingBenchRomValue" @onkeydown="(e)=>HandleBenchRomEditKey(e, entry.Id)" @onblur="(()=>CommitBenchRomEdit(entry.Id))" />
+                                                    <input class="form-control form-control-sm" style="min-width:160px;font-size:.65rem;padding:.15rem .25rem;" @bind="emu!.EditingBenchRomValue" @onkeydown="(e)=>HandleBenchRomEditKey(e, entry.Id)" @onblur="(()=>emu!.CommitBenchRomEditPublic(entry.Id))" />
                                                 }
                                                 else
                                                 {
-                                                    <span class="d-inline-block text-truncate" style="max-width:220px; cursor:text;" @onclick="(()=>StartBenchRomEdit(entry))" title="Click to edit note">@entry.Rom</span>
+                                                    <span class="d-inline-block text-truncate" style="max-width:220px; cursor:text;" @onclick="(()=>emu!.StartBenchRomEditPublic(entry.Id))" title="Click to edit note">@entry.Rom</span>
                                                 }
                                             </td>
                                             <td class="text-nowrap" title="CPU @entry.CpuCore / PPU @entry.PpuCore / APU @entry.ApuCore">@entry.CpuCore/@entry.PpuCore/@entry.ApuCore</td>
-                                            <td><button class="btn btn-sm btn-outline-light" @onclick="(()=>ShowHistoryEntry(entry.Id))" title="View results">@(currentBenchHistoryId==entry.Id?"▾":"▶")</button></td>
-                                            <td><button class="btn btn-sm btn-outline-danger" @onclick="(()=>DeleteBenchEntry(entry.Id))" title="Delete this entry">✕</button></td>
+                                            <td><button class="btn btn-sm btn-outline-light" @onclick="(()=>emu!.ShowHistoryEntryToggle(entry.Id))" title="View results">@(emu!.CurrentBenchHistoryId==entry.Id?"▾":"▶")</button></td>
+                                            <td><button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.DeleteBenchEntryAsync(entry.Id))" title="Delete this entry">✕</button></td>
                                         </tr>
-                                        @if (currentBenchHistoryId==entry.Id)
+                                        @if (emu!.CurrentBenchHistoryId==entry.Id)
                                         {
                                             <tr class="table-secondary text-dark"><td colspan="6"><pre class="small mb-0" style="white-space:pre-wrap;max-height:320px;overflow:auto;">@entry.Display</pre></td></tr>
                                         }
@@ -663,23 +663,23 @@
                     </div>
                 </div>
             }
-            @if (compareModalOpen)
+            @if (emu!.CompareModalOpen)
             {
                 <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
                     <div class="card shadow-lg" style="max-width:1100px;width:98%;margin-top:2rem;">
                         <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <strong class="small mb-0">Benchmark Comparison</strong>
-                                <span class="badge bg-dark small">@benchHistory.Count total</span>
+                                <span class="badge bg-dark small">@emu!.BenchHistory.Count() total</span>
                                 <span class="small text-muted">(oldest on left in charts)</span>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="PlayDiffAnimation" disabled="@(diffAnimating || recentDiffRows.Count==0)">@((diffAnimating?"Playing...":"Play Diff"))</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseCompareModal">Close</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.PlayDiffAnimationAsync())" disabled="@(emu!.DiffAnimating || emu!.RecentDiffRows.Count()==0)">@((emu!.DiffAnimating?"Playing...":"Play Diff"))</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseComparison())">Close</button>
                             </div>
                         </div>
                         <div class="card-body" style="max-height:85vh;overflow:auto;">
-                            @if (recentDiffRows.Count==0)
+                            @if (emu!.RecentDiffRows.Count()==0)
                             {
                                 <div class="small text-muted fst-italic">Need at least two benchmark entries with structured metrics.</div>
                             }
@@ -703,15 +703,15 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                        @foreach (var row in recentDiffRows)
+                                        @foreach (var row in emu!.RecentDiffRows)
                                         {
-                                            var cls = highlightMetricName==row.Name?"table-primary":"";
+                                            var cls = emu!.HighlightMetricName==row.Name?"table-primary":"";
                                             <tr class="@cls">
                                                 <td>@row.Name</td>
-                                                <td>@row.CurMs:F3</td>
-                                                <td>@row.PrevMs:F3</td>
-                                                <td class="@(row.DeltaMs<0?"text-success":row.DeltaMs>0?"text-danger":"")">@row.DeltaMs:F3</td>
-                                                <td class="@(row.DeltaPct<0?"text-success":row.DeltaPct>0?"text-danger":"")">@row.DeltaPct:F2%</td>
+                                                <td>@row.CurMs.ToString("F3")</td>
+                                                <td>@row.PrevMs.ToString("F3")</td>
+                                                <td class="@(row.DeltaMs<0?"text-success":row.DeltaMs>0?"text-danger":"")">@row.DeltaMs.ToString("F3")</td>
+                                                <td class="@(row.DeltaPct<0?"text-success":row.DeltaPct>0?"text-danger":"")">@row.DeltaPct.ToString("F2")%</td>
                                                 <td class="@(row.ReadsDelta<0?"text-success":row.ReadsDelta>0?"text-danger":"")">@row.ReadsDelta</td>
                                                 <td class="@(row.WritesDelta<0?"text-success":row.WritesDelta>0?"text-danger":"")">@row.WritesDelta</td>
                                                 <td class="@(row.ApuDelta<0?"text-success":row.ApuDelta>0?"text-danger":"")">@row.ApuDelta</td>
@@ -723,42 +723,42 @@
                                 </div>
                             }
                             <div class="d-flex justify-content-between align-items-center mt-4 mb-1">
-                                <h6 class="small text-uppercase text-muted mb-0">Timeline (@(compareNormalize?"% of range":"ms/iter"))</h6>
+                                <h6 class="small text-uppercase text-muted mb-0">Timeline (@(emu!.CompareNormalize?"% of range":"ms/iter"))</h6>
                                 <div class="form-check form-switch small">
-                                    <input class="form-check-input" type="checkbox" id="cmpNorm" @bind="compareNormalize" />
+                                    <input class="form-check-input" type="checkbox" id="cmpNorm" @bind="emu!.CompareNormalize" />
                                     <label class="form-check-label" for="cmpNorm">Normalize</label>
                                 </div>
                             </div>
-                            @if (timelineSeries.Count==0)
+                            @if (emu!.TimelineSeries.Count==0)
                             {
                                 <div class="small text-muted fst-italic">No timeline data.</div>
                             }
                             else
                             {
                                 <div class="d-flex flex-wrap gap-3 mb-2">
-                                    @foreach (var s in allTargets)
+                                    @foreach (var s in emu!.AllTargets)
                                     {
                                         <label class="form-check-label small me-2">
-                                            <input type="checkbox" class="form-check-input me-1" @onchange="(()=>ToggleTarget(s))" checked="@visibleTargets.Contains(s)" /> @s
+                                            <input type="checkbox" class="form-check-input me-1" @onchange="(()=>emu!.ToggleTargetVisibility(s))" checked="@emu!.VisibleTargets.Contains(s)" /> @s
                                         </label>
                                     }
                                 </div>
-                                <div style="overflow:auto; position:relative;" @onmouseleave="TimelineMouseLeave">
-                                    <svg width="1000" height="240" style="background:#111;border:1px solid #333;" @onmousemove="TimelineMouseMove">
-                                        @if (visibleTargets.Count>0)
+                                <div style="overflow:auto; position:relative;" @onmouseleave="(()=>emu!.OnTimelineMouseLeave())">
+                                    <svg width="1000" height="240" style="background:#111;border:1px solid #333;" @onmousemove="emu!.OnTimelineMouseMove">
+                                        @if (emu!.VisibleTargets.Count()>0)
                                         {
                                             double globalMax = 0;
-                                            foreach (var t in visibleTargets)
-                                                foreach (var v in timelineSeries[t])
+                                            foreach (var t in emu!.VisibleTargets)
+                                                foreach (var v in emu!.TimelineSeries[t])
                                                     if (!double.IsNaN(v.MsPerIter) && v.MsPerIter > globalMax) globalMax = v.MsPerIter;
                                             if (globalMax<=0) { globalMax = 1; }
-                                            var count = timelineOrder.Count;
+                                            var count = emu!.TimelineOrder.Count;
                                             var plotW = 960.0; var plotH = 200.0; var left=30; var top=20;
                                             // axes
                                             <line x1="@left" y1="@(top)" x2="@left" y2="@(top+plotH)" stroke="#555" stroke-width="1" />
                                             <line x1="@left" y1="@(top+plotH)" x2="@(left+plotW)" y2="@(top+plotH)" stroke="#555" stroke-width="1" />
                                             // y labels
-                                            @if (!compareNormalize) {
+                                            @if (!emu!.CompareNormalize) {
                                                 for (int i=0;i<=4;i++){
                                                     var yVal = globalMax*i/4.0; var y = top+plotH - (yVal/globalMax)*plotH;
                                                     @:<text x="5" y="@(y+4)" font-size="9" fill="#888">@yVal.ToString("F2")</text>
@@ -773,24 +773,24 @@
                                             }
                                             // x labels
                                             @for (int i=0;i<count;i++){
-                                                var x = left + plotW*(i/(double)Math.Max(1,count-1)); var label = timelineOrder[i].ToLocalTime().ToString("HH:mm:ss");
+                                                var x = left + plotW*(i/(double)Math.Max(1,count-1)); var label = emu!.TimelineOrder[i].ToLocalTime().ToString("HH:mm:ss");
                                                 @:<text x="@x" y="@(top+plotH+12)" font-size="8" fill="#666" text-anchor="middle">@label</text>
                                                 <line x1="@x" y1="@(top+plotH)" x2="@x" y2="@(top+plotH+4)" stroke="#444" stroke-width="1" />
                                             }
                                             // series lines
-                                            @foreach (var t in visibleTargets)
+                                            @foreach (var t in emu!.VisibleTargets)
                                             {
-                                                var color = ColorForTarget(t);
+                                                var color = emu!.GetColorForTarget(t);
                                                 double minT = double.MaxValue; double maxT = double.MinValue;
-                                                if (compareNormalize){
-                                                    foreach (var v in timelineSeries[t]){ if (!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
+                                                if (emu!.CompareNormalize){
+                                                    foreach (var v in emu!.TimelineSeries[t]){ if (!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
                                                     if (minT==double.MaxValue){ minT=0; maxT=1; }
                                                     if (Math.Abs(maxT-minT) < 1e-9) { maxT = minT + 1; }
                                                 }
-                                                var pts = string.Join(' ', timelineSeries[t].Select((v,idx)=>{
+                                                var pts = string.Join(' ', emu!.TimelineSeries[t].Select((v,idx)=>{
                                                     var x = left + plotW*(idx/(double)Math.Max(1,count-1));
                                                     double normVal;
-                                                    if (compareNormalize){
+                                                    if (emu!.CompareNormalize){
                                                         if (double.IsNaN(v.MsPerIter)) normVal = 0; else normVal = (v.MsPerIter - minT)/(maxT-minT); // 0..1
                                                         var y = top+plotH - normVal*plotH; return $"{x:F1},{y:F1}";
                                                     } else {
@@ -799,33 +799,34 @@
                                                 }));
                                                 <polyline points="@pts" fill="none" stroke="@color" stroke-width="2" />
                                             }
-                                            @if (hoverIndex.HasValue && hoverIndex.Value>=0 && hoverIndex.Value < count && hoverPointTooltip != null)
+                                            @if (emu!.HoverIndex.HasValue && emu!.HoverIndex.Value>=0 && emu!.HoverIndex.Value < count && emu!.HoverPointTooltipData != null)
                                             {
-                                                var idx = hoverIndex.Value;
+                                                var idx = emu!.HoverIndex.Value;
                                                 var hoverX = left + plotW*(idx/(double)Math.Max(1,count-1));
                                                 <line x1="@hoverX" y1="@top" x2="@hoverX" y2="@(top+plotH)" stroke="#666" stroke-dasharray="3 3" stroke-width="1" />
-                                                foreach (var t in visibleTargets)
+                                                foreach (var t in emu!.VisibleTargets)
                                                 {
-                                                    var pt = timelineSeries[t][idx]; if (double.IsNaN(pt.MsPerIter)) continue;
+                                                    var pt = emu!.TimelineSeries[t][idx]; if (double.IsNaN(pt.MsPerIter)) continue;
                                                     double minT = double.MaxValue; double maxT = double.MinValue;
-                                                    if (compareNormalize){
-                                                        foreach (var v in timelineSeries[t]){ if(!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
+                                                    if (emu!.CompareNormalize){
+                                                        foreach (var v in emu!.TimelineSeries[t]){ if(!double.IsNaN(v.MsPerIter)){ if (v.MsPerIter<minT) minT=v.MsPerIter; if (v.MsPerIter>maxT) maxT=v.MsPerIter; } }
                                                         if (minT==double.MaxValue){ minT=0; maxT=1; }
                                                         if (Math.Abs(maxT-minT) < 1e-9) { maxT = minT + 1; }
                                                     }
                                                     double y;
-                                                    if (compareNormalize){
+                                                    if (emu!.CompareNormalize){
                                                         var normVal = (pt.MsPerIter - minT)/(maxT-minT);
                                                         y = top+plotH - normVal*plotH;
                                                     } else {
                                                         y = top+plotH - (pt.MsPerIter/globalMax)*plotH;
                                                     }
-                                                    var color = ColorForTarget(t);
-                                                    var r = hoverTarget == t ? 5 : 3;
+                                                    var color = emu!.GetColorForTarget(t);
+                                                    var r = emu!.HoverTarget == t ? 5 : 3;
                                                     <circle cx="@hoverX" cy="@y" r="@r" fill="@color" stroke="#000" stroke-width="1" />
                                                 }
                                                 // Inline tooltip box (fixed near top-left of plot)
-                                                var boxX = left + 5; var boxY = top + 5; var lineH = 11; var lines = new List<string>{ $"{hoverPointTooltip.TimeLabel}", $"ROM: {hoverPointTooltip.Rom}", $"CPU {hoverPointTooltip.CpuCore} | PPU {hoverPointTooltip.PpuCore} | APU {hoverPointTooltip.ApuCore}", $"{hoverPointTooltip.Target}: {hoverPointTooltip.MsPerIter:F3} ms/iter", $"R {hoverPointTooltip.Reads} W {hoverPointTooltip.Writes}", $"APU {hoverPointTooltip.ApuCycles} OAM {hoverPointTooltip.OamWrites}"};
+                                                var tooltipData = emu!.HoverPointTooltipData;
+                                                var boxX = left + 5; var boxY = top + 5; var lineH = 11; var lines = new List<string>{ $"{tooltipData?.TimeLabel}", $"ROM: {tooltipData?.Rom}", $"CPU {tooltipData?.CpuCore} | PPU {tooltipData?.PpuCore} | APU {tooltipData?.ApuCore}", $"{tooltipData?.Target}: {tooltipData?.MsPerIter:F3} ms/iter", $"R {tooltipData?.Reads} W {tooltipData?.Writes}", $"APU {tooltipData?.ApuCycles} OAM {tooltipData?.OamWrites}"};
                                                 var boxW = 160.0; foreach(var l in lines){ boxW = Math.Max(boxW, 12 + l.Length * 6.0); }
                                                 var boxH = lines.Count * lineH + 6;
                                                 <rect x="@boxX" y="@boxY" width="@boxW" height="@boxH" fill="#222" stroke="#555" stroke-width="1" rx="4" />
@@ -898,74 +899,14 @@
     
     // All NES controller state is now accessed directly via nesController instance
     
-    // Mobile fullscreen supplemental view selector: controller (default), rtc, gh
-    private string mobileFsView = "controller";
-    private bool touchControllerInitialized = false;
-    private void SetMobileFsView(string v)
-    {
-        v = v.ToLowerInvariant();
-        if (v != "controller" && v != "rtc" && v != "gh") return;
-        if (mobileFsView == v) return;
-        mobileFsView = v;
-        if (mobileFsView == "controller")
-        {
-            // Will trigger OnAfterRender to initialize touch controller
-            touchControllerInitialized = false; // force re-init if markup re-rendered
-        }
-        StateHasChanged();
-    }
-    private void SelectMobileView(string v)
-    {
-        SetMobileFsView(v);
-        // notify JS (optional) so it can hide controller vs panels
-        try { JS.InvokeVoidAsync("nesInterop.syncMobileView", v); } catch {}
-    }
-    private void ViewController() => SelectMobileView("controller");
-    private void ViewRtc() => SelectMobileView("rtc");
-    private void ViewGh() => SelectMobileView("gh");
 
-    [JSInvokable]
-    public void JsSetMobileFsView(string v) => SetMobileFsView(v);
     private const string SaveKey = "nes_state_slot0";
     private bool stateBusy = false; // prevent overlapping save/load operations
-    // Benchmark modal state
-    private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty; // resolved ROM name from baseline state
-    // Event scheduler delegated handler
-    private void OnEventSchedulerChanged(ChangeEventArgs e)
-    {
-        if (emu == null) return; bool desired = e.Value is bool b && b; if (e.Value is string sv && bool.TryParse(sv,out var parsed)) desired=parsed; if (desired==emu.EventSchedulerOn) return; emu.EventSchedulerOn = desired; }
-    // Persistent benchmark history
-    private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
-    private List<BenchHistoryEntry> benchHistory = new();
-    private string? currentBenchHistoryId = null;
-    private const string BenchHistoryKey = "bench_history_v1"; // single JSON array stored in IndexedDB
-    // Comparison modal state & derived datasets
-    private bool compareModalOpen = false;
-    // Limit the number of historical points rendered in the benchmark trend graph to avoid overcrowding.
-    private const int MaxTimelineTrendPoints = 69; // show only the latest 69 data points in timeline graph
-    private HashSet<string> visibleTargets = new();
-    private List<string> allTargets = new();
-    private List<DateTime> timelineOrder = new();
-    // Enhanced timeline series includes rich point data for hover tooltips
-    private record TimelinePoint(DateTime When,double MsPerIter,long Reads,long Writes,long Apu,long Oam,string CpuCore,string PpuCore,string ApuCore,string Rom);
-    private Dictionary<string,List<TimelinePoint>> timelineSeries = new();
-    private record DiffRow(string Name,double CurMs,double PrevMs,double DeltaMs,double DeltaPct,long ReadsDelta,long WritesDelta,long ApuDelta,long OamDelta);
-    private List<DiffRow> recentDiffRows = new();
-    private bool diffAnimating = false; private string? highlightMetricName = null; private CancellationTokenSource? diffAnimCts;
-    private bool compareNormalize = true; // per-target normalization to 0..100% range
-    // SoundFont delegated handlers
-    private void OnSoundFontModeChanged(ChangeEventArgs e)
-    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SoundFontMode) return; emu.ToggleSoundFontModePublic(); }
-    private async void OnSoundFontLayeringChanged(ChangeEventArgs e)
-    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SoundFontLayering) return; await emu.ToggleSoundFontLayeringPublic(); }
-    private void ToggleSampleFont(ChangeEventArgs e)
-    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SampleFont) return; emu.ToggleSampleFontPublic(); }
-    private void ToggleSfDevLogging(ChangeEventArgs e)
-    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SfDevLogging) return; emu.ToggleSfDevLoggingPublic(); }
-    private void ToggleSfOverlay(ChangeEventArgs e)
-    { if (emu==null) return; bool desired = e.Value is bool b && b; if(e.Value is string sv && bool.TryParse(sv,out var p)) desired=p; if(desired==emu.SfOverlay) return; emu.ToggleSfOverlayPublic(); }
-    private Task FlushSoundFont() => emu?.FlushSoundFontPublic() ?? Task.CompletedTask;
-    private Task ShowSfDebug() => emu?.ShowSfDebugPublic() ?? Task.CompletedTask;
+
+
+
+    // Comparison modal delegates to Emulator methods
+
 
     // All corruptor and glitch harvester state is now accessed directly via corruptor instance
     // Shared DotNetObjectReference for JS interop callbacks (Theory 2 fix)
@@ -982,12 +923,12 @@
             }
         }
         // Initialize touch controller JS handlers when controller view visible
-        if (nesController.IsFullscreen && mobileFsView == "controller" && !touchControllerInitialized)
+        if (nesController.IsFullscreen && emu!.UI.MobileFullscreenView == "controller" && !emu.UI.TouchControllerInitialized)
         {
             try
             {
                 await JS.InvokeVoidAsync("nesInterop.initTouchController", "touch-controller");
-                touchControllerInitialized = true;
+                emu.UI.SetTouchControllerInitialized(true);
             }
             catch { }
         }
@@ -1089,55 +1030,13 @@
     // After core selection, auto-handle SoundFont if WF chosen
     }
 
-    private async Task OnApuCoreChanged(ChangeEventArgs e)
-    {
-        if (emu == null) return;
-        var v = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(v) || v == nesController.ApuCoreSel) return;
-        await emu.SetApuCorePublic(v);
-    }
 
-    private async Task OnCpuCoreChanged(ChangeEventArgs e)
-    {
-        if (emu == null) return;
-        var v = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(v) || v == nesController.CpuCoreSel) return;
-        await emu.SetCpuCorePublic(v);
-    }
 
-    private async Task OnPpuCoreChanged(ChangeEventArgs e)
-    {
-        if (emu == null) return;
-        var v = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(v) || v == nesController.PpuCoreSel) return;
-        await emu.SetPpuCorePublic(v);
-    }
 
-    private async Task OnShaderSelectChanged(ChangeEventArgs e)
-    {
-    var v = e.Value?.ToString();
-    if (string.IsNullOrWhiteSpace(v) || v == nesController.ActiveShaderKey) return;
-    if (emu!=null) await emu.SetShaderPublic(v);
-    }
 
     // Old famiclone-only handler removed; see OnApuCoreChanged
 
-    [JSInvokable]
-    public void UpdateInput(bool[] state)
-    {
-        try
-        {
-            if (state.Length == 8)
-            {
-                for (int i = 0; i < 8; i++)
-                    inputState[i] = state[i];
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating input");
-        }
-    }
+
 
     // Unused (InputFile component removed)
     // Local InputFile handling removed (we import via JS in Emulator wrapper)
@@ -1193,68 +1092,54 @@
         return Task.CompletedTask;
     }
 
-    // Delegated state persistence (Batch B Step 1)
-    private Task SaveState() => emu?.SaveStateAsyncPublic() ?? Task.CompletedTask;
 
-    private Task LoadState() => emu?.LoadStateAsyncPublic() ?? Task.CompletedTask;
 
-    private Task DumpState() => emu?.DumpStateAsyncPublic() ?? Task.CompletedTask;
-
-    private void OpenBenchModal(){ benchModalOpen = true; StateHasChanged(); }
-    private void ToggleBenchAutoLoad(){ benchAutoLoadState = !benchAutoLoadState; }
-    private void ToggleBenchSimple5x(){ benchSimple5x = !benchSimple5x; }
+    private void OpenBenchModal(){ emu!.SetBenchModalOpen(true); StateHasChanged(); }
+    private void ToggleBenchAutoLoad(){ emu!.BenchAutoLoadState = !emu!.BenchAutoLoadState; }
+    private void ToggleBenchSimple5x(){ emu!.BenchSimple5x = !emu!.BenchSimple5x; }
 
     private async Task RunBenchmarks()
     {
-        if (nes == null || benchRunning) { benchModalOpen = true; return; }
-        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
+        if (nes == null || emu!.BenchRunning) { emu!.SetBenchModalOpen(true); return; }
+        emu!.SetBenchModalOpen(true); emu!.SetBenchRunning(true); emu!.SetBenchResultsText(string.Empty); emu!.BenchBaselineRomName = string.Empty; StateHasChanged();
         try {
             bool wasRunning = nesController.IsRunning; // pause emulator for deterministic timing
             if (wasRunning && emu!=null) await emu.PauseAsync();
-            if (benchAutoLoadState)
+            if (emu!.BenchAutoLoadState)
             {
                 // Attempt to load savestate slot 0 (baseline)
                 await TryLoadBaselineStateForBenchmarks();
             }
-            int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
+            int w = emu!.BenchWeight; if (w<1) w=1; if (w>9) w=9; emu!.BenchWeight = w;
             var results = nes.RunBenchmarks(w);
-            benchResultsText = nes.FormatBenchmarksForDisplay(results);
+            emu!.SetBenchResultsText(nes.FormatBenchmarksForDisplay(results));
             // Prepend ROM info if we resolved a baseline name
-            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? nesController.CurrentRomName : benchBaselineRomName;
-            benchResultsText = $"ROM: {displayRom}\n" + benchResultsText;
-            var entry = new BenchHistoryEntry {
-                TimestampUtc = DateTime.UtcNow,
-                Rom = displayRom,
-                CpuCore = nes.GetCpuCoreId(),
-                PpuCore = nes.GetPpuCoreId(),
-                ApuCore = nes.GetApuCoreId(),
-                Display = benchResultsText
-            };
-            benchHistory.Insert(0, entry);
-            currentBenchHistoryId = entry.Id;
+            var displayRom = string.IsNullOrWhiteSpace(emu!.BenchBaselineRomName) ? nesController.CurrentRomName : emu!.BenchBaselineRomName;
+            emu!.SetBenchResultsText($"ROM: {displayRom}\n" + emu!.BenchResultsText);
+            emu!.AddBenchHistoryEntry(displayRom, emu!.BenchResultsText);
             await PersistBenchHistory();
             if (wasRunning && emu!=null) await emu.StartAsync();
-        } catch (Exception ex) { benchResultsText = "Benchmark error: "+ex.Message; }
-        finally { benchRunning = false; StateHasChanged(); }
+        } catch (Exception ex) { emu!.SetBenchResultsText("Benchmark error: "+ex.Message); }
+        finally { emu!.SetBenchRunning(false); StateHasChanged(); }
     }
 
     // Runs five benchmark passes sequentially, reloading the baseline state before each pass.
     private async Task RunBenchmarks5x()
     {
-        if (nes == null || benchRunning) { benchModalOpen = true; return; }
-        benchModalOpen = true; benchRunning = true; benchResultsText = string.Empty; benchBaselineRomName = string.Empty; StateHasChanged();
+        if (nes == null || emu!.BenchRunning) { emu!.SetBenchModalOpen(true); return; }
+        emu!.SetBenchModalOpen(true); emu!.SetBenchRunning(true); emu!.SetBenchResultsText(string.Empty); emu!.BenchBaselineRomName = string.Empty; StateHasChanged();
         bool wasRunning = nesController.IsRunning;
         try {
             if (wasRunning && emu!=null) await emu.PauseAsync();
-            int w = benchWeight; if (w<1) w=1; if (w>9) w=9; benchWeight = w;
+            int w = emu!.BenchWeight; if (w<1) w=1; if (w>9) w=9; emu!.BenchWeight = w;
             const int passes = 5;
             var passResults = new List<IReadOnlyList<NesEmulator.NES.BenchResult>>();
             for (int i=1;i<=passes;i++)
             {
-                if (benchAutoLoadState) await TryLoadBaselineStateForBenchmarks();
+                if (emu!.BenchAutoLoadState) await TryLoadBaselineStateForBenchmarks();
                 var res = nes.RunBenchmarks(w);
                 passResults.Add(res);
-                benchResultsText = $"Running pass {i}/{passes}..."; // live status
+                emu!.SetBenchResultsText($"Running pass {i}/{passes}..."); // live status
                 StateHasChanged();
             }
             // Aggregate: assume all passes produced same sequence lengths & names
@@ -1278,7 +1163,7 @@
             }
             // Build display text summarizing passes and averaged table
             var sb = new System.Text.StringBuilder();
-            var displayRom = string.IsNullOrWhiteSpace(benchBaselineRomName) ? nesController.CurrentRomName : benchBaselineRomName;
+            var displayRom = string.IsNullOrWhiteSpace(emu!.BenchBaselineRomName) ? nesController.CurrentRomName : emu!.BenchBaselineRomName;
             sb.AppendLine($"ROM: {displayRom}");
             sb.AppendLine("Benchmark Results (5-pass average)");
             sb.AppendLine($"Each pass weight={w}; fields averaged over {passes} passes.");
@@ -1288,7 +1173,7 @@
             {
                 sb.AppendLine($"{r.Name}\t{r.Iterations}\t{r.MsTotal:F2}\t{r.MsPerIter:F3}\t{r.CpuReads}\t{r.CpuWrites}\t{r.ApuCycles}\t{r.OamDmaWrites}\t{r.BatchFlushes}\t{r.AvgBatchSize:F1}");
             }
-            if (!benchSimple5x)
+            if (!emu!.BenchSimple5x)
             {
                 sb.AppendLine();
                 sb.AppendLine("Raw Pass Summaries:");
@@ -1302,21 +1187,13 @@
                     sb.AppendLine();
                 }
             }
-            benchResultsText = sb.ToString().TrimEnd();
+            emu!.SetBenchResultsText(sb.ToString().TrimEnd());
             // Single history entry containing averaged + raw details
-            var historyEntry = new BenchHistoryEntry {
-                TimestampUtc = DateTime.UtcNow,
-                Rom = displayRom,
-                CpuCore = nes.GetCpuCoreId(),
-                PpuCore = nes.GetPpuCoreId(),
-                ApuCore = nes.GetApuCoreId(),
-                Display = benchResultsText
-            };
-            benchHistory.Insert(0, historyEntry);
-            currentBenchHistoryId = historyEntry.Id;
+            displayRom = string.IsNullOrWhiteSpace(emu!.BenchBaselineRomName) ? nesController.CurrentRomName : emu!.BenchBaselineRomName;
+            emu!.AddBenchHistoryEntry(displayRom, emu!.BenchResultsText);
             await PersistBenchHistory();
-        } catch (Exception ex) { benchResultsText = "Benchmark 5x error: "+ex.Message; }
-    finally { benchRunning = false; if (wasRunning && emu!=null) await emu.StartAsync(); StateHasChanged(); }
+        } catch (Exception ex) { emu!.SetBenchResultsText("Benchmark 5x error: "+ex.Message); }
+    finally { emu!.SetBenchRunning(false); if (wasRunning && emu!=null) await emu.StartAsync(); StateHasChanged(); }
     }
 
     // Silent baseline state loader used exclusively for benchmarks to improve result stability.
@@ -1366,7 +1243,7 @@
                 using var doc = System.Text.Json.JsonDocument.Parse(full);
                 var root = doc.RootElement;
                 // Capture romName metadata for benchmark labeling (do not change currentRomName here)
-                try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) benchBaselineRomName = rnEl.GetString() ?? benchBaselineRomName; } catch {}
+                try { if (root.TryGetProperty("romName", out var rnEl) && rnEl.ValueKind==System.Text.Json.JsonValueKind.String) emu!.BenchBaselineRomName = rnEl.GetString() ?? emu!.BenchBaselineRomName; } catch {}
                 if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
                     int len = romEl.GetArrayLength();
@@ -1412,184 +1289,52 @@
             return false; // silent failure acceptable for benchmarks
         }
     }
-    private void CloseBenchModal(){ benchModalOpen = false; }
+    private void CloseBenchModal(){ emu!.SetBenchModalOpen(false); }
     private async Task CopyBenchResults()
     {
-        try { if (!string.IsNullOrEmpty(benchResultsText)) await JS.InvokeVoidAsync("navigator.clipboard.writeText", benchResultsText); } catch { }
+        try { if (!string.IsNullOrEmpty(emu!.BenchResultsText)) await JS.InvokeVoidAsync("navigator.clipboard.writeText", emu!.BenchResultsText); } catch { }
     }
 
     private async Task PersistBenchHistory()
     {
         try {
-            var payload = System.Text.Json.JsonSerializer.Serialize(benchHistory);
-            await JS.InvokeVoidAsync("nesInterop.idbSetItem", BenchHistoryKey, payload);
+            var payload = System.Text.Json.JsonSerializer.Serialize(emu!.BenchHistory);
+            await JS.InvokeVoidAsync("nesInterop.idbSetItem", Emulator.BenchHistoryKey, payload);
         } catch {}
     }
     private async Task LoadBenchHistory()
     {
         try {
-            var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", BenchHistoryKey);
+            var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", Emulator.BenchHistoryKey);
             if (!string.IsNullOrWhiteSpace(json))
             {
                 var list = System.Text.Json.JsonSerializer.Deserialize<List<BenchHistoryEntry>>(json);
-                if (list != null) { benchHistory = list.OrderByDescending(e=>e.TimestampUtc).ToList(); }
+                if (list != null) { emu!.SetBenchHistoryItems(list.OrderByDescending(e=>e.TimestampUtc).ToList()); }
             }
         } catch {}
     }
     private async Task ClearBenchHistory()
     {
-        benchHistory.Clear(); currentBenchHistoryId=null; await PersistBenchHistory();
+        emu!.ClearBenchHistoryItems(); await PersistBenchHistory();
     }
     private void ShowHistoryEntry(string id)
     {
-        currentBenchHistoryId = id == currentBenchHistoryId ? null : id;
+        emu!.SetCurrentBenchHistoryId(id == emu!.CurrentBenchHistoryId ? null : id);
     }
     private async Task DeleteBenchEntry(string id)
     {
-        var e = benchHistory.FirstOrDefault(x=>x.Id==id); if (e!=null){ benchHistory.Remove(e); if (currentBenchHistoryId==id) currentBenchHistoryId=null; await PersistBenchHistory(); }
+        var e = emu!.BenchHistory.FirstOrDefault(x=>x.Id==id); if (e!=null){ emu!.RemoveBenchHistoryItem(id); await PersistBenchHistory(); }
     }
 
     // === Comparison Modal Logic ===
     private void OpenCompareModal()
     {
-        BuildComparisonDatasets();
-        compareModalOpen = true; StateHasChanged();
+        emu!.OpenComparison();
     }
     private void CloseCompareModal()
     {
-        compareModalOpen = false; CancelDiffAnim();
+        emu!.CloseComparison(); 
     }
-    private void BuildComparisonDatasets()
-    {
-        recentDiffRows.Clear(); timelineSeries.Clear(); allTargets.Clear(); timelineOrder.Clear(); visibleTargets.Clear(); highlightMetricName=null; hoverIndex=null; hoverTarget=null; hoverPointTooltip=null;
-        // Need chronological order (oldest -> newest) for timeline
-        var chrono = benchHistory.OrderBy(e=>e.TimestampUtc).ToList();
-        // Only keep the last MaxTimelineTrendPoints entries for timeline/graphing to reduce clutter
-        if (chrono.Count > MaxTimelineTrendPoints)
-        {
-            chrono = chrono.Skip(chrono.Count - MaxTimelineTrendPoints).ToList();
-        }
-        if (chrono.Count < 2) return;
-    // Parse each entry's structured table lines; format now includes extra columns: Target Cat\tIter\tTot(ms)\tPer(ms)\tReads\tWrites\tAPU Cyc\tOAM DMA\tBatches\tAvgBatch (older entries may lack last 2)
-        var parsed = new List<(BenchHistoryEntry Entry, Dictionary<string,(double MsPerIter,long Reads,long Writes,long Apu,long Oam)>)>();
-        foreach (var h in chrono)
-        {
-            var dict = new Dictionary<string,(double,long,long,long,long)>();
-            try {
-                using var sr = new System.IO.StringReader(h.Display);
-                string? line; bool inTable=false;
-                while ((line = sr.ReadLine()) != null)
-                {
-                    if (line.StartsWith("Target Cat")) { inTable=true; continue; }
-                    if (!inTable) continue;
-                    if (string.IsNullOrWhiteSpace(line)) break; // end of table
-                    var parts = line.Split('\t');
-                    if (parts.Length < 8) continue; // need at least legacy columns
-                    string name = parts[0].Trim();
-                    if (!double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var msPer)) continue;
-                    long.TryParse(parts[4], out var reads); long.TryParse(parts[5], out var writes); long.TryParse(parts[6], out var apu); long.TryParse(parts[7], out var oam);
-                    dict[name]=(msPer,reads,writes,apu,oam);
-                }
-            } catch { }
-            if (dict.Count>0) parsed.Add((h, dict));
-        }
-        if (parsed.Count < 2) return;
-        // Timeline order & targets
-        timelineOrder = parsed.Select(p=>p.Entry.TimestampUtc).ToList();
-        allTargets = parsed.SelectMany(p=>p.Item2.Keys).Distinct().OrderBy(k=>k).ToList();
-        foreach (var t in allTargets)
-        {
-            timelineSeries[t] = new List<TimelinePoint>();
-            foreach (var entry in parsed)
-            {
-                if (entry.Item2.TryGetValue(t, out var v))
-                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, v.MsPerIter, v.Reads, v.Writes, v.Apu, v.Oam, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore, entry.Entry.Rom));
-                else
-                    timelineSeries[t].Add(new TimelinePoint(entry.Entry.TimestampUtc, double.NaN, 0,0,0,0, entry.Entry.CpuCore, entry.Entry.PpuCore, entry.Entry.ApuCore, entry.Entry.Rom));
-            }
-            visibleTargets.Add(t);
-        }
-        // Diff: latest vs previous
-        var last = parsed[^1]; var prev = parsed[^2];
-        foreach (var kv in last.Item2)
-        {
-            var name = kv.Key; var cur = kv.Value; if (!prev.Item2.TryGetValue(name, out var p)) continue;
-            double deltaMs = cur.MsPerIter - p.MsPerIter;
-            double deltaPct = p.MsPerIter != 0 ? (deltaMs / p.MsPerIter) * 100.0 : 0;
-            recentDiffRows.Add(new DiffRow(name, cur.MsPerIter, p.MsPerIter, deltaMs, deltaPct, cur.Reads - p.Reads, cur.Writes - p.Writes, cur.Apu - p.Apu, cur.Oam - p.Oam));
-        }
-        recentDiffRows = recentDiffRows.OrderBy(r=>r.Name).ToList();
-    }
-    private void ToggleTarget(string target)
-    {
-        if (visibleTargets.Contains(target)) visibleTargets.Remove(target); else visibleTargets.Add(target); StateHasChanged();
-    }
-    // Hover state & handlers for timeline tooltip
-    private int? hoverIndex = null; private string? hoverTarget = null; private HoverTooltip? hoverPointTooltip = null; private double hoverTooltipLeftPx=0; private double hoverTooltipTopPx=0;
-    private record HoverTooltip(string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore,string Rom);
-    private void TimelineMouseLeave(){ hoverIndex=null; hoverTarget=null; hoverPointTooltip=null; }
-    private void TimelineMouseMove(MouseEventArgs e)
-    {
-        if (timelineOrder.Count==0 || visibleTargets.Count==0) return;
-        double plotW=960, plotH=200, left=30, top=20; int count = timelineOrder.Count;
-        double mouseX = e.OffsetX; double mouseY = e.OffsetY;
-        if (mouseX < left-5 || mouseX > left+plotW+5 || mouseY < top-5 || mouseY > top+plotH+15) { TimelineMouseLeave(); StateHasChanged(); return; }
-        var frac = (mouseX - left)/Math.Max(1,plotW); frac = Math.Clamp(frac,0,1); int idx = (int)Math.Round(frac*(count-1));
-        if (idx<0 || idx>=count) { TimelineMouseLeave(); StateHasChanged(); return; }
-        string? bestTarget=null; double bestDy=double.MaxValue; double bestY=0; double globalMax=0;
-        if (!compareNormalize)
-        {
-            foreach (var t in visibleTargets)
-                foreach (var v in timelineSeries[t]) if (!double.IsNaN(v.MsPerIter) && v.MsPerIter>globalMax) globalMax=v.MsPerIter;
-            if (globalMax<=0) globalMax=1;
-        }
-        foreach (var t in visibleTargets)
-        {
-            var pt = timelineSeries[t][idx]; if (double.IsNaN(pt.MsPerIter)) continue;
-            double y;
-            if (compareNormalize){
-                double minT=double.MaxValue,maxT=double.MinValue; foreach (var v in timelineSeries[t]) if(!double.IsNaN(v.MsPerIter)){ if(v.MsPerIter<minT) minT=v.MsPerIter; if(v.MsPerIter>maxT) maxT=v.MsPerIter; }
-                if (minT==double.MaxValue){ minT=0; maxT=1; }
-                if (Math.Abs(maxT-minT) < 1e-9) maxT = minT+1;
-                var norm = (pt.MsPerIter - minT)/(maxT-minT);
-                y = top+plotH - norm*plotH;
-            } else {
-                y = top+plotH - (pt.MsPerIter/globalMax)*plotH;
-            }
-            var dy = Math.Abs(y - mouseY);
-            if (dy < bestDy){ bestDy=dy; bestTarget=t; bestY=y; }
-        }
-        if (bestTarget==null){ TimelineMouseLeave(); StateHasChanged(); return; }
-        hoverIndex = idx; hoverTarget = bestTarget;
-        var hpt = timelineSeries[bestTarget][idx];
-        var timeLabel = timelineOrder[idx].ToLocalTime().ToString("HH:mm:ss");
-    hoverPointTooltip = new HoverTooltip(bestTarget,timeLabel,hpt.MsPerIter,hpt.Reads,hpt.Writes,hpt.Apu,hpt.Oam,hpt.CpuCore,hpt.PpuCore,hpt.ApuCore,hpt.Rom);
-        double hoverX = left + plotW*(idx/(double)Math.Max(1,count-1));
-        hoverTooltipLeftPx = Math.Clamp(hoverX + 12, 0, 1000-190);
-        hoverTooltipTopPx = Math.Clamp(bestY - 10, 0, 240-120);
-        StateHasChanged();
-    }
-    private string ColorForTarget(string target)
-    {
-        // Simple stable hash -> color palette
-        int h=0; foreach (var c in target){ h = (h*31 + c) & 0xFFFFFF; }
-        int r = (h & 0xFF0000)>>16; int g=(h & 0x00FF00)>>8; int b=h&0xFF;
-        // boost brightness
-        r = (r+128)/2; g=(g+128)/2; b=(b+128)/2;
-        return $"rgb({r},{g},{b})";
-    }
-    private async Task PlayDiffAnimation()
-    {
-        if (diffAnimating || recentDiffRows.Count==0) return; CancelDiffAnim(); diffAnimating=true; diffAnimCts = new CancellationTokenSource();
-        try {
-            foreach (var row in recentDiffRows)
-            {
-                highlightMetricName = row.Name; StateHasChanged(); await Task.Delay(900, diffAnimCts.Token);
-            }
-        } catch { }
-        finally { diffAnimating=false; highlightMetricName=null; StateHasChanged(); }
-    }
-    private void CancelDiffAnim(){ try { diffAnimCts?.Cancel(); } catch {} diffAnimating=false; highlightMetricName=null; }
 
     // Memory domain building now centralized in Emulator.BuildMemoryDomains; use emu.RebuildMemoryDomainsPublic()
 
@@ -1602,28 +1347,18 @@
     private async Task CommitBenchRomEdit(string id)
     {
         if (editingBenchRomId != id) { editingBenchRomId=null; return; }
-        var e = benchHistory.FirstOrDefault(x=>x.Id==id);
-        if (e!=null)
+        // Delegate edit to Emulator to avoid modifying init-only record properties.
+        var newVal = editingBenchRomValue?.Trim() ?? string.Empty;
+        if (!string.IsNullOrEmpty(newVal))
         {
-            var newVal = editingBenchRomValue?.Trim() ?? string.Empty;
-            if (newVal.Length>0 && newVal != e.Rom)
-            {
-                e.Rom = newVal;
-                // Update first line in Display if starts with ROM:
-                if (!string.IsNullOrEmpty(e.Display))
-                {
-                    var lines = e.Display.Split('\n');
-                    if (lines.Length>0 && lines[0].StartsWith("ROM:")) { lines[0] = $"ROM: {newVal}"; e.Display = string.Join('\n', lines); }
-                }
-                await PersistBenchHistory();
-                if (compareModalOpen) BuildComparisonDatasets();
-            }
+            emu!.EditingBenchRomValue = newVal;
+            await emu!.CommitBenchRomEditPublic(id);
         }
         editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged();
     }
     private async void HandleBenchRomEditKey(KeyboardEventArgs e, string id)
     {
-        if (e.Key=="Enter") await CommitBenchRomEdit(id); else if (e.Key=="Escape") { editingBenchRomId=null; StateHasChanged(); }
+        if (e.Key=="Enter") await emu!.CommitBenchRomEditPublic(id); else if (e.Key=="Escape") emu!.CancelBenchRomEditPublic();
     }
 
     private void OnCrashBehaviorChanged(ChangeEventArgs e)
@@ -1651,120 +1386,9 @@
     }
     private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptor.CorruptIntensity = Math.Clamp(v,1,65535); }
     private void OnIntensityBoxChange(ChangeEventArgs e) { OnIntensityChange(e); }
-    private void ToggleAutoCorruptButton() { corruptor.AutoCorrupt = !corruptor.AutoCorrupt; corruptor.LastBlastInfo = corruptor.AutoCorrupt ? "Auto-corrupt enabled" : "Auto-corrupt disabled"; }
-    private void LetItRip()
-    {
-        corruptor.CorruptIntensity = 1;
-        foreach (var d in corruptor.MemoryDomains)
-        {
-            d.Selected = d.Key == "PRG" || d.Key == "RAM"; // Only PRG ROM & System RAM
-        }
-        if (!corruptor.AutoCorrupt)
-        {
-            corruptor.AutoCorrupt = true;
-            corruptor.LastBlastInfo = "Auto-corrupt enabled (Let it rip)";
-        }
-        else
-        {
-            corruptor.LastBlastInfo = "Let it rip engaged";
-        }
-        corruptor.LetItRipUsed = true;
-        StateHasChanged();
-    }
 
-    private Task Blast()
-    {
-        if (nes == null) return Task.CompletedTask;
-        corruptor.Blast(nes);
-        return Task.CompletedTask;
-    }
 
-    private void OnBlastTypeChanged(ChangeEventArgs e)
-    {
-        if (e.Value is string v && !string.IsNullOrWhiteSpace(v))
-        {
-            corruptor.BlastType = v.Trim().ToUpperInvariant();
-        }
-    }
 
-    // ================ Glitch Harvester methods =================
-    private void GhAddBaseState()
-    {
-        if (nes == null) return;
-        try
-        {
-            corruptor.GhAddBaseState(nes);
-        }
-        catch (Exception ex) { Status.Set("GH base add failed: "+ex.Message); }
-    }
-    private void GhOnBaseChanged(ChangeEventArgs e)
-    { 
-        if (e.Value is string v) 
-            corruptor.GhSelectedBaseId = v; 
-    }
-    private async Task GhLoadSelectedBase()
-    {
-        if (nes == null) return; 
-        var b = corruptor.GhBaseStates.FirstOrDefault(x=>x.Id==corruptor.GhSelectedBaseId); 
-        if (b==null) return; 
-        try { 
-            nes.LoadState(b.State); 
-            nesController.AutoStaticSuppressed = true; 
-            nesController.framebuffer = nes.GetFrameBuffer(); 
-            await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); 
-            Status.Set($"Loaded base '{b.Name}'"); 
-        } catch (Exception ex) { Status.Set("GH load base err: "+ex.Message); }
-    }
-    private void GhDeleteSelectedBase()
-    { 
-        corruptor.GhDeleteSelectedBase();
-    }
-    private async Task GhCorruptAndStash()
-    {
-        if (nes==null || !corruptor.GhHasSelectedBase) return; 
-        var baseState = corruptor.GhBaseStates.First(b=>b.Id==corruptor.GhSelectedBaseId);
-        try {
-            nes.LoadState(baseState.State); 
-            nesController.AutoStaticSuppressed = true; // ensure deterministic start (disable static)
-            var writes = corruptor.GenerateBlastLayer(Math.Clamp(corruptor.CorruptIntensity,1,1024));
-            corruptor.ApplyBlastLayer(writes, nes);
-            var entry = new HarvestEntry { Name = $"Stash {++corruptor.GhStashCounter}", BaseStateId = baseState.Id, Writes = writes };
-            corruptor.GhStash.Add(entry);
-            Status.Set($"Stashed {writes.Count} writes based on '{baseState.Name}'");
-        } catch (Exception ex){ Status.Set("GH corrupt err: "+ex.Message); }
-        await InvokeAsync(StateHasChanged);
-    }
-    private string GhFindBaseName(string id) => corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==id)?.Name ?? "?";
-    private void GhDeleteStash(string id){ corruptor.GhDeleteStash(id); }
-    private void GhPromoteEntry(HarvestEntry e){ corruptor.GhPromoteEntry(e); }
-    private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile){ 
-        var baseState = corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId); 
-        if (nes==null || baseState==null) return; 
-        try { 
-            nes.LoadState(baseState.State); 
-            nesController.AutoStaticSuppressed = true; 
-            corruptor.ApplyBlastLayer(e.Writes, nes); 
-            nesController.framebuffer = nes.GetFrameBuffer(); 
-            await JS.InvokeVoidAsync("nesInterop.drawFrame","nes-canvas", nesController.framebuffer); 
-            Status.Set($"Replayed {(fromStockpile?"stockpile":"stash")} '{e.Name}'"); 
-        } catch (Exception ex){ Status.Set("GH replay err: "+ex.Message); } 
-    }
-    private void GhDeleteStock(string id){ corruptor.GhDeleteStock(id); }
-    private void GhClearStash(){ corruptor.GhClearStash(); }
-    private bool GhIsRenaming(string id) => corruptor.GhRenamingId == id;
-    private void GhBeginRename(HarvestEntry e){ corruptor.GhBeginRename(e); }
-    private void GhCancelRename(){ corruptor.GhCancelRename(); }
-    private void GhRenameChange(ChangeEventArgs e){ if (e.Value is string v) corruptor.GhRenameText = v; }
-    private void GhCommitRename(string id){ corruptor.GhCommitRename(id); }
-    private async Task GhExportStockpile(){ try { var exportObj = corruptor.GhStockpile.Select(e=> new { e.Id, e.Name, e.BaseStateId, e.Created, Writes=e.Writes, BaseState = corruptor.GhBaseStates.FirstOrDefault(b=>b.Id==e.BaseStateId)?.State }).ToList(); var json = System.Text.Json.JsonSerializer.Serialize(exportObj); await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json); Status.Set("Exported stockpile"); } catch (Exception ex){ Status.Set("Export failed: "+ex.Message); } }
-    private async Task GhImportStockpile(ChangeEventArgs e){ try { if (e.Value==null) return; // use JS to read file(s)
-            var files = await JS.InvokeAsync<object[]>("nesInterop.readFilesAsText", e.Value); if (files==null) return; int added=0; foreach (var f in files){ if (f is string json){ try { var doc = System.Text.Json.JsonDocument.Parse(json); foreach (var elem in doc.RootElement.EnumerateArray()){ var baseStateId = elem.GetProperty("BaseStateId").GetString()??""; var baseStateData = elem.TryGetProperty("BaseState", out var bsEl)? bsEl.GetString():null; if (!corruptor.GhBaseStates.Any(b=>b.Id==baseStateId) && !string.IsNullOrEmpty(baseStateData)){ corruptor.GhBaseStates.Add( new HarvesterBaseState{ Id=baseStateId, Name=$"Imported {corruptor.GhBaseStates.Count+1}", State=baseStateData }); }
-                        var entry = new HarvestEntry { Id = elem.GetProperty("Id").GetString()??Guid.NewGuid().ToString(), Name = elem.GetProperty("Name").GetString()??$"Imp {++corruptor.GhStockpileCounter}", BaseStateId = baseStateId, Created = elem.TryGetProperty("Created", out var cEl)? cEl.GetDateTime():DateTime.UtcNow, Writes = new List<BlastInstruction>() };
-                        if (elem.TryGetProperty("Writes", out var wArr)) { foreach (var w in wArr.EnumerateArray()){ entry.Writes.Add(new BlastInstruction{ Domain = w.GetProperty("Domain").GetString()??"", Address = w.GetProperty("Address").GetInt32(), Value = (byte)w.GetProperty("Value").GetInt32()}); } }
-                        corruptor.GhStockpile.Add(entry); added++; }
-                    } catch {} } }
-            if (added>0) Status.Set($"Imported {added} entries"); }
-        catch (Exception ex){ Status.Set("Import failed: "+ex.Message); } }
 
     public void Dispose()
     {
@@ -1789,9 +1413,9 @@
 
     // ===== JS Invokable wrappers for mobile fullscreen bottom bar =====
     [JSInvokable]
-    public Task JsSaveState() => SaveState();
+    public Task JsSaveState() => emu!.SaveStateAsyncPublic();
     [JSInvokable]
-    public Task JsLoadState() => LoadState();
+    public Task JsLoadState() => emu!.LoadStateAsyncPublic();
     [JSInvokable]
     public Task JsResetGame() => emu?.ResetAsyncFacade() ?? Task.CompletedTask;
     [JSInvokable]
@@ -1801,7 +1425,8 @@
         StateHasChanged();
     }
 
-    // Called from JS when ROMs dropped via drag & drop
+    [JSInvokable]
+    public void JsSetMobileFsView(string v) => emu?.UI.JsSetMobileFsView(v);
     [JSInvokable]
     public async Task OnRomsDropped(UploadedRom[] roms)
     {

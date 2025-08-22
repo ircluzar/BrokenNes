@@ -70,8 +70,6 @@ namespace BrokenNes
             await InvokeAsync(StateHasChanged);
         }
 
-        private string GhFindBaseName(string id) => corruptor.GhBaseStates.FirstOrDefault(b => b.Id == id)?.Name ?? "?";
-        private void GhDeleteStash(string id) { corruptor.GhDeleteStash(id); }
         private void GhPromoteEntry(HarvestEntry e) { corruptor.GhPromoteEntry(e); }
         private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile)
         {
@@ -89,13 +87,7 @@ namespace BrokenNes
             }
             catch (Exception ex) { Status.Set("GH replay err: " + ex.Message); }
         }
-        private void GhDeleteStock(string id) { corruptor.GhDeleteStock(id); }
         private void GhClearStash() { corruptor.GhClearStash(); }
-        private bool GhIsRenaming(string id) => corruptor.GhRenamingId == id;
-        private void GhBeginRename(HarvestEntry e) { corruptor.GhBeginRename(e); }
-        private void GhCancelRename() { corruptor.GhCancelRename(); }
-        private void GhRenameChange(ChangeEventArgs e) { if (e.Value is string v) corruptor.GhRenameText = v; }
-        private void GhCommitRename(string id) { corruptor.GhCommitRename(id); }
 
         private async Task GhExportStockpile()
         {
@@ -107,50 +99,6 @@ namespace BrokenNes
                 Status.Set("Exported stockpile");
             }
             catch (Exception ex) { Status.Set("Export failed: " + ex.Message); }
-        }
-
-        private async Task GhImportStockpile(ChangeEventArgs e)
-        {
-            try
-            {
-                if (e.Value == null) return;
-                // placeholder: depends on JS helper to read file(s); adapt as needed
-                var filesJson = await JS.InvokeAsync<string>("nesInterop.readSelectedFilesAsText", e.Value?.ToString());
-                if (string.IsNullOrWhiteSpace(filesJson)) return;
-                var list = System.Text.Json.JsonSerializer.Deserialize<List<ImportHarvestEntry>>(filesJson);
-                if (list == null) return;
-                int added = 0;
-                foreach (var it in list)
-                {
-                    if (string.IsNullOrWhiteSpace(it.BaseState)) continue;
-                    var existingBase = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == it.BaseStateId);
-                    if (existingBase == null)
-                    {
-                        corruptor.GhBaseStates.Add(new HarvesterBaseState { Id = it.BaseStateId ?? Guid.NewGuid().ToString(), Name = $"ImpBase {corruptor.GhBaseStates.Count + 1}", State = it.BaseState });
-                    }
-                    var entry = new HarvestEntry
-                    {
-                        Id = it.Id ?? Guid.NewGuid().ToString(),
-                        Name = string.IsNullOrWhiteSpace(it.Name) ? $"ImpEntry {++corruptor.GhStockpileCounter}" : it.Name,
-                        BaseStateId = it.BaseStateId ?? corruptor.GhBaseStates.Last().Id,
-                        Writes = it.Writes ?? new(),
-                        Created = it.Created == default ? DateTime.UtcNow : it.Created
-                    };
-                    corruptor.GhStockpile.Add(entry); added++;
-                }
-                Status.Set($"Imported {added} stock item(s)");
-            }
-            catch (Exception ex) { Status.Set("Import failed: " + ex.Message); }
-        }
-
-        private class ImportHarvestEntry
-        {
-            public string? Id { get; set; }
-            public string? Name { get; set; }
-            public string? BaseStateId { get; set; }
-            public List<BlastInstruction>? Writes { get; set; }
-            public DateTime Created { get; set; }
-            public string? BaseState { get; set; }
         }
     }
 }

@@ -13,10 +13,10 @@ namespace BrokenNes
     {
         // ================= Benchmark Subsystem (migrated) =================
         private bool benchRunning = false; private string benchResultsText = string.Empty; private bool benchModalOpen = false; private int benchWeight = 1; private bool benchAutoLoadState = true; private bool benchSimple5x = true; private string benchBaselineRomName = string.Empty;
-        private class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
+        public class BenchHistoryEntry { public string Id {get;set;}=Guid.NewGuid().ToString(); public DateTime TimestampUtc {get;set;}=DateTime.UtcNow; public string Rom {get;set;}=""; public string CpuCore {get;set;}=""; public string PpuCore {get;set;}=""; public string ApuCore {get;set;}=""; public string Display {get;set;}=""; }
         private List<BenchHistoryEntry> benchHistory = new();
         private string? currentBenchHistoryId = null;
-        private const string BenchHistoryKey = "bench_history_v1";
+        public const string BenchHistoryKey = "bench_history_v1";
         private bool compareModalOpen = false;
         private const int MaxTimelineTrendPoints = 69;
         private HashSet<string> visibleTargets = new();

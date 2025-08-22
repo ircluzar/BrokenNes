@@ -22,6 +22,7 @@ namespace BrokenNes
         public int BenchWeight { get => benchWeight; set => benchWeight = Math.Clamp(value,1,9); }
         public bool BenchAutoLoadState { get => benchAutoLoadState; set => benchAutoLoadState = value; }
         public bool BenchSimple5x { get => benchSimple5x; set => benchSimple5x = value; }
+        public string BenchBaselineRomName { get => benchBaselineRomName ?? ""; set => benchBaselineRomName = value; }
         public bool CompareModalOpen => compareModalOpen;
         public bool CompareNormalize { get => compareNormalize; set { compareNormalize = value; StateHasChanged(); } }
         public string? CurrentBenchHistoryId => currentBenchHistoryId;
@@ -37,16 +38,24 @@ namespace BrokenNes
         public string? HighlightMetricName => highlightMetricName;
         public int? HoverIndex => hoverIndex;
         public string? HoverTarget => hoverTarget;
+        public double HoverTooltipLeftPx => hoverTooltipLeftPx;
+        public double HoverTooltipTopPx => hoverTooltipTopPx;
         public (string Target,string TimeLabel,double MsPerIter,long Reads,long Writes,long ApuCycles,long OamWrites,string CpuCore,string PpuCore,string ApuCore,string Rom)? HoverPointTooltipData
             => hoverPointTooltip == null ? null : (hoverPointTooltip.Target, hoverPointTooltip.TimeLabel, hoverPointTooltip.MsPerIter, hoverPointTooltip.Reads, hoverPointTooltip.Writes, hoverPointTooltip.ApuCycles, hoverPointTooltip.OamWrites, hoverPointTooltip.CpuCore, hoverPointTooltip.PpuCore, hoverPointTooltip.ApuCore, hoverPointTooltip.Rom);
         public string? EditingBenchRomId => editingBenchRomId;
-        public string EditingBenchRomValue => editingBenchRomValue;
+        public string EditingBenchRomValue { get => editingBenchRomValue; set { editingBenchRomValue = value; StateHasChanged(); } }
         public void StartBenchRomEditPublic(string id)
         {
             var e = benchHistory.FirstOrDefault(x=>x.Id==id); if (e==null) return; StartBenchRomEdit(e);
         }
         public Task CommitBenchRomEditPublic(string id) => CommitBenchRomEdit(id);
         public void CancelBenchRomEditPublic() { editingBenchRomId=null; editingBenchRomValue=string.Empty; StateHasChanged(); }
+
+
+
+        // Touch controller field exposure
+        public bool TouchControllerInitialized => touchControllerInitialized;
+        public void SetTouchControllerInitialized(bool value) { touchControllerInitialized = value; StateHasChanged(); }
 
         public Task RunBenchmarksAsync() => RunBenchmarks();
         public Task RunBenchmarks5xAsync() => RunBenchmarks5x();
@@ -63,26 +72,92 @@ namespace BrokenNes
         public void ToggleTargetVisibility(string target) => ToggleTarget(target);
         public Task PlayDiffAnimationAsync() => PlayDiffAnimation();
         public void CancelDiffAnimation() => CancelDiffAnim();
+        public void OnTimelineMouseLeave() => TimelineMouseLeave();
+        public void OnTimelineMouseMove(MouseEventArgs e) => TimelineMouseMove(e);
+        public string GetColorForTarget(string target) => ColorForTarget(target);
+
+        // Add setter methods for benchmark state that Nes.razor needs to modify
+        public void SetBenchModalOpen(bool value) { benchModalOpen = value; StateHasChanged(); }
+        public void SetBenchRunning(bool value) { benchRunning = value; StateHasChanged(); }
+        public void SetBenchResultsText(string value) { benchResultsText = value; StateHasChanged(); }
+        public void SetCurrentBenchHistoryId(string? value) { currentBenchHistoryId = value; StateHasChanged(); }
+        public void SetCompareModalOpen(bool value) { compareModalOpen = value; StateHasChanged(); }
+        
+        // Helper method to create a bench history entry from the outside
+        public void AddBenchHistoryEntry(string rom, string display)
+        {
+            if (nes == null) return;
+            var entry = new BenchHistoryEntry {
+                TimestampUtc = DateTime.UtcNow,
+                Rom = rom,
+                CpuCore = nes.GetCpuCoreId(),
+                PpuCore = nes.GetPpuCoreId(),
+                ApuCore = nes.GetApuCoreId(),
+                Display = display
+            };
+            benchHistory.Insert(0, entry);
+            currentBenchHistoryId = entry.Id;
+            StateHasChanged();
+        }
+        
+        public void ClearBenchHistoryItems() { benchHistory.Clear(); currentBenchHistoryId = null; StateHasChanged(); }
+        public void RemoveBenchHistoryItem(string id) { benchHistory.RemoveAll(e => e.Id == id); if (currentBenchHistoryId == id) currentBenchHistoryId = benchHistory.FirstOrDefault()?.Id; StateHasChanged(); }
+        public void SetBenchHistoryItems(List<BrokenNes.Models.BenchHistoryEntry> items) 
+        { 
+            benchHistory.Clear(); 
+            benchHistory.AddRange(items.Select(item => new BenchHistoryEntry 
+            {
+                Id = item.Id,
+                TimestampUtc = item.TimestampUtc,
+                Rom = item.Rom,
+                CpuCore = item.CpuCore,
+                PpuCore = item.PpuCore,
+                ApuCore = item.ApuCore,
+                Display = item.Display
+            })); 
+            StateHasChanged(); 
+        }
+        public void BuildComparisonDatasetsPublic() => BuildComparisonDatasets();
 
         public bool GhHasSelectedBase => corruptor.GhHasSelectedBase;
         public Task GhCorruptAndStashAsync() => GhCorruptAndStash();
         public Task GhReplayEntryAsync(HarvestEntry e, bool fromStockpile) => GhReplayEntry(e, fromStockpile);
         public Task GhExportStockpileAsync() => GhExportStockpile();
-        public Task GhImportStockpileAsync(ChangeEventArgs e) => GhImportStockpile(e);
         public void GhAddBase() => GhAddBaseState();
         public void GhOnBaseChangedPublic(ChangeEventArgs e) => GhOnBaseChanged(e);
         public void GhLoadSelected() => GhLoadSelectedBase();
         public void GhDeleteSelected() => GhDeleteSelectedBase();
         public void GhClearStashPublic() => GhClearStash();
         public void GhPromote(HarvestEntry e) => GhPromoteEntry(e);
-        public void GhDeleteStashPublic(string id) => GhDeleteStash(id);
-        public void GhDeleteStockPublic(string id) => GhDeleteStock(id);
-        public void GhBeginRenamePublic(HarvestEntry e) => GhBeginRename(e);
-        public void GhCancelRenamePublic() => GhCancelRename();
-        public void GhRenameChangePublic(ChangeEventArgs e) => GhRenameChange(e);
-        public void GhCommitRenamePublic(string id) => GhCommitRename(id);
-        public bool GhIsRenamingPublic(string id) => GhIsRenaming(id);
-        public string GhFindBaseNamePublic(string id) => GhFindBaseName(id);
+
+        // Expose missing GH methods from GlitchHarvester.cs
+        public string GhFindBaseName(string id) => corruptor.GhBaseStates.FirstOrDefault(b => b.Id == id)?.Name ?? "?";
+        public void GhDeleteStash(string id) { corruptor.GhDeleteStash(id); }
+        public void GhDeleteStock(string id) { corruptor.GhDeleteStock(id); }
+        public bool GhIsRenaming(string id) => corruptor.GhRenamingId == id;
+        public void GhBeginRename(HarvestEntry e) { corruptor.GhBeginRename(e); }
+        public void GhCancelRename() { corruptor.GhCancelRename(); }
+        public void GhRenameChange(ChangeEventArgs e) { if (e.Value is string v) corruptor.GhRenameText = v; }
+        public void GhCommitRename(string id) { corruptor.GhCommitRename(id); }
+        public async Task GhImportStockpile(ChangeEventArgs e)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval", $"(async ()=>{{ const f = event.target.files?.[0]; if (!f) return; const t = await f.text(); window.ghStockpileData = t; }})()");
+                var json = await JS.InvokeAsync<string>("eval", "window.ghStockpileData || ''");
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    var imported = System.Text.Json.JsonSerializer.Deserialize<List<CorruptorModels.HarvestEntry>>(json);
+                    if (imported != null)
+                    {
+                        foreach (var entry in imported) corruptor.GhStockpile.Add(entry);
+                        Status.Set($"Imported {imported.Count} stockpile entries");
+                    }
+                }
+            }
+            catch (Exception ex) { Status.Set($"Import failed: {ex.Message}"); }
+            StateHasChanged();
+        }
 
         public bool AutoCorrupt => corruptor.AutoCorrupt;
         public int CorruptIntensity { get => corruptor.CorruptIntensity; set => corruptor.CorruptIntensity = Math.Clamp(value,1,65535); }

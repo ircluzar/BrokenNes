@@ -57,6 +57,7 @@ namespace BrokenNes
         // Public surface to expose internal state if needed by UI after refactor
         public NesController Controller => nesController;
         public Corruptor Corruptor => corruptor;
+        public Emulator UI => this;
 
         // Consumer (Razor page) can assign to receive change notifications
         public Action? OnStateChanged { get; set; }
