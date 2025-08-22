@@ -192,6 +192,7 @@ namespace BrokenNes
 
     // --- ROM / Core / Shader public surface (new) ---
     public IEnumerable<RomOption> RomOptions => Controller.RomOptions;
+    public IEnumerable<RomOption> FilteredRomOptionsPublic => FilteredRomOptions;
     public string RomSearch { get => Controller.RomSearch; set { Controller.RomSearch = value; StateHasChanged(); } }
     public string ActiveShaderKey => Controller.ActiveShaderKey;
     public IEnumerable<ShaderOption> ShaderOptions => Controller.ShaderOptions;

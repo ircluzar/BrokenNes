@@ -17,10 +17,10 @@
 @inject NavigationManager Nav
 
 
-@if (!string.IsNullOrEmpty(nesController.ErrorMessage))
+@if (!string.IsNullOrEmpty(emu?.Controller.ErrorMessage))
 {
     <div class="alert alert-danger" role="alert">
-        <strong>⚠️ SYSTEM ERROR:</strong> @nesController.ErrorMessage
+        <strong>⚠️ SYSTEM ERROR:</strong> @emu!.Controller.ErrorMessage
     </div>
 }
 
@@ -30,56 +30,56 @@
     <section class="play-area">
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
-                <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(nesController.IsRunning || nesController.nes == null)" title="Start (Play)" aria-label="Start">
+                <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(emu!.Controller.IsRunning || emu!.Controller.nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
-                <button class="btn btn-warning ctrl-btn" @onclick="(()=>emu!.PauseAsync())" disabled="@(!nesController.IsRunning)" title="Pause" aria-label="Pause">
+                <button class="btn btn-warning ctrl-btn" @onclick="(()=>emu!.PauseAsync())" disabled="@(!emu!.Controller.IsRunning)" title="Pause" aria-label="Pause">
                     <svg viewBox="0 0 100 100" class="ctrl-ico pause" role="img" focusable="false"><rect x="24" y="18" width="20" height="64" rx="6" /><rect x="56" y="18" width="20" height="64" rx="6" /></svg>
                 </button>
-                <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(nesController.nes == null)" title="Reset" aria-label="Reset">
+                <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(emu!.Controller.nes == null)" title="Reset" aria-label="Reset">
                     <svg viewBox="0 0 100 100" class="ctrl-ico reset" role="img" focusable="false"><path d="M50 18a32 32 0 1 1-22.63 9.37" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 13 30 40 5 34" fill="currentColor" /></svg>
                 </button>
             </div>
             <div class="btn-group">
                 <div class="qc-select-stack">
                     <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
-                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="(e)=>emu!.SetShaderPublic(e.Value?.ToString()??string.Empty)" value="@nesController.ActiveShaderKey" aria-label="Video Shader">
-                        @foreach(var sh in nesController.ShaderOptions){
+                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="(e)=>emu!.SetShaderPublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ActiveShaderKey" aria-label="Video Shader">
+                        @foreach(var sh in emu!.Controller.ShaderOptions){
                             <option value="@sh.Key">@sh.Label</option>
                         }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="(e)=>emu!.SetApuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.ApuCoreSel" aria-label="Audio Core">
-                        @foreach(var opt in nesController.ApuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="(e)=>emu!.SetApuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ApuCoreSel" aria-label="Audio Core">
+                        @foreach(var opt in emu!.Controller.ApuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="(e)=>emu!.SetCpuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.CpuCoreSel" aria-label="CPU Core">
-                        @foreach(var opt in nesController.CpuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="(e)=>emu!.SetCpuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.CpuCoreSel" aria-label="CPU Core">
+                        @foreach(var opt in emu!.Controller.CpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
                 <div class="qc-select-stack">
                     <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="(e)=>emu!.SetPpuCorePublic(e.Value?.ToString()??string.Empty)" value="@nesController.PpuCoreSel" aria-label="PPU Core">
-                        @foreach(var opt in nesController.PpuCoreOptions){ <option value="@opt">@opt</option> }
+                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="(e)=>emu!.SetPpuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.PpuCoreSel" aria-label="PPU Core">
+                        @foreach(var opt in emu!.Controller.PpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
             </div>
             <div class="btn-group">
-                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(nesController.nes==null)" title="Load state">Load</button>
-                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(nesController.nes==null)" title="Save state">Save</button>
+                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Load state">Load</button>
+                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Save state">Save</button>
             </div>
         </div>
-    <div class="screen-shell @(nesController.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
+    <div class="screen-shell @(emu!.Controller.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
             <div class="overlay-status small">
                 <div class="badges d-flex flex-wrap">
-                    <span class="badge bg-dark-subtle text-dark me-1">FPS: @nesController.Fps.ToString("F1")</span>
-                    <span class="badge bg-dark-subtle text-dark me-1">State: @(nesController.IsRunning ? "Running" : "Paused")</span>
-                    <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@nesController.CurrentRomName</strong></span>
-                    <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(nesController.LastLoadedRomSize)</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">FPS: @emu!.Controller.Fps.ToString("F1")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">State: @(emu!.Controller.IsRunning ? "Running" : "Paused")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@emu!.Controller.CurrentRomName</strong></span>
+                    <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(emu!.Controller.LastLoadedRomSize)</span>
                     <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu?.ActiveSfCoreDisplay</span>
                     @if (emu?.SoundFontLayering == true)
                     {
@@ -87,8 +87,8 @@
                     }
                 </div>
                 <div class="overlay-actions">
-                    <button type="button" class="ov-btn @(nesController.EmuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>emu!.SetScalePublic(0.5))">½×</button>
-                    <button type="button" class="ov-btn @(nesController.EmuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>emu!.SetScalePublic(1))">1×</button>
+                    <button type="button" class="ov-btn @(emu!.Controller.EmuScale==0.5 ? "active" : string.Empty) desktop-only" title="Scale 50%" @onclick="(()=>emu!.SetScalePublic(0.5))">½×</button>
+                    <button type="button" class="ov-btn @(emu!.Controller.EmuScale==1 ? "active" : string.Empty) desktop-only" title="Scale 100%" @onclick="(()=>emu!.SetScalePublic(1))">1×</button>
                     <button type="button" class="ov-btn" title="Toggle Fullscreen" @onclick="(()=>emu!.ToggleFullscreenPublic())">⛶</button>
                 </div>
             </div>
@@ -137,26 +137,26 @@
                     <div class="mobile-view rtc-view small">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <strong class="small mb-0">Real-Time Corruptor</strong>
-                            <span class="text-muted small">@corruptor.LastBlastInfo</span>
+                            <span class="text-muted small">@emu!.Corruptor.LastBlastInfo</span>
                         </div>
                         <div class="row g-3 flex-wrap">
                             <div class="col-12">
                                 <label class="form-label small mb-1">Memory Domains</label>
-                                <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
-                                    @foreach (var d in corruptor.MemoryDomains)
+                                <select multiple size="5" class="form-select form-select-sm">
+                                    @foreach (var d in emu!.Corruptor.MemoryDomains)
                                     {
                                         <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
                                     }
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label mb-1 small">Intensity (@corruptor.CorruptIntensity)</label>
-                                <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
+                                <label class="form-label mb-1 small">Intensity (@emu!.Corruptor.CorruptIntensity)</label>
+                                <input type="range" min="1" max="4096" step="1" class="form-range" value="@emu!.Corruptor.CorruptIntensity" @oninput="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) emu!.Corruptor.CorruptIntensity = Math.Clamp(v,1,65535);}" />
                                 <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
-                                    <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nesController.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                                    <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@emu!.Corruptor.CorruptIntensity" @onchange="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) emu!.Corruptor.CorruptIntensity = Math.Clamp(v,1,65535);}" />
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(emu!.Controller.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
                                     <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
-                                    @if (!corruptor.LetItRipUsed)
+                                    @if (!emu!.Corruptor.LetItRipUsed)
                                     {
                                         <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="(()=>emu!.LetItRipPublic())" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                                     }
@@ -174,7 +174,7 @@
                                     </div>
                                     <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                                 </div>
-                                <div class="mt-2 small text-muted fst-italic">Last: @corruptor.LastBlastInfo</div>
+                                <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
                             </div>
                         </div>
                     </div>
@@ -186,14 +186,14 @@
                             <div class="d-flex flex-wrap gap-2 align-items-end">
                                 <div class="flex-grow-1" style="min-width:140px;">
                                     <label class="form-label mb-1 small">New Base Name</label>
-                                    <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
+                                    <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="emu!.Corruptor.GhNewBaseName" />
                                 </div>
-                                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nesController.nes==null)">Add Base</button>
+                                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(emu!.Controller.nes==null)">Add Base</button>
                             </div>
                             <div class="mt-2">
                                 <label class="form-label mb-1 small">Base States</label>
-                                <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@corruptor.GhSelectedBaseId">
-                                    @foreach (var b in corruptor.GhBaseStates)
+                                <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@emu!.Corruptor.GhSelectedBaseId">
+                                    @foreach (var b in emu!.Corruptor.GhBaseStates)
                                     {
                                         <option value="@b.Id">@b.Name</option>
                                     }
@@ -207,22 +207,22 @@
                         <div class="gh-section mb-3">
                             <label class="form-label mb-1 small">Actions (uses RTC settings)</label>
                             <div class="d-flex gap-2 flex-wrap">
-                                <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nesController.nes==null)">Corrupt &amp; Stash</button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
+                                <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || emu!.Controller.nes==null)">Corrupt &amp; Stash</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(emu!.Corruptor.GhStash.Count==0)">Clear Stash</button>
                             </div>
                         </div>
                         <div class="gh-section mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <strong class="small mb-0">Stash (@corruptor.GhStash.Count)</strong>
+                                <strong class="small mb-0">Stash (@emu!.Corruptor.GhStash.Count)</strong>
                             </div>
-                            @if (corruptor.GhStash.Count==0)
+                            @if (emu!.Corruptor.GhStash.Count==0)
                             {
                                 <div class="text-muted small fst-italic">(empty)</div>
                             }
                             else
                             {
                                 <div class="gh-list">
-                                    @foreach (var e in corruptor.GhStash.OrderByDescending(e=>e.Created).Take(20))
+                                    @foreach (var e in emu!.Corruptor.GhStash.OrderByDescending(e=>e.Created).Take(20))
                                     {
                                         <div class="gh-item">
                                             <div class="gh-item-main">
@@ -241,22 +241,22 @@
                         </div>
                         <div class="gh-section">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <strong class="small mb-0">Stockpile (@corruptor.GhStockpile.Count)</strong>
+                                <strong class="small mb-0">Stockpile (@emu!.Corruptor.GhStockpile.Count)</strong>
                             </div>
-                            @if (corruptor.GhStockpile.Count==0)
+                            @if (emu!.Corruptor.GhStockpile.Count==0)
                             {
                                 <div class="text-muted small fst-italic">(empty)</div>
                             }
                             else
                             {
                                 <div class="gh-list">
-                                    @foreach (var e in corruptor.GhStockpile.OrderByDescending(e=>e.Created).Take(20))
+                                    @foreach (var e in emu!.Corruptor.GhStockpile.OrderByDescending(e=>e.Created).Take(20))
                                     {
                                         <div class="gh-item">
                                             <div class="gh-item-main">
                                                 @if (emu!.GhIsRenaming(e.Id))
                                                 {
-                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
+                                                    <input class="form-control form-control-sm" style="min-width:120px" value="@emu!.Corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
                                                 }
                                                 else
                                                 {
@@ -294,7 +294,7 @@
             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                 <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @bind="emu!.RomSearch" @bind:event="oninput" />
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="ReloadCurrentRom" disabled="@(string.IsNullOrEmpty(nesController.CurrentRomName))">Reload</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu?.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
             </div>
             <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Drag .nes files onto this list to import.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
@@ -309,16 +309,16 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @if (!FilteredRomOptions.Any())
+                        @if (!emu!.FilteredRomOptionsPublic.Any())
                         {
                             <tr><td colspan="5" class="text-center text-muted small">No ROMs match filter.</td></tr>
                         }
                         else
                         {
-                            @foreach (var opt in FilteredRomOptions)
+                            @foreach (var opt in emu!.FilteredRomOptionsPublic)
                             {
-                                var isCurrent = opt.Key == nesController.CurrentRomName;
-                                var sizeDisplay = nesController.GetRomSizeDisplay(opt.Key);
+                                var isCurrent = opt.Key == emu!.Controller.CurrentRomName;
+                                var sizeDisplay = emu!.Controller.GetRomSizeDisplay(opt.Key);
                                 <tr class="@(isCurrent ? "table-primary" : "")" @onclick="(()=>emu!.OnRomRowClickedPublic(opt))">
                                     <td>@(isCurrent ? "▶" : "")</td>
                                     <td class="text-truncate" style="max-width:200px;" title="@opt.Key">@opt.Label</td>
@@ -332,9 +332,9 @@
                 </table>
             </div>
             <div class="mt-2 small d-flex flex-wrap gap-3 text-muted">
-                <div>Total: @FilteredRomOptions.Count() ROM(s)</div>
-                <div>Uploaded: @nesController.UploadedRoms.Count</div>
-                <div>Selected: @nesController.CurrentRomName</div>
+                <div>Total: @emu!.FilteredRomOptionsPublic.Count() ROM(s)</div>
+                <div>Uploaded: @emu!.Controller.UploadedRoms.Count</div>
+                <div>Selected: @emu!.Controller.CurrentRomName</div>
             </div>
             <input @ref="fileInput" id="rom-upload" type="file" accept=".nes" class="d-none" @onchange="(()=>emu!.ImportRomsFromInputAsync(fileInput))" multiple />
         </div>
@@ -346,15 +346,15 @@
             <div class="row g-3 flex-wrap">
                 <div class="col-12 col-sm-5">
                     <label class="form-label small mb-1">Memory Domains</label>
-                    <select multiple size="5" class="form-select form-select-sm" @onchange="DomainsChanged">
-                        @foreach (var d in corruptor.MemoryDomains)
+                    <select multiple size="5" class="form-select form-select-sm">
+                        @foreach (var d in emu!.Corruptor.MemoryDomains)
                         {
                             <option value="@d.Key" selected="@d.Selected">@d.Label (@d.Size)</option>
                         }
                     </select>
                     <div class="mt-2 small text-secondary">
                         Crash Mode:
-                        <select class="form-select form-select-sm mt-1" @onchange="OnCrashBehaviorChanged" value="@corruptor.CrashBehavior">
+                        <select class="form-select form-select-sm mt-1" @onchange="(e)=>emu!.SetCrashBehavior(e.Value?.ToString()??string.Empty)" value="@emu!.Corruptor.CrashBehavior">
                             <option value="RedScreen">Red Screen</option>
                             <option value="IgnoreErrors">Ignore Errors</option>
                         </select>
@@ -363,14 +363,14 @@
                 <div class="col-12 col-sm-7">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                         <label class="form-label mb-0 small">Intensity</label>
-                        <code class="small">@corruptor.CorruptIntensity</code>
+                        <code class="small">@emu!.Corruptor.CorruptIntensity</code>
                     </div>
-                    <input type="range" min="1" max="4096" step="1" class="form-range" value="@corruptor.CorruptIntensity" @oninput="OnIntensityChange" />
+                    <input type="range" min="1" max="4096" step="1" class="form-range" value="@emu!.Corruptor.CorruptIntensity" @oninput="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) emu!.Corruptor.CorruptIntensity = Math.Clamp(v,1,65535);}" />
                     <div class="d-flex gap-2 align-items-center mb-2 flex-wrap">
-                        <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@corruptor.CorruptIntensity" @onchange="OnIntensityBoxChange" />
-                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(nesController.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
+                        <input type="number" min="1" max="4096" class="form-control form-control-sm intensity-box" value="@emu!.Corruptor.CorruptIntensity" @onchange="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) emu!.Corruptor.CorruptIntensity = Math.Clamp(v,1,65535);}" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="(()=>emu!.BlastAsync())" disabled="@(emu!.Controller.nes==null || emu!.AutoCorrupt)" title="Apply one-time corruption now">Blast</button>
                         <button class="btn btn-sm @(emu!.AutoCorrupt ? "btn-success" : "btn-outline-success")" @onclick="(()=>emu!.ToggleAutoCorrupt())" title="Toggle auto-corruption each frame">Auto: @(emu!.AutoCorrupt ? "ON" : "OFF")</button>
-                        @if (!corruptor.LetItRipUsed)
+                        @if (!emu!.Corruptor.LetItRipUsed)
                         {
                             <button class="btn btn-sm" style="background-color:#6f42c1;color:#fff;border-color:#6f42c1" @onclick="(()=>emu!.LetItRipPublic())" title="Intensity=1; select PRG ROM + System RAM; enable auto-corrupt; then hide button">Let it rip</button>
                         }
@@ -388,7 +388,7 @@
                         </div>
                         <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                     </div>
-                    <div class="mt-2 small text-muted fst-italic">Last: @corruptor.LastBlastInfo</div>
+                    <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
                 </div>
             </div>
         </div>
@@ -401,14 +401,14 @@
                 <div class="d-flex flex-wrap gap-2 align-items-end">
                     <div class="flex-grow-1" style="min-width:140px;">
                         <label class="form-label mb-1 small">New Base Name</label>
-                        <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="corruptor.GhNewBaseName" />
+                        <input class="form-control form-control-sm" placeholder="e.g. TitleScreen" @bind="emu!.Corruptor.GhNewBaseName" />
                     </div>
-                    <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(nesController.nes==null)">Add Base</button>
+                    <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.GhAddBase())" disabled="@(emu!.Controller.nes==null)">Add Base</button>
                 </div>
                 <div class="mt-2">
                     <label class="form-label mb-1 small">Base States</label>
-                    <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@corruptor.GhSelectedBaseId">
-                        @foreach (var b in corruptor.GhBaseStates)
+                    <select class="form-select form-select-sm" size="4" @onchange="(e)=>emu!.GhOnBaseChangedPublic(e)" value="@emu!.Corruptor.GhSelectedBaseId">
+                        @foreach (var b in emu!.Corruptor.GhBaseStates)
                         {
                             <option value="@b.Id">@b.Name</option>
                         }
@@ -422,22 +422,22 @@
             <div class="gh-section mb-3">
                 <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || nesController.nes==null)">Corrupt &amp; Stash</button>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(corruptor.GhStash.Count==0)">Clear Stash</button>
+                    <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || emu!.Controller.nes==null)">Corrupt &amp; Stash</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(emu!.Corruptor.GhStash.Count==0)">Clear Stash</button>
                 </div>
             </div>
             <div class="gh-section mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <strong class="small mb-0">Stash History (@corruptor.GhStash.Count)</strong>
+                    <strong class="small mb-0">Stash History (@emu!.Corruptor.GhStash.Count)</strong>
                 </div>
-                @if (corruptor.GhStash.Count==0)
+                @if (emu!.Corruptor.GhStash.Count==0)
                 {
                     <div class="text-muted small fst-italic">(empty)</div>
                 }
                 else
                 {
                     <div class="gh-list">
-                        @foreach (var e in corruptor.GhStash.OrderByDescending(e=>e.Created).Take(25))
+                        @foreach (var e in emu!.Corruptor.GhStash.OrderByDescending(e=>e.Created).Take(25))
                         {
                             <div class="gh-item">
                                 <div class="gh-item-main">
@@ -456,28 +456,28 @@
             </div>
             <div class="gh-section">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <strong class="small mb-0">Stockpile (@corruptor.GhStockpile.Count)</strong>
+                    <strong class="small mb-0">Stockpile (@emu!.Corruptor.GhStockpile.Count)</strong>
                     <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhExportStockpileAsync())" disabled="@(corruptor.GhStockpile.Count==0)">Export</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhExportStockpileAsync())" disabled="@(emu!.Corruptor.GhStockpile.Count==0)">Export</button>
                         <label class="btn btn-sm btn-outline-secondary mb-0">
                             Import<input type="file" class="d-none" accept="application/json" @onchange="emu!.GhImportStockpile" />
                         </label>
                     </div>
                 </div>
-                @if (corruptor.GhStockpile.Count==0)
+                @if (emu!.Corruptor.GhStockpile.Count==0)
                 {
                     <div class="text-muted small fst-italic">(empty)</div>
                 }
                 else
                 {
                     <div class="gh-list">
-                        @foreach (var e in corruptor.GhStockpile.OrderByDescending(e=>e.Created))
+                        @foreach (var e in emu!.Corruptor.GhStockpile.OrderByDescending(e=>e.Created))
                         {
                             <div class="gh-item">
                                 <div class="gh-item-main">
                                     @if (emu!.GhIsRenaming(e.Id))
                                     {
-                                        <input class="form-control form-control-sm" style="min-width:120px" value="@corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
+                                        <input class="form-control form-control-sm" style="min-width:120px" value="@emu!.Corruptor.GhRenameText" @onchange="emu!.GhRenameChange" />
                                     }
                                     else
                                     {
@@ -520,18 +520,18 @@
         <details class="panel-block">
         <summary>Debug</summary>
         <div class="panel-content debug-mini">
-            <div>Frames: @nesController.FrameCount</div>
-            <div>ROM Loaded: @(nesController.nes != null ? "Yes" : "No")</div>
-            <div><button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.DumpStateAsyncPublic())" disabled="@(nesController.nes==null)">Dump State</button></div>
+            <div>Frames: @emu!.Controller.FrameCount</div>
+            <div>ROM Loaded: @(emu!.Controller.nes != null ? "Yes" : "No")</div>
+            <div><button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.DumpStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)">Dump State</button></div>
             <div class="mt-2">
-                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(nesController.nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(emu!.Controller.nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="(()=>emu!.OpenComparison())" disabled="@(emu!.BenchHistory.Count()<2)">Compare Results</button>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(nesController.nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(emu!.Controller.nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(nesController.nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(emu!.Controller.nes==null)" />
                     <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
                 </div>
                 @if (emu?.SoundFontMode == true)
@@ -580,8 +580,8 @@
                                 }
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarks5xAsync())" disabled="@(nesController.nes==null || emu!.BenchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(emu!.BenchRunning?"Running...":"Run 5×")</button>
-                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarksAsync())" disabled="@(nesController.nes==null || emu!.BenchRunning)">@(emu!.BenchRunning?"Running...":$"Run {emu!.BenchWeight}x")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarks5xAsync())" disabled="@(emu!.Controller.nes==null || emu!.BenchRunning)" title="Run 5 benchmark passes (reloads baseline each)" aria-label="Run five benchmark passes">@(emu!.BenchRunning?"Running...":"Run 5×")</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.RunBenchmarksAsync())" disabled="@(emu!.Controller.nes==null || emu!.BenchRunning)">@(emu!.BenchRunning?"Running...":$"Run {emu!.BenchWeight}x")</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseBenchmarks())" aria-label="Close">Close</button>
                             </div>
                         </div>
@@ -855,6 +855,8 @@
 
 @code {
     private Emulator? emu;
+    private ElementReference fileInput;
+
     protected override void OnInitialized()
     {
         if (emu == null)
@@ -866,9 +868,6 @@
             emu.Initialize();
         }
     }
-    private NesController nesController => emu!.Controller;
-    private Corruptor corruptor => emu!.Corruptor;
-
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -881,60 +880,6 @@
         }
     }
 
-    private List<RomOption> romOptions => nesController.RomOptions;
-    private Dictionary<string, byte[]> uploadedRoms => nesController.UploadedRoms;
-    private ElementReference fileInput;
-    private bool IsBuiltInSelected => romOptions.FirstOrDefault(o => o.Key == nesController.RomFileName)?.BuiltIn ?? true;
-    private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
-        ? romOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
-        : romOptions.Where(o=>o.Label.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label);
-
-    private Task LoadSelectedRom() => emu?.LoadSelectedRomPublic() ?? Task.CompletedTask;
-    private Task ReloadCurrentRom() => emu?.ReloadCurrentRomPublic() ?? Task.CompletedTask;
-    private Task DeleteCurrentRom()
-    { 
-        if (IsBuiltInSelected) return Task.CompletedTask; 
-        return emu?.DeleteRomPublic(nesController.RomFileName) ?? Task.CompletedTask; 
-    }
-
-
-
-    private Task OnRawFileSelected(ChangeEventArgs e)
-    {
-        try
-        {
-            if (e.Value is not null)
-            {
-                // Not directly accessible to read file bytes without InputFile component.
-                // Provide status message placeholder.
-                Status.Set("File input selected (reload using server loader for now).");
-            }
-        }
-        catch (Exception ex)
-        {
-            nesController.ErrorMessage = ex.Message;
-        }
-        return Task.CompletedTask;
-    }
-
-    private void OnCrashBehaviorChanged(ChangeEventArgs e)
-    {
-        if (e.Value is string v)
-        {
-            emu.SetCrashBehavior(v);
-        }
-    }
-
-    private void DomainsChanged(ChangeEventArgs e)
-    {
-    }
-    private void OnIntensityChange(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) corruptor.CorruptIntensity = Math.Clamp(v,1,65535); }
-    private void OnIntensityBoxChange(ChangeEventArgs e) { OnIntensityChange(e); }
-
-
-
-
     public void Dispose()
     {
         try
@@ -946,6 +891,5 @@
             Logger.LogError(ex, "Error disposing NES emulator");
         }
     }
-
 }
 
