@@ -17,7 +17,7 @@
 @inject NavigationManager Nav
 
 
-@if (!string.IsNullOrEmpty(emu?.Controller.ErrorMessage))
+@if (!string.IsNullOrEmpty(emu!.Controller.ErrorMessage))
 {
     <div class="alert alert-danger" role="alert">
         <strong>⚠️ SYSTEM ERROR:</strong> @emu!.Controller.ErrorMessage
@@ -80,8 +80,8 @@
                     <span class="badge bg-dark-subtle text-dark me-1">State: @(emu!.Controller.IsRunning ? "Running" : "Paused")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@emu!.Controller.CurrentRomName</strong></span>
                     <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(emu!.Controller.LastLoadedRomSize)</span>
-                    <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu?.ActiveSfCoreDisplay</span>
-                    @if (emu?.SoundFontLayering == true)
+                    <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu!.ActiveSfCoreDisplay</span>
+                    @if (emu!.SoundFontLayering == true)
                     {
                         <span class="badge bg-warning text-dark ms-1" title="Layering enabled: both cores may receive note events">Layering</span>
                     }
@@ -294,7 +294,7 @@
             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                 <input id="rom-search" type="text" class="form-control form-control-sm" placeholder="Search ROMs..." style="max-width:180px" @bind="emu!.RomSearch" @bind:event="oninput" />
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu?.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
             </div>
             <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Drag .nes files onto this list to import.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
@@ -531,30 +531,30 @@
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>
                 <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu?.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontModePublic();}" checked="@emu?.SoundFontMode" disabled="@(emu!.Controller.nes==null)" />
+                    <input class="form-check-input" type="checkbox" id="sfToggle" @onchange="(e)=>{if(emu!.SoundFontMode != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu!.ToggleSoundFontModePublic();}" checked="@emu!.SoundFontMode" disabled="@(emu!.Controller.nes==null)" />
                     <label class="form-check-label" for="sfToggle" title="Play APU via WebAudio SoundFont/oscillators instead of raw PCM">SoundFont Mode</label>
                 </div>
-                @if (emu?.SoundFontMode == true)
+                @if (emu!.SoundFontMode == true)
                 {
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="(e)=>{if(emu?.SampleFont != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSampleFontPublic();}" checked="@emu?.SampleFont" />
+                        <input class="form-check-input" type="checkbox" id="sfSampleToggle" @onchange="(e)=>{if(emu!.SampleFont != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu!.ToggleSampleFontPublic();}" checked="@emu!.SampleFont" />
                         <label class="form-check-label" for="sfSampleToggle" title="Use external sampled SoundFont library (falls back to oscillators if unavailable)">Sampled Instruments</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="(e)=>{if(emu?.SoundFontLayering != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSoundFontLayeringPublic();}" checked="@emu?.SoundFontLayering" />
+                        <input class="form-check-input" type="checkbox" id="sfLayerToggle" @onchange="async (e)=>{ if(emu!.SoundFontLayering != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) await emu!.ToggleSoundFontLayeringPublic(); }" checked="@emu!.SoundFontLayering" />
                         <label class="form-check-label" for="sfLayerToggle" title="Experimental: allow both MNES & WF SoundFont cores to process notes simultaneously (debug/compare)">Layering</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="(e)=>{if(emu?.SfDevLogging != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSfDevLoggingPublic();}" checked="@emu?.SfDevLogging" />
+                        <input class="form-check-input" type="checkbox" id="sfDevLogToggle" @onchange="(e)=>{if(emu!.SfDevLogging != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu!.ToggleSfDevLoggingPublic();}" checked="@emu!.SfDevLogging" />
                         <label class="form-check-label" for="sfDevLogToggle" title="Verbose console logs for SoundFont core routing & throttling">SF Dev Logging</label>
                     </div>
                     <div class="form-check form-switch mt-2 small">
-                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="(e)=>{if(emu?.SfOverlay != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu?.ToggleSfOverlayPublic();}" checked="@emu?.SfOverlay" />
+                        <input class="form-check-input" type="checkbox" id="sfOverlayToggle" @onchange="(e)=>{if(emu!.SfOverlay != (e.Value is bool b && b || (e.Value is string sv && bool.TryParse(sv,out var p) && p))) emu!.ToggleSfOverlayPublic();}" checked="@emu!.SfOverlay" />
                         <label class="form-check-label" for="sfOverlayToggle" title="Display on-screen SoundFont diagnostics overlay (lead ms, counters)">SF Overlay</label>
                     </div>
                     <div class="mt-2 d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-warning" @onclick="(()=>emu?.FlushSoundFontPublic())" title="Force immediate silence of inactive/active SoundFont synths">SF Flush</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu?.ShowSfDebugPublic())" title="Log SoundFont routing counters to console">SF Debug</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="(()=>emu!.FlushSoundFontPublic())" title="Force immediate silence of inactive/active SoundFont synths">SF Flush</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.ShowSfDebugPublic())" title="Log SoundFont routing counters to console">SF Debug</button>
                     </div>
                 }
             </div>
@@ -844,7 +844,7 @@
                     </div>
                 </div>
             }
-            @if (!string.IsNullOrEmpty(emu?.DebugDumpText))
+            @if (!string.IsNullOrEmpty(emu!.DebugDumpText))
             {
                 <div class="small text-monospace" style="white-space:pre-wrap;max-width:260px">@emu!.DebugDumpText</div>
             }

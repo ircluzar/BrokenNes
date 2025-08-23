@@ -54,7 +54,7 @@ namespace BrokenNes
                 try { _ = JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
                 BuildMemoryDomains();
-                nesController.framebuffer = nes.GetFrameBuffer();
+                nesController.framebuffer = nes!.GetFrameBuffer();
                 _ = JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                 Status.Set($"Loaded base '{b.Name}'");
             }
@@ -73,7 +73,7 @@ namespace BrokenNes
             if (baseState == null) return;
             try
             {
-                nes.LoadState(baseState.State);
+                nes!.LoadState(baseState.State);
                 nesController.AutoStaticSuppressed = true;
                 // Post-load sync to ensure cores/UI/audio are consistent before corruption writes
                 try
@@ -90,7 +90,7 @@ namespace BrokenNes
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
                 BuildMemoryDomains();
                 var writes = corruptor.GenerateBlastLayer(corruptor.CorruptIntensity);
-                corruptor.ApplyBlastLayer(writes, nes);
+                corruptor.ApplyBlastLayer(writes, nes!);
                 var entry = new HarvestEntry { Name = $"Stash {++corruptor.GhStashCounter}", BaseStateId = baseState.Id, Writes = writes };
                 corruptor.GhStash.Add(entry);
                 Status.Set($"Stashed {writes.Count} writes based on '{baseState.Name}'");
@@ -107,7 +107,7 @@ namespace BrokenNes
             if (baseState == null) return;
             try
             {
-                nes.LoadState(baseState.State);
+                nes!.LoadState(baseState.State);
                 nesController.AutoStaticSuppressed = true;
                 // Post-load sync to mirror top-level LoadState before applying writes
                 try
@@ -123,8 +123,8 @@ namespace BrokenNes
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
                 BuildMemoryDomains();
-                corruptor.ApplyBlastLayer(e.Writes, nes);
-                nesController.framebuffer = nes.GetFrameBuffer();
+                corruptor.ApplyBlastLayer(e.Writes, nes!);
+                nesController.framebuffer = nes!.GetFrameBuffer();
                 await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                 Status.Set($"Replayed {(fromStockpile ? "stockpile" : "stash")} '{e.Name}'");
             }

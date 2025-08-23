@@ -19,7 +19,7 @@ namespace NesEmulator
 		// Fields are persisted for savestates (see NesState.extraCycleAcc / overshootCarry for new integers).
 		private int extraCycleAccumulator = 0; // 0..ExtraCyclesDenominator-1 scaled accumulator
 		private int overshootCarry = 0; // cycles executed beyond prior frame's target, subtract from next target
-		private double cycleRemainder = 0; // field kept for backward-compat load of states
+	// cycleRemainder field removed (backward-compat handled via saved state mapping only)
 		private const double CpuFrequency = 1789773.0; // NTSC CPU frequency (double kept for benchmarks)
 		private const int CpuFrequencyInt = 1789773; // integer form for fixed-point arithmetic
 		private const int TargetFpsInt = 60;
@@ -434,7 +434,7 @@ namespace NesEmulator
 				if (nextPpuEventCycle <= globalCpuCycle) ScheduleNextPpuScanline();
 				if (nextApuEventCycle <= globalCpuCycle) ScheduleNextApuEvent();
 				// Disable inline interrupt polling to rely on boundary servicing
-				try { (bus.cpu as CPU_LOW)!.InlineInterruptChecks = false; } catch {}
+				try { (bus!.cpu as CPU_LOW)!.InlineInterruptChecks = false; } catch {}
 				try {
 					while (globalCpuCycle < frameEndCycle)
 					{
@@ -447,14 +447,14 @@ namespace NesEmulator
 						// Execute instructions until we reach or exceed the next event boundary
 						while (batchCpu < remaining)
 						{
-							int cpuCycles = bus.cpu.ExecuteInstruction();
+							int cpuCycles = bus!.cpu.ExecuteInstruction();
 							batchCpu += cpuCycles;
 							executed += cpuCycles;
 							// Safety: prevent huge single batches if a very long instruction sequence occurs (unlikely)
 							if (batchCpu >= ConfigMaxEventLoopInstructionBurstCycles) break;
 						}
 						// Service pending interrupts at boundary (adds their cycles to batch before flush)
-						int irqCycles = (bus.cpu as CPU_LOW)!.ServicePendingInterrupts();
+							int irqCycles = (bus!.cpu as CPU_LOW)!.ServicePendingInterrupts();
 						if (irqCycles > 0) { batchCpu += irqCycles; executed += irqCycles; }
 						FlushBatch(batchCpu);
 						// Process PPU scanline event if reached
@@ -477,7 +477,7 @@ namespace NesEmulator
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
 						{
-							int cpuCycles = bus.cpu.ExecuteInstruction();
+							int cpuCycles = bus!.cpu!.ExecuteInstruction();
 							executed += cpuCycles;
 							batchCpu += cpuCycles;
 							adaptiveAccumulator += cpuCycles;
@@ -488,7 +488,7 @@ namespace NesEmulator
 								if (bus.SpeedConfig.CpuAdaptiveBatching)
 								{
 									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
-									int target = bus.SpeedConfig.CpuAdaptiveBatchTargetCycles;
+									int target = bus!.SpeedConfig.CpuAdaptiveBatchTargetCycles;
 									if (adaptiveAccumulator > 0)
 									{
 										if (adaptiveAccumulator > target + 4 && dynamicThreshold > bus.SpeedConfig.CpuAdaptiveBatchMinCycles) dynamicThreshold -= 2;
@@ -511,7 +511,7 @@ namespace NesEmulator
 			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
-			if (!crashed) bus.ppu.UpdateFrameBuffer();
+			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
 		}
 
 		// --- Batch scheduler configuration ---
@@ -555,22 +555,22 @@ namespace NesEmulator
 		private void FlushBatch(int cpuCycles)
 		{
 			// Advance subsystems for accumulated cycles; incorporate any pending stall cycles (e.g., fast OAM DMA) as pure CPU delay.
-			int stall = bus.ConsumePendingCpuStallCycles();
+			int stall = bus!.ConsumePendingCpuStallCycles();
 			int total = cpuCycles + stall;
-			bus.ppu.Step(total * 3);
-			bus.StepAPU(total);
-			bus.CountBatchFlush();
+			bus!.ppu!.Step(total * 3);
+			bus!.StepAPU(total);
+			bus!.CountBatchFlush();
 			globalCpuCycle += total;
 		}
 		private void HandleCpuCrash(CPU_FMC.CpuCrashException ex)
 		{
 			if (crashBehavior == CrashBehavior.IgnoreErrors)
 			{
-				try { bus.cpu.AddToPC(1); } catch {}
+				try { bus!.cpu!.AddToPC(1); } catch {}
 				return;
 			}
 			crashed = true;
-			var regsCrash = bus.cpu.GetRegisters();
+			var regsCrash = bus!.cpu!.GetRegisters();
 			crashInfo = ex.Message + " PC=" + regsCrash.PC.ToString("X4");
 			RenderCrashScreen();
 		}
@@ -595,11 +595,11 @@ namespace NesEmulator
 			// Helper local function
 			BenchResult Run(string name, System.Action body, int iters)
 			{
-				bus.ResetInstrumentation();
+				bus!.ResetInstrumentation();
 				var sw = System.Diagnostics.Stopwatch.StartNew();
 				for (int i=0;i<iters;i++) body();
 				sw.Stop();
-				var instr = bus.GetInstrumentation();
+				var instr = bus!.GetInstrumentation();
 				return new BenchResult(name, iters, sw.Elapsed.TotalMilliseconds, sw.Elapsed.TotalMilliseconds/iters, instr.Reads, instr.Writes, instr.ApuSteps, instr.OamDmaWrites, instr.BatchFlushes);
 			}
 			try {
@@ -607,16 +607,16 @@ namespace NesEmulator
 				int frameIters = 120 * weight;
 				list.Add( Run($"Frame({frameIters})", () => RunFrame(), frameIters) );
 				// 2. CPU instruction burst (simulate by executing slices until ~target instructions)
-				if (bus?.cpu != null)
+		    if (bus?.cpu != null)
 				{
 					int targetInstr = 10_000 * weight;
 					list.Add( Run($"Instr({targetInstr/1000}k)", () => {
-						int executed=0; while (executed < targetInstr) { int cyc = bus.cpu.ExecuteInstruction(); executed += cyc; bus.ppu.Step(cyc*3); bus.StepAPU(cyc); }
+			    int executed=0; while (executed < targetInstr) { int cyc = bus!.cpu!.ExecuteInstruction(); executed += cyc; bus!.ppu!.Step(cyc*3); bus!.StepAPU(cyc); }
 					}, 10)); // keep iterations constant for stable averaging
 				}
 				// 3. Audio pacing: approximate N seconds (weight seconds)
 				list.Add( Run($"Audio({weight}s est)", () => {
-					long targetCycles=(long)CpuFrequency * weight; long done=0; while(done<targetCycles){ int c=bus.cpu.ExecuteInstruction(); done+=c; bus.ppu.Step(c*3); bus.StepAPU(c);} }, 1));
+					long targetCycles=(long)CpuFrequency * weight; long done=0; while(done<targetCycles){ int c=bus!.cpu!.ExecuteInstruction(); done+=c; bus!.ppu!.Step(c*3); bus!.StepAPU(c);} }, 1));
 			}
 			catch { }
 			return list;
@@ -640,7 +640,7 @@ namespace NesEmulator
 				bus.ppu.GenerateStaticFrame();
 				return bus.ppu.GetFrameBuffer();
 			}
-			if (bus?.ppu != null) return bus.ppu.GetFrameBuffer();
+			if (bus?.ppu != null) return bus.ppu!.GetFrameBuffer();
 			return new byte[256 * 240 * 4];
 		}
 

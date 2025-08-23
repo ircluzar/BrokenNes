@@ -133,7 +133,7 @@ public class PPU_SPD : IPPU
 		scanline = 0;
 		
 		// Defer framebuffer allocation and any test pattern generation until first use
-		lastMirroringMode = bus.cartridge.mirroringMode;
+		lastMirroringMode = bus!.cartridge!.mirroringMode;
 		RebuildNtMirror(lastMirroringMode);
 	}
 
@@ -158,13 +158,13 @@ public class PPU_SPD : IPPU
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
-				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
+				if ((PPUMASK & 0x18) != 0 && bus!.cartridge!.mapper is Mapper4)
 				{
-					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
+					Mapper4 mmc3 = (Mapper4)bus!.cartridge!.mapper;
 					mmc3.RunScanlineIRQ();
 					if (mmc3.IRQPending())
 					{
-						bus.cpu.RequestIRQ(true);
+						bus!.cpu!.RequestIRQ(true);
 						mmc3.ClearIRQ();
 					}
 				}
@@ -194,7 +194,7 @@ public class PPU_SPD : IPPU
 					PPUSTATUS |= 0x80;
 					if ((PPUCTRL & 0x80) != 0)
 					{
-						bus.cpu.RequestNMI();
+						bus!.cpu!.RequestNMI();
 					}
 				}
 
@@ -327,24 +327,24 @@ public class PPU_SPD : IPPU
 		int scanlineBaseAll = scanline * ScreenWidth * 4;
 
 		ushort renderV = v;
-		var cfg = bus.SpeedConfig; // snapshot
+		var cfg = bus!.SpeedConfig; // snapshot
 		bool usePatternCache = cfg?.PpuPatternCache == true;
 		bool useBatch = cfg?.PpuTileBatching == true;
 		bool skipBlank = cfg?.PpuSkipBlankScanlines == true;
-		if (usePatternCache && bus?.cartridge?.mapper != null)
+		if (usePatternCache && bus!.cartridge!.mapper != null)
 		{
-			uint sig = bus.cartridge.mapper.GetChrBankSignature();
+			uint sig = bus!.cartridge!.mapper.GetChrBankSignature();
 			if (sig != lastChrSignature)
 			{
 				System.Array.Clear(patternRowValid, 0, patternRowValid.Length);
-				if (bus?.SpeedConfig?.PpuSpritePatternCache == true)
+				if (bus!.SpeedConfig?.PpuSpritePatternCache == true)
 					System.Array.Clear(spritePatternRowValid, 0, spritePatternRowValid.Length);
 				lastChrSignature = sig;
 			}
 		}
 
 		// Rebuild nametable mirroring map if mapper changed mirroring mid-frame
-		var curMode = bus.cartridge.mirroringMode;
+		var curMode = bus!.cartridge!.mirroringMode;
 		if (curMode != lastMirroringMode) { RebuildNtMirror(curMode); lastMirroringMode = curMode; }
 
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
@@ -379,8 +379,8 @@ public class PPU_SPD : IPPU
 					if (!patternRowValid[rowIndex])
 					{
 						int patternAddr = patternTable + (tileIndex * 16) + fineY;
-						byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-						byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+						byte plane0 = bus!.cartridge!.PPURead((ushort)patternAddr);
+						byte plane1 = bus!.cartridge!.PPURead((ushort)(patternAddr + 8));
 						ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 						patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
 					}
@@ -389,8 +389,8 @@ public class PPU_SPD : IPPU
 				else
 				{
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
-					byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-					byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+					byte plane0 = bus!.cartridge!.PPURead((ushort)patternAddr);
+					byte plane1 = bus!.cartridge!.PPURead((ushort)(patternAddr + 8));
 					rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 				}
 				int attributeX = coarseX / 4;
@@ -414,7 +414,7 @@ public class PPU_SPD : IPPU
 				return; // nothing else to draw
 			}
 			// Second pass: render using packed 32-bit writes
-			bool usePalCache = bus?.SpeedConfig?.PpuPaletteCache == true;
+			bool usePalCache = bus!.SpeedConfig?.PpuPaletteCache == true;
 			Span<uint> lineU32Pass = MemoryMarshal.Cast<byte, uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
 			for (int tile = 0; tile < 33; tile++)
 			{
@@ -444,7 +444,7 @@ public class PPU_SPD : IPPU
 		{
 				// Single-pass path (with optional pattern cache)
 				ushort rv2 = v;
-				bool usePalCache2 = bus?.SpeedConfig?.PpuPaletteCache == true;
+				bool usePalCache2 = bus!.SpeedConfig?.PpuPaletteCache == true;
 				Span<uint> lineU32 = MemoryMarshal.Cast<byte, uint>(frameBuffer!.AsSpan(scanlineBaseAll, ScreenWidth * 4));
 				for (int tile = 0; tile < 33; tile++)
 				{
@@ -464,8 +464,8 @@ public class PPU_SPD : IPPU
 						int rowIndex = globalTile * 8 + fineY;
 						if (!patternRowValid[rowIndex])
 						{
-							byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-							byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+							byte plane0 = bus!.cartridge!.PPURead((ushort)patternAddr);
+							byte plane1 = bus!.cartridge!.PPURead((ushort)(patternAddr + 8));
 							ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 							patternRowCache[rowIndex] = bits; patternRowValid[rowIndex] = true; rowBits = bits;
 						}
@@ -473,8 +473,8 @@ public class PPU_SPD : IPPU
 					}
 					else
 					{
-							byte plane0 = bus.cartridge.PPURead((ushort)patternAddr);
-							byte plane1 = bus.cartridge.PPURead((ushort)(patternAddr + 8));
+								byte plane0 = bus!.cartridge!.PPURead((ushort)patternAddr);
+								byte plane1 = bus!.cartridge!.PPURead((ushort)(patternAddr + 8));
 							rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 					}
 					int paletteIndex = 0;
@@ -521,9 +521,9 @@ public class PPU_SPD : IPPU
 		EnsureFrameBuffer();
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
-		var cfg = bus.SpeedConfig;
+		var cfg = bus!.SpeedConfig;
 		bool eval = cfg?.PpuSpriteLineEvaluation != false;
-		bool usePatternCache = cfg?.PpuSpritePatternCache == true && bus?.cartridge?.mapper != null;
+		bool usePatternCache = cfg?.PpuSpritePatternCache == true && bus!.cartridge!.mapper != null;
 		bool fastSprite = cfg?.PpuSpriteFastPath == true;
 		bool palCache = cfg?.PpuPaletteCache == true;
 		int spritesToDraw = 64;
@@ -548,19 +548,19 @@ public class PPU_SPD : IPPU
 				int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 				int baseAddr = patternTable + subTileIndex * 16; ushort rowAddr = (ushort)(baseAddr + (subY % 8));
 				byte plane0, plane1; ulong rowBits = 0UL; int fineY = subY % 8;
-				if (usePatternCache)
+		    if (usePatternCache)
 				{
 					int globalTile = ((patternTable >> 12) & 1) * 256 + subTileIndex; int rowIndex = globalTile * 8 + fineY;
 					if (!spritePatternRowValid[rowIndex])
 					{
-						plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+			    plane0 = bus!.cartridge!.PPURead(rowAddr); plane1 = bus!.cartridge!.PPURead((ushort)(rowAddr + 8));
 						ulong bits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits = bits;
 					}
 					else rowBits = spritePatternRowCache[rowIndex];
 				}
 				else
 				{
-						plane0 = bus.cartridge.PPURead(rowAddr); plane1 = bus.cartridge.PPURead((ushort)(rowAddr + 8));
+			    plane0 = bus!.cartridge!.PPURead(rowAddr); plane1 = bus!.cartridge!.PPURead((ushort)(rowAddr + 8));
 						rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 				}
 				uint pal1=0, pal2=0, pal3=0; if (fastSprite){int basePal = 0x11 + (paletteIndex << 2); pal1 = FetchPaletteEntryPacked((byte)basePal); pal2 = FetchPaletteEntryPacked((byte)(basePal+1)); pal3 = FetchPaletteEntryPacked((byte)(basePal+2)); }
@@ -589,9 +589,9 @@ public class PPU_SPD : IPPU
 			if (usePatternCache)
 			{
 				int globalTile=((patternTable>>12)&1)*256+subTileIndex; int rowIndex=globalTile*8+fineY;
-				if(!spritePatternRowValid[rowIndex]){plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); ulong bits=PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex];
+				if(!spritePatternRowValid[rowIndex]){plane0=bus!.cartridge!.PPURead(rowAddr); plane1=bus!.cartridge!.PPURead((ushort)(rowAddr+8)); ulong bits=PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); spritePatternRowCache[rowIndex]=bits; spritePatternRowValid[rowIndex]=true; rowBits=bits;} else rowBits = spritePatternRowCache[rowIndex];
 			}
-			else { plane0=bus.cartridge.PPURead(rowAddr); plane1=bus.cartridge.PPURead((ushort)(rowAddr+8)); rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); }
+			else { plane0=bus!.cartridge!.PPURead(rowAddr); plane1=bus!.cartridge!.PPURead((ushort)(rowAddr+8)); rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1); }
 			uint pal1=0,pal2=0,pal3=0; if(fastSprite){int basePal=0x11 + (paletteIndex<<2); pal1=FetchPaletteEntryPacked((byte)basePal); pal2=FetchPaletteEntryPacked((byte)(basePal+1)); pal3=FetchPaletteEntryPacked((byte)(basePal+2)); }
 			Span<uint> legacyLineU32 = MemoryMarshal.Cast<byte,uint>(frameBuffer!.AsSpan(scanline * ScreenWidth * 4, ScreenWidth * 4));
 			for(int x=0;x<8;x++){int srcPixel = flipX ? (7 - x) : x; int color=(int)((rowBits>>(srcPixel*2)) & 0x3); if(color==0) continue; int px=spriteX+x; if((uint)px>=ScreenWidth) continue; if(i==0 && bgMask[px]) PPUSTATUS |= 0x40; if(spritePixelDrawnReuse[px]) continue; if(!priority && bgMask[px]) continue; uint packed; if(fastSprite){packed = color switch {1=>pal1,2=>pal2,3=>pal3,_=>pal1};} else {int palBase=0x11+(paletteIndex<<2); byte idx=paletteRAM[palBase + (color-1)]; packed=PaletteRGBA[idx & 0x3F];} legacyLineU32[px]=packed; spritePixelDrawnReuse[px]=true; }
@@ -783,7 +783,7 @@ public class PPU_SPD : IPPU
 	{
 		address = (ushort)(address & 0x3FFF);
 		if (address < 0x2000)
-			return bus.cartridge.PPURead(address);
+			return bus!.cartridge!.PPURead(address);
 		if (address < 0x3F00)
 			return vram[ntMirror[address & 0x0FFF]]; // nametable & mirrors
 		ushort mirrored = (ushort)(address & 0x1F);
@@ -796,7 +796,7 @@ public class PPU_SPD : IPPU
 		address = (ushort)(address & 0x3FFF);
 		if (address < 0x2000)
 		{
-			bus.cartridge.PPUWrite(address, value);
+			bus!.cartridge!.PPUWrite(address, value);
 			InvalidatePatternAddress(address); // CHR RAM invalidation
 			return;
 		}
@@ -843,7 +843,7 @@ public class PPU_SPD : IPPU
 
 	public void WriteOAMDMA(byte page)
 	{
-		bus.FastOamDma(page, oam, ref OAMADDR);
+		bus!.FastOamDma(page, oam, ref OAMADDR);
 	}
 
 	private void IncrementY()

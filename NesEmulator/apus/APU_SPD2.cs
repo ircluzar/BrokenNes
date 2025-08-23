@@ -507,8 +507,8 @@ namespace NesEmulator
         }
 
         // LUTs for nonlinear mixing (optional)
-        private static float[] PulseMixLut; // 31 entries
-        private static float[] TndMixLut;   // 16*16*128 entries
+    private static float[] PulseMixLut = null!; // 31 entries
+    private static float[] TndMixLut = null!;   // 16*16*128 entries
         private static bool mixLutsBuilt;
         private const int T_SHIFT = 11; // triangle component bits position
         private const int N_SHIFT = 7;  // noise component bits position

@@ -75,8 +75,7 @@ namespace BrokenNes
     private bool eventSchedulerOn = false; // still accessed by UI toggles
         private bool soundFontMode = false;
         private bool sampleFont = true; private bool soundFontLayering = false; private bool sfDevLogging = false; private bool sfOverlay = false; private string activeSfCore = string.Empty; private string activeSfCoreDisplay => string.IsNullOrEmpty(activeSfCore) ? (soundFontMode ? "(compat)" : "None") : activeSfCore;
-        private DotNetObjectReference<Emulator>? _selfRef;
-        private ElementReference fileInput; // NOTE: cannot be set outside component; keep placeholder
+    private DotNetObjectReference<Emulator>? _selfRef;
     // mobileFsViewPending handled in UI partial
         private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
             ? nesController.RomOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)

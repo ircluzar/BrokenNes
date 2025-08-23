@@ -81,11 +81,19 @@ public class Bus : IBus
 		_ppuTypes = new System.Collections.Generic.Dictionary<string, System.Type>(CoreRegistry.PpuTypes, System.StringComparer.OrdinalIgnoreCase);
 		// Defaults
 		// Prefer speed-optimized core (SPD) for immediate benchmarking if available; fallback to FMC then first.
-		if (!_cpuCores.TryGetValue("SPD", out activeCpu))
-			activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc) ? cpuFmc : (_cpuCores.Count>0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
+		if (_cpuCores.TryGetValue("SPD", out var cpuSpd))
+		{
+			activeCpu = cpuSpd!;
+		}
+		else
+		{
+			activeCpu = _cpuCores.TryGetValue("FMC", out var cpuFmc)
+				? cpuFmc!
+				: (_cpuCores.Count > 0 ? System.Linq.Enumerable.First(_cpuCores.Values) : throw new System.Exception("No CPU cores found"));
+		}
 		cpu = activeCpu;
-		// Prefer FMC PPU by default; fall back to any available. Create lazily.
-		activePpu = GetOrCreatePpu("FMC") ?? GetOrCreatePpu("CUBE") ?? (CreateFirstAvailablePpu() ?? throw new System.Exception("No PPU cores found"));
+		// Prefer FMC PPU by default; fall back to any available. Create lazily, but never allow null assignment.
+		activePpu = GetOrCreatePpu("FMC") ?? GetOrCreatePpu("CUBE") ?? CreateFirstAvailablePpu() ?? throw new System.Exception("No PPU cores found");
 		ppu = activePpu;
 		// APU defaults (lazy)
 		apu = GetOrCreateApu("FIX") ?? CreateFirstAvailableApu() ?? throw new System.Exception("No APU cores found");

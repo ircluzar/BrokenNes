@@ -98,8 +98,7 @@ namespace NesEmulator
         private float lpLast = 0f, dcLastIn = 0f, dcLastOut = 0f;
         // Channel enables
         private bool pulse1_enabled = false, pulse2_enabled = false, triangle_enabled = false, noise_enabled = false;
-        // DPCM (DMC) channel minimal state for SoundFont note-event representation
-        private bool dpcm_enabled = false; // bit 4 of 0x4015
+    // DPCM (DMC) channel minimal state for SoundFont note-event representation
         private bool dpcm_loop = false;
         private int dpcm_rateIndex = 0; // 0..15
         private byte dpcm_outputLevel = 0; // 0..127 (raw DAC load approximation)
@@ -154,7 +153,7 @@ namespace NesEmulator
     // Active note tracking so we send balanced NoteOff messages and support pitch bend
     private int? activePulse1Note, activePulse2Note, activeTriangleNote;
     // Track last program used per channel so we can re-trigger if the duty (instrument) changes mid-note
-    private int lastPulse1Program = -1, lastPulse2Program = -1, lastTriangleProgram = ProgramTriangle;
+    private int lastPulse1Program = -1, lastPulse2Program = -1;
     // Base frequencies captured at note-on for pitch bend reference
     private double basePulse1Freq, basePulse2Freq, baseTriangleFreq;
     // Last sent pitch bend values (MIDI 14-bit center = 0 range -8192..8191)
@@ -178,8 +177,8 @@ namespace NesEmulator
             lastP1Velocity = lastP2Velocity = 0;
             basePulse1Freq = basePulse2Freq = baseTriangleFreq = 0;
             lastPulse1Pitch = lastPulse2Pitch = lastTrianglePitch = 0;
-            lastPulse1Program = lastPulse2Program = -1; lastTriangleProgram = ProgramTriangle;
-            activeDpcmNote = null; dpcm_active = false; dpcm_remainingCycles = 0; dpcm_enabled = false;
+            lastPulse1Program = lastPulse2Program = -1;
+            activeDpcmNote = null; dpcm_active = false; dpcm_remainingCycles = 0;
         }
         private void EmitAllNoteOff()
         {
@@ -428,7 +427,7 @@ namespace NesEmulator
                 }
                 if (!dpcm_loop)
                 {
-                    dpcm_active = false; dpcm_enabled = false;
+                    dpcm_active = false;
                 }
                 else
                 {
@@ -702,7 +701,7 @@ namespace NesEmulator
                     bool dEnable = (value & 0x10) != 0;
                     if (dEnable && !dpcm_active && dpcm_sampleLengthBytes > 0)
                     {
-                        dpcm_enabled = true; dpcm_active = true; dpcm_remainingCycles = EstimateDpcmCycles();
+                        dpcm_active = true; dpcm_remainingCycles = EstimateDpcmCycles();
                     }
                     else if (!dEnable && dpcm_active)
                     {
@@ -711,7 +710,7 @@ namespace NesEmulator
                             NoteEvent?.Invoke(new NesNoteEvent("DPCM", activeDpcmNote.Value, 0, false, ProgramDpcm));
                             activeDpcmNote = null;
                         }
-                        dpcm_active = false; dpcm_enabled = false; dpcm_remainingCycles = 0;
+                        dpcm_active = false; dpcm_remainingCycles = 0;
                     }
                     break;
                 case 0x4017:
