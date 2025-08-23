@@ -25,6 +25,7 @@
     {
         // Keep audio context alive when visiting deck builder
         try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     // Ensure animated background is started (shared with Home)
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
     }

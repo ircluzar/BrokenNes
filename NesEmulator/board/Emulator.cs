@@ -38,7 +38,8 @@ namespace BrokenNes
     private readonly ILogger Logger;
         private readonly IJSRuntime JS;
         private readonly HttpClient Http;
-        private readonly StatusService Status;
+    private readonly StatusService Status;
+    private readonly BrokenNes.Services.InputSettingsService _inputSettingsService;
         private readonly NesEmulator.Shaders.IShaderProvider ShaderProvider;
         private readonly NavigationManager Nav;
 
@@ -52,7 +53,8 @@ namespace BrokenNes
                         HttpClient http,
                         StatusService status,
                         NesEmulator.Shaders.IShaderProvider shaderProvider,
-                        NavigationManager nav)
+                        NavigationManager nav,
+                        BrokenNes.Services.InputSettingsService inputSettingsService)
         {
             Logger = logger;
             JS = js;
@@ -60,6 +62,7 @@ namespace BrokenNes
             Status = status;
             ShaderProvider = shaderProvider;
             Nav = nav;
+            _inputSettingsService = inputSettingsService;
             _clockHost = new ClockHostFacade(this);
         }
 
@@ -74,8 +77,11 @@ namespace BrokenNes
 
         // ================= Migrated Fields from Nes.razor =================
         private const int SaveChunkCharSize = 900_000; // chunk size for save state persistence
-        private NesEmulator.NES? nes { get => nesController.nes; set => nesController.nes = value; }
-        private bool[] inputState => nesController.inputState;
+    private NesEmulator.NES? nes { get => nesController.nes; set => nesController.nes = value; }
+    private bool[] inputState => nesController.inputState;
+    private bool[] inputStateP2 => nesController.inputStateP2;
+    private BrokenNes.Models.InputSettings? inputSettings;
+    public BrokenNes.Models.InputSettings? InputSettingsPublic => inputSettings;
     // mobileFsView, touchControllerInitialized moved to UI.cs partial
         private const string SaveKey = "nes_state_slot0";
         private bool stateBusy = false;
@@ -211,6 +217,33 @@ namespace BrokenNes
                     ApplySelectedCores();
                     if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.setMainRef", _selfRef);
                     if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.registerInput", _selfRef);
+                    // Load saved input settings and configure JS input handlers for P1/P2
+                    try
+                    {
+                        inputSettings = await _inputSettingsService.LoadAsync();
+                        if (_selfRef != null && inputSettings != null)
+                        {
+                            var cfg = new
+                            {
+                                player1 = new
+                                {
+                                    device = inputSettings.Player1.Device.ToString(),
+                                    keyboard = inputSettings.Player1.Keyboard,
+                                    gamepad = inputSettings.Player1.Gamepad,
+                                    gamepadIndex = inputSettings.Player1.GamepadIndex
+                                },
+                                player2 = new
+                                {
+                                    device = inputSettings.Player2.Device.ToString(),
+                                    keyboard = inputSettings.Player2.Keyboard,
+                                    gamepad = inputSettings.Player2.Gamepad,
+                                    gamepadIndex = inputSettings.Player2.GamepadIndex
+                                }
+                            };
+                            await JS.InvokeVoidAsync("nesInterop.configureInput", _selfRef, cfg);
+                        }
+                    }
+                    catch (Exception ex) { Logger.LogWarning(ex, "Failed to configure input settings"); }
                     BuildMemoryDomains();
                     await RegisterShadersFromCSharp();
                     await RefreshShaderOptions();
@@ -311,7 +344,7 @@ namespace BrokenNes
             {
                 bool autoStatic = string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !nesController.AutoStaticSuppressed;
                 nes.EnableStatic(autoStatic);
-                nes.SetInput(inputState);
+                nes.SetInputs(inputState, inputStateP2);
                 if (nesController.FastForward) nes.RunFrames(3); else nes.RunFrame();
                 if (corruptor.AutoCorrupt) { _ = Blast(); }
                 nesController.FrameCount++;
@@ -565,6 +598,19 @@ namespace BrokenNes
         private Task Blast() { if (nes == null) return Task.CompletedTask; corruptor.Blast(nes); return Task.CompletedTask; }
 
         [JSInvokable] public void UpdateInput(bool[] state) { try { if (state.Length == 8) for (int i=0;i<8;i++) inputState[i] = state[i]; } catch (Exception ex) { Logger.LogError(ex, "Error updating input"); } }
+        [JSInvokable] public void UpdateInputForPlayer(int player, bool[] state)
+        {
+            try
+            {
+                if (state == null || state.Length != 8) return;
+                var dst = (player == 2) ? inputStateP2 : inputState;
+                for (int i = 0; i < 8; i++) dst[i] = state[i];
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"Error updating input for player {player}");
+            }
+        }
 
         private bool _hardUnloadNavActive = false;
         private void OnLocationChanged(object? sender, LocationChangedEventArgs e)

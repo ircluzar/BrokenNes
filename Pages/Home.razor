@@ -85,6 +85,7 @@
         {
             _titleStarted = true;
             try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+            try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
             try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch { }
             // Start pixel background after title sequence starts
             try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
@@ -135,9 +136,11 @@
     private async Task OnHealthOk()
     {
         // Ensure audio context is ready before playing sound
-        try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
-        // Attempt to play the plate.wav sound; ignore failures (e.g., missing file)
-        try { await JS.InvokeVoidAsync("eval", "(function(){var a=document.getElementById('plateWav'); if(a){ a.currentTime=0; a.play().catch(()=>{}); }})();"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
+    // Connect and play the plate sound via SFX gain
+    try { await JS.InvokeVoidAsync("nesInterop.connectElementToSfx", "plateWav"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.playSfxElement", "plateWav"); } catch { }
         showHealthWarning = false;
     // Start looping title music (fade in handled in JS)
     try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch {}

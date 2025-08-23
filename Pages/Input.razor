@@ -1,0 +1,145 @@
+@page "/input"
+@using BrokenNes.Models
+@using System.Linq
+@inject BrokenNes.Services.InputSettingsService Settings
+@inject IJSRuntime JS
+
+<div class="options-root">
+  <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
+  <h2 class="opt-title">INPUT SETTINGS</h2>
+  <div class="opt-sections">
+    <section class="opt-section">
+      <h3 class="opt-h3">Players</h3>
+      <div class="opt-row">
+        <label>Players</label>
+        <select @bind="playerCount">
+          <option value="1">One</option>
+          <option value="2">Two</option>
+        </select>
+      </div>
+      <div class="player-grid">
+        @for (var p = 1; p <= playerCount; p++)
+        {
+            var pc = p == 1 ? draft.Player1 : draft.Player2;
+            <div class="player-card">
+              <h4>Player @p</h4>
+              <div class="opt-row">
+                <label>Device</label>
+                <select @bind="pc.Device">
+                  <option value="@InputDeviceType.Keyboard">Keyboard</option>
+                  <option value="@InputDeviceType.Gamepad">Controller</option>
+                  <option value="@InputDeviceType.Touch">Touch</option>
+                </select>
+              </div>
+
+              @if (pc.Device == InputDeviceType.Keyboard)
+              {
+                <div class="kbd-grid">
+                  @foreach (var m in KeyboardPairs)
+                  {
+                    <div class="kbd-row">
+                      <label>@m.Label</label>
+                      <button type="button" @onclick="() => CaptureKey(pc, m.Get, m.Set)">@m.Get(pc.Keyboard)</button>
+                    </div>
+                  }
+                </div>
+                <div class="opt-row small-note">Default: Arrows + Z/X + Space + Enter</div>
+              }
+              else if (pc.Device == InputDeviceType.Gamepad)
+              {
+                <div class="opt-row">
+                  <label>Controller</label>
+                  <select @bind="pc.GamepadIndex">
+                    @if (gamepads.Length == 0)
+                    {
+                      <option value="">No controllers found</option>
+                    }
+                    @foreach (var g in gamepads)
+                    {
+                      <option value="@g.Index">[@g.Index] @g.Id</option>
+                    }
+                  </select>
+                </div>
+                <div class="opt-row small-note">D-Pad and Left Stick both move. Buttons: A=South(0), B=East(1), Select=8, Start=9 by default.</div>
+              }
+              else if (pc.Device == InputDeviceType.Touch)
+              {
+                <div class="opt-row small-note">Touch controller will be available in fullscreen on mobile.</div>
+              }
+            </div>
+        }
+      </div>
+    </section>
+  </div>
+  <div class="opt-footer">
+    <button class="opt-link" @onclick="Save">Save</button>
+    <a href="./options" class="opt-link">Cancel</a>
+  </div>
+</div>
+
+@code {
+  private BrokenNes.Models.InputSettings draft = new();
+  private int playerCount = 1;
+  private BrokenNes.Services.GamepadInfo[] gamepads = Array.Empty<BrokenNes.Services.GamepadInfo>();
+
+  private record KbdField(string Label, Func<KeyboardMapping,string> Get, Action<KeyboardMapping,string> Set);
+  private KbdField[] KeyboardPairs = new KbdField[]{
+    new("Up", k=>k.Up, (k,v)=>k.Up=v),
+    new("Down", k=>k.Down, (k,v)=>k.Down=v),
+    new("Left", k=>k.Left, (k,v)=>k.Left=v),
+    new("Right", k=>k.Right, (k,v)=>k.Right=v),
+    new("A", k=>k.A, (k,v)=>k.A=v),
+    new("B", k=>k.B, (k,v)=>k.B=v),
+    new("Select", k=>k.Select, (k,v)=>k.Select=v),
+    new("Start", k=>k.Start, (k,v)=>k.Start=v),
+  };
+
+  protected override async Task OnInitializedAsync()
+  {
+    draft = await Settings.LoadAsync();
+    playerCount = 1;
+    await RefreshGamepads();
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if(firstRender)
+    {
+      try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+      try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+    }
+  }
+
+  private async Task RefreshGamepads()
+  {
+    try { gamepads = await Settings.GetConnectedGamepadsAsync(); }
+    catch { gamepads = Array.Empty<BrokenNes.Services.GamepadInfo>(); }
+    StateHasChanged();
+  }
+
+  private async Task CaptureKey(PlayerInputConfig pc, Func<KeyboardMapping,string> get, Action<KeyboardMapping,string> set)
+  {
+    try
+    {
+      var code = await JS.InvokeAsync<string>("nesInput.captureNextKey");
+      if (!string.IsNullOrWhiteSpace(code)) { set(pc.Keyboard, code); }
+    }
+    catch { }
+  }
+
+  private async Task Save()
+  {
+    if(draft.Player1.Device == InputDeviceType.Gamepad)
+    {
+      var gp = gamepads.FirstOrDefault(g => draft.Player1.GamepadIndex.HasValue && g.Index == draft.Player1.GamepadIndex.Value);
+      draft.Player1.GamepadId = gp?.Id;
+    }
+    if(draft.Player2.Device == InputDeviceType.Gamepad)
+    {
+      var gp = gamepads.FirstOrDefault(g => draft.Player2.GamepadIndex.HasValue && g.Index == draft.Player2.GamepadIndex.Value);
+      draft.Player2.GamepadId = gp?.Id;
+    }
+    await Settings.SaveAsync(draft);
+    await JS.InvokeVoidAsync("eval", "location.href='./options'");
+  }
+}

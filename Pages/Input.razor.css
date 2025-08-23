@@ -1,0 +1,15 @@
+.player-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.player-card{
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.kbd-grid{ display:flex; flex-direction:column; gap: 0.4rem; }
+.kbd-row{ display:flex; align-items:center; justify-content:space-between; gap: 0.5rem; }
+.kbd-row label{ min-width: 80px; }
+.kbd-row button{ min-width: 160px; }

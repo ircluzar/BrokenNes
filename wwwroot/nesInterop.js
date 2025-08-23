@@ -80,6 +80,9 @@ window.nesInterop = {
     _rfStrength: 1.35, // Default RF strength (uniform uStrength if present)
     _basicLogged: false,
     _dbPromise: null,
+    // ===== Audio volume state (persisted in IDB) =====
+    _audioLoaded: false,
+    _audioVolumes: { master: 1.0, music: 0.42, sfx: 0.8 },
     // ================= Shader Registry (extensible) =================
     // Internal registry: key -> { displayName, fragment, vertex(optional), meta }
     _shaderRegistry: {},
@@ -239,7 +242,106 @@ window.nesInterop = {
             window._nesAudioTimeline = ctx.currentTime + 0.02;
             // Track currently scheduled sources for optional flush
             if(!window._nesActiveSources) window._nesActiveSources = [];
+            // Ensure global gain graph exists
+            if(!window._nesMasterGain){
+                try {
+                    window._nesMasterGain = ctx.createGain();
+                    window._nesMusicGain = ctx.createGain();
+                    window._nesSfxGain = ctx.createGain();
+                    // default values until persisted values applied
+                    window._nesMasterGain.gain.value = this._audioVolumes.master;
+                    window._nesMusicGain.gain.value = this._audioVolumes.music;
+                    window._nesSfxGain.gain.value = this._audioVolumes.sfx;
+                    // Route: music/sfx -> master -> destination
+                    window._nesMusicGain.connect(window._nesMasterGain);
+                    window._nesSfxGain.connect(window._nesMasterGain);
+                    if(!window._nesMasterGain._nesConnected){ try { window._nesMasterGain.connect(ctx.destination); window._nesMasterGain._nesConnected = true; } catch{} }
+                } catch(e){ console.warn('gain graph init failed', e); }
+            }
+            // Apply saved volumes once per session after gains exist
+            if(!this._audioLoaded){ try { this.applySavedAudioVolumes(); } catch{} }
         } catch(e){ console.warn('ensureAudioContext failed', e); }
+    },
+    // Persist and apply audio volume settings
+    async applySavedAudioVolumes(){
+        try {
+            // load from IDB (if present), else defaults remain
+            const m = await this.idbGetItem('audio_master');
+            const mu = await this.idbGetItem('audio_music');
+            const s = await this.idbGetItem('audio_sfx');
+            const clamp = (v)=>Math.max(0, Math.min(1, Number(v)));
+            try {
+                if(typeof m === 'number' && isFinite(m)) {
+                    this._audioVolumes.master = clamp(m);
+                } else {
+                    // Persist defaults on first run so settings match code defaults
+                    await this.idbSetItem('audio_master', this._audioVolumes.master);
+                }
+            } catch{}
+            try {
+                if(typeof mu === 'number' && isFinite(mu)) {
+                    this._audioVolumes.music = clamp(mu);
+                } else {
+                    await this.idbSetItem('audio_music', this._audioVolumes.music);
+                }
+            } catch{}
+            try {
+                if(typeof s === 'number' && isFinite(s)) {
+                    this._audioVolumes.sfx = clamp(s);
+                } else {
+                    await this.idbSetItem('audio_sfx', this._audioVolumes.sfx);
+                }
+            } catch{}
+        } catch{}
+        try {
+            const ctx = window.nesAudioCtx || new (window.AudioContext||window.webkitAudioContext)();
+            window.nesAudioCtx = ctx;
+            // Ensure gains exist
+            if(!window._nesMasterGain){
+                window._nesMasterGain = ctx.createGain();
+                window._nesMusicGain = ctx.createGain();
+                window._nesSfxGain = ctx.createGain();
+                window._nesMusicGain.connect(window._nesMasterGain);
+                window._nesSfxGain.connect(window._nesMasterGain);
+                window._nesMasterGain.connect(ctx.destination);
+            }
+            window._nesMasterGain.gain.value = this._audioVolumes.master;
+            window._nesMusicGain.gain.value = this._audioVolumes.music;
+            window._nesSfxGain.gain.value = this._audioVolumes.sfx;
+            this._audioLoaded = true;
+            return { ...this._audioVolumes };
+        } catch(e){ console.warn('applySavedAudioVolumes failed', e); return { ...this._audioVolumes }; }
+    },
+    getAudioVolumes(){ return { ...this._audioVolumes }; },
+    getMasterVolume(){ return (this._audioVolumes && typeof this._audioVolumes.master==='number') ? this._audioVolumes.master : 1.0; },
+    getMusicVolume(){ return (this._audioVolumes && typeof this._audioVolumes.music==='number') ? this._audioVolumes.music : 0.42; },
+    getSfxVolume(){ return (this._audioVolumes && typeof this._audioVolumes.sfx==='number') ? this._audioVolumes.sfx : 0.8; },
+    async setMasterVolume(v, persist){
+        try {
+            let val = Number(v); if(!isFinite(val)) return this._audioVolumes.master; val = Math.max(0, Math.min(1, val));
+            this._audioVolumes.master = val;
+            if(window._nesMasterGain){ try { window._nesMasterGain.gain.value = val; } catch{} }
+            if(persist){ try { await this.idbSetItem('audio_master', val); } catch{} }
+            return val;
+        } catch { return this._audioVolumes.master; }
+    },
+    async setMusicVolume(v, persist){
+        try {
+            let val = Number(v); if(!isFinite(val)) return this._audioVolumes.music; val = Math.max(0, Math.min(1, val));
+            this._audioVolumes.music = val;
+            if(window._nesMusicGain){ try { window._nesMusicGain.gain.value = val; } catch{} }
+            if(persist){ try { await this.idbSetItem('audio_music', val); } catch{} }
+            return val;
+        } catch { return this._audioVolumes.music; }
+    },
+    async setSfxVolume(v, persist){
+        try {
+            let val = Number(v); if(!isFinite(val)) return this._audioVolumes.sfx; val = Math.max(0, Math.min(1, val));
+            this._audioVolumes.sfx = val;
+            if(window._nesSfxGain){ try { window._nesSfxGain.gain.value = val; } catch{} }
+            if(persist){ try { await this.idbSetItem('audio_sfx', val); } catch{} }
+            return val;
+        } catch { return this._audioVolumes.sfx; }
     },
     flushAudioOutput(){
         try {
@@ -298,7 +400,17 @@ window.nesInterop = {
             }
             if(!this._titleMusicSrc){
                 this._titleMusicSrc = ctx.createMediaElementSource(this._titleMusicEl);
-                this._titleMusicSrc.connect(this._titleMusicGain).connect(ctx.destination);
+                // Route title music through music -> master -> destination
+                const musicOut = window._nesMusicGain || (window._nesMusicGain = ctx.createGain());
+                const masterOut = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());
+                try {
+                    musicOut.gain.value = this._audioVolumes.music;
+                    masterOut.gain.value = this._audioVolumes.master;
+                } catch{}
+                    if(!masterOut._nesConnected){ try { masterOut.connect(ctx.destination); masterOut._nesConnected = true; } catch{} }
+                try { musicOut.disconnect(); } catch{}
+                try { musicOut.connect(masterOut); } catch{}
+                this._titleMusicSrc.connect(this._titleMusicGain).connect(musicOut);
             }
         } catch(e){ console.warn('ensureTitleMusic failed', e); }
     },
@@ -313,7 +425,8 @@ window.nesInterop = {
             const now = ctx.currentTime;
             g.gain.cancelScheduledValues(now);
             g.gain.setValueAtTime(g.gain.value, now);
-            g.gain.linearRampToValueAtTime(0.42, now + 1.0);
+            // Fade the per-track gain to 1.0; absolute level is controlled by music bus gain
+            g.gain.linearRampToValueAtTime(1.0, now + 1.0);
         } catch(e){ console.warn('playTitleMusic failed', e); }
     },
     fadeOutAndStopTitleMusic(){
@@ -329,6 +442,31 @@ window.nesInterop = {
             // After fade complete, pause element
             setTimeout(()=>{ try { if(el) el.pause(); } catch{} }, 1250);
         } catch(e){ console.warn('fadeOutAndStopTitleMusic failed', e); }
+    },
+    // Wire a DOM <audio> element's output through SFX->Master
+    connectElementToSfx: function(elementId){
+        try {
+            this.ensureAudioContext();
+            const el = document.getElementById(elementId);
+            if(!el) return false;
+            if(el._nesConnected) return true;
+            const ctx = window.nesAudioCtx;
+            const src = ctx.createMediaElementSource(el);
+            const sfx = window._nesSfxGain || (window._nesSfxGain = ctx.createGain());
+            const master = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());
+            try { sfx.gain.value = this._audioVolumes.sfx; master.gain.value = this._audioVolumes.master; } catch{}
+            try { master.disconnect(); } catch{}
+            try { master.connect(ctx.destination); } catch{}
+            src.connect(sfx).connect(master);
+            el._nesConnected = true;
+            // Fallback element volume multiplier so it also respects sfx without graph
+            el.volume = Math.max(0, Math.min(1, this._audioVolumes.sfx));
+            return true;
+        } catch(e){ console.warn('connectElementToSfx failed', e); return false; }
+    },
+    playSfxElement: function(elementId){
+        try { this.connectElementToSfx(elementId); const el=document.getElementById(elementId); if(el){ el.currentTime=0; el.volume=Math.max(0,Math.min(1,this._audioVolumes.sfx)); el.play().catch(()=>{}); return true; } } catch{}
+        return false;
     },
     // ====== SharedArrayBuffer + AudioWorklet ring (HotPot HOTPOT-04) ======
     _awEnabled: false,
@@ -375,7 +513,12 @@ window.nesInterop = {
                 Atomics.store(this._awCtrl,3,0); // dropped
                 try { await ctx.audioWorklet.addModule('audio-worklet.js'); } catch(e){ console.warn('worklet addModule failed', e); throw e; }
                 const node = new AudioWorkletNode(ctx, 'nes-ring-proc', { processorOptions: { sab, ctrl } });
-                node.connect(ctx.destination);
+                // Route worklet output through master gain
+                const master = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());
+                try { master.gain.value = this._audioVolumes.master; } catch{}
+                try { master.disconnect(); } catch{}
+                try { master.connect(ctx.destination); } catch{}
+                node.connect(master);
                 this._awNode = node;
                 this._awEnabled = true;
                 console.log('[NES] AudioWorklet ring enabled. Capacity', cap);
@@ -881,8 +1024,11 @@ window.nesInterop = {
             console.error('dotNetRef is null');
             return;
         }
-        
+        this._mainRef = dotNetRef;
+        // Legacy single-player state (P1)
         window.nesInputState = new Array(8).fill(false);
+        // New P2 state
+        window.nesInputStateP2 = new Array(8).fill(false);
         
         const updateInput = (changed) => {
             if (changed) {
@@ -894,7 +1040,9 @@ window.nesInterop = {
             }
         };
 
-        document.addEventListener('keydown', function (e) {
+    // If configureInput not used, fall back to legacy fixed keyboard mapping for P1
+    if(!window._nesInputCfg){
+    const legacyDown = function (e) {
             const active = document.activeElement;
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
                 // Allow regular typing when focusing an input field (e.g., ROM search)
@@ -944,9 +1092,9 @@ window.nesInterop = {
                     break; // Start
             }
             updateInput(changed);
-        });
+    };
 
-        document.addEventListener('keyup', function (e) {
+    const legacyUp = function (e) {
             const active = document.activeElement;
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
                 return;
@@ -987,7 +1135,119 @@ window.nesInterop = {
                     break;
             }
             updateInput(changed);
-        });
+    };
+    document.addEventListener('keydown', legacyDown);
+    document.addEventListener('keyup', legacyUp);
+    this._legacyKeyDown = legacyDown; this._legacyKeyUp = legacyUp;
+        }
+    },
+
+    // Configure input mapping for players and enable gamepad polling
+    configureInput: function(dotNetRef, cfg){
+        try{
+            this._mainRef = dotNetRef || this._mainRef;
+            // Remove legacy listeners if previously installed
+            if(this._legacyKeyDown){ try{ document.removeEventListener('keydown', this._legacyKeyDown); }catch{} this._legacyKeyDown=null; }
+            if(this._legacyKeyUp){ try{ document.removeEventListener('keyup', this._legacyKeyUp); }catch{} this._legacyKeyUp=null; }
+            const mapKeyboard = (km)=>({
+                up: (km?.Up)||'ArrowUp',
+                down: (km?.Down)||'ArrowDown',
+                left: (km?.Left)||'ArrowLeft',
+                right: (km?.Right)||'ArrowRight',
+                a: (km?.A)||'KeyX',
+                b: (km?.B)||'KeyZ',
+                select: (km?.Select)||'Space',
+                start: (km?.Start)||'Enter'
+            });
+            const mapGamepad = (gm)=>({
+                dpadUp: (gm?.DpadUp)??12,
+                dpadDown: (gm?.DpadDown)??13,
+                dpadLeft: (gm?.DpadLeft)??14,
+                dpadRight: (gm?.DpadRight)??15,
+                axisX: (gm?.AxisX)??0,
+                axisY: (gm?.AxisY)??1,
+                axisThreshold: (gm?.AxisThreshold)??0.5,
+                a: (gm?.A)??0,
+                b: (gm?.B)??1,
+                select: (gm?.Select)??8,
+                start: (gm?.Start)??9
+            });
+            const p1 = cfg?.player1||{}; const p2 = cfg?.player2||{};
+            window._nesInputCfg = {
+                p1: { device:(p1.device||'Keyboard'), kbd: mapKeyboard(p1.keyboard), gp: mapGamepad(p1.gamepad), gpIndex: (typeof p1.gamepadIndex==='number'?p1.gamepadIndex:null) },
+                p2: { device:(p2.device||'Touch'), kbd: mapKeyboard(p2.keyboard), gp: mapGamepad(p2.gamepad), gpIndex: (typeof p2.gamepadIndex==='number'?p2.gamepadIndex:null) }
+            };
+            // Build code->bindings for keyboard
+            const buildKeyMap = (kbd, player)=>{
+                const dict = {};
+                const add = (code, idx)=>{ if(!code) return; (dict[code]||(dict[code]=[])).push({p:player,i:idx}); };
+                add(kbd.up,0); add(kbd.down,1); add(kbd.left,2); add(kbd.right,3);
+                add(kbd.a,4); add(kbd.b,5); add(kbd.select,6); add(kbd.start,7);
+                return dict;
+            };
+            const keyMap = {};
+            const merge = (src)=>{ for(const k in src){ keyMap[k] = (keyMap[k]||[]).concat(src[k]); } };
+            if(window._nesInputCfg.p1.device==='Keyboard') merge(buildKeyMap(window._nesInputCfg.p1.kbd,1));
+            if(window._nesInputCfg.p2.device==='Keyboard') merge(buildKeyMap(window._nesInputCfg.p2.kbd,2));
+            // install unified keyboard listeners once
+            if(!this._kbdInstalled){
+                const onDown = (e)=>{
+                    const active = document.activeElement;
+                    if (active && (active.tagName==='INPUT' || active.tagName==='TEXTAREA' || active.isContentEditable)) return;
+                    const binds = keyMap[e.code]; if(!binds) return;
+                    let changed = false;
+                    for(const b of binds){
+                        const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState;
+                        if(arr[b.i]!==true){ arr[b.i]=true; changed = true; }
+                    }
+                    if(changed && this._mainRef){
+                        try{ for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._mainRef.invokeMethodAsync('UpdateInputForPlayer', b.p, arr); } }catch(err){ console.error('UpdateInputForPlayer error', err); }
+                    }
+                };
+                const onUp = (e)=>{
+                    const binds = keyMap[e.code]; if(!binds) return; let changed=false;
+                    for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; if(arr[b.i]!==false){ arr[b.i]=false; changed=true; } }
+                    if(changed && this._mainRef){ try{ for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._mainRef.invokeMethodAsync('UpdateInputForPlayer', b.p, arr); } }catch(err){} }
+                };
+                document.addEventListener('keydown', onDown);
+                document.addEventListener('keyup', onUp);
+                this._kbdInstalled = true;
+            }
+            // start/refresh gamepad polling
+            const poll = ()=>{
+                try{
+                    const pads = (navigator.getGamepads? Array.from(navigator.getGamepads()):[]).filter(Boolean);
+                    const doPad = (cfgP, arr, player)=>{
+                        if(cfgP.device!=='Gamepad' || cfgP.gpIndex==null) return false;
+                        const gp = pads.find(g=>g.index===cfgP.gpIndex); if(!gp) return false;
+                        const prev = arr.slice();
+                        const g = cfgP.gp;
+                        // reset
+                        for(let i=0;i<8;i++) arr[i]=false;
+                        const btn = (i)=>!!(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed);
+                        const ax = (i)=>{ const v=(gp.axes&&gp.axes[i])||0; return v; };
+                        // D-pad buttons
+                        if(btn(g.dpadUp)) arr[0]=true; if(btn(g.dpadDown)) arr[1]=true; if(btn(g.dpadLeft)) arr[2]=true; if(btn(g.dpadRight)) arr[3]=true;
+                        // Left stick
+                        const x = ax(g.axisX), y = ax(g.axisY), th = Math.max(0.01, g.axisThreshold||0.5);
+                        if(y <= -th) arr[0]=true; if(y >= th) arr[1]=true; if(x <= -th) arr[2]=true; if(x >= th) arr[3]=true;
+                        // AB + Select/Start
+                        if(btn(g.a)) arr[4]=true; if(btn(g.b)) arr[5]=true; if(btn(g.select)) arr[6]=true; if(btn(g.start)) arr[7]=true;
+                        // If changed, notify
+                        let changed=false; for(let i=0;i<8;i++){ if(arr[i]!==prev[i]){ changed=true; break; } }
+                        if(changed && this._mainRef){ try{ this._mainRef.invokeMethodAsync('UpdateInputForPlayer', player, arr); }catch{} }
+                        return true;
+                    };
+                    const any1 = doPad(window._nesInputCfg.p1, window.nesInputState, 1);
+                    const any2 = doPad(window._nesInputCfg.p2, window.nesInputStateP2, 2);
+                    this._gpActive = any1 || any2;
+                }catch{}
+                this._gpRaf = requestAnimationFrame(poll);
+            };
+            if(this._gpRaf){ try{ cancelAnimationFrame(this._gpRaf); }catch{} this._gpRaf=null; }
+            this._gpRaf = requestAnimationFrame(poll);
+            return true;
+        }catch(e){ console.warn('configureInput failed', e); return false; }
     },
 
     playAudio: function (audioBuffer, sampleRate) {
@@ -1040,7 +1300,13 @@ window.nesInterop = {
                 window._nesLastRate = rate;
                 try { source.playbackRate.value = rate; } catch{}
                 const gain = ctx.createGain();
-                source.connect(gain).connect(ctx.destination);
+                // Route emulator audio through master gain
+                const master = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());
+                try { master.gain.value = this._audioVolumes.master; } catch{}
+                // Ensure master connected
+                try { master.disconnect(); } catch{}
+                try { master.connect(ctx.destination); } catch{}
+                source.connect(gain).connect(master);
                 const now = ctx.currentTime;
                 const prevEnd = window._nesAudioTimeline;
                 let startT = prevEnd - fadeSec; // overlap
@@ -1090,7 +1356,12 @@ window.nesInterop = {
             }
             const source = ctx.createBufferSource();
             source.buffer = buffer;
-            source.connect(ctx.destination);
+            // Route classic path through master gain
+            const master = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());
+            try { master.gain.value = this._audioVolumes.master; } catch{}
+            try { master.disconnect(); } catch{}
+            try { master.connect(ctx.destination); } catch{}
+            source.connect(master);
             if (!window._nesAudioTimeline) {
                 window._nesAudioTimeline = ctx.currentTime + 0.02; // small initial lead
             }

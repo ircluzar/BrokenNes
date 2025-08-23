@@ -135,7 +135,11 @@
             }
             synth = new window.JSSynth.AudioWorkletNodeSynthesizer();
             node = synth.createAudioNode(ctx, WORKLET_BLOCK_SIZE);
-            node.connect(ctx.destination);
+            try {
+                const master = window._nesMasterGain || null;
+                if(master && master.context === ctx){ node.connect(master); }
+                else { node.connect(ctx.destination); }
+            } catch { node.connect(ctx.destination); }
             console.log('[MNES] Worklet synthesizer ready');
         } catch(e){
             console.warn('[MNES] Synth construct failed', e); fatalInitError = true; return null;
@@ -226,7 +230,12 @@
                 const t0 = c.currentTime;
                 g.gain.setValueAtTime(1,t0);
                 g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
-                src.connect(g).connect(c.destination); src.start();
+                try {
+                    const master = window._nesMasterGain || null;
+                    if(master && master.context === c){ src.connect(g).connect(master); }
+                    else { src.connect(g).connect(c.destination); }
+                } catch { src.connect(g).connect(c.destination); }
+                src.start();
             } catch{}
             return;
         }

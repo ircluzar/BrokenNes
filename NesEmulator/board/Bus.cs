@@ -70,6 +70,8 @@ public class Bus : IBus
 	public Cartridge cartridge;
 	public byte[] ram; //2KB RAM
 	public Input input = new Input();
+	// Second controller port (player 2)
+	public Input input2 = new Input();
 	// Global speed configuration instance (mutable toggles)
 	public SpeedConfig SpeedConfig { get; } = new SpeedConfig();
 
@@ -338,7 +340,10 @@ public class Bus : IBus
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
 			return ppu.ReadPPURegister(reg);
 		}
+		// Controllers are read from 0x4016 (P1) and 0x4017 (P2) on real hardware
 		if (address == 0x4016) return input.Read4016();
+		if (address == 0x4017) return input2.Read4016();
+		// APU registers (e.g., 0x4015 status) remain handled here
 		if (address <= 0x4017 && address >= 0x4000) return activeApu.ReadAPURegister(address);
 		if (address >= 0x6000) return cartridge.CPURead(address);
 		return 0; // simplified open bus
@@ -365,7 +370,8 @@ public class Bus : IBus
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
 			ppu.WritePPURegister(reg, value); return;
 		}
-		if (address == 0x4016) { input.Write4016(value); return; }
+		// Writing bit0 to 0x4016 controls controller strobe; apply to both ports
+		if (address == 0x4016) { input.Write4016(value); input2.Write4016(value); return; }
 		if (address == 0x4014) {
 			ppu.WriteOAMDMA(value); instr.OamDmaWrites++;
 			// Approximate 513 CPU cycle stall (NES hardware: 513 or 514 depending on alignment) if enabled

@@ -228,6 +228,7 @@ namespace BrokenNes
         }
     public NES? nes;
     public bool[] inputState = new bool[8];
+    public bool[] inputStateP2 = new bool[8];
     public string ErrorMessage = string.Empty;
     public bool IsRunning = false;
     public bool HasBooted = true;

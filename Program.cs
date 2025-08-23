@@ -11,6 +11,7 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddSingleton<StatusService>();
 builder.Services.AddSingleton<NesEmulator.Shaders.IShaderProvider, NesEmulator.Shaders.ShaderProvider>();
 builder.Services.AddScoped<Emulator>();
+builder.Services.AddScoped<BrokenNes.Services.InputSettingsService>();
 
 // Add comprehensive logging
 builder.Logging.SetMinimumLevel(LogLevel.Debug);

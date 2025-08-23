@@ -6,32 +6,32 @@
     <h2 class="opt-title">OPTIONS</h2>
     <div class="opt-sections">
         <section class="opt-section">
-            <h3 class="opt-h3">AUDIO</h3>
-            <div class="opt-row">
-                <label>Master Volume</label>
-                <input type="range" min="0" max="100" value="100" @oninput="OnVolChange" />
-            </div>
-            <div class="opt-row small-note">(Placeholder controls)</div>
-        </section>
-        <section class="opt-section">
-            <h3 class="opt-h3">VIDEO</h3>
-            <div class="opt-row">
-                <label>Shader Pass</label>
-                <select disabled>
-                    <option>Default</option>
-                </select>
-            </div>
-        </section>
-        <section class="opt-section">
-            <h3 class="opt-h3">INPUT</h3>
-            <div class="opt-row"><button disabled>Rebind Keys (Coming Soon)</button></div>
-        </section>
-        <section class="opt-section">
             <h3 class="opt-h3">CORES</h3>
             <div class="opt-row">
                 <button @onclick="RestoreCoresToFmc">Restore cores to FMC</button>
             </div>
             <div class="opt-row small-note">Resets CPU/PPU/APU/Clock core preferences to FMC for future sessions.</div>
+        </section>
+    <section class="opt-section">
+            <h3 class="opt-h3">Emulator Audio</h3>
+            <div class="opt-row">
+                <label>Master Volume (%)</label>
+        <input type="range" min="0" max="100" value="@MasterPct" @oninput="@(e=>OnSliderInput("master", e))" />
+            </div>
+
+            <h3 class="opt-h3">BrokenNes Audio</h3>
+            <div class="opt-row">
+                <label>Music Volume (%)</label>
+                <input type="range" min="0" max="100" value="@MusicPct" @oninput="@(e=>OnSliderInput("music", e))" />
+            </div>
+            <div class="opt-row">
+                <label>SFX Volume (%)</label>
+                <input type="range" min="0" max="100" value="@SfxPct" @oninput="@(e=>OnSliderInput("sfx", e))" />
+            </div>
+        </section>
+        <section class="opt-section">
+            <h3 class="opt-h3">INPUT</h3>
+            <div class="opt-row"><a class="opt-link" href="./input">Configure Input…</a></div>
         </section>
     </div>
     <div class="opt-footer">
@@ -40,17 +40,47 @@
 </div>
 
 @code {
+    private int MasterPct { get; set; } = 100;
+    private int MusicPct { get; set; } = 42;
+    private int SfxPct { get; set; } = 80;
+
     protected override async Task OnInitializedAsync()
     {
         // Keep audio context alive when visiting options
         try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+        // Load and apply saved volumes, then populate sliders
+        try {
+            await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes");
+        } catch { }
     // Ensure animated background is started (shared with Home)
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
     }
 
-    private void OnVolChange(ChangeEventArgs e)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Placeholder for future volume binding
+        if(firstRender)
+        {
+            try { MasterPct = (int)Math.Round((await JS.InvokeAsync<double>("nesInterop.getMasterVolume"))*100); } catch { }
+            try { MusicPct = (int)Math.Round((await JS.InvokeAsync<double>("nesInterop.getMusicVolume"))*100); } catch { }
+            try { SfxPct = (int)Math.Round((await JS.InvokeAsync<double>("nesInterop.getSfxVolume"))*100); } catch { }
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSliderInput(string kind, ChangeEventArgs e)
+    {
+        try {
+            if(e?.Value is not null){
+                if(int.TryParse(e.Value.ToString(), out var pct)){
+                    var f = Math.Clamp(pct, 0, 100) / 100.0;
+                    switch(kind){
+                        case "master": MasterPct = pct; await JS.InvokeAsync<double>("nesInterop.setMasterVolume", f, true); break;
+                        case "music": MusicPct = pct; await JS.InvokeAsync<double>("nesInterop.setMusicVolume", f, true); break;
+                        case "sfx": SfxPct = pct; await JS.InvokeAsync<double>("nesInterop.setSfxVolume", f, true); break;
+                    }
+                }
+            }
+        } catch { }
     }
 
     private async Task RestoreCoresToFmc()

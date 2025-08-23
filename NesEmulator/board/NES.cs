@@ -759,6 +759,14 @@ namespace NesEmulator
 			bus?.input.SetInput(buttons);
 		}
 
+		// New: set both player inputs at once
+		public void SetInputs(bool[]? p1, bool[]? p2)
+		{
+			if (bus == null) return;
+			if (p1 != null) bus.input.SetInput(p1);
+			if (p2 != null) bus.input2.SetInput(p2);
+		}
+
 		// Get audio buffer from APU
 		public float[] GetAudioBuffer()
 		{

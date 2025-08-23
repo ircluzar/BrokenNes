@@ -57,7 +57,12 @@
             outputGain = ctx.createGain();
             // Master output gain (reduced to 50% per request to make entire soundfont quieter)
             outputGain.gain.value = 0.5;
-            outputGain.connect(ctx.destination);
+            // Route through nes master gain if available
+            try {
+                const master = window._nesMasterGain || null;
+                if(master && master.context === ctx){ outputGain.connect(master); }
+                else { outputGain.connect(ctx.destination); }
+            } catch { outputGain.connect(ctx.destination); }
         }
         initialized = true;
     }
