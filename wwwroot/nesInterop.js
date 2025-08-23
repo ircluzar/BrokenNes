@@ -4,6 +4,7 @@ window.nesInterop = {
     _loopActive: false,
     _dotNetRef: null,
     _rafId: null,
+    _lastRafTs: 0,
     _lastFpsTime: 0,
     _framesThisSecond: 0,
     _gl: null,
@@ -13,6 +14,11 @@ window.nesInterop = {
     _vpW: 0,
     _vpH: 0,
     _perfMarksEnabled: false,
+    // Frame-skip configuration (skip video present when behind; keep audio steady)
+    _frameSkipEnabled: true,
+    _maxFrameSkips: 1,
+    _skipsThisBurst: 0,
+    _targetFps: 60,
     // Deprecated single toggle flags replaced by registry-driven system
     _shaderEnabled: true, // kept for backward compatibility (toggle between first two registered shaders if desired)
     _rfStrength: 1.35, // Default RF strength (uniform uStrength if present)
@@ -523,6 +529,17 @@ window.nesInterop = {
         try { const u=new URL(window.location.href); const v=u.searchParams.get(flag); return v==="1"||v==="true"||v==="yes"; } catch { return false; }
     },
     enablePerfMarks(on){ this._perfMarksEnabled = !!on; return this._perfMarksEnabled; },
+    setFrameSkipOptions(opts){
+        // opts: boolean | { enabled?:bool, maxSkips?:number, targetFps?:number }
+        if (typeof opts === 'boolean') { this._frameSkipEnabled = opts; }
+        else if (opts && typeof opts === 'object'){
+            if ('enabled' in opts) this._frameSkipEnabled = !!opts.enabled;
+            if (typeof opts.maxSkips === 'number') this._maxFrameSkips = Math.max(0, Math.min(3, Math.floor(opts.maxSkips)));
+            if (typeof opts.targetFps === 'number' && opts.targetFps > 0) this._targetFps = Math.max(30, Math.min(120, Math.floor(opts.targetFps)));
+        }
+        return { enabled:this._frameSkipEnabled, maxSkips:this._maxFrameSkips, targetFps:this._targetFps };
+    },
+    getFrameSkipOptions(){ return { enabled:this._frameSkipEnabled, maxSkips:this._maxFrameSkips, targetFps:this._targetFps }; },
     // (toggleShader kept above for backwards compat via new implementation)
 
     setRfStrength: function (strength) {
@@ -697,8 +714,14 @@ window.nesInterop = {
         }
         if (this._loopActive) return; // idempotent start
         this._loopActive = true;
-        const step = async () => {
+        this._lastRafTs = 0;
+        this._skipsThisBurst = 0;
+        const step = async (ts) => {
             if (!this._loopActive) return;
+            const targetMs = 1000 / (this._targetFps || 60);
+            const dt = this._lastRafTs ? (ts - this._lastRafTs) : targetMs;
+            const behind = dt > targetMs * 1.5;
+            this._lastRafTs = ts || performance.now();
             if (this._dotNetRef) {
                 try {
                     // Single-crossing per frame: get payload from .NET and present locally
@@ -707,10 +730,16 @@ window.nesInterop = {
                         const fb = r.fb || r.Framebuffer;
                         const audio = r.audio || r.Audio;
                         const sr = r.sr || r.SampleRate || 44100;
-                        if (fb || (audio && audio.length)) {
+                        const haveAudio = !!(audio && audio.length);
+                        const canSkip = this._frameSkipEnabled && behind && (this._skipsThisBurst < this._maxFrameSkips);
+                        // If behind and skipping allowed, suppress video present this tick but still feed audio
+                        const fbToPresent = canSkip ? null : fb;
+                        if (fbToPresent || haveAudio) {
                             // Fire-and-forget to avoid chaining microtasks on the RAF critical path
-                            this.presentFrame('nes-canvas', fb, audio, sr);
+                            this.presentFrame('nes-canvas', fbToPresent, audio, sr);
                         }
+                        // Track skip burst window
+                        if (canSkip) { this._skipsThisBurst++; } else { this._skipsThisBurst = 0; }
                     }
                 } catch {}
             }

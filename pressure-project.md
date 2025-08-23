@@ -125,11 +125,16 @@ Hypothesis: Competing loops (timer in .NET + RAF in JS) can cause phase drift an
 Impact: Medium (5–15%). Effort: S. Risk: Low.
 Dependencies: Confirm `nesInterop.startEmulationLoop` is the only driver during run.
 Acceptance
-- [ ] Only the JS RAF loop drives frames; no other loop advances frames while running
-- [ ] Stable frame cadence in Performance panel (consistent RAF interval)
+- [x] Only the JS RAF loop drives frames; no other loop advances frames while running
+- [x] Stable frame cadence in Performance panel (consistent RAF interval)
 Tasks
-- [ ] Audit `startEmulationLoop` implementation; ensure .NET isn’t advancing frames concurrently
-- [ ] Add a frame-skipping option when CPU bound (skip present, keep audio stable)
+- [x] Audit `startEmulationLoop` implementation; ensure .NET isn’t advancing frames concurrently
+- [x] Add a frame-skipping option when CPU bound (skip present, keep audio stable)
+
+Progress (2025-08-23)
+- Ensured .NET does not run an internal timer/loop; `FrameTick` only runs when invoked from JS RAF.
+- Added configurable frame-skip in `wwwroot/nesInterop.js` to suppress video present for up to 1 frame when behind while still pushing audio, keeping cadence stable.
+- Public helpers: `setFrameSkipOptions({ enabled, maxSkips, targetFps })` and `getFrameSkipOptions()`.
 
 ### 8) Move heavy storage work off critical path (IDB/state)
 Hypothesis: IndexedDB reads/writes on the hot path create jank.
