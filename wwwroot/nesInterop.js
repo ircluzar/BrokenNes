@@ -410,25 +410,22 @@ window.nesInterop = {
             write: ctrl? Atomics.load(ctrl,1):0
         };
     },
-    // Unified presentFrame: canvas draw + optional audio buffer write (legacy OR ring)
+    // Unified presentFrame: canvas draw + optional audio buffer write
+    // Policy: TRB may use AudioWorklet ring (rubberband). FMC/CLR use legacy classic scheduling.
     presentFrame: async function(canvasId, framebuffer, audioBuffer, sampleRate){
         try {
-            // Attempt worklet init (once) when first audio arrives
-            if(audioBuffer && audioBuffer.length){
+            const clk = this._activeClockId || '';
+            const useWorklet = (clk === 'TRB');
+            // Attempt worklet init (once) when TRB audio arrives
+            if(useWorklet && audioBuffer && audioBuffer.length){
                 await this._initAudioWorkletIfNeeded(sampleRate);
             }
-            if(this._awEnabled && audioBuffer && audioBuffer.length){
+            if(useWorklet && this._awEnabled && audioBuffer && audioBuffer.length){
+                // TRB -> ring buffer with rubberbanding
                 this._awWrite(audioBuffer);
             } else if(audioBuffer && audioBuffer.length) {
-                // legacy path -> per-clock routing
-                const clk = this._activeClockId || '';
-                if (clk === 'TRB') {
-                    // improved mixer for TRB
-                    this.playAudio(audioBuffer, sampleRate||44100);
-                } else {
-                    // classic scheduling for FMC/CLR (pre-change behavior)
-                    this.playAudioClassic(audioBuffer, sampleRate||44100);
-                }
+                // FMC/CLR -> classic legacy scheduling (pre-rubberband)
+                this.playAudioClassic(audioBuffer, sampleRate||44100);
             }
             if(framebuffer){ this.drawFrame(canvasId, framebuffer); }
         } catch(e){ console.warn('presentFrame failed', e); }
@@ -1035,7 +1032,7 @@ window.nesInterop = {
             console.warn('Audio playback error:', error);
         }
     },
-    // Classic path: schedule buffers as-is (no resample/chunk/overlap). Minimal fades only.
+    // Classic legacy path: exact pre-rubberband behavior
     playAudioClassic: function(audioBuffer, sampleRate){
         try {
             if (!window.nesAudioCtx) {
@@ -1043,33 +1040,29 @@ window.nesInterop = {
             }
             const ctx = window.nesAudioCtx;
             if (ctx.state === 'suspended') { ctx.resume(); }
-            if (!audioBuffer || audioBuffer.length === 0) return;
-            const sr = (typeof sampleRate === 'number' && isFinite(sampleRate) && sampleRate>0) ? sampleRate : (ctx.sampleRate || 44100);
+            if (!audioBuffer || audioBuffer.length === 0) return; // No audio data
+            const sr = (typeof sampleRate === 'number' && isFinite(sampleRate) && sampleRate>0) ? sampleRate : 44100;
             const buffer = ctx.createBuffer(1, audioBuffer.length, sr);
-            try { buffer.copyToChannel(audioBuffer instanceof Float32Array ? audioBuffer : Float32Array.from(audioBuffer), 0, 0); } catch {}
-            const src = ctx.createBufferSource();
-            src.buffer = buffer;
-            // Classic path keeps playbackRate at 1.0 (no drift trim)
-            const gain = ctx.createGain();
-            src.connect(gain).connect(ctx.destination);
-            const now = ctx.currentTime;
-            if (!window._nesAudioTimeline) window._nesAudioTimeline = now + 0.02;
-            let startT = Math.max(window._nesAudioTimeline, now + 0.0005);
-            if (startT > now + 0.25) startT = now + 0.25; // cap excessive lead
-            const endT = startT + buffer.duration;
-            // Short safe fades to avoid clicks without affecting timbre
-            const fadeSec = 0.002;
-            try {
-                gain.gain.setValueAtTime(0.0, startT);
-                gain.gain.linearRampToValueAtTime(1.0, startT + fadeSec);
-                const tail = Math.max(startT, endT - fadeSec);
-                gain.gain.setValueAtTime(1.0, tail);
-                gain.gain.linearRampToValueAtTime(0.0, endT);
-            } catch {}
-            try { src.start(startT); } catch {}
-            if(window._nesActiveSources){ try { window._nesActiveSources.push(src); window._nesActiveSources.push(gain); } catch{} }
-            window._nesAudioTimeline = endT;
-        } catch(e){ console.warn('playAudioClassic error', e); }
+            const channel = buffer.getChannelData(0);
+            for (let i = 0; i < audioBuffer.length; i++) {
+                channel[i] = audioBuffer[i] || 0;
+            }
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            if (!window._nesAudioTimeline) {
+                window._nesAudioTimeline = ctx.currentTime + 0.02; // small initial lead
+            }
+            if (window._nesAudioTimeline < ctx.currentTime) {
+                window._nesAudioTimeline = ctx.currentTime + 0.01; // gentle catch-up reset
+            }
+            const when = window._nesAudioTimeline;
+            try { source.start(when); } catch {}
+            if(window._nesActiveSources){ try { window._nesActiveSources.push(source); } catch{} }
+            window._nesAudioTimeline += buffer.duration;
+        } catch (error) {
+            console.warn('playAudioClassic error:', error);
+        }
     },
     // Clock core routing control from C#
     setActiveClockId(id){ this._activeClockId = (id||'')+''; return this._activeClockId; },
