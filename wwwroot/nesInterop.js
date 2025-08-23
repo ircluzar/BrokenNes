@@ -412,7 +412,8 @@ window.nesInterop = {
         };
     },
     // Unified presentFrame: canvas draw + optional audio buffer write
-    // Policy: TRB may use AudioWorklet ring (rubberband). FMC/CLR use legacy classic scheduling.
+    // Policy: TRB uses modern rubberbanding pipeline (AudioWorklet ring if available; otherwise chunked+rate trim).
+    //         FMC/CLR use legacy classic scheduling.
     presentFrame: async function(canvasId, framebuffer, audioBuffer, sampleRate){
         try {
             const clk = this._activeClockId || '';
@@ -421,12 +422,19 @@ window.nesInterop = {
             if(useWorklet && audioBuffer && audioBuffer.length){
                 await this._initAudioWorkletIfNeeded(sampleRate);
             }
-            if(useWorklet && this._awEnabled && audioBuffer && audioBuffer.length){
-                // TRB -> ring buffer with rubberbanding
-                this._awWrite(audioBuffer);
-            } else if(audioBuffer && audioBuffer.length) {
-                // FMC/CLR -> classic legacy scheduling (pre-rubberband)
-                this.playAudioClassic(audioBuffer, sampleRate||44100);
+            if(audioBuffer && audioBuffer.length){
+                if(clk === 'TRB'){
+                    if(this._awEnabled){
+                        // TRB -> ring buffer with variable-rate read rubberbanding
+                        this._awWrite(audioBuffer);
+                    } else {
+                        // TRB fallback -> modern chunked scheduler with gentle playbackRate trim
+                        this.playAudio(audioBuffer, sampleRate||44100);
+                    }
+                } else {
+                    // FMC/CLR -> classic legacy scheduling (pre-rubberband)
+                    this.playAudioClassic(audioBuffer, sampleRate||44100);
+                }
             }
             if(framebuffer){ this.drawFrame(canvasId, framebuffer); }
         } catch(e){ console.warn('presentFrame failed', e); }
@@ -1068,6 +1076,25 @@ window.nesInterop = {
     // Clock core routing control from C#
     setActiveClockId(id){ this._activeClockId = (id||'')+''; return this._activeClockId; },
     getActiveClockId(){ return this._activeClockId||''; }
+    ,
+    // Visibility bridge for C# clocks (CLR/TRB): forwards document.visibilityState to JsVisibilityChanged
+    registerVisibility(dotNetRef){
+        try {
+            if(!dotNetRef) return false;
+            if(this._visRef && this._visRef._target === dotNetRef) return true;
+            this._visRef = dotNetRef;
+            const handler = () => {
+                try { dotNetRef.invokeMethodAsync('JsVisibilityChanged', document.visibilityState !== 'hidden'); } catch {}
+            };
+            if(this._visHandler){ try { document.removeEventListener('visibilitychange', this._visHandler); } catch {}
+            }
+            this._visHandler = handler;
+            document.addEventListener('visibilitychange', this._visHandler);
+            // Fire initial state
+            handler();
+            return true;
+        } catch(e){ console.warn('registerVisibility failed', e); return false; }
+    }
     ,
     // ==== SoundFont note event bridge (APU_WF / APU_MNES SoundFontMode) ====
     noteEvent: function(channel, program, midiNote, velocity, on){
