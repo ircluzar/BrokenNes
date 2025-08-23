@@ -48,13 +48,19 @@ Hypothesis: `drawFrame` copies `framebuffer` into `imageData.data` then uploads 
 Impact: Very High on mobile (one full 256x240x4 copy/frame removed). Effort: S. Risk: Low.
 Dependencies: `wwwroot/nesInterop.js` draw path.
 Acceptance
-- [ ] WebGL path never calls `imageData.data.set(framebuffer)` when WebGL is available.
-- [ ] `gl.texSubImage2D(..., framebuffer)` used directly; `imageData` retained only for 2D fallback.
+- [x] WebGL path never calls `imageData.data.set(framebuffer)` when WebGL is available.
+- [x] `gl.texSubImage2D(..., framebuffer)` used directly; `imageData` retained only for 2D fallback.
 - [ ] Perf markers show ≥0.3–0.8 ms/frame improvement on mid devices.
 Tasks
-- [ ] Branch early: if WebGL available, upload from `framebuffer` directly; skip ImageData mutation.
-- [ ] Keep 2D fallback intact for non-WebGL contexts.
-- [ ] Add JS perf marks around upload to quantify gains.
+- [x] Branch early: if WebGL available, upload from `framebuffer` directly; skip ImageData mutation.
+- [x] Keep 2D fallback intact for non-WebGL contexts.
+- [x] Add JS perf marks around upload to quantify gains.
+
+Progress (2025-08-23)
+- Implemented direct WebGL uploads using `texImage2D/texSubImage2D` with the marshaled framebuffer; removed `ImageData` copy from WebGL path.
+- Added `performance.mark/measure` around init/sub uploads (labels: glUploadInit, glUploadSub).
+- 2D fallback unchanged for non-WebGL environments.
+ - Hyper-optimizations: VAO support (OES_vertex_array_object) for one-time attribute binding, cached uniform locations (uPrevTex), gated perf marks to avoid overhead, avoided per-frame viewport resets, minimized typed-array allocations via scratch buffer.
 
 ### 2b) Zero-copy via memory offsets (optional advanced)
 Hypothesis: Passing a linear-memory offset + length lets JS view WASM memory directly, avoiding Blazor marshaling copies.

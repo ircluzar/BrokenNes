@@ -8,6 +8,11 @@ window.nesInterop = {
     _framesThisSecond: 0,
     _gl: null,
     _glObjects: null,
+    _hasVAO: false,
+    _vaoExt: null,
+    _vpW: 0,
+    _vpH: 0,
+    _perfMarksEnabled: false,
     // Deprecated single toggle flags replaced by registry-driven system
     _shaderEnabled: true, // kept for backward compatibility (toggle between first two registered shaders if desired)
     _rfStrength: 1.35, // Default RF strength (uniform uStrength if present)
@@ -357,24 +362,23 @@ window.nesInterop = {
     },
 
     drawFrame: function (canvasId, framebuffer) {
-        // Initialize fallback 2D cache (always keeps imageData for texture upload or direct blit)
+        // Initialize fallback 2D cache (always keeps imageData for 2D blit)
         const cache = this._ensureCanvasCache(canvasId);
         if (!cache) return;
-    const { offCtx, off, imageData, canvas } = cache;
-
-        // Update pixel buffer
-        if (framebuffer && framebuffer.length >= 256 * 240 * 4) {
-            imageData.data.set(framebuffer);
-        } else if (!cache._cleared) {
-            for (let i = 0; i < imageData.data.length; i += 4) {
-                imageData.data[i] = 0; imageData.data[i+1]=0; imageData.data[i+2]=0; imageData.data[i+3]=255;
-            }
-            cache._cleared = true;
-        }
+        const { offCtx, off, imageData, canvas } = cache;
 
         // Initialize WebGL once; if unavailable we permanently fall back to 2D
         const webglAvailable = this._initWebGL(canvas);
         if (!webglAvailable) {
+            // 2D path: mutate ImageData then blit (kept intact for non-WebGL contexts)
+            if (framebuffer && framebuffer.length >= 256 * 240 * 4) {
+                try { imageData.data.set(framebuffer); } catch {}
+            } else if (!cache._cleared) {
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    imageData.data[i] = 0; imageData.data[i+1]=0; imageData.data[i+2]=0; imageData.data[i+3]=255;
+                }
+                cache._cleared = true;
+            }
             if (!cache.ctx) cache.ctx = canvas.getContext('2d');
             const ctx = cache.ctx;
             offCtx.putImageData(imageData, 0, 0);
@@ -401,16 +405,41 @@ window.nesInterop = {
             glRes.prevFrameFBO = gl.createFramebuffer();
         }
 
-        // Upload/refresh main NES texture
+        // Upload/refresh main NES texture (direct from framebuffer; no ImageData copy)
         gl.bindTexture(gl.TEXTURE_2D, glRes.texture);
-        if (!glRes.initialized) {
-            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData.data);
-            glRes.initialized = true;
-        } else {
-            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 240, gl.RGBA, gl.UNSIGNED_BYTE, imageData.data);
+        // Coerce to Uint8Array view if needed
+        let src = framebuffer;
+        if (src && !(src instanceof Uint8Array)) {
+            try {
+                if (ArrayBuffer.isView(src)) {
+                    // pass-through (avoid allocate)
+                } else if (Array.isArray(src)) {
+                    // reuse a scratch buffer to avoid per-frame allocation
+                    const need = 256*240*4;
+                    if (!this._fbScratch || this._fbScratch.length !== need) this._fbScratch = new Uint8Array(need);
+                    this._fbScratch.set(src);
+                    src = this._fbScratch;
+                }
+            } catch {}
         }
-        gl.viewport(0,0,canvas.width,canvas.height);
+        // Guard: if we still don't have a valid source, skip upload (keeps prior frame)
+        if (src && src.length >= 256*240*4) {
+            if (!glRes.initialized) {
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+                if (this._perfMarksEnabled) { try { performance.mark('glUploadInit-start'); } catch {} }
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
+                if (this._perfMarksEnabled) { try { performance.mark('glUploadInit-end'); performance.measure('glUploadInit', 'glUploadInit-start', 'glUploadInit-end'); } catch {} }
+                glRes.initialized = true;
+            } else {
+                if (this._perfMarksEnabled) { try { performance.mark('glUploadSub-start'); } catch {} }
+                gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 240, gl.RGBA, gl.UNSIGNED_BYTE, src);
+                if (this._perfMarksEnabled) { try { performance.mark('glUploadSub-end'); performance.measure('glUploadSub', 'glUploadSub-start', 'glUploadSub-end'); } catch {} }
+            }
+        }
+        if (this._vpW !== canvas.width || this._vpH !== canvas.height) {
+            gl.viewport(0,0,canvas.width,canvas.height);
+            this._vpW = canvas.width; this._vpH = canvas.height;
+        }
         // Ensure all registered shaders compiled once WebGL is available
         if(Object.keys(this._shaderPrograms).length === 0){
             this._buildAllShaderPrograms();
@@ -418,13 +447,17 @@ window.nesInterop = {
         const progInfo = this._shaderPrograms[this._activeShaderKey] || this._shaderPrograms['PX'];
         const program = progInfo ? progInfo.program : glRes.basicProgram;
         gl.useProgram(program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, glRes.vbo);
-        const aPos = progInfo ? progInfo.aPos : glRes.aPosBasic;
-        const aTex = progInfo ? progInfo.aTex : glRes.aTexBasic;
-        gl.enableVertexAttribArray(aPos);
-        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-        gl.enableVertexAttribArray(aTex);
-        gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+        const bindVAO = this._vaoExt ? this._vaoExt.bindVertexArrayOES?.bind(this._vaoExt) : (this._gl.bindVertexArray ? this._gl.bindVertexArray.bind(this._gl) : null);
+        if (bindVAO) {
+            if (progInfo && progInfo.vao) { bindVAO(progInfo.vao); }
+            else if (glRes.basicVao) { bindVAO(glRes.basicVao); }
+        } else {
+            gl.bindBuffer(gl.ARRAY_BUFFER, glRes.vbo);
+            const aPos = progInfo ? progInfo.aPos : glRes.aPosBasic;
+            const aTex = progInfo ? progInfo.aTex : glRes.aTexBasic;
+            if (aPos>=0){ gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0); }
+            if (aTex>=0){ gl.enableVertexAttribArray(aTex); gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8); }
+        }
 
         // --- Bind uniforms ---
         if (progInfo) {
@@ -439,7 +472,8 @@ window.nesInterop = {
         // --- Bind previous frame texture for MSH shader ---
         if (isMSH && progInfo) {
             // uPrevTex is always texture unit 1
-            const uPrevTexLoc = gl.getUniformLocation(program, 'uPrevTex');
+            // Cache uPrevTex location per program (stored on progInfo when built)
+            const uPrevTexLoc = progInfo.uPrevTex || gl.getUniformLocation(program, 'uPrevTex');
             if (uPrevTexLoc && glRes.prevFrameTexture) {
                 gl.activeTexture(gl.TEXTURE1);
                 gl.bindTexture(gl.TEXTURE_2D, glRes.prevFrameTexture);
@@ -459,18 +493,28 @@ window.nesInterop = {
             gl.bindTexture(gl.TEXTURE_2D, glRes.texture);
             gl.viewport(0,0,256,240);
             // Use a simple passthrough shader to blit
-            const pxProg = this._shaderPrograms['PX']?.program || glRes.basicProgram;
+            const pxInfo = this._shaderPrograms['PX'];
+            const pxProg = pxInfo?.program || glRes.basicProgram;
             gl.useProgram(pxProg);
-            gl.bindBuffer(gl.ARRAY_BUFFER, glRes.vbo);
-            const aPos = this._shaderPrograms['PX']?.aPos || glRes.aPosBasic;
-            const aTex = this._shaderPrograms['PX']?.aTex || glRes.aTexBasic;
-            gl.enableVertexAttribArray(aPos);
-            gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-            gl.enableVertexAttribArray(aTex);
-            gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+            if (pxInfo && pxInfo.vao) {
+                const bindVAO = this._vaoExt ? this._vaoExt.bindVertexArrayOES.bind(this._vaoExt) : (this._gl.bindVertexArray ? this._gl.bindVertexArray.bind(this._gl) : null);
+                if (bindVAO) { bindVAO(pxInfo.vao); }
+            } else if (glRes.basicVao) {
+                const bindVAO = this._vaoExt ? this._vaoExt.bindVertexArrayOES.bind(this._vaoExt) : (this._gl.bindVertexArray ? this._gl.bindVertexArray.bind(this._gl) : null);
+                if (bindVAO) { bindVAO(glRes.basicVao); }
+            } else {
+                gl.bindBuffer(gl.ARRAY_BUFFER, glRes.vbo);
+                const aPos2 = pxInfo?.aPos || glRes.aPosBasic;
+                const aTex2 = pxInfo?.aTex || glRes.aTexBasic;
+                if (aPos2>=0){ gl.enableVertexAttribArray(aPos2); gl.vertexAttribPointer(aPos2, 2, gl.FLOAT, false, 16, 0); }
+                if (aTex2>=0){ gl.enableVertexAttribArray(aTex2); gl.vertexAttribPointer(aTex2, 2, gl.FLOAT, false, 16, 8); }
+            }
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-            gl.viewport(0,0,canvas.width,canvas.height);
+            if (this._vpW !== canvas.width || this._vpH !== canvas.height) {
+                gl.viewport(0,0,canvas.width,canvas.height);
+                this._vpW = canvas.width; this._vpH = canvas.height;
+            }
         }
     },
     // Zero-copy framebuffer support removed (HOTPOT-05 rollback). Using legacy marshalled framebuffer path only.
@@ -478,6 +522,7 @@ window.nesInterop = {
     hasQueryFlag: function(flag){
         try { const u=new URL(window.location.href); const v=u.searchParams.get(flag); return v==="1"||v==="true"||v==="yes"; } catch { return false; }
     },
+    enablePerfMarks(on){ this._perfMarksEnabled = !!on; return this._perfMarksEnabled; },
     // (toggleShader kept above for backwards compat via new implementation)
 
     setRfStrength: function (strength) {
@@ -497,6 +542,15 @@ window.nesInterop = {
             const gl = canvas.getContext('webgl', { premultipliedAlpha:false }) || canvas.getContext('experimental-webgl');
             if (!gl) return false;
             this._gl = gl;
+            // VAO support detection (WebGL2 or OES extension)
+            try {
+                if (gl.createVertexArray) { this._hasVAO = true; this._vaoExt = null; }
+                else {
+                    this._vaoExt = gl.getExtension('OES_vertex_array_object') || null;
+                    this._hasVAO = !!this._vaoExt;
+                    if (this._hasVAO) { console.log('[NES] OES_vertex_array_object enabled'); }
+                }
+            } catch { this._hasVAO = false; this._vaoExt = null; }
             // Try enabling standard derivatives for shaders that use dFdx/dFdy (WebGL1)
             try {
                 this._oesDerivatives = gl.getExtension('OES_standard_derivatives') || null;
@@ -528,12 +582,26 @@ window.nesInterop = {
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+            const aPosBasic=gl.getAttribLocation(basicProgram,'aPos');
+            const aTexBasic=gl.getAttribLocation(basicProgram,'aTex');
+            let basicVao=null;
+            if (this._hasVAO) {
+                const createVAO = this._vaoExt ? this._vaoExt.createVertexArrayOES.bind(this._vaoExt) : gl.createVertexArray.bind(gl);
+                const bindVAO = this._vaoExt ? this._vaoExt.bindVertexArrayOES.bind(this._vaoExt) : gl.bindVertexArray.bind(gl);
+                basicVao = createVAO();
+                bindVAO(basicVao);
+                gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
+                if (aPosBasic>=0){ gl.enableVertexAttribArray(aPosBasic); gl.vertexAttribPointer(aPosBasic, 2, gl.FLOAT, false, 16, 0); }
+                if (aTexBasic>=0){ gl.enableVertexAttribArray(aTexBasic); gl.vertexAttribPointer(aTexBasic, 2, gl.FLOAT, false, 16, 8); }
+                bindVAO(null);
+            }
             this._glObjects={
                 basicProgram:basicProgram,
                 vbo:vbo,
                 texture:tex,
-                aPosBasic:gl.getAttribLocation(basicProgram,'aPos'),
-                aTexBasic:gl.getAttribLocation(basicProgram,'aTex'),
+                aPosBasic,
+                aTexBasic,
+                basicVao,
                 initialized:false
             };
             // Build all shader programs now (could defer until first use)
@@ -582,11 +650,23 @@ window.nesInterop = {
                 uTime:gl.getUniformLocation(prog,'uTime'),
                 uTexSize:gl.getUniformLocation(prog,'uTexSize'),
                 uStrength:gl.getUniformLocation(prog,'uStrength'),
+                uPrevTex:gl.getUniformLocation(prog,'uPrevTex'),
                 options:this._shaderRegistry[key].options||{}
             };
             gl.useProgram(prog);
             const uTexLoc = gl.getUniformLocation(prog,'uTex'); if(uTexLoc) gl.uniform1i(uTexLoc,0);
             if(info.uStrength) gl.uniform1f(info.uStrength, this._rfStrength);
+            // Build VAO for this program if supported
+            if (this._hasVAO) {
+                const createVAO = this._vaoExt ? this._vaoExt.createVertexArrayOES.bind(this._vaoExt) : gl.createVertexArray.bind(gl);
+                const bindVAO = this._vaoExt ? this._vaoExt.bindVertexArrayOES.bind(this._vaoExt) : gl.bindVertexArray.bind(gl);
+                info.vao = createVAO();
+                bindVAO(info.vao);
+                gl.bindBuffer(gl.ARRAY_BUFFER, this._glObjects.vbo);
+                if (info.aPos>=0){ gl.enableVertexAttribArray(info.aPos); gl.vertexAttribPointer(info.aPos, 2, gl.FLOAT, false, 16, 0); }
+                if (info.aTex>=0){ gl.enableVertexAttribArray(info.aTex); gl.vertexAttribPointer(info.aTex, 2, gl.FLOAT, false, 16, 8); }
+                bindVAO(null);
+            }
             this._shaderPrograms[key]=info;
             if(!this._rfLogged && key==='RF'){ console.log('[NES] RF composite shader active'); this._rfLogged=true; }
         }
