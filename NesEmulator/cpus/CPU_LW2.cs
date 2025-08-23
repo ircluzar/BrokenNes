@@ -54,7 +54,7 @@ public sealed class CPU_LW2 : ICPU {
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
 
-	// === Opcode Dispatch Table (Optimization Item #11) ===
+	// === Opcode Dispatch Table ===
 	// We replace the large per-instruction switch with a pre-built delegate table.
 	// Each entry returns the cycle count for the executed opcode. This enables
 	// future experimentation with function pointers or metadata-driven decoding.
@@ -97,7 +97,7 @@ public sealed class CPU_LW2 : ICPU {
 
 	public void SetZN(byte value) { SetZNFast(value); }
 
-	// === Fast Bus Path (Optimization Item #12) ===
+	// === Fast Bus Path ===
 	// Inline fast-path for $0000-$1FFF (internal RAM mirrors) to bypass Bus.Read() call overhead.
 	// Additional specialized PRG fetch fast path can be added later once mapper bank pointers exist.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -369,7 +369,7 @@ namespace NesEmulator
 		public void LoadROM(byte[] romData)
 		{
 			try {
-				// Preserve the exact previously selected APU core suffix (not just enum bucket) so we don't
+				// Preserve the APU core suffix so we don't
 				// collapse custom selections (e.g., SPD, WF, MNES) back to FMC when a new game loads.
 				string prevApuTypeName = bus?.ActiveAPU?.GetType().Name ?? string.Empty; // e.g. "APU_SPD"
 				string prevApuSuffix = string.Empty;
@@ -383,7 +383,7 @@ namespace NesEmulator
 				if (string.IsNullOrEmpty(RomName)) RomName = "(ROM)"; // fallback label if UI doesn't set
 				// Perform hard reset (recreates core triad and clears latches)
 				bus.HardResetAPUs();
-				// Attempt to restore the exact previous suffix first; if unavailable fall back to enum bucket
+				// Attempt to restore the suffix first; if unavailable fall back to enum bucket
 				bool restored = false;
 				if (!string.IsNullOrEmpty(prevApuSuffix)) {
 					try { restored = bus.SetApuCoreById(prevApuSuffix); } catch { restored = false; }
@@ -418,7 +418,7 @@ namespace NesEmulator
 			// Apply any overshoot carry from last frame (can reduce target this frame)
 			if (overshootCarry > 0) {
 				if (overshootCarry >= targetCycles) {
-					// Edge case: previous overshoot larger than base frame; clamp to leave minimum work
+					// Edge case: overshoot larger than base frame; clamp to leave minimum work
 					overshootCarry -= targetCycles;
 					return; // skip running CPU this frame; leftover overshoot still pending
 				}
@@ -508,15 +508,15 @@ namespace NesEmulator
 				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
 			}
 			// (Exceptions already handled within each scheduling branch)
-			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for legacy compatibility
+			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus.ppu.UpdateFrameBuffer();
 		}
 
-		// --- Batch scheduler configuration (Item #1 partial) ---
+		// --- Batch scheduler configuration ---
 		// Maximum instructions to execute before forcing a flush even if cycle threshold not reached.
-		private const int ConfigMaxInstructionsPerBatch = 32; // tune experimentally
+		private const int ConfigMaxInstructionsPerBatch = 32;
 		// Cycle threshold: once accumulated CPU cycles exceed this, we flush to PPU/APU.
 		private const int ConfigBatchCycleThreshold = 24; // allows combining several short (2-3 cycle) ops
 		// If remaining cycles to frame end are below this guard after a loop, flush leftover to keep timing bounded.
@@ -525,12 +525,12 @@ namespace NesEmulator
 		private const int ConfigMaxEventLoopInstructionBurstCycles = 1024; // conservative; tuned later
 		// Global absolute CPU cycle counter (monotonic across frames) for upcoming event scheduler.
 		private long globalCpuCycle = 0;
-		// Event scheduler scaffolding fields (will be populated by PPU/APU once they provide event times)
+		// Event scheduler fields (will be populated by PPU/APU once they provide event times)
 		private long nextPpuEventCycle = 0;
 		private long nextApuEventCycle = 0;
-		private long nextIrqCycle = long.MaxValue; // placeholder until IRQ scheduling implemented (#17)
+		private long nextIrqCycle = long.MaxValue;
 		private long nextFrameBoundaryCycle = 0;
-		// Feature flag to toggle experimental event loop
+		// Feature flag to toggle event loop
 		public bool EnableEventScheduler { get; set; } = false;
 		// PPU scanline scheduling pattern (114,114,113) CPU cycles approximates 341 PPU cycles per scanline (341/3=113.667)
 		private static readonly int[] PpuScanlineCpuPattern = new int[]{114,114,113};
@@ -581,7 +581,7 @@ namespace NesEmulator
 			for (int i = 0; i < frames; i++) RunFrame();
 		}
 
-		// === Instrumentation & Benchmarks (Theory #38) ===
+		// === Instrumentation & Benchmarks ===
 		private long framesExecutedTotal = 0;
 		public record BenchResult(string Name, int Iterations, double MsTotal, double MsPerIter, long CpuReads, long CpuWrites, long ApuCycles, long OamDmaWrites, long BatchFlushes)
 		{
@@ -893,8 +893,6 @@ namespace NesEmulator
 				noteSub = null; soundFontBoundApu = null; soundFontEnabled = false; return false;
 			}
 		}
-
-		// Removed famicloneMode boolean API; UI should query active APU id or GetApuCore()
 
 		// --- APU core selection (Modern/Jank/QN) ---
 		public enum ApuCore { Modern=0, Jank=1, QuickNes=2 }

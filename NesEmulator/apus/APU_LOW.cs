@@ -12,7 +12,6 @@ namespace NesEmulator
         private readonly Bus bus;
         public APU_LOW(Bus bus) { this.bus = bus; }
 
-        // Optimization #3 (project-optimize.md):
         // Precompute nonlinear audio mixing lookup tables to remove per-sample divides
         // and keep the path float-only. Pulse channels (p1+p2) sum 0..30. Triangle (0..15),
         // Noise (0..15), DMC (0..127) -> 16*16*128 = 32768 combinations. This LUT replicates
@@ -260,12 +259,12 @@ namespace NesEmulator
                 }
                 else if (dmc_enabled)
                 {
-                    // Periodic prefetch (less often than legacy per-cycle fetch). Attempt once per outer loop.
+                    // Periodic prefetch (less frequent than per-cycle fetch). Attempt once per outer loop.
                     TryDmcFetch();
                     dmc_output = dmc_deltaCounter;
                 }
 
-                // Recompute channel outputs (similar conditions as legacy per-cycle loop)
+                // Recompute channel outputs (similar conditions as per-cycle loop)
                 bool p1SweepMute = SweepWouldMute(pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, true);
                 bool p2SweepMute = SweepWouldMute(pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, false);
                 UpdatePulseOutput(true, p1SweepMute);

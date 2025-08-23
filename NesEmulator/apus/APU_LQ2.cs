@@ -12,7 +12,7 @@ namespace NesEmulator
         private readonly Bus bus;
         public APU_LQ2(Bus bus) { this.bus = bus; }
 
-        // Optimization #3 (project-optimize.md):
+        // Precompute nonlinear audio mixing lookup tables to remove per-sample divides
         // Precompute nonlinear audio mixing lookup tables to remove per-sample divides
         // and keep the path float-only. Pulse channels (p1+p2) sum 0..30. Triangle (0..15),
         // Noise (0..15), DMC (0..127) -> 16*16*128 = 32768 combinations. This LUT replicates

@@ -16,7 +16,7 @@ namespace NesEmulator
     public int Rating => 1;
         private readonly Bus bus;
 
-        // Optimization #3: LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate
+        // LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate
         // per-sample divisions. Pulse sum range 0..30, triangle 0..15, noise 0..15, DMC 0..127.
         // TND LUT size: 16*16*128 = 32768 (128KB as float). Acceptable for desktop; if size is a
         // concern for WASM we can conditionally generate or compress later.

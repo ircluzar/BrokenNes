@@ -25,13 +25,13 @@ namespace NesEmulator
         public bool ApuSilentChannelSkip = true; // default enabled (safe; no audible difference when channels off)
 
     // APU: Skip envelope decay processing when constant volume flag set (value is static).
-    public bool ApuSkipEnvelopeOnConstantVolume = true; // low-risk micro-optimization
+    public bool ApuSkipEnvelopeOnConstantVolume = true;
 
-    // Toggle for recent APU hot path optimizations (batched sample generation, block silence fill,
+    // Toggle for APU hot path optimizations (batched sample generation, block silence fill,
     // inlined pulse output, single DMC fetch). Disable to isolate regressions.
-    public bool ApuOpt_NewHotPaths = false; // set false to fall back to legacy per-sample path
+    public bool ApuOpt_NewHotPaths = false; // set false to fall back to per-sample path
 
-    // Granular toggles for isolating individual recent optimizations (override umbrella flag when false)
+    // Granular toggles for isolating individual optimizations (override umbrella flag when false)
     public bool ApuOpt_BatchSampleMix = false;      // batched GenerateAudioSamplesBatch
     public bool ApuOpt_BlockSilenceFill = false;    // block-based WriteSilenceSamples
     public bool ApuOpt_InlinePulseOutput = false;   // inline ComputePulseOutput logic in ClockPulse
@@ -58,7 +58,7 @@ namespace NesEmulator
     // PPU: Reuse pattern row cache for sprites too (currently only BG path uses it)
     public bool PpuSpritePatternCache = true; // safe: same invalidation as BG
     // PPU: Fast sprite color mapping (preload three RGBA entries per sprite row)
-    public bool PpuSpriteFastPath = true; // micro-optimization layer
+    public bool PpuSpriteFastPath = true;
 
         // Future toggles (placeholders):
     // CPU: Detect (instrument only) tight idle loops polling $2002 (PPU status) and spinning on a branch.

@@ -17,14 +17,14 @@ namespace NesEmulator
         }
 
         // APU Registers
-        private byte pulse1_duty, pulse1_length, pulse1_sweep; // removed unused raw envelope field
+        private byte pulse1_duty, pulse1_length, pulse1_sweep;
         private ushort pulse1_timer;
-        private byte pulse2_duty, pulse2_length, pulse2_sweep; // removed unused raw envelope field
+        private byte pulse2_duty, pulse2_length, pulse2_sweep;
         private ushort pulse2_timer;
         private byte triangle_linear, triangle_length;
         private ushort triangle_timer;
-        private byte noise_length, noise_period; // removed unused noise_envelope & noise_shift
-                                                 // Removed unused prelim DMC channel placeholder fields (dmc_*) pending future implementation
+        private byte noise_length, noise_period;
+
         private byte status;
 
         // Audio generation (ring buffer so JS can pull variably sized chunks without losing samples)

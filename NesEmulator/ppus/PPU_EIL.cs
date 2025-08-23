@@ -891,7 +891,7 @@ public class PPU_EIL : IPPU
 		v = (ushort)((v & 0xFBE0) | (t & 0x041F));
 	}
 
-	// Removed eager test pattern generation; rendering occurs only when needed
+
 
 	// Initialize palette RAM with reasonable defaults
 	private void InitializeDefaultPalette()

@@ -43,7 +43,6 @@ public class PPU_FMC : IPPU
 	private byte[]? frameBuffer = null;
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
 	public PPU_FMC(Bus bus)

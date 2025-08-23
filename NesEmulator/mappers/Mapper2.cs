@@ -1,6 +1,6 @@
 namespace NesEmulator
 {
-public class Mapper2 : IMapper { //UxROM (Experimental)
+public class Mapper2 : IMapper { //UxROM
     private Cartridge cartridge;
     private byte prgBank;
 

@@ -49,7 +49,7 @@ public sealed class CPU_SPD : ICPU {
 
 	private bool irqRequested;
 	private bool nmiRequested;
-	// When false, ExecuteInstruction skips inline interrupt polling so scheduler can service at batch boundaries (#17)
+	// When false, ExecuteInstruction skips inline interrupt polling so scheduler can service at batch boundaries
 	public bool InlineInterruptChecks { get; set; } = true;
 
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException

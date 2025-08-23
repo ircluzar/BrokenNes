@@ -66,12 +66,12 @@ namespace NesEmulator
 
     // Audio mixing / buffering
     private const int audioSampleRate = 44100; private const int AudioRingSize = 32768; private readonly float[] audioRing = new float[AudioRingSize]; private int ringWrite, ringRead, ringCount; private double fractionalSampleAccumulator; // retained for backward save states (legacy fractional pacing)
-    // Integer Bresenham pacing (Optimization #15)
+    // Integer Bresenham pacing
     private const int CpuFreqInt = 1789773; // NTSC CPU clock (Hz)
     private int samplePhase; // 0..CpuFreqInt-1, accumulates +audioSampleRate each CPU cycle
 
     // Filters state
-    // lpLast: previous low-pass output; dcLastOut: previous fused HP output. dcLastIn retained for backward save-state compatibility (no longer used at runtime).
+    // lpLast: previous low-pass output; dcLastOut: previous fused HP output. dcLastIn retained for save-state compatibility.
     private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
 
         // Lookup tables
@@ -81,7 +81,7 @@ namespace NesEmulator
         private static readonly byte[][] PulseDutyTable = {
             new byte[]{0,1,0,0,0,0,0,0}, new byte[]{0,1,1,0,0,0,0,0}, new byte[]{0,1,1,1,1,0,0,0}, new byte[]{1,0,0,1,1,1,1,1}
         };
-        // Nonlinear mixing LUTs (Optimization #16)
+        // Nonlinear mixing LUTs
         private static readonly float[] PulseMixLut = new float[31]; // sum p1+p2 = 0..30
         private static readonly float[] TndMixLut = new float[16 * 16 * 128]; // t(0..15), n(0..15), d(0..127)
         private static bool mixLutsBuilt;
@@ -340,7 +340,7 @@ namespace NesEmulator
 
         private void MixAndStore()
         {
-            // LUT-based nonlinear mixing (Optimization #16)
+            // LUT-based nonlinear mixing
             int p1 = pulse1_output;
             int p2 = pulse2_output;
             int pulseSum = p1 + p2; // 0..30
@@ -353,7 +353,7 @@ namespace NesEmulator
             float tnd = TndMixLut[tndIndex];
             float mixed = pulseMix + tnd;
 
-            // Existing fused low-pass + DC high-pass (item #9 retained)
+            // Existing fused low-pass + DC high-pass
             float diff = mixed - lpLast;
             float lpDelta = diff * LowPassCoeff;
             float hp = lpDelta + DC_HPF_R * dcLastOut;

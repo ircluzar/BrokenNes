@@ -44,7 +44,7 @@ public class PPU_CUBE : IPPU
 	// Palette resolved RGB cache (mirroring aware)
 	private readonly byte[] paletteResolved = new byte[32*3];
 	private bool paletteCacheBuilt = false;
-	// Gradient cache (P0 #5) – precomputed per-scanline RGB from universal background color
+	// Gradient cache – precomputed per-scanline RGB from universal background color
 	private readonly byte[] gradientR = new byte[ScreenHeight];
 	private readonly byte[] gradientG = new byte[ScreenHeight];
 	private readonly byte[] gradientB = new byte[ScreenHeight];
@@ -58,10 +58,9 @@ public class PPU_CUBE : IPPU
 	private const int ShadowOffsetY = 1;         // vertical offset matches distance (ensures projection used)
 	private const float ShadowTransparency = 0.69f; // 69% transparent -> 31% opaque
 	private const float ShadowOpacity = 1f - ShadowTransparency; // 0.31 opacity used for darkening
-	// Flattened coverage histories (row-major) to replace bool[,] (P0 #2)
+	// Flattened coverage histories (row-major)
 	private readonly byte[] spriteCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
 	private readonly byte[] bgCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
-	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
 	// Removed advanced sprite FX (clusters, bevels, glows) – keeping only backdrop shadow & authentic sprite colors.
@@ -172,7 +171,7 @@ public class PPU_CUBE : IPPU
 	{
 		// Ensure framebuffer exists before writing
 		EnsureFrameBuffer();
-		// Gradient no longer prefilled for whole line; background loop writes gradient on transparent BG pixels (P0 #1 & #5)
+		// Gradient no longer prefilled for whole line; background loop writes gradient on transparent BG pixels
 
 		// If no ROM loaded, skip further drawing (gradient serves as base)
 		if (bus?.cartridge == null)

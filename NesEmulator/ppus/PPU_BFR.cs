@@ -43,8 +43,6 @@ public class PPU_BFR : IPPU
 	private byte[]? frameBuffer = null;
 	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Removed shadow projection system (sprite/background darkening). Keeping transparent background effect.
-	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 	// Configurable background fade factor (fraction of universal background color applied where tile pixel is transparent)
 	private float backgroundFadeAlpha = 0.15f; // 15% default
@@ -66,8 +64,6 @@ public class PPU_BFR : IPPU
 	public float GetBackgroundFade() => backgroundFadeAlpha;
 	public void EnableAutoFade(bool enable) => enableAutoFade = enable;
 	public bool IsAutoFadeEnabled() => enableAutoFade;
-
-	// Removed advanced sprite FX (clusters, bevels, glows) – keeping only backdrop shadow & authentic sprite colors.
 
 	public PPU_BFR(Bus bus)
 	{
