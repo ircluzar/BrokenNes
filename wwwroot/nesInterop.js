@@ -617,11 +617,22 @@ window.nesInterop = {
         }
         if (this._loopActive) return; // idempotent start
         this._loopActive = true;
-        const step = () => {
+        const step = async () => {
             if (!this._loopActive) return;
             if (this._dotNetRef) {
-                // Fire and forget; timing not awaited to avoid jank
-                try { this._dotNetRef.invokeMethodAsync('FrameTick'); } catch {}
+                try {
+                    // Single-crossing per frame: get payload from .NET and present locally
+                    const r = await this._dotNetRef.invokeMethodAsync('FrameTick');
+                    if (r) {
+                        const fb = r.fb || r.Framebuffer;
+                        const audio = r.audio || r.Audio;
+                        const sr = r.sr || r.SampleRate || 44100;
+                        if (fb || (audio && audio.length)) {
+                            // Fire-and-forget to avoid chaining microtasks on the RAF critical path
+                            this.presentFrame('nes-canvas', fb, audio, sr);
+                        }
+                    }
+                } catch {}
             }
             this._rafId = requestAnimationFrame(step);
         };

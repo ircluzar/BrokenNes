@@ -28,15 +28,20 @@ Hypothesis: Current loop performs two crossings each frame (JS→.NET `FrameTick
 Impact: Very High (halve interop per frame; -10–30% main-thread/GC overhead). Effort: M. Risk: Low–Med.
 Dependencies: JS glue in `wwwroot/nesInterop.js`, .NET `FrameTick` signature and serialization policy.
 Acceptance
-- [ ] Exactly one interop crossing per frame during emulation (JS→.NET).
-- [ ] JS receives a payload object and calls internal present once; no `.NET → JS` `presentFrame` during run.
+- [x] Exactly one interop crossing per frame during emulation (JS→.NET).
+- [x] JS receives a payload object and calls internal present once; no `.NET → JS` `presentFrame` during run.
 - [ ] Perf markers show interop time per frame reduced ≥40% vs baseline.
 Tasks
-- [ ] Change JS `startEmulationLoop` to await a payload: `const r = await dotNetRef.invokeMethodAsync('FrameTick');`
-- [ ] Define a compact return DTO in .NET (e.g., `{ byte[] fb; float[]? audio; int sr; }`, or pointers when available).
-- [ ] In .NET `FrameTick`, run CPU, fill buffers, return the DTO instead of calling `presentFrame`.
-- [ ] In JS, replace external `presentFrame` with an internal helper (reusing existing draw/audio paths) and remove in-run calls to `presentFrame`.
+- [x] Change JS `startEmulationLoop` to await a payload: `const r = await dotNetRef.invokeMethodAsync('FrameTick');`
+- [x] Define a compact return DTO in .NET (e.g., `{ byte[] fb; float[]? audio; int sr; }`, or pointers when available).
+- [x] In .NET `FrameTick`, run CPU, fill buffers, return the DTO instead of calling `presentFrame`.
+- [x] In JS, present locally using existing `presentFrame` helper; remove in-run `.NET → JS` `presentFrame` calls.
 - [ ] Keep `drawFrame` for paused/preview-only flows; add guards to ensure it’s not used while the loop is active.
+
+Progress (2025-08-23)
+- Implemented single-crossing loop.
+- Files touched: `NesEmulator/board/Emulator.cs` (added `FramePayload`; `FrameTick()` now returns payload), `wwwroot/nesInterop.js` (RAF awaits `FrameTick` payload; presents locally).
+- DTO uses short JSON names and omits nulls to cut marshaling overhead.
 
 ### 2) Remove ImageData copy: upload framebuffer directly with WebGL
 Hypothesis: `drawFrame` copies `framebuffer` into `imageData.data` then uploads that array. Remove the copy: pass `framebuffer` directly to `gl.tex(Sub)Image2D`.
@@ -167,7 +172,7 @@ Tasks
 ---
 
 ## Quick wins (low effort, high ROI)
-- [ ] Collapse to one interop per frame: return payload from `FrameTick`; stop calling `presentFrame` during run
+- [x] Collapse to one interop per frame: return payload from `FrameTick`; stop calling `presentFrame` during run
 - [ ] WebGL upload from `framebuffer` directly; remove `imageData.data.set(framebuffer)` in hot path
 - [ ] Default-enable AudioWorklet SAB ring; target ≥ 60–100 ms queue; pre-init on boot
 - [ ] Batch SoundFont note events per frame (array payload) instead of per-note invocations

@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -26,6 +27,13 @@ namespace BrokenNes
     /// </summary>
     public partial class Emulator : IDisposable
     {
+        // Compact payload returned to JS once per frame to reduce interop crossings
+        public sealed class FramePayload
+        {
+            [JsonPropertyName("fb"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public byte[]? Framebuffer { get; set; }
+            [JsonPropertyName("audio"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public float[]? Audio { get; set; }
+            [JsonPropertyName("sr")] public int SampleRate { get; set; }
+        }
         // --- Injected dependencies (mirrors Nes.razor @inject list) ---
     private readonly ILogger Logger;
         private readonly IJSRuntime JS;
@@ -250,29 +258,32 @@ namespace BrokenNes
         }
 
         [JSInvokable]
-        public async Task FrameTick()
+        public Task<FramePayload> FrameTick()
         {
-            if (!nesController.IsRunning) return;
-            await RunFrame();
+            if (!nesController.IsRunning)
+            {
+                return Task.FromResult(new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 });
+            }
+            var payload = RunFrameAndBuildPayload();
+            return Task.FromResult(payload);
         }
 
-        private async Task RunFrame()
+        private FramePayload RunFrameAndBuildPayload()
         {
-            if (nes == null || !nesController.IsRunning) return;
+            if (nes == null || !nesController.IsRunning)
+                return new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 };
             try
             {
                 bool autoStatic = string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !nesController.AutoStaticSuppressed;
                 nes.EnableStatic(autoStatic);
                 nes.SetInput(inputState);
                 if (nesController.FastForward) nes.RunFrames(3); else nes.RunFrame();
-                if (corruptor.AutoCorrupt) await Blast();
+                if (corruptor.AutoCorrupt) { _ = Blast(); }
                 nesController.FrameCount++;
                 int queued = nes.GetQueuedAudioSamples();
-                int targetChunk = queued > 4096 ? 2048 : (queued > 2048 ? 1024 : 768); // placeholder usage
                 float[] audioBuffer = nes.GetAudioBuffer();
                 bool queuedAudio = audioBuffer.Length > 0; int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
                 nesController.framebuffer = nes.GetFrameBuffer();
-                _ = JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", nesController.framebuffer, queuedAudio ? audioBuffer : null, sampleRate);
                 if (nesController.FrameCount % nesController.StatsUpdateDivider == 0)
                 {
                     var now = DateTime.Now;
@@ -284,6 +295,12 @@ namespace BrokenNes
                     }
                     StateHasChanged();
                 }
+                return new FramePayload
+                {
+                    Framebuffer = nesController.framebuffer,
+                    Audio = queuedAudio ? audioBuffer : null,
+                    SampleRate = sampleRate
+                };
             }
             catch (Exception ex)
             {
@@ -291,6 +308,7 @@ namespace BrokenNes
                 nesController.ErrorMessage = $"Runtime error: {ex.Message}\n{ex.StackTrace}";
                 _ = PauseEmulation();
                 StateHasChanged();
+                return new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 };
             }
         }
 
