@@ -573,6 +573,74 @@
         </div>
     </details>
 
+        <details class="panel-block imagine-panel">
+        <summary>Imagine</summary>
+        <div class="panel-content small">
+            <div class="d-flex align-items-end gap-2 flex-wrap mb-2">
+                <div>
+                    <label class="form-label mb-1 small" for="imagine-epoch">Model epoch</label>
+                    <input id="imagine-epoch" type="number" min="1" max="40" value="25" class="form-control form-control-sm" style="width:90px" />
+                </div>
+                <button class="btn btn-sm btn-primary mt-3">Load model</button>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.OpenImagineModal())">Debug</button>
+                <button class="btn btn-sm btn-outline-warning">Imagine a bug</button>
+            </div>
+            @if (emu!.ImagineModalOpen)
+            {
+                <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
+                    <div class="card shadow-lg" style="max-width:720px;width:95%;margin-top:2.5rem;">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <strong class="small mb-0">Imagine Debug</strong>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.FreezeAndFetchNextInstructionAsync())">Freeze and fetch next instruction</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseImagineModal())">Close</button>
+                            </div>
+                        </div>
+                        <div class="card-body small" style="max-height:80vh;overflow:auto;">
+                            @if (emu!.ImagineSnapshot == null)
+                            {
+                                <div class="text-muted fst-italic">Click "Freeze and fetch next instruction" to capture CPU state.</div>
+                            }
+                            else
+                            {
+                                var s = emu!.ImagineSnapshot;
+                                <div class="mb-2 d-flex flex-wrap gap-3">
+                                    <div>CPU: @s!.CpuCoreId</div>
+                                    <div>PC: @($"0x{s.PC:X4}")</div>
+                                    <div>A: @($"0x{s.A:X2}")</div>
+                                    <div>X: @($"0x{s.X:X2}")</div>
+                                    <div>Y: @($"0x{s.Y:X2}")</div>
+                                    <div>P: @($"0x{s.P:X2}")</div>
+                                    <div>SP: @($"0x{s.SP:X4}")</div>
+                                    <div>IRQ: @(s.IRQ?"1":"0")</div>
+                                    <div>NMI: @(s.NMI?"1":"0")</div>
+                                    <div>PRG ROM: @(s.InPrgRom?"YES":"NO")</div>
+                                </div>
+                                @if (!s!.InPrgRom)
+                                {
+                                    <div class="alert alert-warning py-1 px-2 small">PC is not in PRG ROM ($8000-$FFFF); address is invalid for PRG fetch.</div>
+                                }
+                                else
+                                {
+                                    <div class="mb-2">
+                                        <div class="text-muted">8 bytes before target (PC-8 .. PC-1)</div>
+                                        <code>@(string.Join(" ", s.Prev8.Select(b=>b.ToString("X2"))))</code>
+                                    </div>
+                                    <div class="mb-2">
+                                        <div class="text-muted">Next 16 bytes (PC .. PC+15)</div>
+                                        <code>@(string.Join(" ", s.Next16.Select(b=>b.ToString("X2"))))</code>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </details>
+
         <details class="panel-block">
         <summary>Debug</summary>
         <div class="panel-content debug-mini">
