@@ -51,7 +51,6 @@ public class PPU_EIL : IPPU
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
 	// Reusable list for sprite indices visible on a given scanline (sprite evaluation)
 	private readonly int[] spriteLineList = new int[64];
-	// Removed unused staticLfsr field (was reserved for future static effect)
 	private int staticFrameCounter = 0;
 
 	// Speedhack: pattern line expansion cache (tile row -> packed 2-bit color indices)

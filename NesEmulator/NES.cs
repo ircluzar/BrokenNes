@@ -10,7 +10,7 @@ namespace NesEmulator
 		private Cartridge? cartridge;
 		private Bus? bus;
 		private bool forceStatic = false; // when true, draw animated gray static instead of PPU output
-		// --- Fixed-point frame timing (Optimization #4) ---
+		// --- Fixed-point frame timing ---
 		// Replaces prior double-based fractional cycle accounting. We model CPU cycles per frame as:
 		//   CpuFrequencyInt = BaseCyclesPerFrame * 60 + ExtraCyclesNumerator
 		// Each frame: target = BaseCyclesPerFrame plus one extra cycle on ExtraCyclesNumerator of 60 frames
@@ -19,8 +19,7 @@ namespace NesEmulator
 		// Fields are persisted for savestates (see NesState.extraCycleAcc / overshootCarry for new integers).
 		private int extraCycleAccumulator = 0; // 0..ExtraCyclesDenominator-1 scaled accumulator
 		private int overshootCarry = 0; // cycles executed beyond prior frame's target, subtract from next target
-		private double cycleRemainder = 0; // legacy field kept for backward-compat load of old states
-		// Removed frameskip to maintain consistent visual cadence
+		private double cycleRemainder = 0; // field kept for backward-compat load of states
 		private const double CpuFrequency = 1789773.0; // NTSC CPU frequency (double kept for benchmarks)
 		private const int CpuFrequencyInt = 1789773; // integer form for fixed-point arithmetic
 		private const int TargetFpsInt = 60;
@@ -48,14 +47,12 @@ namespace NesEmulator
 		}
 
 		// NOTE: In NativeAOT/WebAssembly, System.Text.Json cannot generate serializers at runtime.
-		// Using object-typed polymorphic fields (cpu/ppu/apu/mapper) previously forced runtime
-		// dynamic IL emission when saving state, triggering a mono "method-builder-ilgen" assertion
-		// in flatpublish/native mode. To stay AOT-friendly, we capture each sub-system state as a
+		// To stay AOT-friendly, we capture each sub-system state as a
 		// pre-serialized JSON string instead of a raw object graph. The SetState() methods for
 		// subsystems already accept JsonElement, so on load we parse these strings back into
 		// JsonDocuments and hand root elements off without requiring polymorphic serialization.
 		private class NesState {
-			public double cycleRemainder; // legacy (pre fixed-point). Retained for backward compatibility.
+			public double cycleRemainder; // retained for backward compatibility.
 			public int extraCycleAcc; // new: accumulator for fractional cycles (0..ExtraCyclesDenominator-1)
 			public int overshootCarry; // new: instruction overshoot carry to next frame
 			public byte[] ram = Array.Empty<byte>();
@@ -64,7 +61,7 @@ namespace NesEmulator
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public string romName = string.Empty; // optional metadata for UI labeling
-			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (legacy integer, kept for backward compat if ever needed)
+			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (integer, kept for backward compat if ever needed)
 			public int cpuCore; // 0=FMC (future cores enumerate)
 			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
 		}
@@ -81,7 +78,7 @@ namespace NesEmulator
 		public void SetPpuState(object state) { try { bus?.ppu.SetState(state); } catch { } }
 		public void SetCpuCore(Bus.CpuCore core) { try { bus?.SetCpuCore(core); } catch { } }
 		public void SetPpuCore(Bus.PpuCore core) { try { bus?.SetPpuCore(core); } catch { } }
-		// New generic reflection-based core selection (suffix id strings)
+		// Generic reflection-based core selection (suffix id strings)
 		public bool SetCpuCore(string suffixId) { return bus!=null && bus.SetCpuCoreById(suffixId); }
 		public bool SetPpuCore(string suffixId) { return bus!=null && bus.SetPpuCoreById(suffixId); }
 		public bool SetApuCore(string suffixId) { return bus!=null && bus.SetApuCoreById(suffixId); }
@@ -114,7 +111,7 @@ namespace NesEmulator
 
 		public string SaveState()
 		{
-			// Verbose diagnostic logging (DEBUG only) - stripped in Release (Optimization #19)
+			// Verbose diagnostic logging (DEBUG only) - stripped in Release
 			var startTimestamp = DateTime.UtcNow;
 			#if DIAG_LOG
 			void Log(string msg) { try { Console.WriteLine($"[SaveStateDiag] {{DateTime.UtcNow:O}} {msg}"); } catch {} }
@@ -141,7 +138,7 @@ namespace NesEmulator
 				var romClone = (byte[])cartridge.rom.Clone();
 				Log($"Sizes ram={ramClone.Length} prgRAM={prgClone.Length} chrRAM={chrClone.Length} rom={romClone.Length}");
 				st = new NesState {
-					cycleRemainder = overshootCarry, // store overshoot in legacy field for older loaders
+					cycleRemainder = overshootCarry, // store overshoot for older loaders
 					extraCycleAcc = extraCycleAccumulator,
 					overshootCarry = overshootCarry,
 					ram = ramClone,
@@ -211,7 +208,7 @@ namespace NesEmulator
 				if(!firstMember) sbObj.Append(','); firstMember=false;
 				sbObj.Append('"').Append(Escape(fi.Name)).Append('"').Append(':').Append(PlainSerialize(val));
 			}
-			// Theory 3 fix: also include eligible public properties (primitive, string, primitive arrays) with both getter and setter
+			// Also include eligible public properties (primitive, string, primitive arrays) with both getter and setter
 			try {
 				var props = type.GetProperties(BindingFlags.Instance|BindingFlags.Public);
 				foreach (var pi in props)
@@ -285,7 +282,7 @@ namespace NesEmulator
 				} catch { return; }
 			}
 			if (bus == null || cartridge == null) return; // still cannot proceed
-			// Restore fixed-point timing accumulators (fallback to legacy double if new ints absent)
+			// Restore fixed-point timing accumulators (fallback to double if new ints absent)
 			if (st.extraCycleAcc != 0 || st.overshootCarry != 0)
 			{
 				extraCycleAccumulator = st.extraCycleAcc;
@@ -293,7 +290,7 @@ namespace NesEmulator
 			}
 			else
 			{
-				// Legacy state: interpret positive cycleRemainder as overshoot carry
+				// State: interpret positive cycleRemainder as overshoot carry
 				overshootCarry = st.cycleRemainder > 0 ? (int)st.cycleRemainder : 0;
 				extraCycleAccumulator = 0;
 			}
@@ -340,7 +337,7 @@ namespace NesEmulator
 					var core = (Bus.ApuCore)st.apuCore; bus.SetApuCore(core);
 				}
 			} catch {
-				// Back-compat: if no apuCoreId nor apuCore usable, attempt to infer from legacy boolean if present
+				// Back-compat: if no apuCoreId nor apuCore usable, attempt to infer from boolean if present
 				try {
 					using var doc2 = System.Text.Json.JsonDocument.Parse(json);
 					if (doc2.RootElement.TryGetProperty("famicloneMode", out var fmEl))
@@ -432,7 +429,7 @@ namespace NesEmulator
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
 			if (EnableEventScheduler)
 			{
-				// --- Experimental event-driven path (Feature flag gated) ---
+				// --- Event-driven path (Feature flag gated) ---
 				// Ensure first PPU event is scheduled (scanline end) if not already or stale
 				if (nextPpuEventCycle <= globalCpuCycle) ScheduleNextPpuScanline();
 				if (nextApuEventCycle <= globalCpuCycle) ScheduleNextApuEvent();
@@ -470,7 +467,7 @@ namespace NesEmulator
 			}
 			else
 			{
-				// --- Legacy batch heuristic path (current default) ---
+				// --- Batch heuristic path (current default) ---
 				int batchCpu = 0;
 				if (nextPpuEventCycle < globalCpuCycle) nextPpuEventCycle = globalCpuCycle; // keep monotonic (placeholder)
 				try {

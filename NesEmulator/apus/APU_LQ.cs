@@ -2,8 +2,7 @@ using System;
 
 namespace NesEmulator
 {
-    // Legacy / famiclone-style APU core (renamed from APU_JANK.cs / class APUJANK)
-    // THIS IS A BACKUP OF THE PREVIOUS APU WHICH HAD ISSUES. DO NOT DELETE WITHOUT REVIEW.
+    // APU core implementation
     public class APU_LQ : IAPU
     {
     // Core metadata

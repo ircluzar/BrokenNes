@@ -22,7 +22,7 @@ namespace BrokenNes
 {
     /// <summary>
     /// Standalone class intended to host logic migrated from Nes.razor @code block.
-    /// This is an initial scaffold; large methods & fields should be pasted/re-homed here.
+    /// This is a scaffold; large methods & fields should be pasted/re-homed here.
     /// </summary>
     public partial class Emulator : IDisposable
     {
@@ -67,7 +67,7 @@ namespace BrokenNes
         private const int SaveChunkCharSize = 900_000; // chunk size for save state persistence
         private NesEmulator.NES? nes { get => nesController.nes; set => nesController.nes = value; }
         private bool[] inputState => nesController.inputState;
-    // moved to UI.cs partial: mobileFsView, touchControllerInitialized
+    // mobileFsView, touchControllerInitialized moved to UI.cs partial
         private const string SaveKey = "nes_state_slot0";
         private bool stateBusy = false;
         private string debugDump = string.Empty;
@@ -77,7 +77,7 @@ namespace BrokenNes
         private bool sampleFont = true; private bool soundFontLayering = false; private bool sfDevLogging = false; private bool sfOverlay = false; private string activeSfCore = string.Empty; private string activeSfCoreDisplay => string.IsNullOrEmpty(activeSfCore) ? (soundFontMode ? "(compat)" : "None") : activeSfCore;
         private DotNetObjectReference<Emulator>? _selfRef;
         private ElementReference fileInput; // NOTE: cannot be set outside component; keep placeholder
-    // mobileFsViewPending removed (handled in UI partial if needed)
+    // mobileFsViewPending handled in UI partial
         private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
             ? nesController.RomOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
             : nesController.RomOptions.Where(o=>o.Label.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase))
@@ -92,7 +92,7 @@ namespace BrokenNes
 
         public void Initialize()
         {
-            // Content formerly in OnInitialized
+            // Content from OnInitialized
             nesController.RomOptions = new() { new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true} };
             try { Nav.LocationChanged += OnLocationChanged; } catch {}
             nesController.CpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();

@@ -156,7 +156,7 @@ namespace BrokenNes
             try
             {
                 bool wasRunning = IsRunning;
-        // Theory 1: ensure the JS rAF loop is fully stopped before loading a new ROM
+        // Ensure the JS rAF loop is fully stopped before loading a new ROM
         if (wasRunning) await pauseEmulation();
                 if (UploadedRoms.TryGetValue(RomFileName, out var data))
                 {

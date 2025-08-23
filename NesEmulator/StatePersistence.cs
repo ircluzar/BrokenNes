@@ -141,7 +141,7 @@ namespace BrokenNes
                     }
                     catch {}
                     nes?.LoadState(full);
-                    // Theory 1: Sync UI core selections and side-effects after LoadState
+                    // Sync UI core selections and side-effects after LoadState
                     try
                     {
                         if (nes != null)

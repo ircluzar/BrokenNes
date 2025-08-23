@@ -8,10 +8,10 @@ public interface IBus
 
 public class Bus : IBus
 {
-		// === Page Table (Optimization Items #5 & #6) ===
+		// === Page Table ===
 		// 256 pages of 256 bytes each cover full 64KB CPU address space.
 		// Pages pointing to internal RAM or other linear data regions allow direct index without mirror masking.
-		// Callback pages fall back to legacy branch logic (ReadSlow/WriteSlow) until deeper refactors (PPU/APU/cartridge specific delegates) are introduced.
+		// Callback pages fall back to branch logic for PPU/APU/cartridge access.
 		private struct Page { public byte[]? data; public int offset; public bool writable; }
 		private Page[] pages = new Page[256];
 		private bool pageTableInitialized;
@@ -33,7 +33,7 @@ public class Bus : IBus
 			pageTableInitialized = true;
 		}
 
-		// --- Lightweight instrumentation (Theory #38) ---
+		// --- Lightweight instrumentation ---
 		public struct Instrumentation
 		{
 			public long Reads; public long Writes; public long ApuSteps; public long OamDmaWrites; public long BatchFlushes;
@@ -46,7 +46,7 @@ public class Bus : IBus
 		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
 		internal int PendingCpuStallCycles = 0;
 		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
-		// Count a PPU/APU batch flush (Item #1 partial implementation)
+		// Count a PPU/APU batch flush
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		public void CountBatchFlush() { instr.BatchFlushes++; }
 		// Core dictionaries
@@ -57,14 +57,14 @@ public class Bus : IBus
 		// Lazy PPU: cache types and create instances on demand to avoid early large buffer allocations
 		private readonly System.Collections.Generic.Dictionary<string, System.Type> _ppuTypes;
 		private readonly System.Collections.Generic.Dictionary<string, IPPU> _ppuInstances = new(System.StringComparer.OrdinalIgnoreCase);
-		// Active instances & legacy public handles (kept for minimal external changes)
+		// Active instances & public handles
 		private ICPU activeCpu;
 		private IPPU activePpu;
 		private IAPU activeApu;
 		public ICPU cpu; // points to activeCpu
 		public IPPU ppu; // points to activePpu
-		public IAPU apu; // default modern
-		public IAPU apuJank; // legacy famiclone
+		public IAPU apu; // points to activeApu
+		public IAPU apuJank; // famiclone
 		public IAPU apuQN; // QuickNes
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
 	public Cartridge cartridge;
@@ -163,7 +163,7 @@ public class Bus : IBus
 		if (newPpu == null) return false;
 		if (ReferenceEquals(newPpu, activePpu)) { ppu = activePpu; return true; }
 		var prevState = activePpu.GetState();
-		// Drop large transient buffers on the old PPU before switching to reduce memory
+		// Drop large transient buffers on the PPU before switching to reduce memory
 		try { if (activePpu != null) activePpu.ClearBuffers(); } catch { }
 		try { newPpu.SetState(prevState); } catch { }
 		// Ensure the new PPU starts with clean buffers for a fresh redraw
@@ -202,7 +202,7 @@ public class Bus : IBus
 			};
 		if (newPpu != null && !ReferenceEquals(newPpu, activePpu))
 		{
-			// Drop buffers on old core to reduce memory pressure during swaps
+			// Drop buffers on core to reduce memory pressure during swaps
 			try { if (activePpu != null) activePpu.ClearBuffers(); } catch { }
 			try { newPpu.SetState(prevState); } catch { }
 			// Ensure clean start on the new core too
@@ -304,7 +304,7 @@ public class Bus : IBus
 		   Recreate("QN", ref apuQN);
 		   // Restore previously selected active core (will reapply register latches next)
 		   SetApuCore(prev);
-		   // Clear latches to avoid carrying old writes between games
+		   // Clear latches to avoid carrying writes between games
 		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
 		}
 
@@ -372,7 +372,7 @@ public class Bus : IBus
 		if (address >= 0x6000) { cartridge.CPUWrite(address, value); return; }
 	}
 
-	// === OAM DMA Fast Path (Item #7) ===
+	// === OAM DMA Fast Path ===
 	// If source page is internal RAM (0x0000-0x1FFF mirrors) perform a single BlockCopy instead of 256 bus.Read calls.
 	// For now only RAM pages fast path; future: detect linear PRG ROM banks for immediate copy.
 	public void FastOamDma(byte page, byte[] destOam, ref byte oamAddr)
