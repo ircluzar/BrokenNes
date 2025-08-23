@@ -60,6 +60,7 @@ namespace BrokenNes
             Status = status;
             ShaderProvider = shaderProvider;
             Nav = nav;
+            _clockHost = new ClockHostFacade(this);
         }
 
         // Public surface to expose internal state if needed by UI after refactor
@@ -84,6 +85,24 @@ namespace BrokenNes
         private bool soundFontMode = false;
         private bool sampleFont = true; private bool soundFontLayering = false; private bool sfDevLogging = false; private bool sfOverlay = false; private string activeSfCore = string.Empty; private string activeSfCoreDisplay => string.IsNullOrEmpty(activeSfCore) ? (soundFontMode ? "(compat)" : "None") : activeSfCore;
     private DotNetObjectReference<Emulator>? _selfRef;
+        // Clock core integration
+        private NesEmulator.IClock? _activeClock;
+        private CancellationTokenSource? _clockCts;
+        private sealed class ClockHostFacade : NesEmulator.IClockHost
+        {
+            private readonly Emulator _emu;
+            public ClockHostFacade(Emulator emu) { _emu = emu; }
+            public bool IsRunning => _emu.nesController.IsRunning;
+            public async ValueTask RequestStartJsLoopAsync()
+            {
+                _emu._selfRef ??= DotNetObjectReference.Create(_emu);
+                try { await _emu.JS.InvokeVoidAsync("nesInterop.startEmulationLoop", _emu._selfRef!); } catch {}
+            }
+            public async ValueTask RequestStopJsLoopAsync()
+            { try { await _emu.JS.InvokeVoidAsync("nesInterop.stopEmulationLoop"); } catch {} }
+            public void RunFrame() { _emu.RunFrameAndBuildPayload(); }
+        }
+        private readonly ClockHostFacade _clockHost;
     // mobileFsViewPending handled in UI partial
         private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
             ? nesController.RomOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
@@ -125,6 +144,13 @@ namespace BrokenNes
                 else if (nesController.ApuCoreOptions.Count>0) nesController.ApuCoreSel = nesController.ApuCoreOptions[0];
             }
             _ = Task.Run(async () => { try { var val = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_eventScheduler"); if (!string.IsNullOrEmpty(val)) { bool on = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase); await InvokeAsync(()=>{ eventSchedulerOn = on; if (nes!=null) nes.EnableEventScheduler = on; StateHasChanged(); }); } } catch { } });
+            // Initialize Clock Core registry and options
+            try { NesEmulator.ClockRegistry.Initialize(); } catch {}
+            try { nesController.ClockCoreOptions = NesEmulator.ClockRegistry.Ids.ToList(); } catch { nesController.ClockCoreOptions = new List<string>{"FMC"}; }
+            if (string.IsNullOrWhiteSpace(nesController.ClockCoreSel) || !nesController.ClockCoreOptions.Contains(nesController.ClockCoreSel))
+            {
+                nesController.ClockCoreSel = nesController.ClockCoreOptions.Contains("FMC") ? "FMC" : (nesController.ClockCoreOptions.FirstOrDefault() ?? "FMC");
+            }
         }
 
         // Helper to dispatch back on sync context (simulate ComponentBase.InvokeAsync)
@@ -147,6 +173,7 @@ namespace BrokenNes
                         var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) nesController.CpuCoreSel = pCpu;
                         var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) nesController.PpuCoreSel = pPpu;
                         var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) nesController.ApuCoreSel = pApu;
+                        var pClk = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_clockCore"); if(!string.IsNullOrWhiteSpace(pClk) && nesController.ClockCoreOptions.Contains(pClk)) nesController.ClockCoreSel = pClk;
                         await LoadBenchHistory();
                     } catch {}
                     await RefreshShaderOptions();
@@ -322,8 +349,7 @@ namespace BrokenNes
                 try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch {}
                 Logger.LogInformation("Starting emulation");
                 nesController.IsRunning = true; nesController.ErrorMessage = ""; Status.Set("Emulation running...");
-                _selfRef ??= DotNetObjectReference.Create(this);
-                await JS.InvokeVoidAsync("nesInterop.startEmulationLoop", _selfRef);
+                await StartClockAsync();
                 StateHasChanged();
             }
             catch (Exception ex)
@@ -339,7 +365,7 @@ namespace BrokenNes
             {
                 Logger.LogInformation("Pausing emulation");
                 nesController.IsRunning = false;
-                await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop");
+                await StopClockAsync();
                 try { nes?.FlushSoundFont(); } catch {}
                 try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
                 Status.Set("Emulation paused");
@@ -359,6 +385,27 @@ namespace BrokenNes
     public Task StartAsync() => StartEmulation();
     public Task PauseAsync() => PauseEmulation();
     public Task EnsureInitialRenderAsync(bool firstRender) => OnAfterRenderAsync(firstRender);
+
+        private async Task StartClockAsync()
+        {
+            // Ensure prior clock stopped
+            await StopClockAsync();
+            // Create selected clock; fallback to FMC
+            var id = nesController.ClockCoreSel;
+            _activeClock = NesEmulator.ClockRegistry.Create(id) ?? NesEmulator.ClockRegistry.Create("FMC");
+            _clockCts = new CancellationTokenSource();
+            try { if (_activeClock != null) await _activeClock.StartAsync(_clockHost, _clockCts.Token); } catch {}
+        }
+
+        private async Task StopClockAsync()
+        {
+            try { _activeClock?.Stop(); } catch {}
+            _activeClock = null;
+            try { _clockCts?.Cancel(); } catch {}
+            _clockCts = null;
+            // Defensive: ensure JS rAF loop is stopped
+            try { await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop"); } catch {}
+        }
 
         private void ApplySelectedCores()
         {

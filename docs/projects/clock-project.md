@@ -8,15 +8,15 @@ Lean principle: No extra work inside hot loops. The clock selection must only in
 
 ## Checklist (requirements)
 
-- [ ] Add a new component type: Clock Core (auto-discoverable like CPU/APU/PPU/Mappers).
-- [ ] Define `IClock` interface with descriptors (ID, Name, Description, Stability/Tags), matching conventions of other core types.
-- [ ] Implement default clock core "FMC" (existing JS-driven RAF loop behavior; no regressions).
+- [x] Add a new component type: Clock Core (auto-discoverable like CPU/APU/PPU/Mappers).
+- [x] Define `IClock` interface with descriptors (ID, Name, Description, Stability/Tags), matching conventions of other core types. (Initial minimal contract: Id/Name/Description + Start/Stop/Visibility)
+- [x] Implement default clock core "FMC" (existing JS-driven RAF loop behavior; no regressions).
 - [ ] Implement new clock core "CLR" (move loop ownership to C# side; browser-safe throttling).
 - [ ] Ensure zero/near-zero overhead in hot loops (branch only at loop boundary; no per-instruction checks).
-- [ ] Add UI selector for Clock Core (Pages/Nes.razor) alongside other core selectors.
-- [ ] Persist selected Clock Core in settings (IDB/preferences) and restore on startup.
+- [x] Add UI selector for Clock Core (Pages/Nes.razor) alongside other core selectors.
+- [x] Persist selected Clock Core in settings (IDB/preferences) and restore on startup.
 - [ ] Persist selected Clock Core in savestates; load should honor state’s selection (with safe fallback).
-- [ ] Backward compatibility: if no clock recorded, default to FMC.
+- [x] Backward compatibility: if no clock recorded, default to FMC.
 - [ ] Minimal docs: update README or add notes about clock cores and how to switch.
 
 ## Success criteria
@@ -200,7 +200,7 @@ Accessibility and UX:
 
 ## Rollout plan
 
-Phase 1 (Plumbing): Types, registry, FMC as default, UI selector (disabled switching while running if necessary), settings persistence.
+Phase 1 (Plumbing): DONE — Types (`IClock`/`IClockHost`), registry (`ClockRegistry`), FMC as default (`CLOCK_FMC`), Emulator wiring, UI selector, settings persistence, linker preservation.
 
 Phase 2 (CLR prototype): Implement CLR loop; add visibility throttle; enable switching in UI; add savestate persistence.
 

@@ -199,9 +199,11 @@ namespace BrokenNes
     public IEnumerable<string> CpuCoreOptions => Controller.CpuCoreOptions;
     public IEnumerable<string> PpuCoreOptions => Controller.PpuCoreOptions;
     public IEnumerable<string> ApuCoreOptions => Controller.ApuCoreOptions;
+    public IEnumerable<string> ClockCoreOptions => Controller.ClockCoreOptions;
     public string CpuCoreSel => Controller.CpuCoreSel;
     public string PpuCoreSel => Controller.PpuCoreSel;
     public string ApuCoreSel => Controller.ApuCoreSel;
+    public string ClockCoreSel => Controller.ClockCoreSel;
     public bool IsFullscreen => Controller.IsFullscreen;
     public double EmuScale => Controller.EmuScale;
     public int FrameCount => Controller.FrameCount;
@@ -214,6 +216,7 @@ namespace BrokenNes
     public async Task SetCpuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.CpuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
     public async Task SetPpuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.PpuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
     public async Task SetApuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.ApuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
+    public async Task SetClockCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; if (!Controller.ClockCoreOptions.Contains(id)) return; bool wasRunning = Controller.IsRunning; if (wasRunning) await PauseEmulation(); Controller.ClockCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_clockCore", id); } catch {} if (wasRunning) await StartEmulation(); StateHasChanged(); }
     public void SetScalePublic(double scale){ Controller.EmuScale = scale; StateHasChanged(); }
     public async Task ToggleFullscreenPublic(){ try { var newState = await JS.InvokeAsync<bool>("nesInterop.toggleFullscreen"); Controller.IsFullscreen = newState; StateHasChanged(); } catch {} }
     public async Task ReloadCurrentRomPublic(){ await LoadRomFromServer(); }

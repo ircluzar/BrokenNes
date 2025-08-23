@@ -288,6 +288,9 @@ namespace BrokenNes
     public string ApuCoreSel = "";
     public string CpuCoreSel = "";
     public string PpuCoreSel = "FMC";
+    // Clock Core selection (new pluggable loop ownership)
+    public List<string> ClockCoreOptions { get; set; } = new();
+    public string ClockCoreSel { get; set; } = "FMC";
     public double EmuScale = 1.0;
     public bool IsFullscreen = false;
     public bool AutoStaticSuppressed = false;

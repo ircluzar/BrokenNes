@@ -13,5 +13,6 @@
   <type fullname="NesEmulator.CPU_*" preserve="all" />
   <type fullname="NesEmulator.PPU_*" preserve="all" />
   <type fullname="NesEmulator.APU_*" preserve="all" />
+  <type fullname="NesEmulator.CLOCK_*" preserve="all" />
   </assembly>
 </linker>

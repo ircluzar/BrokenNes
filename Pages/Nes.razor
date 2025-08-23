@@ -67,6 +67,12 @@
                         @foreach(var opt in emu!.Controller.PpuCoreOptions){ <option value="@opt">@opt</option> }
                     </select>
                 </div>
+                <div class="qc-select-stack">
+                    <label for="clockCoreSelect" class="mini-label" title="Select frame loop owner">Clock</label>
+                    <select id="clockCoreSelect" class="btn btn-rf btn-select" title="Clock core (loop owner)" @onchange="(e)=>emu!.SetClockCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ClockCoreSel" aria-label="Clock Core">
+                        @foreach(var opt in emu!.Controller.ClockCoreOptions){ <option value="@opt">@opt</option> }
+                    </select>
+                </div>
             </div>
             <div class="btn-group">
                 <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Load state">Load</button>
