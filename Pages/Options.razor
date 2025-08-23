@@ -26,6 +26,13 @@
             <h3 class="opt-h3">INPUT</h3>
             <div class="opt-row"><button disabled>Rebind Keys (Coming Soon)</button></div>
         </section>
+        <section class="opt-section">
+            <h3 class="opt-h3">CORES</h3>
+            <div class="opt-row">
+                <button @onclick="RestoreCoresToFmc">Restore cores to FMC</button>
+            </div>
+            <div class="opt-row small-note">Resets CPU/PPU/APU/Clock core preferences to FMC for future sessions.</div>
+        </section>
     </div>
     <div class="opt-footer">
     <a href="?skipHW=1" class="opt-link">RETURN</a>
@@ -44,5 +51,14 @@
     private void OnVolChange(ChangeEventArgs e)
     {
         // Placeholder for future volume binding
+    }
+
+    private async Task RestoreCoresToFmc()
+    {
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_cpuCore", "FMC"); } catch { }
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", "FMC"); } catch { }
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", "FMC"); } catch { }
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_clockCore", "FMC"); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('Core preferences reset to FMC. This applies when you open the NES.')"); } catch { }
     }
 }

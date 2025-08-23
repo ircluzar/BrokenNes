@@ -338,15 +338,16 @@ window.nesInterop = {
     _awCapacity: 0,
     _awPendingWorklet: false,
     _awFeatureFlagChecked: false,
+    _awDisabled: false, // opt-out via ?disableAudioSAB=1
     _awMinLeadSamples: 2048, // attempt to keep at least this many queued (approx 46ms @44.1k)
     async _initAudioWorkletIfNeeded(sampleRate){
         if(this._awEnabled || this._awFailed || this._awPendingWorklet) return this._awEnabled;
-        // Feature flag via query (?featureAudioSAB=1) to allow progressive rollout
+        // Default ON (for TRB); allow opt-out via query (?disableAudioSAB=1)
         if(!this._awFeatureFlagChecked){
-            try { this._awOn = await this.hasQueryFlag('featureAudioSAB'); } catch { this._awOn=false; }
+            try { this._awDisabled = await this.hasQueryFlag('disableAudioSAB'); } catch { this._awDisabled=false; }
             this._awFeatureFlagChecked = true;
         }
-        if(!this._awOn) return false;
+        if(this._awDisabled) return false;
         try {
             if(!window.crossOriginIsolated){
                 console.warn('[NES] SharedArrayBuffer unavailable (missing COOP/COEP); falling back.');
@@ -791,7 +792,7 @@ window.nesInterop = {
             try { cancelAnimationFrame(this._rafId); } catch {}
             this._rafId = null;
         }
-        if (this._loopActive) return; // idempotent start
+        // Always (re)start the loop to recover if flag was left true earlier
         this._loopActive = true;
         this._lastRafTs = 0;
         this._skipsThisBurst = 0;
