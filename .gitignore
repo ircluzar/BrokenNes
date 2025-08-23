@@ -4,3 +4,6 @@
 /flatpublish
 /Tools/BrokenNes.Shaders.Generator/obj
 /Tools/BrokenNes.Shaders.Generator/bin
+
+# FTP Credentials
+scripts/ftp_credentials.conf
