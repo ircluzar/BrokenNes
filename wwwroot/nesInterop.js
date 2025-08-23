@@ -340,6 +340,8 @@ window.nesInterop = {
     _awFeatureFlagChecked: false,
     _awDisabled: false, // opt-out via ?disableAudioSAB=1
     _awMinLeadSamples: 2048, // attempt to keep at least this many queued (approx 46ms @44.1k)
+    _awNode: null, // AudioWorkletNode for control messages
+    _rbRate: 1.0, // external varispeed factor (TRB only)
     async _initAudioWorkletIfNeeded(sampleRate){
         if(this._awEnabled || this._awFailed || this._awPendingWorklet) return this._awEnabled;
         // Default ON (for TRB); allow opt-out via query (?disableAudioSAB=1)
@@ -374,6 +376,7 @@ window.nesInterop = {
                 try { await ctx.audioWorklet.addModule('audio-worklet.js'); } catch(e){ console.warn('worklet addModule failed', e); throw e; }
                 const node = new AudioWorkletNode(ctx, 'nes-ring-proc', { processorOptions: { sab, ctrl } });
                 node.connect(ctx.destination);
+                this._awNode = node;
                 this._awEnabled = true;
                 console.log('[NES] AudioWorklet ring enabled. Capacity', cap);
             } else {
@@ -400,6 +403,28 @@ window.nesInterop = {
         }
         Atomics.store(ctrl,1,w);
         return true;
+    },
+    // Public controls for TRB varispeed rubberbanding
+    setRubberbandRate(rate){
+        try {
+            let r = Number(rate);
+            if(!isFinite(r) || r<=0) r = 1.0;
+            r = Math.max(0.25, Math.min(4.0, r));
+            this._rbRate = r;
+            if(this._awNode){ try{ this._awNode.port.postMessage({type:'rate', value:r}); } catch{} }
+            return r;
+        } catch{ return this._rbRate||1.0; }
+    },
+    setRubberbandBounds(minRel, maxRel){
+        try {
+            const minR = Math.max(0.5, Math.min(0.99, Number(minRel))); // sensible guards
+            const maxR = Math.max(1.01, Math.min(2.0, Number(maxRel)));
+            if(this._awNode){ try{ this._awNode.port.postMessage({type:'bounds', minRel:minR, maxRel:maxR}); } catch{} }
+            return { minRel:minR, maxRel:maxR };
+        } catch { return { minRel:0.9, maxRel:1.1 }; }
+    },
+    setRubberbandKp(kp){
+        try { const v = Math.max(0.001, Math.min(0.5, Number(kp))); if(this._awNode){ try{ this._awNode.port.postMessage({type:'kp', value:v}); } catch{} } return v; } catch{ return 0.06; }
     },
     audioDiag(){
         const ctrl = this._awCtrl; return {
@@ -428,7 +453,10 @@ window.nesInterop = {
                         // TRB -> ring buffer with variable-rate read rubberbanding
                         this._awWrite(audioBuffer);
                     } else {
-                        // TRB fallback -> modern chunked scheduler with gentle playbackRate trim
+                        // TRB fallback -> modern chunked scheduler with varispeed applied via playbackRate
+                        // Apply the external rate as a baseline; playAudio also trims for lead.
+                        if(typeof window._nesRbRate !== 'number') window._nesRbRate = this._rbRate || 1.0;
+                        window._nesRbRate = this._rbRate || 1.0;
                         this.playAudio(audioBuffer, sampleRate||44100);
                     }
                 } else {
@@ -999,11 +1027,15 @@ window.nesInterop = {
                 source.buffer = buffer;
                 // Very subtle drift trim via playbackRate (tight bounds)
                 if(typeof window._nesLastRate !== 'number') window._nesLastRate = 1.0;
+                const rbBase = (typeof window._nesRbRate === 'number' && isFinite(window._nesRbRate) && window._nesRbRate>0) ? window._nesRbRate : 1.0;
                 const lead = (window._nesAudioTimeline - ctx.currentTime);
                 const targetLead = 0.09;
-                let rate = 1.0 + (lead - targetLead) * 0.15;
+                let rate = rbBase + (lead - targetLead) * 0.15;
                 if(!isFinite(rate)) rate = 1.0;
-                rate = Math.max(0.997, Math.min(1.003, rate));
+                // Clamp around rbBase so pitch stays linked to speed, with light trim margins
+                const minClamp = rbBase * 0.98;
+                const maxClamp = rbBase * 1.02;
+                rate = Math.max(minClamp, Math.min(maxClamp, rate));
                 rate = 0.85 * window._nesLastRate + 0.15 * rate;
                 window._nesLastRate = rate;
                 try { source.playbackRate.value = rate; } catch{}

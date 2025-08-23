@@ -12,18 +12,37 @@ class NesRingProcessor extends AudioWorkletProcessor {
       tmp.set(this._ctrl.subarray(0, this._ctrl.length));
       this._ctrl = tmp;
     }
-    // Rubberband state: fractional read pointer and simple P-controller
+    // Rubberband state: fractional read pointer and simple P-controller (varispeed)
     this._rFrac = 0; // initialized on first process using ctrl[0]
-    this._rate = 1.0; // playback rate multiplier (1.0 = normal)
-  this._kp = 0.04; // proportional gain for fullness error -> rate delta (lower for stability)
-  this._minRate = 0.985; // tighter bounds to avoid timbre shift
-  this._maxRate = 1.015;
+    this._rate = 1.0; // instantaneous playback rate multiplier
+    this._externalRate = 1.0; // target varispeed factor sent from main thread (links pitch to emu speed)
+    this._kp = 0.06; // proportional gain for fullness error -> rate delta (tuned for stability)
+    // Relative clamps around externalRate to allow audible speed/pitch coupling while avoiding runaway
+    this._minRel = 0.90; // -10%
+    this._maxRel = 1.10; // +10%
   // De-click envelope for underruns/returns
   const sr = (typeof sampleRate === 'number' && isFinite(sampleRate)) ? sampleRate : 44100;
   const atkMs = 2.0, relMs = 4.0;
   this._attackCoef = 1 - Math.exp(-1 / (sr * (atkMs/1000)));
   this._releaseCoef = 1 - Math.exp(-1 / (sr * (relMs/1000)));
   this._env = 1.0;
+    // Control messages from main thread
+    try {
+      this.port.onmessage = (e) => {
+        const data = e?.data; if(!data) return;
+        if (data.type === 'rate') {
+          let v = Number(data.value);
+          if (!isFinite(v) || v <= 0) v = 1.0;
+          this._externalRate = Math.max(0.25, Math.min(4.0, v));
+        } else if (data.type === 'bounds') {
+          const minRel = Number(data.minRel); const maxRel = Number(data.maxRel);
+          if (isFinite(minRel) && minRel > 0 && minRel < 1.0) this._minRel = minRel;
+          if (isFinite(maxRel) && maxRel > 1.0 && maxRel <= 2.0) this._maxRel = maxRel;
+        } else if (data.type === 'kp') {
+          const kp = Number(data.value); if (isFinite(kp) && kp > 0 && kp <= 0.5) this._kp = kp;
+        }
+      };
+    } catch {}
   }
   process(inputs, outputs){
     const outChannels = outputs[0];
@@ -38,12 +57,15 @@ class NesRingProcessor extends AudioWorkletProcessor {
     // Compute available based on integer read index as floor of rFrac
   const rInt = Math.floor(this._rFrac) % cap;
     let available = w >= rInt ? (w - rInt) : (cap - rInt + w);
-    // Target fullness ~ 40% of capacity for headroom both ways
+  // Target fullness ~ 40% of capacity for headroom both ways
     const target = Math.max(64, Math.floor(cap * 0.40));
     const err = (available - target) / cap; // normalize
-    const desiredRate = 1.0 + (this._kp * err * 10.0); // scale error effect
-    // Smoothly approach desired rate to avoid zippering
-    this._rate = Math.max(this._minRate, Math.min(this._maxRate, 0.6 * this._rate + 0.4 * desiredRate));
+  const fullnessCorr = 1.0 + (this._kp * err * 10.0); // adjust read speed based on fullness
+  let desiredRate = this._externalRate * fullnessCorr;
+  // Smoothly approach desired rate and clamp around external rate
+  const minAbs = this._externalRate * this._minRel;
+  const maxAbs = this._externalRate * this._maxRel;
+  this._rate = Math.max(minAbs, Math.min(maxAbs, 0.6 * this._rate + 0.4 * desiredRate));
 
     // Read with linear interpolation at variable rate
     let rFrac = this._rFrac;
