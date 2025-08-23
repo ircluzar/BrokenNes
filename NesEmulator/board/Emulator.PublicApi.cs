@@ -216,7 +216,19 @@ namespace BrokenNes
     public async Task SetCpuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.CpuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_cpuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
     public async Task SetPpuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.PpuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ppuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
     public async Task SetApuCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; Controller.ApuCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_apuCore", id); } catch {} ApplySelectedCores(); StateHasChanged(); }
-    public async Task SetClockCorePublic(string id){ if (string.IsNullOrWhiteSpace(id)) return; if (!Controller.ClockCoreOptions.Contains(id)) return; bool wasRunning = Controller.IsRunning; if (wasRunning) await PauseEmulation(); Controller.ClockCoreSel = id; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_clockCore", id); } catch {} if (wasRunning) await StartEmulation(); StateHasChanged(); }
+    public async Task SetClockCorePublic(string id){
+        if (string.IsNullOrWhiteSpace(id)) return; if (!Controller.ClockCoreOptions.Contains(id)) return;
+        bool wasRunning = Controller.IsRunning;
+        if (wasRunning) await PauseEmulation();
+        // Guardrails: flush audio output before switching drivers to avoid drift
+        try { await JS.InvokeVoidAsync("nesInterop.flushAudioOutput"); } catch {}
+        Controller.ClockCoreSel = id;
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_clockCore", id); } catch {}
+        if (wasRunning) await StartEmulation();
+        // Ensure visibility events wired (CLR benefits; FMC harmless)
+        try { if (_selfRef != null) await JS.InvokeVoidAsync("nesInterop.registerVisibility", _selfRef); } catch {}
+        StateHasChanged();
+    }
     public void SetScalePublic(double scale){ Controller.EmuScale = scale; StateHasChanged(); }
     public async Task ToggleFullscreenPublic(){ try { var newState = await JS.InvokeAsync<bool>("nesInterop.toggleFullscreen"); Controller.IsFullscreen = newState; StateHasChanged(); } catch {} }
     public async Task ReloadCurrentRomPublic(){ await LoadRomFromServer(); }
@@ -386,5 +398,12 @@ namespace BrokenNes
 
     // Expose memory domain rebuild for UI triggers (avoids duplicated logic in Razor)
     public void RebuildMemoryDomainsPublic() => BuildMemoryDomains();
+
+        // === Visibility forwarding for CLR clock throttling ===
+        [JSInvokable]
+        public void JsVisibilityChanged(bool visible)
+        {
+            try { _activeClock?.OnVisibilityChanged(visible); } catch {}
+        }
     }
 }

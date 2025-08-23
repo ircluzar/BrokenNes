@@ -11,8 +11,8 @@ Lean principle: No extra work inside hot loops. The clock selection must only in
 - [x] Add a new component type: Clock Core (auto-discoverable like CPU/APU/PPU/Mappers).
 - [x] Define `IClock` interface with descriptors (ID, Name, Description, Stability/Tags), matching conventions of other core types. (Initial minimal contract: Id/Name/Description + Start/Stop/Visibility)
 - [x] Implement default clock core "FMC" (existing JS-driven RAF loop behavior; no regressions).
-- [ ] Implement new clock core "CLR" (move loop ownership to C# side; browser-safe throttling).
-- [ ] Ensure zero/near-zero overhead in hot loops (branch only at loop boundary; no per-instruction checks).
+- [x] Implement new clock core "CLR" (move loop ownership to C# side; browser-safe throttling).
+- [x] Ensure zero/near-zero overhead in hot loops (branch only at loop boundary; no per-instruction checks).
 - [x] Add UI selector for Clock Core (Pages/Nes.razor) alongside other core selectors.
 - [x] Persist selected Clock Core in settings (IDB/preferences) and restore on startup.
 - [ ] Persist selected Clock Core in savestates; load should honor state’s selection (with safe fallback).
@@ -89,6 +89,8 @@ Descriptor attributes (mirror pattern used by other cores):
 - On `Stop`, cancels the loop and releases resources.
 - `OnVisibilityChanged(false)`: throttle or suspend to avoid runaway CPU when tab is backgrounded.
 - UI label: "CLR (C# driver)".
+
+Status: Implemented `CLOCK_CLR` with a low-overhead 60 Hz scheduler (spin near deadline, minimal async) using host `RunFrameAndBuildPayload()` and in-process `PresentAsync()` when available; includes visibility-aware throttling.
 
 ---
 

@@ -101,6 +101,12 @@ namespace BrokenNes
             public async ValueTask RequestStopJsLoopAsync()
             { try { await _emu.JS.InvokeVoidAsync("nesInterop.stopEmulationLoop"); } catch {} }
             public void RunFrame() { _emu.RunFrameAndBuildPayload(); }
+            public BrokenNes.Emulator.FramePayload RunFrameAndBuildPayload() => _emu.RunFrameAndBuildPayload();
+            public async ValueTask PresentAsync(BrokenNes.Emulator.FramePayload payload)
+            {
+                try { await _emu.JS.InvokeVoidAsync("nesInterop.presentFrame", "nes-canvas", payload.Framebuffer, payload.Audio, payload.SampleRate); }
+                catch { }
+            }
         }
         private readonly ClockHostFacade _clockHost;
     // mobileFsViewPending handled in UI partial
@@ -213,6 +219,8 @@ namespace BrokenNes
                     try { await JS.InvokeVoidAsync("nesInterop.ensureLayoutStyles"); } catch {}
                     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch {}
                     if (nes != null && !nesController.IsRunning) { try { await StartEmulation(); } catch { } }
+                    // Register visibility events for CLR throttling and general lifecycle
+                    if (_selfRef != null) { try { await JS.InvokeVoidAsync("nesInterop.registerVisibility", _selfRef); } catch { } }
                 }
                 catch (Exception ex)
                 {
@@ -394,6 +402,10 @@ namespace BrokenNes
             var id = nesController.ClockCoreSel;
             _activeClock = NesEmulator.ClockRegistry.Create(id) ?? NesEmulator.ClockRegistry.Create("FMC");
             _clockCts = new CancellationTokenSource();
+            // Reset audio timeline to avoid desync when swapping clocks
+            try { await JS.InvokeVoidAsync("nesInterop.flushAudioOutput"); } catch {}
+            // Inform JS of active clock id for per-core audio routing
+            try { await JS.InvokeVoidAsync("nesInterop.setActiveClockId", _activeClock?.CoreId ?? string.Empty); } catch {}
             try { if (_activeClock != null) await _activeClock.StartAsync(_clockHost, _clockCts.Token); } catch {}
         }
 
@@ -405,6 +417,10 @@ namespace BrokenNes
             _clockCts = null;
             // Defensive: ensure JS rAF loop is stopped
             try { await JS.InvokeVoidAsync("nesInterop.stopEmulationLoop"); } catch {}
+            // Flush audio to clear any scheduled buffers/ring tail
+            try { await JS.InvokeVoidAsync("nesInterop.flushAudioOutput"); } catch {}
+            // Clear JS clock id to default routing
+            try { await JS.InvokeVoidAsync("nesInterop.setActiveClockId", string.Empty); } catch {}
         }
 
         private void ApplySelectedCores()

@@ -14,6 +14,62 @@ window.nesInterop = {
     _vpW: 0,
     _vpH: 0,
     _perfMarksEnabled: false,
+    // Active Clock Core id for per-core audio policy (e.g., 'TRB', 'FMC', 'CLR')
+    _activeClockId: '',
+    // Legacy audio mixer (no COOP/COEP): resample + chunk + equal-power crossfade
+    _mixStash: null,              // Array<number> temporary queue
+    _mixMaxStashSamples: 24000,   // cap ~0.5s at 48k
+    _mixChunkMs: 20,              // schedule ~20ms chunks
+    _fadeMs: 5,                   // overlap equal-power fade length (ms)
+    _fadeCurveIn: null,
+    _fadeCurveOut: null,
+    _fadeCurveLen: 128,
+    _ensureFadeCurves(){
+        if(this._fadeCurveIn && this._fadeCurveOut) return;
+        const n = this._fadeCurveLen;
+        const inC = new Float32Array(n);
+        const outC = new Float32Array(n);
+        for(let i=0;i<n;i++){
+            const t = i/(n-1);
+            // equal-power curves
+            inC[i] = Math.sin(1.57079632679 * t);
+            outC[i] = Math.cos(1.57079632679 * t);
+        }
+        this._fadeCurveIn = inC; this._fadeCurveOut = outC;
+    },
+    _resampleLinear(src, srcRate, dstRate){
+        if(!src || !src.length) return new Float32Array(0);
+        if(!isFinite(srcRate) || !isFinite(dstRate) || srcRate<=0 || dstRate<=0) return Float32Array.from(src);
+        if(Math.abs(srcRate - dstRate) < 1e-6) return (src instanceof Float32Array) ? src : Float32Array.from(src);
+        const ratio = srcRate / dstRate;
+        const outLen = Math.max(1, Math.round(src.length / ratio));
+        const out = new Float32Array(outLen);
+        for(let i=0;i<outLen;i++){
+            const s = i * ratio;
+            const i0 = Math.floor(s);
+            const i1 = Math.min(i0+1, src.length-1);
+            const a = src[i0] || 0;
+            const b = src[i1] || 0;
+            const t = s - i0;
+            out[i] = a + (b - a) * t;
+        }
+        return out;
+    },
+    _stashAppend(samples){
+        if(!samples || samples.length===0) return;
+        if(!this._mixStash) this._mixStash = [];
+        const cap = this._mixMaxStashSamples|0;
+        const need = this._mixStash.length + samples.length - cap;
+        if(need > 0){ this._mixStash.splice(0, need); }
+        for(let i=0;i<samples.length;i++) this._mixStash.push(samples[i]);
+    },
+    _stashTake(n){
+        if(!this._mixStash || this._mixStash.length < n) return null;
+        const out = new Float32Array(n);
+        for(let i=0;i<n;i++) out[i] = this._mixStash[i];
+        this._mixStash.splice(0, n);
+        return out;
+    },
     // Frame-skip configuration (skip video present when behind; keep audio steady)
     _frameSkipEnabled: true,
     _maxFrameSkips: 1,
@@ -181,7 +237,26 @@ window.nesInterop = {
             }
             // Prime timeline so first buffer schedules slightly ahead
             window._nesAudioTimeline = ctx.currentTime + 0.02;
+            // Track currently scheduled sources for optional flush
+            if(!window._nesActiveSources) window._nesActiveSources = [];
         } catch(e){ console.warn('ensureAudioContext failed', e); }
+    },
+    flushAudioOutput(){
+        try {
+            // Stop any scheduled sources and reset timeline to small lead
+            const ctx = window.nesAudioCtx;
+            if(ctx){
+                const now = ctx.currentTime;
+                if(window._nesActiveSources){
+                    try { window._nesActiveSources.forEach(node=>{ try{ node.stop ? node.stop(now) : (node.disconnect && node.disconnect()); }catch{} }); } catch{}
+                    window._nesActiveSources.length = 0;
+                }
+                window._nesAudioTimeline = now + 0.02;
+                window._nesLastRate = 1.0;
+                // Clear legacy mixer stash
+                if(this._mixStash) this._mixStash.length = 0;
+            }
+        } catch(e){ console.warn('flushAudioOutput failed', e); }
     },
     resetAudioTimeline(){
         try{
@@ -345,8 +420,15 @@ window.nesInterop = {
             if(this._awEnabled && audioBuffer && audioBuffer.length){
                 this._awWrite(audioBuffer);
             } else if(audioBuffer && audioBuffer.length) {
-                // legacy path -> schedule buffer copy
-                this.playAudio(audioBuffer, sampleRate||44100);
+                // legacy path -> per-clock routing
+                const clk = this._activeClockId || '';
+                if (clk === 'TRB') {
+                    // improved mixer for TRB
+                    this.playAudio(audioBuffer, sampleRate||44100);
+                } else {
+                    // classic scheduling for FMC/CLR (pre-change behavior)
+                    this.playAudioClassic(audioBuffer, sampleRate||44100);
+                }
             }
             if(framebuffer){ this.drawFrame(canvasId, framebuffer); }
         } catch(e){ console.warn('presentFrame failed', e); }
@@ -890,32 +972,108 @@ window.nesInterop = {
             if (!audioBuffer || audioBuffer.length === 0) {
                 return; // No audio data to play
             }
-            
-            const buffer = ctx.createBuffer(1, audioBuffer.length, sampleRate);
-            const channel = buffer.getChannelData(0);
-            
-            for (let i = 0; i < audioBuffer.length; i++) {
-                channel[i] = audioBuffer[i];
+            // Resample input to AudioContext rate to avoid internal SRC artifacts
+            const dstRate = ctx.sampleRate || sampleRate || 44100;
+            const resampled = this._resampleLinear(audioBuffer, sampleRate||dstRate, dstRate);
+            // Accumulate and schedule fixed chunks with equal-power overlap
+            this._stashAppend(resampled);
+            this._ensureFadeCurves();
+            const fadeSec = Math.max(0.001, (this._fadeMs||5)/1000);
+            const chunkSamples = Math.max(512, Math.floor((this._mixChunkMs/1000) * dstRate));
+            // Init timeline a bit ahead to reduce scheduling pressure
+            if (!window._nesAudioTimeline) window._nesAudioTimeline = ctx.currentTime + 0.06;
+            if (window._nesAudioTimeline < ctx.currentTime) window._nesAudioTimeline = ctx.currentTime + 0.03;
+            // Schedule as many chunks as available
+            while(true){
+                const samples = this._stashTake(chunkSamples);
+                if(!samples) break;
+                const buffer = ctx.createBuffer(1, samples.length, dstRate);
+                buffer.copyToChannel(samples, 0, 0);
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                // Very subtle drift trim via playbackRate (tight bounds)
+                if(typeof window._nesLastRate !== 'number') window._nesLastRate = 1.0;
+                const lead = (window._nesAudioTimeline - ctx.currentTime);
+                const targetLead = 0.09;
+                let rate = 1.0 + (lead - targetLead) * 0.15;
+                if(!isFinite(rate)) rate = 1.0;
+                rate = Math.max(0.997, Math.min(1.003, rate));
+                rate = 0.85 * window._nesLastRate + 0.15 * rate;
+                window._nesLastRate = rate;
+                try { source.playbackRate.value = rate; } catch{}
+                const gain = ctx.createGain();
+                source.connect(gain).connect(ctx.destination);
+                const now = ctx.currentTime;
+                const prevEnd = window._nesAudioTimeline;
+                let startT = prevEnd - fadeSec; // overlap
+                startT = Math.max(startT, now + 0.0005);
+                // Avoid runaway lead; cap start within ~0.25s ahead to reduce hangs on long stalls
+                if (startT > now + 0.25) startT = now + 0.25;
+                const endT = startT + buffer.duration;
+                try {
+                    if (this._fadeCurveIn && this._fadeCurveOut) {
+                        gain.gain.setValueCurveAtTime(this._fadeCurveIn, startT, fadeSec);
+                        const tailStart = endT - fadeSec;
+                        if (tailStart > startT) gain.gain.setValueCurveAtTime(this._fadeCurveOut, tailStart, fadeSec);
+                    } else {
+                        gain.gain.setValueAtTime(0.0, startT);
+                        gain.gain.linearRampToValueAtTime(1.0, startT + fadeSec);
+                        const tailStart = endT - fadeSec;
+                        if (tailStart > startT){ gain.gain.setValueAtTime(1.0, tailStart); gain.gain.linearRampToValueAtTime(0.0, endT); }
+                    }
+                } catch{}
+                source.start(startT);
+                if(window._nesActiveSources){ try { window._nesActiveSources.push(source); window._nesActiveSources.push(gain); } catch{} }
+                // Advance timeline accounting for overlap
+                if (prevEnd && startT <= prevEnd && (prevEnd - startT) >= fadeSec * 0.8){
+                    window._nesAudioTimeline = prevEnd + (buffer.duration - fadeSec);
+                } else {
+                    window._nesAudioTimeline = endT;
+                }
             }
-            
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(ctx.destination);
-            // Maintain a running scheduled time to ensure continuous playback
-            if (!window._nesAudioTimeline) {
-                window._nesAudioTimeline = ctx.currentTime + 0.02; // small initial lead
-            }
-            // If timeline fell behind currentTime, reset with small lead to avoid large jumps
-            if (window._nesAudioTimeline < ctx.currentTime) {
-                window._nesAudioTimeline = ctx.currentTime + 0.01;
-            }
-            const when = window._nesAudioTimeline;
-            source.start(when);
-            window._nesAudioTimeline += buffer.duration;
         } catch (error) {
             console.warn('Audio playback error:', error);
         }
-    }
+    },
+    // Classic path: schedule buffers as-is (no resample/chunk/overlap). Minimal fades only.
+    playAudioClassic: function(audioBuffer, sampleRate){
+        try {
+            if (!window.nesAudioCtx) {
+                window.nesAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = window.nesAudioCtx;
+            if (ctx.state === 'suspended') { ctx.resume(); }
+            if (!audioBuffer || audioBuffer.length === 0) return;
+            const sr = (typeof sampleRate === 'number' && isFinite(sampleRate) && sampleRate>0) ? sampleRate : (ctx.sampleRate || 44100);
+            const buffer = ctx.createBuffer(1, audioBuffer.length, sr);
+            try { buffer.copyToChannel(audioBuffer instanceof Float32Array ? audioBuffer : Float32Array.from(audioBuffer), 0, 0); } catch {}
+            const src = ctx.createBufferSource();
+            src.buffer = buffer;
+            // Classic path keeps playbackRate at 1.0 (no drift trim)
+            const gain = ctx.createGain();
+            src.connect(gain).connect(ctx.destination);
+            const now = ctx.currentTime;
+            if (!window._nesAudioTimeline) window._nesAudioTimeline = now + 0.02;
+            let startT = Math.max(window._nesAudioTimeline, now + 0.0005);
+            if (startT > now + 0.25) startT = now + 0.25; // cap excessive lead
+            const endT = startT + buffer.duration;
+            // Short safe fades to avoid clicks without affecting timbre
+            const fadeSec = 0.002;
+            try {
+                gain.gain.setValueAtTime(0.0, startT);
+                gain.gain.linearRampToValueAtTime(1.0, startT + fadeSec);
+                const tail = Math.max(startT, endT - fadeSec);
+                gain.gain.setValueAtTime(1.0, tail);
+                gain.gain.linearRampToValueAtTime(0.0, endT);
+            } catch {}
+            try { src.start(startT); } catch {}
+            if(window._nesActiveSources){ try { window._nesActiveSources.push(src); window._nesActiveSources.push(gain); } catch{} }
+            window._nesAudioTimeline = endT;
+        } catch(e){ console.warn('playAudioClassic error', e); }
+    },
+    // Clock core routing control from C#
+    setActiveClockId(id){ this._activeClockId = (id||'')+''; return this._activeClockId; },
+    getActiveClockId(){ return this._activeClockId||''; }
     ,
     // ==== SoundFont note event bridge (APU_WF / APU_MNES SoundFontMode) ====
     noteEvent: function(channel, program, midiNote, velocity, on){

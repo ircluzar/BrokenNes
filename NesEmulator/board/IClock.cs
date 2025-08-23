@@ -37,6 +37,13 @@ namespace NesEmulator
 
         // Execute one emulation frame and return immediately (host-defined cadence control)
         // Implementations can poll this to produce frames when not using JS RAF.
-        void RunFrame();
+    void RunFrame();
+
+    // Build the per-frame payload (framebuffer + audio) from host state.
+    // This mirrors what FrameTick returns to JS in FMC mode.
+    BrokenNes.Emulator.FramePayload RunFrameAndBuildPayload();
+
+    // Present a payload using the host's presentation path (JS interop).
+    ValueTask PresentAsync(BrokenNes.Emulator.FramePayload payload);
     }
 }
