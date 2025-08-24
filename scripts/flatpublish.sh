@@ -138,8 +138,8 @@ done
 # Additional required assets for APU_WF (waveform SoundFont bridge) and APU_MNES (MNES FluidSynth bridge)
 # These power the note-event SoundFont playback paths. We validate presence so a publish error is obvious.
 apu_assets=(
-  "soundfont.js"
-  "mnesSf2.js"
+  "lib/soundfont.js"
+  "lib/mnesSf2.js"
   "sf2player/MNES.sf2"
   "sf2player/js-synthesizer.min.js"
   "sf2player/js-synthesizer.worklet.min.js"
@@ -158,9 +158,9 @@ done
 # Opportunistic compression (Brotli + gzip) for large / frequently requested MNES assets if not already present.
 # Skips if tools unavailable. Does not treat absence as fatal.
 compress_candidates=(
-  "mnesSf2.js"
-  "soundfont.js"
-  "nesInterop.js"
+  "lib/mnesSf2.js"
+  "lib/soundfont.js"
+  "lib/nesInterop.js"
   "sf2player/js-synthesizer.min.js"
   "sf2player/js-synthesizer.worklet.min.js"
   "sf2player/libfluidsynth-2.0.2.js"
@@ -315,10 +315,10 @@ fi
 echo "==> Verifying media assets..."
 media_missing=0
 media_assets=(
-  "TitleScreen.mp3"
-  "Options.mp3"
-  "DeckBuilder.mp3"
-  "plates.m4a"
+  "music/TitleScreen.mp3"
+  "music/Options.mp3"
+  "music/DeckBuilder.mp3"
+  "sfx/plates.m4a"
 )
 for a in "${media_assets[@]}"; do
   if [[ -f "$FLAT_DIR/$a" ]]; then

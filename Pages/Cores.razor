@@ -1,0 +1,66 @@
+@page "/cores"
+@using NesEmulator
+@using NesEmulator.Shaders
+@inject IJSRuntime JS
+@inject IShaderProvider ShaderProvider
+
+<div class="options-root">
+  <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
+  <h2 class="opt-title">UNLOCKED CORES</h2>
+  <div class="opt-sections">
+    <section class="opt-section">
+      <h3 class="opt-h3">CPU</h3>
+      <ul>
+        @foreach (var id in Cpu) { <li class="opt-row">@id</li> }
+      </ul>
+    </section>
+    <section class="opt-section">
+      <h3 class="opt-h3">PPU</h3>
+      <ul>
+        @foreach (var id in Ppu) { <li class="opt-row">@id</li> }
+      </ul>
+    </section>
+    <section class="opt-section">
+      <h3 class="opt-h3">APU</h3>
+      <ul>
+        @foreach (var id in Apu) { <li class="opt-row">@id</li> }
+      </ul>
+    </section>
+    <section class="opt-section">
+      <h3 class="opt-h3">Clock</h3>
+      <ul>
+        @foreach (var id in Clock) { <li class="opt-row">@id</li> }
+      </ul>
+    </section>
+    <section class="opt-section">
+      <h3 class="opt-h3">Shaders</h3>
+      <ul>
+        @foreach (var id in Shaders) { <li class="opt-row">@id</li> }
+      </ul>
+    </section>
+  </div>
+  <div class="opt-footer">
+    <a href="./deck-builder?skipHW=1" class="opt-link">RETURN</a>
+  </div>
+</div>
+
+@code {
+  private IReadOnlyList<string> Cpu = Array.Empty<string>();
+  private IReadOnlyList<string> Ppu = Array.Empty<string>();
+  private IReadOnlyList<string> Apu = Array.Empty<string>();
+  private IReadOnlyList<string> Clock = Array.Empty<string>();
+  private IReadOnlyList<string> Shaders = Array.Empty<string>();
+
+  protected override async Task OnInitializedAsync()
+  {
+    try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
+    try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+    // Populate reflection data
+    try { Cpu = CoreRegistry.CpuIds; } catch { }
+    try { Ppu = CoreRegistry.PpuIds; } catch { }
+    try { Apu = CoreRegistry.ApuIds; } catch { }
+  try { Clock = ClockRegistry.Ids; } catch { }
+  try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
+  }
+}

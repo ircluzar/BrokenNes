@@ -389,7 +389,7 @@ window.nesInterop = {
                     // Fallback create (hidden)
                     const created = document.createElement('audio');
                     created.id='titleMusic';
-                    created.src='TitleScreen.mp3';
+                    created.src='music/TitleScreen.mp3';
                     created.loop=true; created.preload='auto';
                     created.style.display='none';
                     document.body.appendChild(created);
@@ -513,7 +513,7 @@ window.nesInterop = {
                 Atomics.store(this._awCtrl,1,0); // write
                 Atomics.store(this._awCtrl,2,cap); // capacity
                 Atomics.store(this._awCtrl,3,0); // dropped
-                try { await ctx.audioWorklet.addModule('audio-worklet.js'); } catch(e){ console.warn('worklet addModule failed', e); throw e; }
+                try { await ctx.audioWorklet.addModule('lib/audio-worklet.js'); } catch(e){ console.warn('worklet addModule failed', e); throw e; }
                 const node = new AudioWorkletNode(ctx, 'nes-ring-proc', { processorOptions: { sab, ctrl } });
                 // Route worklet output through master gain
                 const master = window._nesMasterGain || (window._nesMasterGain = ctx.createGain());

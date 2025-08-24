@@ -24,10 +24,10 @@ Reference (no action required): APU_* -> note delegate -> `nesInterop.noteEvent`
 ## 3. Core Workstreams & Task Breakdown
 
 ### A. Routing & Gating (Prevent Double Playback)
-- [x] A1: Introduce global active-core flag (e.g., `window._nesActiveSoundFontCore`). (Implemented in `nesInterop.js` with `_nesActiveSoundFontCore` + layering flag `_nesAllowLayering`.)
+- [x] A1: Introduce global active-core flag (e.g., `window._nesActiveSoundFontCore`). (Implemented in `lib/nesInterop.js` with `_nesActiveSoundFontCore` + layering flag `_nesAllowLayering`.)
 - [x] A2: Add `setActiveSoundFontCore(coreId)` API to `nesInterop`. (Added with eager enable + optional flush.)
 - [x] A3: Refactor `nesInterop.noteEvent` to dispatch only to selected synth (legacy dual-dispatch fallback if unset). (Now gates & updates counters, suppression warnings.)
-- [x] A4: Implement defensive early-return guards inside `mnesSf2.handleNote` & `nesSoundFont.handleNote` when core mismatch. (Guards added to `mnesSf2.js` and `soundfont.js`.)
+- [x] A4: Implement defensive early-return guards inside `mnesSf2.handleNote` & `nesSoundFont.handleNote` when core mismatch. (Guards added to `lib/mnesSf2.js` and `lib/soundfont.js`.)
 - [ ] A5: Ensure disable flows call a shared function to silence/flush inactive synth before switching.
 - [x] A5: Ensure disable flows call a shared function to silence/flush inactive synth before switching. (Centralized note-off via `EmitAllNoteOffInternal` + JS flush on switch.)
 - [x] A6: Add optional layering toggle (off by default) to allow deliberate dual dispatch (future-proof, keep implementation minimal, may stub UI later). (`setSoundFontLayering(bool)` implemented.)

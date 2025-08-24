@@ -248,7 +248,7 @@ Legend: Priority (H=High, M=Medium, L=Low). Each task has granular subtasks with
    - [ ] Confirm COOP/COEP headers present (SAB allowed)
    - [ ] Add feature flag `?featureAudioSAB=1`
 - [ ] JS Infra
-   - [ ] Create `audio-worklet.js` + processor registering `process(inputs, outputs)` reading ring buffer
+   - [ ] Create `lib/audio-worklet.js` + processor registering `process(inputs, outputs)` reading ring buffer
    - [ ] Initialize SharedArrayBuffer (e.g. Float32 size: sampleRate * 0.25s)
    - [ ] Control block SAB: Int32[3] => writeIndex, readIndex, frameCounter
 - [ ] .NET Changes

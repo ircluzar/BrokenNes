@@ -23,7 +23,7 @@ Thanks for your interest! This guide covers adding and updating GLSL shaders and
 - Metadata header includes DisplayName
 - Compiles in WebGL (check browser console for shader compile errors)
 - Respects standard uniforms/varyings
-- Works with current `nesInterop.js` binding logic
+- Works with current `lib/nesInterop.js` binding logic
 
 ## Generator changes
 - Keep diagnostics clear. Existing codes:

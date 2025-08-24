@@ -17,7 +17,7 @@ Notes
 
 ## Prioritized work items
 
-### Hot loop optimizations spotlight (from `wwwroot/nesInterop.js`)
+### Hot loop optimizations spotlight (from `wwwroot/lib/nesInterop.js`)
 - Two interop crossings per frame right now: JS RAF calls .NET `FrameTick` and then .NET calls back `presentFrame(...)`. Collapse to a single crossing (JS→.NET with a return payload) to halve interop churn.
 - Extra memory copy per frame: `drawFrame` copies `framebuffer` into `imageData.data` before `gl.tex(Sub)Image2D(...)`. Upload directly from `framebuffer` to remove this copy.
 - Inputs and notes send many tiny interop calls (`UpdateInput` on each key event; `noteEvent` per note). Batch them once per frame.
@@ -26,7 +26,7 @@ Notes
 ### 1) Single-crossing per frame: JS RAF returns frame payload (eliminate extra interop)
 Hypothesis: Current loop performs two crossings each frame (JS→.NET `FrameTick`, then .NET→JS `presentFrame`). Have JS invoke `FrameTick` and return `{ framebuffer, audio?, sampleRate }` so presentation happens entirely in JS within the same call chain.
 Impact: Very High (halve interop per frame; -10–30% main-thread/GC overhead). Effort: M. Risk: Low–Med.
-Dependencies: JS glue in `wwwroot/nesInterop.js`, .NET `FrameTick` signature and serialization policy.
+Dependencies: JS glue in `wwwroot/lib/nesInterop.js`, .NET `FrameTick` signature and serialization policy.
 Acceptance
 - [x] Exactly one interop crossing per frame during emulation (JS→.NET).
 - [x] JS receives a payload object and calls internal present once; no `.NET → JS` `presentFrame` during run.

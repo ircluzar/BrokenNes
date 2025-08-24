@@ -1,0 +1,25 @@
+@page "/story"
+@inject IJSRuntime JS
+
+<div class="options-root">
+  <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
+  <h2 class="opt-title">STORY</h2>
+  <div class="opt-sections">
+    <section class="opt-section">
+      <h3 class="opt-h3">Prologue</h3>
+      <p class="opt-row small-note">Story content coming soon.</p>
+    </section>
+  </div>
+  <div class="opt-footer">
+    <a href="./deck-builder?skipHW=1" class="opt-link">RETURN</a>
+  </div>
+</div>
+
+@code {
+  protected override async Task OnInitializedAsync()
+  {
+    try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+    try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
+    try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+  }
+}

@@ -1,26 +1,36 @@
 @page "/deck-builder"
 @inject IJSRuntime JS
+@inject BrokenNes.Services.GameSaveService SaveSvc
 
 <div class="deck-root">
     <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
     <h2 class="deck-title">DECK BUILDER</h2>
-    <p class="deck-note">(Prototype) Configure a virtual control deck layout. Features coming soon.</p>
-    <div class="deck-grid">
-        <div class="deck-slot">A</div>
-        <div class="deck-slot">B</div>
-        <div class="deck-slot">START</div>
-        <div class="deck-slot">SELECT</div>
-        <div class="deck-slot">UP</div>
-        <div class="deck-slot">DOWN</div>
-        <div class="deck-slot">LEFT</div>
-        <div class="deck-slot">RIGHT</div>
-    </div>
+    <section class="opt-section">
+        <h3 class="opt-h3">SUMMARY</h3>
+        <div class="summary-box">
+            <div class="summary-row"><span class="label">Unlocked Cores</span><span class="value">@unlockedCores</span></div>
+            <div class="summary-row"><span class="label">Achievement stars</span><span class="value">@achievementStars</span></div>
+            <div class="summary-row"><span class="label">Progress</span><span class="value">Level @currentLevel</span></div>
+        </div>
+    </section>
+    <section class="opt-section">
+        <h3 class="opt-h3">ACTIONS</h3>
+        <div class="action-buttons">
+            <a class="btn-nes" href="./story">Watch Story</a>
+            <a class="btn-nes" href="./continue">Continue Deck Builder</a>
+            <a class="btn-nes" href="./cores">View Unlocked Cores</a>
+        </div>
+    </section>
     <div class="deck-footer">
     <a href="?skipHW=1" class="deck-link">RETURN</a>
     </div>
 </div>
 
 @code {
+    private int unlockedCores = 0;
+    private int achievementStars = 0;
+    private int currentLevel = 1;
+
     protected override async Task OnInitializedAsync()
     {
         // Keep audio context alive when visiting deck builder
@@ -28,5 +38,14 @@
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     // Ensure animated background is started (shared with Home)
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+        // Load save and compute summary
+        try
+        {
+            var save = await SaveSvc.LoadAsync();
+            currentLevel = Math.Max(1, save.Level);
+            achievementStars = save.Achievements?.Count ?? 0;
+        }
+        catch { currentLevel = 1; achievementStars = 0; }
+        try { unlockedCores = SaveSvc.GetUnlockedCoresCount(); } catch { unlockedCores = 0; }
     }
 }

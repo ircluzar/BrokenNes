@@ -103,7 +103,7 @@ Implementation steps:
    - Extend or add optional interface: `IBinaryState { void WriteState(ref StateWriter w); void ReadState(ref StateReader r); }`.
    - Implement for all concrete cores and mappers we ship (Mapper0/1/2/4/5 etc.).
 3. [ ] Implement `NES.SaveStateBinary()` and `NES.LoadStateBinary(...)` using the new interfaces and direct `Array.Copy` for regions.
-4. [ ] UI integration (`Pages/Nes.razor` and `wwwroot/nesInterop.js`):
+4. [ ] UI integration (`Pages/Nes.razor` and `wwwroot/lib/nesInterop.js`):
    - Add methods to store and retrieve `ArrayBuffer`/`Uint8Array` in IndexedDB (no base64). Keys mirror existing ones, e.g., `state.bin` plus `manifest` for versioning.
    - From .NET, call `IJSRuntime.InvokeAsync<byte[]>(...)` to get the binary payload.
 5. [ ] Backward compatibility: If binary not found, fall back to current JSON flow.
@@ -134,7 +134,7 @@ If we adopt MessagePack:
 
 - [ ] `NesEmulator/NES.cs`: SaveState/LoadState changes (base64 + Utf8JsonReader + binary fast-path).
 - [ ] `Pages/Nes.razor`: Load/Save flow; manifest and chunk handling; add binary path and perf overlay.
-- [ ] `wwwroot/nesInterop.js`: IndexedDB helpers to store/get Uint8Array/Blob; keep legacy string path.
+- [ ] `wwwroot/lib/nesInterop.js`: IndexedDB helpers to store/get Uint8Array/Blob; keep legacy string path.
 - [ ] `NesEmulator/mappers/*`: Add binary state methods; optional JSON DTO switch.
 - [ ] `NesEmulator/cpus/*`, `ppus/*`, `apus/*`: Same as above.
 - [ ] `NesEmulator/Cartridge.cs`: Cache ROM hash once; expose metadata (mapper id/name, hash, length) to speed compare.
@@ -177,7 +177,7 @@ Testing and validation are handled separately. The following notes remain for re
 - [ ] Pages/Nes.razor
    - [ ] Add perf timestamps to LoadState similar to SaveState.
    - [ ] Keep current chunk merge; later, branch to binary path if `manifest` indicates `format:"bin"`.
-- [ ] wwwroot/nesInterop.js
+- [ ] wwwroot/lib/nesInterop.js
    - [ ] Implement `saveStateBin(key, Uint8Array)` and `getStateBin(key)` using IDB with `Blob` or `Uint8Array`.
 
 ## Notes

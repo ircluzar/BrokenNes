@@ -40,7 +40,7 @@ Lean principle: No extra work inside hot loops. The clock selection must only in
 
 - New interface `IClock` with attribute-based descriptors similar to other cores (e.g., `CoreId`, `DisplayName`, optional `Stability`, `Description`, `Flags`).
 - Clock discovery mirrors existing core discovery: reflection scan once on startup; register by `CoreId` (string or small int).
-- FMC (JS driver): Wrapper that integrates with existing `requestAnimationFrame` loop in `wwwroot/nesInterop.js` and `[JSInvokable] FrameTick()`; this remains default.
+- FMC (JS driver): Wrapper that integrates with existing `requestAnimationFrame` loop in `wwwroot/lib/nesInterop.js` and `[JSInvokable] FrameTick()`; this remains default.
 - CLR (C# driver): A C# loop host that advances frames and coordinates presentation, with browser-friendly throttling. Initial implementation uses a lightweight loop with `ValueTask`/`Task.Yield` or a timer-like cadence while active; strictly off the hot compute path.
 
 ### Minimal overhead principle
@@ -133,7 +133,7 @@ Accessibility and UX:
 - `NesEmulator/board/Emulator.cs` or `NesEmulator/UI.cs`: introduce `IClock`, `IClockHost`, loop host wiring, start/stop on run/pause.
 - `Pages/Nes.razor`: UI selector + persistence glue.
 - `StatusService.cs` (if used): expose current clock core id/name for overlay/diagnostics.
-- `wwwroot/nesInterop.js`: no changes required for FMC; optional small helper for visibility/pause events; ensure no double-driver when CLR active.
+- `wwwroot/lib/nesInterop.js`: no changes required for FMC; optional small helper for visibility/pause events; ensure no double-driver when CLR active.
 - Savestate: `NesEmulator/NES.cs` (or wherever manifest assembled): include `clockCore` field; parse it on load.
 - Settings store: IDB helpers in `nesInterop` or existing settings service to persist `clockCore`.
 
