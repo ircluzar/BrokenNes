@@ -579,13 +579,27 @@
             <div class="d-flex align-items-end gap-2 flex-wrap mb-2">
                 <div>
                     <label class="form-label mb-1 small" for="imagine-epoch">Model epoch</label>
-                    <input id="imagine-epoch" type="number" min="1" max="40" value="25" class="form-control form-control-sm" style="width:90px" />
+                    <input id="imagine-epoch" type="number" min="1" max="40" class="form-control form-control-sm" style="width:90px" @bind="emu!.ImagineEpoch" />
                 </div>
-                <button class="btn btn-sm btn-primary mt-3">Load model</button>
+                <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.ImagineLoadModelAsyncPublic())">Load model</button>
+            </div>
+            <div class="small mb-2">
+                @if (emu!.ImagineModelLoaded)
+                {
+                    <span class="badge bg-success">Loaded epoch @emu!.ImagineEpoch (@emu!.ImagineEpLabel)</span>
+                }
+                else if (!string.IsNullOrEmpty(emu!.ImagineLastError))
+                {
+                    <span class="badge bg-danger" title="@emu!.ImagineLastError">Load failed</span>
+                }
+                else
+                {
+                    <span class="text-muted">Model not loaded</span>
+                }
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.OpenImagineModal())">Debug</button>
-                <button class="btn btn-sm btn-outline-warning">Imagine a bug</button>
+                <button class="btn btn-sm btn-outline-warning" disabled="@(!emu!.ImagineModelLoaded)">Imagine a bug</button>
             </div>
             @if (emu!.ImagineModalOpen)
             {

@@ -171,12 +171,12 @@ Use this editable checklist to track implementation. Tick subtasks as you comple
   - [ ] Acceptance: `/models/6502_span_predictor_epoch25.onnx` is fetchable in dev and publish
   - [ ] Acceptance: If model missing, UI shows friendly error and keeps Predict disabled
 
-- [ ] Milestone 2: JS interop module (`wwwroot/lib/imagine.js`)
-  - [ ] Create `imagine.js` and expose global `imagine`
-  - [ ] Implement `loadModel(epoch)` using onnxruntime-web; EP preference: ["wasm", optional "webgl"]
-  - [ ] Implement `predictSpan({ window, holeStart, holeEnd, temperature, topK })`
-  - [ ] Lazy-load onnxruntime-web only when needed
-  - [ ] Wire include/lazy-load via Blazor/`nesInterop.js` when Imagine panel opens
+- [x] Milestone 2: JS interop module (`wwwroot/lib/imagine.js`)
+  - [x] Create `imagine.js` and expose global `imagine`
+  - [x] Implement `loadModel(epoch)` using onnxruntime-web; EP preference: ["wasm", fallback "webgl"]
+  - [x] Implement `predictSpan({ window, holeStart, holeEnd, temperature, topK })`
+  - [x] Lazy-load onnxruntime-web only when needed
+  - [x] Wire script include in `wwwroot/index.html`; optional lazy-load can be added later
   - [ ] Acceptance: `imagine.loadModel(25)` => `{ ok:true, info:"wasm"|"webgl" }` or `{ ok:false, error }`
   - [ ] Acceptance: `imagine.predictSpan` returns bytes of length `holeEnd-holeStart` in 0..255
 

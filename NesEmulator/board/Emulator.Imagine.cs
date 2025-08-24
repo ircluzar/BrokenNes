@@ -5,6 +5,12 @@ namespace BrokenNes
 {
     public partial class Emulator
     {
+    // =============== Imagine: UI + JSInterop state ===============
+    public int ImagineEpoch { get; set; } = 25;
+    public bool ImagineModelLoaded { get; private set; }
+    public string ImagineEpLabel { get; private set; } = string.Empty; // wasm|webgl
+    public string ImagineLastError { get; private set; } = string.Empty;
+
         public sealed class ImagineDebugSnapshot
         {
             public string CpuCoreId { get; set; } = string.Empty;
@@ -34,6 +40,46 @@ namespace BrokenNes
         {
             ImagineModalOpen = false;
             StateHasChanged();
+        }
+
+        private sealed class JsLoadModelResult
+        {
+            public bool ok { get; set; }
+            public string? info { get; set; }
+            public string? error { get; set; }
+        }
+
+        public async Task ImagineLoadModelAsyncPublic()
+        {
+            try
+            {
+                ImagineLastError = string.Empty;
+                Status.Set($"Imagine: loading epoch {ImagineEpoch}...");
+                var res = await JS.InvokeAsync<JsLoadModelResult>("imagine.loadModel", new object?[] { ImagineEpoch });
+                if (res != null && res.ok)
+                {
+                    ImagineModelLoaded = true;
+                    ImagineEpLabel = res.info ?? string.Empty;
+                    Status.Set($"Imagine: loaded epoch {ImagineEpoch} (EP: {ImagineEpLabel})");
+                }
+                else
+                {
+                    ImagineModelLoaded = false;
+                    ImagineEpLabel = string.Empty;
+                    ImagineLastError = res?.error ?? "Unknown error";
+                    Status.Set($"Imagine: failed to load epoch {ImagineEpoch}");
+                }
+            }
+            catch (Exception ex)
+            {
+                ImagineModelLoaded = false;
+                ImagineEpLabel = string.Empty;
+                ImagineLastError = ex.Message;
+            }
+            finally
+            {
+                StateHasChanged();
+            }
         }
 
         public async Task FreezeAndFetchNextInstructionAsync()
