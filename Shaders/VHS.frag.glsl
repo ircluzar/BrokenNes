@@ -1,5 +1,5 @@
 // DisplayName: VHS
-// CoreName: Analog VHS Emulation
+// CoreName: Broken VCR
 // Description: Emulates timebase errors, chroma/luma separation, bleed, hum bands, speckle/dropouts, scanlines, and halation.
 // Performance: -35
 // Rating: 1

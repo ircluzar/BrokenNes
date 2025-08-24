@@ -1,5 +1,5 @@
 // DisplayName: BUMP
-// CoreName: Pseudo Bump Lighting
+// CoreName: Pseudo Bump
 // Description: Derives a height field from color and shades with an animated light for a relief-lit look.
 // Performance: -8
 // Rating: 4

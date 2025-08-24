@@ -1,5 +1,5 @@
 // DisplayName: RF
-// CoreName: Analog RF Channel
+// CoreName: Analog RF
 // Description: Mild analog RF simulation with chroma misalignment, horizontal blur, ripple jitter and shimmer noise.
 // Performance: -7
 // Rating: 5

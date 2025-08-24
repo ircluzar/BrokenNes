@@ -908,3 +908,98 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
 }
 
 
+/* ========= Core Picker Modal (NES emulator) ========= */
+.cp-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:10000;padding:16px;}
+.cp-modal{background:#0f141b;border:1px solid #2b3947;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);width:min(720px,96vw);margin-top:2rem;}
+.cp-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.6rem .8rem;border-bottom:1px solid #243140;background:#111823;}
+.cp-body{padding:.8rem;max-height:70vh;overflow:auto;}
+/* Reuse list-row styling but ensure base visuals exist here too */
+.core-row-wrap{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;width:100%;}
+.core-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:.55rem .7rem;border:1px solid #2b3947;background:#0e131a;color:#e6edf3;font-size:.8rem;text-align:left;cursor:pointer;width:100%;}
+.core-row:hover,.core-row:focus{background:#14202b;}
+.row-left{display:flex;align-items:center;gap:8px;}
+.row-main{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.row-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
+.meta-badge{border:1px solid #ff5a26;padding:.15rem .4rem;}
+.meta-perf{opacity:.95;}
+.meta-perf.perf-pos{color:#36ff5a;}
+.meta-perf.perf-neg{color:#ff5a26;}
+.meta-stars{letter-spacing:1px;color:#ffcc00;font-size:.9rem;}
+.pill{display:inline-block;padding:.1rem .35rem;border:1px solid #fff;background:#222;color:#fff;font-size:.65rem;}
+.pill-cpu{border-color:#00e5ff;color:#00e5ff;}
+.pill-ppu{border-color:#36ff5a;color:#36ff5a;}
+.pill-apu{border-color:#ff5a26;color:#ff5a26;}
+.pill-clock{border-color:#ffa500;color:#ffa500;}
+.pill-shader{border-color:#b366ff;color:#b366ff;}
+.pill-rate-0{border-color:#6b7280;color:#6b7280;}
+.pill-rate-1{border-color:#ef4444;color:#ef4444;}
+.pill-rate-2{border-color:#f59e0b;color:#f59e0b;}
+.pill-rate-3{border-color:#10b981;color:#10b981;}
+.pill-rate-4{border-color:#3b82f6;color:#3b82f6;}
+.pill-rate-5{border-color:#a855f7;color:#a855f7;}
+.view-btn{background:#000;border:1px solid #ff5a26;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.35rem .6rem;}
+.view-btn:hover,.view-btn:focus{background:#ff5a26;color:#000;}
+
+/* Ensure card preview modal centers above the picker */
+.card-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:11000;padding:16px;}
+.card-modal-content{cursor:pointer;}
+.card-modal-content svg{width:min(98vw,calc(98vh * 0.7059)) !important;max-width:98vw;height:auto !important;max-height:98vh;aspect-ratio:240/340;display:block;}
+
+/* === Core Picker alignment tweaks === */
+.pill-id { min-width: 56px; text-align: center; display: inline-block; }
+
+/* Ensure category badge aligns and can be color-tinted per category */
+.meta-badge { min-width: 92px; text-align: center; }
+
+/* Category color buckets (class assigned via CategoryClass helper) */
+.meta-badge.cat-col-0 { border-color: #9ca3af; color: #e5e7eb; }
+.meta-badge.cat-col-1 { border-color: #60a5fa; color: #bfdbfe; }
+.meta-badge.cat-col-2 { border-color: #34d399; color: #bbf7d0; }
+.meta-badge.cat-col-3 { border-color: #f59e0b; color: #fde68a; }
+.meta-badge.cat-col-4 { border-color: #a78bfa; color: #ddd6fe; }
+.meta-badge.cat-col-5 { border-color: #f87171; color: #fecaca; }
+.meta-badge.cat-col-6 { border-color: #10b981; color: #a7f3d0; }
+.meta-badge.cat-col-7 { border-color: #f472b6; color: #fbcfe8; }
+
+/* === Card preview: full-viewport sizing === */
+.card-modal-backdrop { padding: 0 !important; }
+.card-modal-content { width: 100vw; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+.card-modal-content svg {
+  width: min(100vw, calc(100dvh * 0.7058823529)) !important;
+  max-width: 100vw !important;
+  height: auto !important;
+  max-height: 100dvh !important;
+  aspect-ratio: 240 / 340;
+  display: block;
+}
+
+/* === Core Picker (mobile portrait): increase row height and breathing room === */
+@media (max-width: 640px) and (orientation: portrait) {
+  .cp-body .core-row { 
+    min-height: 72px; 
+    padding: 0.9rem 0.9rem; 
+    row-gap: 6px; 
+  }
+  .cp-body .core-row .row-main { 
+    white-space: normal; 
+    overflow: visible; 
+    line-height: 1.3; 
+  }
+  .cp-body .core-row .row-meta { 
+    align-self: flex-start; 
+    gap: 8px; 
+  }
+  .cp-body .core-row-wrap { gap: 8px; }
+}
+
+/* === Core Picker (mobile portrait): stack meta (category, perf, rating) on second line === */
+@media (max-width: 640px) and (orientation: portrait) {
+  .cp-body .core-row { 
+    grid-template-columns: 1fr; /* stack left/name/meta vertically for mobile */
+  }
+  .cp-body .core-row .row-left { order: 1; }
+  .cp-body .core-row .row-main { order: 2; white-space: normal; overflow: visible; }
+  .cp-body .core-row .row-meta { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 4px; }
+}
+
+

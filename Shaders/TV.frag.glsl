@@ -1,5 +1,5 @@
 // DisplayName: TV
-// CoreName: CRT Tube (Lightweight)
+// CoreName: CRT Tube
 // Description: Barrel distortion, shadow mask triads, beam persistence, convergence wobble, halo, vignette, and mild bleed.
 // Performance: -23
 // Rating: 5

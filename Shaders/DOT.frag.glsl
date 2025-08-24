@@ -1,5 +1,5 @@
 // DisplayName: DOT
-// CoreName: Circular Shards Refraction
+// CoreName: Circular Shards
 // Description: Overlapping circular shard field with edge darkening, shear, and chromatic dispersion driven by hashed directions.
 // Performance: -14
 // Rating: 2

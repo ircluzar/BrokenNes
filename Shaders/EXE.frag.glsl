@@ -1,5 +1,5 @@
 // DisplayName: EXE
-// CoreName: Energetic Beam Exfiltration
+// CoreName: Creepy Look
 // Description: Animated vertical beam attracts pixels with swirl, particles, glitch slices, and chromatic shear.
 // Performance: -22
 // Rating: 1

@@ -341,7 +341,7 @@
     try
     {
       var shaderSet = new HashSet<string>(Shaders, StringComparer.OrdinalIgnoreCase);
-      foreach (var s in ShaderProvider.All)
+    foreach (var s in ShaderProvider.All)
       {
         if (!shaderSet.Contains(s.Id)) continue;
         string? cat = null;
@@ -349,7 +349,8 @@
         ShaderInfos.Add(new ShaderInfo
         {
           Id = s.Id,
-          DisplayName = s.DisplayName,
+      DisplayName = SafeGet(() => s.CoreName) ?? s.DisplayName, // Prefer CoreName for long name
+      CoreName = SafeGet(() => s.CoreName) ?? s.DisplayName,
           Description = s.Description,
           Performance = s.Performance,
           Rating = s.Rating,
@@ -448,7 +449,7 @@
     foreach (var m in PpuMeta) AllItems.Add(CoreItem.From("PPU", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
     foreach (var m in ApuMeta) AllItems.Add(CoreItem.From("APU", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
     foreach (var m in ClockInfos) AllItems.Add(CoreItem.From("CLOCK", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
-    foreach (var s in ShaderInfos) AllItems.Add(CoreItem.From("SHADER", s.Id, s.DisplayName, s.Description, s.Performance, s.Rating, s.Category));
+  foreach (var s in ShaderInfos) AllItems.Add(CoreItem.From("SHADER", s.Id, s.CoreName ?? s.DisplayName, s.Description, s.Performance, s.Rating, s.Category));
 
     // Precompute groupings
     TypeSections = new (string title, List<CoreItem> items)[]
@@ -618,6 +619,7 @@
   {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+  public string? CoreName { get; set; }
     public string Description { get; set; } = string.Empty;
     public int Performance { get; set; }
     public int Rating { get; set; }

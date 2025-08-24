@@ -1,5 +1,5 @@
 // DisplayName: CNMA
-// CoreName: Cinematic Grading
+// CoreName: Cinematic
 // Description: Content-aware exposure shaping with filmic contrast, teal/orange grade, adaptive saturation, and halation/vignette.
 // Performance: -18
 // Rating: 1

@@ -1,5 +1,5 @@
 // DisplayName: LSD
-// CoreName: Psychedelic Swirl & Bleed
+// CoreName: Psychedelic
 // Description: Layered noise warps, waves, temporal swirl, and directional chromatic splits with episodic burst events.
 // Performance: -20
 // Rating: 5

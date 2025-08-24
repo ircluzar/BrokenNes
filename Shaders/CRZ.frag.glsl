@@ -1,5 +1,5 @@
 // DisplayName: CRZ
-// CoreName: Crystalline Glass
+// CoreName: Crystal Glass
 // Description: Sharp irregular glass facets producing refraction and dispersion with edge glints and micro-scratch sparkle.
 // Performance: -28
 // Rating: 2

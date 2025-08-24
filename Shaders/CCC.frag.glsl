@@ -1,5 +1,5 @@
 // DisplayName: CCC
-// CoreName: Color Cycle Carousel
+// CoreName: Color Cycle
 // Description: Rotates palette hues over time with a breathing inverted mix and mild contrast/saturation pop.
 // Performance: -5
 // Rating: 2

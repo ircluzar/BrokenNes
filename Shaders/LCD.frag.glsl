@@ -1,5 +1,5 @@
 // DisplayName: LCD
-// CoreName: Aging LCD Artifact
+// CoreName: Aging LCD
 // Description: Simulates old LCD traits: horizontal smear, subpixel ghosting, frost diffusion, banding, and grain.
 // Performance: -16
 // Rating: 4

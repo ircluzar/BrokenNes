@@ -1,5 +1,5 @@
 // DisplayName: TRI
-// CoreName: Faux Extrusion Parallax
+// CoreName: Faux Extrusion
 // Description: Height-from-luma pseudo 3D with animated parallax, rim lighting, borders, AO and subtle noise.
 // Performance: -11
 // Rating: 2

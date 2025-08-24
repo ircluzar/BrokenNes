@@ -9,6 +9,9 @@
 @using Microsoft.AspNetCore.Components.WebAssembly.Services
 @using BrokenNes.Models
 @using BrokenNes.CorruptorModels
+@using NesEmulator
+@using NesEmulator.Shaders
+@using BrokenNes.Shared
 @inject ILogger<Nes> Logger
 @inject IJSRuntime JS
 @inject HttpClient Http
@@ -45,35 +48,33 @@
             <div class="btn-group">
                 <div class="qc-select-stack">
                     <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
-                    <select id="shaderSelect" class="btn btn-rf btn-select" title="Video shader" @onchange="(e)=>emu!.SetShaderPublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ActiveShaderKey" aria-label="Video Shader">
-                        @foreach(var sh in emu!.Controller.ShaderOptions){
-                            <option value="@sh.Key">@sh.Label</option>
-                        }
-                    </select>
+                    <button id="shaderSelect" type="button" class="btn btn-rf btn-select" title="Video shader" aria-label="Video Shader" @onclick="OpenShaderPicker">
+                        @GetCurrentShaderLabel()
+                    </button>
                 </div>
                 <div class="qc-select-stack">
                     <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                    <select id="apuCoreSelect" class="btn btn-fmc btn-select" title="Audio core mode" @onchange="(e)=>emu!.SetApuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ApuCoreSel" aria-label="Audio Core">
-                        @foreach(var opt in emu!.Controller.ApuCoreOptions){ <option value="@opt">@opt</option> }
-                    </select>
+                    <button id="apuCoreSelect" type="button" class="btn btn-fmc btn-select" title="Audio core" aria-label="Audio Core" @onclick="OpenApuPicker">
+                        @emu!.Controller.ApuCoreSel
+                    </button>
                 </div>
                 <div class="qc-select-stack">
                     <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                    <select id="cpuCoreSelect" class="btn btn-rf btn-select" title="CPU core" @onchange="(e)=>emu!.SetCpuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.CpuCoreSel" aria-label="CPU Core">
-                        @foreach(var opt in emu!.Controller.CpuCoreOptions){ <option value="@opt">@opt</option> }
-                    </select>
+                    <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select" title="CPU core" aria-label="CPU Core" @onclick="OpenCpuPicker">
+                        @emu!.Controller.CpuCoreSel
+                    </button>
                 </div>
                 <div class="qc-select-stack">
                     <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                    <select id="ppuCoreSelect" class="btn btn-rf btn-select" title="PPU core" @onchange="(e)=>emu!.SetPpuCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.PpuCoreSel" aria-label="PPU Core">
-                        @foreach(var opt in emu!.Controller.PpuCoreOptions){ <option value="@opt">@opt</option> }
-                    </select>
+                    <button id="ppuCoreSelect" type="button" class="btn btn-rf btn-select" title="PPU core" aria-label="PPU Core" @onclick="OpenPpuPicker">
+                        @emu!.Controller.PpuCoreSel
+                    </button>
                 </div>
                 <div class="qc-select-stack">
                     <label for="clockCoreSelect" class="mini-label" title="Select frame loop owner">Clock</label>
-                    <select id="clockCoreSelect" class="btn btn-rf btn-select" title="Clock core (loop owner)" @onchange="(e)=>emu!.SetClockCorePublic(e.Value?.ToString()??string.Empty)" value="@emu!.Controller.ClockCoreSel" aria-label="Clock Core">
-                        @foreach(var opt in emu!.Controller.ClockCoreOptions){ <option value="@opt">@opt</option> }
-                    </select>
+                    <button id="clockCoreSelect" type="button" class="btn btn-rf btn-select" title="Clock core (loop owner)" aria-label="Clock Core" @onclick="OpenClockPicker">
+                        @emu!.Controller.ClockCoreSel
+                    </button>
                 </div>
             </div>
             <div class="btn-group">
@@ -1069,9 +1070,75 @@
     </aside>
 </div>
 
+@* Core Picker Modal *@
+@if (CorePickerOpen)
+{
+    <div class="cp-modal-backdrop" @onclick="CloseCorePicker">
+        <div class="cp-modal" @onclick:stopPropagation>
+            <div class="cp-header">
+                <strong class="small mb-0">Select @CorePickerTitle</strong>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseCorePicker">Close</button>
+            </div>
+            <div class="cp-body">
+                @if (CorePickerItems.Count == 0)
+                {
+                    <div class="text-muted small fst-italic">No options available.</div>
+                }
+                else
+                {
+                    <div class="list-grid">
+                        @foreach (var it in CorePickerItems)
+                        {
+                            <div class="core-row-wrap">
+                                <button type="button" class="core-row" title="Select" @onclick="(()=>OnCorePicked(it.Id))">
+                                    <span class="row-left">
+                                        <span class="pill pill-id @PillRateClass(it.Rating)">@it.Id</span>
+                                    </span>
+                                    <span class="row-main">@it.DisplayName</span>
+                                    <span class="row-meta">
+                                        <span class="meta-badge @CategoryClass(it.Category)">@(!string.IsNullOrWhiteSpace(it.Category)?it.Category:CorePickerDomain)</span>
+                                        <span class="meta-perf @PerfClass(it.Performance)" title="Performance">@it.Performance</span>
+                                        <span class="meta-stars" title="Rating">@RenderStars(it.Rating)</span>
+                                    </span>
+                                </button>
+                                <button type="button" class="btn btn-sm view-btn" title="View" @onclick:stopPropagation="true" @onclick="(()=>OpenPreviewCard(it))">View</button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* Card preview overlay on top of the picker *@
+@if (PickerPreviewCard != null)
+{
+    <div class="card-modal-backdrop" style="z-index:11000;" @onclick="ClosePreviewCard">
+        <div class="card-modal-content" @onclick="ClosePreviewCard">
+            @((MarkupString)CardSvgRenderer.Render(PickerPreviewCard))
+        </div>
+    </div>
+}
+
 @code {
     private Emulator? emu;
     private ElementReference fileInput;
+    
+    // Core picker modal state
+    private bool CorePickerOpen = false;
+    private string CorePickerDomain = string.Empty; // CPU/PPU/APU/CLOCK/SHADER
+    private readonly List<PickerItem> CorePickerItems = new();
+    private string CorePickerTitle => CorePickerDomain switch { "CPU" => "CPU Core", "PPU" => "PPU Core", "APU" => "APU Core", "CLOCK" => "Clock", "SHADER" => "Shader", _ => "Core" };
+
+    // Cached metadata
+    private bool _coreMetaReady = false;
+    private CoreCardModel? PickerPreviewCard;
+    private List<PickerItem> _cpuMeta = new();
+    private List<PickerItem> _ppuMeta = new();
+    private List<PickerItem> _apuMeta = new();
+    private List<PickerItem> _clockMeta = new();
+    private List<PickerItem> _shaderMeta = new();
 
     protected override void OnInitialized()
     {
@@ -1093,9 +1160,35 @@
             {
                 try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
                 try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
+                                // Register a helper to force modal card SVG to fill viewport (used by picker preview)
+                                try { await JS.InvokeVoidAsync("eval", @"(function(){
+                                    window.nesUi = window.nesUi || {};
+                                    window.nesUi.zoomModalSvg = function(){
+                                        try{
+                                            var host = document.querySelector('.card-modal-content');
+                                            if(!host) return;
+                                            var svg = host.querySelector('svg');
+                                            if(!svg) return;
+                                            svg.removeAttribute('width');
+                                            svg.removeAttribute('height');
+                                            svg.style.width = '100vw';
+                                            svg.style.maxWidth = '100vw';
+                                            svg.style.height = 'auto';
+                                            svg.style.maxHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight) + 'px';
+                                            svg.style.display = 'block';
+                                        }catch(e){}
+                                    };
+                                })();"); } catch { }
                 await emu.EnsureInitialRenderAsync(true);
             }
         }
+
+                // When the preview card is shown, ensure the SVG is zoomed to viewport once
+                if (PickerPreviewCard != null && !_pickerZoomInit)
+                {
+                        _pickerZoomInit = true;
+                        try { await JS.InvokeVoidAsync("nesUi.zoomModalSvg"); } catch { }
+                }
     }
 
     public void Dispose()
@@ -1109,5 +1202,337 @@
             Logger.LogError(ex, "Error disposing NES emulator");
         }
     }
+
+    private void OpenCorePicker(string domain)
+    {
+        if (emu == null) return;
+        CorePickerDomain = domain;
+        CorePickerItems.Clear();
+        EnsureCoreMeta();
+        switch (domain)
+        {
+            case "CPU":
+                {
+                    var allowed = new HashSet<string>(emu.Controller.CpuCoreOptions, StringComparer.OrdinalIgnoreCase);
+                    CorePickerItems.AddRange(_cpuMeta.Where(m => allowed.Contains(m.Id)));
+                }
+                break;
+            case "PPU":
+                {
+                    var allowed = new HashSet<string>(emu.Controller.PpuCoreOptions, StringComparer.OrdinalIgnoreCase);
+                    CorePickerItems.AddRange(_ppuMeta.Where(m => allowed.Contains(m.Id)));
+                }
+                break;
+            case "APU":
+                {
+                    var allowed = new HashSet<string>(emu.Controller.ApuCoreOptions, StringComparer.OrdinalIgnoreCase);
+                    CorePickerItems.AddRange(_apuMeta.Where(m => allowed.Contains(m.Id)));
+                }
+                break;
+            case "CLOCK":
+                {
+                    var allowed = new HashSet<string>(emu.Controller.ClockCoreOptions, StringComparer.OrdinalIgnoreCase);
+                    CorePickerItems.AddRange(_clockMeta.Where(m => allowed.Contains(m.Id)));
+                }
+                break;
+            case "SHADER":
+                {
+                    var allowed = new HashSet<string>(emu.Controller.ShaderOptions.Select(s=>s.Key), StringComparer.OrdinalIgnoreCase);
+                    CorePickerItems.AddRange(_shaderMeta.Where(m => allowed.Contains(m.Id)));
+                }
+                break;
+        }
+        ApplyPickerSort();
+        CorePickerOpen = true;
+    }
+
+    private void CloseCorePicker()
+    {
+        CorePickerOpen = false;
+        CorePickerDomain = string.Empty;
+        CorePickerItems.Clear();
+    }
+
+    // Wrapper methods for Razor
+    private void OpenShaderPicker() => OpenCorePicker("SHADER");
+    private void OpenCpuPicker() => OpenCorePicker("CPU");
+    private void OpenPpuPicker() => OpenCorePicker("PPU");
+    private void OpenApuPicker() => OpenCorePicker("APU");
+    private void OpenClockPicker() => OpenCorePicker("CLOCK");
+
+    private async Task OnCorePicked(string id)
+    {
+        if (emu == null) return;
+        try
+        {
+            switch (CorePickerDomain)
+            {
+                case "CPU":
+                    emu.SetCpuCorePublic(id);
+                    break;
+                case "PPU":
+                    emu.SetPpuCorePublic(id);
+                    break;
+                case "APU":
+                    emu.SetApuCorePublic(id);
+                    break;
+                case "CLOCK":
+                    emu.SetClockCorePublic(id);
+                    break;
+                case "SHADER":
+                    emu.SetShaderPublic(id);
+                    break;
+            }
+        }
+        catch { }
+        finally
+        {
+            CloseCorePicker();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OpenPreviewCard(PickerItem it)
+    {
+        // Build a CoreCardModel from metadata
+        PickerPreviewCard = new CoreCardModel
+        {
+            Id = it.Id,
+            ShortName = it.Id,
+            DisplayName = it.DisplayName,
+            Description = it.Description,
+            Rating = Math.Clamp(it.Rating, 0, 5),
+            Performance = it.Performance,
+            FooterNote = string.IsNullOrWhiteSpace(it.Category) ? it.Domain : it.Category,
+            Domain = it.Domain
+        };
+    _pickerZoomInit = false; // allow zoom on next render
+    }
+
+    private void ClosePreviewCard()
+    {
+        PickerPreviewCard = null;
+    _pickerZoomInit = false;
+    }
+
+    private string GetCurrentShaderLabel()
+    {
+        try
+        {
+            var cur = emu!.Controller.ActiveShaderKey;
+            var match = emu!.Controller.ShaderOptions.FirstOrDefault(s => s.Key == cur);
+            return match?.Label ?? cur;
+        }
+        catch { return emu?.Controller.ActiveShaderKey ?? ""; }
+    }
+
+    private void EnsureCoreMeta()
+    {
+        if (_coreMetaReady) return;
+        try
+        {
+            // Minimal valid iNES ROM (NROM-128: 1x16KB PRG, 0 CHR)
+            var dummy = new byte[16 + 16 * 1024];
+            dummy[0] = 0x4E; dummy[1] = 0x45; dummy[2] = 0x53; dummy[3] = 0x1A;
+            dummy[4] = 1; dummy[5] = 0; dummy[6] = 0; dummy[7] = 0;
+            var cart = new Cartridge(dummy);
+            var bus = new Bus(cart);
+
+            var cpuDict = CoreRegistry.CreateInstances<ICPU>(bus, "CPU_");
+            _cpuMeta = cpuDict.Select(kv => new PickerItem
+            {
+                Domain = "CPU",
+                Id = kv.Key,
+                DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+                Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+                Category = SafeGet(() => kv.Value.Category) ?? ""
+            }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+            var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
+            _ppuMeta = ppuDict.Select(kv => new PickerItem
+            {
+                Domain = "PPU",
+                Id = kv.Key,
+                DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+                Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+                Category = SafeGet(() => kv.Value.Category) ?? ""
+            }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+            var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
+            _apuMeta = apuDict.Select(kv => new PickerItem
+            {
+                Domain = "APU",
+                Id = kv.Key,
+                DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+                Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+                Category = SafeGet(() => kv.Value.Category) ?? ""
+            }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+            _clockMeta = new List<PickerItem>();
+            foreach (var id in ClockRegistry.Ids)
+            {
+                try
+                {
+                    var clk = ClockRegistry.Create(id);
+                    if (clk != null)
+                    {
+                        _clockMeta.Add(new PickerItem
+                        {
+                            Domain = "CLOCK",
+                            Id = id,
+                            DisplayName = clk.DisplayName,
+                            Description = clk.Description,
+                            Performance = clk.Performance,
+                            Rating = Math.Clamp(clk.Rating, 0, 5),
+                            Category = SafeGet(() => clk.Category) ?? ""
+                        });
+                    }
+                }
+                catch { }
+            }
+            _clockMeta = _clockMeta.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+            _shaderMeta = new List<PickerItem>();
+            try
+            {
+                // Build provider lookup for metadata (by IShader)
+                var prov = new Dictionary<string, IShader>(StringComparer.OrdinalIgnoreCase);
+                try { foreach (var s in ShaderProvider.All) prov[s.Id] = s; } catch { }
+
+                // Prefer labels from controller options (user-facing Core Name)
+                foreach (var opt in emu!.Controller.ShaderOptions)
+                {
+                    var id = opt.Key;
+                    var label = opt.Label ?? id;
+                    prov.TryGetValue(id, out var meta);
+                    string? cat = null;
+                    try { if (meta?.Defines != null && meta.Defines.TryGetValue("Category", out var c)) cat = c; } catch { }
+                    _shaderMeta.Add(new PickerItem
+                    {
+                        Domain = "SHADER",
+                        Id = id,
+                        // Prefer CoreName from provider for the card long name; fallback to controller label
+                        DisplayName = (meta != null ? (SafeGet(() => meta.CoreName) ?? meta.DisplayName) : null) ?? label,
+                        Description = meta?.Description ?? string.Empty,
+                        Performance = meta?.Performance ?? 0,
+                        Rating = Math.Clamp(meta?.Rating ?? 0, 0, 5),
+                        Category = cat ?? string.Empty
+                    });
+                }
+                // Fallback: include any provider shaders not present in options (defensive)
+                foreach (var s in prov.Values)
+                {
+                    if (_shaderMeta.Any(m => string.Equals(m.Id, s.Id, StringComparison.OrdinalIgnoreCase))) continue;
+                    string? cat = null;
+                    try { if (s.Defines != null && s.Defines.TryGetValue("Category", out var c)) cat = c; } catch { }
+                    _shaderMeta.Add(new PickerItem
+                    {
+                        Domain = "SHADER",
+                        Id = s.Id,
+                        DisplayName = s.DisplayName ?? s.Id,
+                        Description = s.Description ?? string.Empty,
+                        Performance = s.Performance,
+                        Rating = Math.Clamp(s.Rating, 0, 5),
+                        Category = cat ?? string.Empty
+                    });
+                }
+                _shaderMeta = _shaderMeta.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            catch { }
+        }
+        catch { }
+        _coreMetaReady = true;
+    }
+
+    private void ApplyPickerSort()
+    {
+        if (CorePickerItems.Count <= 1) return;
+        if (string.Equals(CorePickerDomain, "SHADER", StringComparison.OrdinalIgnoreCase))
+        {
+            CorePickerItems.Sort((a,b)=>
+            {
+                int ap = string.Equals(a.Id, "PX", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                int bp = string.Equals(b.Id, "PX", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                int cmp = ap.CompareTo(bp);
+                if (cmp != 0) return cmp;
+                return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        else
+        {
+            CorePickerItems.Sort((a,b)=>
+            {
+                int ap = string.Equals(a.Id, "FMC", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                int bp = string.Equals(b.Id, "FMC", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                int cmp = ap.CompareTo(bp);
+                if (cmp != 0) return cmp;
+                return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+    }
+
+    private static string PillRateClass(int rating)
+    {
+        var r = Math.Clamp(rating, 0, 5);
+        return $"pill-rate-{r}";
+    }
+
+    private static string CategoryClass(string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return "cat-col-0";
+        unchecked
+        {
+            int hash = 0;
+            foreach (var ch in category)
+            {
+                hash = (hash * 31) + char.ToLowerInvariant(ch);
+            }
+            int idx = Math.Abs(hash) % 8; // 8 color buckets
+            return $"cat-col-{idx}";
+        }
+    }
+
+    private static string RenderStars(int rating)
+    {
+        var r = Math.Clamp(rating, 0, 5);
+        return new string('\u2605', r) + new string('\u2606', 5 - r);
+    }
+
+    private static string PerfClass(int perf)
+    {
+        if (perf > 0) return "perf-pos";
+        if (perf < 0) return "perf-neg";
+        return string.Empty;
+    }
+
+    private static T? SafeGet<T>(Func<T> getter)
+    {
+        try { return getter(); } catch { return default; }
+    }
+
+    private static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+    {
+        try { return getter(); } catch { return null; }
+    }
+
+    private sealed class PickerItem
+    {
+        public string Domain { get; set; } = string.Empty;
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int Performance { get; set; }
+        public int Rating { get; set; }
+        public string Category { get; set; } = string.Empty;
+    }
+
+    // One-shot guard to run zoom script when preview opens
+    private bool _pickerZoomInit = false;
 }
 

@@ -1,5 +1,5 @@
 // DisplayName: WARM
-// CoreName: Warmth & Phosphor Tilt
+// CoreName: Extra Warmth
 // Description: Subtle warm color shift with soft contrast tilt and gentle green cross-talk while preserving luminance.
 // Performance: -3
 // Rating: 3

@@ -1,5 +1,5 @@
 // DisplayName: TTF
-// CoreName: TrueType Subpixel
+// CoreName: Subpixel Clean
 // Description: Subpixel sampling for sharper vertical features using RGB offsets, edge gating, and small gathers.
 // Performance: -4
 // Rating: 3
