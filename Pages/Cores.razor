@@ -13,101 +13,230 @@
 
   <div class="filters-toolbar">
     <div class="filters-row">
-      <label for="groupBy">Group by</label>
-      <select id="groupBy" value="@GroupBy.ToString()" @onchange="OnGroupChange">
-        <option value="None">None</option>
-        <option value="Type">Type</option>
-        <option value="Category">Category</option>
-        <option value="Rating">Rating</option>
-      </select>
+      <div class="filter-field">
+        <label for="groupBy">Group by</label>
+        <select id="groupBy" value="@GroupBy.ToString()" @onchange="OnGroupChange">
+          <option value="None">None</option>
+          <option value="Type">Type</option>
+          <option value="Category">Category</option>
+          <option value="Rating">Rating</option>
+        </select>
+      </div>
 
-      <label for="sortBy">Order</label>
-      <select id="sortBy" value="@SortBy.ToString()" @onchange="OnSortChange">
-        <option value="None">None</option>
-        <option value="Alphabetical">Alphabetical</option>
-        <option value="Performance">Performance</option>
-        <option value="Rating">Rating</option>
-      </select>
-  <button type="button" class="order-toggle" title="Flip order" @onclick="FlipOrder">⇅</button>
+      <div class="filter-field">
+        <label for="sortBy">Order</label>
+        <div class="order-control">
+          <select id="sortBy" value="@SortBy.ToString()" @onchange="OnSortChange">
+            <option value="None">None</option>
+            <option value="Alphabetical">Alphabetical</option>
+            <option value="Performance">Performance</option>
+            <option value="Rating">Rating</option>
+          </select>
+          <button type="button" class="order-toggle" title="Flip order" @onclick="FlipOrder">⇅</button>
+        </div>
+      </div>
+      
+      <div class="filter-field">
+        <label for="viewMode">View</label>
+        <select id="viewMode" value="@View.ToString()" @onchange="OnViewChange">
+          <option value="Cards">Cards</option>
+          <option value="List">List</option>
+        </select>
+      </div>
     </div>
   </div>
 
-  @if (GroupBy == GroupMode.Type)
+  @if (View == ViewMode.List)
   {
-    <div class="card-sections">
-      @foreach (var sec in TypeSections)
-      {
-        if (sec.items.Count == 0) { continue; }
-        <section class="card-section">
-          <h3 class="opt-h3">@sec.title</h3>
-          <div class="card-grid">
-            @foreach (var item in GetSorted(sec.items))
-            {
-              var model = ToCard(item);
-              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
-                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-              </div>
-            }
-          </div>
-        </section>
-      }
-    </div>
-  }
-  else if (GroupBy == GroupMode.Category)
-  {
-    <div class="card-sections">
-      @foreach (var g in CategoryGroups)
-      {
-        if (g.Value.Count == 0) { continue; }
-        <section class="card-section">
-          <h3 class="opt-h3">@g.Key</h3>
-          <div class="card-grid">
-            @foreach (var item in GetSorted(g.Value))
-            {
-              var model = ToCard(item);
-              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
-                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-              </div>
-            }
-          </div>
-        </section>
-      }
-    </div>
-  }
-  else if (GroupBy == GroupMode.Rating)
-  {
-    <div class="card-sections">
-      @foreach (var bucket in RatingBuckets)
-      {
-        if (bucket.items.Count == 0) { continue; }
-        <section class="card-section">
-          <h3 class="opt-h3">@bucket.title</h3>
-          <div class="card-grid">
-            @foreach (var item in GetSorted(bucket.items))
-            {
-              var model = ToCard(item);
-              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
-                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-              </div>
-            }
-          </div>
-        </section>
-      }
-    </div>
+    @if (GroupBy == GroupMode.Type)
+    {
+      <div class="list-sections">
+        @foreach (var sec in TypeSections)
+        {
+          if (sec.items.Count == 0) { continue; }
+          <section class="list-section">
+            <h3 class="opt-h3">@sec.title</h3>
+            <div class="list-grid">
+              @foreach (var item in GetSorted(sec.items))
+              {
+                var model = ToCard(item);
+                <button type="button" class="core-row" @key="item.Key" @onclick="() => OpenCard(model)">
+                  <span class="row-left">
+                    <span class="pill pill-@item.Domain.ToLower()">@item.Domain</span>
+                  </span>
+                  <span class="row-main">@item.DisplayName</span>
+                  <span class="row-meta">
+                    <span class="meta-badge">@(!string.IsNullOrWhiteSpace(item.Category) ? item.Category : item.Domain)</span>
+                    <span class="meta-perf @PerfClass(item.Performance)" title="Performance">@item.Performance</span>
+                    <span class="meta-stars" title="Rating">@RenderStars(item.Rating)</span>
+                  </span>
+                </button>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+    else if (GroupBy == GroupMode.Category)
+    {
+      <div class="list-sections">
+        @foreach (var g in CategoryGroups)
+        {
+          if (g.Value.Count == 0) { continue; }
+          <section class="list-section">
+            <h3 class="opt-h3">@g.Key</h3>
+            <div class="list-grid">
+              @foreach (var item in GetSorted(g.Value))
+              {
+                var model = ToCard(item);
+                <button type="button" class="core-row" @key="item.Key" @onclick="() => OpenCard(model)">
+                  <span class="row-left">
+                    <span class="pill pill-@item.Domain.ToLower()">@item.Domain</span>
+                  </span>
+                  <span class="row-main">@item.DisplayName</span>
+                  <span class="row-meta">
+                    <span class="meta-badge">@(!string.IsNullOrWhiteSpace(item.Category) ? item.Category : item.Domain)</span>
+                    <span class="meta-perf @PerfClass(item.Performance)" title="Performance">@item.Performance</span>
+                    <span class="meta-stars" title="Rating">@RenderStars(item.Rating)</span>
+                  </span>
+                </button>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+    else if (GroupBy == GroupMode.Rating)
+    {
+      <div class="list-sections">
+        @foreach (var bucket in RatingBuckets)
+        {
+          if (bucket.items.Count == 0) { continue; }
+          <section class="list-section">
+            <h3 class="opt-h3">@bucket.title</h3>
+            <div class="list-grid">
+              @foreach (var item in GetSorted(bucket.items))
+              {
+                var model = ToCard(item);
+                <button type="button" class="core-row" @key="item.Key" @onclick="() => OpenCard(model)">
+                  <span class="row-left">
+                    <span class="pill pill-@item.Domain.ToLower()">@item.Domain</span>
+                  </span>
+                  <span class="row-main">@item.DisplayName</span>
+                  <span class="row-meta">
+                    <span class="meta-badge">@(!string.IsNullOrWhiteSpace(item.Category) ? item.Category : item.Domain)</span>
+                    <span class="meta-perf @PerfClass(item.Performance)" title="Performance">@item.Performance</span>
+                    <span class="meta-stars" title="Rating">@RenderStars(item.Rating)</span>
+                  </span>
+                </button>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+    else
+    {
+      <section class="list-section">
+        <div class="list-grid">
+          @foreach (var item in GetSorted(AllItems))
+          {
+            var model = ToCard(item);
+            <button type="button" class="core-row" @key="item.Key" @onclick="() => OpenCard(model)">
+              <span class="row-left">
+                <span class="pill pill-@item.Domain.ToLower()">@item.Domain</span>
+              </span>
+              <span class="row-main">@item.DisplayName</span>
+              <span class="row-meta">
+                <span class="meta-badge">@(!string.IsNullOrWhiteSpace(item.Category) ? item.Category : item.Domain)</span>
+                <span class="meta-perf @PerfClass(item.Performance)" title="Performance">@item.Performance</span>
+                <span class="meta-stars" title="Rating">@RenderStars(item.Rating)</span>
+              </span>
+            </button>
+          }
+        </div>
+      </section>
+    }
   }
   else
   {
-    <section class="card-section">
-      <div class="card-grid">
-        @foreach (var item in GetSorted(AllItems))
+    @if (GroupBy == GroupMode.Type)
+    {
+      <div class="card-sections">
+        @foreach (var sec in TypeSections)
         {
-          var model = ToCard(item);
-          <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
-            @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-          </div>
+          if (sec.items.Count == 0) { continue; }
+          <section class="card-section">
+            <h3 class="opt-h3">@sec.title</h3>
+            <div class="card-grid">
+              @foreach (var item in GetSorted(sec.items))
+              {
+                var model = ToCard(item);
+                <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                  @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+                </div>
+              }
+            </div>
+          </section>
         }
       </div>
-    </section>
+    }
+    else if (GroupBy == GroupMode.Category)
+    {
+      <div class="card-sections">
+        @foreach (var g in CategoryGroups)
+        {
+          if (g.Value.Count == 0) { continue; }
+          <section class="card-section">
+            <h3 class="opt-h3">@g.Key</h3>
+            <div class="card-grid">
+              @foreach (var item in GetSorted(g.Value))
+              {
+                var model = ToCard(item);
+                <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                  @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+                </div>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+    else if (GroupBy == GroupMode.Rating)
+    {
+      <div class="card-sections">
+        @foreach (var bucket in RatingBuckets)
+        {
+          if (bucket.items.Count == 0) { continue; }
+          <section class="card-section">
+            <h3 class="opt-h3">@bucket.title</h3>
+            <div class="card-grid">
+              @foreach (var item in GetSorted(bucket.items))
+              {
+                var model = ToCard(item);
+                <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                  @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+                </div>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+    else
+    {
+      <section class="card-section">
+        <div class="card-grid">
+          @foreach (var item in GetSorted(AllItems))
+          {
+            var model = ToCard(item);
+            <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+            </div>
+          }
+        </div>
+      </section>
+    }
   }
 
   <div class="cores-footer">
@@ -128,9 +257,11 @@
   // Group/sort state
   private enum GroupMode { None, Type, Category, Rating }
   private enum SortMode { None, Alphabetical, Performance, Rating }
+  private enum ViewMode { Cards, List }
   private GroupMode GroupBy = GroupMode.None; // default: no grouping
   private SortMode SortBy = SortMode.None;    // default: no order
   private bool SortDescending = false;        // toggle via button
+  private ViewMode View = ViewMode.Cards;     // default view
 
   private IReadOnlyList<string> Cpu = Array.Empty<string>();
   private IReadOnlyList<string> Ppu = Array.Empty<string>();
@@ -377,9 +508,32 @@
     }
   }
 
+  private void OnViewChange(ChangeEventArgs e)
+  {
+    if (e?.Value is null) return;
+    if (Enum.TryParse<ViewMode>(e.Value.ToString(), out var v))
+    {
+      View = v;
+      StateHasChanged();
+    }
+  }
+
   private void FlipOrder()
   {
     SortDescending = !SortDescending;
+  }
+
+  private static string RenderStars(int rating)
+  {
+    var r = Math.Clamp(rating, 0, 5);
+    return new string('\u2605', r) + new string('\u2606', 5 - r);
+  }
+
+  private static string PerfClass(int perf)
+  {
+    if (perf > 0) return "perf-pos";
+    if (perf < 0) return "perf-neg";
+    return string.Empty;
   }
 
   private void OpenCard(CoreCardModel m)
