@@ -7,6 +7,7 @@ public sealed class CPU_EIL : ICPU {
 	public string Description => "Based on the Speed (SPD) core, this core adds hyper-optimizations at the CLR Assembly level, resulting sometimes in less compatibility.";
 	public int Performance => 35;
 	public int Rating => 5;
+	public string Category => "Enhanced";
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

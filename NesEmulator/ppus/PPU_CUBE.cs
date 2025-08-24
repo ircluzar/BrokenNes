@@ -8,6 +8,7 @@ public class PPU_CUBE : IPPU
 	public string Description => "Based on the Low Power (LOW) core, this variant adds enhanced tile and background rendering. Does not work on every game.";
 	public int Performance => -5;
 	public int Rating => 4;
+	public string Category => "Unstable";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

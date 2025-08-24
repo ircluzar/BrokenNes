@@ -10,6 +10,7 @@ public class PPU_SPD : IPPU
 	public string Description => "Based on the Low Power (LOW) core, this variant adds speedhacks for faster emulation.";
 	public int Performance => 25;
 	public int Rating => 5;
+	public string Category => "Enhanced";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

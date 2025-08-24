@@ -10,6 +10,7 @@ namespace NesEmulator
         public string CoreId => "FMC";
         public string DisplayName => "JS Driver";
         public string Description => "JavaScript requestAnimationFrame drives the main Clock";
+        public string Category => "Standard";
         public int Performance => 0;
         public int Rating => 3;
 

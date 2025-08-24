@@ -8,6 +8,7 @@ public sealed class CPU_LW2 : ICPU {
 	public string Description => "Based on the Famiclone (FMC) core, this failed variant optimizes performance but has some issues.";
 	public int Performance => 5;
 	public int Rating => 2;
+	public string Category => "Degraded";
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

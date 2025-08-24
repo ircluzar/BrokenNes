@@ -7,6 +7,7 @@ public sealed class CPU_LOW : ICPU {
 	public string Description => "Based on the Famiclone (FMC) core, this variant optimizes performance and power consumption.";
 	public int Performance => 10;
 	public int Rating => 4;
+	public string Category => "Degraded";
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

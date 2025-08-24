@@ -11,6 +11,7 @@ namespace NesEmulator
         public string Description => "Based on the Low Power (SPD) core, this failed optimization experiment added jank to sound emulation.";
         public int Performance => 10;
         public int Rating => 2;
+        public string Category => "Degraded";
         private Bus bus;
     public APU_SPD2(Bus bus)
     {

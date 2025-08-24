@@ -10,6 +10,7 @@ namespace NesEmulator
         public string CoreId => "TRB";
         public string DisplayName => "Turbo C# Driver";
     public string Description => "A variant of CLR that has uncapped speed.";
+    public string Category => "Unstable";
     public int Performance => +15;
     public int Rating => 4;
 

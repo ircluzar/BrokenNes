@@ -8,6 +8,7 @@ public class PPU_FMC : IPPU
 	public string Description => "The standard control component for measuring emulation progress. This core is based on NET-NES by BotRandomness.";
 	public int Performance => 0;
 	public int Rating => 3;
+	public string Category => "Standard";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

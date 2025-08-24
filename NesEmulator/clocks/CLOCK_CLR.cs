@@ -10,6 +10,7 @@ namespace NesEmulator
         public string CoreId => "CLR";
         public string DisplayName => "Exp. C# Driver";
     public string Description => "Managed loop in C# with low-overhead scheduling drives the main Clock.";
+    public string Category => "Enhanced";
     public int Performance => -15;
     public int Rating => 2;
 

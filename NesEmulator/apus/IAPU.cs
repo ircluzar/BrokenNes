@@ -7,6 +7,7 @@ namespace NesEmulator
     string Description { get; }
     int Performance { get; } // relative performance score (higher=faster)
     int Rating { get; } // subjective quality rating 1..N
+    string Category { get; }
         void Step(int cpuCycles);
         void WriteAPURegister(ushort address, byte value);
         byte ReadAPURegister(ushort address);

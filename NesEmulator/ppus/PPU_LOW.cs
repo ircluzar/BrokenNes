@@ -3,11 +3,12 @@ namespace NesEmulator
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
 public class PPU_LOW : IPPU
 {
-	// Metadata defaults
-	public string CoreName => "Low Power";
-	public string Description => "Based on the Famiclone (FMC) core, this variant optimizes performance and power consumption.";
-	public int Performance => 10;
-	public int Rating => 4;
+	    // Core metadata
+    public string CoreName => "Low Power";
+    public string Description => "Based on the Famiclone (FMC) core, this core adds optimizations that result is degraded experience.";
+    public int Performance => 10;
+    public int Rating => 4;
+    public string Category => "Degraded";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

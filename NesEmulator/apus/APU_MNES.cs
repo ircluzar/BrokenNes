@@ -9,6 +9,7 @@ namespace NesEmulator
         public string Description => "Based on the WebFont (WF) core, this variant pushes the Midi signals to an SF2 Soundfont based on the classic MidiNes cartridge by Wayfar.";
         public int Performance => -15;
         public int Rating => 4;
+        public string Category => "Enhanced";
         private Bus bus;
     public APU_MNES(Bus bus)
         {

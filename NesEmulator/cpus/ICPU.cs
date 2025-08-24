@@ -7,6 +7,7 @@ public interface ICPU
 	string Description { get; }
 	int Performance { get; } // relative performance score (higher=faster)
 	int Rating { get; } // subjective quality rating 1..N
+	string Category { get; }
 	bool IgnoreInvalidOpcodes { get; set; }
 	void Reset();
 	int ExecuteInstruction();

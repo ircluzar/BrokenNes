@@ -8,6 +8,7 @@ public class PPU_BFR : IPPU
 	public string Description => "Based on the Famiclone (FMC) core, this experiment adds bleeding frame effects directly in the PPU.";
 	public int Performance => -10;
 	public int Rating => 2;
+	public string Category => "Enhanced";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

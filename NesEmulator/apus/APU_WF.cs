@@ -9,6 +9,7 @@ namespace NesEmulator
         public string Description => "This APU converts Nes APU signals to Midi and routes them to a simple WebFont-based synthesizer";
         public int Performance => -10;
         public int Rating => 5;
+        public string Category => "Enhanced";
         private Bus bus;
     public APU_WF(Bus bus)
         {

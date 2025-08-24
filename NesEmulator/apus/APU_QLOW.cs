@@ -14,6 +14,7 @@ namespace NesEmulator
     public string Description => "Based on the QuickNes-like (QN) core, this variant optimizes performance and power consumption. ";
     public int Performance => -5;
     public int Rating => 3;
+    public string Category => "Degraded";
         private readonly Bus bus;
 
         // LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate

@@ -23,7 +23,7 @@
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = "UNIMPLEMENTED"
+                  FooterNote = c.Category
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -63,7 +63,7 @@
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = "UNIMPLEMENTED"
+                  FooterNote = c.Category
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -103,7 +103,7 @@
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = "UNIMPLEMENTED"
+                  FooterNote = c.Category
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -143,7 +143,7 @@
                   Description = c.Description,
     Rating = Math.Clamp(c.Rating, 0, 5),
     Performance = c.Performance,
-                  FooterNote = "UNIMPLEMENTED"
+                  FooterNote = c.Category
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -341,7 +341,8 @@
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
         Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
         Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
@@ -351,7 +352,8 @@
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
         Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
         Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
@@ -361,7 +363,8 @@
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
         Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
         Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       // Clock metadata (now implements Performance & Rating)
@@ -378,7 +381,8 @@
       Name = clk.DisplayName,
       Description = clk.Description,
       Performance = clk.Performance,
-      Rating = clk.Rating
+      Rating = clk.Rating,
+      Category = SafeGet(() => clk.Category) ?? "Uncategorized"
     });
           }
         }
@@ -425,6 +429,7 @@
     public string Description { get; set; } = string.Empty;
     public int Performance { get; set; }
     public int Rating { get; set; }
+    public string Category { get; set; } = string.Empty;
   }
 
   private sealed class ClockInfo
@@ -434,6 +439,7 @@
     public string Description { get; set; } = string.Empty;
   public int Performance { get; set; }
   public int Rating { get; set; }
+    public string Category { get; set; } = string.Empty;
   }
 
   private sealed class ShaderInfo

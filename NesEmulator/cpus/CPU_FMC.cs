@@ -7,6 +7,7 @@ public class CPU_FMC : ICPU {
 	public string Description => "The standard control component for measuring emulation progress. This core is based on NET-NES by BotRandomness.";
 	public int Performance => 0;
 	public int Rating => 3;
+	public string Category => "Standard";
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

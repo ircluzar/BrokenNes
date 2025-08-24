@@ -10,6 +10,7 @@ public class PPU_EIL : IPPU
 	public string Description => "Based on the Speed (SPD) core, this core adds hyper-optimizations at the CLR Assembly level, resulting sometimes in less compatibility.";
 	public int Performance => 35;
 	public int Rating => 5;
+	public string Category => "Enhanced";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

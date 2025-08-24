@@ -9,6 +9,7 @@ namespace NesEmulator
     public string Description => "UNIMPLEMENTED";
     public int Performance => 0;
     public int Rating => 1;
+    public string Category => "Uncategorized";
         private readonly Bus bus;
         public APU(Bus bus) { this.bus = bus; }
 

@@ -12,6 +12,8 @@ namespace NesEmulator
         string DisplayName { get; }
         // Brief description for tooltips/settings
         string Description { get; }
+        // Category for UI organization
+        string Category { get; }
 
     // Relative performance hint vs. baseline (percent). 0 = baseline
     int Performance { get; }

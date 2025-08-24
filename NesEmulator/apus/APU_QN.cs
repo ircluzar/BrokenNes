@@ -14,6 +14,7 @@ namespace NesEmulator
     public string Description => "Retrofitted QuickNES APU from C++ to C#. Sounds clearer but has wobbling issues. ";
     public int Performance => -10;
     public int Rating => 2;
+    public string Category => "Unstable";
         private readonly Bus bus;
 
     // --- Core state ---

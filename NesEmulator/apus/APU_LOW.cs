@@ -9,6 +9,7 @@ namespace NesEmulator
         public string Description => "Based on the Famiclone (FMC) core, this variant optimizes performance and power consumption.";
         public int Performance => 10;
         public int Rating => 4;
+        public string Category => "Improved";
         private readonly Bus bus;
         public APU_LOW(Bus bus) { this.bus = bus; }
 

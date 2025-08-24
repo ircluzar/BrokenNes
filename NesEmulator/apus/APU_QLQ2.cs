@@ -14,6 +14,7 @@ namespace NesEmulator
     public string Description => "Based on the QuickNes-like (QN) core, this failed optimizaion experiment broke sound clarity and stability.";
     public int Performance => -15;
     public int Rating => 1;
+    public string Category => "Degraded";
         private readonly Bus bus;
 
         // LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate
