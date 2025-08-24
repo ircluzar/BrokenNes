@@ -992,14 +992,22 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
   .cp-body .core-row-wrap { gap: 8px; }
 }
 
-/* === Core Picker (mobile portrait): stack meta (category, perf, rating) on second line === */
+/* === Core Picker (mobile portrait): ID + CoreName inline, meta on next full row === */
 @media (max-width: 640px) and (orientation: portrait) {
-  .cp-body .core-row { 
-    grid-template-columns: 1fr; /* stack left/name/meta vertically for mobile */
+  .cp-body .core-row {
+    display: grid;
+    grid-template-columns: auto 1fr; /* pill + name */
+    grid-template-rows: auto auto;   /* first line = id+name, second = meta */
+    grid-template-areas:
+      "left main"
+      "meta meta";
+    column-gap: 10px;
+    row-gap: 6px;
+    align-items: center;
   }
-  .cp-body .core-row .row-left { order: 1; }
-  .cp-body .core-row .row-main { order: 2; white-space: normal; overflow: visible; }
-  .cp-body .core-row .row-meta { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 4px; }
+  .cp-body .core-row .row-left { grid-area: left; }
+  .cp-body .core-row .row-main { grid-area: main; white-space: normal; overflow: visible; }
+  .cp-body .core-row .row-meta { grid-area: meta; width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 2px; }
 }
 
 
