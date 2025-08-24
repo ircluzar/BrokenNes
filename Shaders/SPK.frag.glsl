@@ -1,4 +1,8 @@
 // DisplayName: SPK
+// CoreName: Prism Sparkle
+// Description: Edge-oriented prism split with layered starfield sparkles, radial depth modulation and shimmer.
+// Performance: 2
+// Rating: 4
 // Category: Lighting
 precision mediump float;
 

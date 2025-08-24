@@ -40,9 +40,19 @@ public sealed class ShaderGenerator : IIncrementalGenerator
                 if (parts.Fragment is null)
                 {
                     // Parse metadata from the first fragment encountered
-                    ParseMetadata(src, out var displayName, out var category);
+                    ParseMetadata(src,
+                        out var displayName,
+                        out var category,
+                        out var coreName,
+                        out var description,
+                        out var performance,
+                        out var rating);
                     parts.DisplayName = displayName;
                     parts.Category = category;
+                    parts.CoreName = coreName;
+                    parts.Description = description;
+                    parts.Performance = performance;
+                    parts.Rating = rating;
                     parts.Fragment = src;
                 }
             }
@@ -110,11 +120,15 @@ public sealed class ShaderGenerator : IIncrementalGenerator
             sb.AppendLine($"    public string Id => \"{id}\";");
             var displayName = string.IsNullOrWhiteSpace(parts.DisplayName) ? id : parts.DisplayName!;
             sb.AppendLine($"    public string DisplayName => \"{Verbatim(displayName)}\";");
-            // Added core metadata default implementations to satisfy extended IShader interface
-            sb.AppendLine("    public string CoreName => \"UNIMPLEMENTED\";");
-            sb.AppendLine("    public string Description => \"UNIMPLEMENTED\";");
-            sb.AppendLine("    public int Performance => 0;");
-            sb.AppendLine("    public int Rating => 1;");
+            // Core metadata from parsed header with safe defaults
+            var coreName = string.IsNullOrWhiteSpace(parts.CoreName) ? "UNIMPLEMENTED" : parts.CoreName!;
+            var description = string.IsNullOrWhiteSpace(parts.Description) ? "UNIMPLEMENTED" : parts.Description!;
+            var perf = parts.Performance ?? 0;
+            var rating = parts.Rating ?? 1;
+            sb.AppendLine($"    public string CoreName => \"{Verbatim(coreName)}\";");
+            sb.AppendLine($"    public string Description => \"{Verbatim(description)}\";");
+            sb.AppendLine($"    public int Performance => {perf};");
+            sb.AppendLine($"    public int Rating => {rating};");
             if (parts.Vertex is null) sb.AppendLine("    public string? VertexSource => null;");
             else sb.AppendLine($"    public string? VertexSource => @\"{Verbatim(parts.Vertex)}\";");
             sb.AppendLine($"    public string FragmentSource => @\"{Verbatim(parts.Fragment!)}\";");
@@ -159,7 +173,11 @@ public sealed class ShaderGenerator : IIncrementalGenerator
         public string? Fragment { get; set; }
         public int VertexFilesCount { get; set; }
         public int FragmentFilesCount { get; set; }
-        public string? DisplayName { get; set; }
+    public string? DisplayName { get; set; }
+    public string? CoreName { get; set; }
+    public string? Description { get; set; }
+    public int? Performance { get; set; }
+    public int? Rating { get; set; }
         public string? Category { get; set; }
     }
 
@@ -191,28 +209,74 @@ public sealed class ShaderGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static void ParseMetadata(string source, out string? displayName, out string? category)
+    private static void ParseMetadata(
+        string source,
+        out string? displayName,
+        out string? category,
+        out string? coreName,
+        out string? description,
+        out int? performance,
+        out int? rating)
     {
         displayName = null;
         category = null;
-        // Parse only leading lines that are comments
+        coreName = null;
+        description = null;
+        performance = null;
+        rating = null;
+
+        // Parse only the leading comment block(s)
         using var reader = new System.IO.StringReader(source);
         string? line;
+        bool inBlock = false;
         while ((line = reader.ReadLine()) is not null)
         {
             var trimmed = line.TrimStart();
-            if (!(trimmed.StartsWith("//") || trimmed.StartsWith("/*") || trimmed.StartsWith("*")))
+            if (!inBlock && trimmed.StartsWith("/*"))
             {
-                // Stop at first non-comment line
+                inBlock = true;
+            }
+            if (!(trimmed.StartsWith("//") || inBlock))
+            {
+                // Stop at first non-comment line when not in a block comment
                 break;
             }
-            var idx = trimmed.IndexOf(':');
+
+            // Normalize block comment lines by stripping leading /*, */, and *
+            string work = trimmed;
+            if (inBlock)
+            {
+                if (work.StartsWith("/*")) work = work.Substring(2);
+                if (work.StartsWith("*")) work = work.Substring(1);
+                if (work.Contains("*/"))
+                {
+                    var endIdx = work.IndexOf("*/", StringComparison.Ordinal);
+                    work = work.Substring(0, endIdx);
+                    inBlock = false;
+                }
+            }
+            else if (work.StartsWith("//"))
+            {
+                work = work.Substring(2);
+            }
+
+            var idx = work.IndexOf(':');
             if (idx > 0)
             {
-                var key = trimmed.Substring(trimmed.StartsWith("//") ? 2 : 0, idx - (trimmed.StartsWith("//") ? 2 : 0)).Trim();
-                var value = trimmed.Substring(idx + 1).Trim();
+                var key = work.Substring(0, idx).Trim();
+                var value = work.Substring(idx + 1).Trim();
                 if (key.Equals("DisplayName", StringComparison.OrdinalIgnoreCase)) displayName = value;
                 else if (key.Equals("Category", StringComparison.OrdinalIgnoreCase)) category = value;
+                else if (key.Equals("CoreName", StringComparison.OrdinalIgnoreCase)) coreName = value;
+                else if (key.Equals("Description", StringComparison.OrdinalIgnoreCase)) description = value;
+                else if (key.Equals("Performance", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(value, out var p)) performance = p;
+                }
+                else if (key.Equals("Rating", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(value, out var r)) rating = r;
+                }
             }
         }
     }

@@ -1,4 +1,8 @@
 // DisplayName: RF
+// CoreName: Analog RF Channel
+// Description: Mild analog RF simulation with chroma misalignment, horizontal blur, ripple jitter and shimmer noise.
+// Performance: 1
+// Rating: 4
 // Category: Retro
 precision mediump float;
 

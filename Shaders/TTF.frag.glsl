@@ -1,4 +1,8 @@
 // DisplayName: TTF
+// CoreName: TrueType Subpixel
+// Description: Subpixel sampling for sharper vertical features using RGB offsets, edge gating, and small gathers.
+// Performance: 1
+// Rating: 5
 // Category: Utility
 precision mediump float;
 

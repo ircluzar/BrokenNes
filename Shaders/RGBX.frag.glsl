@@ -1,4 +1,8 @@
 // DisplayName: RGBX
+// CoreName: Chromatic Vector Split
+// Description: Separates RGB channels into distinct animated motion fields with soft bleed for a readable psychedelic effect.
+// Performance: 2
+// Rating: 4
 // Category: Color
 precision mediump float;
 

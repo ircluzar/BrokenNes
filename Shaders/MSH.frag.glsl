@@ -1,4 +1,8 @@
 // DisplayName: MSH
+// CoreName: Pixel Mosh & Freeze
+// Description: Temporal block mosh using previous frame with motion/edge gating, chroma shear, and glitch envelopes.
+// Performance: 2
+// Rating: 4
 // Category: Distort
 precision mediump float;
 

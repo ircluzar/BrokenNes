@@ -1,4 +1,8 @@
 // DisplayName: WARM
+// CoreName: Warmth & Phosphor Tilt
+// Description: Subtle warm color shift with soft contrast tilt and gentle green cross-talk while preserving luminance.
+// Performance: 1
+// Rating: 5
 // Category: Color
 precision mediump float;
 

@@ -90,7 +90,21 @@
     <section class="opt-section">
       <h3 class="opt-h3">Shaders</h3>
       <ul>
-        @foreach (var id in Shaders) { <li class="opt-row">@id</li> }
+        @if (ShaderInfos.Count == 0)
+        {
+          @foreach (var id in Shaders) { <li class="opt-row">@id</li> }
+        }
+        else
+        {
+          @foreach (var s in ShaderInfos)
+          {
+            <li class="opt-row">
+              <div><strong>@s.Id</strong> — @s.DisplayName (@s.Category)</div>
+              <div class="small text-muted">@s.Description</div>
+              <div class="small">Perf: @s.Performance • Rating: @s.Rating</div>
+            </li>
+          }
+        }
       </ul>
     </section>
   </div>
@@ -105,6 +119,7 @@
   private IReadOnlyList<string> Apu = Array.Empty<string>();
   private IReadOnlyList<string> Clock = Array.Empty<string>();
   private IReadOnlyList<string> Shaders = Array.Empty<string>();
+  private List<ShaderInfo> ShaderInfos = new();
 
   private List<CoreMeta> CpuMeta = new();
   private List<CoreMeta> PpuMeta = new();
@@ -122,6 +137,28 @@
     try { Apu = CoreRegistry.ApuIds; } catch { }
   try { Clock = ClockRegistry.Ids; } catch { }
   try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
+  try {
+    var all = ShaderProvider.All;
+    var infos = new List<ShaderInfo>(all.Count);
+    foreach (var s in all)
+    {
+      string? cat = null;
+      try { cat = s.Defines != null && s.Defines.TryGetValue("Category", out var c) ? c : null; } catch { }
+      infos.Add(new ShaderInfo
+      {
+        Id = s.Id,
+        DisplayName = s.DisplayName,
+        Description = s.Description,
+        Performance = s.Performance,
+        Rating = s.Rating,
+        Category = cat ?? "Uncategorized"
+      });
+    }
+    ShaderInfos = infos
+      .OrderBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
+      .ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
+      .ToList();
+  } catch { }
 
     // Try to instantiate cores on a minimal bus to read metadata
     try
@@ -212,5 +249,15 @@
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+  }
+
+  private sealed class ShaderInfo
+  {
+    public string Id { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Performance { get; set; }
+    public int Rating { get; set; }
+    public string Category { get; set; } = string.Empty;
   }
 }
