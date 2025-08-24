@@ -15,71 +15,96 @@ public static class CardSvgRenderer
         var displayName = EscapeXml(m.DisplayName ?? "");
         var desc = m.Description ?? string.Empty;
         var stars = Math.Clamp(m.Rating, 0, 5);
+    var borderColor = RatingToBorderColor(stars);
         var perf = m.Performance;
         var perfText = perf > 0 ? $"+{perf}%" : perf < 0 ? $"{perf}%" : "0%";
         var perfColor = perf > 0 ? "#16a34a" : perf < 0 ? "#dc2626" : "#6b7280"; // green/red/slate
 
-        // Retro layout metrics
-        const int pad = 10;
-        int headerH = 28;
-        int perfBadgeW = 56;
-        int perfBadgeH = 18;
-        int imageH = 150;
-        int contentW = width - pad * 2;
-        var descLines = Wrap(desc, maxCharsPerLine: 32, maxLines: 4);
+    // Retro layout metrics
+    const int pad = 14; // a bit more outer padding for airy layout
+    int headerH = 40;   // taller header to accommodate two lines comfortably
+    int perfBadgeW = 56;
+    int perfBadgeH = 18;
+    int imageH = 130;   // slightly smaller image area
+    int contentW = width - pad * 2;
+    // Fixed description box metrics (keep box height stable; fit more, smaller lines inside)
+    int descHeight = 76; // keep box stable
+    int descTopPad = 10; // visual box padding above text area
+    int descTextTopInset = 6; // start text a bit lower for more top padding
+    int descLineH = 9; // tighter line height
+    int descInnerPadTotal = 20; // total left+right inner padding for text within box
+    int descLeftPad = descInnerPadTotal / 2;
+    int descMaxLines = 15; // Alternatively: Math.Max(4, (descHeight - descTopPad - descTextTopInset) / descLineH)
+    // Conservative per-character width estimate for 'Press Start 2P' at font-size 6
+    int approxCharWidth = 7; // smaller font, slightly narrower estimate
+    int maxCharsPerLine = Math.Max(12, (contentW - descInnerPadTotal) / approxCharWidth);
+    var descLines = Wrap(desc, maxCharsPerLine: maxCharsPerLine, maxLines: descMaxLines);
 
         var sb = new StringBuilder();
         sb.Append($"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' width='{width}' height='{height}' role='img' aria-label='Card for {displayName}'>");
 
-        // Outer retro frame
-        sb.Append($"<rect x='0.5' y='0.5' width='{width - 1}' height='{height - 1}' fill='#000' stroke='#ff5a26' stroke-width='4' />");
+    // Outer retro frame (border color based on rating)
+    sb.Append($"<rect x='0.5' y='0.5' width='{width - 1}' height='{height - 1}' fill='#000' stroke='{borderColor}' stroke-width='4' />");
         sb.Append($"<rect x='6.5' y='6.5' width='{width - 13}' height='{height - 13}' fill='none' stroke='#ffffff' stroke-width='3' />");
 
-        // Header: short name and display name (avoid faux-bold for bitmap font)
+    // Header: short name on first line, display name on second line, lighter and slightly smaller
     sb.Append($"<text x='{pad}' y='{pad + 12}' font-family=\"'Press Start 2P', monospace\" font-size='10' fill='#ffffff'>{shortName}</text>");
-    sb.Append($"<text x='{pad + 90}' y='{pad + 12}' font-family=\"'Press Start 2P', monospace\" font-size='10' fill='#ffffff'>{displayName}</text>");
+    sb.Append($"<text x='{pad}' y='{pad + 26}' font-family=\"'Press Start 2P', monospace\" font-size='9' fill='#e5e7eb'>{displayName}</text>");
 
-        // Performance badge
-        sb.Append($"<g transform='translate({width - pad - perfBadgeW},{pad - 4})'>");
+    // Performance badge (nudged down a bit)
+    sb.Append($"<g transform='translate({width - pad - perfBadgeW},{pad + 6})'>");
         sb.Append($"<rect width='{perfBadgeW}' height='{perfBadgeH}' fill='{perfColor}' />");
     sb.Append($"<text x='{perfBadgeW / 2}' y='{perfBadgeH - 5}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='9' fill='#0b0f14'>{EscapeXml(perfText)}</text>");
         sb.Append("</g>");
 
-        // Image placeholder
-        int imgY = pad + headerH;
+    // Image placeholder
+    int imgY = pad + headerH;
         sb.Append($"<g transform='translate({pad},{imgY})'>");
         sb.Append($"<rect x='0' y='0' width='{contentW}' height='{imageH}' fill='#111' stroke='#ffffff' stroke-width='2' stroke-dasharray='4 4' />");
     sb.Append($"<text x='{contentW / 2}' y='{imageH / 2}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='#c0c0c0'>IMAGE</text>");
         sb.Append("</g>");
 
         // Description block under image
-        int descY = imgY + imageH + 12;
-        int descHeight = Math.Max(24, 12 * descLines.Count + 8);
+    int descY = imgY + imageH + 25; // a little more space below image
         sb.Append($"<g transform='translate({pad},{descY})'>");
-        sb.Append($"<rect x='0' y='-10' width='{contentW}' height='{descHeight}' fill='none' stroke='#ffffff' stroke-width='2' />");
-        int lineY = 0;
+    sb.Append($"<rect x='0' y='-{descTopPad}' width='{contentW}' height='{descHeight}' fill='none' stroke='#ffffff' stroke-width='2' />");
+        int lineY = descTextTopInset;
         foreach (var line in descLines)
         {
-            sb.Append($"<text x='6' y='{lineY}' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='#c0c0c0'><tspan>{EscapeXml(line)}</tspan></text>");
-            lineY += 12;
+            sb.Append($"<text x='{descLeftPad}' y='{lineY}' font-family=\"'Press Start 2P', monospace\" font-size='6' fill='#c0c0c0'><tspan>{EscapeXml(line)}</tspan></text>");
+            lineY += descLineH;
         }
         sb.Append("</g>");
 
         // Rating stars (pixel stars to avoid relying on special glyphs)
-        int starsY = descY + descHeight + 8;
+        int starsY = descY + descHeight + 3; // closer to the description box
         int starX = pad;
         for (int i = 0; i < 5; i++)
         {
             bool filled = i < stars;
             AppendPixelStar(sb, starX, starsY, filled);
-            starX += 20;
+            starX += 25; // keep a modest gap between stars
         }
 
         // Footer id/note
-    sb.Append($"<text x='{pad}' y='{height - 8}' font-family=\"'Press Start 2P', monospace\" font-size='7' fill='#7f7f7f'>{EscapeXml(m.FooterNote ?? id)}</text>");
+    sb.Append($"<text x='{pad}' y='{height - 18}' font-family=\"'Press Start 2P', monospace\" font-size='7' fill='#7f7f7f'>{EscapeXml(m.FooterNote ?? id)}</text>");
 
         sb.Append("</svg>");
         return sb.ToString();
+    }
+
+    // Map rating to a distinctive border color (0-5). Palette chosen for good contrast on dark.
+    private static string RatingToBorderColor(int rating)
+    {
+        return rating switch
+        {
+            <= 0 => "#6b7280", // slate/neutral
+            1 => "#ef4444",    // red 500
+            2 => "#f59e0b",    // amber 500
+            3 => "#10b981",    // emerald 500
+            4 => "#3b82f6",    // blue 500
+            _ => "#a855f7"      // purple 500 for 5
+        };
     }
 
     private static string SanitizeId(string s)
@@ -106,35 +131,85 @@ public static class CardSvgRenderer
     private static List<string> Wrap(string text, int maxCharsPerLine, int maxLines)
     {
         var result = new List<string>(maxLines);
-        if (string.IsNullOrWhiteSpace(text)) return result;
+        if (string.IsNullOrWhiteSpace(text) || maxCharsPerLine <= 1 || maxLines <= 0)
+            return result;
+
         var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var line = new StringBuilder();
-        foreach (var word in words)
+        int i = 0;
+        while (i < words.Length)
         {
-            if (line.Length == 0)
+            var word = words[i];
+
+            // Do not hyphenate: if the word cannot fit on this line, move to next line
+            if (word.Length > maxCharsPerLine)
             {
+                // If a single unbreakable word exceeds the line length, place it on a new line
+                if (line.Length > 0)
+                {
+                    result.Add(line.ToString());
+                    if (result.Count >= maxLines)
+                    {
+                        result[^1] = Ellipsize(result[^1], maxCharsPerLine);
+                        return result;
+                    }
+                    line.Clear();
+                }
+                // Place as much as fits without breaking, then ellipsize final line if needed
                 line.Append(word);
+                // If this single word still exceeds the limit, ellipsize it
+                if (line.Length > maxCharsPerLine)
+                    line.Length = Math.Max(0, Math.Min(line.Length, maxCharsPerLine - 1));
+                if (line.Length >= maxCharsPerLine - 1)
+                {
+                    result.Add(Ellipsize(line.ToString(), maxCharsPerLine));
+                    return result;
+                }
+                i++;
+                continue;
             }
-            else if (line.Length + 1 + word.Length <= maxCharsPerLine)
+
+            int needed = line.Length == 0 ? word.Length : 1 + word.Length;
+            if (line.Length + needed <= maxCharsPerLine)
             {
-                line.Append(' ').Append(word);
+                if (line.Length > 0) line.Append(' ');
+                line.Append(word);
+                i++;
             }
             else
             {
+                // finalize current line
                 result.Add(line.ToString());
-                if (result.Count >= maxLines) return result;
+                if (result.Count >= maxLines)
+                {
+                    result[^1] = Ellipsize(result[^1], maxCharsPerLine);
+                    return result;
+                }
                 line.Clear();
-                line.Append(word);
             }
         }
-        if (line.Length > 0 && result.Count < maxLines) result.Add(line.ToString());
+
+        if (line.Length > 0)
+        {
+            if (result.Count < maxLines) result.Add(line.ToString());
+            else if (result.Count == maxLines)
+                result[^1] = Ellipsize(result[^1], maxCharsPerLine);
+        }
+
         return result;
+    }
+
+    private static string Ellipsize(string s, int maxCharsPerLine)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length <= maxCharsPerLine) return s;
+        if (maxCharsPerLine <= 1) return "…";
+        return s.Substring(0, maxCharsPerLine - 1) + "…";
     }
     // Draw a 5x5 pixel star using small rects; each cell is 2x2 px for crisp retro look
     private static void AppendPixelStar(StringBuilder sb, int x, int y, bool filled)
     {
         string color = filled ? "#fbbf24" : "#374151"; // amber / slate for empty
-        int s = 2; // pixel size
+        int s = 3; // pixel size (bigger stars)
         // Coordinates for a diamond-like star shape
         var on = new (int cx, int cy)[] {
             (2,0),

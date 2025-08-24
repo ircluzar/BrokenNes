@@ -17,14 +17,14 @@
           foreach (var c in CpuMeta)
           {
             <div class="core-card" @key="c.Id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Description
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -34,12 +34,13 @@
           foreach (var id in Cpu)
           {
             <div class="core-card" @key="id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-                  Performance = 0
+          Performance = 0,
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -54,14 +55,14 @@
           foreach (var c in PpuMeta)
           {
             <div class="core-card" @key="c.Id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Description
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -71,12 +72,13 @@
           foreach (var id in Ppu)
           {
             <div class="core-card" @key="id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-                  Performance = 0
+          Performance = 0,
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -91,14 +93,14 @@
           foreach (var c in ApuMeta)
           {
             <div class="core-card" @key="c.Id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Description
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -108,12 +110,13 @@
           foreach (var id in Apu)
           {
             <div class="core-card" @key="id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-                  Performance = 0
+          Performance = 0,
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -128,14 +131,14 @@
           foreach (var c in ClockInfos)
           {
             <div class="core-card" @key="c.Id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = 0,
                   Performance = 0,
-                  FooterNote = c.Description
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
@@ -145,12 +148,13 @@
           foreach (var id in Clock)
           {
             <div class="core-card" @key="id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-                  Performance = 0
+          Performance = 0,
+          FooterNote = "UNIMPLEMENTED"
               }))
             </div>
           }
