@@ -40,7 +40,8 @@ namespace BrokenNes
         private readonly HttpClient Http;
     private readonly StatusService Status;
     private readonly BrokenNes.Services.InputSettingsService _inputSettingsService;
-        private readonly NesEmulator.Shaders.IShaderProvider ShaderProvider;
+    private readonly NesEmulator.Shaders.IShaderProvider ShaderProvider;
+    private readonly BrokenNes.Services.GameSaveService _gameSaveService;
         private readonly NavigationManager Nav;
 
         // --- Controller instances (migrated) ---
@@ -54,7 +55,8 @@ namespace BrokenNes
                         StatusService status,
                         NesEmulator.Shaders.IShaderProvider shaderProvider,
                         NavigationManager nav,
-                        BrokenNes.Services.InputSettingsService inputSettingsService)
+                        BrokenNes.Services.InputSettingsService inputSettingsService,
+                        BrokenNes.Services.GameSaveService gameSaveService)
         {
             Logger = logger;
             JS = js;
@@ -63,6 +65,7 @@ namespace BrokenNes
             ShaderProvider = shaderProvider;
             Nav = nav;
             _inputSettingsService = inputSettingsService;
+            _gameSaveService = gameSaveService;
             _clockHost = new ClockHostFacade(this);
         }
 
@@ -86,6 +89,7 @@ namespace BrokenNes
         private const string SaveKey = "nes_state_slot0";
         private bool stateBusy = false;
         private string debugDump = string.Empty;
+    private BrokenNes.Models.GameSave? _gameSave; // Loaded game save for DeckBuilder
     // Benchmark subsystem is moved to Benchmark.cs partial (fields retained there)
     private bool eventSchedulerOn = false; // still accessed by UI toggles
         private bool soundFontMode = false;
@@ -209,7 +213,11 @@ namespace BrokenNes
                         var pClk = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_clockCore"); if(!string.IsNullOrWhiteSpace(pClk) && nesController.ClockCoreOptions.Contains(pClk)) nesController.ClockCoreSel = pClk;
                         await LoadBenchHistory();
                     } catch {}
+                    // Load DeckBuilder save and filter core options to owned items
+                    try { _gameSave = await _gameSaveService.LoadAsync(); FilterCoreOptionsBySave(_gameSave); } catch {}
                     await RefreshShaderOptions();
+                    // Filter shader options to owned items
+                    try { if (_gameSave != null) FilterShaderOptionsBySave(_gameSave); } catch {}
                     try { await JS.InvokeVoidAsync("nesInterop.migrateLocalStorageRoms"); } catch {}
                     var stored = await JS.InvokeAsync<UploadedRom[]>("nesInterop.getStoredRoms");
                     if (stored != null)
@@ -268,6 +276,7 @@ namespace BrokenNes
                     BuildMemoryDomains();
                     await RegisterShadersFromCSharp();
                     await RefreshShaderOptions();
+                    try { if (_gameSave != null) FilterShaderOptionsBySave(_gameSave); } catch {}
                     await SetShader(nesController.ActiveShaderKey);
                     Logger.LogInformation("NES Emulator initialized successfully");
                     try { await JS.InvokeVoidAsync("nesInterop.ensureLayoutStyles"); } catch {}
@@ -329,6 +338,23 @@ namespace BrokenNes
                 if(!nesController.ShaderOptions.Any(o=>o.Key==nesController.ActiveShaderKey) && nesController.ShaderOptions.Count>0) nesController.ActiveShaderKey = nesController.ShaderOptions[0].Key;
             }
             catch (Exception ex) { Logger.LogWarning(ex, "Failed to refresh shader options"); }
+        }
+
+        // Restrict shader options to owned shader ids from save; ensure sensible fallback
+        private void FilterShaderOptionsBySave(BrokenNes.Models.GameSave save)
+        {
+            try
+            {
+                var owned = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
+                if (owned.Count == 0) return;
+                nesController.ShaderOptions = nesController.ShaderOptions.Where(s => owned.Contains(s.Key)).ToList();
+                // Default to PX if available; else first owned
+                if (!nesController.ShaderOptions.Any(o => o.Key == nesController.ActiveShaderKey))
+                {
+                    nesController.ActiveShaderKey = nesController.ShaderOptions.Any(o => o.Key == "PX") ? "PX" : (nesController.ShaderOptions.FirstOrDefault()?.Key ?? "PX");
+                }
+            }
+            catch { }
         }
 
         private async Task SetShader(string key)
@@ -507,6 +533,52 @@ namespace BrokenNes
             }
             catch { }
             AutoConfigureForApuCore();
+        }
+
+        // Filter CPU/PPU/APU/Clock options using the save's owned lists and preserve ordering/fallbacks
+        private void FilterCoreOptionsBySave(BrokenNes.Models.GameSave save)
+        {
+            try
+            {
+                var ownedCpu = new HashSet<string>(save.OwnedCpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+                var ownedPpu = new HashSet<string>(save.OwnedPpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+                var ownedApu = new HashSet<string>(save.OwnedApuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+                var ownedClock = new HashSet<string>(save.OwnedClockIds ?? new(), StringComparer.OrdinalIgnoreCase);
+
+                if (ownedCpu.Count > 0)
+                {
+                    nesController.CpuCoreOptions = nesController.CpuCoreOptions.Where(id => ownedCpu.Contains(id)).ToList();
+                    if (!nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
+                    {
+                        nesController.CpuCoreSel = nesController.CpuCoreOptions.Contains("FMC") ? "FMC" : (nesController.CpuCoreOptions.FirstOrDefault() ?? nesController.CpuCoreSel);
+                    }
+                }
+                if (ownedPpu.Count > 0)
+                {
+                    nesController.PpuCoreOptions = nesController.PpuCoreOptions.Where(id => ownedPpu.Contains(id)).ToList();
+                    if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel))
+                    {
+                        nesController.PpuCoreSel = nesController.PpuCoreOptions.Contains("FMC") ? "FMC" : (nesController.PpuCoreOptions.FirstOrDefault() ?? nesController.PpuCoreSel);
+                    }
+                }
+                if (ownedApu.Count > 0)
+                {
+                    nesController.ApuCoreOptions = nesController.ApuCoreOptions.Where(id => ownedApu.Contains(id)).ToList();
+                    if (!nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
+                    {
+                        nesController.ApuCoreSel = nesController.ApuCoreOptions.Contains("FMC") ? "FMC" : (nesController.ApuCoreOptions.FirstOrDefault() ?? nesController.ApuCoreSel);
+                    }
+                }
+                if (ownedClock.Count > 0)
+                {
+                    nesController.ClockCoreOptions = nesController.ClockCoreOptions.Where(id => ownedClock.Contains(id)).ToList();
+                    if (!nesController.ClockCoreOptions.Contains(nesController.ClockCoreSel))
+                    {
+                        nesController.ClockCoreSel = nesController.ClockCoreOptions.Contains("FMC") ? "FMC" : (nesController.ClockCoreOptions.FirstOrDefault() ?? nesController.ClockCoreSel);
+                    }
+                }
+            }
+            catch { }
         }
 
         private void AutoConfigureForApuCore()

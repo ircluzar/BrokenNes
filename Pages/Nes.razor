@@ -16,6 +16,7 @@
 @inject NesEmulator.Shaders.IShaderProvider ShaderProvider
 @inject NavigationManager Nav
 @inject BrokenNes.Services.InputSettingsService InputSettingsService
+@inject BrokenNes.Services.GameSaveService GameSaveService
 
 
 @if (!string.IsNullOrEmpty(emu!.Controller.ErrorMessage))
@@ -1046,7 +1047,7 @@
     {
         if (emu == null)
         {
-            emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav, InputSettingsService)
+            emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav, InputSettingsService, GameSaveService)
             {
                 OnStateChanged = () => InvokeAsync(StateHasChanged)
             };
