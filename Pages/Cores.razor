@@ -11,25 +11,80 @@
     <section class="opt-section">
       <h3 class="opt-h3">CPU</h3>
       <ul>
-        @foreach (var id in Cpu) { <li class="opt-row">@id</li> }
+        @if (CpuMeta.Count == 0)
+        {
+          @foreach (var id in Cpu) { <li class="opt-row">@id</li> }
+        }
+        else
+        {
+          @foreach (var c in CpuMeta)
+          {
+            <li class="opt-row">
+              <div><strong>@c.Id</strong> — @c.Name</div>
+              <div class="small text-muted">@c.Description</div>
+              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
+            </li>
+          }
+        }
       </ul>
     </section>
     <section class="opt-section">
       <h3 class="opt-h3">PPU</h3>
       <ul>
-        @foreach (var id in Ppu) { <li class="opt-row">@id</li> }
+        @if (PpuMeta.Count == 0)
+        {
+          @foreach (var id in Ppu) { <li class="opt-row">@id</li> }
+        }
+        else
+        {
+          @foreach (var c in PpuMeta)
+          {
+            <li class="opt-row">
+              <div><strong>@c.Id</strong> — @c.Name</div>
+              <div class="small text-muted">@c.Description</div>
+              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
+            </li>
+          }
+        }
       </ul>
     </section>
     <section class="opt-section">
       <h3 class="opt-h3">APU</h3>
       <ul>
-        @foreach (var id in Apu) { <li class="opt-row">@id</li> }
+        @if (ApuMeta.Count == 0)
+        {
+          @foreach (var id in Apu) { <li class="opt-row">@id</li> }
+        }
+        else
+        {
+          @foreach (var c in ApuMeta)
+          {
+            <li class="opt-row">
+              <div><strong>@c.Id</strong> — @c.Name</div>
+              <div class="small text-muted">@c.Description</div>
+              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
+            </li>
+          }
+        }
       </ul>
     </section>
     <section class="opt-section">
       <h3 class="opt-h3">Clock</h3>
       <ul>
-        @foreach (var id in Clock) { <li class="opt-row">@id</li> }
+        @if (ClockInfos.Count == 0)
+        {
+          @foreach (var id in Clock) { <li class="opt-row">@id</li> }
+        }
+        else
+        {
+          @foreach (var c in ClockInfos)
+          {
+            <li class="opt-row">
+              <div><strong>@c.Id</strong> — @c.Name</div>
+              <div class="small text-muted">@c.Description</div>
+            </li>
+          }
+        }
       </ul>
     </section>
     <section class="opt-section">
@@ -51,6 +106,11 @@
   private IReadOnlyList<string> Clock = Array.Empty<string>();
   private IReadOnlyList<string> Shaders = Array.Empty<string>();
 
+  private List<CoreMeta> CpuMeta = new();
+  private List<CoreMeta> PpuMeta = new();
+  private List<CoreMeta> ApuMeta = new();
+  private List<ClockInfo> ClockInfos = new();
+
   protected override async Task OnInitializedAsync()
   {
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
@@ -62,5 +122,95 @@
     try { Apu = CoreRegistry.ApuIds; } catch { }
   try { Clock = ClockRegistry.Ids; } catch { }
   try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
+
+    // Try to instantiate cores on a minimal bus to read metadata
+    try
+    {
+      // Build a tiny, valid iNES ROM (NROM-128: 1x16KB PRG, 0 CHR)
+      var dummy = new byte[16 + 16 * 1024];
+      dummy[0] = 0x4E; dummy[1] = 0x45; dummy[2] = 0x53; dummy[3] = 0x1A; // NES\x1A
+      dummy[4] = 1; // PRG banks
+      dummy[5] = 0; // CHR banks
+      dummy[6] = 0; dummy[7] = 0; // flags
+      var cart = new Cartridge(dummy);
+      var bus = new Bus(cart);
+
+      // CPU/PPU/APU metadata
+      var cpuDict = CoreRegistry.CreateInstances<ICPU>(bus, "CPU_");
+      CpuMeta = cpuDict.Select(kv => new CoreMeta
+      {
+        Id = kv.Key,
+        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
+      PpuMeta = ppuDict.Select(kv => new CoreMeta
+      {
+        Id = kv.Key,
+        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
+      ApuMeta = apuDict.Select(kv => new CoreMeta
+      {
+        Id = kv.Key,
+        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      // Clock metadata (no perf/rating in IClock)
+  ClockInfos = new List<ClockInfo>();
+      foreach (var id in Clock)
+      {
+        try
+        {
+          var clk = ClockRegistry.Create(id);
+          if (clk != null)
+          {
+    ClockInfos.Add(new ClockInfo { Id = id, Name = clk.DisplayName, Description = clk.Description });
+          }
+        }
+        catch { }
+      }
+  ClockInfos = ClockInfos.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+    catch
+    {
+      // If anything fails (e.g., environment), fall back to simple ID lists already populated above
+    }
+  }
+
+  private static T? SafeGet<T>(Func<T> getter)
+  {
+    try { return getter(); } catch { return default; }
+  }
+
+  private static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+  {
+    try { return getter(); } catch { return null; }
+  }
+
+  private sealed class CoreMeta
+  {
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Performance { get; set; }
+    public int Rating { get; set; }
+  }
+
+  private sealed class ClockInfo
+  {
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
   }
 }
