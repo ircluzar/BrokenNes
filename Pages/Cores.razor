@@ -6,273 +6,114 @@
 @inject BrokenNes.Services.GameSaveService SaveSvc
 @using BrokenNes.Shared
 
-<div class="options-root">
+<div class="cores-root">
   <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
-  <h2 class="opt-title">UNLOCKED CORES</h2>
-  <div class="card-sections">
-    <section class="card-section">
-      <h3 class="opt-h3">CPU</h3>
-      <div class="card-grid">
-        @if (CpuMeta.Count > 0)
-        {
-          foreach (var c in CpuMeta)
-          {
-    var model = new CoreCardModel {
-                  Id = c.Id,
-                  ShortName = c.Id,
-                  DisplayName = c.Name,
-                  Description = c.Description,
-                  Rating = Math.Clamp(c.Rating, 0, 5),
-                  Performance = c.Performance,
-      FooterNote = c.Category,
-      Domain = "CPU"
-              };
-            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-        else if (Cpu.Count > 0)
-        {
-          foreach (var id in Cpu)
-          {
-    var model = new CoreCardModel {
-                  Id = id,
-                  ShortName = id,
-                  DisplayName = id,
-                  Rating = 0,
-                  Performance = 0,
-      FooterNote = "UNIMPLEMENTED",
-      Domain = "CPU"
-              };
-            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-      </div>
-    </section>
-    <section class="card-section">
-      <h3 class="opt-h3">PPU</h3>
-      <div class="card-grid">
-        @if (PpuMeta.Count > 0)
-        {
-          foreach (var c in PpuMeta)
-          {
-    var model = new CoreCardModel {
-                  Id = c.Id,
-                  ShortName = c.Id,
-                  DisplayName = c.Name,
-                  Description = c.Description,
-                  Rating = Math.Clamp(c.Rating, 0, 5),
-                  Performance = c.Performance,
-      FooterNote = c.Category,
-      Domain = "PPU"
-              };
-            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-        else if (Ppu.Count > 0)
-        {
-          foreach (var id in Ppu)
-          {
-    var model = new CoreCardModel {
-                  Id = id,
-                  ShortName = id,
-                  DisplayName = id,
-                  Rating = 0,
-                  Performance = 0,
-      FooterNote = "UNIMPLEMENTED",
-      Domain = "PPU"
-              };
-            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-      </div>
-    </section>
-    <section class="card-section">
-      <h3 class="opt-h3">APU</h3>
-      <div class="card-grid">
-        @if (ApuMeta.Count > 0)
-        {
-          foreach (var c in ApuMeta)
-          {
-    var model = new CoreCardModel {
-                  Id = c.Id,
-                  ShortName = c.Id,
-                  DisplayName = c.Name,
-                  Description = c.Description,
-                  Rating = Math.Clamp(c.Rating, 0, 5),
-                  Performance = c.Performance,
-      FooterNote = c.Category,
-      Domain = "APU"
-              };
-            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-        else if (Apu.Count > 0)
-        {
-          foreach (var id in Apu)
-          {
-    var model = new CoreCardModel {
-                  Id = id,
-                  ShortName = id,
-                  DisplayName = id,
-                  Rating = 0,
-                  Performance = 0,
-      FooterNote = "UNIMPLEMENTED",
-      Domain = "APU"
-              };
-            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-      </div>
-    </section>
-    <section class="card-section">
-      <h3 class="opt-h3">Clock</h3>
-      <div class="card-grid">
-        @if (ClockInfos.Count > 0)
-        {
-      foreach (var c in ClockInfos)
-          {
-  var model = new CoreCardModel {
-                  Id = c.Id,
-                  ShortName = c.Id,
-                  DisplayName = c.Name,
-                  Description = c.Description,
-    Rating = Math.Clamp(c.Rating, 0, 5),
-    Performance = c.Performance,
-          FooterNote = c.Category,
-          Domain = "CLOCK"
-              };
-            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-        else if (Clock.Count > 0)
-        {
-          foreach (var id in Clock)
-          {
-  var model = new CoreCardModel {
-                  Id = id,
-                  ShortName = id,
-                  DisplayName = id,
-      Rating = 0,
-      Performance = 0,
-          FooterNote = "UNIMPLEMENTED",
-          Domain = "CLOCK"
-              };
-            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-      </div>
-    </section>
-    <section class="card-section">
-      <h3 class="opt-h3">Shaders</h3>
-      <div class="card-grid">
-        @if (ShaderInfos.Count > 0)
-        {
-          foreach (var s in ShaderInfos)
-          {
-    var model = new CoreCardModel {
-                  Id = s.Id,
-                  ShortName = s.Id,
-                  DisplayName = s.DisplayName,
-                  Description = s.Description,
-                  Rating = Math.Clamp(s.Rating, 0, 5),
-                  Performance = s.Performance,
-      FooterNote = s.Category,
-      Domain = "SHADER"
-              };
-            <div class="core-card" @key="s.Id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-        else if (Shaders.Count > 0)
-        {
-          foreach (var id in Shaders)
-          {
-    var model = new CoreCardModel {
-                  Id = id,
-                  ShortName = id,
-                  DisplayName = id,
-                  Rating = 0,
-      Performance = 0,
-      Domain = "SHADER"
-              };
-            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
-              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
-            </div>
-          }
-        }
-      </div>
-    </section>
+
+  <h2 class="cores-title">UNLOCKED CORES</h2>
+
+  <div class="filters-toolbar">
+    <div class="filters-row">
+      <label for="groupBy">Group by</label>
+      <select id="groupBy" value="@GroupBy.ToString()" @onchange="OnGroupChange">
+        <option value="None">None</option>
+        <option value="Type">Type</option>
+        <option value="Category">Category</option>
+        <option value="Rating">Rating</option>
+      </select>
+
+      <label for="sortBy">Order</label>
+      <select id="sortBy" value="@SortBy.ToString()" @onchange="OnSortChange">
+        <option value="None">None</option>
+        <option value="Alphabetical">Alphabetical</option>
+        <option value="Performance">Performance</option>
+        <option value="Rating">Rating</option>
+      </select>
+  <button type="button" class="order-toggle" title="Flip order" @onclick="FlipOrder">⇅</button>
+    </div>
   </div>
-  <div class="opt-footer">
-    <a href="./deck-builder?skipHW=1" class="opt-link">RETURN</a>
+
+  @if (GroupBy == GroupMode.Type)
+  {
+    <div class="card-sections">
+      @foreach (var sec in TypeSections)
+      {
+        if (sec.items.Count == 0) { continue; }
+        <section class="card-section">
+          <h3 class="opt-h3">@sec.title</h3>
+          <div class="card-grid">
+            @foreach (var item in GetSorted(sec.items))
+            {
+              var model = ToCard(item);
+              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+              </div>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  }
+  else if (GroupBy == GroupMode.Category)
+  {
+    <div class="card-sections">
+      @foreach (var g in CategoryGroups)
+      {
+        if (g.Value.Count == 0) { continue; }
+        <section class="card-section">
+          <h3 class="opt-h3">@g.Key</h3>
+          <div class="card-grid">
+            @foreach (var item in GetSorted(g.Value))
+            {
+              var model = ToCard(item);
+              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+              </div>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  }
+  else if (GroupBy == GroupMode.Rating)
+  {
+    <div class="card-sections">
+      @foreach (var bucket in RatingBuckets)
+      {
+        if (bucket.items.Count == 0) { continue; }
+        <section class="card-section">
+          <h3 class="opt-h3">@bucket.title</h3>
+          <div class="card-grid">
+            @foreach (var item in GetSorted(bucket.items))
+            {
+              var model = ToCard(item);
+              <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+                @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+              </div>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  }
+  else
+  {
+    <section class="card-section">
+      <div class="card-grid">
+        @foreach (var item in GetSorted(AllItems))
+        {
+          var model = ToCard(item);
+          <div class="core-card" @key="item.Key" @onclick="() => OpenCard(model)">
+            @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <div class="cores-footer">
+    <a href="./deck-builder?skipHW=1" class="cores-link">RETURN</a>
   </div>
 </div>
-
-<style>
-  .card-sections { display: grid; gap: 24px; }
-  .card-section { }
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(166px, 1fr));
-    gap: 16px;
-    align-items: start;
-  }
-  .core-card { cursor: pointer; }
-  .core-card svg { width: 100%; height: auto; display: block; }
-  .opt-h3 { margin: 8px 0 8px; }
-  @@media (min-width: 1200px) {
-    .card-sections { gap: 32px; }
-    .card-grid { gap: 20px; }
-  }
-
-  /* Modal zoom styles */
-  .card-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-  }
-  .card-modal-content { cursor: pointer; }
-  /* Make zoomed card fill most of the viewport, maintain aspect */
-  .card-modal-content svg {
-    width: min(96vw, calc(96vh * 0.7059));
-    height: auto;
-    max-height: 96vh;
-    aspect-ratio: 240 / 340;
-  }
-
-  /* Animations */
-  .card-modal-backdrop.opening { animation: fadeIn 160ms ease-out forwards; }
-  .card-modal-backdrop.closing { animation: fadeOut 160ms ease-in forwards; }
-  .card-modal-content.opening { animation: zoomIn 180ms ease-out forwards; }
-  .card-modal-content.closing { animation: zoomOut 160ms ease-in forwards; }
-
-  @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-  @@keyframes zoomIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
-  @@keyframes zoomOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.7); } }
-</style>
 
 @if (SelectedCard != null)
 {
@@ -284,11 +125,19 @@
 }
 
 @code {
+  // Group/sort state
+  private enum GroupMode { None, Type, Category, Rating }
+  private enum SortMode { None, Alphabetical, Performance, Rating }
+  private GroupMode GroupBy = GroupMode.None; // default: no grouping
+  private SortMode SortBy = SortMode.None;    // default: no order
+  private bool SortDescending = false;        // toggle via button
+
   private IReadOnlyList<string> Cpu = Array.Empty<string>();
   private IReadOnlyList<string> Ppu = Array.Empty<string>();
   private IReadOnlyList<string> Apu = Array.Empty<string>();
   private IReadOnlyList<string> Clock = Array.Empty<string>();
   private IReadOnlyList<string> Shaders = Array.Empty<string>();
+
   private List<ShaderInfo> ShaderInfos = new();
   private CoreCardModel? SelectedCard;
   private bool ModalClosing;
@@ -298,11 +147,20 @@
   private List<CoreMeta> ApuMeta = new();
   private List<ClockInfo> ClockInfos = new();
 
+  // Unified items for flexible grouping/sorting
+  private readonly List<CoreItem> AllItems = new();
+
+  // Derived views
+  private (string title, List<CoreItem> items)[] TypeSections = Array.Empty<(string title, List<CoreItem> items)>();
+  private Dictionary<string, List<CoreItem>> CategoryGroups = new(StringComparer.OrdinalIgnoreCase);
+  private (string title, List<CoreItem> items)[] RatingBuckets = Array.Empty<(string title, List<CoreItem> items)>();
+
   protected override async Task OnInitializedAsync()
   {
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+
     // Populate reflection data
     try { Cpu = CoreRegistry.CpuIds; } catch { }
     try { Ppu = CoreRegistry.PpuIds; } catch { }
@@ -310,8 +168,7 @@
     try { Clock = ClockRegistry.Ids; } catch { }
     try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
 
-    // Filter to owned cores per save and build shader infos accordingly
-    HashSet<string> setShd = new(StringComparer.OrdinalIgnoreCase);
+    // Filter to owned cores per save
     try
     {
       var save = await SaveSvc.LoadAsync();
@@ -319,7 +176,7 @@
       var setPpu = new HashSet<string>(save.OwnedPpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
       var setApu = new HashSet<string>(save.OwnedApuIds ?? new(), StringComparer.OrdinalIgnoreCase);
       var setClk = new HashSet<string>(save.OwnedClockIds ?? new(), StringComparer.OrdinalIgnoreCase);
-      setShd = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var setShd = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
       Cpu = Cpu.Where(id => setCpu.Contains(id)).ToArray();
       Ppu = Ppu.Where(id => setPpu.Contains(id)).ToArray();
       Apu = Apu.Where(id => setApu.Contains(id)).ToArray();
@@ -328,17 +185,16 @@
     }
     catch { }
 
+    // Build shader infos for metadata
     try
     {
-      var all = ShaderProvider.All;
-      var infos = new List<ShaderInfo>();
       var shaderSet = new HashSet<string>(Shaders, StringComparer.OrdinalIgnoreCase);
-      foreach (var s in all)
+      foreach (var s in ShaderProvider.All)
       {
         if (!shaderSet.Contains(s.Id)) continue;
         string? cat = null;
         try { cat = s.Defines != null && s.Defines.TryGetValue("Category", out var c) ? c : null; } catch { }
-        infos.Add(new ShaderInfo
+        ShaderInfos.Add(new ShaderInfo
         {
           Id = s.Id,
           DisplayName = s.DisplayName,
@@ -348,10 +204,6 @@
           Category = cat ?? "Uncategorized"
         });
       }
-      ShaderInfos = infos
-        .OrderBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
-        .ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
-        .ToList();
     }
     catch { }
 
@@ -372,69 +224,162 @@
       CpuMeta = cpuDict
         .Where(kv => Cpu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
         .Select(kv => new CoreMeta
-      {
-        Id = kv.Key,
-        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
-        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
-        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
-        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
-      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        {
+          Id = kv.Key,
+          Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+          Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+          Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+          Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+          Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
+        }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
       PpuMeta = ppuDict
         .Where(kv => Ppu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
         .Select(kv => new CoreMeta
-      {
-        Id = kv.Key,
-        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
-        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
-        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
-        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
-      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        {
+          Id = kv.Key,
+          Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+          Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+          Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+          Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+          Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
+        }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
       ApuMeta = apuDict
         .Where(kv => Apu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
         .Select(kv => new CoreMeta
-      {
-        Id = kv.Key,
-        Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
-        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
-        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
-        Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
-        Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
-      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        {
+          Id = kv.Key,
+          Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+          Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+          Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+          Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+          Category = SafeGet(() => kv.Value.Category) ?? "Uncategorized"
+        }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
-      // Clock metadata (now implements Performance & Rating)
-  ClockInfos = new List<ClockInfo>();
-  foreach (var id in Clock)
+      // Clock metadata
+      ClockInfos = new List<ClockInfo>();
+      foreach (var id in Clock)
       {
         try
         {
           var clk = ClockRegistry.Create(id);
           if (clk != null)
           {
-    ClockInfos.Add(new ClockInfo {
-      Id = id,
-      Name = clk.DisplayName,
-      Description = clk.Description,
-      Performance = clk.Performance,
-      Rating = clk.Rating,
-      Category = SafeGet(() => clk.Category) ?? "Uncategorized"
-    });
+            ClockInfos.Add(new ClockInfo
+            {
+              Id = id,
+              Name = clk.DisplayName,
+              Description = clk.Description,
+              Performance = clk.Performance,
+              Rating = clk.Rating,
+              Category = SafeGet(() => clk.Category) ?? "Uncategorized"
+            });
           }
         }
         catch { }
       }
-  ClockInfos = ClockInfos.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+      ClockInfos = ClockInfos.OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
-    catch
-    {
-      // If anything fails (e.g., environment), fall back to simple ID lists already populated above
-    }
+    catch { }
 
+    // Build unified items list
+    BuildItems();
+  }
+
+  private void BuildItems()
+  {
+    AllItems.Clear();
+    foreach (var m in CpuMeta) AllItems.Add(CoreItem.From("CPU", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
+    foreach (var m in PpuMeta) AllItems.Add(CoreItem.From("PPU", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
+    foreach (var m in ApuMeta) AllItems.Add(CoreItem.From("APU", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
+    foreach (var m in ClockInfos) AllItems.Add(CoreItem.From("CLOCK", m.Id, m.Name, m.Description, m.Performance, m.Rating, m.Category));
+    foreach (var s in ShaderInfos) AllItems.Add(CoreItem.From("SHADER", s.Id, s.DisplayName, s.Description, s.Performance, s.Rating, s.Category));
+
+    // Precompute groupings
+    TypeSections = new (string title, List<CoreItem> items)[]
+    {
+      ("CPU", AllItems.Where(i => i.Domain == "CPU").ToList()),
+      ("PPU", AllItems.Where(i => i.Domain == "PPU").ToList()),
+      ("APU", AllItems.Where(i => i.Domain == "APU").ToList()),
+      ("Clock", AllItems.Where(i => i.Domain == "CLOCK").ToList()),
+      ("Shaders", AllItems.Where(i => i.Domain == "SHADER").ToList()),
+    };
+
+    CategoryGroups = AllItems
+      .GroupBy(i => string.IsNullOrWhiteSpace(i.Category) ? "Uncategorized" : i.Category, StringComparer.OrdinalIgnoreCase)
+      .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+      .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+    RatingBuckets = Enumerable.Range(0, 6) // 0..5
+      .Reverse()
+      .Select(r => (title: r == 1 ? "1 STAR" : $"{r} STARS", items: AllItems.Where(i => Math.Clamp(i.Rating,0,5) == r).ToList()))
+      .ToArray();
+  }
+
+  private List<CoreItem> GetSorted(IEnumerable<CoreItem> items)
+  {
+    var list = SortBy switch
+    {
+      SortMode.Alphabetical => items.OrderBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase).ToList(),
+      SortMode.Performance => items.OrderBy(i => i.Performance).ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase).ToList(),
+      SortMode.Rating => items.OrderBy(i => i.Rating).ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase).ToList(),
+      _ => items.ToList(),
+    };
+    if (SortBy != SortMode.None && SortDescending)
+    {
+      list.Reverse();
+    }
+    else if (SortBy == SortMode.None && SortDescending)
+    {
+      // With no explicit sort, allow a simple reverse of current order as a convenience
+      list.Reverse();
+    }
+    return list;
+  }
+
+  private CoreCardModel ToCard(CoreItem i)
+  {
+    return new CoreCardModel
+    {
+      Id = i.Id,
+      ShortName = i.ShortName,
+      DisplayName = i.DisplayName,
+      Description = i.Description,
+      Rating = Math.Clamp(i.Rating, 0, 5),
+      Performance = i.Performance,
+      FooterNote = string.IsNullOrWhiteSpace(i.Category) ? i.Domain : i.Category,
+      Domain = i.Domain
+    };
+  }
+
+  private void OnGroupChange(ChangeEventArgs e)
+  {
+    if (e?.Value is null) return;
+    if (Enum.TryParse<GroupMode>(e.Value.ToString(), out var v))
+    {
+      GroupBy = v;
+      StateHasChanged();
+    }
+  }
+
+  private void OnSortChange(ChangeEventArgs e)
+  {
+    if (e?.Value is null) return;
+    if (Enum.TryParse<SortMode>(e.Value.ToString(), out var v))
+    {
+      SortBy = v;
+      // Set a sensible default direction per sort type
+      SortDescending = v == SortMode.Performance || v == SortMode.Rating;
+      StateHasChanged();
+    }
+  }
+
+  private void FlipOrder()
+  {
+    SortDescending = !SortDescending;
   }
 
   private void OpenCard(CoreCardModel m)
@@ -478,8 +423,8 @@
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-  public int Performance { get; set; }
-  public int Rating { get; set; }
+    public int Performance { get; set; }
+    public int Rating { get; set; }
     public string Category { get; set; } = string.Empty;
   }
 
@@ -491,5 +436,21 @@
     public int Performance { get; set; }
     public int Rating { get; set; }
     public string Category { get; set; } = string.Empty;
+  }
+
+  private sealed class CoreItem
+  {
+    public string Domain { get; set; } = string.Empty; // CPU/PPU/APU/CLOCK/SHADER
+    public string Id { get; set; } = string.Empty;
+    public string ShortName => Id;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Performance { get; set; }
+    public int Rating { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string Key => Domain + ":" + Id;
+
+    public static CoreItem From(string domain, string id, string name, string description, int perf, int rating, string category)
+      => new CoreItem { Domain = domain, Id = id, DisplayName = name, Description = description, Performance = perf, Rating = rating, Category = category };
   }
 }
