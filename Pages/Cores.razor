@@ -3,115 +3,219 @@
 @using NesEmulator.Shaders
 @inject IJSRuntime JS
 @inject IShaderProvider ShaderProvider
+@using BrokenNes.Shared
 
 <div class="options-root">
   <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
   <h2 class="opt-title">UNLOCKED CORES</h2>
-  <div class="opt-sections">
-    <section class="opt-section">
+  <div class="card-sections">
+    <section class="card-section">
       <h3 class="opt-h3">CPU</h3>
-      <ul>
-        @if (CpuMeta.Count == 0)
+      <div class="card-grid">
+        @if (CpuMeta.Count > 0)
         {
-          @foreach (var id in Cpu) { <li class="opt-row">@id</li> }
-        }
-        else
-        {
-          @foreach (var c in CpuMeta)
+          foreach (var c in CpuMeta)
           {
-            <li class="opt-row">
-              <div><strong>@c.Id</strong> — @c.Name</div>
-              <div class="small text-muted">@c.Description</div>
-              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
-            </li>
+            <div class="core-card" @key="c.Id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = c.Id,
+                  ShortName = c.Id,
+                  DisplayName = c.Name,
+                  Description = c.Description,
+                  Rating = Math.Clamp(c.Rating, 0, 5),
+                  Performance = c.Performance,
+                  FooterNote = c.Description
+              }))
+            </div>
           }
         }
-      </ul>
+        else if (Cpu.Count > 0)
+        {
+          foreach (var id in Cpu)
+          {
+            <div class="core-card" @key="id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = id,
+                  ShortName = id,
+                  DisplayName = id,
+                  Rating = 0,
+                  Performance = 0
+              }))
+            </div>
+          }
+        }
+      </div>
     </section>
-    <section class="opt-section">
+    <section class="card-section">
       <h3 class="opt-h3">PPU</h3>
-      <ul>
-        @if (PpuMeta.Count == 0)
+      <div class="card-grid">
+        @if (PpuMeta.Count > 0)
         {
-          @foreach (var id in Ppu) { <li class="opt-row">@id</li> }
-        }
-        else
-        {
-          @foreach (var c in PpuMeta)
+          foreach (var c in PpuMeta)
           {
-            <li class="opt-row">
-              <div><strong>@c.Id</strong> — @c.Name</div>
-              <div class="small text-muted">@c.Description</div>
-              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
-            </li>
+            <div class="core-card" @key="c.Id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = c.Id,
+                  ShortName = c.Id,
+                  DisplayName = c.Name,
+                  Description = c.Description,
+                  Rating = Math.Clamp(c.Rating, 0, 5),
+                  Performance = c.Performance,
+                  FooterNote = c.Description
+              }))
+            </div>
           }
         }
-      </ul>
+        else if (Ppu.Count > 0)
+        {
+          foreach (var id in Ppu)
+          {
+            <div class="core-card" @key="id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = id,
+                  ShortName = id,
+                  DisplayName = id,
+                  Rating = 0,
+                  Performance = 0
+              }))
+            </div>
+          }
+        }
+      </div>
     </section>
-    <section class="opt-section">
+    <section class="card-section">
       <h3 class="opt-h3">APU</h3>
-      <ul>
-        @if (ApuMeta.Count == 0)
+      <div class="card-grid">
+        @if (ApuMeta.Count > 0)
         {
-          @foreach (var id in Apu) { <li class="opt-row">@id</li> }
-        }
-        else
-        {
-          @foreach (var c in ApuMeta)
+          foreach (var c in ApuMeta)
           {
-            <li class="opt-row">
-              <div><strong>@c.Id</strong> — @c.Name</div>
-              <div class="small text-muted">@c.Description</div>
-              <div class="small">Perf: @c.Performance • Rating: @c.Rating</div>
-            </li>
+            <div class="core-card" @key="c.Id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = c.Id,
+                  ShortName = c.Id,
+                  DisplayName = c.Name,
+                  Description = c.Description,
+                  Rating = Math.Clamp(c.Rating, 0, 5),
+                  Performance = c.Performance,
+                  FooterNote = c.Description
+              }))
+            </div>
           }
         }
-      </ul>
+        else if (Apu.Count > 0)
+        {
+          foreach (var id in Apu)
+          {
+            <div class="core-card" @key="id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = id,
+                  ShortName = id,
+                  DisplayName = id,
+                  Rating = 0,
+                  Performance = 0
+              }))
+            </div>
+          }
+        }
+      </div>
     </section>
-    <section class="opt-section">
+    <section class="card-section">
       <h3 class="opt-h3">Clock</h3>
-      <ul>
-        @if (ClockInfos.Count == 0)
+      <div class="card-grid">
+        @if (ClockInfos.Count > 0)
         {
-          @foreach (var id in Clock) { <li class="opt-row">@id</li> }
-        }
-        else
-        {
-          @foreach (var c in ClockInfos)
+          foreach (var c in ClockInfos)
           {
-            <li class="opt-row">
-              <div><strong>@c.Id</strong> — @c.Name</div>
-              <div class="small text-muted">@c.Description</div>
-            </li>
+            <div class="core-card" @key="c.Id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = c.Id,
+                  ShortName = c.Id,
+                  DisplayName = c.Name,
+                  Description = c.Description,
+                  Rating = 0,
+                  Performance = 0,
+                  FooterNote = c.Description
+              }))
+            </div>
           }
         }
-      </ul>
+        else if (Clock.Count > 0)
+        {
+          foreach (var id in Clock)
+          {
+            <div class="core-card" @key="id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = id,
+                  ShortName = id,
+                  DisplayName = id,
+                  Rating = 0,
+                  Performance = 0
+              }))
+            </div>
+          }
+        }
+      </div>
     </section>
-    <section class="opt-section">
+    <section class="card-section">
       <h3 class="opt-h3">Shaders</h3>
-      <ul>
-        @if (ShaderInfos.Count == 0)
+      <div class="card-grid">
+        @if (ShaderInfos.Count > 0)
         {
-          @foreach (var id in Shaders) { <li class="opt-row">@id</li> }
-        }
-        else
-        {
-          @foreach (var s in ShaderInfos)
+          foreach (var s in ShaderInfos)
           {
-            <li class="opt-row">
-              <div><strong>@s.Id</strong> — @s.DisplayName (@s.Category)</div>
-              <div class="small text-muted">@s.Description</div>
-              <div class="small">Perf: @s.Performance • Rating: @s.Rating</div>
-            </li>
+            <div class="core-card" @key="s.Id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = s.Id,
+                  ShortName = s.Id,
+                  DisplayName = s.DisplayName,
+                  Description = s.Description,
+                  Rating = Math.Clamp(s.Rating, 0, 5),
+                  Performance = s.Performance,
+                  FooterNote = s.Category
+              }))
+            </div>
           }
         }
-      </ul>
+        else if (Shaders.Count > 0)
+        {
+          foreach (var id in Shaders)
+          {
+            <div class="core-card" @key="id">
+              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+                  Id = id,
+                  ShortName = id,
+                  DisplayName = id,
+                  Rating = 0,
+                  Performance = 0
+              }))
+            </div>
+          }
+        }
+      </div>
     </section>
   </div>
   <div class="opt-footer">
     <a href="./deck-builder?skipHW=1" class="opt-link">RETURN</a>
   </div>
 </div>
+
+<style>
+  .card-sections { display: grid; gap: 24px; }
+  .card-section { }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .core-card svg { width: 100%; height: auto; display: block; }
+  .opt-h3 { margin: 8px 0 8px; }
+  @@media (min-width: 1200px) {
+    .card-sections { gap: 32px; }
+    .card-grid { gap: 20px; }
+  }
+</style>
 
 @code {
   private IReadOnlyList<string> Cpu = Array.Empty<string>();
