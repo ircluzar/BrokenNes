@@ -29,6 +29,11 @@ namespace BrokenNes
 
         public bool ImagineModalOpen { get; private set; }
         public ImagineDebugSnapshot? ImagineSnapshot { get; private set; }
+    public int ImagineBytesToGenerate { get; set; } = 4; // 1..32
+    public float ImagineTemperature { get; set; } = 0.4f; // 0.2..0.7 typical
+    public int? ImagineTopK { get; set; } = 32; // null or 20..50 typical
+    public byte[]? ImaginePredictedBytes { get; private set; }
+    public bool ImagineBusy { get; private set; }
 
         public void OpenImagineModal()
         {
@@ -161,6 +166,72 @@ namespace BrokenNes
             };
 
             StateHasChanged();
+        }
+
+        // -------- Milestone 4 actions --------
+        public async Task ImagineRunPredictionTestAsync()
+        {
+            if (!ImagineModelLoaded) { Status.Set("Imagine: model not loaded"); return; }
+            if (ImagineSnapshot == null || !ImagineSnapshot.InPrgRom) { Status.Set("Imagine: invalid PC (not in PRG ROM)"); return; }
+            var pc = ImagineSnapshot.PC;
+            int L = Math.Clamp(ImagineBytesToGenerate, 1, 32);
+            try
+            {
+                ImagineBusy = true; StateHasChanged();
+                var tokens = BuildTokens128AroundPc(pc, L, out int hs, out int he);
+                var bytes = await ImaginePredictSpanAsync(tokens, hs, he, ImagineTemperature, ImagineTopK);
+                ImaginePredictedBytes = bytes;
+                Status.Set($"Imagine: predicted {bytes.Length} byte(s) at PC={pc:X4}");
+            }
+            catch (Exception ex)
+            {
+                ImagineLastError = ex.Message; Status.Set("Imagine: prediction failed");
+            }
+            finally { ImagineBusy = false; StateHasChanged(); }
+        }
+
+        public async Task ImagineApplyPatchHereAsync()
+        {
+            if (ImagineSnapshot == null || ImaginePredictedBytes == null || ImaginePredictedBytes.Length == 0) return;
+            try
+            {
+                var ok = await ApplyImaginePatchAsync(ImagineSnapshot.PC, ImaginePredictedBytes);
+                if (ok) Status.Set($"Imagine: applied patch at {ImagineSnapshot.PC:X4} ({ImaginePredictedBytes.Length} byte(s))");
+                else Status.Set("Imagine: patch not applied (mapper?)");
+            }
+            catch { Status.Set("Imagine: patch failed"); }
+        }
+
+        public async Task ImagineBugAsync()
+        {
+            if (!ImagineModelLoaded) { Status.Set("Imagine: load model first"); return; }
+            try
+            {
+                await FreezeAndFetchNextInstructionAsync();
+                if (ImagineSnapshot == null || !ImagineSnapshot.InPrgRom)
+                {
+                    Status.Set("Imagine: PC not in PRG ROM");
+                    return;
+                }
+                int L = Math.Clamp(ImagineBytesToGenerate, 1, 32);
+                var pc = ImagineSnapshot.PC;
+                ImagineBusy = true; StateHasChanged();
+                var tokens = BuildTokens128AroundPc(pc, L, out int hs, out int he);
+                var bytes = await ImaginePredictSpanAsync(tokens, hs, he, ImagineTemperature, ImagineTopK);
+                var ok = await ApplyImaginePatchAsync(pc, bytes);
+                if (ok) { Status.Set($"Imagine: bug applied at {pc:X4} (L={bytes.Length})"); }
+                else { Status.Set("Imagine: could not apply patch (mapper?)"); }
+            }
+            catch (Exception ex)
+            {
+                ImagineLastError = ex.Message; Status.Set("Imagine: failure in flow");
+            }
+            finally
+            {
+                ImagineBusy = false; StateHasChanged();
+                // Resume regardless to avoid stuck pause
+                try { await StartEmulation(); } catch { }
+            }
         }
     }
 }

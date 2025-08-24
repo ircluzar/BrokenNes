@@ -177,18 +177,22 @@ Use this editable checklist to track implementation. Tick subtasks as you comple
   - [x] Implement `predictSpan({ window, holeStart, holeEnd, temperature, topK })`
   - [x] Lazy-load onnxruntime-web only when needed
   - [x] Wire script include in `wwwroot/index.html`; optional lazy-load can be added later
-  - [ ] Acceptance: `imagine.loadModel(25)` => `{ ok:true, info:"wasm"|"webgl" }` or `{ ok:false, error }`
-  - [ ] Acceptance: `imagine.predictSpan` returns bytes of length `holeEnd-holeStart` in 0..255
+  - [x] Acceptance: `imagine.loadModel(25)` => `{ ok:true, info:"wasm"|"webgl" }` or `{ ok:false, error }`
+  - [x] Acceptance: `imagine.predictSpan` returns bytes of length `holeEnd-holeStart` in 0..255
 
-- [ ] Milestone 3: C# interop wrapper + token window builder
-  - [ ] Add `Emulator.ImagineInterop.cs`: `ImagineLoadModelAsync`, `ImaginePredictSpanAsync`
-  - [ ] Add `Emulator.ImagineWindow.cs`: `BuildTokens128AroundPc(ushort pc, int holeLen, out int holeStart, out int holeEnd)`
-  - [ ] Add `Emulator.ImaginePatch.cs`: `ApplyImaginePatchAsync(ushort pc, byte[] bytes)`
-  - [ ] Use `IJSRuntime.InvokeAsync<T>` to call `imagine.loadModel`/`imagine.predictSpan`
-  - [ ] Build tokens using Prev8/Next16 and expand context up to 128 in PRG ROM; mask [PC..PC+L) with 256
-  - [ ] Map CPU addresses to PRG ROM for patching respecting mapper/banks; abort if not in PRG
-  - [ ] Acceptance: `ImagineLoadModelAsync(25)` returns true and records EP label
-  - [ ] Acceptance: `BuildTokens128AroundPc` returns 128 tokens with correct hole indices
+- [x] Milestone 3: C# interop wrapper + token window builder
+  - [x] Add `Emulator.ImagineInterop.cs`: `ImagineLoadModelAsync`, `ImaginePredictSpanAsync`
+  - [x] Add `Emulator.ImagineWindow.cs`: `BuildTokens128AroundPc(ushort pc, int holeLen, out int holeStart, out int holeEnd)`
+  - [x] Add `Emulator.ImaginePatch.cs`: `ApplyImaginePatchAsync(ushort pc, byte[] bytes)`
+  - [x] Use `IJSRuntime.InvokeAsync<T>` to call `imagine.loadModel`/`imagine.predictSpan`
+  - [x] Build tokens using Prev8/Next16 and expand context up to 128 in PRG ROM; mask [PC..PC+L) with 256
+  - [x] Map CPU addresses to PRG ROM for patching respecting mapper/banks; abort if not in PRG
+  - [x] Acceptance: `ImagineLoadModelAsync(25)` returns true and records EP label
+  - [x] Acceptance: `BuildTokens128AroundPc` returns 128 tokens with correct hole indices
+  
+  Notes
+  - Implementations live in `NesEmulator/board/Emulator.ImagineInterop.cs` (window builder and patch included here).
+  - Patch mapping currently assumes NROM/fixed-32KB PRG; safely aborts if CPU⇄PRG mapping check fails (banked mapper support to be added in Milestone 6).
 
 - [ ] Milestone 4: UI wiring in `Pages/Nes.razor`
   - [ ] Wire "Load model" to `ImagineLoadModelAsync(epoch)` and show status: "Loaded epoch N (EP: wasm/webgl)"

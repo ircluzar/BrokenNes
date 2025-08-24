@@ -597,9 +597,24 @@
                     <span class="text-muted">Model not loaded</span>
                 }
             </div>
+            <div class="row g-2 small mb-2">
+                <div class="col-4 col-sm-4 col-md-3">
+                    <label class="form-label mb-1">Bytes</label>
+                    <input type="number" min="1" max="32" class="form-control form-control-sm" @bind="emu!.ImagineBytesToGenerate" />
+                </div>
+                <div class="col-4 col-sm-4 col-md-3">
+                    <label class="form-label mb-1">Temp</label>
+                    <input type="number" step="0.05" min="0" max="1.5" class="form-control form-control-sm" @bind="emu!.ImagineTemperature" />
+                </div>
+                <div class="col-4 col-sm-4 col-md-3">
+                    <label class="form-label mb-1">TopK</label>
+                    <input type="number" min="0" max="256" class="form-control form-control-sm" @bind-value="emu!.ImagineTopK" @bind-value:event="onchange" />
+                    <div class="form-text">0 or empty = off</div>
+                </div>
+            </div>
             <div class="d-flex gap-2 flex-wrap">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.OpenImagineModal())">Debug</button>
-                <button class="btn btn-sm btn-outline-warning" disabled="@(!emu!.ImagineModelLoaded)">Imagine a bug</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.OpenImagineModal())" disabled="@(!emu!.ImagineModelLoaded)">Debug</button>
+                <button class="btn btn-sm btn-outline-warning" @onclick="(()=>emu!.ImagineBugAsync())" disabled="@(!emu!.ImagineModelLoaded || emu!.ImagineBusy)">@(emu!.ImagineBusy?"Working…":"Imagine a bug")</button>
             </div>
             @if (emu!.ImagineModalOpen)
             {
@@ -608,7 +623,7 @@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <strong class="small mb-0">Imagine Debug</strong>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.FreezeAndFetchNextInstructionAsync())">Freeze and fetch next instruction</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.FreezeAndFetchNextInstructionAsync())" disabled="@emu!.ImagineBusy">Freeze and fetch next instruction</button>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.CloseImagineModal())">Close</button>
                             </div>
                         </div>
@@ -646,6 +661,29 @@
                                         <div class="text-muted">Next 16 bytes (PC .. PC+15)</div>
                                         <code>@(string.Join(" ", s.Next16.Select(b=>b.ToString("X2"))))</code>
                                     </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-4 col-sm-4 col-md-3">
+                                            <label class="form-label mb-1">Bytes</label>
+                                            <input type="number" min="1" max="32" class="form-control form-control-sm" @bind="emu!.ImagineBytesToGenerate" />
+                                        </div>
+                                        <div class="col-4 col-sm-4 col-md-3">
+                                            <label class="form-label mb-1">Temp</label>
+                                            <input type="number" step="0.05" min="0" max="1.5" class="form-control form-control-sm" @bind="emu!.ImagineTemperature" />
+                                        </div>
+                                        <div class="col-4 col-sm-4 col-md-3">
+                                            <label class="form-label mb-1">TopK</label>
+                                            <input type="number" min="0" max="256" class="form-control form-control-sm" @bind-value="emu!.ImagineTopK" @bind-value:event="onchange" />
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2 mb-2">
+                                        <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.ImagineRunPredictionTestAsync())" disabled="@(!emu!.ImagineModelLoaded || emu!.ImagineBusy)">Run prediction (test)</button>
+                                        <button class="btn btn-sm btn-success" @onclick="(()=>emu!.ImagineApplyPatchHereAsync())" disabled="@((emu!.ImaginePredictedBytes==null||emu!.ImaginePredictedBytes.Length==0)|| !emu!.ImagineModelLoaded || emu!.ImagineBusy)">Apply patch here</button>
+                                    </div>
+                                    @if (emu!.ImaginePredictedBytes != null && emu!.ImaginePredictedBytes.Length > 0)
+                                    {
+                                        <div class="mb-1">Predicted bytes (@emu!.ImaginePredictedBytes.Length):</div>
+                                        <code>@(string.Join(" ", emu!.ImaginePredictedBytes.Select(b=>b.ToString("X2"))))</code>
+                                    }
                                 }
                             }
                         </div>
