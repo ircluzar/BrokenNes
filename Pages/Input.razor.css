@@ -1,3 +1,5 @@
+.options-root{max-width:760px;margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;}
+.options-root .opt-row{ background: rgba(0,0,0,0.15); }
 .player-grid{
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

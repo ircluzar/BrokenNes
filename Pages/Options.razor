@@ -3,7 +3,6 @@
 @inject BrokenNes.Services.GameSaveService SaveSvc
 
 <div class="options-root">
-    <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
     <h2 class="opt-title">OPTIONS</h2>
     <div class="opt-sections">
         <section class="opt-section">
@@ -52,6 +51,9 @@
         {
             <section class="opt-section">
                 <h3 class="opt-h3">Feature Unlocks</h3>
+                    <div class="opt-row">
+                        <button @onclick="UnlockSavestates">Unlock Savestates</button>
+                    </div>
                 <div class="opt-row">
                     <button @onclick="UnlockRtc">Unlock Real-Time Corruptor</button>
                 </div>
@@ -140,6 +142,12 @@
     try { await SaveSvc.UnlockAllFeaturesAsync(); } catch { }
     try { await JS.InvokeVoidAsync("eval", "alert('All cores and advanced features unlocked in your DeckBuilder save.')"); } catch { }
     }
+
+        private async Task UnlockSavestates()
+        {
+            try { await SaveSvc.UnlockSavestatesAsync(); } catch { }
+            try { await JS.InvokeVoidAsync("eval", "alert('Savestates unlocked. Load/Save buttons will appear in the NES UI.')"); } catch { }
+        }
 
     private async Task UnlockRtc()
     {

@@ -40,6 +40,7 @@ public class GameSaveService
                     // Ensure unlock flags are present (backward compatibility defaults)
                     // Keep them off by default to respect progression; options can unlock.
                     // Note: when adding more flags in future, guard similarly.
+                    _ = loaded.SavestatesUnlocked;
                     _ = loaded.RtcUnlocked;
                     _ = loaded.GhUnlocked;
                     _ = loaded.ImagineUnlocked;
@@ -77,6 +78,7 @@ public class GameSaveService
         {
             Level = 1,
             Achievements = new(),
+            SavestatesUnlocked = false,
             RtcUnlocked = false,
             GhUnlocked = false,
             ImagineUnlocked = false,
@@ -110,6 +112,13 @@ public class GameSaveService
     }
 
     // Feature unlock helpers (used from Options and game flow when earned)
+    public async Task UnlockSavestatesAsync()
+    {
+        var save = await LoadAsync();
+        save.SavestatesUnlocked = true;
+        await SaveAsync(save);
+    }
+
     public async Task UnlockRtcAsync()
     {
         var save = await LoadAsync();
@@ -134,6 +143,7 @@ public class GameSaveService
     public async Task UnlockAllFeaturesAsync()
     {
         var save = await LoadAsync();
+    save.SavestatesUnlocked = true;
         save.RtcUnlocked = true;
         save.GhUnlocked = true;
         save.ImagineUnlocked = true;

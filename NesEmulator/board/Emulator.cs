@@ -90,6 +90,7 @@ namespace BrokenNes
         private bool stateBusy = false;
         private string debugDump = string.Empty;
     private BrokenNes.Models.GameSave? _gameSave; // Loaded game save for DeckBuilder and feature gates
+    public bool SavestatesUnlocked => _gameSave?.SavestatesUnlocked == true;
     public bool RtcUnlocked => _gameSave?.RtcUnlocked == true;
     public bool GhUnlocked => _gameSave?.GhUnlocked == true;
     public bool ImagineUnlocked => _gameSave?.ImagineUnlocked == true;

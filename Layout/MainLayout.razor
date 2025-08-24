@@ -4,6 +4,12 @@
 @using BrokenNes.Shared
 @using Microsoft.AspNetCore.Components.Web
 <div class="app-shell">
+    <!-- Persistent animated background across pages (except NES) -->
+    @if (!IsOnNes)
+    {
+        <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
+        <div class="pixel-vignette" aria-hidden="true"></div>
+    }
     <header class="app-bar">
         <div class="brand" @onclick="NavigateHome" @onkeydown="OnBrandKey" role="button" tabindex="0" aria-label="Return to home">BrokenNes</div>
     </header>
@@ -21,6 +27,8 @@
 @inject NavigationManager Nav
 
 @code {
+    private bool IsOnNes => SafeIsOnNes();
+
     private void NavigateHome()
     {
         // Use relative navigation (no leading slash) so subfolder hosting works (avoids resetting to domain root)
@@ -33,5 +41,22 @@
         {
             NavigateHome();
         }
+    }
+
+    protected override void OnInitialized()
+    {
+        // Ensure layout re-renders on route change so background hides immediately on NES
+        try { Nav.LocationChanged += (_, __) => InvokeAsync(StateHasChanged); } catch { }
+    }
+
+    private bool SafeIsOnNes()
+    {
+        try
+        {
+            var uri = Nav.Uri ?? string.Empty;
+            // Match "/nes" anywhere in the path (handles subfolder hosting)
+            return uri.Contains("/nes", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 }

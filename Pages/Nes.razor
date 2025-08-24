@@ -46,41 +46,59 @@
                 </button>
             </div>
             <div class="btn-group">
-                <div class="qc-select-stack">
-                    <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
-                    <button id="shaderSelect" type="button" class="btn btn-rf btn-select" title="Video shader" aria-label="Video Shader" @onclick="OpenShaderPicker">
-                        @GetCurrentShaderLabel()
-                    </button>
-                </div>
-                <div class="qc-select-stack">
-                    <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                    <button id="apuCoreSelect" type="button" class="btn btn-fmc btn-select" title="Audio core" aria-label="Audio Core" @onclick="OpenApuPicker">
-                        @emu!.Controller.ApuCoreSel
-                    </button>
-                </div>
-                <div class="qc-select-stack">
-                    <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                    <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select" title="CPU core" aria-label="CPU Core" @onclick="OpenCpuPicker">
-                        @emu!.Controller.CpuCoreSel
-                    </button>
-                </div>
-                <div class="qc-select-stack">
-                    <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                    <button id="ppuCoreSelect" type="button" class="btn btn-rf btn-select" title="PPU core" aria-label="PPU Core" @onclick="OpenPpuPicker">
-                        @emu!.Controller.PpuCoreSel
-                    </button>
-                </div>
-                <div class="qc-select-stack">
-                    <label for="clockCoreSelect" class="mini-label" title="Select frame loop owner">Clock</label>
-                    <button id="clockCoreSelect" type="button" class="btn btn-rf btn-select" title="Clock core (loop owner)" aria-label="Clock Core" @onclick="OpenClockPicker">
-                        @emu!.Controller.ClockCoreSel
-                    </button>
-                </div>
+                @if (ShowShaderPicker)
+                {
+                    <div class="qc-select-stack">
+                        <label for="shaderSelect" class="mini-label" title="Select video shader pass">Shader</label>
+                        <button id="shaderSelect" type="button" class="btn btn-rf btn-select" title="Video shader" aria-label="Video Shader" @onclick="OpenShaderPicker">
+                            @GetCurrentShaderLabel()
+                        </button>
+                    </div>
+                }
+                @if (ShowApuPicker)
+                {
+                    <div class="qc-select-stack">
+                        <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
+                        <button id="apuCoreSelect" type="button" class="btn btn-fmc btn-select" title="Audio core" aria-label="Audio Core" @onclick="OpenApuPicker">
+                            @emu!.Controller.ApuCoreSel
+                        </button>
+                    </div>
+                }
+                @if (ShowCpuPicker)
+                {
+                    <div class="qc-select-stack">
+                        <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
+                        <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select" title="CPU core" aria-label="CPU Core" @onclick="OpenCpuPicker">
+                            @emu!.Controller.CpuCoreSel
+                        </button>
+                    </div>
+                }
+                @if (ShowPpuPicker)
+                {
+                    <div class="qc-select-stack">
+                        <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
+                        <button id="ppuCoreSelect" type="button" class="btn btn-rf btn-select" title="PPU core" aria-label="PPU Core" @onclick="OpenPpuPicker">
+                            @emu!.Controller.PpuCoreSel
+                        </button>
+                    </div>
+                }
+                @if (ShowClockPicker)
+                {
+                    <div class="qc-select-stack">
+                        <label for="clockCoreSelect" class="mini-label" title="Select frame loop owner">Clock</label>
+                        <button id="clockCoreSelect" type="button" class="btn btn-rf btn-select" title="Clock core (loop owner)" aria-label="Clock Core" @onclick="OpenClockPicker">
+                            @emu!.Controller.ClockCoreSel
+                        </button>
+                    </div>
+                }
             </div>
-            <div class="btn-group">
-                <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Load state">Load</button>
-                <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Save state">Save</button>
-            </div>
+            @if (emu!.SavestatesUnlocked)
+            {
+                <div class="btn-group">
+                    <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Load state">Load</button>
+                    <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Save state">Save</button>
+                </div>
+            }
         </div>
     <div class="screen-shell @(emu!.Controller.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">
             <div class="overlay-status small">
@@ -141,8 +159,11 @@
                             </div>
                             <div class="system-row">
                                 <button class="sys-btn" data-act="exit">Exit Fullscreen</button>
-                                <button class="sys-btn" data-act="load">Load State</button>
-                                <button class="sys-btn" data-act="save">Save State</button>
+                                @if (emu!.SavestatesUnlocked)
+                                {
+                                    <button class="sys-btn" data-act="load">Load State</button>
+                                    <button class="sys-btn" data-act="save">Save State</button>
+                                }
                             </div>
                         </div>
                     </div>
@@ -1156,6 +1177,12 @@
     {
         if (firstRender)
         {
+            // Fully unload the global animated background while in emulator view
+            try { await JS.InvokeVoidAsync("eval", @"(function(){
+                if(window.homePixelBg && window.homePixelBg.stop) window.homePixelBg.stop();
+                var host = document.getElementById('pixelBgHost');
+                if(host) { host.innerHTML=''; }
+            })();"); } catch { }
             if (emu != null)
             {
                 try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
@@ -1180,6 +1207,9 @@
                                     };
                                 })();"); } catch { }
                 await emu.EnsureInitialRenderAsync(true);
+                // Mark options as ready so pickers can render if eligible
+                _pickerOptionsReady = true;
+                try { await InvokeAsync(StateHasChanged); } catch { }
             }
         }
 
@@ -1534,5 +1564,13 @@
 
     // One-shot guard to run zoom script when preview opens
     private bool _pickerZoomInit = false;
+
+    // Visibility helpers: show pickers only when >1 option is available
+    private bool _pickerOptionsReady = false;
+    private bool ShowCpuPicker => _pickerOptionsReady && (emu?.Controller.CpuCoreOptions?.Count ?? 0) > 1;
+    private bool ShowPpuPicker => _pickerOptionsReady && (emu?.Controller.PpuCoreOptions?.Count ?? 0) > 1;
+    private bool ShowApuPicker => _pickerOptionsReady && (emu?.Controller.ApuCoreOptions?.Count ?? 0) > 1;
+    private bool ShowClockPicker => _pickerOptionsReady && (emu?.Controller.ClockCoreOptions?.Count ?? 0) > 1;
+    private bool ShowShaderPicker => _pickerOptionsReady && (emu?.Controller.ShaderOptions?.Count() ?? 0) > 1;
 }
 

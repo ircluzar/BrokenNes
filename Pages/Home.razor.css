@@ -1,17 +1,5 @@
-.home-hero{min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:2rem;background:#000;text-align:center;image-rendering:pixelated;position:relative;overflow:hidden;}
-.pixel-bg-host{position:absolute;inset:0;z-index:0;pointer-events:none;}
-.pixel-bg-host .hp-tile{position:absolute;will-change:opacity;}
+.home-hero{min-height:calc(100vh - 60px);display:flex;align-items:center;justify-content:center;padding:2rem;background:transparent;text-align:center;image-rendering:pixelated;position:relative;overflow:hidden;}
 .home-hero > .hero-inner{position:relative;z-index:10;}
-.pixel-vignette{position:absolute;inset:0;z-index:5;pointer-events:none;background:
-	radial-gradient(circle at center,rgba(0,0,0,0) 55%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0.85) 100%),
-	repeating-conic-gradient(from 45deg,rgba(0,0,0,0) 0deg,rgba(0,0,0,0) 15deg,rgba(30,0,0,0.35) 15deg,rgba(30,0,0,0.35) 30deg);
-	mix-blend-mode:normal;animation:vignetteSpin 180s linear infinite;}
-@keyframes vignetteSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-/* Hard square dither mask at edges */
-.pixel-vignette:after{content:"";position:absolute;inset:0;background:
-	repeating-linear-gradient(90deg,rgba(0,0,0,0) 0 6px,rgba(0,0,0,0.6) 6px 12px),
-	repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 6px,rgba(0,0,0,0.65) 6px 12px);
-	opacity:.55;mask:radial-gradient(circle at center, #000 60%, transparent 100%);}
 .hero-inner{max-width:760px;}
 .hero-title{font-family:'Press Start 2P', monospace;font-size:clamp(2.1rem,6vw,4rem);line-height:1.05;margin:0 0 1rem;font-weight:400;letter-spacing:2px;color:#ff5a26;text-shadow:none;filter:none;}
 .hero-title span{color:#ffffff;}

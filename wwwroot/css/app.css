@@ -19,7 +19,8 @@
 
 html, body {
     font-family: 'Orbitron', 'Courier New', monospace;
-    background: radial-gradient(circle at 30% 20%, #121214 0%, var(--nes-darker-bg) 70%) fixed;
+    /* Pure black background behind animated pixel layer */
+    background: #000;
     color: var(--nes-text-light);
     min-height: 100vh;
     margin: 0;
@@ -1155,6 +1156,8 @@ code {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+    position: relative;
+    z-index: 5; /* Keep all app chrome and page content above background layers */
 }
 .app-bar { 
   display:flex; 
@@ -1165,6 +1168,9 @@ code {
   border-bottom:2px solid var(--nes-border); 
   width: 100%;
   box-sizing: border-box;
+    /* Ensure navbar is above background vignette/tiles */
+    position: relative;
+    z-index: 100;
 }
 .app-bar .brand { 
   font-family:'Press Start 2P', monospace; 
@@ -1202,6 +1208,16 @@ code {
   padding:12px 0; 
   opacity:0.6; 
 }
+
+/* ===== Global animated pixel background host (persist across pages) ===== */
+.pixel-bg-host{position:fixed;inset:0;z-index:0;pointer-events:none;}
+.pixel-bg-host .hp-tile{position:absolute;will-change:opacity, left;}
+.pixel-vignette{position:fixed;inset:0;z-index:0;pointer-events:none;background:
+    radial-gradient(circle at center,rgba(0,0,0,0) 55%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0.85) 100%),
+    repeating-conic-gradient(from 45deg,rgba(0,0,0,0) 0deg,rgba(0,0,0,0) 15deg,rgba(30,0,0,0.35) 15deg,rgba(30,0,0,0.35) 30deg);
+    mix-blend-mode:normal;animation:vignetteSpin 180s linear infinite;}
+@keyframes vignetteSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+
 
 @media (max-width:768px){
   .app-bar { 

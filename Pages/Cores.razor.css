@@ -1,9 +1,9 @@
 /* Retro container, align with DeckBuilder */
-.cores-root{max-width:min(860px,96vw);margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:#000;color:#fff;font-family:'Press Start 2P', monospace;position:relative;overflow:hidden;box-sizing:border-box;width:100%;}
+.cores-root{max-width:min(860px,96vw);margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;position:relative;overflow:hidden;box-sizing:border-box;width:100%;}
 .cores-title{margin:0 0 1rem;font-size:1.7rem;color:#ff5a26;}
 
 /* Toolbar */
-.filters-toolbar{border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;padding:.8rem 1rem;margin:0 0 1rem;background:#000;}
+.filters-toolbar{border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;padding:.8rem 1rem;margin:0 0 1rem;background:rgba(0,0,0,0.5);}
 .filters-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:1rem;font-size:.7rem;}
 .filter-field{display:flex;flex-direction:column;gap:.35rem;min-width:140px;}
 .order-control{display:flex;align-items:center;gap:.5rem;}

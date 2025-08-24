@@ -9,6 +9,7 @@ public class GameSave
     public List<string> Achievements { get; set; } = new();
 
     // Feature unlocks (gates advanced emulator tooling in UI)
+    public bool SavestatesUnlocked { get; set; } = false; // Savestates (Save/Load)
     public bool RtcUnlocked { get; set; } = false; // Real-Time Corruptor
     public bool GhUnlocked { get; set; } = false;  // Glitch Harvester
     public bool ImagineUnlocked { get; set; } = false; // Imagine (AI model)

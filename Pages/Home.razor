@@ -6,8 +6,6 @@
 @if (!showHealthWarning)
 {
     <div class="home-hero hero-fade-in">
-        <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
-        <div class="pixel-vignette" aria-hidden="true"></div>
         <div class="hero-inner title-screen">
             <h1 class="hero-title fade-seq" data-seq="0">Broken<span>Nes</span></h1>
             <div class="title-buttons">
@@ -46,9 +44,16 @@
     <div class="modal-backdrop about-backdrop" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6500;">
         <div class="about-modal">
             <div class="about-body">
-                <h2 class="about-title">ABOUT</h2>
-                <p class="about-text">BrokenNes is an experimental NES emulator & tooling sandbox. This modal replaces a full page to keep audio alive.</p>
-                <p class="about-text small">Build: @BuildVersion</p>
+                <h2 class="about-title">About BrokenNes</h2>
+                <p class="about-text">BrokenNes is an ongoing experiment to show that a usable, browser‑based NES emulator and corruption toolkit can be built with large language models doing most of the development work under extreme supervision from a human architect.</p>
+                <p class="about-text">This is the fifth major attempt—and the first to land—made possible by a big step up in model capability with GPT‑5.</p>
+                <p class="about-text">Two models played complementary roles throughout the project:</p>
+                <ul class="about-text" style="margin:.4rem 0 1rem; padding-left:1.1rem;">
+                    <li><strong>GPT‑5</strong>: excels at deep reasoning, research, and untangling tricky bugs in messy code; best used in focused bursts as it can drift over very long sessions.</li>
+                    <li><strong>Claude Sonnet 4</strong>: great for large refactors, high‑volume edits, and persistent, repetitive work without giving up.</li>
+                </ul>
+                <p class="about-text">Implementation ideas were informed by prior work such as NET‑NES, QuickNES, and NesHawk. See the repository’s license file for full credits.</p>
+                <p class="about-text">Design and architecture by <strong>ircluzar</strong></p>
                 <button class="about-close" @onclick="HideAbout" aria-label="Close About">CLOSE</button>
             </div>
         </div>
