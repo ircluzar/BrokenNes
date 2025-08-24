@@ -44,7 +44,29 @@
                 <button @onclick="UnlockEverything">Unlock Everything</button>
             </div>
             <div class="opt-row small-note">Gives you all cores in your save for 100% completion. Achievements are not changed.</div>
+            <div class="opt-row">
+                <button @onclick="ToggleFeatureUnlocks">Edit save</button>
+            </div>
         </section>
+        @if (ShowFeatureUnlocks)
+        {
+            <section class="opt-section">
+                <h3 class="opt-h3">Feature Unlocks</h3>
+                <div class="opt-row">
+                    <button @onclick="UnlockRtc">Unlock Real-Time Corruptor</button>
+                </div>
+                <div class="opt-row">
+                    <button @onclick="UnlockGh">Unlock Glitch Harvester</button>
+                </div>
+                <div class="opt-row">
+                    <button @onclick="UnlockImagine">Unlock Imagine</button>
+                </div>
+                <div class="opt-row">
+                    <button @onclick="UnlockDebug">Unlock Debug</button>
+                </div>
+                <div class="opt-row small-note">Toggles the game-save gates for these advanced features. You can also unlock them by progressing in-game.</div>
+            </section>
+        }
     </div>
     <div class="opt-footer">
     <a href="?skipHW=1" class="opt-link">RETURN</a>
@@ -55,6 +77,7 @@
     private int MasterPct { get; set; } = 100;
     private int MusicPct { get; set; } = 42;
     private int SfxPct { get; set; } = 80;
+    private bool ShowFeatureUnlocks { get; set; } = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -112,7 +135,38 @@
 
     private async Task UnlockEverything()
     {
-        try { await SaveSvc.UnlockAllCoresAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('All cores unlocked in your DeckBuilder save.')"); } catch { }
+    // Unlock cores and advanced features
+    try { await SaveSvc.UnlockAllCoresAsync(); } catch { }
+    try { await SaveSvc.UnlockAllFeaturesAsync(); } catch { }
+    try { await JS.InvokeVoidAsync("eval", "alert('All cores and advanced features unlocked in your DeckBuilder save.')"); } catch { }
+    }
+
+    private async Task UnlockRtc()
+    {
+        try { await SaveSvc.UnlockRtcAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('Real-Time Corruptor unlocked. Open the NES to use it.')"); } catch { }
+    }
+
+    private async Task UnlockGh()
+    {
+        try { await SaveSvc.UnlockGhAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('Glitch Harvester unlocked. Open the NES to use it.')"); } catch { }
+    }
+
+    private async Task UnlockImagine()
+    {
+        try { await SaveSvc.UnlockImagineAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('Imagine unlocked. Related options will appear in the NES UI.')"); } catch { }
+    }
+
+    private async Task UnlockDebug()
+    {
+        try { await SaveSvc.UnlockDebugAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('Debug features unlocked. This is opt-in and not included in Unlock Everything.')"); } catch { }
+    }
+
+    private void ToggleFeatureUnlocks()
+    {
+        ShowFeatureUnlocks = !ShowFeatureUnlocks;
     }
 }

@@ -37,6 +37,13 @@ public class GameSaveService
                     loaded.OwnedApuIds ??= new();
                     loaded.OwnedClockIds ??= new();
                     loaded.OwnedShaderIds ??= new();
+                    // Ensure unlock flags are present (backward compatibility defaults)
+                    // Keep them off by default to respect progression; options can unlock.
+                    // Note: when adding more flags in future, guard similarly.
+                    _ = loaded.RtcUnlocked;
+                    _ = loaded.GhUnlocked;
+                    _ = loaded.ImagineUnlocked;
+                    _ = loaded.DebugUnlocked;
                     return loaded;
                 }
             }
@@ -54,6 +61,7 @@ public class GameSaveService
         save.OwnedApuIds ??= new();
         save.OwnedClockIds ??= new();
         save.OwnedShaderIds ??= new();
+    // Unlock flags already default to false if missing
         try
         {
             var json = JsonSerializer.Serialize(save);
@@ -69,6 +77,10 @@ public class GameSaveService
         {
             Level = 1,
             Achievements = new(),
+            RtcUnlocked = false,
+            GhUnlocked = false,
+            ImagineUnlocked = false,
+            DebugUnlocked = false,
             OwnedCpuIds = new() { "FMC" },
             OwnedPpuIds = new() { "FMC" },
             OwnedApuIds = new() { "FMC" },
@@ -94,6 +106,44 @@ public class GameSaveService
         try { save.OwnedApuIds = CoreRegistry.ApuIds?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedApuIds = new(); }
         try { save.OwnedClockIds = ClockRegistry.Ids?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedClockIds = new(); }
         try { save.OwnedShaderIds = _shaderProvider.All?.Select(s => s.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedShaderIds = new(); }
+        await SaveAsync(save);
+    }
+
+    // Feature unlock helpers (used from Options and game flow when earned)
+    public async Task UnlockRtcAsync()
+    {
+        var save = await LoadAsync();
+        save.RtcUnlocked = true;
+        await SaveAsync(save);
+    }
+
+    public async Task UnlockGhAsync()
+    {
+        var save = await LoadAsync();
+        save.GhUnlocked = true;
+        await SaveAsync(save);
+    }
+
+    public async Task UnlockImagineAsync()
+    {
+        var save = await LoadAsync();
+        save.ImagineUnlocked = true;
+        await SaveAsync(save);
+    }
+
+    public async Task UnlockAllFeaturesAsync()
+    {
+        var save = await LoadAsync();
+        save.RtcUnlocked = true;
+        save.GhUnlocked = true;
+        save.ImagineUnlocked = true;
+        await SaveAsync(save);
+    }
+
+    public async Task UnlockDebugAsync()
+    {
+        var save = await LoadAsync();
+        save.DebugUnlocked = true;
         await SaveAsync(save);
     }
 

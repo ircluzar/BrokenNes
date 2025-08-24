@@ -105,8 +105,14 @@
             </div>
             <div id="mobile-fs-view-bar">
                 <button data-view="controller" class="view-btn @(emu!.UI.MobileFullscreenView=="controller"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewController())">Controller</button>
-                <button data-view="rtc" class="view-btn @(emu!.UI.MobileFullscreenView=="rtc"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewRtc())">RTC</button>
-                <button data-view="gh" class="view-btn @(emu!.UI.MobileFullscreenView=="gh"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewGh())">Glitch Harvester</button>
+                @if (emu!.RtcUnlocked)
+                {
+                    <button data-view="rtc" class="view-btn @(emu!.UI.MobileFullscreenView=="rtc"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewRtc())">RTC</button>
+                }
+                @if (emu!.GhUnlocked)
+                {
+                    <button data-view="gh" class="view-btn @(emu!.UI.MobileFullscreenView=="gh"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewGh())">Glitch Harvester</button>
+                }
             </div>
             <div class="mobile-fs-extra-views">
                 @if (emu!.UI.MobileFullscreenView == "controller")
@@ -140,7 +146,7 @@
                         </div>
                     </div>
                 }
-                else if (emu!.UI.MobileFullscreenView == "rtc")
+                else if (emu!.UI.MobileFullscreenView == "rtc" && emu!.RtcUnlocked)
                 {
                     <div class="mobile-view rtc-view small">
                         <div class="d-flex align-items-center justify-content-between mb-2">
@@ -178,8 +184,11 @@
                                             <option value="RANDOMTILT">RANDOMTILT</option>
                                             <option value="NOP">NOP</option>
                                             <option value="BITFLIP">BITFLIP</option>
-                                            <option value="IMAGINENEXT">IMAGINE_NEXT</option>
-                                            <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
+                                            @if (emu!.ImagineUnlocked)
+                                            {
+                                                <option value="IMAGINENEXT">IMAGINE_NEXT</option>
+                                                <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
+                                            }
                                         </select>
                                     </div>
                                     <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
@@ -189,7 +198,7 @@
                         </div>
                     </div>
                 }
-                else if (emu!.UI.MobileFullscreenView == "gh")
+                else if (emu!.UI.MobileFullscreenView == "gh" && emu!.GhUnlocked)
                 {
                     <div class="mobile-view gh-view small">
                         <div class="gh-section mb-3">
@@ -350,6 +359,8 @@
         </div>
     </details>
 
+    @if (emu!.RtcUnlocked)
+    {
     <details id="corruptor-panel" class="panel-block corruptor-panel">
         <summary>Real-Time Corruptor</summary>
         <div class="panel-content corruptor-content">
@@ -367,12 +378,18 @@
                         <select class="form-select form-select-sm mt-1" @onchange="(e)=>emu!.SetCrashBehavior(e.Value?.ToString()??string.Empty)" value="@emu!.Corruptor.CrashBehavior">
                             <option value="RedScreen">Red Screen</option>
                             <option value="IgnoreErrors">Ignore Errors</option>
-                            <option value="ImagineFix">Imagine Fix</option>
+                            @if (emu!.ImagineUnlocked)
+                            {
+                                <option value="ImagineFix">Imagine Fix</option>
+                            }
                         </select>
-                        <div class="form-check form-switch mt-2">
-                            <input class="form-check-input" type="checkbox" id="stubbornToggle" @onchange="(e)=>{ var val = (e.Value is bool b && b) || (e.Value is string sv && bool.TryParse(sv, out var p) && p); if (emu!.Corruptor.StubbornMode != val) emu!.SetStubbornMode(val); }" checked="@emu!.Corruptor.StubbornMode" />
-                            <label class="form-check-label" for="stubbornToggle" title="When Imagine Fix is selected, keep retrying predictions periodically during freezes">Stubborn mode</label>
-                        </div>
+                        @if (emu!.ImagineUnlocked)
+                        {
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="stubbornToggle" @onchange="(e)=>{ var val = (e.Value is bool b && b) || (e.Value is string sv && bool.TryParse(sv, out var p) && p); if (emu!.Corruptor.StubbornMode != val) emu!.SetStubbornMode(val); }" checked="@emu!.Corruptor.StubbornMode" />
+                                <label class="form-check-label" for="stubbornToggle" title="When Imagine Fix is selected, keep retrying predictions periodically during freezes">Stubborn mode</label>
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="col-12 col-sm-7">
@@ -399,8 +416,11 @@
                                 <option value="RANDOMTILT">RANDOMTILT</option>
                                 <option value="NOP">NOP</option>
                                 <option value="BITFLIP">BITFLIP</option>
-                                <option value="IMAGINENEXT">IMAGINE_NEXT</option>
-                                <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
+                                @if (emu!.ImagineUnlocked)
+                                {
+                                    <option value="IMAGINENEXT">IMAGINE_NEXT</option>
+                                    <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
+                                }
                             </select>
                         </div>
                         <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
@@ -410,7 +430,10 @@
             </div>
         </div>
     </details>
+    }
 
+    @if (emu!.GhUnlocked)
+    {
     <details class="panel-block glitch-harvester-panel">
         <summary>Glitch Harvester</summary>
         <div class="panel-content glitch-harvester-content small">
@@ -522,7 +545,10 @@
             </div>
         </div>
     </details>
+    }
 
+    @if (emu!.ImagineUnlocked)
+    {
     <details class="panel-block imagine-panel">
         <summary>Imagine</summary>
         <div class="panel-content small">
@@ -642,6 +668,7 @@
             }
         </div>
     </details>
+    }
 
         <details class="panel-block">
         <summary>Controls</summary>
@@ -703,6 +730,8 @@
         </div>
     </details>
 
+    @if (emu!.DebugUnlocked)
+    {
         <details class="panel-block">
         <summary>Debug</summary>
         <div class="panel-content debug-mini">
@@ -1036,6 +1065,7 @@
             }
         </div>
     </details>
+    }
     </aside>
 </div>
 

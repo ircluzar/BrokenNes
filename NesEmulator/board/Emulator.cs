@@ -89,7 +89,11 @@ namespace BrokenNes
         private const string SaveKey = "nes_state_slot0";
         private bool stateBusy = false;
         private string debugDump = string.Empty;
-    private BrokenNes.Models.GameSave? _gameSave; // Loaded game save for DeckBuilder
+    private BrokenNes.Models.GameSave? _gameSave; // Loaded game save for DeckBuilder and feature gates
+    public bool RtcUnlocked => _gameSave?.RtcUnlocked == true;
+    public bool GhUnlocked => _gameSave?.GhUnlocked == true;
+    public bool ImagineUnlocked => _gameSave?.ImagineUnlocked == true;
+    public bool DebugUnlocked => _gameSave?.DebugUnlocked == true;
     // Benchmark subsystem is moved to Benchmark.cs partial (fields retained there)
     private bool eventSchedulerOn = false; // still accessed by UI toggles
         private bool soundFontMode = false;
