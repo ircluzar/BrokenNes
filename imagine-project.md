@@ -166,7 +166,7 @@ Use this editable checklist to track implementation. Tick subtasks as you comple
 
 - [ ] Milestone 1: Runtime + assets (ONNX + onnxruntime-web)
   - [ ] Place model at `wwwroot/models/6502_span_predictor_epoch25.onnx`
-  - [ ] Add optional manifest `wwwroot/models/models.json` (e.g., `{ "epochs": [25], "default": 25 }`)
+  - [x] Add optional manifest `wwwroot/models/models.json` (e.g., `{ "epochs": [25], "default": 25 }`)
   - [ ] Verify model input/output shapes match `WebUse.md` (in: [128] 0..256; out: [128, 257])
   - [ ] Acceptance: `/models/6502_span_predictor_epoch25.onnx` is fetchable in dev and publish
   - [ ] Acceptance: If model missing, UI shows friendly error and keeps Predict disabled
