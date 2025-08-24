@@ -79,6 +79,14 @@ public class Mapper3 : IMapper
         }
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1; if (address < 0x8000) return false;
+        // PRG is fixed for CNROM: 16KB mirror or 32KB linear
+        if (cart.prgBanks == 1) prgIndex = address & 0x3FFF; else prgIndex = address - 0x8000;
+        if (prgIndex >= 0 && prgIndex < cart.prgROM.Length) return true; prgIndex = -1; return false;
+    }
+
     private class Mapper3State { public int chrBank; }
     public object GetMapperState() => new Mapper3State { chrBank = chrBank };
     public void SetMapperState(object state)

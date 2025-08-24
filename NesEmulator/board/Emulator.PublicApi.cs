@@ -96,11 +96,36 @@ namespace BrokenNes
             {
                 if (nesController.nes != null)
                 {
-                    if (crashBehavior == "IgnoreErrors")
+                    if (string.Equals(crashBehavior, "IgnoreErrors", StringComparison.OrdinalIgnoreCase))
+                    {
                         nesController.nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors);
+                    }
+                    else if (string.Equals(crashBehavior, "ImagineFix", StringComparison.OrdinalIgnoreCase))
+                    {
+                        nesController.nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.ImagineFix);
+                    }
                     else
+                    {
                         nesController.nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
+                    }
                 }
+            }
+            catch { }
+        }
+
+        // Helper to apply the currently selected crash behavior to the active NES
+        private void ApplySelectedCrashBehavior()
+        {
+            try
+            {
+                if (nes == null) return;
+                var mode = Corruptor.CrashBehavior ?? "IgnoreErrors";
+                if (string.Equals(mode, "IgnoreErrors", StringComparison.OrdinalIgnoreCase))
+                    nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors);
+                else if (string.Equals(mode, "ImagineFix", StringComparison.OrdinalIgnoreCase))
+                    nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.ImagineFix);
+                else
+                    nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
             }
             catch { }
         }

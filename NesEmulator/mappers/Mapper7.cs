@@ -62,6 +62,15 @@ public class Mapper7 : IMapper
             cart.chrRAM[address] = value;
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1; if (address < 0x8000) return false;
+        int bank = prgBank % (cart.prgBanks == 0 ? 1 : cart.prgBanks);
+        int index = bank * 0x8000 + (address - 0x8000);
+        if ((uint)index < cart.prgROM.Length) { prgIndex = index; return true; }
+        return false;
+    }
+
     private class Mapper7State { public int prgBank; public bool highNametable; }
     public object GetMapperState() => new Mapper7State { prgBank = prgBank, highNametable = highNametable };
     public void SetMapperState(object state)

@@ -31,9 +31,34 @@ namespace NesEmulator
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
 		private bool crashed = false; private string crashInfo = string.Empty; private CrashKind crashKind = CrashKind.Generic;
 		private enum CrashKind { Generic, UnsupportedMapper }
-		public enum CrashBehavior { RedScreen, IgnoreErrors }
+		public enum CrashBehavior { RedScreen, IgnoreErrors, ImagineFix }
 		private CrashBehavior crashBehavior = CrashBehavior.RedScreen;
 		public void SetCrashBehavior(CrashBehavior behavior) { crashBehavior = behavior; if (behavior == CrashBehavior.IgnoreErrors) { crashed = false; crashInfo = string.Empty; if (bus?.cpu != null) bus.cpu.IgnoreInvalidOpcodes = true; } else if (bus?.cpu != null) { bus.cpu.IgnoreInvalidOpcodes = false; } }
+
+		// Host callback: when Imagine Fix is enabled and a crash or freeze is detected,
+		// NES will invoke this action with the current PC. The host can run the Imagine
+		// pipeline to predict bytes and patch PRG ROM.
+		public Action<ushort>? ImagineShot { get; set; }
+
+		// Simple freeze (CPU lock) detector: if PC stays identical across many frames,
+		// trigger a one-shot Imagine attempt to try to "unstick" flow.
+		private ushort _lastPcForFreeze;
+		private int _samePcFrames;
+		private int _freezeThresholdFrames = 60; // ~1s at 60 FPS
+		private bool _freezeShotArmed = true; // re-arms when PC moves
+		// Enhanced freeze heuristics: track per-frame PC window and write activity
+		private ushort _framePcMin;
+		private ushort _framePcMax;
+		private int _framePcSamples;
+		private int _tinyWindowFrames;
+		private int _freezeWindowThresholdFrames = 45; // slightly earlier than same-PC detection
+		private const int PcWindowBytesThreshold = 16; // consider tiny if PC stays within 16 bytes
+		private const int MinPcSamplesPerFrame = 4; // require a few samples to trust the window
+		private const int LowWriteThreshold = 4; // few writes suggests stall
+		// Optional: observe CPU idle-loop signal (available on CPU_SPD)
+		private bool _frameIdleLoopSeen;
+		private int _idleLoopStuckFrames;
+		private const int IdleLoopStuckThresholdFrames = 45;
 
 		// --- Visual test helpers ---
 		public void EnableStatic(bool on=true) { forceStatic = on; }
@@ -410,6 +435,14 @@ namespace NesEmulator
 		{
 			if (bus == null || crashed) return;
 			framesExecutedTotal++;
+			// Snapshot PC at frame start for simple freeze detection
+			ushort frameStartPc = 0; try { frameStartPc = bus!.cpu!.GetRegisters().PC; } catch { frameStartPc = 0; }
+			// Prep enhanced freeze sampling when ImagineFix is enabled
+			if (crashBehavior == CrashBehavior.ImagineFix)
+			{
+				try { bus!.ResetInstrumentation(); } catch { }
+				_framePcMin = 0xFFFF; _framePcMax = 0x0000; _framePcSamples = 0; _frameIdleLoopSeen = false;
+			}
 			// Compute target cycles for this frame using integer fixed-point method.
 			// Base cycles plus an extra cycle on frames where accumulator crosses denominator.
 			int targetCycles = BaseCyclesPerFrame;
@@ -463,7 +496,7 @@ namespace NesEmulator
 						if (globalCpuCycle >= nextIrqCycle) { nextIrqCycle = long.MaxValue; } // simple one-shot until real scheduling
 					}
 				}
-				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
+				catch (Exception ex) when (ex.GetType().Name == "CpuCrashException") { HandleCpuCrash(ex); return; }
 			}
 			else
 			{
@@ -505,13 +538,42 @@ namespace NesEmulator
 						}
 					}
 				}
-				catch (CPU_FMC.CpuCrashException ex) { HandleCpuCrash(ex); return; }
+				catch (Exception ex) when (ex.GetType().Name == "CpuCrashException") { HandleCpuCrash(ex); return; }
 			}
 			// (Exceptions already handled within each scheduling branch)
 			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
+
+			// Freeze detection (Imagine Fix mode only)
+			if (crashBehavior == CrashBehavior.ImagineFix && !crashed)
+			{
+				ushort frameEndPc = 0; try { frameEndPc = bus!.cpu!.GetRegisters().PC; } catch { }
+				// Heuristic A: exact same PC across frames
+				bool samePcThisFrame = (frameEndPc == frameStartPc && frameEndPc != 0);
+				if (samePcThisFrame) { _samePcFrames++; } else { _samePcFrames = 0; _lastPcForFreeze = frameEndPc; _freezeShotArmed = true; }
+
+				// Heuristic B: tiny PC window within the frame + very low write activity or idle-loop flag
+				bool tinyWindowThisFrame = false, lowWritesThisFrame = false;
+				try {
+					int window = (_framePcMax >= _framePcMin) ? (_framePcMax - _framePcMin) : int.MaxValue;
+					tinyWindowThisFrame = (_framePcSamples >= MinPcSamplesPerFrame) && (window <= PcWindowBytesThreshold);
+					var instr = bus!.GetInstrumentation();
+					lowWritesThisFrame = instr.Writes <= LowWriteThreshold;
+				} catch { }
+				bool windowFreezeThisFrame = tinyWindowThisFrame && (lowWritesThisFrame || _frameIdleLoopSeen);
+				if (windowFreezeThisFrame) _tinyWindowFrames++; else _tinyWindowFrames = 0;
+
+				bool trigger = (_samePcFrames >= _freezeThresholdFrames) || (_tinyWindowFrames >= _freezeWindowThresholdFrames) || (_frameIdleLoopSeen && _idleLoopStuckFrames >= IdleLoopStuckThresholdFrames);
+				if (trigger && _freezeShotArmed)
+				{
+					_freezeShotArmed = false; // one-shot until we observe progress again
+					try { ImagineShot?.Invoke(frameEndPc); } catch { }
+				}
+				// Track idle-loop persistence across frames
+				_idleLoopStuckFrames = _frameIdleLoopSeen ? (_idleLoopStuckFrames + 1) : 0;
+			}
 		}
 
 		// --- Batch scheduler configuration ---
@@ -561,12 +623,35 @@ namespace NesEmulator
 			bus!.StepAPU(total);
 			bus!.CountBatchFlush();
 			globalCpuCycle += total;
+			// Enhanced freeze detector sampling (ImagineFix only): record PC at batch boundaries
+			if (crashBehavior == CrashBehavior.ImagineFix)
+			{
+				try {
+					var regs = bus!.cpu!.GetRegisters();
+					ushort pc = regs.PC;
+					if (_framePcSamples == 0) { _framePcMin = pc; _framePcMax = pc; }
+					else { if (pc < _framePcMin) _framePcMin = pc; if (pc > _framePcMax) _framePcMax = pc; }
+					_framePcSamples++;
+					// Observe idle loop flag when available
+					if (!_frameIdleLoopSeen && bus.cpu is CPU_SPD spd && spd.InIdleLoop) _frameIdleLoopSeen = true;
+				} catch { }
+			}
 		}
-		private void HandleCpuCrash(CPU_FMC.CpuCrashException ex)
+	private void HandleCpuCrash(Exception ex)
 		{
 			if (crashBehavior == CrashBehavior.IgnoreErrors)
 			{
 				try { bus!.cpu!.AddToPC(1); } catch {}
+				return;
+			}
+			if (crashBehavior == CrashBehavior.ImagineFix)
+			{
+				// Request an Imagine shot at current PC and retry execution at the same PC
+				// so the CPU re-fetches the first byte after the patch is applied.
+				try { var regs = bus!.cpu!.GetRegisters(); ImagineShot?.Invoke(regs.PC); } catch { }
+				// NOTE: We intentionally do not advance PC here. This allows re-executing
+				// the instruction at the same address, assuming Imagine patched the bytes.
+				// Do not enter crashed state; continue running
 				return;
 			}
 			crashed = true;
@@ -939,6 +1024,13 @@ namespace NesEmulator
 		public byte PeekPrg(int index) => cartridge != null ? cartridge.PeekPrg(index) : (byte)0;
 		public void PokePrg(int index, byte val) { cartridge?.PokePrg(index, val); }
 		public int GetPrgRomSize() => cartridge?.PrgRomSize ?? 0;
+		// Mapper-aware CPU($8000-$FFFF) -> PRG ROM index. Returns false if not resolvable to PRG.
+		public bool TryCpuToPrgIndex(ushort cpuAddr, out int prgIndex)
+		{
+			prgIndex = -1;
+			if (cartridge?.mapper == null) return false;
+			return cartridge.mapper.TryCpuToPrgIndex(cpuAddr, out prgIndex);
+		}
 		public byte PeekPrgRam(int index) => cartridge != null ? cartridge.PeekPrgRam(index) : (byte)0;
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;

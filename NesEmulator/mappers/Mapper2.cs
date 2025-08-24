@@ -46,6 +46,24 @@ public class Mapper2 : IMapper { //UxROM
         }
     }
 
+    public bool TryCpuToPrgIndex(ushort addr, out int prgIndex)
+    {
+        prgIndex = -1; if (addr < 0x8000) return false;
+        if (addr <= 0xBFFF)
+        {
+            int index = (prgBank * 0x4000) + (addr - 0x8000);
+            if (index >= 0 && index < cartridge.prgROM.Length) { prgIndex = index; return true; }
+            return false;
+        }
+        else
+        {
+            int fixedBankStart = cartridge.prgROM.Length - 0x4000;
+            int index = fixedBankStart + (addr - 0xC000);
+            if (index >= 0 && index < cartridge.prgROM.Length) { prgIndex = index; return true; }
+            return false;
+        }
+    }
+
     private class Mapper2State { public byte prgBank; }
     public object GetMapperState() => new Mapper2State { prgBank = this.prgBank };
     public void SetMapperState(object state) {

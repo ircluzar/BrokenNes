@@ -49,7 +49,7 @@ namespace BrokenNes
                     AutoConfigureForApuCore();
                 }
                 catch { }
-                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                try { ApplySelectedCrashBehavior(); } catch { }
                 // Reset audio pipeline like top Load does (fire-and-forget to keep method signature)
                 try { _ = JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
@@ -85,7 +85,7 @@ namespace BrokenNes
                     AutoConfigureForApuCore();
                 }
                 catch { }
-                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                try { ApplySelectedCrashBehavior(); } catch { }
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
                 BuildMemoryDomains();
@@ -119,7 +119,7 @@ namespace BrokenNes
                     AutoConfigureForApuCore();
                 }
                 catch { }
-                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch { }
+                try { ApplySelectedCrashBehavior(); } catch { }
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 try { var _ = nes?.GetAudioBuffer(); } catch { }
                 BuildMemoryDomains();

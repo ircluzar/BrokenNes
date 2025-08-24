@@ -194,7 +194,7 @@ namespace BrokenNes
                             var romBytes = new byte[len]; int idx=0; foreach (var v in romEl.EnumerateArray()){ if(idx>=len) break; romBytes[idx++] = (byte)v.GetByte(); }
                             nes = new NesEmulator.NES { RomName = nesController.CurrentRomName };
                             nes.LoadROM(romBytes);
-                            try { nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+                            try { ApplySelectedCrashBehavior(); } catch {}
                             try { nes.RunFrame(); } catch {}
                             try { nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
                             BuildMemoryDomains();
@@ -208,7 +208,7 @@ namespace BrokenNes
                 try { nes?.RunFrame(); } catch {}
                 try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } } catch {}
                 nesController.AutoStaticSuppressed = true;
-                try { nes?.SetCrashBehavior(NesEmulator.NES.CrashBehavior.IgnoreErrors); } catch {}
+                try { ApplySelectedCrashBehavior(); } catch {}
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch {}
                 try { nesController.framebuffer = nes!.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
                 return true;

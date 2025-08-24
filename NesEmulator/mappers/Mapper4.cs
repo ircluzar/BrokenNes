@@ -159,6 +159,17 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1; if (address < 0x8000) return false;
+        int bankIndex = (address - 0x8000) / 0x2000; if ((uint)bankIndex > 3) bankIndex = 3;
+        int bankOffset = prgBankOffsets[bankIndex];
+        int addrOffset = address % 0x2000;
+        int finalOffset = (bankOffset + addrOffset) % cartridge.prgROM.Length;
+        if (finalOffset >= 0 && finalOffset < cartridge.prgROM.Length) { prgIndex = finalOffset; return true; }
+        return false;
+    }
+
     private void ApplyBankMapping() {        
         if (chrMode) {
             chrBankOffsets[0] = bankData[2] * 0x400;

@@ -123,6 +123,16 @@ public class Mapper5 : IMapper
         }
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1; if (address < 0x8000) return false;
+        int slot = (address - 0x8000) / 0x2000; if ((uint)slot > 3) slot = 3;
+        int baseOffset = prgSlotOffsets[slot];
+        int final = baseOffset + (address & 0x1FFF);
+        if ((uint)final < cart.prgROM.Length) { prgIndex = final; return true; }
+        return false;
+    }
+
     // --- Mapping logic ---
     private void RebuildPrgMapping()
     {

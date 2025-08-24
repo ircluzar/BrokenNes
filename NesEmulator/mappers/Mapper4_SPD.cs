@@ -262,5 +262,17 @@ public class Mapper4_SPD : IMapper { //MMC3 (Experimental)
             return sig;
         }
     }
+
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1;
+        if (address < 0x8000) return false;
+        int bankIndex = (address - 0x8000) / 0x2000; // 8KB windows
+        int bankOffset = prgBankOffsets[bankIndex];
+        int addressOffset = address % 0x2000;
+        int idx = bankOffset + addressOffset;
+        if (idx >= 0 && idx < cartridge.prgROM.Length) { prgIndex = idx; return true; }
+        return false;
+    }
 }
 }

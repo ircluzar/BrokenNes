@@ -48,6 +48,18 @@ public class Mapper0 : IMapper { //NROM
         }
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1;
+        if (address < 0x8000) return false;
+        if (cartridge.prgBanks == 1)
+            prgIndex = address & 0x3FFF; // 16KB mirror
+        else
+            prgIndex = address - 0x8000; // 32KB
+        if (prgIndex >= 0 && prgIndex < cartridge.prgROM.Length) return true;
+        prgIndex = -1; return false;
+    }
+
     private class Mapper0State { }
     public object GetMapperState() => new Mapper0State();
     public void SetMapperState(object state) { /* stateless */ }

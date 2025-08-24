@@ -122,7 +122,7 @@ namespace BrokenNes
         /// 2) Fallback: scan PRG ROM for the longest forward match starting at the same byte value.
         /// Returns true if a unique/best candidate is found.
         /// </summary>
-        private bool TryCpuToPrgIndex(ushort addr, out int prgIndex)
+    private bool TryCpuToPrgIndexByContent(ushort addr, out int prgIndex)
         {
             prgIndex = -1;
             if (nes == null) return false;
@@ -196,13 +196,14 @@ namespace BrokenNes
         {
             if (nes == null || bytes == null || bytes.Length == 0) return Task.FromResult(false);
             if (pc < 0x8000 || pc > 0xFFFF) return Task.FromResult(false);
-            try
+        try
             {
                 var writes = new List<BlastInstruction>(bytes.Length);
                 for (int i = 0; i < bytes.Length; i++)
                 {
                     ushort addr = (ushort)(pc + i);
-                    if (!TryCpuToPrgIndex(addr, out int prgIdx))
+            // Prefer mapper-aware mapping when available.
+            if (!(nes.TryCpuToPrgIndex(addr, out int prgIdx) || TryCpuToPrgIndexByContent(addr, out prgIdx)))
                     {
                         // Abort if any byte can't be mapped confidently
                         return Task.FromResult(false);

@@ -155,6 +155,22 @@ public class Mapper1 : IMapper { //MMC1 (Experimenal)
         prgBankOffset1 %= cartridge.prgROM.Length;
     }
 
+    public bool TryCpuToPrgIndex(ushort address, out int prgIndex)
+    {
+        prgIndex = -1;
+        if (address < 0x8000) return false;
+        if (address <= 0xBFFF)
+        {
+            prgIndex = prgBankOffset0 + (address - 0x8000);
+        }
+        else // 0xC000..0xFFFF
+        {
+            prgIndex = prgBankOffset1 + (address - 0xC000);
+        }
+        if (prgIndex >= 0 && prgIndex < cartridge.prgROM.Length) return true;
+        prgIndex = -1; return false;
+    }
+
     private class Mapper1State {
         public byte shiftRegister, control, chrBank0, chrBank1, prgBank; public int shiftCount;
     }
