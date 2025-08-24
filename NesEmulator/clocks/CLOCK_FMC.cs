@@ -8,8 +8,10 @@ namespace NesEmulator
     public sealed class CLOCK_FMC : IClock
     {
         public string CoreId => "FMC";
-        public string DisplayName => "FMC (JS driver)";
-        public string Description => "JavaScript requestAnimationFrame drives FrameTick(); JS presents frame & audio.";
+        public string DisplayName => "JS Driver";
+        public string Description => "JavaScript requestAnimationFrame drives the main Clock";
+        public int Performance => 0;
+        public int Rating => 3;
 
         public async ValueTask StartAsync(IClockHost host, CancellationToken ct)
         {

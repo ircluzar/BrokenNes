@@ -13,6 +13,11 @@ namespace NesEmulator
         // Brief description for tooltips/settings
         string Description { get; }
 
+    // Relative performance hint vs. baseline (percent). 0 = baseline
+    int Performance { get; }
+    // User-facing quality/fit score, 0-5
+    int Rating { get; }
+
         // Start the clock loop with the provided host. Implementations should return quickly
         // and perform their loop on a background task respecting the provided CancellationToken.
         ValueTask StartAsync(IClockHost host, CancellationToken ct);

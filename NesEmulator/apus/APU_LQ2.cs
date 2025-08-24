@@ -7,7 +7,7 @@ namespace NesEmulator
     // Core metadata (added per new interface contract)
     public string CoreName => "Low Quality";
     public string Description => "Based on the Famiclone (FMC) core, this core adds optimizations that result is degraded experience.";
-    public int Performance => 0;
+    public int Performance => -15;
     public int Rating => 1;
         private readonly Bus bus;
         public APU_LQ2(Bus bus) { this.bus = bus; }

@@ -5,10 +5,10 @@ namespace NesEmulator
     public class APU_WF : IAPU
     {
         // Core metadata
-        public string CoreName => "UNIMPLEMENTED";
-        public string Description => "UNIMPLEMENTED";
-        public int Performance => 0;
-        public int Rating => 1;
+        public string CoreName => "WebFont";
+        public string Description => "This APU converts Nes APU signals to Midi and routes them to a simple WebFont-based synthesizer";
+        public int Performance => -10;
+        public int Rating => 5;
         private Bus bus;
     public APU_WF(Bus bus)
         {

@@ -4,10 +4,10 @@ namespace NesEmulator
 public class PPU_BFR : IPPU
 {
 	// Core metadata
-	public string CoreName => "UNIMPLEMENTED";
-	public string Description => "UNIMPLEMENTED";
-	public int Performance => 0;
-	public int Rating => 1;
+	public string CoreName => "Bleeding Frames";
+	public string Description => "Based on the Famiclone (FMC) core, this experiment adds bleeding frame effects directly in the PPU.";
+	public int Performance => -10;
+	public int Rating => 2;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

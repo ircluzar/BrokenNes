@@ -6,9 +6,9 @@ namespace NesEmulator
 public class PPU_SPD : IPPU
 {
 	// Core metadata (new IPPU contract)
-	public string CoreName => "Speed";
+	public string CoreName => "Speedhacks";
 	public string Description => "Based on the Low Power (LOW) core, this variant adds speedhacks for faster emulation.";
-	public int Performance => 0;
+	public int Performance => 25;
 	public int Rating => 5;
 	private Bus bus;
 

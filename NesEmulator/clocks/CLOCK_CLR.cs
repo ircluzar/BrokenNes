@@ -8,8 +8,10 @@ namespace NesEmulator
     public sealed class CLOCK_CLR : IClock
     {
         public string CoreId => "CLR";
-        public string DisplayName => "CLR (C# Loop)";
-    public string Description => "Managed loop in C# with low-overhead scheduling; C# owns cadence incl. audio timing.";
+        public string DisplayName => "Exp. C# Driver";
+    public string Description => "Managed loop in C# with low-overhead scheduling drives the main Clock.";
+    public int Performance => -15;
+    public int Rating => 2;
 
         private volatile bool _running;
         private Task? _loopTask;

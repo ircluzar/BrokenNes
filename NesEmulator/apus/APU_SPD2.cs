@@ -7,10 +7,10 @@ namespace NesEmulator
     public class APU_SPD2 : IAPU
     {
         // Core metadata
-        public string CoreName => "UNIMPLEMENTED";
-        public string Description => "UNIMPLEMENTED";
-        public int Performance => 0;
-        public int Rating => 1;
+        public string CoreName => "EXP. Spd JNK";
+        public string Description => "Based on the Low Power (SPD) core, this failed optimization experiment added jank to sound emulation.";
+        public int Performance => 10;
+        public int Rating => 2;
         private Bus bus;
     public APU_SPD2(Bus bus)
     {

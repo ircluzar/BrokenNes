@@ -3,10 +3,10 @@ namespace NesEmulator
 {
 public sealed class CPU_LOW : ICPU {
 	// Metadata defaults
-	public string CoreName => "UNIMPLEMENTED";
-	public string Description => "UNIMPLEMENTED";
-	public int Performance => 0;
-	public int Rating => 1;
+	public string CoreName => "Low Power";
+	public string Description => "Based on the Famiclone (FMC) core, this variant optimizes performance and power consumption.";
+	public int Performance => 10;
+	public int Rating => 4;
 	public byte A, X, Y;
 	public ushort PC, SP;
 	public byte status; //Flags (P)

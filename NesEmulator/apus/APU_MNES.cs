@@ -5,10 +5,10 @@ namespace NesEmulator
     public class APU_MNES : IAPU
     {
         // Core metadata
-        public string CoreName => "UNIMPLEMENTED";
-        public string Description => "UNIMPLEMENTED";
-        public int Performance => 0;
-        public int Rating => 1;
+        public string CoreName => "MidiNes";
+        public string Description => "Based on the WebFont (WF) core, this variant pushes the Midi signals to an SF2 Soundfont based on the classic MidiNes cartridge by Wayfar.";
+        public int Performance => -15;
+        public int Rating => 4;
         private Bus bus;
     public APU_MNES(Bus bus)
         {

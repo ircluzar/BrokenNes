@@ -10,10 +10,10 @@ namespace NesEmulator
     public class APU_QN : IAPU
     {
     // Core metadata
-    public string CoreName => "UNIMPLEMENTED";
-    public string Description => "UNIMPLEMENTED";
-    public int Performance => 0;
-    public int Rating => 1;
+    public string CoreName => "QuickNes-like";
+    public string Description => "Retrofitted QuickNES APU from C++ to C#. Sounds clearer but has wobbling issues. ";
+    public int Performance => -10;
+    public int Rating => 2;
         private readonly Bus bus;
 
     // --- Core state ---

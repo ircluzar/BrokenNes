@@ -16,16 +16,17 @@
         {
           foreach (var c in CpuMeta)
           {
-            <div class="core-card" @key="c.Id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -33,15 +34,16 @@
         {
           foreach (var id in Cpu)
           {
-            <div class="core-card" @key="id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-          Performance = 0,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  Performance = 0,
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -54,16 +56,17 @@
         {
           foreach (var c in PpuMeta)
           {
-            <div class="core-card" @key="c.Id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -71,15 +74,16 @@
         {
           foreach (var id in Ppu)
           {
-            <div class="core-card" @key="id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-          Performance = 0,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  Performance = 0,
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -92,16 +96,17 @@
         {
           foreach (var c in ApuMeta)
           {
-            <div class="core-card" @key="c.Id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -109,15 +114,16 @@
         {
           foreach (var id in Apu)
           {
-            <div class="core-card" @key="id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-          Performance = 0,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+                  Performance = 0,
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -128,18 +134,19 @@
       <div class="card-grid">
         @if (ClockInfos.Count > 0)
         {
-          foreach (var c in ClockInfos)
+      foreach (var c in ClockInfos)
           {
-            <div class="core-card" @key="c.Id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
-                  Rating = 0,
-                  Performance = 0,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+    Rating = Math.Clamp(c.Rating, 0, 5),
+    Performance = c.Performance,
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -147,15 +154,16 @@
         {
           foreach (var id in Clock)
           {
-            <div class="core-card" @key="id">
-        @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
-                  Rating = 0,
-          Performance = 0,
-          FooterNote = "UNIMPLEMENTED"
-              }))
+      Rating = 0,
+      Performance = 0,
+                  FooterNote = "UNIMPLEMENTED"
+              };
+            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -168,8 +176,7 @@
         {
           foreach (var s in ShaderInfos)
           {
-            <div class="core-card" @key="s.Id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = s.Id,
                   ShortName = s.Id,
                   DisplayName = s.DisplayName,
@@ -177,7 +184,9 @@
                   Rating = Math.Clamp(s.Rating, 0, 5),
                   Performance = s.Performance,
                   FooterNote = s.Category
-              }))
+              };
+            <div class="core-card" @key="s.Id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -185,14 +194,15 @@
         {
           foreach (var id in Shaders)
           {
-            <div class="core-card" @key="id">
-              @((MarkupString)CardSvgRenderer.Render(new CoreCardModel {
+            var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
                   Performance = 0
-              }))
+              };
+            <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
+              @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
             </div>
           }
         }
@@ -209,17 +219,58 @@
   .card-section { }
   .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(166px, 1fr));
     gap: 16px;
     align-items: start;
   }
+  .core-card { cursor: pointer; }
   .core-card svg { width: 100%; height: auto; display: block; }
   .opt-h3 { margin: 8px 0 8px; }
   @@media (min-width: 1200px) {
     .card-sections { gap: 32px; }
     .card-grid { gap: 20px; }
   }
+
+  /* Modal zoom styles */
+  .card-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+  .card-modal-content { cursor: pointer; }
+  /* Make zoomed card fill most of the viewport, maintain aspect */
+  .card-modal-content svg {
+    width: min(96vw, calc(96vh * 0.7059));
+    height: auto;
+    max-height: 96vh;
+    aspect-ratio: 240 / 340;
+  }
+
+  /* Animations */
+  .card-modal-backdrop.opening { animation: fadeIn 160ms ease-out forwards; }
+  .card-modal-backdrop.closing { animation: fadeOut 160ms ease-in forwards; }
+  .card-modal-content.opening { animation: zoomIn 180ms ease-out forwards; }
+  .card-modal-content.closing { animation: zoomOut 160ms ease-in forwards; }
+
+  @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+  @@keyframes zoomIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
+  @@keyframes zoomOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.7); } }
 </style>
+
+@if (SelectedCard != null)
+{
+  <div class="card-modal-backdrop @(ModalClosing ? "closing" : "opening")" @onclick="CloseCard">
+    <div class="card-modal-content @(ModalClosing ? "closing" : "opening")" @onclick="CloseCard">
+      @((MarkupString)CardSvgRenderer.Render(SelectedCard))
+    </div>
+  </div>
+}
 
 @code {
   private IReadOnlyList<string> Cpu = Array.Empty<string>();
@@ -228,6 +279,8 @@
   private IReadOnlyList<string> Clock = Array.Empty<string>();
   private IReadOnlyList<string> Shaders = Array.Empty<string>();
   private List<ShaderInfo> ShaderInfos = new();
+  private CoreCardModel? SelectedCard;
+  private bool ModalClosing;
 
   private List<CoreMeta> CpuMeta = new();
   private List<CoreMeta> PpuMeta = new();
@@ -311,7 +364,7 @@
         Rating = SafeGetStruct(() => kv.Value.Rating) ?? 0
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
-      // Clock metadata (no perf/rating in IClock)
+      // Clock metadata (now implements Performance & Rating)
   ClockInfos = new List<ClockInfo>();
       foreach (var id in Clock)
       {
@@ -320,7 +373,13 @@
           var clk = ClockRegistry.Create(id);
           if (clk != null)
           {
-    ClockInfos.Add(new ClockInfo { Id = id, Name = clk.DisplayName, Description = clk.Description });
+    ClockInfos.Add(new ClockInfo {
+      Id = id,
+      Name = clk.DisplayName,
+      Description = clk.Description,
+      Performance = clk.Performance,
+      Rating = clk.Rating
+    });
           }
         }
         catch { }
@@ -331,6 +390,22 @@
     {
       // If anything fails (e.g., environment), fall back to simple ID lists already populated above
     }
+  }
+
+  private void OpenCard(CoreCardModel m)
+  {
+    ModalClosing = false;
+    SelectedCard = m;
+  }
+
+  private async Task CloseCard()
+  {
+    if (SelectedCard == null) return;
+    ModalClosing = true;
+    StateHasChanged();
+    try { await Task.Delay(180); } catch { }
+    SelectedCard = null;
+    ModalClosing = false;
   }
 
   private static T? SafeGet<T>(Func<T> getter)
@@ -357,6 +432,8 @@
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+  public int Performance { get; set; }
+  public int Rating { get; set; }
   }
 
   private sealed class ShaderInfo

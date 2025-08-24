@@ -4,10 +4,10 @@ namespace NesEmulator
 public class PPU_CUBE : IPPU
 {
 	// Core metadata
-	public string CoreName => "UNIMPLEMENTED";
-	public string Description => "UNIMPLEMENTED";
-	public int Performance => 0;
-	public int Rating => 1;
+	public string CoreName => "Enhanced PPU";
+	public string Description => "Based on the Low Power (LOW) core, this variant adds enhanced tile and background rendering. Does not work on every game.";
+	public int Performance => -5;
+	public int Rating => 4;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

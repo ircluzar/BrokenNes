@@ -10,10 +10,10 @@ namespace NesEmulator
     public class APU_QLQ : IAPU
     {
     // Core metadata
-    public string CoreName => "UNIMPLEMENTED";
-    public string Description => "UNIMPLEMENTED";
-    public int Performance => 0;
-    public int Rating => 1;
+    public string CoreName => "QN Low Quality 1";
+    public string Description => "Based on the QuickNes-like (QN) core, this failed optimizaion experiment introduces unstable notes.";
+    public int Performance => -15;
+    public int Rating => 2;
         private readonly Bus bus;
 
         // LUT-based nonlinear mixing (same formulas as APU_LOW) to eliminate

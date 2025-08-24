@@ -4,10 +4,10 @@ namespace NesEmulator
 public class PPU_LOW : IPPU
 {
 	// Metadata defaults
-	public string CoreName => "UNIMPLEMENTED";
-	public string Description => "UNIMPLEMENTED";
-	public int Performance => 0;
-	public int Rating => 1;
+	public string CoreName => "Low Power";
+	public string Description => "Based on the Famiclone (FMC) core, this variant optimizes performance and power consumption.";
+	public int Performance => 10;
+	public int Rating => 4;
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM

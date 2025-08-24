@@ -10,9 +10,9 @@ namespace NesEmulator
     public class APU_QLQ2 : IAPU
     {
     // Core metadata (new interface contract)
-    public string CoreName => "UNIMPLEMENTED";
-    public string Description => "UNIMPLEMENTED";
-    public int Performance => 0;
+    public string CoreName => "QN Low Quality 2";
+    public string Description => "Based on the QuickNes-like (QN) core, this failed optimizaion experiment broke sound clarity and stability.";
+    public int Performance => -15;
     public int Rating => 1;
         private readonly Bus bus;
 

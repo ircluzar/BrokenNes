@@ -20,13 +20,19 @@ public static class CardSvgRenderer
         var perfText = perf > 0 ? $"+{perf}%" : perf < 0 ? $"{perf}%" : "0%";
         var perfColor = perf > 0 ? "#16a34a" : perf < 0 ? "#dc2626" : "#6b7280"; // green/red/slate
 
-    // Retro layout metrics
+    // Fixed base canvas for consistent layout; scale via SVG width/height attributes
+    const int baseW = 240;
+    const int baseH = 340;
+    int svgW = width <= 0 ? baseW : width;
+    int svgH = height <= 0 ? baseH : height;
+
+    // Retro layout metrics (in base coordinates)
     const int pad = 14; // a bit more outer padding for airy layout
     int headerH = 40;   // taller header to accommodate two lines comfortably
     int perfBadgeW = 56;
     int perfBadgeH = 18;
     int imageH = 130;   // slightly smaller image area
-    int contentW = width - pad * 2;
+    int contentW = baseW - pad * 2;
     // Fixed description box metrics (keep box height stable; fit more, smaller lines inside)
     int descHeight = 76; // keep box stable
     int descTopPad = 10; // visual box padding above text area
@@ -41,18 +47,18 @@ public static class CardSvgRenderer
     var descLines = Wrap(desc, maxCharsPerLine: maxCharsPerLine, maxLines: descMaxLines);
 
         var sb = new StringBuilder();
-        sb.Append($"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {width} {height}' width='{width}' height='{height}' role='img' aria-label='Card for {displayName}'>");
+        sb.Append($"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {baseW} {baseH}' width='{svgW}' height='{svgH}' role='img' aria-label='Card for {displayName}'>");
 
     // Outer retro frame (border color based on rating)
-    sb.Append($"<rect x='0.5' y='0.5' width='{width - 1}' height='{height - 1}' fill='#000' stroke='{borderColor}' stroke-width='4' />");
-        sb.Append($"<rect x='6.5' y='6.5' width='{width - 13}' height='{height - 13}' fill='none' stroke='#ffffff' stroke-width='3' />");
+    sb.Append($"<rect x='0.5' y='0.5' width='{baseW - 1}' height='{baseH - 1}' fill='#000' stroke='{borderColor}' stroke-width='4' />");
+        sb.Append($"<rect x='6.5' y='6.5' width='{baseW - 13}' height='{baseH - 13}' fill='none' stroke='#ffffff' stroke-width='3' />");
 
     // Header: short name on first line, display name on second line, lighter and slightly smaller
     sb.Append($"<text x='{pad}' y='{pad + 12}' font-family=\"'Press Start 2P', monospace\" font-size='10' fill='#ffffff'>{shortName}</text>");
     sb.Append($"<text x='{pad}' y='{pad + 26}' font-family=\"'Press Start 2P', monospace\" font-size='9' fill='#e5e7eb'>{displayName}</text>");
 
     // Performance badge (nudged down a bit)
-    sb.Append($"<g transform='translate({width - pad - perfBadgeW},{pad + 6})'>");
+    sb.Append($"<g transform='translate({baseW - pad - perfBadgeW},{pad + 6})'>");
         sb.Append($"<rect width='{perfBadgeW}' height='{perfBadgeH}' fill='{perfColor}' />");
     sb.Append($"<text x='{perfBadgeW / 2}' y='{perfBadgeH - 5}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='9' fill='#0b0f14'>{EscapeXml(perfText)}</text>");
         sb.Append("</g>");
@@ -87,7 +93,7 @@ public static class CardSvgRenderer
         }
 
         // Footer id/note
-    sb.Append($"<text x='{pad}' y='{height - 18}' font-family=\"'Press Start 2P', monospace\" font-size='7' fill='#7f7f7f'>{EscapeXml(m.FooterNote ?? id)}</text>");
+    sb.Append($"<text x='{pad}' y='{baseH - 18}' font-family=\"'Press Start 2P', monospace\" font-size='7' fill='#7f7f7f'>{EscapeXml(m.FooterNote ?? id)}</text>");
 
         sb.Append("</svg>");
         return sb.ToString();

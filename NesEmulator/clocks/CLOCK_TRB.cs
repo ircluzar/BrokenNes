@@ -8,8 +8,10 @@ namespace NesEmulator
     public sealed class CLOCK_TRB : IClock
     {
         public string CoreId => "TRB";
-        public string DisplayName => "TRB (C# Loop)";
-    public string Description => "A fork of CLR that has uncapped speed.";
+        public string DisplayName => "Turbo C# Driver";
+    public string Description => "A variant of CLR that has uncapped speed.";
+    public int Performance => +15;
+    public int Rating => 4;
 
         private volatile bool _running;
         private Task? _loopTask;
