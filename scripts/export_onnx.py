@@ -37,13 +37,15 @@ import importlib.util
 import json
 import os
 import sys
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, List
+import glob
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Export PyTorch .pt to ONNX")
-    p.add_argument("--pt", required=True, help="Path to .pt checkpoint (TorchScript or state_dict)")
-    p.add_argument("--out", required=True, help="Output .onnx path")
+    # Single-file mode
+    p.add_argument("--pt", required=False, help="Path to .pt checkpoint (TorchScript or state_dict)")
+    p.add_argument("--out", required=False, help="Output .onnx path")
     p.add_argument("--factory", default=None,
                    help="Model factory in the form module_or_file:callable (required for state_dict)")
     p.add_argument("--factory-args", default=None,
@@ -52,6 +54,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vocab", type=int, default=257, help="Vocabulary size (default: 257 incl. MASK=256)")
     p.add_argument("--opset", type=int, default=17, help="ONNX opset version (default: 17)")
     p.add_argument("--no-check", action="store_true", help="Skip ONNX checker after export")
+    # Batch mode
+    p.add_argument("--batch-dir", default=None, help="Directory containing .pt files to export in batch mode")
+    p.add_argument("--batch-pattern", default="*.pt", help="Glob pattern to match .pt files (default: *.pt)")
+    p.add_argument("--out-dir", default=None, help="Output directory for ONNX files in batch mode (defaults to batch-dir)")
+    p.add_argument("--skip-existing", action="store_true", help="Skip export if destination .onnx already exists")
     return p.parse_args()
 
 
@@ -133,51 +140,54 @@ def build_model_from_factory(factory_spec: str, factory_args_json: Optional[str]
         return model
 
 
-def main() -> None:
-    args = parse_args()
-
-    # Lazy import heavy deps to speed up --help
+def _export_one(pt_path: str, out_path: str, args: argparse.Namespace) -> bool:
+    """Export a single .pt file to ONNX. Returns True on success."""
+    # Lazy import heavy deps here
     import torch
 
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
 
     # 1) Try TorchScript path first
-    model = _try_load_torchscript(args.pt)
+    model = _try_load_torchscript(pt_path)
     loaded_mode = "torchscript" if model is not None else None
 
-    # 2) Otherwise, attempt state_dict + factory
-    state_or_module = None
+    # 2) Otherwise, attempt state_dict + factory (with sensible fallback)
     if model is None:
-        state_or_module = _load_state_dict(args.pt)
+        state_or_module = _load_state_dict(pt_path)
         if state_or_module is None:
-            print("[error] The .pt file is neither TorchScript nor a recognizable state_dict.")
-            print("        If it is a state_dict, re-run with --factory module_or_file:callable and optional --factory-args.")
-            sys.exit(2)
-        # If it's an nn.Module instance, use it directly
+            print(f"[error] {pt_path}: not TorchScript and not a recognizable state_dict")
+            return False
         try:
             import torch.nn as nn
             if isinstance(state_or_module, nn.Module):
                 model = state_or_module
                 loaded_mode = "eager_module"
             else:
-                if not args.factory:
-                    print("[error] A factory is required to load weights into a model when exporting from a state_dict.")
-                    print("        Provide --factory module_or_file:callable and optional --factory-args JSON.")
-                    sys.exit(2)
-                model = build_model_from_factory(args.factory, args.factory_args)
+                factory_spec = args.factory
+                # Fallback: try local factory if not provided
+                if not factory_spec:
+                    # Prefer the in-repo factory for the 6502 span predictor
+                    repo_factory = os.path.join(os.path.dirname(__file__), "pt_factory_6502.py")
+                    if os.path.isfile(repo_factory):
+                        factory_spec = f"{repo_factory}:create_model"
+                if not factory_spec:
+                    print(f"[error] {pt_path}: state_dict requires --factory module_or_file:callable (no default found)")
+                    return False
+
+                model = build_model_from_factory(factory_spec, args.factory_args)
                 try:
                     model.load_state_dict(state_or_module, strict=False)
                 except Exception as e:
-                    print(f"[warn] load_state_dict failed with strict=False: {e}")
+                    print(f"[warn] {pt_path}: load_state_dict(strict=False) failed: {e}")
                     try:
-                        model.load_state_dict(state_or_module, strict=True)  # let it raise for clearer mismatch
+                        model.load_state_dict(state_or_module, strict=True)
                     except Exception as e2:
-                        print(f"[error] strict=True also failed: {e2}")
-                        sys.exit(2)
+                        print(f"[error] {pt_path}: load_state_dict(strict=True) also failed: {e2}")
+                        return False
                 loaded_mode = "state_dict"
         except Exception as e:
-            print(f"[error] Unexpected error while handling state/module: {e}")
-            sys.exit(2)
+            print(f"[error] {pt_path}: unexpected error while handling state/module: {e}")
+            return False
 
     assert model is not None
     model.eval()
@@ -192,11 +202,11 @@ def main() -> None:
     output_names = ["logits"]
     dynamic_axes = {"tokens": {0: "batch"}, "logits": {0: "batch"}}
 
-    print(f"[info] Exporting ({loaded_mode}) -> ONNX: {args.out}")
+    print(f"[info] Exporting ({loaded_mode}) -> ONNX: {out_path}")
     torch.onnx.export(
         model,
         dummy,
-        args.out,
+        out_path,
         export_params=True,
         opset_version=int(args.opset),
         do_constant_folding=True,
@@ -205,16 +215,60 @@ def main() -> None:
         dynamic_axes=dynamic_axes,
     )
 
-    # 5) Optional: Check the ONNX model
     if not args.no_check:
         try:
             import onnx
-            m = onnx.load(args.out)
+            m = onnx.load(out_path)
             onnx.checker.check_model(m)
             print("[ok] ONNX model passed checker.")
         except Exception as e:
             print(f"[warn] ONNX checker reported an issue: {e}")
+    return True
 
+
+def main() -> None:
+    args = parse_args()
+
+    # Determine mode
+    if args.batch_dir:
+        # Batch mode
+        bdir = os.path.abspath(args.batch_dir)
+        if not os.path.isdir(bdir):
+            print(f"[error] Batch dir not found: {bdir}")
+            sys.exit(2)
+        pattern = os.path.join(bdir, args.batch_pattern)
+        pt_files = sorted(glob.glob(pattern))
+        if not pt_files:
+            print(f"[warn] No files matched pattern: {pattern}")
+            sys.exit(1)
+        out_dir = os.path.abspath(args.out_dir or bdir)
+        os.makedirs(out_dir, exist_ok=True)
+
+        ok = 0
+        fail = 0
+        for pt in pt_files:
+            base = os.path.splitext(os.path.basename(pt))[0]
+            out = os.path.join(out_dir, base + ".onnx")
+            if args.skip_existing and os.path.isfile(out):
+                print(f"[skip] {out} already exists")
+                ok += 1
+                continue
+            if _export_one(pt, out, args):
+                ok += 1
+            else:
+                fail += 1
+
+        print(f"[done] Batch export complete. Success: {ok}, Failed: {fail}")
+        sys.exit(0 if fail == 0 else 3)
+
+    # Single-file mode (backward compatible)
+    if not args.pt or not args.out:
+        print("[error] In single-file mode you must provide --pt and --out. Or use --batch-dir for batch mode.")
+        sys.exit(2)
+
+    success = _export_one(args.pt, args.out, args)
+    if not success:
+        sys.exit(2)
     print("[done] Export complete.")
 
 

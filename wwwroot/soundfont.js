@@ -52,16 +52,32 @@
     };
 
     function ensureCtx(){
-        if(!ctx){ ctx = new (window.AudioContext||window.webkitAudioContext)(); }
+        if(!ctx){
+            try { if(window.nesInterop && typeof window.nesInterop.ensureAudioContext === 'function'){ window.nesInterop.ensureAudioContext(); } } catch {}
+            if(window.nesAudioCtx){ ctx = window.nesAudioCtx; }
+            else { ctx = new (window.AudioContext||window.webkitAudioContext)(); window.nesAudioCtx = ctx; }
+        }
         if(!outputGain){
             outputGain = ctx.createGain();
             // Master output gain (reduced to 50% per request to make entire soundfont quieter)
             outputGain.gain.value = 0.5;
-            // Route through nes master gain if available
+            // Prefer routing through the shared Music bus so Options -> Music volume applies
             try {
-                const master = window._nesMasterGain || null;
-                if(master && master.context === ctx){ outputGain.connect(master); }
-                else { outputGain.connect(ctx.destination); }
+                let music = window._nesMusicGain || null;
+                let master = window._nesMasterGain || null;
+                // If gains are missing or from another context, create in this context
+                if(!music || music.context !== ctx){
+                    music = ctx.createGain();
+                    window._nesMusicGain = music;
+                }
+                if(!master || master.context !== ctx){
+                    master = ctx.createGain();
+                    window._nesMasterGain = master;
+                    try { if(!master._nesConnected){ master.connect(ctx.destination); master._nesConnected = true; } } catch{}
+                }
+                try { music.disconnect(); } catch{}
+                try { music.connect(master); } catch{}
+                outputGain.connect(music);
             } catch { outputGain.connect(ctx.destination); }
         }
         initialized = true;

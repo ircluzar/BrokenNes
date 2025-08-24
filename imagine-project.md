@@ -12,6 +12,14 @@ Contents
 - Edge cases, testing, and next steps
 - Work document: step-by-step tasks and acceptance criteria
 
+## Current status (Aug 23, 2025)
+
+- JS runtime and API: imagine.js present and working; onnxruntime-web lazy-loaded on first use; loadModel/predictSpan operational.
+- C# interop: Load model, build 128-token window, predict span, and apply patch implemented; status/telemetry wired.
+- UI: Imagine panel and Debug modal wired; parameters (Bytes/Temp/TopK) bound; buttons gated by model state; prediction preview and patch apply working.
+- Flow: Freeze → build window → predict → optional patch → resume implemented; errors surface in Status and UI not left paused.
+- Assets: ONNX model not in repo yet; publish/lazy-load of model pending; advanced mapper-aware PRG patching pending.
+
 ## Goals and requirements
 
 - Load a model via the Imagine panel by epoch. Epoch 25 is provided and lives under `wwwroot/models`.
@@ -194,35 +202,35 @@ Use this editable checklist to track implementation. Tick subtasks as you comple
   - Implementations live in `NesEmulator/board/Emulator.ImagineInterop.cs` (window builder and patch included here).
   - Patch mapping currently assumes NROM/fixed-32KB PRG; safely aborts if CPU⇄PRG mapping check fails (banked mapper support to be added in Milestone 6).
 
-- [ ] Milestone 4: UI wiring in `Pages/Nes.razor`
-  - [ ] Wire "Load model" to `ImagineLoadModelAsync(epoch)` and show status: "Loaded epoch N (EP: wasm/webgl)"
-  - [ ] Disable Predict/Imagine buttons until model loaded
-  - [ ] Add params: Bytes to generate (1..32 default 4), Temperature (0.2..0.7 default 0.4), TopK (None/0 or 20..50 default 32)
-  - [ ] Debug modal: add "Run prediction (test)" and show predicted bytes/confidence (optional)
-  - [ ] Debug modal: add "Apply patch here" to call `ApplyImaginePatchAsync`
-  - [ ] "Imagine a bug": run freeze → predict L bytes at PC → patch → resume
-  - [ ] Acceptance: Buttons enable/disable based on model state and PRG ROM checks
-  - [ ] Acceptance: Debug modal shows context and predicted bytes; no write until "Apply" is clicked
+- [x] Milestone 4: UI wiring in `Pages/Nes.razor`
+  - [x] Wire "Load model" to `ImagineLoadModelAsync(epoch)` and show status: "Loaded epoch N (EP: wasm/webgl)"
+  - [x] Disable Predict/Imagine buttons until model loaded
+  - [x] Add params: Bytes to generate (1..32 default 4), Temperature (0.2..0.7 default 0.4), TopK (None/0 or 20..50 default 32)
+  - [x] Debug modal: add "Run prediction (test)" and show predicted bytes/confidence (optional)
+  - [x] Debug modal: add "Apply patch here" to call `ApplyImaginePatchAsync`
+  - [x] "Imagine a bug": run freeze → predict L bytes at PC → patch → resume
+  - [x] Acceptance: Buttons enable/disable based on model state and PRG ROM checks
+  - [x] Acceptance: Debug modal shows context and predicted bytes; no write until "Apply" is clicked
 
-- [ ] Milestone 5: Predict flow (freeze → build → predict)
-  - [ ] Freeze using `PauseEmulation()`; capture via `FreezeAndFetchNextInstructionAsync()`
-  - [ ] Compute `[holeStart, holeEnd)`; clamp L to page/bank and 1..32
-  - [ ] Build `tokens128` with MASK=256 at target positions
-  - [ ] Call `ImaginePredictSpanAsync(tokens128, holeStart, holeEnd, temperature, topK)`; handle errors/timeouts
-  - [ ] Acceptance: Predicted bytes array length equals L
-  - [ ] Acceptance: Errors toast in UI, emulator not left paused indefinitely
+- [x] Milestone 5: Predict flow (freeze → build → predict)
+  - [x] Freeze using `PauseEmulation()`; capture via `FreezeAndFetchNextInstructionAsync()`
+  - [x] Compute `[holeStart, holeEnd)`; clamp L to page/bank and 1..32
+  - [x] Build `tokens128` with MASK=256 at target positions
+  - [x] Call `ImaginePredictSpanAsync(tokens128, holeStart, holeEnd, temperature, topK)`; handle errors/timeouts
+  - [x] Acceptance: Predicted bytes array length equals L
+  - [x] Acceptance: Errors toast in UI, emulator not left paused indefinitely
 
 - [ ] Milestone 6: Patch integration via Corruptor (ROM domain)
-  - [ ] Translate [PC..PC+L) to PRG domain addresses honoring current mapper/bank
-  - [ ] Apply writes via existing Corruptor/RTC ROM write path
-  - [ ] Record stash entry tagged "Imagine" with PC, bytes, epoch, params, timestamp
+  - [ ] Translate [PC..PC+L) to PRG domain addresses honoring current mapper/bank (currently NROM/fixed-32KB only; safe-abort otherwise)
+  - [x] Apply writes via existing Corruptor/RTC ROM write path
+  - [x] Record stash entry tagged "Imagine" with PC, bytes, epoch, params, timestamp (epoch+timestamp recorded; params pending)
   - [ ] Provide undo using existing stash mechanics
   - [ ] Acceptance: `Next16` reflects patched bytes at PC; stash entry is visible, replayable/exportable
 
-- [ ] Milestone 7: Errors, edge cases, telemetry
-  - [ ] Disable actions when model not loaded, PC not in PRG ROM, or mapper blocks writes
-  - [ ] Telemetry: status "Imagine: loaded epoch N (EP: wasm/webgl)" and last action string
-  - [ ] Acceptance: No action executes when preconditions fail; concise feedback shown
+- [x] Milestone 7: Errors, edge cases, telemetry
+  - [x] Disable actions when model not loaded, PC not in PRG ROM, or mapper blocks writes
+  - [x] Telemetry: status "Imagine: loaded epoch N (EP: wasm/webgl)" and last action string
+  - [x] Acceptance: No action executes when preconditions fail; concise feedback shown
 
 - [ ] Milestone 8: Tests (manual + cross-device)
   - [ ] Manual: freeze near known sequence; Debug → prediction; compare vs original; apply patch; resume; observe divergence
@@ -236,16 +244,16 @@ Use this editable checklist to track implementation. Tick subtasks as you comple
   - [ ] Optionally pre-cache model in `wwwroot/sw.js`
   - [ ] Acceptance: Flat publish contains model; first Imagine use loads runtime; no 404s
 
-- [ ] Contracts and shapes (authoritative)
-  - [ ] JS request: `window[128]` 0..256; `holeStart` 0..127; `holeEnd` 0..127; `temperature` float; `topK` number|null
-  - [ ] JS response: `{ bytes: number[], logits?: number[] }`; bytes length `holeEnd-holeStart`
-  - [ ] C# wrappers: `ImagineLoadModelAsync`, `ImaginePredictSpanAsync`, `ApplyImaginePatchAsync`
+- [x] Contracts and shapes (authoritative)
+  - [x] JS request: `window[128]` 0..256; `holeStart` 0..127; `holeEnd` 0..127; `temperature` float; `topK` number|null
+  - [x] JS response: `{ bytes: number[], logits?: number[] }`; bytes length `holeEnd-holeStart`
+  - [x] C# wrappers: `ImagineLoadModelAsync`, `ImaginePredictSpanAsync`, `ApplyImaginePatchAsync`
 
 - [ ] Edge cases recap
-  - [ ] PC not in PRG ROM ($8000..$FFFF): warn, disable prediction
+  - [x] PC not in PRG ROM ($8000..$FFFF): warn, disable prediction
   - [ ] Large L (>16): consider autoregressive fallback; clamp UI to 1..32
-  - [ ] Near ROM boundaries: shift window and adjust indices
-  - [ ] Model not loaded: disable Predict; show error on invocation
+  - [x] Near ROM boundaries: shift window and adjust indices
+  - [x] Model not loaded: disable Predict; show error on invocation
 
 - [ ] Out of scope (v1)
   - [ ] Confidence UI beyond simple argmax probability

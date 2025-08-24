@@ -177,6 +177,8 @@
                                             <option value="RANDOMTILT">RANDOMTILT</option>
                                             <option value="NOP">NOP</option>
                                             <option value="BITFLIP">BITFLIP</option>
+                                            <option value="IMAGINENEXT">IMAGINE_NEXT</option>
+                                            <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
                                         </select>
                                     </div>
                                     <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
@@ -391,6 +393,8 @@
                                 <option value="RANDOMTILT">RANDOMTILT</option>
                                 <option value="NOP">NOP</option>
                                 <option value="BITFLIP">BITFLIP</option>
+                                <option value="IMAGINENEXT">IMAGINE_NEXT</option>
+                                <option value="IMAGINERANDOM">IMAGINE_RANDOM</option>
                             </select>
                         </div>
                         <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
@@ -513,67 +517,7 @@
         </div>
     </details>
 
-        <details class="panel-block">
-        <summary>Controls</summary>
-        <div class="panel-content small">
-            @if (emu!.InputSettingsPublic == null)
-            {
-                <div class="text-muted">Loading input settings…</div>
-            }
-            else
-            {
-                var s = emu!.InputSettingsPublic;
-                <div class="mb-1"><strong>Player 1</strong> (@s!.Player1.Device)</div>
-                @if (s!.Player1.Device == InputDeviceType.Keyboard)
-                {
-                    <div class="key-grid">
-                        <div>@s.Player1.Keyboard.Up: Up</div>
-                        <div>@s.Player1.Keyboard.Down: Down</div>
-                        <div>@s.Player1.Keyboard.Left: Left</div>
-                        <div>@s.Player1.Keyboard.Right: Right</div>
-                        <div>@s.Player1.Keyboard.B: B</div>
-                        <div>@s.Player1.Keyboard.A: A</div>
-                        <div>@s.Player1.Keyboard.Select: Select</div>
-                        <div>@s.Player1.Keyboard.Start: Start</div>
-                    </div>
-                }
-                else if (s.Player1.Device == InputDeviceType.Gamepad)
-                {
-                    <div>Gamepad [@s.Player1.GamepadIndex]: A=@s.Player1.Gamepad.A, B=@s.Player1.Gamepad.B, Select=@s.Player1.Gamepad.Select, Start=@s.Player1.Gamepad.Start</div>
-                }
-                else
-                {
-                    <div>Touch controller (mobile fullscreen)</div>
-                }
-                <hr />
-                <div class="mb-1"><strong>Player 2</strong> (@s.Player2.Device)</div>
-                @if (s.Player2.Device == InputDeviceType.Keyboard)
-                {
-                    <div class="key-grid">
-                        <div>@s.Player2.Keyboard.Up: Up</div>
-                        <div>@s.Player2.Keyboard.Down: Down</div>
-                        <div>@s.Player2.Keyboard.Left: Left</div>
-                        <div>@s.Player2.Keyboard.Right: Right</div>
-                        <div>@s.Player2.Keyboard.B: B</div>
-                        <div>@s.Player2.Keyboard.A: A</div>
-                        <div>@s.Player2.Keyboard.Select: Select</div>
-                        <div>@s.Player2.Keyboard.Start: Start</div>
-                    </div>
-                }
-                else if (s.Player2.Device == InputDeviceType.Gamepad)
-                {
-                    <div>Gamepad [@s.Player2.GamepadIndex]: A=@s.Player2.Gamepad.A, B=@s.Player2.Gamepad.B, Select=@s.Player2.Gamepad.Select, Start=@s.Player2.Gamepad.Start</div>
-                }
-                else
-                {
-                    <div>Touch controller (mobile fullscreen)</div>
-                }
-            }
-            <div class="mt-2"><a class="opt-link" href="./input">Configure Input…</a></div>
-        </div>
-    </details>
-
-        <details class="panel-block imagine-panel">
+    <details class="panel-block imagine-panel">
         <summary>Imagine</summary>
         <div class="panel-content small">
             <div class="d-flex align-items-end gap-2 flex-wrap mb-2">
@@ -690,6 +634,66 @@
                     </div>
                 </div>
             }
+        </div>
+    </details>
+
+        <details class="panel-block">
+        <summary>Controls</summary>
+        <div class="panel-content small">
+            @if (emu!.InputSettingsPublic == null)
+            {
+                <div class="text-muted">Loading input settings…</div>
+            }
+            else
+            {
+                var s = emu!.InputSettingsPublic;
+                <div class="mb-1"><strong>Player 1</strong> (@s!.Player1.Device)</div>
+                @if (s!.Player1.Device == InputDeviceType.Keyboard)
+                {
+                    <div class="key-grid">
+                        <div>@s.Player1.Keyboard.Up: Up</div>
+                        <div>@s.Player1.Keyboard.Down: Down</div>
+                        <div>@s.Player1.Keyboard.Left: Left</div>
+                        <div>@s.Player1.Keyboard.Right: Right</div>
+                        <div>@s.Player1.Keyboard.B: B</div>
+                        <div>@s.Player1.Keyboard.A: A</div>
+                        <div>@s.Player1.Keyboard.Select: Select</div>
+                        <div>@s.Player1.Keyboard.Start: Start</div>
+                    </div>
+                }
+                else if (s.Player1.Device == InputDeviceType.Gamepad)
+                {
+                    <div>Gamepad [@s.Player1.GamepadIndex]: A=@s.Player1.Gamepad.A, B=@s.Player1.Gamepad.B, Select=@s.Player1.Gamepad.Select, Start=@s.Player1.Gamepad.Start</div>
+                }
+                else
+                {
+                    <div>Touch controller (mobile fullscreen)</div>
+                }
+                <hr />
+                <div class="mb-1"><strong>Player 2</strong> (@s.Player2.Device)</div>
+                @if (s.Player2.Device == InputDeviceType.Keyboard)
+                {
+                    <div class="key-grid">
+                        <div>@s.Player2.Keyboard.Up: Up</div>
+                        <div>@s.Player2.Keyboard.Down: Down</div>
+                        <div>@s.Player2.Keyboard.Left: Left</div>
+                        <div>@s.Player2.Keyboard.Right: Right</div>
+                        <div>@s.Player2.Keyboard.B: B</div>
+                        <div>@s.Player2.Keyboard.A: A</div>
+                        <div>@s.Player2.Keyboard.Select: Select</div>
+                        <div>@s.Player2.Keyboard.Start: Start</div>
+                    </div>
+                }
+                else if (s.Player2.Device == InputDeviceType.Gamepad)
+                {
+                    <div>Gamepad [@s.Player2.GamepadIndex]: A=@s.Player2.Gamepad.A, B=@s.Player2.Gamepad.B, Select=@s.Player2.Gamepad.Select, Start=@s.Player2.Gamepad.Start</div>
+                }
+                else
+                {
+                    <div>Touch controller (mobile fullscreen)</div>
+                }
+            }
+            <div class="mt-2"><a class="opt-link" href="./input">Configure Input…</a></div>
         </div>
     </details>
 

@@ -2,6 +2,8 @@
 window.nesInterop = {
     _cache: {},
     _loopActive: false,
+    // Monotonic token used to invalidate any in-flight RAF steps when restarting/stopping the loop
+    _loopToken: 0,
     _dotNetRef: null,
     _rafId: null,
     _lastRafTs: 0,
@@ -966,17 +968,20 @@ window.nesInterop = {
     startEmulationLoop: function (dotNetRef) {
         // Always set the latest .NET ref
         this._dotNetRef = dotNetRef;
-        // Proactively cancel any orphan rAF to ensure single producer
+        // Invalidate any in-flight steps from previous loop and cancel pending rAF
+        this._loopToken = (this._loopToken + 1) | 0;
         if (this._rafId != null) {
             try { cancelAnimationFrame(this._rafId); } catch {}
             this._rafId = null;
         }
-        // Always (re)start the loop to recover if flag was left true earlier
+        // (Re)start loop with fresh timing state
         this._loopActive = true;
         this._lastRafTs = 0;
         this._skipsThisBurst = 0;
+        const token = this._loopToken;
         const step = async (ts) => {
-            if (!this._loopActive) return;
+            // Abort if loop stopped or a newer loop superseded this one
+            if (!this._loopActive || token !== this._loopToken) return;
             const targetMs = 1000 / (this._targetFps || 60);
             const dt = this._lastRafTs ? (ts - this._lastRafTs) : targetMs;
             const behind = dt > targetMs * 1.5;
@@ -985,7 +990,7 @@ window.nesInterop = {
                 try {
                     // Single-crossing per frame: get payload from .NET and present locally
                     const r = await this._dotNetRef.invokeMethodAsync('FrameTick');
-                    if (r) {
+                    if (r && (token === this._loopToken) && this._loopActive) {
                         const fb = r.fb || r.Framebuffer;
                         const audio = r.audio || r.Audio;
                         const sr = r.sr || r.SampleRate || 44100;
@@ -1002,6 +1007,8 @@ window.nesInterop = {
                     }
                 } catch {}
             }
+            // Schedule next only if still current
+            if (!this._loopActive || token !== this._loopToken) return;
             this._rafId = requestAnimationFrame(step);
         };
         this._rafId = requestAnimationFrame(step);
@@ -1010,6 +1017,8 @@ window.nesInterop = {
     stopEmulationLoop: function () {
         // Flip flag first so any in-flight step sees false
         this._loopActive = false;
+        // Invalidate current loop so any in-flight step won't reschedule
+        this._loopToken = (this._loopToken + 1) | 0;
         // Cancel pending animation frame if any
         if (this._rafId != null) {
             try { cancelAnimationFrame(this._rafId); } catch {}

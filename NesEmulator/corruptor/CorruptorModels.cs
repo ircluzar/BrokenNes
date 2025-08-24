@@ -1,6 +1,10 @@
 namespace BrokenNes.CorruptorModels
 {
     // Models for corruptor/RTC/Glitch Harvester
+    public interface ICorruptorEmulatorHooks
+    {
+        void ImagineFromPc(ushort pc, int bytesToGenerate);
+    }
     public class DomainSel
     {
         public string Key = "";

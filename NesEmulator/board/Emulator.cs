@@ -132,6 +132,8 @@ namespace BrokenNes
         {
             // Content from OnInitialized
             nesController.RomOptions = new() { new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true} };
+            // Provide hooks for corruptor -> imagine bridge
+            try { corruptor.EmulatorHooks = new CorruptorImagineHooks(this); } catch {}
             try { Nav.LocationChanged += OnLocationChanged; } catch {}
             nesController.CpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
             if (string.IsNullOrEmpty(nesController.CpuCoreSel) || !nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
@@ -162,6 +164,25 @@ namespace BrokenNes
             if (string.IsNullOrWhiteSpace(nesController.ClockCoreSel) || !nesController.ClockCoreOptions.Contains(nesController.ClockCoreSel))
             {
                 nesController.ClockCoreSel = nesController.ClockCoreOptions.Contains("FMC") ? "FMC" : (nesController.ClockCoreOptions.FirstOrDefault() ?? "FMC");
+            }
+        }
+
+        private sealed class CorruptorImagineHooks : BrokenNes.CorruptorModels.ICorruptorEmulatorHooks
+        {
+            private readonly Emulator _emu;
+            public CorruptorImagineHooks(Emulator emu) { _emu = emu; }
+            public async void ImagineFromPc(ushort pc, int bytesToGenerate)
+            {
+                try
+                {
+                    if (!_emu.ImagineModelLoaded) { _emu.Status.Set("Imagine: model not loaded"); return; }
+                    if (pc < 0x8000 || pc > 0xFFFF) { _emu.Status.Set("Imagine: PC not in PRG ROM"); return; }
+                    int L = Math.Clamp(bytesToGenerate, 1, 32);
+                    var tokens = _emu.BuildTokens128AroundPc(pc, L, out int hs, out int he);
+                    var bytes = await _emu.ImaginePredictSpanAsync(tokens, hs, he, _emu.ImagineTemperature, _emu.ImagineTopK);
+                    await _emu.ApplyImaginePatchAsync(pc, bytes);
+                }
+                catch (Exception ex) { _emu.Status.Set($"Imagine error: {ex.Message}"); }
             }
         }
 

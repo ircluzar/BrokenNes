@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using BrokenNes.CorruptorModels;
 using System.Threading.Tasks;
 
@@ -116,40 +117,118 @@ namespace BrokenNes
         }
 
         /// <summary>
-        /// Patch predicted bytes into PRG ROM domain if mapping is simple NROM/fixed-32KB.
-        /// Returns true if applied; false if mapping could not be determined.
+        /// Best-effort translation of a CPU address ($8000-$FFFF) to a PRG ROM index by content matching.
+        /// 1) Fast-path NROM/fixed mapping check.
+        /// 2) Fallback: scan PRG ROM for the longest forward match starting at the same byte value.
+        /// Returns true if a unique/best candidate is found.
+        /// </summary>
+        private bool TryCpuToPrgIndex(ushort addr, out int prgIndex)
+        {
+            prgIndex = -1;
+            if (nes == null) return false;
+            if (addr < 0x8000 || addr > 0xFFFF) return false;
+
+            int prgSize = nes.GetPrgRomSize();
+            if (prgSize <= 0) return false;
+
+            // Fast path: simple mapping (NROM-style) where PRG is fixed at $8000..$FFFF
+            int simpleIdx = addr - 0x8000;
+            if (simpleIdx >= 0 && simpleIdx < prgSize)
+            {
+                byte cpuB = nes.PeekCpu(addr);
+                byte prgB = nes.PeekPrg(simpleIdx);
+                if (cpuB == prgB)
+                {
+                    // Validate a short lookahead to reduce false positives
+                    int look = Math.Min(16, Math.Min(0x10000 - addr, prgSize - simpleIdx));
+                    int ok = 0;
+                    for (int i = 1; i < look; i++)
+                    {
+                        if (nes.PeekCpu((ushort)(addr + i)) != nes.PeekPrg(simpleIdx + i)) break;
+                        ok++;
+                    }
+                    if (ok >= 3) { prgIndex = simpleIdx; return true; }
+                }
+            }
+
+            // Fallback: content-based search. Anchor on current byte, then extend greedily.
+            byte anchor = nes.PeekCpu(addr);
+            var candidates = new List<int>(16);
+
+            // Gather candidate offsets where PRG byte equals anchor
+            for (int i = 0; i < prgSize; i++)
+            {
+                if (nes.PeekPrg(i) == anchor) candidates.Add(i);
+            }
+            if (candidates.Count == 0) return false;
+
+            // Score candidates by forward match length (up to 32 bytes cap)
+            int bestIdx = -1; int bestScore = -1;
+            int cap = Math.Min(32, 0x10000 - addr);
+            foreach (var c in candidates)
+            {
+                int maxForward = Math.Min(cap, prgSize - c);
+                if (maxForward <= 0) continue;
+                int score = 0;
+                for (int k = 1; k < maxForward; k++)
+                {
+                    if (nes.PeekCpu((ushort)(addr + k)) != nes.PeekPrg(c + k)) break;
+                    score++;
+                }
+                if (score > bestScore)
+                {
+                    bestScore = score; bestIdx = c;
+                    if (bestScore >= 16) break; // good enough, stop early
+                }
+            }
+            if (bestIdx >= 0)
+            {
+                prgIndex = bestIdx; return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Patch predicted bytes into PRG ROM domain using mapper-agnostic content-based CPU→PRG translation.
+        /// Returns true if applied; false if any address in the span cannot be mapped.
         /// </summary>
         public Task<bool> ApplyImaginePatchAsync(ushort pc, byte[] bytes)
         {
             if (nes == null || bytes == null || bytes.Length == 0) return Task.FromResult(false);
             if (pc < 0x8000 || pc > 0xFFFF) return Task.FromResult(false);
-            // Simple mapping assumption: NROM or fixed 32KB PRG => index = addr - 0x8000
-            int baseIndex = pc - 0x8000;
-            // Quick sanity: verify at least first byte matches PRG snapshot at that index
             try
             {
-                byte origCpu = nes.PeekCpu(pc);
-                byte origPrg = nes.PeekPrg(baseIndex);
-                if (origCpu != origPrg)
-                {
-                    // We can't guarantee mapping in banked mappers without helper API; abort safely
-                    return Task.FromResult(false);
-                }
+                var writes = new List<BlastInstruction>(bytes.Length);
                 for (int i = 0; i < bytes.Length; i++)
                 {
-                    nes.PokePrg(baseIndex + i, bytes[i]);
+                    ushort addr = (ushort)(pc + i);
+                    if (!TryCpuToPrgIndex(addr, out int prgIdx))
+                    {
+                        // Abort if any byte can't be mapped confidently
+                        return Task.FromResult(false);
+                    }
+                    writes.Add(new BlastInstruction { Domain = "PRG", Address = prgIdx, Value = bytes[i] });
                 }
-                // Record a minimal stash entry via Corruptor for audit (name only for now)
+
+                // Apply writes
+                foreach (var w in writes)
+                {
+                    nes.PokePrg(w.Address, (byte)w.Value);
+                }
+
+                // Record stash entry with richer metadata
                 try
                 {
+                    string name = $"Imagine PC={pc:X4} L={bytes.Length} E{ImagineEpoch} T={ImagineTemperature:0.00} K={(ImagineTopK.HasValue?ImagineTopK.Value:0)}";
                     Corruptor.GhStash.Add(new HarvestEntry
                     {
-                        Name = $"Imagine PC={pc:X4} L={bytes.Length} E{ImagineEpoch}",
+                        Name = name,
                         Created = DateTime.UtcNow,
-                        Writes = bytes.Select((b, i) => new BlastInstruction { Domain = "PRG", Address = baseIndex + i, Value = b }).ToList()
+                        Writes = writes
                     });
                 }
                 catch { }
+
                 return Task.FromResult(true);
             }
             catch { return Task.FromResult(false); }

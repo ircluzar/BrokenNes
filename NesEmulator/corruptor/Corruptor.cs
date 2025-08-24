@@ -34,6 +34,14 @@ namespace BrokenNes
             var selected = MemoryDomains.Where(d => d.Selected && d.Size > 0).ToList();
             if (selected.Count == 0) return;
             int writes = Math.Clamp(CorruptIntensity, 1, 4096);
+            // Imagine integration: treat BlastType IMAGINENEXT/IMAGINERANDOM specially and bail after one op (intensity governs bytes length)
+            var modeUpper = BlastType?.ToUpperInvariant() ?? "";
+            if (modeUpper == "IMAGINENEXT" || modeUpper == "IMAGINERANDOM")
+            {
+                TryImagine(nes, modeUpper == "IMAGINENEXT");
+                LastBlastInfo = $"Imagine {(modeUpper=="IMAGINENEXT"?"Next":"Random")}: {writes} byte(s)";
+                return;
+            }
             for (int i = 0; i < writes; i++)
             {
                 var d = selected[CorruptRnd.Next(selected.Count)];
@@ -66,6 +74,30 @@ namespace BrokenNes
             }
             LastBlastInfo = AutoCorrupt ? $"Auto {writes} ({BlastType})/{selected.Count} domain(s)" : $"{BlastType}: {writes} writes over {selected.Count} domain(s)";
         }
+        private void TryImagine(NES nes, bool next)
+        {
+            try
+            {
+                // Use NES hooks to peek PC and PRG range
+                ushort pc = 0;
+                try { pc = nes.GetCpuRegs().PC; } catch {}
+                if (next)
+                {
+                    // Use emulator singleton registry (set by Emulator) to call Imagine pipeline
+                    EmulatorHooks?.ImagineFromPc(pc, Math.Clamp(CorruptIntensity,1,32));
+                }
+                else
+                {
+                    // Random PRG address in $8000..$FFFF
+                    int span = 0x10000 - 0x8000; int off = CorruptRnd.Next(span);
+                    ushort addr = (ushort)(0x8000 + off);
+                    EmulatorHooks?.ImagineFromPc(addr, Math.Clamp(CorruptIntensity,1,32));
+                }
+            }
+            catch { }
+        }
+        // Bridge set by Emulator to access Imagine APIs without circular deps
+        public ICorruptorEmulatorHooks? EmulatorHooks { get; set; }
         public void LetItRip()
         {
             CorruptIntensity = 1;

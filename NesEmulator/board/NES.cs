@@ -938,6 +938,7 @@ namespace NesEmulator
 		public void PokeSystemRam(int index, byte val) { bus?.PokeRam(index, val); }
 		public byte PeekPrg(int index) => cartridge != null ? cartridge.PeekPrg(index) : (byte)0;
 		public void PokePrg(int index, byte val) { cartridge?.PokePrg(index, val); }
+		public int GetPrgRomSize() => cartridge?.PrgRomSize ?? 0;
 		public byte PeekPrgRam(int index) => cartridge != null ? cartridge.PeekPrgRam(index) : (byte)0;
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;

@@ -55,10 +55,15 @@
 
     function ensureCtx(){
         if(!ctx){
-            try {
-                ctx = new (window.AudioContext||window.webkitAudioContext)({ latencyHint: 'interactive' });
-            } catch {
-                ctx = new (window.AudioContext||window.webkitAudioContext)();
+            try { if(window.nesInterop && typeof window.nesInterop.ensureAudioContext === 'function'){ window.nesInterop.ensureAudioContext(); } } catch {}
+            if(window.nesAudioCtx){ ctx = window.nesAudioCtx; }
+            else {
+                try {
+                    ctx = new (window.AudioContext||window.webkitAudioContext)({ latencyHint: 'interactive' });
+                } catch {
+                    ctx = new (window.AudioContext||window.webkitAudioContext)();
+                }
+                window.nesAudioCtx = ctx;
             }
             if(!ctx.audioWorklet){
                 console.warn('[MNES] AudioWorklet not supported; abandoning js-synthesizer path.');
@@ -136,9 +141,14 @@
             synth = new window.JSSynth.AudioWorkletNodeSynthesizer();
             node = synth.createAudioNode(ctx, WORKLET_BLOCK_SIZE);
             try {
-                const master = window._nesMasterGain || null;
-                if(master && master.context === ctx){ node.connect(master); }
-                else { node.connect(ctx.destination); }
+                // Route through Music -> Master so music volume applies
+                let music = window._nesMusicGain || null;
+                let master = window._nesMasterGain || null;
+                if(!music || music.context !== ctx){ music = ctx.createGain(); window._nesMusicGain = music; }
+                if(!master || master.context !== ctx){ master = ctx.createGain(); window._nesMasterGain = master; try{ if(!master._nesConnected){ master.connect(ctx.destination); master._nesConnected=true; } }catch{} }
+                try { music.disconnect(); } catch{}
+                try { music.connect(master); } catch{}
+                node.connect(music);
             } catch { node.connect(ctx.destination); }
             console.log('[MNES] Worklet synthesizer ready');
         } catch(e){
@@ -231,9 +241,13 @@
                 g.gain.setValueAtTime(1,t0);
                 g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
                 try {
-                    const master = window._nesMasterGain || null;
-                    if(master && master.context === c){ src.connect(g).connect(master); }
-                    else { src.connect(g).connect(c.destination); }
+                    let music = window._nesMusicGain || null;
+                    let master = window._nesMasterGain || null;
+                    if(!music || music.context !== c){ music = c.createGain(); window._nesMusicGain = music; }
+                    if(!master || master.context !== c){ master = c.createGain(); window._nesMasterGain = master; try{ if(!master._nesConnected){ master.connect(c.destination); master._nesConnected=true; } }catch{} }
+                    try { music.disconnect(); } catch{}
+                    try { music.connect(master); } catch{}
+                    src.connect(g).connect(music);
                 } catch { src.connect(g).connect(c.destination); }
                 src.start();
             } catch{}
