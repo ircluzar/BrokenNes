@@ -63,11 +63,23 @@ public static class CardSvgRenderer
     sb.Append($"<text x='{perfBadgeW / 2}' y='{perfBadgeH - 5}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='9' fill='#0b0f14'>{EscapeXml(perfText)}</text>");
         sb.Append("</g>");
 
-    // Image placeholder
+    // Image placeholder (or inline art if available)
     int imgY = pad + headerH;
         sb.Append($"<g transform='translate({pad},{imgY})'>");
-        sb.Append($"<rect x='0' y='0' width='{contentW}' height='{imageH}' fill='#111' stroke='#ffffff' stroke-width='2' stroke-dasharray='4 4' />");
-    sb.Append($"<text x='{contentW / 2}' y='{imageH / 2}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='#c0c0c0'>IMAGE</text>");
+    var prefix = !string.IsNullOrWhiteSpace(m.Domain) ? m.Domain : GuessDomainFromFooter(m.FooterNote);
+        var inlineSvg = SvgFactory.Get(prefix, m.Id);
+        if (!string.IsNullOrEmpty(inlineSvg))
+        {
+            // Use border color (derived from rating) as accent
+            var colored = SvgFactory.ApplyAccent(inlineSvg!, borderColor);
+            var sized = EnsureEmbeddedSvgSizing(colored, contentW, imageH);
+            sb.Append(sized);
+        }
+        else
+        {
+            sb.Append($"<rect x='0' y='0' width='{contentW}' height='{imageH}' fill='#111' stroke='#ffffff' stroke-width='2' stroke-dasharray='4 4' />");
+            sb.Append($"<text x='{contentW / 2}' y='{imageH / 2}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='#c0c0c0'>IMAGE</text>");
+        }
         sb.Append("</g>");
 
         // Description block under image
@@ -211,6 +223,27 @@ public static class CardSvgRenderer
         if (maxCharsPerLine <= 1) return "…";
         return s.Substring(0, maxCharsPerLine - 1) + "…";
     }
+    // Ensure an embedded <svg> root carries width/height matching the image slot
+    private static string EnsureEmbeddedSvgSizing(string svg, int w, int h)
+    {
+        if (string.IsNullOrEmpty(svg)) return svg;
+        var idx = svg.IndexOf("<svg", StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return svg;
+        var after = idx + 4;
+        // Insert width/height and preserveAspectRatio just after <svg
+        return svg.Insert(after, $" width='{w}' height='{h}' preserveAspectRatio='xMidYMid meet'");
+    }
+    private static string? GuessDomainFromFooter(string? footer)
+    {
+        if (string.IsNullOrWhiteSpace(footer)) return null;
+        footer = footer.Trim();
+        if (footer.StartsWith("CPU", StringComparison.OrdinalIgnoreCase)) return "CPU";
+        if (footer.StartsWith("PPU", StringComparison.OrdinalIgnoreCase)) return "PPU";
+        if (footer.StartsWith("APU", StringComparison.OrdinalIgnoreCase)) return "APU";
+        if (footer.StartsWith("CLOCK", StringComparison.OrdinalIgnoreCase)) return "CLOCK";
+        if (footer.StartsWith("SHADER", StringComparison.OrdinalIgnoreCase)) return "SHADER";
+        return null;
+    }
     // Draw a 5x5 pixel star using small rects; each cell is 2x2 px for crisp retro look
     private static void AppendPixelStar(StringBuilder sb, int x, int y, bool filled)
     {
@@ -244,4 +277,22 @@ public sealed class CoreCardModel
     public int Rating { get; set; }
     public int Performance { get; set; }
     public string? FooterNote { get; set; }
+    // Optional domain hint: CPU, PPU, APU, CLOCK, SHADER
+    public string? Domain { get; set; }
+}
+
+// Helpers next to model to keep the file self-contained
+static class CardSvgRendererHelpers
+{
+    public static string? GuessDomainFromFooter(string? footer)
+    {
+        if (string.IsNullOrWhiteSpace(footer)) return null;
+        footer = footer.Trim();
+        if (footer.StartsWith("CPU", StringComparison.OrdinalIgnoreCase)) return "CPU";
+        if (footer.StartsWith("PPU", StringComparison.OrdinalIgnoreCase)) return "PPU";
+        if (footer.StartsWith("APU", StringComparison.OrdinalIgnoreCase)) return "APU";
+        if (footer.StartsWith("CLOCK", StringComparison.OrdinalIgnoreCase)) return "CLOCK";
+        if (footer.StartsWith("SHADER", StringComparison.OrdinalIgnoreCase)) return "SHADER";
+        return null;
+    }
 }

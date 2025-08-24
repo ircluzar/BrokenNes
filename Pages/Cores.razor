@@ -16,14 +16,15 @@
         {
           foreach (var c in CpuMeta)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Category
+      FooterNote = c.Category,
+      Domain = "CPU"
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -34,13 +35,14 @@
         {
           foreach (var id in Cpu)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
                   Performance = 0,
-                  FooterNote = "UNIMPLEMENTED"
+      FooterNote = "UNIMPLEMENTED",
+      Domain = "CPU"
               };
             <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -56,14 +58,15 @@
         {
           foreach (var c in PpuMeta)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Category
+      FooterNote = c.Category,
+      Domain = "PPU"
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -74,13 +77,14 @@
         {
           foreach (var id in Ppu)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
                   Performance = 0,
-                  FooterNote = "UNIMPLEMENTED"
+      FooterNote = "UNIMPLEMENTED",
+      Domain = "PPU"
               };
             <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -96,14 +100,15 @@
         {
           foreach (var c in ApuMeta)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
                   Rating = Math.Clamp(c.Rating, 0, 5),
                   Performance = c.Performance,
-                  FooterNote = c.Category
+      FooterNote = c.Category,
+      Domain = "APU"
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -114,13 +119,14 @@
         {
           foreach (var id in Apu)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
                   Performance = 0,
-                  FooterNote = "UNIMPLEMENTED"
+      FooterNote = "UNIMPLEMENTED",
+      Domain = "APU"
               };
             <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -136,14 +142,15 @@
         {
       foreach (var c in ClockInfos)
           {
-    var model = new CoreCardModel {
+  var model = new CoreCardModel {
                   Id = c.Id,
                   ShortName = c.Id,
                   DisplayName = c.Name,
                   Description = c.Description,
     Rating = Math.Clamp(c.Rating, 0, 5),
     Performance = c.Performance,
-                  FooterNote = c.Category
+          FooterNote = c.Category,
+          Domain = "CLOCK"
               };
             <div class="core-card" @key="c.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -154,13 +161,14 @@
         {
           foreach (var id in Clock)
           {
-    var model = new CoreCardModel {
+  var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
       Rating = 0,
       Performance = 0,
-                  FooterNote = "UNIMPLEMENTED"
+          FooterNote = "UNIMPLEMENTED",
+          Domain = "CLOCK"
               };
             <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -176,14 +184,15 @@
         {
           foreach (var s in ShaderInfos)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = s.Id,
                   ShortName = s.Id,
                   DisplayName = s.DisplayName,
                   Description = s.Description,
                   Rating = Math.Clamp(s.Rating, 0, 5),
                   Performance = s.Performance,
-                  FooterNote = s.Category
+      FooterNote = s.Category,
+      Domain = "SHADER"
               };
             <div class="core-card" @key="s.Id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))
@@ -194,12 +203,13 @@
         {
           foreach (var id in Shaders)
           {
-            var model = new CoreCardModel {
+    var model = new CoreCardModel {
                   Id = id,
                   ShortName = id,
                   DisplayName = id,
                   Rating = 0,
-                  Performance = 0
+      Performance = 0,
+      Domain = "SHADER"
               };
             <div class="core-card" @key="id" @onclick="() => OpenCard(model)">
               @((MarkupString)CardSvgRenderer.Render(model, 166, 235))

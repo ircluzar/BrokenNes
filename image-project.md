@@ -2,6 +2,13 @@
 
 This document defines the specs, design, and tasks to generate minimal, abstract SVG “chip” images for every core (CPU, PPU, APU, Clock; shaders optional). The images will be embedded directly in code via a SvgFactory to avoid extra asset files.
 
+### Status (2025-08-24)
+- SvgFactory implemented with all CPU/PPU/APU/CLOCK variants from the spec; each SVG fits 212×130 and uses an {ACCENT} token.
+- Renderer integration complete: inline SVG injected when available; dashed placeholder remains as fallback.
+- Accent color is driven by rating (uses the card border color), applied per render.
+- Domain wiring added in `Cores.razor` so lookups resolve for CPU/PPU/APU/CLOCK/SHADER.
+- Visual QA and shader “chip” motifs remain optional/pending.
+
 ### Objectives
 - Derive exact image slot specs from the existing card generator.
 - Define a simple, consistent SVG style that scales well within the card.
@@ -138,38 +145,87 @@ Legend of cues:
 - [ ] CLOCK_CLR — inner cog/gear ring; brace-like corners; blue accent
 - [ ] CLOCK_TRB — turbo bolt/chevron overlay; bright amber/green edge
 
-### Shaders (optional phase)
-Shaders aren’t “cores” but are listed in the UI. If we include them later, use a shared chip silhouette with a small symbol (CRT mask, hue wheel, pixel grid) and the shader’s category to pick accent color. We’ll scope these after core images ship.
+### Shaders — TV-screen icon set
+Shaders appear alongside cores, but unlike CPU/PPU/APU/CLOCK, these should look like a TV screen with an abstract depiction of the effect inside.
+
+TV-screen style spec:
+- ViewBox: 0 0 212 130 (same slot)
+- Bezel: rounded rect 196×98 at roughly x=8 y=16 rx=10; dark fill (#0b0f14–#111), 2px neutral stroke (#1f2937/#374151)
+- Screen: inner rect 176×78 at roughly x=18 y=26 rx=6; darker fill (#0b0f14), 1px border (#111827)
+- Legs (optional): small 20×3 feet near x≈48 and x≈144 at y≈114
+- Accents: use {ACCENT} for key strokes/fills; renderer will inject color from rating
+- Optional: subtle scanline rows, vignette mask, or barrel outline for CRT-ish feel
+- Keep interior motifs 16–24px away from bezel edges; use 1–2px strokes
+
+Naming and contract:
+- Prefix: SHADER
+- Id: shader DisplayName (e.g., TV, VHS, LCD, RGBX, CRY, etc.)
+- Property: SHADER_<ID> => inline SVG string using the TV frame motif above
+- Fallback: SHADER_DEFAULT remains for any missing icons
+
+Per-shader interior cues (abstract, minimal):
+- 16B — soft upgrade: 2–3 gentle horizontal bands and faint scanlines; slight corner glow.
+- BLD — color bleed: short bars bleeding outward from a small center tile to all four sides ({ACCENT} bars).
+- BUMP — pseudo bump: a small sun-dot and diagonal highlight/shadow wedges forming a relief ramp.
+- CCC — color cycle: segmented hue ring/arc with a tiny opposing arc (inversion “breath”).
+- CNMA — cinematic grading: teal–orange diagonal split, soft vignette, tiny halo around a centered rectangle.
+- CRY — crystalline refraction: 3–5 irregular Voronoi shard polygons; one highlighted {ACCENT} edge.
+- CRZ — crystalline glass: sharper shard outlines plus a little 4-point glint star at one facet edge.
+- DOT — circular shards: 3–4 overlapping circles with darker boundary arcs and small shear ticks.
+- EXE — energetic beam: a central vertical {ACCENT} beam line, 2–3 tiny swirl arrows, a couple glitch slices.
+- HUE — hue invert/rotate: half hue-wheel arc with double-arrow (180°) and a muted center dot.
+- LAT — lattice refraction: small diamond lattice over a tile block with 1–2 refracted offset “ghosts.”
+- LCD — aging LCD: horizontal smear strokes, one faint offset ghost rectangle, light vertical banding.
+- LSD — psychedelic swirl: spiral curve center with 2–3 offset ghost color strokes.
+- MSH — pixel mosh: block grid with a few misaligned blocks and a broken seam line.
+- PX — passthrough: plain screen with a centered thin pixel-grid outline.
+- RGBX — chromatic vector split: three small offset arrows/rects (R/G/B directions) fanning differently.
+- RF — analog RF: gentle ripple sine across, 1–2 shimmer jitter lines, a few speckle dots.
+- SPK — prism sparkle: short prism rays from a center and 3–5 small star sparkles.
+- TRI — faux extrusion: a raised rectangle with a rim highlight and parallax shadow offset.
+- TTF — subpixel: three thin vertical RGB subpixel columns beside a sharp vertical bar.
+- TV — CRT tube: scanlines, shadow-mask triad hint (RGB columns), subtle barrel outline.
+- VHS — analog VHS: wavy scanlines, top flagging wedge, bottom head-switch bar, a few dropout dashes.
+- WARM — warmth tilt: warm corner gradient wedge with a faint green cross-talk bar.
+- WTR — water energy: crossing sine waves and 1–2 concentric lens rings with tiny shear arrows.
+
+Implementation to-dos:
+- Add SHADER_* properties to `Shared/SvgFactory.cs` using the TV-frame silhouette + the cues above.
+- Start with: TV, VHS, LCD, RGBX, PX as references; then fill the rest.
+- Keep `SHADER_DEFAULT` as fallback. Verify Ids match `IShader.Id`/DisplayName.
 
 ## Implementation tasks
 
 ### SvgFactory skeleton
-- [ ] Create `Shared/SvgFactory.cs` with `namespace BrokenNes.Shared;`
-- [ ] Add properties for each CPU_* from reflection list (FMC, LOW, SPD, EIL, LW2)
-- [ ] Add properties for each PPU_* (FMC, LOW, LQ, SPD, EIL, BFR, CUBE)
-- [ ] Add properties for each APU_* (FMC, LOW, LQ, LQ2, QLOW, QLQ, QLQ2, SPD, SPD2, QN, MNES, WF)
-- [ ] Add properties for each CLOCK_* (FMC, CLR, TRB)
-- [ ] Include `public static string? Get(string prefix, string id)` helper (case-insensitive)
-- [ ] Ensure each SVG uses `viewBox="0 0 212 130"` and no external refs
+- [x] Create `Shared/SvgFactory.cs` with `namespace BrokenNes.Shared;`
+- [x] Add properties for each CPU_* from reflection list (FMC, LOW, SPD, EIL, LW2)
+- [x] Add properties for each PPU_* (FMC, LOW, LQ, SPD, EIL, BFR, CUBE)
+- [x] Add properties for each APU_* (FMC, LOW, LQ, LQ2, QLOW, QLQ, QLQ2, SPD, SPD2, QN, MNES, WF)
+- [x] Add properties for each CLOCK_* (FMC, CLR, TRB)
+- [x] Include `public static string? Get(string prefix, string id)` helper (case-insensitive)
+- [x] Ensure each SVG uses `viewBox="0 0 212 130"` and no external refs
+
+Note: assets use a `{ACCENT}` token that the renderer replaces with the rating-derived color.
 
 ### Card renderer integration
-- [ ] In `CardSvgRenderer.Render`, compute domain prefix: CPU/PPU/APU/CLOCK from the model being rendered
-- [ ] Lookup SVG via `SvgFactory.Get(prefix, m.Id)`
-- [ ] If non-null, inject raw SVG in place of the dashed placeholder group; else keep existing placeholder
-- [ ] Keep current accessibility: outer SVG role/aria-label remains; embedded SVGs include a brief aria-label
+- [x] In `CardSvgRenderer.Render`, compute domain prefix: CPU/PPU/APU/CLOCK from the model being rendered
+- [x] Lookup SVG via `SvgFactory.Get(prefix, m.Id)`
+- [x] If non-null, inject raw SVG in place of the dashed placeholder group; else keep existing placeholder
+- [x] Keep current accessibility: outer SVG role/aria-label remains; embedded SVGs include a brief aria-label
+- [x] Populate `CoreCardModel.Domain` in `Pages/Cores.razor` for CPU/PPU/APU/CLOCK/SHADER
 
 ### Visual production
-- [ ] Establish a tiny theme palette (e.g., neutral: #9ca3af, die: #111827, accent per category)
-- [ ] Build the base chip silhouette (rect + pins) as first reusable snippet
-- [ ] Produce CPU variants (5)
-- [ ] Produce PPU variants (7)
-- [ ] Produce APU variants (12)
-- [ ] Produce Clock variants (3)
+- [x] Establish a tiny theme palette (e.g., neutral: #9ca3af, die: #111827, accent per rating)
+- [x] Build the base chip silhouette (rect + pins) as first reusable snippet
+- [x] Produce CPU variants (5)
+- [x] Produce PPU variants (7)
+- [x] Produce APU variants (12)
+- [x] Produce Clock variants (3)
 - [ ] Review on dark and light backgrounds (safe without background fill)
 - [ ] Validate at card thumb (166×235 render) and modal sizes (scales cleanly)
 
 ### Quality gates
-- [ ] Build passes (`dotnet build -c Release`)
+- [x] Build passes (`dotnet build -c Release`)
 - [ ] No runtime exceptions when rendering cards without/with art
 - [ ] Visual QA: no overflow outside 212×130 slot; crisp scaling; consistent style
 
