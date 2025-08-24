@@ -75,11 +75,32 @@
     </div>
 </div>
 
+@* Inline modal for option notifications *@
+@if (ModalOpen)
+{
+    <div class="opt-modal-backdrop" tabindex="-1" @onclick="CloseModal" @onkeydown="OnBackdropKeyDown">
+        <div class="opt-modal" role="dialog" aria-modal="true" aria-labelledby="optModalTitle" aria-describedby="optModalMsg" @onclick:stopPropagation @onkeydown="OnBackdropKeyDown">
+            <div class="opt-modal-header">
+                <h4 id="optModalTitle">@ModalTitle</h4>
+            </div>
+            <div class="opt-modal-body">
+                <p id="optModalMsg">@ModalMessage</p>
+            </div>
+            <div class="opt-modal-actions">
+                <button class="opt-modal-btn" autofocus @onclick="CloseModal">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private int MasterPct { get; set; } = 100;
     private int MusicPct { get; set; } = 42;
     private int SfxPct { get; set; } = 80;
     private bool ShowFeatureUnlocks { get; set; } = false;
+    private bool ModalOpen { get; set; } = false;
+    private string ModalTitle { get; set; } = "Notice";
+    private string ModalMessage { get; set; } = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -126,13 +147,13 @@
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", "FMC"); } catch { }
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", "FMC"); } catch { }
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_clockCore", "FMC"); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('Core preferences reset to FMC. This applies when you open the NES.')"); } catch { }
+    ShowModal("Core Preferences", "Core preferences have been reset to default (FMC).");
     }
 
     private async Task ClearDeckBuilderSave()
     {
         try { await SaveSvc.ClearDeckBuilderSaveAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('DeckBuilder save reset to defaults (FMC + PX).')"); } catch { }
+    ShowModal("Save Edit", "DeckBuilder game save reset to defaults");
     }
 
     private async Task UnlockEverything()
@@ -140,41 +161,58 @@
     // Unlock cores and advanced features
     try { await SaveSvc.UnlockAllCoresAsync(); } catch { }
     try { await SaveSvc.UnlockAllFeaturesAsync(); } catch { }
-    try { await JS.InvokeVoidAsync("eval", "alert('All cores and advanced features unlocked in your DeckBuilder save.')"); } catch { }
+    ShowModal("Save Edit", "All cores and advanced features unlocked in your DeckBuilder save.");
     }
 
         private async Task UnlockSavestates()
         {
             try { await SaveSvc.UnlockSavestatesAsync(); } catch { }
-            try { await JS.InvokeVoidAsync("eval", "alert('Savestates unlocked. Load/Save buttons will appear in the NES UI.')"); } catch { }
+            ShowModal("Save Edit", "Savestates unlocked.");
         }
 
     private async Task UnlockRtc()
     {
         try { await SaveSvc.UnlockRtcAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('Real-Time Corruptor unlocked. Open the NES to use it.')"); } catch { }
+    ShowModal("Save Edit", "Real-Time Corruptor unlocked.");
     }
 
     private async Task UnlockGh()
     {
         try { await SaveSvc.UnlockGhAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('Glitch Harvester unlocked. Open the NES to use it.')"); } catch { }
+    ShowModal("Save Edit", "Glitch Harvester unlocked.");
     }
 
     private async Task UnlockImagine()
     {
         try { await SaveSvc.UnlockImagineAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('Imagine unlocked. Related options will appear in the NES UI.')"); } catch { }
+    ShowModal("Save Edit", "Imagine unlocked.");
     }
 
     private async Task UnlockDebug()
     {
         try { await SaveSvc.UnlockDebugAsync(); } catch { }
-        try { await JS.InvokeVoidAsync("eval", "alert('Debug features unlocked. This is opt-in and not included in Unlock Everything.')"); } catch { }
+    ShowModal("Save Edit", "Debug features unlocked.");
     }
 
     private void ToggleFeatureUnlocks()
     {
         ShowFeatureUnlocks = !ShowFeatureUnlocks;
+    }
+
+    private void ShowModal(string title, string message)
+    {
+        ModalTitle = title;
+        ModalMessage = message;
+        ModalOpen = true;
+    }
+
+    private void CloseModal()
+    {
+        ModalOpen = false;
+    }
+
+    private void OnBackdropKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") CloseModal();
     }
 }

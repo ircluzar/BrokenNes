@@ -22,3 +22,12 @@
   .opt-row label{flex:0 0 100%;}
   .opt-row input[type=range]{flex:1 1 100%; margin-left:0;}
 }
+
+/* Inline modal for Options page (8-bit flat style) */
+.opt-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:12000;padding:16px;}
+.opt-modal{background:#000;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;padding:1rem 1.25rem;width:clamp(280px,80vw,560px);color:#fff;font-family:'Press Start 2P', monospace;box-shadow:0 8px 24px rgba(0,0,0,.6);} 
+.opt-modal-header h4{margin:0 0 .75rem;font-size:1rem;color:#ff5a26;letter-spacing:1px;}
+.opt-modal-body{font-size:.7rem;line-height:1.5;color:#e0e0e0;}
+.opt-modal-actions{margin-top:1rem;display:flex;justify-content:flex-end;}
+.opt-modal-btn{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.55rem 1rem;cursor:pointer;}
+.opt-modal-btn:hover,.opt-modal-btn:focus{background:#ff5a26;color:#000;}
