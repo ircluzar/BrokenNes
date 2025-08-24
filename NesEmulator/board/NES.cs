@@ -40,6 +40,10 @@ namespace NesEmulator
 		// pipeline to predict bytes and patch PRG ROM.
 		public Action<ushort>? ImagineShot { get; set; }
 
+		// Controls whether Imagine Fix will keep retrying during a freeze at intervals
+		private bool stubbornFixEnabled = false;
+		public void SetStubbornFixEnabled(bool enabled) { stubbornFixEnabled = enabled; }
+
 		// Simple freeze (CPU lock) detector: if PC stays identical across many frames,
 		// trigger a one-shot Imagine attempt to try to "unstick" flow.
 		private ushort _lastPcForFreeze;
@@ -55,6 +59,9 @@ namespace NesEmulator
 		private const int PcWindowBytesThreshold = 16; // consider tiny if PC stays within 16 bytes
 		private const int MinPcSamplesPerFrame = 4; // require a few samples to trust the window
 		private const int LowWriteThreshold = 4; // few writes suggests stall
+		// Imagine Fix: allow periodic retries during a persistent freeze instead of one-shot
+		private int _freezeRetryCooldownFrames = 30; // try again every ~0.5s while stuck
+		private int _framesSinceLastFreezeShot = int.MaxValue;
 		// Optional: observe CPU idle-loop signal (available on CPU_SPD)
 		private bool _frameIdleLoopSeen;
 		private int _idleLoopStuckFrames;
@@ -552,7 +559,8 @@ namespace NesEmulator
 				ushort frameEndPc = 0; try { frameEndPc = bus!.cpu!.GetRegisters().PC; } catch { }
 				// Heuristic A: exact same PC across frames
 				bool samePcThisFrame = (frameEndPc == frameStartPc && frameEndPc != 0);
-				if (samePcThisFrame) { _samePcFrames++; } else { _samePcFrames = 0; _lastPcForFreeze = frameEndPc; _freezeShotArmed = true; }
+				if (samePcThisFrame) { _samePcFrames++; }
+				else { _samePcFrames = 0; _lastPcForFreeze = frameEndPc; _freezeShotArmed = true; _framesSinceLastFreezeShot = int.MaxValue; }
 
 				// Heuristic B: tiny PC window within the frame + very low write activity or idle-loop flag
 				bool tinyWindowThisFrame = false, lowWritesThisFrame = false;
@@ -566,13 +574,18 @@ namespace NesEmulator
 				if (windowFreezeThisFrame) _tinyWindowFrames++; else _tinyWindowFrames = 0;
 
 				bool trigger = (_samePcFrames >= _freezeThresholdFrames) || (_tinyWindowFrames >= _freezeWindowThresholdFrames) || (_frameIdleLoopSeen && _idleLoopStuckFrames >= IdleLoopStuckThresholdFrames);
-				if (trigger && _freezeShotArmed)
+				// Allow stubborn retries: when enabled, fire on cooldown while still frozen; otherwise one-shot until progress.
+				bool canFire = _freezeShotArmed || (stubbornFixEnabled && _framesSinceLastFreezeShot >= _freezeRetryCooldownFrames);
+				if (trigger && canFire)
 				{
-					_freezeShotArmed = false; // one-shot until we observe progress again
+					_freezeShotArmed = false; // disarm one-shot; cooldown path will handle periodic retries when enabled
+					if (stubbornFixEnabled) _framesSinceLastFreezeShot = 0;
 					try { ImagineShot?.Invoke(frameEndPc); } catch { }
 				}
 				// Track idle-loop persistence across frames
 				_idleLoopStuckFrames = _frameIdleLoopSeen ? (_idleLoopStuckFrames + 1) : 0;
+				// Advance cooldown counter each frame (only relevant when stubborn is enabled)
+				if (stubbornFixEnabled && _framesSinceLastFreezeShot < int.MaxValue) _framesSinceLastFreezeShot++;
 			}
 		}
 
@@ -648,9 +661,13 @@ namespace NesEmulator
 			{
 				// Request an Imagine shot at current PC and retry execution at the same PC
 				// so the CPU re-fetches the first byte after the patch is applied.
-				try { var regs = bus!.cpu!.GetRegisters(); ImagineShot?.Invoke(regs.PC); } catch { }
-				// NOTE: We intentionally do not advance PC here. This allows re-executing
-				// the instruction at the same address, assuming Imagine patched the bytes.
+				ushort pcNow = 0; try { var regs = bus!.cpu!.GetRegisters(); pcNow = regs.PC; ImagineShot?.Invoke(pcNow); } catch { }
+				// Behavior depends on Stubborn mode: when OFF, act like IgnoreErrors (advance PC)
+				// while still requesting an Imagine attempt. When ON, keep PC to re-fetch post-patch.
+				if (!stubbornFixEnabled)
+				{
+					try { bus!.cpu!.AddToPC(1); } catch { }
+				}
 				// Do not enter crashed state; continue running
 				return;
 			}

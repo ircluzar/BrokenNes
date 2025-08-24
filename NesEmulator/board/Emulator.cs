@@ -565,8 +565,27 @@ namespace BrokenNes
                 if (romData.Length == 0) throw new Exception($"ROM file '{nesController.RomFileName}' not found or empty");
                 bool wasRunning = nesController.IsRunning; if (wasRunning) await PauseEmulation();
                 if (nes == null) nes = new NesEmulator.NES();
-                // Wire Imagine Fix callback: when NES requests an Imagine shot, run with current settings
-                try { nes.ImagineShot = pc => { try { if (ImagineModelLoaded) { var L = Math.Clamp(ImagineBytesToGenerate,1,32); var tokens = BuildTokens128AroundPc(pc, L, out int hs, out int he); var _ = ImaginePredictSpanAsync(tokens, hs, he, ImagineTemperature, ImagineTopK).ContinueWith(async t=>{ try { if (t.Status==TaskStatus.RanToCompletion && t.Result!=null) await ApplyImaginePatchAsync(pc, t.Result); } catch { } }); } } catch { } }; } catch { }
+                // Wire Imagine Fix callback: when NES requests an Imagine shot, run with current settings.
+                // Guard against overlapping predictions; allow periodic retries from NES core.
+                try {
+                    bool imagineInFlight = false;
+                    nes.ImagineShot = pc => {
+                        try {
+                            if (imagineInFlight) return; // skip if a prior shot is still running
+                            if (!ImagineModelLoaded) return;
+                            imagineInFlight = true;
+                            var L = Math.Clamp(ImagineBytesToGenerate, 1, 32);
+                            var tokens = BuildTokens128AroundPc(pc, L, out int hs, out int he);
+                            var _ = ImaginePredictSpanAsync(tokens, hs, he, ImagineTemperature, ImagineTopK)
+                                .ContinueWith(async t =>
+                                {
+                                    try { if (t.Status == TaskStatus.RanToCompletion && t.Result != null) await ApplyImaginePatchAsync(pc, t.Result); }
+                                    catch { }
+                                    finally { imagineInFlight = false; }
+                                });
+                        } catch { imagineInFlight = false; }
+                    };
+                } catch { }
                 nes.RomName = nesController.RomFileName; var prevApuSuffix = nesController.ApuCoreSel; nes.LoadROM(romData); if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
                 // Apply currently selected crash behavior (preserve user choice)
                 try { ApplySelectedCrashBehavior(); } catch {}

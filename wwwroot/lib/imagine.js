@@ -37,8 +37,10 @@
 
   async function loadModel(epoch) {
     try {
-  const base = document.querySelector('base')?.getAttribute('href') || './';
-  const modelUrl = `${base}models/6502_span_predictor_epoch${epoch}.onnx`;
+      // Resolve model URL against the document base URI to work on subfolder hosts
+      // (e.g., /rabbitwine/brokennes/) and routes (e.g., /nes/). This avoids dropping
+      // the last segment when the page URL lacks a trailing slash.
+      const modelUrl = new URL(`models/6502_span_predictor_epoch${epoch}.onnx`, document.baseURI).toString();
       console.info(LOG, "loading model", modelUrl);
       // Prefer WASM; optionally try WebGL if available
       try {

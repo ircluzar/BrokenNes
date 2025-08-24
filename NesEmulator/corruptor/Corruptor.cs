@@ -16,6 +16,7 @@ namespace BrokenNes
     public string LastBlastInfo = string.Empty;
     public bool LetItRipUsed = false;
     public string CrashBehavior = "IgnoreErrors";
+    public bool StubbornMode { get; set; } = false; // Imagine Fix periodic retries on freeze
 
     // Glitch Harvester state
     public List<HarvesterBaseState> GhBaseStates { get; set; } = new();

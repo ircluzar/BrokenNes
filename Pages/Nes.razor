@@ -368,6 +368,10 @@
                             <option value="IgnoreErrors">Ignore Errors</option>
                             <option value="ImagineFix">Imagine Fix</option>
                         </select>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="stubbornToggle" @onchange="(e)=>{ var val = (e.Value is bool b && b) || (e.Value is string sv && bool.TryParse(sv, out var p) && p); if (emu!.Corruptor.StubbornMode != val) emu!.SetStubbornMode(val); }" checked="@emu!.Corruptor.StubbornMode" />
+                            <label class="form-check-label" for="stubbornToggle" title="When Imagine Fix is selected, keep retrying predictions periodically during freezes">Stubborn mode</label>
+                        </div>
                     </div>
                 </div>
                 <div class="col-12 col-sm-7">

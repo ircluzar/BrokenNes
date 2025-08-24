@@ -126,8 +126,16 @@ namespace BrokenNes
                     nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.ImagineFix);
                 else
                     nes.SetCrashBehavior(NesEmulator.NES.CrashBehavior.RedScreen);
+                // Apply stubborn toggle whenever crash behavior is applied/changed
+                try { nes.SetStubbornFixEnabled(Corruptor.StubbornMode); } catch { }
             }
             catch { }
+        }
+
+        // Public toggle for Stubborn mode (Imagine Fix periodic retries)
+        public void SetStubbornMode(bool on)
+        {
+            try { Corruptor.StubbornMode = on; nes?.SetStubbornFixEnabled(on); } catch { }
         }
         
         // Helper method to create a bench history entry from the outside
