@@ -6,7 +6,7 @@ namespace BrokenNes
     public partial class Emulator
     {
     // =============== Imagine: UI + JSInterop state ===============
-    public int ImagineEpoch { get; set; } = 25;
+    public int ImagineEpoch { get; set; } = 30;
     public bool ImagineModelLoaded { get; private set; }
     public string ImagineEpLabel { get; private set; } = string.Empty; // wasm|webgl
     public string ImagineLastError { get; private set; } = string.Empty;
@@ -29,9 +29,9 @@ namespace BrokenNes
 
         public bool ImagineModalOpen { get; private set; }
         public ImagineDebugSnapshot? ImagineSnapshot { get; private set; }
-    public int ImagineBytesToGenerate { get; set; } = 6; // 1..32
-    public float ImagineTemperature { get; set; } = 0.9f; // 0.2..1.5 typical
-    public int? ImagineTopK { get; set; } = 69; // null or 20..80 typical
+    public int ImagineBytesToGenerate { get; set; } = 2; // 1..32
+    public float ImagineTemperature { get; set; } = 0.4f; // 0.2..1.5 typical
+    public int? ImagineTopK { get; set; } = 1; // null or 20..80 typical
     public byte[]? ImaginePredictedBytes { get; private set; }
     public bool ImagineBusy { get; private set; }
 

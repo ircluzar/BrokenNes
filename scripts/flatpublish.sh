@@ -186,6 +186,25 @@ for f in "${compress_candidates[@]}"; do
   fi
 done
 
+# Optionally compress ONNX models as well (best-effort; improves CDN/static hosting if server serves pre-compressed files)
+if [[ -d "$FLAT_DIR/models" ]]; then
+  echo "==> Ensuring compressed variants for ONNX models (best-effort)"
+  while IFS= read -r -d '' onnx; do
+    # Brotli
+    if command -v brotli >/dev/null 2>&1 && [[ ! -f "$onnx.br" ]]; then
+      rel=${onnx#"$FLAT_DIR/"}
+      echo "  brotli: ${rel}"
+      brotli -f -q 9 "$onnx" -o "$onnx.br" || echo "    (brotli failed for ${rel})"
+    fi
+    # Gzip
+    if command -v gzip >/dev/null 2>&1 && [[ ! -f "$onnx.gz" ]]; then
+      rel=${onnx#"$FLAT_DIR/"}
+      echo "  gzip:   ${rel}"
+      gzip -c -9 "$onnx" > "$onnx.gz" || echo "    (gzip failed for ${rel})"
+    fi
+  done < <(find "$FLAT_DIR/models" -type f -name '*.onnx' -print0 2>/dev/null)
+fi
+
 # Ensure base href is relative for subdirectory hosting
 INDEX_HTML="$FLAT_DIR/index.html"
 if grep -q "<base href=\"/\"" "$INDEX_HTML" 2>/dev/null; then
@@ -236,6 +255,24 @@ fi
 if (( missing )); then
   echo "ERROR: One or more critical assets are missing in $FLAT_DIR" >&2
   exit 3
+fi
+
+# Verify ONNX models presence/count (non-fatal unless explicitly needed)
+if [[ -d "$FLAT_DIR/models" ]]; then
+  echo "==> Verifying ONNX models directory"
+  MODEL_COUNT=$(find "$FLAT_DIR/models" -maxdepth 1 -type f -name '*.onnx' | wc -l | tr -d ' ')
+  if (( MODEL_COUNT == 0 )); then
+    echo "  MISSING: No .onnx models found under models/ (app features depending on Imagine will not work)"
+  else
+    echo "  found: $MODEL_COUNT ONNX model(s) under models/"
+    if [[ -f "$FLAT_DIR/models/models.json" ]]; then
+      echo "  found: models/models.json"
+    else
+      echo "  note: models/models.json not found (optional manifest)"
+    fi
+  fi
+else
+  echo "  note: models/ directory not present (skipping ONNX verification)"
 fi
 
 # (Home page CSS fallback will be added after route generation if needed)
