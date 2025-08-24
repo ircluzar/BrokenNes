@@ -100,7 +100,7 @@
                 </div>
             </div>
             <div class="screen-aspect">
-                <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas"></canvas>
+                <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas" tabindex="0" aria-label="NES Emulator"></canvas>
             </div>
             <div id="mobile-fs-view-bar">
                 <button data-view="controller" class="view-btn @(emu!.UI.MobileFullscreenView=="controller"?"active":string.Empty)" @onclick="(()=>emu!.UI.ViewController())">Controller</button>

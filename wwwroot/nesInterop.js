@@ -1034,6 +1034,10 @@ window.nesInterop = {
             return;
         }
         this._mainRef = dotNetRef;
+        // Ensure canvas focusability and focused-state hooks for key handling
+        try {
+            this._ensureEmuFocusHooks && this._ensureEmuFocusHooks();
+        } catch {}
         // Legacy single-player state (P1)
         window.nesInputState = new Array(8).fill(false);
         // New P2 state
@@ -1204,6 +1208,10 @@ window.nesInterop = {
                     const active = document.activeElement;
                     if (active && (active.tagName==='INPUT' || active.tagName==='TEXTAREA' || active.isContentEditable)) return;
                     const binds = keyMap[e.code]; if(!binds) return;
+                    // Prevent page scroll when emulator canvas is focused and arrow keys are pressed
+                    if ((e.code==='ArrowUp'||e.code==='ArrowDown'||e.code==='ArrowLeft'||e.code==='ArrowRight') && (window._nesEmuFocus===true)){
+                        try{ e.preventDefault(); }catch{}
+                    }
                     let changed = false;
                     for(const b of binds){
                         const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState;
@@ -1221,6 +1229,20 @@ window.nesInterop = {
                 document.addEventListener('keydown', onDown);
                 document.addEventListener('keyup', onUp);
                 this._kbdInstalled = true;
+            }
+            // Global guard: if emulator canvas is focused, suppress default arrow key scrolling even when no binding matched
+            if(!this._arrowSuppressInstalled){
+                const suppress = (e)=>{
+                    try{
+                        const active = document.activeElement;
+                        if (active && (active.tagName==='INPUT' || active.tagName==='TEXTAREA' || active.isContentEditable)) return;
+                        if(window._nesEmuFocus===true && (e.code==='ArrowUp'||e.code==='ArrowDown'||e.code==='ArrowLeft'||e.code==='ArrowRight')){
+                            e.preventDefault();
+                        }
+                    }catch{}
+                };
+                document.addEventListener('keydown', suppress, {capture:true});
+                this._arrowSuppressInstalled = true;
             }
             // start/refresh gamepad polling
             const poll = ()=>{
@@ -1406,6 +1428,31 @@ window.nesInterop = {
             handler();
             return true;
         } catch(e){ console.warn('registerVisibility failed', e); return false; }
+    }
+    ,
+    // Install focus wiring for the emulator canvas so we know when to suppress arrow scrolling
+    _ensureEmuFocusHooks(){
+        try {
+            if(this._emuFocusHooked) return true;
+            const canvas = document.getElementById('nes-canvas');
+            if(!canvas) return false;
+            // Make focusable via keyboard/mouse
+            if(!canvas.hasAttribute('tabindex')){ try { canvas.setAttribute('tabindex','0'); } catch{} }
+            const setOn = ()=>{ window._nesEmuFocus = true; };
+            const setOff = ()=>{ window._nesEmuFocus = false; };
+            canvas.addEventListener('pointerdown', ()=>{ try{ canvas.focus(); }catch{} setOn(); });
+            canvas.addEventListener('focus', setOn);
+            canvas.addEventListener('blur', setOff);
+            // Clicking outside should clear focus flag on capture phase
+            document.addEventListener('pointerdown', (e)=>{
+                try {
+                    const t = e.target;
+                    if (!canvas.contains(t)) { window._nesEmuFocus = false; }
+                } catch{}
+            }, true);
+            this._emuFocusHooked = true;
+            return true;
+        } catch { return false; }
     }
     ,
     // ==== SoundFont note event bridge (APU_WF / APU_MNES SoundFontMode) ====
