@@ -54,7 +54,7 @@
 /* Modal zoom styles */
 .card-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;}
 .card-modal-content{cursor:pointer;}
-.card-modal-content svg{width:min(96vw,calc(96vh * 0.7059));height:auto;max-height:96vh;aspect-ratio:240/340;}
+.card-modal-content svg{width:min(98vw,calc(98vh * 0.7059)) !important;max-width:98vw;height:auto !important;max-height:98vh;aspect-ratio:240/340;display:block;}
 .card-modal-backdrop.opening{animation:fadeIn .16s ease-out forwards;}
 .card-modal-backdrop.closing{animation:fadeOut .16s ease-in forwards;}
 .card-modal-content.opening{animation:zoomIn .18s ease-out forwards;}

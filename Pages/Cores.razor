@@ -262,6 +262,7 @@
   private SortMode SortBy = SortMode.None;    // default: no order
   private bool SortDescending = false;        // toggle via button
   private ViewMode View = ViewMode.Cards;     // default view
+  private bool _modalZoomInit = false;
 
   private IReadOnlyList<string> Cpu = Array.Empty<string>();
   private IReadOnlyList<string> Ppu = Array.Empty<string>();
@@ -291,6 +292,26 @@
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+
+    // Register a helper to force modal card SVG to fill viewport
+    try { await JS.InvokeVoidAsync("eval", @"(function(){
+      window.nesUi = window.nesUi || {};
+      window.nesUi.zoomModalSvg = function(){
+        try{
+          var host = document.querySelector('.card-modal-content');
+          if(!host) return;
+          var svg = host.querySelector('svg');
+          if(!svg) return;
+          svg.removeAttribute('width');
+          svg.removeAttribute('height');
+          svg.style.width = '98vw';
+          svg.style.maxWidth = '98vw';
+          svg.style.height = 'auto';
+          svg.style.maxHeight = '98vh';
+          svg.style.display = 'block';
+        }catch(e){}
+      };
+    })();"); } catch { }
 
     // Populate reflection data
     try { Cpu = CoreRegistry.CpuIds; } catch { }
@@ -540,6 +561,7 @@
   {
     ModalClosing = false;
     SelectedCard = m;
+  _modalZoomInit = false;
   }
 
   private async Task CloseCard()
@@ -550,6 +572,16 @@
     try { await Task.Delay(180); } catch { }
     SelectedCard = null;
     ModalClosing = false;
+    _modalZoomInit = false;
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (SelectedCard != null && !_modalZoomInit)
+    {
+      _modalZoomInit = true;
+      try { await JS.InvokeVoidAsync("nesUi.zoomModalSvg"); } catch { }
+    }
   }
 
   private static T? SafeGet<T>(Func<T> getter)
