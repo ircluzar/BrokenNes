@@ -1,5 +1,6 @@
 @page "/options"
 @inject IJSRuntime JS
+@inject BrokenNes.Services.GameSaveService SaveSvc
 
 <div class="options-root">
     <div id="pixelBgHost" class="pixel-bg-host" aria-hidden="true"></div>
@@ -32,6 +33,17 @@
         <section class="opt-section">
             <h3 class="opt-h3">INPUT</h3>
             <div class="opt-row"><a class="opt-link" href="./input">Configure Input…</a></div>
+        </section>
+        <section class="opt-section">
+            <h3 class="opt-h3">DeckBuilder Save</h3>
+            <div class="opt-row">
+                <button @onclick="ClearDeckBuilderSave">Clear the save</button>
+            </div>
+            <div class="opt-row small-note">Empties achievements and owned cores, leaving only FMC (CPU/PPU/APU/Clock) and PX shader.</div>
+            <div class="opt-row">
+                <button @onclick="UnlockEverything">Unlock Everything</button>
+            </div>
+            <div class="opt-row small-note">Gives you all cores in your save for 100% completion. Achievements are not changed.</div>
         </section>
     </div>
     <div class="opt-footer">
@@ -90,5 +102,17 @@
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_apuCore", "FMC"); } catch { }
         try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_clockCore", "FMC"); } catch { }
         try { await JS.InvokeVoidAsync("eval", "alert('Core preferences reset to FMC. This applies when you open the NES.')"); } catch { }
+    }
+
+    private async Task ClearDeckBuilderSave()
+    {
+        try { await SaveSvc.ClearDeckBuilderSaveAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('DeckBuilder save reset to defaults (FMC + PX).')"); } catch { }
+    }
+
+    private async Task UnlockEverything()
+    {
+        try { await SaveSvc.UnlockAllCoresAsync(); } catch { }
+        try { await JS.InvokeVoidAsync("eval", "alert('All cores unlocked in your DeckBuilder save.')"); } catch { }
     }
 }

@@ -8,7 +8,7 @@
     <section class="opt-section">
         <h3 class="opt-h3">SUMMARY</h3>
         <div class="summary-box">
-            <div class="summary-row"><span class="label">Unlocked Cores</span><span class="value">@unlockedCores/@totalCores</span></div>
+            <div class="summary-row"><span class="label">Owned Cores</span><span class="value">@ownedCores/@totalCores</span></div>
             <div class="summary-row"><span class="label">Achievement stars</span><span class="value">@achievementStars</span></div>
             <div class="summary-row"><span class="label">Progress</span><span class="value">Level @currentLevel</span></div>
         </div>
@@ -27,7 +27,7 @@
 </div>
 
 @code {
-    private int unlockedCores = 0;
+    private int ownedCores = 0;
     private int totalCores = 0;
     private int achievementStars = 0;
     private int currentLevel = 1;
@@ -45,9 +45,9 @@
             var save = await SaveSvc.LoadAsync();
             currentLevel = Math.Max(1, save.Level);
             achievementStars = save.Achievements?.Count ?? 0;
+            ownedCores = SaveSvc.GetOwnedCoresCount(save);
         }
-        catch { currentLevel = 1; achievementStars = 0; }
-    try { unlockedCores = SaveSvc.GetUnlockedCoresCount(); } catch { unlockedCores = 0; }
-    try { totalCores = SaveSvc.GetTotalCoresCount(); } catch { totalCores = unlockedCores; }
+        catch { currentLevel = 1; achievementStars = 0; ownedCores = 0; }
+        try { totalCores = SaveSvc.GetTotalCoresCount(); } catch { totalCores = ownedCores; }
     }
 }

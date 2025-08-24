@@ -31,18 +31,29 @@ public class GameSaveService
                 {
                     if (loaded.Level < 1) loaded.Level = 1;
                     if (loaded.Achievements == null) loaded.Achievements = new();
+                    // Ensure lists exist after deserialization
+                    loaded.OwnedCpuIds ??= new();
+                    loaded.OwnedPpuIds ??= new();
+                    loaded.OwnedApuIds ??= new();
+                    loaded.OwnedClockIds ??= new();
+                    loaded.OwnedShaderIds ??= new();
                     return loaded;
                 }
             }
         }
         catch { }
-        return new GameSave();
+        return CreateDefaultSave();
     }
 
     public async Task SaveAsync(GameSave save)
     {
         if (save.Level < 1) save.Level = 1;
         save.Achievements ??= new();
+        save.OwnedCpuIds ??= new();
+        save.OwnedPpuIds ??= new();
+        save.OwnedApuIds ??= new();
+        save.OwnedClockIds ??= new();
+        save.OwnedShaderIds ??= new();
         try
         {
             var json = JsonSerializer.Serialize(save);
@@ -51,34 +62,67 @@ public class GameSaveService
         catch { }
     }
 
-    // Reflectively count available cores across all categories (CPU + PPU + APU + CLOCK + SHADER).
-    public int GetUnlockedCoresCount()
+    private GameSave CreateDefaultSave()
+    {
+        // Default save contains only FMC cores and PX shader, achievements empty, level 1.
+        var gs = new GameSave
+        {
+            Level = 1,
+            Achievements = new(),
+            OwnedCpuIds = new() { "FMC" },
+            OwnedPpuIds = new() { "FMC" },
+            OwnedApuIds = new() { "FMC" },
+            OwnedClockIds = new() { "FMC" },
+            OwnedShaderIds = new() { "PX" }
+        };
+        return gs;
+    }
+
+    public async Task ClearDeckBuilderSaveAsync()
+    {
+        // Reset achievements and owned cores to default set (FMC + PX)
+        var save = CreateDefaultSave();
+        await SaveAsync(save);
+    }
+
+    public async Task UnlockAllCoresAsync()
+    {
+        // Achievements are not affected; we only update owned core ids.
+        var save = await LoadAsync();
+        try { save.OwnedCpuIds = CoreRegistry.CpuIds?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedCpuIds = new(); }
+        try { save.OwnedPpuIds = CoreRegistry.PpuIds?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedPpuIds = new(); }
+        try { save.OwnedApuIds = CoreRegistry.ApuIds?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedApuIds = new(); }
+        try { save.OwnedClockIds = ClockRegistry.Ids?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedClockIds = new(); }
+        try { save.OwnedShaderIds = _shaderProvider.All?.Select(s => s.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedShaderIds = new(); }
+        await SaveAsync(save);
+    }
+
+    // Count cores the player owns across all categories.
+    public int GetOwnedCoresCount(GameSave? save = null)
     {
         try
         {
-        // Assume all discovered items are unlocked for now.
-        var cpu = CoreRegistry.CpuIds?.Count ?? 0;
-        var ppu = CoreRegistry.PpuIds?.Count ?? 0;
-        var apu = CoreRegistry.ApuIds?.Count ?? 0;
-        var clocks = 0; try { clocks = ClockRegistry.Ids?.Count ?? 0; } catch { clocks = 0; }
-        var shaders = 0; try { shaders = _shaderProvider?.All?.Count ?? 0; } catch { shaders = 0; }
-        return cpu + ppu + apu + clocks + shaders;
+            save ??= CreateDefaultSave();
+            return (save.OwnedCpuIds?.Count ?? 0)
+                 + (save.OwnedPpuIds?.Count ?? 0)
+                 + (save.OwnedApuIds?.Count ?? 0)
+                 + (save.OwnedClockIds?.Count ?? 0)
+                 + (save.OwnedShaderIds?.Count ?? 0);
         }
         catch { return 0; }
     }
 
     // Total number of discoverable cores across all categories.
-    // For now this is identical to GetUnlockedCoresCount until we add locked core logic.
     public int GetTotalCoresCount()
     {
         try
         {
-        var cpu = CoreRegistry.CpuIds?.Count ?? 0;
-        var ppu = CoreRegistry.PpuIds?.Count ?? 0;
-        var apu = CoreRegistry.ApuIds?.Count ?? 0;
-        var clocks = 0; try { clocks = ClockRegistry.Ids?.Count ?? 0; } catch { clocks = 0; }
-        var shaders = 0; try { shaders = _shaderProvider?.All?.Count ?? 0; } catch { shaders = 0; }
-        return cpu + ppu + apu + clocks + shaders;
+            var cpu = CoreRegistry.CpuIds?.Count ?? 0;
+            var ppu = CoreRegistry.PpuIds?.Count ?? 0;
+            var apu = CoreRegistry.ApuIds?.Count ?? 0;
+            var clocks = 0; try { clocks = ClockRegistry.Ids?.Count ?? 0; } catch { clocks = 0; }
+            var shaders = 0; try { shaders = _shaderProvider?.All?.Count ?? 0; } catch { shaders = 0; }
+            return cpu + ppu + apu + clocks + shaders;
         }
         catch { return 0; }
     }

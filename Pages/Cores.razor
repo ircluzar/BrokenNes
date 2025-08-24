@@ -3,6 +3,7 @@
 @using NesEmulator.Shaders
 @inject IJSRuntime JS
 @inject IShaderProvider ShaderProvider
+@inject BrokenNes.Services.GameSaveService SaveSvc
 @using BrokenNes.Shared
 
 <div class="options-root">
@@ -306,30 +307,53 @@
     try { Cpu = CoreRegistry.CpuIds; } catch { }
     try { Ppu = CoreRegistry.PpuIds; } catch { }
     try { Apu = CoreRegistry.ApuIds; } catch { }
-  try { Clock = ClockRegistry.Ids; } catch { }
-  try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
-  try {
-    var all = ShaderProvider.All;
-    var infos = new List<ShaderInfo>(all.Count);
-    foreach (var s in all)
+    try { Clock = ClockRegistry.Ids; } catch { }
+    try { Shaders = ShaderProvider.All.Select(s => s.Id).ToArray(); } catch { }
+
+    // Filter to owned cores per save and build shader infos accordingly
+    HashSet<string> setShd = new(StringComparer.OrdinalIgnoreCase);
+    try
     {
-      string? cat = null;
-      try { cat = s.Defines != null && s.Defines.TryGetValue("Category", out var c) ? c : null; } catch { }
-      infos.Add(new ShaderInfo
-      {
-        Id = s.Id,
-        DisplayName = s.DisplayName,
-        Description = s.Description,
-        Performance = s.Performance,
-        Rating = s.Rating,
-        Category = cat ?? "Uncategorized"
-      });
+      var save = await SaveSvc.LoadAsync();
+      var setCpu = new HashSet<string>(save.OwnedCpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var setPpu = new HashSet<string>(save.OwnedPpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var setApu = new HashSet<string>(save.OwnedApuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var setClk = new HashSet<string>(save.OwnedClockIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      setShd = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      Cpu = Cpu.Where(id => setCpu.Contains(id)).ToArray();
+      Ppu = Ppu.Where(id => setPpu.Contains(id)).ToArray();
+      Apu = Apu.Where(id => setApu.Contains(id)).ToArray();
+      Clock = Clock.Where(id => setClk.Contains(id)).ToArray();
+      Shaders = Shaders.Where(id => setShd.Contains(id)).ToArray();
     }
-    ShaderInfos = infos
-      .OrderBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
-      .ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
-      .ToList();
-  } catch { }
+    catch { }
+
+    try
+    {
+      var all = ShaderProvider.All;
+      var infos = new List<ShaderInfo>();
+      var shaderSet = new HashSet<string>(Shaders, StringComparer.OrdinalIgnoreCase);
+      foreach (var s in all)
+      {
+        if (!shaderSet.Contains(s.Id)) continue;
+        string? cat = null;
+        try { cat = s.Defines != null && s.Defines.TryGetValue("Category", out var c) ? c : null; } catch { }
+        infos.Add(new ShaderInfo
+        {
+          Id = s.Id,
+          DisplayName = s.DisplayName,
+          Description = s.Description,
+          Performance = s.Performance,
+          Rating = s.Rating,
+          Category = cat ?? "Uncategorized"
+        });
+      }
+      ShaderInfos = infos
+        .OrderBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    }
+    catch { }
 
     // Try to instantiate cores on a minimal bus to read metadata
     try
@@ -345,7 +369,9 @@
 
       // CPU/PPU/APU metadata
       var cpuDict = CoreRegistry.CreateInstances<ICPU>(bus, "CPU_");
-      CpuMeta = cpuDict.Select(kv => new CoreMeta
+      CpuMeta = cpuDict
+        .Where(kv => Cpu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
+        .Select(kv => new CoreMeta
       {
         Id = kv.Key,
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
@@ -356,7 +382,9 @@
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
-      PpuMeta = ppuDict.Select(kv => new CoreMeta
+      PpuMeta = ppuDict
+        .Where(kv => Ppu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
+        .Select(kv => new CoreMeta
       {
         Id = kv.Key,
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
@@ -367,7 +395,9 @@
       }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
       var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
-      ApuMeta = apuDict.Select(kv => new CoreMeta
+      ApuMeta = apuDict
+        .Where(kv => Apu.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
+        .Select(kv => new CoreMeta
       {
         Id = kv.Key,
         Name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
@@ -379,7 +409,7 @@
 
       // Clock metadata (now implements Performance & Rating)
   ClockInfos = new List<ClockInfo>();
-      foreach (var id in Clock)
+  foreach (var id in Clock)
       {
         try
         {
@@ -404,6 +434,7 @@
     {
       // If anything fails (e.g., environment), fall back to simple ID lists already populated above
     }
+
   }
 
   private void OpenCard(CoreCardModel m)
