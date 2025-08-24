@@ -1,12 +1,13 @@
 @page "/story"
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <div class="options-root">
   <h2 class="opt-title">STORY</h2>
   <div class="opt-sections">
     <section class="opt-section">
       <h3 class="opt-h3">Prologue</h3>
-      <p class="opt-row small-note">Story content coming soon.</p>
+      <p class="opt-row small-note">Launching stage view…</p>
     </section>
   </div>
   <div class="opt-footer">
@@ -20,5 +21,45 @@
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+    // Fade out music and fade screen to black before navigating
+    try {
+      await JS.InvokeVoidAsync("eval", @"(function(){
+        try{
+          // Inject blackout overlay if not present
+          var ov = document.getElementById('storyFadeOverlay');
+          if(!ov){
+            ov = document.createElement('div');
+            ov.id = 'storyFadeOverlay';
+            ov.style.position='fixed'; ov.style.inset='0'; ov.style.background='#000'; ov.style.opacity='0';
+            ov.style.transition='opacity .6s ease'; ov.style.pointerEvents='none'; ov.style.zIndex='99999';
+            document.body.appendChild(ov);
+          }
+          // Start overlay fade-in
+          requestAnimationFrame(function(){ ov.style.opacity='1'; });
+        }catch(e){}
+        try{
+          // Fade down any HTMLMediaElement volumes
+          var dur=800, steps=16, i=0; var stepMs = dur/steps; var startVols = new WeakMap();
+          var elems = Array.from(document.querySelectorAll('audio,video'));
+          elems.forEach(function(m){ try{ startVols.set(m, m.volume != null ? m.volume : 1); }catch(e){} });
+          var t = setInterval(function(){
+            i++; var k = Math.max(0, 1 - i/steps);
+            elems.forEach(function(m){ try{ var sv = startVols.get(m); m.volume = Math.max(0, Math.min(k*(sv!=null?sv:1), 1)); }catch(e){} });
+            // Try WebAudio master gain knobs if present
+            try{ if(window.nesAudio && window.nesAudio.masterGain && window.nesAudio.masterGain.gain){ window.nesAudio.masterGain.gain.value = k; } }catch(e){}
+            try{ if(window.nesInterop && typeof window.nesInterop.setGlobalVolume==='function'){ window.nesInterop.setGlobalVolume(k); } }catch(e){}
+            if(i>=steps){ clearInterval(t); }
+          }, stepMs);
+        }catch(e){}
+      })();");
+    } catch { }
+    // Allow fade to complete
+    try { await Task.Delay(900); } catch { }
+    // Navigate to NES in stage/display-only mode with TV shader, EIL cores, no savestates
+    try {
+  // Reference external test script under wwwroot/story.js
+  var url = "/nes?mode=displayOnly&stage=1&shader=TV&cores=EIL&savestates=0&scriptFile=/story.js";
+  Nav.NavigateTo(url);
+    } catch { }
   }
 }

@@ -23,6 +23,25 @@
 
 .nes-grid { display:grid; gap:var(--nes-gap); align-items:start; }
 
+/* Display-only or stage mode: force single column and center viewport */
+.nes-grid.display-only,
+.nes-grid.stage-mode {
+  grid-template-columns: 1fr !important;
+}
+.nes-grid.display-only .play-area,
+.nes-grid.stage-mode .play-area {
+  align-items: center !important;
+}
+.nes-grid.display-only .side-panels,
+.nes-grid.stage-mode .side-panels {
+  display: none !important;
+}
+.nes-grid.display-only .screen-shell,
+.nes-grid.stage-mode .screen-shell {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 /* Mobile first: single column layout */
 @media (max-width: 899px) {
   .nes-grid { 

@@ -1,3 +1,5 @@
+/* Blackout overlay (injected via Story.razor JS) */
+#storyFadeOverlay{ background:#000; }
 .options-root{max-width:760px;margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;}
 .options-root{position:relative;overflow:hidden;}
 .opt-title{margin:0 0 1.25rem;font-size:1.6rem;color:#ff5a26;}
