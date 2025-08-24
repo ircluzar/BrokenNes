@@ -1,8 +1,8 @@
 // DisplayName: HUE
 // CoreName: Hue Inversion + Slow Rotation
 // Description: Invert hue with protection for near-gray and near-luma-extreme regions, then apply an ultra-slow rotation over time.
-// Performance: 1
-// Rating: 4
+// Performance: -6
+// Rating: 1
 // Category: Color
 precision mediump float;
 

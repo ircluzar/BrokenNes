@@ -1,8 +1,8 @@
 // DisplayName: LAT
 // CoreName: Lattice Refraction
 // Description: Micro-facet lattice per NES tile generating refracted and sparkling refraction with chromatic dispersion.
-// Performance: 3
-// Rating: 4
+// Performance: -30
+// Rating: 2
 // Category: Refraction
 precision mediump float;
 

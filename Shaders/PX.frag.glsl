@@ -2,7 +2,7 @@
 // CoreName: Passthrough
 // Description: Identity shader for testing and baseline comparison; flips Y to match NES texture orientation.
 // Performance: 0
-// Rating: 5
+// Rating: 3
 // Category: Utility
 precision mediump float;
 

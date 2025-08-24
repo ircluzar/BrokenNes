@@ -1,8 +1,8 @@
 // DisplayName: WTR
 // CoreName: Water Energy Distortion
 // Description: Compound vector-field warping with vertical/horizontal beams, sine wobbles and radial lenses, plus chromatic shear.
-// Performance: 3
-// Rating: 4
+// Performance: -50
+// Rating: 1
 // Category: Distort
 precision mediump float;
 

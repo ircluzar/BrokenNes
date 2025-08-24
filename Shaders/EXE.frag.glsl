@@ -1,8 +1,8 @@
 // DisplayName: EXE
 // CoreName: Energetic Beam Exfiltration
 // Description: Animated vertical beam attracts pixels with swirl, particles, glitch slices, and chromatic shear.
-// Performance: 3
-// Rating: 4
+// Performance: -22
+// Rating: 1
 // Category: Distort
 precision mediump float;
 

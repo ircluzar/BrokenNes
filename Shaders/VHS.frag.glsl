@@ -1,8 +1,8 @@
 // DisplayName: VHS
 // CoreName: Analog VHS Emulation
 // Description: Emulates timebase errors, chroma/luma separation, bleed, hum bands, speckle/dropouts, scanlines, and halation.
-// Performance: 3
-// Rating: 5
+// Performance: -35
+// Rating: 1
 // Category: Retro
 precision mediump float;
 

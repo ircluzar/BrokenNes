@@ -1,8 +1,8 @@
 // DisplayName: CRY
 // CoreName: Crystalline Refraction
 // Description: Faceted Voronoi-driven refraction with edge-weighted displacement, subtle dispersion, and gentle inter-shard bleed.
-// Performance: 3
-// Rating: 4
+// Performance: -25
+// Rating: 1
 // Category: Refraction
 precision mediump float;
 

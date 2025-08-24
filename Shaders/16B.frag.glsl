@@ -1,7 +1,7 @@
 // DisplayName: 16B
 // CoreName: 16-bit Upgrade
 // Description: Gentle edge-aware smoothing with light chroma blur and subtle grading to evoke a SNES-like 16-bit feel.
-// Performance: 2
+// Performance: -15
 // Rating: 4
 // Category: Enhance
 precision mediump float;

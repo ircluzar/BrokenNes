@@ -1,8 +1,8 @@
 // DisplayName: BLD
 // CoreName: 4-Way Color Bleed
 // Description: Edge-aware directional diffusion that lets saturated pixels softly bleed along X/Y while protecting strong edges.
-// Performance: 1
-// Rating: 4
+// Performance: -12
+// Rating: 3
 // Category: Stylize
 precision mediump float;
 
