@@ -732,6 +732,48 @@ namespace BrokenNes
             }
         }
 
+        // Load a ROM from wwwroot by filename for narration pages without registering it in the ROM manager
+        // Returns true on success. This is intentionally not modifying RomOptions.
+        [JSInvokable]
+        public async Task<bool> JsLoadBuiltInRom(string filename)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filename)) return false;
+                Logger.LogInformation($"[Story] Loading built-in page ROM: {filename}");
+                var romData = await LoadRomFromWwwroot(filename);
+                if (romData == null || romData.Length == 0)
+                {
+                    Logger.LogWarning($"[Story] Page ROM not found or empty: {filename}");
+                    return false;
+                }
+                bool wasRunning = nesController.IsRunning; if (wasRunning) await PauseEmulation();
+                if (nes == null) nes = new NesEmulator.NES();
+                var prevApuSuffix = nesController.ApuCoreSel;
+                nes.RomName = filename;
+                nes.LoadROM(romData);
+                if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch { } }
+                try { ApplySelectedCrashBehavior(); } catch { }
+                SetApuCoreSelFromEmu();
+                ApplySelectedCores();
+                // Update current ROM tracking (do not add to RomOptions; no registration)
+                nesController.RomFileName = filename;
+                nesController.CurrentRomName = filename;
+                nesController.LastLoadedRomSize = romData.Length;
+                if (!nesController.UploadedRoms.ContainsKey(filename)) nesController.BuiltInRomSizes[filename] = romData.Length;
+                // Warm-up a frame to avoid stale canvas
+                try { nes.RunFrame(); nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch { }
+                if (nesController.HasBooted && wasRunning) { await StartEmulation(); }
+                StateHasChanged();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"[Story] Failed to load page ROM: {filename}");
+                return false;
+            }
+        }
+
         private bool _hardUnloadNavActive = false;
         private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
         {

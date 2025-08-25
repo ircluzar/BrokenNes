@@ -82,17 +82,22 @@
       const nesCtx = window.nesAudioCtx;
       const nesMusic = window._nesMusicGain;
       const nesMaster = window._nesMasterGain;
-      if (!nesCtx || !nesMusic || !nesMaster) return false;
+      if (!nesCtx || !nesMusic || !nesMaster) {
+        // Don’t attempt connect on null nodes; we’ll retry later.
+        return false;
+      }
       // If our current context differs, rebuild nodes on nes context
       if (ctx && nesCtx && ctx !== nesCtx){
         const ok = rebuildNodesWithCtx(nesCtx);
         if (!ok) return false;
       }
       // Connect to NES buses
-      try { if (srcNode) srcNode.disconnect(); } catch {}
-      try { if (trackGain) trackGain.disconnect(); } catch {}
-      try { srcNode.connect(trackGain); } catch {}
-      try { trackGain.connect(nesMusic); } catch (e){ console.warn('[music] connect to NES music bus failed', e); return false; }
+  try { if (srcNode) srcNode.disconnect(); } catch {}
+  try { if (trackGain) trackGain.disconnect(); } catch {}
+  // Ensure nodes exist before connecting
+  if (!srcNode || !trackGain) return false;
+  try { srcNode.connect(trackGain); } catch {}
+  try { trackGain.connect(nesMusic); } catch (e){ console.warn('[music] connect to NES music bus failed', e); return false; }
       // If NES music bus is effectively mute from a prior fade, ask nesInterop to reapply saved volumes
       try {
         const gv = (nesMusic && nesMusic.gain && typeof nesMusic.gain.value === 'number') ? nesMusic.gain.value : 1;

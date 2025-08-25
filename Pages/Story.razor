@@ -55,11 +55,13 @@
     } catch { }
     // Allow fade to complete
     try { await Task.Delay(900); } catch { }
-    // Navigate to NES in stage/display-only mode with TV shader, EIL cores, no savestates
+    // Navigate to NES in stage/display-only mode with TV shader, force PPU=LOW and CLOCK=FMC,
+    // keep CPU/APU via cores=EIL, no savestates
     try {
-  // Reference external test script under wwwroot/story.js
-  var url = "/nes?mode=displayOnly&stage=1&shader=TV&cores=EIL&savestates=0&scriptFile=/story.js";
-  Nav.NavigateTo(url);
+      // Use relative URL so it honors <base href> when hosted under a subfolder
+      // Also use relative script path (resolved against app base)
+      var url = "nes?mode=displayOnly&stage=1&shader=TV&cores=EIL&ppu=LOW&clock=FMC&savestates=0&scriptFile=story.js";
+      Nav.NavigateTo(url);
     } catch { }
   }
 }

@@ -1,5 +1,6 @@
 @page "/continue"
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <div class="options-root">
   <h2 class="opt-title">CONTINUE</h2>
@@ -10,7 +11,7 @@
     </section>
   </div>
   <div class="opt-footer">
-    <a href="./deck-builder?skipHW=1" class="opt-link">RETURN</a>
+    <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
 </div>
 
@@ -20,5 +21,58 @@
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (!firstRender) return;
+    // On entering Continue: fade out any existing music (title screen or shared track),
+    // then crossfade into DeckBuilder.mp3 looping.
+    try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch { }
+    try {
+      await JS.InvokeVoidAsync("eval", @"(function(){
+        try{
+          var want = 'music/DeckBuilder.mp3';
+          if (!window.music) return;
+          var cur = (typeof window.music.currentSrc==='function' ? (window.music.currentSrc()||'') : '');
+          var isPlaying = (typeof window.music.isPlaying==='function' ? !!window.music.isPlaying() : false);
+          // Only skip if DeckBuilder is already playing
+          if (cur.indexOf('DeckBuilder.mp3') !== -1 && isPlaying) return;
+          // Start a gentle fade-out if a different track is playing
+          if (isPlaying && typeof window.music.fadeOut==='function'){
+            try { window.music.fadeOut(700, true); } catch(e){}
+            setTimeout(function(){ try { window.music.play(want, { loop: true, fadeInMs: 900 }); } catch(e){} }, 150);
+          } else {
+            // Not currently playing (or DeckBuilder stopped): start it with a fade-in
+            try { window.music.play(want, { loop: true, fadeInMs: 700 }); } catch(e){}
+          }
+        }catch(e){}
+      })();");
+    } catch { }
+  }
+
+  private string BuildRel(string path){
+    if(string.IsNullOrWhiteSpace(path)) return "";
+    path = path.TrimStart('/');
+    return path;
+  }
+
+  private async Task OnReturn()
+  {
+    // Crossfade from DeckBuilder track back to TitleScreen
+    try {
+      await JS.InvokeVoidAsync("eval", @"(function(){
+        try{
+          if(window.music){
+            try{ window.music.fadeOut && window.music.fadeOut(700, true); }catch(e){}
+          }
+          // Slight overlap before bringing title back in
+          setTimeout(function(){ try{ window.nesInterop && window.nesInterop.playTitleMusic && window.nesInterop.playTitleMusic(); }catch(e){} }, 150);
+        }catch(e){}
+      })();");
+    } catch { }
+    // Let the fade scheduling start, then navigate
+    try { await Task.Delay(120); } catch { }
+    Nav.NavigateTo(BuildRel("deck-builder?skipHW=1"), forceLoad: false);
   }
 }

@@ -4,7 +4,7 @@
 # Usage: ./scripts/flatpublish.sh [--zip] [--verify] [--exclude-roms] [--no-aot] [--dev] [--trim]
 #   --zip     : additionally create flatpublish.zip archive of the output.
 #   --verify  : skip publish, just rebuild flat dir from last publish.
-#   --exclude-roms : omit bundled ROMs.
+#   --exclude-roms : omit bundled ROMs (.nes files) from the flatpublish output.
 #   --no-aot  : disable AOT (default).
 #   --dev     : publish Debug, no trimming, no AOT.
 #   --trim    : enable trimming (requires LinkerConfig safety roots).
@@ -114,6 +114,18 @@ echo "==> Copying static site contents to $FLAT_DIR"
 # Copy the contents (not the wwwroot directory itself) to flatten.
 cp -R "$WWWROOT_DIR/." "$FLAT_DIR/"
 
+# Optionally remove bundled ROMs
+if $EXCLUDE_ROMS; then
+  echo "==> Removing bundled ROMs (.nes files) due to --exclude-roms"
+  ROM_COUNT=$(find "$FLAT_DIR" -type f -name '*.nes' | wc -l | tr -d ' ')
+  if (( ROM_COUNT > 0 )); then
+    find "$FLAT_DIR" -type f -name '*.nes' -delete || true
+    echo "  removed: $ROM_COUNT ROM file(s)"
+  else
+    echo "  none found"
+  fi
+fi
+
 
 # Optional size trimming (commented out). Uncomment to remove PDBs if present.
 # find "$FLAT_DIR" -name '*.pdb' -delete
@@ -155,12 +167,30 @@ for asset in "${apu_assets[@]}"; do
   fi
 done
 
+# Verify TTS (meSpeak) assets and speak.js shim
+tts_assets=(
+  "speak.js"
+  "lib/mespeak/mespeak.js"
+  "lib/mespeak/mespeak_config.json"
+  "lib/mespeak/voices/en/en-us.json"
+)
+echo "==> Verifying TTS (meSpeak) assets..."
+for asset in "${tts_assets[@]}"; do
+  if [[ ! -f "$FLAT_DIR/$asset" ]]; then
+    echo "  MISSING: $asset"
+    missing=1
+  else
+    echo "  found: $asset"
+  fi
+done
+
 # Opportunistic compression (Brotli + gzip) for large / frequently requested MNES assets if not already present.
 # Skips if tools unavailable. Does not treat absence as fatal.
 compress_candidates=(
   "lib/mnesSf2.js"
   "lib/soundfont.js"
   "lib/nesInterop.js"
+  "speak.js"
   "sf2player/js-synthesizer.min.js"
   "sf2player/js-synthesizer.worklet.min.js"
   "sf2player/libfluidsynth-2.0.2.js"
@@ -185,6 +215,35 @@ for f in "${compress_candidates[@]}"; do
     fi
   fi
 done
+
+# Also compress meSpeak subtree (JS/JSON) and any bundled .nes files (best-effort)
+if command -v brotli >/dev/null 2>&1 || command -v gzip >/dev/null 2>&1; then
+  echo "==> Best-effort compression for meSpeak voices/config and ROMs"
+  # meSpeak
+  if [[ -d "$FLAT_DIR/lib/mespeak" ]]; then
+    while IFS= read -r -d '' f; do
+      [[ -f "$f" ]] || continue
+      if command -v brotli >/dev/null 2>&1 && [[ ! -f "$f.br" ]]; then
+        rel=${f#"$FLAT_DIR/"}; echo "  brotli: $rel"; brotli -f -q 11 "$f" -o "$f.br" || true
+      fi
+      if command -v gzip >/dev/null 2>&1 && [[ ! -f "$f.gz" ]]; then
+        rel=${f#"$FLAT_DIR/"}; echo "  gzip:   $rel"; gzip -c -9 "$f" > "$f.gz" || true
+      fi
+    done < <(find "$FLAT_DIR/lib/mespeak" -type f \( -name '*.js' -o -name '*.json' \) -print0 2>/dev/null)
+  fi
+  # ROMs
+  if [[ -d "$FLAT_DIR" ]]; then
+    while IFS= read -r -d '' f; do
+      [[ -f "$f" ]] || continue
+      if command -v brotli >/dev/null 2>&1 && [[ ! -f "$f.br" ]]; then
+        rel=${f#"$FLAT_DIR/"}; echo "  brotli: $rel"; brotli -f -q 9 "$f" -o "$f.br" || true
+      fi
+      if command -v gzip >/dev/null 2>&1 && [[ ! -f "$f.gz" ]]; then
+        rel=${f#"$FLAT_DIR/"}; echo "  gzip:   $rel"; gzip -c -9 "$f" > "$f.gz" || true
+      fi
+    done < <(find "$FLAT_DIR" -type f -name '*.nes' -print0 2>/dev/null)
+  fi
+fi
 
 # Optionally compress ONNX models as well (best-effort; improves CDN/static hosting if server serves pre-compressed files)
 if [[ -d "$FLAT_DIR/models" ]]; then
@@ -282,7 +341,7 @@ fi
 # folders so direct navigation to /nes, /options, /deckbuilder works without server-side
 # fallback. Each folder gets an index.html cloned from the root one with a modified
 # <base href> so relative framework/script paths resolve to the root.
-routes=(nes options deckbuilder)
+routes=(nes options deck-builder deckbuilder story continue cores input inputsettings)
 echo "==> Generating static route entry points (${routes[*]})"
 for r in "${routes[@]}"; do
   route_dir="$FLAT_DIR/$r"
@@ -293,12 +352,20 @@ for r in "${routes[@]}"; do
     sed -i '' -e 's#<base href="\./"#<base href="../"#' "$route_dir/index.html" || true
   fi
 done
-routes+=(deck-builder) # Add deck-builder route
 # Home page CSS fallback (unconditional copy from source if exists + link insertion)
 if [[ -f "Pages/Home.razor.css" ]]; then
   echo "==> Adding fallback home-page.css"
   mkdir -p "$FLAT_DIR/css"; cp "Pages/Home.razor.css" "$FLAT_DIR/css/home-page.css" || true
-  for html in "$INDEX_HTML" "$FLAT_DIR/nes/index.html" "$FLAT_DIR/options/index.html" "$FLAT_DIR/deckbuilder/index.html" "$FLAT_DIR/deck-builder/index.html"; do
+  for html in "$INDEX_HTML" \
+              "$FLAT_DIR/nes/index.html" \
+              "$FLAT_DIR/options/index.html" \
+              "$FLAT_DIR/deckbuilder/index.html" \
+              "$FLAT_DIR/deck-builder/index.html" \
+              "$FLAT_DIR/story/index.html" \
+              "$FLAT_DIR/continue/index.html" \
+              "$FLAT_DIR/cores/index.html" \
+              "$FLAT_DIR/input/index.html" \
+              "$FLAT_DIR/inputsettings/index.html"; do
     [[ -f "$html" ]] || continue
     if ! grep -q 'home-page.css' "$html"; then
       sed -i '' -e 's#</head>#  <link rel="stylesheet" href="css/home-page.css" />\n</head>#' "$html" || true
@@ -318,6 +385,7 @@ media_assets=(
   "music/TitleScreen.mp3"
   "music/Options.mp3"
   "music/DeckBuilder.mp3"
+  "music/Story.mp3"
   "sfx/plates.m4a"
 )
 for a in "${media_assets[@]}"; do

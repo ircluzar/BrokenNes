@@ -25,21 +25,35 @@
 <audio id="titleMusic" src="music/TitleScreen.mp3" preload="auto" loop style="display:none"></audio>
 
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @code {
     private bool IsOnNes => SafeIsOnNes();
 
-    private void NavigateHome()
+    private async Task NavigateHome()
     {
+        // Soft-audio handoff: fade out any shared music and bring back title theme
+        try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+        try {
+            await JS.InvokeVoidAsync("eval", @"(function(){
+                try{
+                    if(window.music && typeof window.music.isPlaying==='function' && window.music.isPlaying()){
+                        try { window.music.fadeOut && window.music.fadeOut(650, true); } catch(e){}
+                    }
+                    // Overlap slightly so it feels like a crossfade
+                    setTimeout(function(){ try { window.nesInterop && window.nesInterop.playTitleMusic && window.nesInterop.playTitleMusic(); } catch(e){} }, 150);
+                }catch(e){}
+            })();");
+        } catch { }
         // Use relative navigation (no leading slash) so subfolder hosting works (avoids resetting to domain root)
         Nav.NavigateTo("./?skipHW=1", forceLoad: false);
     }
 
-    private void OnBrandKey(KeyboardEventArgs e)
+    private async Task OnBrandKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" || e.Key == " ")
         {
-            NavigateHome();
+            await NavigateHome();
         }
     }
 
