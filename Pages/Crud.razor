@@ -1,0 +1,79 @@
+@page "/crud"
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="crud-root">
+    <h2 class="crud-title">DATABASE EDITOR</h2>
+    <div class="crud-toolbar">
+        <button @onclick="ExportJson">Export DB JSON</button>
+        <label class="crud-file">
+            <input type="file" accept="application/json" @onchange="ImportJson" />
+            Import DB JSON
+        </label>
+        <a class="crud-link" href="./options">Back to Options</a>
+    </div>
+
+    <div class='crud-tabs'>
+        <button class='@GetTabClass("games")' @onclick='() => SetTab("games")'>Games</button>
+        <button class='@GetTabClass("achievements")' @onclick='() => SetTab("achievements")'>Achievements</button>
+        <button class='@GetTabClass("cards")' @onclick='() => SetTab("cards")'>Cards</button>
+        <button class='@GetTabClass("levels")' @onclick='() => SetTab("levels")'>Levels</button>
+    </div>
+
+    <div class="crud-pane">
+        @if (ActiveTab == "games")
+        {
+            <h3>Games</h3>
+            <p class="small-note">WIP placeholder. Add/list/edit/delete Game records. Supports paging, search, and validation.</p>
+            <div class="grid-head">
+                <span>ID</span><span>Title</span><span>System</span><span>Header Signature</span><span>Notes</span><span>Actions</span>
+            </div>
+            <div class="grid-empty">No records yet.</div>
+        }
+        else if (ActiveTab == "achievements")
+        {
+            <h3>Achievements</h3>
+            <p class="small-note">WIP placeholder. CRUD with watchFormula authoring and quick validation stub.</p>
+            <div class="grid-head">
+                <span>ID</span><span>Game</span><span>Title</span><span>Difficulty</span><span>Tags</span><span>Actions</span>
+            </div>
+            <div class="grid-empty">No records yet.</div>
+        }
+        else if (ActiveTab == "cards")
+        {
+            <h3>Cards</h3>
+            <p class="small-note">WIP placeholder. CRUD for CPU/PPU/APU/Mapper/etc. with constraints.</p>
+            <div class="grid-head">
+                <span>ID</span><span>Type</span><span>Constraints</span><span>Actions</span>
+            </div>
+            <div class="grid-empty">No records yet.</div>
+        }
+        else if (ActiveTab == "levels")
+        {
+            <h3>Levels</h3>
+            <p class="small-note">WIP placeholder. CRUD for levels with requiredCards and star thresholds.</p>
+            <div class="grid-head">
+                <span>Index</span><span>Required Cards</span><span>Required Stars</span><span>Card Challenge</span><span>Actions</span>
+            </div>
+            <div class="grid-empty">No records yet.</div>
+        }
+    </div>
+</div>
+
+@code {
+    private string ActiveTab { get; set; } = "games";
+
+    private void SetTab(string id) => ActiveTab = id;
+
+    private string GetTabClass(string id) => ActiveTab == id ? "active" : string.Empty;
+
+    private async Task ExportJson()
+    {
+        try { await JS.InvokeVoidAsync("continueDb.exportAllToDownload"); } catch { }
+    }
+
+    private async Task ImportJson(ChangeEventArgs e)
+    {
+        try { await JS.InvokeVoidAsync("continueDb.importFromFileInput"); } catch { }
+    }
+}

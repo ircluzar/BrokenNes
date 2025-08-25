@@ -1,233 +1,455 @@
-# Continue Project - Workflow Engine Design
+# Continue — Workflow Engine Project Document
 
-## Overview
+> Working draft for the game workflow engine (loop, state, progression goals, goal evaluation). This doc is the single source of truth for runtime/state diagrams, data contracts, and implementation details.
 
-The Continue project implements a progression-based workflow engine for the BrokenNes emulator. Players progress through levels by completing achievements in NES games using specific emulator component combinations (cards). This document outlines the core systems, data flow, and implementation details.
+---
 
-## Core Systems
+## 0) Goals & Non‑Goals
 
-### 1. Achievement System
+**Goals**
 
-#### Achievement Stars
-- **Purpose**: Primary progression currency
-- **Representation**: Star counter in UI
-- **Function**: Unlocks ability to progress to next level
-- **Constraints**: 
-  - Can only be unlocked once per game save
-  - Only compatible games can award achievements
-  - Achievements have unique IDs (uppercase with `_` delimiters)
+* Deterministic game loop that drives: level requirements → emulator session → achievement unlock → progression.
+* Pluggable achievement monitoring bound to a single active emulator instance.
+* Portable database that lives in IndexedDB at runtime and can be exported/imported as JSON to seed a bundled default DB in the repo.
+* Clear separation between **content data** (games, achievements, cards, levels) and **player state** (save, inventory, progress).
 
-#### Achievement Monitoring
-- **Scope**: Limited subset of achievements monitored per session
-- **Implementation**: C# side monitors specific memory addresses
-- **Lifecycle**:
-  1. Achievement assigned to emulation instance
-  2. C# monitors memory conditions via formula evaluation
-  3. Achievement triggers → removed from monitoring
-  4. Message sent to JavaScript layer
-  5. Game save updated
-  6. Achievement notification displayed
+**Non‑Goals (for now)**
 
-#### Game Compatibility
-- **Identification**: Unique ID matching (potentially from iNES header)
-- **Database**: Bundled database contains compatibility info
-- **States**:
-  - Compatible games with achievements
-  - Compatible games without achievements  
-  - Incompatible games
+* Global achievements scanning across all games simultaneously.
+* Anti‑cheat beyond basic sanity checks.
+* Multiplayer or cloud sync.
 
-### 2. Pre-Registration System
+---
 
-#### ROM Listing Interface
-- **Location**: Separate from main emulator ROM manager
-- **Features**:
-  - Enhanced game information display
-  - Bundled database integration
-  - Achievement compatibility indicators
-- **Data Source**: Local bundled database
+## 1) Architecture Overview
 
-### 3. Database System
+* **UI Shell (Web)**: Continue page, ROM pre-registration, level selection, emulator embedding, debug CRUD, notifications.
+* **Runtime Core (C#)**: Workflow state machine + achievement watcher engine.
+* **Emulator Host**: Single emulator process/instance per play session. (Exact backend—native/WASM—doesn’t matter to the contracts.)
+* **Persistence**: In-memory domain models with IndexedDB store; JSON import/export to/from a bundled default DB.
+* **IPC/Bridge**: JS ↔ C# messaging. Watchers live in C#; UI subscribes to events.
 
-#### Database Format
-- **Storage**: JSON export/import capability
-- **Runtime**: In-memory with IndexedDB persistence
-- **Management**: Debug CRUD interface for data manipulation
+```
+UI (TS/JS)  ⇄  Workflow Core (C#)  ⇄  Emulator Instance
+             ▲            │              │
+             │            ▼              │
+       IndexedDB  ⇄  In-memory DB        │
+             ▲            │              │
+             └──────── JSON Import/Export┘
+```
 
-#### Database Schema
+---
+
+## 2) Core Concepts
+
+### 2.1 Game Identification
+
+* **GameID**: Stable identifier derived (preferably) from ROM header metadata.
+
+  * Candidate: iNES header fields + SHA-1 of PRG/CHR sections (or a canonical hash of header + first N bytes).
+  * Stored as `GAME_<system>_<hash>` (uppercase, `_` delimited).
+* **Compatibility**: A game is *compatible* if it exists in the DB with at least one defined achievement.
+
+### 2.2 Achievements
+
+* Unlocked **once per gamesave**.
+* **ID format**: Uppercase with `_` delimiters, e.g., `NES_SUPER_MARIO_1_1_FLAGPOLE`.
+* Each achievement defines a **watch formula** (see §6) that compiles to a `Watcher` in C#.
+* Only a **handful** of achievements are monitored concurrently (max N active watchers per session).
+
+### 2.3 Cards & Console Build
+
+* **Cards** represent emulator components/cores. A *console* for a level is the set of required + player-selected cards.
+* Every **4th level** introduces a *Card Challenge*: player is given a set of component cards and must earn **1 achievement** using that build.
+
+### 2.4 Progression & Stars
+
+* **Stars** = total unlocked achievements (global counter in the save).
+* Each level defines a **star threshold** to advance.
+* Completing a level grants the forced card(s) to the player’s inventory.
+
+---
+
+## 3) Game Loop (Happy Path)
+
+1. **Continue Page → Level Start**
+
+   * Determine current level `L` from save.
+   * Resolve **required card(s)** for `L`. Player can slot optional cards from inventory to complete the build.
+2. **Select ROM**
+
+   * Player chooses a ROM (from pre-registered list) that:
+
+     * is compatible, and
+     * has **uncompleted** achievements.
+3. **Assign Achievements**
+
+   * Engine samples **5 random** uncompleted achievements for that game. These become the **Active Monitored Set**.
+4. **Start Emulator**
+
+   * Boot with the selected console build + ROM. UI shows the list of 5 currently monitored achievements.
+5. **Unlock**
+
+   * When **any one** monitored achievement triggers:
+
+     * Pause emulator.
+     * Show toast/modal: *Achievement Get!*.
+     * Persist unlock → increment star counter.
+     * Tear down all active watchers.
+     * Return to Continue page.
+6. **Advance Check**
+
+   * If `save.stars >= level[L].requiredStars`, advance to level `L+1`, grant any forced card rewards, and repeat.
+
+**Constraint**: only **1 achievement** may be completed per emulator instance.
+
+---
+
+## 4) Workflow Engine — State Machine
+
+### 4.1 States
+
+* `Idle` → `LevelReady` → `BuildReady` → `RomSelected` → `Monitoring` → (`Unlocked` | `Aborted`) → `Idle`
+
+### 4.2 Transitions
+
+* `Idle → LevelReady`: load current level config.
+* `LevelReady → BuildReady`: required cards applied; user picks optional cards; validate build.
+* `BuildReady → RomSelected`: user picks ROM with available achievements.
+* `RomSelected → Monitoring`: assign 5 achievements; instantiate watchers; boot emulator.
+* `Monitoring → Unlocked`: any watcher triggers → pause → persist → tear down → notify.
+* `Monitoring → Aborted`: user exits or emulator hard-stop → tear down watchers.
+* `Unlocked/Aborted → Idle`: return to Continue page; check advancement.
+
+### 4.3 Signals/Events
+
+* `WatcherTriggered(achievementId)` (C# → JS)
+* `EmulatorPaused()` (C# → JS)
+* `SaveUpdated()` (C# → JS)
+* `StartSession(build, romId)` (JS → C#)
+* `AssignAchievements([ids])` (JS → C#)
+* `StopSession()` (JS → C#)
+
+---
+
+## 5) Data Model
+
+### 5.1 Content DB (bundled & editable)
+
+* `Game`:
+
+  * `id: string` (GameID)
+  * `title: string`
+  * `system: string` (e.g., `nes`)
+  * `headerSignature: string` (hash)
+  * `notes?: string`
+* `Achievement`:
+
+  * `id: string`
+  * `gameId: string`
+  * `title: string`
+  * `description?: string`
+  * `watchFormula: string` (DSL in §6)
+  * `tags?: string[]`
+  * `difficulty?: 1|2|3|4|5`
+* `Card`:
+
+  * `id: string`
+  * `type: string` (e.g., `apu`, `ppu`, `mapper`)
+  * `constraints?: object`
+* `Level`:
+
+  * `index: number`
+  * `requiredCards: string[]` (card IDs)
+  * `requiredStars: number`
+  * `isCardChallenge: boolean` (true every 4th level)
+  * `challengeCardPool?: string[]` (cards to grant/require on challenge)
+
+### 5.2 Player Save
+
+* `Save`:
+
+  * `version: number`
+  * `stars: number`
+  * `currentLevel: number`
+  * `unlockedAchievements: string[]`
+  * `inventoryCards: string[]`
+  * `romRegistry: RomEntry[]`
+* `RomEntry`:
+
+  * `id: string` (user’s local ROM id)
+  * `gameId?: string` (resolved via matching)
+  * `pathOrHandle: string` (opaque handle)
+  * `compatible: boolean`
+  * `hasAchievements: boolean`
+
+### 5.3 JSON Export/Import
+
+* Entire **Content DB** + **Save** can be exported as a single JSON document:
+
 ```json
 {
-  "games": [
-    {
-      "id": "unique_game_id",
-      "name": "Game Title",
-      "compatible": true,
-      "achievements": [
-        {
-          "id": "ACHIEVEMENT_ID",
-          "name": "Achievement Name",
-          "description": "Achievement description",
-          "formula": "memory_monitoring_formula"
-        }
-      ]
-    }
-  ]
+  "meta": { "format": 1, "exportedAt": "2025-08-25T00:00:00Z" },
+  "content": {
+    "games": [ /* Game[] */ ],
+    "achievements": [ /* Achievement[] */ ],
+    "cards": [ /* Card[] */ ],
+    "levels": [ /* Level[] */ ]
+  },
+  "save": { /* Save */ }
 }
 ```
 
-#### Database Workflow
-1. **Development**: Work on local database via debug CRUD
-2. **Export**: Export altered database to JSON
-3. **Promotion**: Replace bundled database in repository
-4. **Distribution**: Updated database ships with application
+**Promotion Flow**: edit via CRUD → export JSON → commit as `default-db.json` in repo → app loads it as seed for IndexedDB.
 
-#### Formula System
-- **Storage**: String format in database
-- **Parsing**: C# converts string to monitoring object
-- **Evaluation**: C# monitors game memory based on formula
-- **Trigger**: Achievement completion removes watcher, notifies JavaScript
+### 5.4 IndexedDB Layout
 
-### 4. Level System
+* DB name: `continue-db`
+* Object stores (by key):
 
-#### Level Progression
-- **Frequency**: Every 4th level introduces new required cards
-- **Card Assignment**: Fixed emulator component cards given to player
-- **Constraint**: Must use assigned cards to complete achievements
+  * `games (id)`
+  * `achievements (id)` with index `by_gameId`
+  * `cards (id)`
+  * `levels (index)`
+  * `save (singleton-key)`
 
-#### Level Structure
-- **Fixed Card**: One mandatory core card per level
-- **Optional Cards**: Player can use owned cards for other core slots
-- **Console Generation**: Cards combine to create emulator configuration
-- **ROM Assignment**: Player selects achievement-compatible ROM
-- **Achievement Pool**: 5 random achievements assigned per level
+---
 
-### 5. Game Loop
+## 6) Achievement Watch Formulas (DSL)
 
-#### Level Setup Phase
-1. **Card Assignment**: System assigns required card for level
-2. **Console Configuration**: Player configures remaining card slots
-3. **ROM Selection**: Player chooses compatible ROM with available achievements
-4. **Achievement Assignment**: System selects 5 random achievements for monitoring
+### 6.1 Requirements
 
-#### Emulation Phase
-1. **Launch**: ROM boots with pre-configured emulator setup
-2. **Display Mode**: Game runs in display mode
-3. **Achievement UI**: Small list shows currently monitored achievements
-4. **Monitoring**: C# layer monitors memory for achievement conditions
+* Authorable as **string** in CRUD.
+* Parsed in C# into a `WatcherGraph`.
+* Supports **memory reads**, comparisons, logical ops, timers, edge detection, and latching.
 
-#### Completion Phase
-1. **Achievement Trigger**: Single achievement completion per session
-2. **Emulation Pause**: Emulator pauses on achievement unlock
-3. **Notification**: "Achievement Get!" message displayed
-4. **Return**: Automatic return to Continue page
-5. **Progress Check**: Evaluate if level completion threshold met
+### 6.2 Proposed Mini‑DSL
 
-#### Level Transition
-1. **Threshold Check**: Verify sufficient achievements for next level
-2. **Card Reward**: Assign new cards to player inventory
-3. **Level Increment**: Progress to next level
-4. **Loop Reset**: Begin new level setup phase
+Grammar sketch (informal):
 
-## State Management
+```
+expr := orExpr
+orExpr := andExpr ("||" andExpr)*
+andExpr := notExpr ("&&" notExpr)*
+notExpr := ("!" notExpr) | primary
+primary := cmp | group | timer | edge
+cmp := read op value
+op := "==" | "!=" | ">" | ">=" | "<" | "<="
+read := sys ":" space "[" addr (":" size)? "]"
+sys := "cpu" | "ppu" | "apu" | "ram"
+space := "mem" | "reg"
+addr := hex | symbol
+size := 1|2|4
+value := number | hex
 
-### Game Save Structure
+group := "(" expr ")"
+edge := "edge(" read "," value ")"   // rising edge to value
+timer := "for(" expr "," ms ")"      // expr holds for ms
+```
+
+Examples:
+
+* `ram:mem[0x075A] == 1 && edge(ram:mem[0x075A], 1)` → hit a flag when it flips to 1.
+* `for(cpu:reg[PC] == 0xC123, 5000)` → PC at routine for 5s.
+* `(ppu:mem[0x2002] & 0x80) == 0` → bitmask allowed via `&` literal in value side.
+
+### 6.3 Watcher Lifecycle
+
+* `Compile(watchFormula) -> WatcherGraph`
+* `Attach(EmulatorInstance)` → subscribes to frame or cycle callbacks.
+* `Tick()` on each frame/callback.
+* On `Satisfied` → engine emits `WatcherTriggered(achievementId)` and disposes the watcher.
+
+### 6.4 Performance Constraints
+
+* Max **N = 5** concurrent watchers.
+* Memory reads batched per frame; prefer coalesced ranges.
+
+---
+
+## 7) Emulator Integration (C#)
+
+### 7.1 Contracts
+
+```csharp
+interface IEmulator
+{
+    event Action OnFrame;
+    byte ReadCpuMem(ushort addr);
+    ushort ReadCpuReg(CpuRegister r);
+    byte ReadPpuMem(ushort addr);
+    // ... other subsystems as needed
+    void Pause();
+}
+
+record StartSessionRequest(ConsoleBuild Build, string RomId, string GameId);
+```
+
+### 7.2 Session Flow
+
+1. `StartSession(build, romId)` (JS → C#).
+2. Resolve `gameId` via ROM match; validate `compatible` and uncompleted pool.
+3. Pick `N=5` achievements → `AssignAchievements([ids])` and compile watchers.
+4. Hook `OnFrame` to batch `Tick()`.
+5. On first watcher satisfied → `Pause()` → `WatcherTriggered(id)`.
+
+### 7.3 Messaging (typings)
+
+```ts
+// JS receives
+type WatcherTriggered = { type: 'watcherTriggered', achievementId: string };
+
+// JS sends
+type StartSession = { type: 'startSession', build: ConsoleBuild, romId: string };
+```
+
+---
+
+## 8) Pre‑Registering Games (ROM Listing)
+
+### 8.1 Flow
+
+1. User adds ROMs (file handles or references).
+2. System extracts header/hash → attempts DB match.
+3. Record saved to `romRegistry` with `compatible` + `hasAchievements` flags.
+
+### 8.2 UI (non-emulator page)
+
+* Table with columns: Title, System, Local ID, Match Status, Achievements (#/total), Notes.
+* Action: *Open Debug CRUD*, *Scan Headers*, *Export DB JSON*, *Import DB JSON*.
+
+---
+
+## 9) Level System
+
+### 9.1 Definition
+
+* `Level.index` monotonically increases from 1.
+* `requiredCards` must be slotted before ROM selection.
+* `requiredStars` gate progression.
+* `isCardChallenge = (index % 4 == 0)`.
+
+### 9.2 Rules
+
+* Player must use the **required** card(s) as cores in the build.
+* May add optional cards from inventory.
+* On advancing to next level, grant the level’s **forced** card(s) to inventory.
+
+### 9.3 Assignment of Achievements per Level
+
+* After ROM selection, sample 5 **unlocked** achievements from that game.
+* Sampling strategy: uniform random, excluding already-unlocked IDs.
+
+---
+
+## 10) UI/UX Contracts
+
+* **Continue Page**: shows current level, required cards, stars, next threshold, and *Play* CTA.
+* **Build Pane**: drag-drop cards; validation feedback.
+* **ROM Picker**: filters to compatible ROMs with remaining achievements.
+* **Session HUD**: under emulator viewport, list **5 monitored achievements** (title + short hint).
+* **Achievement Get!**: modal with achievement title, +1 star, *Return to Continue* button.
+* **Debug CRUD**: grid editors for Games, Achievements, Cards, Levels; JSON import/export buttons.
+
+---
+
+## 11) Progression Logic (Pseudo)
+
+```csharp
+bool TryAdvance(Save save, Level current)
+{
+    if (save.stars >= current.requiredStars)
+    {
+        save.currentLevel++;
+        var next = Levels.Get(save.currentLevel);
+        foreach (var forced in next.requiredCards)
+            if (!save.inventoryCards.Contains(forced)) save.inventoryCards.Add(forced);
+        return true;
+    }
+    return false;
+}
+```
+
+---
+
+## 12) Validation & Edge Cases
+
+* **No compatible ROMs**: block *Play*, prompt to pre-register games or import DB.
+* **Game without achievements**: mark as incompatible for progression (can still play casually in future modes).
+* **Emulator crash/exit**: return `Aborted` → no progress.
+* **Duplicate unlock**: ignore if `achievementId` in `save.unlockedAchievements`.
+* **Watcher starvation**: if any watcher cannot read (e.g., uninitialized memory), it must stay `Unsatisfied` without crashing.
+
+---
+
+## 13) Security / Integrity (lightweight)
+
+* Keep a per-unlock **proof** blob (timestamp, gameId, hashes of last N reads leading to satisfaction) for auditing.
+* Basic rate limiting: one unlock per session enforced in engine.
+
+---
+
+## 14) Telemetry (optional)
+
+* Counters: sessions started, aborts, unlock time (ms), per-achievement difficulty (empirical).
+
+---
+
+## 15) Open Questions / TODO
+
+* Finalize GameID hashing scheme (iNES + PRG/CHR SHA-1 vs. alternative).
+* Define exact **card** catalog and constraints.
+* Authoring guidelines for the DSL, unit tests for parser and evaluation.
+* UX for revealing partial hints vs. full descriptions.
+* Balance for `requiredStars` per level; initial curve proposal TBD.
+
+---
+
+## 16) Appendix — Minimal Samples
+
+### 16.1 Sample Achievement JSON
+
 ```json
 {
-  "currentLevel": 1,
-  "achievementStars": 0,
-  "unlockedAchievements": ["ACHIEVEMENT_ID_1", "ACHIEVEMENT_ID_2"],
-  "ownedCards": ["card_id_1", "card_id_2"],
-  "completedLevels": [1, 2, 3]
+  "id": "NES_SMB1_WORLD1_FLAGPOLE_5000",
+  "gameId": "GAME_NES_2F6A...",
+  "title": "First Flagpole!",
+  "description": "Clear 1-1 and touch the flagpole.",
+  "watchFormula": "edge(ram:mem[0x075A],1) && for(ram:mem[0x075A]==1, 500)",
+  "difficulty": 1,
+  "tags": ["progression"]
 }
 ```
 
-### Progression State
-- **Current Level**: Active level number
-- **Star Count**: Total achievement stars earned
-- **Card Inventory**: Available emulator component cards
-- **Achievement History**: Completed achievements across all games
+### 16.2 Sample Level JSON
 
-## Implementation Architecture
-
-### C# Side Responsibilities
-- Memory monitoring and formula evaluation
-- Achievement condition detection
-- Emulator core integration
-- JavaScript communication via messages
-
-### JavaScript Side Responsibilities
-- UI state management
-- Database operations (IndexedDB)
-- Level progression logic
-- Achievement assignment and tracking
-
-### Communication Protocol
-```javascript
-// C# to JavaScript
+```json
 {
-  "type": "ACHIEVEMENT_UNLOCKED",
-  "achievementId": "ACHIEVEMENT_ID",
-  "gameId": "game_unique_id"
-}
-
-// JavaScript to C#
-{
-  "type": "START_MONITORING",
-  "achievements": [
-    {
-      "id": "ACHIEVEMENT_ID",
-      "formula": "memory_formula_string"
-    }
-  ]
+  "index": 4,
+  "requiredCards": ["CARD_MAPPER_002"],
+  "requiredStars": 12,
+  "isCardChallenge": true,
+  "challengeCardPool": ["CARD_PPU_A", "CARD_APU_B"]
 }
 ```
 
-## Data Flow
+### 16.3 Session Event Flow
 
-### Achievement Unlock Flow
-1. **Setup**: JavaScript sends achievement formulas to C#
-2. **Monitoring**: C# evaluates memory conditions during emulation
-3. **Trigger**: Achievement condition met
-4. **Notification**: C# sends unlock message to JavaScript
-5. **Update**: JavaScript updates game save and UI
-6. **Cleanup**: C# removes achievement from monitoring
-7. **Return**: User returned to Continue page
+```
+JS: startSession(build, romId)
+C#: validate → pick 5 → compile watchers → boot
+C#: watcherTriggered(achId) → pause → persist
+JS: show modal → back to Continue → tryAdvance()
+```
 
-### Level Progress Flow
-1. **Check**: Evaluate achievement star count against level requirements
-2. **Transition**: If threshold met, advance to next level
-3. **Reward**: Add new cards to player inventory
-4. **Setup**: Configure next level requirements and constraints
+---
 
-## Technical Considerations
+## 17) Definition of Done (initial milestone)
 
-### Performance
-- **Memory Monitoring**: Efficient C# memory watchers
-- **Database Operations**: Optimized IndexedDB queries
-- **UI Updates**: Minimal re-renders on state changes
-
-### Scalability
-- **Achievement Database**: Structured for easy expansion
-- **Card System**: Modular card definitions
-- **Level System**: Configurable level requirements
-
-### Error Handling
-- **Invalid ROMs**: Graceful handling of incompatible games
-- **Memory Errors**: Robust formula evaluation with fallbacks
-- **Database Corruption**: Recovery mechanisms for corrupted saves
-
-## Future Enhancements
-
-### Achievement System
-- **Categories**: Different types of achievements (speed, completion, etc.)
-- **Difficulty Ratings**: Weighted achievement values
-- **Community Features**: Achievement sharing and leaderboards
-
-### Level System
-- **Branching Paths**: Multiple progression routes
-- **Special Levels**: Boss levels with unique mechanics
-- **Prestige System**: Meta-progression after level completion
-
-### Database System
-- **Cloud Sync**: Optional cloud-based achievement database
-- **User Contributions**: Community achievement submissions
-- **Versioning**: Database migration system for updates
+* [ ] IndexedDB schema + JSON import/export implemented.
+* [ ] Debug CRUD for Games/Achievements/Cards/Levels.
+* [ ] DSL parser & runtime with unit tests (covers cmp/and/or/not/edge/for).
+* [ ] Emulator bridge with batch memory reads and frame ticks.
+* [ ] Workflow state machine covering all transitions.
+* [ ] Continue/Build/ROM Picker/Session HUD/Modal implemented.
+* [ ] One end-to-end path: unlock any sample achievement → star increments → level advance.
