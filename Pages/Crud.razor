@@ -1,7 +1,10 @@
 @page "/crud"
 @using Microsoft.JSInterop
 @using System.Text.Json
+@using NesEmulator
+@using NesEmulator.Shaders
 @inject IJSRuntime JS
+@inject IShaderProvider ShaderProvider
 
 <div class="crud-root">
     <h2 class="crud-title">DATABASE EDITOR</h2>
@@ -138,29 +141,258 @@
         else if (ActiveTab == "achievements")
         {
             <h3>Achievements</h3>
-            <p class="small-note">WIP placeholder. CRUD with watchFormula authoring and quick validation stub.</p>
-            <div class="grid-head">
-                <span>ID</span><span>Game</span><span>Title</span><span>Difficulty</span><span>Tags</span><span>Actions</span>
+            <div class="games-toolbar">
+                <button @onclick="LoadAchievementsAsync">Refresh</button>
+                <button @onclick="AddAchievementRow">Add new achievement</button>
+                <span class="small-note">Link to a Game by its ID (shows Game common name). Requirements are multiple formula lines.</span>
             </div>
-            <div class="grid-empty">No records yet.</div>
+            @if (isLoadingAchievements)
+            {
+                <div class="grid-empty">Loading…</div>
+            }
+            else if (achievements is null || achievements.Count == 0)
+            {
+                <div class="grid-empty">No records yet.</div>
+            }
+            else
+            {
+                <div class="grid-head" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                    <span>ID</span>
+                    <span>Game</span>
+                    <span>Title</span>
+                    <span>Requirements</span>
+                    <span>Controls</span>
+                </div>
+                @foreach (var a in achievements)
+                {
+                    <div class="grid-row" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                        <span>
+                            @if (a.isEditing)
+                            {
+                                <input value="@a.id" @onchange="(e=> a.id = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @a.id }
+                        </span>
+                        <span>
+                            @if (a.isEditing)
+                            {
+                                <select value="@a.gameId" @onchange="(e=> a.gameId = e.Value?.ToString() ?? string.Empty)">
+                                    <option value="">Select Game…</option>
+                                    @foreach (var g in GameOptions)
+                                    {
+                                        <option value="@g.id">@g.label</option>
+                                    }
+                                </select>
+                            }
+                            else { @GetGameLabel(a.gameId) }
+                        </span>
+                        <span>
+                            @if (a.isEditing)
+                            {
+                                <input value="@a.title" @onchange="(e=> a.title = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @a.title }
+                        </span>
+                        <span>
+                            @if (a.isEditing)
+                            {
+                                <div style="display:flex;flex-direction:column;gap:.25rem">
+                                    @for (var i = 0; i < (a.requirements?.Count ?? 0); i++)
+                                    {
+                                        var idx = i;
+                                        <div style="display:flex;gap:.25rem;align-items:center">
+                                            <input style="flex:1" value="@a.requirements![idx]" @onchange="(e=> UpdateRequirement(a, idx, e.Value?.ToString()))" />
+                                            <button type="button" @onclick="(()=>RemoveRequirement(a, idx))">✕</button>
+                                        </div>
+                                    }
+                                    <button type="button" @onclick="(()=>AddRequirement(a))">+ Add requirement</button>
+                                </div>
+                            }
+                            else
+                            {
+                                @if (a.requirements == null || a.requirements.Count == 0)
+                                {
+                                    <span>None</span>
+                                }
+                                else
+                                {
+                                    <span>@string.Join(" • ", a.requirements)</span>
+                                }
+                            }
+                        </span>
+                        <span>
+                            @if (!a.isEditing)
+                            {
+                                <button @onclick="(()=>BeginEditAchievement(a))">Edit</button>
+                                <button @onclick="(()=>DeleteAchievementAsync(a))">Delete</button>
+                            }
+                            else
+                            {
+                                <button @onclick="(()=>SaveAchievementAsync(a))">Save</button>
+                                <button @onclick="(()=>CancelEditAchievement(a))">Cancel</button>
+                            }
+                        </span>
+                    </div>
+                }
+            }
         }
         else if (ActiveTab == "cards")
         {
             <h3>Cards</h3>
-            <p class="small-note">WIP placeholder. CRUD for CPU/PPU/APU/Mapper/etc. with constraints.</p>
-            <div class="grid-head">
-                <span>ID</span><span>Type</span><span>Constraints</span><span>Actions</span>
+            <div class="games-toolbar">
+                <button @onclick="RefreshCardsAsync">Refresh Cards</button>
+                <span class="small-note">Scans CPU/PPU/APU/Clock/Shaders via reflection. Type/Note are persisted.</span>
             </div>
-            <div class="grid-empty">No records yet.</div>
+            @if (isLoadingCards)
+            {
+                <div class="grid-empty">Loading…</div>
+            }
+            else if (cards is null || cards.Count == 0)
+            {
+                <div class="grid-empty">No records yet.</div>
+            }
+            else
+            {
+                <div class="grid-head" style="grid-template-columns: repeat(10, minmax(0,1fr));">
+                    <span>ID</span>
+                    <span>Type</span>
+                    <span>Note</span>
+                    <span>Domain</span>
+                    <span>Core Id</span>
+                    <span>Name</span>
+                    <span>Category</span>
+                    <span>Perf</span>
+                    <span>Rating</span>
+                    <span>Actions</span>
+                </div>
+                @foreach (var c in cards)
+                {
+                    <div class="grid-row" style="grid-template-columns: repeat(10, minmax(0,1fr));">
+                        <span title="@c.id">@c.id</span>
+                        <span>
+                            @if (c.isEditing)
+                            {
+                                <select value="@c.type" @onchange="(e=> c.type = e.Value?.ToString() ?? DefaultCardType)">
+                                    @foreach (var t in CardTypeOptions)
+                                    {
+                                        <option value="@t">@t</option>
+                                    }
+                                </select>
+                            }
+                            else { @c.type }
+                        </span>
+                        <span>
+                            @if (c.isEditing)
+                            {
+                                <input value="@(c.note ?? string.Empty)" @onchange="(e=> c.note = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @(c.note ?? string.Empty) }
+                        </span>
+                        <span>@c.domain</span>
+                        <span>@c.coreId</span>
+                        <span>@c.name</span>
+                        <span>@(string.IsNullOrWhiteSpace(c.category) ? "-" : c.category)</span>
+                        <span>@c.performance</span>
+                        <span>@c.rating</span>
+                        <span>
+                            @if (!c.isEditing)
+                            {
+                                <button @onclick="(()=>BeginEditCard(c))">Edit</button>
+                            }
+                            else
+                            {
+                                <button @onclick="(()=>SaveCardAsync(c))">Save</button>
+                                <button @onclick="(()=>CancelEditCard(c))">Cancel</button>
+                            }
+                        </span>
+                    </div>
+                }
+            }
         }
         else if (ActiveTab == "levels")
         {
             <h3>Levels</h3>
-            <p class="small-note">WIP placeholder. CRUD for levels with requiredCards and star thresholds.</p>
-            <div class="grid-head">
-                <span>Index</span><span>Required Cards</span><span>Required Stars</span><span>Card Challenge</span><span>Actions</span>
+            <div class="games-toolbar">
+                <button @onclick="LoadLevelsAsync">Refresh</button>
+                <button @onclick="AddLevelRow">Add new level</button>
+                <span class="small-note">Manual entry. Index must be unique.</span>
             </div>
-            <div class="grid-empty">No records yet.</div>
+            @if (isLoadingLevels)
+            {
+                <div class="grid-empty">Loading…</div>
+            }
+            else if (levels is null || levels.Count == 0)
+            {
+                <div class="grid-empty">No records yet.</div>
+            }
+            else
+            {
+                <div class="grid-head" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                    <span>Index</span>
+                    <span>Required Cards</span>
+                    <span>Required Stars</span>
+                    <span>Card Challenge</span>
+                    <span>Actions</span>
+                </div>
+                @foreach (var l in levels)
+                {
+                    <div class="grid-row" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                        <span>
+                            @if (l.isEditing)
+                            {
+                                <input type="number" value="@l.index" @onchange="(e=> l.index = ParseInt(e.Value))" />
+                            }
+                            else { @l.index }
+                        </span>
+                        <span>
+                            @if (l.isEditing)
+                            {
+                                EnsureCardSlots(l);
+                                <div style="display:flex;gap:.25rem;flex-wrap:wrap">
+                                    @for (var i = 0; i < 5; i++)
+                                    {
+                                        var localI = i;
+                                        <select value="@GetCardSlotValue(l, localI)" @onchange="(e=> SetCardSlotValue(l, localI, e.Value?.ToString()))" style="min-width:9rem">
+                                            <option value="">None</option>
+                                            @foreach (var opt in CardOptions)
+                                            {
+                                                <option value="@opt.id">@opt.label</option>
+                                            }
+                                        </select>
+                                    }
+                                </div>
+                            }
+                            else { @FormatRequiredCards(l) }
+                        </span>
+                        <span>
+                            @if (l.isEditing)
+                            {
+                                <input type="number" value="@l.requiredStars" @onchange="(e=> l.requiredStars = ParseInt(e.Value))" />
+                            }
+                            else { @l.requiredStars }
+                        </span>
+                        <span>
+                            @if (l.isEditing)
+                            {
+                                <input value="@(l.cardChallenge ?? string.Empty)" @onchange="(e=> l.cardChallenge = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @(string.IsNullOrWhiteSpace(l.cardChallenge) ? "-" : l.cardChallenge) }
+                        </span>
+                        <span>
+                            @if (!l.isEditing)
+                            {
+                                <button @onclick="(()=>BeginEditLevel(l))">Edit</button>
+                                <button @onclick="(()=>DeleteLevelAsync(l))">Delete</button>
+                            }
+                            else
+                            {
+                                <button @onclick="(()=>SaveLevelAsync(l))">Save</button>
+                                <button @onclick="(()=>CancelEditLevel(l))">Cancel</button>
+                            }
+                        </span>
+                    </div>
+                }
+            }
         }
     </div>
 </div>
@@ -168,7 +400,15 @@
 @code {
     private string ActiveTab { get; set; } = "games";
     private bool isLoading = false;
+    private bool isLoadingCards = false;
+    private bool isLoadingLevels = false;
+    private bool isLoadingAchievements = false;
     private List<GameRow> games = new();
+    private List<CardRow> cards = new();
+    private List<LevelRow> levels = new();
+    private List<AchievementRow> achievements = new();
+    private List<CardOption> CardOptions { get; set; } = new();
+    private Dictionary<string, string> CardLabelById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool autoSeedEnabled = true;
     private bool showColumnPicker = false;
     private ColumnVisibility cols = new() { Id = false, CommonName = true, Status = true, Note = false, System = false, BuiltIn = true, Size = false };
@@ -194,7 +434,15 @@
         }
     }
 
-    private void SetTab(string id) => ActiveTab = id;
+    private void SetTab(string id)
+    {
+        ActiveTab = id;
+        // Lazy-load when switching tabs
+    if (id == "games") _ = LoadGamesAsync();
+    else if (id == "cards") _ = RefreshCardsAsync();
+    else if (id == "levels") _ = LoadLevelsAsync();
+    else if (id == "achievements") _ = LoadAchievementsAsync();
+    }
 
     private string GetTabClass(string id) => ActiveTab == id ? "active" : string.Empty;
     private string GetToggleClass(bool on) => on ? "active" : string.Empty;
@@ -208,6 +456,8 @@
     {
         try { await JS.InvokeVoidAsync("continueDb.importFromFileInput"); } catch { }
         await LoadGamesAsync();
+    if (ActiveTab == "achievements") await LoadAchievementsAsync();
+    if (ActiveTab == "levels") await LoadLevelsAsync();
     }
 
     private async Task TriggerImportDialog()
@@ -328,6 +578,266 @@
         await LoadGamesAsync();
     }
 
+    // ===== ACHIEVEMENTS TAB =====
+    private List<GameOption> GameOptions { get; set; } = new();
+
+    private async Task LoadAchievementsAsync()
+    {
+        if (ActiveTab != "achievements") return;
+        isLoadingAchievements = true; StateHasChanged();
+        try
+        {
+            // build game options from games store (ID + label is common name or title)
+            var gamesJson = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('games'); arr.sort((a,b)=> (a.title||'').localeCompare(b.title||'')); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var gameList = string.IsNullOrWhiteSpace(gamesJson) ? new List<GameRow>() : JsonSerializer.Deserialize<List<GameRow>>(gamesJson) ?? new List<GameRow>();
+            GameOptions = gameList
+                .Where(g => !string.IsNullOrWhiteSpace(g.id))
+                .Select(g => new GameOption { id = g.id!, label = GetCommonName(g) })
+                .OrderBy(g => g.label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('achievements'); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var list = string.IsNullOrWhiteSpace(json) ? new List<AchievementRow>() : JsonSerializer.Deserialize<List<AchievementRow>>(json) ?? new List<AchievementRow>();
+            foreach (var a in list)
+            {
+                a.requirements ??= new List<string>();
+                a.id ??= string.Empty;
+                a.title ??= string.Empty;
+                a.gameId ??= string.Empty;
+            }
+            achievements = list.OrderBy(a => a.id, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch { achievements = new(); }
+        finally { isLoadingAchievements = false; StateHasChanged(); }
+    }
+
+    private void AddAchievementRow()
+    {
+        achievements ??= new List<AchievementRow>();
+        var nextId = SuggestAchievementId();
+        achievements.Add(new AchievementRow
+        {
+            id = nextId,
+            gameId = GameOptions.FirstOrDefault()?.id ?? string.Empty,
+            title = string.Empty,
+            requirements = new List<string>(),
+            isEditing = true
+        });
+        StateHasChanged();
+    }
+
+    private string SuggestAchievementId()
+    {
+        var baseId = "ach_";
+        var i = 1;
+        var set = new HashSet<string>(achievements.Select(a => a.id ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+        while (set.Contains(baseId + i)) i++;
+        return baseId + i;
+    }
+
+    private void BeginEditAchievement(AchievementRow a)
+    {
+        a.isEditing = true; StateHasChanged();
+    }
+
+    private async Task CancelEditAchievement(AchievementRow a)
+    {
+        await LoadAchievementsAsync();
+    }
+
+    private async Task SaveAchievementAsync(AchievementRow a)
+    {
+        try
+        {
+            var rec = new {
+                id = a.id ?? string.Empty,
+                gameId = a.gameId ?? string.Empty,
+                title = a.title ?? string.Empty,
+                requirements = (a.requirements ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray()
+            };
+            var recJson = JsonSerializer.Serialize(rec);
+            var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{safe}'); await window.continueDb.put('achievements', rec); }} catch(e) {{ console.warn('save achievement failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadAchievementsAsync();
+    }
+
+    private async Task DeleteAchievementAsync(AchievementRow a)
+    {
+        try
+        {
+            var idSafe = (a.id ?? string.Empty).Replace("'", "\'");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('achievements', '{idSafe}'); }} catch(e) {{ console.warn('delete achievement failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadAchievementsAsync();
+    }
+
+    private void AddRequirement(AchievementRow a)
+    {
+        a.requirements ??= new List<string>();
+        a.requirements.Add(string.Empty);
+        StateHasChanged();
+    }
+
+    private void RemoveRequirement(AchievementRow a, int index)
+    {
+        try { a.requirements?.RemoveAt(index); } catch { }
+        StateHasChanged();
+    }
+
+    private void UpdateRequirement(AchievementRow a, int index, string? value)
+    {
+        try { if (a.requirements != null && index >= 0 && index < a.requirements.Count) a.requirements[index] = value ?? string.Empty; } catch { }
+    }
+
+    private string GetGameLabel(string? gameId)
+    {
+        if (string.IsNullOrWhiteSpace(gameId)) return "-";
+        var opt = GameOptions.FirstOrDefault(g => string.Equals(g.id, gameId, StringComparison.OrdinalIgnoreCase));
+        return opt?.label ?? gameId;
+    }
+
+    // ===== LEVELS TAB =====
+    private async Task LoadLevelsAsync()
+    {
+        if (ActiveTab != "levels") return;
+        isLoadingLevels = true; StateHasChanged();
+        try
+        {
+            // Build card options once for dropdowns
+            if (CardOptions.Count == 0)
+            {
+                var meta = await ScanAllCardMetaAsync();
+                CardOptions = meta
+                    .OrderBy(m => m.domain)
+                    .ThenBy(m => m.name, StringComparer.OrdinalIgnoreCase)
+                    .Select(m => {
+                        var id = m.domain + "_" + m.coreId; // short form label
+                        return new CardOption { id = id, label = id };
+                    })
+                    .ToList();
+                CardLabelById = CardOptions.GroupBy(o => o.id).ToDictionary(g => g.Key, g => g.First().label, StringComparer.OrdinalIgnoreCase);
+            }
+
+            var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('levels'); arr.sort((a,b)=> (a.index||0) - (b.index||0)); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var list = string.IsNullOrWhiteSpace(json) ? new List<LevelRow>() : JsonSerializer.Deserialize<List<LevelRow>>(json) ?? new List<LevelRow>();
+            foreach (var l in list)
+            {
+                l.requiredCards ??= new List<string>();
+                if (l.requiredStars < 0) l.requiredStars = 0;
+            }
+            levels = list;
+        }
+        catch { levels = new(); }
+        finally { isLoadingLevels = false; StateHasChanged(); }
+    }
+
+    private void AddLevelRow()
+    {
+        var nextIndex = 1;
+        try { if (levels != null && levels.Count > 0) nextIndex = Math.Max(1, levels.Max(l => l.index)) + 1; } catch { nextIndex = 1; }
+        levels ??= new List<LevelRow>();
+        levels.Add(new LevelRow
+        {
+            index = nextIndex,
+            requiredCards = new List<string>(),
+            requiredStars = 0,
+            cardChallenge = string.Empty,
+            isEditing = true
+        });
+        StateHasChanged();
+    }
+
+    private void BeginEditLevel(LevelRow l)
+    {
+        l.isEditing = true; StateHasChanged();
+    }
+
+    private async Task CancelEditLevel(LevelRow l)
+    {
+        await LoadLevelsAsync();
+    }
+
+    private async Task SaveLevelAsync(LevelRow l)
+    {
+        try
+        {
+            if (l.index < 1) l.index = 1;
+            var rec = new {
+                index = l.index,
+                requiredCards = (l.requiredCards ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Take(5).ToArray(),
+                requiredStars = Math.Max(0, l.requiredStars),
+                cardChallenge = l.cardChallenge ?? string.Empty
+            };
+            var recJson = JsonSerializer.Serialize(rec);
+            var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{safe}'); await window.continueDb.put('levels', rec); }} catch(e) {{ console.warn('save level failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadLevelsAsync();
+    }
+
+    private async Task DeleteLevelAsync(LevelRow l)
+    {
+        try
+        {
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('levels', {l.index}); }} catch(e) {{ console.warn('delete level failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadLevelsAsync();
+    }
+
+    private static int ParseInt(object? v)
+    {
+        try { return Convert.ToInt32(v); } catch { return 0; }
+    }
+
+    private sealed class LevelRow
+    {
+        public int index { get; set; }
+        public List<string>? requiredCards { get; set; }
+        public int requiredStars { get; set; }
+        public string? cardChallenge { get; set; }
+        public bool isEditing { get; set; }
+    }
+
+    private sealed class CardOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
+
+    private static void EnsureCardSlots(LevelRow l)
+    {
+        l.requiredCards ??= new List<string>();
+        while (l.requiredCards.Count < 5) l.requiredCards.Add(string.Empty);
+        if (l.requiredCards.Count > 5) l.requiredCards = l.requiredCards.Take(5).ToList();
+    }
+
+    private string GetCardSlotValue(LevelRow l, int i)
+    {
+        try { return l.requiredCards![i] ?? string.Empty; } catch { return string.Empty; }
+    }
+
+    private void SetCardSlotValue(LevelRow l, int i, string? value)
+    {
+        EnsureCardSlots(l);
+        l.requiredCards![i] = value ?? string.Empty;
+    }
+
+    private string FormatRequiredCards(LevelRow l)
+    {
+        if (l.requiredCards == null || l.requiredCards.Count == 0) return "0";
+        var labels = l.requiredCards
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => CardLabelById.TryGetValue(id, out var lbl) ? lbl : id)
+            .ToList();
+        if (labels.Count == 0) return "0";
+        return string.Join(", ", labels);
+    }
+
     private class GameRow
     {
         public string? id { get; set; }
@@ -342,6 +852,248 @@
     public int? size { get; set; }
     public string? createdAt { get; set; }
     public bool isEditing { get; set; }
+    }
+
+    // ===== CARDS TAB =====
+    private const string DefaultCardType = "Last";
+    private static readonly string[] CardTypeOptions = new[] { "Reserved", "Random", DefaultCardType };
+
+    private async Task RefreshCardsAsync()
+    {
+        if (ActiveTab != "cards") return;
+        isLoadingCards = true; StateHasChanged();
+        try
+        {
+            // 1) Scan reflection for all available cores/cards
+            var meta = await ScanAllCardMetaAsync();
+
+            // 2) Load persisted selections (type/note) from continueDb
+            var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('cards'); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var persisted = string.IsNullOrWhiteSpace(json) ? new List<CardPersisted>() : JsonSerializer.Deserialize<List<CardPersisted>>(json) ?? new List<CardPersisted>();
+            var map = new Dictionary<string, CardPersisted>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in persisted) if (!string.IsNullOrWhiteSpace(p.id)) map[p.id!] = p;
+
+            // 3) Build rows, join on id
+            var rows = new List<CardRow>(meta.Count);
+            foreach (var m in meta.OrderBy(m => m.domain).ThenBy(m => m.name, StringComparer.OrdinalIgnoreCase))
+            {
+                var id = m.domain + "_" + m.coreId; // composite
+                map.TryGetValue(id, out var p);
+                rows.Add(new CardRow
+                {
+                    id = id,
+                    domain = m.domain,
+                    coreId = m.coreId,
+                    name = m.name,
+                    category = m.category,
+                    performance = m.performance,
+                    rating = m.rating,
+                    type = string.IsNullOrWhiteSpace(p?.type) ? "Last" : p!.type!,
+                    note = p?.note ?? string.Empty,
+                    isEditing = false
+                });
+            }
+            cards = rows;
+        }
+        catch { cards = new(); }
+        finally { isLoadingCards = false; StateHasChanged(); }
+    }
+
+    private void BeginEditCard(CardRow c)
+    {
+        c.isEditing = true; StateHasChanged();
+    }
+
+    private Task CancelEditCard(CardRow c)
+    {
+        return RefreshCardsAsync();
+    }
+
+    private async Task SaveCardAsync(CardRow c)
+    {
+        try
+        {
+            var rec = new { id = c.id, type = string.IsNullOrWhiteSpace(c.type) ? "Last" : c.type, note = c.note ?? string.Empty };
+            var recJson = JsonSerializer.Serialize(rec);
+            var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{safe}'); await window.continueDb.put('cards', rec); }} catch(e) {{ console.warn('save card failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await RefreshCardsAsync();
+    }
+
+    private sealed class CardRow
+    {
+        public string id { get; set; } = string.Empty; // composite: DOMAIN_ID
+        public string domain { get; set; } = string.Empty; // CPU/PPU/APU/CLOCK/SHADER
+        public string coreId { get; set; } = string.Empty; // short id within domain
+        public string name { get; set; } = string.Empty;   // display name (from reflection)
+        public string category { get; set; } = string.Empty;
+        public int performance { get; set; }
+        public int rating { get; set; }
+        public string type { get; set; } = "Last"; // Reserved | Random | Last
+        public string? note { get; set; }
+        public bool isEditing { get; set; }
+    }
+
+    private sealed class CardPersisted
+    {
+        public string? id { get; set; }
+        public string? type { get; set; }
+        public string? note { get; set; }
+    }
+
+    private sealed class CardMeta
+    {
+        public string domain { get; set; } = string.Empty; // CPU/PPU/APU/CLOCK/SHADER
+        public string coreId { get; set; } = string.Empty;
+        public string name { get; set; } = string.Empty;
+        public string category { get; set; } = string.Empty;
+        public int performance { get; set; }
+        public int rating { get; set; }
+    }
+
+    private sealed class AchievementRow
+    {
+        public string? id { get; set; }
+        public string? gameId { get; set; }
+        public string? title { get; set; }
+        public List<string>? requirements { get; set; }
+        public bool isEditing { get; set; }
+    }
+
+    private sealed class GameOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
+
+    private static T? SafeGet<T>(Func<T> getter)
+    {
+        try { return getter(); } catch { return default; }
+    }
+
+    private static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+    {
+        try { return getter(); } catch { return null; }
+    }
+
+    private async Task<List<CardMeta>> ScanAllCardMetaAsync()
+    {
+        var list = new List<CardMeta>();
+        // Build a tiny, valid iNES ROM (NROM-128: 1x16KB PRG, 0 CHR) so cores can instantiate
+        try
+        {
+            var dummy = new byte[16 + 16 * 1024];
+            dummy[0] = 0x4E; dummy[1] = 0x45; dummy[2] = 0x53; dummy[3] = 0x1A; // NES\x1A
+            dummy[4] = 1; // PRG banks
+            dummy[5] = 0; // CHR banks
+            dummy[6] = 0; dummy[7] = 0; // flags
+            var cart = new Cartridge(dummy);
+            var bus = new Bus(cart);
+
+            // CPU
+            try
+            {
+                foreach (var kv in CoreRegistry.CreateInstances<ICPU>(bus, "CPU_"))
+                {
+                    list.Add(new CardMeta
+                    {
+                        domain = "CPU",
+                        coreId = kv.Key,
+                        name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                        category = SafeGet(() => kv.Value.Category) ?? "",
+                        performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                        rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+                    });
+                }
+            }
+            catch { }
+
+            // PPU
+            try
+            {
+                foreach (var kv in CoreRegistry.CreateInstances<IPPU>(bus, "PPU_"))
+                {
+                    list.Add(new CardMeta
+                    {
+                        domain = "PPU",
+                        coreId = kv.Key,
+                        name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                        category = SafeGet(() => kv.Value.Category) ?? "",
+                        performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                        rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+                    });
+                }
+            }
+            catch { }
+
+            // APU
+            try
+            {
+                foreach (var kv in CoreRegistry.CreateInstances<IAPU>(bus, "APU_"))
+                {
+                    list.Add(new CardMeta
+                    {
+                        domain = "APU",
+                        coreId = kv.Key,
+                        name = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+                        category = SafeGet(() => kv.Value.Category) ?? "",
+                        performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+                        rating = SafeGetStruct(() => kv.Value.Rating) ?? 0,
+                    });
+                }
+            }
+            catch { }
+
+            // CLOCK
+            try
+            {
+                foreach (var id in ClockRegistry.Ids)
+                {
+                    try
+                    {
+                        var clk = ClockRegistry.Create(id);
+                        if (clk != null)
+                        {
+                            list.Add(new CardMeta
+                            {
+                                domain = "CLOCK",
+                                coreId = id,
+                                name = clk.DisplayName,
+                                category = SafeGet(() => clk.Category) ?? "",
+                                performance = SafeGetStruct(() => clk.Performance) ?? 0,
+                                rating = SafeGetStruct(() => clk.Rating) ?? 0,
+                            });
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // SHADERS
+            try
+            {
+                var allShaders = ShaderProvider?.All ?? Array.Empty<IShader>();
+                foreach (var s in allShaders)
+                {
+                    string? cat = null;
+                    try { cat = s.Defines != null && s.Defines.TryGetValue("Category", out var c) ? c : null; } catch { }
+                    list.Add(new CardMeta
+                    {
+                        domain = "SHADER",
+                        coreId = s.Id,
+                        name = SafeGet(() => s.CoreName) ?? s.DisplayName,
+                        category = cat ?? "",
+                        performance = SafeGetStruct(() => s.Performance) ?? 0,
+                        rating = SafeGetStruct(() => s.Rating) ?? 0,
+                    });
+                }
+            }
+            catch { }
+        }
+        catch { }
+
+        await Task.Yield();
+        return list;
     }
 
     private class ColumnVisibility
