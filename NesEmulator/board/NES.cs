@@ -103,6 +103,45 @@ namespace NesEmulator
 			return string.Concat(sha.ComputeHash(data).Select(b=>b.ToString("x2")));
 		}
 
+		// Compute a stable Game identity for the currently loaded cartridge.
+		// - Game ID: sha1(PRG || CHR), lower-case hex, prefixed with "nes_" for namespace clarity.
+		// - Header signature: sha1(iNES 16-byte header), lower-case hex, prefixed with "ines_".
+		// If no cartridge is loaded, returns empty strings.
+		public (string GameId, string HeaderSignature) ComputeGameIdentity()
+		{
+			try
+			{
+				if (cartridge == null) return (string.Empty, string.Empty);
+				// sha1 over PRG+CHR only (exclude trainer and header to avoid variability)
+				using var sha1 = System.Security.Cryptography.SHA1.Create();
+				var prg = cartridge.prgROM ?? Array.Empty<byte>();
+				var chr = cartridge.chrROM ?? Array.Empty<byte>();
+				// Feed PRG then CHR
+				if (prg.Length > 0) sha1.TransformBlock(prg, 0, prg.Length, null, 0);
+				sha1.TransformFinalBlock(chr, 0, chr.Length);
+				var hash = sha1.Hash ?? Array.Empty<byte>();
+				var prgChrSha1 = string.Concat(hash.Select(b => b.ToString("x2")));
+				string gameId = "nes_" + prgChrSha1;
+				// Header signature: sha1 of first 16 bytes (iNES header)
+				string headerSig = string.Empty;
+				try
+				{
+					var rom = cartridge.rom ?? Array.Empty<byte>();
+					if (rom.Length >= 16)
+					{
+						var hdr = new byte[16];
+						Buffer.BlockCopy(rom, 0, hdr, 0, 16);
+						using var sha1h = System.Security.Cryptography.SHA1.Create();
+						var h = sha1h.ComputeHash(hdr);
+						headerSig = "ines_" + string.Concat(h.Select(b => b.ToString("x2")));
+					}
+				}
+				catch { headerSig = string.Empty; }
+				return (gameId, headerSig);
+			}
+			catch { return (string.Empty, string.Empty); }
+		}
+
 		// === UI Core Hot-Swap Helpers (CPU / PPU) ===
 		public object GetCpuState() => bus?.cpu.GetState() ?? new object();
 		public void SetCpuState(object state) { try { bus?.cpu.SetState(state); } catch { } }

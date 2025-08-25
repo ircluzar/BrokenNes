@@ -18,8 +18,10 @@
             @if (showColumnPicker)
             {
                 <div class="column-picker">
-                    <div class="picker-row"><label><input type="checkbox" checked disabled /> ID</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColId" /> ID</label></div>
                     <div class="picker-row"><label><input type="checkbox" checked disabled /> Title</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColCommonName" /> Common Name</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColStatus" /> Status</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColSystem" /> System</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColBuiltIn" /> Built-in</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColSize" /> Size</label></div>
@@ -56,8 +58,10 @@
             {
                 var colCount = VisibleColCount;
                 <div class="grid-head" style="grid-template-columns: repeat(@colCount, minmax(0,1fr));">
-                    <span>ID</span>
+                    @if (cols.Id) { <span>ID</span> }
                     <span>Title</span>
+                    @if (cols.CommonName) { <span>Common Name</span> }
+                    @if (cols.Status) { <span>Status</span> }
                     @if (cols.System) { <span>System</span> }
                     @if (cols.BuiltIn) { <span>Built-in</span> }
                     @if (cols.Size) { <span>Size</span> }
@@ -66,8 +70,10 @@
                 @foreach (var g in games)
                 {
                     <div class="grid-row" style="grid-template-columns: repeat(@colCount, minmax(0,1fr));">
-                        <span title="@g.id">@g.id</span>
+                        @if (cols.Id) { <span title="@g.id">@g.id</span> }
                         <span>@g.title</span>
+                        @if (cols.CommonName) { <span>@(string.IsNullOrWhiteSpace(g.commonName) ? (!string.IsNullOrWhiteSpace(g.title) ? g.title : (g.romKey ?? "")) : g.commonName)</span> }
+                        @if (cols.Status) { <span>@(string.IsNullOrWhiteSpace(g.status) ? "Nothing" : g.status)</span> }
                         @if (cols.System) { <span>@g.system</span> }
                         @if (cols.BuiltIn) { <span>@(g.builtIn ? "Yes" : "No")</span> }
                         @if (cols.Size) { <span>@(g.size?.ToString() ?? "-")</span> }
@@ -112,10 +118,18 @@
     private List<GameRow> games = new();
     private bool autoSeedEnabled = true;
     private bool showColumnPicker = false;
-    private ColumnVisibility cols = new() { System = false, BuiltIn = true, Size = false, Created = false };
+    private ColumnVisibility cols = new() { Id = false, CommonName = true, Status = true, System = false, BuiltIn = true, Size = false, Created = false };
     private ElementReference importInput;
 
-    private int VisibleColCount => 2 + (cols.System?1:0) + (cols.BuiltIn?1:0) + (cols.Size?1:0) + (cols.Created?1:0);
+    // Title is always visible; others are conditional
+    private int VisibleColCount => 1 // Title
+        + (cols.Id ? 1 : 0)
+        + (cols.CommonName ? 1 : 0)
+        + (cols.Status ? 1 : 0)
+        + (cols.System ? 1 : 0)
+        + (cols.BuiltIn ? 1 : 0)
+        + (cols.Size ? 1 : 0)
+        + (cols.Created ? 1 : 0);
     private bool AutoSeedEnabled
     {
         get => autoSeedEnabled;
@@ -160,7 +174,20 @@
                 if (!string.IsNullOrWhiteSpace(json))
                 {
                     var loaded = JsonSerializer.Deserialize<ColumnVisibility>(json);
-                    if (loaded != null) cols = loaded;
+                    if (loaded != null)
+                    {
+                        // Merge with defaults so new fields get sensible defaults
+                        cols = new ColumnVisibility
+                        {
+                            Id = loaded.Id,
+                            CommonName = loaded.CommonName == default ? true : loaded.CommonName,
+                            Status = loaded.Status == default ? true : loaded.Status,
+                            System = loaded.System,
+                            BuiltIn = loaded.BuiltIn,
+                            Size = loaded.Size,
+                            Created = loaded.Created
+                        };
+                    }
                 }
             }
             catch { }
@@ -200,6 +227,8 @@
     {
         public string? id { get; set; }
         public string? title { get; set; }
+    public string? commonName { get; set; }
+    public string? status { get; set; }
         public string? system { get; set; }
         public string? romKey { get; set; }
         public bool builtIn { get; set; }
@@ -209,6 +238,9 @@
 
     private class ColumnVisibility
     {
+    public bool Id { get; set; } = false;
+    public bool CommonName { get; set; } = true;
+    public bool Status { get; set; } = true;
         public bool System { get; set; } = false;
         public bool BuiltIn { get; set; } = true;
         public bool Size { get; set; } = false;
@@ -220,6 +252,21 @@
     {
         get => cols.System;
         set { cols.System = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColId
+    {
+        get => cols.Id;
+        set { cols.Id = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColCommonName
+    {
+        get => cols.CommonName;
+        set { cols.CommonName = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColStatus
+    {
+        get => cols.Status;
+        set { cols.Status = value; _ = SaveColumnsAsync(); StateHasChanged(); }
     }
     private bool ColBuiltIn
     {

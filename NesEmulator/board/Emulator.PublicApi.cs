@@ -384,14 +384,16 @@ namespace BrokenNes
             try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch { }
         }
 
-                // Ensure a Game record exists in the global continue-db for the currently loaded ROM.
-                // Minimal schema: { id, title, system, romKey, builtIn, size, createdAt }
-                private async Task EnsureGameInContinueDbAsync(string romKey)
+        // Ensure a Game record exists in the global continue-db for the currently loaded ROM.
+        // Minimal schema: { id, title, system, romKey, builtIn, size, createdAt, headerSignature }
+        private async Task EnsureGameInContinueDbAsync(string romKey)
                 {
                         try
                         {
                                 if (string.IsNullOrWhiteSpace(romKey)) return;
-                                var id = romKey; // Temporary: use ROM filename as id; can be upgraded to a hash-based ID later
+                // Compute stable ID from ROM contents (PRG+CHR) and header signature
+                string id = romKey; string headerSignature = string.Empty;
+                try { var t = nes?.ComputeGameIdentity(); if (t.HasValue) { id = string.IsNullOrWhiteSpace(t.Value.GameId) ? romKey : t.Value.GameId; headerSignature = t.Value.HeaderSignature ?? string.Empty; } } catch { }
                                 var title = System.IO.Path.GetFileNameWithoutExtension(romKey) ?? romKey;
                                 bool builtIn = Controller.RomOptions.FirstOrDefault(o => o.Key == romKey)?.BuiltIn ?? true;
                                 int size = Controller.LastLoadedRomSize;
@@ -400,6 +402,7 @@ namespace BrokenNes
                                         title,
                                         system = "nes",
                                         romKey,
+                    headerSignature,
                                         builtIn,
                                         size,
                                         createdAt = DateTime.UtcNow.ToString("o")

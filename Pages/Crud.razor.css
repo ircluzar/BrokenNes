@@ -27,3 +27,14 @@
   .crud-root{margin:1rem;border-width:3px;outline-width:3px;padding:1rem 1.1rem}
   .crud-title{font-size:1.2rem}
 }
+
+/* Desktop: make CRUD container span full viewport width (full-bleed) */
+@media (min-width:1024px){
+  .crud-root{
+    max-width:none;
+    width:100vw;
+    margin-left:calc(50% - 50vw);
+    margin-right:calc(50% - 50vw);
+    box-sizing:border-box;
+  }
+}
