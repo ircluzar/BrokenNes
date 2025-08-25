@@ -22,10 +22,11 @@
                     <div class="picker-row"><label><input type="checkbox" checked disabled /> Title</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColCommonName" /> Common Name</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColStatus" /> Status</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColNote" /> Note</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColSystem" /> System</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColBuiltIn" /> Built-in</label></div>
                     <div class="picker-row"><label><input type="checkbox" @bind="ColSize" /> Size</label></div>
-                    <div class="picker-row"><label><input type="checkbox" @bind="ColCreated" /> Created</label></div>
+                    
                 </div>
             }
         </div>
@@ -62,22 +63,74 @@
                     <span>Title</span>
                     @if (cols.CommonName) { <span>Common Name</span> }
                     @if (cols.Status) { <span>Status</span> }
+                    @if (cols.Note) { <span>Note</span> }
                     @if (cols.System) { <span>System</span> }
                     @if (cols.BuiltIn) { <span>Built-in</span> }
                     @if (cols.Size) { <span>Size</span> }
-                    @if (cols.Created) { <span>Created</span> }
+                    
+                    <span>Actions</span>
                 </div>
                 @foreach (var g in games)
                 {
                     <div class="grid-row" style="grid-template-columns: repeat(@colCount, minmax(0,1fr));">
                         @if (cols.Id) { <span title="@g.id">@g.id</span> }
-                        <span>@g.title</span>
-                        @if (cols.CommonName) { <span>@(string.IsNullOrWhiteSpace(g.commonName) ? (!string.IsNullOrWhiteSpace(g.title) ? g.title : (g.romKey ?? "")) : g.commonName)</span> }
-                        @if (cols.Status) { <span>@(string.IsNullOrWhiteSpace(g.status) ? "Nothing" : g.status)</span> }
+                        <span>
+                            @if (g.isEditing)
+                            {
+                                <input value="@g.title" @onchange="(e=> g.title = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @g.title }
+                        </span>
+                        @if (cols.CommonName)
+                        {
+                            <span>
+                                @if (g.isEditing)
+                                {
+                                    <input value="@GetCommonName(g)" @onchange="(e=> g.commonName = e.Value?.ToString() ?? string.Empty)" />
+                                }
+                                else { @GetCommonName(g) }
+                            </span>
+                        }
+                        @if (cols.Status)
+                        {
+                            <span>
+                                @if (g.isEditing)
+                                {
+                                    <select value="@GetStatus(g)" @onchange="(e=> g.status = e.Value?.ToString() ?? string.Empty)">
+                                        @foreach (var s in StatusOptions)
+                                        {
+                                            <option value="@s">@s</option>
+                                        }
+                                    </select>
+                                }
+                                else { @GetStatus(g) }
+                            </span>
+                        }
+                        @if (cols.Note)
+                        {
+                            <span>
+                                @if (g.isEditing)
+                                {
+                                    <input value="@(g.note ?? string.Empty)" @onchange="(e=> g.note = e.Value?.ToString() ?? string.Empty)" />
+                                }
+                                else { @(g.note ?? string.Empty) }
+                            </span>
+                        }
                         @if (cols.System) { <span>@g.system</span> }
                         @if (cols.BuiltIn) { <span>@(g.builtIn ? "Yes" : "No")</span> }
                         @if (cols.Size) { <span>@(g.size?.ToString() ?? "-")</span> }
-                        @if (cols.Created) { <span>@g.createdAt</span> }
+                        
+                        <span>
+                            @if (!g.isEditing)
+                            {
+                                <button @onclick="(()=>BeginEdit(g))">Edit</button>
+                            }
+                            else
+                            {
+                                <button @onclick="(()=>SaveGameAsync(g))">Save</button>
+                                <button @onclick="(()=>CancelEdit(g))">Cancel</button>
+                            }
+                        </span>
                     </div>
                 }
             }
@@ -118,7 +171,7 @@
     private List<GameRow> games = new();
     private bool autoSeedEnabled = true;
     private bool showColumnPicker = false;
-    private ColumnVisibility cols = new() { Id = false, CommonName = true, Status = true, System = false, BuiltIn = true, Size = false, Created = false };
+    private ColumnVisibility cols = new() { Id = false, CommonName = true, Status = true, Note = false, System = false, BuiltIn = true, Size = false };
     private ElementReference importInput;
 
     // Title is always visible; others are conditional
@@ -126,10 +179,11 @@
         + (cols.Id ? 1 : 0)
         + (cols.CommonName ? 1 : 0)
         + (cols.Status ? 1 : 0)
+        + (cols.Note ? 1 : 0)
         + (cols.System ? 1 : 0)
         + (cols.BuiltIn ? 1 : 0)
         + (cols.Size ? 1 : 0)
-        + (cols.Created ? 1 : 0);
+        + 1; // Actions
     private bool AutoSeedEnabled
     {
         get => autoSeedEnabled;
@@ -182,10 +236,10 @@
                             Id = loaded.Id,
                             CommonName = loaded.CommonName == default ? true : loaded.CommonName,
                             Status = loaded.Status == default ? true : loaded.Status,
+                            Note = loaded.Note,
                             System = loaded.System,
                             BuiltIn = loaded.BuiltIn,
-                            Size = loaded.Size,
-                            Created = loaded.Created
+                            Size = loaded.Size
                         };
                     }
                 }
@@ -203,6 +257,7 @@
         {
             var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('games'); arr.sort((a,b)=> (a.title||'').localeCompare(b.title||'')); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
             var list = string.IsNullOrWhiteSpace(json) ? new List<GameRow>() : JsonSerializer.Deserialize<List<GameRow>>(json) ?? new List<GameRow>();
+            foreach (var g in list) { if (string.IsNullOrWhiteSpace(g.status)) g.status = "Nothing"; if (g.note == null) g.note = string.Empty; }
             games = list;
         }
         catch { games = new(); }
@@ -223,17 +278,70 @@
         catch { return Task.CompletedTask; }
     }
 
+    private static string GetCommonName(GameRow g)
+    {
+        if (!string.IsNullOrWhiteSpace(g.commonName)) return g.commonName!;
+        if (!string.IsNullOrWhiteSpace(g.title)) return g.title!;
+        return g.romKey ?? string.Empty;
+    }
+
+    private static string GetStatus(GameRow g)
+    {
+        return string.IsNullOrWhiteSpace(g.status) ? "Nothing" : g.status!;
+    }
+
+    private static readonly string[] StatusOptions = new[] { "Nothing", "Broken", "Jank", "Works" };
+
+    private void BeginEdit(GameRow g)
+    {
+        g.isEditing = true; StateHasChanged();
+    }
+
+    private void CancelEdit(GameRow g)
+    {
+        _ = LoadGamesAsync();
+    }
+
+    private async Task SaveGameAsync(GameRow g)
+    {
+        try
+        {
+            var rec = new {
+                id = g.id,
+                title = g.title ?? string.Empty,
+                commonName = g.commonName ?? string.Empty,
+                status = string.IsNullOrWhiteSpace(g.status) ? "Nothing" : g.status,
+                note = g.note ?? string.Empty,
+                system = g.system ?? "nes",
+                romKey = g.romKey,
+                headerSignature = g.headerSignature,
+                builtIn = g.builtIn,
+                size = g.size,
+                createdAt = g.createdAt
+            };
+            var recJson = JsonSerializer.Serialize(rec);
+            var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{safe}'); await window.continueDb.put('games', rec); }} catch(e) {{ console.warn('save failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadGamesAsync();
+    }
+
     private class GameRow
     {
         public string? id { get; set; }
         public string? title { get; set; }
     public string? commonName { get; set; }
     public string? status { get; set; }
-        public string? system { get; set; }
-        public string? romKey { get; set; }
-        public bool builtIn { get; set; }
-        public int? size { get; set; }
-        public string? createdAt { get; set; }
+    public string? note { get; set; }
+    public string? system { get; set; }
+    public string? romKey { get; set; }
+    public string? headerSignature { get; set; }
+    public bool builtIn { get; set; }
+    public int? size { get; set; }
+    public string? createdAt { get; set; }
+    public bool isEditing { get; set; }
     }
 
     private class ColumnVisibility
@@ -241,10 +349,10 @@
     public bool Id { get; set; } = false;
     public bool CommonName { get; set; } = true;
     public bool Status { get; set; } = true;
+        public bool Note { get; set; } = false;
         public bool System { get; set; } = false;
         public bool BuiltIn { get; set; } = true;
         public bool Size { get; set; } = false;
-        public bool Created { get; set; } = false;
     }
 
     // Wrapper properties to intercept changes and persist to localStorage
@@ -268,6 +376,11 @@
         get => cols.Status;
         set { cols.Status = value; _ = SaveColumnsAsync(); StateHasChanged(); }
     }
+    private bool ColNote
+    {
+        get => cols.Note;
+        set { cols.Note = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
     private bool ColBuiltIn
     {
         get => cols.BuiltIn;
@@ -278,9 +391,5 @@
         get => cols.Size;
         set { cols.Size = value; _ = SaveColumnsAsync(); StateHasChanged(); }
     }
-    private bool ColCreated
-    {
-        get => cols.Created;
-        set { cols.Created = value; _ = SaveColumnsAsync(); StateHasChanged(); }
-    }
+    
 }

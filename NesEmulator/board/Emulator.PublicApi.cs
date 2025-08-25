@@ -397,16 +397,20 @@ namespace BrokenNes
                                 var title = System.IO.Path.GetFileNameWithoutExtension(romKey) ?? romKey;
                                 bool builtIn = Controller.RomOptions.FirstOrDefault(o => o.Key == romKey)?.BuiltIn ?? true;
                                 int size = Controller.LastLoadedRomSize;
-                                var rec = new {
-                                        id,
-                                        title,
-                                        system = "nes",
-                                        romKey,
-                    headerSignature,
-                                        builtIn,
-                                        size,
-                                        createdAt = DateTime.UtcNow.ToString("o")
-                                };
+                var rec = new {
+                    id,
+                    title,
+                    system = "nes",
+                    romKey,
+            headerSignature,
+                    builtIn,
+                    size,
+                    createdAt = DateTime.UtcNow.ToString("o"),
+                    // Defaults for new fields
+                    status = "Nothing",
+                    commonName = string.Empty,
+                    note = string.Empty
+                };
                                 var recJson = System.Text.Json.JsonSerializer.Serialize(rec);
                                 var idJson = System.Text.Json.JsonSerializer.Serialize(id);
                                 // Use a small async IIFE to interact with window.continueDb
