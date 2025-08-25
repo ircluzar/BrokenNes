@@ -1,16 +1,32 @@
 @page "/crud"
 @using Microsoft.JSInterop
+@using System.Text.Json
 @inject IJSRuntime JS
 
 <div class="crud-root">
     <h2 class="crud-title">DATABASE EDITOR</h2>
     <div class="crud-toolbar">
+        <a class="crud-link" href="./options">Return to Options</a>
+    </div>
+    <div class="crud-toolbar">
         <button @onclick="ExportJson">Export DB JSON</button>
-        <label class="crud-file">
-            <input type="file" accept="application/json" @onchange="ImportJson" />
-            Import DB JSON
-        </label>
-        <a class="crud-link" href="./options">Back to Options</a>
+    <button type="button" @onclick="TriggerImportDialog">Import DB JSON</button>
+    <input id="crud-import" type="file" accept="application/json" @onchange="ImportJson" style="display:none" @ref="importInput" />
+    <button type="button" class="@GetToggleClass(autoSeedEnabled)" title="Auto-Reload from default-db.json on startup" @onclick="ToggleAutoReload">Auto-Reload</button>
+        <div class="crud-columns">
+            <button type="button" @onclick="ToggleColumnPicker">Columns</button>
+            @if (showColumnPicker)
+            {
+                <div class="column-picker">
+                    <div class="picker-row"><label><input type="checkbox" checked disabled /> ID</label></div>
+                    <div class="picker-row"><label><input type="checkbox" checked disabled /> Title</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColSystem" /> System</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColBuiltIn" /> Built-in</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColSize" /> Size</label></div>
+                    <div class="picker-row"><label><input type="checkbox" @bind="ColCreated" /> Created</label></div>
+                </div>
+            }
+        </div>
     </div>
 
     <div class='crud-tabs'>
@@ -24,11 +40,41 @@
         @if (ActiveTab == "games")
         {
             <h3>Games</h3>
-            <p class="small-note">WIP placeholder. Add/list/edit/delete Game records. Supports paging, search, and validation.</p>
-            <div class="grid-head">
-                <span>ID</span><span>Title</span><span>System</span><span>Header Signature</span><span>Notes</span><span>Actions</span>
+            <div class="games-toolbar">
+                <button @onclick="LoadGamesAsync">Refresh</button>
+                <span class="small-note">Shows ROMs you've loaded; auto-added to continue DB on load.</span>
             </div>
-            <div class="grid-empty">No records yet.</div>
+            @if (isLoading)
+            {
+                <div class="grid-empty">Loading…</div>
+            }
+            else if (games is null || games.Count == 0)
+            {
+                <div class="grid-empty">No records yet.</div>
+            }
+            else
+            {
+                var colCount = VisibleColCount;
+                <div class="grid-head" style="grid-template-columns: repeat(@colCount, minmax(0,1fr));">
+                    <span>ID</span>
+                    <span>Title</span>
+                    @if (cols.System) { <span>System</span> }
+                    @if (cols.BuiltIn) { <span>Built-in</span> }
+                    @if (cols.Size) { <span>Size</span> }
+                    @if (cols.Created) { <span>Created</span> }
+                </div>
+                @foreach (var g in games)
+                {
+                    <div class="grid-row" style="grid-template-columns: repeat(@colCount, minmax(0,1fr));">
+                        <span title="@g.id">@g.id</span>
+                        <span>@g.title</span>
+                        @if (cols.System) { <span>@g.system</span> }
+                        @if (cols.BuiltIn) { <span>@(g.builtIn ? "Yes" : "No")</span> }
+                        @if (cols.Size) { <span>@(g.size?.ToString() ?? "-")</span> }
+                        @if (cols.Created) { <span>@g.createdAt</span> }
+                    </div>
+                }
+            }
         }
         else if (ActiveTab == "achievements")
         {
@@ -62,10 +108,28 @@
 
 @code {
     private string ActiveTab { get; set; } = "games";
+    private bool isLoading = false;
+    private List<GameRow> games = new();
+    private bool autoSeedEnabled = true;
+    private bool showColumnPicker = false;
+    private ColumnVisibility cols = new() { System = false, BuiltIn = true, Size = false, Created = false };
+    private ElementReference importInput;
+
+    private int VisibleColCount => 2 + (cols.System?1:0) + (cols.BuiltIn?1:0) + (cols.Size?1:0) + (cols.Created?1:0);
+    private bool AutoSeedEnabled
+    {
+        get => autoSeedEnabled;
+        set
+        {
+            autoSeedEnabled = value;
+            try { _ = JS.InvokeVoidAsync("continueDb.setAutoSeedEnabled", value); } catch { }
+        }
+    }
 
     private void SetTab(string id) => ActiveTab = id;
 
     private string GetTabClass(string id) => ActiveTab == id ? "active" : string.Empty;
+    private string GetToggleClass(bool on) => on ? "active" : string.Empty;
 
     private async Task ExportJson()
     {
@@ -75,5 +139,101 @@
     private async Task ImportJson(ChangeEventArgs e)
     {
         try { await JS.InvokeVoidAsync("continueDb.importFromFileInput"); } catch { }
+        await LoadGamesAsync();
+    }
+
+    private async Task TriggerImportDialog()
+    {
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('crud-import')?.click()"); } catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize toggle from JS
+            try { autoSeedEnabled = await JS.InvokeAsync<bool>("continueDb.getAutoSeedEnabled"); } catch { autoSeedEnabled = true; }
+            // Load column prefs
+            try
+            {
+                var json = await JS.InvokeAsync<string>("localStorage.getItem", "crud:gamesCols");
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    var loaded = JsonSerializer.Deserialize<ColumnVisibility>(json);
+                    if (loaded != null) cols = loaded;
+                }
+            }
+            catch { }
+            await LoadGamesAsync();
+        }
+    }
+
+    private async Task LoadGamesAsync()
+    {
+        if (ActiveTab != "games") return;
+        isLoading = true; StateHasChanged();
+        try
+        {
+            var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('games'); arr.sort((a,b)=> (a.title||'').localeCompare(b.title||'')); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var list = string.IsNullOrWhiteSpace(json) ? new List<GameRow>() : JsonSerializer.Deserialize<List<GameRow>>(json) ?? new List<GameRow>();
+            games = list;
+        }
+        catch { games = new(); }
+        finally { isLoading = false; StateHasChanged(); }
+    }
+
+    private void ToggleColumnPicker() => showColumnPicker = !showColumnPicker;
+
+    private void ToggleAutoReload()
+    {
+        AutoSeedEnabled = !AutoSeedEnabled;
+        StateHasChanged();
+    }
+
+    private Task SaveColumnsAsync()
+    {
+        try { return JS.InvokeVoidAsync("localStorage.setItem", "crud:gamesCols", JsonSerializer.Serialize(cols)).AsTask(); }
+        catch { return Task.CompletedTask; }
+    }
+
+    private class GameRow
+    {
+        public string? id { get; set; }
+        public string? title { get; set; }
+        public string? system { get; set; }
+        public string? romKey { get; set; }
+        public bool builtIn { get; set; }
+        public int? size { get; set; }
+        public string? createdAt { get; set; }
+    }
+
+    private class ColumnVisibility
+    {
+        public bool System { get; set; } = false;
+        public bool BuiltIn { get; set; } = true;
+        public bool Size { get; set; } = false;
+        public bool Created { get; set; } = false;
+    }
+
+    // Wrapper properties to intercept changes and persist to localStorage
+    private bool ColSystem
+    {
+        get => cols.System;
+        set { cols.System = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColBuiltIn
+    {
+        get => cols.BuiltIn;
+        set { cols.BuiltIn = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColSize
+    {
+        get => cols.Size;
+        set { cols.Size = value; _ = SaveColumnsAsync(); StateHasChanged(); }
+    }
+    private bool ColCreated
+    {
+        get => cols.Created;
+        set { cols.Created = value; _ = SaveColumnsAsync(); StateHasChanged(); }
     }
 }

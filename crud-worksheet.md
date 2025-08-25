@@ -2,15 +2,31 @@
 
 This checklist sequences the work to deliver a full, in-app database editor per continue-project.md.
 
+Progress (2025-08-25)
+- /crud page exists with tabs and toolbar (export/import buttons wired to JS).
+- Options page links to CRUD.
+- Global `continueDb` module shipped at `wwwroot/lib/continue-db.js` and included in `index.html` (also wired in `flatpublish/index.html`).
+- Blank `default-db.json` added at `wwwroot/models/default-db.json` (mirrored under `flatpublish/models/`).
+- Startup now always loads `default-db.json` (immutable baseline); debug import/export can override during the session.
+
 ## 0) Foundations
-- [ ] Add `continueDb` JS helper module in wwwroot for IndexedDB (name: `continue-db`).
+- [ ] Add `continueDb` JS helper module in wwwroot for IndexedDB (DB name: `continue-db`).
   - [ ] `open()` with object store setup: `games(id)`, `achievements(id)` with `by_gameId`, `cards(id)`, `levels(index)`, `save(singleton)`.
   - [ ] `getAll(store)`, `get(store, key)`, `put(store, value)`, `delete(store, key)`, `clear(store)`.
   - [ ] Bulk ops: `putMany(store, items)`, `exportAll()` → JSON, `importAll(json)` with schema/version checks.
   - [ ] Wire downloads/uploads: `exportAllToDownload()`, `importFromFileInput()`.
-- [ ] Seed-load: on app start, load `default-db.json` when DB empty.
-  - [ ] Place `default-db.json` in `wwwroot/models/` or similar.
-  - [ ] Implement one-time promotion of seed to IDB.
+  - [x] Ship file at `wwwroot/lib/continue-db.js` and include it in `wwwroot/index.html` before Blazor boot scripts.
+- [x] Seed-load: on app start, always load `default-db.json` (treat as immutable game data).
+  - [x] Place `default-db.json` in `wwwroot/models/` (mirrored in `flatpublish/models/`).
+  - [x] Implement startup load that replaces DB content each launch; import/export remains for debug authoring.
+
+Gate test for Foundations (must pass before moving on)
+- [ ] With `continueDb` loaded globally and `default-db.json` present:
+  1) Load app, open DevTools, run `await continueDb.open()`; verify DB `continue-db` exists with stores: games, achievements (index by_gameId), cards, levels, save.
+  2) On first load, run `await continueDb.getAll('games')` and confirm it matches `wwwroot/models/default-db.json` (empty arrays by default).
+  3) Visit `/crud`; click “Export DB JSON” → verify a JSON download with meta and empty arrays.
+  4) Import a modified JSON via the file control; confirm `await continueDb.getAll('games')` reflects the import.
+  5) Hard refresh the page; confirm data resets to `default-db.json` (proving immutable baseline reload at startup).
 
 ## 1) Routing & Shell
 - [x] Create `/crud` page with themed shell and tabs.

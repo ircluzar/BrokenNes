@@ -306,6 +306,8 @@ namespace BrokenNes
                 () => PauseAsync(),
                 () => StartAsync()
             );
+            // After successful ROM load, ensure a corresponding Game entry exists in continue-db
+            try { await EnsureGameInContinueDbAsync(Controller.CurrentRomName); } catch { }
         }
 
         // Delete a specific uploaded ROM and reload a fallback if necessary.
@@ -381,6 +383,46 @@ namespace BrokenNes
         {
             try { await JS.InvokeVoidAsync("eval", "document.getElementById('rom-upload')?.click()"); } catch { }
         }
+
+                // Ensure a Game record exists in the global continue-db for the currently loaded ROM.
+                // Minimal schema: { id, title, system, romKey, builtIn, size, createdAt }
+                private async Task EnsureGameInContinueDbAsync(string romKey)
+                {
+                        try
+                        {
+                                if (string.IsNullOrWhiteSpace(romKey)) return;
+                                var id = romKey; // Temporary: use ROM filename as id; can be upgraded to a hash-based ID later
+                                var title = System.IO.Path.GetFileNameWithoutExtension(romKey) ?? romKey;
+                                bool builtIn = Controller.RomOptions.FirstOrDefault(o => o.Key == romKey)?.BuiltIn ?? true;
+                                int size = Controller.LastLoadedRomSize;
+                                var rec = new {
+                                        id,
+                                        title,
+                                        system = "nes",
+                                        romKey,
+                                        builtIn,
+                                        size,
+                                        createdAt = DateTime.UtcNow.ToString("o")
+                                };
+                                var recJson = System.Text.Json.JsonSerializer.Serialize(rec);
+                                var idJson = System.Text.Json.JsonSerializer.Serialize(id);
+                                // Use a small async IIFE to interact with window.continueDb
+                                var script = $@"(async()=>{{
+    try {{
+        if (!window.continueDb) return; 
+        await window.continueDb.open();
+        const id = {idJson};
+        let g = await window.continueDb.get('games', id);
+        if (!g) {{
+            const rec = JSON.parse('{recJson.Replace("\\", "\\\\").Replace("'", "\\'")}');
+            await window.continueDb.put('games', rec);
+        }}
+    }} catch(e) {{ console.warn('ensureGameInContinueDb failed', e); }}
+}})()";
+                                await JS.InvokeVoidAsync("eval", script);
+                        }
+                        catch { }
+                }
 
         // === JSInvokable methods for mobile fullscreen bottom bar and drag-drop ===
         [JSInvokable]

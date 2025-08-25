@@ -1,18 +1,27 @@
-.crud-root{max-width:980px;margin:2rem auto;padding:1.5rem 2rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;}
+.crud-root{max-width:1100px;margin:1.5rem auto;padding:1rem 1.25rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;font-size:12px;}
 .crud-root{position:relative;overflow:hidden;}
-.crud-title{margin:0 0 1.25rem;font-size:1.6rem;color:#ff5a26;}
-.crud-toolbar{display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}
-.crud-toolbar button,.crud-toolbar .crud-link{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.45rem .8rem;cursor:pointer;text-decoration:none;}
+.crud-title{margin:0 0 .9rem;font-size:1.1rem;color:#ff5a26;}
+.crud-toolbar{display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+.crud-toolbar button,.crud-toolbar .crud-link{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.75rem;padding:.35rem .6rem;cursor:pointer;text-decoration:none;}
 .crud-toolbar .crud-link:hover,.crud-toolbar button:hover{background:#ff5a26;color:#000}
+.crud-toolbar button.active{background:#ff5a26;color:#000}
 .crud-file{position:relative;overflow:hidden;display:inline-block}
 .crud-file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.crud-tabs{display:flex;gap:.4rem;margin-bottom:1rem;flex-wrap:wrap}
-.crud-tabs button{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.4rem .7rem;cursor:pointer;opacity:.8}
+.crud-columns{position:relative}
+.crud-columns > button{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.75rem;padding:.35rem .6rem;cursor:pointer}
+.column-picker{position:absolute;top:100%;left:0;margin-top:.25rem;background:#111;border:3px solid #ff5a26;padding:.4rem .5rem;z-index:10;box-shadow:0 4px 10px rgba(0,0,0,.4)}
+.picker-row{white-space:nowrap;font-size:.75rem;line-height:1.4}
+.picker-row input{margin-right:.4rem}
+.crud-tabs{display:flex;gap:.35rem;margin-bottom:.75rem;flex-wrap:wrap}
+.crud-tabs button{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.75rem;padding:.3rem .55rem;cursor:pointer;opacity:.8}
 .crud-tabs button.active,.crud-tabs button:hover{opacity:1;background:#111}
-.crud-pane{border:3px solid #fff;padding:1rem}
-.grid-head{display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:.4rem;font-size:.65rem;margin-bottom:.5rem;color:#ffb199}
-.grid-empty{font-size:.65rem;opacity:.7}
-.small-note{opacity:.6;font-size:.55rem;margin:.25rem 0 .75rem}
+.crud-pane{border:3px solid #fff;padding:.75rem}
+.grid-head{display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:.35rem;font-size:.75rem;margin-bottom:.35rem;color:#ffb199}
+.grid-row{display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:.35rem;align-items:center;font-size:.75rem;padding:.15rem 0;border-bottom:1px dashed rgba(255,255,255,.1)}
+.grid-empty{font-size:.7rem;opacity:.7}
+.small-note{opacity:.6;font-size:.65rem;margin:.15rem 0 .55rem}
+
+/* Column picker */
 
 @media (max-width:820px){
   .crud-root{margin:1rem;border-width:3px;outline-width:3px;padding:1rem 1.1rem}
