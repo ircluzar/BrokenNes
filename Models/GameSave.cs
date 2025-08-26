@@ -15,6 +15,9 @@ public class GameSave
     public bool ImagineUnlocked { get; set; } = false; // Imagine (AI model)
     public bool DebugUnlocked { get; set; } = false; // Developer/Debug tools (opt-in)
 
+    // Story progression
+    public bool SeenStory { get; set; } = false; // Set after Story has been viewed at least once
+
     // Owned core ids per category (Ids are suffixes like "FMC", "FIX", etc.)
     public List<string> OwnedCpuIds { get; set; } = new();
     public List<string> OwnedPpuIds { get; set; } = new();

@@ -1,6 +1,7 @@
 @page "/story"
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject BrokenNes.Services.GameSaveService SaveSvc
 
 <div class="options-root">
   <h2 class="opt-title">STORY</h2>
@@ -53,7 +54,9 @@
         }catch(e){}
       })();");
     } catch { }
-    // Allow fade to complete
+  // Mark story as seen at least once
+  try { var save = await SaveSvc.LoadAsync(); if (save.SeenStory != true) { save.SeenStory = true; await SaveSvc.SaveAsync(save); } } catch { }
+  // Allow fade to complete
     try { await Task.Delay(900); } catch { }
     // Navigate to NES in stage/display-only mode with TV shader, force PPU=LOW and CLOCK=FMC,
     // keep CPU/APU via cores=EIL, no savestates

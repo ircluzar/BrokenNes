@@ -2,6 +2,7 @@
 
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject BrokenNes.Services.GameSaveService SaveSvc
 
 @if (!showHealthWarning)
 {
@@ -123,10 +124,14 @@
     Nav.NavigateTo(BuildRel("nes"), forceLoad: false);
     }
 
-    private void OpenDeckBuilder()
+    private async void OpenDeckBuilder()
     {
-    // Keep animated background alive between Home and Deck Builder
-    Nav.NavigateTo(BuildRel("deck-builder"), forceLoad: false);
+        // Check whether the intro story was seen; if not, route to Story first.
+        bool seen = false;
+        try { var save = await SaveSvc.LoadAsync(); seen = save.SeenStory; } catch { }
+        var target = seen ? "deck-builder" : "story";
+        // Keep animated background alive between Home and target
+        Nav.NavigateTo(BuildRel(target), forceLoad: false);
     }
 
     private void NavigateOptions()

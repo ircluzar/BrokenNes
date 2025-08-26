@@ -45,6 +45,7 @@ public class GameSaveService
                     _ = loaded.GhUnlocked;
                     _ = loaded.ImagineUnlocked;
                     _ = loaded.DebugUnlocked;
+                    _ = loaded.SeenStory;
                     return loaded;
                 }
             }
@@ -83,6 +84,7 @@ public class GameSaveService
             GhUnlocked = false,
             ImagineUnlocked = false,
             DebugUnlocked = false,
+            SeenStory = false,
             OwnedCpuIds = new() { "FMC" },
             OwnedPpuIds = new() { "FMC" },
             OwnedApuIds = new() { "FMC" },
