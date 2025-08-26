@@ -174,8 +174,11 @@
     builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", $"core-slot{(isLocked?" locked":"")}");
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-title"); builder.AddContent(seq++, domain); builder.CloseElement();
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-body");
-        // Card container
-        builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "card-wrap");
+  // Card container
+  builder.OpenElement(seq++, "div");
+  builder.AddAttribute(seq++, "class", "card-wrap");
+  // Inline positioning + explicit size to guarantee overlay coverage
+  builder.AddAttribute(seq++, "style", "position:relative; width:142px; height:200px; line-height:0; display:inline-block;");
           // Determine which card to render
           CoreCardModel cardModel;
           if (isLocked)
@@ -204,7 +207,18 @@
 
           if (isLocked)
           {
-            builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "card-overlay lock-center"); builder.AddAttribute(seq++, "title", "Enforced by level"); builder.AddAttribute(seq++, "aria-hidden", "true"); builder.AddContent(seq++, "🔒"); builder.CloseElement();
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "card-enforced-overlay");
+            // Inline overlay styles to guarantee coverage over the SVG
+            builder.AddAttribute(seq++, "style", "position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none;");
+            builder.AddAttribute(seq++, "title", "Enforced by level");
+            builder.AddAttribute(seq++, "aria-hidden", "true");
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "enforced-text");
+            builder.AddAttribute(seq++, "style", "color:#fff;font-size:0.9rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.8);");
+            builder.AddContent(seq++, "Enforced");
+            builder.CloseElement();
+            builder.CloseElement();
           }
           else
           {

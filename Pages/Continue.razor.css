@@ -36,14 +36,34 @@
 .core-slot .slot-title{font-size:.75rem;margin-bottom:.5rem;color:#fff;text-align:center}
 .core-slot .slot-body{display:flex;align-items:center;justify-content:center;min-height:56px}
 /* Card presentation inside slot */
-.core-slot .card-wrap{position:relative;display:inline-block;line-height:0}
+.core-slot .card-wrap{position:relative;display:inline-block;line-height:0;z-index:1}
 .core-slot .card-wrap svg{display:block;width:142px;height:200px}
 /* Clickable cover for unlocked slots (covers the svg) */
 .core-slot .card-cover-btn{position:absolute;inset:0;background:transparent;border:0;cursor:pointer;z-index:3}
 .core-slot .card-cover-btn:focus{outline:2px solid #ff5a26;outline-offset:2px}
-/* Overlay for locked state */
-.core-slot.locked .card-wrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:1;z-index:1}
-.core-slot .card-overlay.lock-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2rem;filter:drop-shadow(0 1px 0 #000);z-index:2;pointer-events:none}
+/* Overlay for locked state - semi-transparent black with centered "Enforced" text */
+.core-slot .card-enforced-overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,0.75);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:10;
+  pointer-events:none;
+  /* Debug border to make sure overlay is positioned correctly */
+  border: 2px solid red;
+}
+.core-slot .card-enforced-overlay .enforced-text{
+  color:white;
+  font-size:0.9rem;
+  font-weight:bold;
+  text-align:center;
+  text-shadow:0 1px 2px rgba(0,0,0,0.8);
+  /* Debug background for text visibility */
+  background: rgba(255,0,0,0.3);
+  padding: 4px 8px;
+}
 /* Legacy label/button (kept for fallback; hidden when using svg cards) */
 .core-slot .slot-label{display:none}
 .core-slot .slot-pick{display:none}
