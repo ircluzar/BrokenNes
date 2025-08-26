@@ -34,6 +34,7 @@ public class Cartridge
 		7 => "AxROM",
 		9 => "MMC2",
 			90 => "Mapper90",
+			228 => "Action52 (Mapper228)",
 		_ => "Unknown"
 	};
 
@@ -152,6 +153,9 @@ public class Cartridge
 				break;
 			case 90:
 				mapper = new Mapper90(this);
+				break;
+			case 228:
+				mapper = new Mapper228(this);
 				break;
 			default:
 				#if DIAG_LOG
