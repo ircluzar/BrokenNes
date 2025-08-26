@@ -341,6 +341,9 @@ public class PPU_SPD : IPPU
 		ushort renderV = v;
 		var cfg = bus!.SpeedConfig; // snapshot
 		bool usePatternCache = cfg?.PpuPatternCache == true;
+		// In MMC5 Mode 1, BG CHR bank may vary per tile; disable BG pattern cache to avoid wrong rows
+		if (bus!.cartridge!.mapper is IMapper mapperCacheCtl && mapperCacheCtl.IsMmc5Mode1BgActive())
+			usePatternCache = false;
 		bool useBatch = cfg?.PpuTileBatching == true;
 		bool skipBlank = cfg?.PpuSkipBlankScanlines == true;
 		if (usePatternCache && bus!.cartridge!.mapper != null)
@@ -382,6 +385,8 @@ public class PPU_SPD : IPPU
 				int nameTable = (renderV >> 10) & 0x0003;
 				int baseNTAddr = 0x2000 + (nameTable * 0x400);
 				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+				// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
+				if (bus!.cartridge!.mapper is IMapper mapperNt1) mapperNt1.PpuNtFetch((ushort)tileAddr);
 				// Fast path: pattern index fetch (nametable region) - avoid full Read overhead
 				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]];
 				int fineY = (renderV >> 12) & 0x7;
@@ -408,12 +413,19 @@ public class PPU_SPD : IPPU
 					byte plane1 = bus!.cartridge!.PPURead((ushort)(patternAddr + 8));
 					rowBits = PlaneExpand[plane0] | (PlaneExpand[plane1] << 1);
 				}
-				int attributeX = coarseX / 4;
-				int attributeY = coarseY / 4;
-				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
-				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-				int paletteIndex = (attrByte >> attrShift) & 0x03;
+				int paletteIndex;
+				// Try MMC5 Mode 1 override
+				int mmc5Pal = (bus!.cartridge!.mapper is IMapper mapperPal1) ? mapperPal1.GetMmc5Mode1BgPaletteIndex() : -1;
+				if (mmc5Pal >= 0) paletteIndex = mmc5Pal;
+				else
+				{
+					int attributeX = coarseX / 4;
+					int attributeY = coarseY / 4;
+					int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+					byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
+					int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+					paletteIndex = (attrByte >> attrShift) & 0x03;
+				}
 				batchRowBits[tile] = rowBits;
 				batchPaletteIndex[tile] = (byte)paletteIndex;
 				if (rowBits != 0UL) batchAllZero = false;
@@ -468,6 +480,8 @@ public class PPU_SPD : IPPU
 					int nameTable = (rv2 >> 10) & 0x0003;
 					int baseNTAddr = 0x2000 + (nameTable * 0x400);
 					int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+					// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
+					if (bus!.cartridge!.mapper is IMapper mapperNt2) mapperNt2.PpuNtFetch((ushort)tileAddr);
 					byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
 					int fineY = (rv2 >> 12) & 0x7;
 					int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
@@ -495,12 +509,18 @@ public class PPU_SPD : IPPU
 					int paletteIndex = 0;
 					if (!deferAttr || rowBits != 0UL)
 					{
-						int attributeX = coarseX / 4;
-						int attributeY = coarseY / 4;
-						int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-						byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
-						int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-						paletteIndex = (attrByte >> attrShift) & 0x03;
+						// Try MMC5 Mode 1 override
+						int mmc5Pal = (bus!.cartridge!.mapper is IMapper mapperPal2) ? mapperPal2.GetMmc5Mode1BgPaletteIndex() : -1;
+						if (mmc5Pal >= 0) paletteIndex = mmc5Pal;
+						else
+						{
+							int attributeX = coarseX / 4;
+							int attributeY = coarseY / 4;
+							int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+							byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+							int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+							paletteIndex = (attrByte >> attrShift) & 0x03;
+						}
 					}
 					if (rowBits == 0UL)
 					{
@@ -803,7 +823,22 @@ public class PPU_SPD : IPPU
 		if (address < 0x2000)
 			return bus!.cartridge!.PPURead(address);
 		if (address < 0x3F00)
+		{
+			// Allow mapper to override nametable source (MMC5 $5105 ExRAM/Fill)
+			if (bus!.cartridge!.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte v)) return v;
+			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly without mirroring guess
+			if (bus!.cartridge!.mapper is IMapper mMode)
+			{
+				int mode = mMode.GetMmc5NtModeForAddress(address);
+				if (mode == 0 || mode == 1)
+				{
+					int inner = address & 0x03FF;
+					ushort ciramBase = (ushort)(mode == 0 ? 0x0000 : 0x0400);
+					return vram[ciramBase + inner];
+				}
+			}
 			return vram[ntMirror[address & 0x0FFF]]; // nametable & mirrors
+		}
 		ushort mirrored = (ushort)(address & 0x1F);
 		if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 		return paletteRAM[mirrored];
@@ -820,6 +855,19 @@ public class PPU_SPD : IPPU
 		}
 		if (address < 0x3F00)
 		{
+			// Allow mapper to override nametable writes (ExRAM/Fill)
+			if (bus!.cartridge!.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return;
+			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly
+			if (bus!.cartridge!.mapper is IMapper mMode)
+			{
+				int mode = mMode.GetMmc5NtModeForAddress(address);
+				if (mode == 0 || mode == 1)
+				{
+					int inner = address & 0x03FF;
+					ushort ciramBase = (ushort)(mode == 0 ? 0x0000 : 0x0400);
+					vram[ciramBase + inner] = value; return;
+				}
+			}
 			vram[ntMirror[address & 0x0FFF]] = value; return;
 		}
 		ushort mirrored = (ushort)(address & 0x1F);

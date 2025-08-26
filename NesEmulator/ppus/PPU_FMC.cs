@@ -286,6 +286,8 @@ public class PPU_FMC : IPPU
 			// Calculate nametable address
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+			// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
+			if (bus?.cartridge?.mapper is IMapper mapperNt) mapperNt.PpuNtFetch((ushort)tileAddr);
 			byte tileIndex = Read((ushort)tileAddr);
 
 			// Get fine Y scroll (which row within the 8x8 tile)
@@ -299,15 +301,18 @@ public class PPU_FMC : IPPU
 			byte plane0 = Read((ushort)patternAddr);
 			byte plane1 = Read((ushort)(patternAddr + 8));
 
-			// Get attribute byte for color palette
-			int attributeX = coarseX / 4;
-			int attributeY = coarseY / 4;
-			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-			byte attrByte = Read((ushort)attrAddr);
-
-			// Extract the 2-bit palette index for this tile
-			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-			int paletteIndex = (attrByte >> attrShift) & 0x03;
+			// Determine palette index: try MMC5 Mode 1 override first, else use attribute table
+			int paletteIndex;
+			int mmc5Pal = (bus?.cartridge?.mapper is IMapper mapperPal) ? mapperPal.GetMmc5Mode1BgPaletteIndex() : -1;
+			if (mmc5Pal >= 0) paletteIndex = mmc5Pal;
+			else {
+				int attributeX = coarseX / 4;
+				int attributeY = coarseY / 4;
+				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
+				byte attrByte = Read((ushort)attrAddr);
+				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+				paletteIndex = (attrByte >> attrShift) & 0x03;
+			}
 
 			// Pre-calculate frame buffer base for this scanline
 			int scanlineBase = scanline * ScreenWidth * 4;
@@ -635,6 +640,19 @@ public class PPU_FMC : IPPU
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			// Allow mapper to override nametable reads (MMC5 $5105 ExRAM/Fill)
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte v)) return v;
+			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly
+			if (bus?.cartridge?.mapper is IMapper mMode)
+			{
+				int mode = mMode.GetMmc5NtModeForAddress(address);
+				if (mode == 0 || mode == 1)
+				{
+					int inner = address & 0x03FF;
+					ushort ciramBase = (ushort)(mode == 0 ? 0x0000 : 0x0400);
+					return vram[ciramBase + inner];
+				}
+			}
 			ushort mirrored = MirrorVRAMAddress(address);
 			return vram[mirrored];
 		}
@@ -658,6 +676,19 @@ public class PPU_FMC : IPPU
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			// Allow mapper to override nametable writes (ExRAM/Fill)
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return;
+			// If mapper provides per-quadrant NT mode 0/1, resolve CIRAM A/B directly
+			if (bus?.cartridge?.mapper is IMapper mMode)
+			{
+				int mode = mMode.GetMmc5NtModeForAddress(address);
+				if (mode == 0 || mode == 1)
+				{
+					int inner = address & 0x03FF;
+					ushort ciramBase = (ushort)(mode == 0 ? 0x0000 : 0x0400);
+					vram[ciramBase + inner] = value; return;
+				}
+			}
 			ushort mirrored = MirrorVRAMAddress(address);
 			vram[mirrored] = value;
 		}

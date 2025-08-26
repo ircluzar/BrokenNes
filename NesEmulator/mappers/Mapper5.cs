@@ -48,6 +48,11 @@ public class Mapper5 : IMapper
 
     // EXRAM 1KB (used for attributes or NT by MMC5; here exposed via CPU $5C00-$5FFF)
     private readonly byte[] exram = new byte[1024];
+    // Simple 2KB CIRAM proxy for MMC5 NT redirection when PPU asks through mapper (the PPU owns its own VRAM; we only need ExRAM/fill here)
+    // We won't mirror CIRAM here; PPU will fall back to its own VRAM for mode 0/1.
+
+    // Track the last nametable tile index address read (coarse tile fetch), for MMC5 Mode 1
+    private int lastNtReadIndex = 0; // 0..959 within a single NT (we'll mod by 960)
 
     // Multiplier
     private byte multiplicand, multiplier; private byte productLo, productHi;
@@ -70,6 +75,7 @@ public class Mapper5 : IMapper
         multiplicand = multiplier = productLo = productHi = 0;
         irqTarget = irqCounter = 0; irqEnabled = irqPending = inFrame = false;
     ppuFetchIsSprite = false; lastChrIoSprite = false;
+    lastNtReadIndex = 0;
         ApplyMirroringFrom5105();
         RebuildPrgMapping();
     RebuildChrMapping();
@@ -160,7 +166,15 @@ public class Mapper5 : IMapper
                         RebuildChrMapping();
                     }
                     else if (address == 0x5130)
-                    { chrHigh = value & 0x03; }
+                    {
+                        // Theory 5: $5130 provides top 2 bits of CHR bank index. Some games update $5130 after
+                        // writing $5120-$512B. Re-apply high bits to all CHR regs and rebuild mapping.
+                        chrHigh = value & 0x03;
+                        // Re-apply high bits to A (sprite) and B (background) registers preserving low 8 bits
+                        for (int i = 0; i < 8; i++) chrRegsSprite[i] = (chrRegsSprite[i] & 0xFF) | (chrHigh << 8);
+                        for (int i = 0; i < 4; i++) chrRegsBgRaw[i]  = (chrRegsBgRaw[i]  & 0xFF) | (chrHigh << 8);
+                        RebuildChrMapping();
+                    }
                     else if (address == 0x5203)
                     { irqTarget = value; }
                     else if (address == 0x5204)
@@ -189,16 +203,39 @@ public class Mapper5 : IMapper
     {
         if (address < 0x2000)
         {
+            // MMC5 Mode 1: override BG CHR mapping per tile using ExRAM table
+            if (!ppuFetchIsSprite && exramMode == 1)
+            {
+                // Compute 1KB base offset from ExRAM-selected 4KB bank plus $5130 hi bits
+                int bank4k = exram[lastNtReadIndex & 0x3FF] & 0x3F; // 0..63
+                int bank = (chrHigh << 6) | bank4k; // include high bits (2)
+                int bank1k = (bank << 2) | ((address >> 10) & 0x3); // 1KB segment within 4KB
+                int baseOffsetM1 = (bank1k * 0x400);
+                int final = baseOffsetM1 + (address & 0x03FF);
+                if (cart.chrBanks > 0)
+                {
+                    int len = cart.chrROM.Length; if (len == 0) return 0;
+                    final %= len; if (final < 0) final += len;
+                    return cart.chrROM[final];
+                }
+                else
+                {
+                    int len = cart.chrRAM.Length; if (len == 0) return 0;
+                    final %= len; if (final < 0) final += len;
+                    return cart.chrRAM[final];
+                }
+            }
+
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffset = ppuFetchIsSprite ? chrSlotOffsetsSprite[slot] : chrSlotOffsetsBg[slot];
-            int final = baseOffset + (address & 0x03FF);
+            int baseOffsetNorm = ppuFetchIsSprite ? chrSlotOffsetsSprite[slot] : chrSlotOffsetsBg[slot];
+            int final2 = baseOffsetNorm + (address & 0x03FF);
             if (cart.chrBanks > 0)
             {
-                if ((uint)final < cart.chrROM.Length) return cart.chrROM[final];
+                if ((uint)final2 < cart.chrROM.Length) return cart.chrROM[final2];
             }
             else
             {
-                if ((uint)final < cart.chrRAM.Length) return cart.chrRAM[final];
+                if ((uint)final2 < cart.chrRAM.Length) return cart.chrRAM[final2];
             }
             return 0;
         }
@@ -209,10 +246,20 @@ public class Mapper5 : IMapper
     {
         if (address < 0x2000 && cart.chrBanks == 0)
         {
+            if (!ppuFetchIsSprite && exramMode == 1)
+            {
+                int bank4k = exram[lastNtReadIndex & 0x3FF] & 0x3F;
+                int bank = (chrHigh << 6) | bank4k;
+                int bank1k = (bank << 2) | ((address >> 10) & 0x3);
+                int baseOffsetM1 = (bank1k * 0x400);
+                int final = baseOffsetM1 + (address & 0x03FF);
+                if ((uint)final < cart.chrRAM.Length) cart.chrRAM[final] = value;
+                return;
+            }
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffset = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
-            int final = baseOffset + (address & 0x03FF);
-            if ((uint)final < cart.chrRAM.Length) cart.chrRAM[final] = value;
+            int baseOffsetNorm = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            int final2 = baseOffsetNorm + (address & 0x03FF);
+            if ((uint)final2 < cart.chrRAM.Length) cart.chrRAM[final2] = value;
         }
     }
 
@@ -358,6 +405,64 @@ public class Mapper5 : IMapper
         // else leave existing (MMC5 offers per-NT mapping we don't emulate yet)
     }
 
+    // Map NT quadrant 0..3 to mode: 0=CIRAM A,1=CIRAM B,2=ExRAM,3=Fill
+    private int GetNtModeForAddress(ushort address)
+    {
+        int ntPage = ((address - 0x2000) >> 10) & 0x3; // which 1KB nametable page
+        int mode = (nametableControl >> (ntPage * 2)) & 0x3;
+        return mode;
+    }
+
+    // Expose per-quadrant NT mode to PPU so it can route CIRAM A/B without guessing mirroring
+    public int GetMmc5NtModeForAddress(ushort address)
+    {
+        if (address < 0x2000 || address >= 0x3000) return -1;
+        return GetNtModeForAddress(address);
+    }
+
+    public bool TryPpuNametableRead(ushort address, out byte value)
+    {
+        value = 0;
+        if (address < 0x2000 || address >= 0x3F00) return false;
+        // Only intercept $2000-$2FFF; attribute and tile regions handled uniformly for ExRAM/fill
+        int mode = GetNtModeForAddress(address);
+        int inner = address & 0x03FF;
+        if (mode == 2)
+        {
+            // ExRAM as nametable (subject to exramMode: allow reads when mode>=2 similar to CPU path)
+            if (exramMode < 2) { value = 0xFF; return true; }
+            value = exram[inner & 0x3FF];
+            return true;
+        }
+        if (mode == 3)
+        {
+            // Fill mode: tiles return $5106, attribute bytes return packed fillAttrib
+            if (inner >= 0x3C0) value = fillAttrib; else value = fillTile;
+            return true;
+        }
+        // Mode 0/1: CIRAM A/B — handled by PPU's own VRAM and mirroring logic.
+        return false;
+    }
+
+    public bool TryPpuNametableWrite(ushort address, byte value)
+    {
+        if (address < 0x2000 || address >= 0x3F00) return false;
+        int mode = GetNtModeForAddress(address);
+        int inner = address & 0x03FF;
+        if (mode == 2)
+        {
+            // ExRAM as nametable: allow writes unless exramMode==3 (CPU writes inhibited; we mirror that for PPU NT path too)
+            if (exramMode == 3) return true; // drop write
+            exram[inner & 0x3FF] = value; return true;
+        }
+        if (mode == 3)
+        {
+            // Fill mode ignores writes
+            return true;
+        }
+        return false; // PPU should write to its CIRAM
+    }
+
     // --- State ---
     private class Mapper5State { public int prgMode, chrMode, exramMode, wramBank, chrHigh; public int irqTarget, irqCounter; public bool irqEnabled, irqPending, inFrame; public int[] prgRegs = new int[4]; public int[] chrRegsSprite = new int[8]; public int[] chrRegsBgRaw = new int[4]; public byte nametableControl, fillTile, fillAttrib; public byte[] exram = new byte[1024]; public byte multiplicand, multiplier, productLo, productHi; }
     public object GetMapperState() => new Mapper5State { prgMode = prgMode, chrMode = chrMode, exramMode = exramMode, wramBank = wramBank, chrHigh = chrHigh, irqTarget = irqTarget, irqCounter = irqCounter, irqEnabled = irqEnabled, irqPending = irqPending, inFrame = inFrame, prgRegs = (int[])prgRegs.Clone(), chrRegsSprite = (int[])chrRegsSprite.Clone(), chrRegsBgRaw = (int[])chrRegsBgRaw.Clone(), nametableControl = nametableControl, fillTile = fillTile, fillAttrib = fillAttrib, exram = (byte[])exram.Clone(), multiplicand = multiplicand, multiplier = multiplier, productLo = productLo, productHi = productHi };
@@ -426,6 +531,39 @@ public class Mapper5 : IMapper
     {
         // For our purposes, just latch the sprite/background distinction.
         ppuFetchIsSprite = isSpriteFetch;
+    }
+
+    // Expose MMC5 Mode 1 helpers to PPU via IMapper default hooks
+    public void PpuNtFetch(ushort ntAddress)
+    {
+        // ntAddress is in $2000-$2FFF range; compute tile index within the selected nametable
+        // Each NT: 32x30 tiles => indices 0..959. Attribute table region ($23C0-$23FF etc.) is not counted here.
+        int ntBase = (ntAddress - 0x2000) & 0x03FF; // within 1KB page
+        if (ntBase < 0x03C0)
+        {
+            int index = ntBase; // 0..959
+            lastNtReadIndex = index % 960;
+        }
+    }
+
+    public int GetMmc5Mode1BgPaletteIndex()
+    {
+        if (!IsMode1Active()) return -1;
+        // ExRAM entry selected by last NT read; top 2 bits form attribute/palette select
+        int exIndex = lastNtReadIndex & 0x3FF; // safety
+        byte ex = exram[exIndex];
+        return (ex >> 6) & 0x03; // palette 0..3
+    }
+
+    private bool IsMode1Active()
+    {
+        // Mode 1 when $5104 == 1 and background fetches (not sprites)
+        return exramMode == 1 && !ppuFetchIsSprite;
+    }
+
+    public bool IsMmc5Mode1BgActive()
+    {
+        return exramMode == 1 && !ppuFetchIsSprite;
     }
 }
 }
