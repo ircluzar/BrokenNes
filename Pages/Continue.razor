@@ -1,78 +1,268 @@
 @page "/continue"
+@using NesEmulator
+@using BrokenNes.Shared
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject BrokenNes.Services.GameSaveService SaveSvc
 
-<div class="options-root">
+<div class="options-root continue-root">
   <h2 class="opt-title">CONTINUE</h2>
-  <div class="opt-sections">
-    <section class="opt-section">
-      <h3 class="opt-h3">Deck Builder</h3>
-      <p class="opt-row small-note">Continue mode coming soon.</p>
-    </section>
-  </div>
+
+  <section class="cont-header">
+    <div class="hdr-main">
+      <div class="lvl-title">
+        <span class="chip">Level @CurrentLevel</span>
+        <strong>@LevelTitle</strong>
+      </div>
+      <div class="lvl-status">
+        <span class="status-chip @(LevelCleared?"cleared":"not-cleared")" title="@(LevelCleared?"Any 1 achievement completed":"No achievements completed yet")">
+          @(LevelCleared?"Cleared":"Not Cleared")
+        </span>
+      </div>
+    </div>
+    <div class="hdr-cards">
+      <span class="small-note">Enforced:</span>
+      @foreach (var c in EnforcedCards)
+      {
+        <button type="button" class="enf-chip" title="View card" @onclick="(()=>OpenCardZoom(c.domain, c.id))">@c.label</button>
+      }
+    </div>
+    <div class="hdr-cta">
+      <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (5 stars)</button>
+    </div>
+  </section>
+
+  <section class="opt-section">
+    <h3 class="opt-h3">Build Console</h3>
+    <div class="core-grid">
+      @CoreSlot("CPU", EnforcedCpu, SelectedCpu, OpenCpuPicker)
+      @CoreSlot("PPU", EnforcedPpu, SelectedPpu, OpenPpuPicker)
+      @CoreSlot("APU", EnforcedApu, SelectedApu, OpenApuPicker)
+      <div class="core-slot locked">
+        <div class="slot-title">Mapper</div>
+        <div class="slot-body">
+          <div class="lock-overlay" title="Mapper is auto-selected by ROM">🔒</div>
+          <div class="slot-label">Auto (by ROM)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="opt-section">
+    <h3 class="opt-h3">Game (ROM)</h3>
+    <div class="rom-box small-note">
+      No compatible ROMs registered yet. Use the ROM Manager in the Emulator to import ROMs. This panel will list compatible games in a later milestone.
+    </div>
+  </section>
+
+  <section class="opt-section">
+    <h3 class="opt-h3">Achievements</h3>
+    <div class="ach-box small-note">Select a compatible game to view achievements. (Coming soon)
+    </div>
+  </section>
+
   <div class="opt-footer">
+    <button class="opt-link start-btn" disabled title="Build valid and game with achievements required">Start the game</button>
     <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
 </div>
 
+@if (ZoomCard != null)
+{
+  <div class="card-modal-backdrop @(ModalClosing?"closing":"opening")" @onclick="CloseZoom">
+    <div class="card-modal-content @(ModalClosing?"closing":"opening")" @onclick="CloseZoom">
+      @((MarkupString)CardSvgRenderer.Render(ZoomCard))
+    </div>
+  </div>
+}
+
 @code {
+  // State
+  private int CurrentLevel = 1;
+  private int Stars = 0;
+  private string LevelTitle = "FMC Warmup";
+  private int RequiredStars = 5;
+
+  private (string domain, string id, string label)[] EnforcedCards = Array.Empty<(string,string,string)>();
+
+  // Enforced slots (null = not enforced)
+  private string? EnforcedCpu = null;
+  private string? EnforcedPpu = null;
+  private string? EnforcedApu = null;
+
+  // Player-selected (temporary choices for this level/session)
+  private string? SelectedCpu = null;
+  private string? SelectedPpu = null;
+  private string? SelectedApu = null;
+
+  private CoreCardModel? ZoomCard;
+  private bool ModalClosing = false;
+  private bool _zoomInit = false;
+
+  // Owned choices
+  private IReadOnlyList<string> OwnedCpu = Array.Empty<string>();
+  private IReadOnlyList<string> OwnedPpu = Array.Empty<string>();
+  private IReadOnlyList<string> OwnedApu = Array.Empty<string>();
+
   protected override async Task OnInitializedAsync()
   {
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
+
+    // Minimal levels config (stub for first milestone)
+    // Level 1: enforce FMC on all cores; future levels can vary.
+    var save = await SaveSvc.LoadAsync();
+    CurrentLevel = Math.Max(1, save.Level);
+    Stars = save.Achievements?.Count ?? 0;
+    LevelTitle = CurrentLevel switch { 1 => "FMC Warmup", 2 => "Getting Serious", _ => $"Level {CurrentLevel}" };
+    RequiredStars = 5; // constant label per worksheet spec (dynamic later)
+    EnforcedCpu = "FMC";
+    EnforcedPpu = "FMC";
+    EnforcedApu = "FMC";
+    EnforcedCards = new[]{ ("CPU", EnforcedCpu!, "CPU_"+EnforcedCpu), ("PPU", EnforcedPpu!, "PPU_"+EnforcedPpu), ("APU", EnforcedApu!, "APU_"+EnforcedApu) };
+
+    // Owned sets
+    OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+    OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+    OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (!firstRender) return;
-    // On entering Continue: fade out any existing music (title screen or shared track),
-    // then crossfade into DeckBuilder.mp3 looping.
-    try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch { }
-    try {
-      await JS.InvokeVoidAsync("eval", @"(function(){
-        try{
-          var want = 'music/DeckBuilder.mp3';
-          if (!window.music) return;
-          var cur = (typeof window.music.currentSrc==='function' ? (window.music.currentSrc()||'') : '');
-          var isPlaying = (typeof window.music.isPlaying==='function' ? !!window.music.isPlaying() : false);
-          // Only skip if DeckBuilder is already playing
-          if (cur.indexOf('DeckBuilder.mp3') !== -1 && isPlaying) return;
-          // Start a gentle fade-out if a different track is playing
-          if (isPlaying && typeof window.music.fadeOut==='function'){
-            try { window.music.fadeOut(700, true); } catch(e){}
-            setTimeout(function(){ try { window.music.play(want, { loop: true, fadeInMs: 900 }); } catch(e){} }, 150);
-          } else {
-            // Not currently playing (or DeckBuilder stopped): start it with a fade-in
-            try { window.music.play(want, { loop: true, fadeInMs: 700 }); } catch(e){}
-          }
-        }catch(e){}
-      })();");
-    } catch { }
+    if (firstRender)
+    {
+      // Crossfade into DeckBuilder music for continuity
+      try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch { }
+      try { await JS.InvokeVoidAsync("eval", @"(function(){try{var want='music/DeckBuilder.mp3';if(!window.music)return;var cur=(typeof window.music.currentSrc==='function'?(window.music.currentSrc()||''):''),isP=(typeof window.music.isPlaying==='function'&&!!window.music.isPlaying());if(cur.indexOf('DeckBuilder.mp3')!==-1&&isP)return;if(isP&&typeof window.music.fadeOut==='function'){try{window.music.fadeOut(700,true);}catch(e){} setTimeout(function(){try{window.music.play(want,{loop:true,fadeInMs:900});}catch(e){}},150);} else {try{window.music.play(want,{loop:true,fadeInMs:700});}catch(e){}}}catch(e){}})();"); } catch { }
+    }
+
+    if (ZoomCard != null && !_zoomInit)
+    {
+      _zoomInit = true;
+      try { await JS.InvokeVoidAsync("eval", @"(function(){window.nesUi=window.nesUi||{};window.nesUi.zoomModalSvg=function(){try{var host=document.querySelector('.card-modal-content');if(!host)return;var svg=host.querySelector('svg');if(!svg)return;svg.removeAttribute('width');svg.removeAttribute('height');svg.style.width='98vw';svg.style.maxWidth='98vw';svg.style.height='auto';svg.style.maxHeight='98vh';svg.style.display='block';}catch(e){}};window.nesUi.zoomModalSvg();})();"); } catch { }
+    }
   }
 
-  private string BuildRel(string path){
-    if(string.IsNullOrWhiteSpace(path)) return "";
-    path = path.TrimStart('/');
-    return path;
+  private bool LevelCleared => Stars > 0; // Placeholder until per-level attribution exists
+  private bool CanAdvanceLevel => Stars >= RequiredStars;
+  private bool BuildValid => (EnforcedCpu ?? SelectedCpu) != null && (EnforcedPpu ?? SelectedPpu) != null && (EnforcedApu ?? SelectedApu) != null;
+
+  private async Task AdvanceLevel()
+  {
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      if (Stars < RequiredStars) return;
+      save.Level = Math.Max(1, save.Level) + 1;
+      // Grant any forced cards for next level here (stub: grant FMC if missing)
+      void grant(List<string> list, string id){ if (!list.Contains(id, StringComparer.OrdinalIgnoreCase)) list.Add(id); }
+      save.OwnedCpuIds ??= new(); save.OwnedPpuIds ??= new(); save.OwnedApuIds ??= new();
+      grant(save.OwnedCpuIds, "FMC"); grant(save.OwnedPpuIds, "FMC"); grant(save.OwnedApuIds, "FMC");
+      await SaveSvc.SaveAsync(save);
+      // Reset selections for new level
+      SelectedCpu = SelectedPpu = SelectedApu = null;
+      CurrentLevel = save.Level;
+      Stars = save.Achievements?.Count ?? 0;
+      LevelTitle = CurrentLevel switch { 1 => "FMC Warmup", 2 => "Getting Serious", _ => $"Level {CurrentLevel}" };
+      StateHasChanged();
+    }
+    catch { }
   }
+
+  private RenderFragment CoreSlot(string domain, string? enforced, string? selected, Action openPicker) => builder =>
+  {
+    int seq = 0; bool isLocked = !string.IsNullOrWhiteSpace(enforced);
+    builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", $"core-slot{(isLocked?" locked":"")}");
+      builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-title"); builder.AddContent(seq++, domain); builder.CloseElement();
+      builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-body");
+        if (isLocked)
+        {
+          builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "lock-overlay"); builder.AddAttribute(seq++, "title", "Enforced by level"); builder.AddContent(seq++, "🔒"); builder.CloseElement();
+          builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-label"); builder.AddContent(seq++, $"{domain}_" + enforced); builder.CloseElement();
+        }
+        else
+        {
+          var label = string.IsNullOrWhiteSpace(selected) ? $"Select a {domain} Core" : $"{domain}_" + selected;
+          builder.OpenElement(seq++, "button"); builder.AddAttribute(seq++, "class", "slot-pick"); builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker)); builder.AddContent(seq++, label); builder.CloseElement();
+        }
+      builder.CloseElement();
+    builder.CloseElement();
+  };
+
+  private void OpenCpuPicker() => OpenPicker("CPU");
+  private void OpenPpuPicker() => OpenPicker("PPU");
+  private void OpenApuPicker() => OpenPicker("APU");
+
+  private void OpenPicker(string domain)
+  {
+    // Simple cycle picker for now (first non-FMC choice if exists, else FMC)
+    switch (domain)
+    {
+      case "CPU": SelectedCpu = OwnedCpu.FirstOrDefault() ?? "FMC"; break;
+      case "PPU": SelectedPpu = OwnedPpu.FirstOrDefault() ?? "FMC"; break;
+      case "APU": SelectedApu = OwnedApu.FirstOrDefault() ?? "FMC"; break;
+    }
+  }
+
+  private async Task OpenCardZoom(string domain, string id)
+  {
+    ZoomCard = BuildCard(domain, id);
+    ModalClosing = false; _zoomInit = false;
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task CloseZoom()
+  {
+    if (ZoomCard == null) return;
+    ModalClosing = true; await InvokeAsync(StateHasChanged);
+    try { await Task.Delay(160); } catch { }
+    ZoomCard = null; ModalClosing = false; _zoomInit = false;
+  }
+
+  private CoreCardModel BuildCard(string domain, string id)
+  {
+    // Fetch meta via reflection to enrich the card (best-effort)
+    string name = id; string desc = string.Empty; int perf = 0; int rating = 0; string footer = domain;
+    try
+    {
+      // Minimal iNES to allow core instantiation when needed
+      var dummy = new byte[16 + 16 * 1024]; dummy[0]=0x4E; dummy[1]=0x45; dummy[2]=0x53; dummy[3]=0x1A; dummy[4]=1; dummy[5]=0; var cart = new Cartridge(dummy); var bus = new Bus(cart);
+      switch (domain)
+      {
+        case "CPU":
+          if (CoreRegistry.CpuTypes.TryGetValue(id, out var tCpu))
+          {
+            var cpu = CoreRegistry.CreateInstance<ICPU>(tCpu, bus);
+            if (cpu != null) { name = cpu.CoreName ?? ("CPU_" + id); desc = cpu.Description ?? ""; perf = cpu.Performance; rating = Math.Clamp(cpu.Rating,0,5); footer = cpu.Category ?? domain; }
+          }
+          break;
+        case "PPU":
+          if (CoreRegistry.PpuTypes.TryGetValue(id, out var tPpu))
+          {
+            var ppu = CoreRegistry.CreateInstance<IPPU>(tPpu, bus);
+            if (ppu != null) { name = ppu.CoreName ?? ("PPU_" + id); desc = ppu.Description ?? ""; perf = ppu.Performance; rating = Math.Clamp(ppu.Rating,0,5); footer = ppu.Category ?? domain; }
+          }
+          break;
+        case "APU":
+          if (CoreRegistry.ApuTypes.TryGetValue(id, out var tApu))
+          {
+            var apu = CoreRegistry.CreateInstance<IAPU>(tApu, bus);
+            if (apu != null) { name = apu.CoreName ?? ("APU_" + id); desc = apu.Description ?? ""; perf = apu.Performance; rating = Math.Clamp(apu.Rating,0,5); footer = apu.Category ?? domain; }
+          }
+          break;
+      }
+    }
+    catch { }
+    return new CoreCardModel{ Id=id, ShortName=$"{domain}_{id}", DisplayName=name, Description=desc, Performance=perf, Rating=rating, FooterNote=footer, Domain=domain };
+  }
+
+  private string BuildRel(string path){ if(string.IsNullOrWhiteSpace(path)) return string.Empty; return path.TrimStart('/'); }
 
   private async Task OnReturn()
   {
-    // Crossfade from DeckBuilder track back to TitleScreen
-    try {
-      await JS.InvokeVoidAsync("eval", @"(function(){
-        try{
-          if(window.music){
-            try{ window.music.fadeOut && window.music.fadeOut(700, true); }catch(e){}
-          }
-          // Slight overlap before bringing title back in
-          setTimeout(function(){ try{ window.nesInterop && window.nesInterop.playTitleMusic && window.nesInterop.playTitleMusic(); }catch(e){} }, 150);
-        }catch(e){}
-      })();");
-    } catch { }
-    // Let the fade scheduling start, then navigate
+    try { await JS.InvokeVoidAsync("eval", @"(function(){try{if(window.music){try{window.music.fadeOut&&window.music.fadeOut(700,true);}catch(e){}} setTimeout(function(){try{window.nesInterop&&window.nesInterop.playTitleMusic&&window.nesInterop.playTitleMusic();}catch(e){}},150);}catch(e){}})();"); } catch { }
     try { await Task.Delay(120); } catch { }
-    Nav.NavigateTo(BuildRel("deck-builder?skipHW=1"), forceLoad: false);
+    Nav.NavigateTo(BuildRel("deck-builder?skipHW=1"), false);
   }
 }

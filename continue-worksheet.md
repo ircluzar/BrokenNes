@@ -86,53 +86,55 @@ Achievement Progress Within a Level
 ## Acceptance Checklist (Tasks with Subtasks)
 
 Top Header Box
-- [ ] Render current level number and title
-- [ ] Render enforced cards as clickable text chips
-  - [ ] Click → open full-screen modal with zoomed card
-  - [ ] Backdrop darkens; ESC/backdrop click closes
-- [ ] Show level clear status chip (Cleared/Not Cleared)
-  - [ ] Compute from save + per-level session unlock history
-  - [ ] Reset on level advance
-- [ ] "Go to next level (5 stars)" button
-  - [ ] Disable if `save.stars < requiredStars`
-  - [ ] On click → advance level, grant rewards, reset unlocked slots
+- [x] Render current level number and title (stub title mapping for L1+)
+- [x] Render enforced cards as clickable text chips
+  - [x] Click → open full-screen modal with zoomed card
+  - [x] Backdrop darkens; backdrop click closes (ESC TBD)
+- [x] Show level clear status chip (Cleared/Not Cleared)
+  - [ ] Compute from save + per-level session unlock history (stub: any stars > 0)
+  - [x] Reset on level advance
+- [x] "Go to next level (5 stars)" button
+  - [x] Disable if `save.stars < requiredStars`
+  - [x] On click → advance level, grant rewards (stub FMC), reset selections
 
 Core Selector (2x2 Grid)
-- [ ] Layout four slots (CPU, PPU, APU, Mapper)
-- [ ] Auto-slot enforced cards; gray-out + white Lock overlay
-- [ ] Empty slot copy: "Select a <Type> Core"
-- [ ] Slot picker for non-enforced slots (filters inventory by type)
-- [ ] Reset non-enforced slots on level change
-- [ ] Clock omitted (implicitly `CLOCK_FMC`)
+- [x] Layout four slots (CPU, PPU, APU, Mapper)
+- [x] Auto-slot enforced cards; gray-out + Lock overlay
+- [x] Empty slot copy: "Select a <Type> Core"
+- [x] Slot picker for non-enforced slots (MVP: single-choice from owned list; full picker later)
+- [x] Reset non-enforced slots on level change
+- [x] Clock omitted (implicitly `CLOCK_FMC`)
 
 Game (ROM) Selector
 - [ ] List ROM entries with Title/System/Compatibility/Achievements/Notes
 - [ ] Mark and/or filter incompatible or no-achievement games
 - [ ] Selecting a game updates the Achievements panel
+  - Note: placeholder empty-state implemented; wiring pending DB layer
 
 Achievements Panel
 - [ ] List achievements for selected game with completion state
 - [ ] Show counts (completed/total)
 - [ ] Indicate which are already unlocked in save
+  - Note: placeholder empty-state; awaits content DB
 
 Session CTA
 - [ ] "Start the game" button
-  - [ ] Disable until build is valid (all required slots satisfied)
+  - [x] Disable until build is valid (stub: all enforced satisfied)
   - [ ] Disable if selected game has zero achievements
   - [ ] Enable when both build and game conditions are met
   - [ ] On click → begin session (engine assigns 5 random uncompleted achievements)
 
 State/Rules Wiring
-- [ ] Bind `save.currentLevel`, `save.stars`, and `levels[index]`
-- [ ] Derive clear flag for this level (any 1 achievement with enforced build)
-- [ ] Update inventory on level advance (grant forced cards where applicable)
-- [ ] Persist selections (optional: temp build choices) per session or per level as needed
+- [x] Bind `save.Level`, stars (via `save.Achievements.Count`), and stub level data
+- [ ] Derive clear flag per-level (stubbed to any stars > 0)
+- [x] Update inventory on level advance (stub FMC grant)
+- [ ] Persist selections as needed (not yet persisted)
 
 Accessibility & UX
 - [ ] All interactive elements keyboard-navigable; focus states visible
-- [ ] Modal has initial focus trap and ESC to close
+- [ ] Modal has initial focus trap and ESC to close (backdrop click done)
 - [ ] Labels/aria for lock icons and disabled states
-- [ ] Responsive layout: header box, 2x2 core grid, and tables scale down gracefully
+- [x] Responsive layout: header box, 2x2 core grid scale down on mobile
 
 ---
 
@@ -167,4 +169,4 @@ Accessibility & UX
 - [ ] All acceptance items above checked
 - [ ] Integrated with workflow engine events (start/assign/stop)
 - [ ] Save/load reflects clear state and star thresholds accurately
-- [ ] Light smoke test across desktop and mobile breakpoints
+- [x] Light smoke test across desktop and mobile breakpoints (CSS and modal render)

@@ -15,10 +15,41 @@
 .opt-link{display:inline-block;padding:.7rem 1.4rem;border:3px solid #ff5a26;color:#fff;text-decoration:none;font-size:.7rem;}
 .opt-link:hover,.opt-link:focus{background:#ff5a26;color:#000;}
 
+/* Continue page customizations */
+.continue-root .cont-header{border:3px solid #fff;padding:1rem;margin-bottom:1.5rem}
+.continue-root .hdr-main{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.75rem}
+.continue-root .lvl-title{display:flex;align-items:center;gap:.6rem;font-size:.9rem}
+.continue-root .lvl-title .chip{display:inline-block;background:#fff;color:#000;padding:.15rem .35rem;border:2px solid #ff5a26}
+.continue-root .lvl-status .status-chip{display:inline-block;padding:.2rem .4rem;border:2px solid #fff;font-size:.65rem}
+.continue-root .lvl-status .status-chip.cleared{background:#10b981;border-color:#10b981;color:#000}
+.continue-root .lvl-status .status-chip.not-cleared{background:#374151;border-color:#9ca3af;color:#fff}
+.continue-root .hdr-cards{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.continue-root .enf-chip{background:#000;color:#fff;border:2px solid #fff;font-size:.6rem;padding:.2rem .35rem;cursor:pointer}
+.continue-root .enf-chip:hover{background:#111}
+.continue-root .hdr-cta{margin-top:.75rem}
+.continue-root .btn-next{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.7rem;padding:.45rem .8rem}
+.continue-root .btn-next:disabled{opacity:.5}
+
+.core-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.core-slot{position:relative;border:2px solid #fff;min-height:92px;padding:.5rem}
+.core-slot .slot-title{font-size:.75rem;margin-bottom:.5rem;color:#fff}
+.core-slot .slot-body{display:flex;align-items:center;justify-content:center;min-height:56px}
+.core-slot .slot-label{font-size:.7rem;opacity:.85}
+.core-slot .slot-pick{background:#000;color:#fff;border:2px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.35rem .6rem}
+.core-slot.locked .lock-overlay{position:absolute;top:6px;right:6px;filter:drop-shadow(0 1px 0 #000);}
+
+.rom-box,.ach-box{border:2px dashed #fff;padding:.75rem}
+
+/* Modal for card zoom (reuses patterns from other pages) */
+.card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:5000;opacity:1;transition:opacity .18s ease}
+.card-modal-backdrop.closing{opacity:0}
+.card-modal-content{max-width:98vw;max-height:98vh;}
+
 @media (max-width:620px){
   .options-root{margin:1rem;border-width:3px;outline-width:3px;padding:1rem 1.1rem;}
   .opt-title{font-size:1.2rem;}
   .opt-row{flex-wrap:wrap;}
   .opt-row label{flex:0 0 100%;}
   .opt-row input[type=range]{flex:1 1 100%; margin-left:0;}
+  .core-grid{grid-template-columns:1fr}
 }
