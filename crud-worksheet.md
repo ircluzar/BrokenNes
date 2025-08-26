@@ -10,11 +10,11 @@ Progress (2025-08-25)
 - Startup now always loads `default-db.json` (immutable baseline); debug import/export can override during the session.
 
 ## 0) Foundations
-- [ ] Add `continueDb` JS helper module in wwwroot for IndexedDB (DB name: `continue-db`).
-  - [ ] `open()` with object store setup: `games(id)`, `achievements(id)` with `by_gameId`, `cards(id)`, `levels(index)`, `save(singleton)`.
-  - [ ] `getAll(store)`, `get(store, key)`, `put(store, value)`, `delete(store, key)`, `clear(store)`.
-  - [ ] Bulk ops: `putMany(store, items)`, `exportAll()` → JSON, `importAll(json)` with schema/version checks.
-  - [ ] Wire downloads/uploads: `exportAllToDownload()`, `importFromFileInput()`.
+- [x] Add `continueDb` JS helper module in wwwroot for IndexedDB (DB name: `continue-db`).
+  - [x] `open()` with object store setup: `games(id)`, `achievements(id)` with `by_gameId`, `cards(id)`, `levels(index)`, `save(singleton)`.
+  - [x] `getAll(store)`, `get(store, key)`, `put(store, value)`, `delete(store, key)`, `clear(store)`.
+  - [x] Bulk ops: `putMany(store, items)`, `exportAll()` → JSON, `importAll(json)` with schema/version checks.
+  - [x] Wire downloads/uploads: `exportAllToDownload()`, `importFromFileInput()`.
   - [x] Ship file at `wwwroot/lib/continue-db.js` and include it in `wwwroot/index.html` before Blazor boot scripts.
 - [x] Seed-load: on app start, always load `default-db.json` (treat as immutable game data).
   - [x] Place `default-db.json` in `wwwroot/models/` (mirrored in `flatpublish/models/`).
@@ -40,7 +40,7 @@ Gate test for Foundations (must pass before moving on)
 
 ## 3) CRUD: Games
 - [ ] Grid list with paging + search.
-- [ ] Create/Edit drawer or inline row editing.
+- [x] Create/Edit drawer or inline row editing.
 - [ ] Fields: id, title, system, headerSignature, notes.
 - [ ] Validation: ID format `GAME_<system>_<hash>`; unique id.
 - [ ] Actions: add, duplicate, delete, save, cancel.
@@ -57,14 +57,14 @@ Gate test for Foundations (must pass before moving on)
 - [ ] Validation: known types, JSON parse/shape.
 
 ## 6) CRUD: Levels
-- [ ] Grid list sorted by index.
+- [x] Grid list sorted by index.
 - [ ] Fields: index, requiredCards[], requiredStars, isCardChallenge, challengeCardPool[]
 - [ ] Derived check: every 4th level → isCardChallenge true by default.
 - [ ] Guard: requiredCards must exist in Cards.
 
 ## 7) Import/Export (Doc §5.3)
-- [ ] Export entire content + save to a JSON blob with meta {format, exportedAt}.
-- [ ] Import validates `format` and merges or replaces (choose Replace for authoring mode).
+- [x] Export entire content + save to a JSON blob with meta {format, exportedAt}.
+- [x] Import validates `format` and merges or replaces (choose Replace for authoring mode).
 - [ ] Optional: partial exports per table.
 
 ## 8) Integration with Game Save
@@ -83,7 +83,7 @@ Gate test for Foundations (must pass before moving on)
 - [ ] Validate watchFormula samples compile on C# side (stub until parser ready).
 
 ## 11) Performance & Safety
-- [ ] Batch IDB ops in transactions.
+- [x] Batch IDB ops in transactions.
 - [ ] Debounce auto-saves; prevent large DOM reflows on grids.
 - [ ] Size guard on import files; warn if excessively large.
 
