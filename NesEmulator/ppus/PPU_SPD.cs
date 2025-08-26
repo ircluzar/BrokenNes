@@ -157,6 +157,17 @@ public class PPU_SPD : IPPU
 				PPUSTATUS &= 0x3F;
 			}
 
+			// MMC5 (Mapper5) IRQ counter tick at early cycle 3 of visible scanlines when rendering is on
+			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			{
+				bool renderingOn = (PPUMASK & 0x18) != 0;
+				if (bus!.cartridge!.mapper is Mapper5 mmc5)
+				{
+					mmc5.PpuScanlineHook(scanline, renderingOn);
+					if (mmc5.IsIrqAsserted()) bus!.cpu!.RequestIRQ(true);
+				}
+			}
+
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
 				if ((PPUMASK & 0x18) != 0 && bus!.cartridge!.mapper is Mapper4)
@@ -349,6 +360,9 @@ public class PPU_SPD : IPPU
 		if (curMode != lastMirroringMode) { RebuildNtMirror(curMode); lastMirroringMode = curMode; }
 
 		bool twoPass = useBatch && skipBlank; // only do expensive two-pass when blank skipping active
+		// Tell mapper that background fetches are about to occur (MMC5 A/B CHR banking)
+		if (bus!.cartridge!.mapper is IMapper mBg)
+			mBg.PpuPhaseHint(false, (PPUCTRL & 0x20) != 0, (PPUMASK & 0x18) != 0);
 		bool unsafeScan = cfg?.PpuUnsafeScanline == true;
 		bool deferAttr = cfg?.PpuDeferAttributeFetch != false; // default on
 
@@ -521,6 +535,9 @@ public class PPU_SPD : IPPU
 		bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
 		EnsureFrameBuffer();
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
+		// Tell mapper that sprite fetches are about to occur (MMC5 A/B CHR banking)
+		if (bus!.cartridge!.mapper is IMapper mSpr)
+			mSpr.PpuPhaseHint(true, isSprite8x16, (PPUMASK & 0x18) != 0);
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 		var cfg = bus!.SpeedConfig;
 		bool eval = cfg?.PpuSpriteLineEvaluation != false;

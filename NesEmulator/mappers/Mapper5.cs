@@ -1,31 +1,59 @@
 namespace NesEmulator
 {
-// Minimal/partial MMC5 (Mapper 5) implementation.
-// Focus: basic PRG/CHR bank switching + crude mirroring interpretation.
-// Unsupported: scanline IRQ, extended attribute / ExRAM modes, split screen, audio, fill modes.
-// Registers implemented (subset):
-//  $5100 PRG Mode (supporting only practical mode 3)
-//  $5101 CHR Mode (supporting only mode 4 -> eight 1KB banks)
-//  $5105 Nametable mapping heuristic
-//  $5114-$5117 PRG bank numbers (8KB units)
-//  $5120-$5127 CHR bank numbers (1KB units)
-// All others ignored.
+// MMC5 (Mapper 5) implementation adapted from BizHawk ExROM, simplified for this emulator.
+// Supported:
+//  - $5100 PRG mode (0..3)
+//  - $5101 CHR mode (0..3)
+//  - $5104 ExRAM mode (stored, limited effect)
+//  - $5105 Nametable mapping heuristic -> sets mirroring when pattern matches common modes
+//  - $5106/$5107 Fill tile/attrib (stored only)
+//  - $5113 WRAM bank select (modulo available PRG RAM)
+//  - $5114-$5117 PRG bank numbers (8KB)
+//  - $5120-$5127 CHR bank numbers (1KB), with $5130 high bits
+//  - $5203/$5204 IRQ target/enable/status and scanline counter (PPU hook added)
+//  - $5205/$5206 multiplier
+// Partial/Unsupported:
+//  - ExRAM-as-NT and extended attributes (PPU owns nametables here)
+//  - MMC5 audio ($5010/$5015)
 public class Mapper5 : IMapper
 {
     private readonly Cartridge cart;
 
     // Registers
     private int prgMode; // $5100 low 2 bits
-    private int chrMode; // $5101 low 3 bits (we only use 0-3)
+    private int chrMode; // $5101 low 2 bits (we use 0-3)
     private byte nametableControl; // $5105 raw value (heuristic mirroring only)
+    private int exramMode; // $5104 (0..3)
+    private byte fillTile; // $5106
+    private byte fillAttrib; // $5107 (low 2 bits replicated)
+    private int wramBank; // $5113 (8KB banks)
+    private int chrHigh; // $5130 low 2 bits
 
     // Raw bank register bytes
     private int[] prgRegs = new int[4]; // $5114-$5117
-    private int[] chrRegs = new int[8]; // $5120-$5127
+    // MMC5 has separate CHR banks for sprites (A: $5120-$5127) and background (B: $5128-$512B)
+    private int[] chrRegsSprite = new int[8]; // A set (always 8 regs)
+    private int[] chrRegsBgRaw = new int[4];  // B set raw regs as written ($5128-$512B)
 
     // Resolved bank offsets (byte offsets inside ROM/RAM)
     private int[] prgSlotOffsets = new int[4]; // each 8KB slot
-    private int[] chrSlotOffsets = new int[8]; // each 1KB slot
+    // Precomputed CHR slot offsets for sprite and background fetches (each 1KB slot view)
+    private int[] chrSlotOffsetsSprite = new int[8];
+    private int[] chrSlotOffsetsBg = new int[8];
+
+    // Current PPU phase hint (BG vs Sprite) provided by PPUs
+    private bool ppuFetchIsSprite;
+    // $2007 I/O follows the last CHR register set written (A sprite: $5120-$5127, B background: $5128-$512B)
+    private bool lastChrIoSprite;
+
+    // EXRAM 1KB (used for attributes or NT by MMC5; here exposed via CPU $5C00-$5FFF)
+    private readonly byte[] exram = new byte[1024];
+
+    // Multiplier
+    private byte multiplicand, multiplier; private byte productLo, productHi;
+
+    // IRQ
+    private int irqTarget; private int irqCounter; private bool irqEnabled; private bool irqPending; private bool inFrame;
 
     public Mapper5(Cartridge c) { cart = c; }
 
@@ -36,18 +64,53 @@ public class Mapper5 : IMapper
         for (int i = 0; i < 4; i++) prgRegs[i] = i;
         int prg8kBanks = Math.Max(1, cart.prgROM.Length / 0x2000);
         prgRegs[3] = prg8kBanks - 1; // last bank fixed (common)
-        for (int i = 0; i < 8; i++) chrRegs[i] = i;
-        nametableControl = 0;
+    for (int i = 0; i < 8; i++) chrRegsSprite[i] = i;
+    for (int i = 0; i < 4; i++) chrRegsBgRaw[i] = i; // BG raw regs default
+        nametableControl = 0; exramMode = 0; fillTile = 0; fillAttrib = 0; wramBank = 0; chrHigh = 0;
+        multiplicand = multiplier = productLo = productHi = 0;
+        irqTarget = irqCounter = 0; irqEnabled = irqPending = inFrame = false;
+    ppuFetchIsSprite = false; lastChrIoSprite = false;
         ApplyMirroringFrom5105();
         RebuildPrgMapping();
-        RebuildChrMapping();
+    RebuildChrMapping();
     }
 
     // --- CPU ---
     public byte CPURead(ushort address)
     {
+        if (address >= 0x5000 && address <= 0x5FFF)
+        {
+            switch (address)
+            {
+                case 0x5010: // MMC5 audio control read (IRQ flag)
+                    return 0x00;
+                case 0x5015: // MMC5 audio status (length flags)
+                    return 0x00;
+                case 0x5204: // IRQ status: bit7 pending, bit6 in-frame (rendering)
+                    {
+                        byte v = (byte)((irqPending ? 0x80 : 0) | (inFrame ? 0x40 : 0));
+                        irqPending = false; // reading clears pending
+                        return v;
+                    }
+                case 0x5205: return productLo; // multiplier low
+                case 0x5206: return productHi; // multiplier high
+                // MMC5 audio/status ($5010/$5015) handled in Bus via expansion audio merge
+                default:
+                    // EXRAM readable at $5C00-$5FFF when mode >=2; otherwise open bus
+                    if (address >= 0x5C00)
+                    {
+                        if (exramMode < 2) return 0xFF;
+                        int idx = (address - 0x5C00) & 0x3FF; return exram[idx];
+                    }
+                    return 0xFF;
+            }
+        }
         if (address >= 0x6000 && address <= 0x7FFF)
-            return cart.prgRAM[(address - 0x6000) % cart.prgRAM.Length];
+        {
+            int banks = Math.Max(1, cart.prgRAM.Length / 0x2000);
+            int bank = banks > 0 ? (wramBank % banks + banks) % banks : 0;
+            return cart.prgRAM[(bank * 0x2000) + ((address - 0x6000) & 0x1FFF)];
+        }
         if (address >= 0x8000)
         {
             int slot = (address - 0x8000) / 0x2000; if ((uint)slot > 3) slot = 3;
@@ -61,33 +124,63 @@ public class Mapper5 : IMapper
 
     public void CPUWrite(ushort address, byte value)
     {
-        if (address >= 0x6000 && address <= 0x7FFF)
-        {
-            cart.prgRAM[(address - 0x6000) % cart.prgRAM.Length] = value; return;
-        }
         if (address >= 0x5000 && address <= 0x5FFF)
         {
             switch (address)
             {
-                case 0x5100:
-                    prgMode = value & 0x03; RebuildPrgMapping(); break;
-                case 0x5101:
-                    chrMode = value & 0x07; // we handle 0-3; others treated as 3
-                    if (chrMode > 3) chrMode = 3; RebuildChrMapping(); break;
-                case 0x5105:
-                    nametableControl = value; ApplyMirroringFrom5105(); break;
-                case 0x5114: prgRegs[0] = value; RebuildPrgMapping(); break;
-                case 0x5115: prgRegs[1] = value; RebuildPrgMapping(); break;
-                case 0x5116: prgRegs[2] = value; RebuildPrgMapping(); break;
-                case 0x5117: prgRegs[3] = value; RebuildPrgMapping(); break;
+                case 0x5100: prgMode = value & 0x03; RebuildPrgMapping(); break;
+                case 0x5101: chrMode = value & 0x03; RebuildChrMapping(); break;
+                case 0x5102: case 0x5103: /* PRG-RAM Protect A/B (ignored) */ break;
+                case 0x5104: exramMode = value & 0x03; break;
+                case 0x5105: nametableControl = value; ApplyMirroringFrom5105(); break;
+                case 0x5106: fillTile = value; break;
+                case 0x5107:
+                    fillAttrib = (byte)(value & 0x03);
+                    fillAttrib |= (byte)(fillAttrib << 2);
+                    fillAttrib |= (byte)(fillAttrib << 4);
+                    break;
+                case 0x5113: wramBank = value & 0x0F; break; // mask to 4 bits (MMC5 up to 128KB)
+                case 0x5114: prgRegs[0] = value & 0xFF; RebuildPrgMapping(); break;
+                case 0x5115: prgRegs[1] = value & 0xFF; RebuildPrgMapping(); break;
+                case 0x5116: prgRegs[2] = value & 0xFF; RebuildPrgMapping(); break;
+                case 0x5117: prgRegs[3] = value & 0xFF; RebuildPrgMapping(); break;
                 default:
                     if (address >= 0x5120 && address <= 0x5127)
                     {
-                        int idx = address - 0x5120; chrRegs[idx] = value; RebuildChrMapping();
+                        int idx = address - 0x5120;
+                        chrRegsSprite[idx] = (value | (chrHigh << 8)) & 0x3FF;
+                        lastChrIoSprite = true;
+                        RebuildChrMapping();
                     }
-                    // ignore other MMC5 registers for now
+                    else if (address >= 0x5128 && address <= 0x512B)
+                    {
+                        int idx = address - 0x5128; // 0..3
+                        chrRegsBgRaw[idx] = (value | (chrHigh << 8)) & 0x3FF;
+                        lastChrIoSprite = false;
+                        RebuildChrMapping();
+                    }
+                    else if (address == 0x5130)
+                    { chrHigh = value & 0x03; }
+                    else if (address == 0x5203)
+                    { irqTarget = value; }
+                    else if (address == 0x5204)
+                    { irqEnabled = (value & 0x80) != 0; }
+                    else if (address == 0x5205)
+                    { multiplicand = value; ComputeProduct(); }
+                    else if (address == 0x5206)
+                    { multiplier = value; ComputeProduct(); }
+                    else if (address >= 0x5C00)
+                    { if (exramMode != 3) exram[(address - 0x5C00) & 0x3FF] = value; }
+                    // $5010-$5015 MMC5 audio not implemented
                     break;
             }
+            return;
+        }
+        if (address >= 0x6000 && address <= 0x7FFF)
+        {
+            int banks = Math.Max(1, cart.prgRAM.Length / 0x2000);
+            int bank = banks > 0 ? (wramBank % banks + banks) % banks : 0;
+            cart.prgRAM[(bank * 0x2000) + ((address - 0x6000) & 0x1FFF)] = value; return;
         }
     }
 
@@ -97,7 +190,7 @@ public class Mapper5 : IMapper
         if (address < 0x2000)
         {
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffset = chrSlotOffsets[slot];
+            int baseOffset = ppuFetchIsSprite ? chrSlotOffsetsSprite[slot] : chrSlotOffsetsBg[slot];
             int final = baseOffset + (address & 0x03FF);
             if (cart.chrBanks > 0)
             {
@@ -117,7 +210,7 @@ public class Mapper5 : IMapper
         if (address < 0x2000 && cart.chrBanks == 0)
         {
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffset = chrSlotOffsets[slot];
+            int baseOffset = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
             int final = baseOffset + (address & 0x03FF);
             if ((uint)final < cart.chrRAM.Length) cart.chrRAM[final] = value;
         }
@@ -137,49 +230,37 @@ public class Mapper5 : IMapper
     private void RebuildPrgMapping()
     {
         int prg8kBanks = Math.Max(1, cart.prgROM.Length / 0x2000);
-        int lastBank = prg8kBanks - 1;
         switch (prgMode)
         {
-            case 0: // 32KB: use $5117 as bank (value selects 8KB unit; align to 4 * 8KB)
+            case 0: // 32KB from $5117 aligned to 32KB
                 {
-                    int bank = prgRegs[3] & 0xFF;
-                    bank &= ~0x03; // align to 32KB
+                    int bank = prgRegs[3] & ~0x03;
                     for (int i = 0; i < 4; i++) prgSlotOffsets[i] = ((bank + i) % prg8kBanks) * 0x2000;
                 }
                 break;
-            case 1: // 16KB switch at $8000 ($5116 supplies even pair), last 16KB fixed
+            case 1: // 2x16KB: first from $5115 aligned to 16KB, second from $5117 aligned to 16KB
                 {
-                    int bank16 = prgRegs[2] & 0xFF; bank16 &= ~0x01; // even
-                    int b0 = bank16 % prg8kBanks;
-                    int b1 = (bank16 + 1) % prg8kBanks;
-                    int b2 = (lastBank - 1) & 0xFF; if (b2 < 0) b2 = 0; if (b2 >= prg8kBanks) b2 = prg8kBanks - 2;
-                    int b3 = lastBank;
+                    int b0 = (prgRegs[1] & ~0x01) % prg8kBanks;
+                    int b2 = (prgRegs[3] & ~0x01) % prg8kBanks;
                     prgSlotOffsets[0] = b0 * 0x2000;
-                    prgSlotOffsets[1] = b1 * 0x2000;
+                    prgSlotOffsets[1] = ((b0 + 1) % prg8kBanks) * 0x2000;
                     prgSlotOffsets[2] = b2 * 0x2000;
-                    prgSlotOffsets[3] = b3 * 0x2000;
+                    prgSlotOffsets[3] = ((b2 + 1) % prg8kBanks) * 0x2000;
                 }
                 break;
-            case 2: // 16KB fixed first, 16KB switch at $C000 ($5116)
+            case 2: // 16KB + 2x8KB: first 16KB from $5115, then $5116, $5117
                 {
-                    int bank16 = prgRegs[2] & 0xFF; bank16 &= ~0x01;
-                    int b0 = 0;
-                    int b1 = 1 % prg8kBanks;
-                    int b2 = bank16 % prg8kBanks;
-                    int b3 = (bank16 + 1) % prg8kBanks;
+                    int b0 = (prgRegs[1] & ~0x01) % prg8kBanks;
                     prgSlotOffsets[0] = b0 * 0x2000;
-                    prgSlotOffsets[1] = b1 * 0x2000;
-                    prgSlotOffsets[2] = b2 * 0x2000;
-                    prgSlotOffsets[3] = b3 * 0x2000;
+                    prgSlotOffsets[1] = ((b0 + 1) % prg8kBanks) * 0x2000;
+                    prgSlotOffsets[2] = (prgRegs[2] % prg8kBanks) * 0x2000;
+                    prgSlotOffsets[3] = (prgRegs[3] % prg8kBanks) * 0x2000;
                 }
                 break;
-            case 3: // 4x8KB fully switchable ($5114-$5117) (last usually fixed by games manually)
+            case 3: // 4x8KB from $5114-$5117
             default:
                 for (int i = 0; i < 4; i++)
-                {
-                    int bank = prgRegs[i] % prg8kBanks;
-                    prgSlotOffsets[i] = bank * 0x2000;
-                }
+                    prgSlotOffsets[i] = ((prgRegs[i] % prg8kBanks) * 0x2000);
                 break;
         }
     }
@@ -188,39 +269,77 @@ public class Mapper5 : IMapper
     {
         int unitCount1k = (cart.chrBanks > 0 ? cart.chrROM.Length : cart.chrRAM.Length) / 0x400;
         if (unitCount1k <= 0) unitCount1k = 1;
-        switch (chrMode)
+
+        // Helper local to compute 8x1KB slot offsets from a provided 8-reg array
+        void BuildFromEightRegs(int[] regs, int[] dst)
         {
-            case 0: // single 8KB bank -> use chrRegs[0] aligned to 8KB
-                {
-                    int bank = chrRegs[0] & 0xFF;
-                    bank &= ~0x07; // align to 8 * 1KB
-                    for (int i = 0; i < 8; i++)
-                        chrSlotOffsets[i] = ((bank + i) % unitCount1k) * 0x400;
-                }
-                break;
-            case 1: // two 4KB banks: chrRegs[0] and chrRegs[4] (aligned to 4 * 1KB)
-                {
-                    int b0 = chrRegs[0] & ~0x03;
-                    int b4 = chrRegs[4] & ~0x03;
-                    for (int i = 0; i < 4; i++) chrSlotOffsets[i] = ((b0 + i) % unitCount1k) * 0x400;
-                    for (int i = 0; i < 4; i++) chrSlotOffsets[4 + i] = ((b4 + i) % unitCount1k) * 0x400;
-                }
-                break;
-            case 2: // four 2KB banks: regs 0,2,4,6 (aligned to 2 * 1KB)
-                {
-                    int[] regs = { chrRegs[0] & ~0x01, chrRegs[2] & ~0x01, chrRegs[4] & ~0x01, chrRegs[6] & ~0x01 };
-                    for (int seg = 0; seg < 4; seg++)
+            switch (chrMode)
+            {
+                case 0:
                     {
-                        for (int i = 0; i < 2; i++)
-                            chrSlotOffsets[seg * 2 + i] = ((regs[seg] + i) % unitCount1k) * 0x400;
+                        int bank = regs[0] & 0x3FF; bank &= ~0x07;
+                        for (int i = 0; i < 8; i++) dst[i] = ((bank + i) % unitCount1k) * 0x400;
                     }
-                }
-                break;
-            case 3: // eight 1KB banks
-            default:
-                for (int i = 0; i < 8; i++)
-                    chrSlotOffsets[i] = (chrRegs[i] % unitCount1k) * 0x400;
-                break;
+                    break;
+                case 1:
+                    {
+                        int b0 = (regs[0] & 0x3FF) & ~0x03;
+                        int b4 = (regs[4] & 0x3FF) & ~0x03;
+                        for (int i = 0; i < 4; i++) dst[i] = ((b0 + i) % unitCount1k) * 0x400;
+                        for (int i = 0; i < 4; i++) dst[4 + i] = ((b4 + i) % unitCount1k) * 0x400;
+                    }
+                    break;
+                case 2:
+                    {
+                        int[] r = { (regs[0] & 0x3FF) & ~0x01, (regs[2] & 0x3FF) & ~0x01, (regs[4] & 0x3FF) & ~0x01, (regs[6] & 0x3FF) & ~0x01 };
+                        for (int seg = 0; seg < 4; seg++)
+                            for (int i = 0; i < 2; i++) dst[seg * 2 + i] = ((r[seg] + i) % unitCount1k) * 0x400;
+                    }
+                    break;
+                case 3:
+                default:
+                    for (int i = 0; i < 8; i++) dst[i] = ((regs[i] & 0x3FF) % unitCount1k) * 0x400;
+                    break;
+            }
+        }
+
+        // Build sprite mapping directly from sprite regs
+        BuildFromEightRegs(chrRegsSprite, chrSlotOffsetsSprite);
+
+        // Build background mapping from BG raw regs depending on mode
+        // Common case: mode 3 (1KB) used by most games; map pairs: (0,4)=reg0, (1,5)=reg1, (2,6)=reg2, (3,7)=reg3
+        if (chrMode == 3)
+        {
+            int[] tmp = new int[8];
+            tmp[0] = chrRegsBgRaw[0]; tmp[4] = chrRegsBgRaw[0];
+            tmp[1] = chrRegsBgRaw[1]; tmp[5] = chrRegsBgRaw[1];
+            tmp[2] = chrRegsBgRaw[2]; tmp[6] = chrRegsBgRaw[2];
+            tmp[3] = chrRegsBgRaw[3]; tmp[7] = chrRegsBgRaw[3];
+            BuildFromEightRegs(tmp, chrSlotOffsetsBg);
+        }
+        else
+        {
+            // Fallback: when not in 1KB mode, approximate by mirroring BG raw regs into an 8-reg array
+            int[] tmp = new int[8];
+            // Mode 2 (2KB): regs at 0,2,4,6 used; map reg0->slots 0-1, reg1->2-3, ...
+            if (chrMode == 2)
+            {
+                tmp[0] = tmp[1] = chrRegsBgRaw[0];
+                tmp[2] = tmp[3] = chrRegsBgRaw[1];
+                tmp[4] = tmp[5] = chrRegsBgRaw[2];
+                tmp[6] = tmp[7] = chrRegsBgRaw[3];
+            }
+            else if (chrMode == 1)
+            {
+                // 4KB: reg0 -> slots 0..3, reg1 -> slots 4..7
+                tmp[0] = tmp[1] = tmp[2] = tmp[3] = chrRegsBgRaw[0];
+                tmp[4] = tmp[5] = tmp[6] = tmp[7] = chrRegsBgRaw[1];
+            }
+            else // chrMode == 0 (8KB)
+            {
+                for (int i = 0; i < 8; i++) tmp[i] = chrRegsBgRaw[3]; // use last as coarse 8KB selection
+            }
+            BuildFromEightRegs(tmp, chrSlotOffsetsBg);
         }
     }
 
@@ -240,21 +359,36 @@ public class Mapper5 : IMapper
     }
 
     // --- State ---
-    private class Mapper5State { public int prgMode, chrMode; public int[] prgRegs = new int[4]; public int[] chrRegs = new int[8]; public byte nametableControl; }
-    public object GetMapperState() => new Mapper5State { prgMode = prgMode, chrMode = chrMode, prgRegs = (int[])prgRegs.Clone(), chrRegs = (int[])chrRegs.Clone(), nametableControl = nametableControl };
+    private class Mapper5State { public int prgMode, chrMode, exramMode, wramBank, chrHigh; public int irqTarget, irqCounter; public bool irqEnabled, irqPending, inFrame; public int[] prgRegs = new int[4]; public int[] chrRegsSprite = new int[8]; public int[] chrRegsBgRaw = new int[4]; public byte nametableControl, fillTile, fillAttrib; public byte[] exram = new byte[1024]; public byte multiplicand, multiplier, productLo, productHi; }
+    public object GetMapperState() => new Mapper5State { prgMode = prgMode, chrMode = chrMode, exramMode = exramMode, wramBank = wramBank, chrHigh = chrHigh, irqTarget = irqTarget, irqCounter = irqCounter, irqEnabled = irqEnabled, irqPending = irqPending, inFrame = inFrame, prgRegs = (int[])prgRegs.Clone(), chrRegsSprite = (int[])chrRegsSprite.Clone(), chrRegsBgRaw = (int[])chrRegsBgRaw.Clone(), nametableControl = nametableControl, fillTile = fillTile, fillAttrib = fillAttrib, exram = (byte[])exram.Clone(), multiplicand = multiplicand, multiplier = multiplier, productLo = productLo, productHi = productHi };
     public void SetMapperState(object state)
     {
         if (state is Mapper5State s)
-        { prgMode = s.prgMode; chrMode = s.chrMode; s.prgRegs.CopyTo(prgRegs,0); s.chrRegs.CopyTo(chrRegs,0); nametableControl = s.nametableControl; ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping(); return; }
+        { prgMode = s.prgMode; chrMode = s.chrMode; exramMode = s.exramMode; wramBank = s.wramBank; chrHigh = s.chrHigh; irqTarget = s.irqTarget; irqCounter = s.irqCounter; irqEnabled = s.irqEnabled; irqPending = s.irqPending; inFrame = s.inFrame; s.prgRegs.CopyTo(prgRegs,0); s.chrRegsSprite.CopyTo(chrRegsSprite,0); s.chrRegsBgRaw.CopyTo(chrRegsBgRaw,0); nametableControl = s.nametableControl; fillTile = s.fillTile; fillAttrib = s.fillAttrib; System.Array.Copy(s.exram, exram, exram.Length); multiplicand = s.multiplicand; multiplier = s.multiplier; productLo = s.productLo; productHi = s.productHi; ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping(); return; }
         if (state is System.Text.Json.JsonElement je)
         {
             try {
                 if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
                     if(je.TryGetProperty("prgMode", out var pm)) prgMode = pm.GetInt32();
                     if(je.TryGetProperty("chrMode", out var cm)) chrMode = cm.GetInt32();
+                    if(je.TryGetProperty("exramMode", out var xm)) exramMode = xm.GetInt32();
+                    if(je.TryGetProperty("wramBank", out var wb)) wramBank = wb.GetInt32();
+                    if(je.TryGetProperty("chrHigh", out var ch)) chrHigh = ch.GetInt32();
                     if(je.TryGetProperty("prgRegs", out var pr) && pr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in pr.EnumerateArray()){ if(i<4) prgRegs[i++] = el.GetInt32(); else break; } }
-                    if(je.TryGetProperty("chrRegs", out var cr) && cr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in cr.EnumerateArray()){ if(i<8) chrRegs[i++] = el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("chrRegsSprite", out var crs) && crs.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in crs.EnumerateArray()){ if(i<8) chrRegsSprite[i++] = el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("chrRegsBgRaw", out var crr) && crr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in crr.EnumerateArray()){ if(i<4) chrRegsBgRaw[i++] = el.GetInt32(); else break; } }
                     if(je.TryGetProperty("nametableControl", out var nt)) nametableControl = (byte)nt.GetByte();
+                    if(je.TryGetProperty("fillTile", out var ft)) fillTile = (byte)ft.GetByte();
+                    if(je.TryGetProperty("fillAttrib", out var fa)) fillAttrib = (byte)fa.GetByte();
+                    if(je.TryGetProperty("exram", out var xr) && xr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in xr.EnumerateArray()){ if(i<exram.Length) exram[i++] = (byte)el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("irqTarget", out var it)) irqTarget = it.GetInt32();
+                    if(je.TryGetProperty("irqCounter", out var ic)) irqCounter = ic.GetInt32();
+                    if(je.TryGetProperty("irqEnabled", out var ie)) irqEnabled = ie.GetBoolean();
+                    if(je.TryGetProperty("irqPending", out var ip)) irqPending = ip.GetBoolean();
+                    if(je.TryGetProperty("inFrame", out var inf)) inFrame = inf.GetBoolean();
+                    if(je.TryGetProperty("multiplicand", out var md)) multiplicand = (byte)md.GetByte();
+                    if(je.TryGetProperty("multiplier", out var ml)) multiplier = (byte)ml.GetByte();
+                    ComputeProduct();
                     ApplyMirroringFrom5105(); RebuildPrgMapping(); RebuildChrMapping();
                 }
             } catch { }
@@ -262,10 +396,36 @@ public class Mapper5 : IMapper
     }
     public uint GetChrBankSignature() {
         unchecked {
-            uint sig = (uint)(chrMode & 0x07);
-            for(int i=0;i<8;i++) sig = (sig * 16777619u) ^ (uint)(chrRegs[i] & 0xFF);
+            uint sig = (uint)((chrMode & 0x03) | (chrHigh << 8));
+            for(int i=0;i<8;i++) sig = (sig * 16777619u) ^ (uint)(chrRegsSprite[i] & 0x3FF);
+            for(int i=0;i<4;i++) sig = (sig * 16777619u) ^ (uint)(chrRegsBgRaw[i] & 0x3FF);
             return sig;
         }
+    }
+
+    private void ComputeProduct(){ int prod = multiplicand * multiplier; productLo = (byte)(prod & 0xFF); productHi = (byte)((prod >> 8) & 0xFF); }
+
+    // --- PPU hook from core: called when scanlineCycle==3 for visible scanlines
+    public void PpuScanlineHook(int scanline, bool renderingEnabled)
+    {
+        if (!renderingEnabled || scanline >= 241)
+        {
+            inFrame = false; irqCounter = 0; irqPending = false; return;
+        }
+        if (!inFrame)
+        {
+            inFrame = true; irqCounter = 0; irqPending = false; return;
+        }
+        irqCounter++;
+        if (irqCounter == (irqTarget + 1)) irqPending = true;
+    }
+    public bool IsIrqAsserted() => irqEnabled && irqPending;
+
+    // PPUs tell us whether pattern fetches are for sprites or background.
+    public void PpuPhaseHint(bool isSpriteFetch, bool objSize16, bool renderingEnabled)
+    {
+        // For our purposes, just latch the sprite/background distinction.
+        ppuFetchIsSprite = isSpriteFetch;
     }
 }
 }

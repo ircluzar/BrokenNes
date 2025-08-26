@@ -44,6 +44,27 @@
 			"type": "shell",
 			"command": "dotnet build -c Release",
 			"group": "build"
+		},
+		{
+			"label": "Build BrokenNes (Release)",
+			"type": "shell",
+			"command": "dotnet build -c Release"
+		},
+		{
+			"label": "Build BrokenNes (Release)",
+			"type": "shell",
+			"command": "dotnet build -c Release"
+		},
+		{
+			"label": "Build BrokenNes (Release)",
+			"type": "shell",
+			"command": "dotnet build -c Release"
+		},
+		{
+			"label": "Build BrokenNes (Release)",
+			"type": "shell",
+			"command": "dotnet build -c Release",
+			"group": "build"
 		}
 	]
 }

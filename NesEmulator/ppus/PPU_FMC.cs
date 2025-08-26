@@ -89,6 +89,17 @@ public class PPU_FMC : IPPU
 				PPUSTATUS &= 0x3F;
 			}
 
+			// MMC5 IRQ tick at early cycle 3 when rendering enabled
+			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			{
+				bool renderingOn = (PPUMASK & 0x18) != 0;
+				if (bus.cartridge.mapper is Mapper5 mmc5)
+				{
+					mmc5.PpuScanlineHook(scanline, renderingOn);
+					if (mmc5.IsIrqAsserted()) bus.cpu.RequestIRQ(true);
+				}
+			}
+
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
 				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
@@ -251,6 +262,10 @@ public class PPU_FMC : IPPU
 
 		EnsureFrameBuffer();
 
+		// Inform mapper we're about to do background pattern fetches (MMC5 A/B CHR banking)
+		if (bus?.cartridge?.mapper is IMapper mBg)
+			mBg.PpuPhaseHint(false, (PPUCTRL & 0x20) != 0, (PPUMASK & 0x18) != 0);
+
 	// Cache universal background color once per scanline
 	byte ubIdx = paletteRAM[0];
 	int ubp = (ubIdx & 0x3F) * 3;
@@ -344,6 +359,9 @@ public class PPU_FMC : IPPU
 		EnsureFrameBuffer();
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
+		// Inform mapper we're about to do sprite pattern fetches (MMC5 A/B CHR banking)
+		if (bus?.cartridge?.mapper is IMapper mSpr)
+			mSpr.PpuPhaseHint(true, isSprite8x16, (PPUMASK & 0x18) != 0);
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
 		// Process all 64 sprites in OAM

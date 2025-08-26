@@ -67,6 +67,8 @@ public class Bus : IBus
 		public IAPU apuJank; // famiclone
 		public IAPU apuQN; // QuickNes
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
+		// MMC5 expansion audio
+		private MMC5Audio mmc5Audio;
 	public Cartridge cartridge;
 	public byte[] ram; //2KB RAM
 	public Input input = new Input();
@@ -106,6 +108,8 @@ public class Bus : IBus
 		BuildPageTable();
 		// Optional: allow cores to run deferred initialization that requires a constructed Bus
 		TryInitializeCores();
+		// Initialize MMC5 audio with IRQ callback into CPU
+		mmc5Audio = new MMC5Audio((irq) => { if (irq) cpu?.RequestIRQ(true); });
 	}
 
 	// Optional extension point: cores may implement this to receive a post-ctor Bus reference
@@ -345,7 +349,30 @@ public class Bus : IBus
 		if (address == 0x4017) return input2.Read4016();
 		// APU registers (e.g., 0x4015 status) remain handled here
 		if (address <= 0x4017 && address >= 0x4000) return activeApu.ReadAPURegister(address);
-		if (address >= 0x6000) return cartridge.CPURead(address);
+	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
+	if (address >= 0x5000 && address < 0x6000)
+	{
+		byte val = cartridge.CPURead(address);
+		// Merge in MMC5 audio status/IRQ where applicable
+		if (address == 0x5015)
+		{
+			byte exp = mmc5Audio != null ? mmc5Audio.Read5015() : (byte)0;
+			val |= (byte)(exp & 0x03);
+		}
+		else if (address == 0x5010)
+		{
+			byte exp = mmc5Audio != null ? mmc5Audio.Read5010() : (byte)0;
+			val |= (byte)(exp & 0x80);
+		}
+		return val;
+	}
+		if (address >= 0x6000)
+		{
+			byte v = cartridge.CPURead(address);
+			// Trigger MMC5 PCM only on PRG ROM range $8000-$BFFF
+			if (address >= 0x8000 && address <= 0xBFFF) mmc5Audio?.ReadROMTrigger(v);
+			return v;
+		}
 		return 0; // simplified open bus
 	}
 
@@ -383,6 +410,14 @@ public class Bus : IBus
 			if (idx >=0 && idx < apuRegLatch.Length) apuRegLatch[idx] = value;
 			activeApu.WriteAPURegister(address, value); return;
 		}
+	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
+	if (address >= 0x5000 && address < 0x6000)
+	{
+		cartridge.CPUWrite(address, value);
+		// Mirror writes to MMC5 audio range ($5000-$5015)
+		if (address <= 0x5015) mmc5Audio?.WriteExp(address, value);
+		return;
+	}
 		if (address >= 0x6000) { cartridge.CPUWrite(address, value); return; }
 	}
 
@@ -417,10 +452,21 @@ public class Bus : IBus
 	public byte PeekRam(int index) => (index >=0 && index < ram.Length) ? ram[index] : (byte)0;
 	public void PokeRam(int index, byte value) { if (index>=0 && index < ram.Length) ram[index]=value; }
 
-	public void StepAPU(int cpuCycles) { activeApu.Step(cpuCycles); instr.ApuSteps += cpuCycles; }
-	public float[] GetAudioSamples(int max=0) => activeApu.GetAudioSamples(max);
+	public void StepAPU(int cpuCycles) { activeApu.Step(cpuCycles); mmc5Audio?.Step(cpuCycles); instr.ApuSteps += cpuCycles; }
+	public float[] GetAudioSamples(int max=0)
+	{
+		var samples = activeApu.GetAudioSamples(max);
+		if (samples.Length == 0 || mmc5Audio == null) return samples;
+		float add = mmc5Audio.GetCurrentSample();
+		if (add == 0f) return samples;
+		for (int i = 0; i < samples.Length; i++) samples[i] += add;
+		return samples;
+	}
 	public int GetQueuedSamples() => activeApu.GetQueuedSampleCount();
 	public int GetAudioSampleRate() => activeApu.GetSampleRate();
+
+	// Optional: expose expansion audio current sample for other mixers
+	public float GetExpansionAudioSample() => mmc5Audio?.GetCurrentSample() ?? 0f;
 
 	// --- QuickNes helpers ---
 	public void UseQuickNesAPU() => SetApuCore(ApuCore.QuickNes);

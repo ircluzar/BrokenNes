@@ -103,6 +103,20 @@ public class PPU_LOW : IPPU
 				}
 			}
 
+			// MMC5 scanline counter tick early in the scanline (cycle ~3)
+			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
+			{
+				if (bus.cartridge.mapper is Mapper5 mmc5)
+				{
+					bool renderingEnabled = (PPUMASK & 0x18) != 0;
+					mmc5.PpuScanlineHook(scanline, renderingEnabled);
+					if (mmc5.IsIrqAsserted())
+					{
+						bus.cpu.RequestIRQ(true);
+					}
+				}
+			}
+
 			scanlineCycle++;
 
 			if (scanlineCycle >= 341)
