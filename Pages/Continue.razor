@@ -368,8 +368,10 @@
           case "APU": EnforcedApu = id; break;
           case "SHADER": EnforcedShader = id; break;
         }
-        var card = BuildCard(domain, id);
-        enforced.Add((domain, id, $"{domain}_"+id, RatingToBorderColor(Math.Clamp(card.Rating,0,5))));
+  // Skip displaying CLOCK in the enforced chips header
+  if (domain == "CLOCK") continue;
+  var card = BuildCard(domain, id);
+  enforced.Add((domain, id, $"{domain}_"+id, RatingToBorderColor(Math.Clamp(card.Rating,0,5))));
       }
       // If DB had no enforced cards, retain a sensible default to keep the page functional
       if (enforced.Count == 0)
