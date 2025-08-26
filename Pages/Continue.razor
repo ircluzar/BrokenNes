@@ -46,20 +46,72 @@
   </section>
 
   <section class="opt-section">
-    <h3 class="opt-h3">Game (ROM)</h3>
-    <div class="rom-box small-note">
-      No compatible ROMs registered yet. Use the ROM Manager in the Emulator to import ROMs. This panel will list compatible games in a later milestone.
+    <h3 class="opt-h3">Cartridge</h3>
+    <div class="rom-selector">
+      <div class="rom-toolbar">
+        <label class="small-note"><input type="checkbox" @bind="FilterCompatibleOnly" /> Only show compatible</label>
+        <input class="rom-search" placeholder="Search title…" @bind="RomSearch" />
+      </div>
+      @if (RomRowsFiltered.Count == 0)
+      {
+        <div class="rom-empty small-note">No games found. Import the default DB in CRUD or add your own.</div>
+      }
+      else
+      {
+        <div class="rom-table" role="table" aria-label="ROM list">
+          <div class="rom-thead" role="rowgroup">
+            <div class="rom-tr rom-th" role="row">
+              <div class="c-title" role="columnheader">Title</div>
+              <div class="c-compat" role="columnheader">Compat</div>
+              <div class="c-ach" role="columnheader">Stars</div>
+            </div>
+          </div>
+          <div class="rom-tbody" role="rowgroup">
+            @foreach (var g in RomRowsFiltered)
+            {
+              var disabled = !g.Compatible;
+              <button type="button"
+                      class="rom-tr rom-td @(SelectedGameId==g.Id?"selected":null) @(disabled?"disabled":null)"
+                      role="row"
+                      aria-disabled="@disabled"
+                      title="@(disabled?"No achievements available":"Select game")"
+                      disabled="@disabled"
+                      @onclick="(()=>SelectGame(g.Id))">
+                <div class="c-title" role="cell">
+                  <div class="rom-title">@g.Title</div>
+                  @if (!string.IsNullOrWhiteSpace(g.Subtitle)) { <div class="rom-sub">@g.Subtitle</div>; }
+                </div>
+                <div class="c-compat" role="cell"><span class="chip @(g.Compatible?"ok":"no")">@(g.Compatible?"Yes":"No")</span></div>
+                <div class="c-ach" role="cell">@g.Completed/@g.Total</div>
+              </button>
+            }
+          </div>
+        </div>
+      }
     </div>
   </section>
 
   <section class="opt-section">
     <h3 class="opt-h3">Achievements</h3>
-    <div class="ach-box small-note">Select a compatible game to view achievements. (Coming soon)
-    </div>
+    @if (SelectedGame != null)
+    {
+      <div class="ach-box">
+        <div class="ach-summary">
+          <span class="small-note">@SelectedGame.Title</span>
+          <strong>@SelectedGame.Completed/@SelectedGame.Total</strong>
+          <span class="small-note">completed</span>
+        </div>
+        <div class="small-note">Full achievement list coming soon.</div>
+      </div>
+    }
+    else
+    {
+      <div class="ach-box small-note">Select a compatible game to view achievements.</div>
+    }
   </section>
 
   <div class="opt-footer">
-    <button class="opt-link start-btn" disabled title="Build valid and game with achievements required">Start the game</button>
+    <button class="opt-link start-btn" disabled="@(!CanStartGame)" title="Build valid and game with achievements required">Start the game</button>
     <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
 </div>
@@ -77,7 +129,7 @@
   // State
   private int CurrentLevel = 1;
   private int Stars = 0;
-  private string LevelTitle = "FMC Warmup";
+  private string LevelTitle = " ";
   private int RequiredStars = 5;
 
   private (string domain, string id, string label, string border)[] EnforcedCards = Array.Empty<(string,string,string,string)>();
@@ -104,6 +156,23 @@
   private IReadOnlyList<string> OwnedApu = Array.Empty<string>();
   private IReadOnlyList<string> OwnedShader = Array.Empty<string>();
 
+  // ROM selector state
+  private sealed class DbGame { public string id { get; set; } = string.Empty; public string? commonName { get; set; } public string? title { get; set; } public string? name { get; set; } public string? system { get; set; } public string? platform { get; set; } public string? notes { get; set; } public string? subtitle { get; set; } }
+  private sealed class DbAchievement { public string id { get; set; } = string.Empty; public string gameId { get; set; } = string.Empty; public string? title { get; set; } }
+  private sealed class RomRow { public string Id { get; set; } = string.Empty; public string Title { get; set; } = string.Empty; public string? Subtitle { get; set; } public string System { get; set; } = "NES"; public int Total { get; set; } public int Completed { get; set; } public bool Compatible => Total > 0; public string? Notes { get; set; } }
+  private List<RomRow> RomRows = new();
+  private List<RomRow> RomRowsFiltered => RomRows
+    .Where(r => !FilterCompatibleOnly || r.Compatible)
+    .Where(r => string.IsNullOrWhiteSpace(RomSearch) || (r.Title?.Contains(RomSearch, StringComparison.OrdinalIgnoreCase) ?? false))
+    .OrderByDescending(r => r.Compatible)
+    .ThenBy(r => r.Title, StringComparer.OrdinalIgnoreCase)
+    .ToList();
+  private string? SelectedGameId = null;
+  private RomRow? SelectedGame => RomRows.FirstOrDefault(r => r.Id == SelectedGameId);
+  private bool FilterCompatibleOnly = true;
+  private string RomSearch = string.Empty;
+  private HashSet<string> UnlockedAchievementIds = new(StringComparer.OrdinalIgnoreCase);
+
   protected override async Task OnInitializedAsync()
   {
     try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
@@ -114,6 +183,7 @@
   var save = await SaveSvc.LoadAsync();
   CurrentLevel = Math.Max(1, save.Level);
   Stars = save.Achievements?.Count ?? 0;
+  UnlockedAchievementIds = new(save.Achievements ?? new());
   await LoadLevelFromDbAsync(CurrentLevel);
 
   // Owned sets (used by pickers)
@@ -121,6 +191,8 @@
   OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   OwnedShader = (save.OwnedShaderIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+
+  await LoadRomsFromDbAsync();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -145,6 +217,7 @@
     && (EnforcedPpu ?? SelectedPpu) != null
     && (EnforcedApu ?? SelectedApu) != null
     && (EnforcedShader ?? SelectedShader) != null;
+  private bool CanStartGame => BuildValid && SelectedGame != null && SelectedGame.Total > 0;
 
   private async Task AdvanceLevel()
   {
@@ -166,6 +239,11 @@
   StateHasChanged();
     }
     catch { }
+  }
+
+  private void SelectGame(string id)
+  {
+    SelectedGameId = id;
   }
 
   private RenderFragment CoreSlot(string domain, string? enforced, string? selected, Action openPicker) => builder =>
@@ -371,7 +449,8 @@
 
       // Defaults if no record
       LevelTitle = level?.title ?? level?.cardChallenge ?? $"Level {index}";
-      RequiredStars = level?.requiredStars > 0 ? level!.requiredStars : 5;
+  // Respect 0 as a valid value; only fallback to 5 if the level record is missing
+  RequiredStars = level != null ? Math.Max(0, level.requiredStars) : 5;
 
   // Reset enforced slots
   EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = null;
@@ -425,5 +504,64 @@
         ("APU", EnforcedApu, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apu.Rating,0,5)))
       };
     }
+  }
+
+  private async Task LoadRomsFromDbAsync()
+  {
+    try
+    {
+      var json = await JS.InvokeAsync<string>("eval", @"(async()=>{try{if(!window.continueDb)return '';await window.continueDb.open();const [games,ach]=await Promise.all([window.continueDb.getAll('games'),window.continueDb.getAll('achievements')]);return JSON.stringify({games,ach});}catch(e){return ''}})()");
+      if (string.IsNullOrWhiteSpace(json)) return;
+      using var doc = JsonDocument.Parse(json);
+      var root = doc.RootElement;
+      if (!root.TryGetProperty("games", out var gArr) || !root.TryGetProperty("ach", out var aArr)) return;
+
+    var games = new List<DbGame>();
+      foreach (var g in gArr.EnumerateArray())
+      {
+        games.Add(new DbGame
+        {
+          id = g.GetProperty("id").GetString() ?? string.Empty,
+      commonName = g.TryGetProperty("commonName", out var cn) ? cn.GetString() : null,
+          title = g.TryGetProperty("title", out var t) ? t.GetString() : null,
+          name = g.TryGetProperty("name", out var n) ? n.GetString() : null,
+          system = g.TryGetProperty("system", out var s) ? s.GetString() : null,
+          platform = g.TryGetProperty("platform", out var p) ? p.GetString() : null,
+          notes = g.TryGetProperty("notes", out var no) ? no.GetString() : null,
+          subtitle = g.TryGetProperty("subtitle", out var sub) ? sub.GetString() : null,
+        });
+      }
+
+      var achByGame = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+      var completedByGame = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+      foreach (var a in aArr.EnumerateArray())
+      {
+        var gid = a.TryGetProperty("gameId", out var gpe) ? (gpe.GetString() ?? string.Empty) : string.Empty;
+        if (string.IsNullOrEmpty(gid)) continue;
+        achByGame[gid] = (achByGame.TryGetValue(gid, out var c) ? c : 0) + 1;
+        var aid = a.TryGetProperty("id", out var idpe) ? idpe.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(aid) && UnlockedAchievementIds.Contains(aid!))
+        {
+          completedByGame[gid] = (completedByGame.TryGetValue(gid, out var cc) ? cc : 0) + 1;
+        }
+      }
+
+      RomRows = games.Select(g => new RomRow
+      {
+        Id = g.id,
+        Title = g.commonName ?? g.title ?? g.name ?? g.id,
+        Subtitle = string.IsNullOrWhiteSpace(g.subtitle) ? null : g.subtitle,
+        Total = achByGame.TryGetValue(g.id, out var tot) ? tot : 0,
+        Completed = completedByGame.TryGetValue(g.id, out var comp) ? comp : 0,
+        Notes = g.notes
+      }).ToList();
+
+      // Default select first compatible game if none selected
+      if (SelectedGameId == null)
+      {
+        SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible)?.Id;
+      }
+    }
+    catch { }
   }
 }
