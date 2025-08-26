@@ -90,6 +90,20 @@
 .rom-td .chip.ok{background:#10b981;border-color:#10b981;color:#000}
 .rom-td .chip.no{background:#374151;border-color:#9ca3af;color:#fff}
 
+/* Import styles */
+.rom-toolbar-right{display:flex;align-items:center;gap:.5rem}
+.rom-import-btn{padding:.35rem .6rem;font-size:.65rem;border:2px solid #ff5a26;background:#000;color:#fff;font-family:'Press Start 2P', monospace;cursor:pointer}
+.rom-import-btn:hover{background:#0a0a0a}
+.rom-cancel-btn{padding:.35rem .6rem;font-size:.65rem;border:2px solid transparent;background:transparent;color:#9ca3af;font-family:'Press Start 2P', monospace;cursor:pointer}
+.import-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:5000}
+.import-modal{background:#000;color:#fff;border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;border-radius:8px;padding:1rem;width:min(640px,92vw);max-height:85vh;overflow:auto}
+.import-title{margin:0 0 .5rem;font-size:.9rem;color:#ff5a26}
+.import-body{display:flex;flex-direction:column;gap:.5rem}
+.import-controls{display:flex;gap:.5rem;align-items:center}
+.import-drop{border:2px dashed #fff;padding:1rem;border-radius:8px;text-align:center;color:#9ca3af}
+.import-list{margin:.25rem 0 0;padding-left:1.1rem}
+.import-footer{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem}
+
 /* Modal for card zoom (reuses patterns from other pages) */
 .card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:5000;opacity:1;transition:opacity .18s ease}
 .card-modal-backdrop.closing{opacity:0}
