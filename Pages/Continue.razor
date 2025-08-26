@@ -24,7 +24,7 @@
       <span class="small-note">Enforced:</span>
       @foreach (var c in EnforcedCards)
       {
-        <button type="button" class="enf-chip" title="View card" @onclick="(()=>OpenCardZoom(c.domain, c.id))">@c.label</button>
+        <button type="button" class="enf-chip" style="border-color:@c.border" title="View card" @onclick="(()=>OpenCardZoom(c.domain, c.id))">@c.label</button>
       }
     </div>
     <div class="hdr-cta">
@@ -83,7 +83,7 @@
   private string LevelTitle = "FMC Warmup";
   private int RequiredStars = 5;
 
-  private (string domain, string id, string label)[] EnforcedCards = Array.Empty<(string,string,string)>();
+  private (string domain, string id, string label, string border)[] EnforcedCards = Array.Empty<(string,string,string,string)>();
 
   // Enforced slots (null = not enforced)
   private string? EnforcedCpu = null;
@@ -120,7 +120,15 @@
     EnforcedCpu = "FMC";
     EnforcedPpu = "FMC";
     EnforcedApu = "FMC";
-    EnforcedCards = new[]{ ("CPU", EnforcedCpu!, "CPU_"+EnforcedCpu), ("PPU", EnforcedPpu!, "PPU_"+EnforcedPpu), ("APU", EnforcedApu!, "APU_"+EnforcedApu) };
+    // Compute rating-based border colors to match the SVG card palette
+    var cpuCard = BuildCard("CPU", EnforcedCpu!);
+    var ppuCard = BuildCard("PPU", EnforcedPpu!);
+    var apuCard = BuildCard("APU", EnforcedApu!);
+    EnforcedCards = new[]{
+      ("CPU", EnforcedCpu!, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpuCard.Rating,0,5))),
+      ("PPU", EnforcedPpu!, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppuCard.Rating,0,5))),
+      ("APU", EnforcedApu!, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apuCard.Rating,0,5)))
+    };
 
     // Owned sets
     OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -189,6 +197,20 @@
       builder.CloseElement();
     builder.CloseElement();
   };
+
+  // Mirror the SVG card's rating-to-border palette for consistency
+  private static string RatingToBorderColor(int rating)
+  {
+    return rating switch
+    {
+      <= 0 => "#6b7280", // slate/neutral
+      1 => "#ef4444",    // red 500
+      2 => "#f59e0b",    // amber 500
+      3 => "#10b981",    // emerald 500
+      4 => "#3b82f6",    // blue 500
+      _ => "#a855f7"      // purple 500 for 5
+    };
+  }
 
   private void OpenCpuPicker() => OpenPicker("CPU");
   private void OpenPpuPicker() => OpenPicker("PPU");
