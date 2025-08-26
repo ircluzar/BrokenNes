@@ -33,6 +33,9 @@
                 <div class="hw-text">
                     This software can and will generate flashing images and loud noises. Avoid using this software if you are prone to seizures.
                 </div>
+                <div class="hw-text">
+                    A certain level of jank and glitchiness is to be expected as part of the intended experience. If you experience discomfort, please take a break or stop using the software.
+                </div>
                 <button class="hero-btn hw-ok-btn" @onclick="OnHealthOk" aria-label="Acknowledge health warning">OK</button>
                 <audio id="plateWav" src="sfx/plates.m4a" preload="auto"></audio>
             </div>
@@ -46,15 +49,14 @@
         <div class="about-modal">
             <div class="about-body">
                 <h2 class="about-title">About BrokenNes</h2>
-                <p class="about-text">BrokenNes is an ongoing experiment to show that a usable, browser‑based NES emulator and corruption toolkit can be built with large language models doing most of the development work under extreme supervision from a human architect.</p>
-                <p class="about-text">This is the fifth major attempt—and the first to land—made possible by a big step up in model capability with GPT‑5.</p>
-                <p class="about-text">Two models played complementary roles throughout the project:</p>
+                <p class="about-text">BrokenNes is a browser‑based NES emulator and corruption toolkit, built largely with LLM‑assisted development under close human guidance.</p>
+                <p class="about-text">Models used:</p>
                 <ul class="about-text" style="margin:.4rem 0 1rem; padding-left:1.1rem;">
-                    <li><strong>GPT‑5</strong>: excels at deep reasoning, research, and untangling tricky bugs in messy code; best used in focused bursts as it can drift over very long sessions.</li>
-                    <li><strong>Claude Sonnet 4</strong>: great for large refactors, high‑volume edits, and persistent, repetitive work without giving up.</li>
+                    <li><strong>GPT‑5</strong> — deep reasoning, research, and tough bug hunts.</li>
+                    <li><strong>Claude Sonnet 4</strong> — large refactors and high‑volume edits.</li>
                 </ul>
-                <p class="about-text">Implementation ideas were informed by prior work such as NET‑NES, QuickNES, and NesHawk. See the repository’s license file for full credits.</p>
-                <p class="about-text">Design and architecture by <strong>ircluzar</strong></p>
+                <p class="about-text">Inspired by work on NET‑NES, QuickNES, and NesHawk. See LICENSE for full credits.</p>
+                <p class="about-text">Design and architecture: <strong>ircluzar</strong></p>
                 <button class="about-close" @onclick="HideAbout" aria-label="Close About">CLOSE</button>
             </div>
         </div>
