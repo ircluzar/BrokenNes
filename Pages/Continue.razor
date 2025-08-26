@@ -59,7 +59,7 @@
       </div>
       @if (RomRowsFiltered.Count == 0)
       {
-        <div class="rom-empty small-note">No games found. Import the default DB in CRUD or add your own.</div>
+        <div class="rom-empty small-note">No games found or available in storage. Import the default DB in CRUD or add your own.</div>
       }
       else
       {
@@ -74,14 +74,14 @@
           <div class="rom-tbody" role="rowgroup">
             @foreach (var g in RomRowsFiltered)
             {
-              var disabled = !g.Compatible;
+              var disabled = !g.Compatible || !g.Present;
               <button type="button"
                       class="rom-tr rom-td @(SelectedGameId==g.Id?"selected":null) @(disabled?"disabled":null)"
                       role="row"
                       aria-disabled="@disabled"
-                      title="@(disabled?"No achievements available":"Select game")"
+                      title="@(disabled?(!g.Present?"ROM not present":"No achievements available"):"Select game")"
                       disabled="@disabled"
-                      @onclick="(()=>SelectGame(g.Id))">
+                      @onclick="(()=>SelectGameAsync(g.Id))">
                 <div class="c-title" role="cell">
                   <div class="rom-title">@g.Title</div>
                   @if (!string.IsNullOrWhiteSpace(g.Subtitle)) { <div class="rom-sub">@g.Subtitle</div>; }
@@ -98,25 +98,53 @@
 
   <section class="opt-section">
     <h3 class="opt-h3">Achievements</h3>
-    @if (SelectedGame != null)
+    @if (SelectedGame == null)
     {
-      <div class="ach-box">
-        <div class="ach-summary">
-          <span class="small-note">@SelectedGame.Title</span>
-          <strong>@SelectedGame.Completed/@SelectedGame.Total</strong>
-          <span class="small-note">completed</span>
-        </div>
-        <div class="small-note">Full achievement list coming soon.</div>
-      </div>
+      <div class="ach-box small-note">Select a compatible game to view achievements.</div>
+    }
+    else if (GameAchTotal == 0)
+    {
+      <div class="ach-box small-note">No achievements found for this game.</div>
     }
     else
     {
-      <div class="ach-box small-note">Select a compatible game to view achievements.</div>
+      <div class="ach-box">
+        <div class="ach-summary" title="Completed/Total">
+          <span class="small-note">@SelectedGame.Title</span>
+          <strong>@GameAchCompleted/@GameAchTotal</strong>
+          <span class="small-note">completed</span>
+          @if (AchievementsFilteredCount != GameAchTotal)
+          {
+            <span class="small-note">(showing @AchievementsFilteredCount)</span>
+          }
+        </div>
+        <div class="ach-toolbar">
+          <label class="small-note"><input type="checkbox" @bind="HideCompleted" /> Hide completed</label>
+          <input class="rom-search" placeholder="Search achievements…" @bind="AchSearch" />
+        </div>
+        <ul class="ach-list" aria-label="Achievements for selected game">
+          @foreach (var a in AchievementsFiltered)
+          {
+            <li class="ach-item @(a.Completed?"done":"todo")" title="@(a.Completed?"Completed":"Not completed")">
+              <span class="ach-check" aria-hidden="true">@(a.Completed?"▣":"▢")</span>
+              <span class="ach-title">@a.Title</span>
+              @if (!string.IsNullOrWhiteSpace(a.Description))
+              {
+                <span class="ach-desc small-note">@a.Description</span>
+              }
+              @if (a.Difficulty > 0)
+              {
+                <span class="ach-diff chip" title="Difficulty">D@a.Difficulty</span>
+              }
+            </li>
+          }
+        </ul>
+      </div>
     }
   </section>
 
   <div class="opt-footer">
-    <button class="opt-link start-btn" disabled="@(!CanStartGame)" title="Build valid and game with achievements required">Start the game</button>
+  <button class="opt-link start-btn @(CanStartGame?"unlocked":"locked")" disabled="@(!CanStartGame)" title="Build valid and game with achievements required" @onclick="StartStageGame">Start the game</button>
     <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
 </div>
@@ -197,9 +225,10 @@
   // ROM selector state
   private sealed class DbGame { public string id { get; set; } = string.Empty; public string? commonName { get; set; } public string? title { get; set; } public string? name { get; set; } public string? romKey { get; set; } public string? system { get; set; } public string? platform { get; set; } public string? notes { get; set; } public string? subtitle { get; set; } }
   private sealed class DbAchievement { public string id { get; set; } = string.Empty; public string gameId { get; set; } = string.Empty; public string? title { get; set; } }
-  private sealed class RomRow { public string Id { get; set; } = string.Empty; public string Title { get; set; } = string.Empty; public string? Subtitle { get; set; } public string System { get; set; } = "NES"; public int Total { get; set; } public int Completed { get; set; } public bool Compatible => Total > 0; public string? Notes { get; set; } }
+  private sealed class RomRow { public string Id { get; set; } = string.Empty; public string Title { get; set; } = string.Empty; public string? Subtitle { get; set; } public string System { get; set; } = "NES"; public int Total { get; set; } public int Completed { get; set; } public bool Compatible => Total > 0; public string? Notes { get; set; } public bool Present { get; set; } public string? RomKey { get; set; } }
   private List<RomRow> RomRows = new();
   private List<RomRow> RomRowsFiltered => RomRows
+    .Where(r => r.Present)
     .Where(r => !FilterCompatibleOnly || r.Compatible)
     .Where(r => string.IsNullOrWhiteSpace(RomSearch) || (r.Title?.Contains(RomSearch, StringComparison.OrdinalIgnoreCase) ?? false))
     .OrderByDescending(r => r.Compatible)
@@ -210,6 +239,27 @@
   private bool FilterCompatibleOnly = true;
   private string RomSearch = string.Empty;
   private HashSet<string> UnlockedAchievementIds = new(StringComparer.OrdinalIgnoreCase);
+  // Per-selected-game achievements view
+  private sealed class UiAchievement
+  {
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int Difficulty { get; set; }
+    public string[] Tags { get; set; } = Array.Empty<string>();
+    public bool Completed { get; set; }
+  }
+  private readonly List<UiAchievement> GameAchievements = new();
+  private int GameAchCompleted = 0;
+  private int GameAchTotal = 0;
+  private bool HideCompleted = true;
+  private string AchSearch = string.Empty;
+  private IEnumerable<UiAchievement> AchievementsFiltered => GameAchievements
+    .Where(a => !HideCompleted || !a.Completed)
+    .Where(a => string.IsNullOrWhiteSpace(AchSearch) || (a.Title?.Contains(AchSearch, StringComparison.OrdinalIgnoreCase) ?? false) || (a.Description?.Contains(AchSearch, StringComparison.OrdinalIgnoreCase) ?? false))
+    .OrderBy(a => a.Completed) // incomplete first
+    .ThenBy(a => a.Title, StringComparer.OrdinalIgnoreCase);
+  private int AchievementsFilteredCount => AchievementsFiltered.Count();
   // Import modal state
   private bool ImportOpen = false;
   private ElementReference ImportInputRef;
@@ -275,7 +325,7 @@
     && (EnforcedPpu ?? SelectedPpu) != null
     && (EnforcedApu ?? SelectedApu) != null
     && (EnforcedShader ?? SelectedShader) != null;
-  private bool CanStartGame => BuildValid && SelectedGame != null && SelectedGame.Total > 0;
+  private bool CanStartGame => BuildValid && SelectedGame != null && SelectedGame.Total > 0 && SelectedGame.Present;
 
   private async Task AdvanceLevel()
   {
@@ -299,9 +349,10 @@
     catch { }
   }
 
-  private void SelectGame(string id)
+  private async Task SelectGameAsync(string id)
   {
     SelectedGameId = id;
+    await LoadAchievementsForGameAsync(id);
   }
 
   // ===== Import modal logic =====
@@ -675,6 +726,11 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       var root = doc.RootElement;
       if (!root.TryGetProperty("games", out var gArr) || !root.TryGetProperty("ach", out var aArr)) return;
 
+  // Read actual stored ROM names from nesStorage to reflect real availability
+  var storedNamesJson = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { const arr = await (window.nesInterop ? window.nesInterop.getStoredRoms() : []); return JSON.stringify((arr||[]).map(x=>x && x.name || '')); } catch(e) { return '[]'; } })()");
+  var storedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+  try { using var ndoc = JsonDocument.Parse(string.IsNullOrWhiteSpace(storedNamesJson)?"[]":storedNamesJson); foreach (var n in ndoc.RootElement.EnumerateArray()) { var s = n.GetString(); if (!string.IsNullOrWhiteSpace(s)) storedNames.Add(s!); } } catch { }
+
     var games = new List<DbGame>();
       foreach (var g in gArr.EnumerateArray())
       {
@@ -713,14 +769,84 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         Subtitle = string.IsNullOrWhiteSpace(g.subtitle) ? null : g.subtitle,
         Total = achByGame.TryGetValue(g.id, out var tot) ? tot : 0,
         Completed = completedByGame.TryGetValue(g.id, out var comp) ? comp : 0,
-        Notes = g.notes
+        Notes = g.notes,
+        Present = (!string.IsNullOrWhiteSpace(g.romKey) && storedNames.Contains(g.romKey!)),
+        RomKey = g.romKey
       }).ToList();
 
-      // Default select first compatible game if none selected
+      // Default select first compatible present game if none selected
       if (SelectedGameId == null)
       {
-        SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible)?.Id;
+        SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
       }
+      else
+      {
+        // If the previously selected game is not present anymore, reselect
+        var sel = RomRows.FirstOrDefault(r => r.Id == SelectedGameId);
+        if (sel == null || !sel.Present)
+        {
+          SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
+        }
+      }
+      if (!string.IsNullOrEmpty(SelectedGameId))
+      {
+        await LoadAchievementsForGameAsync(SelectedGameId);
+      }
+    }
+    catch { }
+  }
+
+  private async Task LoadAchievementsForGameAsync(string gameId)
+  {
+    GameAchievements.Clear();
+    GameAchCompleted = 0; GameAchTotal = 0;
+    try
+    {
+      var gid = JsonSerializer.Serialize(gameId);
+  var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const gid = {gid}; let list = []; try {{ list = await window.continueDb.getAllFromIndex('achievements','by_gameId', gid) || []; }} catch(e) {{ }} if (!list || list.length===0) {{ const all = await window.continueDb.getAll('achievements'); list = (all||[]).filter(a => a && a.gameId === gid); }} const arr = (list||[]).map(a => {{ return {{ id: a.id||'', title: a.title||a.id||'', description: a.description||'', difficulty: (typeof a.difficulty==='number'?a.difficulty:0), tags: (Array.isArray(a.tags)?a.tags:[]) }}; }}); return JSON.stringify(arr); }} catch(e) {{ return ''; }} }})()");
+      if (!string.IsNullOrWhiteSpace(json))
+      {
+        using var doc = JsonDocument.Parse(json);
+        foreach (var e in doc.RootElement.EnumerateArray())
+        {
+          var id = e.TryGetProperty("id", out var pid) ? (pid.GetString() ?? string.Empty) : string.Empty;
+          if (string.IsNullOrEmpty(id)) continue;
+          var title = e.TryGetProperty("title", out var ptitle) ? (ptitle.GetString() ?? id) : id;
+          var desc = e.TryGetProperty("description", out var pdesc) ? pdesc.GetString() : null;
+          var diff = e.TryGetProperty("difficulty", out var pdiff) && pdiff.ValueKind==JsonValueKind.Number ? pdiff.GetInt32() : 0;
+          bool completed = UnlockedAchievementIds.Contains(id);
+          GameAchievements.Add(new UiAchievement{ Id=id, Title=title, Description=desc, Difficulty=diff, Completed=completed });
+        }
+        GameAchTotal = GameAchievements.Count;
+        GameAchCompleted = GameAchievements.Count(a => a.Completed);
+      }
+    }
+    catch { GameAchievements.Clear(); GameAchCompleted = 0; GameAchTotal = 0; }
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task StartStageGame()
+  {
+    if (!CanStartGame) return;
+    try
+    {
+      var sel = SelectedGame;
+      if (sel == null || string.IsNullOrWhiteSpace(sel.RomKey)) return;
+      // Build query string for stage mode
+      string rom = Uri.EscapeDataString(sel.RomKey);
+      string shader = Uri.EscapeDataString((EnforcedShader ?? SelectedShader) ?? string.Empty);
+      string cpu = Uri.EscapeDataString((EnforcedCpu ?? SelectedCpu) ?? string.Empty);
+      string ppu = Uri.EscapeDataString((EnforcedPpu ?? SelectedPpu) ?? string.Empty);
+      string apu = Uri.EscapeDataString((EnforcedApu ?? SelectedApu) ?? string.Empty);
+      var qs = new List<string> { "stage=1", $"rom={rom}" };
+      if (!string.IsNullOrWhiteSpace(shader)) qs.Add($"shader={shader}");
+      if (!string.IsNullOrWhiteSpace(cpu)) qs.Add($"cpu={cpu}");
+      if (!string.IsNullOrWhiteSpace(ppu)) qs.Add($"ppu={ppu}");
+      if (!string.IsNullOrWhiteSpace(apu)) qs.Add($"apu={apu}");
+      var url = "/nes?" + string.Join('&', qs);
+      // Soft fade audio and navigate
+      try { await JS.InvokeVoidAsync("eval", @"(function(){ try{ if(window.music && typeof window.music.fadeOut==='function'){ window.music.fadeOut(500,true); } }catch(e){} })();"); } catch { }
+      Nav.NavigateTo(url, false);
     }
     catch { }
   }

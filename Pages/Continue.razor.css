@@ -14,6 +14,12 @@
 .opt-footer{margin-top:2rem;text-align:center;}
 .opt-link{display:inline-block;padding:.7rem 1.4rem;border:3px solid #ff5a26;color:#fff;text-decoration:none;font-size:.7rem;}
 .opt-link:hover,.opt-link:focus{background:#ff5a26;color:#000;}
+/* Start button specific states */
+.start-btn{background:#000 !important;}
+.start-btn.unlocked{border-color:#ff5a26;color:#fff;cursor:pointer}
+.start-btn.unlocked:hover,.start-btn.unlocked:focus{background:#0a0a0a;color:#fff;outline:2px solid #ff5a26;outline-offset:2px}
+.start-btn.locked{border-color:#555;color:#9ca3af;cursor:default}
+.start-btn.locked:hover,.start-btn.locked:focus{background:#000;color:#9ca3af;outline:none}
 
 /* Continue page customizations */
 .continue-root .cont-header{border:3px solid #fff;padding:1rem;margin-bottom:1.5rem}
@@ -69,6 +75,17 @@
 .rom-selector{display:flex;flex-direction:column;gap:.5rem}
 .rom-toolbar{display:flex;align-items:center;gap:.75rem;justify-content:space-between}
 .rom-toolbar .rom-search{flex:0 0 260px;max-width:60%;background:#000;border:2px solid #ff5a26;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.25rem .4rem}
+.ach-toolbar{display:flex;align-items:center;gap:.75rem;justify-content:space-between;margin:.35rem 0 .25rem}
+.ach-toolbar .rom-search{
+  flex:0 0 260px;
+  max-width:60%;
+  background:#000;
+  border:2px solid #ff5a26;
+  color:#fff;
+  font-family:'Press Start 2P', monospace;
+  font-size:.65rem;
+  padding:.25rem .4rem;
+}
 .rom-empty{border:2px dashed #fff;padding:.75rem}
 
 .rom-table{display:block;border:2px solid #fff;--rom-cols: 3fr 1fr 1fr}
@@ -131,6 +148,8 @@
   .rom-tr{grid-template-columns:2fr .8fr 1fr}
   .rom-toolbar{flex-wrap:wrap}
   .rom-toolbar .rom-search{flex:1 1 100%;max-width:100%}
+  .ach-toolbar{flex-wrap:wrap}
+  .ach-toolbar .rom-search{flex:1 1 100%;max-width:100%}
 }
 
 /* Ultra-small devices refinement */

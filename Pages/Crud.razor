@@ -127,6 +127,7 @@
                             @if (!g.isEditing)
                             {
                                 <button @onclick="(()=>BeginEdit(g))">Edit</button>
+                                <button @onclick="(()=>DeleteGameAsync(g))">Delete</button>
                             }
                             else
                             {
@@ -298,6 +299,7 @@
                             @if (!c.isEditing)
                             {
                                 <button @onclick="(()=>BeginEditCard(c))">Edit</button>
+                                <button @onclick="(()=>DeleteCardAsync(c))">Delete</button>
                             }
                             else
                             {
@@ -578,6 +580,20 @@
         await LoadGamesAsync();
     }
 
+    private async Task DeleteGameAsync(GameRow g)
+    {
+        try
+        {
+            var idSafe = (g.id ?? string.Empty).Replace("'", "\'");
+            var confirm = await JS.InvokeAsync<bool>("eval", $"confirm('Delete game ' + {JsonSerializer.Serialize(GetCommonName(g))} + ' (ID: ' + {JsonSerializer.Serialize(g.id ?? string.Empty)} + ')? This cannot be undone.')");
+            if (!confirm) return;
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('games', '{idSafe}'); }} catch(e) {{ console.warn('delete game failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadGamesAsync();
+    }
+
     // ===== ACHIEVEMENTS TAB =====
     private List<GameOption> GameOptions { get; set; } = new();
 
@@ -668,7 +684,10 @@
     {
         try
         {
-            var idSafe = (a.id ?? string.Empty).Replace("'", "\'");
+            var label = a.id ?? string.Empty;
+            var confirm = await JS.InvokeAsync<bool>("eval", $"confirm('Delete achievement ' + {JsonSerializer.Serialize(label)} + '? This cannot be undone.')");
+            if (!confirm) return;
+            var idSafe = label.Replace("'", "\'");
             var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('achievements', '{idSafe}'); }} catch(e) {{ console.warn('delete achievement failed', e); }} }})()";
             await JS.InvokeVoidAsync("eval", js);
         }
@@ -786,6 +805,8 @@
     {
         try
         {
+            var confirm = await JS.InvokeAsync<bool>("eval", $"confirm('Delete level #' + {l.index} + '? This cannot be undone.')");
+            if (!confirm) return;
             var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('levels', {l.index}); }} catch(e) {{ console.warn('delete level failed', e); }} }})()";
             await JS.InvokeVoidAsync("eval", js);
         }
@@ -917,6 +938,21 @@
             var recJson = JsonSerializer.Serialize(rec);
             var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
             var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{safe}'); await window.continueDb.put('cards', rec); }} catch(e) {{ console.warn('save card failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await RefreshCardsAsync();
+    }
+
+    private async Task DeleteCardAsync(CardRow c)
+    {
+        try
+        {
+            var label = c.id;
+            var confirm = await JS.InvokeAsync<bool>("eval", $"confirm('Delete card ' + {JsonSerializer.Serialize(label)} + '? This cannot be undone.')");
+            if (!confirm) return;
+            var idSafe = (label ?? string.Empty).Replace("'", "\'");
+            var js = $@"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('cards', '{idSafe}'); }} catch(e) {{ console.warn('delete card failed', e); }} }})()";
             await JS.InvokeVoidAsync("eval", js);
         }
         catch { }
