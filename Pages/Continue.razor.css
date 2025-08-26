@@ -70,11 +70,12 @@
 .core-slot .slot-pick{display:none}
 
 .rom-box,.ach-box{border:2px dashed #fff;padding:.75rem}
+.game-box{border:2px dashed #fff;padding:.75rem}
 
 /* ROM selector */
 .rom-selector{display:flex;flex-direction:column;gap:.5rem}
 .rom-toolbar{display:flex;align-items:center;gap:.75rem;justify-content:space-between}
-.rom-toolbar .rom-search{flex:0 0 260px;max-width:60%;background:#000;border:2px solid #ff5a26;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.25rem .4rem}
+.rom-toolbar .rom-search{flex:0 0 260px;max-width:60%;background:#000;border:2px solid #ff5a26;color:#fff;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.25rem .4rem;box-sizing:border-box;min-width:0}
 .ach-toolbar{display:flex;align-items:center;gap:.75rem;justify-content:space-between;margin:.35rem 0 .25rem}
 .ach-toolbar .rom-search{
   flex:0 0 260px;
@@ -106,6 +107,13 @@
 .rom-td .chip{display:inline-block;padding:.1rem .35rem;border:2px solid #fff;font-size:.6rem}
 .rom-td .chip.ok{background:#10b981;border-color:#10b981;color:#000}
 .rom-td .chip.no{background:#374151;border-color:#9ca3af;color:#fff}
+
+/* Game info panel */
+.game-grid{display:flex;flex-direction:column;gap:.25rem;font-size:.55rem}
+.game-row{display:grid;grid-template-columns:1fr 2fr;gap:.5rem;align-items:start}
+.game-row .label{opacity:.7}
+.game-row .value{word-break:break-word}
+.game-row.note .value{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
 
 /* Import styles */
 .rom-toolbar-right{display:flex;align-items:center;gap:.5rem}
@@ -146,8 +154,9 @@
   .continue-root .btn-next{display:block;width:100%;text-align:center}
   .core-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rom-tr{grid-template-columns:2fr .8fr 1fr}
-  .rom-toolbar{flex-wrap:wrap}
-  .rom-toolbar .rom-search{flex:1 1 100%;max-width:100%}
+  .rom-toolbar{flex-wrap:wrap;justify-content:flex-start}
+  .rom-toolbar-right{flex:1 1 100%;display:flex;flex-wrap:wrap}
+  .rom-toolbar .rom-search{flex:1 1 100%;max-width:100%;width:100%;min-width:0}
   .ach-toolbar{flex-wrap:wrap}
   .ach-toolbar .rom-search{flex:1 1 100%;max-width:100%}
 }

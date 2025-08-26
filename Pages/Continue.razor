@@ -97,6 +97,32 @@
   </section>
 
   <section class="opt-section">
+    <h3 class="opt-h3">Game</h3>
+    @if (SelectedGameId is null)
+    {
+      <div class="game-box small-note">Select a game to view details.</div>
+    }
+    else if (GameInfoItems.Count == 0)
+    {
+      <div class="game-box small-note">No information found for this game.</div>
+    }
+    else
+    {
+      <div class="game-box">
+        <div class="game-grid" aria-label="Selected game details">
+          @foreach (var kv in GameInfoItems)
+          {
+            <div class="game-row @(kv.Label=="Note"?"note":null)">
+              <div class="label small-note">@kv.Label</div>
+              <div class="value">@kv.Value</div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <section class="opt-section">
     <h3 class="opt-h3">Achievements</h3>
     @if (SelectedGame == null)
     {
@@ -353,6 +379,7 @@
   {
     SelectedGameId = id;
     await LoadAchievementsForGameAsync(id);
+  await LoadGameInfoAsync(id);
   }
 
   // ===== Import modal logic =====
@@ -791,9 +818,133 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       if (!string.IsNullOrEmpty(SelectedGameId))
       {
         await LoadAchievementsForGameAsync(SelectedGameId);
+        await LoadGameInfoAsync(SelectedGameId);
       }
     }
     catch { }
+  }
+
+  // ===== Game info panel (continueDb) =====
+  private sealed record GameKv(string Label, string Value);
+  private readonly List<GameKv> GameInfoItems = new();
+
+  private static string PrettyLabel(string prop)
+  {
+    if (string.IsNullOrWhiteSpace(prop)) return string.Empty;
+    // Insert spaces before capitals and numbers, then title-case
+    var sb = new System.Text.StringBuilder();
+    for (int i = 0; i < prop.Length; i++)
+    {
+      char c = prop[i];
+      if (i > 0 && (char.IsUpper(c) && !char.IsUpper(prop[i - 1]) || char.IsDigit(c) && !char.IsDigit(prop[i - 1])))
+        sb.Append(' ');
+      sb.Append(c);
+    }
+    var s = sb.ToString().Replace("_", " ");
+    // Special cases
+    s = s.Replace("Rom Key", "ROM Key");
+    s = s.Replace("Id", "ID");
+    s = s.Replace("Url", "URL");
+    // Capitalize first letter of words
+    return System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s);
+  }
+
+  private static string HumanSize(long bytes)
+  {
+    string[] u = ["B", "KB", "MB", "GB"]; double val = bytes; int i = 0; while (val >= 1024 && i < u.Length - 1) { val /= 1024; i++; }
+    return $"{val:0.#} {u[i]}";
+  }
+
+  private async Task LoadGameInfoAsync(string? gameId)
+  {
+    GameInfoItems.Clear();
+    if (string.IsNullOrWhiteSpace(gameId)) { await InvokeAsync(StateHasChanged); return; }
+    try
+    {
+      var gid = JsonSerializer.Serialize(gameId);
+      var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const rec = await window.continueDb.get('games', {gid}); return JSON.stringify(rec||null); }} catch(e) {{ return ''; }} }})()");
+      if (!string.IsNullOrWhiteSpace(json))
+      {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+          // First: synthesize Name = commonName (if set) else title
+          string? commonName = root.TryGetProperty("commonName", out var pCN) ? pCN.GetString() : null;
+          string? title = root.TryGetProperty("title", out var pTitle) ? pTitle.GetString() : null;
+          var displayName = !string.IsNullOrWhiteSpace(commonName) ? commonName : (string.IsNullOrWhiteSpace(title) ? null : title);
+          if (!string.IsNullOrWhiteSpace(displayName))
+          {
+            GameInfoItems.Add(new GameKv("Name", displayName!));
+          }
+          // Capture note/notes to add at bottom later
+          string? noteVal = null;
+          if (root.TryGetProperty("note", out var pNote) && pNote.ValueKind == JsonValueKind.String)
+            noteVal = pNote.GetString();
+          if (string.IsNullOrWhiteSpace(noteVal) && root.TryGetProperty("notes", out var pNotes) && pNotes.ValueKind == JsonValueKind.String)
+            noteVal = pNotes.GetString();
+
+          foreach (var prop in root.EnumerateObject())
+          {
+            var name = prop.Name;
+            // Exclusions: ID, Created At (per request), and the raw name fields we synthesized
+            if (string.Equals(name, "id", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "createdAt", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "commonName", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "title", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "name", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "builtIn", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "system", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "note", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(name, "notes", StringComparison.OrdinalIgnoreCase)) continue;
+            var valEl = prop.Value;
+            string valueStr = string.Empty;
+            switch (valEl.ValueKind)
+            {
+              case JsonValueKind.String:
+                valueStr = valEl.GetString() ?? string.Empty;
+                break;
+              case JsonValueKind.Number:
+                if (name.Equals("size", StringComparison.OrdinalIgnoreCase) && valEl.TryGetInt64(out var bytes))
+                  valueStr = HumanSize(bytes);
+                else valueStr = valEl.ToString();
+                break;
+              case JsonValueKind.True:
+              case JsonValueKind.False:
+                valueStr = valEl.GetBoolean() ? "Yes" : "No";
+                break;
+              default:
+                valueStr = valEl.ToString();
+                break;
+            }
+            if (!string.IsNullOrWhiteSpace(valueStr))
+            {
+              GameInfoItems.Add(new GameKv(PrettyLabel(name), valueStr));
+            }
+          }
+          if (!string.IsNullOrWhiteSpace(noteVal))
+          {
+            GameInfoItems.Add(new GameKv("Note", noteVal!));
+          }
+        }
+      }
+    }
+    catch { }
+
+    // Fallback: synthesize from current SelectedGame row if DB read failed or empty
+  if (GameInfoItems.Count == 0)
+    {
+      var sel = SelectedGame;
+      if (sel != null)
+      {
+    void add(string label, string? val){ if (!string.IsNullOrWhiteSpace(val)) GameInfoItems.Add(new GameKv(label, val!)); }
+  add("Name", sel.Title);
+  add("Subtitle", sel.Subtitle);
+  add("ROM Key", sel.RomKey);
+  if (!string.IsNullOrWhiteSpace(sel.Notes)) add("Note", sel.Notes);
+      }
+    }
+    await InvokeAsync(StateHasChanged);
   }
 
   private async Task LoadAchievementsForGameAsync(string gameId)
