@@ -31,13 +31,22 @@
 .continue-root .btn-next{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.7rem;padding:.45rem .8rem}
 .continue-root .btn-next:disabled{opacity:.5}
 
-.core-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.core-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;justify-items:center}
 .core-slot{position:relative;border:2px solid #fff;min-height:92px;padding:.5rem}
-.core-slot .slot-title{font-size:.75rem;margin-bottom:.5rem;color:#fff}
+.core-slot .slot-title{font-size:.75rem;margin-bottom:.5rem;color:#fff;text-align:center}
 .core-slot .slot-body{display:flex;align-items:center;justify-content:center;min-height:56px}
-.core-slot .slot-label{font-size:.7rem;opacity:.85}
-.core-slot .slot-pick{background:#000;color:#fff;border:2px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.65rem;padding:.35rem .6rem}
-.core-slot.locked .lock-overlay{position:absolute;top:6px;right:6px;filter:drop-shadow(0 1px 0 #000);}
+/* Card presentation inside slot */
+.core-slot .card-wrap{position:relative;display:inline-block;line-height:0}
+.core-slot .card-wrap svg{display:block;width:142px;height:200px}
+/* Clickable cover for unlocked slots (covers the svg) */
+.core-slot .card-cover-btn{position:absolute;inset:0;background:transparent;border:0;cursor:pointer;z-index:3}
+.core-slot .card-cover-btn:focus{outline:2px solid #ff5a26;outline-offset:2px}
+/* Overlay for locked state */
+.core-slot.locked .card-wrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:1;z-index:1}
+.core-slot .card-overlay.lock-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2rem;filter:drop-shadow(0 1px 0 #000);z-index:2;pointer-events:none}
+/* Legacy label/button (kept for fallback; hidden when using svg cards) */
+.core-slot .slot-label{display:none}
+.core-slot .slot-pick{display:none}
 
 .rom-box,.ach-box{border:2px dashed #fff;padding:.75rem}
 
@@ -64,7 +73,7 @@
   /* CTA: full-width button for easier tap */
   .continue-root .hdr-cta{margin-top:.5rem}
   .continue-root .btn-next{display:block;width:100%;text-align:center}
-  .core-grid{grid-template-columns:1fr}
+  .core-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 /* Ultra-small devices refinement */

@@ -1,10 +1,12 @@
 @page "/continue"
 @using NesEmulator
+@using NesEmulator.Shaders
 @using System.Text.Json
 @using BrokenNes.Shared
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject BrokenNes.Services.GameSaveService SaveSvc
+@inject IShaderProvider ShaderProvider
 
 <div class="options-root continue-root">
   <h2 class="opt-title">DECK BUILDER</h2>
@@ -39,13 +41,7 @@
       @CoreSlot("CPU", EnforcedCpu, SelectedCpu, OpenCpuPicker)
       @CoreSlot("PPU", EnforcedPpu, SelectedPpu, OpenPpuPicker)
       @CoreSlot("APU", EnforcedApu, SelectedApu, OpenApuPicker)
-      <div class="core-slot locked">
-        <div class="slot-title">Mapper</div>
-        <div class="slot-body">
-          <div class="lock-overlay" title="Mapper is auto-selected by ROM">🔒</div>
-          <div class="slot-label">Auto (by ROM)</div>
-        </div>
-      </div>
+  @CoreSlot("SHADER", EnforcedShader, SelectedShader, OpenShaderPicker)
     </div>
   </section>
 
@@ -90,11 +86,13 @@
   private string? EnforcedCpu = null;
   private string? EnforcedPpu = null;
   private string? EnforcedApu = null;
+  private string? EnforcedShader = null;
 
   // Player-selected (temporary choices for this level/session)
   private string? SelectedCpu = null;
   private string? SelectedPpu = null;
   private string? SelectedApu = null;
+  private string? SelectedShader = null;
 
   private CoreCardModel? ZoomCard;
   private bool ModalClosing = false;
@@ -104,6 +102,7 @@
   private IReadOnlyList<string> OwnedCpu = Array.Empty<string>();
   private IReadOnlyList<string> OwnedPpu = Array.Empty<string>();
   private IReadOnlyList<string> OwnedApu = Array.Empty<string>();
+  private IReadOnlyList<string> OwnedShader = Array.Empty<string>();
 
   protected override async Task OnInitializedAsync()
   {
@@ -121,6 +120,7 @@
   OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+  OwnedShader = (save.OwnedShaderIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -141,7 +141,10 @@
 
   private bool LevelCleared => Stars > 0; // Placeholder until per-level attribution exists
   private bool CanAdvanceLevel => Stars >= RequiredStars;
-  private bool BuildValid => (EnforcedCpu ?? SelectedCpu) != null && (EnforcedPpu ?? SelectedPpu) != null && (EnforcedApu ?? SelectedApu) != null;
+  private bool BuildValid => (EnforcedCpu ?? SelectedCpu) != null
+    && (EnforcedPpu ?? SelectedPpu) != null
+    && (EnforcedApu ?? SelectedApu) != null
+    && (EnforcedShader ?? SelectedShader) != null;
 
   private async Task AdvanceLevel()
   {
@@ -171,18 +174,46 @@
     builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", $"core-slot{(isLocked?" locked":"")}");
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-title"); builder.AddContent(seq++, domain); builder.CloseElement();
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-body");
-        if (isLocked)
-        {
-          builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "lock-overlay"); builder.AddAttribute(seq++, "title", "Enforced by level"); builder.AddContent(seq++, "🔒"); builder.CloseElement();
-          builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-label"); builder.AddContent(seq++, $"{domain}_" + enforced); builder.CloseElement();
-        }
-        else
-        {
-          var label = string.IsNullOrWhiteSpace(selected) ? $"Select a {domain} Core" : $"{domain}_" + selected;
-          builder.OpenElement(seq++, "button"); builder.AddAttribute(seq++, "class", "slot-pick"); builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker)); builder.AddContent(seq++, label); builder.CloseElement();
-        }
-      builder.CloseElement();
-    builder.CloseElement();
+        // Card container
+        builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "card-wrap");
+          // Determine which card to render
+          CoreCardModel cardModel;
+          if (isLocked)
+          {
+            cardModel = BuildCard(domain, enforced!);
+          }
+          else if (!string.IsNullOrWhiteSpace(selected))
+          {
+            cardModel = BuildCard(domain, selected!);
+          }
+          else
+          {
+            cardModel = new CoreCardModel{
+              Id = "EMPTY",
+              ShortName = $"{domain}",
+              DisplayName = $"Select a {domain} Core",
+              Description = "Click to choose from your owned cores.",
+              Rating = 0,
+              Performance = 0,
+              FooterNote = domain,
+              Domain = domain
+            };
+          }
+          var svg = CardSvgRenderer.Render(cardModel, 142, 200);
+          builder.AddMarkupContent(seq++, svg);
+
+          if (isLocked)
+          {
+            builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "card-overlay lock-center"); builder.AddAttribute(seq++, "title", "Enforced by level"); builder.AddAttribute(seq++, "aria-hidden", "true"); builder.AddContent(seq++, "🔒"); builder.CloseElement();
+          }
+          else
+          {
+            // Make the whole card clickable to open the picker when not locked
+            builder.OpenElement(seq++, "button"); builder.AddAttribute(seq++, "type", "button"); builder.AddAttribute(seq++, "class", "card-cover-btn"); builder.AddAttribute(seq++, "aria-label", $"Select {domain} core"); builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker)); builder.CloseElement();
+          }
+        builder.CloseElement(); // .card-wrap
+      builder.CloseElement(); // .slot-body
+    builder.CloseElement(); // .core-slot
   };
 
   // Mirror the SVG card's rating-to-border palette for consistency
@@ -202,6 +233,7 @@
   private void OpenCpuPicker() => OpenPicker("CPU");
   private void OpenPpuPicker() => OpenPicker("PPU");
   private void OpenApuPicker() => OpenPicker("APU");
+  private void OpenShaderPicker() => OpenPicker("SHADER");
 
   private void OpenPicker(string domain)
   {
@@ -211,6 +243,7 @@
       case "CPU": SelectedCpu = OwnedCpu.FirstOrDefault() ?? "FMC"; break;
       case "PPU": SelectedPpu = OwnedPpu.FirstOrDefault() ?? "FMC"; break;
       case "APU": SelectedApu = OwnedApu.FirstOrDefault() ?? "FMC"; break;
+  case "SHADER": SelectedShader = OwnedShader.FirstOrDefault() ?? "PX"; break;
     }
   }
 
@@ -260,6 +293,21 @@
             if (apu != null) { name = apu.CoreName ?? ("APU_" + id); desc = apu.Description ?? ""; perf = apu.Performance; rating = Math.Clamp(apu.Rating,0,5); footer = apu.Category ?? domain; }
           }
           break;
+        case "SHADER":
+          try
+          {
+            var sh = ShaderProvider?.GetById(id);
+            if (sh != null)
+            {
+              name = !string.IsNullOrWhiteSpace(sh.DisplayName) ? sh.DisplayName : (sh.CoreName ?? ("SHADER_" + id));
+              desc = sh.Description ?? string.Empty;
+              perf = sh.Performance;
+              rating = Math.Clamp(sh.Rating, 0, 5);
+              footer = "SHADER";
+            }
+          }
+          catch { }
+          break;
         default:
           // Unknown domain (e.g., MAPPER/CLOCK/SHADER) — synthesize a reasonable card label
           name = $"{domain}_" + id; desc = string.Empty; perf = 0; rating = 0; footer = domain;
@@ -301,8 +349,8 @@
       LevelTitle = level?.title ?? level?.cardChallenge ?? $"Level {index}";
       RequiredStars = level?.requiredStars > 0 ? level!.requiredStars : 5;
 
-      // Reset enforced slots
-      EnforcedCpu = EnforcedPpu = EnforcedApu = null;
+  // Reset enforced slots
+  EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = null;
 
       // Parse requiredCards => fill per-domain enforced ids and build header chips
       var enforced = new List<(string domain, string id, string label, string border)>();
@@ -318,6 +366,7 @@
           case "CPU": EnforcedCpu = id; break;
           case "PPU": EnforcedPpu = id; break;
           case "APU": EnforcedApu = id; break;
+          case "SHADER": EnforcedShader = id; break;
         }
         var card = BuildCard(domain, id);
         enforced.Add((domain, id, $"{domain}_"+id, RatingToBorderColor(Math.Clamp(card.Rating,0,5))));
