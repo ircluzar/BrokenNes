@@ -94,10 +94,12 @@ public class Mapper33 : IMapper
                     SetPrgBank1(value & 0x1F);
                     break;
                 case 2: // $8002 [CCCC CCCC] : CHR 2KB @ $0000
-                    chr2k0 = value; // 2KB units
+                    // Even-align required for 2KB region: hardware ignores bit 0
+                    chr2k0 = value & ~1; // 2KB units (1KB LSB cleared)
                     break;
                 case 3: // $8003 [CCCC CCCC] : CHR 2KB @ $0800
-                    chr2k1 = value; // 2KB units
+                    // Even-align required for 2KB region: hardware ignores bit 0
+                    chr2k1 = value & ~1; // 2KB units (1KB LSB cleared)
                     break;
             }
         }
