@@ -1252,11 +1252,7 @@
                 if (string.IsNullOrWhiteSpace(QPpu)) QPpu = QCoresAll;
                 if (string.IsNullOrWhiteSpace(QApu)) QApu = QCoresAll;
             }
-            // Pre-set ROM if provided so initial load uses it
-            if (!string.IsNullOrWhiteSpace(QRom))
-            {
-                emu.Controller.RomFileName = QRom!;
-            }
+            // Do not pre-set ROM here; we'll load it after emulator init to ensure uploaded ROMs are restored first
         }
         catch { }
     }
@@ -1319,6 +1315,8 @@
                 if (!string.IsNullOrWhiteSpace(QClock)) await emu.SetClockCorePublic(QClock!);
                 if (!string.IsNullOrWhiteSpace(QRom))
                 {
+                    // Defer ROM selection until after init, but ensure the controller targets the query ROM
+                    emu.Controller.RomFileName = QRom!;
                     await emu.LoadSelectedRomPublic();
                 }
                 // Execute optional stage script after emulator/ROM init
