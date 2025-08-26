@@ -415,6 +415,24 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
+    // SHADER_MUSK — rocket plume and starfield
+    public static string SHADER_MUSK =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='SHADER_MUSK'>" +
+        "  <g>" +
+        "    <rect x='8' y='16' width='196' height='98' rx='10' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='18' y='26' width='176' height='78' rx='6' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "    <g fill='" + AccentToken + "' opacity='0.8'>" +
+        "      <circle cx='50' cy='50' r='2'/>" +
+        "      <circle cx='160' cy='40' r='1.5'/>" +
+        "      <circle cx='140' cy='80' r='1'/>" +
+        "      <circle cx='70' cy='90' r='1.5'/>" +
+        "    </g>" +
+        "    <path d='M106 65 L106 35 L98 45 L106 35 L114 45 Z' fill='" + Stroke + "'/>" +
+        "    <path d='M106 75 Q90 85 106 95 Q122 85 106 75' fill='none' stroke='" + AccentToken + "' stroke-width='3'/>" +
+        "    <path d='M106 95 Q95 105 106 115 Q117 105 106 95' fill='none' stroke='" + AccentToken + "' stroke-width='2' opacity='0.6'/>" +
+        "  </g>" +
+        "</svg>";
+
     // SHADER_TV — CRT tube: scanlines, triads, subtle barrel
     public static string SHADER_TV =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='SHADER_TV'>" +
