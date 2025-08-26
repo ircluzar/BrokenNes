@@ -20,10 +20,11 @@
 .continue-root .hdr-main{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:.75rem}
 .continue-root .lvl-title{display:flex;align-items:center;gap:.6rem;font-size:.9rem}
 .continue-root .lvl-title .chip{display:inline-block;background:#fff;color:#000;padding:.15rem .35rem;border:2px solid #ff5a26}
+.continue-root .lvl-title strong{line-height:1.2;word-break:break-word}
 .continue-root .lvl-status .status-chip{display:inline-block;padding:.2rem .4rem;border:2px solid #fff;font-size:.65rem}
 .continue-root .lvl-status .status-chip.cleared{background:#10b981;border-color:#10b981;color:#000}
 .continue-root .lvl-status .status-chip.not-cleared{background:#374151;border-color:#9ca3af;color:#fff}
-.continue-root .hdr-cards{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.continue-root .hdr-cards{display:flex;align-items:flex-start;gap:.4rem;flex-wrap:wrap}
 .continue-root .enf-chip{background:#000;color:#fff;border:2px solid #fff;font-size:.6rem;padding:.2rem .35rem;cursor:pointer}
 .continue-root .enf-chip:hover{background:#111}
 .continue-root .hdr-cta{margin-top:.75rem}
@@ -51,5 +52,23 @@
   .opt-row{flex-wrap:wrap;}
   .opt-row label{flex:0 0 100%;}
   .opt-row input[type=range]{flex:1 1 100%; margin-left:0;}
+  /* Header: stack nicely on mobile */
+  .continue-root .hdr-main{flex-direction:column;align-items:flex-start;gap:.5rem;margin-bottom:.6rem}
+  .continue-root .lvl-title{font-size:.85rem;gap:.45rem}
+  .continue-root .lvl-title .chip{padding:.12rem .32rem}
+  .continue-root .lvl-status .status-chip{font-size:.6rem;padding:.18rem .36rem}
+  /* Enforced chips: wrap within the container; label on its own line */
+  .continue-root .hdr-cards{flex-wrap:wrap;gap:.35rem;padding-bottom:.15rem}
+  .continue-root .hdr-cards .small-note{flex:0 0 100%;margin-bottom:.1rem}
+  .continue-root .enf-chip{white-space:nowrap;padding:.22rem .4rem}
+  /* CTA: full-width button for easier tap */
+  .continue-root .hdr-cta{margin-top:.5rem}
+  .continue-root .btn-next{display:block;width:100%;text-align:center}
   .core-grid{grid-template-columns:1fr}
+}
+
+/* Ultra-small devices refinement */
+@media (max-width:400px){
+  .continue-root .lvl-title{font-size:.8rem}
+  .continue-root .btn-next{font-size:.65rem;padding:.42rem .7rem}
 }

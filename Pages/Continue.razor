@@ -1,17 +1,18 @@
 @page "/continue"
 @using NesEmulator
+@using System.Text.Json
 @using BrokenNes.Shared
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject BrokenNes.Services.GameSaveService SaveSvc
 
 <div class="options-root continue-root">
-  <h2 class="opt-title">CONTINUE</h2>
+  <h2 class="opt-title">DECK BUILDER</h2>
 
   <section class="cont-header">
     <div class="hdr-main">
       <div class="lvl-title">
-        <span class="chip">Level @CurrentLevel</span>
+        <span class="chip">@CurrentLevel</span>
         <strong>@LevelTitle</strong>
       </div>
       <div class="lvl-status">
@@ -28,7 +29,7 @@
       }
     </div>
     <div class="hdr-cta">
-      <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (5 stars)</button>
+      <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (@RequiredStars ⭐)</button>
     </div>
   </section>
 
@@ -110,30 +111,16 @@
     try { await JS.InvokeVoidAsync("nesInterop.applySavedAudioVolumes"); } catch { }
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure();"); } catch { }
 
-    // Minimal levels config (stub for first milestone)
-    // Level 1: enforce FMC on all cores; future levels can vary.
-    var save = await SaveSvc.LoadAsync();
-    CurrentLevel = Math.Max(1, save.Level);
-    Stars = save.Achievements?.Count ?? 0;
-    LevelTitle = CurrentLevel switch { 1 => "FMC Warmup", 2 => "Getting Serious", _ => $"Level {CurrentLevel}" };
-    RequiredStars = 5; // constant label per worksheet spec (dynamic later)
-    EnforcedCpu = "FMC";
-    EnforcedPpu = "FMC";
-    EnforcedApu = "FMC";
-    // Compute rating-based border colors to match the SVG card palette
-    var cpuCard = BuildCard("CPU", EnforcedCpu!);
-    var ppuCard = BuildCard("PPU", EnforcedPpu!);
-    var apuCard = BuildCard("APU", EnforcedApu!);
-    EnforcedCards = new[]{
-      ("CPU", EnforcedCpu!, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpuCard.Rating,0,5))),
-      ("PPU", EnforcedPpu!, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppuCard.Rating,0,5))),
-      ("APU", EnforcedApu!, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apuCard.Rating,0,5)))
-    };
+  // Load save, then fetch level data from continueDb and derive enforced chips and cost
+  var save = await SaveSvc.LoadAsync();
+  CurrentLevel = Math.Max(1, save.Level);
+  Stars = save.Achievements?.Count ?? 0;
+  await LoadLevelFromDbAsync(CurrentLevel);
 
-    // Owned sets
-    OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
-    OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
-    OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+  // Owned sets (used by pickers)
+  OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+  OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
+  OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -172,8 +159,8 @@
       SelectedCpu = SelectedPpu = SelectedApu = null;
       CurrentLevel = save.Level;
       Stars = save.Achievements?.Count ?? 0;
-      LevelTitle = CurrentLevel switch { 1 => "FMC Warmup", 2 => "Getting Serious", _ => $"Level {CurrentLevel}" };
-      StateHasChanged();
+  await LoadLevelFromDbAsync(CurrentLevel);
+  StateHasChanged();
     }
     catch { }
   }
@@ -273,6 +260,10 @@
             if (apu != null) { name = apu.CoreName ?? ("APU_" + id); desc = apu.Description ?? ""; perf = apu.Performance; rating = Math.Clamp(apu.Rating,0,5); footer = apu.Category ?? domain; }
           }
           break;
+        default:
+          // Unknown domain (e.g., MAPPER/CLOCK/SHADER) — synthesize a reasonable card label
+          name = $"{domain}_" + id; desc = string.Empty; perf = 0; rating = 0; footer = domain;
+          break;
       }
     }
     catch { }
@@ -286,5 +277,78 @@
     try { await JS.InvokeVoidAsync("eval", @"(function(){try{if(window.music){try{window.music.fadeOut&&window.music.fadeOut(700,true);}catch(e){}} setTimeout(function(){try{window.nesInterop&&window.nesInterop.playTitleMusic&&window.nesInterop.playTitleMusic();}catch(e){}},150);}catch(e){}})();"); } catch { }
     try { await Task.Delay(120); } catch { }
     Nav.NavigateTo(BuildRel("deck-builder?skipHW=1"), false);
+  }
+
+  // ===== Level data (continueDb) =====
+  private sealed class DbLevel
+  {
+    public int index { get; set; }
+    public string[]? requiredCards { get; set; }
+    public int requiredStars { get; set; }
+    public string? title { get; set; }
+    public string? cardChallenge { get; set; }
+  }
+
+  private async Task LoadLevelFromDbAsync(int index)
+  {
+    try
+    {
+      // Ask continueDb for this level by primary key (index)
+      var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const rec = await window.continueDb.get('levels', {index}); return JSON.stringify(rec||null); }} catch(e) {{ return ''; }} }})()");
+      DbLevel? level = string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<DbLevel>(json);
+
+      // Defaults if no record
+      LevelTitle = level?.title ?? level?.cardChallenge ?? $"Level {index}";
+      RequiredStars = level?.requiredStars > 0 ? level!.requiredStars : 5;
+
+      // Reset enforced slots
+      EnforcedCpu = EnforcedPpu = EnforcedApu = null;
+
+      // Parse requiredCards => fill per-domain enforced ids and build header chips
+      var enforced = new List<(string domain, string id, string label, string border)>();
+      foreach (var raw in (level?.requiredCards ?? Array.Empty<string>()))
+      {
+        if (string.IsNullOrWhiteSpace(raw)) continue;
+        var parts = raw.Split('_', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) continue;
+        var domain = parts[0].ToUpperInvariant();
+        var id = parts[1];
+        switch (domain)
+        {
+          case "CPU": EnforcedCpu = id; break;
+          case "PPU": EnforcedPpu = id; break;
+          case "APU": EnforcedApu = id; break;
+        }
+        var card = BuildCard(domain, id);
+        enforced.Add((domain, id, $"{domain}_"+id, RatingToBorderColor(Math.Clamp(card.Rating,0,5))));
+      }
+      // If DB had no enforced cards, retain a sensible default to keep the page functional
+      if (enforced.Count == 0)
+      {
+        EnforcedCpu ??= "FMC"; EnforcedPpu ??= "FMC"; EnforcedApu ??= "FMC";
+        var cpu = BuildCard("CPU", EnforcedCpu);
+        var ppu = BuildCard("PPU", EnforcedPpu);
+        var apu = BuildCard("APU", EnforcedApu);
+        enforced.Add(("CPU", EnforcedCpu, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpu.Rating,0,5))));
+        enforced.Add(("PPU", EnforcedPpu, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppu.Rating,0,5))));
+        enforced.Add(("APU", EnforcedApu, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apu.Rating,0,5))));
+      }
+      EnforcedCards = enforced.ToArray();
+    }
+    catch
+    {
+      // Fallbacks if continueDb not available
+      LevelTitle = $"Level {index}";
+      RequiredStars = 5;
+      EnforcedCpu ??= "FMC"; EnforcedPpu ??= "FMC"; EnforcedApu ??= "FMC";
+      var cpu = BuildCard("CPU", EnforcedCpu);
+      var ppu = BuildCard("PPU", EnforcedPpu);
+      var apu = BuildCard("APU", EnforcedApu);
+      EnforcedCards = new[]{
+        ("CPU", EnforcedCpu, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpu.Rating,0,5))),
+        ("PPU", EnforcedPpu, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppu.Rating,0,5))),
+        ("APU", EnforcedApu, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apu.Rating,0,5)))
+      };
+    }
   }
 }
