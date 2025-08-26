@@ -30,6 +30,7 @@ public class Cartridge
 		2 => "UNROM",
 		3 => "CNROM",
 		4 => "MMC3",
+		33 => "Taito-TC0190 (Mapper33)",
 		7 => "AxROM",
 		9 => "MMC2",
 			90 => "Mapper90",
@@ -139,6 +140,9 @@ public class Cartridge
 				break;
 			case 5:
 				mapper = new Mapper5(this); // MMC5 (partial)
+				break;
+			case 33:
+				mapper = new Mapper33(this); // Taito TC0190/TC0350 (no IRQ)
 				break;
 				case 7:
 					mapper = new Mapper7(this);
