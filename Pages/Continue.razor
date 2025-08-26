@@ -994,7 +994,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       if (!string.IsNullOrWhiteSpace(cpu)) qs.Add($"cpu={cpu}");
       if (!string.IsNullOrWhiteSpace(ppu)) qs.Add($"ppu={ppu}");
       if (!string.IsNullOrWhiteSpace(apu)) qs.Add($"apu={apu}");
-      var url = "/nes?" + string.Join('&', qs);
+      var url = "nes?" + string.Join('&', qs);
       // Soft fade audio and navigate
       try { await JS.InvokeVoidAsync("eval", @"(function(){ try{ if(window.music && typeof window.music.fadeOut==='function'){ window.music.fadeOut(500,true); } }catch(e){} })();"); } catch { }
       Nav.NavigateTo(url, false);

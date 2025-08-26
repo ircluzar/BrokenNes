@@ -31,6 +31,7 @@ public class Cartridge
 		3 => "CNROM",
 		4 => "MMC3",
 		7 => "AxROM",
+			90 => "Mapper90",
 		_ => "Unknown"
 	};
 
@@ -141,6 +142,9 @@ public class Cartridge
 				case 7:
 					mapper = new Mapper7(this);
 					break;
+			case 90:
+				mapper = new Mapper90(this);
+				break;
 			default:
 				#if DIAG_LOG
 				Console.WriteLine($"Mapper {mapperID} ({mapperName}) is not supported");
