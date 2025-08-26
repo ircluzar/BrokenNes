@@ -18,6 +18,8 @@
 .crud-pane{border:3px solid #fff;padding:.75rem}
 .grid-head{display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:.35rem;font-size:.75rem;margin-bottom:.35rem;color:#ffb199}
 .grid-row{display:grid;grid-template-columns:repeat(6, minmax(0,1fr));gap:.35rem;align-items:center;font-size:.75rem;padding:.15rem 0;border-bottom:1px dashed rgba(255,255,255,.1)}
+.grid-row:hover{background:rgba(255,90,38,.12)}
+.grid-row:focus-within{background:rgba(255,90,38,.18)}
 .grid-empty{font-size:.7rem;opacity:.7}
 .small-note{opacity:.6;font-size:.65rem;margin:.15rem 0 .55rem}
 
