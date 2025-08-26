@@ -191,6 +191,7 @@ compress_candidates=(
   "lib/soundfont.js"
   "lib/nesInterop.js"
   "speak.js"
+  "story.js"
   "sf2player/js-synthesizer.min.js"
   "sf2player/js-synthesizer.worklet.min.js"
   "sf2player/libfluidsynth-2.0.2.js"
@@ -262,6 +263,26 @@ if [[ -d "$FLAT_DIR/models" ]]; then
       gzip -c -9 "$onnx" > "$onnx.gz" || echo "    (gzip failed for ${rel})"
     fi
   done < <(find "$FLAT_DIR/models" -type f -name '*.onnx' -print0 2>/dev/null)
+fi
+
+# Verify optional Continue DB JSON assets and compress them (best-effort)
+if [[ -d "$FLAT_DIR/continue" ]]; then
+  echo "==> Checking optional Continue DB assets (continue/*.json)"
+  if compgen -G "$FLAT_DIR/continue/*.json" > /dev/null; then
+    for jf in "$FLAT_DIR"/continue/*.json; do
+      [[ -f "$jf" ]] || continue
+      rel=${jf#"$FLAT_DIR/"}
+      echo "  found: $rel"
+      if command -v brotli >/dev/null 2>&1 && [[ ! -f "$jf.br" ]]; then
+        echo "  brotli: $rel"; brotli -f -q 11 "$jf" -o "$jf.br" || true
+      fi
+      if command -v gzip >/dev/null 2>&1 && [[ ! -f "$jf.gz" ]]; then
+        echo "  gzip:   $rel"; gzip -c -9 "$jf" > "$jf.gz" || true
+      fi
+    done
+  else
+    echo "  note: no JSON assets under continue/ (optional)"
+  fi
 fi
 
 # Ensure base href is relative for subdirectory hosting
@@ -341,7 +362,7 @@ fi
 # folders so direct navigation to /nes, /options, /deckbuilder works without server-side
 # fallback. Each folder gets an index.html cloned from the root one with a modified
 # <base href> so relative framework/script paths resolve to the root.
-routes=(nes options deck-builder deckbuilder story continue cores input inputsettings)
+routes=(nes options deck-builder deckbuilder story continue cores input inputsettings crud)
 echo "==> Generating static route entry points (${routes[*]})"
 for r in "${routes[@]}"; do
   route_dir="$FLAT_DIR/$r"
@@ -365,7 +386,8 @@ if [[ -f "Pages/Home.razor.css" ]]; then
               "$FLAT_DIR/continue/index.html" \
               "$FLAT_DIR/cores/index.html" \
               "$FLAT_DIR/input/index.html" \
-              "$FLAT_DIR/inputsettings/index.html"; do
+              "$FLAT_DIR/inputsettings/index.html" \
+              "$FLAT_DIR/crud/index.html"; do
     [[ -f "$html" ]] || continue
     if ! grep -q 'home-page.css' "$html"; then
       sed -i '' -e 's#</head>#  <link rel="stylesheet" href="css/home-page.css" />\n</head>#' "$html" || true
