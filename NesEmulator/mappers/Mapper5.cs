@@ -36,13 +36,19 @@ public class Mapper5 : IMapper
     private int[] chrRegsBgRaw = new int[4];  // B set raw regs as written ($5128-$512B)
 
     // Resolved bank offsets (byte offsets inside ROM/RAM)
-    private int[] prgSlotOffsets = new int[4]; // each 8KB slot
+    private int[] prgSlotOffsets = new int[4]; // each 8KB slot (PRG ROM)
+    private int[] prgSlotOffsetsRam = new int[4]; // each 8KB slot (PRG RAM)
+    private bool[] prgSlotIsRom = new bool[4]; // per 8KB slot: true=ROM, false=RAM (bit7 of $5114-$5117)
     // Precomputed CHR slot offsets for sprite and background fetches (each 1KB slot view)
     private int[] chrSlotOffsetsSprite = new int[8];
     private int[] chrSlotOffsetsBg = new int[8];
 
     // Current PPU phase hint (BG vs Sprite) provided by PPUs
     private bool ppuFetchIsSprite;
+    // Track whether PPU is in 8x16 sprite height mode (affects A/B CHR bank split semantics)
+    private bool objSize16Mode;
+    // Track whether rendering is enabled (used for ambiguous/non-pattern CHR accesses)
+    private bool renderingOn;
     // $2007 I/O follows the last CHR register set written (A sprite: $5120-$5127, B background: $5128-$512B)
     private bool lastChrIoSprite;
 
@@ -66,15 +72,16 @@ public class Mapper5 : IMapper
     {
         prgMode = 3; // default 4x8KB
         chrMode = 3; // default 8x1KB
-        for (int i = 0; i < 4; i++) prgRegs[i] = i;
-        int prg8kBanks = Math.Max(1, cart.prgROM.Length / 0x2000);
-        prgRegs[3] = prg8kBanks - 1; // last bank fixed (common)
+    for (int i = 0; i < 4; i++) prgRegs[i] = i;
+    int prg8kBanks = Math.Max(1, cart.prgROM.Length / 0x2000);
+    prgRegs[3] = (0x80 | ((prg8kBanks - 1) & 0x7F)); // last bank fixed to ROM by default
+    for (int i = 0; i < 4; i++) prgRegs[i] |= 0x80; // default PRG windows to ROM
     for (int i = 0; i < 8; i++) chrRegsSprite[i] = i;
     for (int i = 0; i < 4; i++) chrRegsBgRaw[i] = i; // BG raw regs default
         nametableControl = 0; exramMode = 0; fillTile = 0; fillAttrib = 0; wramBank = 0; chrHigh = 0;
         multiplicand = multiplier = productLo = productHi = 0;
         irqTarget = irqCounter = 0; irqEnabled = irqPending = inFrame = false;
-    ppuFetchIsSprite = false; lastChrIoSprite = false;
+    ppuFetchIsSprite = false; objSize16Mode = false; renderingOn = false; lastChrIoSprite = false;
     lastNtReadIndex = 0;
         ApplyMirroringFrom5105();
         RebuildPrgMapping();
@@ -120,9 +127,17 @@ public class Mapper5 : IMapper
         if (address >= 0x8000)
         {
             int slot = (address - 0x8000) / 0x2000; if ((uint)slot > 3) slot = 3;
-            int baseOffset = prgSlotOffsets[slot];
-            int final = baseOffset + (address & 0x1FFF);
-            if ((uint)final < cart.prgROM.Length) return cart.prgROM[final];
+            int inner = address & 0x1FFF;
+            if (prgSlotIsRom[slot])
+            {
+                int final = prgSlotOffsets[slot] + inner;
+                if ((uint)final < cart.prgROM.Length) return cart.prgROM[final];
+            }
+            else
+            {
+                int final = prgSlotOffsetsRam[slot] + inner;
+                if ((uint)final < cart.prgRAM.Length) return cart.prgRAM[final];
+            }
             return 0xFF;
         }
         return 0;
@@ -167,13 +182,10 @@ public class Mapper5 : IMapper
                     }
                     else if (address == 0x5130)
                     {
-                        // Theory 5: $5130 provides top 2 bits of CHR bank index. Some games update $5130 after
-                        // writing $5120-$512B. Re-apply high bits to all CHR regs and rebuild mapping.
+                        // Theory 2: Do NOT retroactively modify previously-written CHR regs.
+                        // Only store high bits; they apply when $5120-$512B are written next.
                         chrHigh = value & 0x03;
-                        // Re-apply high bits to A (sprite) and B (background) registers preserving low 8 bits
-                        for (int i = 0; i < 8; i++) chrRegsSprite[i] = (chrRegsSprite[i] & 0xFF) | (chrHigh << 8);
-                        for (int i = 0; i < 4; i++) chrRegsBgRaw[i]  = (chrRegsBgRaw[i]  & 0xFF) | (chrHigh << 8);
-                        RebuildChrMapping();
+                        // No rebuild here; mapping remains as previously written.
                     }
                     else if (address == 0x5203)
                     { irqTarget = value; }
@@ -196,6 +208,17 @@ public class Mapper5 : IMapper
             int bank = banks > 0 ? (wramBank % banks + banks) % banks : 0;
             cart.prgRAM[(bank * 0x2000) + ((address - 0x6000) & 0x1FFF)] = value; return;
         }
+        if (address >= 0x8000)
+        {
+            int slot = (address - 0x8000) / 0x2000; if ((uint)slot > 3) slot = 3;
+            if (!prgSlotIsRom[slot])
+            {
+                int inner = address & 0x1FFF;
+                int final = prgSlotOffsetsRam[slot] + inner;
+                if ((uint)final < cart.prgRAM.Length) cart.prgRAM[final] = value;
+            }
+            return;
+        }
     }
 
     // --- PPU ---
@@ -204,7 +227,7 @@ public class Mapper5 : IMapper
         if (address < 0x2000)
         {
             // MMC5 Mode 1: override BG CHR mapping per tile using ExRAM table
-            if (!ppuFetchIsSprite && exramMode == 1)
+            if (renderingOn && !ppuFetchIsSprite && exramMode == 1)
             {
                 // Compute 1KB base offset from ExRAM-selected 4KB bank plus $5130 hi bits
                 int bank4k = exram[lastNtReadIndex & 0x3FF] & 0x3F; // 0..63
@@ -227,7 +250,23 @@ public class Mapper5 : IMapper
             }
 
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffsetNorm = ppuFetchIsSprite ? chrSlotOffsetsSprite[slot] : chrSlotOffsetsBg[slot];
+            // Theory 1 + 4:
+            // - In 8x8 sprite mode (objSize16 OFF), route both BG and OBJ to A-bank.
+            // - When 8x16 is ON and rendering is active, split by phase (sprite vs BG).
+            // - When not rendering (CPU $2007 path), use last-written bank set (A when lastChrIoSprite=true).
+            int baseOffsetNorm;
+            if (!objSize16Mode)
+            {
+                baseOffsetNorm = chrSlotOffsetsSprite[slot];
+            }
+            else if (renderingOn)
+            {
+                baseOffsetNorm = (ppuFetchIsSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            }
+            else
+            {
+                baseOffsetNorm = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            }
             int final2 = baseOffsetNorm + (address & 0x03FF);
             if (cart.chrBanks > 0)
             {
@@ -246,7 +285,7 @@ public class Mapper5 : IMapper
     {
         if (address < 0x2000 && cart.chrBanks == 0)
         {
-            if (!ppuFetchIsSprite && exramMode == 1)
+            if (renderingOn && !ppuFetchIsSprite && exramMode == 1)
             {
                 int bank4k = exram[lastNtReadIndex & 0x3FF] & 0x3F;
                 int bank = (chrHigh << 6) | bank4k;
@@ -257,7 +296,19 @@ public class Mapper5 : IMapper
                 return;
             }
             int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
-            int baseOffsetNorm = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            int baseOffsetNorm;
+            if (!objSize16Mode)
+            {
+                baseOffsetNorm = chrSlotOffsetsSprite[slot];
+            }
+            else if (renderingOn)
+            {
+                baseOffsetNorm = (ppuFetchIsSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            }
+            else
+            {
+                baseOffsetNorm = (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+            }
             int final2 = baseOffsetNorm + (address & 0x03FF);
             if ((uint)final2 < cart.chrRAM.Length) cart.chrRAM[final2] = value;
         }
@@ -267,9 +318,10 @@ public class Mapper5 : IMapper
     {
         prgIndex = -1; if (address < 0x8000) return false;
         int slot = (address - 0x8000) / 0x2000; if ((uint)slot > 3) slot = 3;
-        int baseOffset = prgSlotOffsets[slot];
-        int final = baseOffset + (address & 0x1FFF);
-        if ((uint)final < cart.prgROM.Length) { prgIndex = final; return true; }
+    if (!prgSlotIsRom[slot]) return false;
+    int baseOffset = prgSlotOffsets[slot];
+    int final = baseOffset + (address & 0x1FFF);
+    if ((uint)final < cart.prgROM.Length) { prgIndex = final; return true; }
         return false;
     }
 
@@ -277,37 +329,51 @@ public class Mapper5 : IMapper
     private void RebuildPrgMapping()
     {
         int prg8kBanks = Math.Max(1, cart.prgROM.Length / 0x2000);
+        int ram8kBanks = Math.Max(1, cart.prgRAM.Length / 0x2000);
+        void SetSlot(int slotIndex, int regVal)
+        {
+            bool rom = (regVal & 0x80) != 0;
+            int bank = (regVal & 0x7F);
+            prgSlotIsRom[slotIndex] = rom;
+            if (rom)
+                prgSlotOffsets[slotIndex] = ((bank % prg8kBanks) * 0x2000);
+            else
+                prgSlotOffsetsRam[slotIndex] = ((bank % ram8kBanks) * 0x2000);
+        }
         switch (prgMode)
         {
             case 0: // 32KB from $5117 aligned to 32KB
                 {
-                    int bank = prgRegs[3] & ~0x03;
-                    for (int i = 0; i < 4; i++) prgSlotOffsets[i] = ((bank + i) % prg8kBanks) * 0x2000;
+                    int raw = prgRegs[3];
+                    int bank = (raw & 0x7F) & ~0x03;
+                    for (int i = 0; i < 4; i++) SetSlot(i, (raw & 0x80) | ((bank + i) & 0x7F));
                 }
                 break;
             case 1: // 2x16KB: first from $5115 aligned to 16KB, second from $5117 aligned to 16KB
                 {
-                    int b0 = (prgRegs[1] & ~0x01) % prg8kBanks;
-                    int b2 = (prgRegs[3] & ~0x01) % prg8kBanks;
-                    prgSlotOffsets[0] = b0 * 0x2000;
-                    prgSlotOffsets[1] = ((b0 + 1) % prg8kBanks) * 0x2000;
-                    prgSlotOffsets[2] = b2 * 0x2000;
-                    prgSlotOffsets[3] = ((b2 + 1) % prg8kBanks) * 0x2000;
+                    int raw0 = prgRegs[1];
+                    int raw2 = prgRegs[3];
+                    int b0 = (raw0 & 0x7F) & ~0x01;
+                    int b2 = (raw2 & 0x7F) & ~0x01;
+                    SetSlot(0, (raw0 & 0x80) | ((b0 + 0) & 0x7F));
+                    SetSlot(1, (raw0 & 0x80) | ((b0 + 1) & 0x7F));
+                    SetSlot(2, (raw2 & 0x80) | ((b2 + 0) & 0x7F));
+                    SetSlot(3, (raw2 & 0x80) | ((b2 + 1) & 0x7F));
                 }
                 break;
             case 2: // 16KB + 2x8KB: first 16KB from $5115, then $5116, $5117
                 {
-                    int b0 = (prgRegs[1] & ~0x01) % prg8kBanks;
-                    prgSlotOffsets[0] = b0 * 0x2000;
-                    prgSlotOffsets[1] = ((b0 + 1) % prg8kBanks) * 0x2000;
-                    prgSlotOffsets[2] = (prgRegs[2] % prg8kBanks) * 0x2000;
-                    prgSlotOffsets[3] = (prgRegs[3] % prg8kBanks) * 0x2000;
+                    int raw0 = prgRegs[1];
+                    int b0 = (raw0 & 0x7F) & ~0x01;
+                    SetSlot(0, (raw0 & 0x80) | ((b0 + 0) & 0x7F));
+                    SetSlot(1, (raw0 & 0x80) | ((b0 + 1) & 0x7F));
+                    SetSlot(2, prgRegs[2]);
+                    SetSlot(3, prgRegs[3]);
                 }
                 break;
             case 3: // 4x8KB from $5114-$5117
             default:
-                for (int i = 0; i < 4; i++)
-                    prgSlotOffsets[i] = ((prgRegs[i] % prg8kBanks) * 0x2000);
+                for (int i = 0; i < 4; i++) SetSlot(i, prgRegs[i]);
                 break;
         }
     }
@@ -366,25 +432,29 @@ public class Mapper5 : IMapper
         }
         else
         {
-            // Fallback: when not in 1KB mode, approximate by mirroring BG raw regs into an 8-reg array
+            // When not in 1KB mode, mirror ExROM's BG register usage nuances.
+            // Mode 1 (4KB): BG uses regs_b[3] for both halves.
+            // Mode 2 (2KB): BG uses regs_b[1] for first 4KB (two 2KB segments) and regs_b[3] for second 4KB.
             int[] tmp = new int[8];
-            // Mode 2 (2KB): regs at 0,2,4,6 used; map reg0->slots 0-1, reg1->2-3, ...
             if (chrMode == 2)
             {
-                tmp[0] = tmp[1] = chrRegsBgRaw[0];
-                tmp[2] = tmp[3] = chrRegsBgRaw[1];
-                tmp[4] = tmp[5] = chrRegsBgRaw[2];
-                tmp[6] = tmp[7] = chrRegsBgRaw[3];
+                // Fill even indices that BuildFromEightRegs consumes in mode 2 (0,2,4,6)
+                tmp[0] = chrRegsBgRaw[1]; // slots 0-1
+                tmp[2] = chrRegsBgRaw[1]; // slots 2-3
+                tmp[4] = chrRegsBgRaw[3]; // slots 4-5
+                tmp[6] = chrRegsBgRaw[3]; // slots 6-7
+                // Unused odd indices can remain default
             }
             else if (chrMode == 1)
             {
-                // 4KB: reg0 -> slots 0..3, reg1 -> slots 4..7
-                tmp[0] = tmp[1] = tmp[2] = tmp[3] = chrRegsBgRaw[0];
-                tmp[4] = tmp[5] = tmp[6] = tmp[7] = chrRegsBgRaw[1];
+                // BuildFromEightRegs in mode 1 reads indices 0 and 4; set both to reg_b[3]
+                tmp[0] = chrRegsBgRaw[3]; // first 4KB
+                tmp[4] = chrRegsBgRaw[3]; // second 4KB
             }
             else // chrMode == 0 (8KB)
             {
-                for (int i = 0; i < 8; i++) tmp[i] = chrRegsBgRaw[3]; // use last as coarse 8KB selection
+                // Use reg_b[3] as coarse 8KB selection
+                for (int i = 0; i < 8; i++) tmp[i] = chrRegsBgRaw[3];
             }
             BuildFromEightRegs(tmp, chrSlotOffsetsBg);
         }
@@ -423,7 +493,7 @@ public class Mapper5 : IMapper
     public bool TryPpuNametableRead(ushort address, out byte value)
     {
         value = 0;
-        if (address < 0x2000 || address >= 0x3F00) return false;
+    if (address < 0x2000 || address >= 0x3F00) return false;
         // Only intercept $2000-$2FFF; attribute and tile regions handled uniformly for ExRAM/fill
         int mode = GetNtModeForAddress(address);
         int inner = address & 0x03FF;
@@ -529,8 +599,10 @@ public class Mapper5 : IMapper
     // PPUs tell us whether pattern fetches are for sprites or background.
     public void PpuPhaseHint(bool isSpriteFetch, bool objSize16, bool renderingEnabled)
     {
-        // For our purposes, just latch the sprite/background distinction.
+        // Latch PPU phase and rendering status
         ppuFetchIsSprite = isSpriteFetch;
+        objSize16Mode = objSize16;
+        renderingOn = renderingEnabled;
     }
 
     // Expose MMC5 Mode 1 helpers to PPU via IMapper default hooks
@@ -557,13 +629,13 @@ public class Mapper5 : IMapper
 
     private bool IsMode1Active()
     {
-        // Mode 1 when $5104 == 1 and background fetches (not sprites)
-        return exramMode == 1 && !ppuFetchIsSprite;
+        // Mode 1 when $5104 == 1 and background fetches (not sprites) and rendering is on
+        return exramMode == 1 && !ppuFetchIsSprite && renderingOn;
     }
 
     public bool IsMmc5Mode1BgActive()
     {
-        return exramMode == 1 && !ppuFetchIsSprite;
+        return exramMode == 1 && !ppuFetchIsSprite && renderingOn;
     }
 }
 }

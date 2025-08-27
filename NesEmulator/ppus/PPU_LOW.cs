@@ -282,6 +282,14 @@ public class PPU_LOW : IPPU
 			int nameTable = (renderV >> 10) & 0x0003;
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+			// MMC5 hook: tell mapper a BG NT tile index fetch is occurring (used for Mode 1)
+			if (bus.cartridge.mapper is Mapper5 mmc5Hook)
+			{
+				bool renderingEnabled = (PPUMASK & 0x18) != 0;
+				bool objSize16 = (PPUCTRL & 0x20) != 0;
+				mmc5Hook.PpuPhaseHint(isSpriteFetch: false, objSize16: objSize16, renderingEnabled: renderingEnabled);
+				mmc5Hook.PpuNtFetch((ushort)tileAddr);
+			}
 			byte tileIndex = Read((ushort)tileAddr);
 			int fineY = (renderV >> 12) & 0x7;
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
@@ -291,9 +299,19 @@ public class PPU_LOW : IPPU
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-			byte attrByte = Read((ushort)attrAddr);
-			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-			int paletteIndex = (attrByte >> attrShift) & 0x03;
+			// Attribute selection; MMC5 Mode 1 overrides attribute nibbles with EXRAM-derived palette
+			int paletteIndex;
+			if (bus.cartridge.mapper is Mapper5 mmc5Attr && mmc5Attr.IsMmc5Mode1BgActive())
+			{
+				int p = mmc5Attr.GetMmc5Mode1BgPaletteIndex();
+				paletteIndex = (p >= 0) ? p : 0;
+			}
+			else
+			{
+				byte attrByte = Read((ushort)attrAddr);
+				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
+				paletteIndex = (attrByte >> attrShift) & 0x03;
+			}
 			int scanlineBase = scanlineBaseAll;
 
 			// Render 8 pixels: shift planes instead of recomputing bit index.
@@ -374,6 +392,11 @@ public class PPU_LOW : IPPU
 			int baseAddr = patternTable + subTileIndex * 16;
 
 			// Read pattern data for this row
+			if (showSprites && bus.cartridge.mapper is Mapper5 mmc5Hook)
+			{
+				bool renderingEnabled = (PPUMASK & 0x18) != 0;
+				mmc5Hook.PpuPhaseHint(isSpriteFetch: true, objSize16: isSprite8x16, renderingEnabled: renderingEnabled);
+			}
 			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
 			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
 
@@ -613,6 +636,18 @@ public class PPU_LOW : IPPU
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			// MMC5: delegate per-quadrant nametable routing and EXRAM/fill modes
+			if (bus.cartridge.mapper is Mapper5 mmc5)
+			{
+				if (address < 0x3000)
+				{
+					if (mmc5.TryPpuNametableRead(address, out byte val)) return val;
+					int mode = mmc5.GetMmc5NtModeForAddress(address);
+					int inner = address & 0x03FF;
+					if (mode == 0) return vram[(ushort)inner]; // CIRAM A
+					if (mode == 1) return vram[(ushort)(0x400 + inner)]; // CIRAM B
+				}
+			}
 			ushort mirrored = MirrorVRAMAddress(address);
 			return vram[mirrored];
 		}
@@ -636,6 +671,18 @@ public class PPU_LOW : IPPU
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			// MMC5: delegate per-quadrant nametable routing and EXRAM/fill modes
+			if (bus.cartridge.mapper is Mapper5 mmc5)
+			{
+				if (address < 0x3000)
+				{
+					if (mmc5.TryPpuNametableWrite(address, value)) return;
+					int mode = mmc5.GetMmc5NtModeForAddress(address);
+					int inner = address & 0x03FF;
+					if (mode == 0) { vram[(ushort)inner] = value; return; }
+					if (mode == 1) { vram[(ushort)(0x400 + inner)] = value; return; }
+				}
+			}
 			ushort mirrored = MirrorVRAMAddress(address);
 			vram[mirrored] = value;
 		}
