@@ -13,6 +13,7 @@ builder.Services.AddSingleton<NesEmulator.Shaders.IShaderProvider, NesEmulator.S
 builder.Services.AddScoped<Emulator>();
 builder.Services.AddScoped<BrokenNes.Services.InputSettingsService>();
 builder.Services.AddScoped<BrokenNes.Services.GameSaveService>();
+builder.Services.AddScoped<BrokenNes.Services.MetaGamesService>();
 
 // Add comprehensive logging
 builder.Logging.SetMinimumLevel(LogLevel.Debug);

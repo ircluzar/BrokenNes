@@ -5,6 +5,7 @@
 @using NesEmulator.Shaders
 @inject IJSRuntime JS
 @inject IShaderProvider ShaderProvider
+@inject BrokenNes.Services.MetaGamesService MetaGames
 
 <div class="crud-root">
     <h2 class="crud-title">DATABASE EDITOR</h2>
@@ -39,6 +40,7 @@
         <button class='@GetTabClass("games")' @onclick='() => SetTab("games")'>Games</button>
         <button class='@GetTabClass("achievements")' @onclick='() => SetTab("achievements")'>Achievements</button>
         <button class='@GetTabClass("cards")' @onclick='() => SetTab("cards")'>Cards</button>
+    <button class='@GetTabClass("meta")' @onclick='() => SetTab("meta")'>Meta</button>
         <button class='@GetTabClass("levels")' @onclick='() => SetTab("levels")'>Levels</button>
     </div>
 
@@ -311,6 +313,39 @@
                 }
             }
         }
+        else if (ActiveTab == "meta")
+        {
+            <h3>Meta Achievements</h3>
+            <div class="games-toolbar">
+                <input placeholder="Filter by game title (exact match)" value="@metaFilterTitle" @onchange="OnMetaFilterChanged" />
+                <button @onclick="LoadMetaAsync">Refresh</button>
+                <span class="small-note">Read-only view from models/meta_games.json</span>
+            </div>
+            @if (isLoadingMeta)
+            {
+                <div class="grid-empty">Loading…</div>
+            }
+            else if (metaRows is null || metaRows.Count == 0)
+            {
+                <div class="grid-empty">No data.</div>
+            }
+            else
+            {
+                <div class="grid-head" style="grid-template-columns: 1fr 1fr 2fr;">
+                    <span>Game</span>
+                    <span>Achievement</span>
+                    <span>Formula</span>
+                </div>
+                @foreach (var r in metaRows)
+                {
+                    <div class="grid-row" style="grid-template-columns: 1fr 1fr 2fr;">
+                        <span>@r.game</span>
+                        <span>@r.description</span>
+                        <span style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-family: var(--monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace)">@r.formula</span>
+                    </div>
+                }
+            }
+        }
         else if (ActiveTab == "levels")
         {
             <h3>Levels</h3>
@@ -405,10 +440,12 @@
     private bool isLoadingCards = false;
     private bool isLoadingLevels = false;
     private bool isLoadingAchievements = false;
+    private bool isLoadingMeta = false;
     private List<GameRow> games = new();
     private List<CardRow> cards = new();
     private List<LevelRow> levels = new();
     private List<AchievementRow> achievements = new();
+    private List<MetaRow> metaRows = new();
     private List<CardOption> CardOptions { get; set; } = new();
     private Dictionary<string, string> CardLabelById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool autoSeedEnabled = true;
@@ -444,6 +481,7 @@
     else if (id == "cards") _ = RefreshCardsAsync();
     else if (id == "levels") _ = LoadLevelsAsync();
     else if (id == "achievements") _ = LoadAchievementsAsync();
+    else if (id == "meta") _ = LoadMetaAsync();
     }
 
     private string GetTabClass(string id) => ActiveTab == id ? "active" : string.Empty;
@@ -999,6 +1037,13 @@
         public bool isEditing { get; set; }
     }
 
+    private sealed class MetaRow
+    {
+        public string game { get; set; } = string.Empty;
+        public string description { get; set; } = string.Empty;
+        public string formula { get; set; } = string.Empty;
+    }
+
     private sealed class GameOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
 
     private static T? SafeGet<T>(Func<T> getter)
@@ -1130,6 +1175,40 @@
 
         await Task.Yield();
         return list;
+    }
+
+    // === META tab helpers ===
+    private string metaFilterTitle = string.Empty;
+    private async Task LoadMetaAsync()
+    {
+        if (ActiveTab != "meta") return;
+        isLoadingMeta = true; StateHasChanged();
+        try
+        {
+            IReadOnlyList<BrokenNes.Services.MetaGamesService.AchievementWithGame> list;
+            if (string.IsNullOrWhiteSpace(metaFilterTitle))
+            {
+                list = await MetaGames.GetAllAchievementsFlatAsync();
+            }
+            else
+            {
+                var items = await MetaGames.GetAchievementsByTitleAsync(metaFilterTitle);
+                list = items.Select(a => new BrokenNes.Services.MetaGamesService.AchievementWithGame(metaFilterTitle, a.Description, a.Formula)).ToList();
+            }
+            metaRows = list
+                .Select(x => new MetaRow { game = x.GameTitle, description = x.Description, formula = x.Formula })
+                .OrderBy(r => r.game, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(r => r.description, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch { metaRows = new(); }
+        finally { isLoadingMeta = false; StateHasChanged(); }
+    }
+
+    private async Task OnMetaFilterChanged(ChangeEventArgs e)
+    {
+        metaFilterTitle = e.Value?.ToString() ?? string.Empty;
+        await LoadMetaAsync();
     }
 
     private class ColumnVisibility
