@@ -2,6 +2,7 @@
 @using Microsoft.JSInterop
 @using System.Text.Json
 @using NesEmulator
+@using NesEmulator.RetroAchievements
 @using NesEmulator.Shaders
 @inject IJSRuntime JS
 @inject IShaderProvider ShaderProvider
@@ -313,12 +314,13 @@
                 }
             }
         }
-        else if (ActiveTab == "meta")
+    else if (ActiveTab == "meta")
         {
             <h3>Meta Achievements</h3>
             <div class="games-toolbar">
                 <input placeholder="Filter by game title (exact match)" value="@metaFilterTitle" @onchange="OnMetaFilterChanged" />
                 <button @onclick="LoadMetaAsync">Refresh</button>
+        <button @onclick="TestAllMetaFormulasAsync">Test All Formulas</button>
                 <span class="small-note">Read-only view from models/meta_games.json</span>
             </div>
             @if (isLoadingMeta)
@@ -1209,6 +1211,64 @@
     {
         metaFilterTitle = e.Value?.ToString() ?? string.Empty;
         await LoadMetaAsync();
+    }
+
+    private async Task TestAllMetaFormulasAsync()
+    {
+        try
+        {
+            var prevDebug = Parser.DebugLogging;
+            Parser.DebugLogging = true;
+            // Ensure we have data loaded
+            if (metaRows is null || metaRows.Count == 0)
+            {
+                await LoadMetaAsync();
+            }
+            if (metaRows is null || metaRows.Count == 0)
+            {
+                try { await JS.InvokeVoidAsync("eval", "alert('No meta formulas to test.')"); } catch { }
+                return;
+            }
+
+            var count = 0;
+            foreach (var r in metaRows)
+            {
+                var formula = r.formula ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(formula)) continue;
+                // Split into individual lines to mimic RA multi-line requirements
+                var lines = formula.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+                foreach (var raw in lines)
+                {
+                    var line = raw?.Trim();
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    try
+                    {
+                        // ParseConditions throws on malformed expressions
+                        var _ = Parser.ParseConditions(line);
+                        count++;
+                    }
+                    catch (Exception ex)
+                    {
+                        var msg = $"Meta formula parse failed: Game='{r.game}', Achievement='{r.description}', Line='{line}'. Error: {ex.Message}";
+                        try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
+                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Parsing failed:\n" + msg)})"); } catch { }
+                        Parser.DebugLogging = prevDebug;
+                        return; // stop on first error
+                    }
+                }
+            }
+
+            try { await JS.InvokeVoidAsync("console.log", $"Parsed {count} formula line(s) successfully."); } catch { }
+            try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize($"Parsing succeeded for {count} formula line(s).")})"); } catch { }
+            Parser.DebugLogging = prevDebug;
+        }
+        catch (Exception ex)
+        {
+            var msg = $"Unexpected error during meta formula test: {ex.Message}";
+            try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
+            try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Parsing failed:\n" + msg)})"); } catch { }
+            Parser.DebugLogging = false;
+        }
     }
 
     private class ColumnVisibility
