@@ -342,8 +342,10 @@
                 @foreach (var r in metaRows)
                 {
                     <div class="grid-row" style="grid-template-columns: 1fr 1fr 2fr;">
-                        <span>@r.game</span>
-                        <span style="@(r.TestSucceeded ? "color:var(--success,green);font-weight:600;" : string.Empty)">@r.description</span>
+                <span>@r.game</span>
+                <span title="Click to test just this achievement"
+                    @onclick="(()=> TestSingleMetaFormulaAsync(r))"
+                    style="cursor:pointer;@(r.TestSucceeded ? "color:var(--success,green);font-weight:600;" : (r.TestFailed ? "color:var(--danger,crimson);font-weight:600;" : string.Empty))">@r.description</span>
                         <span style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-family: var(--monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace)">@r.formula</span>
                     </div>
                 }
@@ -1045,7 +1047,8 @@
         public string game { get; set; } = string.Empty;
         public string description { get; set; } = string.Empty;
         public string formula { get; set; } = string.Empty;
-    public bool TestSucceeded { get; set; } = false;
+        public bool TestSucceeded { get; set; } = false;
+        public bool TestFailed { get; set; } = false;
     }
 
     private sealed class GameOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
@@ -1245,176 +1248,20 @@
                 return;
             }
 
-            // Create a dedicated NES instance and load the test ROM once
-            var nes = new NES();
-            try { nes.RomName = "test.nes"; nes.LoadROM(romBytes); }
-            catch (Exception ex)
-            {
-                var msg = $"Failed to load test.nes: {ex.Message}";
-                try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
-                try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
-                Parser.DebugLogging = prevDebug;
-                return;
-            }
-
-            int parsed = 0;
-            int tested = 0;
-            // Reset success markers
-            foreach (var rr in metaRows) rr.TestSucceeded = false;
+            // Reset markers
+            foreach (var rr in metaRows) { rr.TestSucceeded = false; rr.TestFailed = false; }
             StateHasChanged();
+
+            int success = 0, failed = 0;
             foreach (var r in metaRows)
             {
-                var formula = r.formula ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(formula)) continue;
-                // Split into individual lines to mimic RA multi-line requirements
-                var lines = formula.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-                var allLinesOk = true;
-                for (int li = 0; li < lines.Length; li++)
-                {
-                    var line = lines[li]?.Trim();
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    // 1) Parse
-                    try { _ = Parser.ParseConditions(line); parsed++; }
-                    catch (Exception ex)
-                    {
-                        var msg = $"Meta formula parse failed: Game='{r.game}', Achievement='{r.description}', Line='{line}'. Error: {ex.Message}";
-                        try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
-                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Parsing failed:\n" + msg)})"); } catch { }
-                        Parser.DebugLogging = prevDebug; return;
-                    }
-
-                    // Ensure a clean baseline by reloading the ROM for this line
-                    try { nes.LoadROM(romBytes); }
-                    catch { /* continue; NES was already loaded earlier */ }
-
-                    // 2) Build a plan and run a closed-loop unlock test on a fresh engine
-                    AchievementsTester.TestPlan plan;
-                    try { plan = AchievementsTester.BuildPlan(line); }
-                    catch (Exception ex)
-                    {
-                        var msg = $"Plan build failed: Game='{r.game}', Achievement='{r.description}', Line='{line}'. Error: {ex.Message}";
-                        try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
-                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
-                        Parser.DebugLogging = prevDebug; return;
-                    }
-
-                    // Fresh engine per-line to avoid cross-talk; seed snapshots before checks
-                    var engine = new AchievementsEngine(new NesRamDomain(nes));
-                    var tempId = $"meta_{tested}";
-                    engine.Load(new[] { (tempId, line) });
-                    // Seed two frames so delta/prior have stable baselines
-                    nes.RunFrame(); _ = engine.EvaluateFrame();
-                    nes.RunFrame(); var unlockedNow = engine.EvaluateFrame();
-                    if (unlockedNow.Contains(tempId))
-                    {
-                        var msg = $"Initial state already unlocked before testing: Game='{r.game}', Achievement='{r.description}', Line='{line}'.";
-                        try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
-                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
-                        Parser.DebugLogging = prevDebug; return;
-                    }
-
-                    bool ok;
-                    try { ok = AchievementsTester.ExecutePlan(nes, plan, engine, tempId); }
-                    catch (Exception ex)
-                    {
-                        var msg = $"Execution failed: Game='{r.game}', Achievement='{r.description}', Line='{line}'. Error: {ex.Message}";
-                        try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
-                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
-                        Parser.DebugLogging = prevDebug; return;
-                    }
-                    // Final confirmation (advance one more frame to settle hitcounts)
-                    if (!ok)
-                    {
-                        nes.RunFrame(); var post = engine.EvaluateFrame(); ok = post.Contains(tempId) || (engine.Get(tempId)?.Unlocked == true);
-                    }
-                    if (!ok)
-                    {
-                        // Build a detailed diagnostic report: plan steps, memory writes, before/after values, and condition states
-                        string Hex2(byte b) => b.ToString("X2");
-                        string Hex3(int i) => (i & 0x7FF).ToString("X3");
-                        string DescribePrefix(NesEmulator.RetroAchievements.MemoryPrefix p) => p.ToString();
-                        string DescribeOperand(NesEmulator.RetroAchievements.Operand op)
-                        {
-                            static string DescribeMem(NesEmulator.RetroAchievements.MemoryRef m)
-                            {
-                                var mods = (m.UseDelta ? "d" : "") + (m.UsePrior ? "p" : "") + (m.UseBcd ? "b" : "") + (m.UseInvert ? "~" : "");
-                                var modsPart = mods.Length > 0 ? $" mods={mods}" : string.Empty;
-                                return $"Mem({m.Prefix} @0x{m.Address:X}{modsPart})";
-                            }
-                            return op.Kind switch
-                            {
-                                NesEmulator.RetroAchievements.OperandKind.Constant => op.Const.Kind == NesEmulator.RetroAchievements.ValueKind.Float ? $"Const(float)={op.Const.F64}" : $"Const(int)={op.Const.I64}",
-                                NesEmulator.RetroAchievements.OperandKind.Recall => "Recall",
-                                NesEmulator.RetroAchievements.OperandKind.Memory => DescribeMem(op.Mem!),
-                                _ => "(unknown)"
-                            };
-                        }
-
-                        // Collect addresses touched by the plan
-                        var touched = new HashSet<int>();
-                        foreach (var st in plan.Steps) foreach (var w in st.Writes) touched.Add(w.Address & 0x7FF);
-                        var before = new Dictionary<int, byte>();
-                        foreach (var a in touched) before[a] = nes.PeekSystemRam(a);
-
-                        // One more EvaluateFrame to capture post-state and conditions
-                        nes.RunFrame(); var postIds = engine.EvaluateFrame();
-                        var ach = engine.Get(tempId);
-                        var after = new Dictionary<int, byte>();
-                        foreach (var a in touched) after[a] = nes.PeekSystemRam(a);
-
-                        // Build log lines
-                        var linesDiag = new List<string>();
-                        linesDiag.Add($"[MetaTest] Unlock verification failed");
-                        linesDiag.Add($"  Game='{r.game}' Achievement='{r.description}'");
-                        linesDiag.Add($"  Line='{line}'");
-                        linesDiag.Add($"  Plan: {plan.Steps.Count} step(s)");
-                        for (int si = 0; si < plan.Steps.Count; si++)
-                        {
-                            var st = plan.Steps[si];
-                            linesDiag.Add($"   Step {si+1}: {st.Note} — {st.Writes.Count} write(s)");
-                            foreach (var w in st.Writes)
-                            {
-                                int addr = w.Address & 0x7FF; string mask = w.Mask == 0xFF ? "FF" : Hex2(w.Mask);
-                                linesDiag.Add($"     @{Hex3(addr)} mask={mask} val={Hex2(w.Value)}");
-                            }
-                        }
-                        if (touched.Count > 0)
-                        {
-                            linesDiag.Add("  Memory before/after for touched addresses:");
-                            foreach (var a in touched)
-                            {
-                                linesDiag.Add($"   @{Hex3(a)}: {Hex2(before[a])} -> {Hex2(after[a])}");
-                            }
-                        }
-                        if (ach != null)
-                        {
-                            linesDiag.Add($"  Engine: primed={ach.Primed} unlocked={ach.Unlocked} (post Eval ids=[{string.Join(",", postIds)}])");
-                            linesDiag.Add("  Conditions:");
-                            foreach (var c in ach.Conditions)
-                            {
-                                linesDiag.Add($"   [{c.Flag}] {DescribeOperand(c.Left)} {c.Op} {DescribeOperand(c.Right)} | hits={c.Hits}/{c.HitTarget} met={c.IsMet}");
-                            }
-                        }
-                        var joined = string.Join("\n", linesDiag);
-                        try { await JS.InvokeVoidAsync("console.error", joined); } catch { }
-                        try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Unlock verification failed. See console for details.")})"); } catch { }
-                        Parser.DebugLogging = prevDebug; return;
-                    }
-                    if (!ok) allLinesOk = false;
-                    tested++;
-                    // Update UI per-line so user sees progress
-                    StateHasChanged();
-                }
-                // Mark achievement (row) green if all lines passed
-                if (allLinesOk)
-                {
-                    r.TestSucceeded = true;
-                    StateHasChanged();
-                }
+                var ok = await EvaluateMetaRowAsync(r, romBytes);
+                if (ok) success++; else failed++;
+                StateHasChanged();
             }
 
-            try { await JS.InvokeVoidAsync("console.log", $"Parsed {parsed} and successfully unlocked {tested} formula line(s) using test.nes."); } catch { }
-            try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize($"Success: parsed {parsed} and unlocked {tested} formula line(s).")})"); } catch { }
+            try { await JS.InvokeVoidAsync("console.log", $"Meta test summary: {success} succeeded, {failed} failed."); } catch { }
+            try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize($"Meta tests done: {success} passed, {failed} failed.")})"); } catch { }
             Parser.DebugLogging = prevDebug;
         }
         catch (Exception ex)
@@ -1423,6 +1270,104 @@
             try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
             try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Parsing failed:\n" + msg)})"); } catch { }
             Parser.DebugLogging = false;
+        }
+    }
+
+    private async Task<bool> EvaluateMetaRowAsync(MetaRow r, byte[] romBytes)
+    {
+        try
+        {
+            r.TestSucceeded = false; r.TestFailed = false;
+            var formula = r.formula ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(formula)) { r.TestFailed = true; return false; }
+
+            var lines = formula.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            bool allOk = true;
+            foreach (var raw in lines)
+            {
+                var line = raw?.Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try { _ = Parser.ParseConditions(line); }
+                catch (Exception ex)
+                {
+                    try { await JS.InvokeVoidAsync("console.error", $"Parse failed for '{r.description}': {ex.Message}"); } catch { }
+                    allOk = false; continue;
+                }
+
+                // Fresh NES per line to avoid state drift
+                var nes = new NES();
+                try { nes.RomName = "test.nes"; nes.LoadROM(romBytes); }
+                catch (Exception ex)
+                {
+                    try { await JS.InvokeVoidAsync("console.error", $"LoadROM failed: {ex.Message}"); } catch { }
+                    allOk = false; continue;
+                }
+
+                AchievementsTester.TestPlan plan;
+                try { plan = AchievementsTester.BuildPlan(line); }
+                catch (Exception ex)
+                {
+                    try { await JS.InvokeVoidAsync("console.error", $"Plan build failed for '{r.description}': {ex.Message}"); } catch { }
+                    allOk = false; continue;
+                }
+
+                var engine = new AchievementsEngine(new NesRamDomain(nes));
+                const string tempId = "meta_temp";
+                engine.Load(new[] { (tempId, line) });
+                // Seed frames
+                nes.RunFrame(); _ = engine.EvaluateFrame();
+                nes.RunFrame(); var unlockedNow = engine.EvaluateFrame();
+                if (unlockedNow.Contains(tempId))
+                {
+                    // Already unlocked before executing plan counts as failure for verification
+                    allOk = false; continue;
+                }
+
+                bool ok;
+                try { ok = AchievementsTester.ExecutePlan(nes, plan, engine, tempId); }
+                catch (Exception ex)
+                {
+                    try { await JS.InvokeVoidAsync("console.error", $"ExecutePlan failed for '{r.description}': {ex.Message}"); } catch { }
+                    allOk = false; continue;
+                }
+                if (!ok)
+                {
+                    nes.RunFrame(); var post = engine.EvaluateFrame();
+                    ok = post.Contains(tempId) || (engine.Get(tempId)?.Unlocked == true);
+                }
+                if (!ok) allOk = false;
+            }
+
+            r.TestSucceeded = allOk; r.TestFailed = !allOk;
+            return allOk;
+        }
+        catch
+        {
+            r.TestSucceeded = false; r.TestFailed = true; return false;
+        }
+    }
+
+    private async Task TestSingleMetaFormulaAsync(MetaRow r)
+    {
+        var prevDebug = Parser.DebugLogging;
+        Parser.DebugLogging = true;
+        try
+        {
+            byte[] romBytes = Array.Empty<byte>();
+            try { romBytes = await Http.GetByteArrayAsync("test.nes"); } catch { }
+            if (romBytes == null || romBytes.Length == 0)
+            {
+                var msg = "test.nes not found or empty in wwwroot. Place a valid ROM at wwwroot/test.nes.";
+                try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
+                try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
+                return;
+            }
+            await EvaluateMetaRowAsync(r, romBytes);
+            StateHasChanged();
+        }
+        finally
+        {
+            Parser.DebugLogging = prevDebug;
         }
     }
 

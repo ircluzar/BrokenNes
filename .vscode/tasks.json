@@ -2,86 +2,12 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Build BrokenNes (Release)",
+			"label": "Build BrokenNes (Debug)",
 			"type": "shell",
-			"command": "dotnet build -c Release",
+			"command": "dotnet build -c Debug",
 			"problemMatcher": [
 				"$msbuild"
 			],
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Release)",
-			"type": "shell",
-			"command": "dotnet build -c Release",
 			"group": "build"
 		}
 	]
