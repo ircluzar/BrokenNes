@@ -795,6 +795,11 @@ namespace NesEmulator.RetroAchievements
                     }
                 }
 
+                // Hitcount suffix variant: trailing ".<digits>." (e.g., "...=1.3.")
+                // Capture but do not yet apply (allow explicit forms like seconds or parentheses to override later)
+                int dotSuffixHits = 0;
+                TryConsumeTrailingDotHitcount(ref token, out dotSuffixHits);
+
                 // Hitcount at end: "(...)"
                 int hcStart = token.LastIndexOf('(');
                 if (hcStart >= 0 && token.EndsWith(")", StringComparison.Ordinal))
@@ -806,6 +811,8 @@ namespace NesEmulator.RetroAchievements
                 }
                 // If no explicit hitcount, apply seconds-derived frames
                 if (cond.HitTarget <= 0 && secondsFrames > 0) { cond.HitTarget = secondsFrames; Log($"  Applied seconds-derived HitTarget={cond.HitTarget}"); }
+                // If still no hitcount, apply dot-suffix hits
+                if (cond.HitTarget <= 0 && dotSuffixHits > 0) { cond.HitTarget = dotSuffixHits; Log($"  Applied dot-suffix HitTarget={cond.HitTarget}"); }
                 // If embedded seconds produced a tail token, chain to next unless a flag already exists
                 if (chainNext && cond.Flag == ConditionFlag.None)
                 {
@@ -924,6 +931,26 @@ namespace NesEmulator.RetroAchievements
             // Fallback: whole token is a boolean (non-zero == true), compare to 1 implicitly
             lhs = token; rhs = "1"; op = ComparisonOp.Eq;
             Log($"   No operator found; treating '{token}' as boolean equality to 1");
+        }
+
+        // Consumes a trailing hitcount written as ".<digits>." at the end of the token.
+        // On success, removes the suffix from 'token' and returns true with 'hits' set (>0).
+        private static bool TryConsumeTrailingDotHitcount(ref string token, out int hits)
+        {
+            hits = 0;
+            if (string.IsNullOrWhiteSpace(token)) return false;
+            string s = token.TrimEnd();
+            if (s.Length < 3 || s[^1] != '.') return false;
+            int firstDot = s.LastIndexOf('.', s.Length - 2);
+            if (firstDot < 0) return false;
+            string mid = s.Substring(firstDot + 1, s.Length - firstDot - 2);
+            if (mid.Length == 0) return false;
+            for (int i = 0; i < mid.Length; i++) { if (!char.IsDigit(mid[i])) return false; }
+            if (!int.TryParse(mid, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) || n <= 0) return false;
+            token = s.Substring(0, firstDot);
+            hits = n;
+            Log($"   Consumed trailing dot-hitcount '.{n}.' => new token='{token}'");
+            return true;
         }
 
         private static Operand ParseOperand(string raw)

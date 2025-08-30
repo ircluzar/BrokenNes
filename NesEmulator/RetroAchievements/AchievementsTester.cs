@@ -124,21 +124,36 @@ namespace NesEmulator.RetroAchievements
                 }
                 // (deferred static scan is applied later, after deltaAddrs/deferred dictionaries are created)
 
-                // Initial step: set all non-delta conditions to their satisfying values.
-                // Avoid writing for delta/prior-based conditions here; they'll be handled in delta groups.
-                var step0 = new Step { Note = "Satisfy non-delta conditions" };
-                // Consolidate writes per address so the final value per address is consistent (e.g., keep 0x05 at >=5).
-                var lastWriteByAddr = new Dictionary<int, ByteWrite>();
-                // Build a set of addresses that will be used by delta groups so we don't stomp their baselines here.
-                var deltaAddrs = new HashSet<int>();
-                foreach (var g in deltaGroups)
+                // Build ordered segments per address in formula order upfront: (deltaStep, frames)
+                var segmentsByAddr = new Dictionary<int, List<(int step, int frames)>>();
+                for (int idx = 0; idx < _conds.Count; idx++)
                 {
-                    int da = GetDeltaAddress(g.Cond);
-                    if (da >= 0) deltaAddrs.Add(da & 0x7FF);
+                    var c = _conds[idx];
+                    // delta equality to a small positive constant (e.g., d@0006==1 or ==2)
+                    int? addr = null;
+                    int? step = null;
+                    if (c.Left.Kind == OperandKind.Memory && c.Left.Mem!.UseDelta && c.Op == ComparisonOp.Eq && c.Right.Kind == OperandKind.Constant && c.Right.Const.Kind == ValueKind.Integer)
+                    {
+                        addr = c.Left.Mem.Address & 0x7FF;
+                        step = (int)Math.Abs(c.Right.Const.I64);
+                    }
+                    else if (c.Right.Kind == OperandKind.Memory && c.Right.Mem!.UseDelta && c.Op == ComparisonOp.Eq && c.Left.Kind == OperandKind.Constant && c.Left.Const.Kind == ValueKind.Integer)
+                    {
+                        addr = c.Right.Mem.Address & 0x7FF;
+                        step = (int)Math.Abs(c.Left.Const.I64);
+                    }
+                    if (addr.HasValue && step.HasValue && step.Value > 0)
+                    {
+                        if (!segmentsByAddr.TryGetValue(addr.Value, out var list)) { list = new(); segmentsByAddr[addr.Value] = list; }
+                        list.Add((step.Value, Math.Max(1, c.HitTarget)));
+                    }
                 }
+                var rampAddrs = new HashSet<int>(segmentsByAddr.Keys);
+
+                // Build non-delta satisfying writes in an order that can handle conflicting equality targets
+                // for the same address by scheduling sequential frames.
                 // Collect static writes that target delta-managed addresses; we'll defer these until after the ramp.
                 var deferredStaticByAddr = new Dictionary<int, ByteWrite>();
-                // Scan all conditions for non-delta constraints on delta-managed addresses and defer those as well.
                 foreach (var c in _conds)
                 {
                     if ((c.Left.Kind == OperandKind.Memory && (c.Left.Mem!.UseDelta || c.Left.Mem!.UsePrior)) ||
@@ -147,12 +162,18 @@ namespace NesEmulator.RetroAchievements
                     foreach (var bw in WritesToMakeCompare(c, desiredTrue: true))
                     {
                         int key = bw.Address & 0x7FF;
-                        if (deltaAddrs.Contains(key)) deferredStaticByAddr[key] = new ByteWrite(key, bw.Value, bw.Mask);
+                        if (rampAddrs.Contains(key)) deferredStaticByAddr[key] = new ByteWrite(key, bw.Value, bw.Mask);
                     }
                 }
+
+                // Gather required non-delta writes grouped by address, preserving order and unique targets
+                var targetsByAddr = new Dictionary<int, List<ByteWrite>>();
+                var singletons = new Dictionary<int, ByteWrite>();
                 foreach (var c in required)
                 {
-                    // Skip conditions that rely on delta/prior snapshots
+                    // Skip flags we only neutralize and any delta/prior conditions
+                    if (c.Flag == ConditionFlag.PauseIf || c.Flag == ConditionFlag.ResetIf || c.Flag == ConditionFlag.ResetNextIf)
+                        continue;
                     if ((c.Left.Kind == OperandKind.Memory && (c.Left.Mem!.UseDelta || c.Left.Mem!.UsePrior)) ||
                         (c.Right.Kind == OperandKind.Memory && (c.Right.Mem!.UseDelta || c.Right.Mem!.UsePrior)))
                         continue;
@@ -160,114 +181,122 @@ namespace NesEmulator.RetroAchievements
                     foreach (var bw in WritesToMakeCompare(c, desiredTrue: true))
                     {
                         int key = bw.Address & 0x7FF;
-                        if (deltaAddrs.Contains(key))
-                        {
-                            // Defer this write until after delta ramping is complete.
-                            deferredStaticByAddr[key] = new ByteWrite(key, bw.Value, bw.Mask);
-                        }
-                        else
-                        {
-                            lastWriteByAddr[key] = new ByteWrite(key, bw.Value, bw.Mask);
-                        }
+                        if (rampAddrs.Contains(key)) { deferredStaticByAddr[key] = new ByteWrite(key, bw.Value, bw.Mask); continue; }
+                        // Keep unique sequence of target writes per address (by mask+value)
+                        if (!targetsByAddr.TryGetValue(key, out var list)) { list = new List<ByteWrite>(); targetsByAddr[key] = list; }
+                        bool duplicate = false;
+                        for (int li = 0; li < list.Count; li++) if (list[li].Mask == bw.Mask && list[li].Value == bw.Value) { duplicate = true; break; }
+                        if (!duplicate) list.Add(new ByteWrite(key, bw.Value, bw.Mask));
                     }
                 }
-                foreach (var kv in lastWriteByAddr) step0.Writes.Add(kv.Value);
-                plan.Steps.Add(step0);
-
-                // Before ramping, if any required condition demands an exact value on a delta-managed address
-                // (e.g., 0x0006=2 or 0x0006=3), set that exact value once as a distinct step to establish a baseline
-                // for upcoming delta windows.
-                if (deltaAddrs.Count > 0)
+                // Partition into multi-target addresses and singletons
+                foreach (var kv in targetsByAddr)
                 {
-                    var preRamp = new Step { Note = "Pre-ramp exact set for delta addresses" };
-                    foreach (var c in required)
+                    if (kv.Value.Count == 1) singletons[kv.Key] = kv.Value[0];
+                }
+                // Create sequential steps for multi-target addresses to satisfy each target at least once
+                // Determine how many steps we need = max count of targets across addresses with >1
+                int seqSteps = 0;
+                foreach (var kv in targetsByAddr) if (kv.Value.Count > 1) seqSteps = Math.Max(seqSteps, kv.Value.Count);
+                for (int si = 0; si < seqSteps; si++)
+                {
+                    var s = new Step { Note = si == 0 ? "Satisfy conflicting equals (1)" : $"Satisfy conflicting equals ({si + 1})" };
+                    foreach (var kv in targetsByAddr)
                     {
-                        foreach (var bw in WritesToMakeCompare(c, desiredTrue: true))
+                        var list = kv.Value;
+                        if (list.Count <= 1) continue;
+                        if (si < list.Count - 1)
                         {
-                            int key = bw.Address & 0x7FF;
-                            if (deltaAddrs.Contains(key)) preRamp.Writes.Add(new ByteWrite(key, bw.Value, bw.Mask));
+                            // For all but the last target, emit the specific target on its own step
+                            var bw = list[si];
+                            s.Writes.Add(bw);
                         }
                     }
-                    if (preRamp.Writes.Count > 0) plan.Steps.Add(preRamp);
+                    if (s.Writes.Count > 0) plan.Steps.Add(s);
                 }
+
+                // Final static step: apply all non-delta singletons and the last targets for multi-target addresses
+                var finalStatic = new Step { Note = "Satisfy non-delta conditions" };
+                var finalStaticByAddr = new Dictionary<int, ByteWrite>();
+                foreach (var kv in targetsByAddr)
+                {
+                    var list = kv.Value;
+                    var last = list[list.Count - 1];
+                    finalStatic.Writes.Add(last);
+                    finalStaticByAddr[kv.Key] = last;
+                }
+                // Add singletons (already included above if they exist as one in list)
+                // But avoid duplicates: targetsByAddr already contains singletons; nothing else to add here.
+                plan.Steps.Add(finalStatic);
+
+                // Pre-ramp exact value setup is handled below using the first explicit equality seen per delta address.
 
                 // For delta groups: create frame-by-frame increments.
                 if (deltaGroups.Count > 0)
                 {
-                    // For delta conditions involving same address (e.g., d@0006), coordinate a single stream
-                    // of writes to that address so we can satisfy multiple equality targets over time.
-                    // Strategy: Ramp the target byte 0,1,3,4,... so deltas of 1 and 2 appear as needed.
-                    // We’ll create a conservative linear ramp: value = 1 + frame, which makes dX == 1 true every frame.
-                    // If a condition needs dX == 2, we’ll inject a double-step on the first frames of its window.
-                    var byAddr = new Dictionary<int, List<(Condition Cond, int Frames)>>();
-                    foreach (var g in deltaGroups)
+                    // Seed initial exact equals per delta address from first occurrence of a non-delta equality on that address
+                    var initialExactByAddr = new Dictionary<int, ByteWrite>();
+                    foreach (var c in _conds)
                     {
-                        int addr = GetDeltaAddress(g.Cond);
-                        if (addr < 0) continue;
-                        addr &= 0x7FF;
-                        if (!byAddr.TryGetValue(addr, out var list)) { list = new(); byAddr[addr] = list; }
-                        list.Add(g);
+                        // Only Eq on a memory operand; gather target address/value
+                        Condition cc = c;
+                        if (cc.Left.Kind != OperandKind.Memory && cc.Right.Kind == OperandKind.Memory) cc = FlipForRightMemory(cc);
+                        if (cc.Left.Kind == OperandKind.Memory && cc.Op == ComparisonOp.Eq && cc.Right.Kind == OperandKind.Constant)
+                        {
+                            int key = cc.Left.Mem!.Address & 0x7FF;
+                            if (!rampAddrs.Contains(key)) continue;
+                            if (initialExactByAddr.ContainsKey(key)) continue;
+                            long val = cc.Right.Const.Kind == ValueKind.Integer ? cc.Right.Const.I64 : (long)cc.Right.Const.F64;
+                            if (val < 0 || val > 255) continue;
+                            initialExactByAddr[key] = new ByteWrite(key, (byte)val);
+                        }
                     }
-                    // Determine max frames among all delta conditions; ensure at least 3 if 1/2 deltas are present so both can occur
-                    int maxFrames = 0;
-                    foreach (var list in byAddr.Values)
+
+                    if (initialExactByAddr.Count > 0)
                     {
-                        foreach (var g in list)
-                        {
-                            maxFrames = Math.Max(maxFrames, g.Frames);
-                        }
-                        bool needsOneOrTwo = false;
-                        foreach (var g in list)
-                        {
-                            // Heuristic: if any condition is Eq 1 or Eq 2 against a delta operand, schedule at least 3 frames
-                            var c = g.Cond;
-                            if ((c.Left.Kind == OperandKind.Memory && c.Left.Mem!.UseDelta && c.Right.Kind == OperandKind.Constant && c.Right.Const.Kind == ValueKind.Integer && (c.Right.Const.I64 == 1 || c.Right.Const.I64 == 2))
-                                || (c.Right.Kind == OperandKind.Memory && c.Right.Mem!.UseDelta && c.Left.Kind == OperandKind.Constant && c.Left.Const.Kind == ValueKind.Integer && (c.Left.Const.I64 == 1 || c.Left.Const.I64 == 2)))
-                            {
-                                needsOneOrTwo = true; break;
-                            }
-                        }
-                        if (needsOneOrTwo) maxFrames = Math.Max(maxFrames, 3);
+                        var preRamp = new Step { Note = "Pre-ramp exact set for delta addresses" };
+                        foreach (var kv in initialExactByAddr) preRamp.Writes.Add(kv.Value);
+                        plan.Steps.Add(preRamp);
                     }
-                    if (maxFrames < 3 && byAddr.Count > 0) maxFrames = 3; // global minimum to allow dX==1 and dX==2 frames
-                    // Seed current values per-address from actual RAM so deltas compute against prior frame correctly
+
+                    // Determine total frames as the maximum sum across addresses, and ramp concurrently respecting per-address segments
+                    var progressByAddr = new Dictionary<int, (int segIndex, int segFrame)>();
                     var currentByAddr = new Dictionary<int, byte>();
-                    for (int frame = 0; frame < maxFrames; frame++)
+                    int totalFrames = 0;
+                    foreach (var kv in segmentsByAddr)
+                    {
+                        int sum = 0; foreach (var s in kv.Value) sum += s.frames; totalFrames = Math.Max(totalFrames, sum);
+                    }
+                    if (totalFrames == 0) totalFrames = 3; // fallback
+                    for (int frame = 0; frame < totalFrames; frame++)
                     {
                         var s = new Step { Note = frame == 0 ? "Delta kickstart" : $"Delta step {frame + 1}" };
-                        foreach (var kv in byAddr)
+                        foreach (var kv in segmentsByAddr)
                         {
                             int addr = kv.Key;
-                            if (!currentByAddr.TryGetValue(addr, out byte current))
-                            {
-                                // Start relative to whatever pre-ramp set did; executor applies absolute writes.
-                                current = 0;
-                                try
-                                {
-                                    // Unsafe: we don't have NES instance here; seed to zero and let first write define Now; prev will be prior frame
-                                    current = 0;
-                                }
-                                catch { current = 0; }
-                                currentByAddr[addr] = current;
-                            }
-                            // Decide step amount. If any pending condition requires dX==2, do a +2 step this frame.
-                            int step = 1;
-                            foreach (var g in kv.Value)
-                            {
-                                if (frame < g.Frames && RequiresDeltaTwo(g.Cond)) { step = 2; break; }
-                            }
-                            current = (byte)(current + step);
+                            var segments = kv.Value;
+                            if (!progressByAddr.TryGetValue(addr, out var pr)) pr = (0, 0);
+                            if (pr.segIndex >= segments.Count) continue; // no more segments
+                            int stepAmt = segments[pr.segIndex].step;
+                            int segFrames = segments[pr.segIndex].frames;
+                            if (!currentByAddr.TryGetValue(addr, out byte current)) current = initialExactByAddr.TryGetValue(addr, out var bw) ? bw.Value : (byte)0;
+                            // apply relative step
+                            current = (byte)(current + stepAmt);
                             currentByAddr[addr] = current;
                             s.Writes.Add(new ByteWrite(addr, current));
+                            // advance segment progress
+                            pr.segFrame++;
+                            if (pr.segFrame >= segFrames) { pr.segIndex++; pr.segFrame = 0; }
+                            progressByAddr[addr] = pr;
                         }
                         plan.Steps.Add(s);
                     }
 
                     // After delta ramping, reapply the static satisfying writes (including those deferred for delta addresses)
-                    if (lastWriteByAddr.Count > 0 || deferredStaticByAddr.Count > 0)
+                    if (finalStaticByAddr.Count > 0 || deferredStaticByAddr.Count > 0)
                     {
                         var re = new Step { Note = "Reapply static conditions" };
-                        foreach (var kv in lastWriteByAddr) re.Writes.Add(kv.Value);
+                        foreach (var kv in finalStaticByAddr) re.Writes.Add(kv.Value);
                         foreach (var kv in deferredStaticByAddr) re.Writes.Add(kv.Value);
                         plan.Steps.Add(re);
                     }

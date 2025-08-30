@@ -343,7 +343,7 @@
                 {
                     <div class="grid-row" style="grid-template-columns: 1fr 1fr 2fr;">
                         <span>@r.game</span>
-                        <span>@r.description</span>
+                        <span style="@(r.TestSucceeded ? "color:var(--success,green);font-weight:600;" : string.Empty)">@r.description</span>
                         <span style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-family: var(--monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace)">@r.formula</span>
                     </div>
                 }
@@ -1045,6 +1045,7 @@
         public string game { get; set; } = string.Empty;
         public string description { get; set; } = string.Empty;
         public string formula { get; set; } = string.Empty;
+    public bool TestSucceeded { get; set; } = false;
     }
 
     private sealed class GameOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
@@ -1258,12 +1259,16 @@
 
             int parsed = 0;
             int tested = 0;
+            // Reset success markers
+            foreach (var rr in metaRows) rr.TestSucceeded = false;
+            StateHasChanged();
             foreach (var r in metaRows)
             {
                 var formula = r.formula ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(formula)) continue;
                 // Split into individual lines to mimic RA multi-line requirements
                 var lines = formula.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+                var allLinesOk = true;
                 for (int li = 0; li < lines.Length; li++)
                 {
                     var line = lines[li]?.Trim();
@@ -1395,7 +1400,16 @@
                         try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Unlock verification failed. See console for details.")})"); } catch { }
                         Parser.DebugLogging = prevDebug; return;
                     }
+                    if (!ok) allLinesOk = false;
                     tested++;
+                    // Update UI per-line so user sees progress
+                    StateHasChanged();
+                }
+                // Mark achievement (row) green if all lines passed
+                if (allLinesOk)
+                {
+                    r.TestSucceeded = true;
+                    StateHasChanged();
                 }
             }
 
