@@ -334,14 +334,33 @@ namespace NesEmulator.RetroAchievements
                 bool result;
                 if (chainEnd > chainStart)
                 {
-                    result = EvalChain(ach, chainStart, chainEnd, chainOr, sourceSum, addressBias);
-                    // Apply hits to the last item in chain
-                    var last = ach.Conditions[chainEnd];
-                    ApplyHits(last, result);
-                    last.IsMet = IsConditionMet(last, result);
-                    // Earlier items in chain are considered met only as part of chain;
-                    // for group-wide met, use chain result only once
-                    allNonTriggerMet &= (last.Flag == ConditionFlag.Trigger) ? true : last.IsMet;
+                    // Evaluate each element of the chain individually so we can:
+                    // - Attribute hitcounts to the condition that actually has a HitTarget (commonly the first)
+                    // - Use the aggregate result only to gate final met state, not to accumulate hits over time
+                    bool agg = chainOr ? false : true;
+                    var raws = new bool[chainEnd - chainStart + 1];
+                    for (int ci = chainStart; ci <= chainEnd; ci++)
+                    {
+                        bool r = EvalRaw(ach.Conditions[ci], ach, out _, sourceSum, addressBias);
+                        raws[ci - chainStart] = r;
+                        if (chainOr) agg |= r; else agg &= r;
+                    }
+                    result = agg;
+
+                    // Pick target condition to receive hits: prefer the first with a HitTarget > 0, else the last
+                    int targetIndex = chainEnd;
+                    for (int ci = chainStart; ci <= chainEnd; ci++)
+                    {
+                        if (ach.Conditions[ci].HitTarget > 0) { targetIndex = ci; break; }
+                    }
+                    var target = ach.Conditions[targetIndex];
+                    bool targetRaw = raws[targetIndex - chainStart];
+                    ApplyHits(target, targetRaw);
+                    // Met state for a hitcount-bearing target depends on hits; for 0-hit target, use sticky-isMet via hits as well
+                    target.IsMet = IsConditionMet(target, targetRaw);
+
+                    // For group met, consider only the target of the chain once
+                    allNonTriggerMet &= (target.Flag == ConditionFlag.Trigger) ? true : target.IsMet;
                     i = chainEnd; // skip to end
                     // Reset accumulators after a completed compare chain
                     sourceSum = new Numeric(0);
@@ -477,7 +496,8 @@ namespace NesEmulator.RetroAchievements
         {
             if (cond.HitTarget <= 0)
             {
-                cond.Hits = rawTrue ? 1 : 0; // instantaneous
+                // Make 0-hit conditions sticky once satisfied. They can be reset by ResetIf/ResetNextIf elsewhere.
+                if (rawTrue && cond.Hits == 0) cond.Hits = 1;
                 return;
             }
             if (rawTrue)
@@ -488,7 +508,11 @@ namespace NesEmulator.RetroAchievements
 
         private static bool IsConditionMet(Condition cond, bool rawTrue)
         {
-            if (cond.HitTarget <= 0) return rawTrue;
+            if (cond.HitTarget <= 0)
+            {
+                // Sticky: once hit at least once, it's considered met until reset
+                return cond.Hits > 0;
+            }
             return cond.Hits >= cond.HitTarget;
         }
 
@@ -567,21 +591,36 @@ namespace NesEmulator.RetroAchievements
 
         private Numeric ReadMemoryNumeric(MemoryRef mr)
         {
-            // Select snapshot for Delta/Prior
-            byte[] src = _ramNow;
-            if (mr.UsePrior) src = _ramPrior;
-            else if (mr.UseDelta) src = _ramPrev;
-
+            // Delta semantics: dX returns Now - Prev for same address/prefix. Prior reads from two frames ago.
             if (MemoryRef.IsFloat(mr.Prefix))
             {
-                double f = ReadFloat(src, mr.Prefix, mr.Address);
-                return new Numeric(f);
+                if (mr.UseDelta)
+                {
+                    double now = ReadFloat(_ramNow, mr.Prefix, mr.Address);
+                    double prev = ReadFloat(_ramPrev, mr.Prefix, mr.Address);
+                    return new Numeric(now - prev);
+                }
+                double src = mr.UsePrior ? ReadFloat(_ramPrior, mr.Prefix, mr.Address) : ReadFloat(_ramNow, mr.Prefix, mr.Address);
+                return new Numeric(src);
             }
-            // Integer path
-            long v = ReadInt(src, mr.Prefix, mr.Address);
-            if (mr.UseBcd) v = BcdToInt(v);
-            if (mr.UseInvert) v = ~v;
-            return new Numeric(v);
+            else
+            {
+                long val;
+                if (mr.UseDelta)
+                {
+                    long now = ReadInt(_ramNow, mr.Prefix, mr.Address);
+                    long prev = ReadInt(_ramPrev, mr.Prefix, mr.Address);
+                    val = now - prev;
+                }
+                else
+                {
+                    byte[] src = mr.UsePrior ? _ramPrior : _ramNow;
+                    val = ReadInt(src, mr.Prefix, mr.Address);
+                }
+                if (mr.UseBcd) val = BcdToInt(val);
+                if (mr.UseInvert) val = ~val;
+                return new Numeric(val);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -676,6 +715,8 @@ namespace NesEmulator.RetroAchievements
     {
         // When true, the parser will log every step to Console (appears in browser console under WASM).
         public static bool DebugLogging = false;
+    // Default FPS for seconds shorthand (e.g., "2S...") => hitcount in frames. NES NTSC is 60 FPS.
+    public static int FramesPerSecond = 60;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Log(string msg)
@@ -711,9 +752,9 @@ namespace NesEmulator.RetroAchievements
 
             Log($"Parse start: formula='{formula}'");
 
-            var parts = formula.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
-            Log($"Split into {parts.Length} token(s)");
-            for (int i = 0; i < parts.Length; i++)
+            var parts = new List<string>(formula.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries));
+            Log($"Split into {parts.Count} token(s)");
+            for (int i = 0; i < parts.Count; i++)
             {
                 var token = parts[i].Trim();
                 if (token.Length == 0) continue;
@@ -730,6 +771,30 @@ namespace NesEmulator.RetroAchievements
                 }
                 else cond.Flag = ConditionFlag.None;
 
+                // Optional shorthand: leading "<seconds>S" converts to hitcount in frames
+                // Example: "2Sd0xH0006=2" => hitcount = 2 * FramesPerSecond; token becomes "d0xH0006=2"
+                int secondsFrames = 0;
+                if (TryConsumeSecondsPrefix(ref token, out int frames))
+                {
+                    secondsFrames = frames;
+                    Log($"  Seconds shorthand: {secondsFrames} frames remaining='{token}'");
+                }
+
+                // Embedded seconds on RHS: e.g., "0xH003f=2Sd0xH0006=2" => first condition gets hitcount from 2S,
+                // extra tail becomes a new token appended after current index for parsing next.
+                bool chainNext = false;
+                if (TryExtractEmbeddedSecondsRhs(token, out string primary, out int rhsFrames, out string? extra, out bool nextIsChained))
+                {
+                    token = primary;
+                    secondsFrames = Math.Max(secondsFrames, rhsFrames);
+                    chainNext = nextIsChained;
+                    if (!string.IsNullOrWhiteSpace(extra))
+                    {
+                        parts.Insert(i + 1, extra!);
+                        Log($"  Extracted RHS seconds; queued extra token: '{extra}'");
+                    }
+                }
+
                 // Hitcount at end: "(...)"
                 int hcStart = token.LastIndexOf('(');
                 if (hcStart >= 0 && token.EndsWith(")", StringComparison.Ordinal))
@@ -738,6 +803,14 @@ namespace NesEmulator.RetroAchievements
                     if (int.TryParse(inner.Trim(), out int n) && n > 0) cond.HitTarget = n;
                     token = token.Substring(0, hcStart);
                     Log($"  HitTarget={cond.HitTarget} remaining='{token}'");
+                }
+                // If no explicit hitcount, apply seconds-derived frames
+                if (cond.HitTarget <= 0 && secondsFrames > 0) { cond.HitTarget = secondsFrames; Log($"  Applied seconds-derived HitTarget={cond.HitTarget}"); }
+                // If embedded seconds produced a tail token, chain to next unless a flag already exists
+                if (chainNext && cond.Flag == ConditionFlag.None)
+                {
+                    cond.Flag = ConditionFlag.AndNext;
+                    Log("  Applied implicit AndNext due to embedded seconds with tail token");
                 }
 
                 // Split LHS op RHS
@@ -753,6 +826,89 @@ namespace NesEmulator.RetroAchievements
             }
             Log($"Parse complete: {list.Count} condition(s)");
             return list;
+        }
+
+        // Detects pattern where RHS contains "<digits>S" immediately followed by the beginning of another condition
+        // without an underscore, e.g., "LHS=2Sd0x...". Returns the primary token without the 'S' and seconds converted to frames,
+        // and the tail as 'extraToken' to be parsed separately.
+    private static bool TryExtractEmbeddedSecondsRhs(string token, out string primaryToken, out int frames, out string? extraToken, out bool chainNext)
+        {
+            primaryToken = token; frames = 0; extraToken = null; chainNext = false;
+            if (string.IsNullOrEmpty(token)) return false;
+
+            // Find comparison operator position
+            int p;
+            int opLen = 1;
+            if ((p = token.IndexOf("!=", StringComparison.Ordinal)) > 0) opLen = 2;
+            else if ((p = token.IndexOf(">=", StringComparison.Ordinal)) > 0) opLen = 2;
+            else if ((p = token.IndexOf("<=", StringComparison.Ordinal)) > 0) opLen = 2;
+            else if ((p = token.IndexOf('=', StringComparison.Ordinal)) > 0) opLen = 1;
+            else if ((p = token.IndexOf('>', StringComparison.Ordinal)) > 0) opLen = 1;
+            else if ((p = token.IndexOf('<', StringComparison.Ordinal)) > 0) opLen = 1;
+            else return false;
+
+            int i = p + opLen;
+            // Skip whitespace
+            while (i < token.Length && char.IsWhiteSpace(token[i])) i++;
+            int startNum = i;
+            // Only accept integer seconds for shorthand
+            while (i < token.Length && char.IsDigit(token[i])) i++;
+            if (i == startNum) return false; // no number
+            if (i >= token.Length) return false;
+            if (token[i] != 'S' && token[i] != 's') return false;
+
+            // Parse seconds
+            if (!int.TryParse(token.AsSpan(startNum, i - startNum), NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
+                return false;
+            if (seconds <= 0) return false;
+            frames = seconds * Math.Max(1, FramesPerSecond);
+
+            // Advance past 'S' and any whitespace to get tail
+            i++;
+            while (i < token.Length && char.IsWhiteSpace(token[i])) i++;
+            if (i < token.Length)
+            {
+                string tail = token.Substring(i).Trim();
+                // Apply seconds to the tail by prefixing it with leading seconds shorthand so it gets HitTarget
+                extraToken = seconds.ToString(CultureInfo.InvariantCulture) + "S" + tail;
+                // Primary token keeps the numeric value before 'S' but no hitcount applied here
+                primaryToken = token.Substring(0, p + opLen) + token.Substring(startNum, (i - startNum) - 1);
+                chainNext = true; frames = 0; // do not apply frames to primary when tail exists
+            }
+            else
+            {
+                // No tail; just strip the 'S'
+                primaryToken = token.Substring(0, p + opLen) + token.Substring(startNum, (i - startNum) - 1);
+                frames = seconds * Math.Max(1, FramesPerSecond); // apply to primary when no tail
+            }
+            primaryToken = primaryToken.Trim();
+            return true;
+        }
+
+        // Consumes a leading seconds shorthand of the form "<digits>S" and returns frame count.
+        // On success, updates 'token' to the remainder after the shorthand and returns true.
+        private static bool TryConsumeSecondsPrefix(ref string token, out int frames)
+        {
+            frames = 0;
+            if (string.IsNullOrEmpty(token)) return false;
+            int i = 0;
+            while (i < token.Length && char.IsWhiteSpace(token[i])) i++;
+            int start = i;
+            while (i < token.Length && char.IsDigit(token[i])) i++;
+            if (i == start) return false; // no digits
+            if (i < token.Length && (token[i] == 'S' || token[i] == 's'))
+            {
+                var numSpan = token.AsSpan(start, i - start);
+                if (int.TryParse(numSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds) && seconds > 0)
+                {
+                    frames = seconds * Math.Max(1, FramesPerSecond);
+                    // consume trailing 'S' and optional whitespace
+                    i++; while (i < token.Length && char.IsWhiteSpace(token[i])) i++;
+                    token = token.Substring(i);
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static void SplitCompare(string token, out string lhs, out ComparisonOp op, out string rhs)
