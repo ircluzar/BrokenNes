@@ -989,7 +989,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       string cpu = Uri.EscapeDataString((EnforcedCpu ?? SelectedCpu) ?? string.Empty);
       string ppu = Uri.EscapeDataString((EnforcedPpu ?? SelectedPpu) ?? string.Empty);
       string apu = Uri.EscapeDataString((EnforcedApu ?? SelectedApu) ?? string.Empty);
-      var qs = new List<string> { "stage=1", $"rom={rom}" };
+  var qs = new List<string> { "stage=1", $"rom={rom}", "achievements=1" };
       if (!string.IsNullOrWhiteSpace(shader)) qs.Add($"shader={shader}");
       if (!string.IsNullOrWhiteSpace(cpu)) qs.Add($"cpu={cpu}");
       if (!string.IsNullOrWhiteSpace(ppu)) qs.Add($"ppu={ppu}");

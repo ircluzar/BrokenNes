@@ -18,6 +18,7 @@ using Microsoft.JSInterop;
 using BrokenNes.Models;
 using BrokenNes.CorruptorModels;
 using NesEmulator;
+using NesEmulator.RetroAchievements;
 
 namespace BrokenNes
 {
@@ -77,6 +78,16 @@ namespace BrokenNes
         // Consumer (Razor page) can assign to receive change notifications
         public Action? OnStateChanged { get; set; }
         private void StateHasChanged() => OnStateChanged?.Invoke();
+
+        // Achievements integration (optional)
+        private AchievementsEngine? _achEngine;
+        private readonly Dictionary<string, string> _achTitles = new(StringComparer.OrdinalIgnoreCase);
+        public void ConfigureAchievements(AchievementsEngine engine, IDictionary<string, string> titles)
+        {
+            _achEngine = engine;
+            _achTitles.Clear();
+            foreach (var kv in titles) _achTitles[kv.Key] = kv.Value ?? kv.Key;
+        }
 
         // ================= Migrated Fields from Nes.razor =================
         private const int SaveChunkCharSize = 900_000; // chunk size for save state persistence
@@ -399,6 +410,26 @@ namespace BrokenNes
                 nes.SetInputs(inputState, inputStateP2);
                 if (nesController.FastForward) nes.RunFrames(3); else nes.RunFrame();
                 if (corruptor.AutoCorrupt) { _ = Blast(); }
+                // Evaluate achievements after the frame
+                try
+                {
+                    if (_achEngine != null)
+                    {
+                        var unlocked = _achEngine.EvaluateFrame();
+                        if (unlocked != null && unlocked.Count > 0)
+                        {
+                            foreach (var id in unlocked)
+                            {
+                                if (_achTitles.TryGetValue(id, out var title))
+                                {
+                                    var msg = System.Text.Json.JsonSerializer.Serialize($"Achievement unlocked: {title}");
+                                    try { JS.InvokeVoidAsync("eval", $"alert({msg})"); } catch { }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
                 nesController.FrameCount++;
                 int queued = nes.GetQueuedAudioSamples();
                 float[] audioBuffer = nes.GetAudioBuffer();
