@@ -1173,6 +1173,17 @@
     }
 </div>
 
+@* Achievement Unlocked Modal *@
+@if (emu != null && emu.IsAchievementModalOpen)
+{
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:10000;">
+        <div class="card shadow-lg text-center" style="max-width:520px;width:92%;padding:2rem 1.5rem;">
+            <div style="font-size:1.6rem;font-weight:700;margin-bottom:.25rem;">Achievement unlocked</div>
+            <div style="font-size:1rem;color:#555;">@emu.AchievementModalTitlePublic</div>
+        </div>
+    </div>
+}
+
 @* Core Picker Modal *@
 @if (CorePickerOpen)
 {

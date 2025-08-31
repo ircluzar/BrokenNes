@@ -82,6 +82,14 @@ namespace BrokenNes
         // Achievements integration (optional)
         private AchievementsEngine? _achEngine;
         private readonly Dictionary<string, string> _achTitles = new(StringComparer.OrdinalIgnoreCase);
+    // Achievement unlock flow state
+    private bool _achFlowActive = false;
+    private bool _achModalOpen = false;
+    private string _achModalTitle = string.Empty;
+    private string _achModalId = string.Empty;
+    public bool AchievementModalOpen => _achModalOpen;
+    public string AchievementModalTitle => _achModalTitle;
+    public string AchievementModalId => _achModalId;
         public void ConfigureAchievements(AchievementsEngine engine, IDictionary<string, string> titles)
         {
             _achEngine = engine;
@@ -418,13 +426,12 @@ namespace BrokenNes
                         var unlocked = _achEngine.EvaluateFrame();
                         if (unlocked != null && unlocked.Count > 0)
                         {
-                            foreach (var id in unlocked)
+                            // Trigger flow for the first unlocked id only (guard against duplicates/same-frame multiples)
+                            var id = unlocked[0];
+                            string title = _achTitles.TryGetValue(id, out var t) ? t : id;
+                            if (!_achFlowActive)
                             {
-                                if (_achTitles.TryGetValue(id, out var title))
-                                {
-                                    var msg = System.Text.Json.JsonSerializer.Serialize($"Achievement unlocked: {title}");
-                                    try { JS.InvokeVoidAsync("eval", $"alert({msg})"); } catch { }
-                                }
+                                _ = TriggerAchievementUnlockFlowAsync(id, title);
                             }
                         }
                     }
@@ -460,6 +467,46 @@ namespace BrokenNes
                 _ = PauseEmulation();
                 StateHasChanged();
                 return new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 };
+            }
+        }
+
+        private async Task TriggerAchievementUnlockFlowAsync(string id, string title)
+        {
+            _achFlowActive = true;
+            try
+            {
+                // 1) Save state immediately to the default slot
+                try { await SaveStateAsync(); } catch { }
+                // 2) Pause emulation
+                try { await PauseEmulation(); } catch { }
+                // 3) Register achievement in game save (by unique ID)
+                try
+                {
+                    var save = await _gameSaveService.LoadAsync();
+                    save.Achievements ??= new();
+                    if (!save.Achievements.Contains(id, StringComparer.OrdinalIgnoreCase))
+                    {
+                        save.Achievements.Add(id);
+                        await _gameSaveService.SaveAsync(save);
+                    }
+                }
+                catch { }
+                // 4) Open modal with title and id; 5) Auto-redirect after 5s
+                _achModalId = id;
+                _achModalTitle = title;
+                _achModalOpen = true;
+                StateHasChanged();
+                try
+                {
+                    // Use JS to wait 5s then navigate to Continue page
+                    await JS.InvokeVoidAsync("eval", @"(function(){ setTimeout(function(){ try{ window.location.href = './continue'; }catch(e){} }, 5000); })();");
+                }
+                catch { }
+            }
+            finally
+            {
+                // Keep modal open until redirect; mark flow as inactive for subsequent unlocks
+                _achFlowActive = false;
             }
         }
 

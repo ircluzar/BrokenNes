@@ -487,5 +487,11 @@ namespace BrokenNes
         {
             try { _activeClock?.OnVisibilityChanged(visible); } catch {}
         }
+
+    // ===== Achievements modal public accessors (for Razor) =====
+    public bool IsAchievementModalOpen => AchievementModalOpen;
+    public string AchievementModalTitlePublic => AchievementModalTitle;
+    public string AchievementModalIdPublic => AchievementModalId;
+    public void CloseAchievementModalPublic() { /* Intentionally no-op: modal auto-closes via redirect */ }
     }
 }
