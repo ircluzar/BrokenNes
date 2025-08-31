@@ -13,6 +13,13 @@
 <div class="options-root continue-root">
   <h2 class="opt-title">DECK BUILDER</h2>
 
+  @if (_overlayActive)
+  {
+    <div class="ach-arrive-overlay" aria-hidden="true">
+      <div class="spotlight"></div>
+    </div>
+  }
+
   <section class="cont-header">
     <div class="hdr-main">
       <div class="lvl-title">
@@ -20,7 +27,7 @@
         <strong>@LevelTitle</strong>
       </div>
       <div class="lvl-status">
-        <span class="status-chip @(LevelCleared?"cleared":"not-cleared")" title="@(LevelCleared?"Achievement earned this level":"Earn at least one achievement to clear the level")">
+        <span class="status-chip @(LevelCleared?"cleared":"not-cleared") @((_overlayActive && _firstClearArrival)?"spotlit":null)" title="@(LevelCleared?"Achievement earned this level":"Earn at least one achievement to clear the level")">
           @(LevelCleared?"Cleared":"Not Cleared")
         </span>
       </div>
@@ -378,6 +385,14 @@
   await LoadRomsFromDbAsync();
   // Start the correct level music once data is loaded
   try { await PlayContinueLevelMusicAsync(); } catch { }
+
+  // If arriving from NES with achievement flags, run the arrival UX
+  TryParseArrivalFlags();
+  if (_achievedArrival && !_arrivalHandled)
+  {
+    _arrivalHandled = true;
+    _ = RunAchievementArrivalFlowAsync();
+  }
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -413,6 +428,115 @@
   // Per-level cleared flag (placeholder until per-level attribution exists)
   private bool LevelCleared = false;
   private bool CanAdvanceLevel => LevelCleared && Stars >= RequiredStars;
+  // ===== Arrival UX state =====
+  private bool _achievedArrival = false; // query flag achieved=1
+  private bool _firstClearArrival = false; // query flag firstClear=1
+  private bool _arrivalHandled = false;
+  private bool _overlayActive = false; // darken screen
+  // status chip will be spotlit via class when _overlayActive && _firstClearArrival
+
+  private void TryParseArrivalFlags()
+  {
+    try
+    {
+      var uri = new Uri(Nav.Uri);
+      var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+      var query = uri.Query;
+      if (!string.IsNullOrEmpty(query))
+      {
+        var span = query.AsSpan();
+        if (span.Length > 0 && span[0] == '?') span = span[1..];
+        foreach (var part in span.ToString().Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+          var kv = part.Split('=', 2);
+          if (kv.Length > 0 && kv[0].Length > 0)
+          {
+            var key = Uri.UnescapeDataString(kv[0]);
+            var val = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : string.Empty;
+            map[key] = val;
+          }
+        }
+      }
+      bool GetBool(string key)
+      {
+        if (!map.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v)) return false;
+        return v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) || v.Equals("yes", StringComparison.OrdinalIgnoreCase);
+      }
+      _achievedArrival = GetBool("achieved");
+      _firstClearArrival = GetBool("firstClear");
+    }
+    catch { }
+  }
+
+  private async Task RunAchievementArrivalFlowAsync()
+  {
+    try
+    {
+      // Only run spotlight flow if the level wasn't cleared before
+      if (_firstClearArrival)
+      {
+        _overlayActive = true; await InvokeAsync(StateHasChanged);
+        // Play SFX for first clear flip (uses SFX bus and respects SFX volume)
+        try
+        {
+          await JS.InvokeVoidAsync("eval", @"(function(){try{
+            if(window.nesInterop && window.nesInterop.ensureAudioContext){ window.nesInterop.ensureAudioContext(); }
+            var id='cont-ach-sfx';
+            var el=document.getElementById(id);
+            if(!el){
+              el=document.createElement('audio');
+              el.id=id;
+              el.src='sfx/SFX01.mp3';
+              el.preload='auto';
+              el.style.display='none';
+              document.body.appendChild(el);
+            }
+            if(window.nesInterop && typeof window.nesInterop.playSfxElement==='function'){
+              window.nesInterop.playSfxElement(id);
+            } else {
+              try{ el.currentTime=0; el.volume=(window.nesInterop&&window.nesInterop.getSfxVolume? window.nesInterop.getSfxVolume():0.8); el.play().catch(function(){}); }catch{}
+            }
+          }catch{}})();");
+        }
+        catch { }
+        LevelCleared = true; await SaveClearedFlagAsync(); await InvokeAsync(StateHasChanged);
+        // Wait 3 second, then remove overlay
+        try { await Task.Delay(2000); } catch { }
+        _overlayActive = false; await InvokeAsync(StateHasChanged);
+      }
+
+      // After arrival flow, if eligible, auto-advance to next level
+      // Recompute Stars from save for safety
+      try
+      {
+        var save = await SaveSvc.LoadAsync();
+        Stars = save.Achievements?.Count ?? Stars;
+        LevelCleared = save.LevelCleared; // trust persisted value
+      }
+      catch { }
+      if (CanAdvanceLevel)
+      {
+        // Small grace delay so the user sees the cleared state
+        try { await Task.Delay(500); } catch { }
+        await AdvanceLevel();
+      }
+    }
+    catch { }
+  }
+
+  private async Task SaveClearedFlagAsync()
+  {
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      if (!save.LevelCleared)
+      {
+        save.LevelCleared = true;
+        await SaveSvc.SaveAsync(save);
+      }
+    }
+    catch { }
+  }
   private bool BuildValid => (EnforcedCpu ?? SelectedCpu) != null
     && (EnforcedPpu ?? SelectedPpu) != null
     && (EnforcedApu ?? SelectedApu) != null
@@ -426,6 +550,20 @@
     {
   var save = await SaveSvc.LoadAsync();
   if (!LevelCleared || Stars < RequiredStars) return;
+  // Play level-advance SFX (SFX09)
+  try
+  {
+    await JS.InvokeVoidAsync("eval", @"(function(){try{
+      if(window.nesInterop && window.nesInterop.ensureAudioContext){ window.nesInterop.ensureAudioContext(); }
+      var id='cont-advance-sfx';
+      var el=document.getElementById(id);
+      if(!el){ el=document.createElement('audio'); el.id=id; el.src='sfx/SFX09.mp3'; el.preload='auto'; el.style.display='none'; document.body.appendChild(el); }
+      if(window.nesInterop && typeof window.nesInterop.playSfxElement==='function'){
+        window.nesInterop.playSfxElement(id);
+      } else { try{ el.currentTime=0; el.volume=(window.nesInterop&&window.nesInterop.getSfxVolume? window.nesInterop.getSfxVolume():0.8); el.play().catch(function(){}); }catch{} }
+    }catch{}})();");
+  }
+  catch { }
   save.Level = Math.Max(1, save.Level) + 1;
       // Grant any forced cards for next level here (stub: grant FMC if missing)
       void grant(List<string> list, string id){ if (!list.Contains(id, StringComparer.OrdinalIgnoreCase)) list.Add(id); }

@@ -502,10 +502,12 @@ namespace BrokenNes
                 }
                 catch { }
                 // 3) Register achievement in game save (by unique ID) and mark level cleared
+                bool hadClearedBefore = false;
                 try
                 {
                     var save = await _gameSaveService.LoadAsync();
                     save.Achievements ??= new();
+                    hadClearedBefore = save.LevelCleared;
                     if (!save.Achievements.Contains(id, StringComparer.OrdinalIgnoreCase))
                     {
                         save.Achievements.Add(id);
@@ -541,8 +543,10 @@ namespace BrokenNes
                 StateHasChanged();
                 try
                 {
-                    // Use JS to wait 5s then navigate to Continue page
-                    await JS.InvokeVoidAsync("eval", @"(function(){ setTimeout(function(){ try{ window.location.href = './continue'; }catch(e){} }, 5000); })();");
+                    // Use JS to wait 5s then navigate to Continue page with flags
+                    var firstClear = hadClearedBefore ? "0" : "1";
+                    await JS.InvokeVoidAsync("eval",
+                        "(function(){ setTimeout(function(){ try{ window.location.href = './continue?achieved=1&firstClear=" + firstClear + "'; }catch(e){} }, 5000); })();");
                 }
                 catch { }
             }

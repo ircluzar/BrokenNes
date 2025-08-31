@@ -30,12 +30,14 @@
 .continue-root .lvl-status .status-chip{display:inline-block;padding:.2rem .4rem;border:2px solid #fff;font-size:.65rem}
 .continue-root .lvl-status .status-chip.cleared{background:#10b981;border-color:#10b981;color:#000}
 .continue-root .lvl-status .status-chip.not-cleared{background:#374151;border-color:#9ca3af;color:#fff}
+.continue-root .lvl-status .status-chip.spotlit{box-shadow:0 0 0 4px #fff, 0 0 0 8px #ff5a26; position:relative; z-index:10002}
 .continue-root .hdr-cards{display:flex;align-items:flex-start;gap:.4rem;flex-wrap:wrap}
 .continue-root .enf-chip{background:#000;color:#fff;border:2px solid #fff;font-size:.6rem;padding:.2rem .35rem;cursor:pointer}
 .continue-root .enf-chip:hover{background:#111}
 .continue-root .hdr-cta{margin-top:.75rem}
 .continue-root .btn-next{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.7rem;padding:.45rem .8rem}
 .continue-root .btn-next:disabled{opacity:.5}
+.continue-root .btn-next.spotlit{box-shadow:0 0 0 4px #fff, 0 0 0 8px #ff5a26; position:relative; z-index:10002}
 
 .core-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;justify-items:center}
 .core-slot{position:relative;border:2px solid #fff;min-height:92px;padding:.5rem}
@@ -146,6 +148,14 @@
 .card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:5000;opacity:1;transition:opacity .18s ease}
 .card-modal-backdrop.closing{opacity:0}
 .card-modal-content{max-width:98vw;max-height:98vh;}
+
+/* Arrival overlay when returning from an achievement */
+.ach-arrive-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;pointer-events:none}
+.ach-arrive-overlay .spotlight{position:absolute;inset:auto 16px 16px auto;width:320px;height:80px;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,0.85);}
+/* Try to align spotlight roughly over the Next button area (bottom-right). Adjust at small screens */
+@media (max-width:640px){
+  .ach-arrive-overlay .spotlight{left:16px;right:16px;bottom:16px;width:auto;height:68px}
+}
 
 /* ===== Continue Core Picker Modal ===== */
 .cont-cp-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:8000;padding:16px}
