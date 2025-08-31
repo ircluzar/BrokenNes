@@ -348,7 +348,7 @@
             }
         </div>
     </section>
-    @if (QAchievements && !_achPanelClosed)
+    @if (QAchievements && emu!.DebugUnlocked && !_achPanelClosed)
     {
     <section class="panel-block" style="margin-top:1rem;">
         <summary>Achievements (debug)</summary>
