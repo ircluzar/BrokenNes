@@ -149,7 +149,7 @@
             <div class="games-toolbar">
                 <button @onclick="LoadAchievementsAsync">Refresh</button>
                 <button @onclick="AddAchievementRow">Add new achievement</button>
-                <span class="small-note">Link to a Game by its ID (shows Game common name). Requirements are multiple formula lines.</span>
+                    <span class="small-note">Link to a Game by its ID; select a Meta Achievement (formulas resolved from Meta DB).</span>
             </div>
             @if (isLoadingAchievements)
             {
@@ -161,22 +161,22 @@
             }
             else
             {
-                <div class="grid-head" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                <div class="grid-head" style="grid-template-columns: 1fr 1fr 1fr 2fr 1fr;">
                     <span>ID</span>
                     <span>Game</span>
                     <span>Title</span>
-                    <span>Requirements</span>
+                    <span>Meta Achievement</span>
                     <span>Controls</span>
                 </div>
                 @foreach (var a in achievements)
                 {
-                    <div class="grid-row" style="grid-template-columns: repeat(5, minmax(0,1fr));">
-                        <span>
+                    <div class="grid-row" style="grid-template-columns: 1fr 1fr 1fr 2fr 1fr;">
+                        <span class="id-cell">
                             @if (a.isEditing)
                             {
-                                <input value="@a.id" @onchange="(e=> a.id = e.Value?.ToString() ?? string.Empty)" />
+                                <input class="id-input" value="@a.id" @onchange="(e=> a.id = e.Value?.ToString() ?? string.Empty)" />
                             }
-                            else { @a.id }
+                            else { <span class="id-text" title="@a.id">@a.id</span> }
                         </span>
                         <span>
                             @if (a.isEditing)
@@ -198,31 +198,21 @@
                             }
                             else { @a.title }
                         </span>
-                        <span>
+                        <span class="meta-cell">
                             @if (a.isEditing)
                             {
-                                <div style="display:flex;flex-direction:column;gap:.25rem">
-                                    @for (var i = 0; i < (a.requirements?.Count ?? 0); i++)
+                                var gameTitle = GetGameLabel(a.gameId);
+                                <select class="meta-select" value="@a.metaAchievementName" @onchange="(e=> a.metaAchievementName = e.Value?.ToString() ?? string.Empty)" title="@a.metaAchievementName">
+                                    <option value="">Select Meta Achievement…</option>
+                                    @foreach (var opt in GetMetaOptionsForGame(gameTitle))
                                     {
-                                        var idx = i;
-                                        <div style="display:flex;gap:.25rem;align-items:center">
-                                            <input style="flex:1" value="@a.requirements![idx]" @onchange="(e=> UpdateRequirement(a, idx, e.Value?.ToString()))" />
-                                            <button type="button" @onclick="(()=>RemoveRequirement(a, idx))">✕</button>
-                                        </div>
+                                        <option value="@opt.name" title="@opt.name">@opt.name</option>
                                     }
-                                    <button type="button" @onclick="(()=>AddRequirement(a))">+ Add requirement</button>
-                                </div>
+                                </select>
                             }
                             else
                             {
-                                @if (a.requirements == null || a.requirements.Count == 0)
-                                {
-                                    <span>None</span>
-                                }
-                                else
-                                {
-                                    <span>@string.Join(" • ", a.requirements)</span>
-                                }
+                                <span class="meta-text" title="@a.metaAchievementName">@(string.IsNullOrWhiteSpace(a.metaAchievementName) ? "-" : a.metaAchievementName)</span>
                             }
                         </span>
                         <span>
@@ -334,19 +324,21 @@
             }
             else
             {
-                <div class="grid-head" style="grid-template-columns: 1fr 1fr 2fr;">
+                <div class="grid-head" style="grid-template-columns: 1fr 1fr 2fr 0.6fr;">
                     <span>Game</span>
                     <span>Achievement</span>
                     <span>Formula</span>
+                    <span>Approved</span>
                 </div>
                 @foreach (var r in metaRows)
                 {
-                    <div class="grid-row" style="grid-template-columns: 1fr 1fr 2fr;">
-                <span>@r.game</span>
-                <span title="Click to test just this achievement"
-                    @onclick="(()=> TestSingleMetaFormulaAsync(r))"
-                    style="cursor:pointer;@(r.TestSucceeded ? "color:var(--success,green);font-weight:600;" : (r.TestFailed ? "color:var(--danger,crimson);font-weight:600;" : string.Empty))">@r.description</span>
+                    <div class="grid-row" style="grid-template-columns: 1fr 1fr 2fr 0.6fr;">
+                        <span>@r.game</span>
+                        <span title="Click to test just this achievement"
+                              @onclick="(()=> TestSingleMetaFormulaAsync(r))"
+                              style="cursor:pointer;@(r.TestSucceeded ? "color:var(--success,green);font-weight:600;" : (r.TestFailed ? "color:var(--danger,crimson);font-weight:600;" : string.Empty))">@r.description</span>
                         <span style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-family: var(--monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace)">@r.formula</span>
+                        <span><input type="checkbox" checked="@r.Approved" @onchange="(e=> OnToggleApprovedAsync(r, e))" /></span>
                     </div>
                 }
             }
@@ -696,7 +688,9 @@
 
     private void BeginEditAchievement(AchievementRow a)
     {
-        a.isEditing = true; StateHasChanged();
+    a.isEditing = true; StateHasChanged();
+    var title = GetGameLabel(a.gameId);
+    _ = EnsureMetaOptionsForGameAsync(title);
     }
 
     private async Task CancelEditAchievement(AchievementRow a)
@@ -712,7 +706,8 @@
                 id = a.id ?? string.Empty,
                 gameId = a.gameId ?? string.Empty,
                 title = a.title ?? string.Empty,
-                requirements = (a.requirements ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray()
+                requirements = (a.requirements ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray(),
+                metaAchievementName = a.metaAchievementName ?? string.Empty
             };
             var recJson = JsonSerializer.Serialize(rec);
             var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
@@ -1038,7 +1033,8 @@
         public string? id { get; set; }
         public string? gameId { get; set; }
         public string? title { get; set; }
-        public List<string>? requirements { get; set; }
+    public List<string>? requirements { get; set; } // legacy only
+    public string? metaAchievementName { get; set; }
         public bool isEditing { get; set; }
     }
 
@@ -1049,6 +1045,7 @@
         public string formula { get; set; } = string.Empty;
         public bool TestSucceeded { get; set; } = false;
         public bool TestFailed { get; set; } = false;
+    public bool Approved { get; set; } = false;
     }
 
     private sealed class GameOption { public string id { get; set; } = string.Empty; public string label { get; set; } = string.Empty; }
@@ -1186,6 +1183,54 @@
 
     // === META tab helpers ===
     private string metaFilterTitle = string.Empty;
+
+    // Meta achievement selection options for Achievements tab
+    private sealed class MetaOption { public string name { get; set; } = string.Empty; public string formula { get; set; } = string.Empty; }
+    private readonly Dictionary<string, List<MetaOption>> MetaOptionsByGameTitle = new(StringComparer.OrdinalIgnoreCase);
+    private async Task EnsureMetaOptionsForGameAsync(string? gameTitle)
+    {
+        if (string.IsNullOrWhiteSpace(gameTitle)) return;
+        if (MetaOptionsByGameTitle.ContainsKey(gameTitle)) return;
+        try
+        {
+            var items = await MetaGames.GetAchievementsByTitleAsync(gameTitle);
+            var opts = items.Select(i => new MetaOption { name = i.Description, formula = i.Formula })
+                            .OrderBy(o => o.name, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+            MetaOptionsByGameTitle[gameTitle] = opts;
+            StateHasChanged();
+        }
+        catch { MetaOptionsByGameTitle[gameTitle] = new List<MetaOption>(); }
+    }
+    private IEnumerable<MetaOption> GetMetaOptionsForGame(string? gameTitle)
+    {
+        if (string.IsNullOrWhiteSpace(gameTitle)) return Array.Empty<MetaOption>();
+        _ = EnsureMetaOptionsForGameAsync(gameTitle);
+        return MetaOptionsByGameTitle.TryGetValue(gameTitle, out var list) ? list : Array.Empty<MetaOption>();
+    }
+
+    // Title <-> GameId maps (for Meta Approved toggle)
+    private Dictionary<string, string> GameIdByLabel { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> GameLabelById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private async Task EnsureGamesIndexAsync()
+    {
+        if (GameIdByLabel.Count > 0 && GameLabelById.Count > 0) return;
+        try
+        {
+            var gamesJson = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('games'); arr.sort((a,b)=> (a.title||'').localeCompare(b.title||'')); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var gameList = string.IsNullOrWhiteSpace(gamesJson) ? new List<GameRow>() : JsonSerializer.Deserialize<List<GameRow>>(gamesJson) ?? new List<GameRow>();
+            GameIdByLabel.Clear(); GameLabelById.Clear();
+            foreach (var g in gameList)
+            {
+                if (string.IsNullOrWhiteSpace(g.id)) continue;
+                var label = GetCommonName(g);
+                GameIdByLabel[label] = g.id!;
+                GameLabelById[g.id!] = label;
+            }
+        }
+        catch { GameIdByLabel.Clear(); GameLabelById.Clear(); }
+    }
+
     private async Task LoadMetaAsync()
     {
         if (ActiveTab != "meta") return;
@@ -1202,28 +1247,125 @@
                 var items = await MetaGames.GetAchievementsByTitleAsync(metaFilterTitle);
                 list = items.Select(a => new BrokenNes.Services.MetaGamesService.AchievementWithGame(metaFilterTitle, a.Description, a.Formula)).ToList();
             }
+
             metaRows = list
                 .Select(x => new MetaRow { game = x.GameTitle, description = x.Description, formula = x.Formula })
                 .OrderBy(r => r.game, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(r => r.description, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            // Compute Approved = exists in Achievements DB for (game title, meta name)
+            await EnsureGamesIndexAsync();
+            var achJson = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('achievements'); return JSON.stringify(arr); } catch(e){ return '[]'; } })()");
+            var achArr = string.IsNullOrWhiteSpace(achJson) ? new List<AchievementRow>() : JsonSerializer.Deserialize<List<AchievementRow>>(achJson) ?? new List<AchievementRow>();
+            var approved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var a in achArr)
+            {
+                var gid = a.gameId ?? string.Empty; var metaName = a.metaAchievementName ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(gid) || string.IsNullOrWhiteSpace(metaName)) continue;
+                if (GameLabelById.TryGetValue(gid, out var title))
+                {
+                    approved.Add(title + "||" + metaName);
+                }
+            }
+            foreach (var r in metaRows)
+            {
+                r.Approved = approved.Contains(r.game + "||" + r.description);
+            }
         }
         catch { metaRows = new(); }
         finally { isLoadingMeta = false; StateHasChanged(); }
     }
 
-    private async Task OnMetaFilterChanged(ChangeEventArgs e)
+    private async Task OnToggleApprovedAsync(MetaRow r, ChangeEventArgs e)
     {
-        metaFilterTitle = e.Value?.ToString() ?? string.Empty;
-        await LoadMetaAsync();
+        bool desired = false;
+        if (e?.Value is bool b) desired = b;
+        else if (e?.Value != null) { var s = e.Value.ToString(); desired = string.Equals(s, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(s, "on", StringComparison.OrdinalIgnoreCase); }
+
+        await EnsureGamesIndexAsync();
+        if (!GameIdByLabel.TryGetValue(r.game, out var gameId) || string.IsNullOrWhiteSpace(gameId))
+        {
+            try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize($"Game not found for title '{r.game}'.")})"); } catch { }
+            return;
+        }
+        if (desired)
+        {
+            await UpsertAchievementByLinkAsync(gameId, r.description);
+            r.Approved = true;
+        }
+        else
+        {
+            await DeleteAchievementByLinkAsync(gameId, r.description);
+            r.Approved = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task UpsertAchievementByLinkAsync(string gameId, string metaName)
+    {
+        try
+        {
+            var findJs = @"(async()=>{ try { if (!window.continueDb) return null; await window.continueDb.open(); const arr = await window.continueDb.getAll('achievements'); const gameId = ARGS_gameId; const meta = ARGS_meta; const found = arr.find(a=> (a.gameId||'')===gameId && (a.metaAchievementName||'')===meta); return found? JSON.stringify(found): null; } catch(e){ return null; }})()";
+            findJs = findJs.Replace("ARGS_gameId", JsonSerializer.Serialize(gameId)).Replace("ARGS_meta", JsonSerializer.Serialize(metaName));
+            var json = await JS.InvokeAsync<string>("eval", findJs);
+            string id;
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var existing = JsonSerializer.Deserialize<AchievementRow>(json!);
+                id = existing?.id ?? SlugifyId($"ach_{gameId}_{metaName}");
+            }
+            else
+            {
+                id = SlugifyId($"ach_{gameId}_{metaName}");
+            }
+            var rec = new { id = id, gameId = gameId, title = metaName, requirements = Array.Empty<string>(), metaAchievementName = metaName };
+            var recJson = JsonSerializer.Serialize(rec).Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
+            var js = $"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); const rec = JSON.parse('{recJson}'); await window.continueDb.put('achievements', rec); }} catch(e) {{ console.warn('upsert achievement failed', e); }} }})()";
+            await JS.InvokeVoidAsync("eval", js);
+        }
+        catch { }
+        await LoadAchievementsAsync();
+    }
+
+    private async Task DeleteAchievementByLinkAsync(string gameId, string metaName)
+    {
+        try
+        {
+            var findJs = @"(async()=>{ try { if (!window.continueDb) return null; await window.continueDb.open(); const arr = await window.continueDb.getAll('achievements'); const gameId = ARGS_gameId; const meta = ARGS_meta; const found = arr.find(a=> (a.gameId||'')===gameId && (a.metaAchievementName||'')===meta); return found? JSON.stringify(found): null; } catch(e){ return null; }})()";
+            findJs = findJs.Replace("ARGS_gameId", JsonSerializer.Serialize(gameId)).Replace("ARGS_meta", JsonSerializer.Serialize(metaName));
+            var json = await JS.InvokeAsync<string>("eval", findJs);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var existing = JsonSerializer.Deserialize<AchievementRow>(json!);
+                var idSafe = (existing?.id ?? string.Empty).Replace("'", "\\'");
+                var delJs = $"(async()=>{{ try {{ if(!window.continueDb) return; await window.continueDb.open(); await window.continueDb.delete('achievements', '{idSafe}'); }} catch(e) {{ console.warn('delete achievement by link failed', e); }} }})()";
+                await JS.InvokeVoidAsync("eval", delJs);
+            }
+        }
+        catch { }
+        await LoadAchievementsAsync();
+    }
+
+    private static string SlugifyId(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "ach_empty";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s)
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            else if (ch == '_' || ch == '-') sb.Append(ch);
+            else sb.Append('_');
+        }
+        return sb.ToString();
     }
 
     private async Task TestAllMetaFormulasAsync()
     {
+        var prevDebug = Parser.DebugLogging;
+        Parser.DebugLogging = true;
         try
         {
-            var prevDebug = Parser.DebugLogging;
-            Parser.DebugLogging = true;
             // Ensure we have data loaded
             if (metaRows is null || metaRows.Count == 0)
             {
@@ -1244,7 +1386,6 @@
                 var msg = "test.nes not found or empty in wwwroot. Place a valid ROM at wwwroot/test.nes.";
                 try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
                 try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize(msg)})"); } catch { }
-                Parser.DebugLogging = prevDebug;
                 return;
             }
 
@@ -1262,14 +1403,16 @@
 
             try { await JS.InvokeVoidAsync("console.log", $"Meta test summary: {success} succeeded, {failed} failed."); } catch { }
             try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize($"Meta tests done: {success} passed, {failed} failed.")})"); } catch { }
-            Parser.DebugLogging = prevDebug;
         }
         catch (Exception ex)
         {
             var msg = $"Unexpected error during meta formula test: {ex.Message}";
             try { await JS.InvokeVoidAsync("console.error", msg); } catch { }
             try { await JS.InvokeVoidAsync("eval", $"alert({JsonSerializer.Serialize("Parsing failed:\n" + msg)})"); } catch { }
-            Parser.DebugLogging = false;
+        }
+        finally
+        {
+            Parser.DebugLogging = prevDebug;
         }
     }
 
@@ -1369,6 +1512,12 @@
         {
             Parser.DebugLogging = prevDebug;
         }
+    }
+
+    private async Task OnMetaFilterChanged(ChangeEventArgs e)
+    {
+        metaFilterTitle = e.Value?.ToString() ?? string.Empty;
+        await LoadMetaAsync();
     }
 
     private class ColumnVisibility

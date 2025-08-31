@@ -87,6 +87,16 @@
   font-size:.65rem;
   padding:.25rem .4rem;
 }
+.continue-root .ach-summary{display:flex;gap:.4rem;align-items:baseline;font-size:.6rem}
+.continue-root .ach-list{list-style:none;margin:.4rem 0 0;padding:0;display:flex;flex-direction:column;gap:.3rem}
+/* Make achievements text smaller */
+.continue-root .ach-item{display:flex;align-items:center;gap:.45rem;font-size:.7rem}
+.continue-root .ach-item .ach-check{opacity:.85;font-size:.72rem;line-height:1}
+.continue-root .ach-item .ach-title{font-size:.64rem;line-height:1.2}
+/* Description already has .small-note (.55rem); keep it subtle */
+.continue-root .ach-item .ach-desc{opacity:.75}
+/* Difficulty chip styling, smaller to match list scale */
+.continue-root .ach-item .ach-diff{display:inline-block;border:2px solid #fff;background:#000;color:#fff;padding:.06rem .3rem;font-size:.55rem}
 .rom-empty{border:2px dashed #fff;padding:.75rem}
 
 .rom-table{display:block;border:2px solid #fff;--rom-cols: 3fr 1fr 1fr}

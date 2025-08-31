@@ -1,3 +1,31 @@
+/* Truncate long Achievement IDs to prevent layout push */
+.id-cell { display:inline-flex; min-width:0; max-width:100%; }
+.id-text {
+  display:inline-block;
+  max-width: 12rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.id-input {
+  max-width: 14rem;
+}
+/* Constrain Meta Achievement UI in Achievements tab */
+.meta-cell { display: inline-flex; min-width: 0; max-width: 100%; }
+.meta-select {
+  max-width: 18rem; /* prevent overflow pushing actions off screen */
+  width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.meta-text {
+  display: inline-block;
+  max-width: 18rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .crud-root{max-width:1100px;margin:1.5rem auto;padding:1rem 1.25rem;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;background:transparent;color:#fff;font-family:'Press Start 2P', monospace;font-size:12px;}
 .crud-root{position:relative;overflow:hidden;}
 .crud-title{margin:0 0 .9rem;font-size:1.1rem;color:#ff5a26;}
