@@ -479,6 +479,15 @@ namespace BrokenNes
             {
                 // 1) Save state immediately to the default slot
                 try { await SaveStateAsync(); } catch { }
+                // 1b) Also persist a combined Achievements snapshot + savestate under latest key for this game
+                try
+                {
+                    if (_achEngine != null)
+                    {
+                        await SaveLatestAchievementSnapshotAsync();
+                    }
+                }
+                catch { }
                 // 2) Pause emulation
                 try { await PauseEmulation(); } catch { }
                 // 2.5) Play a random victory song
@@ -542,6 +551,93 @@ namespace BrokenNes
                 // Keep modal open until redirect; mark flow as inactive for subsequent unlocks
                 _achFlowActive = false;
             }
+        }
+
+        // Build a stable key per resync spec: `${system}:${coreId}:${romHash}`
+        private string BuildGameKey()
+        {
+            string system = "nes";
+            string coreId = string.Empty;
+            try { coreId = $"{nes?.GetCpuCoreId() ?? ""}|{nes?.GetPpuCoreId() ?? ""}|{nes?.GetApuCoreId() ?? ""}"; } catch { }
+            string romHash = string.Empty;
+            try { var t = nes?.ComputeGameIdentity(); if (t.HasValue) romHash = t.Value.GameId ?? string.Empty; } catch { }
+            if (string.IsNullOrWhiteSpace(romHash)) romHash = Controller.CurrentRomName ?? "";
+            return $"{system}:{coreId}:{romHash}";
+        }
+
+        private string BuildLatestSnapshotKey(string gameKey) => $"achv-snap-v1:{gameKey}:latest";
+
+    private async Task SaveLatestAchievementSnapshotAsync()
+        {
+            if (_achEngine == null) return;
+            // Read the most recent savestate payload back from storage (single or chunked)
+            string? gameState = null;
+            try
+            {
+                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
+                if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+                {
+                    int parts = ExtractInt(manifestJson, "parts");
+                    bool compressed = manifestJson.Contains("\"compressed\":true");
+                    var sb = new System.Text.StringBuilder();
+                    for (int i = 0; i < parts; i++)
+                    {
+                        var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
+                        if (part == null) { sb.Clear(); break; }
+                        sb.Append(part);
+                    }
+                    var full = sb.ToString();
+                    if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
+                    if (!string.IsNullOrWhiteSpace(full)) gameState = full;
+                }
+                else
+                {
+                    var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
+                    if (!string.IsNullOrWhiteSpace(single))
+                    {
+                        if (single.StartsWith("GZ:")) { try { gameState = DecompressString(single.Substring(3)); } catch { gameState = null; } }
+                        else gameState = single;
+                    }
+                }
+            }
+            catch { }
+            if (string.IsNullOrWhiteSpace(gameState)) return;
+
+            var achState = _achEngine.SerializeState();
+            var snapshot = new
+            {
+                schema = "achv-snap-v1",
+                gameKey = BuildGameKey(),
+                timestamp = DateTime.UtcNow.ToString("o"),
+                gameState,
+                achvState = achState
+            };
+            try
+            {
+                string key = BuildLatestSnapshotKey(snapshot.gameKey);
+                string json = System.Text.Json.JsonSerializer.Serialize(snapshot);
+                await JS.InvokeVoidAsync("nesInterop.idbSetItem", key, json);
+            }
+            catch { }
+        }
+
+        private async Task RestoreLatestAchievementSnapshotAsync()
+        {
+            if (_achEngine == null) return;
+            try
+            {
+                string key = BuildLatestSnapshotKey(BuildGameKey());
+                var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", key);
+                if (string.IsNullOrWhiteSpace(json)) return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("achvState", out var st))
+                {
+                    var dto = System.Text.Json.JsonSerializer.Deserialize<NesEmulator.RetroAchievements.AchievementsEngine.AchvStateDTO>(st.GetRawText());
+                    if (dto != null) _achEngine.RestoreState(dto);
+                }
+            }
+            catch { }
         }
 
         private async Task StartEmulation()

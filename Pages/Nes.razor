@@ -1412,10 +1412,33 @@
                     {
                         await TryInitAchievementsAsync();
                     }
-                    // If requested, autoload the last saved state after loading ROM
+                    // If requested, autoload the last saved state after loading ROM, then restore achievements snapshot if available
                     if (QAutoloadState)
                     {
                         try { await emu.LoadStateAsyncPublic(); } catch { }
+                        try
+                        {
+                            if (_achEngine != null)
+                            {
+                                // Ask JS for latest snapshot and restore it
+                                string gameKey = BuildGameKeyForPage();
+                                string latestKey = $"achv-snap-v1:{gameKey}:latest";
+                                var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", latestKey);
+                                if (!string.IsNullOrWhiteSpace(json))
+                                {
+                                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                                    var root = doc.RootElement;
+                                    if (root.TryGetProperty("achvState", out var st))
+                                    {
+                                        var dto = System.Text.Json.JsonSerializer.Deserialize<NesEmulator.RetroAchievements.AchievementsEngine.AchvStateDTO>(st.GetRawText());
+                                        if (dto != null) _achEngine.RestoreState(dto);
+                                    }
+                                }
+                                // Rebuild dashboard
+                                try { BuildAchRowsFromEngine(); await InvokeAsync(StateHasChanged); } catch { }
+                            }
+                        }
+                        catch { }
                     }
                 }
                 // Execute optional stage script after emulator/ROM init
@@ -2075,6 +2098,22 @@
         try { return getter(); } catch { return null; }
     }
 
+    // Compute a stable gameKey matching emulator side for achievements snapshot lookup
+    private string BuildGameKeyForPage()
+    {
+        try
+        {
+            string system = "nes";
+            string cpu = SafeGet(()=> emu!.Controller.nes!.GetCpuCoreId()) ?? string.Empty;
+            string ppu = SafeGet(()=> emu!.Controller.nes!.GetPpuCoreId()) ?? string.Empty;
+            string apu = SafeGet(()=> emu!.Controller.nes!.GetApuCoreId()) ?? string.Empty;
+            string coreId = string.Join('|', new[]{cpu,ppu,apu});
+            string romHash = SafeGet(()=> emu!.Controller.nes!.ComputeGameIdentity().GameId) ?? (emu?.Controller.CurrentRomName ?? string.Empty);
+            return $"{system}:{coreId}:{romHash}";
+        }
+        catch { return emu?.Controller.CurrentRomName ?? ""; }
+    }
+
     private sealed class PickerItem
     {
         public string Domain { get; set; } = string.Empty;
@@ -2097,4 +2136,5 @@
     private bool ShowClockPicker => _pickerOptionsReady && (emu?.Controller.ClockCoreOptions?.Count ?? 0) > 1;
     private bool ShowShaderPicker => _pickerOptionsReady && (emu?.Controller.ShaderOptions?.Count() ?? 0) > 1;
 }
+
 

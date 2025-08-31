@@ -13,6 +13,8 @@ namespace BrokenNes
                 Logger.LogInformation("Resetting emulation (Emulator.ResetAsync)");
                 bool wasRunning = nesController.IsRunning;
                 if (wasRunning) await PauseEmulation();
+                // Reset achievements engine runtime state when achievements are enabled
+                try { _achEngine?.ResetToPowerOn(); } catch { }
                 try { nes?.FlushSoundFont(); } catch {}
                 try { await JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
                 if (corruptor.AutoCorrupt)

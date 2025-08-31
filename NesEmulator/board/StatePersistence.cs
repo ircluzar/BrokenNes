@@ -52,8 +52,10 @@ namespace BrokenNes
                         await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey, payload);
                         await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
                         Status.Set(compressed ? "State saved (compressed)" : "State saved");
-            // If saving outside of achievements mode, drop trusted continue flag
-            try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
+                        // If saving outside of achievements mode, drop trusted continue flag
+                        try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
+                        // Persist paired achievements snapshot when achievements are enabled
+                        try { if (_achEngine != null) await SaveLatestAchievementSnapshotAsync(); } catch {}
                         Diag("Single chunk save complete");
                     }
                     catch (JSException jsex)
@@ -76,6 +78,8 @@ namespace BrokenNes
                     Status.Set(compressed ? $"State saved in {parts.Count} parts (compressed)" : $"State saved in {parts.Count} parts");
                     // If saving outside of achievements mode, drop trusted continue flag
                     try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
+                    // Persist paired achievements snapshot when achievements are enabled
+                    try { if (_achEngine != null) await SaveLatestAchievementSnapshotAsync(); } catch {}
                 }
                 catch (JSException jsex)
                 {
@@ -171,6 +175,8 @@ namespace BrokenNes
                         nesController.framebuffer = nes.GetFrameBuffer();
                         await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer);
                     }
+                    // If achievements are enabled, restore the latest paired achievements snapshot
+                    try { if (_achEngine != null) await RestoreLatestAchievementSnapshotAsync(); } catch {}
                     Status.Set("State loaded");
                     StateHasChanged();
                     if (wasRunning) await StartEmulation();

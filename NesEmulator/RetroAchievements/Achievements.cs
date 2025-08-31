@@ -228,6 +228,138 @@ namespace NesEmulator.RetroAchievements
             return unlocked;
         }
 
+        // ======== Snapshot/Restore API (resync-project MVP) ========
+        public sealed class AchvNumber
+        {
+            public string Kind { get; set; } = "int"; // "int" or "float"
+            public long I64 { get; set; }
+            public double F64 { get; set; }
+            public static AchvNumber FromNumeric(Numeric n)
+                => n.Kind == ValueKind.Float ? new AchvNumber { Kind = "float", F64 = n.F64 } : new AchvNumber { Kind = "int", I64 = n.I64 };
+            public Numeric ToNumeric()
+                => string.Equals(Kind, "float", StringComparison.OrdinalIgnoreCase) ? new Numeric(F64) : new Numeric(I64);
+        }
+        public sealed class CondState { public int Hits { get; set; } public bool IsMet { get; set; } }
+        public sealed class AchvAchState
+        {
+            public bool Primed { get; set; }
+            public AchvNumber? Remembered { get; set; }
+            public List<CondState> Conditions { get; set; } = new();
+            public double MeasuredCurrent { get; set; }
+            public double MeasuredTarget { get; set; }
+            public bool MeasuredActive { get; set; }
+            public bool MeasuredIsPercent { get; set; }
+        }
+        public sealed class AchvStateDTO
+        {
+            public string SchemaVersion { get; set; } = "achv-snap-v1";
+            public List<string> CompletedIds { get; set; } = new();
+            public Dictionary<string, AchvAchState> Progress { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+            public bool Hardcore { get; set; } // reserved for future
+        }
+
+        /// <summary>
+        /// Serialize current achievement progress and completions. Intended to be paired with an emulator savestate.
+        /// </summary>
+        public AchvStateDTO SerializeState()
+        {
+            var dto = new AchvStateDTO();
+            foreach (var kv in _byId)
+            {
+                var a = kv.Value;
+                if (a.Unlocked)
+                {
+                    dto.CompletedIds.Add(a.Id);
+                    continue;
+                }
+                var asd = new AchvAchState
+                {
+                    Primed = a.Primed,
+                    Remembered = a.Remembered != null ? AchvNumber.FromNumeric(a.Remembered.Value) : null,
+                    MeasuredCurrent = a.MeasuredCurrent,
+                    MeasuredTarget = a.MeasuredTarget,
+                    MeasuredActive = a.MeasuredActive,
+                    MeasuredIsPercent = a.MeasuredIsPercent
+                };
+                foreach (var c in a.Conditions)
+                    asd.Conditions.Add(new CondState { Hits = c.Hits, IsMet = c.IsMet });
+                dto.Progress[a.Id] = asd;
+            }
+            return dto;
+        }
+
+        /// <summary>
+        /// Restore a previously serialized achievement state. Unknown IDs are ignored.
+        /// </summary>
+        public void RestoreState(AchvStateDTO state)
+        {
+            // Reset to clean slate first
+            foreach (var kv in _byId)
+            {
+                var a = kv.Value;
+                a.Unlocked = false; a.Primed = false; a.Remembered = null;
+                a.MeasuredActive = false; a.MeasuredCurrent = 0; a.MeasuredTarget = 0; a.MeasuredIsPercent = false;
+                for (int i = 0; i < a.Conditions.Count; i++) { a.Conditions[i].Hits = 0; a.Conditions[i].IsMet = false; }
+            }
+            // Apply completions
+            if (state.CompletedIds != null)
+            {
+                foreach (var id in state.CompletedIds)
+                {
+                    if (_byId.TryGetValue(id, out var a)) a.Unlocked = true;
+                }
+            }
+            // Apply progress
+            if (state.Progress != null)
+            {
+                foreach (var kv in state.Progress)
+                {
+                    if (!_byId.TryGetValue(kv.Key, out var a)) continue;
+                    var asd = kv.Value;
+                    a.Primed = asd.Primed;
+                    a.Remembered = asd.Remembered != null ? asd.Remembered.ToNumeric() : (Numeric?)null;
+                    a.MeasuredActive = asd.MeasuredActive; a.MeasuredCurrent = asd.MeasuredCurrent; a.MeasuredTarget = asd.MeasuredTarget; a.MeasuredIsPercent = asd.MeasuredIsPercent;
+                    if (asd.Conditions != null)
+                    {
+                        for (int i = 0; i < a.Conditions.Count && i < asd.Conditions.Count; i++)
+                        {
+                            a.Conditions[i].Hits = asd.Conditions[i].Hits;
+                            a.Conditions[i].IsMet = asd.Conditions[i].IsMet;
+                        }
+                    }
+                }
+            }
+            // Re-initialize RAM snapshots to current to keep d/p semantics consistent
+            try
+            {
+                _ram.CopyRam(_ramNow);
+                Array.Copy(_ramNow, _ramPrev, _ramNow.Length);
+                Array.Copy(_ramNow, _ramPrior, _ramNow.Length);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Reset all achievements to power-on state (clear hits, met flags, primed, unlocked, remembered, measured).
+        /// </summary>
+        public void ResetToPowerOn()
+        {
+            foreach (var kv in _byId)
+            {
+                var a = kv.Value;
+                a.Primed = false; a.Unlocked = false; a.Remembered = null;
+                a.MeasuredActive = false; a.MeasuredCurrent = 0; a.MeasuredTarget = 0; a.MeasuredIsPercent = false;
+                for (int i = 0; i < a.Conditions.Count; i++) { a.Conditions[i].Hits = 0; a.Conditions[i].IsMet = false; }
+            }
+            try
+            {
+                _ram.CopyRam(_ramNow);
+                Array.Copy(_ramNow, _ramPrev, _ramNow.Length);
+                Array.Copy(_ramNow, _ramPrior, _ramNow.Length);
+            }
+            catch { }
+        }
+
         private void EvaluateAchievement(Achievement ach)
         {
             // 1) Pause check: if any PauseIf is true, suspend group (no hit updates, no resets)
