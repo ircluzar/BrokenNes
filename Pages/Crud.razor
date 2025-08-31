@@ -320,7 +320,15 @@
             }
             else if (metaRows is null || metaRows.Count == 0)
             {
-                <div class="grid-empty">No data.</div>
+                var metaErr = MetaGames.GetLastError();
+                if (!string.IsNullOrWhiteSpace(metaErr))
+                {
+                    <div class="grid-empty">No data. Error: @metaErr</div>
+                }
+                else
+                {
+                    <div class="grid-empty">No data.</div>
+                }
             }
             else
             {
@@ -1272,6 +1280,19 @@
             {
                 r.Approved = approved.Contains(r.game + "||" + r.description);
             }
+            // If still empty, log any service error to console once for visibility
+            try
+            {
+                if (metaRows.Count == 0)
+                {
+                    var err = MetaGames.GetLastError();
+                    if (!string.IsNullOrWhiteSpace(err))
+                    {
+                        await JS.InvokeVoidAsync("console.error", $"CRUD Meta load: {err}");
+                    }
+                }
+            }
+            catch { }
         }
         catch { metaRows = new(); }
         finally { isLoadingMeta = false; StateHasChanged(); }

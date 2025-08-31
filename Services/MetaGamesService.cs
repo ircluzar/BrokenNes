@@ -21,6 +21,7 @@ public sealed class MetaGamesService
     private List<MetaGame>? _cache; // set on first load
     private Task? _loadingTask;     // coalesce concurrent loads
     private readonly object _gate = new object();
+    private string? _lastError;     // captured on failure for diagnostics
 
     public MetaGamesService(HttpClient http)
     {
@@ -45,7 +46,15 @@ public sealed class MetaGamesService
         try
         {
             // The file lives under wwwroot/models
-            using var stream = await _http.GetStreamAsync("models/meta_games.json");
+            using var resp = await _http.GetAsync("models/meta_games.json", HttpCompletionOption.ResponseHeadersRead);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _cache = new List<MetaGame>();
+                _lastError = $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase ?? string.Empty} for models/meta_games.json";
+                try { Console.Error.WriteLine($"[MetaGamesService] {_lastError}"); } catch { }
+                return;
+            }
+            using var stream = await resp.Content.ReadAsStreamAsync();
             var data = await JsonSerializer.DeserializeAsync<List<MetaGame>>(stream, _jsonOptions)
                        ?? new List<MetaGame>();
 
@@ -61,10 +70,14 @@ public sealed class MetaGamesService
                 }
             }
             _cache = data;
+            _lastError = null;
         }
-        catch
+    catch (Exception ex)
         {
+            try { Console.Error.WriteLine($"[MetaGamesService] Failed to load models/meta_games.json: {ex.Message}"); }
+            catch { }
             _cache = new List<MetaGame>();
+            _lastError = ex.Message;
         }
     }
 
@@ -121,14 +134,20 @@ public sealed class MetaGamesService
         return list;
     }
 
+    /// <summary>
+    /// Returns the last error message encountered during load, if any.
+    /// Useful for surfacing issues in UI/console without throwing.
+    /// </summary>
+    public string? GetLastError() => _lastError;
+
     // ==== Models ====
-    private sealed class MetaGame
+    public sealed class MetaGame
     {
         public string? Title { get; set; }
         public List<MetaAchievement>? Achievements { get; set; }
     }
 
-    private sealed class MetaAchievement
+    public sealed class MetaAchievement
     {
         public string? Description { get; set; }
         public string? Formula { get; set; }
