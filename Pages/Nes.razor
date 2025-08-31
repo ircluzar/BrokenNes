@@ -1173,13 +1173,13 @@
     }
 </div>
 
-@* Achievement Unlocked Modal *@
+@* Achievement Unlocked Modal (retro-styled to match Continue page) *@
 @if (emu != null && emu.IsAchievementModalOpen)
 {
-    <div class="modal-backdrop" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:10000;">
-        <div class="card shadow-lg text-center" style="max-width:520px;width:92%;padding:2rem 1.5rem;">
-            <div style="font-size:1.6rem;font-weight:700;margin-bottom:.25rem;">Achievement unlocked</div>
-            <div style="font-size:1rem;color:#555;">@emu.AchievementModalTitlePublic</div>
+    <div class="ach-modal-backdrop">
+        <div class="ach-modal" role="dialog" aria-modal="true" aria-label="Achievement unlocked">
+            <div class="ach-title">ACHIEVEMENT UNLOCKED</div>
+            <div class="ach-sub">@emu.AchievementModalTitlePublic</div>
         </div>
     </div>
 }

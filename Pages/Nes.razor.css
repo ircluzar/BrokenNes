@@ -1029,4 +1029,15 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
   .cp-body .core-row .row-meta { grid-area: meta; width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 2px; }
 }
 
+/* ===== Achievement Unlocked Modal (retro skin to match Continue) ===== */
+.ach-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:10000}
+.ach-modal{background:#000;color:#fff;border:4px solid #ffffff;outline:4px solid #ff5a26;outline-offset:-8px;border-radius:10px;padding:1.4rem 1.2rem;width:min(560px,92vw);text-align:center;font-family:'Press Start 2P', monospace;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.ach-title{margin:0 0 .5rem;font-size:1.1rem;color:#ff5a26;letter-spacing:1px}
+.ach-sub{font-size:.8rem;line-height:1.35;color:#ffffff}
+@media (max-width:520px){
+  .ach-modal{border-width:3px;outline-width:3px;padding:1.1rem 0.9rem}
+  .ach-title{font-size:1rem}
+  .ach-sub{font-size:.75rem}
+}
+
 

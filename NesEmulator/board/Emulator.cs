@@ -82,6 +82,8 @@ namespace BrokenNes
         // Achievements integration (optional)
         private AchievementsEngine? _achEngine;
         private readonly Dictionary<string, string> _achTitles = new(StringComparer.OrdinalIgnoreCase);
+    // Random source for UX effects
+    private static readonly Random s_rng = new();
     // Achievement unlock flow state
     private bool _achFlowActive = false;
     private bool _achModalOpen = false;
@@ -479,6 +481,17 @@ namespace BrokenNes
                 try { await SaveStateAsync(); } catch { }
                 // 2) Pause emulation
                 try { await PauseEmulation(); } catch { }
+                // 2.5) Play a random victory song
+                try
+                {
+                    try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
+                    int pick = 1 + s_rng.Next(0, 5); // 1..5
+                    string src = $"music/VictorySong{pick}.mp3";
+                    var srcJson = System.Text.Json.JsonSerializer.Serialize(src);
+                    await JS.InvokeVoidAsync("eval",
+                        "(function(){ try{ if(window.music){ if(typeof window.music.stop==='function') window.music.stop(); if(typeof window.music.play==='function') window.music.play(" + srcJson + ", { fadeInMs: 600 }); } }catch(e){} })();");
+                }
+                catch { }
                 // 3) Register achievement in game save (by unique ID)
                 try
                 {

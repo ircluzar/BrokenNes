@@ -1,55 +1,69 @@
-# Achievement Unlock Flow — Implementation Worksheet
+# Achievement Unlock Flow — Worksheet (Checkboxes)
 
 Goal: When an achievement triggers, execute a consistent UX and persistence flow.
 
 Scope
-- Applies to `Nes.razor` gameplay session via `Emulator` class.
-- Uses existing AchievementsEngine and GameSave storage.
+- [x] Applies to `Nes.razor` gameplay session via `Emulator` class
+- [x] Uses existing AchievementsEngine and GameSave storage
 
-Acceptance criteria
-- On unlock: (1) save state, (2) pause, (3) persist achievement ID in save, (4) show blocking modal, (5) auto-redirect to Continue page after 5s.
-- Modal has no buttons; shows "Achievement unlocked" + achievement title.
-- Continue page shows stars based on unique achievement IDs in the save. DeckBuilder star count updates too.
+Acceptance criteria (Definition of Done)
+- [x] On unlock, do all of the following in order:
+   - [x] Save state to the same slot as the top Save/Load buttons
+   - [x] Pause emulation
+   - [x] Persist achievement by unique ID into GameSave
+   - [x] Show a blocking modal without buttons
+   - [x] Modal shows: "Achievement unlocked" + the achievement title
+   - [x] After 5 seconds, redirect to Continue page
+- [x] Continue page reflects stars from unique IDs in save
+- [x] DeckBuilder star count updates from save.Achievements.Count
 
-Checklist
+Implementation tasks
 1) Hook unlock events
-   - Source: `NesEmulator/board/Emulator.cs` where `_achEngine.EvaluateFrame()` is called each frame.
-   - When IDs returned, trigger flow for first ID (ignore duplicates/same-frame multiples).
-2) Implement flow in Emulator
-   - Save state to the same slot used by Save/Load buttons.
-   - Pause emulation.
-   - Load GameSave, add ID if not present, save back.
-   - Set modal state (id, title, open).
-   - Schedule JS timeout to navigate to `./continue` in 5s.
+   - [x] Locate `_achEngine.EvaluateFrame()` call site in `NesEmulator/board/Emulator.cs`
+   - [x] On returned IDs, trigger the unlock flow for the first ID only (ignore same-frame multiples)
+
+2) Implement unlock flow in `Emulator`
+   - [x] Save state (reuse StatePersistence slot)
+   - [x] Pause emulation
+   - [x] Load `GameSave`, add ID if not already present (case-insensitive), save back
+   - [x] Set modal state (open, id, title)
+   - [x] Schedule 5s timeout (JS) to navigate to `./continue`
+
 3) UI modal in `Pages/Nes.razor`
-   - Render overlay when `emu.IsAchievementModalOpen`.
-   - Big headline: "Achievement unlocked"; subtitle: achievement name.
-   - Darken background, centered card, high z-index.
+   - [x] Render overlay when `emu.IsAchievementModalOpen`
+   - [x] Large headline: "Achievement unlocked"
+   - [x] Subtitle: unlocked achievement title
+   - [x] High z-index, darkened backdrop, no buttons
+
 4) Persistence shape
-   - Use `GameSave.Achievements: List<string>` to store unlocked IDs (unique, case-insensitive).
-   - Continue page (`Continue.razor`) already builds `UnlockedAchievementIds` from save; no code change required.
-   - DeckBuilder reads `save.Achievements.Count` for star count; already wired.
+   - [x] Use `GameSave.Achievements: List<string>` (IDs are unique and stable)
+   - [x] Verify `Continue.razor` builds `UnlockedAchievementIds` from save
+   - [x] Verify `DeckBuilder.razor` uses `save.Achievements.Count`
+
 5) Redirect behavior
-   - No user interaction. Auto-redirect after 5s.
-   - Emulation remains paused.
-6) Edge cases
-   - Multiple unlocks in the same frame: only the first triggers the flow; others will be re-evaluated after returning from Continue.
-   - If savestate is busy or NES is null, best-effort proceed with remaining steps.
-   - If save cannot be written, still show modal and redirect.
+   - [x] No user interaction on the modal
+   - [x] Auto-redirect after 5s to Continue page
+   - [x] Emulation remains paused
+
+Edge cases
+- [x] Multiple unlocks in the same frame: only the first triggers the flow
+- [x] If savestate is busy or NES is null, proceed best-effort with remaining steps
+- [x] If save cannot be written, still show modal and redirect
 
 Dev notes
-- Public properties added to `Emulator` to expose modal state to Razor.
-- Flow implemented in `TriggerAchievementUnlockFlowAsync` and called from the frame loop.
-- Save slot reuses `StatePersistence.cs` `SaveKey = "nes_state_slot0"` via `SaveStateAsync()`.
+- [x] Public properties exposed on `Emulator` to project modal state into Razor
+- [x] Flow implemented in `TriggerAchievementUnlockFlowAsync` and called from frame loop
+- [x] Save slot reuses `StatePersistence.cs` (`SaveKey = "nes_state_slot0"`) via `SaveStateAsync()`
 
-QA validation
-- Load a ROM with a known trivially satisfiable achievement.
-- Play until the achievement triggers.
-- Observe: state saved (optional status), emu pauses, modal appears for 5s with correct title, then redirect to Continue page.
-- On Continue page, confirm the star count increased and the specific achievement entry shows unlocked.
-- DeckBuilder star count reflects the same total.
+QA validation checklist
+- [x] Load a ROM with a trivially satisfiable achievement
+- [x] Play until the achievement triggers
+- [x] Verify: state saved, emulation paused, modal shown with correct title
+- [x] After 5s, verify redirect to Continue page
+- [x] On Continue page, verify the star count increased and achievement shows unlocked
+- [x] Verify DeckBuilder star count matches total achievements
 
 Follow-ups (optional)
-- Play a chime/SFX when the modal appears.
-- Animate the modal (fade/scale) and add a subtle progress bar for the 5s timer.
-- Debounce unlocks across frames to prevent duplicate persistence (currently List.Add with Contains already guards that).
+- [ ] Play a chime/SFX when the modal appears
+- [ ] Animate the modal (fade/scale) and/or add a subtle 5s progress bar
+- [ ] Debounce unlocks across frames (additional guard) to prevent duplicate persistence
