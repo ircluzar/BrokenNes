@@ -40,6 +40,34 @@ namespace NesEmulator.RetroAchievements
         public byte Peek(int index) => _nes.PeekSystemRam(index);
     }
 
+    /// <summary>
+    /// Swappable RAM domain that dereferences the active NES instance on each read.
+    /// Use this when the host may replace the NES object (e.g., during LoadState).
+    /// </summary>
+    public sealed class NesRamDomainRef : IRamDomain
+    {
+        private readonly Func<NES?> _getNes;
+        public NesRamDomainRef(Func<NES?> getNes) { _getNes = getNes; }
+        public int Size => 2048;
+        public void CopyRam(Span<byte> destination)
+        {
+            var nes = _getNes();
+            int len = Math.Min(Size, destination.Length);
+            if (nes == null)
+            {
+                // If NES missing, zero-fill to keep engine stable
+                for (int i = 0; i < len; i++) destination[i] = 0;
+                return;
+            }
+            for (int i = 0; i < len; i++) destination[i] = nes.PeekSystemRam(i);
+        }
+        public byte Peek(int index)
+        {
+            var nes = _getNes();
+            return nes != null ? nes.PeekSystemRam(index) : (byte)0;
+        }
+    }
+
     // === Spec atoms ===
 
     public enum ComparisonOp { Eq, Ne, Lt, Le, Gt, Ge }

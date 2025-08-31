@@ -39,6 +39,12 @@
         {
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
+                @if (QAchievements)
+                {
+                    <button class="btn btn-danger ctrl-btn" @onclick="ReturnToContinue" title="Return to Continue" aria-label="Return">
+                        Return
+                    </button>
+                }
                 <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(emu!.Controller.IsRunning || emu!.Controller.nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
@@ -2072,8 +2078,8 @@
                 }
             }
             if (_achDefs.Count == 0) return;
-            // Build engine on NES RAM
-            _achEngine = new AchievementsEngine(new NesRamDomain(emu.Controller.nes));
+            // Build engine on a swappable NES RAM domain so engine survives NES replacement
+            _achEngine = new AchievementsEngine(new NesRamDomainRef(()=>emu.Controller.nes));
             // Load all definitions into engine
             var loadList = new List<(string id, string formula)>();
             foreach (var kv in _achDefs) loadList.Add((kv.Key, kv.Value.formula));
@@ -2096,6 +2102,36 @@
     private static T? SafeGetStruct<T>(Func<T> getter) where T : struct
     {
         try { return getter(); } catch { return null; }
+    }
+
+    private async Task ReturnToContinue()
+    {
+        try
+        {
+            if (emu != null)
+            {
+                // Save state (this also stores the paired achievements snapshot when achievements are enabled)
+                try { await emu.SaveStateAsyncPublic(); } catch { }
+                // Mark trusted Continue in save using current ROM
+                try
+                {
+                    var romKey = emu.Controller.RomFileName ?? emu.Controller.CurrentRomName ?? string.Empty;
+                    var title = emu.Controller.CurrentRomName ?? romKey;
+                    if (!string.IsNullOrWhiteSpace(romKey))
+                    {
+                        await GameSaveService.SetPendingDeckContinueAsync(romKey, title);
+                    }
+                }
+                catch { }
+                // Optional: pause emulation before leaving
+                try { await emu.PauseAsync(); } catch { }
+            }
+        }
+        catch { }
+        // Fade audio and navigate back to Continue
+        try { await JS.InvokeVoidAsync("eval", @"(function(){try{if(window.music&&typeof window.music.fadeOut==='function'){window.music.fadeOut(400,true);} }catch(e){}})();"); } catch { }
+        try { await Task.Delay(100); } catch { }
+        try { Nav.NavigateTo("continue", false); } catch { }
     }
 
     // Compute a stable gameKey matching emulator side for achievements snapshot lookup
