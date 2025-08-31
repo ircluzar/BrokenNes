@@ -342,7 +342,7 @@
             }
         </div>
     </section>
-    @if (QAchievements)
+    @if (QAchievements && !_achPanelClosed)
     {
     <section class="panel-block" style="margin-top:1rem;">
         <summary>Achievements (debug)</summary>
@@ -355,6 +355,7 @@
                 {
                     <span class="badge bg-danger ms-2">Not initialized</span>
                 }
+                <button class="btn btn-sm btn-outline-danger ms-auto" title="Close and remove this panel" @onclick="CloseAchievementsPanel">Close Panel</button>
             </div>
             @if (_achRows.Count == 0)
             {
@@ -1796,6 +1797,12 @@
         public List<CondRow> Conditions { get; set; } = new();
     }
     private readonly List<AchRow> _achRows = new();
+    private bool _achPanelClosed = false;
+
+    private void CloseAchievementsPanel()
+    {
+        _achPanelClosed = true;
+    }
 
     private async Task RefreshAchievements()
     {

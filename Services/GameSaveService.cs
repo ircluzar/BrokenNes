@@ -163,6 +163,38 @@ public class GameSaveService
         await SaveAsync(save);
     }
 
+    // Trusted DeckBuilder Continue helpers
+    public async Task SetPendingDeckContinueAsync(string romKey, string? title)
+    {
+        try
+        {
+            var save = await LoadAsync();
+            save.PendingDeckContinue = true;
+            save.PendingDeckContinueRom = romKey;
+            save.PendingDeckContinueTitle = string.IsNullOrWhiteSpace(title) ? romKey : title;
+            save.PendingDeckContinueAtUtc = DateTime.UtcNow;
+            await SaveAsync(save);
+        }
+        catch { }
+    }
+
+    public async Task ClearPendingDeckContinueAsync()
+    {
+        try
+        {
+            var save = await LoadAsync();
+            if (save.PendingDeckContinue || !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) || !string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle))
+            {
+                save.PendingDeckContinue = false;
+                save.PendingDeckContinueRom = null;
+                save.PendingDeckContinueTitle = null;
+                save.PendingDeckContinueAtUtc = null;
+                await SaveAsync(save);
+            }
+        }
+        catch { }
+    }
+
     // Count cores the player owns across all categories.
     public int GetOwnedCoresCount(GameSave? save = null)
     {

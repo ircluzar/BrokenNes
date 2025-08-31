@@ -1051,17 +1051,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       var sel = SelectedGame;
       if (sel == null || string.IsNullOrWhiteSpace(sel.RomKey)) return;
 
-      // Clear the trusted flag immediately so it's single-use
-      try
-      {
-        var save = await SaveSvc.LoadAsync();
-        save.PendingDeckContinue = false;
-        save.PendingDeckContinueRom = null;
-        save.PendingDeckContinueTitle = null;
-        await SaveSvc.SaveAsync(save);
-        _pendingDeckContinue = false; _pendingDeckContinueRom = null; _pendingDeckContinueTitle = null;
-      }
-      catch { }
+  // Keep the trusted continue marker so the user can retry as needed
 
       // Build query same as stage but without achievements param; we only want autoload
       string rom = Uri.EscapeDataString(sel.RomKey);
@@ -1069,7 +1059,8 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       string cpu = Uri.EscapeDataString((EnforcedCpu ?? SelectedCpu) ?? string.Empty);
       string ppu = Uri.EscapeDataString((EnforcedPpu ?? SelectedPpu) ?? string.Empty);
       string apu = Uri.EscapeDataString((EnforcedApu ?? SelectedApu) ?? string.Empty);
-      var qs = new List<string> { "stage=1", $"rom={rom}", "autoloadState=1" };
+  // Enable achievements processing in NES view while autoloading the savestate
+  var qs = new List<string> { "stage=1", $"rom={rom}", "autoloadState=1", "achievements=1" };
       if (!string.IsNullOrWhiteSpace(shader)) qs.Add($"shader={shader}");
       if (!string.IsNullOrWhiteSpace(cpu)) qs.Add($"cpu={cpu}");
       if (!string.IsNullOrWhiteSpace(ppu)) qs.Add($"ppu={ppu}");

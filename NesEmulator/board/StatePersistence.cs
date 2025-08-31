@@ -226,33 +226,10 @@ namespace BrokenNes
         // ===== Trusted DeckBuilder Continue helpers =====
         private async Task SetTrustedContinueAsync(string romKey, string? title)
         {
-            try
-            {
-                var save = await _gameSaveService.LoadAsync();
-                save.PendingDeckContinue = true;
-                save.PendingDeckContinueRom = romKey;
-                save.PendingDeckContinueTitle = string.IsNullOrWhiteSpace(title) ? romKey : title;
-                save.PendingDeckContinueAtUtc = DateTime.UtcNow;
-                await _gameSaveService.SaveAsync(save);
-            }
-            catch { }
+            try { await _gameSaveService.SetPendingDeckContinueAsync(romKey, title); } catch { }
         }
 
-        private async Task ClearTrustedContinueAsync()
-        {
-            try
-            {
-                var save = await _gameSaveService.LoadAsync();
-                if (save.PendingDeckContinue || !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) || !string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle))
-                {
-                    save.PendingDeckContinue = false;
-                    save.PendingDeckContinueRom = null;
-                    save.PendingDeckContinueTitle = null;
-                    save.PendingDeckContinueAtUtc = null;
-                    await _gameSaveService.SaveAsync(save);
-                }
-            }
-            catch { }
-        }
+    private async Task ClearTrustedContinueAsync()
+    { try { await _gameSaveService.ClearPendingDeckContinueAsync(); } catch { } }
     }
 }
