@@ -148,28 +148,39 @@
           <label class="small-note"><input type="checkbox" @bind="HideCompleted" /> Hide completed</label>
           <input class="rom-search" placeholder="Search achievements…" @bind="AchSearch" />
         </div>
-        <ul class="ach-list" aria-label="Achievements for selected game">
-          @foreach (var a in AchievementsFiltered)
-          {
-            <li class="ach-item @(a.Completed?"done":"todo")" title="@(a.Completed?"Completed":"Not completed")">
-              <span class="ach-check" aria-hidden="true">@(a.Completed?"▣":"▢")</span>
-              <span class="ach-title">@a.Title</span>
-              @if (!string.IsNullOrWhiteSpace(a.Description))
-              {
-                <span class="ach-desc small-note">@a.Description</span>
-              }
-              @if (a.Difficulty > 0)
-              {
-                <span class="ach-diff chip" title="Difficulty">D@a.Difficulty</span>
-              }
-            </li>
-          }
-        </ul>
+        @if (AchievementsFilteredCount == 0 && GameAchTotal > 0)
+        {
+          <div class="small-note">All achievements completed for this game.</div>
+        }
+        else
+        {
+          <ul class="ach-list" aria-label="Achievements for selected game">
+            @foreach (var a in AchievementsFiltered)
+            {
+              <li class="ach-item @(a.Completed?"done":"todo")" title="@(a.Completed?"Completed":"Not completed")">
+                <span class="ach-check" aria-hidden="true">@(a.Completed?"▣":"▢")</span>
+                <span class="ach-title">@a.Title</span>
+                @if (!string.IsNullOrWhiteSpace(a.Description))
+                {
+                  <span class="ach-desc small-note">@a.Description</span>
+                }
+                @if (a.Difficulty > 0)
+                {
+                  <span class="ach-diff chip" title="Difficulty">D@a.Difficulty</span>
+                }
+              </li>
+            }
+          </ul>
+        }
       </div>
     }
   </section>
 
   <div class="opt-footer">
+  <button class="opt-link start-btn @(CanContinueGame?"unlocked":"locked")"
+    disabled="@(!CanContinueGame)"
+    title="@(CanContinueSelected? "Resume from last trusted checkpoint" : "Requires valid build and trusted continue for selected game")"
+    @onclick="StartContinueGame">Continue game</button>
   <button class="opt-link start-btn @(CanStartGame?"unlocked":"locked")" disabled="@(!CanStartGame)" title="Build valid and game with achievements required" @onclick="StartStageGame">Start the game</button>
     <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
@@ -223,6 +234,13 @@
   private int Stars = 0;
   private string LevelTitle = " ";
   private int RequiredStars = 5;
+  private bool CanContinueSelected =>
+    _pendingDeckContinue && SelectedGame != null &&
+    !string.IsNullOrWhiteSpace(SelectedGame.RomKey) &&
+    string.Equals(_pendingDeckContinueRom, SelectedGame.RomKey, StringComparison.OrdinalIgnoreCase);
+  private bool _pendingDeckContinue = false;
+  private string? _pendingDeckContinueRom = null;
+  private string? _pendingDeckContinueTitle = null;
 
   private (string domain, string id, string label, string border)[] EnforcedCards = Array.Empty<(string,string,string,string)>();
 
@@ -301,6 +319,10 @@
 
   // Load save, then fetch level data from continueDb and derive enforced chips and cost
   var save = await SaveSvc.LoadAsync();
+  // Trusted continue marker from save (set early so ROM load can prioritize selection)
+  _pendingDeckContinue = save.PendingDeckContinue;
+  _pendingDeckContinueRom = save.PendingDeckContinueRom;
+  _pendingDeckContinueTitle = save.PendingDeckContinueTitle;
   CurrentLevel = Math.Max(1, save.Level);
   Stars = save.Achievements?.Count ?? 0;
   UnlockedAchievementIds = new(save.Achievements ?? new());
@@ -313,6 +335,8 @@
   OwnedShader = (save.OwnedShaderIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
 
   await LoadRomsFromDbAsync();
+  // Start the correct level music once data is loaded
+  try { await PlayContinueLevelMusicAsync(); } catch { }
   }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -321,7 +345,7 @@
     {
       // Crossfade into DeckBuilder music for continuity
       try { await JS.InvokeVoidAsync("nesInterop.fadeOutAndStopTitleMusic"); } catch { }
-      try { await JS.InvokeVoidAsync("eval", @"(function(){try{var want='music/DeckBuilder.mp3';if(!window.music)return;var cur=(typeof window.music.currentSrc==='function'?(window.music.currentSrc()||''):''),isP=(typeof window.music.isPlaying==='function'&&!!window.music.isPlaying());if(cur.indexOf('DeckBuilder.mp3')!==-1&&isP)return;if(isP&&typeof window.music.fadeOut==='function'){try{window.music.fadeOut(700,true);}catch(e){} setTimeout(function(){try{window.music.play(want,{loop:true,fadeInMs:900});}catch(e){}},150);} else {try{window.music.play(want,{loop:true,fadeInMs:700});}catch(e){}}}catch(e){}})();"); } catch { }
+  // The correct track will be started after save/level load completes in OnInitializedAsync
     }
 
     if (ZoomCard != null && !_zoomInit)
@@ -352,6 +376,7 @@
     && (EnforcedApu ?? SelectedApu) != null
     && (EnforcedShader ?? SelectedShader) != null;
   private bool CanStartGame => BuildValid && SelectedGame != null && SelectedGame.Total > 0 && SelectedGame.Present;
+  private bool CanContinueGame => CanStartGame && CanContinueSelected;
 
   private async Task AdvanceLevel()
   {
@@ -370,6 +395,8 @@
       CurrentLevel = save.Level;
       Stars = save.Achievements?.Count ?? 0;
   await LoadLevelFromDbAsync(CurrentLevel);
+  // Update music to match the new level
+  try { await PlayContinueLevelMusicAsync(true); } catch { }
   StateHasChanged();
     }
     catch { }
@@ -801,10 +828,15 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         RomKey = g.romKey
       }).ToList();
 
-      // Default select first compatible present game if none selected
+      // Default select game: prefer the one flagged for trusted continue (matching ROM key), else first compatible + present
       if (SelectedGameId == null)
       {
-        SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
+        if (_pendingDeckContinue && !string.IsNullOrWhiteSpace(_pendingDeckContinueRom))
+        {
+          var match = RomRows.FirstOrDefault(r => r.Present && !string.IsNullOrWhiteSpace(r.RomKey) && string.Equals(r.RomKey, _pendingDeckContinueRom, StringComparison.OrdinalIgnoreCase));
+          SelectedGameId = match?.Id;
+        }
+        SelectedGameId ??= RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
       }
       else
       {
@@ -812,7 +844,12 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         var sel = RomRows.FirstOrDefault(r => r.Id == SelectedGameId);
         if (sel == null || !sel.Present)
         {
-          SelectedGameId = RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
+          if (_pendingDeckContinue && !string.IsNullOrWhiteSpace(_pendingDeckContinueRom))
+          {
+            var match = RomRows.FirstOrDefault(r => r.Present && !string.IsNullOrWhiteSpace(r.RomKey) && string.Equals(r.RomKey, _pendingDeckContinueRom, StringComparison.OrdinalIgnoreCase));
+            SelectedGameId = match?.Id;
+          }
+          SelectedGameId ??= RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
         }
       }
       if (!string.IsNullOrEmpty(SelectedGameId))
@@ -957,6 +994,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
   var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const gid = {gid}; let list = []; try {{ list = await window.continueDb.getAllFromIndex('achievements','by_gameId', gid) || []; }} catch(e) {{ }} if (!list || list.length===0) {{ const all = await window.continueDb.getAll('achievements'); list = (all||[]).filter(a => a && a.gameId === gid); }} const arr = (list||[]).map(a => {{ return {{ id: a.id||'', title: a.title||a.id||'', description: a.description||'', difficulty: (typeof a.difficulty==='number'?a.difficulty:0), tags: (Array.isArray(a.tags)?a.tags:[]) }}; }}); return JSON.stringify(arr); }} catch(e) {{ return ''; }} }})()");
       if (!string.IsNullOrWhiteSpace(json))
       {
+        var tmp = new List<UiAchievement>();
         using var doc = JsonDocument.Parse(json);
         foreach (var e in doc.RootElement.EnumerateArray())
         {
@@ -966,10 +1004,12 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
           var desc = e.TryGetProperty("description", out var pdesc) ? pdesc.GetString() : null;
           var diff = e.TryGetProperty("difficulty", out var pdiff) && pdiff.ValueKind==JsonValueKind.Number ? pdiff.GetInt32() : 0;
           bool completed = UnlockedAchievementIds.Contains(id);
-          GameAchievements.Add(new UiAchievement{ Id=id, Title=title, Description=desc, Difficulty=diff, Completed=completed });
+          tmp.Add(new UiAchievement{ Id=id, Title=title, Description=desc, Difficulty=diff, Completed=completed });
         }
-        GameAchTotal = GameAchievements.Count;
-        GameAchCompleted = GameAchievements.Count(a => a.Completed);
+        // Keep correct totals, but only keep uncompleted entries for display
+        GameAchTotal = tmp.Count;
+        GameAchCompleted = tmp.Count(a => a.Completed);
+        GameAchievements.AddRange(tmp.Where(a => !a.Completed));
       }
     }
     catch { GameAchievements.Clear(); GameAchCompleted = 0; GameAchTotal = 0; }
@@ -998,6 +1038,98 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       // Soft fade audio and navigate
       try { await JS.InvokeVoidAsync("eval", @"(function(){ try{ if(window.music && typeof window.music.fadeOut==='function'){ window.music.fadeOut(500,true); } }catch(e){} })();"); } catch { }
       Nav.NavigateTo(url, false);
+    }
+    catch { }
+  }
+
+  private async Task StartContinueGame()
+  {
+  // Require same rules as Start + a trusted continue for the selected game
+  if (!CanContinueGame) return;
+    try
+    {
+      var sel = SelectedGame;
+      if (sel == null || string.IsNullOrWhiteSpace(sel.RomKey)) return;
+
+      // Clear the trusted flag immediately so it's single-use
+      try
+      {
+        var save = await SaveSvc.LoadAsync();
+        save.PendingDeckContinue = false;
+        save.PendingDeckContinueRom = null;
+        save.PendingDeckContinueTitle = null;
+        await SaveSvc.SaveAsync(save);
+        _pendingDeckContinue = false; _pendingDeckContinueRom = null; _pendingDeckContinueTitle = null;
+      }
+      catch { }
+
+      // Build query same as stage but without achievements param; we only want autoload
+      string rom = Uri.EscapeDataString(sel.RomKey);
+      string shader = Uri.EscapeDataString((EnforcedShader ?? SelectedShader) ?? string.Empty);
+      string cpu = Uri.EscapeDataString((EnforcedCpu ?? SelectedCpu) ?? string.Empty);
+      string ppu = Uri.EscapeDataString((EnforcedPpu ?? SelectedPpu) ?? string.Empty);
+      string apu = Uri.EscapeDataString((EnforcedApu ?? SelectedApu) ?? string.Empty);
+      var qs = new List<string> { "stage=1", $"rom={rom}", "autoloadState=1" };
+      if (!string.IsNullOrWhiteSpace(shader)) qs.Add($"shader={shader}");
+      if (!string.IsNullOrWhiteSpace(cpu)) qs.Add($"cpu={cpu}");
+      if (!string.IsNullOrWhiteSpace(ppu)) qs.Add($"ppu={ppu}");
+      if (!string.IsNullOrWhiteSpace(apu)) qs.Add($"apu={apu}");
+      var url = "nes?" + string.Join('&', qs);
+      try { await JS.InvokeVoidAsync("eval", @"(function(){ try{ if(window.music && typeof window.music.fadeOut==='function'){ window.music.fadeOut(500,true); } }catch(e){} })();"); } catch { }
+      Nav.NavigateTo(url, false);
+    }
+    catch { }
+  }
+
+  // ===== Continue music bound to level =====
+  private static int DeckBuilderTrackNumberForLevel(int level)
+  {
+    if (level <= 0) level = 1;
+    // Pattern repeats every 4 levels: 1->1, 2->4, 3->3, 4->2, then repeats
+    var mod = ((level - 1) % 4 + 4) % 4;
+    return mod switch { 0 => 1, 1 => 4, 2 => 3, 3 => 2, _ => 1 };
+  }
+
+  private static string DeckBuilderTrackPathForLevel(int level)
+    => $"music/DeckBuilder{DeckBuilderTrackNumberForLevel(level)}.mp3";
+
+  private async Task PlayContinueLevelMusicAsync(bool hardSwitch = false)
+  {
+    var want = DeckBuilderTrackPathForLevel(CurrentLevel);
+    var wantJson = JsonSerializer.Serialize(want);
+    var hardJson = hardSwitch ? "true" : "false";
+    try
+    {
+      var script = @"(function(){
+  try{
+    var want=__WANT__;
+    var hard=__HARD__;
+    window.nesUi=window.nesUi||{};
+    if(!window.nesUi.playDeckBuilderLevel){
+      window.nesUi.playDeckBuilderLevel=function(w,hard){
+        try{
+          if(!window.music){ setTimeout(function(){ window.nesUi.playDeckBuilderLevel(w,hard); }, 200); return; }
+          var cur=(typeof window.music.currentSrc==='function'?(window.music.currentSrc()||''):''),
+              isP=(typeof window.music.isPlaying==='function'&&!!window.music.isPlaying());
+          if(cur && cur.indexOf(w)!==-1 && isP) return;
+          if(hard){
+            try{ if(typeof window.music.stop==='function'){ window.music.stop(); } else if(typeof window.music.pause==='function'){ window.music.pause(); if(typeof window.music.setCurrentTime==='function'){ try{ window.music.setCurrentTime(0); }catch(e){} } } }catch(e){}
+            try{ window.music.play(w,{loop:true,fadeInMs:0}); }catch(e){}
+          } else if(isP && typeof window.music.fadeOut==='function'){
+            try{ window.music.fadeOut(600,true); }catch(e){}
+            setTimeout(function(){ try{ window.music.play(w,{loop:true,fadeInMs:800}); }catch(e){} }, 140);
+          } else {
+            try{ window.music.play(w,{loop:true,fadeInMs:700}); }catch(e){}
+          }
+        }catch(e){}
+      };
+    }
+    window.nesUi.playDeckBuilderLevel(want, hard);
+  }catch(e){}
+})();";
+      script = script.Replace("__WANT__", wantJson);
+      script = script.Replace("__HARD__", hardJson);
+      await JS.InvokeVoidAsync("eval", script);
     }
     catch { }
   }

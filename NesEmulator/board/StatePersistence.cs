@@ -45,13 +45,15 @@ namespace BrokenNes
                 Diag("Removing existing chunks (if any)");
                 await RemoveExistingChunks();
                 Diag("Existing chunks removed");
-                if (payload.Length <= SaveChunkCharSize)
+        if (payload.Length <= SaveChunkCharSize)
                 {
                     try
                     {
                         await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey, payload);
                         await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
                         Status.Set(compressed ? "State saved (compressed)" : "State saved");
+            // If saving outside of achievements mode, drop trusted continue flag
+            try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
                         Diag("Single chunk save complete");
                     }
                     catch (JSException jsex)
@@ -72,6 +74,8 @@ namespace BrokenNes
                     await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + ".manifest", manifest);
                     await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey);
                     Status.Set(compressed ? $"State saved in {parts.Count} parts (compressed)" : $"State saved in {parts.Count} parts");
+                    // If saving outside of achievements mode, drop trusted continue flag
+                    try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
                 }
                 catch (JSException jsex)
                 {
@@ -214,6 +218,38 @@ namespace BrokenNes
                     for (int i=0;i<parts;i++)
                         await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + $".part{i}");
                     await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
+                }
+            }
+            catch { }
+        }
+
+        // ===== Trusted DeckBuilder Continue helpers =====
+        private async Task SetTrustedContinueAsync(string romKey, string? title)
+        {
+            try
+            {
+                var save = await _gameSaveService.LoadAsync();
+                save.PendingDeckContinue = true;
+                save.PendingDeckContinueRom = romKey;
+                save.PendingDeckContinueTitle = string.IsNullOrWhiteSpace(title) ? romKey : title;
+                save.PendingDeckContinueAtUtc = DateTime.UtcNow;
+                await _gameSaveService.SaveAsync(save);
+            }
+            catch { }
+        }
+
+        private async Task ClearTrustedContinueAsync()
+        {
+            try
+            {
+                var save = await _gameSaveService.LoadAsync();
+                if (save.PendingDeckContinue || !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) || !string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle))
+                {
+                    save.PendingDeckContinue = false;
+                    save.PendingDeckContinueRom = null;
+                    save.PendingDeckContinueTitle = null;
+                    save.PendingDeckContinueAtUtc = null;
+                    await _gameSaveService.SaveAsync(save);
                 }
             }
             catch { }

@@ -46,6 +46,9 @@ public class GameSaveService
                     _ = loaded.ImagineUnlocked;
                     _ = loaded.DebugUnlocked;
                     _ = loaded.SeenStory;
+                    // New trusted continue fields (back-compat defaults)
+                    _ = loaded.PendingDeckContinue;
+                    // Leave rom/title null if not set; timestamp optional
                     return loaded;
                 }
             }
@@ -63,6 +66,7 @@ public class GameSaveService
         save.OwnedApuIds ??= new();
         save.OwnedClockIds ??= new();
         save.OwnedShaderIds ??= new();
+    // Trusted continue fields are optional; keep as-is
     // Unlock flags already default to false if missing
         try
         {

@@ -24,4 +24,13 @@ public class GameSave
     public List<string> OwnedApuIds { get; set; } = new();
     public List<string> OwnedClockIds { get; set; } = new();
     public List<string> OwnedShaderIds { get; set; } = new();
+
+    // Trusted DeckBuilder resume marker
+    // When an achievement unlock creates a savestate from DeckBuilder flow,
+    // we store a trusted marker so Continue page can offer "Continue game".
+    // The marker is dropped when the user saves a state in Emulator mode without achievements active.
+    public bool PendingDeckContinue { get; set; } = false;
+    public string? PendingDeckContinueRom { get; set; } // romKey/filename of the game
+    public string? PendingDeckContinueTitle { get; set; } // optional display title
+    public DateTime? PendingDeckContinueAtUtc { get; set; } // optional timestamp
 }

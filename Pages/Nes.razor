@@ -1256,6 +1256,7 @@
     private string? QScriptFile; // optional JS file to load & execute (stage mode only)
     private string? QScriptUrl;  // optional JS URL to load & execute (stage mode only)
     private bool QAchievements = false; // enable achievements flow
+    private bool QAutoloadState = false; // auto-load savestate after ROM
     // Achievements runtime
     private AchievementsEngine? _achEngine;
     private string? _achGameId; // resolved from continueDb based on romKey
@@ -1329,6 +1330,7 @@
             QScriptFile = GetStr("scriptFile");
             QScriptUrl = GetStr("scriptUrl");
             QAchievements = GetBool("achievements");
+            QAutoloadState = GetBool("autoloadState");
             // If cores=* provided, apply to all 3 unless specific overrides also provided
             if (!string.IsNullOrWhiteSpace(QCoresAll))
             {
@@ -1387,7 +1389,9 @@
                         _pickerZoomInit = true;
                         try { await JS.InvokeVoidAsync("nesUi.zoomModalSvg"); } catch { }
                 }
-        // After initial emulator init, apply any query overrides (shader/cores)
+    // After initial emulator init, apply any query overrides (shader/cores).
+    // Note: this happens after saved preferences are loaded so query-specified selections
+    // (e.g., from Continue page) take precedence and will persist across ROM reloads.
                 if (firstRender && emu != null)
         {
             try
@@ -1406,6 +1410,11 @@
                     if (QAchievements)
                     {
                         await TryInitAchievementsAsync();
+                    }
+                    // If requested, autoload the last saved state after loading ROM
+                    if (QAutoloadState)
+                    {
+                        try { await emu.LoadStateAsyncPublic(); } catch { }
                     }
                 }
                 // Execute optional stage script after emulator/ROM init
@@ -1924,6 +1933,17 @@
         if (emu == null || emu.Controller.nes == null) return;
         try
         {
+            // Load user save to know which achievements are already unlocked
+            HashSet<string> unlocked = new(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var save = await GameSaveService.LoadAsync();
+                if (save?.Achievements != null)
+                {
+                    unlocked = new HashSet<string>(save.Achievements, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+            catch { }
             // Resolve gameId from continueDb by romKey (which equals QRom / current RomFileName)
             string romKey = emu.Controller.RomFileName ?? string.Empty;
             if (string.IsNullOrWhiteSpace(romKey)) return;
@@ -1967,6 +1987,8 @@
                 {
                     var id = e.TryGetProperty("id", out var pe) ? (pe.GetString() ?? string.Empty) : string.Empty;
                     if (string.IsNullOrWhiteSpace(id)) continue;
+                    // Skip loading/monitoring achievements the player already completed
+                    if (unlocked.Contains(id)) continue;
                     var title = e.TryGetProperty("title", out var pt) ? (pt.GetString() ?? id) : id;
                     var formula = e.TryGetProperty("formula", out var pf) ? (pf.GetString() ?? string.Empty) : string.Empty;
                     var metaName = e.TryGetProperty("metaAchievementName", out var pm) ? (pm.GetString() ?? string.Empty) : string.Empty;

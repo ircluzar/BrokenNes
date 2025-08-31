@@ -504,6 +504,16 @@ namespace BrokenNes
                     }
                 }
                 catch { }
+                // 3b) Mark trusted DeckBuilder continue for this rom
+                try
+                {
+                    var romKey = nesController.RomFileName ?? nesController.CurrentRomName ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(romKey))
+                    {
+                        await SetTrustedContinueAsync(romKey, title);
+                    }
+                }
+                catch { }
                 // 4) Open modal with title and id; 5) Auto-redirect after 5s
                 _achModalId = id;
                 _achModalTitle = title;
