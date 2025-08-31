@@ -31,6 +31,8 @@ public class GameSaveService
                 {
                     if (loaded.Level < 1) loaded.Level = 1;
                     if (loaded.Achievements == null) loaded.Achievements = new();
+                    // Back-compat default for LevelCleared if missing in older saves
+                    _ = loaded.LevelCleared;
                     // Ensure lists exist after deserialization
                     loaded.OwnedCpuIds ??= new();
                     loaded.OwnedPpuIds ??= new();
@@ -61,6 +63,8 @@ public class GameSaveService
     {
         if (save.Level < 1) save.Level = 1;
         save.Achievements ??= new();
+    // Persist LevelCleared as-is
+    _ = save.LevelCleared;
         save.OwnedCpuIds ??= new();
         save.OwnedPpuIds ??= new();
         save.OwnedApuIds ??= new();
@@ -82,6 +86,7 @@ public class GameSaveService
         var gs = new GameSave
         {
             Level = 1,
+            LevelCleared = false,
             Achievements = new(),
             SavestatesUnlocked = false,
             RtcUnlocked = false,

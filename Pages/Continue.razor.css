@@ -44,8 +44,11 @@
 /* Card presentation inside slot */
 .core-slot .card-wrap{position:relative;display:inline-block;line-height:0;z-index:1}
 .core-slot .card-wrap svg{display:block;width:142px;height:200px}
+/* Empty placeholder panel for unselected, unenforced slots */
+.core-slot .slot-empty{display:flex;align-items:center;justify-content:center;min-width:142px;min-height:200px;background:#1a1a1a;color:#9ca3af;border:2px dashed #9ca3af;font-family:'Press Start 2P', monospace;font-size:.6rem;padding:.5rem;cursor:pointer}
+.core-slot .slot-empty:hover{background:#202020;color:#cbd5e1;border-color:#cbd5e1}
 /* Clickable cover for unlocked slots (covers the svg) */
-.core-slot .card-cover-btn{position:absolute;inset:0;background:transparent;border:0;cursor:pointer;z-index:3}
+.core-slot .card-cover-btn{position:absolute;inset:0;background:transparent;border:0;cursor:pointer;z-index:1001;padding:0;margin:0}
 .core-slot .card-cover-btn:focus{outline:2px solid #ff5a26;outline-offset:2px}
 /* Overlay for locked state - semi-transparent black with centered "Enforced" text */
 .core-slot .card-enforced-overlay{
@@ -143,6 +146,46 @@
 .card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:5000;opacity:1;transition:opacity .18s ease}
 .card-modal-backdrop.closing{opacity:0}
 .card-modal-content{max-width:98vw;max-height:98vh;}
+
+/* ===== Continue Core Picker Modal ===== */
+.cont-cp-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;z-index:8000;padding:16px}
+.cont-cp-modal{background:#000;border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.6);width:min(760px,96vw);margin-top:2rem}
+.cont-cp-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.6rem .8rem;border-bottom:3px solid #fff;background:#0a0a0a}
+.cont-cp-close{background:#000;color:#fff;border:2px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.6rem;padding:.25rem .5rem}
+.cont-cp-body{padding:.8rem;max-height:70vh;overflow:auto}
+.cont-cp-list{display:flex;flex-direction:column;gap:.5rem}
+.cont-cp-row{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center}
+.cont-cp-select{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.6rem;padding:.55rem .7rem;border:2px solid #fff;background:#000;color:#fff;font-size:.7rem;text-align:left;cursor:pointer;width:100%}
+.cont-cp-select:hover,.cont-cp-select:focus{background:#0a0a0a}
+.cont-cp-view{background:#000;color:#fff;border:2px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.6rem;padding:.3rem .6rem}
+.row-main{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.meta-badge{border:1px solid #ff5a26;padding:.15rem .4rem}
+.meta-perf{opacity:.95}
+.meta-perf.perf-pos{color:#36ff5a}
+.meta-perf.perf-neg{color:#ff5a26}
+.meta-stars{letter-spacing:1px;color:#ffcc00;font-size:.85rem}
+.pill{display:inline-block;padding:.1rem .35rem;border:1px solid #fff;background:#222;color:#fff;font-size:.65rem}
+.pill-id{min-width:56px;text-align:center;display:inline-block}
+.pill-rate-0{border-color:#6b7280;color:#6b7280}
+.pill-rate-1{border-color:#ef4444;color:#ef4444}
+.pill-rate-2{border-color:#f59e0b;color:#f59e0b}
+.pill-rate-3{border-color:#10b981;color:#10b981}
+.pill-rate-4{border-color:#3b82f6;color:#3b82f6}
+.pill-rate-5{border-color:#a855f7;color:#a855f7}
+.meta-badge.cat-col-0{border-color:#9ca3af;color:#e5e7eb}
+.meta-badge.cat-col-1{border-color:#60a5fa;color:#bfdbfe}
+.meta-badge.cat-col-2{border-color:#34d399;color:#bbf7d0}
+.meta-badge.cat-col-3{border-color:#f59e0b;color:#fde68a}
+.meta-badge.cat-col-4{border-color:#a78bfa;color:#ddd6fe}
+.meta-badge.cat-col-5{border-color:#f87171;color:#fecaca}
+.meta-badge.cat-col-6{border-color:#10b981;color:#a7f3d0}
+.meta-badge.cat-col-7{border-color:#f472b6;color:#fbcfe8}
+
+@media (max-width:640px){
+  .cont-cp-body{max-height:72vh}
+  .cont-cp-select{min-height:64px}
+}
 
 @media (max-width:620px){
   .options-root{margin:1rem;border-width:3px;outline-width:3px;padding:1rem 1.1rem;}

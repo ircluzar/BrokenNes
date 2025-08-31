@@ -492,7 +492,7 @@ namespace BrokenNes
                         "(function(){ try{ if(window.music){ if(typeof window.music.stop==='function') window.music.stop(); if(typeof window.music.play==='function') window.music.play(" + srcJson + ", { fadeInMs: 600 }); } }catch(e){} })();");
                 }
                 catch { }
-                // 3) Register achievement in game save (by unique ID)
+                // 3) Register achievement in game save (by unique ID) and mark level cleared
                 try
                 {
                     var save = await _gameSaveService.LoadAsync();
@@ -500,7 +500,18 @@ namespace BrokenNes
                     if (!save.Achievements.Contains(id, StringComparer.OrdinalIgnoreCase))
                     {
                         save.Achievements.Add(id);
+                        // Mark the current level as cleared upon getting any achievement at this level
+                        save.LevelCleared = true;
                         await _gameSaveService.SaveAsync(save);
+                    }
+                    else
+                    {
+                        // Even if already had the achievement, ensure LevelCleared is set
+                        if (!save.LevelCleared)
+                        {
+                            save.LevelCleared = true;
+                            await _gameSaveService.SaveAsync(save);
+                        }
                     }
                 }
                 catch { }

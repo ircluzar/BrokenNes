@@ -4,6 +4,9 @@ public class GameSave
 {
     // Current level (starts at 1)
     public int Level { get; set; } = 1;
+    
+    // Whether the current level has been cleared (set when any achievement is earned at this level)
+    public bool LevelCleared { get; set; } = false;
 
     // Achievement ids (each entry counts as one star)
     public List<string> Achievements { get; set; } = new();

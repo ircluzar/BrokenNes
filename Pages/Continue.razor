@@ -20,7 +20,7 @@
         <strong>@LevelTitle</strong>
       </div>
       <div class="lvl-status">
-        <span class="status-chip @(LevelCleared?"cleared":"not-cleared")" title="@(LevelCleared?"Any 1 achievement completed":"No achievements completed yet")">
+        <span class="status-chip @(LevelCleared?"cleared":"not-cleared")" title="@(LevelCleared?"Achievement earned this level":"Earn at least one achievement to clear the level")">
           @(LevelCleared?"Cleared":"Not Cleared")
         </span>
       </div>
@@ -33,7 +33,7 @@
       }
     </div>
     <div class="hdr-cta">
-      <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (@RequiredStars ⭐)</button>
+  <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires level cleared and @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (@RequiredStars ⭐)</button>
     </div>
   </section>
 
@@ -228,6 +228,45 @@
   </div>
 }
 
+@* Core Picker Modal (Continue page aesthetic) *@
+@if (CorePickerOpen)
+{
+  <div class="cont-cp-modal-backdrop" @onclick="CloseCorePicker">
+    <div class="cont-cp-modal" @onclick:stopPropagation>
+      <div class="cont-cp-header">
+        <strong class="small-note">Select @CorePickerTitle</strong>
+        <button type="button" class="cont-cp-close" @onclick="CloseCorePicker">Close</button>
+      </div>
+      <div class="cont-cp-body">
+        @if (CorePickerItems.Count == 0)
+        {
+          <div class="small-note">No options available.</div>
+        }
+        else
+        {
+          <div class="cont-cp-list">
+            @foreach (var it in CorePickerItems)
+            {
+              <div class="cont-cp-row">
+                <button type="button" class="cont-cp-select" @onclick="(()=>OnCorePicked(it.Id))" title="Select">
+                  <span class="pill pill-id @PillRateClass(it.Rating)">@it.Id</span>
+                  <span class="row-main">@it.DisplayName</span>
+                  <span class="row-meta">
+                    <span class="meta-badge @CategoryClass(it.Category)">@(!string.IsNullOrWhiteSpace(it.Category)?it.Category:CorePickerDomain)</span>
+                    <span class="meta-perf @PerfClass(it.Performance)" title="Performance">@it.Performance</span>
+                    <span class="meta-stars" title="Rating">@RenderStars(it.Rating)</span>
+                  </span>
+                </button>
+                <button type="button" class="cont-cp-view" title="View" @onclick:stopPropagation="true" @onclick="(()=>OpenCardZoom(it.Domain, it.Id))">View</button>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
 @code {
   // State
   private int CurrentLevel = 1;
@@ -327,6 +366,8 @@
   Stars = save.Achievements?.Count ?? 0;
   UnlockedAchievementIds = new(save.Achievements ?? new());
   await LoadLevelFromDbAsync(CurrentLevel);
+  // Initialize cleared status from save
+  LevelCleared = save.LevelCleared;
 
   // Owned sets (used by pickers)
   OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -369,8 +410,9 @@
     }
   }
 
-  private bool LevelCleared => Stars > 0; // Placeholder until per-level attribution exists
-  private bool CanAdvanceLevel => Stars >= RequiredStars;
+  // Per-level cleared flag (placeholder until per-level attribution exists)
+  private bool LevelCleared = false;
+  private bool CanAdvanceLevel => LevelCleared && Stars >= RequiredStars;
   private bool BuildValid => (EnforcedCpu ?? SelectedCpu) != null
     && (EnforcedPpu ?? SelectedPpu) != null
     && (EnforcedApu ?? SelectedApu) != null
@@ -382,19 +424,23 @@
   {
     try
     {
-      var save = await SaveSvc.LoadAsync();
-      if (Stars < RequiredStars) return;
-      save.Level = Math.Max(1, save.Level) + 1;
+  var save = await SaveSvc.LoadAsync();
+  if (!LevelCleared || Stars < RequiredStars) return;
+  save.Level = Math.Max(1, save.Level) + 1;
       // Grant any forced cards for next level here (stub: grant FMC if missing)
       void grant(List<string> list, string id){ if (!list.Contains(id, StringComparer.OrdinalIgnoreCase)) list.Add(id); }
       save.OwnedCpuIds ??= new(); save.OwnedPpuIds ??= new(); save.OwnedApuIds ??= new();
       grant(save.OwnedCpuIds, "FMC"); grant(save.OwnedPpuIds, "FMC"); grant(save.OwnedApuIds, "FMC");
-      await SaveSvc.SaveAsync(save);
+  // Reset the level-cleared flag for the newly advanced level
+  save.LevelCleared = false;
+  await SaveSvc.SaveAsync(save);
       // Reset selections for new level
       SelectedCpu = SelectedPpu = SelectedApu = null;
       CurrentLevel = save.Level;
       Stars = save.Achievements?.Count ?? 0;
   await LoadLevelFromDbAsync(CurrentLevel);
+  // New level starts as not cleared (reflect persisted save)
+  LevelCleared = save.LevelCleared;
   // Update music to match the new level
   try { await PlayContinueLevelMusicAsync(true); } catch { }
   StateHasChanged();
@@ -516,68 +562,84 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
     builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", $"core-slot{(isLocked?" locked":"")}");
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-title"); builder.AddContent(seq++, domain); builder.CloseElement();
       builder.OpenElement(seq++, "div"); builder.AddAttribute(seq++, "class", "slot-body");
-  // Card container
-  builder.OpenElement(seq++, "div");
-  builder.AddAttribute(seq++, "class", "card-wrap");
-  // Inline positioning + explicit size to guarantee overlay coverage
-  builder.AddAttribute(seq++, "style", "position:relative; width:142px; height:200px; line-height:0; display:inline-block;");
-          // Determine which card to render
-          CoreCardModel cardModel;
-          if (isLocked)
-          {
-            cardModel = BuildCard(domain, enforced!);
-          }
-          else if (!string.IsNullOrWhiteSpace(selected))
-          {
-            cardModel = BuildCard(domain, selected!);
-          }
-          else
-          {
-            cardModel = new CoreCardModel{
-              Id = "EMPTY",
-              ShortName = $"{domain}",
-              DisplayName = $"Select a {domain} Core",
-              Description = "Click to choose from your owned cores.",
-              Rating = 0,
-              Performance = 0,
-              FooterNote = domain,
-              Domain = domain
-            };
-          }
-          var svg = CardSvgRenderer.Render(cardModel, 142, 200);
-          builder.AddMarkupContent(seq++, svg);
+  // Card container or empty panel
+  if (!isLocked && string.IsNullOrWhiteSpace(selected))
+  {
+    // Empty slot: show gray panel placeholder
+    builder.OpenElement(seq++, "button");
+    builder.AddAttribute(seq++, "type", "button");
+    builder.AddAttribute(seq++, "class", "slot-empty");
+    builder.AddAttribute(seq++, "title", $"Select {domain} core");
+    builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker));
+    builder.AddContent(seq++, "Select a Core");
+    builder.CloseElement();
+  }
+  else
+  {
+    builder.OpenElement(seq++, "div");
+    builder.AddAttribute(seq++, "class", "card-wrap");
+    // Inline positioning + explicit size to guarantee overlay coverage
+    builder.AddAttribute(seq++, "style", "position:relative; width:142px; height:200px; line-height:0; display:inline-block;");
+            // Determine which card to render
+            CoreCardModel cardModel;
+            if (isLocked)
+            {
+              cardModel = BuildCard(domain, enforced!);
+            }
+            else // has selection
+            {
+              cardModel = BuildCard(domain, selected!);
+            }
+            var svg = CardSvgRenderer.Render(cardModel, 142, 200);
+            builder.AddMarkupContent(seq++, svg);
 
-          if (isLocked)
-          {
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "card-enforced-overlay");
-            // Inline overlay styles to guarantee coverage over the SVG
-            builder.AddAttribute(seq++, "style", "position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none;");
-            builder.AddAttribute(seq++, "title", "Enforced by level");
-            builder.AddAttribute(seq++, "aria-hidden", "true");
+            if (isLocked)
+            {
+              builder.OpenElement(seq++, "div");
+              builder.AddAttribute(seq++, "class", "card-enforced-overlay");
+              // Inline overlay styles to guarantee coverage over the SVG
+              builder.AddAttribute(seq++, "style", "position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none;");
+              builder.AddAttribute(seq++, "title", "Enforced by level");
+              builder.AddAttribute(seq++, "aria-hidden", "true");
 
-            // Centered lock icon behind text
-            builder.OpenElement(seq++, "svg");
-            builder.AddAttribute(seq++, "viewBox", "0 0 64 64");
-            builder.AddAttribute(seq++, "aria-hidden", "true");
-            builder.AddAttribute(seq++, "focusable", "false");
-            builder.AddAttribute(seq++, "style", "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:128px;height:128px;opacity:.22;fill:#fff;stroke:#fff;stroke-width:4;overflow:visible;");
-            builder.AddMarkupContent(seq++, "<rect x='16' y='28' width='32' height='28' rx='5' ry='5'/>\n<path d='M22 28 V20 a10 10 0 0 1 20 0 v8' fill='none' stroke-linecap='round' stroke-linejoin='round'/>\n");
-            builder.CloseElement();
+              // Centered lock icon behind text
+              builder.OpenElement(seq++, "svg");
+              builder.AddAttribute(seq++, "viewBox", "0 0 64 64");
+              builder.AddAttribute(seq++, "aria-hidden", "true");
+              builder.AddAttribute(seq++, "focusable", "false");
+              builder.AddAttribute(seq++, "style", "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:128px;height:128px;opacity:.22;fill:#fff;stroke:#fff;stroke-width:4;overflow:visible;");
+              builder.AddMarkupContent(seq++, "<rect x='16' y='28' width='32' height='28' rx='5' ry='5'/><path d='M22 28 V20 a10 10 0 0 1 20 0 v8' fill='none' stroke-linecap='round' stroke-linejoin='round'/>");
+              builder.CloseElement();
 
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "enforced-text");
-            builder.AddAttribute(seq++, "style", "color:#fff;font-size:0.9rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.8);");
-            builder.AddContent(seq++, "Enforced");
-            builder.CloseElement();
-            builder.CloseElement();
-          }
-          else
-          {
-            // Make the whole card clickable to open the picker when not locked
-            builder.OpenElement(seq++, "button"); builder.AddAttribute(seq++, "type", "button"); builder.AddAttribute(seq++, "class", "card-cover-btn"); builder.AddAttribute(seq++, "aria-label", $"Select {domain} core"); builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker)); builder.CloseElement();
-          }
-        builder.CloseElement(); // .card-wrap
+              builder.OpenElement(seq++, "div");
+              builder.AddAttribute(seq++, "class", "enforced-text");
+              builder.AddAttribute(seq++, "style", "color:#fff;font-size:0.9rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.8);");
+              builder.AddContent(seq++, "Enforced");
+              builder.CloseElement();
+              builder.CloseElement();
+
+              // Click to view enforced card (ensure full coverage like overlay)
+              builder.OpenElement(seq++, "button");
+              builder.AddAttribute(seq++, "type", "button");
+              builder.AddAttribute(seq++, "class", "card-cover-btn");
+              builder.AddAttribute(seq++, "style", "position:absolute;inset:0;background:transparent;border:0;padding:0;margin:0;cursor:pointer;z-index:1001;");
+              builder.AddAttribute(seq++, "aria-label", $"View {domain} card");
+              builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => OpenCardZoom(domain, enforced!)));
+              builder.CloseElement();
+            }
+            else
+            {
+              // Make the whole card clickable to open the picker when not locked
+              builder.OpenElement(seq++, "button");
+              builder.AddAttribute(seq++, "type", "button");
+              builder.AddAttribute(seq++, "class", "card-cover-btn");
+              builder.AddAttribute(seq++, "style", "position:absolute;inset:0;background:transparent;border:0;padding:0;margin:0;cursor:pointer;z-index:1001;");
+              builder.AddAttribute(seq++, "aria-label", $"Select {domain} core");
+              builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, openPicker));
+              builder.CloseElement();
+            }
+          builder.CloseElement(); // .card-wrap
+  }
       builder.CloseElement(); // .slot-body
     builder.CloseElement(); // .core-slot
   };
@@ -603,14 +665,40 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
 
   private void OpenPicker(string domain)
   {
-    // Simple cycle picker for now (first non-FMC choice if exists, else FMC)
+    // Open modal picker filtered to owned cores for this domain
+    EnsureCoreMeta();
+    CorePickerDomain = domain;
+    CorePickerItems.Clear();
     switch (domain)
     {
-      case "CPU": SelectedCpu = OwnedCpu.FirstOrDefault() ?? "FMC"; break;
-      case "PPU": SelectedPpu = OwnedPpu.FirstOrDefault() ?? "FMC"; break;
-      case "APU": SelectedApu = OwnedApu.FirstOrDefault() ?? "FMC"; break;
-  case "SHADER": SelectedShader = OwnedShader.FirstOrDefault() ?? "PX"; break;
+      case "CPU":
+        {
+          var allowed = new HashSet<string>(OwnedCpu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_cpuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "PPU":
+        {
+          var allowed = new HashSet<string>(OwnedPpu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_ppuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "APU":
+        {
+          var allowed = new HashSet<string>(OwnedApu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_apuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "SHADER":
+        {
+          var allowed = new HashSet<string>(OwnedShader, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_shaderMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
     }
+    ApplyPickerSort();
+    CorePickerOpen = true;
+    StateHasChanged();
   }
 
   private async Task OpenCardZoom(string domain, string id)
@@ -1123,5 +1211,196 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       await JS.InvokeVoidAsync("eval", script);
     }
     catch { }
+  }
+
+  // ===== Core Picker (Continue) =====
+  private bool CorePickerOpen = false;
+  private string CorePickerDomain = string.Empty; // CPU/PPU/APU/SHADER
+  private readonly List<PickerItem> CorePickerItems = new();
+  private string CorePickerTitle => CorePickerDomain switch { "CPU" => "CPU Core", "PPU" => "PPU Core", "APU" => "APU Core", "SHADER" => "Shader", _ => "Core" };
+
+  private sealed class PickerItem
+  {
+    public string Domain { get; set; } = string.Empty;
+    public string Id { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int Performance { get; set; }
+    public int Rating { get; set; }
+    public string? Category { get; set; }
+  }
+
+  private void CloseCorePicker()
+  {
+    CorePickerOpen = false;
+    CorePickerDomain = string.Empty;
+    CorePickerItems.Clear();
+  }
+
+  private async Task OnCorePicked(string id)
+  {
+    try
+    {
+      switch (CorePickerDomain)
+      {
+        case "CPU": SelectedCpu = id; break;
+        case "PPU": SelectedPpu = id; break;
+        case "APU": SelectedApu = id; break;
+        case "SHADER": SelectedShader = id; break;
+      }
+    }
+    finally
+    {
+      CloseCorePicker();
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private bool _coreMetaReady = false;
+  private List<PickerItem> _cpuMeta = new();
+  private List<PickerItem> _ppuMeta = new();
+  private List<PickerItem> _apuMeta = new();
+  private List<PickerItem> _shaderMeta = new();
+
+  private void EnsureCoreMeta()
+  {
+    if (_coreMetaReady) return;
+    try
+    {
+      // Minimal valid iNES ROM (NROM-128: 1x16KB PRG, 0 CHR)
+      var dummy = new byte[16 + 16 * 1024];
+      dummy[0] = 0x4E; dummy[1] = 0x45; dummy[2] = 0x53; dummy[3] = 0x1A;
+      dummy[4] = 1; dummy[5] = 0; dummy[6] = 0; dummy[7] = 0;
+      var cart = new Cartridge(dummy);
+      var bus = new Bus(cart);
+
+      var cpuDict = CoreRegistry.CreateInstances<ICPU>(bus, "CPU_");
+      _cpuMeta = cpuDict.Select(kv => new PickerItem
+      {
+        Domain = "CPU",
+        Id = kv.Key,
+        DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+        Category = SafeGet(() => kv.Value.Category) ?? ""
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      var ppuDict = CoreRegistry.CreateInstances<IPPU>(bus, "PPU_");
+      _ppuMeta = ppuDict.Select(kv => new PickerItem
+      {
+        Domain = "PPU",
+        Id = kv.Key,
+        DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+        Category = SafeGet(() => kv.Value.Category) ?? ""
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
+      _apuMeta = apuDict.Select(kv => new PickerItem
+      {
+        Domain = "APU",
+        Id = kv.Key,
+        DisplayName = SafeGet(() => kv.Value.CoreName) ?? kv.Key,
+        Description = SafeGet(() => kv.Value.Description) ?? string.Empty,
+        Performance = SafeGetStruct(() => kv.Value.Performance) ?? 0,
+        Rating = Math.Clamp(SafeGetStruct(() => kv.Value.Rating) ?? 0, 0, 5),
+        Category = SafeGet(() => kv.Value.Category) ?? ""
+      }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+
+      _shaderMeta = new List<PickerItem>();
+      try
+      {
+        // Build provider lookup for metadata (by IShader)
+        var prov = new Dictionary<string, IShader>(StringComparer.OrdinalIgnoreCase);
+        try { foreach (var s in ShaderProvider.All) prov[s.Id] = s; } catch { }
+
+        // Controller-free: use provider order
+        foreach (var s in prov.Values.OrderBy(v => v.Id, StringComparer.OrdinalIgnoreCase))
+        {
+          string? cat = null;
+          try { if (s.Defines != null && s.Defines.TryGetValue("Category", out var c)) cat = c; } catch { }
+          _shaderMeta.Add(new PickerItem
+          {
+            Domain = "SHADER",
+            Id = s.Id,
+            DisplayName = s.DisplayName ?? s.Id,
+            Description = s.Description ?? string.Empty,
+            Performance = s.Performance,
+            Rating = Math.Clamp(s.Rating, 0, 5),
+            Category = cat ?? string.Empty
+          });
+        }
+      }
+      catch { }
+    }
+    catch { }
+    _coreMetaReady = true;
+  }
+
+  private static string PillRateClass(int rating)
+  {
+    var r = Math.Clamp(rating, 0, 5);
+    return $"pill-rate-{r}";
+  }
+
+  private static string CategoryClass(string? category)
+  {
+    if (string.IsNullOrWhiteSpace(category)) return "cat-col-0";
+    unchecked
+    {
+      int hash = 0;
+      foreach (var ch in category)
+      {
+        hash = (hash * 31) + char.ToLowerInvariant(ch);
+      }
+      int idx = Math.Abs(hash) % 8; // 8 color buckets
+      return $"cat-col-{idx}";
+    }
+  }
+
+  private static string RenderStars(int rating)
+  {
+    var r = Math.Clamp(rating, 0, 5);
+    return new string('\u2605', r) + new string('\u2606', 5 - r);
+  }
+
+  private static string PerfClass(int perf)
+  {
+    if (perf > 0) return "perf-pos";
+    if (perf < 0) return "perf-neg";
+    return string.Empty;
+  }
+
+  private static string? SafeGet(Func<string?> f){ try { return f(); } catch { return null; } }
+  private static int? SafeGetStruct(Func<int> f){ try { return f(); } catch { return null; } }
+
+  private void ApplyPickerSort()
+  {
+    if (CorePickerItems.Count <= 1) return;
+    if (string.Equals(CorePickerDomain, "SHADER", StringComparison.OrdinalIgnoreCase))
+    {
+      CorePickerItems.Sort((a,b)=>
+      {
+        int ap = string.Equals(a.Id, "PX", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+        int bp = string.Equals(b.Id, "PX", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+        int cmp = ap.CompareTo(bp);
+        if (cmp != 0) return cmp;
+        return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+      });
+    }
+    else
+    {
+      CorePickerItems.Sort((a,b)=>
+      {
+        int ap = string.Equals(a.Id, "FMC", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+        int bp = string.Equals(b.Id, "FMC", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+        int cmp = ap.CompareTo(bp);
+        if (cmp != 0) return cmp;
+        return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+      });
+    }
   }
 }
