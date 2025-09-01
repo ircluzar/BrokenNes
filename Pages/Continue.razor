@@ -40,7 +40,7 @@
       }
     </div>
     <div class="hdr-cta">
-  <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires level cleared and @RequiredStars stars" @onclick="AdvanceLevel">Go to next level (@RequiredStars ⭐)</button>
+  <button class="btn-next" disabled="@(!CanAdvanceLevel)" title="Requires level cleared and @RequiredStars stars" @onclick="AdvanceLevel">Level progression: @Stars/@RequiredStars ⭐</button>
     </div>
   </section>
 
@@ -194,11 +194,19 @@
   </section>
 
   <div class="opt-footer">
-  <button class="opt-link start-btn @(CanContinueGame?"unlocked":"locked")"
-    disabled="@(!CanContinueGame)"
-    title="@(CanContinueSelected? "Resume from last trusted checkpoint" : "Requires valid build and trusted continue for selected game")"
-    @onclick="StartContinueGame">Continue game</button>
-  <button class="opt-link start-btn @(CanStartGame?"unlocked":"locked")" disabled="@(!CanStartGame)" title="Build valid and game with achievements required" @onclick="StartStageGame">Start the game</button>
+  @if (CanContinueGame)
+  {
+    <button class="opt-link start-btn unlocked"
+      title="Resume from last trusted checkpoint"
+      @onclick="StartContinueGame">Continue game</button>
+  }
+  else
+  {
+    <button class="opt-link start-btn @(CanStartGame?"unlocked":"locked")"
+      disabled="@(!CanStartGame)"
+      title="Build valid and game with achievements required"
+      @onclick="StartStageGame">Start the game</button>
+  }
     <a href="./deck-builder?skipHW=1" class="opt-link" @onclick="OnReturn" @onclick:preventDefault>RETURN</a>
   </div>
 </div>
@@ -640,6 +648,12 @@
   save.OwnedApuIds ??= new();
   save.OwnedShaderIds ??= new();
   save.OwnedClockIds ??= new();
+  // If level had no enforced cards, unlock 2–3 random 'Last' cards not yet owned
+  if (enforcedPairs.Count == 0)
+  {
+    var bonus = await PickRandomLastCardsAsync(save);
+    foreach (var p in bonus) enforcedPairs.Add(p);
+  }
   foreach (var (domain, id) in enforcedPairs)
   {
     switch (domain)
@@ -680,6 +694,54 @@
   StateHasChanged();
     }
     catch { }
+  }
+
+  // Pick 2–3 random cards labeled 'Last' and not owned yet
+  private async Task<List<(string domain, string id)>> PickRandomLastCardsAsync(BrokenNes.Models.GameSave save)
+  {
+    var result = new List<(string domain, string id)>();
+    try
+    {
+      var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('cards'); return JSON.stringify(arr||[]); } catch(e){ return '[]'; } })()");
+      if (string.IsNullOrWhiteSpace(json)) return result;
+      using var doc = JsonDocument.Parse(json);
+      var ownedCpu = new HashSet<string>(save.OwnedCpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var ownedPpu = new HashSet<string>(save.OwnedPpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var ownedApu = new HashSet<string>(save.OwnedApuIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var ownedShader = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var ownedClock = new HashSet<string>(save.OwnedClockIds ?? new(), StringComparer.OrdinalIgnoreCase);
+      var candidates = new List<(string domain, string id)>();
+      foreach (var el in doc.RootElement.EnumerateArray())
+      {
+        var type = el.TryGetProperty("type", out var pt) ? (pt.GetString() ?? string.Empty) : string.Empty;
+        if (!string.Equals(type, "Last", StringComparison.OrdinalIgnoreCase)) continue;
+        var comp = el.TryGetProperty("id", out var pid) ? (pid.GetString() ?? string.Empty) : string.Empty; // DOMAIN_ID
+        if (string.IsNullOrWhiteSpace(comp)) continue;
+        var parts = comp.Split('_', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) continue;
+        var domain = parts[0].ToUpperInvariant();
+        var id = parts[1];
+        bool alreadyOwned = domain switch
+        {
+          "CPU" => ownedCpu.Contains(id),
+          "PPU" => ownedPpu.Contains(id),
+          "APU" => ownedApu.Contains(id),
+          "SHADER" => ownedShader.Contains(id),
+          "CLOCK" => ownedClock.Contains(id),
+          _ => true
+        };
+        if (alreadyOwned) continue;
+        candidates.Add((domain, id));
+      }
+      if (candidates.Count == 0) return result;
+      int maxK = Math.Min(3, candidates.Count);
+      int minK = Math.Min(2, maxK);
+      int k; try { k = new Random().Next(minK, maxK + 1); } catch { k = minK; }
+      var shuffled = candidates.OrderBy(_ => Guid.NewGuid()).ToList();
+      for (int i = 0; i < k; i++) result.Add(shuffled[i]);
+    }
+    catch { }
+    return result;
   }
 
   private async Task SelectGameAsync(string id)
@@ -1063,33 +1125,20 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
   var card = BuildCard(domain, id);
   enforced.Add((domain, id, $"{domain}_"+id, RatingToBorderColor(Math.Clamp(card.Rating,0,5))));
       }
-      // If DB had no enforced cards, retain a sensible default to keep the page functional
+      // If DB had no enforced cards, do NOT enforce defaults — allow free play
       if (enforced.Count == 0)
       {
-        EnforcedCpu ??= "FMC"; EnforcedPpu ??= "FMC"; EnforcedApu ??= "FMC";
-        var cpu = BuildCard("CPU", EnforcedCpu);
-        var ppu = BuildCard("PPU", EnforcedPpu);
-        var apu = BuildCard("APU", EnforcedApu);
-        enforced.Add(("CPU", EnforcedCpu, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpu.Rating,0,5))));
-        enforced.Add(("PPU", EnforcedPpu, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppu.Rating,0,5))));
-        enforced.Add(("APU", EnforcedApu, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apu.Rating,0,5))));
+        EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = EnforcedClock = null;
       }
       EnforcedCards = enforced.ToArray();
     }
     catch
     {
-      // Fallbacks if continueDb not available
+      // Fallbacks if continueDb not available: free play (no enforced cards)
       LevelTitle = $"Level {index}";
       RequiredStars = 5;
-      EnforcedCpu ??= "FMC"; EnforcedPpu ??= "FMC"; EnforcedApu ??= "FMC";
-      var cpu = BuildCard("CPU", EnforcedCpu);
-      var ppu = BuildCard("PPU", EnforcedPpu);
-      var apu = BuildCard("APU", EnforcedApu);
-      EnforcedCards = new[]{
-        ("CPU", EnforcedCpu, "CPU_"+EnforcedCpu, RatingToBorderColor(Math.Clamp(cpu.Rating,0,5))),
-        ("PPU", EnforcedPpu, "PPU_"+EnforcedPpu, RatingToBorderColor(Math.Clamp(ppu.Rating,0,5))),
-        ("APU", EnforcedApu, "APU_"+EnforcedApu, RatingToBorderColor(Math.Clamp(apu.Rating,0,5)))
-      };
+      EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = EnforcedClock = null;
+      EnforcedCards = Array.Empty<(string domain, string id, string label, string border)>();
     }
   }
 

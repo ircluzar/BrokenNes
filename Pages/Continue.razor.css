@@ -15,6 +15,14 @@
 .opt-row select:disabled,.opt-row button:disabled{opacity:.5;}
 .small-note{opacity:.6;font-size:.55rem;}
 .opt-footer{margin-top:2rem;text-align:center;}
+/* Continue page: space the primary and return buttons nicely */
+.continue-root .opt-footer{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:1rem;
+  flex-wrap:wrap;
+}
 .opt-link{display:inline-block;padding:.7rem 1.4rem;border:3px solid #ff5a26;color:#fff;text-decoration:none;font-size:.7rem;}
 .opt-link:hover,.opt-link:focus{background:#ff5a26;color:#000;}
 /* Start button specific states */
@@ -39,6 +47,7 @@
 .continue-root .enf-chip:hover{background:#111}
 .continue-root .hdr-cta{margin-top:.75rem}
 .continue-root .btn-next{background:#000;color:#fff;border:3px solid #ff5a26;font-family:'Press Start 2P', monospace;font-size:.7rem;padding:.45rem .8rem}
+.continue-root .btn-next .star-ico{display:inline-block;color:#fff;line-height:1;font-size:1.6em;vertical-align:-0.2em;margin-left:.1em}
 .continue-root .btn-next:disabled{opacity:.5}
 .continue-root .btn-next.spotlit{box-shadow:0 0 0 4px #fff, 0 0 0 8px #ff5a26; position:relative; z-index:10002}
 

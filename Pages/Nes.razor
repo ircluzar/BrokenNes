@@ -41,7 +41,7 @@
             <div class="btn-group">
                 @if (QAchievements)
                 {
-                    <button class="btn btn-danger ctrl-btn" @onclick="ReturnToContinue" title="Return to Continue" aria-label="Return">
+                    <button class="btn btn-danger ctrl-btn me-2" @onclick="ReturnToContinue" title="Return to Continue" aria-label="Return">
                         Return
                     </button>
                 }
@@ -105,7 +105,7 @@
                     }
                 </div>
             }
-            @if (ShowSavestates)
+            @if (ShowSavestates && !StageMode)
             {
                 <div class="btn-group">
                     <button class="btn btn-load-state" @onclick="(()=>emu!.LoadStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Load state">Load</button>
@@ -178,7 +178,7 @@
                             </div>
                             <div class="system-row">
                                 <button class="sys-btn" data-act="exit">Exit Fullscreen</button>
-                                @if (ShowSavestates)
+                                @if (ShowSavestates && !StageMode)
                                 {
                                     <button class="sys-btn" data-act="load">Load State</button>
                                     <button class="sys-btn" data-act="save">Save State</button>
@@ -1422,6 +1422,16 @@
                     if (QAutoloadState)
                     {
                         try { await emu.LoadStateAsyncPublic(); } catch { }
+                        // Re-apply query core overrides AFTER savestate load to ensure query wins over embedded cores
+                        try
+                        {
+                            if (!string.IsNullOrWhiteSpace(QShader)) await emu.SetShaderPublic(QShader!);
+                            if (!string.IsNullOrWhiteSpace(QCpu)) await emu.SetCpuCorePublic(QCpu!);
+                            if (!string.IsNullOrWhiteSpace(QPpu)) await emu.SetPpuCorePublic(QPpu!);
+                            if (!string.IsNullOrWhiteSpace(QApu)) await emu.SetApuCorePublic(QApu!);
+                            if (!string.IsNullOrWhiteSpace(QClock)) await emu.SetClockCorePublic(QClock!);
+                        }
+                        catch { }
                         try
                         {
                             if (_achEngine != null)
