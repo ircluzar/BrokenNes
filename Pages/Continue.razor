@@ -235,6 +235,31 @@
   </div>
 }
 
+@* Unlock Lootbox Modal *@
+@if (UnlockModalOpen)
+{
+  <div class="unlock-modal-backdrop @(UnlockModalClosing?"closing":"opening")" @onclick="CloseUnlockModal">
+    <div class="unlock-modal @(UnlockModalClosing?"closing":"opening")" @onclick:stopPropagation>
+      <div class="unlock-header">
+        <h3>New Cores Unlocked</h3>
+      </div>
+      <div class="unlock-body">
+        <div class="loot-stage">
+          @foreach (var it in UnlockItems)
+          {
+            <button class="loot-card" title="View" @onclick="(()=>OpenCardZoom(it.Card.Domain, it.Card.Id))">
+              @((MarkupString)CardSvgRenderer.Render(it.Card, 142, 200))
+            </button>
+          }
+        </div>
+      </div>
+      <div class="unlock-actions">
+        <button class="unlock-ok" @onclick="CloseUnlockModal">OK</button>
+      </div>
+    </div>
+  </div>
+}
+
 @* Core Picker Modal (Continue page aesthetic) *@
 @if (CorePickerOpen)
 {
@@ -295,6 +320,7 @@
   private string? EnforcedPpu = null;
   private string? EnforcedApu = null;
   private string? EnforcedShader = null;
+  private string? EnforcedClock = null;
 
   // Player-selected (temporary choices for this level/session)
   private string? SelectedCpu = null;
@@ -305,6 +331,12 @@
   private CoreCardModel? ZoomCard;
   private bool ModalClosing = false;
   private bool _zoomInit = false;
+
+  // Unlock modal (lootbox-style)
+  private bool UnlockModalOpen = false;
+  private bool UnlockModalClosing = false;
+  private readonly List<UnlockItem> UnlockItems = new();
+  private sealed class UnlockItem { public string Domain { get; set; } = string.Empty; public string Id { get; set; } = string.Empty; public CoreCardModel Card { get; set; } = new(); }
 
   // Owned choices
   private IReadOnlyList<string> OwnedCpu = Array.Empty<string>();
@@ -564,11 +596,40 @@
     }catch{}})();");
   }
   catch { }
+  // Take note of enforced cores used in the level we are leaving
+  var enforcedPairs = new List<(string domain, string id)>();
+  if (!string.IsNullOrWhiteSpace(EnforcedCpu)) enforcedPairs.Add(("CPU", EnforcedCpu!));
+  if (!string.IsNullOrWhiteSpace(EnforcedPpu)) enforcedPairs.Add(("PPU", EnforcedPpu!));
+  if (!string.IsNullOrWhiteSpace(EnforcedApu)) enforcedPairs.Add(("APU", EnforcedApu!));
+  if (!string.IsNullOrWhiteSpace(EnforcedShader)) enforcedPairs.Add(("SHADER", EnforcedShader!));
+  if (!string.IsNullOrWhiteSpace(EnforcedClock)) enforcedPairs.Add(("CLOCK", EnforcedClock!));
+
+  // Grant enforced cores into the owned lists (track newly added for celebration)
+  var newlyAdded = new List<(string domain, string id)>();
+  bool AddIfMissing(List<string> list, string id)
+  {
+    if (!list.Contains(id, StringComparer.OrdinalIgnoreCase)) { list.Add(id); return true; }
+    return false;
+  }
+  save.OwnedCpuIds ??= new();
+  save.OwnedPpuIds ??= new();
+  save.OwnedApuIds ??= new();
+  save.OwnedShaderIds ??= new();
+  save.OwnedClockIds ??= new();
+  foreach (var (domain, id) in enforcedPairs)
+  {
+    switch (domain)
+    {
+      case "CPU": if (AddIfMissing(save.OwnedCpuIds, id)) newlyAdded.Add(("CPU", id)); break;
+      case "PPU": if (AddIfMissing(save.OwnedPpuIds, id)) newlyAdded.Add(("PPU", id)); break;
+      case "APU": if (AddIfMissing(save.OwnedApuIds, id)) newlyAdded.Add(("APU", id)); break;
+      case "SHADER": if (AddIfMissing(save.OwnedShaderIds, id)) newlyAdded.Add(("SHADER", id)); break;
+      case "CLOCK": if (AddIfMissing(save.OwnedClockIds, id)) newlyAdded.Add(("CLOCK", id)); break;
+    }
+  }
+
+  // Advance to next level in save
   save.Level = Math.Max(1, save.Level) + 1;
-      // Grant any forced cards for next level here (stub: grant FMC if missing)
-      void grant(List<string> list, string id){ if (!list.Contains(id, StringComparer.OrdinalIgnoreCase)) list.Add(id); }
-      save.OwnedCpuIds ??= new(); save.OwnedPpuIds ??= new(); save.OwnedApuIds ??= new();
-      grant(save.OwnedCpuIds, "FMC"); grant(save.OwnedPpuIds, "FMC"); grant(save.OwnedApuIds, "FMC");
   // Reset the level-cleared flag for the newly advanced level
   save.LevelCleared = false;
   await SaveSvc.SaveAsync(save);
@@ -581,6 +642,14 @@
   LevelCleared = save.LevelCleared;
   // Update music to match the new level
   try { await PlayContinueLevelMusicAsync(true); } catch { }
+  // Refresh in-memory Owned lists to reflect new unlocks
+  await RefreshOwnedFromSaveAsync();
+
+  // If any new cores were added, celebrate with a lootbox-style modal
+  if (newlyAdded.Count > 0)
+  {
+    ShowUnlockModal(newlyAdded);
+  }
   StateHasChanged();
     }
     catch { }
@@ -943,7 +1012,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
   RequiredStars = level != null ? Math.Max(0, level.requiredStars) : 5;
 
   // Reset enforced slots
-  EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = null;
+  EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = EnforcedClock = null;
 
       // Parse requiredCards => fill per-domain enforced ids and build header chips
       var enforced = new List<(string domain, string id, string label, string border)>();
@@ -960,6 +1029,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
           case "PPU": EnforcedPpu = id; break;
           case "APU": EnforcedApu = id; break;
           case "SHADER": EnforcedShader = id; break;
+          case "CLOCK": EnforcedClock = id; break;
         }
   // Skip displaying CLOCK in the enforced chips header
   if (domain == "CLOCK") continue;
@@ -1540,5 +1610,86 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
       });
     }
+  }
+
+  // ===== Unlock modal helpers =====
+  private void ShowUnlockModal(IEnumerable<(string domain, string id)> items)
+  {
+    UnlockItems.Clear();
+    foreach (var (domain, id) in items)
+    {
+      try
+      {
+        var card = BuildCard(domain, id);
+        UnlockItems.Add(new UnlockItem { Domain = domain, Id = id, Card = card });
+      }
+      catch { }
+    }
+    if (UnlockItems.Count == 0) return;
+    UnlockModalClosing = false;
+    UnlockModalOpen = true;
+    StateHasChanged();
+  }
+
+  private async Task CloseUnlockModal()
+  {
+    if (!UnlockModalOpen) return;
+    UnlockModalClosing = true; await InvokeAsync(StateHasChanged);
+    try { await Task.Delay(160); } catch { }
+    UnlockModalOpen = false; UnlockModalClosing = false;
+    UnlockItems.Clear();
+    // Ensure Owned lists and picker are up-to-date after closing
+    await RefreshOwnedFromSaveAsync();
+    UpdateCorePickerItemsIfOpen();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task RefreshOwnedFromSaveAsync()
+  {
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      OwnedCpu = (save.OwnedCpuIds ?? new()).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+      OwnedPpu = (save.OwnedPpuIds ?? new()).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+      OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+      OwnedShader = (save.OwnedShaderIds ?? new()).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray();
+  // No direct UI for CLOCK in Continue, but refresh keeps state consistent
+    }
+    catch { }
+  }
+
+  private void UpdateCorePickerItemsIfOpen()
+  {
+    if (!CorePickerOpen || string.IsNullOrWhiteSpace(CorePickerDomain)) return;
+    EnsureCoreMeta();
+    CorePickerItems.Clear();
+    switch (CorePickerDomain)
+    {
+      case "CPU":
+        {
+          var allowed = new HashSet<string>(OwnedCpu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_cpuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "PPU":
+        {
+          var allowed = new HashSet<string>(OwnedPpu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_ppuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "APU":
+        {
+          var allowed = new HashSet<string>(OwnedApu, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_apuMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+      case "SHADER":
+        {
+          var allowed = new HashSet<string>(OwnedShader, StringComparer.OrdinalIgnoreCase);
+          CorePickerItems.AddRange(_shaderMeta.Where(m => allowed.Contains(m.Id)));
+        }
+        break;
+    }
+    ApplyPickerSort();
   }
 }

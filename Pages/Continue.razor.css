@@ -145,7 +145,7 @@
 .import-footer{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem}
 
 /* Modal for card zoom (reuses patterns from other pages) */
-.card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:5000;opacity:1;transition:opacity .18s ease}
+.card-modal-backdrop{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:12000;opacity:1;transition:opacity .18s ease}
 .card-modal-backdrop.closing{opacity:0}
 .card-modal-content{max-width:98vw;max-height:98vh;}
 
@@ -229,3 +229,20 @@
   .continue-root .lvl-title{font-size:.8rem}
   .continue-root .btn-next{font-size:.65rem;padding:.42rem .7rem}
 }
+
+/* ===== Lootbox Unlock Modal ===== */
+.unlock-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9000;opacity:1;transition:opacity .18s ease}
+.unlock-modal-backdrop.closing{opacity:0}
+.unlock-modal{background:#000;border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.7);width:min(880px,96vw);max-height:90vh;display:flex;flex-direction:column;gap:.5rem;padding:.9rem 1rem}
+.unlock-header h3{margin:0;font-size:1.1rem;color:#ffcc00;text-align:center;text-shadow:0 0 10px rgba(255,204,0,0.5)}
+.unlock-body{position:relative;padding:1rem .5rem}
+.loot-stage{position:relative;display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;align-items:center;min-height:240px}
+.loot-card{position:relative;display:inline-block;width:142px;height:200px;background:transparent;border:0;padding:0;margin:0;cursor:pointer;animation:lootFloat 3s ease-in-out infinite}
+.loot-card:nth-child(2){animation-delay:.2s}
+.loot-card:nth-child(3){animation-delay:.4s}
+.loot-card:nth-child(4){animation-delay:.6s}
+.loot-card svg{display:block;width:142px;height:200px;filter:drop-shadow(0 8px 16px rgba(0,0,0,0.5))}
+.unlock-actions{display:flex;justify-content:center;padding:.25rem 0 .5rem}
+.unlock-ok{padding:.6rem 1.2rem;font-size:.75rem;border:3px solid #ff5a26;background:#000;color:#fff;font-family:'Press Start 2P', monospace;cursor:pointer}
+.unlock-ok:hover,.unlock-ok:focus{background:#0a0a0a}
+@keyframes lootFloat{0%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-8px) rotate(0.5deg)}100%{transform:translateY(0) rotate(0deg)}}
