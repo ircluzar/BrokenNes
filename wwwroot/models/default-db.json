@@ -1,0 +1,2849 @@
+{
+  "format": "continue-db/v1",
+  "version": 1,
+  "exportedAt": "2025-09-01T17:50:14.269Z",
+  "data": {
+    "games": [
+      {
+        "id": "nes_02a27a791d260a454a7714ad9ec26a0c1c1e80f2",
+        "title": "Super Mario World",
+        "commonName": "",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Super Mario World.nes",
+        "headerSignature": "ines_41f703bae4ea81b4b2c140d13fbf752acfbb7252",
+        "builtIn": false,
+        "size": 786448,
+        "createdAt": "2025-08-26T20:39:58.9140000Z"
+      },
+      {
+        "id": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Balloon Fight (JU) [!]",
+        "commonName": "Balloon Fight",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Balloon Fight (JU) [!].nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T21:35:23.1730000Z"
+      },
+      {
+        "id": "nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+        "title": "Zelda II - The Adventure of Link (U)",
+        "commonName": "Zelda II: The Adventure of Link",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Zelda II - The Adventure of Link (U).nes",
+        "headerSignature": "ines_e8a611b806401f576b86ed3faf7b9398ace29007",
+        "builtIn": false,
+        "size": 262160,
+        "createdAt": "2025-08-25T22:47:51.6620000Z"
+      },
+      {
+        "id": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Kirby's Adventure (U) (PRG1) [!]",
+        "commonName": "Kirby's Adventure",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Kirby's Adventure (U) (PRG1) [!].nes",
+        "headerSignature": "ines_bccf5461c78bda518255c909f3e3fb92682591b0",
+        "builtIn": false,
+        "size": 786448,
+        "createdAt": "2025-08-25T22:47:34.8800000Z"
+      },
+      {
+        "id": "nes_22d57ac6066529d199fcd299159d94820042c7d0",
+        "title": "Ice Climber (U) [!]",
+        "commonName": "Ice Climber",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Ice Climber (U) [!].nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T21:35:25.5640000Z"
+      },
+      {
+        "id": "nes_230fc31d2c2eb20e78711c82574f29f28117eba3",
+        "title": "Arkanoid (U)",
+        "commonName": "Arkanoid",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Arkanoid (U).nes",
+        "headerSignature": "ines_12fe623ec4ffbc1fb3ffa7c8c7c48cbf179a96c8",
+        "builtIn": false,
+        "size": 49168,
+        "createdAt": "2025-08-26T21:10:46.2180000Z"
+      },
+      {
+        "id": "nes_23c4dafcc17fa75e8d682931702277659cd59735",
+        "title": "Castlevania III - Dracula's Curse (U) [!]",
+        "commonName": "Castlevania III - Dracula's Curse",
+        "status": "Broken",
+        "note": "",
+        "system": "nes",
+        "romKey": "Castlevania III - Dracula's Curse (U) [!].nes",
+        "headerSignature": "ines_dfa20e7b7d59066bb53194b12f654e90375e952a",
+        "builtIn": false,
+        "size": 393232,
+        "createdAt": "2025-08-26T22:45:30.4540000Z"
+      },
+      {
+        "id": "nes_260166d22c895df4f30ac63e4e8d0c3f1c7b1585",
+        "title": "Lunar Pool (U)",
+        "commonName": "Lunar Pool",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Lunar Pool (U).nes",
+        "headerSignature": "ines_e59c5bca8ab221a88eecdfd65c22249abe31c6a4",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T22:47:39.6680000Z"
+      },
+      {
+        "id": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Mega Man 6 (U)",
+        "commonName": "Mega Man 6",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man 6 (U).nes",
+        "headerSignature": "ines_fe190b481678a9ed6c2fa789568d1c12d32321a3",
+        "builtIn": false,
+        "size": 524304,
+        "createdAt": "2025-08-25T22:47:46.6870000Z"
+      },
+      {
+        "id": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Mega Man 2 (U)",
+        "commonName": "Mega Man 2",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man 2 (U).nes",
+        "headerSignature": "ines_1e439f32bda7b57294f3e6edeaf130133e099773",
+        "builtIn": false,
+        "size": 262160,
+        "createdAt": "2025-08-25T22:47:42.6880000Z"
+      },
+      {
+        "id": "nes_351edb1fdf4bce3bfc56d1eecccfdc6a21bb14f4",
+        "title": "Lifeforce (U)",
+        "system": "nes",
+        "romKey": "Lifeforce (U).nes",
+        "headerSignature": "ines_59560f020e2615a2903146b53e09e4538518b8c7",
+        "builtIn": false,
+        "size": 131088,
+        "createdAt": "2025-09-01T03:23:54.8900000Z",
+        "status": "Nothing",
+        "commonName": "",
+        "note": ""
+      },
+      {
+        "id": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
+        "title": "Mega Man 5 (U)",
+        "commonName": "Mega Man 5",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man 5 (U).nes",
+        "headerSignature": "ines_a4ff302dd4ad8788289a509d9c61211995c693ce",
+        "builtIn": false,
+        "size": 524304,
+        "createdAt": "2025-08-25T22:47:45.8660000Z"
+      },
+      {
+        "id": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Ice Hockey (U) [!]",
+        "commonName": "Ice Hockey",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Ice Hockey (U) [!].nes",
+        "headerSignature": "ines_40c71db0dc29b16057ec159bca7008241fc3a9f6",
+        "builtIn": false,
+        "size": 40976,
+        "createdAt": "2025-08-25T22:47:34.1620000Z"
+      },
+      {
+        "id": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Super Mario Bros. 2 (U) (PRG0) [!]",
+        "commonName": "Super Mario Bros. 2",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Super Mario Bros. 2 (U) (PRG0) [!].nes",
+        "headerSignature": "ines_81e5fc6e6c5af3d38699417a61982a069c6b477c",
+        "builtIn": false,
+        "size": 262160,
+        "createdAt": "2025-08-25T22:47:50.5390000Z"
+      },
+      {
+        "id": "nes_4718252f0407896288a3e558a5cb6399527ba6df",
+        "title": "test",
+        "commonName": "Test Rom",
+        "status": "Nothing",
+        "note": "",
+        "system": "nes",
+        "romKey": "test.nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": true,
+        "size": 24656,
+        "createdAt": "2025-08-26T02:20:22.3130000Z"
+      },
+      {
+        "id": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Mega Man (U)",
+        "commonName": "Mega Man",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man (U).nes",
+        "headerSignature": "ines_59560f020e2615a2903146b53e09e4538518b8c7",
+        "builtIn": false,
+        "size": 131088,
+        "createdAt": "2025-08-31T22:15:15.2050000Z"
+      },
+      {
+        "id": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Mega Man 4 (U)",
+        "commonName": "Mega Man 4",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man 4 (U).nes",
+        "headerSignature": "ines_fe190b481678a9ed6c2fa789568d1c12d32321a3",
+        "builtIn": false,
+        "size": 524304,
+        "createdAt": "2025-08-25T22:47:44.2200000Z"
+      },
+      {
+        "id": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Mega Man 3 (U) [!]",
+        "commonName": "Mega Man 3",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mega Man 3 (U) [!].nes",
+        "headerSignature": "ines_e3d040753986014e3397aef70dab49810e2d6b42",
+        "builtIn": false,
+        "size": 393232,
+        "createdAt": "2025-08-25T22:47:43.5610000Z"
+      },
+      {
+        "id": "nes_7356dd9d129ec32f5dbcba5c9832e0494995398c",
+        "title": "Adventures of Bayou Billy, The (U)",
+        "system": "nes",
+        "romKey": "Adventures of Bayou Billy, The (U).nes",
+        "headerSignature": "ines_31ead0607ef667e97a147ca25ad9b5408d75d7f4",
+        "builtIn": false,
+        "size": 262160,
+        "createdAt": "2025-08-30T03:57:19.2640000Z",
+        "status": "Nothing",
+        "commonName": "",
+        "note": ""
+      },
+      {
+        "id": "nes_8e5767e4a6d5842684e1538d21948538643e0393",
+        "title": "Action 52 (U) [!]",
+        "commonName": "Action 52",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Action 52 (U) [!].nes",
+        "headerSignature": "ines_2d5fdd830b19f79304761ed561ff3fdfe2f4dc17",
+        "builtIn": false,
+        "size": 2097168,
+        "createdAt": "2025-08-26T22:27:32.9600000Z"
+      },
+      {
+        "id": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Pac-Man (U) [!]",
+        "commonName": "Pac-Man",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Pac-Man (U) [!].nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T22:47:48.0830000Z"
+      },
+      {
+        "id": "nes_ba8d9227a0d02b62ee6cb9e691fa5a5134c303a8",
+        "title": "Excitebike (JU) [!]",
+        "commonName": "Excitebike",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Excitebike (JU) [!].nes",
+        "headerSignature": "ines_e59c5bca8ab221a88eecdfd65c22249abe31c6a4",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T21:35:23.9170000Z"
+      },
+      {
+        "id": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Super Mario Bros. 3 (U) (PRG1) [!]",
+        "commonName": "Super Mario Bros. 3",
+        "status": "Jank",
+        "note": "Can't boot with certain APU cores",
+        "system": "nes",
+        "romKey": "Super Mario Bros. 3 (U) (PRG1) [!].nes",
+        "headerSignature": "ines_a5122f144cda473586d854e1323c256b0e005374",
+        "builtIn": false,
+        "size": 393232,
+        "createdAt": "2025-08-25T22:47:51.0780000Z"
+      },
+      {
+        "id": "nes_be2f5dc8c5ba8ec1a344a71f9fb204750af24fe7",
+        "title": "Legend of Zelda, The (U) (PRG1)",
+        "commonName": "Legend of Zelda, The",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Legend of Zelda, The (U) (PRG1).nes",
+        "headerSignature": "ines_ffe5ac83da5e564bb1b24029835d170a3a9008e1",
+        "builtIn": false,
+        "size": 131088,
+        "createdAt": "2025-08-25T22:47:37.4510000Z"
+      },
+      {
+        "id": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Pinball (JU)",
+        "commonName": "Pinball",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Pinball (JU).nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T22:47:48.6510000Z"
+      },
+      {
+        "id": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Mario Bros. (JU) [!]",
+        "commonName": "Mario Bros.",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Mario Bros. (JU) [!].nes",
+        "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
+        "builtIn": false,
+        "size": 24592,
+        "createdAt": "2025-08-25T22:47:41.5620000Z"
+      },
+      {
+        "id": "nes_e8ea2deb2d65fc64f0dc038a2c95ca6ce8ca31b9",
+        "title": "Hudson's Adventure Island (U)",
+        "commonName": "Hudson's Adventure Island",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Hudson's Adventure Island (U).nes",
+        "headerSignature": "ines_25e101fc2089e014a69f817d5aea07909f1828bc",
+        "builtIn": false,
+        "size": 65552,
+        "createdAt": "2025-08-25T21:35:24.5460000Z"
+      },
+      {
+        "id": "nes_eaaa0f6d5d94ec692eaf9a61f593674829289914",
+        "title": "Marble Madness (U)",
+        "commonName": "Marble Madness",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Marble Madness (U).nes",
+        "headerSignature": "ines_35a8d15445730a0a183cfae89ee8d132560c07b9",
+        "builtIn": false,
+        "size": 131088,
+        "createdAt": "2025-08-26T21:11:05.7520000Z"
+      },
+      {
+        "id": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "M.C. Kids (U)",
+        "commonName": "M.C. Kids",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "M.C. Kids (U).nes",
+        "headerSignature": "ines_81e5fc6e6c5af3d38699417a61982a069c6b477c",
+        "builtIn": false,
+        "size": 262160,
+        "createdAt": "2025-08-25T22:47:40.6900000Z"
+      },
+      {
+        "id": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Super Mario Bros. (JU) (PRG0) [!]",
+        "commonName": "Super Mario Bros.",
+        "status": "Works",
+        "note": "",
+        "system": "nes",
+        "romKey": "Super Mario Bros. (JU) (PRG0) [!].nes",
+        "headerSignature": "ines_40c71db0dc29b16057ec159bca7008241fc3a9f6",
+        "builtIn": false,
+        "size": 40976,
+        "createdAt": "2025-08-25T22:47:49.2320000Z"
+      },
+      {
+        "id": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Metroid (U) [!]",
+        "commonName": "Metroid",
+        "status": "Jank",
+        "note": "",
+        "system": "nes",
+        "romKey": "Metroid (U) [!].nes",
+        "headerSignature": "ines_ea36e7806ad294f2a96e5b837fb518cb3fc57a3b",
+        "builtIn": false,
+        "size": 131088,
+        "createdAt": "2025-08-26T21:08:35.1010000Z"
+      }
+    ],
+    "achievements": [
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_beat_the_top_score_of_25_000_in_balloon_trip_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Beat the top score of 25,000 in Balloon Trip.",
+        "requirements": [],
+        "metaAchievementName": "Beat the top score of 25,000 in Balloon Trip."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_bonus_stage_1_with_at_least_10_balloons_popped_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Bonus Stage 1 with at least 10 balloons popped.",
+        "requirements": [],
+        "metaAchievementName": "Complete Bonus Stage 1 with at least 10 balloons popped."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_bonus_stage_2",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Bonus Stage 2",
+        "requirements": [],
+        "metaAchievementName": "Complete Bonus Stage 2"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_bonus_stage_3",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Bonus Stage 3",
+        "requirements": [],
+        "metaAchievementName": "Complete Bonus Stage 3"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_bonus_stage_4",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Bonus Stage 4",
+        "requirements": [],
+        "metaAchievementName": "Complete Bonus Stage 4"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase-03_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase-03.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase-03."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase-09_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase-09.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase-09."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase-18_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase-18.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase-18."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase-30_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase-30.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase-30."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_02",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 02",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 02"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_03",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 03",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 03"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_03_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 03.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 03."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_04",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 04",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 04"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_06",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 06",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 06"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_07",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 07",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 07"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_08",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 08",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 08"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_09",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 09",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 09"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_09_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 09.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 09."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_11",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 11",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 11"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_12",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 12",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 12"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_13",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 13",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 13"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_14",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 14",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 14"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_18_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 18.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 18."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_complete_phase_30_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Complete Phase 30.",
+        "requirements": [],
+        "metaAchievementName": "Complete Phase 30."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_get_a_perfect_bonus_stage_in_1-player_mode",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Get a Perfect Bonus Stage in 1-Player Mode",
+        "requirements": [],
+        "metaAchievementName": "Get a Perfect Bonus Stage in 1-Player Mode"
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_let_the_fish_eat_any_enemy_aside_from_the_last_enemy_in_a_phase_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Let the fish eat any enemy aside from the last enemy in a Phase.",
+        "requirements": [],
+        "metaAchievementName": "Let the fish eat any enemy aside from the last enemy in a Phase."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_pop_10_balloons_in_a_green_balloons_bonus_stage_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Pop 10 balloons in a Green Balloons Bonus Stage.",
+        "requirements": [],
+        "metaAchievementName": "Pop 10 balloons in a Green Balloons Bonus Stage."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_pop_10_balloons_in_a_red_balloons_bonus_stage_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Pop 10 balloons in a Red Balloons Bonus Stage.",
+        "requirements": [],
+        "metaAchievementName": "Pop 10 balloons in a Red Balloons Bonus Stage."
+      },
+      {
+        "id": "ach_nes_0f85a4d325b97d7977177b9c7808f0558239766e_pop_10_balloons_in_an_orange_balloons_bonus_stage_",
+        "gameId": "nes_0f85a4d325b97d7977177b9c7808f0558239766e",
+        "title": "Pop 10 balloons in an Orange Balloons Bonus Stage.",
+        "requirements": [],
+        "metaAchievementName": "Pop 10 balloons in an Orange Balloons Bonus Stage."
+      },
+      {
+        "id": "ach_nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26_obtain_the_triforce_of_courage_and_awaken_the_princess_",
+        "gameId": "nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+        "title": "Obtain the Triforce of Courage and awaken the Princess.",
+        "requirements": [],
+        "metaAchievementName": "Obtain the Triforce of Courage and awaken the Princess."
+      },
+      {
+        "id": "ach_nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26_raise_attack_to_level_8_",
+        "gameId": "nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+        "title": "Raise Attack to level 8.",
+        "requirements": [],
+        "metaAchievementName": "Raise Attack to level 8."
+      },
+      {
+        "id": "ach_nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26_raise_life_to_level_8",
+        "gameId": "nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+        "title": "Raise Life to level 8",
+        "requirements": [],
+        "metaAchievementName": "Raise Life to level 8"
+      },
+      {
+        "id": "ach_nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26_raise_magic_to_level_8_",
+        "gameId": "nes_11333adb723a5975e0ecca3aee8f4747aa8d2d26",
+        "title": "Raise Magic to level 8.",
+        "requirements": [],
+        "metaAchievementName": "Raise Magic to level 8."
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_be_fired_from_the_cannon_in_level_7-5",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Be fired from the cannon in level 7-5",
+        "requirements": [],
+        "metaAchievementName": "Be fired from the cannon in level 7-5"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_beat_the_extra_game_mode",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Beat the Extra Game mode",
+        "requirements": [],
+        "metaAchievementName": "Beat the Extra Game mode"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_beat_the_game_",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Beat the game!",
+        "requirements": [],
+        "metaAchievementName": "Beat the game!"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_beat_the_normal_mode_on_100__and_enter_extra_game",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Beat the Normal Mode on 100% and enter Extra Game",
+        "requirements": [],
+        "metaAchievementName": "Beat the Normal Mode on 100% and enter Extra Game"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_beat_the_vs__boss_bonus_game",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Beat the Vs. Boss bonus game",
+        "requirements": [],
+        "metaAchievementName": "Beat the Vs. Boss bonus game"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_catch_every_egg_in_egg_catcher_mini_game_on_challenging_difficulty",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Catch every egg in Egg Catcher mini game on challenging difficulty",
+        "requirements": [],
+        "metaAchievementName": "Catch every egg in Egg Catcher mini game on challenging difficulty"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_clear_the_normal_path_of_level_7-2_without_taking_damage_or_using_copy_abilities",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Clear the normal path of level 7-2 without taking damage or using copy abilities",
+        "requirements": [],
+        "metaAchievementName": "Clear the normal path of level 7-2 without taking damage or using copy abilities"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_defeat_heavy_mole",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Defeat Heavy Mole",
+        "requirements": [],
+        "metaAchievementName": "Defeat Heavy Mole"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_defeat_king_dedede",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Defeat King Dedede",
+        "requirements": [],
+        "metaAchievementName": "Defeat King Dedede"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_defeat_kracko",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Defeat Kracko",
+        "requirements": [],
+        "metaAchievementName": "Defeat Kracko"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_defeat_paint_roller",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Defeat Paint Roller",
+        "requirements": [],
+        "metaAchievementName": "Defeat Paint Roller"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_defeat_whispy_woods",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Defeat Whispy Woods",
+        "requirements": [],
+        "metaAchievementName": "Defeat Whispy Woods"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_enter_hal_room_in_1-2",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Enter HAL Room in 1-2",
+        "requirements": [],
+        "metaAchievementName": "Enter HAL Room in 1-2"
+      },
+      {
+        "id": "ach_nes_118307da6c77a592f0884baad14120301d8d3a1b_win_the_quick_draw_mini_game_on_challenging_difficulty",
+        "gameId": "nes_118307da6c77a592f0884baad14120301d8d3a1b",
+        "title": "Win the Quick Draw mini game on challenging difficulty",
+        "requirements": [],
+        "metaAchievementName": "Win the Quick Draw mini game on challenging difficulty"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_acquire_an_e-tank_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Acquire an E-Tank!",
+        "requirements": [],
+        "metaAchievementName": "Acquire an E-Tank!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_blizzard_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Blizzard Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Blizzard Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_centaur_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Centaur Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Centaur Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_flame_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Flame Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Flame Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_knight_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Knight Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Knight Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_plant_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Plant Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Plant Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_tomahawk_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Tomahawk Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Tomahawk Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_wind_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Wind Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Wind Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_defeat_yamato_man_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Defeat Yamato Man!",
+        "requirements": [],
+        "metaAchievementName": "Defeat Yamato Man!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_obtain_the_energy_balancer_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Obtain the Energy Balancer!",
+        "requirements": [],
+        "metaAchievementName": "Obtain the Energy Balancer!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_dr__wily_s_2nd_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Dr. Wily's 2nd Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Dr. Wily's 2nd Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_dr__wily_s_3rd_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Dr. Wily's 3rd Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Dr. Wily's 3rd Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_dr__wily_s_final_stage",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Dr. Wily's Final Stage",
+        "requirements": [],
+        "metaAchievementName": "Reach Dr. Wily's Final Stage"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_dr_wily_s_castle_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Dr Wily's Castle!",
+        "requirements": [],
+        "metaAchievementName": "Reach Dr Wily's Castle!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_mr__x_s_final_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Mr. X's Final Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Mr. X's Final Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_mr__x_s_first_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Mr. X's First Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Mr. X's First Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_mr__x_s_second_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Mr. X's Second Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Mr. X's Second Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_reach_mr__x_s_third_stage_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Reach Mr. X's Third Stage!",
+        "requirements": [],
+        "metaAchievementName": "Reach Mr. X's Third Stage!"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_try_on_the_jet_adapter",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Try on the Jet Adapter",
+        "requirements": [],
+        "metaAchievementName": "Try on the Jet Adapter"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_try_on_the_power_adapter",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Try on the Power Adapter",
+        "requirements": [],
+        "metaAchievementName": "Try on the Power Adapter"
+      },
+      {
+        "id": "ach_nes_26d33987cff21c651fe3d638f4a739c33a18c240_use_the_rush_power_adaptor_",
+        "gameId": "nes_26d33987cff21c651fe3d638f4a739c33a18c240",
+        "title": "Use the Rush Power Adaptor!",
+        "requirements": [],
+        "metaAchievementName": "Use the Rush Power Adaptor!"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_arrive_at_wily_s_castle",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Arrive at Wily's Castle",
+        "requirements": [],
+        "metaAchievementName": "Arrive at Wily's Castle"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_beat_the_game",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Beat the game",
+        "requirements": [],
+        "metaAchievementName": "Beat the game"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_beat_the_game_on_difficult_setting",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Beat the game on difficult setting",
+        "requirements": [],
+        "metaAchievementName": "Beat the game on difficult setting"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_collect_four_e-tanks",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Collect four E-Tanks",
+        "requirements": [],
+        "metaAchievementName": "Collect four E-Tanks"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_defeat_picopico-kun",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Defeat Picopico-kun",
+        "requirements": [],
+        "metaAchievementName": "Defeat Picopico-kun"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_defeat_the_boobeam_trap",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Defeat the Boobeam Trap",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Boobeam Trap"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_defeat_the_guts_tank",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Defeat the Guts Tank",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Guts Tank"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_defeat_the_mecha_dragon",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Defeat the Mecha Dragon",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Mecha Dragon"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_defeat_the_wily_machine_2",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Defeat the Wily Machine 2",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Wily Machine 2"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_air_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Air Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Air Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_bubble_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Bubble Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Bubble Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_crash_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Crash Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Crash Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_flash_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Flash Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Flash Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_metal_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Metal Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Metal Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_quick_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Quick Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Quick Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_get_wood_man_s_power",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Get Wood Man's power",
+        "requirements": [],
+        "metaAchievementName": "Get Wood Man's power"
+      },
+      {
+        "id": "ach_nes_2ec08f9341003ded125458df8697ca5ef09d2209_have_9_lives",
+        "gameId": "nes_2ec08f9341003ded125458df8697ca5ef09d2209",
+        "title": "Have 9 lives",
+        "requirements": [],
+        "metaAchievementName": "Have 9 lives"
+      },
+      {
+        "id": "ach_nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4_acquire_beat",
+        "gameId": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
+        "title": "Acquire Beat",
+        "requirements": [],
+        "metaAchievementName": "Acquire Beat"
+      },
+      {
+        "id": "ach_nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4_charge_slide_to_the_next_room",
+        "gameId": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
+        "title": "Charge Slide to the next room",
+        "requirements": [],
+        "metaAchievementName": "Charge Slide to the next room"
+      },
+      {
+        "id": "ach_nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4_defeat_charge_man_without_taking_damage",
+        "gameId": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
+        "title": "Defeat Charge Man without taking damage",
+        "requirements": [],
+        "metaAchievementName": "Defeat Charge Man without taking damage"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_canada",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team Canada",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team Canada"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_czechoslovakia",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team Czechoslovakia",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team Czechoslovakia"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_poland",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team Poland",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team Poland"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_soviet_union",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team Soviet Union",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team Soviet Union"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_sweden",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team Sweden",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team Sweden"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_defeat_team_united_states",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Defeat Team United States",
+        "requirements": [],
+        "metaAchievementName": "Defeat Team United States"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_hey__i_wanna_ride_one_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Hey, I wanna ride one!",
+        "requirements": [],
+        "metaAchievementName": "Hey, I wanna ride one!"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_10_or_more_goals_and_win__speed_level_3__10_minute_periods_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score 10 or more goals and win (speed level 3, 10 minute periods)",
+        "requirements": [],
+        "metaAchievementName": "Score 10 or more goals and win (speed level 3, 10 minute periods)"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_15_or_more_goals_and_win__speed_level_5__15_minute_periods_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score 15 or more goals and win (speed level 5, 15 minute periods)",
+        "requirements": [],
+        "metaAchievementName": "Score 15 or more goals and win (speed level 5, 15 minute periods)"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_15_or_more_goals_in_a_game__7_minute_periods_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score 15 or more goals in a game (7 minute periods)",
+        "requirements": [],
+        "metaAchievementName": "Score 15 or more goals in a game (7 minute periods)"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_3_goals_in_the_first_period__7_minute_periods_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score 3 goals in the first period (7 minute periods)",
+        "requirements": [],
+        "metaAchievementName": "Score 3 goals in the first period (7 minute periods)"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_5_or_more_goals_in_a_win_while_allowing_none__7_minute_periods_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score 5 or more goals in a win while allowing none (7 minute periods)",
+        "requirements": [],
+        "metaAchievementName": "Score 5 or more goals in a win while allowing none (7 minute periods)"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_score_a_goal_",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Score a goal!",
+        "requirements": [],
+        "metaAchievementName": "Score a goal!"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_win_a_fight__sending_your_opponent_to_the_penalty_box",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Win a fight, sending your opponent to the penalty box",
+        "requirements": [],
+        "metaAchievementName": "Win a fight, sending your opponent to the penalty box"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_win_a_game_with_all_fat_players",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Win a game with all Fat players",
+        "requirements": [],
+        "metaAchievementName": "Win a game with all Fat players"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_win_a_game_with_all_medium_players",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Win a game with all Medium players",
+        "requirements": [],
+        "metaAchievementName": "Win a game with all Medium players"
+      },
+      {
+        "id": "ach_nes_40262a15ee764f676e752c90626a2f61da370a1a_win_a_game_with_all_skinny_players",
+        "gameId": "nes_40262a15ee764f676e752c90626a2f61da370a1a",
+        "title": "Win a game with all Skinny players",
+        "requirements": [],
+        "metaAchievementName": "Win a game with all Skinny players"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_a_level_without_taking_damage",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat a level without taking damage",
+        "requirements": [],
+        "metaAchievementName": "Beat a level without taking damage"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_1",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 1",
+        "requirements": [],
+        "metaAchievementName": "Beat World 1"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_2",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 2",
+        "requirements": [],
+        "metaAchievementName": "Beat World 2"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_3",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 3",
+        "requirements": [],
+        "metaAchievementName": "Beat World 3"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_4",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 4",
+        "requirements": [],
+        "metaAchievementName": "Beat World 4"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_5",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 5",
+        "requirements": [],
+        "metaAchievementName": "Beat World 5"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_6",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 6",
+        "requirements": [],
+        "metaAchievementName": "Beat World 6"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_beat_world_7_and_finish_the_game",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Beat World 7 and finish the game",
+        "requirements": [],
+        "metaAchievementName": "Beat World 7 and finish the game"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_defeat_mouser_in_world_1-3_without_taking_damage",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Defeat Mouser in World 1-3 without taking damage",
+        "requirements": [],
+        "metaAchievementName": "Defeat Mouser in World 1-3 without taking damage"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_defeat_the_green_birdo_at_the_end_of_world_6-1",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Defeat the green Birdo at the end of World 6-1",
+        "requirements": [],
+        "metaAchievementName": "Defeat the green Birdo at the end of World 6-1"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_defeat_the_pink_birdo_at_the_end_of_world_1-1",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Defeat the pink Birdo at the end of World 1-1",
+        "requirements": [],
+        "metaAchievementName": "Defeat the pink Birdo at the end of World 1-1"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_take_the_world_1-3_warp_to_world_4",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Take the World 1-3 Warp to World 4",
+        "requirements": [],
+        "metaAchievementName": "Take the World 1-3 Warp to World 4"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_take_the_world_3-1_warp_to_world_5",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Take the World 3-1 Warp to World 5",
+        "requirements": [],
+        "metaAchievementName": "Take the World 3-1 Warp to World 5"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_take_the_world_4-2_warp_to_world_6",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Take the World 4-2 Warp to World 6",
+        "requirements": [],
+        "metaAchievementName": "Take the World 4-2 Warp to World 6"
+      },
+      {
+        "id": "ach_nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32_take_the_world_5-3_warp_to_world_7",
+        "gameId": "nes_43ac7c7aaf1846ead7b544302bb9131e4964fd32",
+        "title": "Take the World 5-3 Warp to World 7",
+        "requirements": [],
+        "metaAchievementName": "Take the World 5-3 Warp to World 7"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_bombman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Bombman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Bombman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_cutman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Cutman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Cutman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_cwu-01p_in_wily_s_castle",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat CWU-01P in Wily's castle",
+        "requirements": [],
+        "metaAchievementName": "Defeat CWU-01P in Wily's castle"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_elecman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Elecman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Elecman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_fireman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Fireman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Fireman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_gutsman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Gutsman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Gutsman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_iceman_and_get_his_power",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat Iceman and get his power",
+        "requirements": [],
+        "metaAchievementName": "Defeat Iceman and get his power"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_the_copy_robot_in_wily_s_castle",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat the Copy Robot in Wily's castle",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Copy Robot in Wily's castle"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_the_final_boss_in_wily_s_castle",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat the final boss in Wily's castle",
+        "requirements": [],
+        "metaAchievementName": "Defeat the final boss in Wily's castle"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_defeat_the_yellow_devil_in_wily_s_castle",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Defeat the Yellow Devil in Wily's castle",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Yellow Devil in Wily's castle"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish__bombman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish  Bombman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish  Bombman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish__elecman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish  Elecman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish  Elecman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish_cutman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish Cutman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish Cutman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish_dr__wily_s_2nd_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish Dr. Wily's 2nd Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish Dr. Wily's 2nd Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish_fireman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish Fireman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish Fireman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish_gutsman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish Gutsman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish Gutsman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_finish_iceman_s_stage_using_only_the_mega_buster",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Finish Iceman's Stage using only the Mega Buster",
+        "requirements": [],
+        "metaAchievementName": "Finish Iceman's Stage using only the Mega Buster"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_get_the_magnet_beam",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Get the Magnet Beam",
+        "requirements": [],
+        "metaAchievementName": "Get the Magnet Beam"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_get_to_the_wily_stages",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Get to the Wily Stages",
+        "requirements": [],
+        "metaAchievementName": "Get to the Wily Stages"
+      },
+      {
+        "id": "ach_nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d_have_9_lives",
+        "gameId": "nes_6047e52929dfe8ed4708d325766ccb8d3d583c7d",
+        "title": "Have 9 lives",
+        "requirements": [],
+        "metaAchievementName": "Have 9 lives"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_acquire_the_balloon_adaptor",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Acquire the Balloon Adaptor",
+        "requirements": [],
+        "metaAchievementName": "Acquire the Balloon Adaptor"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_acquire_the_wire_adaptor",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Acquire the Wire Adaptor",
+        "requirements": [],
+        "metaAchievementName": "Acquire the Wire Adaptor"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_bright_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Bright Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Bright Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_cockroach_twin",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Cockroach Twin",
+        "requirements": [],
+        "metaAchievementName": "Beat Cockroach Twin"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_cossack_catcher",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Cossack Catcher",
+        "requirements": [],
+        "metaAchievementName": "Beat Cossack Catcher"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_dive_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Dive Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Dive Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_drill_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Drill Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Drill Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_dust_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Dust Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Dust Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_metall_daddy",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Metall Daddy",
+        "requirements": [],
+        "metaAchievementName": "Beat Metall Daddy"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_mothraya",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Mothraya",
+        "requirements": [],
+        "metaAchievementName": "Beat Mothraya"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_pharaoh_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Pharaoh Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Pharaoh Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_ring_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Ring Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Ring Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_skull_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Skull Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Skull Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_square_machine",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Square Machine",
+        "requirements": [],
+        "metaAchievementName": "Beat Square Machine"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_tako_trash",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Tako Trash",
+        "requirements": [],
+        "metaAchievementName": "Beat Tako Trash"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_the_game",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat the game",
+        "requirements": [],
+        "metaAchievementName": "Beat the game"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_toad_man",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Toad Man",
+        "requirements": [],
+        "metaAchievementName": "Beat Toad Man"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_beat_wily_machine_4",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Beat Wily Machine 4",
+        "requirements": [],
+        "metaAchievementName": "Beat Wily Machine 4"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_collect_6_e-tanks",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Collect 6 E-tanks",
+        "requirements": [],
+        "metaAchievementName": "Collect 6 E-tanks"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_collect_9_e-tanks",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Collect 9 E-tanks",
+        "requirements": [],
+        "metaAchievementName": "Collect 9 E-tanks"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_enter_dr_wily_s_fortress",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Enter Dr.Wily's Fortress",
+        "requirements": [],
+        "metaAchievementName": "Enter Dr.Wily's Fortress"
+      },
+      {
+        "id": "ach_nes_673a888c468abe33fb0b3f063c6837dd21d5d32b_get_9_lives",
+        "gameId": "nes_673a888c468abe33fb0b3f063c6837dd21d5d32b",
+        "title": "Get 9 lives",
+        "requirements": [],
+        "metaAchievementName": "Get 9 lives"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_doc_robot_air_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Doc Robot Air Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Doc Robot Air Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_doc_robot_flash_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Doc Robot Flash Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Doc Robot Flash Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_doc_robot_metal_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Doc Robot Metal Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Doc Robot Metal Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_doc_robot_wood_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Doc Robot Wood Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Doc Robot Wood Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_gemini_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Gemini Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Gemini Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_hard_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Hard Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Hard Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_magnet_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Magnet Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Magnet Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_needle_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Needle Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Needle Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_shadow_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Shadow Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Shadow Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_snake_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Snake Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Snake Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_spark_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Spark Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Spark Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_the_giant_metalls",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat the Giant Metalls",
+        "requirements": [],
+        "metaAchievementName": "Defeat the Giant Metalls"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_top_man",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Top Man",
+        "requirements": [],
+        "metaAchievementName": "Defeat Top Man"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_defeat_wily_machine_3_in_wily_stage_5",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Defeat Wily Machine 3 in Wily Stage 5",
+        "requirements": [],
+        "metaAchievementName": "Defeat Wily Machine 3 in Wily Stage 5"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_obtain_rush_jet",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Obtain Rush Jet",
+        "requirements": [],
+        "metaAchievementName": "Obtain Rush Jet"
+      },
+      {
+        "id": "ach_nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e_obtain_rush_marine",
+        "gameId": "nes_6780b3fcc547c013ee45afac6bb30c6fc6d8b46e",
+        "title": "Obtain Rush Marine",
+        "requirements": [],
+        "metaAchievementName": "Obtain Rush Marine"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_eat_50_ghosts",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Eat 50 ghosts",
+        "requirements": [],
+        "metaAchievementName": "Eat 50 ghosts"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_get_30000_points",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Get 30000 points",
+        "requirements": [],
+        "metaAchievementName": "Get 30000 points"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_get_50000_points",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Get 50000 points",
+        "requirements": [],
+        "metaAchievementName": "Get 50000 points"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_get_70000_points",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Get 70000 points",
+        "requirements": [],
+        "metaAchievementName": "Get 70000 points"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_make_it_to_the_first_intermission_without_dying",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Make it to the first intermission without dying",
+        "requirements": [],
+        "metaAchievementName": "Make it to the first intermission without dying"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_make_it_to_the_second_intermission_without_dying",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Make it to the second intermission without dying",
+        "requirements": [],
+        "metaAchievementName": "Make it to the second intermission without dying"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_score_20_000_points",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "Score 20,000 points",
+        "requirements": [],
+        "metaAchievementName": "Score 20,000 points"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_see_the_1st_intermission",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "See the 1st intermission",
+        "requirements": [],
+        "metaAchievementName": "See the 1st intermission"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_see_the_2nd_intermission",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "See the 2nd intermission",
+        "requirements": [],
+        "metaAchievementName": "See the 2nd intermission"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_see_the_3rd_intermission",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "See the 3rd intermission",
+        "requirements": [],
+        "metaAchievementName": "See the 3rd intermission"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_see_the_4th_intermission",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "See the 4th intermission",
+        "requirements": [],
+        "metaAchievementName": "See the 4th intermission"
+      },
+      {
+        "id": "ach_nes_a34e68372082513209a795786c8eea493cc2cd14_see_the_5th_intermission",
+        "gameId": "nes_a34e68372082513209a795786c8eea493cc2cd14",
+        "title": "See the 5th intermission",
+        "requirements": [],
+        "metaAchievementName": "See the 5th intermission"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_accumulate_at_least_9_lives",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Accumulate at least 9 lives",
+        "requirements": [],
+        "metaAchievementName": "Accumulate at least 9 lives"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_acquire_99_lives",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Acquire 99 Lives",
+        "requirements": [],
+        "metaAchievementName": "Acquire 99 Lives"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_anchor_down_a_flying_ship",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Anchor down a flying ship",
+        "requirements": [],
+        "metaAchievementName": "Anchor down a flying ship"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_discover_the_warp_zone",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Discover the Warp Zone",
+        "requirements": [],
+        "metaAchievementName": "Discover the Warp Zone"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_fill_a_whole_page_in_your_inventory",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Fill a whole page in your inventory",
+        "requirements": [],
+        "metaAchievementName": "Fill a whole page in your inventory"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_2_by_completing_grass_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 2 by completing Grass Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 2 by completing Grass Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_3_by_completing_desert_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 3 by completing Desert Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 3 by completing Desert Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_4_by_completing_water_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 4 by completing Water Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 4 by completing Water Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_5_by_completing_giant_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 5 by completing Giant Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 5 by completing Giant Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_6_by_completing_sky_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 6 by completing Sky Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 6 by completing Sky Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_7_by_completing_ice_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 7 by completing Ice Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 7 by completing Ice Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_reach_world_8_by_completing_pipe_land",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Reach World 8 by completing Pipe Land",
+        "requirements": [],
+        "metaAchievementName": "Reach World 8 by completing Pipe Land"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_use_a_fire_flower",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Use a Fire Flower",
+        "requirements": [],
+        "metaAchievementName": "Use a Fire Flower"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_use_a_music_box",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Use a Music Box",
+        "requirements": [],
+        "metaAchievementName": "Use a Music Box"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_use_a_super_leaf",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Use a Super Leaf",
+        "requirements": [],
+        "metaAchievementName": "Use a Super Leaf"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_wear_a_frog_suit",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Wear a Frog Suit",
+        "requirements": [],
+        "metaAchievementName": "Wear a Frog Suit"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_wear_a_hammer_suit",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Wear a Hammer Suit",
+        "requirements": [],
+        "metaAchievementName": "Wear a Hammer Suit"
+      },
+      {
+        "id": "ach_nes_bb894d104c796f69ba16587eb66c0275f5c2fc02_wear_a_tanooki_suit",
+        "gameId": "nes_bb894d104c796f69ba16587eb66c0275f5c2fc02",
+        "title": "Wear a Tanooki Suit",
+        "requirements": [],
+        "metaAchievementName": "Wear a Tanooki Suit"
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_catch_her_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Catch her!",
+        "requirements": [],
+        "metaAchievementName": "Catch her!"
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_click_top_left_counter_to_set_more_than_900_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Click top left counter to set more than 900.",
+        "requirements": [],
+        "metaAchievementName": "Click top left counter to set more than 900."
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_destroy_4_paddles_on_the_left_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Destroy 4 paddles on the left.",
+        "requirements": [],
+        "metaAchievementName": "Destroy 4 paddles on the left."
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_get_100k_points_with_heavy_balls_in_1p_game_b_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Get 100k points with heavy balls in 1P Game B ",
+        "requirements": [],
+        "metaAchievementName": "Get 100k points with heavy balls in 1P Game B "
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_have_you_ever_played_poker_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Have you ever played Poker?",
+        "requirements": [],
+        "metaAchievementName": "Have you ever played Poker?"
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_leave_just_one_ball_in_top_left_tunel",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Leave just one ball in top left tunel",
+        "requirements": [],
+        "metaAchievementName": "Leave just one ball in top left tunel"
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_make_eggs_bump_or_bumpers_from_eggs_",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Make eggs bump or bumpers from eggs.",
+        "requirements": [],
+        "metaAchievementName": "Make eggs bump or bumpers from eggs."
+      },
+      {
+        "id": "ach_nes_be348431a9c03d1a588a8363c0094b5a0722d9be_who_let_the_balls_out__who__who__who___",
+        "gameId": "nes_be348431a9c03d1a588a8363c0094b5a0722d9be",
+        "title": "Who let the balls out? Who, who, who...",
+        "requirements": [],
+        "metaAchievementName": "Who let the balls out? Who, who, who..."
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_grab_all_10_coins_with_mario_in_phase_3",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Grab all 10 coins with Mario in Phase 3",
+        "requirements": [],
+        "metaAchievementName": "Grab all 10 coins with Mario in Phase 3"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_grab_all_10_coins_with_mario_in_phase_8",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Grab all 10 coins with Mario in Phase 8",
+        "requirements": [],
+        "metaAchievementName": "Grab all 10 coins with Mario in Phase 8"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_10",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 10",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 10"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_20",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 20",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 20"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_30",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 30",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 30"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_40",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 40",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 40"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_50",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 50",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 50"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_60",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 60",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 60"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_70",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 70",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 70"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_80",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 80",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 80"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_reach_phase_90",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Reach Phase 90",
+        "requirements": [],
+        "metaAchievementName": "Reach Phase 90"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_score_50_000_points",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Score 50,000 points",
+        "requirements": [],
+        "metaAchievementName": "Score 50,000 points"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_birdie_s_treehouse",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat Birdie's Treehouse",
+        "requirements": [],
+        "metaAchievementName": "Beat Birdie's Treehouse"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_cosmc_s_retreat",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat CosMc's Retreat",
+        "requirements": [],
+        "metaAchievementName": "Beat CosMc's Retreat"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_grimace_s_highlands",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat Grimace's Highlands",
+        "requirements": [],
+        "metaAchievementName": "Beat Grimace's Highlands"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_hamburglar_s_hideout_and_discover_the_bag_of_magic_s_location_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat Hamburglar's Hideout and discover the Bag of Magic's location.",
+        "requirements": [],
+        "metaAchievementName": "Beat Hamburglar's Hideout and discover the Bag of Magic's location."
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_professor_s_workshop",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat Professor's Workshop",
+        "requirements": [],
+        "metaAchievementName": "Beat Professor's Workshop"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_ronald_s_playplace",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat Ronald's Playplace",
+        "requirements": [],
+        "metaAchievementName": "Beat Ronald's Playplace"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_beat_the_game",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Beat the Game",
+        "requirements": [],
+        "metaAchievementName": "Beat the Game"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_100_arches",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect 100 arches",
+        "requirements": [],
+        "metaAchievementName": "Collect 100 arches"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_25_lives",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect 25 lives",
+        "requirements": [],
+        "metaAchievementName": "Collect 25 lives"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_50_arches",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect 50 arches",
+        "requirements": [],
+        "metaAchievementName": "Collect 50 arches"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_99_lives",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect 99 lives",
+        "requirements": [],
+        "metaAchievementName": "Collect 99 lives"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_burning_bridges__6-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Burning Bridges (6-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Burning Bridges (6-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_captain_s_ship__4-5_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Captain's Ship (4-5)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Captain's Ship (4-5)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_cliffton_heights__3-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Cliffton Heights (3-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Cliffton Heights (3-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_clowning_around__s-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Clowning Around (S-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Clowning Around (S-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_constellations__5-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Constellations (5-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Constellations (5-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_danger_lake__3-5_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Danger Lake (3-5)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Danger Lake (3-5)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_dino_dunes__4-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Dino Dunes (4-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Dino Dunes (4-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_far_falls_forest__3-6_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Far Falls Forest (3-6)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Far Falls Forest (3-6)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_frosty_moutains__2-6_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Frosty Moutains (2-6)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Frosty Moutains (2-6)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_frozen_caverns__2-5_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Frozen Caverns (2-5)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Frozen Caverns (2-5)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_fry_kid_falls__3-4_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Fry Kid Falls (3-4)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Fry Kid Falls (3-4)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_gopher_grove__1-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Gopher Grove (1-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Gopher Grove (1-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_hidden_glen__1-5_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Hidden Glen (1-5)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Hidden Glen (1-5)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_ice_maze__2-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Ice Maze (2-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Ice Maze (2-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_lava_belts__6-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Lava Belts (6-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Lava Belts (6-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_lazy_leaves__1-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Lazy Leaves (1-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Lazy Leaves (1-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_lumberjack_lane__3-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Lumberjack Lane (3-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Lumberjack Lane (3-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_magic_forest__4-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Magic Forest (4-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Magic Forest (4-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_molten_madness__6-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Molten Madness (6-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Molten Madness (6-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_moon_monster__5-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Moon Monster (5-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Moon Monster (5-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_moose_bridge__3-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Moose Bridge (3-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Moose Bridge (3-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_mountain_view__1-4_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Mountain View (1-4)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Mountain View (1-4)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_phony_finishes__s-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Phony Finishes (S-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Phony Finishes (S-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_ports_o__comets__4-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Ports o' Comets (4-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Ports o' Comets (4-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_secret_surprise__2-4_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Secret Surprise (2-4)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Secret Surprise (2-4)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_slippery_slopes__2-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Slippery Slopes (2-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Slippery Slopes (2-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_spring_fever__5-4_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Spring Fever (5-4)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Spring Fever (5-4)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_swisserland__5-2_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Swisserland (5-2)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Swisserland (5-2)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_the_garden__1-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in The Garden (1-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in The Garden (1-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_the_stratosphere__2-1_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in the Stratosphere (2-1)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in the Stratosphere (2-1)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_towering_trees__1-6_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Towering Trees (1-6)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Towering Trees (1-6)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_collect_all_the_arches_in_zippety_do_da__s-3_",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Collect all the arches in Zippety Do Da (S-3)",
+        "requirements": [],
+        "metaAchievementName": "Collect all the arches in Zippety Do Da (S-3)"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_birdie_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of Birdie's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of Birdie's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_cosmc_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of CosMc's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of CosMc's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_grimace_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of Grimace's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of Grimace's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_hamburglar_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of Hamburglar's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of Hamburglar's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_professor_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of Professor's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of Professor's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_puzzlelandr_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of PuzzleLandr's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of PuzzleLandr's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_find_all_of_ronald_s_puzzle_cards",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Find all of Ronald's Puzzle Cards",
+        "requirements": [],
+        "metaAchievementName": "Find all of Ronald's Puzzle Cards"
+      },
+      {
+        "id": "ach_nes_f8faa774708e108984158fcd9bbc5482ed7165c4_kill_5_enemies",
+        "gameId": "nes_f8faa774708e108984158fcd9bbc5482ed7165c4",
+        "title": "Kill 5 enemies",
+        "requirements": [],
+        "metaAchievementName": "Kill 5 enemies"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_acquire_7_lives_or_more",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Acquire 7 lives or more",
+        "requirements": [],
+        "metaAchievementName": "Acquire 7 lives or more"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_collect_50_coins",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Collect 50 Coins",
+        "requirements": [],
+        "metaAchievementName": "Collect 50 Coins"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_complete_world_1-1_with_at_least_360_time_left",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Clear World 1-1",
+        "requirements": [],
+        "metaAchievementName": "Complete World 1-1 with at least 360 time left"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_complete_world_1-1_without_pressing_left",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Clear World 1-1 without pressing left",
+        "requirements": [],
+        "metaAchievementName": "Complete World 1-1 without pressing left"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_enter_a_water_level",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Enter a water Level",
+        "requirements": [],
+        "metaAchievementName": "Enter a water Level"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_find_and_collect_a_fire_flower",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Collect a Fire Flower",
+        "requirements": [],
+        "metaAchievementName": "Find and collect a Fire Flower"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_find_and_collect_a_magic_mushroom",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Collect a Mushroom",
+        "requirements": [],
+        "metaAchievementName": "Find and collect a Magic Mushroom"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_find_and_collect_a_starman",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Collect a Starman",
+        "requirements": [],
+        "metaAchievementName": "Find and collect a Starman"
+      },
+      {
+        "id": "ach_nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7_find_out_where_the_princess_is_in_world_1-4",
+        "gameId": "nes_facee9c577a5262dbe33ac4930bb0b58c8c037f7",
+        "title": "Enter the First Castle",
+        "requirements": [],
+        "metaAchievementName": "Find out where the princess is in World 1-4"
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_gain_access_to_hideout_i_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Gain access to Hideout I.",
+        "requirements": [],
+        "metaAchievementName": "Gain access to Hideout I."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_gain_access_to_hideout_ii_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Gain access to Hideout II.",
+        "requirements": [],
+        "metaAchievementName": "Gain access to Hideout II."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_gain_access_to_norfair_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Gain access to Norfair.",
+        "requirements": [],
+        "metaAchievementName": "Gain access to Norfair."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_gain_access_to_tourian_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Gain access to Tourian.",
+        "requirements": [],
+        "metaAchievementName": "Gain access to Tourian."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_increase_your_missile_capacity_to_125_or_more_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Increase your missile capacity to 125 or more.",
+        "requirements": [],
+        "metaAchievementName": "Increase your missile capacity to 125 or more."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_increase_your_missile_capacity_to_255_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Increase your missile capacity to 255.",
+        "requirements": [],
+        "metaAchievementName": "Increase your missile capacity to 255."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_obtain_all_six_energy_tanks_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Obtain all six energy tanks.",
+        "requirements": [],
+        "metaAchievementName": "Obtain all six energy tanks."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_obtain_your_first_energy_tank_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Obtain your first energy tank.",
+        "requirements": [],
+        "metaAchievementName": "Obtain your first energy tank."
+      },
+      {
+        "id": "ach_nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b_obtain_your_first_set_of_missiles_",
+        "gameId": "nes_fdbfc7871962f72a1ef57e5a7e456164fb93430b",
+        "title": "Obtain your first set of missiles.",
+        "requirements": [],
+        "metaAchievementName": "Obtain your first set of missiles."
+      }
+    ],
+    "cards": [
+      {
+        "id": "APU_EIL",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_FMC",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_LOW",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_LQ",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_LQ2",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_QLOW",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_QLQ",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_QLQ2",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_QN",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_SPD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "APU_WF",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CLOCK_FMC",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CPU_EIL",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CPU_FMC",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CPU_LOW",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CPU_LW2",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "CPU_SPD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_BFR",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_CUBE",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_EIL",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_FMC",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_LOW",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_LQ",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "PPU_SPD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_16B",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_BLD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_BUMP",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_EXE",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_LAT",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_LCD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_LSD",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_PX",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_RF",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_SPK",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_TTF",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
+        "id": "SHADER_TV",
+        "type": "Reserved",
+        "note": ""
+      }
+    ],
+    "levels": [
+      {
+        "index": 1,
+        "requiredCards": [
+          "CPU_FMC",
+          "PPU_FMC",
+          "APU_FMC",
+          "CLOCK_FMC",
+          "SHADER_PX"
+        ],
+        "requiredStars": 1,
+        "cardChallenge": "My first famiclone",
+        "message": "It is slow and inefficient, but it’s built from parts supposed to be working. Whatever that means."
+      },
+      {
+        "index": 2,
+        "requiredCards": [
+          "CPU_LOW",
+          "PPU_LOW",
+          "SHADER_TTF"
+        ],
+        "requiredStars": 2,
+        "cardChallenge": "Improved parts",
+        "message": "Changing the chips for better parts, hoping for some performance gain."
+      },
+      {
+        "index": 3,
+        "requiredCards": [
+          "APU_LQ",
+          "SHADER_16B",
+          "CPU_LW2"
+        ],
+        "requiredStars": 3,
+        "cardChallenge": "A downgrade?",
+        "message": "Oh no, we made it worse. Can't be that bad, right?"
+      },
+      {
+        "index": 4,
+        "requiredCards": [
+          "APU_LOW",
+          "SHADER_RF"
+        ],
+        "requiredStars": 5,
+        "cardChallenge": "Better sound",
+        "message": "This sound chip is much better, but messes with the video signal."
+      },
+      {
+        "index": 5,
+        "requiredCards": [
+          "APU_LQ2",
+          "CPU_SPD"
+        ],
+        "requiredStars": 7,
+        "cardChallenge": "Trading speed",
+        "message": "Make it faster, no matter the cost."
+      },
+      {
+        "index": 6,
+        "requiredCards": [
+          "APU_SPD2",
+          "CPU_EIL",
+          "SHADER_LAT",
+          "PPU_LOW"
+        ],
+        "requiredStars": 8,
+        "cardChallenge": "Unstable",
+        "message": "We're going too fast, stability is compromised."
+      },
+      {
+        "index": 7,
+        "requiredCards": [],
+        "requiredStars": 9,
+        "cardChallenge": "Open Round",
+        "message": "Let's see what we can build out of our best parts."
+      },
+      {
+        "index": 8,
+        "requiredCards": [
+          "APU_QN"
+        ],
+        "requiredStars": 10,
+        "cardChallenge": "Is it compatible?",
+        "message": "Burrowing chips from different manufacturers."
+      },
+      {
+        "index": 9,
+        "requiredCards": [
+          "APU_SPD",
+          "PPU_SPD",
+          "CPU_SPD",
+          "SHADER_BUMP"
+        ],
+        "requiredStars": 11,
+        "cardChallenge": "Speed bump",
+        "message": "Speed improvements galore, but what about video clarity?"
+      },
+      {
+        "index": 10,
+        "requiredCards": [
+          "APU_QLOW",
+          "CPU_EIL",
+          "SHADER_SPK"
+        ],
+        "requiredStars": 13,
+        "cardChallenge": "Searching scraps",
+        "message": "Opening horizons, let's try improving the graphics, somehow."
+      },
+      {
+        "index": 11,
+        "requiredCards": [
+          "APU_WF",
+          "SHADER_TV",
+          "PPU_LQ",
+          "CPU_LOW"
+        ],
+        "requiredStars": 14,
+        "cardChallenge": "Strange parts",
+        "message": "We're approaching weird territory. But it looks so cool."
+      },
+      {
+        "index": 12,
+        "requiredCards": [],
+        "requiredStars": 16,
+        "cardChallenge": "Open round",
+        "message": "Let's see what we can build out of our best parts."
+      },
+      {
+        "index": 13,
+        "requiredCards": [
+          "APU_QLQ",
+          "CPU_EIL",
+          "PPU_EIL",
+          "SHADER_LSD"
+        ],
+        "requiredStars": 17,
+        "cardChallenge": "Dizzy combo",
+        "message": "I don't feel so good, the walls are spinning."
+      },
+      {
+        "index": 14,
+        "requiredCards": [
+          "SHADER_LCD",
+          "PPU_BFR",
+          "APU_QLQ2",
+          "CPU_SPD"
+        ],
+        "requiredStars": 18,
+        "cardChallenge": "Old flat screen",
+        "message": "Would it look better on an old laptop from the 90s ?"
+      },
+      {
+        "index": 15,
+        "requiredCards": [
+          "SHADER_EXE",
+          "APU_LQ"
+        ],
+        "requiredStars": 19,
+        "cardChallenge": "Creepy",
+        "message": "This is the creepy one."
+      },
+      {
+        "index": 16,
+        "requiredCards": [
+          "CPU_EIL",
+          "PPU_CUBE",
+          "APU_EIL",
+          "SHADER_BLD"
+        ],
+        "requiredStars": 20,
+        "cardChallenge": "The Future",
+        "message": "Let's push the console to its limits. Make the graphics look modern and clean. (This does not work with every game)"
+      }
+    ],
+    "save": []
+  }
+}

@@ -4,63 +4,82 @@
 
 # BrokenNes
 
-A web-based NES emulator prototype built with Blazor WebAssembly (.NET 10 preview). It focuses on clarity and approachability while experimenting with performance-oriented options (AOT, SIMD, trimming) in modern .NET.
+A browser-based NES emulator and corruption toolkit built with Blazor WebAssembly (.NET 10). It aims for approachability while experimenting with modern .NET performance options.
+
+## DeckBuilder
+
+An achievement-based card-like game where you construct and experiement with emulator parts while playing a game of your choice.
 
 ## Status
-Early work-in-progress. Expect incomplete hardware features, potential timing inaccuracies, and rough edges in the UI.
+Early work-in-progress. Expect incomplete/experimental hardware features, timing quirks, and some UI jank (some of it intentional).
 
-## Features (current / partial)
-- 6502 CPU implementation
-- PPU scanline-based rendering (experimental)
-- Basic APU scaffolding
-- Mapper support: 0,1,2,3,4,5,7 (in various states)
-- Input handling
-- Blazor WASM front-end with simple status bar
+## What’s here (current/partial)
+- Emulation
+  - 6502 CPU core(s)
+  - PPU with scanline/event scheduling experiments
+  - APU with two playback paths: raw PCM and SoundFont synth
+- SoundFont synth mode (toggle in Debug)
+  - Two selectable synth cores: WF (oscillators/sampled) and MNES (SF2/AudioWorklet)
+  - Optional layering, overlay counters, dev logging, and instant flush
+- Mappers implemented (various states): 0, 1, 2, 3, 4, 5, 7, 9, 33, 90, 228 (+ SPD variants for 1 and 4)
+- Core system & pickers
+  - Multiple CPU/PPU/APU/Clock implementations discoverable at runtime
+  - UI pickers with ratings/perf/category metadata; hot-swappable at runtime
+  - Shader picker with a growing set of post-processing passes
+- ROM Manager
+  - Built-in ROM entries plus user uploads (.nes), drag & drop import
+  - IndexedDB-backed persistence, search/filter, reload, delete uploads
+- Save states & SRAM
+  - Quick Load/Save (also available in mobile fullscreen controller view)
+- Tools/Debugging
+  - Real-Time Corruptor (RTC) with intensity, domains, and auto-corrupt
+  - Glitch Harvester (stash/stockpile, replay, export/import)
+  - Benchmarks modal (weighted runs, history, timeline, diff view, copy)
+  - Mini debug panel (state dump, event scheduler toggle)
+- Input
+  - Keyboard, gamepad, and mobile touch controller (fullscreen)
 
-## Roadmap (short-term)
-- Improve PPU correctness & palette handling
-- APU audio stabilization
-- Save state & SRAM persistence
-- Additional mappers & edge case tests
-- Performance profiling & frame pacing
+## Pages and flows
+- Home: title screen with Deck Builder, Emulator, Options, About (health warning gate for audio)
+- Nes: main emulator view (ROM Manager, RTC, Glitch Harvester, Debug, Achievements panel)
+- Options: volume sliders (master/music/sfx), reset core prefs to FMC, save editing helpers, feature unlock toggles
+- Cores: gallery/list of unlocked cores (CPU/PPU/APU/Clock/Shaders) with grouping/sorting
+- Continue: meta flow integration (used by achievements/story)
+- Input/InputSettings: configure players (keyboard/gamepad), view bindings
+- DeckBuilder/Story: meta-progression and intro flow
 
-## Development
-Prerequisites: .NET 10 preview SDK.
+## Run locally
+Prerequisites: .NET 10 SDK and a modern browser.
 
-Run the dev server:
+Run the dev server from the repo root:
 ```bash
  dotnet run
 ```
 Open the app in a browser (default: http://localhost:5000 or the HTTPS variant the dev server prints).
 
+## Build & publish
+- Debug build: use your IDE task or `dotnet build -c Debug`
+- Optional diagnostic define: add `-p:EnableDiagLog=true` to append `DIAG_LOG` to DefineConstants
+
 ## Project layout
-- `NesEmulator/` core emulation code
-- `Pages/` Blazor pages (e.g. `Nes.razor` for the emulator view)
-- `Shared/` shared UI components
-- `wwwroot/` static assets (ROM test file, favicon, scripts)
+- `NesEmulator/` core emulation (CPU/PPU/APU, clocks, mappers, shaders, retro achievements)
+- `Pages/` Blazor pages (e.g., `Nes.razor` is the emulator view)
+- `Layout/` shared shell and navigation
+- `wwwroot/` static assets (icons, audio, scripts)
+- `Tools/` shader generator wiring (used at build)
 
-## SoundFont Core Switching (WF vs MNES)
-BrokenNes supports two SoundFont playback paths for APU note events:
-- WF: Lightweight WebAudio oscillator / optional sampled instruments (`nesSoundFont`).
-- MNES: FluidSynth (SF2) via js-synthesizer AudioWorklet (`mnesSf2`).
+## SoundFont synth mode (WF vs MNES)
+Two SoundFont playback paths are available when SoundFont Mode is enabled from Debug:
+- WF: lightweight WebAudio oscillators with optional sampled instruments
+- MNES: SF2 synthesizer running in an AudioWorklet
 
-Routing is gated by a global active core flag managed in JS (`nesInterop.setActiveSoundFontCore`). Only the selected core receives note events unless layering is explicitly enabled (debug toggle in the Debug panel). A debug badge shows the active core (WF, MNES, None). Use the Flush button to immediately silence lingering tails when switching.
+You can switch the active core, enable layered mode for comparison, show an on-screen overlay, and flush all voices instantly to avoid lingering tails.
 
-Troubleshooting double audio:
-1. Open browser console and run `nesInterop.debugReport()`.
-2. If both wf and mnes counters increment while layering is off, the active-core flag wasn't set early enough—toggle APU core again or flush.
-3. Use the Flush button (or `nesInterop.flushSoundFont()`) then reselect desired core.
-
-Program mapping docs: see `docs/soundfont-mapping.md` (stub) for channel->program conventions.
-
-## Core lifecycle and lazy cores
-- Cores are discovered by name (CPU_*, PPU_*, APU_*) and created via a small factory.
-- CPU is eager, while PPU/APU are created on first use to avoid large startup allocations.
-- PPU exposes `ClearBuffers()` to drop frame buffers when hot-swapping or after load.
-- APU exposes `ClearAudioBuffers()` and `Reset()` to drop queued audio and restart pacing without reallocation.
-- SaveState omits the framebuffer and uses pre-serialized subsystem JSON for AOT/WASM builds.
-
-See `docs/core-lifecycle.md` for details.
+## Core lifecycle (high level)
+- Cores are discovered by name (CPU_*, PPU_*, APU_*) and created via a small factory
+- CPU is eager; PPU/APU are created on first use to keep startup light
+- PPU and APU expose clear/reset helpers for hot swapping and recovery
+- Save states omit large transient buffers and use compact DTOs in WASM builds
 
 ## Contributing
 Don't even bother
