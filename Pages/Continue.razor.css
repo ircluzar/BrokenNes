@@ -4,6 +4,9 @@
 .opt-sections{display:flex;flex-direction:column;gap:1.5rem;}
 .opt-section{border:3px solid #fff;padding:1rem;margin-bottom:1.25rem}
 .opt-h3{margin:0 0 .75rem;font-size:1rem;color:#fff;}
+.opt-h3 .panel-toggle{all:unset;display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;font:inherit;color:inherit}
+.opt-h3 .panel-toggle:focus{outline:2px solid #ff5a26;outline-offset:2px}
+.opt-h3 .panel-toggle .toggle-ico{opacity:.85;font-size:.85em}
 .opt-row{display:flex;align-items:center;gap:1rem;font-size:.7rem;margin-bottom:.6rem;}
 /* Align labels left and sliders right with equal width */
 .opt-row label{flex:1;}
@@ -76,6 +79,8 @@
 
 .rom-box,.ach-box{border:2px dashed #fff;padding:.75rem}
 .game-box{border:2px dashed #fff;padding:.75rem}
+/* Space between ROM selector (picker) and game info when merged */
+.rom-selector + .game-box{margin-top:.9rem}
 
 /* ROM selector */
 .rom-selector{display:flex;flex-direction:column;gap:.5rem}

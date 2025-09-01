@@ -2131,7 +2131,7 @@
         // Fade audio and navigate back to Continue
         try { await JS.InvokeVoidAsync("eval", @"(function(){try{if(window.music&&typeof window.music.fadeOut==='function'){window.music.fadeOut(400,true);} }catch(e){}})();"); } catch { }
         try { await Task.Delay(100); } catch { }
-        try { Nav.NavigateTo("continue", false); } catch { }
+    try { Nav.NavigateTo("continue?returned=1", false); } catch { }
     }
 
     // Compute a stable gameKey matching emulator side for achievements snapshot lookup

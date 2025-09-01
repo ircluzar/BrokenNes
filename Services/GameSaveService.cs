@@ -39,6 +39,11 @@ public class GameSaveService
                     loaded.OwnedApuIds ??= new();
                     loaded.OwnedClockIds ??= new();
                     loaded.OwnedShaderIds ??= new();
+                    // Preferred selections (back-compat defaults if missing)
+                    loaded.PreferredCpuId ??= "FMC";
+                    loaded.PreferredPpuId ??= "FMC";
+                    loaded.PreferredApuId ??= "FMC";
+                    loaded.PreferredShaderId ??= "PX";
                     // Ensure unlock flags are present (backward compatibility defaults)
                     // Keep them off by default to respect progression; options can unlock.
                     // Note: when adding more flags in future, guard similarly.
@@ -98,7 +103,11 @@ public class GameSaveService
             OwnedPpuIds = new() { "FMC" },
             OwnedApuIds = new() { "FMC" },
             OwnedClockIds = new() { "FMC" },
-            OwnedShaderIds = new() { "PX" }
+            OwnedShaderIds = new() { "PX" },
+            PreferredCpuId = "FMC",
+            PreferredPpuId = "FMC",
+            PreferredApuId = "FMC",
+            PreferredShaderId = "PX"
         };
         return gs;
     }

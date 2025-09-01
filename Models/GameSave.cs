@@ -28,6 +28,13 @@ public class GameSave
     public List<string> OwnedClockIds { get; set; } = new();
     public List<string> OwnedShaderIds { get; set; } = new();
 
+    // User preferred core selections (persisted across sessions)
+    // Store only player-selected ids, not enforced ones.
+    public string? PreferredCpuId { get; set; }
+    public string? PreferredPpuId { get; set; }
+    public string? PreferredApuId { get; set; }
+    public string? PreferredShaderId { get; set; }
+
     // Trusted DeckBuilder resume marker
     // When an achievement unlock creates a savestate from DeckBuilder flow,
     // we store a trusted marker so Continue page can offer "Continue game".

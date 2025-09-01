@@ -55,8 +55,19 @@
   </section>
 
   <section class="opt-section">
-    <h3 class="opt-h3">Cartridge</h3>
-    <div class="rom-selector">
+    <h3 class="opt-h3">
+      <button type="button"
+              class="panel-toggle"
+              aria-expanded="@(!CartridgeCollapsed)"
+              aria-controls="cartridge-panel"
+              title="Toggle Cartridge panel"
+              @onclick="ToggleCartridge">
+        Cartridge <span class="toggle-ico">@((CartridgeCollapsed?"▸":"▾"))</span>
+      </button>
+    </h3>
+    @if (!CartridgeCollapsed)
+    {
+    <div class="rom-selector" id="cartridge-panel">
       <div class="rom-toolbar">
         <label class="small-note"><input type="checkbox" @bind="FilterCompatibleOnly" /> Only show compatible</label>
         <div class="rom-toolbar-right">
@@ -101,19 +112,18 @@
         </div>
       }
     </div>
-  </section>
-
-  <section class="opt-section">
-    <h3 class="opt-h3">Game</h3>
-    @if (SelectedGameId is null)
+    }
+    
+    <!-- Game info moved under Cartridge selector -->
+    @if (!CartridgeCollapsed && SelectedGameId is null)
     {
       <div class="game-box small-note">Select a game to view details.</div>
     }
-    else if (GameInfoItems.Count == 0)
+    else if (!CartridgeCollapsed && GameInfoItems.Count == 0)
     {
       <div class="game-box small-note">No information found for this game.</div>
     }
-    else
+    else if (!CartridgeCollapsed)
     {
       <div class="game-box">
         <div class="game-grid" aria-label="Selected game details">
@@ -414,12 +424,17 @@
   OwnedApu = (save.OwnedApuIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
   OwnedShader = (save.OwnedShaderIds ?? new()).OrderBy(s=>s, StringComparer.OrdinalIgnoreCase).ToArray();
 
+  // Preselect from saved preferences (defaults FMC/PX). Enforced slots will visually override.
+  ApplyPreferredSelections(save);
+
   await LoadRomsFromDbAsync();
   // Start the correct level music once data is loaded
   try { await PlayContinueLevelMusicAsync(); } catch { }
 
   // If arriving from NES with achievement flags, run the arrival UX
   TryParseArrivalFlags();
+  // Default: expanded; collapse only on special arrivals
+  CartridgeCollapsed = (_returnedArrival || _achievedArrival || _firstClearArrival);
   if (_achievedArrival && !_arrivalHandled)
   {
     _arrivalHandled = true;
@@ -463,9 +478,12 @@
   // ===== Arrival UX state =====
   private bool _achievedArrival = false; // query flag achieved=1
   private bool _firstClearArrival = false; // query flag firstClear=1
+  private bool _returnedArrival = false; // query flag returned=1 (from NES Return button)
   private bool _arrivalHandled = false;
   private bool _overlayActive = false; // darken screen
   // status chip will be spotlit via class when _overlayActive && _firstClearArrival
+  // Cartridge panel collapse state (expanded by default, except on specific arrivals)
+  private bool CartridgeCollapsed = false;
 
   private void TryParseArrivalFlags()
   {
@@ -494,8 +512,9 @@
         if (!map.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v)) return false;
         return v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) || v.Equals("yes", StringComparison.OrdinalIgnoreCase);
       }
-      _achievedArrival = GetBool("achieved");
-      _firstClearArrival = GetBool("firstClear");
+  _achievedArrival = GetBool("achieved");
+  _firstClearArrival = GetBool("firstClear");
+  _returnedArrival = GetBool("returned");
     }
     catch { }
   }
@@ -554,6 +573,11 @@
       }
     }
     catch { }
+  }
+
+  private void ToggleCartridge()
+  {
+    CartridgeCollapsed = !CartridgeCollapsed;
   }
 
   private async Task SaveClearedFlagAsync()
@@ -644,6 +668,9 @@
   try { await PlayContinueLevelMusicAsync(true); } catch { }
   // Refresh in-memory Owned lists to reflect new unlocks
   await RefreshOwnedFromSaveAsync();
+
+  // Re-apply user's preferred selections for the new level (enforced slots will override visually)
+  try { ApplyPreferredSelections(save); } catch { }
 
   // If any new cores were added, celebrate with a lootbox-style modal
   if (newlyAdded.Count > 0)
@@ -1302,10 +1329,10 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
           bool completed = UnlockedAchievementIds.Contains(id);
           tmp.Add(new UiAchievement{ Id=id, Title=title, Description=desc, Difficulty=diff, Completed=completed });
         }
-        // Keep correct totals, but only keep uncompleted entries for display
+        // Keep correct totals and keep ALL achievements; the HideCompleted toggle controls filtering
         GameAchTotal = tmp.Count;
         GameAchCompleted = tmp.Count(a => a.Completed);
-        GameAchievements.AddRange(tmp.Where(a => !a.Completed));
+        GameAchievements.AddRange(tmp);
       }
     }
     catch { GameAchievements.Clear(); GameAchCompleted = 0; GameAchTotal = 0; }
@@ -1456,6 +1483,8 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         case "APU": SelectedApu = id; break;
         case "SHADER": SelectedShader = id; break;
       }
+  // Persist user preference (do not write enforced selections; picker only opens when not enforced)
+  await SavePreferredAsync(CorePickerDomain, id);
     }
     finally
     {
@@ -1691,5 +1720,42 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         break;
     }
     ApplyPickerSort();
+  }
+
+  // ===== Preferred selections persistence =====
+  private void ApplyPreferredSelections(BrokenNes.Models.GameSave save)
+  {
+    // Helper to choose a safe selection that is owned; falls back to defaults.
+    static string? Choose(string? pref, IReadOnlyList<string> owned, string def)
+    {
+      if (owned == null || owned.Count == 0) return null;
+      var set = new HashSet<string>(owned, StringComparer.OrdinalIgnoreCase);
+      if (!string.IsNullOrWhiteSpace(pref) && set.Contains(pref!)) return pref;
+      if (!string.IsNullOrWhiteSpace(def) && set.Contains(def)) return def;
+      return owned[0];
+    }
+
+    // Always set selected from preferences; enforced visuals will override rendering.
+    SelectedCpu = Choose(save.PreferredCpuId ?? "FMC", OwnedCpu, "FMC");
+    SelectedPpu = Choose(save.PreferredPpuId ?? "FMC", OwnedPpu, "FMC");
+    SelectedApu = Choose(save.PreferredApuId ?? "FMC", OwnedApu, "FMC");
+    SelectedShader = Choose(save.PreferredShaderId ?? "PX", OwnedShader, "PX");
+  }
+
+  private async Task SavePreferredAsync(string domain, string id)
+  {
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      switch (domain)
+      {
+        case "CPU": save.PreferredCpuId = id; break;
+        case "PPU": save.PreferredPpuId = id; break;
+        case "APU": save.PreferredApuId = id; break;
+        case "SHADER": save.PreferredShaderId = id; break;
+      }
+      await SaveSvc.SaveAsync(save);
+    }
+    catch { }
   }
 }
