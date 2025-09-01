@@ -1422,16 +1422,7 @@
                     if (QAutoloadState)
                     {
                         try { await emu.LoadStateAsyncPublic(); } catch { }
-                        // Re-apply query core overrides AFTER savestate load to ensure query wins over embedded cores
-                        try
-                        {
-                            if (!string.IsNullOrWhiteSpace(QShader)) await emu.SetShaderPublic(QShader!);
-                            if (!string.IsNullOrWhiteSpace(QCpu)) await emu.SetCpuCorePublic(QCpu!);
-                            if (!string.IsNullOrWhiteSpace(QPpu)) await emu.SetPpuCorePublic(QPpu!);
-                            if (!string.IsNullOrWhiteSpace(QApu)) await emu.SetApuCorePublic(QApu!);
-                            if (!string.IsNullOrWhiteSpace(QClock)) await emu.SetClockCorePublic(QClock!);
-                        }
-                        catch { }
+                        // IMPORTANT: Restore achievements snapshot BEFORE applying any core overrides so the gameKey matches saved cores
                         try
                         {
                             if (_achEngine != null)
@@ -1453,6 +1444,16 @@
                                 // Rebuild dashboard
                                 try { BuildAchRowsFromEngine(); await InvokeAsync(StateHasChanged); } catch { }
                             }
+                        }
+                        catch { }
+                        // Re-apply query core overrides AFTER savestate load & snapshot restore to ensure query wins over embedded cores
+                        try
+                        {
+                            if (!string.IsNullOrWhiteSpace(QShader)) await emu.SetShaderPublic(QShader!);
+                            if (!string.IsNullOrWhiteSpace(QCpu)) await emu.SetCpuCorePublic(QCpu!);
+                            if (!string.IsNullOrWhiteSpace(QPpu)) await emu.SetPpuCorePublic(QPpu!);
+                            if (!string.IsNullOrWhiteSpace(QApu)) await emu.SetApuCorePublic(QApu!);
+                            if (!string.IsNullOrWhiteSpace(QClock)) await emu.SetClockCorePublic(QClock!);
                         }
                         catch { }
                     }
