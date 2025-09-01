@@ -705,6 +705,14 @@ namespace BrokenNes
     public Task PauseAsync() => PauseEmulation();
     public Task EnsureInitialRenderAsync(bool firstRender) => OnAfterRenderAsync(firstRender);
 
+        // Force-complete an achievement by ID (debug). Reuses the normal unlock flow.
+        public Task ForceCompleteAchievementPublic(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return Task.CompletedTask;
+            string title = _achTitles.TryGetValue(id, out var t) ? t : id;
+            return TriggerAchievementUnlockFlowAsync(id, title);
+        }
+
         private async Task StartClockAsync()
         {
             // Ensure prior clock stopped

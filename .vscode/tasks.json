@@ -21,6 +21,12 @@
 			"type": "shell",
 			"command": "dotnet build -c Debug",
 			"group": "build"
+		},
+		{
+			"label": "Build BrokenNes (Debug)",
+			"type": "shell",
+			"command": "dotnet build -c Debug",
+			"group": "build"
 		}
 	]
 }

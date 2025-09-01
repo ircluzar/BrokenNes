@@ -377,6 +377,7 @@
                                 <th>Title</th>
                                 <th style="width:80px;">Status</th>
                                 <th style="width:120px;">Progress</th>
+                                <th style="width:1%">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -387,10 +388,13 @@
                                     <td class="text-truncate" style="max-width:260px;" title="@row.Id">@row.Title</td>
                                     <td>@(row.Unlocked?"Unlocked":"Locked")</td>
                                     <td>@row.ProgressText</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-success" title="Force-complete this achievement (debug)" @onclick="(()=>OnForceCompleteAchievement(row.Id))" disabled="@row.Unlocked">Complete</button>
+                                    </td>
                                 </tr>
                                 @if (row.Conditions.Count > 0)
                                 {
-                                    <tr class="small"><td></td><td colspan="3">
+                                    <tr class="small"><td></td><td colspan="4">
                                         <div class="cond-list">
                                             @foreach (var c in row.Conditions)
                                             {
@@ -1896,6 +1900,18 @@
             }
             _achRows.Add(row);
         }
+    }
+
+    private async Task OnForceCompleteAchievement(string id)
+    {
+        try
+        {
+            if (emu != null && !string.IsNullOrWhiteSpace(id))
+            {
+                await emu.ForceCompleteAchievementPublic(id);
+            }
+        }
+        catch { }
     }
 
     private static string RenderOp(NesEmulator.RetroAchievements.ComparisonOp op)
