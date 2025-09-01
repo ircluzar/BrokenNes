@@ -369,16 +369,17 @@
             }
             else
             {
-                <div class="grid-head" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                <div class="grid-head" style="grid-template-columns: repeat(6, minmax(0,1fr));">
                     <span>Index</span>
                     <span>Required Cards</span>
                     <span>Required Stars</span>
                     <span>Card Challenge</span>
+                    <span>Message</span>
                     <span>Actions</span>
                 </div>
                 @foreach (var l in levels)
                 {
-                    <div class="grid-row" style="grid-template-columns: repeat(5, minmax(0,1fr));">
+                    <div class="grid-row" style="grid-template-columns: repeat(6, minmax(0,1fr));">
                         <span>
                             @if (l.isEditing)
                             {
@@ -419,6 +420,13 @@
                                 <input value="@(l.cardChallenge ?? string.Empty)" @onchange="(e=> l.cardChallenge = e.Value?.ToString() ?? string.Empty)" />
                             }
                             else { @(string.IsNullOrWhiteSpace(l.cardChallenge) ? "-" : l.cardChallenge) }
+                        </span>
+                        <span style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">
+                            @if (l.isEditing)
+                            {
+                                <input value="@(l.message ?? string.Empty)" @onchange="(e=> l.message = e.Value?.ToString() ?? string.Empty)" />
+                            }
+                            else { @(string.IsNullOrWhiteSpace(l.message) ? "-" : l.message) }
                         </span>
                         <span>
                             @if (!l.isEditing)
@@ -812,6 +820,7 @@
             requiredCards = new List<string>(),
             requiredStars = 0,
             cardChallenge = string.Empty,
+            message = string.Empty,
             isEditing = true
         });
         StateHasChanged();
@@ -836,7 +845,8 @@
                 index = l.index,
                 requiredCards = (l.requiredCards ?? new List<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Take(5).ToArray(),
                 requiredStars = Math.Max(0, l.requiredStars),
-                cardChallenge = l.cardChallenge ?? string.Empty
+                cardChallenge = l.cardChallenge ?? string.Empty,
+                message = l.message ?? string.Empty
             };
             var recJson = JsonSerializer.Serialize(rec);
             var safe = recJson.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n","\\n").Replace("\r", "");
@@ -871,6 +881,7 @@
         public List<string>? requiredCards { get; set; }
         public int requiredStars { get; set; }
         public string? cardChallenge { get; set; }
+    public string? message { get; set; }
         public bool isEditing { get; set; }
     }
 

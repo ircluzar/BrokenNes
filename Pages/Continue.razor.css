@@ -43,6 +43,7 @@
 .continue-root .lvl-status .status-chip.not-cleared{background:#374151;border-color:#9ca3af;color:#fff}
 .continue-root .lvl-status .status-chip.spotlit{box-shadow:0 0 0 4px #fff, 0 0 0 8px #ff5a26; position:relative; z-index:10002}
 .continue-root .hdr-cards{display:flex;align-items:flex-start;gap:.4rem;flex-wrap:wrap}
+.continue-root .hdr-cards.after-msg{margin-top:.35rem}
 .continue-root .enf-chip{background:#000;color:#fff;border:2px solid #fff;font-size:.6rem;padding:.2rem .35rem;cursor:pointer}
 .continue-root .enf-chip:hover{background:#111}
 .continue-root .hdr-cta{margin-top:.75rem}
