@@ -57,6 +57,8 @@ public class GameSaveService
                     _ = loaded.UnderConstructionAcknowledged;
                     // One-time all-cores congrats flag (back-compat default)
                     _ = loaded.AllCoresUnlockedCongrats;
+                    // Back-compat default for ROM masquerades mapping
+                    loaded.MasqueradeRomToGameId ??= new();
                     // New trusted continue fields (back-compat defaults)
                     _ = loaded.PendingDeckContinue;
                     // Leave rom/title null if not set; timestamp optional
@@ -79,6 +81,7 @@ public class GameSaveService
         save.OwnedApuIds ??= new();
         save.OwnedClockIds ??= new();
         save.OwnedShaderIds ??= new();
+    save.MasqueradeRomToGameId ??= new();
     // Trusted continue fields are optional; keep as-is
     // Unlock flags already default to false if missing
     // One-time flags are persisted as-is

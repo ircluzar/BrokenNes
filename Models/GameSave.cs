@@ -49,4 +49,8 @@ public class GameSave
 
     // One-time: player has unlocked every core across all categories and saw the congratulations modal
     public bool AllCoresUnlockedCongrats { get; set; } = false;
+
+    // ROM masquerades: map a ROM key (filename) to a target gameId whose achievements to use
+    // This enables ROM hacks/variants to pretend to be another game for compatibility.
+    public Dictionary<string, string> MasqueradeRomToGameId { get; set; } = new();
 }

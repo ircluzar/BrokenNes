@@ -96,20 +96,31 @@
           <div class="rom-tbody" role="rowgroup">
             @foreach (var g in RomRowsFiltered)
             {
-              var disabled = !g.Compatible || !g.Present;
+              var isMasq = IsMasqueraded(g);
+              var compat = g.Compatible || isMasq;
+              var disabled = !g.Present; // allow click when incompatible to open masquerade modal
               <button type="button"
                       class="rom-tr rom-td @(SelectedGameId==g.Id?"selected":null) @(disabled?"disabled":null)"
                       role="row"
                       aria-disabled="@disabled"
-                      title="@(disabled?(!g.Present?"ROM not present":"No achievements available"):"Select game")"
+                      title="@(disabled?(!g.Present?"ROM not present":""):(compat? (isMasq?"Select (masquerading)":"Select game") : "Set up masquerade"))"
                       disabled="@disabled"
-                      @onclick="(()=>SelectGameAsync(g.Id))">
+                      @onclick="(()=>OnRomRowClicked(g))">
                 <div class="c-title" role="cell">
                   <div class="rom-title">@g.Title</div>
                   @if (!string.IsNullOrWhiteSpace(g.Subtitle)) { <div class="rom-sub">@g.Subtitle</div>; }
                 </div>
-                <div class="c-compat" role="cell"><span class="chip @(g.Compatible?"ok":"no")">@(g.Compatible?"Yes":"No")</span></div>
-                <div class="c-ach" role="cell">@g.Completed/@g.Total</div>
+                <div class="c-compat" role="cell">
+                  @if (isMasq)
+                  {
+                    <span class="chip ok" title="Masquerading as another game">Mask</span>
+                  }
+                  else
+                  {
+                    <span class="chip @(g.Compatible?"ok":"no")">@(g.Compatible?"Yes":"No")</span>
+                  }
+                </div>
+                <div class="c-ach" role="cell">@RenderAchCount(g)</div>
               </button>
             }
           </div>
@@ -395,6 +406,48 @@
   </div>
 }
 
+@* Masquerade Picker Modal *@
+@if (MasqModalOpen)
+{
+  <div class="cont-cp-modal-backdrop" @onclick="CloseMasqModal">
+    <div class="cont-cp-modal" @onclick:stopPropagation>
+      <div class="cont-cp-header">
+        <strong class="small-note">Masquerade "@MasqSourceTitle" as…</strong>
+        <button type="button" class="cont-cp-close" @onclick="CloseMasqModal">Cancel</button>
+      </div>
+      <div class="cont-cp-body">
+        @if (MasqOptions.Count == 0)
+        {
+          <div class="small-note">No compatible games available.</div>
+        }
+        else
+        {
+          <div class="cont-cp-list">
+            @foreach (var it in MasqOptions)
+            {
+              <div class="cont-cp-row">
+                <button type="button" class="cont-cp-select" @onclick="(()=>ConfirmMasquerade(it.Id))" title="Use this game's achievements">
+                  <span class="row-main">@it.Title</span>
+                  <span class="row-meta">
+                    <span class="meta-stars" title="Achievements">@it.Completed/@it.Total</span>
+                  </span>
+                </button>
+              </div>
+            }
+          </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(MasqExistingTargetTitle))
+        {
+          <div class="small-note" style="margin-top:.5rem;">Currently masquerading as: <strong>@MasqExistingTargetTitle</strong></div>
+          <div class="d-flex gap-2" style="margin-top:.25rem;">
+            <button type="button" class="cont-cp-close" @onclick="ClearMasquerade">Clear mapping</button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
 @code {
   // State
   private int CurrentLevel = 1;
@@ -444,13 +497,19 @@
   // ROM selector state
   private sealed class DbGame { public string id { get; set; } = string.Empty; public string? commonName { get; set; } public string? title { get; set; } public string? name { get; set; } public string? romKey { get; set; } public string? system { get; set; } public string? platform { get; set; } public string? notes { get; set; } public string? subtitle { get; set; } }
   private sealed class DbAchievement { public string id { get; set; } = string.Empty; public string gameId { get; set; } = string.Empty; public string? title { get; set; } }
-  private sealed class RomRow { public string Id { get; set; } = string.Empty; public string Title { get; set; } = string.Empty; public string? Subtitle { get; set; } public string System { get; set; } = "NES"; public int Total { get; set; } public int Completed { get; set; } public bool Compatible => Total > 0; public string? Notes { get; set; } public bool Present { get; set; } public string? RomKey { get; set; } }
+  private sealed class RomRow { public string Id { get; set; } = string.Empty; public string Title { get; set; } = string.Empty; public string? Subtitle { get; set; } public string System { get; set; } = "NES"; public int Total { get; set; } public int Completed { get; set; } public bool Compatible => Total > 0; public string? Notes { get; set; } public bool Present { get; set; } public string? RomKey { get; set; } public bool Unknown { get; set; } }
   private List<RomRow> RomRows = new();
   private List<RomRow> RomRowsFiltered => RomRows
-    .Where(r => r.Present)
-    .Where(r => !FilterCompatibleOnly || r.Compatible)
+    // When "Only show compatible" is unchecked, include not-present entries for visibility
+    .Where(r => r.Present || !FilterCompatibleOnly)
+    // When checked, restrict to compatible or masqueraded
+    .Where(r => !FilterCompatibleOnly || r.Compatible || IsMasqueraded(r))
     .Where(r => string.IsNullOrWhiteSpace(RomSearch) || (r.Title?.Contains(RomSearch, StringComparison.OrdinalIgnoreCase) ?? false))
-    .OrderByDescending(r => r.Compatible)
+    // When filter is unchecked, show unknown uploaded ROMs first
+    .OrderByDescending(r => !FilterCompatibleOnly && r.Unknown)
+    // Then prefer present items
+    .ThenByDescending(r => r.Present)
+    .ThenByDescending(r => r.Compatible || IsMasqueraded(r))
     .ThenBy(r => r.Title, StringComparer.OrdinalIgnoreCase)
     .ToList();
   private string? SelectedGameId = null;
@@ -501,6 +560,7 @@
   CurrentLevel = Math.Max(1, save.Level);
   Stars = save.Achievements?.Count ?? 0;
   UnlockedAchievementIds = new(save.Achievements ?? new());
+  _masqMap = new(save.MasqueradeRomToGameId ?? new(), StringComparer.OrdinalIgnoreCase);
   await LoadLevelFromDbAsync(CurrentLevel);
   // Initialize cleared status from save
   LevelCleared = save.LevelCleared;
@@ -939,6 +999,18 @@
     SelectedGameId = id;
     await LoadAchievementsForGameAsync(id);
   await LoadGameInfoAsync(id);
+  }
+
+  private async Task OnRomRowClicked(RomRow g)
+  {
+    // If compatible as-is or already masqueraded, select; else open modal to pick masquerade
+    if ((g.Compatible && g.Present) || IsMasqueraded(g))
+    {
+      await SelectGameAsync(g.Id);
+      return;
+    }
+    if (!g.Present) return;
+    await OpenMasqModalAsync(g);
   }
 
   // ===== Import modal logic =====
@@ -1415,8 +1487,49 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
         Completed = completedByGame.TryGetValue(g.id, out var comp) ? comp : 0,
         Notes = g.notes,
         Present = (!string.IsNullOrWhiteSpace(g.romKey) && storedNames.Contains(g.romKey!)),
-        RomKey = g.romKey
+        RomKey = g.romKey,
+        Unknown = false
       }).ToList();
+
+      // Add unknown uploaded ROMs (present in storage but with no game record)
+      try
+      {
+        var knownRomKeys = new HashSet<string>(games.Select(x => x.romKey).Where(s=>!string.IsNullOrWhiteSpace(s))!.Select(s=>s!), StringComparer.OrdinalIgnoreCase);
+        foreach (var name in storedNames)
+        {
+          if (string.IsNullOrWhiteSpace(name)) continue;
+          if (knownRomKeys.Contains(name)) continue;
+          // Avoid duplicate if already added due to some other path
+          if (RomRows.Any(r => string.Equals(r.RomKey, name, StringComparison.OrdinalIgnoreCase))) continue;
+          RomRows.Add(new RomRow
+          {
+            Id = "rom:" + name,
+            Title = name,
+            Subtitle = "Unindexed ROM",
+            System = "NES",
+            Total = 0,
+            Completed = 0,
+            Notes = null,
+            Present = true,
+            RomKey = name,
+            Unknown = true
+          });
+        }
+      }
+      catch { }
+
+  // If a ROM is masqueraded to a target game, reflect target counts for display
+      foreach (var row in RomRows)
+      {
+        if (!string.IsNullOrWhiteSpace(row.RomKey) && _masqMap.TryGetValue(row.RomKey!, out var targetId))
+        {
+          var tgt = RomRows.FirstOrDefault(r => string.Equals(r.Id, targetId, StringComparison.OrdinalIgnoreCase));
+          if (tgt != null)
+          {
+            row.Total = tgt.Total; row.Completed = tgt.Completed;
+          }
+        }
+      }
 
       // Default select game: prefer the one flagged for trusted continue (matching ROM key), else first compatible + present
       if (SelectedGameId == null)
@@ -1426,7 +1539,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
           var match = RomRows.FirstOrDefault(r => r.Present && !string.IsNullOrWhiteSpace(r.RomKey) && string.Equals(r.RomKey, _pendingDeckContinueRom, StringComparison.OrdinalIgnoreCase));
           SelectedGameId = match?.Id;
         }
-        SelectedGameId ??= RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
+        SelectedGameId ??= RomRows.FirstOrDefault(r => (r.Compatible || IsMasqueraded(r)) && r.Present)?.Id;
       }
       else
       {
@@ -1439,7 +1552,7 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
             var match = RomRows.FirstOrDefault(r => r.Present && !string.IsNullOrWhiteSpace(r.RomKey) && string.Equals(r.RomKey, _pendingDeckContinueRom, StringComparison.OrdinalIgnoreCase));
             SelectedGameId = match?.Id;
           }
-          SelectedGameId ??= RomRows.FirstOrDefault(r => r.Compatible && r.Present)?.Id;
+          SelectedGameId ??= RomRows.FirstOrDefault(r => (r.Compatible || IsMasqueraded(r)) && r.Present)?.Id;
         }
       }
       if (!string.IsNullOrEmpty(SelectedGameId))
@@ -1580,7 +1693,18 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
     GameAchCompleted = 0; GameAchTotal = 0;
     try
     {
-      var gid = JsonSerializer.Serialize(gameId);
+      // If currently selected game is a masqueraded ROM, use target game id for achievements
+      string effectiveGameId = gameId;
+      try
+      {
+        var sel = RomRows.FirstOrDefault(r => r.Id == gameId);
+        if (sel != null && !string.IsNullOrWhiteSpace(sel.RomKey) && _masqMap.TryGetValue(sel.RomKey!, out var tgtId) && !string.IsNullOrWhiteSpace(tgtId))
+        {
+          effectiveGameId = tgtId;
+        }
+      }
+      catch { }
+      var gid = JsonSerializer.Serialize(effectiveGameId);
   var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const gid = {gid}; let list = []; try {{ list = await window.continueDb.getAllFromIndex('achievements','by_gameId', gid) || []; }} catch(e) {{ }} if (!list || list.length===0) {{ const all = await window.continueDb.getAll('achievements'); list = (all||[]).filter(a => a && a.gameId === gid); }} const arr = (list||[]).map(a => {{ return {{ id: a.id||'', title: a.title||a.id||'', description: a.description||'', difficulty: (typeof a.difficulty==='number'?a.difficulty:0), tags: (Array.isArray(a.tags)?a.tags:[]) }}; }}); return JSON.stringify(arr); }} catch(e) {{ return ''; }} }})()");
       if (!string.IsNullOrWhiteSpace(json))
       {
@@ -1604,6 +1728,101 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
     }
     catch { GameAchievements.Clear(); GameAchCompleted = 0; GameAchTotal = 0; }
     await InvokeAsync(StateHasChanged);
+  }
+
+  // ===== Masquerade modal logic =====
+  private bool MasqModalOpen = false;
+  private string? MasqSourceRomKey = null;
+  private string? MasqSourceTitle = null;
+  private string? MasqExistingTargetTitle = null;
+  private readonly List<(string Id, string Title, int Total, int Completed)> MasqOptions = new();
+  private Dictionary<string,string> _masqMap = new(StringComparer.OrdinalIgnoreCase);
+
+  private bool IsMasqueraded(RomRow r)
+  {
+    try { return !string.IsNullOrWhiteSpace(r.RomKey) && _masqMap.ContainsKey(r.RomKey!); } catch { return false; }
+  }
+
+  private string RenderAchCount(RomRow r)
+  {
+    // Show counts from target if masqueraded
+    if (!string.IsNullOrWhiteSpace(r.RomKey) && _masqMap.TryGetValue(r.RomKey!, out var tgtId))
+    {
+      var tgt = RomRows.FirstOrDefault(x => string.Equals(x.Id, tgtId, StringComparison.OrdinalIgnoreCase));
+      if (tgt != null) return $"{tgt.Completed}/{tgt.Total}";
+    }
+    return $"{r.Completed}/{r.Total}";
+  }
+
+  private async Task OpenMasqModalAsync(RomRow src)
+  {
+    MasqSourceRomKey = src.RomKey;
+    MasqSourceTitle = src.Title;
+    MasqExistingTargetTitle = null;
+    MasqOptions.Clear();
+    // Build options from compatible games (have achievements)
+    foreach (var r in RomRows.Where(r=>r.Compatible))
+    {
+      MasqOptions.Add((r.Id, r.Title, r.Total, r.Completed));
+    }
+    // If already mapped, show which
+    try
+    {
+      if (!string.IsNullOrWhiteSpace(src.RomKey) && _masqMap.TryGetValue(src.RomKey!, out var tgt))
+      {
+        MasqExistingTargetTitle = RomRows.FirstOrDefault(r=>string.Equals(r.Id,tgt,StringComparison.OrdinalIgnoreCase))?.Title;
+      }
+    }
+    catch { }
+    MasqModalOpen = true;
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task CloseMasqModal()
+  {
+    MasqModalOpen = false;
+    MasqSourceRomKey = null;
+    MasqSourceTitle = null;
+    MasqExistingTargetTitle = null;
+    MasqOptions.Clear();
+    await InvokeAsync(StateHasChanged);
+  }
+
+  private async Task ConfirmMasquerade(string targetGameId)
+  {
+    if (string.IsNullOrWhiteSpace(MasqSourceRomKey)) { await CloseMasqModal(); return; }
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      save.MasqueradeRomToGameId ??= new();
+      save.MasqueradeRomToGameId[MasqSourceRomKey!] = targetGameId;
+      await SaveSvc.SaveAsync(save);
+      _masqMap[MasqSourceRomKey!] = targetGameId;
+      // Refresh counts and selection if needed
+      await LoadRomsFromDbAsync();
+      // Auto-select the source row now that it has a mapping
+      var row = RomRows.FirstOrDefault(r=>string.Equals(r.RomKey, MasqSourceRomKey, StringComparison.OrdinalIgnoreCase));
+      if (row != null) { await SelectGameAsync(row.Id); }
+    }
+    catch { }
+    await CloseMasqModal();
+  }
+
+  private async Task ClearMasquerade()
+  {
+    if (string.IsNullOrWhiteSpace(MasqSourceRomKey)) { await CloseMasqModal(); return; }
+    try
+    {
+      var save = await SaveSvc.LoadAsync();
+      if (save.MasqueradeRomToGameId != null && save.MasqueradeRomToGameId.Remove(MasqSourceRomKey!))
+      {
+        await SaveSvc.SaveAsync(save);
+      }
+      _masqMap.Remove(MasqSourceRomKey!);
+      await LoadRomsFromDbAsync();
+    }
+    catch { }
+    await CloseMasqModal();
   }
 
   private async Task StartStageGame()

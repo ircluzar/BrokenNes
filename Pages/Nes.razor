@@ -2018,11 +2018,36 @@
             if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return;
             _achGameId = root.TryGetProperty("id", out var pid) ? (pid.GetString() ?? string.Empty) : string.Empty;
             if (string.IsNullOrWhiteSpace(_achGameId)) return;
-            // Prefer commonName for matching meta; fallback to title
-            var gameTitleForMeta = root.TryGetProperty("commonName", out var pcn) ? (pcn.GetString() ?? string.Empty) : string.Empty;
+            // Check if ROM is mapped to masquerade as another game id in user save (case-insensitive lookup)
+            System.Text.Json.JsonElement? targetRoot = null;
+            try
+            {
+                var save = await GameSaveService.LoadAsync();
+                var map = save?.MasqueradeRomToGameId != null
+                    ? new System.Collections.Generic.Dictionary<string,string>(save.MasqueradeRomToGameId, System.StringComparer.OrdinalIgnoreCase)
+                    : null;
+                if (map != null && map.TryGetValue(romKey, out var target) && !string.IsNullOrWhiteSpace(target))
+                {
+                    _achGameId = target;
+                    // Fetch target game record to use its title for meta lookup
+                    var tgtJson = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const rec=await window.continueDb.get('games', {System.Text.Json.JsonSerializer.Serialize(target)}); return JSON.stringify(rec||null); }} catch(e) {{ return ''; }} }})()");
+                    if (!string.IsNullOrWhiteSpace(tgtJson))
+                    {
+                        using var tdoc = System.Text.Json.JsonDocument.Parse(tgtJson);
+                        if (tdoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        {
+                            targetRoot = tdoc.RootElement.Clone();
+                        }
+                    }
+                }
+            }
+            catch { }
+            // Prefer commonName for matching meta; fallback to title; if masquerading, prefer target's labels
+            var metaRoot = targetRoot.HasValue ? targetRoot.Value : root;
+            var gameTitleForMeta = metaRoot.TryGetProperty("commonName", out var pcn) ? (pcn.GetString() ?? string.Empty) : string.Empty;
             if (string.IsNullOrWhiteSpace(gameTitleForMeta))
             {
-                gameTitleForMeta = root.TryGetProperty("title", out var ptitle) ? (ptitle.GetString() ?? string.Empty) : string.Empty;
+                gameTitleForMeta = metaRoot.TryGetProperty("title", out var ptitle) ? (ptitle.GetString() ?? string.Empty) : string.Empty;
             }
             // Build a lookup of Meta description -> formula for this game (if available)
             var metaMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
