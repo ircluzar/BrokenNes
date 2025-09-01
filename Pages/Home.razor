@@ -24,7 +24,26 @@
     </div>
 }
 
-@if (showHealthWarning)
+@* One-time Under Construction notice (appears before Health Warning) *@
+@if (showUnderConstruction)
+{
+    <div class="modal-backdrop hw-center" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6000;">
+        <div class="card shadow-xl health-warning-modal">
+            <div class="card-body">
+                <h2 class="hw-title">Under Construction</h2>
+                <div class="hw-text">
+                    This software is in early development phase and is very much still in need of improvement, optimization, polishing and additional content. Please keep in mind that some of the jank is intentional, and some is intentional. New stuff will be added to the software over time.
+                </div>
+                <div class="hw-text">
+                    If you find bugs that are clearly not supposed to happen, please report them to Ircluzar on the RTC Discord. Instructions for reproducing the issue are required with any bug report. Thanks!
+                </div>
+                <button class="hero-btn hw-ok-btn" @onclick="OnUnderConstructionOk" aria-label="Acknowledge under construction message">I Understand</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showHealthWarning && !showUnderConstruction)
 {
     <div class="modal-backdrop hw-center" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6000;">
         <div class="card shadow-xl health-warning-modal">
@@ -50,7 +69,8 @@
             <div class="about-body">
                 <h2 class="about-title">About BrokenNes</h2>
                 <p class="about-text">BrokenNes is a browser‑based NES emulator and corruption toolkit, built loosely with care and love and attention to detal.</p>
-                <p class="about-text">Inspired by work on NET‑NES, QuickNES, and NesHawk. See LICENSE for full credits.</p>
+                <p class="about-text">Inspired by work on NET‑NES, QuickNES, and NesHawk. More info on that will be added later.</p>
+                <p class="about-text">Achievements are based on RetroAchievements. Certain have beed lifted, reimagined or modified. See Retroachievements.org for individual credits.</p>
                 <p class="about-text">Design and architecture: <strong>ircluzar</strong></p>
                 <button class="about-close" @onclick="HideAbout" aria-label="Close About">CLOSE</button>
             </div>
@@ -60,7 +80,8 @@
 
 @code {
     private bool _booting = false;
-    private bool showHealthWarning = true; // Always show on load (could be persisted with localStorage later if desired)
+    private bool showHealthWarning = true; // Health warning shows by default unless skipped via query
+    private bool showUnderConstruction = false; // One-time notice, loaded from save
     private bool aboutVisible = false;
     private string BuildVersion => typeof(Program).Assembly.GetName().Version?.ToString() ?? "?";
     private bool _titleStarted = false;
@@ -81,10 +102,21 @@
         catch { }
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        // Load save to determine if Under Construction needs to be shown
+        try
+        {
+            var save = await SaveSvc.LoadAsync();
+            showUnderConstruction = !(save?.UnderConstructionAcknowledged ?? false);
+        }
+        catch { showUnderConstruction = false; }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Auto-start title music when health warning skipped (either via param or after OK)
-        if (!showHealthWarning && !_titleStarted)
+    if (!showHealthWarning && !_titleStarted && !showUnderConstruction)
         {
             _titleStarted = true;
             try { await JS.InvokeVoidAsync("nesInterop.ensureAudioContext"); } catch { }
@@ -153,5 +185,23 @@
     try { await JS.InvokeVoidAsync("nesInterop.playTitleMusic"); } catch {}
     // Start pixel background now that hero will appear
     try { await JS.InvokeVoidAsync("eval", "window.homePixelBgEnsure && window.homePixelBgEnsure(); setTimeout(()=>{window.homePixelBgEnsure && window.homePixelBgEnsure();}, 350);"); } catch { }
+    }
+
+    private async Task OnUnderConstructionOk()
+    {
+        // Persist acknowledgment so it only shows once
+        try
+        {
+            var save = await SaveSvc.LoadAsync();
+            if (save != null && !save.UnderConstructionAcknowledged)
+            {
+                save.UnderConstructionAcknowledged = true;
+                await SaveSvc.SaveAsync(save);
+            }
+        }
+        catch { }
+        showUnderConstruction = false;
+        // If health warning was skipped via query, title music/background will start via OnAfterRenderAsync
+        // Otherwise, health warning remains visible until acknowledged
     }
 }

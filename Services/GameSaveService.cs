@@ -53,6 +53,8 @@ public class GameSaveService
                     _ = loaded.ImagineUnlocked;
                     _ = loaded.DebugUnlocked;
                     _ = loaded.SeenStory;
+                    // One-time acknowledgement flags (back-compat defaults)
+                    _ = loaded.UnderConstructionAcknowledged;
                     // New trusted continue fields (back-compat defaults)
                     _ = loaded.PendingDeckContinue;
                     // Leave rom/title null if not set; timestamp optional
@@ -77,6 +79,8 @@ public class GameSaveService
         save.OwnedShaderIds ??= new();
     // Trusted continue fields are optional; keep as-is
     // Unlock flags already default to false if missing
+    // One-time flags are persisted as-is
+    _ = save.UnderConstructionAcknowledged;
         try
         {
             var json = JsonSerializer.Serialize(save);

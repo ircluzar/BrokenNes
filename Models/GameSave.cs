@@ -43,4 +43,7 @@ public class GameSave
     public string? PendingDeckContinueRom { get; set; } // romKey/filename of the game
     public string? PendingDeckContinueTitle { get; set; } // optional display title
     public DateTime? PendingDeckContinueAtUtc { get; set; } // optional timestamp
+
+    // One-time acknowledgements
+    public bool UnderConstructionAcknowledged { get; set; } = false; // Set after user accepts Under Construction notice
 }
