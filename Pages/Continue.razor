@@ -282,6 +282,80 @@
   </div>
 }
 
+@* Emulator Feature Unlock Modal (uses same styling as lootbox modal) *@
+@if (FeatureModalOpen)
+{
+  <div class="unlock-modal-backdrop @(FeatureModalClosing?"closing":"opening")" @onclick="CloseFeatureModal">
+    <div class="unlock-modal @(FeatureModalClosing?"closing":"opening")" @onclick:stopPropagation>
+      <div class="unlock-header">
+        <h3>Emulator Feature Unlocked</h3>
+      </div>
+      <div class="unlock-body">
+        @if (FeatureItems.Count == 0)
+        {
+          <div class="small-note">A new capability has been enabled.</div>
+        }
+        else
+        {
+          <ul class="feature-list">
+            @foreach (var f in FeatureItems)
+            {
+              <li class="feature-item">
+                <div class="feature-title">@f.Title</div>
+                @if (!string.IsNullOrWhiteSpace(f.Description))
+                {
+                  <div class="feature-desc small-note">@f.Description</div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
+      <div class="unlock-actions">
+        <button class="unlock-ok" @onclick="CloseFeatureModal">OK</button>
+      </div>
+    </div>
+  </div>
+}
+
+@* End-of-DeckBuilder (Level 20) Thank You Modal (same styling) *@
+@if (CongratsModalOpen)
+{
+  <div class="unlock-modal-backdrop @(CongratsModalClosing?"closing":"opening")" @onclick="CloseCongratsModal">
+    <div class="unlock-modal @(CongratsModalClosing?"closing":"opening")" @onclick:stopPropagation>
+      <div class="unlock-header">
+        <h3>Thanks for Playing Deck Builder</h3>
+      </div>
+      <div class="unlock-body">
+        <p style="margin:0 0 .5rem 0;">You have built the Optimal Console</p>
+        <p class="small-note" style="margin:0;">From now on, every level completion will unlock a random pack of cores. Thank you for playing BrokenNes.</p>
+      </div>
+      <div class="unlock-actions">
+        <button class="unlock-ok" @onclick="CloseCongratsModal">Let's Go</button>
+      </div>
+    </div>
+  </div>
+}
+
+@* All Cores Unlocked Modal (one-time) *@
+@if (AllCoresModalOpen)
+{
+  <div class="unlock-modal-backdrop @(AllCoresModalClosing?"closing":"opening")" @onclick="CloseAllCoresModal">
+    <div class="unlock-modal @(AllCoresModalClosing?"closing":"opening")" @onclick:stopPropagation>
+      <div class="unlock-header">
+        <h3>All Cores Unlocked</h3>
+      </div>
+      <div class="unlock-body">
+        <p style="margin:0 0 .5rem 0;">Congratulations! You've unlocked every core.</p>
+        <p class="small-note" style="margin:0;">Enjoy experimenting with the full set.</p>
+      </div>
+      <div class="unlock-actions">
+        <button class="unlock-ok" @onclick="CloseAllCoresModal">That's insane</button>
+      </div>
+    </div>
+  </div>
+}
+
 @* Core Picker Modal (Continue page aesthetic) *@
 @if (CorePickerOpen)
 {
@@ -618,6 +692,7 @@
     try
     {
   var save = await SaveSvc.LoadAsync();
+  var prevLevel = Math.Max(1, save.Level);
   if (!LevelCleared || Stars < RequiredStars) return;
   // Play level-advance SFX (SFX09)
   try
@@ -655,14 +730,25 @@
   save.OwnedClockIds ??= new();
   // If the level had no enforced CORE cards (CPU/PPU/APU/SHADER), unlock 2–3 random 'Last' cards not yet owned.
   // NOTE: CLOCK enforcement alone should NOT block the bonus.
+  // After Level 20, ALWAYS add a random pack in addition to enforced rewards.
   bool anyCoreEnforced = !string.IsNullOrWhiteSpace(EnforcedCpu)
                       || !string.IsNullOrWhiteSpace(EnforcedPpu)
                       || !string.IsNullOrWhiteSpace(EnforcedApu)
                       || !string.IsNullOrWhiteSpace(EnforcedShader);
-  if (!anyCoreEnforced)
+  bool alwaysBonusPack = prevLevel >= 21;
+  if (!anyCoreEnforced || alwaysBonusPack)
   {
     var bonus = await PickRandomLastCardsAsync(save);
-    foreach (var p in bonus) enforcedPairs.Add(p);
+    foreach (var p in bonus)
+    {
+      if (!enforcedPairs.Contains(p)) enforcedPairs.Add(p);
+    }
+  }
+  // Level 16 special: always include CLOCK_CLR and CLOCK_TRB with other unlocks
+  if (prevLevel == 16)
+  {
+    if (!enforcedPairs.Contains(("CLOCK", "CLR"))) enforcedPairs.Add(("CLOCK", "CLR"));
+    if (!enforcedPairs.Contains(("CLOCK", "TRB"))) enforcedPairs.Add(("CLOCK", "TRB"));
   }
   foreach (var (domain, id) in enforcedPairs)
   {
@@ -675,6 +761,46 @@
       case "CLOCK": if (AddIfMissing(save.OwnedClockIds, id)) newlyAdded.Add(("CLOCK", id)); break;
     }
   }
+
+  // Unlock emulator features at milestone clears (apply before saving)
+  var featureList = new List<(string Title, string Description)>();
+  switch (prevLevel)
+  {
+    case 4:
+      save.SavestatesUnlocked = true;
+      featureList.Add(("SaveStates", "You can now save and load emulator states."));
+      break;
+    case 8:
+      save.RtcUnlocked = true;
+      featureList.Add(("Real-Time Corruptor", "Corruption tools are now available."));
+      break;
+    case 12:
+      save.GhUnlocked = true;
+      featureList.Add(("Glitch Harvester", "Record, collect, and replay glitches."));
+      break;
+    case 16:
+      save.ImagineUnlocked = true;
+      featureList.Add(("Imagine", "ML-assisted ASM corruptions unlocked."));
+      break;
+  }
+
+  // Queue post-16 congratulations modal
+  bool showCongrats = (prevLevel == 16);
+
+  // Check if this advancement caused the player to own all cores
+  bool showAllCores = false;
+  try
+  {
+    // Use save state with any newly added cores applied above
+    var ownedCount = SaveSvc.GetOwnedCoresCount(save);
+    var totalCount = SaveSvc.GetTotalCoresCount();
+    if (totalCount > 0 && ownedCount >= totalCount && !save.AllCoresUnlockedCongrats)
+    {
+      save.AllCoresUnlockedCongrats = true; // set the flag so it won't reappear
+      showAllCores = true;
+    }
+  }
+  catch { }
 
   // Advance to next level in save
   save.Level = Math.Max(1, save.Level) + 1;
@@ -697,9 +823,21 @@
   try { ApplyPreferredSelections(save); } catch { }
 
   // If any new cores were added, celebrate with a lootbox-style modal
-  if (newlyAdded.Count > 0)
+  if (newlyAdded.Count > 0) { ShowUnlockModal(newlyAdded); }
+
+  // Present emulator feature unlocks and/or congrats modal.
+  // If the lootbox is open, queue these to show after it closes.
+  if (featureList.Count > 0)
   {
-    ShowUnlockModal(newlyAdded);
+    QueueFeatureUnlockModal(featureList);
+  }
+  if (showCongrats)
+  {
+    QueueCongratsModal();
+  }
+  if (showAllCores)
+  {
+    QueueAllCoresModal();
   }
   StateHasChanged();
     }
@@ -713,7 +851,7 @@
     try
     {
       var json = await JS.InvokeAsync<string>("eval", @"(async()=>{ try { if (!window.continueDb) return '[]'; await window.continueDb.open(); const arr = await window.continueDb.getAll('cards'); return JSON.stringify(arr||[]); } catch(e){ return '[]'; } })()");
-      if (string.IsNullOrWhiteSpace(json)) return result;
+      if (string.IsNullOrWhiteSpace(json)) json = "[]";
       using var doc = JsonDocument.Parse(json);
       var ownedCpu = new HashSet<string>(save.OwnedCpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
       var ownedPpu = new HashSet<string>(save.OwnedPpuIds ?? new(), StringComparer.OrdinalIgnoreCase);
@@ -721,10 +859,10 @@
       var ownedShader = new HashSet<string>(save.OwnedShaderIds ?? new(), StringComparer.OrdinalIgnoreCase);
       var ownedClock = new HashSet<string>(save.OwnedClockIds ?? new(), StringComparer.OrdinalIgnoreCase);
       var candidates = new List<(string domain, string id)>();
+      var altCandidates = new List<(string domain, string id)>();
       foreach (var el in doc.RootElement.EnumerateArray())
       {
         var type = el.TryGetProperty("type", out var pt) ? (pt.GetString() ?? string.Empty) : string.Empty;
-        if (!string.Equals(type, "Last", StringComparison.OrdinalIgnoreCase)) continue;
         var comp = el.TryGetProperty("id", out var pid) ? (pid.GetString() ?? string.Empty) : string.Empty; // DOMAIN_ID
         if (string.IsNullOrWhiteSpace(comp)) continue;
         var parts = comp.Split('_', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -741,14 +879,56 @@
           _ => true
         };
         if (alreadyOwned) continue;
-        candidates.Add((domain, id));
+        if (string.Equals(type, "Last", StringComparison.OrdinalIgnoreCase))
+          candidates.Add((domain, id));
+        else if (string.Equals(type, "Random", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(type))
+          altCandidates.Add((domain, id));
       }
-      if (candidates.Count == 0) return result;
-      int maxK = Math.Min(3, candidates.Count);
-      int minK = Math.Min(2, maxK);
-      int k; try { k = new Random().Next(minK, maxK + 1); } catch { k = minK; }
-      var shuffled = candidates.OrderBy(_ => Guid.NewGuid()).ToList();
-      for (int i = 0; i < k; i++) result.Add(shuffled[i]);
+      // Prefer "Last" candidates
+      if (candidates.Count > 0)
+      {
+        int maxK = Math.Min(3, candidates.Count);
+        int minK = Math.Min(2, maxK);
+        int k; try { k = new Random().Next(minK, maxK + 1); } catch { k = minK; }
+        var shuffled = candidates.OrderBy(_ => Guid.NewGuid()).ToList();
+        for (int i = 0; i < k; i++) result.Add(shuffled[i]);
+      }
+      // Fallback to Random/unspecified types if needed
+      if (result.Count < 2 && altCandidates.Count > 0)
+      {
+        int need = Math.Max(2, Math.Min(3, 2)) - result.Count; // target lower bound 2
+        var shuffledAlt = altCandidates.OrderBy(_ => Guid.NewGuid()).ToList();
+        foreach (var c in shuffledAlt)
+        {
+          if (result.Contains(c)) continue;
+          result.Add(c);
+          if (--need <= 0) break;
+        }
+      }
+      // Registry fallback when DB has none
+      if (result.Count < 2)
+      {
+        var reg = new List<(string domain, string id)>();
+        try { foreach (var id in CoreRegistry.CpuIds ?? Array.Empty<string>()) if (!ownedCpu.Contains(id) && !string.Equals(id, "FMC", StringComparison.OrdinalIgnoreCase)) reg.Add(("CPU", id)); } catch { }
+        try { foreach (var id in CoreRegistry.PpuIds ?? Array.Empty<string>()) if (!ownedPpu.Contains(id) && !string.Equals(id, "FMC", StringComparison.OrdinalIgnoreCase)) reg.Add(("PPU", id)); } catch { }
+        try { foreach (var id in CoreRegistry.ApuIds ?? Array.Empty<string>()) if (!ownedApu.Contains(id) && !string.Equals(id, "FMC", StringComparison.OrdinalIgnoreCase)) reg.Add(("APU", id)); } catch { }
+        try { foreach (var s in ShaderProvider?.All ?? Array.Empty<NesEmulator.Shaders.IShader>()) if (!ownedShader.Contains(s.Id) && !string.Equals(s.Id, "PX", StringComparison.OrdinalIgnoreCase)) reg.Add(("SHADER", s.Id)); } catch { }
+        if (reg.Count > 0)
+        {
+          var shuffledReg = reg.OrderBy(_ => Guid.NewGuid()).ToList();
+          foreach (var c in shuffledReg)
+          {
+            if (result.Contains(c)) continue;
+            result.Add(c);
+            if (result.Count >= 2) break; // ensure at least 2
+          }
+          // allow a chance for a 3rd
+          if (result.Count == 2 && shuffledReg.Count > 2)
+          {
+            result.Add(shuffledReg[2]);
+          }
+        }
+      }
     }
     catch { }
     return result;
@@ -1053,6 +1233,21 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
             if (apu != null) { name = apu.CoreName ?? ("APU_" + id); desc = apu.Description ?? ""; perf = apu.Performance; rating = Math.Clamp(apu.Rating,0,5); footer = apu.Category ?? domain; }
           }
           break;
+        case "CLOCK":
+          try
+          {
+            var clk = ClockRegistry.Create(id);
+            if (clk != null)
+            {
+              name = clk.DisplayName ?? ($"CLOCK_" + id);
+              desc = clk.Description ?? string.Empty;
+              perf = clk.Performance;
+              rating = Math.Clamp(clk.Rating, 0, 5);
+              footer = clk is not null ? (clk.GetType().GetProperty("Category")?.GetValue(clk) as string ?? "CLOCK") : "CLOCK";
+            }
+          }
+          catch { }
+          break;
         case "SHADER":
           try
           {
@@ -1111,6 +1306,11 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
   LevelMessage = level?.message ?? string.Empty;
   // Respect 0 as a valid value; only fallback to 5 if the level record is missing
   RequiredStars = level != null ? Math.Max(0, level.requiredStars) : 5;
+  // Phase 2: for level 17 and onwards, use formula (Level - 6) * 2
+  if (index >= 17)
+  {
+    RequiredStars = Math.Max(0, (index - 6) * 2);
+  }
 
   // Reset enforced slots
   EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = EnforcedClock = null;
@@ -1150,6 +1350,11 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       LevelTitle = $"Level {index}";
   LevelMessage = string.Empty;
       RequiredStars = 5;
+      // Apply Phase 2 formula in fallback as well
+      if (index >= 17)
+      {
+        RequiredStars = Math.Max(0, (index - 6) * 2);
+      }
       EnforcedCpu = EnforcedPpu = EnforcedApu = EnforcedShader = EnforcedClock = null;
       EnforcedCards = Array.Empty<(string domain, string id, string label, string border)>();
     }
@@ -1706,6 +1911,25 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
   // ===== Unlock modal helpers =====
   private void ShowUnlockModal(IEnumerable<(string domain, string id)> items)
   {
+    // Log to web console every time cores are unlocked (covers enforced + bonus unlocks)
+    try
+    {
+      var list = items?.ToList() ?? new();
+      if (list.Count > 0)
+      {
+        var labels = string.Join(", ", list.Select(p => $"{p.domain}_{p.id}"));
+        var msg = System.Text.Json.JsonSerializer.Serialize($"Unlocked cores: {labels}");
+        _ = JS.InvokeVoidAsync("eval", $"try{{console.log({msg});}}catch(e){{}} ");
+        items = list; // ensure we can iterate below
+      }
+      else
+      {
+        var msg = System.Text.Json.JsonSerializer.Serialize($"Unlocked cores: NONE");
+        _ = JS.InvokeVoidAsync("eval", $"try{{console.log({msg});}}catch(e){{}} ");
+      }
+    }
+    catch { }
+
     UnlockItems.Clear();
     foreach (var (domain, id) in items)
     {
@@ -1733,6 +1957,193 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
     await RefreshOwnedFromSaveAsync();
     UpdateCorePickerItemsIfOpen();
     await InvokeAsync(StateHasChanged);
+    // After closing lootbox, show any queued feature/congrats modals
+    TryShowNextQueuedModal();
+  }
+
+  // ===== Feature/Congrats modal state & helpers =====
+  private bool FeatureModalOpen = false;
+  private bool FeatureModalClosing = false;
+  private sealed class FeatureItem { public string Title { get; set; } = string.Empty; public string Description { get; set; } = string.Empty; }
+  private readonly List<FeatureItem> FeatureItems = new();
+  private bool _queueFeature = false;
+  private List<(string Title, string Description)> _queuedFeatures = new();
+
+  private bool CongratsModalOpen = false;
+  private bool CongratsModalClosing = false;
+  private bool _queueCongrats = false;
+
+  // All-cores modal queue/state
+  private bool AllCoresModalOpen = false;
+  private bool AllCoresModalClosing = false;
+  private bool _queueAllCores = false;
+
+  private void QueueFeatureUnlockModal(IEnumerable<(string Title, string Description)> items)
+  {
+    _queuedFeatures = (items?.ToList() ?? new());
+    _queueFeature = _queuedFeatures.Count > 0;
+    // If lootbox is not open and feature modal isn't already open, show immediately
+    if (!UnlockModalOpen && !FeatureModalOpen)
+    {
+      ShowFeatureModalNow();
+    }
+  }
+
+  private void QueueCongratsModal()
+  {
+    _queueCongrats = true;
+    if (!UnlockModalOpen && !FeatureModalOpen && !CongratsModalOpen)
+    {
+      ShowCongratsModalNow();
+    }
+  }
+
+  private void TryShowNextQueuedModal()
+  {
+    if (!FeatureModalOpen && _queueFeature)
+    {
+      ShowFeatureModalNow();
+      return;
+    }
+    if (!CongratsModalOpen && _queueCongrats && !FeatureModalOpen)
+    {
+      ShowCongratsModalNow();
+      return;
+    }
+    if (!AllCoresModalOpen && _queueAllCores && !FeatureModalOpen && !CongratsModalOpen)
+    {
+      ShowAllCoresModalNow();
+      return;
+    }
+  }
+
+  private void ShowFeatureModalNow()
+  {
+    FeatureItems.Clear();
+    foreach (var f in _queuedFeatures)
+    {
+      FeatureItems.Add(new FeatureItem { Title = f.Title, Description = f.Description });
+    }
+    _queueFeature = false; _queuedFeatures.Clear();
+    FeatureModalClosing = false; FeatureModalOpen = true;
+    try
+    {
+      _ = JS.InvokeVoidAsync("eval", @"(function(){try{
+        if(window.nesInterop && window.nesInterop.ensureAudioContext){ window.nesInterop.ensureAudioContext(); }
+        var id='cont-feature-sfx';
+        var el=document.getElementById(id);
+        if(!el){
+          el=document.createElement('audio');
+          el.id=id;
+          el.src='sfx/SFX04.mp3';
+          el.preload='auto';
+          el.style.display='none';
+          document.body.appendChild(el);
+        }
+        if(window.nesInterop && typeof window.nesInterop.playSfxElement==='function'){
+          window.nesInterop.playSfxElement(id);
+        } else {
+          try{ el.currentTime=0; el.volume=(window.nesInterop&&window.nesInterop.getSfxVolume? window.nesInterop.getSfxVolume():0.8); el.play().catch(function(){}); }catch{}
+        }
+      }catch{}})();");
+    }
+    catch { }
+    StateHasChanged();
+  }
+
+  private async Task CloseFeatureModal()
+  {
+    if (!FeatureModalOpen) { TryShowNextQueuedModal(); return; }
+    FeatureModalClosing = true; await InvokeAsync(StateHasChanged);
+    try { await Task.Delay(160); } catch { }
+    FeatureModalOpen = false; FeatureModalClosing = false;
+    FeatureItems.Clear();
+    TryShowNextQueuedModal();
+  }
+
+  private void ShowCongratsModalNow()
+  {
+    _queueCongrats = false;
+    CongratsModalClosing = false; CongratsModalOpen = true;
+    try
+    {
+      _ = JS.InvokeVoidAsync("eval", @"(function(){try{
+        if(window.nesInterop && window.nesInterop.ensureAudioContext){ window.nesInterop.ensureAudioContext(); }
+        var id='cont-congrats-sfx';
+        var el=document.getElementById(id);
+        if(!el){
+          el=document.createElement('audio');
+          el.id=id;
+          el.src='sfx/SFX07.mp3';
+          el.preload='auto';
+          el.style.display='none';
+          document.body.appendChild(el);
+        }
+        if(window.nesInterop && typeof window.nesInterop.playSfxElement==='function'){
+          window.nesInterop.playSfxElement(id);
+        } else {
+          try{ el.currentTime=0; el.volume=(window.nesInterop&&window.nesInterop.getSfxVolume? window.nesInterop.getSfxVolume():0.8); el.play().catch(function(){}); }catch{}
+        }
+      }catch{}})();");
+    }
+    catch { }
+    StateHasChanged();
+  }
+
+  private async Task CloseCongratsModal()
+  {
+    if (!CongratsModalOpen) return;
+    CongratsModalClosing = true; await InvokeAsync(StateHasChanged);
+    try { await Task.Delay(160); } catch { }
+    CongratsModalOpen = false; CongratsModalClosing = false;
+    TryShowNextQueuedModal();
+  }
+
+  private void QueueAllCoresModal()
+  {
+    _queueAllCores = true;
+    if (!UnlockModalOpen && !FeatureModalOpen && !CongratsModalOpen && !AllCoresModalOpen)
+    {
+      ShowAllCoresModalNow();
+    }
+  }
+
+  private void ShowAllCoresModalNow()
+  {
+    _queueAllCores = false;
+    AllCoresModalClosing = false; AllCoresModalOpen = true;
+    try
+    {
+      _ = JS.InvokeVoidAsync("eval", @"(function(){try{
+        if(window.nesInterop && window.nesInterop.ensureAudioContext){ window.nesInterop.ensureAudioContext(); }
+        var id='cont-allcores-sfx';
+        var el=document.getElementById(id);
+        if(!el){
+          el=document.createElement('audio');
+          el.id=id;
+          el.src='sfx/SFX01.mp3';
+          el.preload='auto';
+          el.style.display='none';
+          document.body.appendChild(el);
+        }
+        if(window.nesInterop && typeof window.nesInterop.playSfxElement==='function'){
+          window.nesInterop.playSfxElement(id);
+        } else {
+          try{ el.currentTime=0; el.volume=(window.nesInterop&&window.nesInterop.getSfxVolume? window.nesInterop.getSfxVolume():0.8); el.play().catch(function(){}); }catch{}
+        }
+      }catch{}})();");
+    }
+    catch { }
+    StateHasChanged();
+  }
+
+  private async Task CloseAllCoresModal()
+  {
+    if (!AllCoresModalOpen) { TryShowNextQueuedModal(); return; }
+    AllCoresModalClosing = true; await InvokeAsync(StateHasChanged);
+    try { await Task.Delay(160); } catch { }
+    AllCoresModalOpen = false; AllCoresModalClosing = false;
+    TryShowNextQueuedModal();
   }
 
   private async Task RefreshOwnedFromSaveAsync()

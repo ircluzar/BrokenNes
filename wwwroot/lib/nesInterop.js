@@ -1854,6 +1854,16 @@ window.nesInterop = {
         return this._isFullscreen;
     }
     ,
+    // Exit fullscreen if currently in desktop fullscreen (no-op in mobile portrait)
+    exitDesktopFullscreenIfActive(){
+        try{
+            const isMobilePortrait = window.matchMedia('(max-width: 899px) and (orientation: portrait)').matches;
+            if(isMobilePortrait) return false;
+            if(this._isFullscreen){ this.toggleFullscreen(); return true; }
+            return false;
+        }catch(e){ return false; }
+    }
+    ,
     focusCorruptorPanel(){
         try {
             const rom = document.getElementById('rom-manager-panel');

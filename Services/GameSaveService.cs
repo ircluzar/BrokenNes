@@ -55,6 +55,8 @@ public class GameSaveService
                     _ = loaded.SeenStory;
                     // One-time acknowledgement flags (back-compat defaults)
                     _ = loaded.UnderConstructionAcknowledged;
+                    // One-time all-cores congrats flag (back-compat default)
+                    _ = loaded.AllCoresUnlockedCongrats;
                     // New trusted continue fields (back-compat defaults)
                     _ = loaded.PendingDeckContinue;
                     // Leave rom/title null if not set; timestamp optional
@@ -81,6 +83,7 @@ public class GameSaveService
     // Unlock flags already default to false if missing
     // One-time flags are persisted as-is
     _ = save.UnderConstructionAcknowledged;
+    _ = save.AllCoresUnlockedCongrats;
         try
         {
             var json = JsonSerializer.Serialize(save);
@@ -132,6 +135,21 @@ public class GameSaveService
         try { save.OwnedApuIds = CoreRegistry.ApuIds?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedApuIds = new(); }
         try { save.OwnedClockIds = ClockRegistry.Ids?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedClockIds = new(); }
         try { save.OwnedShaderIds = _shaderProvider.All?.Select(s => s.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); } catch { save.OwnedShaderIds = new(); }
+
+        // Log in web console for visibility
+        try
+        {
+            var parts = new List<string>();
+            try { parts.AddRange((save.OwnedCpuIds ?? new()).Select(id => $"CPU_{id}")); } catch { }
+            try { parts.AddRange((save.OwnedPpuIds ?? new()).Select(id => $"PPU_{id}")); } catch { }
+            try { parts.AddRange((save.OwnedApuIds ?? new()).Select(id => $"APU_{id}")); } catch { }
+            try { parts.AddRange((save.OwnedClockIds ?? new()).Select(id => $"CLOCK_{id}")); } catch { }
+            try { parts.AddRange((save.OwnedShaderIds ?? new()).Select(id => $"SHADER_{id}")); } catch { }
+            var labels = string.Join(", ", parts);
+            var js = $"try{{console.log('Unlocked cores: {labels}');}}catch(e){{}}";
+            await _js.InvokeVoidAsync("eval", js);
+        }
+        catch { }
         await SaveAsync(save);
     }
 

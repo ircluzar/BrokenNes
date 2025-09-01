@@ -249,8 +249,14 @@
 .unlock-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:9000;opacity:1;transition:opacity .18s ease}
 .unlock-modal-backdrop.closing{opacity:0}
 .unlock-modal{background:#000;border:3px solid #fff;outline:3px solid #ff5a26;outline-offset:-6px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.7);width:min(880px,96vw);max-height:90vh;display:flex;flex-direction:column;gap:.5rem;padding:.9rem 1rem}
+.unlock-modal{font-family:'Press Start 2P', monospace}
 .unlock-header h3{margin:0;font-size:1.1rem;color:#ffcc00;text-align:center;text-shadow:0 0 10px rgba(255,204,0,0.5)}
 .unlock-body{position:relative;padding:1rem .5rem}
+.unlock-body p{font-family:'Press Start 2P', monospace;font-size:.7rem;line-height:1.45}
+.unlock-body .feature-list{list-style:none;margin:.25rem 0 0;padding:0;display:flex;flex-direction:column;gap:.5rem}
+.unlock-body .feature-item{border:2px dashed #fff;background:#0a0a0a;color:#fff;padding:.6rem .7rem;border-radius:8px}
+.unlock-body .feature-title{font-family:'Press Start 2P', monospace;font-size:.8rem;color:#ffcc00;text-shadow:0 0 8px rgba(255,204,0,0.25);margin:0 0 .25rem}
+.unlock-body .feature-desc{font-family:'Press Start 2P', monospace}
 .loot-stage{position:relative;display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;align-items:center;min-height:240px}
 .loot-card{position:relative;display:inline-block;width:142px;height:200px;background:transparent;border:0;padding:0;margin:0;cursor:pointer;animation:lootFloat 3s ease-in-out infinite}
 .loot-card:nth-child(2){animation-delay:.2s}

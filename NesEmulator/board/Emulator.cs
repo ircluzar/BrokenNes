@@ -536,6 +536,8 @@ namespace BrokenNes
                 _achModalTitle = title;
                 _achModalOpen = true;
                 StateHasChanged();
+                // If in fullscreen on desktop, exit fullscreen so modal is visible and keyboard focus returns
+                try { if (Controller.IsFullscreen) await JS.InvokeVoidAsync("nesInterop.exitDesktopFullscreenIfActive"); } catch { }
                 try
                 {
                     // Use JS to wait 5s then navigate to Continue page with flags

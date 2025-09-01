@@ -46,4 +46,7 @@ public class GameSave
 
     // One-time acknowledgements
     public bool UnderConstructionAcknowledged { get; set; } = false; // Set after user accepts Under Construction notice
+
+    // One-time: player has unlocked every core across all categories and saw the congratulations modal
+    public bool AllCoresUnlockedCongrats { get; set; } = false;
 }
