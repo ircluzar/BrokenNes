@@ -653,8 +653,13 @@
   save.OwnedApuIds ??= new();
   save.OwnedShaderIds ??= new();
   save.OwnedClockIds ??= new();
-  // If level had no enforced cards, unlock 2–3 random 'Last' cards not yet owned
-  if (enforcedPairs.Count == 0)
+  // If the level had no enforced CORE cards (CPU/PPU/APU/SHADER), unlock 2–3 random 'Last' cards not yet owned.
+  // NOTE: CLOCK enforcement alone should NOT block the bonus.
+  bool anyCoreEnforced = !string.IsNullOrWhiteSpace(EnforcedCpu)
+                      || !string.IsNullOrWhiteSpace(EnforcedPpu)
+                      || !string.IsNullOrWhiteSpace(EnforcedApu)
+                      || !string.IsNullOrWhiteSpace(EnforcedShader);
+  if (!anyCoreEnforced)
   {
     var bonus = await PickRandomLastCardsAsync(save);
     foreach (var p in bonus) enforcedPairs.Add(p);
