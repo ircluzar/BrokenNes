@@ -81,7 +81,7 @@ public class PPU_LQ : IPPU
             if (scanline == 0 && scanlineCycle == 0) PPUSTATUS &= 0x3F; // new frame start
             if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
             {
-                if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4 mmc3)
+                if ((PPUMASK & 0x18) != 0 && bus?.cartridge?.mapper is Mapper4 mmc3)
                 {
                     mmc3.RunScanlineIRQ();
                     if (mmc3.IRQPending()) { bus.cpu.RequestIRQ(true); mmc3.ClearIRQ(); }
@@ -90,7 +90,7 @@ public class PPU_LQ : IPPU
             // MMC5 scanline counter tick early (cycle ~3)
             if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
             {
-                if (bus.cartridge.mapper is Mapper5 mmc5)
+                if (bus?.cartridge?.mapper is Mapper5 mmc5)
                 {
                     bool renderingEnabled = (PPUMASK & 0x18) != 0;
                     mmc5.PpuScanlineHook(scanline, renderingEnabled);
@@ -157,13 +157,17 @@ public class PPU_LQ : IPPU
 
     private void QuantizeScanlineColors(int y)
     {
+        // Guard against null during hot-swap
+        var fb = frameBuffer;
+        if (fb == null || fb.Length < ScreenWidth * ScreenHeight * 4) return;
         int baseIdx = y * ScreenWidth * 4;
+        if (baseIdx + ScreenWidth * 4 > fb.Length) return;
         for (int x = 0; x < ScreenWidth; x++)
         {
             int idx = baseIdx + x * 4;
-            byte r = frameBuffer![idx]; byte g = frameBuffer![idx + 1]; byte b = frameBuffer![idx + 2];
+            byte r = fb[idx]; byte g = fb[idx + 1]; byte b = fb[idx + 2];
             QuantizeColor(ref r, ref g, ref b);
-            frameBuffer![idx] = r; frameBuffer![idx + 1] = g; frameBuffer![idx + 2] = b; frameBuffer![idx + 3] = 255;
+            fb[idx] = r; fb[idx + 1] = g; fb[idx + 2] = b; fb[idx + 3] = 255;
         }
     }
 
@@ -217,9 +221,12 @@ public class PPU_LQ : IPPU
 
     private void RenderBackground(int scanline, bool[] bgMask)
     {
-    // Guard against null during hot-swap
-    if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
+    // Guard against null during hot-swap - capture to local variable to prevent race conditions
+    var fb = frameBuffer;
+    if (bgMask == null || fb == null || paletteRAM == null || vram == null) return;
     EnsureFrameBuffer();
+    fb = frameBuffer; // Re-capture after ensure
+    if (fb == null) return;
         if ((PPUMASK & 0x08) == 0) return;
         byte ubIdx = paletteRAM[0]; int ubp = (ubIdx & 0x3F) * 3; byte ubR = PaletteBytes[ubp], ubG = PaletteBytes[ubp + 1], ubB = PaletteBytes[ubp + 2];
         ushort renderV = v;
@@ -235,7 +242,7 @@ public class PPU_LQ : IPPU
                 {
                     if (pixel < 0) continue;
                     int fi = scanlineBaseFill + pixel * 4;
-                    frameBuffer![fi] = ubR; frameBuffer![fi + 1] = ubG; frameBuffer![fi + 2] = ubB; frameBuffer![fi + 3] = 255;
+                    fb[fi] = ubR; fb[fi + 1] = ubG; fb[fi + 2] = ubB; fb[fi + 3] = 255;
                 }
                 return;
             }
@@ -256,13 +263,13 @@ public class PPU_LQ : IPPU
                 int frameIndex = scanlineBase + pixel * 4;
                 if (colorIndex == 0)
                 {
-                    frameBuffer![frameIndex] = ubR; frameBuffer![frameIndex + 1] = ubG; frameBuffer![frameIndex + 2] = ubB; frameBuffer![frameIndex + 3] = 255;
+                    fb[frameIndex] = ubR; fb[frameIndex + 1] = ubG; fb[frameIndex + 2] = ubB; fb[frameIndex + 3] = 255;
                 }
                 else
                 {
                     bgMask[pixel] = true;
                     int paletteBase = 1 + (paletteIndex << 2); byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F]; int p = (idx & 0x3F) * 3;
-                    frameBuffer![frameIndex] = PaletteBytes[p]; frameBuffer![frameIndex + 1] = PaletteBytes[p + 1]; frameBuffer![frameIndex + 2] = PaletteBytes[p + 2]; frameBuffer![frameIndex + 3] = 255;
+                    fb[frameIndex] = PaletteBytes[p]; fb[frameIndex + 1] = PaletteBytes[p + 1]; fb[frameIndex + 2] = PaletteBytes[p + 2]; fb[frameIndex + 3] = 255;
                 }
                 fetchedPixels++;
                 if (fetchedPixels >= currentBgFetchBudget) break; // after writing this pixel we may be out
@@ -273,9 +280,12 @@ public class PPU_LQ : IPPU
 
     private void RenderSprites(int scanline, bool[] bgMask)
     {
-    // Guard against null during hot-swap
-    if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
+    // Guard against null during hot-swap - capture to local variable to prevent race conditions
+    var fb = frameBuffer;
+    if (bgMask == null || fb == null || paletteRAM == null || oam == null || vram == null) return;
     EnsureFrameBuffer();
+    fb = frameBuffer; // Re-capture after ensure
+    if (fb == null) return;
     bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
         bool isSprite8x16 = (PPUCTRL & 0x20) != 0; System.Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
         int drawnThisLine = 0;
@@ -297,7 +307,7 @@ public class PPU_LQ : IPPU
                 if (spritePixelDrawnReuse[px]) continue;
                 if (!priority && bgMask[px]) continue;
                 var sc = GetSpriteColor(color, paletteIndex); int frameIndex = (scanline * ScreenWidth + px) * 4;
-                frameBuffer![frameIndex] = sc.r; frameBuffer![frameIndex + 1] = sc.g; frameBuffer![frameIndex + 2] = sc.b; frameBuffer![frameIndex + 3] = 255; spritePixelDrawnReuse[px] = true;
+                fb[frameIndex] = sc.r; fb[frameIndex + 1] = sc.g; fb[frameIndex + 2] = sc.b; fb[frameIndex + 3] = 255; spritePixelDrawnReuse[px] = true;
             }
             drawnThisLine++;
         }
@@ -360,7 +370,12 @@ public class PPU_LQ : IPPU
     public byte Read(ushort address)
     {
         address = (ushort)(address & 0x3FFF);
-        if (address < 0x2000) return bus.cartridge.PPURead(address);
+        if (address < 0x2000)
+        {
+            // Guard against null during hot-swap
+            if (bus?.cartridge == null) return 0;
+            return bus.cartridge.PPURead(address);
+        }
         else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); return vram[mirrored]; }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; return paletteRAM[mirrored]; }
         return 0;
@@ -369,7 +384,12 @@ public class PPU_LQ : IPPU
     public void Write(ushort address, byte value)
     {
         address = (ushort)(address & 0x3FFF);
-        if (address < 0x2000) bus.cartridge.PPUWrite(address, value);
+        if (address < 0x2000)
+        {
+            // Guard against null during hot-swap
+            if (bus?.cartridge == null) return;
+            bus.cartridge.PPUWrite(address, value);
+        }
         else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); vram[mirrored] = value; }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; paletteRAM[mirrored] = value; }
     }
@@ -377,6 +397,8 @@ public class PPU_LQ : IPPU
     private ushort MirrorVRAMAddress(ushort address)
     {
         ushort offset = (ushort)(address & 0x0FFF); int ntIndex = offset / 0x400; int innerOffset = offset % 0x400;
+        // Guard against null during hot-swap
+        if (bus?.cartridge == null) return offset;
         return bus.cartridge.mirroringMode switch
         {
             Mirroring.Vertical => (ushort)((ntIndex % 2) * 0x400 + innerOffset),

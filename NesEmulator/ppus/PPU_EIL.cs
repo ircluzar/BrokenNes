@@ -275,6 +275,9 @@ public class PPU_EIL : IPPU
 	public void GenerateStaticFrame()
 	{
 		EnsureFrameBuffer();
+		var fb = frameBuffer; // Capture to local to prevent race conditions
+		if (fb == null) return;
+		
 		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
 		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
 		int w = ScreenWidth; int h = ScreenHeight;
@@ -304,10 +307,10 @@ public class PPU_EIL : IPPU
 				// Rare bright spark
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
 				int idx = (y * w + x) * 4;
-				frameBuffer![idx + 0] = r;
-				frameBuffer![idx + 1] = g;
-				frameBuffer![idx + 2] = b;
-				frameBuffer![idx + 3] = 255;
+				fb[idx + 0] = r;
+				fb[idx + 1] = g;
+				fb[idx + 2] = b;
+				fb[idx + 3] = 255;
 			}
 		}
 		staticFrameCounter++;

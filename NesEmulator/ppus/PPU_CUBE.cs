@@ -119,7 +119,7 @@ public class PPU_CUBE : IPPU
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
-				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
+				if ((PPUMASK & 0x18) != 0 && bus?.cartridge?.mapper is Mapper4)
 				{
 					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
 					mmc3.RunScanlineIRQ();
@@ -134,7 +134,7 @@ public class PPU_CUBE : IPPU
 			// MMC5 scanline counter tick early (cycle ~3)
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
 			{
-				if (bus.cartridge.mapper is Mapper5 mmc5)
+				if (bus?.cartridge?.mapper is Mapper5 mmc5)
 				{
 					bool renderingEnabled = (PPUMASK & 0x18) != 0;
 					mmc5.PpuScanlineHook(scanline, renderingEnabled);
@@ -274,6 +274,9 @@ public class PPU_CUBE : IPPU
 	public void GenerateStaticFrame()
 	{
 		EnsureFrameBuffer();
+		// Guard against null during hot-swap - capture to local variable
+		var fb = frameBuffer;
+		if (fb == null) return;
 		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
 		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
 		int w = ScreenWidth; int h = ScreenHeight;
@@ -303,10 +306,10 @@ public class PPU_CUBE : IPPU
 				// Rare bright spark
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
 				int idx = (y * w + x) * 4;
-				frameBuffer![idx + 0] = r;
-				frameBuffer![idx + 1] = g;
-				frameBuffer![idx + 2] = b;
-				frameBuffer![idx + 3] = 255;
+				fb[idx + 0] = r;
+				fb[idx + 1] = g;
+				fb[idx + 2] = b;
+				fb[idx + 3] = 255;
 			}
 		}
 		staticFrameCounter++;
@@ -325,9 +328,14 @@ public class PPU_CUBE : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
-		// Guard against null during hot-swap
-		if (bgMask == null || paletteRAM == null || vram == null) return;
+		// Guard against null during hot-swap - capture to local variable to prevent race conditions
+		var fb = frameBuffer;
+		if (bgMask == null || fb == null || paletteRAM == null || vram == null) return;
+		
 		EnsureFrameBuffer();
+		fb = frameBuffer; // Re-capture after ensure
+		if (fb == null) return;
+		
 		// Check if background rendering is enabled; if disabled we still want a gradient baseline for sprites/shadows
 		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
 		if (!bgEnabledFlag)
@@ -344,10 +352,10 @@ public class PPU_CUBE : IPPU
 		for (int gx = 0; gx < ScreenWidth; gx++)
 		{
 			int gi = gradBase + (gx << 2);
-			frameBuffer![gi + 0] = gradR;
-			frameBuffer![gi + 1] = gradG;
-			frameBuffer![gi + 2] = gradB;
-			frameBuffer![gi + 3] = 255;
+			fb[gi + 0] = gradR;
+			fb[gi + 1] = gradG;
+			fb[gi + 2] = gradB;
+			fb[gi + 3] = 255;
 		}
 
 		// 2. Project shadow from previous scanline's opaque background pixels (down + left) BEFORE current BG tiles draw
@@ -363,9 +371,9 @@ public class PPU_CUBE : IPPU
 				if ((uint)sx >= ScreenWidth) continue;
 				int fi = shadowBase + (sx << 2);
 				// Darken existing gradient pixel to form shadow (avoid double-darkening by simple multiplicative pass)
-				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+				fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
+				fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
+				fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
 			}
 		}
 
@@ -427,10 +435,10 @@ public class PPU_CUBE : IPPU
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
 				int pBase = palEntry * 3;
 				int frameIndex = scanlineBase + (pixel << 2);
-				frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
-				frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
-				frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
-				frameBuffer![frameIndex + 3] = 255;
+				fb[frameIndex + 0] = paletteResolved[pBase + 0];
+				fb[frameIndex + 1] = paletteResolved[pBase + 1];
+				fb[frameIndex + 2] = paletteResolved[pBase + 2];
+				fb[frameIndex + 3] = 255;
 			}
 
 			// Increment to next tile
@@ -752,6 +760,7 @@ public class PPU_CUBE : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return 0;
 			return bus.cartridge.PPURead(address);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
@@ -775,6 +784,7 @@ public class PPU_CUBE : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return;
 			bus.cartridge.PPUWrite(address, value);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
@@ -798,6 +808,7 @@ public class PPU_CUBE : IPPU
 		int ntIndex = offset / 0x400;
 		int innerOffset = offset % 0x400;
 
+		if (bus?.cartridge == null) return (ushort)innerOffset;
 		switch (bus.cartridge.mirroringMode)
 		{
 			case Mirroring.Vertical:

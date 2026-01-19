@@ -91,7 +91,7 @@ public class PPU_LOW : IPPU
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
-				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
+				if ((PPUMASK & 0x18) != 0 && bus?.cartridge?.mapper is Mapper4)
 				{
 					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
 					mmc3.RunScanlineIRQ();
@@ -106,7 +106,7 @@ public class PPU_LOW : IPPU
 			// MMC5 scanline counter tick early in the scanline (cycle ~3)
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
 			{
-				if (bus.cartridge.mapper is Mapper5 mmc5)
+				if (bus?.cartridge?.mapper is Mapper5 mmc5)
 				{
 					bool renderingEnabled = (PPUMASK & 0x18) != 0;
 					mmc5.PpuScanlineHook(scanline, renderingEnabled);
@@ -263,12 +263,15 @@ public class PPU_LOW : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
+		// Guard against null during hot-swap - capture to local variable to prevent race conditions
+		var fb = frameBuffer;
+		if (bgMask == null || fb == null || paletteRAM == null || vram == null) return;
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 
 		EnsureFrameBuffer();
+		fb = frameBuffer; // Re-capture after ensure
+		if (fb == null) return;
 
 		// Cache universal background color once per scanline.
 		byte ubIdx = paletteRAM[0];
@@ -288,7 +291,7 @@ public class PPU_LOW : IPPU
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 			// MMC5 hook: tell mapper a BG NT tile index fetch is occurring (used for Mode 1)
-			if (bus.cartridge.mapper is Mapper5 mmc5Hook)
+			if (bus?.cartridge?.mapper is Mapper5 mmc5Hook)
 			{
 				bool renderingEnabled = (PPUMASK & 0x18) != 0;
 				bool objSize16 = (PPUCTRL & 0x20) != 0;
@@ -306,7 +309,7 @@ public class PPU_LOW : IPPU
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
 			// Attribute selection; MMC5 Mode 1 overrides attribute nibbles with EXRAM-derived palette
 			int paletteIndex;
-			if (bus.cartridge.mapper is Mapper5 mmc5Attr && mmc5Attr.IsMmc5Mode1BgActive())
+			if (bus?.cartridge?.mapper is Mapper5 mmc5Attr && mmc5Attr.IsMmc5Mode1BgActive())
 			{
 				int p = mmc5Attr.GetMmc5Mode1BgPaletteIndex();
 				paletteIndex = (p >= 0) ? p : 0;
@@ -331,10 +334,10 @@ public class PPU_LOW : IPPU
 				int frameIndex = scanlineBase + pixel * 4;
 				if (colorIndex == 0)
 				{
-					frameBuffer![frameIndex + 0] = ubR;
-					frameBuffer![frameIndex + 1] = ubG;
-					frameBuffer![frameIndex + 2] = ubB;
-					frameBuffer![frameIndex + 3] = 255;
+					fb[frameIndex + 0] = ubR;
+					fb[frameIndex + 1] = ubG;
+					fb[frameIndex + 2] = ubB;
+					fb[frameIndex + 3] = 255;
 				}
 				else
 				{
@@ -342,10 +345,10 @@ public class PPU_LOW : IPPU
 					int paletteBase = 1 + (paletteIndex << 2);
 					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
 					int p = (idx & 0x3F) * 3;
-					frameBuffer![frameIndex + 0] = PaletteBytes[p];
-					frameBuffer![frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer![frameIndex + 3] = 255;
+					fb[frameIndex + 0] = PaletteBytes[p];
+					fb[frameIndex + 1] = PaletteBytes[p+1];
+					fb[frameIndex + 2] = PaletteBytes[p+2];
+					fb[frameIndex + 3] = 255;
 				}
 				p0 <<= 1; p1 <<= 1;
 			}
@@ -356,13 +359,16 @@ public class PPU_LOW : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
+		// Guard against null during hot-swap - capture to local variable to prevent race conditions
+		var fb = frameBuffer;
+		if (bgMask == null || fb == null || paletteRAM == null || oam == null || vram == null) return;
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
 
 		EnsureFrameBuffer();
+		fb = frameBuffer; // Re-capture after ensure
+		if (fb == null) return;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
@@ -399,7 +405,7 @@ public class PPU_LOW : IPPU
 			int baseAddr = patternTable + subTileIndex * 16;
 
 			// Read pattern data for this row
-			if (showSprites && bus.cartridge.mapper is Mapper5 mmc5Hook)
+			if (showSprites && bus?.cartridge?.mapper is Mapper5 mmc5Hook)
 			{
 				bool renderingEnabled = (PPUMASK & 0x18) != 0;
 				mmc5Hook.PpuPhaseHint(isSpriteFetch: true, objSize16: isSprite8x16, renderingEnabled: renderingEnabled);
@@ -439,12 +445,12 @@ public class PPU_LOW : IPPU
 				{
 					var spriteColor = GetSpriteColor(color, paletteIndex);
 					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					if (frameIndex + 3 < frameBuffer!.Length)
+					if (frameIndex + 3 < fb.Length)
 					{
-						frameBuffer![frameIndex + 0] = spriteColor.r;
-						frameBuffer![frameIndex + 1] = spriteColor.g;
-						frameBuffer![frameIndex + 2] = spriteColor.b;
-						frameBuffer![frameIndex + 3] = 255;
+						fb[frameIndex + 0] = spriteColor.r;
+						fb[frameIndex + 1] = spriteColor.g;
+						fb[frameIndex + 2] = spriteColor.b;
+						fb[frameIndex + 3] = 255;
 					}
 						spritePixelDrawnReuse[px] = true;
 				}
@@ -639,12 +645,13 @@ public class PPU_LOW : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return 0;
 			return bus.cartridge.PPURead(address);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
 			// MMC5: delegate per-quadrant nametable routing and EXRAM/fill modes
-			if (bus.cartridge.mapper is Mapper5 mmc5)
+			if (bus?.cartridge?.mapper is Mapper5 mmc5)
 			{
 				if (address < 0x3000)
 				{
@@ -674,12 +681,13 @@ public class PPU_LOW : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return;
 			bus.cartridge.PPUWrite(address, value);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
 			// MMC5: delegate per-quadrant nametable routing and EXRAM/fill modes
-			if (bus.cartridge.mapper is Mapper5 mmc5)
+			if (bus?.cartridge?.mapper is Mapper5 mmc5)
 			{
 				if (address < 0x3000)
 				{
@@ -708,6 +716,7 @@ public class PPU_LOW : IPPU
 		int ntIndex = offset / 0x400;
 		int innerOffset = offset % 0x400;
 
+		if (bus?.cartridge == null) return (ushort)innerOffset;
 		switch (bus.cartridge.mirroringMode)
 		{
 			case Mirroring.Vertical:

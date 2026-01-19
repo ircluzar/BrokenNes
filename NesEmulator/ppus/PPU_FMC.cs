@@ -266,6 +266,8 @@ public class PPU_FMC : IPPU
 		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 
 		EnsureFrameBuffer();
+		// Cache frameBuffer reference locally to prevent race condition if ClearBuffers is called during render
+		var fb = frameBuffer;
 
 		// Inform mapper we're about to do background pattern fetches (MMC5 A/B CHR banking)
 		if (bus?.cartridge?.mapper is IMapper mBg)
@@ -337,10 +339,10 @@ public class PPU_FMC : IPPU
 				if (colorIndex == 0)
 				{
 					// Universal background color
-					frameBuffer![frameIndex + 0] = ubR;
-					frameBuffer![frameIndex + 1] = ubG;
-					frameBuffer![frameIndex + 2] = ubB;
-					frameBuffer![frameIndex + 3] = 255;
+				fb![frameIndex + 0] = ubR;
+				fb![frameIndex + 1] = ubG;
+				fb![frameIndex + 2] = ubB;
+				fb![frameIndex + 3] = 255;
 				}
 				else
 				{
@@ -348,10 +350,10 @@ public class PPU_FMC : IPPU
 					int paletteBase = 1 + (paletteIndex << 2);
 					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
 					int p = (idx & 0x3F) * 3;
-					frameBuffer![frameIndex + 0] = PaletteBytes[p];
-					frameBuffer![frameIndex + 1] = PaletteBytes[p+1];
-					frameBuffer![frameIndex + 2] = PaletteBytes[p+2];
-					frameBuffer![frameIndex + 3] = 255;
+				fb![frameIndex + 0] = PaletteBytes[p];
+				fb![frameIndex + 1] = PaletteBytes[p+1];
+				fb![frameIndex + 2] = PaletteBytes[p+2];
+				fb![frameIndex + 3] = 255;
 				}
 			}
 
@@ -369,6 +371,8 @@ public class PPU_FMC : IPPU
 		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
 
 		EnsureFrameBuffer();
+		// Cache frameBuffer reference locally to prevent race condition if ClearBuffers is called during render
+		var fb = frameBuffer;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		// Inform mapper we're about to do sprite pattern fetches (MMC5 A/B CHR banking)
@@ -443,12 +447,12 @@ public class PPU_FMC : IPPU
 				{
 					var spriteColor = GetSpriteColor(color, paletteIndex);
 					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					if (frameIndex + 3 < frameBuffer!.Length)
+					if (frameIndex + 3 < fb!.Length)
 					{
-						frameBuffer![frameIndex + 0] = spriteColor.r;
-						frameBuffer![frameIndex + 1] = spriteColor.g;
-						frameBuffer![frameIndex + 2] = spriteColor.b;
-						frameBuffer![frameIndex + 3] = 255;
+						fb![frameIndex + 0] = spriteColor.r;
+						fb![frameIndex + 1] = spriteColor.g;
+						fb![frameIndex + 2] = spriteColor.b;
+						fb![frameIndex + 3] = 255;
 					}
 						spritePixelDrawnReuse[px] = true;
 				}

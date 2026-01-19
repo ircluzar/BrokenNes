@@ -154,7 +154,7 @@ public class PPU_CUBEX : IPPU
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
 			{
-				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
+				if ((PPUMASK & 0x18) != 0 && bus?.cartridge?.mapper is Mapper4)
 				{
 					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
 					mmc3.RunScanlineIRQ();
@@ -169,7 +169,7 @@ public class PPU_CUBEX : IPPU
 			// MMC5 scanline counter tick
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
 			{
-				if (bus.cartridge.mapper is Mapper5 mmc5)
+				if (bus?.cartridge?.mapper is Mapper5 mmc5)
 				{
 					bool renderingEnabled = (PPUMASK & 0x18) != 0;
 					mmc5.PpuScanlineHook(scanline, renderingEnabled);
@@ -484,6 +484,8 @@ public class PPU_CUBEX : IPPU
 
 	private void BuildGradientCache()
 	{
+		// Guard against null during hot-swap
+		if (paletteRAM == null) return;
 		byte ubIdx = paletteRAM[0];
 		lastGradientBaseColor = ubIdx;
 		int pTop = (ubIdx & 0x3F) * 3;
@@ -537,6 +539,10 @@ public class PPU_CUBEX : IPPU
 	public void GenerateStaticFrame()
 	{
 		EnsureFrameBuffer();
+		// Guard against null during hot-swap - capture to local variable
+		var fb = frameBuffer;
+		if (fb == null) return;
+		
 		uint frameSeed = (uint)staticFrameCounter * 0x9E3779B1u + 0xB5297A4Du;
 		for (int y = 0; y < ScreenHeight; y++)
 		{
@@ -558,10 +564,10 @@ public class PPU_CUBEX : IPPU
 				byte b = (byte)((baseGray * 3 + pb) / 4);
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
 				int idx = (y * ScreenWidth + x) * 4;
-				frameBuffer![idx + 0] = r;
-				frameBuffer![idx + 1] = g;
-				frameBuffer![idx + 2] = b;
-				frameBuffer![idx + 3] = 255;
+				fb[idx + 0] = r;
+				fb[idx + 1] = g;
+				fb[idx + 2] = b;
+				fb[idx + 3] = 255;
 			}
 		}
 		staticFrameCounter++;
@@ -580,14 +586,22 @@ public class PPU_CUBEX : IPPU
 		// Ensure framebuffer is allocated first
 		EnsureFrameBuffer();
 		
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
+		// Guard against null during hot-swap - capture to local variable to prevent race conditions
+		var fb = frameBuffer;
+		if (bgMask == null || fb == null || paletteRAM == null || vram == null) return;
 		
 		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
 		if (!bgEnabledFlag)
 		{
 			FillFullGradientScanline(scanline);
 			return;
+		}
+
+		// Ensure gradient cache is valid before accessing
+		if (!gradientCacheValid || gradientR == null || gradientG == null || gradientB == null)
+		{
+			if (paletteRAM != null) BuildGradientCache();
+			if (!gradientCacheValid) return; // Still not valid after build attempt
 		}
 
 		byte gradR = gradientR[scanline];
@@ -597,10 +611,10 @@ public class PPU_CUBEX : IPPU
 		for (int gx = 0; gx < ScreenWidth; gx++)
 		{
 			int gi = gradBase + (gx << 2);
-			frameBuffer![gi + 0] = gradR;
-			frameBuffer![gi + 1] = gradG;
-			frameBuffer![gi + 2] = gradB;
-			frameBuffer![gi + 3] = 255;
+			fb[gi + 0] = gradR;
+			fb[gi + 1] = gradG;
+			fb[gi + 2] = gradB;
+			fb[gi + 3] = 255;
 		}
 
 		if (scanline >= ShadowVerticalDistance)
@@ -614,9 +628,9 @@ public class PPU_CUBEX : IPPU
 				int sx = x + ShadowOffsetX;
 				if ((uint)sx >= ScreenWidth) continue;
 				int fi = shadowBase + (sx << 2);
-				frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-				frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-				frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+				fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
+				fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
+				fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
 			}
 		}
 
@@ -667,10 +681,10 @@ public class PPU_CUBEX : IPPU
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
 				int pBase = palEntry * 3;
 				int frameIndex = scanlineBase + (pixel << 2);
-				frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
-				frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
-				frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
-				frameBuffer![frameIndex + 3] = 255;
+				fb[frameIndex + 0] = paletteResolved[pBase + 0];
+				fb[frameIndex + 1] = paletteResolved[pBase + 1];
+				fb[frameIndex + 2] = paletteResolved[pBase + 2];
+				fb[frameIndex + 3] = 255;
 			}
 
 			IncrementX(ref renderV);
@@ -682,8 +696,9 @@ public class PPU_CUBEX : IPPU
 		// Ensure framebuffer is allocated first
 		EnsureFrameBuffer();
 		
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
+		// Guard against null during hot-swap - capture to local variable to prevent race conditions
+		var fb = frameBuffer;
+		if (bgMask == null || fb == null || paletteRAM == null || oam == null || vram == null) return;
 		
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
@@ -702,9 +717,9 @@ public class PPU_CUBEX : IPPU
 					int sx = x + ShadowOffsetX;
 					if (sx < 0 || sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
-					frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-					frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-					frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+					fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
+					fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
+					fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
 				}
 			}
 		}
@@ -778,12 +793,12 @@ public class PPU_CUBEX : IPPU
 				spriteCoverageRows[spriteRowBase + px] = 1;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				if (frameIndex + 3 < frameBuffer!.Length)
+				if (frameIndex + 3 < fb.Length)
 				{
-					frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
-					frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
-					frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
-					frameBuffer![frameIndex + 3] = 255;
+					fb[frameIndex + 0] = paletteResolved[pBase + 0];
+					fb[frameIndex + 1] = paletteResolved[pBase + 1];
+					fb[frameIndex + 2] = paletteResolved[pBase + 2];
+					fb[frameIndex + 3] = 255;
 				}
 				spritePixelDrawnReuse[px] = true;
 			}
@@ -951,6 +966,7 @@ public class PPU_CUBEX : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return 0;
 			return bus.cartridge.PPURead(address);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
@@ -974,6 +990,7 @@ public class PPU_CUBEX : IPPU
 
 		if (address < 0x2000)
 		{
+			if (bus?.cartridge == null) return;
 			bus.cartridge.PPUWrite(address, value);
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
@@ -997,6 +1014,7 @@ public class PPU_CUBEX : IPPU
 		int ntIndex = offset / 0x400;
 		int innerOffset = offset % 0x400;
 
+		if (bus?.cartridge == null) return (ushort)innerOffset;
 		switch (bus.cartridge.mirroringMode)
 		{
 			case Mirroring.Vertical:
@@ -1191,6 +1209,10 @@ public class PPU_CUBEX : IPPU
 			ppuDataBuffer=s.ppuDataBuffer; 
 			staticFrameCounter=s.staticFrameCounter;
 			
+			// Rebuild palette cache after restoring palette RAM
+			RebuildResolvedPalette();
+			paletteCacheBuilt = true;
+			
 			// Reset smoothing state on load
 			totalFramesProcessed = 0;
 			return; 
@@ -1227,6 +1249,10 @@ public class PPU_CUBEX : IPPU
 			if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); 
 			if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); 
 			if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			
+			// Rebuild palette cache after restoring palette RAM
+			RebuildResolvedPalette();
+			paletteCacheBuilt = true;
 			
 			// Reset smoothing state on load
 			totalFramesProcessed = 0;

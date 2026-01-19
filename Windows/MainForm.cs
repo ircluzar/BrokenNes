@@ -412,7 +412,7 @@ namespace BrokenNes.Windows
             
             // Initialize auto-scramble timer
             autoScrambleTimer = new System.Windows.Forms.Timer();
-            autoScrambleTimer.Interval = 420; // 420ms
+            autoScrambleTimer.Interval = 200; // 200ms (5 times per second)
             autoScrambleTimer.Tick += AutoScrambleTimer_Tick;
             
             // Start auto-scramble if enabled in config
