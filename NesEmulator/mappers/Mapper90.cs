@@ -29,7 +29,9 @@ public class Mapper90 : IMapper
     private bool chrBlockMode = true; // true = block/mask active
     private int chrBlock = 0;
     private int prgBlock = 0;
-    private bool ntAdvancedControl = false; // not supported in pipeline, left false
+#pragma warning disable CS0414 // not supported in pipeline, left false
+    private bool ntAdvancedControl = false;
+#pragma warning restore CS0414
     private bool ntRamDisable = false;      // ignored
     private bool ntRamSelect = false;       // ignored
 

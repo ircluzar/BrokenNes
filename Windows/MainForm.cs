@@ -19,7 +19,6 @@ namespace BrokenNes.Windows
         private volatile bool isEmulationRunning;
         private volatile bool isPaused;
         private readonly object emulationLock = new object();
-        private System.Windows.Forms.Timer? renderTimer;
         private NesDirectXRenderer dxRenderer;
         private Panel displayPanel;
         private DirectBitmap? frameBuffer;
@@ -29,6 +28,17 @@ namespace BrokenNes.Windows
         private EmulatorConfig config = new EmulatorConfig();
         private bool useDirectX = true;
         private string? quickSaveState; // Quick save slot
+        private InputManager? inputManager;
+        
+        // FPS tracking for audio speed adjustment
+        private double currentFps = 60.0;
+        private int fpsFrameCount = 0;
+        private System.Diagnostics.Stopwatch? fpsStopwatch;
+        
+        // Speed control
+        private SpeedControlForm? speedControlForm;
+        private volatile float speedOverride = 1.0f;
+        private volatile bool hasSpeedOverride = false;
         
         // Menu items
         private ToolStripMenuItem shaderMenu;
@@ -51,12 +61,19 @@ namespace BrokenNes.Windows
                 Console.WriteLine("MainForm constructor starting...");
                 InitializeComponent();
                 Console.WriteLine("InitializeComponent completed");
-                InitializeEmulator();
-                Console.WriteLine("InitializeEmulator completed");
-                SetupKeyMapping();
-                Console.WriteLine("SetupKeyMapping completed");
+                
+                // Load config first so settings are available for emulator initialization
                 LoadConfig();
                 Console.WriteLine("LoadConfig completed");
+                
+                // Setup input manager
+                SetupKeyMapping();
+                Console.WriteLine("SetupKeyMapping completed");
+                
+                // Finally initialize and start emulator
+                InitializeEmulator();
+                Console.WriteLine("InitializeEmulator completed");
+                
                 Console.WriteLine("MainForm constructor completed successfully");
             }
             catch (Exception ex)
@@ -71,7 +88,7 @@ namespace BrokenNes.Windows
         private void InitializeComponent()
         {
             this.Text = "BrokenNes - Windows";
-            this.Size = new Size(800, 600);
+            this.ClientSize = new Size(1280, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
@@ -224,6 +241,55 @@ namespace BrokenNes.Windows
             
             configMenu.DropDownItems.Add(soundMenu);
             
+            // Controllers submenu
+            var controllersMenu = new ToolStripMenuItem("&Controllers");
+            
+            var player1Menu = new ToolStripMenuItem("Player 1");
+            
+            var bindAItem = new ToolStripMenuItem("A Button...", null, (s, e) => BindControllerKey("A", config.P1KeyA, k => config.P1KeyA = k));
+            player1Menu.DropDownItems.Add(bindAItem);
+            
+            var bindBItem = new ToolStripMenuItem("B Button...", null, (s, e) => BindControllerKey("B", config.P1KeyB, k => config.P1KeyB = k));
+            player1Menu.DropDownItems.Add(bindBItem);
+            
+            var bindSelectItem = new ToolStripMenuItem("Select Button...", null, (s, e) => BindControllerKey("Select", config.P1KeySelect, k => config.P1KeySelect = k));
+            player1Menu.DropDownItems.Add(bindSelectItem);
+            
+            var bindStartItem = new ToolStripMenuItem("Start Button...", null, (s, e) => BindControllerKey("Start", config.P1KeyStart, k => config.P1KeyStart = k));
+            player1Menu.DropDownItems.Add(bindStartItem);
+            
+            player1Menu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var bindUpItem = new ToolStripMenuItem("D-Pad Up...", null, (s, e) => BindControllerKey("Up", config.P1KeyUp, k => config.P1KeyUp = k));
+            player1Menu.DropDownItems.Add(bindUpItem);
+            
+            var bindDownItem = new ToolStripMenuItem("D-Pad Down...", null, (s, e) => BindControllerKey("Down", config.P1KeyDown, k => config.P1KeyDown = k));
+            player1Menu.DropDownItems.Add(bindDownItem);
+            
+            var bindLeftItem = new ToolStripMenuItem("D-Pad Left...", null, (s, e) => BindControllerKey("Left", config.P1KeyLeft, k => config.P1KeyLeft = k));
+            player1Menu.DropDownItems.Add(bindLeftItem);
+            
+            var bindRightItem = new ToolStripMenuItem("D-Pad Right...", null, (s, e) => BindControllerKey("Right", config.P1KeyRight, k => config.P1KeyRight = k));
+            player1Menu.DropDownItems.Add(bindRightItem);
+            
+            controllersMenu.DropDownItems.Add(player1Menu);
+            
+            configMenu.DropDownItems.Add(controllersMenu);
+            
+            configMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            // Emulation options
+            var noSpeedLimitItem = new ToolStripMenuItem("No Speed Limit", null, ToggleNoSpeedLimit_Click);
+            noSpeedLimitItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(noSpeedLimitItem);
+            
+            var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
+            configMenu.DropDownItems.Add(speedControlItem);
+            
+            var showFpsItem = new ToolStripMenuItem("Show FPS", null, ToggleShowFps_Click);
+            showFpsItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(showFpsItem);
+            
             menuStrip.Items.Add(configMenu);
             
             // Core selection menus: SHADER, APU, CPU, PPU
@@ -302,11 +368,6 @@ namespace BrokenNes.Windows
                 }
             }
             
-            // Create render timer for UI updates (60 FPS)
-            renderTimer = new System.Windows.Forms.Timer();
-            renderTimer.Interval = 16; // ~60 FPS
-            renderTimer.Tick += RenderTimer_Tick;
-            
             // Initialize audio manager
             try
             {
@@ -326,16 +387,55 @@ namespace BrokenNes.Windows
         
         private void SetupKeyMapping()
         {
-            // Default NES controller mapping
-            // A, B, Select, Start, Up, Down, Left, Right
-            keyMap[Keys.Z] = 0; // A
-            keyMap[Keys.X] = 1; // B
-            keyMap[Keys.A] = 2; // Select
-            keyMap[Keys.S] = 3; // Start
-            keyMap[Keys.Up] = 4; // Up
-            keyMap[Keys.Down] = 5; // Down
-            keyMap[Keys.Left] = 6; // Left
-            keyMap[Keys.Right] = 7; // Right
+            keyMap.Clear();
+            
+            Console.WriteLine("Setting up key mappings from config:");
+            
+            // Load key bindings from config
+            if (Enum.TryParse<Keys>(config.P1KeyA, out Keys keyA))
+            {
+                keyMap[keyA] = 0; // A
+                Console.WriteLine($"  A (button 0): {keyA}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyB, out Keys keyB))
+            {
+                keyMap[keyB] = 1; // B
+                Console.WriteLine($"  B (button 1): {keyB}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeySelect, out Keys keySelect))
+            {
+                keyMap[keySelect] = 2; // Select
+                Console.WriteLine($"  Select (button 2): {keySelect}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyStart, out Keys keyStart))
+            {
+                keyMap[keyStart] = 3; // Start
+                Console.WriteLine($"  Start (button 3): {keyStart}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyUp, out Keys keyUp))
+            {
+                keyMap[keyUp] = 4; // Up
+                Console.WriteLine($"  Up (button 4): {keyUp}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyDown, out Keys keyDown))
+            {
+                keyMap[keyDown] = 5; // Down
+                Console.WriteLine($"  Down (button 5): {keyDown}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyLeft, out Keys keyLeft))
+            {
+                keyMap[keyLeft] = 6; // Left
+                Console.WriteLine($"  Left (button 6): {keyLeft}");
+            }
+            if (Enum.TryParse<Keys>(config.P1KeyRight, out Keys keyRight))
+            {
+                keyMap[keyRight] = 7; // Right
+                Console.WriteLine($"  Right (button 7): {keyRight}");
+            }
+            
+            // Initialize input manager with the key map
+            inputManager = new InputManager();
+            inputManager.SetKeyMap(keyMap);
         }
         
         private void LoadConfig()
@@ -419,6 +519,15 @@ namespace BrokenNes.Windows
                         item.Checked = config.ScalingNearestNeighbor;
                     // Zoom options are not checkboxes, so we don't update them
                 }
+            }
+            
+            // Update emulation options checkmarks
+            foreach (var item in configMenu.DropDownItems.OfType<ToolStripMenuItem>())
+            {
+                if (item.Text.Contains("No Speed Limit"))
+                    item.Checked = config.NoSpeedLimit;
+                else if (item.Text.Contains("Show FPS"))
+                    item.Checked = config.ShowFps;
             }
             
             // Update Sound submenu checkmarks
@@ -1040,6 +1149,44 @@ namespace BrokenNes.Windows
         }
         
         // Config menu event handlers
+        private void BindControllerKey(string buttonName, string currentKey, Action<string> setKey)
+        {
+            var dialog = new Form
+            {
+                Text = $"Bind {buttonName}",
+                Size = new Size(350, 150),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                KeyPreview = true
+            };
+            
+            var label = new Label
+            {
+                Text = $"Press any key to bind to {buttonName}\n\nCurrent: {currentKey}",
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 10)
+            };
+            
+            dialog.Controls.Add(label);
+            
+            dialog.KeyDown += (s, e) =>
+            {
+                string keyName = e.KeyCode.ToString();
+                setKey(keyName);
+                config.Save();
+                SetupKeyMapping();
+                dialog.DialogResult = DialogResult.OK;
+                dialog.Close();
+            };
+            
+            dialog.ShowDialog(this);
+        }
+        
+        // Config menu event handlers
         private void TogglePixelPerfect_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)
@@ -1067,6 +1214,54 @@ namespace BrokenNes.Windows
             if (sender is ToolStripMenuItem menuItem)
             {
                 config.ScalingNearestNeighbor = menuItem.Checked;
+                config.Save();
+                ApplyImageSettings();
+                UpdateConfigMenus();
+            }
+        }
+        
+        private void ToggleNoSpeedLimit_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.NoSpeedLimit = menuItem.Checked;
+                config.Save();
+                UpdateConfigMenus();
+                
+                // Clear audio buffer when toggling to prevent desync
+                audioManager?.ClearBuffer();
+            }
+        }
+        
+        private void OpenSpeedControl_Click(object? sender, EventArgs e)
+        {
+            if (speedControlForm == null || speedControlForm.IsDisposed)
+            {
+                speedControlForm = new SpeedControlForm();
+                speedControlForm.SpeedChanged += SpeedControlForm_SpeedChanged;
+                speedControlForm.FormClosed += (s, args) =>
+                {
+                    hasSpeedOverride = false;
+                    speedOverride = 1.0f;
+                };
+            }
+            
+            hasSpeedOverride = true;
+            speedControlForm.Show(this);
+            speedControlForm.Focus();
+        }
+        
+        private void SpeedControlForm_SpeedChanged(object? sender, float speed)
+        {
+            speedOverride = speed;
+            hasSpeedOverride = true;
+        }
+        
+        private void ToggleShowFps_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.ShowFps = menuItem.Checked;
                 config.Save();
                 ApplyImageSettings();
                 UpdateConfigMenus();
@@ -1172,6 +1367,9 @@ namespace BrokenNes.Windows
                 // Apply aspect ratio setting
                 dxRenderer.ForceNativeAspectRatio = config.ForceNativeAspectRatio;
                 
+                // Apply FPS display setting
+                dxRenderer.ShowFps = config.ShowFps;
+                
                 // Force a redraw
                 if (frameBuffer != null)
                 {
@@ -1214,6 +1412,10 @@ namespace BrokenNes.Windows
         {
             if (nes == null) return;
             
+            // Ensure form has focus so keyboard input works immediately
+            this.Activate(); 
+            this.Focus();
+            
             isEmulationRunning = true;
             isPaused = false;
             
@@ -1227,7 +1429,6 @@ namespace BrokenNes.Windows
             emulatorThread.Start();
             
             // Start render timer on UI thread
-            renderTimer?.Start();
             audioManager?.Play();
         }
         
@@ -1241,7 +1442,6 @@ namespace BrokenNes.Windows
                 emulatorThread.Join(1000);
             }
             
-            renderTimer?.Stop();
             audioManager?.Stop();
         }
         
@@ -1250,39 +1450,104 @@ namespace BrokenNes.Windows
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             const double targetFrameTime = 1.0 / 60.0; // 60 FPS
             double accumulator = 0;
+            int framesSinceReport = 0;
+            var reportStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
+            // Initialize FPS tracking for audio speed adjustment
+            fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            fpsFrameCount = 0;
             
             while (isEmulationRunning)
             {
-                if (isPaused)
+                using (PerformanceProfiler.Time("Frame"))
                 {
-                    Thread.Sleep(10);
-                    stopwatch.Restart();
-                    accumulator = 0;
-                    continue;
-                }
+                    if (isPaused)
+                    {
+                        Thread.Sleep(10);
+                        stopwatch.Restart();
+                        accumulator = 0;
+                        continue;
+                    }
                 
                 double deltaTime = stopwatch.Elapsed.TotalSeconds;
                 stopwatch.Restart();
                 accumulator += deltaTime;
                 
-                // Run emulation frames to catch up
-                while (accumulator >= targetFrameTime && isEmulationRunning && !isPaused)
+                // Determine how many frames to run
+                int framesToRun = 0;
+                if (config.NoSpeedLimit)
                 {
-                    lock (emulationLock)
+                    // Run as fast as possible - always run at least one frame
+                    framesToRun = 1;
+                    accumulator = 0; // Reset accumulator when running unlimited
+                }
+                else if (hasSpeedOverride)
+                {
+                    // Speed override active - run frames based on modified frame time
+                    double effectiveFrameTime = targetFrameTime / speedOverride;
+                    while (accumulator >= effectiveFrameTime)
                     {
-                        if (nes != null)
+                        framesToRun++;
+                        accumulator -= effectiveFrameTime;
+                    }
+                }
+                else
+                {
+                    // Normal speed - run frames based on accumulator
+                    while (accumulator >= targetFrameTime)
+                    {
+                        framesToRun++;
+                        accumulator -= targetFrameTime;
+                    }
+                }
+                
+                // Run the calculated number of frames
+                for (int f = 0; f < framesToRun && isEmulationRunning && !isPaused; f++)
+                {
+                    if (nes != null)
+                    {
+                        try
                         {
-                            try
+                            // Poll input manager for controller and update NES button states
+                            if (inputManager != null)
                             {
-                                // Enable static for test.nes ROM (like in web version)
-                                bool isTestRom = string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
-                                nes.EnableStatic(isTestRom);
-                                
-                                // Run one frame of emulation
+                                using (PerformanceProfiler.Time("Input.Poll"))
+                                {
+                                    inputManager.Poll();
+                                    for (int i = 0; i < 8; i++)
+                                    {
+                                        nes.SetButton(0, i, inputManager.GetButton(i));
+                                    }
+                                }
+                            }
+                            
+                            // Enable static for test.nes ROM (like in web version)
+                            bool isTestRom = string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+                            nes.EnableStatic(isTestRom);
+                            
+                            // Run one frame of emulation
+                            using (PerformanceProfiler.Time("NES.RunFrame"))
+                            {
                                 nes.RunFrame();
+                            }
+                            
+                            // Track FPS for audio speed adjustment
+                            fpsFrameCount++;
+                            if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.25)
+                            {
+                                currentFps = fpsFrameCount / fpsStopwatch.Elapsed.TotalSeconds;
+                                fpsFrameCount = 0;
+                                fpsStopwatch.Restart();
                                 
-                                // Process audio samples from APU
-                                if (audioManager != null)
+                                // Update audio speed multiplier based on actual FPS
+                                float speedMultiplier = (float)(currentFps / 60.0);
+                                audioManager?.SetSpeedMultiplier(speedMultiplier);
+                            }
+                            
+                            // Process audio samples from APU
+                            if (audioManager != null)
+                            {
+                                using (PerformanceProfiler.Time("Audio.Queue"))
                                 {
                                     try
                                     {
@@ -1297,58 +1562,122 @@ namespace BrokenNes.Windows
                                         Console.WriteLine($"Audio error: {audioEx.Message}");
                                     }
                                 }
-                                
-                                // Get the framebuffer from the PPU and copy to backbuffer
+                            }
+                            
+                            // Get the framebuffer from the PPU and copy to backbuffer
+                            // Only lock when actually copying to reduce contention
+                            using (PerformanceProfiler.Time("FrameBuffer.Copy"))
+                            {
                                 byte[]? nesFrameBuffer = nes.GetFrameBuffer();
                                 if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && backBuffer != null)
                                 {
-                                    backBuffer.CopyFromBytes(nesFrameBuffer);
+                                    lock (emulationLock)
+                                    {
+                                        backBuffer.CopyFromBytes(nesFrameBuffer);
+                                    }
+                                    
+                                    // Render immediately after frame is ready (marshal to UI thread)
+                                    if (InvokeRequired)
+                                    {
+                                        BeginInvoke(new Action(RenderFrame));
+                                    }
+                                    else
+                                    {
+                                        RenderFrame();
+                                    }
                                 }
                             }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Emulation error: {ex.Message}");
-                                isEmulationRunning = false;
-                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Emulation error: {ex.Message}");
+                            isEmulationRunning = false;
                         }
                     }
-                    
-                    accumulator -= targetFrameTime;
                 }
                 
-                // Small sleep to prevent CPU spinning
-                if (accumulator < targetFrameTime)
+                // Check if emulator has crashed and throttle appropriately
+                if (nes != null && nes.IsCrashed())
                 {
-                    int sleepTime = (int)((targetFrameTime - accumulator) * 1000 * 0.8);
+                    // When crashed, cap at 60 FPS to prevent UI thread flooding
+                    Thread.Sleep(16); // ~60 FPS
+                    accumulator = 0; // Reset accumulator to prevent catchup frames
+                    
+                    // Render the crash screen once per frame
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(RenderFrame));
+                    }
+                    else
+                    {
+                        RenderFrame();
+                    }
+                    continue; // Skip normal throttling logic
+                }
+                
+                    // Save periodic profiling report every 10 seconds
+                    framesSinceReport++;
+                    if (reportStopwatch.Elapsed.TotalSeconds >= 10.0)
+                    {
+                        var reportPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"performance_report_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                        PerformanceProfiler.SaveReport(reportPath);
+                        reportStopwatch.Restart();
+                        framesSinceReport = 0;
+                    }
+                }
+                
+                // Small sleep to prevent CPU spinning (only when speed limited)
+                double sleepTargetTime = hasSpeedOverride ? (targetFrameTime / speedOverride) : targetFrameTime;
+                if (!config.NoSpeedLimit && accumulator < sleepTargetTime)
+                {
+                    int sleepTime = (int)((sleepTargetTime - accumulator) * 1000 * 0.8);
                     if (sleepTime > 0)
                     {
                         Thread.Sleep(sleepTime);
                     }
                 }
+                else if (config.NoSpeedLimit)
+                {
+                    // Tiny yield to prevent complete CPU lockup but still run fast
+                    Thread.Sleep(0);
+                }
             }
         }
         
-        private void RenderTimer_Tick(object? sender, EventArgs e)
+        private void RenderFrame()
         {
-            if (backBuffer == null || frameBuffer == null) return;
+            if (backBuffer == null || frameBuffer == null || !useDirectX || dxRenderer?.IsReady != true) return;
             
-            try
+            using (PerformanceProfiler.Time("RenderFrame"))
             {
-                // Swap buffers (copy backbuffer to frontbuffer)
-                lock (emulationLock)
+                try
                 {
-                    Array.Copy(backBuffer.Bits, frameBuffer.Bits, backBuffer.Bits.Length);
+                    // Copy backBuffer to frameBuffer and render
+                    lock (emulationLock)
+                    {
+                        Array.Copy(backBuffer.Bits, frameBuffer.Bits, backBuffer.Bits.Length);
+                    }
+                    
+                    // Capture current inputs for display
+                    bool[] currentInputs = new bool[8];
+                    if (inputManager != null)
+                    {
+                        for (int i = 0; i < 8; i++)
+                        {
+                            currentInputs[i] = inputManager.GetButton(i);
+                        }
+                    }
+                    
+                    // Render using DirectX
+                    using (PerformanceProfiler.Time("DirectX.DrawFrame"))
+                    {
+                        dxRenderer.DrawFrame(frameBuffer, currentInputs);
+                    }
                 }
-                
-                // Render using DirectX if available
-                if (useDirectX && dxRenderer?.IsReady == true)
+                catch (Exception ex)
                 {
-                    dxRenderer.DrawFrame(frameBuffer);
+                    Console.WriteLine($"Render error: {ex.Message}");
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Render error: {ex.Message}");
             }
         }
         
@@ -1402,40 +1731,27 @@ namespace BrokenNes.Windows
         
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Space)
+            if (inputManager != null)
             {
-                PauseResume_Click(sender, e);
+                inputManager.OnKeyDown(e.KeyCode);
                 e.Handled = true;
-                return;
-            }
-
-            lock (emulationLock)
-            {
-                if (nes != null && keyMap.TryGetValue(e.KeyCode, out int buttonIndex))
-                {
-                    nes.SetButton(0, buttonIndex, true);
-                    e.Handled = true;
-                }
             }
         }
         
         private void MainForm_KeyUp(object? sender, KeyEventArgs e)
         {
-            lock (emulationLock)
+            if (inputManager != null)
             {
-                if (nes != null && keyMap.TryGetValue(e.KeyCode, out int buttonIndex))
-                {
-                    nes.SetButton(0, buttonIndex, false);
-                    e.Handled = true;
-                }
+                inputManager.OnKeyUp(e.KeyCode);
+                e.Handled = true;
             }
         }
         
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             StopEmulation();
-            renderTimer?.Dispose();
             audioManager?.Dispose();
+            inputManager?.Dispose();
             frameBuffer?.Dispose();
             backBuffer?.Dispose();
             dxRenderer?.Dispose();

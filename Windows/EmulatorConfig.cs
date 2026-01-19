@@ -110,6 +110,46 @@ namespace BrokenNes.Windows
         [JsonPropertyName("soundBuffer")]
         public int SoundBuffer { get; set; } = 2048;
         
+        /// <summary>
+        /// Run emulation as fast as possible (no speed limit)
+        /// </summary>
+        [JsonPropertyName("noSpeedLimit")]
+        public bool NoSpeedLimit { get; set; } = false;
+        
+        /// <summary>
+        /// Display FPS counter on screen
+        /// </summary>
+        [JsonPropertyName("showFps")]
+        public bool ShowFps { get; set; } = false;
+        
+        // Controller configuration
+        /// <summary>
+        /// Player 1 Controller key bindings
+        /// </summary>
+        [JsonPropertyName("p1KeyA")]
+        public string P1KeyA { get; set; } = "Z";
+        
+        [JsonPropertyName("p1KeyB")]
+        public string P1KeyB { get; set; } = "X";
+        
+        [JsonPropertyName("p1KeySelect")]
+        public string P1KeySelect { get; set; } = "Space";
+        
+        [JsonPropertyName("p1KeyStart")]
+        public string P1KeyStart { get; set; } = "Return";
+        
+        [JsonPropertyName("p1KeyUp")]
+        public string P1KeyUp { get; set; } = "Up";
+        
+        [JsonPropertyName("p1KeyDown")]
+        public string P1KeyDown { get; set; } = "Down";
+        
+        [JsonPropertyName("p1KeyLeft")]
+        public string P1KeyLeft { get; set; } = "Left";
+        
+        [JsonPropertyName("p1KeyRight")]
+        public string P1KeyRight { get; set; } = "Right";
+        
         private static readonly string ConfigDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
             "BrokenNes");

@@ -6,20 +6,22 @@ public class Input
 	private byte controllerShift = 0;   // Shift register for reads
 	private bool strobe = false;        // Current strobe bit
 
-	// For Blazor: set input state from UI (Up, Down, Left, Right, A, B, Select, Start)
+	// For Blazor: set input state from UI.
+	// Standard NES Index Order: 0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right
 	public void SetInput(bool[] buttons)
 	{
 		controllerState = 0;
 		if (buttons.Length >= 8)
 		{
-			if (buttons[4]) controllerState |= 1 << 0; // A
-			if (buttons[5]) controllerState |= 1 << 1; // B
-			if (buttons[6]) controllerState |= 1 << 2; // Select
-			if (buttons[7]) controllerState |= 1 << 3; // Start
-			if (buttons[0]) controllerState |= 1 << 4; // Up
-			if (buttons[1]) controllerState |= 1 << 5; // Down
-			if (buttons[2]) controllerState |= 1 << 6; // Left
-			if (buttons[3]) controllerState |= 1 << 7; // Right
+			// Standard mapping: Index matches bit position
+			if (buttons[0]) controllerState |= 1 << 0; // A
+			if (buttons[1]) controllerState |= 1 << 1; // B
+			if (buttons[2]) controllerState |= 1 << 2; // Select
+			if (buttons[3]) controllerState |= 1 << 3; // Start
+			if (buttons[4]) controllerState |= 1 << 4; // Up
+			if (buttons[5]) controllerState |= 1 << 5; // Down
+			if (buttons[6]) controllerState |= 1 << 6; // Left
+			if (buttons[7]) controllerState |= 1 << 7; // Right
 		}
 
 		// If strobe is high, continually refresh shift register to allow rapid polling reflect current state

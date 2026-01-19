@@ -11,6 +11,7 @@
     <AssemblyName>BrokenNes.Windows</AssemblyName>
     <DefineConstants>$(DefineConstants);FAST_EMU;WINFORMS</DefineConstants>
     <ApplicationIcon>BrokenNes.ico</ApplicationIcon>
+    <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,6 +40,7 @@
     <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
     <PackageReference Include="SharpDX.D3DCompiler" Version="4.2.0" />
     <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
     
     <!-- NAudio for audio output -->
     <PackageReference Include="NAudio" Version="2.2.1" />

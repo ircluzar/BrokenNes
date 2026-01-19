@@ -6,6 +6,7 @@ using SharpDX.Direct2D1;
 using SharpDX.Direct3D;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
+using SharpDX.DirectWrite;
 using AlphaMode = SharpDX.Direct2D1.AlphaMode;
 using Device = SharpDX.Direct3D11.Device;
 using Factory = SharpDX.DXGI.Factory;
@@ -22,12 +23,31 @@ namespace BrokenNes.Windows.Rendering
     /// </summary>
     public class NesDirectXRenderer : Control
     {
+        // 8x8 Bayer matrix for optimal ordered dithering (static for performance)
+        private static readonly float[,] BayerMatrix8x8 = new float[8, 8]
+        {
+            {  0f/64f, 48f/64f, 12f/64f, 60f/64f,  3f/64f, 51f/64f, 15f/64f, 63f/64f },
+            { 32f/64f, 16f/64f, 44f/64f, 28f/64f, 35f/64f, 19f/64f, 47f/64f, 31f/64f },
+            {  8f/64f, 56f/64f,  4f/64f, 52f/64f, 11f/64f, 59f/64f,  7f/64f, 55f/64f },
+            { 40f/64f, 24f/64f, 36f/64f, 20f/64f, 43f/64f, 27f/64f, 39f/64f, 23f/64f },
+            {  2f/64f, 50f/64f, 14f/64f, 62f/64f,  1f/64f, 49f/64f, 13f/64f, 61f/64f },
+            { 34f/64f, 18f/64f, 46f/64f, 30f/64f, 33f/64f, 17f/64f, 45f/64f, 29f/64f },
+            { 10f/64f, 58f/64f,  6f/64f, 54f/64f,  9f/64f, 57f/64f,  5f/64f, 53f/64f },
+            { 42f/64f, 26f/64f, 38f/64f, 22f/64f, 41f/64f, 25f/64f, 37f/64f, 21f/64f }
+        };
+
+        // Palette for dithered gradient (4 shades for smooth yet distinct pattern)
+        private static readonly byte[] GradientPalette = new byte[] { 0, 28, 45, 65 };
+
         // DirectX core components
         private Device device;
         private SwapChain swapChain;
         private RenderTarget d2dRenderTarget;
         private SharpDX.Direct2D1.Bitmap gameBitmap;
         private RawRectangleF clientArea;
+        private SharpDX.Direct2D1.Bitmap backgroundBitmap;
+        private int backgroundClientWidth;
+        private int backgroundClientHeight;
         private readonly object renderLock = new object();
 
         // Shader support
@@ -46,6 +66,15 @@ namespace BrokenNes.Windows.Rendering
         // NES display configuration
         private int nesWidth = 256;
         private int nesHeight = 240;
+        
+        // FPS tracking
+        private bool showFps = false;
+        private Stopwatch fpsTimer;
+        private int frameCount = 0;
+        private double currentFps = 0.0;
+        private TextFormat fpsTextFormat;
+        private SolidColorBrush fpsTextBrush;
+        private bool[] currentInputState = new bool[8];
         
         // Interpolation mode for Direct2D rendering
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -80,6 +109,16 @@ namespace BrokenNes.Windows.Rendering
         public float ShaderStrength { get; set; } = 2.0f;
         
         /// <summary>
+        /// Gets or sets whether to display FPS counter
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool ShowFps
+        {
+            get => showFps;
+            set => showFps = value;
+        }
+        
+        /// <summary>
         /// Gets the currently active shader type
         /// </summary>
         public NesShaderManager.ShaderType CurrentShaderType => currentShaderType;
@@ -93,6 +132,7 @@ namespace BrokenNes.Windows.Rendering
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque | ControlStyles.UserPaint, true);
             ResizeRedraw = true;
+            fpsTimer = Stopwatch.StartNew();
         }
 
         /// <summary>
@@ -175,6 +215,20 @@ namespace BrokenNes.Windows.Rendering
 
             // Create render target view for shader rendering
             renderTargetView = new RenderTargetView(device, backBuffer);
+            
+            // Create text format for FPS display
+            var writeFactory = new SharpDX.DirectWrite.Factory();
+            fpsTextFormat = new TextFormat(writeFactory, "Consolas", 
+                SharpDX.DirectWrite.FontWeight.Bold, 
+                SharpDX.DirectWrite.FontStyle.Normal, 
+                SharpDX.DirectWrite.FontStretch.Normal, 
+                16f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
+                ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Near
+            };
+            fpsTextBrush = new SolidColorBrush(d2dRenderTarget, new RawColor4(0.2f, 1, 0.2f, 1)); // Bright green
+            writeFactory.Dispose();
 
             factory.Dispose();
             surface.Dispose();
@@ -261,31 +315,55 @@ namespace BrokenNes.Windows.Rendering
         /// Render a frame from the NES emulator
         /// </summary>
         /// <param name="frameBuffer">The NES frame buffer as a DirectBitmap</param>
-        public void DrawFrame(DirectBitmap frameBuffer)
+        /// <param name="inputState">Current state of controller buttons</param>
+        public void DrawFrame(DirectBitmap frameBuffer, bool[] inputState = null)
         {
-            lock (renderLock)
+            using (BrokenNes.Windows.PerformanceProfiler.Time("DX.DrawFrame"))
             {
-                if (!IsReady || frameBuffer == null) return;
+                lock (renderLock)
+                {
+                    if (!IsReady || frameBuffer == null) return;
 
-                try
-                {
-                    if (UseShader && shaderManager != null && renderTargetView != null)
+                    if (inputState != null && inputState.Length >= 8)
                     {
-                        DrawWithShader(frameBuffer);
+                        Array.Copy(inputState, currentInputState, 8);
                     }
-                    else
+
+                    // Update FPS counter
+                    frameCount++;
+                    if (fpsTimer.ElapsedMilliseconds >= 1000)
                     {
-                        DrawDirect2D(frameBuffer);
+                        currentFps = frameCount / (fpsTimer.ElapsedMilliseconds / 1000.0);
+                        frameCount = 0;
+                        fpsTimer.Restart();
                     }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Render error: {ex.Message}");
-                    // Try to recover by falling back to Direct2D
-                    if (UseShader)
+
+                    try
                     {
-                        useShader = false;
-                        DrawDirect2D(frameBuffer);
+                        if (UseShader && shaderManager != null && renderTargetView != null)
+                        {
+                            using (BrokenNes.Windows.PerformanceProfiler.Time("DX.DrawWithShader"))
+                            {
+                                DrawWithShader(frameBuffer);
+                            }
+                        }
+                        else
+                        {
+                            using (BrokenNes.Windows.PerformanceProfiler.Time("DX.DrawDirect2D"))
+                            {
+                                DrawDirect2D(frameBuffer);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Render error: {ex.Message}");
+                        // Try to recover by falling back to Direct2D
+                        if (UseShader)
+                        {
+                            useShader = false;
+                            DrawDirect2D(frameBuffer);
+                        }
                     }
                 }
             }
@@ -294,9 +372,10 @@ namespace BrokenNes.Windows.Rendering
         private void DrawDirect2D(DirectBitmap frameBuffer)
         {
             if (d2dRenderTarget == null) return;
-            
+
+            EnsureBackground();
             d2dRenderTarget.BeginDraw();
-            d2dRenderTarget.Clear(SharpDX.Color.Black);
+            DrawBackground();
 
             // Copy frame buffer data to Direct2D bitmap
             int stride = nesWidth * 4;
@@ -305,8 +384,17 @@ namespace BrokenNes.Windows.Rendering
             // Calculate destination rectangle based on settings
             RawRectangleF destRect = CalculateDestinationRect();
 
+            // Draw glow effect around the NES render
+            DrawGlowEffect(destRect);
+
             // Draw with calculated rectangle
             d2dRenderTarget.DrawBitmap(gameBitmap, destRect, 1f, InterpolationMode);
+
+            // Draw FPS counter if enabled
+            if (showFps)
+            {
+                DrawFpsCounter();
+            }
 
             d2dRenderTarget.EndDraw();
             swapChain.Present(0, PresentFlags.None);
@@ -363,8 +451,202 @@ namespace BrokenNes.Windows.Rendering
             };
         }
 
+        private void EnsureBackground()
+        {
+            if (d2dRenderTarget == null || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+            {
+                return;
+            }
+
+            if (backgroundBitmap != null && backgroundClientWidth == ClientSize.Width && backgroundClientHeight == ClientSize.Height)
+            {
+                return;
+            }
+
+            GenerateBackgroundTexture();
+        }
+
+        private void GenerateBackgroundTexture()
+        {
+            backgroundBitmap?.Dispose();
+
+            // Use NES resolution for pixelated background
+            int logicalWidth = 256;
+            int logicalHeight = 240;
+
+            var pixelData = new byte[logicalWidth * logicalHeight * 4];
+            float centerX = logicalWidth * 0.5f;
+            float centerY = logicalHeight * 0.5f;
+            float maxRadius = (float)Math.Sqrt(centerX * centerX + centerY * centerY);
+            int paletteSize = GradientPalette.Length;
+
+            // Pre-calculate for performance
+            float invMaxRadius = 1.0f / maxRadius;
+            int totalPixels = logicalWidth * logicalHeight;
+
+            for (int i = 0; i < totalPixels; i++)
+            {
+                int x = i % logicalWidth;
+                int y = i / logicalWidth;
+                
+                // Calculate distance from center
+                float dx = x - centerX;
+                float dy = y - centerY;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                
+                // Create sophisticated gradient: radial with subtle geometric influence
+                float radial = 1.0f - Math.Min(1.0f, dist * invMaxRadius);
+                float angular = (float)Math.Atan2(dy, dx) / (float)Math.PI; // -1 to 1
+                float geometric = (float)Math.Cos(angular * 4.0) * 0.08f; // Subtle 4-pointed star pattern
+                
+                // Combine patterns for elegant gradient (0 = edge, 1 = center)
+                float intensity = radial * radial; // Square for more dramatic falloff
+                intensity = intensity * 0.35f + geometric * intensity; // Add geometric interest
+                intensity = Math.Clamp(intensity, 0f, 1f);
+                
+                // Map intensity to palette space (0 to paletteSize-1)
+                float paletteFloat = intensity * (paletteSize - 1);
+                
+                // 8x8 Bayer matrix ordered dithering
+                int bayerX = x & 7; // Fast modulo 8
+                int bayerY = y & 7;
+                float threshold = BayerMatrix8x8[bayerY, bayerX];
+                
+                // Dither between adjacent palette colors
+                float fractional = paletteFloat - (float)Math.Floor(paletteFloat);
+                int paletteIndex = (int)paletteFloat;
+                
+                // Apply dithering threshold
+                if (fractional > threshold && paletteIndex < paletteSize - 1)
+                {
+                    paletteIndex++;
+                }
+                
+                // Clamp and get final color
+                paletteIndex = Math.Clamp(paletteIndex, 0, paletteSize - 1);
+                byte c = GradientPalette[paletteIndex];
+                
+                int offset = i * 4;
+                pixelData[offset + 0] = c; // B
+                pixelData[offset + 1] = c; // G
+                pixelData[offset + 2] = c; // R
+                pixelData[offset + 3] = 255; // A
+            }
+
+            using (var stream = new DataStream(pixelData.Length, true, true))
+            {
+                stream.Write(pixelData, 0, pixelData.Length);
+                stream.Position = 0;
+
+                var props = new BitmapProperties(new PixelFormat(Format.B8G8R8A8_UNorm, AlphaMode.Ignore));
+                backgroundBitmap = new SharpDX.Direct2D1.Bitmap(
+                    d2dRenderTarget,
+                    new Size2(logicalWidth, logicalHeight),
+                    stream,
+                    logicalWidth * 4,
+                    props);
+            }
+
+            backgroundClientWidth = ClientSize.Width;
+            backgroundClientHeight = ClientSize.Height;
+        }
+
+        private void DrawBackground()
+        {
+            if (d2dRenderTarget == null || backgroundBitmap == null) return;
+
+            var dest = new RawRectangleF
+            {
+                Left = 0,
+                Top = 0,
+                Right = ClientSize.Width,
+                Bottom = ClientSize.Height
+            };
+
+            d2dRenderTarget.DrawBitmap(backgroundBitmap, dest, 1f, BitmapInterpolationMode.NearestNeighbor);
+        }
+        
+        private void DrawFpsCounter()
+        {
+            if (d2dRenderTarget == null || fpsTextFormat == null || fpsTextBrush == null) return;
+            
+            string fpsText = $"FPS: {currentFps:F1}";
+            
+            // Construct input string: B A - + ↑ ↓ ← →
+            // Indices: 0=A, 1=B, 2=Select, 3=Start, 4=Up, 5=Down, 6=Left, 7=Right
+            string inputText = "";
+            inputText += currentInputState[1] ? "B " : "  ";
+            inputText += currentInputState[0] ? "A " : "  ";
+            inputText += currentInputState[2] ? "- " : "  ";
+            inputText += currentInputState[3] ? "+ " : "  ";
+            inputText += currentInputState[4] ? "↑ " : "  ";
+            inputText += currentInputState[5] ? "↓ " : "  ";
+            inputText += currentInputState[6] ? "← " : "  ";
+            inputText += currentInputState[7] ? "→" : " ";
+            
+            // Position at bottom left
+            float bottom = ClientSize.Height - 10;
+            float top = bottom - 60; // Increased height to accommodate two lines
+            var textRect = new RawRectangleF(10, top, 250, bottom);
+            
+            string fullText = fpsText + "\n" + inputText;
+            
+            // Draw shadow for better visibility
+            using (var shadowBrush = new SolidColorBrush(d2dRenderTarget, new RawColor4(0, 0, 0, 0.8f)))
+            {
+                var shadowRect = new RawRectangleF(11, top + 1, 251, bottom + 1);
+                d2dRenderTarget.DrawText(fullText, fpsTextFormat, shadowRect, shadowBrush);
+            }
+            
+            // Draw main text
+            d2dRenderTarget.DrawText(fullText, fpsTextFormat, textRect, fpsTextBrush);
+        }
+
+        private void DrawGlowEffect(RawRectangleF destRect)
+        {
+            if (d2dRenderTarget == null) return;
+
+            // Create a solid black brush for the glow
+            using (var blackBrush = new SharpDX.Direct2D1.SolidColorBrush(d2dRenderTarget, new RawColor4(0, 0, 0, 1)))
+            {
+                float glowSize = 8f; // Glow size in pixels
+                int glowLayers = 4; // Number of glow layers
+
+                // Draw multiple layers with increasing size and decreasing opacity for smooth glow
+                for (int i = glowLayers; i > 0; i--)
+                {
+                    float currentGlow = (glowSize * i) / glowLayers;
+                    float opacity = 0.6f * (i / (float)glowLayers);
+                    
+                    var glowRect = new RawRectangleF
+                    {
+                        Left = destRect.Left - currentGlow,
+                        Top = destRect.Top - currentGlow,
+                        Right = destRect.Right + currentGlow,
+                        Bottom = destRect.Bottom + currentGlow
+                    };
+
+                    blackBrush.Opacity = opacity;
+                    d2dRenderTarget.DrawRectangle(glowRect, blackBrush, currentGlow * 2);
+                }
+            }
+        }
+
         private void DrawWithShader(DirectBitmap frameBuffer)
         {
+            EnsureBackground();
+            
+            // Calculate destination rectangle for glow effect
+            var destRect = CalculateDestinationRect();
+            
+            if (d2dRenderTarget != null)
+            {
+                d2dRenderTarget.BeginDraw();
+                DrawBackground();
+                DrawGlowEffect(destRect);
+                d2dRenderTarget.EndDraw();
+            }
+
             var context = device.ImmediateContext;
 
             // Update shader texture with frame buffer data
@@ -386,9 +668,6 @@ namespace BrokenNes.Windows.Rendering
             
             context.UnmapSubresource(shaderTexture, 0);
 
-            // Calculate destination rectangle based on image settings
-            var destRect = CalculateDestinationRect();
-
             // Setup shader constants
             var constants = new NesShaderManager.ShaderConstants
             {
@@ -407,7 +686,6 @@ namespace BrokenNes.Windows.Rendering
                 1.0f);
             context.Rasterizer.SetViewport(viewport);
             context.OutputMerger.SetRenderTargets(renderTargetView);
-            context.ClearRenderTargetView(renderTargetView, new Color4(0, 0, 0, 1));
 
             // Apply shader and draw
             shaderManager.ApplyShader(context, shaderTextureView, constants, hasPreviousFrame ? previousShaderTextureView : shaderTextureView);
@@ -418,6 +696,14 @@ namespace BrokenNes.Windows.Rendering
                 // Seed previous frame after first render
                 context.CopyResource(previousShaderTexture, shaderTexture);
                 hasPreviousFrame = true;
+            }
+            
+            // Draw FPS counter if enabled (using Direct2D overlay)
+            if (showFps && d2dRenderTarget != null)
+            {
+                d2dRenderTarget.BeginDraw();
+                DrawFpsCounter();
+                d2dRenderTarget.EndDraw();
             }
 
             // Present
@@ -467,17 +753,23 @@ namespace BrokenNes.Windows.Rendering
             {
                 IsReady = false;
                 
+                fpsTextFormat?.Dispose();
+                fpsTextBrush?.Dispose();
                 shaderManager?.Dispose();
                 shaderTexture?.Dispose();
                 shaderTextureView?.Dispose();
                 previousShaderTexture?.Dispose();
                 previousShaderTextureView?.Dispose();
                 renderTargetView?.Dispose();
+                backgroundBitmap?.Dispose();
                 gameBitmap?.Dispose();
                 d2dRenderTarget?.Dispose();
                 swapChain?.Dispose();
                 device?.Dispose();
                 hasPreviousFrame = false;
+                backgroundBitmap = null!;
+                backgroundClientWidth = 0;
+                backgroundClientHeight = 0;
             }
         }
 
