@@ -10,6 +10,7 @@
     <RootNamespace>BrokenNes.Windows</RootNamespace>
     <AssemblyName>BrokenNes.Windows</AssemblyName>
     <DefineConstants>$(DefineConstants);FAST_EMU;WINFORMS</DefineConstants>
+    <ApplicationIcon>BrokenNes.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,6 +49,12 @@
     <None Include="Shaders\**\*.hlsl">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="BrokenNes.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

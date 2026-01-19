@@ -53,7 +53,23 @@ namespace BrokenNes.Windows.Rendering
             VHS,     // Broken VCR shader
             EXE,     // Creepy Look shader
             BUMP,    // Pseudo Bump shader
-            RGBX     // Chromatic Vector shader
+            RGBX,    // Chromatic Vector shader
+            CCC,     // Color Cycle Carousel
+            CRY,     // Crystalline refraction
+            CRZ,     // Crystal glass refraction
+            DOT,     // Circular shard refraction
+            LCD,     // Aging LCD
+            PX,      // Passthrough
+            CNMA,    // Cinematic grade
+            HUE,     // Hue inversion/rotation
+            LAT,     // Lattice refraction
+            LSD,     // Psychedelic warp
+            MSH,     // Pixel mush temporal glitch
+            SPK,     // Prism sparkle
+            TRI,     // Faux extrusion
+            WARM,    // Extra warmth grade
+            WTR,     // Water ripple field
+            SixteenB // 16-bit upgrade (16B)
         }
 
         /// <summary>
@@ -118,6 +134,22 @@ namespace BrokenNes.Windows.Rendering
                 ShaderType.EXE => "ExeShader.hlsl",
                 ShaderType.BUMP => "BumpShader.hlsl",
                 ShaderType.RGBX => "RgbxShader.hlsl",
+                ShaderType.CCC => "CccShader.hlsl",
+                ShaderType.CRY => "CryShader.hlsl",
+                ShaderType.CRZ => "CrzShader.hlsl",
+                ShaderType.DOT => "DotShader.hlsl",
+                ShaderType.LCD => "LcdShader.hlsl",
+                ShaderType.PX => "PxShader.hlsl",
+                ShaderType.CNMA => "CnmaShader.hlsl",
+                ShaderType.HUE => "HueShader.hlsl",
+                ShaderType.LAT => "LatShader.hlsl",
+                ShaderType.LSD => "LsdShader.hlsl",
+                ShaderType.MSH => "MshShader.hlsl",
+                ShaderType.SPK => "SpkShader.hlsl",
+                ShaderType.TRI => "TriShader.hlsl",
+                ShaderType.WARM => "WarmShader.hlsl",
+                ShaderType.WTR => "WtrShader.hlsl",
+                ShaderType.SixteenB => "SixteenBShader.hlsl",
                 _ => "BldShader.hlsl"
             };
             return GetShaderFilePath(fileName);
@@ -307,7 +339,7 @@ namespace BrokenNes.Windows.Rendering
         /// <param name="context">Device context</param>
         /// <param name="textureView">The NES framebuffer texture</param>
         /// <param name="constants">Shader constants (time, strength, etc.)</param>
-        public void ApplyShader(DeviceContext context, ShaderResourceView textureView, ShaderConstants constants)
+        public void ApplyShader(DeviceContext context, ShaderResourceView textureView, ShaderConstants constants, ShaderResourceView previousTextureView = null)
         {
             // Update constant buffer
             var dataBox = context.MapSubresource(constantBuffer, 0, MapMode.WriteDiscard, D3D11MapFlags.None);
@@ -327,6 +359,7 @@ namespace BrokenNes.Windows.Rendering
             context.PixelShader.Set(pixelShader);
             context.PixelShader.SetConstantBuffer(0, constantBuffer);
             context.PixelShader.SetShaderResource(0, textureView);
+            context.PixelShader.SetShaderResource(1, previousTextureView ?? textureView);
             context.PixelShader.SetSampler(0, samplerState);
         }
 

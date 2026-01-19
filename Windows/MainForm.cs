@@ -28,6 +28,7 @@ namespace BrokenNes.Windows
         private string currentRomPath = string.Empty;
         private EmulatorConfig config = new EmulatorConfig();
         private bool useDirectX = true;
+        private string? quickSaveState; // Quick save slot
         
         // Menu items
         private ToolStripMenuItem shaderMenu;
@@ -73,6 +74,7 @@ namespace BrokenNes.Windows
             this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;
+            this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
             
             // Create menu bar
             var menuStrip = new MenuStrip();
@@ -95,6 +97,26 @@ namespace BrokenNes.Windows
             var resetItem = new ToolStripMenuItem("&Reset Emulator", null, ResetEmulator_Click);
             resetItem.ShortcutKeys = Keys.Control | Keys.R;
             emulatorMenu.DropDownItems.Add(resetItem);
+            
+            emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var loadStateItem = new ToolStripMenuItem("Load State...", null, LoadStateFromFile_Click);
+            loadStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.L;
+            emulatorMenu.DropDownItems.Add(loadStateItem);
+            
+            var saveStateItem = new ToolStripMenuItem("Save State...", null, SaveStateToFile_Click);
+            saveStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.S;
+            emulatorMenu.DropDownItems.Add(saveStateItem);
+            
+            emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var quickLoadItem = new ToolStripMenuItem("Quick Load State", null, QuickLoadState_Click);
+            quickLoadItem.ShortcutKeys = Keys.F5;
+            emulatorMenu.DropDownItems.Add(quickLoadItem);
+            
+            var quickSaveItem = new ToolStripMenuItem("Quick Save State", null, QuickSaveState_Click);
+            quickSaveItem.ShortcutKeys = Keys.F7;
+            emulatorMenu.DropDownItems.Add(quickSaveItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -811,6 +833,177 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void LoadStateFromFile_Click(object? sender, EventArgs e)
+        {
+            if (nes == null)
+            {
+                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            
+            using var openDialog = new OpenFileDialog
+            {
+                Filter = "State Files (*.state)|*.state|All Files (*.*)|*.*",
+                Title = "Load Save State",
+                DefaultExt = "state"
+            };
+            
+            if (openDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    string stateJson = File.ReadAllText(openDialog.FileName);
+                    
+                    // Pause emulation during state load
+                    bool wasPaused = isPaused;
+                    isPaused = true;
+                    
+                    lock (emulationLock)
+                    {
+                        nes.LoadState(stateJson);
+                    }
+                    
+                    isPaused = wasPaused;
+                    
+                    this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Loaded]";
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to load state:\n{ex.Message}", "Load State Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+        
+        private void SaveStateToFile_Click(object? sender, EventArgs e)
+        {
+            if (nes == null)
+            {
+                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            
+            using var saveDialog = new SaveFileDialog
+            {
+                Filter = "State Files (*.state)|*.state|All Files (*.*)|*.*",
+                Title = "Save Save State",
+                DefaultExt = "state",
+                FileName = Path.GetFileNameWithoutExtension(currentRomPath) + ".state"
+            };
+            
+            if (saveDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    // Pause emulation during state save
+                    bool wasPaused = isPaused;
+                    isPaused = true;
+                    
+                    string stateJson;
+                    lock (emulationLock)
+                    {
+                        stateJson = nes.SaveState();
+                    }
+                    
+                    isPaused = wasPaused;
+                    
+                    File.WriteAllText(saveDialog.FileName, stateJson);
+                    
+                    this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Saved]";
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save state:\n{ex.Message}", "Save State Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+        
+        private void QuickSaveState_Click(object? sender, EventArgs e)
+        {
+            if (nes == null)
+            {
+                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            
+            try
+            {
+                // Pause emulation during state save
+                bool wasPaused = isPaused;
+                isPaused = true;
+                
+                lock (emulationLock)
+                {
+                    quickSaveState = nes.SaveState();
+                }
+                
+                isPaused = wasPaused;
+                
+                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [Quick Saved]";
+                
+                // Clear the status message after 2 seconds
+                Task.Delay(2000).ContinueWith(_ => 
+                {
+                    if (this.InvokeRequired)
+                        this.Invoke(() => this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}");
+                    else
+                        this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}";
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to quick save state:\n{ex.Message}", "Quick Save Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        
+        private void QuickLoadState_Click(object? sender, EventArgs e)
+        {
+            if (nes == null)
+            {
+                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(quickSaveState))
+            {
+                MessageBox.Show("No quick save state available. Use Quick Save State (F7) first.", 
+                    "No Quick Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            
+            try
+            {
+                // Pause emulation during state load
+                bool wasPaused = isPaused;
+                isPaused = true;
+                
+                lock (emulationLock)
+                {
+                    nes.LoadState(quickSaveState);
+                }
+                
+                isPaused = wasPaused;
+                
+                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [Quick Loaded]";
+                
+                // Clear the status message after 2 seconds
+                Task.Delay(2000).ContinueWith(_ => 
+                {
+                    if (this.InvokeRequired)
+                        this.Invoke(() => this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}");
+                    else
+                        this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}";
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to quick load state:\n{ex.Message}", "Quick Load Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        
         private void PauseResume_Click(object? sender, EventArgs e)
         {
             if (!isEmulationRunning) return;
@@ -1081,6 +1274,10 @@ namespace BrokenNes.Windows
                         {
                             try
                             {
+                                // Enable static for test.nes ROM (like in web version)
+                                bool isTestRom = string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+                                nes.EnableStatic(isTestRom);
+                                
                                 // Run one frame of emulation
                                 nes.RunFrame();
                                 

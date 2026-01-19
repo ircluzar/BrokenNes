@@ -80,8 +80,9 @@ namespace BrokenNes.Windows.Rendering
 
         /// <summary>
         /// Copies pixel data from a byte array (used for NES emulator output)
+        /// Converts from RGBA format (NES output) to BGRA format (Windows/DirectX)
         /// </summary>
-        /// <param name="source">Source byte array (RGBA or BGRA format)</param>
+        /// <param name="source">Source byte array in RGBA format</param>
         public void CopyFromBytes(byte[] source)
         {
             if (source.Length != Bits.Length * 4)
@@ -89,7 +90,18 @@ namespace BrokenNes.Windows.Rendering
                 throw new ArgumentException($"Source array size mismatch. Expected {Bits.Length * 4} bytes, got {source.Length}");
             }
 
-            Buffer.BlockCopy(source, 0, Bits, 0, source.Length);
+            // Convert RGBA to BGRA format by swapping R and B channels
+            for (int i = 0; i < Bits.Length; i++)
+            {
+                int srcIndex = i * 4;
+                byte r = source[srcIndex + 0];
+                byte g = source[srcIndex + 1];
+                byte b = source[srcIndex + 2];
+                byte a = source[srcIndex + 3];
+                
+                // Pack as BGRA (little-endian ARGB32 on Windows)
+                Bits[i] = (a << 24) | (r << 16) | (g << 8) | b;
+            }
         }
 
         /// <summary>

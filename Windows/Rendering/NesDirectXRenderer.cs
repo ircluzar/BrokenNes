@@ -34,11 +34,14 @@ namespace BrokenNes.Windows.Rendering
         private NesShaderManager shaderManager;
         private Texture2D shaderTexture;
         private ShaderResourceView shaderTextureView;
+        private Texture2D previousShaderTexture;
+        private ShaderResourceView previousShaderTextureView;
         private RenderTargetView renderTargetView;
         private Stopwatch shaderTimer;
         private bool useShader = true;
         private bool shaderAvailable = false;
         private NesShaderManager.ShaderType currentShaderType = NesShaderManager.ShaderType.BLD;
+        private bool hasPreviousFrame = false;
         
         // NES display configuration
         private int nesWidth = 256;
@@ -202,6 +205,10 @@ namespace BrokenNes.Windows.Rendering
 
                 shaderTexture = new Texture2D(device, textureDesc);
                 shaderTextureView = new ShaderResourceView(device, shaderTexture);
+
+                previousShaderTexture = new Texture2D(device, textureDesc);
+                previousShaderTextureView = new ShaderResourceView(device, previousShaderTexture);
+                hasPreviousFrame = false;
                 
                 shaderAvailable = true;
             }
@@ -213,6 +220,8 @@ namespace BrokenNes.Windows.Rendering
                 shaderManager?.Dispose();
                 shaderTexture?.Dispose();
                 shaderTextureView?.Dispose();
+                previousShaderTexture?.Dispose();
+                previousShaderTextureView?.Dispose();
             }
         }
 
@@ -359,6 +368,11 @@ namespace BrokenNes.Windows.Rendering
             var context = device.ImmediateContext;
 
             // Update shader texture with frame buffer data
+            if (hasPreviousFrame)
+            {
+                context.CopyResource(previousShaderTexture, shaderTexture);
+            }
+
             var dataBox = context.MapSubresource(shaderTexture, 0, MapMode.WriteDiscard, D3D11MapFlags.None);
             
             int stride = nesWidth * 4;
@@ -396,8 +410,15 @@ namespace BrokenNes.Windows.Rendering
             context.ClearRenderTargetView(renderTargetView, new Color4(0, 0, 0, 1));
 
             // Apply shader and draw
-            shaderManager.ApplyShader(context, shaderTextureView, constants);
+            shaderManager.ApplyShader(context, shaderTextureView, constants, hasPreviousFrame ? previousShaderTextureView : shaderTextureView);
             context.Draw(4, 0);
+
+            if (!hasPreviousFrame)
+            {
+                // Seed previous frame after first render
+                context.CopyResource(previousShaderTexture, shaderTexture);
+                hasPreviousFrame = true;
+            }
 
             // Present
             swapChain.Present(0, PresentFlags.None);
@@ -449,11 +470,14 @@ namespace BrokenNes.Windows.Rendering
                 shaderManager?.Dispose();
                 shaderTexture?.Dispose();
                 shaderTextureView?.Dispose();
+                previousShaderTexture?.Dispose();
+                previousShaderTextureView?.Dispose();
                 renderTargetView?.Dispose();
                 gameBitmap?.Dispose();
                 d2dRenderTarget?.Dispose();
                 swapChain?.Dispose();
                 device?.Dispose();
+                hasPreviousFrame = false;
             }
         }
 

@@ -72,7 +72,17 @@ namespace BrokenNes.Windows.Rendering
 
             try
             {
-                if (Enum.TryParse<NesShaderManager.ShaderType>(shaderName, true, out var shaderType))
+                var alias = shaderName?.Trim();
+                if (string.Equals(alias, "16B", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (currentRenderer != null)
+                    {
+                        currentRenderer.SwitchShader(NesShaderManager.ShaderType.SixteenB);
+                        return true;
+                    }
+                }
+
+                if (Enum.TryParse<NesShaderManager.ShaderType>(alias, true, out var shaderType))
                 {
                     currentRenderer.SwitchShader(shaderType);
                     return true;
@@ -237,6 +247,102 @@ namespace BrokenNes.Windows.Rendering
                     Name = "RGBX", 
                     DisplayName = "Chromatic Vector",
                     Description = "RGB separation effect"
+                },
+                NesShaderManager.ShaderType.CCC => new ShaderInfo
+                {
+                    Name = "CCC",
+                    DisplayName = "Color Cycle",
+                    Description = "Hue rotation with inverted breaths"
+                },
+                NesShaderManager.ShaderType.CRY => new ShaderInfo
+                {
+                    Name = "CRY",
+                    DisplayName = "Crystalline",
+                    Description = "Facet-driven refraction with dispersion"
+                },
+                NesShaderManager.ShaderType.CRZ => new ShaderInfo
+                {
+                    Name = "CRZ",
+                    DisplayName = "Crystal Glass",
+                    Description = "Sharp glass facets with glints"
+                },
+                NesShaderManager.ShaderType.DOT => new ShaderInfo
+                {
+                    Name = "DOT",
+                    DisplayName = "Circular Shards",
+                    Description = "Overlapping circular refraction field"
+                },
+                NesShaderManager.ShaderType.LCD => new ShaderInfo
+                {
+                    Name = "LCD",
+                    DisplayName = "Aging LCD",
+                    Description = "Horizontal smear, ghost, frost diffusion"
+                },
+                NesShaderManager.ShaderType.PX => new ShaderInfo
+                {
+                    Name = "PX",
+                    DisplayName = "Passthrough",
+                    Description = "Identity shader for baseline"
+                },
+                NesShaderManager.ShaderType.CNMA => new ShaderInfo
+                {
+                    Name = "CNMA",
+                    DisplayName = "Cinematic",
+                    Description = "Filmic exposure and teal/orange grade"
+                },
+                NesShaderManager.ShaderType.HUE => new ShaderInfo
+                {
+                    Name = "HUE",
+                    DisplayName = "Hue Rotation",
+                    Description = "Hue inversion with slow rotation"
+                },
+                NesShaderManager.ShaderType.LAT => new ShaderInfo
+                {
+                    Name = "LAT",
+                    DisplayName = "Lattice",
+                    Description = "Micro-facet tile refraction"
+                },
+                NesShaderManager.ShaderType.LSD => new ShaderInfo
+                {
+                    Name = "LSD",
+                    DisplayName = "Psychedelic",
+                    Description = "Layered warps and chromatic splits"
+                },
+                NesShaderManager.ShaderType.MSH => new ShaderInfo
+                {
+                    Name = "MSH",
+                    DisplayName = "Pixel Mush",
+                    Description = "Temporal block mosh with glitches"
+                },
+                NesShaderManager.ShaderType.SPK => new ShaderInfo
+                {
+                    Name = "SPK",
+                    DisplayName = "Prism Sparkle",
+                    Description = "Edge prism with starfield sparkles"
+                },
+                NesShaderManager.ShaderType.TRI => new ShaderInfo
+                {
+                    Name = "TRI",
+                    DisplayName = "Faux Extrusion",
+                    Description = "Height-from-luma parallax lighting"
+                },
+                NesShaderManager.ShaderType.WARM => new ShaderInfo
+                {
+                    Name = "WARM",
+                    DisplayName = "Extra Warmth",
+                    Description = "Subtle warmth and soft contrast"
+                },
+                NesShaderManager.ShaderType.WTR => new ShaderInfo
+                {
+                    Name = "WTR",
+                    DisplayName = "Water Ripples",
+                    Description = "Compound vector-field warping"
+                },
+                NesShaderManager.ShaderType.SixteenB => new ShaderInfo
+                {
+                    Name = "16B",
+                    DisplayName = "16-Bit Upgrade",
+                    Description = "Edge-aware smoothing with chroma blur"
                 },
                 _ => new ShaderInfo { Name = "Unknown", DisplayName = "Unknown", Description = "Unknown shader" }
             };

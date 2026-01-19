@@ -8,6 +8,7 @@
   <RootNamespace>BrokenNes</RootNamespace>
   <AssemblyName>BrokenNes</AssemblyName>
   <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
   <!-- Performance oriented tweaks -->
   <RunAOTCompilation>true</RunAOTCompilation>
   <WasmEnableSIMD>true</WasmEnableSIMD>
