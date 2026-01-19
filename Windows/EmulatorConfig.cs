@@ -122,6 +122,24 @@ namespace BrokenNes.Windows
         [JsonPropertyName("showFps")]
         public bool ShowFps { get; set; } = false;
         
+        /// <summary>
+        /// Enable performance profiling/telemetry
+        /// </summary>
+        [JsonPropertyName("profilingEnabled")]
+        public bool ProfilingEnabled { get; set; } = false;
+        
+        /// <summary>
+        /// Auto-scramble cores for testing (randomly swaps one core every 420ms)
+        /// </summary>
+        [JsonPropertyName("autoScrambleCores")]
+        public bool AutoScrambleCores { get; set; } = false;
+        
+        /// <summary>
+        /// Crash behavior when the emulator encounters an error (RedScreen, IgnoreErrors, ImagineFix)
+        /// </summary>
+        [JsonPropertyName("crashBehavior")]
+        public string CrashBehavior { get; set; } = "RedScreen";
+        
         // Controller configuration
         /// <summary>
         /// Player 1 Controller key bindings

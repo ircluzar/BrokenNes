@@ -217,6 +217,8 @@ public class PPU_LQ : IPPU
 
     private void RenderBackground(int scanline, bool[] bgMask)
     {
+    // Guard against null during hot-swap
+    if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
     EnsureFrameBuffer();
         if ((PPUMASK & 0x08) == 0) return;
         byte ubIdx = paletteRAM[0]; int ubp = (ubIdx & 0x3F) * 3; byte ubR = PaletteBytes[ubp], ubG = PaletteBytes[ubp + 1], ubB = PaletteBytes[ubp + 2];
@@ -271,6 +273,8 @@ public class PPU_LQ : IPPU
 
     private void RenderSprites(int scanline, bool[] bgMask)
     {
+    // Guard against null during hot-swap
+    if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
     EnsureFrameBuffer();
     bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
         bool isSprite8x16 = (PPUCTRL & 0x20) != 0; System.Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);

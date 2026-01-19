@@ -227,7 +227,7 @@ public class PPU_EIL : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		// Ensure a framebuffer exists before writing pixels
@@ -327,6 +327,8 @@ public class PPU_EIL : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 

@@ -40,6 +40,10 @@ namespace BrokenNes.Windows
         private volatile float speedOverride = 1.0f;
         private volatile bool hasSpeedOverride = false;
         
+        // Auto-scramble cores testing
+        private System.Windows.Forms.Timer? autoScrambleTimer;
+        private Random scrambleRandom = new Random();
+        
         // Menu items
         private ToolStripMenuItem shaderMenu;
         private ToolStripMenuItem apuMenu;
@@ -65,9 +69,9 @@ namespace BrokenNes.Windows
                 // Load config first so settings are available for emulator initialization
                 LoadConfig();
                 Console.WriteLine("LoadConfig completed");
-                
-                // Setup input manager
-                SetupKeyMapping();
+            
+            // Apply profiling configuration
+            PerformanceProfiler.Enabled = config.ProfilingEnabled;
                 Console.WriteLine("SetupKeyMapping completed");
                 
                 // Finally initialize and start emulator
@@ -276,6 +280,21 @@ namespace BrokenNes.Windows
             
             configMenu.DropDownItems.Add(controllersMenu);
             
+            // Crash Behavior submenu
+            var crashBehaviorMenu = new ToolStripMenuItem("C&rash Behavior");
+            
+            var redScreenItem = new ToolStripMenuItem("Red Screen", null, (s, e) => SetCrashBehavior("RedScreen"));
+            crashBehaviorMenu.DropDownItems.Add(redScreenItem);
+            
+            var ignoreErrorsItem = new ToolStripMenuItem("Ignore Errors", null, (s, e) => SetCrashBehavior("IgnoreErrors"));
+            crashBehaviorMenu.DropDownItems.Add(ignoreErrorsItem);
+            
+            var imagineFixItem = new ToolStripMenuItem("Imagine Fix (Not Implemented)", null, (s, e) => { /* Disabled */ });
+            imagineFixItem.Enabled = false;
+            crashBehaviorMenu.DropDownItems.Add(imagineFixItem);
+            
+            configMenu.DropDownItems.Add(crashBehaviorMenu);
+            
             configMenu.DropDownItems.Add(new ToolStripSeparator());
             
             // Emulation options
@@ -289,6 +308,16 @@ namespace BrokenNes.Windows
             var showFpsItem = new ToolStripMenuItem("Show FPS", null, ToggleShowFps_Click);
             showFpsItem.CheckOnClick = true;
             configMenu.DropDownItems.Add(showFpsItem);
+            
+            var startProfilingItem = new ToolStripMenuItem("Start Profiling Performance", null, ToggleProfiling_Click);
+            startProfilingItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(startProfilingItem);
+            
+            configMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var autoScrambleItem = new ToolStripMenuItem("Auto-Scramble Cores (Testing)", null, ToggleAutoScrambleCores_Click);
+            autoScrambleItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(autoScrambleItem);
             
             menuStrip.Items.Add(configMenu);
             
@@ -379,6 +408,17 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"Failed to initialize audio: {ex.Message}");
                 MessageBox.Show($"Audio initialization failed: {ex.Message}\n\nThe emulator will run without sound.",
                     "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            
+            // Initialize auto-scramble timer
+            autoScrambleTimer = new System.Windows.Forms.Timer();
+            autoScrambleTimer.Interval = 420; // 420ms
+            autoScrambleTimer.Tick += AutoScrambleTimer_Tick;
+            
+            // Start auto-scramble if enabled in config
+            if (config.AutoScrambleCores)
+            {
+                autoScrambleTimer.Start();
             }
             
             // Load the default embedded ROM
@@ -528,6 +568,27 @@ namespace BrokenNes.Windows
                     item.Checked = config.NoSpeedLimit;
                 else if (item.Text.Contains("Show FPS"))
                     item.Checked = config.ShowFps;
+                else if (item.Text.Contains("Start Profiling Performance"))
+                    item.Checked = config.ProfilingEnabled;
+                else if (item.Text.Contains("Auto-Scramble Cores"))
+                    item.Checked = config.AutoScrambleCores;
+            }
+            
+            // Update Crash Behavior submenu checkmarks
+            var crashBehaviorMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "C&rash Behavior");
+            
+            if (crashBehaviorMenu != null)
+            {
+                foreach (var item in crashBehaviorMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    if (item.Text.Contains("Red Screen"))
+                        item.Checked = (config.CrashBehavior == "RedScreen");
+                    else if (item.Text.Contains("Ignore Errors"))
+                        item.Checked = (config.CrashBehavior == "IgnoreErrors");
+                    else if (item.Text.Contains("Imagine Fix"))
+                        item.Checked = (config.CrashBehavior == "ImagineFix");
+                }
             }
             
             // Update Sound submenu checkmarks
@@ -821,6 +882,9 @@ namespace BrokenNes.Windows
                     // Apply saved core selections
                     ApplySavedCoreSelections();
                     
+                    // Apply crash behavior
+                    ApplyCrashBehavior();
+                    
                     // Update cores menus
                     UpdateCoresMenus();
                     
@@ -882,6 +946,9 @@ namespace BrokenNes.Windows
                 
                 // Apply saved core selections
                 ApplySavedCoreSelections();
+                
+                // Apply crash behavior
+                ApplyCrashBehavior();
                 
                 // Apply sound channel settings
                 ApplySoundSettings();
@@ -1268,6 +1335,171 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void ToggleProfiling_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.ProfilingEnabled = menuItem.Checked;
+                PerformanceProfiler.Enabled = menuItem.Checked;
+                config.Save();
+                
+                if (menuItem.Checked)
+                {
+                    PerformanceProfiler.Reset();
+                    Console.WriteLine("Performance profiling started");
+                }
+                else
+                {
+                    Console.WriteLine("Performance profiling stopped");
+                }
+            }
+        }
+        
+        private void ToggleAutoScrambleCores_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.AutoScrambleCores = menuItem.Checked;
+                config.Save();
+                
+                if (autoScrambleTimer != null)
+                {
+                    if (menuItem.Checked)
+                    {
+                        autoScrambleTimer.Start();
+                        Console.WriteLine("Auto-scramble cores started (420ms interval)");
+                    }
+                    else
+                    {
+                        autoScrambleTimer.Stop();
+                        Console.WriteLine("Auto-scramble cores stopped");
+                    }
+                }
+                
+                UpdateConfigMenus();
+            }
+        }
+        
+        private void SetCrashBehavior(string behavior)
+        {
+            config.CrashBehavior = behavior;
+            config.Save();
+            
+            // Apply to current NES instance if one is running
+            ApplyCrashBehavior();
+            
+            UpdateConfigMenus();
+            
+            Console.WriteLine($"Crash behavior set to: {behavior}");
+        }
+        
+        private void ApplyCrashBehavior()
+        {
+            if (nes == null) return;
+            
+            try
+            {
+                lock (emulationLock)
+                {
+                    if (nes != null)
+                    {
+                        switch (config.CrashBehavior)
+                        {
+                            case "IgnoreErrors":
+                                nes.SetCrashBehavior(NES.CrashBehavior.IgnoreErrors);
+                                break;
+                            case "ImagineFix":
+                                nes.SetCrashBehavior(NES.CrashBehavior.ImagineFix);
+                                break;
+                            default: // "RedScreen"
+                                nes.SetCrashBehavior(NES.CrashBehavior.RedScreen);
+                                break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error applying crash behavior: {ex.Message}");
+            }
+        }
+        
+        private void AutoScrambleTimer_Tick(object? sender, EventArgs e)
+        {
+            if (nes == null || !isEmulationRunning) return;
+            
+            try
+            {
+                RandomScrambleCore();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during auto-scramble: {ex.Message}");
+            }
+        }
+        
+        private void RandomScrambleCore()
+        {
+            // Randomly choose which core type to scramble (0=CPU, 1=PPU, 2=APU, 3=Shader)
+            int coreType = scrambleRandom.Next(0, 4);
+            
+            switch (coreType)
+            {
+                case 0: // CPU
+                    {
+                        var cpuCores = CoreRegistry.CpuIds;
+                        if (cpuCores.Count > 1)
+                        {
+                            var randomCore = cpuCores[scrambleRandom.Next(cpuCores.Count)];
+                            Console.WriteLine($"Auto-scramble: Switching CPU to {randomCore}");
+                            SetCpuCore(randomCore);
+                        }
+                    }
+                    break;
+                    
+                case 1: // PPU
+                    {
+                        var ppuCores = CoreRegistry.PpuIds;
+                        if (ppuCores.Count > 1)
+                        {
+                            var randomCore = ppuCores[scrambleRandom.Next(ppuCores.Count)];
+                            Console.WriteLine($"Auto-scramble: Switching PPU to {randomCore}");
+                            SetPpuCore(randomCore);
+                        }
+                    }
+                    break;
+                    
+                case 2: // APU
+                    {
+                        var apuCores = CoreRegistry.ApuIds;
+                        if (apuCores.Count > 1)
+                        {
+                            var randomCore = apuCores[scrambleRandom.Next(apuCores.Count)];
+                            Console.WriteLine($"Auto-scramble: Switching APU to {randomCore}");
+                            SetApuCore(randomCore);
+                        }
+                    }
+                    break;
+                    
+                case 3: // Shader
+                    {
+                        if (useDirectX && dxRenderer != null && config.ShadersEnabled)
+                        {
+                            var availableShaders = NesDirectXRenderer.GetAvailableShaders().ToList();
+                            if (availableShaders.Count > 1)
+                            {
+                                var randomShader = availableShaders[scrambleRandom.Next(availableShaders.Count)];
+                                Console.WriteLine($"Auto-scramble: Switching Shader to {randomShader}");
+                                NesShaderControl.SwitchShader(randomShader);
+                                config.CurrentShader = randomShader;
+                                config.Save();
+                            }
+                        }
+                    }
+                    break;
+            }
+        }
+        
         private void SetWindowZoom(int zoom)
         {
             config.WindowZoom = zoom;
@@ -1457,6 +1689,16 @@ namespace BrokenNes.Windows
             fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
             fpsFrameCount = 0;
             
+            // Audio-driven timing: target buffer level in ms
+            const int TargetAudioBufferMs = 60;  // Sweet spot: not too laggy, not too tight
+            const int MinAudioBufferMs = 30;     // Run more frames if below this
+            const int MaxAudioBufferMs = 100;    // Skip frames if above this
+            
+            // High-resolution timer for more precise frame timing
+            long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
+            long targetFrameTicks = (long)(ticksPerSecond / 60.0);
+            long nextFrameTime = stopwatch.ElapsedTicks;
+            
             while (isEmulationRunning)
             {
                 using (PerformanceProfiler.Time("Frame"))
@@ -1465,26 +1707,30 @@ namespace BrokenNes.Windows
                     {
                         Thread.Sleep(10);
                         stopwatch.Restart();
+                        nextFrameTime = stopwatch.ElapsedTicks;
                         accumulator = 0;
                         continue;
                     }
                 
-                double deltaTime = stopwatch.Elapsed.TotalSeconds;
-                stopwatch.Restart();
-                accumulator += deltaTime;
+                // Get current audio buffer level to guide timing
+                int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? TargetAudioBufferMs;
                 
-                // Determine how many frames to run
+                // Determine how many frames to run based on audio buffer state
                 int framesToRun = 0;
+                
                 if (config.NoSpeedLimit)
                 {
                     // Run as fast as possible - always run at least one frame
                     framesToRun = 1;
-                    accumulator = 0; // Reset accumulator when running unlimited
                 }
                 else if (hasSpeedOverride)
                 {
-                    // Speed override active - run frames based on modified frame time
+                    // Speed override - use time-based accumulator
+                    double deltaTime = stopwatch.Elapsed.TotalSeconds;
+                    stopwatch.Restart();
+                    accumulator += deltaTime;
                     double effectiveFrameTime = targetFrameTime / speedOverride;
+                    framesToRun = 0;
                     while (accumulator >= effectiveFrameTime)
                     {
                         framesToRun++;
@@ -1493,11 +1739,51 @@ namespace BrokenNes.Windows
                 }
                 else
                 {
-                    // Normal speed - run frames based on accumulator
-                    while (accumulator >= targetFrameTime)
+                    // AUDIO-DRIVEN TIMING: Let audio buffer level guide frame production
+                    // This prevents the doppler effect and audio pops
+                    
+                    long now = stopwatch.ElapsedTicks;
+                    
+                    if (audioBufferMs < MinAudioBufferMs)
                     {
-                        framesToRun++;
-                        accumulator -= targetFrameTime;
+                        // Audio buffer is getting low - produce frames immediately!
+                        // This prevents underrun pops
+                        framesToRun = 2; // Catch up quickly
+                        nextFrameTime = now + targetFrameTicks;
+                    }
+                    else if (audioBufferMs > MaxAudioBufferMs)
+                    {
+                        // Audio buffer is too full - skip this cycle
+                        // This prevents audio lag without dropping samples
+                        framesToRun = 0;
+                        nextFrameTime = now + targetFrameTicks / 2; // Check again soon
+                    }
+                    else if (now >= nextFrameTime)
+                    {
+                        // Normal case: time for a new frame
+                        framesToRun = 1;
+                        
+                        // Adjust timing slightly based on buffer level to stay centered
+                        if (audioBufferMs < TargetAudioBufferMs)
+                        {
+                            // Running a bit behind, speed up slightly
+                            nextFrameTime = now + (long)(targetFrameTicks * 0.95);
+                        }
+                        else if (audioBufferMs > TargetAudioBufferMs + 20)
+                        {
+                            // Running a bit ahead, slow down slightly
+                            nextFrameTime = now + (long)(targetFrameTicks * 1.05);
+                        }
+                        else
+                        {
+                            // Buffer is at ideal level
+                            nextFrameTime = now + targetFrameTicks;
+                        }
+                    }
+                    else
+                    {
+                        // Not yet time for next frame
+                        framesToRun = 0;
                     }
                 }
                 
@@ -1531,17 +1817,24 @@ namespace BrokenNes.Windows
                                 nes.RunFrame();
                             }
                             
-                            // Track FPS for audio speed adjustment
+                            // Track FPS for display only (not for audio adjustment)
                             fpsFrameCount++;
-                            if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.25)
+                            if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
                             {
                                 currentFps = fpsFrameCount / fpsStopwatch.Elapsed.TotalSeconds;
                                 fpsFrameCount = 0;
                                 fpsStopwatch.Restart();
                                 
-                                // Update audio speed multiplier based on actual FPS
-                                float speedMultiplier = (float)(currentFps / 60.0);
-                                audioManager?.SetSpeedMultiplier(speedMultiplier);
+                                // Only adjust audio speed for intentional speed override
+                                // Normal mode should NOT adjust - audio buffer timing handles sync
+                                if (hasSpeedOverride)
+                                {
+                                    audioManager?.SetSpeedMultiplier(speedOverride);
+                                }
+                                else
+                                {
+                                    audioManager?.SetSpeedMultiplier(1.0f);
+                                }
                             }
                             
                             // Process audio samples from APU
@@ -1591,6 +1884,7 @@ namespace BrokenNes.Windows
                         catch (Exception ex)
                         {
                             Console.WriteLine($"Emulation error: {ex.Message}");
+                            Console.WriteLine($"Stack trace: {ex.StackTrace}");
                             isEmulationRunning = false;
                         }
                     }
@@ -1615,25 +1909,37 @@ namespace BrokenNes.Windows
                     continue; // Skip normal throttling logic
                 }
                 
-                    // Save periodic profiling report every 10 seconds
-                    framesSinceReport++;
-                    if (reportStopwatch.Elapsed.TotalSeconds >= 10.0)
-                    {
-                        var reportPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"performance_report_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                        PerformanceProfiler.SaveReport(reportPath);
-                        reportStopwatch.Restart();
-                        framesSinceReport = 0;
-                    }
+                // Save periodic profiling report every 10 seconds
+                framesSinceReport++;
+                if (PerformanceProfiler.Enabled && reportStopwatch.Elapsed.TotalSeconds >= 10.0)
+                {
+                    var reportPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"performance_report_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                    PerformanceProfiler.SaveReport(reportPath);
+                    reportStopwatch.Restart();
+                    framesSinceReport = 0;
                 }
                 
-                // Small sleep to prevent CPU spinning (only when speed limited)
-                double sleepTargetTime = hasSpeedOverride ? (targetFrameTime / speedOverride) : targetFrameTime;
-                if (!config.NoSpeedLimit && accumulator < sleepTargetTime)
+                // Precision wait using spin-wait for final microseconds
+                // This avoids Windows timer granularity issues
+                if (!config.NoSpeedLimit && framesToRun == 0)
                 {
-                    int sleepTime = (int)((sleepTargetTime - accumulator) * 1000 * 0.8);
-                    if (sleepTime > 0)
+                    long now = stopwatch.ElapsedTicks;
+                    long ticksToWait = nextFrameTime - now;
+                    
+                    if (ticksToWait > 0)
                     {
-                        Thread.Sleep(sleepTime);
+                        // If more than 2ms to wait, sleep for most of it
+                        double msToWait = (double)ticksToWait / ticksPerSecond * 1000.0;
+                        if (msToWait > 2)
+                        {
+                            Thread.Sleep((int)(msToWait - 1));
+                        }
+                        
+                        // Spin-wait for remaining time (sub-millisecond precision)
+                        while (stopwatch.ElapsedTicks < nextFrameTime)
+                        {
+                            Thread.SpinWait(10);
+                        }
                     }
                 }
                 else if (config.NoSpeedLimit)
@@ -1641,6 +1947,7 @@ namespace BrokenNes.Windows
                     // Tiny yield to prevent complete CPU lockup but still run fast
                     Thread.Sleep(0);
                 }
+                } // End of PerformanceProfiler.Time("Frame") using block
             }
         }
         
@@ -1725,7 +2032,9 @@ namespace BrokenNes.Windows
             catch (Exception ex)
             {
                 isEmulationRunning = false;
-                MessageBox.Show($"Emulation error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Console.WriteLine($"Emulation error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                MessageBox.Show($"Emulation error: {ex.Message}\n\nStack trace:\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         

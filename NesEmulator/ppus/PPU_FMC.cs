@@ -150,7 +150,7 @@ public class PPU_FMC : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		// Ensure a framebuffer exists before writing pixels
@@ -185,6 +185,9 @@ public class PPU_FMC : IPPU
 			return; // nothing else to draw
 		}
 
+		// Ensure framebuffer exists before rendering (needed after ClearBuffers during hotswap)
+		EnsureFrameBuffer();
+		
 		// Clear scanline buffers
 		Array.Clear(bgMask, 0, ScreenWidth);
 		
@@ -259,6 +262,8 @@ public class PPU_FMC : IPPU
 	{
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 
 		EnsureFrameBuffer();
 
@@ -360,6 +365,8 @@ public class PPU_FMC : IPPU
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
 
 		EnsureFrameBuffer();
 

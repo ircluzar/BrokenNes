@@ -181,7 +181,7 @@ public class PPU_CUBE : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		// Ensure framebuffer exists before writing
@@ -325,6 +325,8 @@ public class PPU_CUBE : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || paletteRAM == null || vram == null) return;
 		EnsureFrameBuffer();
 		// Check if background rendering is enabled; if disabled we still want a gradient baseline for sprites/shadows
 		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
@@ -440,6 +442,8 @@ public class PPU_CUBE : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || paletteRAM == null || oam == null || vram == null) return;
 		EnsureFrameBuffer();
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;

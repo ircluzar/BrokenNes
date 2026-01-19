@@ -225,7 +225,16 @@ public class PPU_CUBEX : IPPU
 	
 	private void OnFrameComplete()
 	{
+		// Guard against null during hot-swap
+		if (frameBuffer == null || oam == null) return;
+		
 		EnsureFrameBuffer();
+		
+		// Initialize prevFrameBuffer on first use
+		if (prevFrameBuffer == null || prevFrameBuffer.Length != frameBuffer.Length)
+		{
+			prevFrameBuffer = new byte[frameBuffer.Length];
+		}
 		
 		if (totalFramesProcessed > 0)
 		{
@@ -236,8 +245,11 @@ public class PPU_CUBEX : IPPU
 			ApplyColorMorphing();
 		}
 		
-		// Store current frame as previous
-		Array.Copy(frameBuffer!, 0, prevFrameBuffer!, 0, frameBuffer!.Length);
+		// Store current frame as previous (with null guard)
+		if (prevFrameBuffer != null && frameBuffer != null)
+		{
+			Array.Copy(frameBuffer, 0, prevFrameBuffer, 0, frameBuffer.Length);
+		}
 		
 		// Store current sprite positions
 		for (int i = 0; i < 64; i++)
@@ -253,6 +265,9 @@ public class PPU_CUBEX : IPPU
 	
 	private void DetectSpriteMotion()
 	{
+		// Guard against null during hot-swap
+		if (oam == null) return;
+		
 		for (int i = 0; i < 64; i++)
 		{
 			int offset = i * 4;
@@ -285,6 +300,15 @@ public class PPU_CUBEX : IPPU
 	
 	private void ApplyColorMorphing()
 	{
+		// Guard against null during hot-swap - cache references to prevent mid-method nulling
+		var fb = frameBuffer;
+		var prevR = prevPixelR;
+		var prevG = prevPixelG;
+		var prevB = prevPixelB;
+		var pAge = pixelAge;
+		
+		if (fb == null || prevR == null || prevG == null || prevB == null || pAge == null) return;
+		
 		// Simple per-pixel morphing: if a pixel changed color, find an intermediate
 		// NES palette color to smooth the transition
 		
@@ -294,55 +318,59 @@ public class PPU_CUBEX : IPPU
 		{
 			int fbIdx = i * 4;
 			
-			byte currR = frameBuffer![fbIdx];
-			byte currG = frameBuffer![fbIdx + 1];
-			byte currB = frameBuffer![fbIdx + 2];
+			byte currR = fb[fbIdx];
+			byte currG = fb[fbIdx + 1];
+			byte currB = fb[fbIdx + 2];
 			
-			byte prevR = prevPixelR[i];
-			byte prevG = prevPixelG[i];
-			byte prevB = prevPixelB[i];
+			byte pR = prevR[i];
+			byte pG = prevG[i];
+			byte pB = prevB[i];
 			
 			// Check if pixel color changed significantly
-			int colorDiff = Math.Abs(currR - prevR) + Math.Abs(currG - prevG) + Math.Abs(currB - prevB);
+			int colorDiff = Math.Abs(currR - pR) + Math.Abs(currG - pG) + Math.Abs(currB - pB);
 			
 			if (colorDiff > 40) // Significant change
 			{
 				// Check if this pixel is in a sprite's motion path
 				bool inMotionPath = IsPixelInSpritePath(i % ScreenWidth, i / ScreenWidth);
 				
-				if (inMotionPath || pixelAge[i] < MorphFrames)
+				if (inMotionPath || pAge[i] < MorphFrames)
 				{
 					// Apply morphing - blend towards previous color using NES palette
 					byte morphR, morphG, morphB;
 					float t = inMotionPath ? MorphStrength : (MorphStrength * 0.5f);
 					
 					MorphToNearestPaletteColor(
-						prevR, prevG, prevB,
+						pR, pG, pB,
 						currR, currG, currB,
 						t, out morphR, out morphG, out morphB);
 					
-					frameBuffer![fbIdx] = morphR;
-					frameBuffer![fbIdx + 1] = morphG;
-					frameBuffer![fbIdx + 2] = morphB;
+					fb[fbIdx] = morphR;
+					fb[fbIdx + 1] = morphG;
+					fb[fbIdx + 2] = morphB;
 				}
 				
 				// Reset age for changed pixels
-				pixelAge[i] = 0;
+				pAge[i] = 0;
 			}
-			else if (pixelAge[i] < 255)
+			else if (pAge[i] < 255)
 			{
-				pixelAge[i]++;
+				pAge[i]++;
 			}
 			
 			// Store for next frame
-			prevPixelR[i] = currR;
-			prevPixelG[i] = currG;
-			prevPixelB[i] = currB;
+			prevR[i] = currR;
+			prevG[i] = currG;
+			prevB[i] = currB;
 		}
 	}
 	
 	private bool IsPixelInSpritePath(int px, int py)
 	{
+		// Guard against null during hot-swap
+		var oamLocal = oam;
+		if (oamLocal == null) return false;
+		
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		int spriteHeight = isSprite8x16 ? 16 : 8;
 		
@@ -351,8 +379,8 @@ public class PPU_CUBEX : IPPU
 			if (!spriteHasMotion[i]) continue;
 			
 			int offset = i * 4;
-			int spriteX = oam[offset + 3];
-			int spriteY = oam[offset];
+			int spriteX = oamLocal[offset + 3];
+			int spriteY = oamLocal[offset];
 			
 			// Check current sprite bounds
 			if (px >= spriteX && px < spriteX + 8 &&
@@ -420,7 +448,7 @@ public class PPU_CUBEX : IPPU
 	// RENDERING (inherited from CUBE with interpolation hooks)
 	// ============================================================================
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		EnsureFrameBuffer();
@@ -549,7 +577,12 @@ public class PPU_CUBEX : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Ensure framebuffer is allocated first
 		EnsureFrameBuffer();
+		
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
+		
 		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
 		if (!bgEnabledFlag)
 		{
@@ -646,7 +679,12 @@ public class PPU_CUBEX : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
+		// Ensure framebuffer is allocated first
 		EnsureFrameBuffer();
+		
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
+		
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
 

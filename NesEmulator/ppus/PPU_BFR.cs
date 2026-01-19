@@ -185,7 +185,7 @@ public class PPU_BFR : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		EnsureFrameBuffer();
@@ -291,6 +291,8 @@ public class PPU_BFR : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 
@@ -387,6 +389,8 @@ public class PPU_BFR : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
@@ -479,6 +483,9 @@ public class PPU_BFR : IPPU
 
 	private (byte r, byte g, byte b) GetSpriteColor(int colorIndex, int paletteIndex)
 	{
+		// Guard against null during hot-swap
+		if (paletteRAM == null) return (0, 0, 0);
+		
 		int paletteBase = 0x11 + (paletteIndex << 2);
 		byte idx = paletteRAM[paletteBase + (colorIndex - 1)];
 		int p = (idx & 0x3F) * 3;
@@ -487,6 +494,9 @@ public class PPU_BFR : IPPU
 
 	private (byte r, byte g, byte b) GetColorFromPalette(int colorIndex, int paletteIndex)
 	{
+		// Guard against null during hot-swap
+		if (paletteRAM == null) return (0, 0, 0);
+		
 		byte idx;
 		if (colorIndex == 0)
 		{
@@ -660,6 +670,9 @@ public class PPU_BFR : IPPU
 
 	public byte Read(ushort address)
 	{
+		// Guard against null during hot-swap
+		if (vram == null || paletteRAM == null) return 0;
+		
 		address = (ushort)(address & 0x3FFF);
 
 		if (address < 0x2000)
@@ -683,6 +696,9 @@ public class PPU_BFR : IPPU
 
 	public void Write(ushort address, byte value)
 	{
+		// Guard against null during hot-swap
+		if (vram == null || paletteRAM == null) return;
+		
 		address = (ushort)(address & 0x3FFF);
 
 		if (address < 0x2000)

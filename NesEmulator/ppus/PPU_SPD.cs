@@ -224,9 +224,11 @@ public class PPU_SPD : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
+		// Guard against invalid scanline or null arrays during hot-swap
+		if (scanline < 0 || scanline >= 240 || paletteRAM == null) return;
 		// Ensure a framebuffer exists before writing pixels
 		EnsureFrameBuffer();
 		// If no ROM is loaded, keep the test pattern
@@ -324,6 +326,10 @@ public class PPU_SPD : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Guard against null or invalid state during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null || bus == null) return;
+		// Guard against invalid scanline values during hot-swap
+		if (scanline < 0 || scanline >= 240) return;
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 
@@ -552,6 +558,10 @@ public class PPU_SPD : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
+		// Guard against null or invalid state during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || bus == null) return;
+		// Guard against invalid scanline values during hot-swap
+		if (scanline < 0 || scanline >= 240) return;
 		bool showSprites = (PPUMASK & 0x10) != 0; if (!showSprites) return;
 		EnsureFrameBuffer();
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;

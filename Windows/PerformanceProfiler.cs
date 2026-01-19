@@ -35,7 +35,7 @@ namespace BrokenNes.Windows
         
         private static readonly ConcurrentDictionary<string, SampleData> samples = new();
         private static readonly Stopwatch globalTimer = Stopwatch.StartNew();
-        private static bool enabled = true;
+        private static bool enabled = false;
         
         public static bool Enabled 
         { 

@@ -71,24 +71,24 @@ namespace BrokenNes.Windows
             if (disposed || samples == null || samples.Length == 0)
                 return;
             
-            // Check buffer level and drop samples if too much is buffered
-            // This prevents audio from lagging behind video
-            int bufferedMs = GetBufferedDurationMs();
-            int maxBufferMs = speedMultiplier > 1.5f ? 50 : 150; // Tighter buffer at high speeds
-            
-            if (bufferedMs > maxBufferMs)
+            // Don't resample for speed changes - let the emulator timing handle it
+            // Only resample when intentionally speeding up (speedMultiplier > 1)
+            float[] processedSamples;
+            if (speedMultiplier > 1.05f)
             {
-                // Buffer is too full, skip these samples to stay in sync
-                return;
+                // User is fast-forwarding, resample to shorten audio
+                processedSamples = ResampleAudio(samples, speedMultiplier);
+            }
+            else
+            {
+                // Normal play - queue samples directly without modification
+                processedSamples = samples;
             }
             
-            // Resample based on speed multiplier
-            float[] resampledSamples = ResampleAudio(samples, speedMultiplier);
-            
             // Accumulate samples in our buffer
-            for (int i = 0; i < resampledSamples.Length; i++)
+            for (int i = 0; i < processedSamples.Length; i++)
             {
-                sampleBuffer[bufferPosition++] = resampledSamples[i];
+                sampleBuffer[bufferPosition++] = processedSamples[i];
                 
                 // When buffer is full, convert and send to NAudio
                 if (bufferPosition >= BufferSize)
@@ -131,20 +131,26 @@ namespace BrokenNes.Windows
         
         /// <summary>
         /// Set the playback speed multiplier (1.0 = normal speed, 2.0 = 2x speed, etc.).
+        /// Only affects audio when intentionally fast-forwarding.
         /// </summary>
         public void SetSpeedMultiplier(float multiplier)
         {
-            speedMultiplier = Math.Max(0.1f, Math.Min(multiplier, 10.0f)); // Clamp to reasonable range
+            float newMultiplier = Math.Max(0.1f, Math.Min(multiplier, 10.0f)); // Clamp to reasonable range
             
-            // When speed changes significantly, clear buffer to prevent desync
-            if (Math.Abs(multiplier - 1.0f) > 0.1f)
+            // Only act on significant changes to avoid constant buffer clearing
+            if (Math.Abs(newMultiplier - speedMultiplier) > 0.1f)
             {
-                // Keep buffer very small during speed changes to minimize lag
-                int bufferedMs = GetBufferedDurationMs();
-                if (bufferedMs > 100) // More than 100ms is too much
+                speedMultiplier = newMultiplier;
+                
+                // Only clear buffer when switching TO fast-forward mode
+                if (multiplier > 1.5f)
                 {
-                    waveProvider.ClearBuffer();
-                    bufferPosition = 0;
+                    int bufferedMs = GetBufferedDurationMs();
+                    if (bufferedMs > 80)
+                    {
+                        waveProvider.ClearBuffer();
+                        bufferPosition = 0;
+                    }
                 }
             }
         }

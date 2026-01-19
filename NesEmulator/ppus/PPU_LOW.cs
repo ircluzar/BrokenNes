@@ -153,7 +153,7 @@ public class PPU_LOW : IPPU
 		}
 	}
 
-	bool[] bgMask = new bool[ScreenWidth];
+	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
 		// Ensure a framebuffer exists before writing pixels
@@ -208,6 +208,9 @@ public class PPU_LOW : IPPU
 	public void GenerateStaticFrame()
 	{
 		EnsureFrameBuffer();
+		// Cache the frameBuffer reference locally to avoid race conditions during hotswapping
+		var fb = frameBuffer;
+		if (fb == null) return; // Safety check in case buffer was cleared during hotswap
 		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
 		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
 		int w = ScreenWidth; int h = ScreenHeight;
@@ -237,10 +240,10 @@ public class PPU_LOW : IPPU
 				// Rare bright spark
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
 				int idx = (y * w + x) * 4;
-				frameBuffer![idx + 0] = r;
-				frameBuffer![idx + 1] = g;
-				frameBuffer![idx + 2] = b;
-				frameBuffer![idx + 3] = 255;
+				fb[idx + 0] = r;
+				fb[idx + 1] = g;
+				fb[idx + 2] = b;
+				fb[idx + 3] = 255;
 			}
 		}
 		staticFrameCounter++;
@@ -260,6 +263,8 @@ public class PPU_LOW : IPPU
 
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
 
@@ -351,6 +356,8 @@ public class PPU_LOW : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
+		// Guard against null during hot-swap
+		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
