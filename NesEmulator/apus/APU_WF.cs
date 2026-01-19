@@ -98,6 +98,7 @@ namespace NesEmulator
         // Filters state
         private float lpLast = 0f, dcLastIn = 0f, dcLastOut = 0f;
         // Channel enables
+        private int channelEnableMask = 0x1F; // All channels enabled by default (5 bits)
         private bool pulse1_enabled = false, pulse2_enabled = false, triangle_enabled = false, noise_enabled = false;
         // Constants
         private const float LowPassCoeff = 0.15f; // simple 1-pole low-pass coefficient
@@ -556,11 +557,12 @@ namespace NesEmulator
         {
             if (ringCount >= AudioRingSize)
             { ringRead = (ringRead + 1) & (AudioRingSize - 1); ringCount--; }
-            double p1 = (pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
-            double p2 = (pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
-            double t = (triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
+            // Apply channel enable mask (0x01=Square1, 0x02=Square2, 0x04=Triangle, 0x08=Noise, 0x10=DMC)
+            double p1 = ((channelEnableMask & 0x01) != 0 && pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
+            double p2 = ((channelEnableMask & 0x02) != 0 && pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
+            double t = ((channelEnableMask & 0x04) != 0 && triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
             // Halved noise channel volume for waveform (PCM) output per request (soundFontMode path already attenuates separately)
-            double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output * NoiseAttenuationFactor : 0.0;
+            double n = ((channelEnableMask & 0x08) != 0 && noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output * NoiseAttenuationFactor : 0.0;
             double pulseMix = (p1 + p2) == 0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
             double tnd = (t + n) == 0 ? 0.0 : 159.79 / (1.0 / (t / 8227.0 + n / 12241.0) + 100.0);
             float mixed = (float)(pulseMix + tnd);
@@ -625,6 +627,11 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
+        
+        public void SetEnabledChannels(int channelMask)
+        {
+            channelEnableMask = channelMask & 0x1F; // Ensure only 5 bits are used
+        }
 
         private void QuarterFrameTick()
         { ClockEnvelope(ref pulse1_envelopeStart, ref pulse1_envelopeDivider, ref pulse1_decayLevel, pulse1_volumeParam, pulse1_lengthHalt); ClockEnvelope(ref pulse2_envelopeStart, ref pulse2_envelopeDivider, ref pulse2_decayLevel, pulse2_volumeParam, pulse2_lengthHalt); ClockEnvelope(ref noise_envelopeStart, ref noise_envelopeDivider, ref noise_decayLevel, noise_volumeParam, noise_lengthHalt); if (triangle_linearReloadFlag) triangle_linearCounter = triangle_linear & 0x7F; else if (triangle_linearCounter > 0) triangle_linearCounter--; if ((triangle_linear & 0x80) == 0) triangle_linearReloadFlag = false; }

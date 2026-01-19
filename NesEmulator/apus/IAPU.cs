@@ -14,6 +14,7 @@ namespace NesEmulator
         float[] GetAudioSamples(int maxSamples = 0);
         int GetQueuedSampleCount();
         int GetSampleRate();
+        void SetEnabledChannels(int channelMask); // Bitflags: 0x01=Square1, 0x02=Square2, 0x04=Triangle, 0x08=Noise, 0x10=DMC
         object GetState();
         void SetState(object state);
     // Optional lifecycle hook: drop queued audio and reset pacing filters

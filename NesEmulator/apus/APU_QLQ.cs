@@ -745,6 +745,7 @@ namespace NesEmulator
 
     public int GetQueuedSampleCount() => ringCount;
     public int GetSampleRate() => SampleRate;
+    public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
     
         // Optional hook for bus resets/hot-swaps to drop any queued audio and fractional pacing
         public void ClearAudioBuffers()

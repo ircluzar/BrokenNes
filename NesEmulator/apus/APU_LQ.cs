@@ -326,6 +326,7 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
+        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
 
         private void QuarterFrameTick()
         { ClockEnvelope(ref pulse1_envelopeStart, ref pulse1_envelopeDivider, ref pulse1_decayLevel, pulse1_volumeParam, pulse1_lengthHalt); ClockEnvelope(ref pulse2_envelopeStart, ref pulse2_envelopeDivider, ref pulse2_decayLevel, pulse2_volumeParam, pulse2_lengthHalt); ClockEnvelope(ref noise_envelopeStart, ref noise_envelopeDivider, ref noise_decayLevel, noise_volumeParam, noise_lengthHalt); if (triangle_linearReloadFlag) triangle_linearCounter = triangle_linear & 0x7F; else if (triangle_linearCounter > 0) triangle_linearCounter--; if ((triangle_linear & 0x80) == 0) triangle_linearReloadFlag = false; }

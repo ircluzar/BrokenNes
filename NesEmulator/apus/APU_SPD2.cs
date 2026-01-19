@@ -653,6 +653,7 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
+        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
 
         private void QuarterFrameTick()
         {

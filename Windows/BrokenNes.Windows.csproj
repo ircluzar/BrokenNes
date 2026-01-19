@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BrokenNes.Windows</RootNamespace>
+    <AssemblyName>BrokenNes.Windows</AssemblyName>
+    <DefineConstants>$(DefineConstants);FAST_EMU;WINFORMS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference to the core emulator code from parent project -->
+    <!-- Exclude Blazor-specific files -->
+    <Compile Include="..\NesEmulator\**\*.cs" 
+             Exclude="..\NesEmulator\board\Emulator*.cs;..\NesEmulator\board\NesController.cs;..\NesEmulator\board\Benchmark.cs;..\NesEmulator\board\StatePersistence.cs;..\NesEmulator\board\ClockRegistry.cs;..\NesEmulator\UI.cs;..\NesEmulator\corruptor\GlitchHarvester.cs;..\NesEmulator\StatusService.cs;..\NesEmulator\clocks\**" 
+             LinkBase="NesEmulator" />
+    <Compile Include="..\Models\GameSave.cs" Link="Models\GameSave.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Examples\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed default ROM -->
+    <EmbeddedResource Include="..\wwwroot\test.nes" Link="Resources\test.nes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SharpDX packages for DirectX rendering -->
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
+    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+    <PackageReference Include="SharpDX.D3DCompiler" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    
+    <!-- NAudio for audio output -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include HLSL shader files -->
+    <None Include="Shaders\**\*.hlsl">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
