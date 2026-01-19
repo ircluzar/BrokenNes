@@ -1,18 +1,14 @@
 namespace NesEmulator
 {
-/// <summary>
-/// PPU_CUBEX - Enhanced CUBE core with frame interpolation for smoother animations.
-/// Implements automatic sprite/tile clustering, motion detection, and color morphing
-/// to generate in-between frames using actual palette colors (not alpha blending).
-/// </summary>
+// PPU_CUBEX: Enhanced version of PPU_CUBE with outlines around structures, bigger shadows, and stronger gradient
 public class PPU_CUBEX : IPPU
 {
 	// Core metadata
-	public string CoreName => "Cubex PPU";
-	public string Description => "Enhanced CUBE core with frame smoothing. Detects sprite motion and applies color morphing between frames for smoother animations.";
-	public int Performance => -8;
-	public int Rating => 5;
-	public string Category => "Experimental";
+	public string CoreName => "Enhanced PPU X";
+	public string Description => "Based on PPU_CUBE with added outlines around shadow-casting structures, bigger shadows, and stronger gradients. Does not work on every game.";
+	public int Performance => -6;
+	public int Rating => 4;
+	public string Category => "Unstable";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM
@@ -44,59 +40,45 @@ public class PPU_CUBEX : IPPU
 	private int scanlineCycle;
 	private int scanline;
 
-	// Lazy framebuffer allocation
+	// Lazy framebuffer allocation to reduce memory; allocate on first use
 	private byte[]? frameBuffer = null;
-	// Palette resolved RGB cache
+	// Palette resolved RGB cache (mirroring aware)
 	private readonly byte[] paletteResolved = new byte[32*3];
 	private bool paletteCacheBuilt = false;
-	// Gradient cache
+	// Gradient cache – precomputed per-scanline RGB from universal background color
 	private readonly byte[] gradientR = new byte[ScreenHeight];
 	private readonly byte[] gradientG = new byte[ScreenHeight];
 	private readonly byte[] gradientB = new byte[ScreenHeight];
-	private int lastGradientBaseColor = -1;
+	private int lastGradientBaseColor = -1; // tracks paletteRAM[0] to know when to rebuild
 	private bool gradientCacheValid = false;
-	// Reusable arrays
+	// Reusable arrays to avoid per-scanline allocations
 	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
-	// Shadow configuration
-	private const int ShadowVerticalDistance = 1;
-	private const int ShadowOffsetX = -1;
-	private const int ShadowOffsetY = 1;
-	private const float ShadowTransparency = 0.69f;
-	private const float ShadowOpacity = 1f - ShadowTransparency;
-	// Coverage histories
+	// Shadow configuration: shadow is projected bottom-left with vertical gap (distance)
+	// CUBEX: Bigger shadows to accommodate outlines (increased from 1 to 2)
+	private const int ShadowVerticalDistance = 2; // how many scanlines below original pixel the shadow lands
+	private const int ShadowOffsetX = -2;        // horizontal offset (negative = left) - increased for bigger shadow
+	private const int ShadowOffsetY = 2;         // vertical offset matches distance (ensures projection used)
+	private const float ShadowTransparency = 0.420f; // Slightly less transparent for stronger shadow
+	private const float ShadowOpacity = 1f - ShadowTransparency; // 0.35 opacity used for darkening
+	// Outline configuration: white outlines around structures
+	private const float OutlineOpacity = 0.5f; // How much white to blend (0.0=none, 1.0=full white)
+	// Gradient configuration: dynamic background gradient based on base color
+	private const float GradientTopDarken = 0.420f; // Darken top by 15% from base color
+	private const float GradientBottomLightenBright = 0.420f; // Lighten bottom by 40% for bright colors
+	private const float GradientBottomDarkenDark = 0.420f; // Darken bottom to 35% for dark colors
+	// Flattened coverage histories (row-major)
 	private readonly byte[] spriteCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
 	private readonly byte[] bgCoverageRows = new byte[ShadowVerticalDistance * ScreenWidth];
+	// Outline tracking - track which pixels are edges for outlining
+	private readonly bool[] bgOutlineRows = new bool[ShadowVerticalDistance * ScreenWidth];
+	private readonly bool[] spriteOutlineRows = new bool[ShadowVerticalDistance * ScreenWidth];
+	// Full-frame buffers for up-direction outlines (so we can mark them on current scanline and draw on next)
+	private readonly bool[] bgUpOutlines = new bool[ScreenHeight * ScreenWidth];
+	private readonly bool[] spriteUpOutlines = new bool[ScreenHeight * ScreenWidth];
+	// Lookahead buffers for predicting next scanline's opaque pixels
+	private readonly bool[] nextScanlineBgOpaque = new bool[ScreenWidth];
+	private readonly bool[] nextScanlineSpriteOpaque = new bool[ScreenWidth];
 	private int staticFrameCounter = 0;
-
-	// ============================================================================
-	// CUBEX FRAME SMOOTHING SYSTEM (Optimized)
-	// ============================================================================
-	
-	// Previous frame data for comparison
-	private byte[]? prevFrameBuffer = null;
-	
-	// Previous sprite positions for motion detection
-	private readonly byte[] prevSpriteX = new byte[64];
-	private readonly byte[] prevSpriteY = new byte[64];
-	private readonly byte[] prevSpriteTile = new byte[64];
-	
-	// Motion vectors per sprite (simple dx, dy)
-	private readonly sbyte[] spriteDeltaX = new sbyte[64];
-	private readonly sbyte[] spriteDeltaY = new sbyte[64];
-	private readonly bool[] spriteHasMotion = new bool[64];
-	
-	// Per-pixel tracking for motion trails
-	private readonly byte[] pixelAge = new byte[ScreenWidth * ScreenHeight]; // How many frames since pixel changed
-	private readonly byte[] prevPixelR = new byte[ScreenWidth * ScreenHeight];
-	private readonly byte[] prevPixelG = new byte[ScreenWidth * ScreenHeight];
-	private readonly byte[] prevPixelB = new byte[ScreenWidth * ScreenHeight];
-	
-	// Frame counter
-	private int totalFramesProcessed = 0;
-	
-	// Morphing intensity (higher = more visible effect)
-	private const int MorphFrames = 3; // Number of frames to morph over
-	private const float MorphStrength = 0.6f; // How much of the morph to apply
 
 	public PPU_CUBEX(Bus bus)
 	{
@@ -106,6 +88,7 @@ public class PPU_CUBEX : IPPU
 		paletteRAM = new byte[32];
 		oam = new byte[256];
 
+		// Initialize palette RAM with some default values
 		InitializeDefaultPalette();
 
 		PPUADDR = 0x0000;
@@ -118,10 +101,8 @@ public class PPU_CUBEX : IPPU
 		scanlineCycle = 0;
 		scanline = 0;
 		
-		RebuildResolvedPalette();
-		paletteCacheBuilt = true;
-		
-		// Initialize smoothing system - no heavy setup needed
+		// Defer framebuffer allocation and any test pattern generation until first use
+		RebuildResolvedPalette(); paletteCacheBuilt = true;
 	}
 
 	private void EnsureFrameBuffer()
@@ -130,12 +111,10 @@ public class PPU_CUBEX : IPPU
 		{
 			frameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
 		}
-		if (prevFrameBuffer == null || prevFrameBuffer.Length != ScreenWidth * ScreenHeight * 4)
-		{
-			prevFrameBuffer = new byte[ScreenWidth * ScreenHeight * 4];
-		}
 	}
 
+
+	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
 	public void Step(int elapsedCycles)
 	{
 		for (int c = 0; c < elapsedCycles; c++)
@@ -150,6 +129,10 @@ public class PPU_CUBEX : IPPU
 				}
 				System.Array.Clear(spriteCoverageRows, 0, spriteCoverageRows.Length);
 				System.Array.Clear(bgCoverageRows, 0, bgCoverageRows.Length);
+				System.Array.Clear(spriteOutlineRows, 0, spriteOutlineRows.Length);
+				System.Array.Clear(bgOutlineRows, 0, bgOutlineRows.Length);
+				System.Array.Clear(bgUpOutlines, 0, bgUpOutlines.Length);
+				System.Array.Clear(spriteUpOutlines, 0, spriteUpOutlines.Length);
 			}
 
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
@@ -166,7 +149,7 @@ public class PPU_CUBEX : IPPU
 				}
 			}
 
-			// MMC5 scanline counter tick
+			// MMC5 scanline counter tick early (cycle ~3)
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
 			{
 				if (bus?.cartridge?.mapper is Mapper5 mmc5)
@@ -200,9 +183,6 @@ public class PPU_CUBEX : IPPU
 					{
 						bus.cpu.RequestNMI();
 					}
-					
-					// End of frame - apply smoothing
-					OnFrameComplete();
 				}
 
 				if (scanline == 261)
@@ -218,256 +198,35 @@ public class PPU_CUBEX : IPPU
 			}
 		}
 	}
-	
-	// ============================================================================
-	// FRAME SMOOTHING CORE (Optimized for performance)
-	// ============================================================================
-	
-	private void OnFrameComplete()
-	{
-		// Guard against null during hot-swap
-		if (frameBuffer == null || oam == null) return;
-		
-		EnsureFrameBuffer();
-		
-		// Initialize prevFrameBuffer on first use
-		if (prevFrameBuffer == null || prevFrameBuffer.Length != frameBuffer.Length)
-		{
-			prevFrameBuffer = new byte[frameBuffer.Length];
-		}
-		
-		if (totalFramesProcessed > 0)
-		{
-			// Detect sprite motion
-			DetectSpriteMotion();
-			
-			// Apply color morphing for changed pixels
-			ApplyColorMorphing();
-		}
-		
-		// Store current frame as previous (with null guard)
-		if (prevFrameBuffer != null && frameBuffer != null)
-		{
-			Array.Copy(frameBuffer, 0, prevFrameBuffer, 0, frameBuffer.Length);
-		}
-		
-		// Store current sprite positions
-		for (int i = 0; i < 64; i++)
-		{
-			int offset = i * 4;
-			prevSpriteX[i] = oam[offset + 3];
-			prevSpriteY[i] = oam[offset];
-			prevSpriteTile[i] = oam[offset + 1];
-		}
-		
-		totalFramesProcessed++;
-	}
-	
-	private void DetectSpriteMotion()
-	{
-		// Guard against null during hot-swap
-		if (oam == null) return;
-		
-		for (int i = 0; i < 64; i++)
-		{
-			int offset = i * 4;
-			byte currX = oam[offset + 3];
-			byte currY = oam[offset];
-			byte currTile = oam[offset + 1];
-			
-			int dx = currX - prevSpriteX[i];
-			int dy = currY - prevSpriteY[i];
-			
-			// Handle wrap-around
-			if (dx > 128) dx -= 256;
-			if (dx < -128) dx += 256;
-			if (dy > 120) dy -= 240;
-			if (dy < -120) dy += 240;
-			
-			// Clamp to sbyte range
-			dx = Math.Clamp(dx, -127, 127);
-			dy = Math.Clamp(dy, -127, 127);
-			
-			spriteDeltaX[i] = (sbyte)dx;
-			spriteDeltaY[i] = (sbyte)dy;
-			
-			// Motion is valid if sprite moved but not too far
-			spriteHasMotion[i] = (dx != 0 || dy != 0) && 
-			                     Math.Abs(dx) <= 16 && Math.Abs(dy) <= 16 &&
-			                     currY < 240 && currY > 0;
-		}
-	}
-	
-	private void ApplyColorMorphing()
-	{
-		// Guard against null during hot-swap - cache references to prevent mid-method nulling
-		var fb = frameBuffer;
-		var prevR = prevPixelR;
-		var prevG = prevPixelG;
-		var prevB = prevPixelB;
-		var pAge = pixelAge;
-		
-		if (fb == null || prevR == null || prevG == null || prevB == null || pAge == null) return;
-		
-		// Simple per-pixel morphing: if a pixel changed color, find an intermediate
-		// NES palette color to smooth the transition
-		
-		int pixelCount = ScreenWidth * ScreenHeight;
-		
-		for (int i = 0; i < pixelCount; i++)
-		{
-			int fbIdx = i * 4;
-			
-			byte currR = fb[fbIdx];
-			byte currG = fb[fbIdx + 1];
-			byte currB = fb[fbIdx + 2];
-			
-			byte pR = prevR[i];
-			byte pG = prevG[i];
-			byte pB = prevB[i];
-			
-			// Check if pixel color changed significantly
-			int colorDiff = Math.Abs(currR - pR) + Math.Abs(currG - pG) + Math.Abs(currB - pB);
-			
-			if (colorDiff > 40) // Significant change
-			{
-				// Check if this pixel is in a sprite's motion path
-				bool inMotionPath = IsPixelInSpritePath(i % ScreenWidth, i / ScreenWidth);
-				
-				if (inMotionPath || pAge[i] < MorphFrames)
-				{
-					// Apply morphing - blend towards previous color using NES palette
-					byte morphR, morphG, morphB;
-					float t = inMotionPath ? MorphStrength : (MorphStrength * 0.5f);
-					
-					MorphToNearestPaletteColor(
-						pR, pG, pB,
-						currR, currG, currB,
-						t, out morphR, out morphG, out morphB);
-					
-					fb[fbIdx] = morphR;
-					fb[fbIdx + 1] = morphG;
-					fb[fbIdx + 2] = morphB;
-				}
-				
-				// Reset age for changed pixels
-				pAge[i] = 0;
-			}
-			else if (pAge[i] < 255)
-			{
-				pAge[i]++;
-			}
-			
-			// Store for next frame
-			prevR[i] = currR;
-			prevG[i] = currG;
-			prevB[i] = currB;
-		}
-	}
-	
-	private bool IsPixelInSpritePath(int px, int py)
-	{
-		// Guard against null during hot-swap
-		var oamLocal = oam;
-		if (oamLocal == null) return false;
-		
-		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
-		int spriteHeight = isSprite8x16 ? 16 : 8;
-		
-		for (int i = 0; i < 64; i++)
-		{
-			if (!spriteHasMotion[i]) continue;
-			
-			int offset = i * 4;
-			int spriteX = oamLocal[offset + 3];
-			int spriteY = oamLocal[offset];
-			
-			// Check current sprite bounds
-			if (px >= spriteX && px < spriteX + 8 &&
-			    py >= spriteY && py < spriteY + spriteHeight)
-			{
-				return true;
-			}
-			
-			// Check motion trail (where sprite was)
-			int prevX = spriteX - spriteDeltaX[i];
-			int prevY = spriteY - spriteDeltaY[i];
-			
-			if (px >= prevX && px < prevX + 8 &&
-			    py >= prevY && py < prevY + spriteHeight)
-			{
-				return true;
-			}
-		}
-		
-		return false;
-	}
-	
-	/// <summary>
-	/// Find an intermediate NES palette color between two colors.
-	/// t=0 means use 'from' color, t=1 means use 'to' color.
-	/// </summary>
-	private void MorphToNearestPaletteColor(
-		byte fromR, byte fromG, byte fromB,
-		byte toR, byte toG, byte toB,
-		float t, out byte outR, out byte outG, out byte outB)
-	{
-		// Calculate target RGB (linear interpolation)
-		int targetR = (int)(fromR + (toR - fromR) * (1f - t));
-		int targetG = (int)(fromG + (toG - fromG) * (1f - t));
-		int targetB = (int)(fromB + (toB - fromB) * (1f - t));
-		
-		// Find nearest NES palette color
-		int bestIdx = 0;
-		int bestDist = int.MaxValue;
-		
-		for (int i = 0; i < 64; i++)
-		{
-			int p = i * 3;
-			int dr = targetR - PaletteBytes[p];
-			int dg = targetG - PaletteBytes[p + 1];
-			int db = targetB - PaletteBytes[p + 2];
-			
-			// Weighted distance (human eye more sensitive to green)
-			int dist = dr * dr * 2 + dg * dg * 4 + db * db * 3;
-			
-			if (dist < bestDist)
-			{
-				bestDist = dist;
-				bestIdx = i;
-			}
-		}
-		
-		int fp = bestIdx * 3;
-		outR = PaletteBytes[fp];
-		outG = PaletteBytes[fp + 1];
-		outB = PaletteBytes[fp + 2];
-	}
-
-	// ============================================================================
-	// RENDERING (inherited from CUBE with interpolation hooks)
-	// ============================================================================
 
 	private readonly bool[] bgMask = new bool[ScreenWidth];
 	private void RenderScanline(int scanline)
 	{
+		// Ensure framebuffer exists before writing
 		EnsureFrameBuffer();
+		// Gradient no longer prefilled for whole line; background loop writes gradient on transparent BG pixels
 
+		// If no ROM loaded, skip further drawing (gradient serves as base)
 		if (bus?.cartridge == null)
 		{
+			// Still fill gradient so user sees backdrop when no cart mounted
 			FillFullGradientScanline(scanline);
 			return;
 		}
 
-		bool bgEnabled = (PPUMASK & 0x08) != 0;
-		bool sprEnabled = (PPUMASK & 0x10) != 0;
+		bool bgEnabled = (PPUMASK & 0x08) != 0; // background enable bit 3
+		bool sprEnabled = (PPUMASK & 0x10) != 0; // sprites enable bit 4
 
+		// Clear scanline buffers
 		Array.Clear(bgMask, 0, ScreenWidth);
 		
+		// Render background first (if enabled)
 		if (bgEnabled) RenderBackground(scanline, bgMask);
+		// Then render sprites on top (if enabled)
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
+	// Fill entire scanline with gradient (used only for no-cartridge case)
 	private void FillFullGradientScanline(int y)
 	{
 		int baseIndex = y * ScreenWidth * 4;
@@ -482,30 +241,99 @@ public class PPU_CUBEX : IPPU
 		}
 	}
 
-	private void BuildGradientCache()
+	// HSL color conversion helpers to preserve saturation during lightness adjustments
+	private static void RgbToHsl(byte r, byte g, byte b, out float h, out float s, out float l)
 	{
-		// Guard against null during hot-swap
-		if (paletteRAM == null) return;
-		byte ubIdx = paletteRAM[0];
-		lastGradientBaseColor = ubIdx;
-		int pTop = (ubIdx & 0x3F) * 3;
-		byte topR = PaletteBytes[pTop];
-		byte topG = PaletteBytes[pTop+1];
-		byte topB = PaletteBytes[pTop+2];
-		double brightness = 0.299 * topR + 0.587 * topG + 0.114 * topB;
-		byte botR, botG, botB;
-		if (brightness >= 128)
+		float rf = r / 255f;
+		float gf = g / 255f;
+		float bf = b / 255f;
+		float max = Math.Max(rf, Math.Max(gf, bf));
+		float min = Math.Min(rf, Math.Min(gf, bf));
+		float delta = max - min;
+		
+		// Lightness
+		l = (max + min) / 2f;
+		
+		// Saturation
+		if (delta == 0)
 		{
-			botR = (byte)(topR + (int)((255 - topR) * 0.25));
-			botG = (byte)(topG + (int)((255 - topG) * 0.25));
-			botB = (byte)(topB + (int)((255 - topB) * 0.25));
+			h = 0;
+			s = 0;
 		}
 		else
 		{
-			botR = (byte)(topR * 0.5);
-			botG = (byte)(topG * 0.5);
-			botB = (byte)(topB * 0.5);
+			s = l > 0.5f ? delta / (2f - max - min) : delta / (max + min);
+			
+			// Hue
+			if (max == rf)
+				h = ((gf - bf) / delta + (gf < bf ? 6f : 0f)) / 6f;
+			else if (max == gf)
+				h = ((bf - rf) / delta + 2f) / 6f;
+			else
+				h = ((rf - gf) / delta + 4f) / 6f;
 		}
+	}
+	
+	private static void HslToRgb(float h, float s, float l, out byte r, out byte g, out byte b)
+	{
+		if (s == 0)
+		{
+			// Achromatic (gray)
+			r = g = b = (byte)(l * 255f);
+			return;
+		}
+		
+		float HueToRgb(float p, float q, float t)
+		{
+			if (t < 0f) t += 1f;
+			if (t > 1f) t -= 1f;
+			if (t < 1f / 6f) return p + (q - p) * 6f * t;
+			if (t < 1f / 2f) return q;
+			if (t < 2f / 3f) return p + (q - p) * (2f / 3f - t) * 6f;
+			return p;
+		}
+		
+		float q = l < 0.5f ? l * (1f + s) : l + s - l * s;
+		float p = 2f * l - q;
+		
+		r = (byte)(HueToRgb(p, q, h + 1f / 3f) * 255f);
+		g = (byte)(HueToRgb(p, q, h) * 255f);
+		b = (byte)(HueToRgb(p, q, h - 1f / 3f) * 255f);
+	}
+
+	// Build per-scanline gradient cache with STRONGER gradient (CUBEX enhancement)
+	// Now preserves color saturation by adjusting only lightness in HSL space
+	private void BuildGradientCache()
+	{
+		byte ubIdx = paletteRAM[0];
+		lastGradientBaseColor = ubIdx;
+		int pBase = (ubIdx & 0x3F) * 3;
+		byte baseR = PaletteBytes[pBase];
+		byte baseG = PaletteBytes[pBase+1];
+		byte baseB = PaletteBytes[pBase+2];
+		
+		// Convert base color to HSL
+		RgbToHsl(baseR, baseG, baseB, out float h, out float s, out float l);
+		
+		// Top of gradient: darken by reducing lightness
+		float topL = l * (1f - GradientTopDarken);
+		HslToRgb(h, s, topL, out byte topR, out byte topG, out byte topB);
+		
+		// Bottom of gradient: adjust lightness based on base brightness
+		float botL;
+		if (l >= 0.5f)
+		{
+			// Bright colors: increase lightness
+			botL = l + (1f - l) * GradientBottomLightenBright;
+		}
+		else
+		{
+			// Dark colors: decrease lightness
+			botL = l * (1f - GradientBottomDarkenDark);
+		}
+		botL = Math.Max(0f, Math.Min(1f, botL)); // Clamp to valid range
+		HslToRgb(h, s, botL, out byte botR, out byte botG, out byte botB);
+		
 		for (int y = 0; y < ScreenHeight; y++)
 		{
 			float tt = ScreenHeight <= 1 ? 0f : (float)y / (ScreenHeight - 1);
@@ -520,20 +348,17 @@ public class PPU_CUBEX : IPPU
 
 	public void ClearBuffers()
 	{
+		// Null out the framebuffer so it will be reallocated lazily.
 		frameBuffer = null;
-		prevFrameBuffer = null;
+		// Clear palette cache flag so any palette changes rebuild correctly.
 		paletteCacheBuilt = false;
-		totalFramesProcessed = 0;
-		
+		// Reset coverage histories to avoid ghosting from previous frames.
 		System.Array.Clear(spriteCoverageRows, 0, spriteCoverageRows.Length);
 		System.Array.Clear(bgCoverageRows, 0, bgCoverageRows.Length);
-		System.Array.Clear(pixelAge, 0, pixelAge.Length);
-		System.Array.Clear(prevPixelR, 0, prevPixelR.Length);
-		System.Array.Clear(prevPixelG, 0, prevPixelG.Length);
-		System.Array.Clear(prevPixelB, 0, prevPixelB.Length);
-		System.Array.Clear(prevSpriteX, 0, prevSpriteX.Length);
-		System.Array.Clear(prevSpriteY, 0, prevSpriteY.Length);
-		System.Array.Clear(spriteHasMotion, 0, spriteHasMotion.Length);
+		System.Array.Clear(spriteOutlineRows, 0, spriteOutlineRows.Length);
+		System.Array.Clear(bgOutlineRows, 0, bgOutlineRows.Length);
+		System.Array.Clear(bgUpOutlines, 0, bgUpOutlines.Length);
+		System.Array.Clear(spriteUpOutlines, 0, spriteUpOutlines.Length);
 	}
 
 	public void GenerateStaticFrame()
@@ -542,28 +367,35 @@ public class PPU_CUBEX : IPPU
 		// Guard against null during hot-swap - capture to local variable
 		var fb = frameBuffer;
 		if (fb == null) return;
-		
-		uint frameSeed = (uint)staticFrameCounter * 0x9E3779B1u + 0xB5297A4Du;
-		for (int y = 0; y < ScreenHeight; y++)
+		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
+		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
+		int w = ScreenWidth; int h = ScreenHeight;
+		uint frameSeed = (uint)staticFrameCounter * 0x9E3779B1u + 0xB5297A4Du; // mix frame into seed
+		for (int y = 0; y < h; y++)
 		{
 			uint rowSeed = frameSeed ^ (uint)(y * 0x1F123BB5u);
-			for (int x = 0; x < ScreenWidth; x++)
+			for (int x = 0; x < w; x++)
 			{
 				uint h0 = rowSeed ^ (uint)(x * 0xA24BAEDCu);
+				// Mix (Wang / xorshift-ish)
 				h0 ^= h0 >> 15; h0 *= 0x2C1B3C6Du;
 				h0 ^= h0 >> 12; h0 *= 0x297A2D39u;
 				h0 ^= h0 >> 15;
+				// Intensity 0..255 from high bits
 				byte intensity = (byte)(h0 >> 24);
+				// Optional subtle purple tint: mix grayscale with a lavender bias
+				// Weight grayscale 75%, purple bias 25%.
 				byte baseGray = intensity;
-				// Cyan/blue tint for CUBEX
-				byte pr = (byte)(intensity / 4);
-				byte pg = (byte)(40 + (intensity * 3) / 5);
-				byte pb = (byte)(60 + (intensity * 4) / 5);
+				// Purple bias curve (lavender ramp)
+				byte pr = (byte)(40 + (intensity * 3) / 5);   // tends toward higher red
+				byte pg = (byte)(intensity / 4);              // subdued green
+				byte pb = (byte)(60 + (intensity * 4) / 5);   // stronger blue for violet
 				byte r = (byte)((baseGray * 3 + pr) / 4);
 				byte g = (byte)((baseGray * 3 + pg) / 4);
 				byte b = (byte)((baseGray * 3 + pb) / 4);
+				// Rare bright spark
 				if ((h0 & 0x7FF) == 0) { r = g = b = 255; }
-				int idx = (y * ScreenWidth + x) * 4;
+				int idx = (y * w + x) * 4;
 				fb[idx + 0] = r;
 				fb[idx + 1] = g;
 				fb[idx + 2] = b;
@@ -575,21 +407,116 @@ public class PPU_CUBEX : IPPU
 
 	public void UpdateFrameBuffer()
 	{
+		// This method is called after rendering a frame
+		// The frame buffer is already updated in RenderScanline
+		// Add some animated elements for testing
 		if (bus?.cartridge == null)
 		{
 			AddAnimatedTestElements();
 		}
 	}
 
+	// Lookahead: check if background tiles will have opaque pixels on the next scanline
+	private void PredictNextScanlineBg(int nextScanline)
+	{
+		Array.Clear(nextScanlineBgOpaque, 0, nextScanlineBgOpaque.Length);
+		if (nextScanline >= ScreenHeight || vram == null || paletteRAM == null) return;
+		if ((PPUMASK & 0x08) == 0) return; // BG not enabled
+
+		ushort predictV = v;
+		// Simulate the v register state for next scanline (increment Y once)
+		if ((predictV & 0x7000) != 0x7000) { predictV += 0x1000; }
+		else {
+			predictV &= 0x8FFF;
+			int y = (predictV & 0x03E0) >> 5;
+			if (y == 29) { y = 0; predictV ^= 0x0800; }
+			else if (y == 31) { y = 0; }
+			else { y += 1; }
+			predictV = (ushort)((predictV & 0xFC1F) | (y << 5));
+		}
+
+		for (int tile = 0; tile < 33; tile++)
+		{
+			int coarseX = predictV & 0x001F;
+			int coarseY = (predictV >> 5) & 0x001F;
+			int nameTable = (predictV >> 10) & 0x0003;
+			int baseNTAddr = 0x2000 + (nameTable * 0x400);
+			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
+			byte tileIndex = Read((ushort)tileAddr);
+			int fineY = (predictV >> 12) & 0x7;
+			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
+			int patternAddr = patternTable + (tileIndex * 16) + fineY;
+			byte plane0 = Read((ushort)patternAddr);
+			byte plane1 = Read((ushort)(patternAddr + 8));
+
+			for (int i = 0; i < 8; i++)
+			{
+				int pixel = tile * 8 + i - fineX;
+				if ((uint)pixel >= ScreenWidth) continue;
+				int bit = 1 << (7 - i);
+				int colorIndex = ((plane0 & bit) != 0 ? 1 : 0) | (((plane1 & bit) != 0 ? 1 : 0) << 1);
+				if (colorIndex != 0) nextScanlineBgOpaque[pixel] = true;
+			}
+
+			if ((predictV & 0x001F) == 31) { predictV &= 0xFFE0; predictV ^= 0x0400; }
+			else { predictV++; }
+		}
+	}
+
+	// Lookahead: check if sprites will have opaque pixels on the next scanline
+	private void PredictNextScanlineSprites(int nextScanline)
+	{
+		Array.Clear(nextScanlineSpriteOpaque, 0, nextScanlineSpriteOpaque.Length);
+		if (nextScanline >= ScreenHeight || oam == null || vram == null) return;
+		if ((PPUMASK & 0x10) == 0) return; // Sprites not enabled
+
+		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
+		for (int i = 0; i < 64; i++)
+		{
+			int offset = i * 4;
+			byte spriteY = oam[offset];
+			byte tileIndex = oam[offset + 1];
+			byte attributes = oam[offset + 2];
+			byte spriteX = oam[offset + 3];
+
+			int tileHeight = isSprite8x16 ? 16 : 8;
+			if (nextScanline < spriteY || nextScanline >= spriteY + tileHeight) continue;
+
+			bool flipY = (attributes & 0x80) != 0;
+			bool flipX = (attributes & 0x40) != 0;
+			int subY = nextScanline - spriteY;
+			if (flipY) subY = tileHeight - 1 - subY;
+
+			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
+			int patternTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
+			int baseAddr = patternTable + subTileIndex * 16;
+			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
+			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
+
+			for (int x = 0; x < 8; x++)
+			{
+				int bit = flipX ? x : 7 - x;
+				int bit0 = (plane0 >> bit) & 1;
+				int bit1 = (plane1 >> bit) & 1;
+				int color = bit0 | (bit1 << 1);
+				if (color == 0) continue;
+				int px = spriteX + x;
+				if (px >= 0 && px < ScreenWidth) nextScanlineSpriteOpaque[px] = true;
+			}
+		}
+	}
+
 	private void RenderBackground(int scanline, bool[] bgMask)
 	{
-		// Ensure framebuffer is allocated first
-		EnsureFrameBuffer();
-		
 		// Guard against null during hot-swap - capture to local variable to prevent race conditions
 		var fb = frameBuffer;
 		if (bgMask == null || fb == null || paletteRAM == null || vram == null) return;
 		
+		EnsureFrameBuffer();
+		fb = frameBuffer; // Re-capture after ensure
+		if (fb == null) return;
+		
+		// Check if background rendering is enabled; if disabled we still want a gradient baseline for sprites/shadows
 		bool bgEnabledFlag = (PPUMASK & 0x08) != 0;
 		if (!bgEnabledFlag)
 		{
@@ -597,13 +524,13 @@ public class PPU_CUBEX : IPPU
 			return;
 		}
 
-		// Ensure gradient cache is valid before accessing
-		if (!gradientCacheValid || gradientR == null || gradientG == null || gradientB == null)
+		// 0. Lookahead: predict next scanline's opaque pixels to draw top outlines NOW
+		if (scanline < ScreenHeight - 1)
 		{
-			if (paletteRAM != null) BuildGradientCache();
-			if (!gradientCacheValid) return; // Still not valid after build attempt
+			PredictNextScanlineBg(scanline + 1);
 		}
 
+		// 1. Pre-fill entire scanline with gradient so we can project shadows BEFORE drawing tiles (matches sprite shadow layering semantics)
 		byte gradR = gradientR[scanline];
 		byte gradG = gradientG[scanline];
 		byte gradB = gradientB[scanline];
@@ -617,57 +544,135 @@ public class PPU_CUBEX : IPPU
 			fb[gi + 3] = 255;
 		}
 
-		if (scanline >= ShadowVerticalDistance)
+		// 1.5. Draw up-direction outlines based on lookahead prediction
+		if (scanline < ScreenHeight - 1)
 		{
-			int srcRow = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int srcBase = srcRow * ScreenWidth;
-			int shadowBase = scanline * ScreenWidth * 4;
 			for (int x = 0; x < ScreenWidth; x++)
 			{
-				if (bgCoverageRows[srcBase + x] == 0) continue;
-				int sx = x + ShadowOffsetX;
-				if ((uint)sx >= ScreenWidth) continue;
-				int fi = shadowBase + (sx << 2);
-				fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
-				fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
-				fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
+				if (nextScanlineBgOpaque[x])
+				{
+					int fi = gradBase + (x << 2);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
 			}
 		}
 
+		// 1.6. Draw up-direction outlines that were marked on the previous scanline
+		int upOutlineBase = scanline * ScreenWidth;
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			if (bgUpOutlines[upOutlineBase + x])
+			{
+				int fi = gradBase + (x << 2);
+				fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+			}
+		}
+
+		// 2. Project shadow from previous scanlines' opaque background pixels (down + left) BEFORE current BG tiles draw
+		// CUBEX: Bigger shadow with increased vertical distance
+		if (scanline >= ShadowVerticalDistance)
+		{
+			int shadowBase = scanline * ScreenWidth * 4;
+			// Project from all previous rows within shadow distance
+			for (int dist = 1; dist <= ShadowVerticalDistance; dist++)
+			{
+				int srcRow = (scanline - dist) % ShadowVerticalDistance;
+				int srcBase = srcRow * ScreenWidth;
+				float distanceFactor = 1.0f - (float)(dist - 1) / ShadowVerticalDistance; // Fade shadow with distance
+				for (int x = 0; x < ScreenWidth; x++)
+				{
+					if (bgCoverageRows[srcBase + x] == 0) continue;
+					int sx = x + (ShadowOffsetX * dist / ShadowVerticalDistance); // Progressive offset
+					if ((uint)sx >= ScreenWidth) continue;
+					int fi = shadowBase + (sx << 2);
+					// Darken with distance-based factor
+					int darkenFactor = (int)(65 * distanceFactor); // Stronger darkening
+					fb[fi + 0] = (byte)((fb[fi + 0] * darkenFactor) / 100);
+					fb[fi + 1] = (byte)((fb[fi + 1] * darkenFactor) / 100);
+					fb[fi + 2] = (byte)((fb[fi + 2] * darkenFactor) / 100);
+				}
+			}
+		}
+
+		// CUBEX: Project outlines from previous scanlines BEFORE drawing current tiles
+		if (scanline >= 1)
+		{
+			int outlineRowIndex = (scanline - 1) % ShadowVerticalDistance;
+			int outlineBase = outlineRowIndex * ScreenWidth;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (bgOutlineRows[outlineBase + x])
+				{
+					// Draw outline pixel (white border with configurable opacity)
+					int fi = gradBase + (x << 2);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+			}
+		}
+
+		// 3. Clear coverage buffer AFTER projecting so previous row data was available
 		int coverageRowIndex = scanline % ShadowVerticalDistance;
 		int bgRowBase = coverageRowIndex * ScreenWidth;
-		for (int cx = 0; cx < ScreenWidth; cx++) bgCoverageRows[bgRowBase + cx] = 0;
+		
+		// Get previous row index for vertical edge detection
+		int prevRowIndex = scanline >= 1 ? ((scanline - 1) % ShadowVerticalDistance) : -1;
+		int prevRowBase = prevRowIndex >= 0 ? prevRowIndex * ScreenWidth : -1;
+		
+		for (int cx = 0; cx < ScreenWidth; cx++)
+		{
+			bgCoverageRows[bgRowBase + cx] = 0;
+			bgOutlineRows[bgRowBase + cx] = false;
+		}
 
 		ushort renderV = v;
 
+		// Temporary array to track opaque pixels for outline detection
+		bool[] currentRowOpaque = new bool[ScreenWidth];
+
+		// Render 33 tiles (32 visible + 1 for scrolling)
 		for (int tile = 0; tile < 33; tile++)
 		{
+			// Extract nametable coordinates from current VRAM address
 			int coarseX = renderV & 0x001F;
 			int coarseY = (renderV >> 5) & 0x001F;
 			int nameTable = (renderV >> 10) & 0x0003;
 
+			// Calculate nametable address
 			int baseNTAddr = 0x2000 + (nameTable * 0x400);
 			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 			byte tileIndex = Read((ushort)tileAddr);
 
+			// Get fine Y scroll (which row within the 8x8 tile)
 			int fineY = (renderV >> 12) & 0x7;
 			
+			// Determine pattern table (background uses PPUCTRL bit 4)
 			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 			int patternAddr = patternTable + (tileIndex * 16) + fineY;
 			
+			// Read the two bit planes for this row of the tile
 			byte plane0 = Read((ushort)patternAddr);
 			byte plane1 = Read((ushort)(patternAddr + 8));
 
+			// Get attribute byte for color palette
 			int attributeX = coarseX / 4;
 			int attributeY = coarseY / 4;
 			int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
 			byte attrByte = Read((ushort)attrAddr);
 
+			// Extract the 2-bit palette index for this tile
 			int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 			int paletteIndex = (attrByte >> attrShift) & 0x03;
 
+			// Pre-calculate frame buffer base for this scanline
 			int scanlineBase = scanline * ScreenWidth * 4;
 
+			// Build palette cache once lazily
 			if (!paletteCacheBuilt) { RebuildResolvedPalette(); paletteCacheBuilt = true; }
 			for (int i = 0; i < 8; i++)
 			{
@@ -675,9 +680,10 @@ public class PPU_CUBEX : IPPU
 				if ((uint)pixel >= ScreenWidth) continue;
 				int bit = 1 << (7 - i);
 				int colorIndex = ((plane0 & bit) != 0 ? 1 : 0) | (((plane1 & bit) != 0 ? 1 : 0) << 1);
-				if (colorIndex == 0) continue;
+				if (colorIndex == 0) continue; // keep existing (possibly shadow-darkened) gradient pixel
 				bgMask[pixel] = true;
 				bgCoverageRows[bgRowBase + pixel] = 1;
+				currentRowOpaque[pixel] = true;
 				int palEntry = (1 + (paletteIndex << 2) + colorIndex - 1) & 0x1F;
 				int pBase = palEntry * 3;
 				int frameIndex = scanlineBase + (pixel << 2);
@@ -687,50 +693,165 @@ public class PPU_CUBEX : IPPU
 				fb[frameIndex + 3] = 255;
 			}
 
+			// Increment to next tile
 			IncrementX(ref renderV);
+		}
+
+		// CUBEX: Detect outline edges in all 4 directions (left, right, up, down)
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			if (currentRowOpaque[x])
+			{
+				// Draw adjacent transparent pixels in horizontal directions immediately
+				// Left
+				if (x > 0 && !currentRowOpaque[x - 1])
+				{
+					int fi = gradBase + ((x - 1) << 2);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+				// Right
+				if (x < ScreenWidth - 1 && !currentRowOpaque[x + 1])
+				{
+					int fi = gradBase + ((x + 1) << 2);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+				// Up: if pixel above was transparent, draw outline at TOP of current opaque pixel
+				if (prevRowBase < 0 || bgCoverageRows[prevRowBase + x] == 0)
+				{
+					// Mark the position ABOVE for next scanline to draw
+					if (scanline > 0)
+					{
+						int prevScanlineIndex = (scanline - 1) * ScreenWidth + x;
+						bgUpOutlines[prevScanlineIndex] = true;
+					}
+				}
+				// Down (mark in next row for next scanline to draw)
+				if (scanline < ScreenHeight - 1)
+				{
+					int nextRowIndex = (scanline + 1) % ShadowVerticalDistance;
+					int nextRowBase = nextRowIndex * ScreenWidth;
+					bgOutlineRows[nextRowBase + x] = true;
+				}
+			}
+			else if (prevRowBase >= 0 && bgCoverageRows[prevRowBase + x] != 0)
+			{
+				// Below-edge outline: pixel above was opaque, current is transparent - draw immediately
+				int fi = gradBase + (x << 2);
+				fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+			}
 		}
 	}
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
-		// Ensure framebuffer is allocated first
+		// Guard against null during hot-swap
+		if (bgMask == null || paletteRAM == null || oam == null || vram == null) return;
 		EnsureFrameBuffer();
-		
-		// Guard against null during hot-swap - capture to local variable to prevent race conditions
-		var fb = frameBuffer;
-		if (bgMask == null || fb == null || paletteRAM == null || oam == null || vram == null) return;
-		
+		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
 
+		// Lookahead: predict next scanline's sprites to draw top outlines NOW
+		if (scanline < ScreenHeight - 1)
+		{
+			PredictNextScanlineSprites(scanline + 1);
+			int spriteScanlineBaseForLookahead = scanline * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (nextScanlineSpriteOpaque[x])
+				{
+					int fi = spriteScanlineBaseForLookahead + (x << 2);
+					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+			}
+		}
+
+		// Draw up-direction sprite outlines that were marked on the previous scanline
+		int spriteUpOutlineBase = scanline * ScreenWidth;
+		int spriteScanlineBaseForUp = scanline * ScreenWidth * 4;
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			if (spriteUpOutlines[spriteUpOutlineBase + x])
+			{
+				int fi = spriteScanlineBaseForUp + (x << 2);
+				frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+			}
+		}
+
+		// Project shadows based on historical coverage from previous scanlines
+		// CUBEX: Bigger shadow with increased vertical distance
 		if (scanline >= ShadowVerticalDistance)
 		{
-			int sourceRowIndex = (scanline - ShadowVerticalDistance) % ShadowVerticalDistance;
-			int srcBase = sourceRowIndex * ScreenWidth;
-			int shadowY = scanline;
-			if (shadowY < ScreenHeight)
+			int shadowBase = scanline * ScreenWidth * 4;
+			// Project from all previous rows within shadow distance
+			for (int dist = 1; dist <= ShadowVerticalDistance; dist++)
 			{
-				int shadowBase = shadowY * ScreenWidth * 4;
+				int sourceRowIndex = (scanline - dist) % ShadowVerticalDistance;
+				int srcBase = sourceRowIndex * ScreenWidth;
+				float distanceFactor = 1.0f - (float)(dist - 1) / ShadowVerticalDistance;
 				for (int x = 0; x < ScreenWidth; x++)
 				{
 					if (spriteCoverageRows[srcBase + x] == 0) continue;
-					int sx = x + ShadowOffsetX;
+					int sx = x + (ShadowOffsetX * dist / ShadowVerticalDistance);
 					if (sx < 0 || sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
-					fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
-					fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
-					fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
+					int darkenFactor = (int)(65 * distanceFactor);
+					frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * darkenFactor) / 100);
+					frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * darkenFactor) / 100);
+					frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * darkenFactor) / 100);
+				}
+			}
+		}
+
+		// CUBEX: Project outlines from previous scanlines BEFORE drawing current sprites
+		if (scanline >= 1)
+		{
+			int outlineRowIndex = (scanline - 1) % ShadowVerticalDistance;
+			int outlineBase = outlineRowIndex * ScreenWidth;
+			int scanlineBase = scanline * ScreenWidth * 4;
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				if (spriteOutlineRows[outlineBase + x])
+				{
+					// Draw outline pixel (white border with configurable opacity)
+					int fi = scanlineBase + (x << 2);
+					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 				}
 			}
 		}
 
 		int coverageRowIndex = scanline % ShadowVerticalDistance;
 		int spriteRowBase = coverageRowIndex * ScreenWidth;
-		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageRows[spriteRowBase + cx] = 0;
+		
+		// Get previous row index for vertical edge detection
+		int prevSpriteRowIndex = scanline >= 1 ? ((scanline - 1) % ShadowVerticalDistance) : -1;
+		int prevSpriteRowBase = prevSpriteRowIndex >= 0 ? prevSpriteRowIndex * ScreenWidth : -1;
+		
+		for (int cx = 0; cx < ScreenWidth; cx++)
+		{
+			spriteCoverageRows[spriteRowBase + cx] = 0;
+			spriteOutlineRows[spriteRowBase + cx] = false;
+		}
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
+		// Temporary array to track opaque sprite pixels for outline detection
+		bool[] currentRowSpriteOpaque = new bool[ScreenWidth];
+
+		// Process all 64 sprites in OAM
 		if (!paletteCacheBuilt) { RebuildResolvedPalette(); paletteCacheBuilt = true; }
 		for (int i = 0; i < 64; i++)
 		{
@@ -740,45 +861,54 @@ public class PPU_CUBEX : IPPU
 			byte attributes = oam[offset + 2];
 			byte spriteX = oam[offset + 3];
 
+			// Extract sprite attributes
 			int paletteIndex = attributes & 0b11;
 			bool flipX = (attributes & 0x40) != 0;
 			bool flipY = (attributes & 0x80) != 0;
-			bool priority = (attributes & 0x20) == 0;
+			bool priority = (attributes & 0x20) == 0; // 0 = in front of background
 
+			// Check if sprite is on this scanline
 			int tileHeight = isSprite8x16 ? 16 : 8;
 			if (scanline < spriteY || scanline >= spriteY + tileHeight)
 				continue;
 
+			// Calculate which row of the sprite we're rendering
 			int subY = scanline - spriteY;
 			if (flipY) subY = tileHeight - 1 - subY;
 
+			// For 8x16 sprites, determine which tile and pattern table
 			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
 			int patternTable = isSprite8x16
 				? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000)
 				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
 			int baseAddr = patternTable + subTileIndex * 16;
 
+			// Read pattern data for this row
 			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
 			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
 
+			// Render 8 pixels of the sprite
 			for (int x = 0; x < 8; x++)
 			{
 				int bit = flipX ? x : 7 - x;
 				int bit0 = (plane0 >> bit) & 1;
 				int bit1 = (plane1 >> bit) & 1;
 				int color = bit0 | (bit1 << 1);
-				if (color == 0) continue;
+				if (color == 0) continue; // Transparent pixel
 
 				int px = spriteX + x;
 				if (px < 0 || px >= ScreenWidth) continue;
 
+				// Sprite 0 hit detection
 				if (i == 0 && bgMask[px] && color != 0)
 				{
 					PPUSTATUS |= 0x40;
 				}
 
+				// Skip if another sprite already drew here
 				if (spritePixelDrawnReuse[px]) continue;
 
+				// Check sprite priority
 				bool shouldDraw = true;
 				if (!priority && bgMask[px])
 				{
@@ -787,29 +917,108 @@ public class PPU_CUBEX : IPPU
 
 				if (!shouldDraw) continue;
 
+				// Raw sprite color via cached palette
 				int palBase = 0x11 + (paletteIndex << 2) + color - 1;
 				palBase &= 0x1F;
 				int pBase = palBase * 3;
 				spriteCoverageRows[spriteRowBase + px] = 1;
+				currentRowSpriteOpaque[px] = true;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				if (frameIndex + 3 < fb.Length)
+				if (frameIndex + 3 < frameBuffer!.Length)
 				{
-					fb[frameIndex + 0] = paletteResolved[pBase + 0];
-					fb[frameIndex + 1] = paletteResolved[pBase + 1];
-					fb[frameIndex + 2] = paletteResolved[pBase + 2];
-					fb[frameIndex + 3] = 255;
+					frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
+					frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
+					frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
+					frameBuffer![frameIndex + 3] = 255;
 				}
 				spritePixelDrawnReuse[px] = true;
 			}
 		}
+
+		// CUBEX: Detect outline edges in all 4 directions (left, right, up, down)
+		int spriteScanlineBase = scanline * ScreenWidth * 4;
+		for (int x = 0; x < ScreenWidth; x++)
+		{
+			if (currentRowSpriteOpaque[x])
+			{
+				// Draw adjacent transparent pixels in horizontal directions immediately
+				// Left
+				if (x > 0 && !currentRowSpriteOpaque[x - 1])
+				{
+					int fi = spriteScanlineBase + ((x - 1) << 2);
+					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+				// Right
+				if (x < ScreenWidth - 1 && !currentRowSpriteOpaque[x + 1])
+				{
+					int fi = spriteScanlineBase + ((x + 1) << 2);
+					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				}
+				// Up: if pixel above was transparent, mark outline for previous scanline
+				if (prevSpriteRowBase < 0 || spriteCoverageRows[prevSpriteRowBase + x] == 0)
+				{
+					if (scanline > 0)
+					{
+						int prevScanlineIndex = (scanline - 1) * ScreenWidth + x;
+						spriteUpOutlines[prevScanlineIndex] = true;
+					}
+				}
+				// Down (mark in next row for next scanline to draw)
+				if (scanline < ScreenHeight - 1)
+				{
+					int nextRowIndex = (scanline + 1) % ShadowVerticalDistance;
+					int nextRowBase = nextRowIndex * ScreenWidth;
+					spriteOutlineRows[nextRowBase + x] = true;
+				}
+			}
+			else if (prevSpriteRowBase >= 0 && spriteCoverageRows[prevSpriteRowBase + x] != 0)
+			{
+				// Below-edge outline: pixel above was opaque, current is transparent - draw immediately
+				int fi = spriteScanlineBase + (x << 2);
+				frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+			}
+		}
 	}
 
+
+	private (byte r, byte g, byte b) GetSpriteColor(int colorIndex, int paletteIndex)
+	{
+		int paletteBase = 0x11 + (paletteIndex << 2);
+		byte idx = paletteRAM[paletteBase + (colorIndex - 1)];
+		int p = (idx & 0x3F) * 3;
+		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
+	}
+
+	private (byte r, byte g, byte b) GetColorFromPalette(int colorIndex, int paletteIndex)
+	{
+		byte idx;
+		if (colorIndex == 0)
+		{
+			idx = paletteRAM[0];
+		}
+		else
+		{
+			int paletteBase = 1 + (paletteIndex << 2);
+			idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
+		}
+		int p = (idx & 0x3F) * 3;
+		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
+	}
+
+	// Add some animated elements to make the test pattern more interesting
 	private void AddAnimatedTestElements()
 	{
 		EnsureFrameBuffer();
 		int frame = scanline + scanlineCycle / 100;
 		
+		// Add moving "sprites" for testing
 		for (int i = 0; i < 4; i++)
 		{
 			int spriteX = (32 + i * 64 + frame * (i + 1)) % (ScreenWidth - 16);
@@ -818,19 +1027,21 @@ public class PPU_CUBEX : IPPU
 			DrawTestSprite(spriteX, spriteY, i);
 		}
 		
+		// Add a moving scan line effect
 		int scanLineY = (frame * 2) % ScreenHeight;
 		for (int x = 0; x < ScreenWidth; x++)
 		{
 			int index = (scanLineY * ScreenWidth + x) * 4;
 			if (index + 3 < frameBuffer!.Length)
 			{
-				frameBuffer![index + 0] = 255;
+				frameBuffer![index + 0] = 255; // Bright white scan line
 				frameBuffer![index + 1] = 255;
 				frameBuffer![index + 2] = 255;
 			}
 		}
 	}
 
+	// Draw a simple test sprite
 	private void DrawTestSprite(int x, int y, int spriteType)
 	{
 		EnsureFrameBuffer();
@@ -839,6 +1050,7 @@ public class PPU_CUBEX : IPPU
 		int p = idx * 3;
 		(byte r, byte g, byte b) color = (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
 		
+		// Draw an 8x8 sprite with a simple pattern
 		for (int dy = 0; dy < 8; dy++)
 		{
 			for (int dx = 0; dx < 8; dx++)
@@ -848,6 +1060,7 @@ public class PPU_CUBEX : IPPU
 				
 				if (px >= 0 && px < ScreenWidth && py >= 0 && py < ScreenHeight)
 				{
+					// Simple cross pattern
 					bool shouldDraw = (dx == 4) || (dy == 4) || 
 					                 (dx == dy) || (dx == 7 - dy);
 					
@@ -867,24 +1080,20 @@ public class PPU_CUBEX : IPPU
 		}
 	}
 
-	// ============================================================================
-	// PPU REGISTER ACCESS
-	// ============================================================================
-
 	public byte ReadPPURegister(ushort address)
 	{
 		byte result = 0x00;
 
 		switch (address & 0x0007)
 		{
-			case 0x0002:
+			case 0x0002: // PPU Status
 				result = PPUSTATUS;
-				PPUSTATUS &= 0x3F;
-				addrLatch = false;
+				PPUSTATUS &= 0x3F; // Clear VBlank flag on read
+				addrLatch = false; // Reset address latch
 				return result;
-			case 0x0004:
+			case 0x0004: // OAM Data
 				return oam[OAMADDR];
-			case 0x0007:
+			case 0x0007: // PPU Data
 				result = ppuDataBuffer;
 				ppuDataBuffer = Read(PPUADDR);
 				
@@ -904,25 +1113,25 @@ public class PPU_CUBEX : IPPU
 	{
 		switch (address & 0x0007)
 		{
-			case 0x0000:
+			case 0x0000: // PPU Control
 				PPUCTRL = value;
 				t = (ushort)((t & 0xF3FF) | ((value & 0x03) << 10));
 				break;
-			case 0x0001:
+			case 0x0001: // PPU Mask
 				PPUMASK = value;
 				break;
-			case 0x0002:
+			case 0x0002: // PPU Status
 				PPUSTATUS &= 0x7F;
 				scrollLatch = false;
 				break;
-			case 0x0003:
+			case 0x0003: // OAM Address
 				OAMADDR = value;
 				break;
-			case 0x0004:
+			case 0x0004: // OAM Data
 				OAMDATA = value;
 				oam[OAMADDR++] = OAMDATA;
 				break;
-			case 0x0005:
+			case 0x0005: // PPU Scroll
 				if (!scrollLatch)
 				{
 					PPUSCROLLX = value;
@@ -937,7 +1146,7 @@ public class PPU_CUBEX : IPPU
 				}
 				scrollLatch = !scrollLatch;
 				break;
-			case 0x0006:
+			case 0x0006: // PPU Address
 				if (!addrLatch)
 				{
 					t = (ushort)((value << 8) | (t & 0x00FF));
@@ -951,7 +1160,7 @@ public class PPU_CUBEX : IPPU
 				}
 				addrLatch = !addrLatch;
 				break;
-			case 0x0007:
+			case 0x0007: // PPU Data
 				PPUDATA = value;
 				Write(PPUADDR, PPUDATA);
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
@@ -1003,7 +1212,7 @@ public class PPU_CUBEX : IPPU
 			ushort mirrored = (ushort)(address & 0x1F);
 			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 			paletteRAM[mirrored] = value;
-			UpdateResolvedPaletteEntry(mirrored);
+			UpdateResolvedPaletteEntry(mirrored); // keep cache in sync
 		}
 	}
 
@@ -1080,52 +1289,164 @@ public class PPU_CUBEX : IPPU
 		v = (ushort)((v & 0xFBE0) | (t & 0x041F));
 	}
 
+	// Initialize framebuffer with a beautiful test gradient pattern
+	private void InitializeTestFrameBuffer()
+	{
+		EnsureFrameBuffer();
+		for (int y = 0; y < ScreenHeight; y++)
+		{
+			for (int x = 0; x < ScreenWidth; x++)
+			{
+				int index = (y * ScreenWidth + x) * 4;
+				
+				// Create a comprehensive NES-style test pattern
+			 byte r, g, b;
+				
+				if (y < 60) // Top section - NES palette showcase
+				{
+					int paletteIndex = (x / 4) % 64;
+					int p = (paletteIndex & 0x3F) * 3; r = PaletteBytes[p]; g = PaletteBytes[p+1]; b = PaletteBytes[p+2];
+				}
+				else if (y < 120) // Upper middle - horizontal gradient bars
+				{
+					int barHeight = 10;
+					int barIndex = (y - 60) / barHeight;
+					int barPos = (y - 60) % barHeight;
+					
+					switch (barIndex % 6)
+					{
+						case 0: // Red gradient
+							r = (byte)(x * 255 / ScreenWidth);
+							g = (byte)(barPos * 255 / barHeight);
+							b = 0;
+							break;
+						case 1: // Green gradient
+							r = 0;
+							g = (byte)(x * 255 / ScreenWidth);
+							b = (byte)(barPos * 255 / barHeight);
+							break;
+						case 2: // Blue gradient
+							r = (byte)(barPos * 255 / barHeight);
+							g = 0;
+							b = (byte)(x * 255 / ScreenWidth);
+							break;
+						case 3: // Cyan gradient
+							r = 0;
+							g = (byte)(x * 255 / ScreenWidth);
+							b = (byte)(x * 255 / ScreenWidth);
+							break;
+						case 4: // Magenta gradient
+							r = (byte)(x * 255 / ScreenWidth);
+							g = 0;
+							b = (byte)(x * 255 / ScreenWidth);
+							break;
+						case 5: // Yellow gradient
+						 r = (byte)(x * 255 / ScreenWidth);
+						 g = (byte)(x * 255 / ScreenWidth);
+						 b = 0;
+						 break;
+						default:
+						 r = g = b = 128;
+						 break;
+					}
+				}
+				else if (y < 180) // Middle section - NES color strips and patterns
+				{
+					int strip = (x / 32) % 8;
+					int nesColorIndex = strip * 8 + ((y - 120) / 8);
+					if (nesColorIndex < 64)
+					{
+						int p2 = (nesColorIndex & 0x3F) * 3; r = PaletteBytes[p2]; g = PaletteBytes[p2+1]; b = PaletteBytes[p2+2];
+					}
+					else
+					{
+						r = g = b = 64;
+					}
+				}
+				else // Bottom section - geometric patterns and checker
+				{
+				 bool checker = ((x / 8) + (y / 8)) % 2 == 0;
+					if (checker)
+					{
+						// Radial pattern
+						double centerX = ScreenWidth / 2.0;
+						double centerY = 200;
+						double distance = Math.Sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY));
+						int colorIndex = ((int)distance / 4) % 64;
+						int p3 = (colorIndex & 0x3F) * 3; r = PaletteBytes[p3]; g = PaletteBytes[p3+1]; b = PaletteBytes[p3+2];
+					}
+					else
+					{
+						// Alternating pattern
+						r = (byte)(128 + Math.Sin(x * 0.1) * 127);
+						g = (byte)(128 + Math.Sin(y * 0.1) * 127);
+						b = (byte)(128 + Math.Sin((x + y) * 0.05) * 127);
+					}
+				}
+				
+				frameBuffer![index + 0] = r;     // Red
+				frameBuffer![index + 1] = g;     // Green
+				frameBuffer![index + 2] = b;     // Blue
+				frameBuffer![index + 3] = 255;   // Alpha
+			}
+		}
+	}
+
+	// Initialize palette RAM with reasonable defaults
 	private void InitializeDefaultPalette()
 	{
-		paletteRAM[0x00] = 0x0F;
-		paletteRAM[0x01] = 0x00;
-		paletteRAM[0x02] = 0x10;
-		paletteRAM[0x03] = 0x30;
+		// Background palette 0 (typically used for most graphics)
+		paletteRAM[0x00] = 0x0F; // Universal background color (black)
+		paletteRAM[0x01] = 0x00; // Dark color
+		paletteRAM[0x02] = 0x10; // Medium color
+		paletteRAM[0x03] = 0x30; // Light color
 		
+		// Background palette 1
 		paletteRAM[0x04] = 0x0F;
-		paletteRAM[0x05] = 0x06;
-		paletteRAM[0x06] = 0x16;
-		paletteRAM[0x07] = 0x26;
+		paletteRAM[0x05] = 0x06; // Brown
+		paletteRAM[0x06] = 0x16; // Red
+		paletteRAM[0x07] = 0x26; // Pink
 		
+		// Background palette 2
 		paletteRAM[0x08] = 0x0F;
-		paletteRAM[0x09] = 0x0A;
-		paletteRAM[0x0A] = 0x1A;
-		paletteRAM[0x0B] = 0x2A;
+		paletteRAM[0x09] = 0x0A; // Green
+		paletteRAM[0x0A] = 0x1A; // Light green
+		paletteRAM[0x0B] = 0x2A; // Lighter green
 		
+		// Background palette 3
 		paletteRAM[0x0C] = 0x0F;
-		paletteRAM[0x0D] = 0x02;
-		paletteRAM[0x0E] = 0x12;
-		paletteRAM[0x0F] = 0x22;
+		paletteRAM[0x0D] = 0x02; // Blue
+		paletteRAM[0x0E] = 0x12; // Light blue
+		paletteRAM[0x0F] = 0x22; // Lighter blue
 		
-		paletteRAM[0x10] = 0x0F;
-		paletteRAM[0x11] = 0x14;
-		paletteRAM[0x12] = 0x24;
-		paletteRAM[0x13] = 0x34;
+		// Sprite palette 0
+		paletteRAM[0x10] = 0x0F; // Transparent (not used)
+		paletteRAM[0x11] = 0x14; // Purple
+		paletteRAM[0x12] = 0x24; // Light purple
+		paletteRAM[0x13] = 0x34; // Very light purple
 		
+		// Sprite palette 1
 		paletteRAM[0x14] = 0x0F;
-		paletteRAM[0x15] = 0x07;
-		paletteRAM[0x16] = 0x17;
-		paletteRAM[0x17] = 0x27;
+		paletteRAM[0x15] = 0x07; // Orange
+		paletteRAM[0x16] = 0x17; // Light orange
+		paletteRAM[0x17] = 0x27; // Yellow
 		
+		// Sprite palette 2
 		paletteRAM[0x18] = 0x0F;
-		paletteRAM[0x19] = 0x13;
-		paletteRAM[0x1A] = 0x23;
-		paletteRAM[0x1B] = 0x33;
+		paletteRAM[0x19] = 0x13; // Purple
+		paletteRAM[0x1A] = 0x23; // Light purple
+		paletteRAM[0x1B] = 0x33; // Very light purple
 		
+		// Sprite palette 3
 		paletteRAM[0x1C] = 0x0F;
-		paletteRAM[0x1D] = 0x15;
-		paletteRAM[0x1E] = 0x25;
-		paletteRAM[0x1F] = 0x35;
+		paletteRAM[0x1D] = 0x15; // Magenta
+		paletteRAM[0x1E] = 0x25; // Light magenta
+		paletteRAM[0x1F] = 0x35; // Very light magenta
 	}
 
 	private void UpdateResolvedPaletteEntry(int i)
 	{
-		int eff = (i >= 0x10 && (i & 0x03) == 0) ? i - 0x10 : i;
+		int eff = (i >= 0x10 && (i & 0x03) == 0) ? i - 0x10 : i; // mirror handling
 		int idx = paletteRAM[eff] & 0x3F;
 		int p = idx * 3; int rBase = i * 3;
 		paletteResolved[rBase] = PaletteBytes[p];
@@ -1138,6 +1459,7 @@ public class PPU_CUBEX : IPPU
 		for(int i=0;i<32;i++) UpdateResolvedPaletteEntry(i);
 	}
 
+	//NES 64 Color Palette
 	static readonly byte[] PaletteBytes = new byte[] {
 		84,84,84, 0,30,116, 8,16,144, 48,0,136,
 		68,0,100, 92,0,48, 84,4,0, 60,24,0,
@@ -1158,104 +1480,20 @@ public class PPU_CUBEX : IPPU
 	};
 
 	public object GetState() {
-		return new PpuSharedState { 
-			vram=(byte[])vram.Clone(), 
-			palette=(byte[])paletteRAM.Clone(), 
-			oam=(byte[])oam.Clone(), 
-			PPUCTRL=PPUCTRL,
-			PPUMASK=PPUMASK,
-			PPUSTATUS=PPUSTATUS,
-			OAMADDR=OAMADDR,
-			PPUSCROLLX=PPUSCROLLX,
-			PPUSCROLLY=PPUSCROLLY,
-			PPUDATA=PPUDATA,
-			PPUADDR=PPUADDR,
-			fineX=fineX,
-			scrollLatch=scrollLatch,
-			addrLatch=addrLatch,
-			v=v,
-			t=t,
-			scanline=scanline,
-			scanlineCycle=scanlineCycle, 
-			ppuDataBuffer=ppuDataBuffer, 
-			staticFrameCounter=staticFrameCounter 
-		};
+		return new PpuSharedState { vram=(byte[])vram.Clone(), palette=(byte[])paletteRAM.Clone(), oam=(byte[])oam.Clone(), /* frame omitted */ PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer, staticFrameCounter=staticFrameCounter };
 	}
-	
 	public void SetState(object state) {
 		if (state is PpuSharedState s) {
-			vram = (byte[])s.vram.Clone(); 
-			paletteRAM=(byte[])s.palette.Clone(); 
-			oam=(byte[])s.oam.Clone();
-			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { 
-				EnsureFrameBuffer(); 
-				frameBuffer=(byte[])s.frame.Clone(); 
-			}
-			PPUCTRL=s.PPUCTRL;
-			PPUMASK=s.PPUMASK;
-			PPUSTATUS=s.PPUSTATUS;
-			OAMADDR=s.OAMADDR;
-			PPUSCROLLX=s.PPUSCROLLX;
-			PPUSCROLLY=s.PPUSCROLLY;
-			PPUDATA=s.PPUDATA;
-			PPUADDR=s.PPUADDR;
-			fineX=s.fineX;
-			scrollLatch=s.scrollLatch;
-			addrLatch=s.addrLatch;
-			v=s.v; 
-			t=s.t; 
-			scanline=s.scanline; 
-			scanlineCycle=s.scanlineCycle; 
-			ppuDataBuffer=s.ppuDataBuffer; 
-			staticFrameCounter=s.staticFrameCounter;
-			
-			// Rebuild palette cache after restoring palette RAM
-			RebuildResolvedPalette();
-			paletteCacheBuilt = true;
-			
-			// Reset smoothing state on load
-			totalFramesProcessed = 0;
-			return; 
-		}
+			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
+			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer=(byte[])s.frame.Clone(); }
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
 		if (state is System.Text.Json.JsonElement je) {
-			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { 
-				int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } 
-			}
-			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { 
-				int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } 
-			}
-			if (je.TryGetProperty("oam", out var pOam) && pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { 
-				int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } 
-			}
-			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { 
-				EnsureFrameBuffer(); 
-				int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } 
-			}
-			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} 
-			ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
-			PPUCTRL=GetB("PPUCTRL");
-			PPUMASK=GetB("PPUMASK");
-			PPUSTATUS=GetB("PPUSTATUS");
-			OAMADDR=GetB("OAMADDR");
-			PPUSCROLLX=GetB("PPUSCROLLX");
-			PPUSCROLLY=GetB("PPUSCROLLY");
-			PPUDATA=GetB("PPUDATA");
-			PPUADDR=GetU16("PPUADDR");
-			fineX=GetB("fineX");
-			scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();
-			addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();
-			v=GetU16("v");
-			t=GetU16("t");
-			if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); 
-			if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); 
-			if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
-			
-			// Rebuild palette cache after restoring palette RAM
-			RebuildResolvedPalette();
-			paletteCacheBuilt = true;
-			
-			// Reset smoothing state on load
-			totalFramesProcessed = 0;
+			if (je.TryGetProperty("vram", out var pVram) && pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } }
+			if (je.TryGetProperty("palette", out var pPal) && pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } }
+			if (je.TryGetProperty("oam", out var pOam) && pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } }
+			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
+			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
+			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
 		}
 	}
 }

@@ -71,12 +71,12 @@ namespace BrokenNes.Windows
             if (disposed || samples == null || samples.Length == 0)
                 return;
             
-            // Don't resample for speed changes - let the emulator timing handle it
-            // Only resample when intentionally speeding up (speedMultiplier > 1)
+            // Resample audio based on speed multiplier
+            // For speeds != 1.0, we need to resample to maintain correct pitch
             float[] processedSamples;
-            if (speedMultiplier > 1.05f)
+            if (Math.Abs(speedMultiplier - 1.0f) > 0.05f)
             {
-                // User is fast-forwarding, resample to shorten audio
+                // Speed changed significantly - resample audio
                 processedSamples = ResampleAudio(samples, speedMultiplier);
             }
             else
@@ -131,27 +131,24 @@ namespace BrokenNes.Windows
         
         /// <summary>
         /// Set the playback speed multiplier (1.0 = normal speed, 2.0 = 2x speed, etc.).
-        /// Only affects audio when intentionally fast-forwarding.
+        /// Affects audio resampling for both fast and slow speeds.
         /// </summary>
         public void SetSpeedMultiplier(float multiplier)
         {
             float newMultiplier = Math.Max(0.1f, Math.Min(multiplier, 10.0f)); // Clamp to reasonable range
             
             // Only act on significant changes to avoid constant buffer clearing
-            if (Math.Abs(newMultiplier - speedMultiplier) > 0.1f)
+            if (Math.Abs(newMultiplier - speedMultiplier) > 0.05f)
             {
+                float oldMultiplier = speedMultiplier;
                 speedMultiplier = newMultiplier;
                 
-                // Only clear buffer when switching TO fast-forward mode
-                if (multiplier > 1.5f)
-                {
-                    int bufferedMs = GetBufferedDurationMs();
-                    if (bufferedMs > 80)
-                    {
-                        waveProvider.ClearBuffer();
-                        bufferPosition = 0;
-                    }
-                }
+                // Always clear audio buffer when changing speed to prevent desync
+                // Old samples were generated at a different emulation rate and will sound wrong
+                waveProvider.ClearBuffer();
+                bufferPosition = 0;
+                
+                Console.WriteLine($"Speed changed: {oldMultiplier:F2}x -> {newMultiplier:F2}x (audio buffer cleared)");
             }
         }
         

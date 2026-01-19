@@ -72,6 +72,9 @@ namespace BrokenNes.Windows
             
             // Apply profiling configuration
             PerformanceProfiler.Enabled = config.ProfilingEnabled;
+            
+                // Setup key mappings after config is loaded
+                SetupKeyMapping();
                 Console.WriteLine("SetupKeyMapping completed");
                 
                 // Finally initialize and start emulator
@@ -1295,8 +1298,21 @@ namespace BrokenNes.Windows
                 config.Save();
                 UpdateConfigMenus();
                 
-                // Clear audio buffer when toggling to prevent desync
+                // Clear audio buffer to prevent desync
                 audioManager?.ClearBuffer();
+                
+                if (!config.NoSpeedLimit)
+                {
+                    // Speed limit restored - reset to appropriate speed
+                    if (hasSpeedOverride)
+                    {
+                        audioManager?.SetSpeedMultiplier(speedOverride);
+                    }
+                    else
+                    {
+                        audioManager?.SetSpeedMultiplier(1.0f);
+                    }
+                }
             }
         }
         
@@ -1310,6 +1326,10 @@ namespace BrokenNes.Windows
                 {
                     hasSpeedOverride = false;
                     speedOverride = 1.0f;
+                    
+                    // Reset audio speed and clear buffer to prevent desync
+                    audioManager?.SetSpeedMultiplier(1.0f);
+                    audioManager?.ClearBuffer();
                 };
             }
             
@@ -1322,6 +1342,9 @@ namespace BrokenNes.Windows
         {
             speedOverride = speed;
             hasSpeedOverride = true;
+            
+            // Update audio manager immediately for responsive speed changes
+            audioManager?.SetSpeedMultiplier(speed);
         }
         
         private void ToggleShowFps_Click(object? sender, EventArgs e)
@@ -1736,6 +1759,12 @@ namespace BrokenNes.Windows
                         framesToRun++;
                         accumulator -= effectiveFrameTime;
                     }
+                    
+                    // For slow-motion, add a small sleep when no frames need to run
+                    if (framesToRun == 0)
+                    {
+                        Thread.Sleep(1); // Small sleep to prevent CPU spinning
+                    }
                 }
                 else
                 {
@@ -1817,7 +1846,7 @@ namespace BrokenNes.Windows
                                 nes.RunFrame();
                             }
                             
-                            // Track FPS for display only (not for audio adjustment)
+                            // Track FPS for display and audio speed adjustment
                             fpsFrameCount++;
                             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
                             {
@@ -1825,15 +1854,11 @@ namespace BrokenNes.Windows
                                 fpsFrameCount = 0;
                                 fpsStopwatch.Restart();
                                 
-                                // Only adjust audio speed for intentional speed override
-                                // Normal mode should NOT adjust - audio buffer timing handles sync
-                                if (hasSpeedOverride)
+                                // During no speed limit, adjust audio speed based on actual FPS
+                                if (config.NoSpeedLimit)
                                 {
-                                    audioManager?.SetSpeedMultiplier(speedOverride);
-                                }
-                                else
-                                {
-                                    audioManager?.SetSpeedMultiplier(1.0f);
+                                    float actualSpeed = (float)(currentFps / 60.0);
+                                    audioManager?.SetSpeedMultiplier(actualSpeed);
                                 }
                             }
                             
@@ -1921,7 +1946,7 @@ namespace BrokenNes.Windows
                 
                 // Precision wait using spin-wait for final microseconds
                 // This avoids Windows timer granularity issues
-                if (!config.NoSpeedLimit && framesToRun == 0)
+                if (!config.NoSpeedLimit && !hasSpeedOverride && framesToRun == 0)
                 {
                     long now = stopwatch.ElapsedTicks;
                     long ticksToWait = nextFrameTime - now;
