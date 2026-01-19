@@ -133,6 +133,7 @@ namespace NesEmulator
     private bool nonlinearMixing = true; // default to accurate nonlinear mix
     // Output gain scaling for QN mixer (reduce volume ~17%)
     private const float OutputGain = 0.83f;
+    private int channelEnableMask = 0x1F;
 
         public APU_QLQ(Bus bus)
         {
@@ -547,7 +548,11 @@ namespace NesEmulator
 
         private void MixAndStoreOutput()
         {
-            int p1 = square1.lastAmp; int p2 = square2.lastAmp; int t = triangle.lastAmp; int n = noise.lastAmp; int d = dmc.lastAmp;
+            int p1 = ChannelEnabled(0x01) ? square1.lastAmp : 0;
+            int p2 = ChannelEnabled(0x02) ? square2.lastAmp : 0;
+            int t = ChannelEnabled(0x04) ? triangle.lastAmp : 0;
+            int n = ChannelEnabled(0x08) ? noise.lastAmp : 0;
+            int d = ChannelEnabled(0x10) ? dmc.lastAmp : 0;
             float mixed;
             if (nonlinearMixing)
             {
@@ -570,6 +575,8 @@ namespace NesEmulator
             if (ringCount >= AudioRingSize) { ringRead = (ringRead + 1) & (AudioRingSize - 1); ringCount--; }
             audioRing[ringWrite] = mixed; ringWrite = (ringWrite + 1) & (AudioRingSize - 1); ringCount++;
         }
+
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 
     // (Removed obsolete RunFrameSequencer skeleton; integrated in ClockFrameSequencerInternal)
 
@@ -745,7 +752,7 @@ namespace NesEmulator
 
     public int GetQueuedSampleCount() => ringCount;
     public int GetSampleRate() => SampleRate;
-    public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+    public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
     
         // Optional hook for bus resets/hot-swaps to drop any queued audio and fractional pacing
         public void ClearAudioBuffers()

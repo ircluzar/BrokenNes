@@ -105,6 +105,7 @@ namespace NesEmulator
         private float lpLast = 0f, dcLastIn = 0f, dcLastOut = 0f;
         // Channel enables
         private bool pulse1_enabled = false, pulse2_enabled = false, triangle_enabled = false, noise_enabled = false;
+        private int channelEnableMask = 0x1F;
         // Constants
         private const float LowPassCoeff = 0.15f; // simple 1-pole low-pass coefficient
                                                   // Standard NES length table (32 entries). Previous version missed the final value (30) causing
@@ -268,10 +269,10 @@ namespace NesEmulator
 
         private bool IsAnyChannelAudible()
         {
-            if (pulse1_enabled && pulse1_lengthCounter > 0 && pulse1_timer >= 8) return true;
-            if (pulse2_enabled && pulse2_lengthCounter > 0 && pulse2_timer >= 8) return true;
-            if (triangle_enabled && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) return true;
-            if (noise_enabled && noise_lengthCounter > 0) return true;
+            if (ChannelEnabled(0x01) && pulse1_enabled && pulse1_lengthCounter > 0 && pulse1_timer >= 8) return true;
+            if (ChannelEnabled(0x02) && pulse2_enabled && pulse2_lengthCounter > 0 && pulse2_timer >= 8) return true;
+            if (ChannelEnabled(0x04) && triangle_enabled && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) return true;
+            if (ChannelEnabled(0x08) && noise_enabled && noise_lengthCounter > 0) return true;
             return false;
         }
 
@@ -326,14 +327,16 @@ namespace NesEmulator
             frameSequenceStep = (frameSequenceStep + 1) & 0x03;
         }
 
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
+
         private void GenerateAudioSample()
         {
             if (ringCount >= AudioRingSize)
             { ringRead = (ringRead + 1) & (AudioRingSize - 1); ringCount--; }
-            double p1 = (pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
-            double p2 = (pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
-            double t = (triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
-            double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
+            double p1 = (ChannelEnabled(0x01) && pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
+            double p2 = (ChannelEnabled(0x02) && pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
+            double t = (ChannelEnabled(0x04) && triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
+            double n = (ChannelEnabled(0x08) && noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
             double pulseMix = (p1 + p2) == 0 ? 0.0 : 95.88 / (8128.0 / (p1 + p2) + 100.0);
             double tnd = (t + n) == 0 ? 0.0 : 159.79 / (1.0 / (t / 8227.0 + n / 12241.0) + 100.0);
             float mixed = (float)(pulseMix + tnd);
@@ -398,7 +401,10 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
-        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+        public void SetEnabledChannels(int channelMask)
+        {
+            channelEnableMask = channelMask & 0x1F;
+        }
 
         private void QuarterFrameTick()
         {

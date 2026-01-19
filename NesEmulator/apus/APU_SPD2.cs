@@ -28,6 +28,7 @@ namespace NesEmulator
         private byte noise_length, noise_period;
 
         private byte status;
+        private int channelEnableMask = 0x1F;
 
         // Audio generation (ring buffer so JS can pull variably sized chunks without losing samples)
         private const int audioSampleRate = 44100; // Target host sample rate (matches WebAudio param)
@@ -432,12 +433,12 @@ namespace NesEmulator
             {
                 if (localCount >= AudioRingSize)
                 { localRead = (localRead + 1) & (AudioRingSize - 1); localCount--; }
-                double p1 = (pulse1_enabled && (s & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
-                double p2 = (pulse2_enabled && (s & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
+                double p1 = ChannelEnabled(0x01) && (pulse1_enabled && (s & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
+                double p2 = ChannelEnabled(0x02) && (pulse2_enabled && (s & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
                 double pSum = p1 + p2;
-                double t = (triangle_enabled && (s & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
-                double n = (noise_enabled && (s & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
-                double d = (featDmc && dmc_enabled) ? dmc_output : 0.0;
+                double t = ChannelEnabled(0x04) && (triangle_enabled && (s & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
+                double n = ChannelEnabled(0x08) && (noise_enabled && (s & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
+                double d = (featDmc && dmc_enabled && ChannelEnabled(0x10)) ? dmc_output : 0.0;
                 float mixed;
                 if (lutMix)
                 {
@@ -653,7 +654,9 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
-        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+        public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
+
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 
         private void QuarterFrameTick()
         {

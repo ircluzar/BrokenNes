@@ -138,6 +138,7 @@ namespace NesEmulator
     private const float OutputGain = 1.05f; // boosted to match other cores after filter
     // Simple low-pass + proper two-state DC high-pass filter (matches other cores) to avoid buzz
     private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
+    private int channelEnableMask = 0x1F;
 
     public APU_QLQ2(Bus bus)
         {
@@ -398,7 +399,11 @@ namespace NesEmulator
 
         private void MixAndStoreOutput()
         {
-            int p1 = square1.lastAmp; int p2 = square2.lastAmp; int t = triangle.lastAmp; int n = noise.lastAmp; int d = dmc.lastAmp;
+            int p1 = ChannelEnabled(0x01) ? square1.lastAmp : 0;
+            int p2 = ChannelEnabled(0x02) ? square2.lastAmp : 0;
+            int t = ChannelEnabled(0x04) ? triangle.lastAmp : 0;
+            int n = ChannelEnabled(0x08) ? noise.lastAmp : 0;
+            int d = ChannelEnabled(0x10) ? dmc.lastAmp : 0;
             if (p1 > 15) p1 = 15; if (p2 > 15) p2 = 15; if (t > 15) t = 15; if (n > 15) n = 15; if (d > 127) d = 127;
             int pulseSum = p1 + p2; if (pulseSum > 30) pulseSum = 30;
             float pulseMix = PulseMixLut[pulseSum];
@@ -410,6 +415,8 @@ namespace NesEmulator
             if (++ringWrite == AudioRingSize) ringWrite = 0;
             if (ringCount < AudioRingSize) ringCount++; else { if (++ringRead == AudioRingSize) ringRead = 0; }
         }
+
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 
     // (Removed obsolete RunFrameSequencer skeleton; integrated in ClockFrameSequencerInternal)
 
@@ -585,7 +592,7 @@ namespace NesEmulator
 
     public int GetQueuedSampleCount() => ringCount;
     public int GetSampleRate() => SampleRate;
-    public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+    public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
     
         // Optional hook for bus resets/hot-swaps to drop any queued audio and fractional pacing
         public void ClearAudioBuffers()

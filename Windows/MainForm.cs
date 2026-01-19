@@ -1647,11 +1647,35 @@ namespace BrokenNes.Windows
                         var bus = busField.GetValue(nes);
                         if (bus != null)
                         {
-                            var apuProperty = bus.GetType().GetProperty("Apu");
-                            if (apuProperty != null)
+                            var busType = bus.GetType();
+
+                            void ApplyMask(IAPU? apuInstance)
                             {
-                                var apu = apuProperty.GetValue(bus) as IAPU;
-                                apu?.SetEnabledChannels(config.EnabledChannels);
+                                apuInstance?.SetEnabledChannels(config.EnabledChannels);
+                            }
+
+                            // Prefer a public property if one exists (future-proof), else fall back to fields.
+                            var apuFromProperty = busType.GetProperty("Apu", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase)?.GetValue(bus) as IAPU;
+                            ApplyMask(apuFromProperty);
+
+                            // Common fields on Bus: apu, activeApu, apuJank, apuQN
+                            var apuField = busType.GetField("apu", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(bus) as IAPU;
+                            var activeApuField = busType.GetField("activeApu", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(bus) as IAPU;
+                            var apuJankField = busType.GetField("apuJank", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(bus) as IAPU;
+                            var apuQnField = busType.GetField("apuQN", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(bus) as IAPU;
+                            ApplyMask(apuField);
+                            ApplyMask(activeApuField);
+                            ApplyMask(apuJankField);
+                            ApplyMask(apuQnField);
+
+                            // Also push the mask to any cached APU instances to keep future hot-swaps consistent.
+                            var apuInstancesField = busType.GetField("_apuInstances", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (apuInstancesField?.GetValue(bus) is System.Collections.Generic.IDictionary<string, IAPU> apuDict)
+                            {
+                                foreach (var apu in apuDict.Values)
+                                {
+                                    ApplyMask(apu);
+                                }
                             }
                         }
                     }

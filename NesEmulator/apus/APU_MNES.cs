@@ -99,6 +99,7 @@ namespace NesEmulator
         private float lpLast = 0f, dcLastIn = 0f, dcLastOut = 0f;
         // Channel enables
         private bool pulse1_enabled = false, pulse2_enabled = false, triangle_enabled = false, noise_enabled = false;
+        private int channelEnableMask = 0x1F;
     // DPCM (DMC) channel minimal state for SoundFont note-event representation
         private bool dpcm_loop = false;
         private int dpcm_rateIndex = 0; // 0..15
@@ -597,14 +598,16 @@ namespace NesEmulator
             for (int i = 0; i < samplesToProduce; i++) GenerateAudioSample();
         }
 
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
+
         private void GenerateAudioSample()
         {
             if (ringCount >= AudioRingSize)
             { ringRead = (ringRead + 1) & (AudioRingSize - 1); ringCount--; }
-            double p1 = (pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
-            double p2 = (pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
-            double t = (triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
-            double n = (noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
+            double p1 = (ChannelEnabled(0x01) && pulse1_enabled && (status & 0x01) != 0 && pulse1_lengthCounter > 0 && pulse1_timer >= 8) ? pulse1_output : 0.0;
+            double p2 = (ChannelEnabled(0x02) && pulse2_enabled && (status & 0x02) != 0 && pulse2_lengthCounter > 0 && pulse2_timer >= 8) ? pulse2_output : 0.0;
+            double t = (ChannelEnabled(0x04) && triangle_enabled && (status & 0x04) != 0 && triangle_lengthCounter > 0 && triangle_linearCounter > 0 && triangle_timer >= 2) ? triangle_output : 0.0;
+            double n = (ChannelEnabled(0x08) && noise_enabled && (status & 0x08) != 0 && noise_lengthCounter > 0) ? noise_output : 0.0;
             // Apply PCM attenuation scaling (independent of SoundFont note-event path)
             if (t != 0.0) t *= PcmTriangleGainScale;
             if (n != 0.0) n *= PcmNoiseGainScale * NoiseAttenuationFactor;
@@ -731,7 +734,7 @@ namespace NesEmulator
         public float[] GetAudioBuffer() => GetAudioSamples();
         public int GetQueuedSampleCount() => ringCount;
         public int GetSampleRate() => audioSampleRate;
-        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+        public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
 
         private void QuarterFrameTick()
         { ClockEnvelope(ref pulse1_envelopeStart, ref pulse1_envelopeDivider, ref pulse1_decayLevel, pulse1_volumeParam, pulse1_lengthHalt); ClockEnvelope(ref pulse2_envelopeStart, ref pulse2_envelopeDivider, ref pulse2_decayLevel, pulse2_volumeParam, pulse2_lengthHalt); ClockEnvelope(ref noise_envelopeStart, ref noise_envelopeDivider, ref noise_decayLevel, noise_volumeParam, noise_lengthHalt); if (triangle_linearReloadFlag) triangle_linearCounter = triangle_linear & 0x7F; else if (triangle_linearCounter > 0) triangle_linearCounter--; if ((triangle_linear & 0x80) == 0) triangle_linearReloadFlag = false; }

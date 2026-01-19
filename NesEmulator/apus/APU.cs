@@ -74,6 +74,7 @@ namespace NesEmulator
     // Filters state
     // lpLast: previous low-pass output; dcLastOut: previous fused HP output. dcLastIn retained for save-state compatibility.
     private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
+    private int channelEnableMask = 0x1F;
 
         // Lookup tables
         private static readonly int[] LengthTable = { 10,254,20,2,40,4,80,6,160,8,60,10,14,12,26,14,12,16,24,18,48,20,96,22,192,24,72,26,16,28,32,30 };
@@ -342,14 +343,14 @@ namespace NesEmulator
         private void MixAndStore()
         {
             // LUT-based nonlinear mixing
-            int p1 = pulse1_output;
-            int p2 = pulse2_output;
+            int p1 = ChannelEnabled(0x01) ? pulse1_output : 0;
+            int p2 = ChannelEnabled(0x02) ? pulse2_output : 0;
             int pulseSum = p1 + p2; // 0..30
             float pulseMix = PulseMixLut[pulseSum];
 
-            int t = triangle_output;
-            int n = noise_output;
-            int d = dmc_enabled ? dmc_output : 0;
+            int t = ChannelEnabled(0x04) ? triangle_output : 0;
+            int n = ChannelEnabled(0x08) ? noise_output : 0;
+            int d = (ChannelEnabled(0x10) && dmc_enabled) ? dmc_output : 0;
             int tndIndex = (t << 11) | (n << 7) | d; // (t<< (4+7)) | (n<<7) | d
             float tnd = TndMixLut[tndIndex];
             float mixed = pulseMix + tnd;
@@ -364,6 +365,8 @@ namespace NesEmulator
             StoreSample(hp * 1.05f);
         }
 
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
+
         private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)
         {
             if(shift == 0) return false; // no change => no mute condition from sweep
@@ -377,7 +380,7 @@ namespace NesEmulator
 
         public float[] GetAudioSamples(int maxSamples=0){ if(ringCount==0) return Array.Empty<float>(); int toRead = ringCount; if(maxSamples>0 && maxSamples<toRead) toRead=maxSamples; if(toRead>4096 && maxSamples==0) toRead=4096; float[] result=new float[toRead]; int first = Math.Min(toRead, AudioRingSize - ringRead); Array.Copy(audioRing, ringRead, result,0, first); int rem=toRead-first; if(rem>0) Array.Copy(audioRing,0,result,first,rem); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return result; }
         public float[] GetAudioBuffer()=>GetAudioSamples(); public int GetQueuedSampleCount()=>ringCount; public int GetSampleRate()=>audioSampleRate;
-        public void SetEnabledChannels(int channelMask) { /* TODO: Implement channel muting */ }
+        public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
 
     private void ResetInternal(){ ringRead=ringWrite=ringCount=0; fractionalSampleAccumulator=0; samplePhase=0; lpLast=dcLastIn=dcLastOut=0; frameCycle=0; frameIRQFlag=false; dmc_irqFlag=false; }
 
