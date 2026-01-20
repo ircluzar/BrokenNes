@@ -145,6 +145,28 @@ namespace BrokenNes.Windows.Rendering
             Array.Copy(source.Bits, Bits, Bits.Length);
         }
 
+        /// <summary>
+        /// Creates a System.Drawing.Bitmap from the DirectBitmap data.
+        /// Caller is responsible for disposing the returned Bitmap.
+        /// </summary>
+        public System.Drawing.Bitmap ToBitmap()
+        {
+            var bitmap = new System.Drawing.Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            var rect = new System.Drawing.Rectangle(0, 0, Width, Height);
+            var data = bitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.WriteOnly, bitmap.PixelFormat);
+
+            try
+            {
+                Marshal.Copy(Bits, 0, data.Scan0, Bits.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+
+            return bitmap;
+        }
+
         public void Dispose()
         {
             if (!disposed)

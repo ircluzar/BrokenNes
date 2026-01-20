@@ -15,6 +15,8 @@ using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
 using BrokenNes.Windows.Tools;
+using PngPayloadEmbedding;
+using System.Text;
 
 namespace BrokenNes.Windows
 {
@@ -210,6 +212,16 @@ namespace BrokenNes.Windows
             }
         }
 
+        /// <summary>
+        /// Gets a snapshot of the current emulator framebuffer.
+        /// </summary>
+        /// <returns>A Bitmap containing the current frame, or null if not available.</returns>
+        public Bitmap? GetScreenshot()
+        {
+            if (frameBuffer == null) return null;
+            return frameBuffer.ToBitmap();
+        }
+
         private void QueueEmuAction(Action action)
         {
             emulationActions.Enqueue(action);
@@ -287,6 +299,10 @@ namespace BrokenNes.Windows
             var saveStateItem = new ToolStripMenuItem("Save State...", null, SaveStateToFile_Click);
             saveStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.S;
             emulatorMenu.DropDownItems.Add(saveStateItem);
+
+            var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
+            screenshotItem.ShortcutKeys = Keys.F12;
+            emulatorMenu.DropDownItems.Add(screenshotItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -1185,6 +1201,7 @@ namespace BrokenNes.Windows
                     nes = new NES();
                     nes.LoadROM(romData);
                     nes.RomName = Path.GetFileName(path);
+                    nes.RomPath = path;
                     InitializeImagineEngine();
                 }
                 
@@ -1264,24 +1281,68 @@ namespace BrokenNes.Windows
         
         private void LoadStateFromFile_Click(object? sender, EventArgs e)
         {
-            if (nes == null)
-            {
-                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            
             using var openDialog = new OpenFileDialog
             {
-                Filter = "State Files (*.state)|*.state|All Files (*.*)|*.*",
+                Filter = "State Images (*.png)|*.png|State Files (*.state)|*.state|All Files (*.*)|*.*",
                 Title = "Load Save State",
-                DefaultExt = "state"
+                DefaultExt = "png"
             };
             
             if (openDialog.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
-                    string stateJson = File.ReadAllText(openDialog.FileName);
+                    string stateJson = "";
+                    string ext = Path.GetExtension(openDialog.FileName).ToLower();
+
+                    if (ext == ".png")
+                    {
+                        using (var bmp = new Bitmap(openDialog.FileName))
+                        {
+                            byte[] data = PngPayload.ExtractData(bmp);
+                            if (data == null || data.Length == 0)
+                            {
+                                throw new Exception("No embedded state data found in this image.");
+                            }
+                            stateJson = Encoding.UTF8.GetString(data);
+                        }
+                    }
+                    else
+                    {
+                         stateJson = File.ReadAllText(openDialog.FileName);
+                    }
+                    
+                    // Auto-load ROM if possible
+                    string savedRomPath = NES.GetSavedRomPath(stateJson);
+                    string savedRomName = NES.GetSavedRomName(stateJson);
+                    
+                    if (nes == null)
+                    {
+                         if (!string.IsNullOrEmpty(savedRomPath) && File.Exists(savedRomPath))
+                         {
+                             LoadRomFile(savedRomPath);
+                         }
+                         else
+                         {
+                             MessageBox.Show($"Cannot load state: No ROM loaded and original ROM path invalid.\nPath: {savedRomPath}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                             return;
+                         }
+                    }
+                    else if (!string.IsNullOrEmpty(savedRomPath) && !string.Equals(savedRomPath, currentRomPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                         // Check if we should auto-switch
+                         if (File.Exists(savedRomPath))
+                         {
+                             LoadRomFile(savedRomPath);
+                         }
+                         else
+                         {
+                             var r = MessageBox.Show($"State is for '{savedRomName}' but current ROM is different.\nOriginal path not found: {savedRomPath}\nLoad state anyway?", "ROM Mismatch", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                             if (r == DialogResult.No) return;
+                         }
+                    }
+                    
+                    if (nes == null) return;
                     
                     // Pause emulation during state load
                     bool wasPaused = isPaused;
@@ -1316,10 +1377,10 @@ namespace BrokenNes.Windows
             
             using var saveDialog = new SaveFileDialog
             {
-                Filter = "State Files (*.state)|*.state|All Files (*.*)|*.*",
+                Filter = "State Images (*.png)|*.png",
                 Title = "Save Save State",
-                DefaultExt = "state",
-                FileName = Path.GetFileNameWithoutExtension(currentRomPath) + ".state"
+                DefaultExt = "png",
+                FileName = Path.GetFileNameWithoutExtension(currentRomPath) + ".png"
             };
             
             if (saveDialog.ShowDialog() == DialogResult.OK)
@@ -1331,19 +1392,100 @@ namespace BrokenNes.Windows
                     isPaused = true;
                     
                     string stateJson;
+                    Bitmap screenshot = null;
+
                     lock (emulationLock)
                     {
                         stateJson = nes.SaveState();
+                        screenshot = GetScreenshot();
                     }
                     
                     isPaused = wasPaused;
+
+                    if (screenshot == null)
+                    {
+                         // Fallback if no screenshot available (rare)
+                         screenshot = new Bitmap(NES_WIDTH, NES_HEIGHT);
+                         using (Graphics g = Graphics.FromImage(screenshot)) g.Clear(Color.Black);
+                    }
                     
-                    File.WriteAllText(saveDialog.FileName, stateJson);
+                    byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                    using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
+                    {
+                        if (embedded == null)
+                        {
+                             throw new Exception("State data is too large to fit in the screenshot!");
+                        }
+                        embedded.Save(saveDialog.FileName, ImageFormat.Png);
+                    }
                     
+                    screenshot.Dispose();
+
                     this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Saved]";
                 }
                 catch (Exception ex)
                 {
+                    MessageBox.Show($"Failed to save state:\n{ex.Message}", "Save State Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void TakeScreenshot_Click(object? sender, EventArgs e)
+        {
+             if (nes == null) return;
+
+             try
+             {
+                 string screenshotsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "screenshots");
+                 Directory.CreateDirectory(screenshotsDir);
+
+                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                 string filename = $"BrokenNes_{Path.GetFileNameWithoutExtension(currentRomPath)}_{timestamp}.png";
+                 string fullPath = Path.Combine(screenshotsDir, filename);
+
+                 lock(emulationLock)
+                 {
+                     string stateJson = nes.SaveState();
+                     byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                     
+                     using (Bitmap screenshot = GetScreenshot())
+                     {
+                         if (screenshot != null)
+                         {
+                             // Embed state for sharing capabilities
+                             using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
+                             {
+                                  if (embedded != null)
+                                  {
+                                      embedded.Save(fullPath, ImageFormat.Png);
+                                  }
+                                  else
+                                  {
+                                      // If embedding fails (e.g. state too big?), just save the raw screenshot
+                                      screenshot.Save(fullPath, ImageFormat.Png);
+                                  }
+                             }
+                         }
+                     }
+                 }
+                 
+                 Console.WriteLine($"Screenshot saved: {fullPath}");
+                 
+                 // Show a brief OSD message or update title
+                 string oldText = this.Text;
+                 this.Text = $"{oldText} [Screenshot Saved]";
+                 Task.Delay(1500).ContinueWith(_ => 
+                 {
+                     if (InvokeRequired && !IsDisposed) BeginInvoke(new Action(() => this.Text = oldText));
+                 });
+
+             }
+             catch(Exception ex)
+             {
+                 Console.WriteLine($"Screenshot failed: {ex.Message}");
+                 MessageBox.Show($"Failed to take screenshot: {ex.Message}", "Error");
+                 {
                     MessageBox.Show($"Failed to save state:\n{ex.Message}", "Save State Error", 
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }

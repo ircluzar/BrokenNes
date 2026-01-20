@@ -29,6 +29,7 @@ namespace NesEmulator
 
 		public NES() { }
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
+		public string RomPath { get; set; } = string.Empty; // optional full path to ROM file
 		private bool crashed = false; private string crashInfo = string.Empty; private CrashKind crashKind = CrashKind.Generic;
 		private enum CrashKind { Generic, UnsupportedMapper }
 		public enum CrashBehavior { RedScreen, IgnoreErrors, ImagineFix }
@@ -93,6 +94,7 @@ namespace NesEmulator
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public string romName = string.Empty; // optional metadata for UI labeling
+			public string romPath = string.Empty; // optional path to support auto-reload
 			public int apuCore; // 0=Modern,1=Jank,2=QuickNes (integer, kept for backward compat if ever needed)
 			public int cpuCore; // 0=FMC (future cores enumerate)
 			public string cpuCoreId = string.Empty; public string ppuCoreId = string.Empty; public string apuCoreId = string.Empty; // reflection suffixes
@@ -206,8 +208,8 @@ namespace NesEmulator
 				var ramClone = (byte[])bus.ram.Clone();
 				var prgClone = (byte[])cartridge.prgRAM.Clone();
 				var chrClone = (byte[])cartridge.chrRAM.Clone();
-				var romClone = (byte[])cartridge.rom.Clone();
-				Log($"Sizes ram={ramClone.Length} prgRAM={prgClone.Length} chrRAM={chrClone.Length} rom={romClone.Length}");
+				// var romClone = (byte[])cartridge.rom.Clone(); 
+				Log($"Sizes ram={ramClone.Length} prgRAM={prgClone.Length} chrRAM={chrClone.Length} rom=0 (Excluded)");
 				st = new NesState {
 					cycleRemainder = overshootCarry, // store overshoot for older loaders
 					extraCycleAcc = extraCycleAccumulator,
@@ -219,8 +221,9 @@ namespace NesEmulator
 					mapper = mapperJson,
 					prgRAM = prgClone,
 					chrRAM = chrClone,
-					romData = romClone,
+					romData = Array.Empty<byte>(), // Exclude ROM to save space
 					romName = RomName,
+					romPath = RomPath,
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
@@ -232,16 +235,21 @@ namespace NesEmulator
 				};
 				Log("NesState object constructed");
 			} catch (Exception ex) { Log("NesState construction FAILED: "+ex.GetType().Name+" "+ex.Message); }
-			try { if (st != null) { st.romHash = st.romData.Length > 0 ? ComputeHash(st.romData) : string.Empty; Log("ROM hash computed length="+ (st.romHash?.Length ?? 0)); } } catch (Exception ex) { Log("ROM hash FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			try { if (st != null) { st.romHash = cartridge.rom.Length > 0 ? ComputeHash(cartridge.rom) : string.Empty; Log("ROM hash computed length="+ (st.romHash?.Length ?? 0)); } } catch (Exception ex) { Log("ROM hash FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			string json = string.Empty;
 			try { Log("Serializing NesState root - start"); json = PlainSerialize(st!); Log($"Serializing NesState root - done length={json.Length}"); } catch (Exception ex) { Log("Root serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			var elapsed = DateTime.UtcNow - startTimestamp; Log("SaveState() complete in "+elapsed.TotalMilliseconds.ToString("F2")+" ms");
 			return json;
 		}
 
-		public string GetSavedRomName(string stateJson)
+		public static string GetSavedRomName(string stateJson)
 		{
 			try { using var doc = System.Text.Json.JsonDocument.Parse(stateJson); if (doc.RootElement.TryGetProperty("romName", out var rn) && rn.ValueKind==System.Text.Json.JsonValueKind.String) return rn.GetString()??string.Empty; } catch {} return string.Empty;
+		}
+
+		public static string GetSavedRomPath(string stateJson)
+		{
+			try { using var doc = System.Text.Json.JsonDocument.Parse(stateJson); if (doc.RootElement.TryGetProperty("romPath", out var rn) && rn.ValueKind==System.Text.Json.JsonValueKind.String) return rn.GetString()??string.Empty; } catch {} return string.Empty;
 		}
 
 		// Minimal reflection-based serializer supporting primitive fields and primitive arrays.
@@ -261,7 +269,13 @@ namespace NesEmulator
 			if (obj is bool bo) return bo ? "true" : "false";
 			if (obj is double d) return d.ToString(System.Globalization.CultureInfo.InvariantCulture);
 			if (obj is float f) return f.ToString(System.Globalization.CultureInfo.InvariantCulture);
-			if (obj is byte[] ba) { var sbArr = new StringBuilder(); sbArr.Append('['); for (int k=0;k<ba.Length;k++){ if(k>0) sbArr.Append(','); sbArr.Append(ba[k]); } sbArr.Append(']'); return sbArr.ToString(); }
+			if (obj is byte[] ba) {
+				// Use Base64 for large arrays to save space (savestates), while keeping small arrays as lists 
+				// to maintain compatibility with Mappers that parse register arrays as JSON arrays.
+				// Threshold 64 ensures NES RAM (2KB), PRG RAM (8KB), CHR RAM (8KB) and Mapper5 ExRAM (1KB) use Base64.
+				if (ba.Length > 64) return '"' + System.Convert.ToBase64String(ba) + '"';
+				var sbArr = new StringBuilder(); sbArr.Append('['); for (int k=0;k<ba.Length;k++){ if(k>0) sbArr.Append(','); sbArr.Append(ba[k]); } sbArr.Append(']'); return sbArr.ToString(); 
+			}
 			if (obj is int[] ia) { var sbArr = new StringBuilder(); sbArr.Append('['); for (int k=0;k<ia.Length;k++){ if(k>0) sbArr.Append(','); sbArr.Append(ia[k]); } sbArr.Append(']'); return sbArr.ToString(); }
 			// Generic primitive array support
 			if (obj is System.Collections.IEnumerable enumerable && obj.GetType().IsArray)
@@ -312,18 +326,32 @@ namespace NesEmulator
 				var root = doc.RootElement;
 				st = new NesState();
 				if (root.TryGetProperty("cycleRemainder", out var cr)) st.cycleRemainder = cr.GetDouble();
-				if (root.TryGetProperty("ram", out var ramEl) && ramEl.ValueKind==System.Text.Json.JsonValueKind.Array){ var arr=ramEl; int len=arr.GetArrayLength(); st.ram=new byte[len]; int idx=0; foreach(var v in arr.EnumerateArray()){ if(idx>=len) break; st.ram[idx++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("ram", out var ramEl)) {
+					if (ramEl.ValueKind==System.Text.Json.JsonValueKind.Array) { var arr=ramEl; int len=arr.GetArrayLength(); st.ram=new byte[len]; int idx=0; foreach(var v in arr.EnumerateArray()){ if(idx>=len) break; st.ram[idx++]=(byte)v.GetByte(); } }
+					else if (ramEl.ValueKind==System.Text.Json.JsonValueKind.String) { try { st.ram = ramEl.GetBytesFromBase64(); } catch { st.ram=Array.Empty<byte>(); } }
+				}
 				if (root.TryGetProperty("cpu", out var cpuEl) && cpuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpu = cpuEl.GetString() ?? string.Empty;
 				if (root.TryGetProperty("ppu", out var ppuEl) && ppuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.ppu = ppuEl.GetString() ?? string.Empty;
 				if (root.TryGetProperty("apu", out var apuEl) && apuEl.ValueKind==System.Text.Json.JsonValueKind.String) st.apu = apuEl.GetString() ?? string.Empty;
 				if (root.TryGetProperty("mapper", out var mapEl) && mapEl.ValueKind==System.Text.Json.JsonValueKind.String) st.mapper = mapEl.GetString() ?? string.Empty;
-				if (root.TryGetProperty("prgRAM", out var prgEl) && prgEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=prgEl.GetArrayLength(); st.prgRAM=new byte[len]; int i=0; foreach(var v in prgEl.EnumerateArray()){ if(i>=len) break; st.prgRAM[i++]=(byte)v.GetByte(); } }
-				if (root.TryGetProperty("chrRAM", out var chrEl) && chrEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=chrEl.GetArrayLength(); st.chrRAM=new byte[len]; int i=0; foreach(var v in chrEl.EnumerateArray()){ if(i>=len) break; st.chrRAM[i++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("prgRAM", out var prgEl)) {
+					if (prgEl.ValueKind==System.Text.Json.JsonValueKind.Array) { int len=prgEl.GetArrayLength(); st.prgRAM=new byte[len]; int i=0; foreach(var v in prgEl.EnumerateArray()){ if(i>=len) break; st.prgRAM[i++]=(byte)v.GetByte(); } }
+					else if (prgEl.ValueKind==System.Text.Json.JsonValueKind.String) { try { st.prgRAM = prgEl.GetBytesFromBase64(); } catch { st.prgRAM=Array.Empty<byte>(); } }
+				}
+				if (root.TryGetProperty("chrRAM", out var chrEl)) {
+					if (chrEl.ValueKind==System.Text.Json.JsonValueKind.Array) { int len=chrEl.GetArrayLength(); st.chrRAM=new byte[len]; int i=0; foreach(var v in chrEl.EnumerateArray()){ if(i>=len) break; st.chrRAM[i++]=(byte)v.GetByte(); } }
+					else if (chrEl.ValueKind==System.Text.Json.JsonValueKind.String) { try { st.chrRAM = chrEl.GetBytesFromBase64(); } catch { st.chrRAM=Array.Empty<byte>(); } }
+				}
 				if (root.TryGetProperty("controllerState", out var csEl)) st.controllerState = (byte)csEl.GetByte();
 				if (root.TryGetProperty("controllerShift", out var cshEl)) st.controllerShift = (byte)cshEl.GetByte();
 				if (root.TryGetProperty("controllerStrobe", out var cstEl)) st.controllerStrobe = cstEl.GetBoolean();
-				if (root.TryGetProperty("romData", out var romEl) && romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
+				if (root.TryGetProperty("romData", out var romEl)) {
+					if (romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
+					else if (romEl.ValueKind==System.Text.Json.JsonValueKind.String){ try { st.romData = romEl.GetBytesFromBase64(); } catch { st.romData=Array.Empty<byte>(); } }
+				}
 				if (root.TryGetProperty("romHash", out var rhEl) && rhEl.ValueKind==System.Text.Json.JsonValueKind.String) st.romHash = rhEl.GetString() ?? string.Empty;
+				if (root.TryGetProperty("romName", out var rnM) && rnM.ValueKind==System.Text.Json.JsonValueKind.String) st.romName = rnM.GetString() ?? string.Empty;
+				if (root.TryGetProperty("romPath", out var rnP) && rnP.ValueKind==System.Text.Json.JsonValueKind.String) st.romPath = rnP.GetString() ?? string.Empty;
 				if (root.TryGetProperty("apuCore", out var apcEl)) st.apuCore = apcEl.GetInt32();
 				if (root.TryGetProperty("cpuCore", out var cpcEl)) st.cpuCore = cpcEl.GetInt32();
 				if (root.TryGetProperty("cpuCoreId", out var ccidEl) && ccidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpuCoreId = ccidEl.GetString() ?? string.Empty;

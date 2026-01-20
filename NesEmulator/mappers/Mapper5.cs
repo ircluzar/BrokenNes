@@ -555,7 +555,10 @@ public class Mapper5 : IMapper
                     if(je.TryGetProperty("nametableControl", out var nt)) nametableControl = (byte)nt.GetByte();
                     if(je.TryGetProperty("fillTile", out var ft)) fillTile = (byte)ft.GetByte();
                     if(je.TryGetProperty("fillAttrib", out var fa)) fillAttrib = (byte)fa.GetByte();
-                    if(je.TryGetProperty("exram", out var xr) && xr.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var el in xr.EnumerateArray()){ if(i<exram.Length) exram[i++] = (byte)el.GetInt32(); else break; } }
+                    if(je.TryGetProperty("exram", out var xr)) {
+                        if (xr.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in xr.EnumerateArray()){ if(i<exram.Length) exram[i++] = (byte)el.GetInt32(); else break; } }
+                        else if (xr.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=xr.GetBytesFromBase64(); System.Array.Copy(b, exram, System.Math.Min(b.Length, exram.Length)); } catch { } } 
+                    }
                     if(je.TryGetProperty("irqTarget", out var it)) irqTarget = it.GetInt32();
                     if(je.TryGetProperty("irqCounter", out var ic)) irqCounter = ic.GetInt32();
                     if(je.TryGetProperty("irqEnabled", out var ie)) irqEnabled = ie.GetBoolean();
