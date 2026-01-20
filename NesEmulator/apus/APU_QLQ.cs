@@ -814,8 +814,136 @@ namespace NesEmulator
         public object GetState()=> new State { oscEnables=oscEnables, frameMode=frameMode, frameDelay=frameDelay, frame=frame, framePeriod=framePeriod, irqFlag=irqFlag, sampleFrac=sampleFrac,
             s1=Clone(square1), s2=Clone(square2), tri=Clone(triangle), noi=Clone(noise), d=Clone(dmc), ringWrite=ringWrite, ringRead=ringRead, ringCount=ringCount,
             frame5StepMode=frame5StepMode, frameIrqInhibit=frameIrqInhibit, nonlinear=nonlinearMixing, pal=dmc.palMode, nextIrqCycle=nextIrqCycle, earliestIrqCycle=earliestIrqCycle, lastTime=lastTime, lastDmcTime=lastDmcTime };
-        public void SetState(object state){ if(state is State s && s.s1!=null && s.s2!=null && s.tri!=null && s.noi!=null && s.d!=null){ oscEnables=s.oscEnables; frameMode=s.frameMode; frameDelay=s.frameDelay; frame=s.frame; framePeriod=s.framePeriod; irqFlag=s.irqFlag; sampleFrac=0; square1 = s.s1; square2 = s.s2; triangle = s.tri; noise = s.noi; dmc = s.d; // clear any serialized audio backlog to avoid stutter
-            ringWrite=ringRead=ringCount=0; frame5StepMode=s.frame5StepMode; frameIrqInhibit=s.frameIrqInhibit; nonlinearMixing=s.nonlinear; nextIrqCycle=s.nextIrqCycle; earliestIrqCycle=s.earliestIrqCycle; lastTime=s.lastTime; lastDmcTime=s.lastDmcTime; if(dmc.palMode!=s.pal){ SetRegion(s.pal); } } }
+        public void SetState(object state){ 
+            if(state is State s && s.s1!=null && s.s2!=null && s.tri!=null && s.noi!=null && s.d!=null){ ApplyState(s); return; }
+            if(state is System.Text.Json.JsonElement je) {
+                try {
+                    var newState = new State();
+                    if(je.TryGetProperty("oscEnables", out var p)) newState.oscEnables = p.GetInt32();
+                    if(je.TryGetProperty("frameMode", out p)) newState.frameMode = p.GetInt32();
+                    if(je.TryGetProperty("frameDelay", out p)) newState.frameDelay = p.GetInt32();
+                    if(je.TryGetProperty("frame", out p)) newState.frame = p.GetInt32();
+                    if(je.TryGetProperty("framePeriod", out p)) newState.framePeriod = p.GetInt32();
+                    if(je.TryGetProperty("irqFlag", out p)) newState.irqFlag = p.GetBoolean();
+                    if(je.TryGetProperty("sampleFrac", out p)) newState.sampleFrac = p.GetDouble();
+                    if(je.TryGetProperty("ringWrite", out p)) newState.ringWrite = p.GetInt32();
+                    if(je.TryGetProperty("ringRead", out p)) newState.ringRead = p.GetInt32();
+                    if(je.TryGetProperty("ringCount", out p)) newState.ringCount = p.GetInt32();
+                    if(je.TryGetProperty("frame5StepMode", out p)) newState.frame5StepMode = p.GetBoolean();
+                    if(je.TryGetProperty("frameIrqInhibit", out p)) newState.frameIrqInhibit = p.GetBoolean();
+                    if(je.TryGetProperty("nonlinear", out p)) newState.nonlinear = p.GetBoolean();
+                    if(je.TryGetProperty("pal", out p)) newState.pal = p.GetBoolean();
+                    if(je.TryGetProperty("nextIrqCycle", out p)) newState.nextIrqCycle = p.GetInt32();
+                    if(je.TryGetProperty("earliestIrqCycle", out p)) newState.earliestIrqCycle = p.GetInt32();
+                    if(je.TryGetProperty("lastTime", out p)) newState.lastTime = p.GetInt32();
+                    if(je.TryGetProperty("lastDmcTime", out p)) newState.lastDmcTime = p.GetInt32();
+
+                    if(je.TryGetProperty("s1", out var s1El)) newState.s1 = LoadSquare(s1El);
+                    if(je.TryGetProperty("s2", out var s2El)) newState.s2 = LoadSquare(s2El);
+                    if(je.TryGetProperty("tri", out var tEl)) newState.tri = LoadTriangle(tEl);
+                    if(je.TryGetProperty("noi", out var nEl)) newState.noi = LoadNoise(nEl);
+                    if(je.TryGetProperty("d", out var dEl)) newState.d = LoadDmc(dEl);
+
+                    if (newState.s1 != null && newState.s2 != null && newState.tri != null && newState.noi != null && newState.d != null) ApplyState(newState);
+                } catch { }
+            }
+        }
+
+        private void ApplyState(State s) {
+            oscEnables=s.oscEnables; frameMode=s.frameMode; frameDelay=s.frameDelay; frame=s.frame; framePeriod=s.framePeriod; irqFlag=s.irqFlag; sampleFrac=0; square1 = s.s1; square2 = s.s2; triangle = s.tri; noise = s.noi; dmc = s.d; // clear any serialized audio backlog to avoid stutter
+            ringWrite=ringRead=ringCount=0; frame5StepMode=s.frame5StepMode; frameIrqInhibit=s.frameIrqInhibit; nonlinearMixing=s.nonlinear; nextIrqCycle=s.nextIrqCycle; earliestIrqCycle=s.earliestIrqCycle; lastTime=s.lastTime; lastDmcTime=s.lastDmcTime; if(dmc.palMode!=s.pal){ SetRegion(s.pal); }
+        }
+
+        private static void LoadRegs(System.Text.Json.JsonElement el, byte[] regs, bool[] mw) {
+            if(el.TryGetProperty("regs", out var r)){
+                if(r.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var x in r.EnumerateArray()) { if(i<regs.Length) regs[i++] = x.GetByte(); } }
+                else if(r.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b = r.GetBytesFromBase64(); Array.Copy(b,regs,Math.Min(b.Length, regs.Length)); } catch{} }
+            }
+            if(el.TryGetProperty("regWritten", out var w) && w.ValueKind==System.Text.Json.JsonValueKind.Array){ int i=0; foreach(var x in w.EnumerateArray()) { if(i<mw.Length) mw[i++] = x.GetBoolean(); } }
+        }
+
+        private static QnSquare LoadSquare(System.Text.Json.JsonElement el) {
+            var q = new QnSquare();
+            LoadRegs(el, q.regs, q.regWritten);
+            if(el.TryGetProperty("envDivider", out var p)) q.envDivider=p.GetInt32();
+            if(el.TryGetProperty("envDecay", out p)) q.envDecay=p.GetInt32();
+            if(el.TryGetProperty("envStart", out p)) q.envStart=p.GetBoolean();
+            if(el.TryGetProperty("constantVolume", out p)) q.constantVolume=p.GetBoolean();
+            if(el.TryGetProperty("lengthHalt", out p)) q.lengthHalt=p.GetBoolean();
+            if(el.TryGetProperty("volumeParam", out p)) q.volumeParam=p.GetInt32();
+            if(el.TryGetProperty("sweepNegate", out p)) q.sweepNegate=p.GetBoolean();
+            if(el.TryGetProperty("sweepReload", out p)) q.sweepReload=p.GetBoolean();
+            if(el.TryGetProperty("sweepShift", out p)) q.sweepShift=p.GetInt32();
+            if(el.TryGetProperty("sweepPeriod", out p)) q.sweepPeriod=p.GetInt32();
+            if(el.TryGetProperty("sweepDivider", out p)) q.sweepDivider=p.GetInt32();
+            if(el.TryGetProperty("sweepMute", out p)) q.sweepMute=p.GetBoolean();
+            if(el.TryGetProperty("lengthCounter", out p)) q.lengthCounter=p.GetInt32();
+            if(el.TryGetProperty("timerPeriod", out p)) q.timerPeriod=p.GetInt32();
+            if(el.TryGetProperty("timerCounter", out p)) q.timerCounter=p.GetInt32();
+            if(el.TryGetProperty("duty", out p)) q.duty=p.GetInt32();
+            if(el.TryGetProperty("dutyStep", out p)) q.dutyStep=p.GetInt32();
+            if(el.TryGetProperty("lastAmp", out p)) q.lastAmp=p.GetInt32();
+            return q;
+        }
+
+        private static QnTriangle LoadTriangle(System.Text.Json.JsonElement el) {
+            var q = new QnTriangle();
+            LoadRegs(el, q.regs, q.regWritten);
+            if(el.TryGetProperty("linearCounter", out var p)) q.linearCounter=p.GetInt32();
+            if(el.TryGetProperty("linearReloadFlag", out p)) q.linearReloadFlag=p.GetBoolean();
+            if(el.TryGetProperty("lengthHalt", out p)) q.lengthHalt=p.GetBoolean();
+            if(el.TryGetProperty("linearReg", out p)) q.linearReg=p.GetInt32();
+            if(el.TryGetProperty("lengthCounter", out p)) q.lengthCounter=p.GetInt32();
+            if(el.TryGetProperty("lastAmp", out p)) q.lastAmp=p.GetInt32();
+            if(el.TryGetProperty("timerPeriod", out p)) q.timerPeriod=p.GetInt32();
+            if(el.TryGetProperty("timerCounter", out p)) q.timerCounter=p.GetInt32();
+            if(el.TryGetProperty("seqStep", out p)) q.seqStep=p.GetInt32();
+            return q;
+        }
+
+        private static QnNoise LoadNoise(System.Text.Json.JsonElement el) {
+            var q = new QnNoise();
+            LoadRegs(el, q.regs, q.regWritten);
+            if(el.TryGetProperty("envDivider", out var p)) q.envDivider=p.GetInt32();
+            if(el.TryGetProperty("envDecay", out p)) q.envDecay=p.GetInt32();
+            if(el.TryGetProperty("envStart", out p)) q.envStart=p.GetBoolean();
+            if(el.TryGetProperty("constantVolume", out p)) q.constantVolume=p.GetBoolean();
+            if(el.TryGetProperty("lengthHalt", out p)) q.lengthHalt=p.GetBoolean();
+            if(el.TryGetProperty("volumeParam", out p)) q.volumeParam=p.GetInt32();
+            if(el.TryGetProperty("lengthCounter", out p)) q.lengthCounter=p.GetInt32();
+            if(el.TryGetProperty("lastAmp", out p)) q.lastAmp=p.GetInt32();
+            if(el.TryGetProperty("shiftRegister", out p)) q.shiftRegister=(ushort)p.GetUInt32();
+            if(el.TryGetProperty("timerPeriod", out p)) q.timerPeriod=p.GetInt32();
+            if(el.TryGetProperty("timerCounter", out p)) q.timerCounter=p.GetInt32();
+            if(el.TryGetProperty("modeFlag", out p)) q.modeFlag=p.GetBoolean();
+            return q;
+        }
+
+        private static QnDmc LoadDmc(System.Text.Json.JsonElement el) {
+            var q = new QnDmc();
+            LoadRegs(el, q.regs, q.regWritten);
+            if(el.TryGetProperty("lastAmp", out var p)) q.lastAmp=p.GetInt32();
+            if(el.TryGetProperty("timerPeriod", out p)) q.timerPeriod=p.GetInt32();
+            if(el.TryGetProperty("timerCounter", out p)) q.timerCounter=p.GetInt32();
+            if(el.TryGetProperty("sampleAddress", out p)) q.sampleAddress=p.GetInt32();
+            if(el.TryGetProperty("sampleLengthRemaining", out p)) q.sampleLengthRemaining=p.GetInt32();
+            if(el.TryGetProperty("startAddress", out p)) q.startAddress=p.GetInt32();
+            if(el.TryGetProperty("startLength", out p)) q.startLength=p.GetInt32();
+            if(el.TryGetProperty("shiftReg", out p)) q.shiftReg=p.GetInt32();
+            if(el.TryGetProperty("bitsRemaining", out p)) q.bitsRemaining=p.GetInt32();
+            if(el.TryGetProperty("deltaCounter", out p)) q.deltaCounter=p.GetInt32();
+            if(el.TryGetProperty("sampleBuffer", out p)) q.sampleBuffer=p.GetInt32();
+            if(el.TryGetProperty("sampleBufferFilled", out p)) q.sampleBufferFilled=p.GetBoolean();
+            if(el.TryGetProperty("silence", out p)) q.silence=p.GetBoolean();
+            if(el.TryGetProperty("irqEnable", out p)) q.irqEnable=p.GetBoolean();
+            if(el.TryGetProperty("loop", out p)) q.loop=p.GetBoolean();
+            if(el.TryGetProperty("irqFlag", out p)) q.irqFlag=p.GetBoolean();
+            if(el.TryGetProperty("dac", out p)) q.dac=p.GetInt32();
+            if(el.TryGetProperty("palMode", out p)) q.palMode=p.GetBoolean();
+            if(el.TryGetProperty("nonlinear", out p)) q.nonlinear=p.GetBoolean();
+            if(el.TryGetProperty("nextIrqCycle", out p)) q.nextIrqCycle=p.GetInt32();
+            return q;
+        }
 
         // Set region without full logical reset; updates timing tables and pacing
         public void SetRegion(bool pal)

@@ -415,9 +415,94 @@ namespace NesEmulator
                         if(je.TryGetProperty("dmc_addrReg", out v)) tmp.dmc_addrReg=(byte)v.GetByte();
                         if(je.TryGetProperty("dmc_lenReg", out v)) tmp.dmc_lenReg=(byte)v.GetByte();
                         if(je.TryGetProperty("statusWriteLatch", out v)) tmp.statusWriteLatch=(byte)v.GetByte();
-                        if(je.TryGetProperty("noiseShift", out v)) tmp.noiseShift=(ushort)v.GetUInt16();
-                        if(je.TryGetProperty("noiseTimer", out v)) tmp.noiseTimer=v.GetInt32();
-                        if(je.TryGetProperty("frameCycle", out v)) tmp.frameCycle=v.GetInt32();
+                        
+                        // Restored missing fields
+                        if(je.TryGetProperty("pulse1_enabled", out v)) tmp.pulse1_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("pulse2_enabled", out v)) tmp.pulse2_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("triangle_enabled", out v)) tmp.triangle_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("noise_enabled", out v)) tmp.noise_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_enabled", out v)) tmp.dmc_enabled=v.GetBoolean();
+
+                        if(je.TryGetProperty("p1Len", out v)) tmp.p1Len=v.GetInt32();
+                        if(je.TryGetProperty("p2Len", out v)) tmp.p2Len=v.GetInt32();
+                        if(je.TryGetProperty("tLen", out v)) tmp.tLen=v.GetInt32();
+                        if(je.TryGetProperty("nLen", out v)) tmp.nLen=v.GetInt32();
+
+                        if(je.TryGetProperty("p1EnvStart", out v)) tmp.p1EnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("p2EnvStart", out v)) tmp.p2EnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("nEnvStart", out v)) tmp.nEnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("p1EnvDiv", out v)) tmp.p1EnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("p1EnvDecay", out v)) tmp.p1EnvDecay=v.GetInt32();
+                        if(je.TryGetProperty("p2EnvDiv", out v)) tmp.p2EnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("p2EnvDecay", out v)) tmp.p2EnvDecay=v.GetInt32();
+                        if(je.TryGetProperty("nEnvDiv", out v)) tmp.nEnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("nEnvDecay", out v)) tmp.nEnvDecay=v.GetInt32();
+
+                        if(je.TryGetProperty("p1Const", out v)) tmp.p1Const=v.GetBoolean();
+                        if(je.TryGetProperty("p2Const", out v)) tmp.p2Const=v.GetBoolean();
+                        if(je.TryGetProperty("nConst", out v)) tmp.nConst=v.GetBoolean();
+                        if(je.TryGetProperty("p1LenH", out v)) tmp.p1LenH=v.GetBoolean();
+                        if(je.TryGetProperty("p2LenH", out v)) tmp.p2LenH=v.GetBoolean();
+                        if(je.TryGetProperty("nLenH", out v)) tmp.nLenH=v.GetBoolean();
+                        if(je.TryGetProperty("tLenH", out v)) tmp.tLenH=v.GetBoolean();
+                        if(je.TryGetProperty("p1Vol", out v)) tmp.p1Vol=v.GetInt32();
+                        if(je.TryGetProperty("p2Vol", out v)) tmp.p2Vol=v.GetInt32();
+                        if(je.TryGetProperty("nVol", out v)) tmp.nVol=v.GetInt32();
+
+                        if(je.TryGetProperty("p1SwNeg", out v)) tmp.p1SwNeg=v.GetBoolean();
+                        if(je.TryGetProperty("p2SwNeg", out v)) tmp.p2SwNeg=v.GetBoolean();
+                        if(je.TryGetProperty("p1SwShift", out v)) tmp.p1SwShift=v.GetInt32();
+                        if(je.TryGetProperty("p2SwShift", out v)) tmp.p2SwShift=v.GetInt32();
+                        if(je.TryGetProperty("p1SwPeriod", out v)) tmp.p1SwPeriod=v.GetInt32();
+                        if(je.TryGetProperty("p2SwPeriod", out v)) tmp.p2SwPeriod=v.GetInt32();
+                        if(je.TryGetProperty("p1SwReload", out v)) tmp.p1SwReload=v.GetBoolean();
+                        if(je.TryGetProperty("p2SwReload", out v)) tmp.p2SwReload=v.GetBoolean();
+                        if(je.TryGetProperty("p1SwDiv", out v)) tmp.p1SwDiv=v.GetInt32();
+                        if(je.TryGetProperty("p2SwDiv", out v)) tmp.p2SwDiv=v.GetInt32();
+
+                        if(je.TryGetProperty("triLinCtr", out v)) tmp.triLinCtr=v.GetInt32();
+                        if(je.TryGetProperty("triLinReload", out v)) tmp.triLinReload=v.GetBoolean();
+                        
+                        if(je.TryGetProperty("noiseShift", out v)) tmp.noiseShift=(ushort)v.GetUInt16(); // existing
+                        if(je.TryGetProperty("noiseTimer", out v)) tmp.noiseTimer=v.GetInt32(); // existing
+
+                        if(je.TryGetProperty("p1TimerCtr", out v)) tmp.p1TimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("p2TimerCtr", out v)) tmp.p2TimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("p1Seq", out v)) tmp.p1Seq=v.GetInt32();
+                        if(je.TryGetProperty("p2Seq", out v)) tmp.p2Seq=v.GetInt32();
+                        if(je.TryGetProperty("triTimerCtr", out v)) tmp.triTimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("triSeq", out v)) tmp.triSeq=v.GetInt32();
+
+                        if(je.TryGetProperty("p1Out", out v)) tmp.p1Out=v.GetInt32();
+                        if(je.TryGetProperty("p2Out", out v)) tmp.p2Out=v.GetInt32();
+                        if(je.TryGetProperty("triOut", out v)) tmp.triOut=v.GetInt32();
+                        if(je.TryGetProperty("noiseOut", out v)) tmp.noiseOut=v.GetInt32();
+                        if(je.TryGetProperty("dmcOut", out v)) tmp.dmcOut=v.GetInt32();
+
+                        if(je.TryGetProperty("dmc_timer", out v)) tmp.dmc_timer=v.GetInt32();
+                        if(je.TryGetProperty("dmc_timerPeriod", out v)) tmp.dmc_timerPeriod=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleAddress", out v)) tmp.dmc_sampleAddress=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleLengthRemaining", out v)) tmp.dmc_sampleLengthRemaining=v.GetInt32();
+                        if(je.TryGetProperty("dmc_shiftReg", out v)) tmp.dmc_shiftReg=v.GetInt32();
+                        if(je.TryGetProperty("dmc_bitsRemaining", out v)) tmp.dmc_bitsRemaining=v.GetInt32();
+                        if(je.TryGetProperty("dmc_deltaCounter", out v)) tmp.dmc_deltaCounter=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleBuffer", out v)) tmp.dmc_sampleBuffer=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleBufferFilled", out v)) tmp.dmc_sampleBufferFilled=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_silence", out v)) tmp.dmc_silence=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_irqEnable", out v)) tmp.dmc_irqEnable=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_loop", out v)) tmp.dmc_loop=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_irqFlag", out v)) tmp.dmc_irqFlag=v.GetBoolean();
+
+                        if(je.TryGetProperty("frameCycle", out v)) tmp.frameCycle=v.GetInt32(); // existing
+                        if(je.TryGetProperty("frameMode5", out v)) tmp.frameMode5=v.GetBoolean();
+                        if(je.TryGetProperty("frameIRQInhibit", out v)) tmp.frameIRQInhibit=v.GetBoolean();
+                        if(je.TryGetProperty("frameIRQFlag", out v)) tmp.frameIRQFlag=v.GetBoolean();
+
+                        if(je.TryGetProperty("lpLast", out v)) tmp.lpLast=v.GetSingle();
+                        if(je.TryGetProperty("dcLastIn", out v)) tmp.dcLastIn=v.GetSingle();
+                        if(je.TryGetProperty("dcLastOut", out v)) tmp.dcLastOut=v.GetSingle();
+                        if(je.TryGetProperty("frac", out v)) tmp.frac=v.GetDouble();
+
                         RestoreState(tmp);
                         PostRestoreAudioResync();
                     }
