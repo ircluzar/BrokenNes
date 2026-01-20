@@ -575,6 +575,15 @@
             </div>
             <div class="gh-section mb-3">
                 <label class="form-label mb-1 small">Actions (uses Real-Time Corruptor settings)</label>
+                <div class="mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="ghLoadOnOperation" @bind="emu!.Corruptor.GhLoadOnOperation" />
+                        <label class="form-check-label small" for="ghLoadOnOperation">
+                            Load on operation
+                        </label>
+                    </div>
+                    <small class="text-muted">When enabled, loads the selected savestate before blasting and replaying for consistent results.</small>
+                </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <button class="btn btn-sm btn-warning" @onclick="(()=>emu!.GhCorruptAndStashAsync())" disabled="@(!emu!.GhHasSelectedBase || emu!.Controller.nes==null)">Corrupt &amp; Stash</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.GhClearStashPublic())" disabled="@(emu!.Corruptor.GhStash.Count==0)">Clear Stash</button>

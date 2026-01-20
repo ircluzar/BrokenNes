@@ -24,6 +24,7 @@ namespace BrokenNes
     public List<HarvestEntry> GhStockpile { get; set; } = new();
     public string GhSelectedBaseId { get; set; } = string.Empty;
     public string GhNewBaseName { get; set; } = string.Empty;
+    public bool GhLoadOnOperation { get; set; } = true;
     public int GhStashCounter { get; set; } = 0;
     public int GhStockpileCounter { get; set; } = 0;
     public string? GhRenamingId { get; set; } = null;
@@ -175,6 +176,36 @@ namespace BrokenNes
         public void GhClearStash()
         {
             GhStash.Clear();
+        }
+        public void GhStashFromBlast(NES nes)
+        {
+            if (!GhHasSelectedBase) return;
+            var baseState = GhBaseStates.FirstOrDefault(b => b.Id == GhSelectedBaseId);
+            if (baseState == null) return;
+            
+            // Load the base state if GhLoadOnOperation is enabled
+            if (GhLoadOnOperation)
+            {
+                nes.LoadState(baseState.State);
+            }
+            
+            var writes = GenerateBlastLayer(CorruptIntensity);
+            
+            // Capture the exact pre-corruption state for perfect replayability
+            var capturedState = nes.SaveState();
+            
+            ApplyBlastLayer(writes, nes);
+            
+            // Bundle the savestate data with the entry for replayability
+            var entry = new HarvestEntry 
+            { 
+                Name = $"Stash {++GhStashCounter}", 
+                BaseStateId = baseState.Id,
+                State = capturedState,
+                Writes = writes 
+            };
+            GhStash.Add(entry);
+            LastBlastInfo = $"Blasted {writes.Count} writes to Stash";
         }
         public void GhBeginRename(HarvestEntry e)
         {

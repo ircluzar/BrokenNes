@@ -73,25 +73,41 @@ namespace BrokenNes
             if (baseState == null) return;
             try
             {
-                nes!.LoadState(baseState.State);
-                nesController.AutoStaticSuppressed = true;
-                // Post-load sync to ensure cores/UI/audio are consistent before corruption writes
-                try
+                // Always load the base state (respecting GhLoadOnOperation is handled here)
+                if (corruptor.GhLoadOnOperation)
                 {
-                    nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
-                    nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
-                    nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
-                    SetApuCoreSelFromEmu();
-                    AutoConfigureForApuCore();
+                    nes!.LoadState(baseState.State);
+                    nesController.AutoStaticSuppressed = true;
+                    // Post-load sync to ensure cores/UI/audio are consistent before corruption writes
+                    try
+                    {
+                        nesController.CpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetCpuCoreId(), "CPU_");
+                        nesController.PpuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetPpuCoreId(), "PPU_");
+                        nesController.ApuCoreSel = NesEmulator.CoreRegistry.ExtractSuffix(nes.GetApuCoreId(), "APU_");
+                        SetApuCoreSelFromEmu();
+                        AutoConfigureForApuCore();
+                    }
+                    catch { }
+                    try { ApplySelectedCrashBehavior(); } catch { }
+                    try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                    try { var _ = nes?.GetAudioBuffer(); } catch { }
+                    BuildMemoryDomains();
                 }
-                catch { }
-                try { ApplySelectedCrashBehavior(); } catch { }
-                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
-                try { var _ = nes?.GetAudioBuffer(); } catch { }
-                BuildMemoryDomains();
                 var writes = corruptor.GenerateBlastLayer(corruptor.CorruptIntensity);
+                
+                // Capture the exact pre-corruption state for perfect replayability
+                var capturedState = nes!.SaveState();
+                
                 corruptor.ApplyBlastLayer(writes, nes!);
-                var entry = new HarvestEntry { Name = $"Stash {++corruptor.GhStashCounter}", BaseStateId = baseState.Id, Writes = writes };
+                
+                // Bundle the savestate data with the entry for replayability
+                var entry = new HarvestEntry 
+                { 
+                    Name = $"Stash {++corruptor.GhStashCounter}", 
+                    BaseStateId = baseState.Id,
+                    State = capturedState,
+                    Writes = writes 
+                };
                 corruptor.GhStash.Add(entry);
                 Status.Set($"Stashed {writes.Count} writes based on '{baseState.Name}'");
             }
@@ -103,11 +119,24 @@ namespace BrokenNes
         private async Task GhReplayEntry(HarvestEntry e, bool fromStockpile)
         {
             if (nes == null) return;
-            var baseState = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == e.BaseStateId);
-            if (baseState == null) return;
+            
+            // Use bundled state if available, otherwise fall back to base state lookup
+            string? stateToLoad = null;
+            if (!string.IsNullOrEmpty(e.State))
+            {
+                stateToLoad = e.State;
+            }
+            else
+            {
+                var baseState = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == e.BaseStateId);
+                if (baseState != null) stateToLoad = baseState.State;
+            }
+            
+            if (stateToLoad == null) return;
+            
             try
             {
-                nes!.LoadState(baseState.State);
+                nes!.LoadState(stateToLoad);
                 nesController.AutoStaticSuppressed = true;
                 // Post-load sync to mirror top-level LoadState before applying writes
                 try
@@ -136,7 +165,16 @@ namespace BrokenNes
         {
             try
             {
-                var exportObj = corruptor.GhStockpile.Select(e => new { e.Id, e.Name, e.BaseStateId, e.Created, Writes = e.Writes, BaseState = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == e.BaseStateId)?.State }).ToList();
+                // Export with bundled state if available, otherwise fall back to base state lookup
+                var exportObj = corruptor.GhStockpile.Select(e => new 
+                { 
+                    e.Id, 
+                    e.Name, 
+                    e.BaseStateId, 
+                    e.Created, 
+                    Writes = e.Writes, 
+                    BaseState = !string.IsNullOrEmpty(e.State) ? e.State : corruptor.GhBaseStates.FirstOrDefault(b => b.Id == e.BaseStateId)?.State 
+                }).ToList();
                 var json = System.Text.Json.JsonSerializer.Serialize(exportObj);
                 await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json);
                 Status.Set("Exported stockpile");

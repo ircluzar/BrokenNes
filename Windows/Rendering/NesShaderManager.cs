@@ -45,7 +45,6 @@ namespace BrokenNes.Windows.Rendering
         public enum ShaderType
         {
             RF,      // Analog RF shader - mild analog RF simulation
-            SNES,    // 16-bit upgrade shader
             TV,      // TV upgrade shader
             MUSK,    // Mars Horizon shader
             TTF,     // Subpixel Clean shader
@@ -68,8 +67,7 @@ namespace BrokenNes.Windows.Rendering
             SPK,     // Prism sparkle
             TRI,     // Faux extrusion
             WARM,    // Extra warmth grade
-            WTR,     // Water ripple field
-            SixteenB // 16-bit upgrade (16B)
+            WTR      // Water ripple field
         }
 
         /// <summary>
@@ -125,7 +123,6 @@ namespace BrokenNes.Windows.Rendering
             string fileName = shaderType switch
             {
                 ShaderType.RF => "RFShader.hlsl",
-                ShaderType.SNES => "SnesShader.hlsl",
                 ShaderType.TV => "TvShader.hlsl",
                 ShaderType.MUSK => "MuskShader.hlsl",
                 ShaderType.TTF => "TtfShader.hlsl",
@@ -149,7 +146,6 @@ namespace BrokenNes.Windows.Rendering
                 ShaderType.TRI => "TriShader.hlsl",
                 ShaderType.WARM => "WarmShader.hlsl",
                 ShaderType.WTR => "WtrShader.hlsl",
-                ShaderType.SixteenB => "SixteenBShader.hlsl",
                 _ => "BldShader.hlsl"
             };
             return GetShaderFilePath(fileName);
@@ -339,7 +335,7 @@ namespace BrokenNes.Windows.Rendering
         /// <param name="context">Device context</param>
         /// <param name="textureView">The NES framebuffer texture</param>
         /// <param name="constants">Shader constants (time, strength, etc.)</param>
-        public void ApplyShader(DeviceContext context, ShaderResourceView textureView, ShaderConstants constants, ShaderResourceView previousTextureView = null)
+        public void ApplyShader(DeviceContext context, ShaderResourceView textureView, ShaderConstants constants, ShaderResourceView? previousTextureView = null)
         {
             // Update constant buffer
             var dataBox = context.MapSubresource(constantBuffer, 0, MapMode.WriteDiscard, D3D11MapFlags.None);

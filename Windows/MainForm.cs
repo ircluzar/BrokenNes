@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
+using System.Threading.Tasks;
+using BrokenNes;
+using BrokenNes.CorruptorModels;
 using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
+using BrokenNes.Windows.Tools;
 
 namespace BrokenNes.Windows
 {
@@ -57,6 +63,16 @@ namespace BrokenNes.Windows
         
         // Input mapping
         private Dictionary<Keys, int> keyMap = new();
+
+        // Corruptor + Imagine
+        private readonly Corruptor corruptor = new();
+        private readonly object corruptorLock = new();
+        private ImagineEngine? imagineEngine;
+        private RealTimeCorruptorForm? rtcForm;
+        private GlitchHarvesterForm? ghForm;
+        private ImagineForm? imagineForm;
+        private readonly ConcurrentQueue<Action> emulationActions = new();
+        public event Action? CorruptorStateChanged;
         
         public MainForm()
         {
@@ -90,6 +106,93 @@ namespace BrokenNes.Windows
                     "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 throw;
             }
+        }
+
+        internal Corruptor Corruptor => corruptor;
+        internal ImagineEngine? ImagineEngineInstance => imagineEngine;
+        internal bool IsEmulatorReady => nes != null;
+        internal NES? CurrentNes => nes;
+
+        private void NotifyCorruptorChanged()
+        {
+            try { CorruptorStateChanged?.Invoke(); }
+            catch (Exception ex) { Console.WriteLine($"CorruptorStateChanged error: {ex.Message}"); }
+        }
+
+        internal void RaiseCorruptorChangedPublic() => NotifyCorruptorChanged();
+
+        internal CorruptorSnapshot? GetCorruptorSnapshot()
+        {
+            // Use TryEnter with timeout to avoid blocking the UI thread
+            bool lockTaken = false;
+            try
+            {
+                Monitor.TryEnter(corruptorLock, 100, ref lockTaken);
+                if (!lockTaken)
+                {
+                    // Couldn't get lock quickly, return null to avoid blocking
+                    return null;
+                }
+                
+                return new CorruptorSnapshot
+                {
+                    CorruptIntensity = corruptor.CorruptIntensity,
+                    BlastType = corruptor.BlastType,
+                    MemoryDomains = corruptor.MemoryDomains.ToList(),
+                    AutoCorrupt = corruptor.AutoCorrupt,
+                    LastBlastInfo = corruptor.LastBlastInfo,
+                    StubbornMode = corruptor.StubbornMode,
+                    CrashBehavior = corruptor.CrashBehavior,
+                    GhBaseStates = corruptor.GhBaseStates.ToList(),
+                    GhStash = corruptor.GhStash.ToList(),
+                    GhStockpile = corruptor.GhStockpile.ToList(),
+                    GhSelectedBaseId = corruptor.GhSelectedBaseId,
+                    GhLoadOnOperation = corruptor.GhLoadOnOperation
+                };
+            }
+            finally
+            {
+                if (lockTaken)
+                    Monitor.Exit(corruptorLock);
+            }
+        }
+
+        private void QueueEmuAction(Action action)
+        {
+            emulationActions.Enqueue(action);
+        }
+
+        internal Task<T> RunOnEmulationThreadAsync<T>(Func<T> func)
+        {
+            var tcs = new TaskCompletionSource<T>();
+            QueueEmuAction(() =>
+            {
+                try { tcs.SetResult(func()); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            });
+            return tcs.Task;
+        }
+
+        internal Task RunOnEmulationThreadAsync(Action action)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            QueueEmuAction(() =>
+            {
+                try { action(); tcs.SetResult(true); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            });
+            return tcs.Task;
+        }
+
+        internal void WithNes(Action<NES> action)
+        {
+            QueueEmuAction(() =>
+            {
+                var n = nes;
+                if (n == null) return;
+                try { action(n); }
+                catch (Exception ex) { Console.WriteLine($"WithNes action error: {ex.Message}"); }
+            });
         }
         
         private void InitializeComponent()
@@ -283,6 +386,19 @@ namespace BrokenNes.Windows
             
             configMenu.DropDownItems.Add(controllersMenu);
             
+            // Background submenu - automatically populated via reflection
+            var backgroundMenu = new ToolStripMenuItem("&Backgrounds");
+            
+            // Get all available backgrounds via reflection
+            var availableBackgrounds = BrokenNes.Windows.Rendering.NesDirectXRenderer.GetAvailableBackgrounds();
+            foreach (var backgroundName in availableBackgrounds)
+            {
+                var menuItem = new ToolStripMenuItem(backgroundName, null, (s, e) => SetBackground(backgroundName));
+                backgroundMenu.DropDownItems.Add(menuItem);
+            }
+            
+            configMenu.DropDownItems.Add(backgroundMenu);
+            
             // Crash Behavior submenu
             var crashBehaviorMenu = new ToolStripMenuItem("C&rash Behavior");
             
@@ -322,7 +438,23 @@ namespace BrokenNes.Windows
             autoScrambleItem.CheckOnClick = true;
             configMenu.DropDownItems.Add(autoScrambleItem);
             
+            configMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var showConsoleItem = new ToolStripMenuItem("Show Console", null, ToggleShowConsole_Click);
+            showConsoleItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(showConsoleItem);
+            
             menuStrip.Items.Add(configMenu);
+
+            // Tools menu
+            var toolsMenu = new ToolStripMenuItem("&Tools");
+            var rtcItem = new ToolStripMenuItem("Real-Time Corruptor", null, OpenRtcTool_Click);
+            var ghItem = new ToolStripMenuItem("Glitch Harvester", null, OpenGhTool_Click);
+            var imagineItem = new ToolStripMenuItem("Imagine", null, OpenImagineTool_Click);
+            toolsMenu.DropDownItems.Add(rtcItem);
+            toolsMenu.DropDownItems.Add(ghItem);
+            toolsMenu.DropDownItems.Add(imagineItem);
+            menuStrip.Items.Add(toolsMenu);
             
             // Core selection menus: SHADER, APU, CPU, PPU
             shaderMenu = new ToolStripMenuItem("&SHADER");
@@ -391,6 +523,9 @@ namespace BrokenNes.Windows
                 {
                     dxRenderer.Initialize(NES_WIDTH, NES_HEIGHT);
                     NesShaderControl.Initialize(dxRenderer);
+                    
+                    // Apply background setting from config
+                    dxRenderer.SetBackground(config.SelectedBackground);
                 }
                 catch (Exception ex)
                 {
@@ -575,6 +710,8 @@ namespace BrokenNes.Windows
                     item.Checked = config.ProfilingEnabled;
                 else if (item.Text.Contains("Auto-Scramble Cores"))
                     item.Checked = config.AutoScrambleCores;
+                else if (item.Text.Contains("Show Console"))
+                    item.Checked = config.ShowConsole;
             }
             
             // Update Crash Behavior submenu checkmarks
@@ -647,6 +784,19 @@ namespace BrokenNes.Windows
                         else if (item.Text.Contains("4096"))
                             item.Checked = (config.SoundBuffer == 4096);
                     }
+                }
+            }
+            
+            // Update Backgrounds submenu checkmarks
+            var backgroundMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "&Backgrounds");
+            
+            if (backgroundMenu != null)
+            {
+                foreach (var item in backgroundMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    // Check if this item matches the currently selected background
+                    item.Checked = item.Text.Equals(config.SelectedBackground, StringComparison.OrdinalIgnoreCase);
                 }
             }
         }
@@ -939,6 +1089,7 @@ namespace BrokenNes.Windows
                     nes = new NES();
                     nes.LoadROM(romData);
                     nes.RomName = Path.GetFileName(path);
+                    InitializeImagineEngine();
                 }
                 
                 currentRomPath = path;
@@ -952,6 +1103,9 @@ namespace BrokenNes.Windows
                 
                 // Apply crash behavior
                 ApplyCrashBehavior();
+
+                // Initialize corruptor domains
+                BuildMemoryDomains();
                 
                 // Apply sound channel settings
                 ApplySoundSettings();
@@ -1042,6 +1196,8 @@ namespace BrokenNes.Windows
                         nes.LoadState(stateJson);
                     }
                     
+                    BuildMemoryDomains();
+                
                     isPaused = wasPaused;
                     
                     this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Loaded]";
@@ -1162,6 +1318,8 @@ namespace BrokenNes.Windows
                 {
                     nes.LoadState(quickSaveState);
                 }
+                
+                BuildMemoryDomains();
                 
                 isPaused = wasPaused;
                 
@@ -1403,6 +1561,57 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void ToggleShowConsole_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.ShowConsole = menuItem.Checked;
+                config.Save();
+                
+                Program.SetConsoleVisibility(config.ShowConsole);
+                
+                Console.WriteLine($"Console visibility set to: {config.ShowConsole}");
+                
+                UpdateConfigMenus();
+            }
+        }
+
+        private void OpenRtcTool_Click(object? sender, EventArgs e)
+        {
+            if (rtcForm == null || rtcForm.IsDisposed)
+            {
+                rtcForm = new RealTimeCorruptorForm(this);
+                rtcForm.FormClosed += (_, _) => rtcForm = null;
+            }
+
+            rtcForm.Show(this);
+            rtcForm.Focus();
+        }
+
+        private void OpenGhTool_Click(object? sender, EventArgs e)
+        {
+            if (ghForm == null || ghForm.IsDisposed)
+            {
+                ghForm = new GlitchHarvesterForm(this);
+                ghForm.FormClosed += (_, _) => ghForm = null;
+            }
+
+            ghForm.Show(this);
+            ghForm.Focus();
+        }
+
+        private void OpenImagineTool_Click(object? sender, EventArgs e)
+        {
+            if (imagineForm == null || imagineForm.IsDisposed)
+            {
+                imagineForm = new ImagineForm(this);
+                imagineForm.FormClosed += (_, _) => imagineForm = null;
+            }
+
+            imagineForm.Show(this);
+            imagineForm.Focus();
+        }
+        
         private void SetCrashBehavior(string behavior)
         {
             config.CrashBehavior = behavior;
@@ -1414,6 +1623,22 @@ namespace BrokenNes.Windows
             UpdateConfigMenus();
             
             Console.WriteLine($"Crash behavior set to: {behavior}");
+        }
+        
+        private void SetBackground(string backgroundName)
+        {
+            config.SelectedBackground = backgroundName;
+            config.Save();
+            
+            // Apply to DirectX renderer if available
+            if (useDirectX && dxRenderer != null)
+            {
+                dxRenderer.SetBackground(backgroundName);
+            }
+            
+            UpdateConfigMenus();
+            
+            Console.WriteLine($"Background set to: {backgroundName}");
         }
         
         private void ApplyCrashBehavior()
@@ -1433,10 +1658,19 @@ namespace BrokenNes.Windows
                                 break;
                             case "ImagineFix":
                                 nes.SetCrashBehavior(NES.CrashBehavior.ImagineFix);
+                                nes.SetStubbornFixEnabled(corruptor.StubbornMode);
                                 break;
                             default: // "RedScreen"
                                 nes.SetCrashBehavior(NES.CrashBehavior.RedScreen);
                                 break;
+                        }
+                        if (imagineEngine != null)
+                        {
+                            nes.ImagineShot = pc =>
+                            {
+                                try { imagineEngine.ImagineFromPc(pc, Math.Clamp(corruptor.CorruptIntensity, 1, 32)); }
+                                catch (Exception ex) { Console.WriteLine($"ImagineShot error: {ex.Message}"); }
+                            };
                         }
                     }
                 }
@@ -1446,6 +1680,128 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"Error applying crash behavior: {ex.Message}");
             }
         }
+
+        private void InitializeImagineEngine()
+        {
+            if (nes == null) return;
+            imagineEngine = new ImagineEngine(nes, corruptor);
+            corruptor.EmulatorHooks = imagineEngine;
+            nes.ImagineShot = pc =>
+            {
+                try { imagineEngine.ImagineFromPc(pc, Math.Clamp(corruptor.CorruptIntensity, 1, 32)); }
+                catch (Exception ex) { Console.WriteLine($"ImagineShot error: {ex.Message}"); }
+            };
+            nes.SetStubbornFixEnabled(corruptor.StubbornMode);
+        }
+
+        internal void SetStubbornMode(bool enabled)
+        {
+            lock (corruptorLock) { corruptor.StubbornMode = enabled; }
+            if (nes != null)
+            {
+                QueueEmuAction(() =>
+                {
+                    try { nes.SetStubbornFixEnabled(enabled); }
+                    catch (Exception ex) { Console.WriteLine($"SetStubbornFixEnabled error: {ex.Message}"); }
+                });
+            }
+            NotifyCorruptorChanged();
+        }
+
+        private void BuildMemoryDomains()
+        {
+            if (nes == null) return;
+            lock (corruptorLock)
+            {
+                corruptor.MemoryDomains.Clear();
+                try
+                {
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRG", Label = "PRG ROM", Size = GetApproxSize(i => nes.PeekPrg(i)), Selected = false });
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRGRAM", Label = "PRG RAM", Size = GetApproxSize(i => nes.PeekPrgRam(i)), Selected = false });
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "CHR", Label = "CHR", Size = GetApproxSize(i => nes.PeekChr(i)), Selected = false });
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "RAM", Label = "System RAM", Size = 2048, Selected = true });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"BuildMemoryDomains error: {ex.Message}");
+                }
+            }
+            NotifyCorruptorChanged();
+        }
+
+        private int GetApproxSize(Func<int, byte> peek)
+        {
+            int size = 1024;
+            int lastNonZero = 0;
+            for (int i = 0; i < size; i += 128)
+            {
+                if (peek(i) != 0) lastNonZero = i;
+            }
+            for (int i = 1024; i <= 512 * 1024; i *= 2)
+            {
+                byte v = peek(i - 1);
+                if (v != 0) lastNonZero = i - 1;
+                else { size = i; break; }
+            }
+            return Math.Max((lastNonZero + 256) & ~255, 0);
+        }
+
+        internal void RefreshMemoryDomainsRequested()
+        {
+            if (!IsEmulatorReady) return;
+            QueueEmuAction(BuildMemoryDomains);
+        }
+
+        internal void SetCorruptIntensity(int value)
+        {
+            lock (corruptorLock) { corruptor.OnIntensityChange(value); }
+            NotifyCorruptorChanged();
+        }
+
+        internal void SetBlastType(string blastType)
+        {
+            lock (corruptorLock) { corruptor.OnBlastTypeChanged(blastType); }
+            NotifyCorruptorChanged();
+        }
+
+        internal void SetSelectedDomains(IEnumerable<string> keys)
+        {
+            lock (corruptorLock) { corruptor.DomainsChanged(keys); }
+            NotifyCorruptorChanged();
+        }
+
+        internal void SetAutoCorrupt(bool enabled)
+        {
+            lock (corruptorLock)
+            {
+                corruptor.AutoCorrupt = enabled;
+                corruptor.LastBlastInfo = enabled ? "Auto-corrupt enabled" : "Auto-corrupt disabled";
+            }
+            NotifyCorruptorChanged();
+        }
+
+        internal void RequestBlast()
+        {
+            if (!IsEmulatorReady) return;
+            QueueEmuAction(() =>
+            {
+                if (nes == null) return;
+                lock (corruptorLock)
+                {
+                    corruptor.Blast(nes);
+                }
+                NotifyCorruptorChanged();
+            });
+        }
+
+        internal void RequestLetItRip()
+        {
+            lock (corruptorLock) { corruptor.LetItRip(); }
+            RefreshMemoryDomainsRequested();
+            NotifyCorruptorChanged();
+        }
+
+        internal void SetCrashBehaviorFromTools(string behavior) => SetCrashBehavior(behavior);
         
         private void AutoScrambleTimer_Tick(object? sender, EventArgs e)
         {
@@ -1748,6 +2104,12 @@ namespace BrokenNes.Windows
             
             while (isEmulationRunning)
             {
+                while (emulationActions.TryDequeue(out var act))
+                {
+                    try { act(); }
+                    catch (Exception ex) { Console.WriteLine($"Emu action error: {ex.Message}"); }
+                }
+
                 using (PerformanceProfiler.Time("Frame"))
                 {
                     if (isPaused)
@@ -1868,6 +2230,15 @@ namespace BrokenNes.Windows
                             using (PerformanceProfiler.Time("NES.RunFrame"))
                             {
                                 nes.RunFrame();
+                            }
+
+                            if (corruptor.AutoCorrupt)
+                            {
+                                lock (corruptorLock)
+                                {
+                                    try { corruptor.Blast(nes); }
+                                    catch (Exception ex) { Console.WriteLine($"Auto-corrupt error: {ex.Message}"); }
+                                }
                             }
                             
                             // Track FPS for display and audio speed adjustment

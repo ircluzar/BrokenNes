@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows.Forms;
 using SharpDX;
 using SharpDX.Direct2D1;
@@ -36,8 +38,8 @@ namespace BrokenNes.Windows.Rendering
             { 42f/64f, 26f/64f, 38f/64f, 22f/64f, 41f/64f, 25f/64f, 37f/64f, 21f/64f }
         };
 
-        // Palette for dithered gradient (4 shades for smooth yet distinct pattern)
-        private static readonly byte[] GradientPalette = new byte[] { 0, 28, 45, 65 };
+        // Palette for dithered gradient (horizontal double gradient: dark gray -> black -> dark gray)
+        private static readonly byte[] GradientPalette = new byte[] { 0, 12, 24, 36, 50 };
 
         // DirectX core components
         private Device device;
@@ -45,10 +47,11 @@ namespace BrokenNes.Windows.Rendering
         private RenderTarget d2dRenderTarget;
         private SharpDX.Direct2D1.Bitmap gameBitmap;
         private RawRectangleF clientArea;
-        private SharpDX.Direct2D1.Bitmap backgroundBitmap;
-        private int backgroundClientWidth;
-        private int backgroundClientHeight;
         private readonly object renderLock = new object();
+        
+        // Pluggable background system
+        private List<IBackground> backgrounds = new List<IBackground>();
+        private Stopwatch backgroundTimer;
 
         // Shader support
         private NesShaderManager shaderManager;
@@ -133,6 +136,10 @@ namespace BrokenNes.Windows.Rendering
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque | ControlStyles.UserPaint, true);
             ResizeRedraw = true;
             fpsTimer = Stopwatch.StartNew();
+            backgroundTimer = Stopwatch.StartNew();
+            
+            // Default background (can be changed via SetBackground)
+            backgrounds.Add(new StaticGradientBackground());
         }
 
         /// <summary>
@@ -310,6 +317,81 @@ namespace BrokenNes.Windows.Rendering
         {
             return Enum.GetNames(typeof(NesShaderManager.ShaderType));
         }
+        
+        /// <summary>
+        /// Set the active background renderer (automatically discovers all IBackground implementations via reflection)
+        /// </summary>
+        /// <param name="backgroundName">Name of the background (class name without "Background" suffix, e.g., "Wave", "Bubble", "FlowingAurora")</param>
+        public void SetBackground(string backgroundName)
+        {
+            lock (renderLock)
+            {
+                // Dispose existing backgrounds
+                foreach (var background in backgrounds)
+                {
+                    background.Dispose();
+                }
+                backgrounds.Clear();
+                
+                // Use reflection to find and instantiate the background by name
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var backgroundTypes = assembly.GetTypes()
+                    .Where(t => typeof(IBackground).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+                
+                IBackground? selectedBackground = null;
+                
+                // Try to find a background matching the requested name
+                foreach (var type in backgroundTypes)
+                {
+                    // Match by class name (with or without "Background" suffix)
+                    var typeName = type.Name;
+                    var nameWithoutSuffix = typeName.EndsWith("Background") 
+                        ? typeName.Substring(0, typeName.Length - "Background".Length) 
+                        : typeName;
+                    
+                    if (nameWithoutSuffix.Equals(backgroundName, StringComparison.OrdinalIgnoreCase) ||
+                        typeName.Equals(backgroundName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedBackground = (IBackground?)Activator.CreateInstance(type);
+                        break;
+                    }
+                }
+                
+                // Fallback to StaticGradientBackground if not found
+                if (selectedBackground == null)
+                {
+                    selectedBackground = new StaticGradientBackground();
+                }
+                
+                backgrounds.Add(selectedBackground);
+                
+                // Reinitialize backgrounds with current render target
+                InitializeBackgrounds();
+            }
+        }
+        
+        /// <summary>
+        /// Get all available background names via reflection
+        /// </summary>
+        public static List<string> GetAvailableBackgrounds()
+        {
+            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+            var backgroundTypes = assembly.GetTypes()
+                .Where(t => typeof(IBackground).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+            
+            var names = new List<string>();
+            foreach (var type in backgroundTypes)
+            {
+                var typeName = type.Name;
+                // Remove "Background" suffix for cleaner display names
+                var displayName = typeName.EndsWith("Background") 
+                    ? typeName.Substring(0, typeName.Length - "Background".Length) 
+                    : typeName;
+                names.Add(displayName);
+            }
+            
+            return names.OrderBy(n => n).ToList();
+        }
 
         /// <summary>
         /// Render a frame from the NES emulator
@@ -373,7 +455,7 @@ namespace BrokenNes.Windows.Rendering
         {
             if (d2dRenderTarget == null) return;
 
-            EnsureBackground();
+            InitializeBackgrounds();
             d2dRenderTarget.BeginDraw();
             DrawBackground();
 
@@ -451,110 +533,33 @@ namespace BrokenNes.Windows.Rendering
             };
         }
 
-        private void EnsureBackground()
+        private void InitializeBackgrounds()
         {
             if (d2dRenderTarget == null || ClientSize.Width <= 0 || ClientSize.Height <= 0)
             {
                 return;
             }
 
-            if (backgroundBitmap != null && backgroundClientWidth == ClientSize.Width && backgroundClientHeight == ClientSize.Height)
+            foreach (var background in backgrounds)
             {
-                return;
+                background.Initialize(d2dRenderTarget, ClientSize.Width, ClientSize.Height);
             }
-
-            GenerateBackgroundTexture();
-        }
-
-        private void GenerateBackgroundTexture()
-        {
-            backgroundBitmap?.Dispose();
-
-            // Use NES resolution for pixelated background
-            int logicalWidth = 256;
-            int logicalHeight = 240;
-
-            var pixelData = new byte[logicalWidth * logicalHeight * 4];
-            float centerX = logicalWidth * 0.5f;
-            float centerY = logicalHeight * 0.5f;
-            float maxRadius = (float)Math.Sqrt(centerX * centerX + centerY * centerY);
-            int paletteSize = GradientPalette.Length;
-
-            // Pre-calculate for performance
-            float invMaxRadius = 1.0f / maxRadius;
-            int totalPixels = logicalWidth * logicalHeight;
-
-            for (int i = 0; i < totalPixels; i++)
-            {
-                int x = i % logicalWidth;
-                int y = i / logicalWidth;
-                
-                // Calculate distance from center
-                float dx = x - centerX;
-                float dy = y - centerY;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-                
-                // Create sophisticated gradient: radial with subtle geometric influence
-                float radial = 1.0f - Math.Min(1.0f, dist * invMaxRadius);
-                float angular = (float)Math.Atan2(dy, dx) / (float)Math.PI; // -1 to 1
-                float geometric = (float)Math.Cos(angular * 4.0) * 0.08f; // Subtle 4-pointed star pattern
-                
-                // Combine patterns for elegant gradient (0 = edge, 1 = center)
-                float intensity = radial * radial; // Square for more dramatic falloff
-                intensity = intensity * 0.35f + geometric * intensity; // Add geometric interest
-                intensity = Math.Clamp(intensity, 0f, 1f);
-                
-                // Map intensity to palette space (0 to paletteSize-1)
-                float paletteFloat = intensity * (paletteSize - 1);
-                
-                // 8x8 Bayer matrix ordered dithering
-                int bayerX = x & 7; // Fast modulo 8
-                int bayerY = y & 7;
-                float threshold = BayerMatrix8x8[bayerY, bayerX];
-                
-                // Dither between adjacent palette colors
-                float fractional = paletteFloat - (float)Math.Floor(paletteFloat);
-                int paletteIndex = (int)paletteFloat;
-                
-                // Apply dithering threshold
-                if (fractional > threshold && paletteIndex < paletteSize - 1)
-                {
-                    paletteIndex++;
-                }
-                
-                // Clamp and get final color
-                paletteIndex = Math.Clamp(paletteIndex, 0, paletteSize - 1);
-                byte c = GradientPalette[paletteIndex];
-                
-                int offset = i * 4;
-                pixelData[offset + 0] = c; // B
-                pixelData[offset + 1] = c; // G
-                pixelData[offset + 2] = c; // R
-                pixelData[offset + 3] = 255; // A
-            }
-
-            using (var stream = new DataStream(pixelData.Length, true, true))
-            {
-                stream.Write(pixelData, 0, pixelData.Length);
-                stream.Position = 0;
-
-                var props = new BitmapProperties(new PixelFormat(Format.B8G8R8A8_UNorm, AlphaMode.Ignore));
-                backgroundBitmap = new SharpDX.Direct2D1.Bitmap(
-                    d2dRenderTarget,
-                    new Size2(logicalWidth, logicalHeight),
-                    stream,
-                    logicalWidth * 4,
-                    props);
-            }
-
-            backgroundClientWidth = ClientSize.Width;
-            backgroundClientHeight = ClientSize.Height;
         }
 
         private void DrawBackground()
         {
-            if (d2dRenderTarget == null || backgroundBitmap == null) return;
-
+            if (d2dRenderTarget == null) return;
+            
+            // Update all backgrounds with elapsed time
+            double deltaTime = backgroundTimer.Elapsed.TotalSeconds;
+            backgroundTimer.Restart();
+            
+            foreach (var background in backgrounds)
+            {
+                background.Update(deltaTime);
+            }
+            
+            // Render all backgrounds in order (they composite on top of each other)
             var dest = new RawRectangleF
             {
                 Left = 0,
@@ -562,8 +567,20 @@ namespace BrokenNes.Windows.Rendering
                 Right = ClientSize.Width,
                 Bottom = ClientSize.Height
             };
-
-            d2dRenderTarget.DrawBitmap(backgroundBitmap, dest, 1f, BitmapInterpolationMode.NearestNeighbor);
+            
+            foreach (var background in backgrounds)
+            {
+                background.Render(d2dRenderTarget, dest);
+            }
+            
+            // Update animated backgrounds if needed
+            foreach (var background in backgrounds)
+            {
+                if (background is AnimatedWaveBackground animBg)
+                {
+                    animBg.UpdateTexture(d2dRenderTarget);
+                }
+            }
         }
         
         private void DrawFpsCounter()
@@ -604,37 +621,13 @@ namespace BrokenNes.Windows.Rendering
 
         private void DrawGlowEffect(RawRectangleF destRect)
         {
-            if (d2dRenderTarget == null) return;
-
-            // Create a solid black brush for the glow
-            using (var blackBrush = new SharpDX.Direct2D1.SolidColorBrush(d2dRenderTarget, new RawColor4(0, 0, 0, 1)))
-            {
-                float glowSize = 8f; // Glow size in pixels
-                int glowLayers = 4; // Number of glow layers
-
-                // Draw multiple layers with increasing size and decreasing opacity for smooth glow
-                for (int i = glowLayers; i > 0; i--)
-                {
-                    float currentGlow = (glowSize * i) / glowLayers;
-                    float opacity = 0.6f * (i / (float)glowLayers);
-                    
-                    var glowRect = new RawRectangleF
-                    {
-                        Left = destRect.Left - currentGlow,
-                        Top = destRect.Top - currentGlow,
-                        Right = destRect.Right + currentGlow,
-                        Bottom = destRect.Bottom + currentGlow
-                    };
-
-                    blackBrush.Opacity = opacity;
-                    d2dRenderTarget.DrawRectangle(glowRect, blackBrush, currentGlow * 2);
-                }
-            }
+            // Shadow removed - it breaks with non-square framebuffer shapes
+            // Background gradient now provides sufficient visual separation
         }
-
+        
         private void DrawWithShader(DirectBitmap frameBuffer)
         {
-            EnsureBackground();
+            InitializeBackgrounds();
             
             // Calculate destination rectangle for glow effect
             var destRect = CalculateDestinationRect();
@@ -761,15 +754,19 @@ namespace BrokenNes.Windows.Rendering
                 previousShaderTexture?.Dispose();
                 previousShaderTextureView?.Dispose();
                 renderTargetView?.Dispose();
-                backgroundBitmap?.Dispose();
+                
+                // Dispose all backgrounds
+                foreach (var background in backgrounds)
+                {
+                    background?.Dispose();
+                }
+                backgrounds.Clear();
+                
                 gameBitmap?.Dispose();
                 d2dRenderTarget?.Dispose();
                 swapChain?.Dispose();
                 device?.Dispose();
                 hasPreviousFrame = false;
-                backgroundBitmap = null!;
-                backgroundClientWidth = 0;
-                backgroundClientHeight = 0;
             }
         }
 

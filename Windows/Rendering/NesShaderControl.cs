@@ -73,15 +73,6 @@ namespace BrokenNes.Windows.Rendering
             try
             {
                 var alias = shaderName?.Trim();
-                if (string.Equals(alias, "16B", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (currentRenderer != null)
-                    {
-                        currentRenderer.SwitchShader(NesShaderManager.ShaderType.SixteenB);
-                        return true;
-                    }
-                }
-
                 if (Enum.TryParse<NesShaderManager.ShaderType>(alias, true, out var shaderType))
                 {
                     currentRenderer.SwitchShader(shaderType);
@@ -193,12 +184,6 @@ namespace BrokenNes.Windows.Rendering
                     Name = "RF", 
                     DisplayName = "Analog RF",
                     Description = "Mild analog RF simulation with chroma misalignment and shimmer"
-                },
-                NesShaderManager.ShaderType.SNES => new ShaderInfo 
-                { 
-                    Name = "SNES", 
-                    DisplayName = "16-Bit Upgrade",
-                    Description = "SNES-style color enhancement"
                 },
                 NesShaderManager.ShaderType.TV => new ShaderInfo 
                 { 
@@ -337,12 +322,6 @@ namespace BrokenNes.Windows.Rendering
                     Name = "WTR",
                     DisplayName = "Water Ripples",
                     Description = "Compound vector-field warping"
-                },
-                NesShaderManager.ShaderType.SixteenB => new ShaderInfo
-                {
-                    Name = "16B",
-                    DisplayName = "16-Bit Upgrade",
-                    Description = "Edge-aware smoothing with chroma blur"
                 },
                 _ => new ShaderInfo { Name = "Unknown", DisplayName = "Unknown", Description = "Unknown shader" }
             };

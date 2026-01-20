@@ -140,6 +140,12 @@ namespace BrokenNes.Windows
         [JsonPropertyName("crashBehavior")]
         public string CrashBehavior { get; set; } = "RedScreen";
         
+        /// <summary>
+        /// Show the Windows console window
+        /// </summary>
+        [JsonPropertyName("showConsole")]
+        public bool ShowConsole { get; set; } = false;
+        
         // Controller configuration
         /// <summary>
         /// Player 1 Controller key bindings
@@ -167,6 +173,13 @@ namespace BrokenNes.Windows
         
         [JsonPropertyName("p1KeyRight")]
         public string P1KeyRight { get; set; } = "Right";
+        
+        // Background configuration
+        /// <summary>
+        /// Selected background renderer (Wave, Bubble, Gradient, None)
+        /// </summary>
+        [JsonPropertyName("selectedBackground")]
+        public string SelectedBackground { get; set; } = "Gradient";
         
         private static readonly string ConfigDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 

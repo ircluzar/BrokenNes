@@ -7,6 +7,7 @@ This directory contains a hardware-accelerated DirectX rendering library for the
 - **Hardware-Accelerated Rendering**: Uses Direct3D 11 and Direct2D for GPU-accelerated rendering
 - **HLSL Shader Support**: Real-time shader effects for retro visual enhancements
 - **Hot-Swappable Shaders**: Switch between different shader effects at runtime
+- **Pluggable Background System**: Multiple animated backgrounds for visual enhancement
 - **Efficient Memory Management**: DirectBitmap class for fast texture updates
 - **Fallback Support**: Gracefully falls back to software rendering if DirectX is unavailable
 
@@ -23,6 +24,7 @@ This directory contains a hardware-accelerated DirectX rendering library for the
 - Main rendering control (inherits from `Control`)
 - Manages DirectX device, swap chain, and render targets
 - Supports both Direct2D and shader-based rendering
+- Pluggable background system with runtime switching
 - Automatic resource cleanup and resize handling
 
 #### `NesShaderManager.cs`
@@ -38,6 +40,40 @@ This directory contains a hardware-accelerated DirectX rendering library for the
   - Switching between shaders
   - Adjusting shader strength
   - Cycling through available shaders
+
+### Background System
+
+#### `IBackground` Interface
+- Defines the contract for pluggable background renderers
+- Methods: `Initialize()`, `Update()`, `Render()`, `Dispose()`
+
+#### Available Backgrounds (in `Backgrounds/` folder)
+
+**AnimatedWaveBackground**
+- Animated wavy pattern with Phong-like shading
+- Dynamic color cycling through blue hues
+- Smooth sine wave animations with surface normals
+
+**AnimatedBubbleBackground** ✨ NEW
+- Chaotic animated bubbles with purple colors
+- 25+ bubbles with varying sizes and speeds
+- Pulsing effect with resonance
+- Sparkle effects on bubble surfaces
+- Ideal for a more dynamic, energetic visual experience
+
+**StaticGradientBackground**
+- Simple static gradient background
+- Lightweight and subtle
+
+**None**
+- No background (transparent/black)
+
+To switch backgrounds at runtime:
+```csharp
+dxRenderer.SetBackground("Bubble"); // Wave, Bubble, Gradient, or None
+```
+
+The selected background is saved in the config and restored on startup.
 
 ## Available Shaders
 

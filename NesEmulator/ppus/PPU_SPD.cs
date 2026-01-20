@@ -263,7 +263,11 @@ public class PPU_SPD : IPPU
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
-	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
+	public byte[] GetFrameBuffer() 
+	{ 
+		EnsureFrameBuffer(); 
+		return frameBuffer ?? new byte[ScreenWidth * ScreenHeight * 4]; 
+	}
 
 	public void ClearBuffers()
 	{
@@ -274,6 +278,7 @@ public class PPU_SPD : IPPU
 	public void GenerateStaticFrame()
 	{
 		EnsureFrameBuffer();
+		if (frameBuffer == null) return; // safety check
 		// Old TV style static: fully decorrelated spatial noise each frame (no directional drift).
 		// We derive a pseudo-random value from (x,y,frame) using a cheap integer hash.
 		int w = ScreenWidth; int h = ScreenHeight;
@@ -318,6 +323,7 @@ public class PPU_SPD : IPPU
 		// The frame buffer is already updated in RenderScanline
 		// Add some animated elements for testing
 		EnsureFrameBuffer();
+		if (frameBuffer == null) return; // safety check
 		if (bus?.cartridge == null)
 		{
 			AddAnimatedTestElements();
@@ -674,6 +680,7 @@ public class PPU_SPD : IPPU
 	private void AddAnimatedTestElements()
 	{
 		EnsureFrameBuffer();
+		if (frameBuffer == null) return; // safety check
 		int frame = scanline + scanlineCycle / 100;
 		
 		// Add moving "sprites" for testing
@@ -703,6 +710,7 @@ public class PPU_SPD : IPPU
 	private void DrawTestSprite(int x, int y, int spriteType)
 	{
 		EnsureFrameBuffer();
+		if (frameBuffer == null) return; // safety check
 		int[] indices = {0x0F,0x16,0x2A,0x12};
 		int idx = indices[spriteType % 4] & 0x3F;
 		int p = idx * 3;

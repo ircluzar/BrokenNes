@@ -12,7 +12,14 @@
     <DefineConstants>$(DefineConstants);FAST_EMU;WINFORMS</DefineConstants>
     <ApplicationIcon>BrokenNes.ico</ApplicationIcon>
     <MSBuildEnableWorkloadResolver>false</MSBuildEnableWorkloadResolver>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <NoWarn>$(NoWarn);CA1416;CS8602;CS8618</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Reference to the core emulator code from parent project -->

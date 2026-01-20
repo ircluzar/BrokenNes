@@ -9,6 +9,30 @@ namespace BrokenNes.Windows
         [DllImport("kernel32.dll")]
         static extern bool AllocConsole();
         
+        [DllImport("kernel32.dll")]
+        static extern bool FreeConsole();
+        
+        [DllImport("kernel32.dll")]
+        static extern IntPtr GetConsoleWindow();
+        
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        
+        private const int SW_HIDE = 0;
+        private const int SW_SHOW = 5;
+        
+        /// <summary>
+        /// Set console window visibility
+        /// </summary>
+        public static void SetConsoleVisibility(bool visible)
+        {
+            IntPtr consoleWindow = GetConsoleWindow();
+            if (consoleWindow != IntPtr.Zero)
+            {
+                ShowWindow(consoleWindow, visible ? SW_SHOW : SW_HIDE);
+            }
+        }
+        
         /// <summary>
         ///  The main entry point for the application.
         /// </summary>
@@ -18,6 +42,10 @@ namespace BrokenNes.Windows
             // Allocate a console for debug output
             AllocConsole();
             Console.WriteLine("BrokenNes Windows Starting...");
+            
+            // Load config and apply console visibility
+            var config = BrokenNes.Windows.EmulatorConfig.Load();
+            SetConsoleVisibility(config.ShowConsole);
             
             try
             {

@@ -30,7 +30,23 @@ namespace BrokenNes.CorruptorModels
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Name { get; set; } = string.Empty;
         public string BaseStateId { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
         public List<BlastInstruction> Writes { get; set; } = new();
         public DateTime Created { get; set; } = DateTime.UtcNow;
+    }
+    public class CorruptorSnapshot
+    {
+        public int CorruptIntensity { get; set; }
+        public string BlastType { get; set; } = string.Empty;
+        public List<DomainSel> MemoryDomains { get; set; } = new();
+        public bool AutoCorrupt { get; set; }
+        public string LastBlastInfo { get; set; } = string.Empty;
+        public bool StubbornMode { get; set; }
+        public string CrashBehavior { get; set; } = string.Empty;
+        public List<HarvesterBaseState> GhBaseStates { get; set; } = new();
+        public List<HarvestEntry> GhStash { get; set; } = new();
+        public List<HarvestEntry> GhStockpile { get; set; } = new();
+        public string GhSelectedBaseId { get; set; } = string.Empty;
+        public bool GhLoadOnOperation { get; set; } = true;
     }
 }
