@@ -35,6 +35,7 @@ namespace BrokenNes.Windows
         private bool useDirectX = true;
         private string? quickSaveState; // Quick save slot
         private InputManager? inputManager;
+        private InputManager? inputManager2; // Player 2 input
         
         // FPS tracking for audio speed adjustment
         private double currentFps = 60.0;
@@ -45,6 +46,7 @@ namespace BrokenNes.Windows
         private SpeedControlForm? speedControlForm;
         private volatile float speedOverride = 1.0f;
         private volatile bool hasSpeedOverride = false;
+        private volatile bool resetTimingAccumulator = false;
         
         // Auto-scramble cores testing
         private System.Windows.Forms.Timer? autoScrambleTimer;
@@ -73,6 +75,57 @@ namespace BrokenNes.Windows
         private ImagineForm? imagineForm;
         private readonly ConcurrentQueue<Action> emulationActions = new();
         public event Action? CorruptorStateChanged;
+        
+        // Fullscreen support
+        private bool isFullscreen = false;
+        private FormBorderStyle previousBorderStyle;
+        private FormWindowState previousWindowState;
+        private Rectangle previousBounds;
+        
+        /// <summary>
+        /// Toggle between fullscreen and windowed mode
+        /// </summary>
+        private void ToggleFullscreen()
+        {
+            if (isFullscreen)
+            {
+                // Restore menu bar visibility first
+                if (this.MainMenuStrip != null)
+                {
+                    this.MainMenuStrip.Visible = true;
+                }
+                
+                // Exit fullscreen
+                this.FormBorderStyle = previousBorderStyle;
+                this.WindowState = previousWindowState;
+                this.Bounds = previousBounds;
+                isFullscreen = false;
+            }
+            else
+            {
+                // Enter fullscreen
+                previousBorderStyle = this.FormBorderStyle;
+                previousWindowState = this.WindowState;
+                previousBounds = this.Bounds;
+                
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.WindowState = FormWindowState.Normal;
+                this.Bounds = Screen.FromControl(this).Bounds;
+                isFullscreen = true;
+                
+                // Hide menu bar if configured
+                if (this.MainMenuStrip != null && config.HideMenuBarInFullscreen)
+                {
+                    this.MainMenuStrip.Visible = false;
+                }
+            }
+            
+            // Force layout and rendering refresh
+            this.PerformLayout();
+            displayPanel?.PerformLayout();
+            dxRenderer?.Invalidate();
+            this.Refresh();
+        }
         
         public MainForm()
         {
@@ -262,33 +315,44 @@ namespace BrokenNes.Windows
             // Config menu
             var configMenu = new ToolStripMenuItem("&Config");
             
-            // Image submenu
-            var imageMenu = new ToolStripMenuItem("&Image");
+            // Display submenu
+            var displayMenu = new ToolStripMenuItem("&Display");
             
             var pixelPerfectItem = new ToolStripMenuItem("Force Pixel Perfect", null, TogglePixelPerfect_Click);
             pixelPerfectItem.CheckOnClick = true;
-            imageMenu.DropDownItems.Add(pixelPerfectItem);
+            displayMenu.DropDownItems.Add(pixelPerfectItem);
             
             var nativeAspectItem = new ToolStripMenuItem("Force Native Aspect Ratio", null, ToggleNativeAspect_Click);
             nativeAspectItem.CheckOnClick = true;
-            imageMenu.DropDownItems.Add(nativeAspectItem);
+            displayMenu.DropDownItems.Add(nativeAspectItem);
             
             var nearestNeighborItem = new ToolStripMenuItem("Scaling Nearest Neighbor", null, ToggleNearestNeighbor_Click);
             nearestNeighborItem.CheckOnClick = true;
-            imageMenu.DropDownItems.Add(nearestNeighborItem);
+            displayMenu.DropDownItems.Add(nearestNeighborItem);
             
-            imageMenu.DropDownItems.Add(new ToolStripSeparator());
+            displayMenu.DropDownItems.Add(new ToolStripSeparator());
             
             var zoom1xItem = new ToolStripMenuItem("Resize Zoom 1x", null, (s, e) => SetWindowZoom(1));
-            imageMenu.DropDownItems.Add(zoom1xItem);
+            displayMenu.DropDownItems.Add(zoom1xItem);
             
             var zoom2xItem = new ToolStripMenuItem("Resize Zoom 2x", null, (s, e) => SetWindowZoom(2));
-            imageMenu.DropDownItems.Add(zoom2xItem);
+            displayMenu.DropDownItems.Add(zoom2xItem);
             
             var zoom4xItem = new ToolStripMenuItem("Resize Zoom 4x", null, (s, e) => SetWindowZoom(4));
-            imageMenu.DropDownItems.Add(zoom4xItem);
+            displayMenu.DropDownItems.Add(zoom4xItem);
             
-            configMenu.DropDownItems.Add(imageMenu);
+            displayMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            var fullScreenItem = new ToolStripMenuItem("Full Screen", null, (s, e) => ToggleFullscreen());
+            fullScreenItem.ShortcutKeys = Keys.Alt | Keys.Enter;
+            displayMenu.DropDownItems.Add(fullScreenItem);
+            
+            var hideMenuBarItem = new ToolStripMenuItem("Hide Menu Bar in Full Screen", null, ToggleHideMenuBar_Click);
+            hideMenuBarItem.CheckOnClick = true;
+            hideMenuBarItem.Checked = config.HideMenuBarInFullscreen;
+            displayMenu.DropDownItems.Add(hideMenuBarItem);
+            
+            configMenu.DropDownItems.Add(displayMenu);
             
             // Sound submenu
             var soundMenu = new ToolStripMenuItem("&Sound");
@@ -354,35 +418,11 @@ namespace BrokenNes.Windows
             // Controllers submenu
             var controllersMenu = new ToolStripMenuItem("&Controllers");
             
-            var player1Menu = new ToolStripMenuItem("Player 1");
-            
-            var bindAItem = new ToolStripMenuItem("A Button...", null, (s, e) => BindControllerKey("A", config.P1KeyA, k => config.P1KeyA = k));
-            player1Menu.DropDownItems.Add(bindAItem);
-            
-            var bindBItem = new ToolStripMenuItem("B Button...", null, (s, e) => BindControllerKey("B", config.P1KeyB, k => config.P1KeyB = k));
-            player1Menu.DropDownItems.Add(bindBItem);
-            
-            var bindSelectItem = new ToolStripMenuItem("Select Button...", null, (s, e) => BindControllerKey("Select", config.P1KeySelect, k => config.P1KeySelect = k));
-            player1Menu.DropDownItems.Add(bindSelectItem);
-            
-            var bindStartItem = new ToolStripMenuItem("Start Button...", null, (s, e) => BindControllerKey("Start", config.P1KeyStart, k => config.P1KeyStart = k));
-            player1Menu.DropDownItems.Add(bindStartItem);
-            
-            player1Menu.DropDownItems.Add(new ToolStripSeparator());
-            
-            var bindUpItem = new ToolStripMenuItem("D-Pad Up...", null, (s, e) => BindControllerKey("Up", config.P1KeyUp, k => config.P1KeyUp = k));
-            player1Menu.DropDownItems.Add(bindUpItem);
-            
-            var bindDownItem = new ToolStripMenuItem("D-Pad Down...", null, (s, e) => BindControllerKey("Down", config.P1KeyDown, k => config.P1KeyDown = k));
-            player1Menu.DropDownItems.Add(bindDownItem);
-            
-            var bindLeftItem = new ToolStripMenuItem("D-Pad Left...", null, (s, e) => BindControllerKey("Left", config.P1KeyLeft, k => config.P1KeyLeft = k));
-            player1Menu.DropDownItems.Add(bindLeftItem);
-            
-            var bindRightItem = new ToolStripMenuItem("D-Pad Right...", null, (s, e) => BindControllerKey("Right", config.P1KeyRight, k => config.P1KeyRight = k));
-            player1Menu.DropDownItems.Add(bindRightItem);
-            
+            var player1Menu = new ToolStripMenuItem("Player 1 Configuration...", null, (s, e) => OpenControllerConfig(1));
             controllersMenu.DropDownItems.Add(player1Menu);
+            
+            var player2Menu = new ToolStripMenuItem("Player 2 Configuration...", null, (s, e) => OpenControllerConfig(2));
+            controllersMenu.DropDownItems.Add(player2Menu);
             
             configMenu.DropDownItems.Add(controllersMenu);
             
@@ -393,11 +433,32 @@ namespace BrokenNes.Windows
             var availableBackgrounds = BrokenNes.Windows.Rendering.NesDirectXRenderer.GetAvailableBackgrounds();
             foreach (var backgroundName in availableBackgrounds)
             {
-                var menuItem = new ToolStripMenuItem(backgroundName, null, (s, e) => SetBackground(backgroundName));
-                backgroundMenu.DropDownItems.Add(menuItem);
+                if (backgroundName == "---")
+                {
+                    // Add separator
+                    backgroundMenu.DropDownItems.Add(new ToolStripSeparator());
+                }
+                else
+                {
+                    var menuItem = new ToolStripMenuItem(backgroundName, null, (s, e) => SetBackground(backgroundName));
+                    backgroundMenu.DropDownItems.Add(menuItem);
+                }
             }
             
             configMenu.DropDownItems.Add(backgroundMenu);
+            
+            // Visual effects for backgrounds
+            var backgroundEffectsMenu = new ToolStripMenuItem("Background &Effects");
+            
+            var scanlinesItem = new ToolStripMenuItem("Render Scanlines", null, ToggleScanlines_Click);
+            scanlinesItem.CheckOnClick = true;
+            backgroundEffectsMenu.DropDownItems.Add(scanlinesItem);
+            
+            var shadowItem = new ToolStripMenuItem("Render Viewport Shadow", null, ToggleViewportShadow_Click);
+            shadowItem.CheckOnClick = true;
+            backgroundEffectsMenu.DropDownItems.Add(shadowItem);
+            
+            configMenu.DropDownItems.Add(backgroundEffectsMenu);
             
             // Crash Behavior submenu
             var crashBehaviorMenu = new ToolStripMenuItem("C&rash Behavior");
@@ -424,9 +485,17 @@ namespace BrokenNes.Windows
             var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
             configMenu.DropDownItems.Add(speedControlItem);
             
-            var showFpsItem = new ToolStripMenuItem("Show FPS", null, ToggleShowFps_Click);
+            var showFpsItem = new ToolStripMenuItem("Show FPS and Input", null, ToggleShowFps_Click);
             showFpsItem.CheckOnClick = true;
             configMenu.DropDownItems.Add(showFpsItem);
+            
+            // VSync option (DirectX only)
+            if (useDirectX)
+            {
+                var vsyncItem = new ToolStripMenuItem("V-Sync", null, ToggleVSync_Click);
+                vsyncItem.CheckOnClick = true;
+                configMenu.DropDownItems.Add(vsyncItem);
+            }
             
             var startProfilingItem = new ToolStripMenuItem("Start Profiling Performance", null, ToggleProfiling_Click);
             startProfilingItem.CheckOnClick = true;
@@ -486,6 +555,10 @@ namespace BrokenNes.Windows
                 Dock = DockStyle.Fill,
                 BackColor = Color.Black
             };
+            
+            // Add double-click handler for fullscreen toggle (fallback if DirectX not used)
+            displayPanel.DoubleClick += (s, e) => ToggleFullscreen();
+            
             this.Controls.Add(displayPanel);
             
             // Create DirectX renderer for hardware-accelerated rendering
@@ -496,6 +569,10 @@ namespace BrokenNes.Windows
                     Dock = DockStyle.Fill,
                     BackColor = Color.Black
                 };
+                
+                // Add double-click handler for fullscreen toggle
+                dxRenderer.DoubleClick += (s, e) => ToggleFullscreen();
+                
                 displayPanel.Controls.Add(dxRenderer);
             }
             catch (Exception ex)
@@ -519,6 +596,9 @@ namespace BrokenNes.Windows
             // Initialize DirectX renderer if available
             if (useDirectX && dxRenderer != null)
             {
+                // Apply VSync setting from config
+                dxRenderer.EnableVSync = config.EnableVSync;
+                
                 try
                 {
                     dxRenderer.Initialize(NES_WIDTH, NES_HEIGHT);
@@ -526,6 +606,10 @@ namespace BrokenNes.Windows
                     
                     // Apply background setting from config
                     dxRenderer.SetBackground(config.SelectedBackground);
+                    
+                    // Apply background effects from config
+                    dxRenderer.RenderScanlines = config.RenderScanlines;
+                    dxRenderer.RenderViewportShadow = config.RenderViewportShadow;
                 }
                 catch (Exception ex)
                 {
@@ -569,51 +653,44 @@ namespace BrokenNes.Windows
             
             Console.WriteLine("Setting up key mappings from config:");
             
-            // Load key bindings from config
-            if (Enum.TryParse<Keys>(config.P1KeyA, out Keys keyA))
-            {
-                keyMap[keyA] = 0; // A
-                Console.WriteLine($"  A (button 0): {keyA}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyB, out Keys keyB))
-            {
-                keyMap[keyB] = 1; // B
-                Console.WriteLine($"  B (button 1): {keyB}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeySelect, out Keys keySelect))
-            {
-                keyMap[keySelect] = 2; // Select
-                Console.WriteLine($"  Select (button 2): {keySelect}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyStart, out Keys keyStart))
-            {
-                keyMap[keyStart] = 3; // Start
-                Console.WriteLine($"  Start (button 3): {keyStart}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyUp, out Keys keyUp))
-            {
-                keyMap[keyUp] = 4; // Up
-                Console.WriteLine($"  Up (button 4): {keyUp}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyDown, out Keys keyDown))
-            {
-                keyMap[keyDown] = 5; // Down
-                Console.WriteLine($"  Down (button 5): {keyDown}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyLeft, out Keys keyLeft))
-            {
-                keyMap[keyLeft] = 6; // Left
-                Console.WriteLine($"  Left (button 6): {keyLeft}");
-            }
-            if (Enum.TryParse<Keys>(config.P1KeyRight, out Keys keyRight))
-            {
-                keyMap[keyRight] = 7; // Right
-                Console.WriteLine($"  Right (button 7): {keyRight}");
-            }
+            // Get or create Player 1 controller config
+            var p1Config = config.GetPlayerController(1);
             
-            // Initialize input manager with the key map
-            inputManager = new InputManager();
-            inputManager.SetKeyMap(keyMap);
+            // Use new config system
+            if (inputManager == null)
+            {
+                inputManager = new InputManager(SharpDX.XInput.UserIndex.One);
+            }
+            inputManager.SetPlayerConfig(p1Config);
+            
+            Console.WriteLine($"Player 1 controller configured:");
+            Console.WriteLine($"  A: {p1Config.A.DisplayName}");
+            Console.WriteLine($"  B: {p1Config.B.DisplayName}");
+            Console.WriteLine($"  Select: {p1Config.Select.DisplayName}");
+            Console.WriteLine($"  Start: {p1Config.Start.DisplayName}");
+            Console.WriteLine($"  Up: {p1Config.Up.DisplayName}");
+            Console.WriteLine($"  Down: {p1Config.Down.DisplayName}");
+            Console.WriteLine($"  Left: {p1Config.Left.DisplayName}");
+            Console.WriteLine($"  Right: {p1Config.Right.DisplayName}");
+            
+            // Get or create Player 2 controller config
+            var p2Config = config.GetPlayerController(2);
+            
+            if (inputManager2 == null)
+            {
+                inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
+            }
+            inputManager2.SetPlayerConfig(p2Config);
+            
+            Console.WriteLine($"Player 2 controller configured:");
+            Console.WriteLine($"  A: {p2Config.A.DisplayName}");
+            Console.WriteLine($"  B: {p2Config.B.DisplayName}");
+            Console.WriteLine($"  Select: {p2Config.Select.DisplayName}");
+            Console.WriteLine($"  Start: {p2Config.Start.DisplayName}");
+            Console.WriteLine($"  Up: {p2Config.Up.DisplayName}");
+            Console.WriteLine($"  Down: {p2Config.Down.DisplayName}");
+            Console.WriteLine($"  Left: {p2Config.Left.DisplayName}");
+            Console.WriteLine($"  Right: {p2Config.Right.DisplayName}");
         }
         
         private void LoadConfig()
@@ -681,13 +758,13 @@ namespace BrokenNes.Windows
             
             if (configMenu == null) return;
             
-            // Update Image submenu checkmarks
-            var imageMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
-                .FirstOrDefault(m => m.Text == "&Image");
+            // Update Display submenu checkmarks
+            var displayMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "&Display");
             
-            if (imageMenu != null)
+            if (displayMenu != null)
             {
-                foreach (var item in imageMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                foreach (var item in displayMenu.DropDownItems.OfType<ToolStripMenuItem>())
                 {
                     if (item.Text.Contains("Pixel Perfect"))
                         item.Checked = config.ForcePixelPerfect;
@@ -695,6 +772,8 @@ namespace BrokenNes.Windows
                         item.Checked = config.ForceNativeAspectRatio;
                     else if (item.Text.Contains("Nearest Neighbor"))
                         item.Checked = config.ScalingNearestNeighbor;
+                    else if (item.Text.Contains("Hide Menu Bar"))
+                        item.Checked = config.HideMenuBarInFullscreen;
                     // Zoom options are not checkboxes, so we don't update them
                 }
             }
@@ -704,8 +783,10 @@ namespace BrokenNes.Windows
             {
                 if (item.Text.Contains("No Speed Limit"))
                     item.Checked = config.NoSpeedLimit;
-                else if (item.Text.Contains("Show FPS"))
+                else if (item.Text.Contains("Show FPS and Input"))
                     item.Checked = config.ShowFps;
+                else if (item.Text.Contains("V-Sync"))
+                    item.Checked = config.EnableVSync;
                 else if (item.Text.Contains("Start Profiling Performance"))
                     item.Checked = config.ProfilingEnabled;
                 else if (item.Text.Contains("Auto-Scramble Cores"))
@@ -797,6 +878,21 @@ namespace BrokenNes.Windows
                 {
                     // Check if this item matches the currently selected background
                     item.Checked = item.Text.Equals(config.SelectedBackground, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            
+            // Update Background Effects submenu checkmarks
+            var backgroundEffectsMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "Background &Effects");
+            
+            if (backgroundEffectsMenu != null)
+            {
+                foreach (var item in backgroundEffectsMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    if (item.Text.Contains("Render Scanlines"))
+                        item.Checked = config.RenderScanlines;
+                    else if (item.Text.Contains("Render Viewport Shadow"))
+                        item.Checked = config.RenderViewportShadow;
                 }
             }
         }
@@ -1377,41 +1473,42 @@ namespace BrokenNes.Windows
         }
         
         // Config menu event handlers
-        private void BindControllerKey(string buttonName, string currentKey, Action<string> setKey)
+        private void OpenControllerConfig(int playerNumber)
         {
-            var dialog = new Form
+            var playerConfig = config.GetPlayerController(playerNumber);
+            
+            using (var configWindow = new ControllerConfigWindow(playerConfig))
             {
-                Text = $"Bind {buttonName}",
-                Size = new Size(350, 150),
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                KeyPreview = true
-            };
-            
-            var label = new Label
-            {
-                Text = $"Press any key to bind to {buttonName}\n\nCurrent: {currentKey}",
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Fill,
-                Font = new Font(Font.FontFamily, 10)
-            };
-            
-            dialog.Controls.Add(label);
-            
-            dialog.KeyDown += (s, e) =>
-            {
-                string keyName = e.KeyCode.ToString();
-                setKey(keyName);
-                config.Save();
-                SetupKeyMapping();
-                dialog.DialogResult = DialogResult.OK;
-                dialog.Close();
-            };
-            
-            dialog.ShowDialog(this);
+                if (configWindow.ShowDialog(this) == DialogResult.OK)
+                {
+                    // Save the updated configuration
+                    config.Save();
+                    
+                    // Reload input mappings for the configured player
+                    if (playerNumber == 1)
+                    {
+                        if (inputManager != null)
+                        {
+                            inputManager.SetPlayerConfig(playerConfig);
+                        }
+                    }
+                    else if (playerNumber == 2)
+                    {
+                        if (inputManager2 == null)
+                        {
+                            inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
+                        }
+                        inputManager2.SetPlayerConfig(playerConfig);
+                    }
+                    
+                    MessageBox.Show(
+                        $"Player {playerNumber} controller configuration saved!",
+                        "Configuration Saved",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
+                }
+            }
         }
         
         // Config menu event handlers
@@ -1448,6 +1545,16 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void ToggleHideMenuBar_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.HideMenuBarInFullscreen = menuItem.Checked;
+                config.Save();
+                UpdateConfigMenus();
+            }
+        }
+        
         private void ToggleNoSpeedLimit_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)
@@ -1464,7 +1571,7 @@ namespace BrokenNes.Windows
                     // Speed limit restored - reset to appropriate speed
                     if (hasSpeedOverride)
                     {
-                        audioManager?.SetSpeedMultiplier(speedOverride);
+                        audioManager?.SetSpeedMultiplier(speedOverride, preserveBuffer: true);
                     }
                     else
                     {
@@ -1479,19 +1586,28 @@ namespace BrokenNes.Windows
             if (speedControlForm == null || speedControlForm.IsDisposed)
             {
                 speedControlForm = new SpeedControlForm();
+                
+                if (inputManager != null)
+                {
+                    speedControlForm.SetInputManager(inputManager);
+                }
+                
                 speedControlForm.SpeedChanged += SpeedControlForm_SpeedChanged;
+                speedControlForm.SpeedChangeComplete += SpeedControlForm_SpeedChangeComplete;
                 speedControlForm.FormClosed += (s, args) =>
                 {
                     hasSpeedOverride = false;
                     speedOverride = 1.0f;
                     
                     // Reset audio speed and clear buffer to prevent desync
-                    audioManager?.SetSpeedMultiplier(1.0f);
+                    audioManager?.SetSpeedMultiplier(1.0f, preserveBuffer: false);
                     audioManager?.ClearBuffer();
+                    resetTimingAccumulator = true;
                 };
             }
             
             hasSpeedOverride = true;
+            resetTimingAccumulator = true;
             speedControlForm.Show(this);
             speedControlForm.Focus();
         }
@@ -1501,8 +1617,18 @@ namespace BrokenNes.Windows
             speedOverride = speed;
             hasSpeedOverride = true;
             
-            // Update audio manager immediately for responsive speed changes
-            audioManager?.SetSpeedMultiplier(speed);
+            // Update audio manager immediately for responsive speed changes.
+            // Pass preserveBuffer=true to avoid cutting audio during dynamic speed changes (rubber banding effect)
+            audioManager?.SetSpeedMultiplier(speed, preserveBuffer: true);
+        }
+        
+        private void SpeedControlForm_SpeedChangeComplete(object? sender, EventArgs e)
+        {
+            // User released the trackbar - clear audio buffer to resync
+            audioManager?.ClearBuffer();
+            
+            // Reset timing accumulator to prevent fast-forward burst
+            resetTimingAccumulator = true;
         }
         
         private void ToggleShowFps_Click(object? sender, EventArgs e)
@@ -1511,8 +1637,23 @@ namespace BrokenNes.Windows
             {
                 config.ShowFps = menuItem.Checked;
                 config.Save();
-                ApplyImageSettings();
+                if (useDirectX && dxRenderer != null)
+                {
+                    dxRenderer.ShowFps = config.ShowFps;
+                }
                 UpdateConfigMenus();
+            }
+        }
+        
+        private void ToggleVSync_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem && useDirectX && dxRenderer != null)
+            {
+                config.EnableVSync = menuItem.Checked;
+                dxRenderer.EnableVSync = menuItem.Checked;
+                config.Save();
+                // Note: VSync can reduce performance and may cause stuttering
+                // It's off by default for maximum performance
             }
         }
         
@@ -1639,6 +1780,36 @@ namespace BrokenNes.Windows
             UpdateConfigMenus();
             
             Console.WriteLine($"Background set to: {backgroundName}");
+        }
+        
+        private void ToggleScanlines_Click(object sender, EventArgs e)
+        {
+            config.RenderScanlines = !config.RenderScanlines;
+            config.Save();
+            
+            // Apply to DirectX renderer if available
+            if (useDirectX && dxRenderer != null)
+            {
+                dxRenderer.RenderScanlines = config.RenderScanlines;
+            }
+            
+            UpdateConfigMenus();
+            Console.WriteLine($"Render Scanlines: {config.RenderScanlines}");
+        }
+        
+        private void ToggleViewportShadow_Click(object sender, EventArgs e)
+        {
+            config.RenderViewportShadow = !config.RenderViewportShadow;
+            config.Save();
+            
+            // Apply to DirectX renderer if available
+            if (useDirectX && dxRenderer != null)
+            {
+                dxRenderer.RenderViewportShadow = config.RenderViewportShadow;
+            }
+            
+            UpdateConfigMenus();
+            Console.WriteLine($"Render Viewport Shadow: {config.RenderViewportShadow}");
         }
         
         private void ApplyCrashBehavior()
@@ -1981,6 +2152,10 @@ namespace BrokenNes.Windows
                 // Apply FPS display setting
                 dxRenderer.ShowFps = config.ShowFps;
                 
+                // Apply background effects settings
+                dxRenderer.RenderScanlines = config.RenderScanlines;
+                dxRenderer.RenderViewportShadow = config.RenderViewportShadow;
+                
                 // Force a redraw
                 if (frameBuffer != null)
                 {
@@ -2120,6 +2295,15 @@ namespace BrokenNes.Windows
                         accumulator = 0;
                         continue;
                     }
+                    
+                    // Check if we need to reset timing (after speed change)
+                    if (resetTimingAccumulator)
+                    {
+                        accumulator = 0;
+                        stopwatch.Restart();
+                        nextFrameTime = stopwatch.ElapsedTicks;
+                        resetTimingAccumulator = false;
+                    }
                 
                 // Get current audio buffer level to guide timing
                 int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? TargetAudioBufferMs;
@@ -2209,17 +2393,31 @@ namespace BrokenNes.Windows
                     {
                         try
                         {
-                            // Poll input manager for controller and update NES button states
-                            if (inputManager != null)
+                            // Poll input managers for both players and update NES button states
+                            using (PerformanceProfiler.Time("Input.Poll"))
                             {
-                                using (PerformanceProfiler.Time("Input.Poll"))
+                                bool[] p1Inputs = new bool[8];
+                                bool[] p2Inputs = new bool[8];
+                                
+                                if (inputManager != null)
                                 {
                                     inputManager.Poll();
                                     for (int i = 0; i < 8; i++)
                                     {
-                                        nes.SetButton(0, i, inputManager.GetButton(i));
+                                        p1Inputs[i] = inputManager.GetButton(i);
                                     }
                                 }
+                                
+                                if (inputManager2 != null)
+                                {
+                                    inputManager2.Poll();
+                                    for (int i = 0; i < 8; i++)
+                                    {
+                                        p2Inputs[i] = inputManager2.GetButton(i);
+                                    }
+                                }
+                                
+                                nes.SetInputs(p1Inputs, p2Inputs);
                             }
                             
                             // Enable static for test.nes ROM (like in web version)
@@ -2460,6 +2658,14 @@ namespace BrokenNes.Windows
         
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
         {
+            // Handle Alt+Enter for fullscreen toggle
+            if (e.Alt && e.KeyCode == Keys.Enter)
+            {
+                ToggleFullscreen();
+                e.Handled = true;
+                return;
+            }
+            
             if (inputManager != null)
             {
                 inputManager.OnKeyDown(e.KeyCode);

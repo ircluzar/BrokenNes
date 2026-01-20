@@ -7,7 +7,7 @@ using SharpDX.XInput;
 namespace BrokenNes.Windows
 {
     /// <summary>
-    /// Unified input manager for keyboard and XInput gamepad support
+    /// Unified input manager for keyboard and XInput gamepad support with configurable bindings
     /// </summary>
     public class InputManager : IDisposable
     {
@@ -16,23 +16,34 @@ namespace BrokenNes.Windows
 
         private Controller controller;
         private State previousState;
-        private Dictionary<Keys, int> keyMap = new();
+        
+        // NEW: Support for configurable bindings
+        private PlayerControllerConfig? playerConfig;
         
         // Separate states for keyboard and controller to allow simultaneous usage
         private bool[] keyboardStates = new bool[8];
         private bool[] controllerStates = new bool[8];
+
+        public byte LeftTrigger { get; private set; }
+        public byte RightTrigger { get; private set; }
+        
+        // Legacy: Keep old key map for backwards compatibility
+        private Dictionary<Keys, int> keyMap = new();
         
         private bool useController = false;
+        private UserIndex controllerIndex;
         
-        public InputManager()
+        public InputManager(UserIndex controllerIndex = UserIndex.One)
         {
+            this.controllerIndex = controllerIndex;
+            
             // Try to initialize XInput controller
-            controller = new Controller(UserIndex.One);
+            controller = new Controller(controllerIndex);
             useController = controller.IsConnected;
             
             if (useController)
             {
-                Console.WriteLine("XInput controller detected and initialized");
+                Console.WriteLine($"XInput controller {controllerIndex} detected and initialized");
                 try 
                 {
                     previousState = controller.GetState();
@@ -45,17 +56,39 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Console.WriteLine("No XInput controller detected, using keyboard only");
+                Console.WriteLine($"No XInput controller detected at {controllerIndex}, using keyboard only");
             }
         }
         
         /// <summary>
-        /// Set up keyboard mappings
+        /// Set up keyboard mappings (LEGACY)
         /// </summary>
         public void SetKeyMap(Dictionary<Keys, int> map)
         {
             keyMap = new Dictionary<Keys, int>(map);
-            Console.WriteLine($"Input manager configured with {keyMap.Count} key bindings");
+            Console.WriteLine($"Input manager configured with {keyMap.Count} key bindings (legacy mode)");
+        }
+
+        /// <summary>
+        /// Set up player controller configuration (NEW)
+        /// </summary>
+        public void SetPlayerConfig(PlayerControllerConfig config)
+        {
+            playerConfig = config;
+            
+            // Apply controller index from config if using gamepad
+            if (config.DeviceType == InputDeviceType.Gamepad)
+            {
+                if ((int)controllerIndex != config.GamepadIndex)
+                {
+                    controllerIndex = (UserIndex)config.GamepadIndex;
+                    controller = new Controller(controllerIndex);
+                    useController = controller.IsConnected;
+                    Console.WriteLine($"Switched to XInput controller {controllerIndex}");
+                }
+            }
+            
+            Console.WriteLine($"Input manager configured for Player {config.PlayerNumber} with new binding system");
         }
         
         /// <summary>
@@ -89,16 +122,43 @@ namespace BrokenNes.Windows
             // Reset keyboard states before polling
             Array.Clear(keyboardStates, 0, keyboardStates.Length);
 
-            foreach (var kvp in keyMap)
+            // Optimization: Skip keyboard polling if only using gamepad
+            if (playerConfig != null && playerConfig.DeviceType == InputDeviceType.Gamepad)
+                return;
+
+            // NEW: Use player config if available
+            if (playerConfig != null)
             {
-                // Check if key is currently pressed (high bit set)
-                // GetAsyncKeyState takes a virtual key code, which maps 1:1 with WinForms Keys
-                if ((GetAsyncKeyState((int)kvp.Key) & 0x8000) != 0)
+                var bindings = playerConfig.GetAllBindings();
+                for (int i = 0; i < bindings.Length && i < 8; i++)
                 {
-                    int buttonIndex = kvp.Value;
-                    if (buttonIndex >= 0 && buttonIndex < keyboardStates.Length)
+                    if (!string.IsNullOrEmpty(bindings[i].Key))
                     {
-                        keyboardStates[buttonIndex] = true;
+                        // Try to parse the key name
+                        if (Enum.TryParse<Keys>(bindings[i].Key, out Keys key))
+                        {
+                            if ((GetAsyncKeyState((int)key) & 0x8000) != 0)
+                            {
+                                keyboardStates[i] = true;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // LEGACY: Use old key map
+                foreach (var kvp in keyMap)
+                {
+                    // Check if key is currently pressed (high bit set)
+                    // GetAsyncKeyState takes a virtual key code, which maps 1:1 with WinForms Keys
+                    if ((GetAsyncKeyState((int)kvp.Key) & 0x8000) != 0)
+                    {
+                        int buttonIndex = kvp.Value;
+                        if (buttonIndex >= 0 && buttonIndex < keyboardStates.Length)
+                        {
+                            keyboardStates[buttonIndex] = true;
+                        }
                     }
                 }
             }
@@ -124,26 +184,42 @@ namespace BrokenNes.Windows
                 return;
             }
             
-            // Even if packet number hasn't changed, we should process the state
-            // because we might have cleared it or logic might have changed
-            
             var gamepad = state.Gamepad;
+
+            LeftTrigger = gamepad.LeftTrigger;
+            RightTrigger = gamepad.RightTrigger;
             
-            // Map XInput buttons to NES buttons
-            // NES: A=0, B=1, Select=2, Start=3, Up=4, Down=5, Left=6, Right=7
-            controllerStates[0] = (gamepad.Buttons & GamepadButtonFlags.A) != 0; // A
-            controllerStates[1] = (gamepad.Buttons & GamepadButtonFlags.B) != 0; // B
-            controllerStates[2] = (gamepad.Buttons & GamepadButtonFlags.Back) != 0; // Select
-            controllerStates[3] = (gamepad.Buttons & GamepadButtonFlags.Start) != 0; // Start
+            // NEW: Use player config if available for custom button mappings
+            if (playerConfig != null)
+            {
+                var bindings = playerConfig.GetAllBindings();
+                for (int i = 0; i < bindings.Length && i < 8; i++)
+                {
+                    if (bindings[i].GamepadButton.HasValue)
+                    {
+                        var buttonFlag = bindings[i].GamepadButton.Value;
+                        controllerStates[i] = (gamepad.Buttons & buttonFlag) != 0;
+                    }
+                }
+            }
+            else
+            {
+                // LEGACY: Default XInput button mapping
+                // Map XInput buttons to NES buttons
+                // NES: A=0, B=1, Select=2, Start=3, Up=4, Down=5, Left=6, Right=7
+                controllerStates[0] = (gamepad.Buttons & GamepadButtonFlags.A) != 0; // A
+                controllerStates[1] = (gamepad.Buttons & GamepadButtonFlags.B) != 0; // B
+                controllerStates[2] = (gamepad.Buttons & GamepadButtonFlags.Back) != 0; // Select
+                controllerStates[3] = (gamepad.Buttons & GamepadButtonFlags.Start) != 0; // Start
+                
+                // D-Pad
+                controllerStates[4] = (gamepad.Buttons & GamepadButtonFlags.DPadUp) != 0;
+                controllerStates[5] = (gamepad.Buttons & GamepadButtonFlags.DPadDown) != 0;
+                controllerStates[6] = (gamepad.Buttons & GamepadButtonFlags.DPadLeft) != 0;
+                controllerStates[7] = (gamepad.Buttons & GamepadButtonFlags.DPadRight) != 0;
+            }
             
-            // D-Pad values need to be OR'd with existing state if we want to support multiple mappings
-            // But here we are just setting from controller
-            controllerStates[4] = (gamepad.Buttons & GamepadButtonFlags.DPadUp) != 0;
-            controllerStates[5] = (gamepad.Buttons & GamepadButtonFlags.DPadDown) != 0;
-            controllerStates[6] = (gamepad.Buttons & GamepadButtonFlags.DPadLeft) != 0;
-            controllerStates[7] = (gamepad.Buttons & GamepadButtonFlags.DPadRight) != 0;
-            
-            // Also support analog stick for D-Pad
+            // Also support analog stick for D-Pad (always enabled regardless of config)
             const short threshold = 16384; // Half of max range
             if (gamepad.LeftThumbY > threshold) controllerStates[4] = true; // Up
             if (gamepad.LeftThumbY < -threshold) controllerStates[5] = true; // Down
@@ -161,7 +237,17 @@ namespace BrokenNes.Windows
             if (buttonIndex < 0 || buttonIndex >= 8)
                 return false;
             
-            // Merge keyboard and controller input
+            // Respect configured device type for exclusivity
+            if (playerConfig != null)
+            {
+                if (playerConfig.DeviceType == InputDeviceType.Keyboard)
+                    return keyboardStates[buttonIndex];
+                    
+                if (playerConfig.DeviceType == InputDeviceType.Gamepad && useController)
+                    return controllerStates[buttonIndex];
+            }
+            
+            // Merge keyboard and controller input (Legacy fallback)
             return keyboardStates[buttonIndex] || controllerStates[buttonIndex];
         }
         

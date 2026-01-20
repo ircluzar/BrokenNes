@@ -133,20 +133,29 @@ namespace BrokenNes.Windows
         /// Set the playback speed multiplier (1.0 = normal speed, 2.0 = 2x speed, etc.).
         /// Affects audio resampling for both fast and slow speeds.
         /// </summary>
-        public void SetSpeedMultiplier(float multiplier)
+        /// <param name="multiplier">Target speed multiplier</param>
+        /// <param name="preserveBuffer">If true, existing buffer is not cleared (useful for smooth speed changes)</param>
+        public void SetSpeedMultiplier(float multiplier, bool preserveBuffer = false)
         {
             float newMultiplier = Math.Max(0.1f, Math.Min(multiplier, 10.0f)); // Clamp to reasonable range
             
+            // Allow smaller updates if we are preserving buffer (smoother transition)
+            float threshold = preserveBuffer ? 0.01f : 0.05f;
+
             // Only act on significant changes to avoid constant buffer clearing
-            if (Math.Abs(newMultiplier - speedMultiplier) > 0.05f)
+            if (Math.Abs(newMultiplier - speedMultiplier) > threshold)
             {
                 float oldMultiplier = speedMultiplier;
                 speedMultiplier = newMultiplier;
                 
-                // Always clear audio buffer when changing speed to prevent desync
-                // Old samples were generated at a different emulation rate and will sound wrong
-                waveProvider.ClearBuffer();
-                bufferPosition = 0;
+                if (!preserveBuffer)
+                {
+                    // Always clear audio buffer when changing speed to prevent desync
+                    // Old samples were generated at a different emulation rate and will sound wrong
+                    waveProvider.ClearBuffer();
+                    bufferPosition = 0;
+                }
+
                 
                 Console.WriteLine($"Speed changed: {oldMultiplier:F2}x -> {newMultiplier:F2}x (audio buffer cleared)");
             }

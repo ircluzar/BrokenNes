@@ -97,7 +97,8 @@
   {
     // load settings
   draft = await Settings.LoadAsync();
-    playerCount = 1;
+    // Set playerCount based on whether Player 2 is configured with a device other than Touch (default)
+    playerCount = (draft.Player2.Device != InputDeviceType.Touch) ? 2 : 1;
     // refresh controllers
     await RefreshGamepads();
   }

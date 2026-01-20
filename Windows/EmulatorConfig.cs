@@ -123,6 +123,12 @@ namespace BrokenNes.Windows
         public bool ShowFps { get; set; } = false;
         
         /// <summary>
+        /// Enable V-Sync (DirectX only)
+        /// </summary>
+        [JsonPropertyName("enableVSync")]
+        public bool EnableVSync { get; set; } = false;
+        
+        /// <summary>
         /// Enable performance profiling/telemetry
         /// </summary>
         [JsonPropertyName("profilingEnabled")]
@@ -146,9 +152,19 @@ namespace BrokenNes.Windows
         [JsonPropertyName("showConsole")]
         public bool ShowConsole { get; set; } = false;
         
-        // Controller configuration
+        // Controller configuration - NEW SYSTEM
         /// <summary>
-        /// Player 1 Controller key bindings
+        /// Player controller configurations (supports multiple players with keyboard and XInput)
+        /// </summary>
+        [JsonPropertyName("playerControllers")]
+        public List<PlayerControllerConfig> PlayerControllers { get; set; } = new List<PlayerControllerConfig>
+        {
+            PlayerControllerConfig.CreateDefaultPlayer1()
+        };
+
+        // Controller configuration - LEGACY (kept for backwards compatibility)
+        /// <summary>
+        /// Player 1 Controller key bindings (LEGACY - use PlayerControllers instead)
         /// </summary>
         [JsonPropertyName("p1KeyA")]
         public string P1KeyA { get; set; } = "Z";
@@ -173,6 +189,42 @@ namespace BrokenNes.Windows
         
         [JsonPropertyName("p1KeyRight")]
         public string P1KeyRight { get; set; } = "Right";
+
+        /// <summary>
+        /// Get or create player controller config for a specific player number
+        /// </summary>
+        public PlayerControllerConfig GetPlayerController(int playerNumber)
+        {
+            var controller = PlayerControllers.FirstOrDefault(p => p.PlayerNumber == playerNumber);
+            if (controller == null)
+            {
+                controller = playerNumber == 1 
+                    ? PlayerControllerConfig.CreateDefaultPlayer1() 
+                    : PlayerControllerConfig.CreateDefaultGamepad(playerNumber);
+                controller.PlayerNumber = playerNumber;
+                PlayerControllers.Add(controller);
+            }
+            return controller;
+        }
+
+        /// <summary>
+        /// Migrate legacy keyboard bindings to new system
+        /// </summary>
+        public void MigrateLegacyBindings()
+        {
+            if (PlayerControllers.Count == 0 || PlayerControllers[0].PlayerNumber != 1)
+            {
+                var p1 = GetPlayerController(1);
+                p1.A = ButtonBinding.FromKey(P1KeyA);
+                p1.B = ButtonBinding.FromKey(P1KeyB);
+                p1.Select = ButtonBinding.FromKey(P1KeySelect);
+                p1.Start = ButtonBinding.FromKey(P1KeyStart);
+                p1.Up = ButtonBinding.FromKey(P1KeyUp);
+                p1.Down = ButtonBinding.FromKey(P1KeyDown);
+                p1.Left = ButtonBinding.FromKey(P1KeyLeft);
+                p1.Right = ButtonBinding.FromKey(P1KeyRight);
+            }
+        }
         
         // Background configuration
         /// <summary>
@@ -180,6 +232,24 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("selectedBackground")]
         public string SelectedBackground { get; set; } = "Gradient";
+        
+        /// <summary>
+        /// Render scanlines on the background for a more authentic look
+        /// </summary>
+        [JsonPropertyName("renderScanlines")]
+        public bool RenderScanlines { get; set; } = false;
+        
+        /// <summary>
+        /// Render a shadow/glow behind the emulator viewport
+        /// </summary>
+        [JsonPropertyName("renderViewportShadow")]
+        public bool RenderViewportShadow { get; set; } = false;
+        
+        /// <summary>
+        /// Hide the menu bar when in full screen mode
+        /// </summary>
+        [JsonPropertyName("hideMenuBarInFullscreen")]
+        public bool HideMenuBarInFullscreen { get; set; } = true;
         
         private static readonly string ConfigDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
@@ -199,6 +269,9 @@ namespace BrokenNes.Windows
                     var config = JsonSerializer.Deserialize<EmulatorConfig>(json);
                     if (config != null)
                     {
+                        // Migrate legacy bindings if needed
+                        config.MigrateLegacyBindings();
+                        
                         // Validate that recent ROMs still exist
                         config.RecentRoms = config.RecentRoms
                             .Where(File.Exists)

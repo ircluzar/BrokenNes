@@ -110,7 +110,7 @@ float4 main(PS_INPUT input) : SV_TARGET
     float sraw = sin(3.14159265 * linePhase);
     float shaped = sraw * sraw;
     shaped = shaped * (3.0 - 2.0 * shaped);
-    float scanStrength = lerp(0.06, 0.14, clamp(strength * 0.5, 0.0, 1.0));
+    float scanStrength = lerp(0.02, 0.06, clamp(strength * 0.5, 0.0, 1.0));
     float scanMask = 1.0 - scanStrength * (1.0 - shaped);
     scanMask *= (0.995 + 0.005 * scanMix);
 

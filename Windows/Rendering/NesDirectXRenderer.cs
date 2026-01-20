@@ -79,6 +79,9 @@ namespace BrokenNes.Windows.Rendering
         private SolidColorBrush fpsTextBrush;
         private bool[] currentInputState = new bool[8];
         
+        // Reentrancy guard for DoEvents pumping during VSync
+        private volatile bool isRendering = false;
+        
         // Interpolation mode for Direct2D rendering
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public BitmapInterpolationMode InterpolationMode { get; set; } = BitmapInterpolationMode.NearestNeighbor;
@@ -120,6 +123,26 @@ namespace BrokenNes.Windows.Rendering
             get => showFps;
             set => showFps = value;
         }
+        
+        /// <summary>
+        /// Gets or sets whether VSync (vertical sync) is enabled to prevent screen tearing.
+        /// When enabled, frame presentation is synchronized to the monitor's refresh rate.
+        /// Application.DoEvents() is called during Present to keep UI responsive while blocking.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool EnableVSync { get; set; } = false;
+        
+        /// <summary>
+        /// Gets or sets whether to render scanlines on the background
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool RenderScanlines { get; set; } = false;
+        
+        /// <summary>
+        /// Gets or sets whether to render a shadow behind the viewport
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool RenderViewportShadow { get; set; } = false;
         
         /// <summary>
         /// Gets the currently active shader type
@@ -333,6 +356,22 @@ namespace BrokenNes.Windows.Rendering
                 }
                 backgrounds.Clear();
                 
+                // Handle special display names
+                string actualBackgroundName = backgroundName;
+                if (backgroundName == "Gradient (Default)")
+                {
+                    actualBackgroundName = "StaticGradient";
+                }
+                else if (backgroundName == "None (Black)")
+                {
+                    actualBackgroundName = "Black";
+                }
+                else if (backgroundName == "---")
+                {
+                    // Ignore separator
+                    return;
+                }
+                
                 // Use reflection to find and instantiate the background by name
                 var assembly = System.Reflection.Assembly.GetExecutingAssembly();
                 var backgroundTypes = assembly.GetTypes()
@@ -349,8 +388,8 @@ namespace BrokenNes.Windows.Rendering
                         ? typeName.Substring(0, typeName.Length - "Background".Length) 
                         : typeName;
                     
-                    if (nameWithoutSuffix.Equals(backgroundName, StringComparison.OrdinalIgnoreCase) ||
-                        typeName.Equals(backgroundName, StringComparison.OrdinalIgnoreCase))
+                    if (nameWithoutSuffix.Equals(actualBackgroundName, StringComparison.OrdinalIgnoreCase) ||
+                        typeName.Equals(actualBackgroundName, StringComparison.OrdinalIgnoreCase))
                     {
                         selectedBackground = (IBackground?)Activator.CreateInstance(type);
                         break;
@@ -390,7 +429,38 @@ namespace BrokenNes.Windows.Rendering
                 names.Add(displayName);
             }
             
-            return names.OrderBy(n => n).ToList();
+            // Sort alphabetically
+            var sortedNames = names.OrderBy(n => n).ToList();
+            
+            // Build final list with special ordering
+            var result = new List<string>();
+            
+            // 1. Gradient (Default) at top
+            var gradientName = sortedNames.FirstOrDefault(n => n.Equals("StaticGradient", StringComparison.OrdinalIgnoreCase));
+            if (gradientName != null)
+            {
+                result.Add("Gradient (Default)");
+                sortedNames.Remove(gradientName);
+            }
+            
+            // 2. None (Black) second
+            var blackName = sortedNames.FirstOrDefault(n => n.Equals("Black", StringComparison.OrdinalIgnoreCase));
+            if (blackName != null)
+            {
+                result.Add("None (Black)");
+                sortedNames.Remove(blackName);
+            }
+            
+            // 3. Separator
+            if (result.Count > 0)
+            {
+                result.Add("---");
+            }
+            
+            // 4. All other backgrounds in alphabetical order
+            result.AddRange(sortedNames);
+            
+            return result;
         }
 
         /// <summary>
@@ -402,9 +472,16 @@ namespace BrokenNes.Windows.Rendering
         {
             using (BrokenNes.Windows.PerformanceProfiler.Time("DX.DrawFrame"))
             {
+                // Reentrancy guard: prevent recursive calls during DoEvents pumping
+                if (isRendering) return;
+                
                 lock (renderLock)
                 {
                     if (!IsReady || frameBuffer == null) return;
+                    
+                    isRendering = true;
+                    try
+                    {
 
                     if (inputState != null && inputState.Length >= 8)
                     {
@@ -447,6 +524,11 @@ namespace BrokenNes.Windows.Rendering
                             DrawDirect2D(frameBuffer);
                         }
                     }
+                    }
+                    finally
+                    {
+                        isRendering = false;
+                    }
                 }
             }
         }
@@ -479,7 +561,17 @@ namespace BrokenNes.Windows.Rendering
             }
 
             d2dRenderTarget.EndDraw();
-            swapChain.Present(0, PresentFlags.None);
+            // Use VSync (sync interval 1) for smooth, tear-free rendering
+            // Sync interval 0 = no VSync (immediate, causes tearing)
+            // Sync interval 1 = VSync enabled (wait for vertical blank)
+            int syncInterval = EnableVSync ? 1 : 0;
+            swapChain.Present(syncInterval, PresentFlags.None);
+            
+            // Pump messages if VSync is enabled to keep UI responsive during blocking
+            if (EnableVSync)
+            {
+                System.Windows.Forms.Application.DoEvents();
+            }
         }
         
         private RawRectangleF CalculateDestinationRect()
@@ -581,6 +673,32 @@ namespace BrokenNes.Windows.Rendering
                     animBg.UpdateTexture(d2dRenderTarget);
                 }
             }
+            
+            // Render scanlines if enabled
+            if (RenderScanlines)
+            {
+                DrawScanlines();
+            }
+        }
+        
+        private void DrawScanlines()
+        {
+            if (d2dRenderTarget == null) return;
+            
+            // Draw horizontal scanlines across the entire background
+            using (var scanlineBrush = new SolidColorBrush(d2dRenderTarget, new RawColor4(0, 0, 0, 0.35f)))
+            {
+                int scanlineSpacing = 4; // Space between scanlines
+                float scanlineThickness = 2.0f; // Thickness of each scanline
+                for (int y = 0; y < ClientSize.Height; y += scanlineSpacing)
+                {
+                    d2dRenderTarget.DrawLine(
+                        new RawVector2(0, y),
+                        new RawVector2(ClientSize.Width, y),
+                        scanlineBrush,
+                        scanlineThickness);
+                }
+            }
         }
         
         private void DrawFpsCounter()
@@ -621,8 +739,39 @@ namespace BrokenNes.Windows.Rendering
 
         private void DrawGlowEffect(RawRectangleF destRect)
         {
-            // Shadow removed - it breaks with non-square framebuffer shapes
-            // Background gradient now provides sufficient visual separation
+            if (!RenderViewportShadow || d2dRenderTarget == null)
+                return;
+            
+            // Create a smooth, soft, blur-like shadow behind the viewport
+            // Using many layers with gradual falloff for a gaussian blur appearance
+            
+            int shadowLayers = 200; // More layers = smoother blur
+            float maxShadowExpansion = 40.0f; // How far the blur extends beyond the viewport
+            
+            for (int i = shadowLayers; i > 0; i--)
+            {
+                float ratio = (float)i / shadowLayers;
+                float expansion = maxShadowExpansion * ratio;
+                
+                // Opacity with gentle gaussian-like falloff
+                float fadeRatio = 1.0f - ratio; // Inverted: 1.0 at edge, 0.0 at max expansion
+                
+                // Use lower power for more gradual, blur-like transition
+                float opacity = 0.06f * (float)Math.Pow(fadeRatio, 3.0); // Very subtle, transparent shadow
+                
+                var shadowRect = new RawRectangleF
+                {
+                    Left = destRect.Left - expansion,
+                    Top = destRect.Top - expansion,
+                    Right = destRect.Right + expansion,
+                    Bottom = destRect.Bottom + expansion
+                };
+                
+                using (var shadowBrush = new SolidColorBrush(d2dRenderTarget, new RawColor4(0, 0, 0, opacity)))
+                {
+                    d2dRenderTarget.FillRectangle(shadowRect, shadowBrush);
+                }
+            }
         }
         
         private void DrawWithShader(DirectBitmap frameBuffer)
@@ -699,8 +848,15 @@ namespace BrokenNes.Windows.Rendering
                 d2dRenderTarget.EndDraw();
             }
 
-            // Present
-            swapChain.Present(0, PresentFlags.None);
+            // Present with VSync for smooth, tear-free rendering
+            int syncInterval = EnableVSync ? 1 : 0;
+            swapChain.Present(syncInterval, PresentFlags.None);
+            
+            // Pump messages if VSync is enabled to keep UI responsive during blocking
+            if (EnableVSync)
+            {
+                System.Windows.Forms.Application.DoEvents();
+            }
         }
 
         protected override void OnResize(EventArgs e)
@@ -713,6 +869,23 @@ namespace BrokenNes.Windows.Rendering
                 {
                     try
                     {
+                        // Save current configuration before cleanup
+                        var currentBackgroundTypes = backgrounds
+                            .Select(b => b.GetType())
+                            .ToList();
+                        
+                        // Save renderer settings that will be lost during initialization
+                        bool savedShowFps = this.ShowFps;
+                        bool savedVSync = this.EnableVSync;
+                        bool savedScanlines = this.RenderScanlines;
+                        bool savedShadow = this.RenderViewportShadow;
+                        bool savedPixelPerfect = this.PixelPerfect;
+                        bool savedNativeAspect = this.ForceNativeAspectRatio;
+                        var savedInterpolation = this.InterpolationMode;
+                        bool savedUseShader = this.useShader;
+                        var savedShaderType = this.currentShaderType;
+                        float savedShaderStrength = this.ShaderStrength;
+                        
                         // Update client area for new size
                         clientArea = new RawRectangleF
                         {
@@ -725,6 +898,36 @@ namespace BrokenNes.Windows.Rendering
                         // Recreate DirectX resources for new size
                         Cleanup();
                         Initialize(nesWidth, nesHeight);
+                        
+                        // Restore renderer settings
+                        this.ShowFps = savedShowFps;
+                        this.EnableVSync = savedVSync;
+                        this.RenderScanlines = savedScanlines;
+                        this.RenderViewportShadow = savedShadow;
+                        this.PixelPerfect = savedPixelPerfect;
+                        this.ForceNativeAspectRatio = savedNativeAspect;
+                        this.InterpolationMode = savedInterpolation;
+                        this.useShader = savedUseShader;
+                        this.ShaderStrength = savedShaderStrength;
+                        
+                        // Restore shader if it was active
+                        if (savedUseShader && shaderAvailable)
+                        {
+                            SwitchShader(savedShaderType);
+                        }
+                        
+                        // Restore backgrounds
+                        foreach (var backgroundType in currentBackgroundTypes)
+                        {
+                            var background = (IBackground?)Activator.CreateInstance(backgroundType);
+                            if (background != null)
+                            {
+                                backgrounds.Add(background);
+                            }
+                        }
+                        
+                        // Reinitialize backgrounds with new render target
+                        InitializeBackgrounds();
                     }
                     catch (Exception ex)
                     {
