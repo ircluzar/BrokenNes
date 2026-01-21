@@ -104,6 +104,18 @@ namespace BrokenNes.Windows
         private bool isWebViewInitialized = false;
         
         /// <summary>
+        /// Get the effective menu height - returns 0 if menu is hidden (fullscreen + HideMenuBarInFullscreen)
+        /// </summary>
+        private int GetEffectiveMenuHeight()
+        {
+            if (this.MainMenuStrip != null && this.MainMenuStrip.Visible)
+            {
+                return this.MainMenuStrip.Height;
+            }
+            return 0;
+        }
+        
+        /// <summary>
         /// Toggle between fullscreen and windowed mode
         /// </summary>
         private void ToggleFullscreen()
@@ -140,6 +152,9 @@ namespace BrokenNes.Windows
                     this.MainMenuStrip.Visible = false;
                 }
             }
+            
+            // Re-apply the current view mode to recalculate layout with new menu visibility
+            SwitchViewMode(currentViewMode);
             
             // Force layout and rendering refresh
             this.PerformLayout();
@@ -197,7 +212,7 @@ namespace BrokenNes.Windows
             // Suspend layout during control rearrangement
             this.SuspendLayout();
             
-            int menuHeight = this.MainMenuStrip?.Height ?? 24;
+            int menuHeight = GetEffectiveMenuHeight();
             int availableHeight = this.ClientSize.Height - menuHeight;
             
             switch (mode)
@@ -1512,6 +1527,9 @@ namespace BrokenNes.Windows
                     
                     // Apply saved null provider
                     nes.SetNullProvider(config.SelectedNullProvider);
+
+                    // Apply image settings (will force Pixel Perfect for Test ROM)
+                    ApplyImageSettings();
                     
                     // Update cores menus
                     UpdateCoresMenus();
@@ -1574,7 +1592,7 @@ namespace BrokenNes.Windows
             // Reapply layout when window is resized to maintain proper positioning
             if (webView != null && displayPanel != null)
             {
-                int menuHeight = this.MainMenuStrip?.Height ?? 24;
+                int menuHeight = GetEffectiveMenuHeight();
                 int availableHeight = this.ClientSize.Height - menuHeight;
                 
                 switch (currentViewMode)
@@ -1956,6 +1974,9 @@ namespace BrokenNes.Windows
                 
                 // Apply saved null provider
                 nes.SetNullProvider(config.SelectedNullProvider);
+                
+                // Apply image settings (restores user preference for Pixel Perfect)
+                ApplyImageSettings();
 
                 // Initialize corruptor domains
                 BuildMemoryDomains();
@@ -1988,6 +2009,13 @@ namespace BrokenNes.Windows
         
         private void CloseRom_Click(object? sender, EventArgs e)
         {
+            // Save state if not test rom
+            bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+            if (!isTestRom && nes != null)
+            {
+                SaveContinueState();
+            }
+
             StopEmulation();
             
             lock (emulationLock)
@@ -2010,6 +2038,9 @@ namespace BrokenNes.Windows
             
             // Return to the static test ROM
             LoadEmbeddedRom();
+            
+            // Show the continue button so user can resume
+            ShowContinueButton();
         }
         
         private void ResetEmulator_Click(object? sender, EventArgs e)
@@ -2225,11 +2256,28 @@ namespace BrokenNes.Windows
                     string text = "Continue?";
                     using (Font f = new Font("Segoe UI", 16, FontStyle.Bold))
                     {
-                         // Hard shadow (1px offset)
-                         g.DrawString(text, f, Brushes.Black, new PointF(11, 11));
-                         g.DrawString(text, f, Brushes.White, new PointF(10, 10));
+                            // Thicker and blurrier shadow
+                            using (var shadowBrush = new SolidBrush(Color.FromArgb(30, Color.Black)))
+                            {
+                                for (int y = 1; y <= 5; y++)
+                                {
+                                    for (int x = 1; x <= 5; x++)
+                                    {
+                                        g.DrawString(text, f, shadowBrush, new PointF(10 + x, 10 + y));
+                                    }
+                                }
+                            }
+                             
+                            g.DrawString(text, f, Brushes.White, new PointF(10, 10));
+                        }
+
+                        // Outline surrounding the continue box
+                        using (var outlinePen = new Pen(Color.White, 3))
+                        {
+                            outlinePen.Alignment = System.Drawing.Drawing2D.PenAlignment.Inset;
+                            g.DrawRectangle(outlinePen, 0, 0, img.Width, img.Height);
+                        }
                     }
-                }
 
                 continueButton = new PictureBox
                 {
@@ -3198,7 +3246,9 @@ namespace BrokenNes.Windows
             if (dxRenderer != null && useDirectX)
             {
                 // Apply pixel perfect setting
-                dxRenderer.PixelPerfect = config.ForcePixelPerfect;
+                // Force Pixel Perfect if running the embedded Test ROM (Null Provider)
+                bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+                dxRenderer.PixelPerfect = isTestRom || config.ForcePixelPerfect;
                 
                 // Apply interpolation mode based on ScalingNearestNeighbor
                 dxRenderer.InterpolationMode = config.ScalingNearestNeighbor 
@@ -3747,55 +3797,47 @@ namespace BrokenNes.Windows
             ShowContinueButton();
         }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
+        private void SaveContinueState()
         {
-            string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
-            
-            // Check if we're on the test ROM
-            bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
-            
-            if (isTestRom)
-            {
-                // Delete continue.png if we're on the test ROM
-                try
-                {
-                    if (File.Exists(continuePath))
-                    {
-                        File.Delete(continuePath);
-                        Console.WriteLine("Deleted continue.png (test ROM)");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Failed to delete continue.png: {ex.Message}");
-                }
-            }
-            else if (nes != null && !string.IsNullOrEmpty(currentRomPath))
-            {
-                // Auto-save "continue.png" on exit for non-test ROMs
-                 try
+             if (nes == null) return;
+             
+             string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+             
+             try
+             {
+                 lock(emulationLock)
                  {
-                     lock(emulationLock)
+                     // Synchronous capture
+                     using (var screenshot = GetScreenshot())
                      {
-                         // Synchronous capture (we are closing anyway)
-                         using (var screenshot = GetScreenshot())
+                         string stateJson = nes.SaveState();
+                         if (screenshot != null && stateJson != null)
                          {
-                             string stateJson = nes.SaveState();
-                             if (screenshot != null && stateJson != null)
+                             byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                             using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
                              {
-                                 byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
-                                 using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
-                                 {
-                                     embedded?.Save(continuePath, ImageFormat.Png);
-                                 }
+                                 embedded?.Save(continuePath, ImageFormat.Png);
                              }
+                             Console.WriteLine("Game saved to continue.png");
                          }
                      }
                  }
-                 catch (Exception ex) 
-                 {
-                     Console.WriteLine("Failed to save continue state: " + ex.Message);
-                 }
+             }
+             catch (Exception ex) 
+             {
+                 Console.WriteLine("Failed to save continue state: " + ex.Message);
+             }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Check if we're on the test ROM
+            bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+            
+            if (!isTestRom && nes != null && !string.IsNullOrEmpty(currentRomPath))
+            {
+                // Auto-save "continue.png" on exit for non-test ROMs
+                SaveContinueState();
             }
 
             StopEmulation();
