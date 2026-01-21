@@ -3,13 +3,18 @@ using System.Security.Cryptography;
 using System.Linq;
 using System.Text;
 using System.Reflection;
+using NesEmulator.NullProviders;
+
 namespace NesEmulator
 {
 	public class NES
 	{
 		private Cartridge? cartridge;
 		private Bus? bus;
-		private bool forceStatic = false; // when true, draw animated gray static instead of PPU output
+		private bool forceStatic = false; // when true, use null provider instead of PPU output
+		private INullProvider? currentNullProvider; // null provider for test ROM/no ROM scenarios
+		private string selectedNullProviderName = "TV Static"; // name of the selected null provider
+		private int staticFrameCounter = 0; // shared frame counter for null providers
 		// --- Fixed-point frame timing ---
 		// Replaces prior double-based fractional cycle accounting. We model CPU cycles per frame as:
 		//   CpuFrequencyInt = BaseCyclesPerFrame * 60 + ExtraCyclesNumerator
@@ -71,6 +76,20 @@ namespace NesEmulator
 		// --- Visual test helpers ---
 		public void EnableStatic(bool on=true) { forceStatic = on; }
 		public bool IsStaticEnabled() => forceStatic;
+		
+		// --- Null provider management ---
+		public void SetNullProvider(string providerName)
+		{
+			selectedNullProviderName = providerName;
+			currentNullProvider = NullProviderRegistry.GetProvider(providerName);
+		}
+		
+		public string GetCurrentNullProviderName() => selectedNullProviderName;
+		
+		public static System.Collections.Generic.IEnumerable<string> GetAvailableNullProviders()
+		{
+			return NullProviderRegistry.GetAvailableProviders();
+		}
 
 		// --- Public crash state helpers (for UI/debug) ---
 		public bool IsCrashed() => crashed;
@@ -806,8 +825,16 @@ namespace NesEmulator
 		{
 			if (crashed) return crashFrameBuffer;
 			if (forceStatic && bus?.ppu != null) {
-				bus.ppu.GenerateStaticFrame();
-				return bus.ppu.GetFrameBuffer();
+				// Use null provider instead of PPU's GenerateStaticFrame
+				if (currentNullProvider == null)
+				{
+					currentNullProvider = NullProviderRegistry.GetProvider(selectedNullProviderName);
+				}
+				
+				var frameBuffer = bus.ppu.GetFrameBuffer();
+				currentNullProvider.GenerateFrame(frameBuffer, staticFrameCounter);
+				staticFrameCounter++;
+				return frameBuffer;
 			}
 			if (bus?.ppu != null) return bus.ppu!.GetFrameBuffer();
 			return new byte[256 * 240 * 4];

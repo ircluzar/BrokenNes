@@ -246,6 +246,12 @@ namespace BrokenNes.Windows
         public bool RenderViewportShadow { get; set; } = false;
         
         /// <summary>
+        /// Selected null provider (TV Static, Rainbow Plasma, etc) - used when test ROM is loaded
+        /// </summary>
+        [JsonPropertyName("selectedNullProvider")]
+        public string SelectedNullProvider { get; set; } = "Static";
+        
+        /// <summary>
         /// Hide the menu bar when in full screen mode
         /// </summary>
         [JsonPropertyName("hideMenuBarInFullscreen")]

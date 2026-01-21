@@ -54,6 +54,9 @@ namespace BrokenNes.Windows
         private System.Windows.Forms.Timer? autoScrambleTimer;
         private Random scrambleRandom = new Random();
         
+        // Continue feature
+        private PictureBox? continueButton;
+
         // Menu items
         private ToolStripMenuItem shaderMenu;
         private ToolStripMenuItem apuMenu;
@@ -267,6 +270,9 @@ namespace BrokenNes.Windows
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+            this.AllowDrop = true;
+            this.DragEnter += MainForm_DragEnter;
+            this.DragDrop += MainForm_DragDrop;
             
             // Create menu bar
             var menuStrip = new MenuStrip();
@@ -303,6 +309,9 @@ namespace BrokenNes.Windows
             var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
             screenshotItem.ShortcutKeys = Keys.F12;
             emulatorMenu.DropDownItems.Add(screenshotItem);
+
+            var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
+            emulatorMenu.DropDownItems.Add(openFolderItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -462,6 +471,19 @@ namespace BrokenNes.Windows
             }
             
             configMenu.DropDownItems.Add(backgroundMenu);
+            
+            // Null Provider submenu - automatically populated via reflection
+            var nullProviderMenu = new ToolStripMenuItem("&Null Providers (Test ROM)");
+            
+            // Get all available null providers via reflection
+            var availableNullProviders = NesEmulator.NES.GetAvailableNullProviders();
+            foreach (var providerName in availableNullProviders)
+            {
+                var menuItem = new ToolStripMenuItem(providerName, null, (s, e) => SetNullProvider(providerName));
+                nullProviderMenu.DropDownItems.Add(menuItem);
+            }
+            
+            configMenu.DropDownItems.Add(nullProviderMenu);
             
             // Visual effects for backgrounds
             var backgroundEffectsMenu = new ToolStripMenuItem("Background &Effects");
@@ -897,6 +919,19 @@ namespace BrokenNes.Windows
                 }
             }
             
+            // Update Null Providers submenu checkmarks
+            var nullProviderMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "&Null Providers (Test ROM)");
+            
+            if (nullProviderMenu != null)
+            {
+                foreach (var item in nullProviderMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    // Check if this item matches the currently selected null provider
+                    item.Checked = item.Text.Equals(config.SelectedNullProvider, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            
             // Update Background Effects submenu checkmarks
             var backgroundEffectsMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
                 .FirstOrDefault(m => m.Text == "Background &Effects");
@@ -1150,6 +1185,9 @@ namespace BrokenNes.Windows
                     // Apply crash behavior
                     ApplyCrashBehavior();
                     
+                    // Apply saved null provider
+                    nes.SetNullProvider(config.SelectedNullProvider);
+                    
                     // Update cores menus
                     UpdateCoresMenus();
                     
@@ -1166,6 +1204,297 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void MainForm_DragEnter(object? sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
+                if (files != null && files.Length > 0)
+                {
+                    string ext = Path.GetExtension(files[0]).ToLower();
+                    if (ext == ".nes" || ext == ".png")
+                    {
+                        e.Effect = DragDropEffects.Copy;
+                        return;
+                    }
+                }
+            }
+            e.Effect = DragDropEffects.None;
+        }
+
+        private void MainForm_DragDrop(object? sender, DragEventArgs e)
+        {
+             if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                 var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
+                 if (files != null && files.Length > 0)
+                 {
+                     string path = files[0];
+                     string ext = Path.GetExtension(path).ToLower();
+                     
+                     if (ext == ".nes")
+                     {
+                         LoadRomFile(path);
+                     }
+                     else if (ext == ".png")
+                     {
+                         LoadStateFile(path);
+                     }
+                 }
+            }
+        }
+
+        /// <summary>
+        /// Extend NES state JSON with UI settings (shader configuration)
+        /// </summary>
+        private string ExtendStateWithUISettings(string nesStateJson)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(nesStateJson);
+                var root = doc.RootElement;
+                
+                // Create a dictionary with all existing properties plus UI settings
+                var stateDict = new Dictionary<string, object>();
+                
+                // Copy all existing properties
+                foreach (var property in root.EnumerateObject())
+                {
+                    stateDict[property.Name] = property.Value.Clone();
+                }
+                
+                // Add UI settings
+                if (useDirectX && dxRenderer != null)
+                {
+                    stateDict["uiShadersEnabled"] = dxRenderer.UseShader;
+                    stateDict["uiCurrentShader"] = config.CurrentShader ?? string.Empty;
+                    stateDict["uiShaderStrength"] = config.ShaderStrength;
+                }
+                else
+                {
+                    stateDict["uiShadersEnabled"] = false;
+                    stateDict["uiCurrentShader"] = string.Empty;
+                    stateDict["uiShaderStrength"] = 1.0f;
+                }
+                
+                // Serialize back to JSON
+                var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = false };
+                return System.Text.Json.JsonSerializer.Serialize(stateDict, options);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to extend state with UI settings: {ex.Message}");
+                return nesStateJson; // Return original if extension fails
+            }
+        }
+        
+        /// <summary>
+        /// Restore UI settings (shader configuration) from extended state JSON
+        /// </summary>
+        private void RestoreUISettingsFromState(string stateJson)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(stateJson);
+                var root = doc.RootElement;
+                
+                // Check if UI settings are present in the state
+                bool hasShadersEnabled = root.TryGetProperty("uiShadersEnabled", out var shadersEnabledEl);
+                bool hasCurrentShader = root.TryGetProperty("uiCurrentShader", out var currentShaderEl);
+                bool hasShaderStrength = root.TryGetProperty("uiShaderStrength", out var shaderStrengthEl);
+                
+                if (!hasShadersEnabled && !hasCurrentShader && !hasShaderStrength)
+                {
+                    // Old savestate without UI settings - skip restoration
+                    Console.WriteLine("Savestate does not contain UI settings - keeping current configuration");
+                }
+                else
+                {
+                    // Restore shader settings if DirectX is available
+                    if (useDirectX && dxRenderer != null)
+                    {
+                        // Restore shaders enabled state
+                        if (hasShadersEnabled)
+                        {
+                            bool shadersEnabled = shadersEnabledEl.GetBoolean();
+                            dxRenderer.UseShader = shadersEnabled;
+                            config.ShadersEnabled = shadersEnabled;
+                            Console.WriteLine($"Restored shaders enabled: {shadersEnabled}");
+                        }
+                        
+                        // Restore current shader
+                        if (hasCurrentShader)
+                        {
+                            string currentShader = currentShaderEl.GetString() ?? string.Empty;
+                            if (!string.IsNullOrEmpty(currentShader))
+                            {
+                                var availableShaders = NesDirectXRenderer.GetAvailableShaders();
+                                if (availableShaders.Contains(currentShader))
+                                {
+                                    NesShaderControl.SwitchShader(currentShader);
+                                    config.CurrentShader = currentShader;
+                                    Console.WriteLine($"Restored shader: {currentShader}");
+                                }
+                            }
+                        }
+                        
+                        // Restore shader strength
+                        if (hasShaderStrength)
+                        {
+                            float shaderStrength = shaderStrengthEl.GetSingle();
+                            if (shaderStrength > 0)
+                            {
+                                NesShaderControl.SetShaderStrength(shaderStrength);
+                                config.ShaderStrength = shaderStrength;
+                                Console.WriteLine($"Restored shader strength: {shaderStrength}");
+                            }
+                        }
+                        
+                        // Note: We don't save config here - these are temporary state restorations
+                    }
+                }
+                
+                // Sync core selections from NES to config
+                // The NES.LoadState() already changed the cores, so we need to update config to match
+                SyncCoreSelectionsFromNES();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to restore UI settings from state: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Sync config core selections with the actual cores loaded in the NES emulator
+        /// This should be called after loading a savestate since the NES cores are changed but config isn't
+        /// </summary>
+        private void SyncCoreSelectionsFromNES()
+        {
+            if (nes == null) return;
+            
+            try
+            {
+                // Get the actual core IDs from the NES
+                string cpuCoreId = nes.GetCpuCoreId();
+                string ppuCoreId = nes.GetPpuCoreId();
+                string apuCoreId = nes.GetApuCoreId();
+                
+                // Extract the suffix (e.g., "CPU_FMC" -> "FMC")
+                string cpuSuffix = CoreRegistry.ExtractSuffix(cpuCoreId, "CPU_");
+                string ppuSuffix = CoreRegistry.ExtractSuffix(ppuCoreId, "PPU_");
+                string apuSuffix = CoreRegistry.ExtractSuffix(apuCoreId, "APU_");
+                
+                // Update config to match
+                if (!string.IsNullOrEmpty(cpuSuffix))
+                {
+                    config.SelectedCpuCore = cpuSuffix;
+                    Console.WriteLine($"Synced CPU core to config: {cpuSuffix}");
+                }
+                
+                if (!string.IsNullOrEmpty(ppuSuffix))
+                {
+                    config.SelectedPpuCore = ppuSuffix;
+                    Console.WriteLine($"Synced PPU core to config: {ppuSuffix}");
+                }
+                
+                if (!string.IsNullOrEmpty(apuSuffix))
+                {
+                    config.SelectedApuCore = apuSuffix;
+                    Console.WriteLine($"Synced APU core to config: {apuSuffix}");
+                }
+                
+                // Note: We don't save config here - these are temporary state restorations
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to sync core selections from NES: {ex.Message}");
+            }
+        }
+
+        private void LoadStateFile(string filePath)
+        {
+            try
+            {
+                string stateJson = "";
+                string ext = Path.GetExtension(filePath).ToLower();
+
+                if (ext == ".png")
+                {
+                    using (var bmp = new Bitmap(filePath))
+                    {
+                        byte[] data = PngPayload.ExtractData(bmp);
+                        if (data == null || data.Length == 0)
+                        {
+                            throw new Exception("No embedded state data found in this image.");
+                        }
+                        stateJson = Encoding.UTF8.GetString(data);
+                    }
+                }
+                else
+                {
+                        stateJson = File.ReadAllText(filePath);
+                }
+                
+                // Auto-load ROM if possible
+                string savedRomPath = NES.GetSavedRomPath(stateJson);
+                string savedRomName = NES.GetSavedRomName(stateJson);
+                
+                if (nes == null)
+                {
+                        if (!string.IsNullOrEmpty(savedRomPath) && File.Exists(savedRomPath))
+                        {
+                            LoadRomFile(savedRomPath);
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Cannot load state: No ROM loaded and original ROM path invalid.\nPath: {savedRomPath}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+                }
+                else if (!string.IsNullOrEmpty(savedRomPath) && !string.Equals(savedRomPath, currentRomPath, StringComparison.OrdinalIgnoreCase))
+                {
+                        // Check if we should auto-switch
+                        if (File.Exists(savedRomPath))
+                        {
+                            LoadRomFile(savedRomPath);
+                        }
+                        else
+                        {
+                            var r = MessageBox.Show($"State is for '{savedRomName}' but current ROM is different.\nOriginal path not found: {savedRomPath}\nLoad state anyway?", "ROM Mismatch", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                            if (r == DialogResult.No) return;
+                        }
+                }
+                
+                if (nes == null) return;
+                
+                // Pause emulation during state load
+                bool wasPaused = isPaused;
+                isPaused = true;
+                
+                lock (emulationLock)
+                {
+                    nes.LoadState(stateJson);
+                }
+                
+                // Restore UI settings (shader config) from state
+                RestoreUISettingsFromState(stateJson);
+                
+                BuildMemoryDomains();
+            
+                isPaused = wasPaused;
+                
+                // Update menus to reflect restored settings
+                UpdateCoresMenus();
+                
+                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Loaded]";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to load state:\n{ex.Message}", "Load State Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void LoadRom_Click(object? sender, EventArgs e)
         {
             using var openFileDialog = new OpenFileDialog
@@ -1182,6 +1511,8 @@ namespace BrokenNes.Windows
         
         private void LoadRomFile(string path)
         {
+            HideContinueButton();
+
             try
             {
                 if (!File.Exists(path))
@@ -1216,6 +1547,9 @@ namespace BrokenNes.Windows
                 
                 // Apply crash behavior
                 ApplyCrashBehavior();
+                
+                // Apply saved null provider
+                nes.SetNullProvider(config.SelectedNullProvider);
 
                 // Initialize corruptor domains
                 BuildMemoryDomains();
@@ -1256,7 +1590,6 @@ namespace BrokenNes.Windows
             }
             
             currentRomPath = string.Empty;
-            this.Text = "BrokenNes - Windows";
             
             // Clear the display
             if (frameBuffer != null)
@@ -1268,6 +1601,9 @@ namespace BrokenNes.Windows
                     dxRenderer.DrawFrame(frameBuffer);
                 }
             }
+            
+            // Return to the static test ROM
+            LoadEmbeddedRom();
         }
         
         private void ResetEmulator_Click(object? sender, EventArgs e)
@@ -1290,80 +1626,7 @@ namespace BrokenNes.Windows
             
             if (openDialog.ShowDialog() == DialogResult.OK)
             {
-                try
-                {
-                    string stateJson = "";
-                    string ext = Path.GetExtension(openDialog.FileName).ToLower();
-
-                    if (ext == ".png")
-                    {
-                        using (var bmp = new Bitmap(openDialog.FileName))
-                        {
-                            byte[] data = PngPayload.ExtractData(bmp);
-                            if (data == null || data.Length == 0)
-                            {
-                                throw new Exception("No embedded state data found in this image.");
-                            }
-                            stateJson = Encoding.UTF8.GetString(data);
-                        }
-                    }
-                    else
-                    {
-                         stateJson = File.ReadAllText(openDialog.FileName);
-                    }
-                    
-                    // Auto-load ROM if possible
-                    string savedRomPath = NES.GetSavedRomPath(stateJson);
-                    string savedRomName = NES.GetSavedRomName(stateJson);
-                    
-                    if (nes == null)
-                    {
-                         if (!string.IsNullOrEmpty(savedRomPath) && File.Exists(savedRomPath))
-                         {
-                             LoadRomFile(savedRomPath);
-                         }
-                         else
-                         {
-                             MessageBox.Show($"Cannot load state: No ROM loaded and original ROM path invalid.\nPath: {savedRomPath}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                             return;
-                         }
-                    }
-                    else if (!string.IsNullOrEmpty(savedRomPath) && !string.Equals(savedRomPath, currentRomPath, StringComparison.OrdinalIgnoreCase))
-                    {
-                         // Check if we should auto-switch
-                         if (File.Exists(savedRomPath))
-                         {
-                             LoadRomFile(savedRomPath);
-                         }
-                         else
-                         {
-                             var r = MessageBox.Show($"State is for '{savedRomName}' but current ROM is different.\nOriginal path not found: {savedRomPath}\nLoad state anyway?", "ROM Mismatch", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                             if (r == DialogResult.No) return;
-                         }
-                    }
-                    
-                    if (nes == null) return;
-                    
-                    // Pause emulation during state load
-                    bool wasPaused = isPaused;
-                    isPaused = true;
-                    
-                    lock (emulationLock)
-                    {
-                        nes.LoadState(stateJson);
-                    }
-                    
-                    BuildMemoryDomains();
-                
-                    isPaused = wasPaused;
-                    
-                    this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Loaded]";
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Failed to load state:\n{ex.Message}", "Load State Error", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                LoadStateFile(openDialog.FileName);
             }
         }
         
@@ -1400,6 +1663,9 @@ namespace BrokenNes.Windows
                         screenshot = GetScreenshot();
                     }
                     
+                    // Extend state with UI settings (shader config)
+                    stateJson = ExtendStateWithUISettings(stateJson);
+                    
                     isPaused = wasPaused;
 
                     if (screenshot == null)
@@ -1435,61 +1701,172 @@ namespace BrokenNes.Windows
         {
              if (nes == null) return;
 
-             try
+             // Capture synchronously to ensure consistency
+             Bitmap? screenshot = null;
+             string? stateJson = null;
+             string localRomPath = currentRomPath;
+
+             lock(emulationLock)
              {
-                 string screenshotsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "screenshots");
-                 Directory.CreateDirectory(screenshotsDir);
-
-                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                 string filename = $"BrokenNes_{Path.GetFileNameWithoutExtension(currentRomPath)}_{timestamp}.png";
-                 string fullPath = Path.Combine(screenshotsDir, filename);
-
-                 lock(emulationLock)
+                 try
                  {
-                     string stateJson = nes.SaveState();
+                     screenshot = GetScreenshot();
+                     stateJson = nes.SaveState();
+                 }
+                 catch (Exception ex)
+                 {
+                     Console.WriteLine($"Screenshot capture failed: {ex.Message}");
+                     return;
+                 }
+             }
+
+             if (screenshot == null || stateJson == null) return;
+
+             // Offload IO and processing to background task to avoid hitching
+             Task.Run(() => 
+             {
+                 try
+                 {
+                     string screenshotsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "screenshots");
+                     Directory.CreateDirectory(screenshotsDir);
+
+                     string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fffffff");
+                     string filename = $"BrokenNes_{Path.GetFileNameWithoutExtension(localRomPath)}_{timestamp}.png";
+                     string fullPath = Path.Combine(screenshotsDir, filename);
+
                      byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
                      
-                     using (Bitmap screenshot = GetScreenshot())
+                     using (screenshot)
                      {
-                         if (screenshot != null)
+                         // Embed state for sharing capabilities
+                         using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
                          {
-                             // Embed state for sharing capabilities
-                             using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
-                             {
-                                  if (embedded != null)
-                                  {
-                                      embedded.Save(fullPath, ImageFormat.Png);
-                                  }
-                                  else
-                                  {
-                                      // If embedding fails (e.g. state too big?), just save the raw screenshot
-                                      screenshot.Save(fullPath, ImageFormat.Png);
-                                  }
-                             }
+                              if (embedded != null)
+                              {
+                                  embedded.Save(fullPath, ImageFormat.Png);
+                              }
+                              else
+                              {
+                                  // If embedding fails (e.g. state too big?), just save the raw screenshot
+                                  screenshot.Save(fullPath, ImageFormat.Png);
+                              }
                          }
                      }
-                 }
-                 
-                 Console.WriteLine($"Screenshot saved: {fullPath}");
-                 
-                 // Show a brief OSD message or update title
-                 string oldText = this.Text;
-                 this.Text = $"{oldText} [Screenshot Saved]";
-                 Task.Delay(1500).ContinueWith(_ => 
-                 {
-                     if (InvokeRequired && !IsDisposed) BeginInvoke(new Action(() => this.Text = oldText));
-                 });
+                     
+                     Console.WriteLine($"Screenshot saved: {fullPath}");
+                     
+                     // Show a brief OSD message or update title
+                     if (!this.IsDisposed && this.IsHandleCreated)
+                     {
+                         this.Invoke((MethodInvoker)delegate 
+                         {
+                             string currentText = this.Text;
+                             // Prevent duplicate status messages
+                             string baseText = currentText.Replace(" [Screenshot Saved]", "");
+                             this.Text = $"{baseText} [Screenshot Saved]";
+                             
+                             Task.Delay(1500).ContinueWith(_ => 
+                             {
+                                 if (this.IsHandleCreated && !this.IsDisposed) 
+                                     this.BeginInvoke(new Action(() => this.Text = baseText));
+                             });
+                         });
+                     }
 
-             }
-             catch(Exception ex)
-             {
-                 Console.WriteLine($"Screenshot failed: {ex.Message}");
-                 MessageBox.Show($"Failed to take screenshot: {ex.Message}", "Error");
+                 }
+                 catch (Exception ex)
                  {
-                    MessageBox.Show($"Failed to save state:\n{ex.Message}", "Save State Error", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                     Console.WriteLine($"Failed to save screenshot: {ex.Message}");
+                 }
+             });
+        }
+
+        private void OpenEmulatorFolder_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                string folderPath = AppDomain.CurrentDomain.BaseDirectory;
+                System.Diagnostics.Process.Start("explorer.exe", folderPath);
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open folder: {ex.Message}", "Error");
+            }
+        }
+
+        private void ShowContinueButton()
+        {
+            try 
+            {
+                string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+                if (!File.Exists(continuePath) || continueButton != null) return;
+
+                // Load to memory so we don't lock the file
+                Bitmap img;
+                using (var fs = new FileStream(continuePath, FileMode.Open, FileAccess.Read))
+                {
+                    using (var temp = new Bitmap(fs))
+                    {
+                        img = new Bitmap(temp);
+                    }
+                }
+                    
+                using (Graphics g = Graphics.FromImage(img))
+                {
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+
+                    string text = "Continue?";
+                    using (Font f = new Font("Segoe UI", 16, FontStyle.Bold))
+                    {
+                         // Hard shadow (1px offset)
+                         g.DrawString(text, f, Brushes.Black, new PointF(11, 11));
+                         g.DrawString(text, f, Brushes.White, new PointF(10, 10));
+                    }
+                }
+
+                continueButton = new PictureBox
+                {
+                    Image = img,
+                    SizeMode = PictureBoxSizeMode.AutoSize,
+                    Cursor = Cursors.Hand,
+                    Location = new Point(20, 20),
+                    BackColor = Color.Transparent
+                };
+                continueButton.Click += ContinueSession_Click;
+                
+                displayPanel.Controls.Add(continueButton);
+                continueButton.BringToFront();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load continue.png: {ex.Message}");
+            }
+        }
+
+        private void HideContinueButton()
+        {
+            if (continueButton != null)
+            {
+                if (displayPanel.Controls.Contains(continueButton))
+                    displayPanel.Controls.Remove(continueButton);
+                
+                if (continueButton.Image != null) continueButton.Image.Dispose();
+                continueButton.Dispose();
+                continueButton = null;
+            }
+        }
+
+        private void ContinueSession_Click(object? sender, EventArgs e)
+        {
+             HideContinueButton();
+             string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+             if (File.Exists(continuePath))
+             {
+                 LoadStateFile(continuePath);
+                 // Delete after loading so it doesn't appear again on next launch unless saved again
+                 try { File.Delete(continuePath); } catch {}
+             }
         }
         
         private void QuickSaveState_Click(object? sender, EventArgs e)
@@ -1510,6 +1887,9 @@ namespace BrokenNes.Windows
                 {
                     quickSaveState = nes.SaveState();
                 }
+                
+                // Extend state with UI settings (shader config)
+                quickSaveState = ExtendStateWithUISettings(quickSaveState);
                 
                 isPaused = wasPaused;
                 
@@ -1557,9 +1937,15 @@ namespace BrokenNes.Windows
                     nes.LoadState(quickSaveState);
                 }
                 
+                // Restore UI settings (shader config) from state
+                RestoreUISettingsFromState(quickSaveState);
+                
                 BuildMemoryDomains();
                 
                 isPaused = wasPaused;
+                
+                // Update menus to reflect restored settings
+                UpdateCoresMenus();
                 
                 this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [Quick Loaded]";
                 
@@ -1922,6 +2308,22 @@ namespace BrokenNes.Windows
             UpdateConfigMenus();
             
             Console.WriteLine($"Background set to: {backgroundName}");
+        }
+        
+        private void SetNullProvider(string providerName)
+        {
+            config.SelectedNullProvider = providerName;
+            config.Save();
+            
+            // Apply to current NES instance if one is running
+            if (nes != null)
+            {
+                nes.SetNullProvider(providerName);
+            }
+            
+            UpdateConfigMenus();
+            
+            Console.WriteLine($"Null provider set to: {providerName}");
         }
         
         private void ToggleScanlines_Click(object sender, EventArgs e)
@@ -2824,8 +3226,63 @@ namespace BrokenNes.Windows
             }
         }
         
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            ShowContinueButton();
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+            
+            // Check if we're on the test ROM
+            bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
+            
+            if (isTestRom)
+            {
+                // Delete continue.png if we're on the test ROM
+                try
+                {
+                    if (File.Exists(continuePath))
+                    {
+                        File.Delete(continuePath);
+                        Console.WriteLine("Deleted continue.png (test ROM)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to delete continue.png: {ex.Message}");
+                }
+            }
+            else if (nes != null && !string.IsNullOrEmpty(currentRomPath))
+            {
+                // Auto-save "continue.png" on exit for non-test ROMs
+                 try
+                 {
+                     lock(emulationLock)
+                     {
+                         // Synchronous capture (we are closing anyway)
+                         using (var screenshot = GetScreenshot())
+                         {
+                             string stateJson = nes.SaveState();
+                             if (screenshot != null && stateJson != null)
+                             {
+                                 byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                                 using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
+                                 {
+                                     embedded?.Save(continuePath, ImageFormat.Png);
+                                 }
+                             }
+                         }
+                     }
+                 }
+                 catch (Exception ex) 
+                 {
+                     Console.WriteLine("Failed to save continue state: " + ex.Message);
+                 }
+            }
+
             StopEmulation();
             audioManager?.Dispose();
             inputManager?.Dispose();
