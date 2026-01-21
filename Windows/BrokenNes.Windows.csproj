@@ -70,6 +70,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Include Webmodules folder -->
+    <None Include="Webmodules\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="BrokenNes.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

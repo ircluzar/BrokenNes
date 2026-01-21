@@ -58,27 +58,6 @@ namespace BrokenNes.Windows
             }
         }
 
-        private async void InitializeWebViewAsync()
-        {
-            if (webView == null) return;
-            
-            try
-            {
-                await webView.EnsureCoreWebView2Async(null);
-                
-                // Enable transparency for overlay mode
-                webView.DefaultBackgroundColor = Color.Transparent;
-                
-                isWebViewInitialized = true;
-                Console.WriteLine("WebView2 initialized successfully with transparency");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WebView2 initialization error: {ex.Message}");
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
-                    "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
 
         private void InitializeComponent()
         {
@@ -395,13 +374,38 @@ namespace BrokenNes.Windows
             widgetModeItem.ShortcutKeys = Keys.Control | Keys.D2;
             webMenu.DropDownItems.Add(widgetModeItem);
             
-            var webModeItem = new ToolStripMenuItem("Web Mode", null, (s, e) => SwitchViewMode(ViewMode.Web));
+            var webModeItem = new ToolStripMenuItem("Web Mode", null, (s, e) => {
+                Helpers.WebViewHelper.NavigateToUri(webView, "https://www.google.com");
+                SwitchViewMode(ViewMode.Web);
+            });
             webModeItem.ShortcutKeys = Keys.Control | Keys.D3;
             webMenu.DropDownItems.Add(webModeItem);
             
             var overlayModeItem = new ToolStripMenuItem("Overlay Mode", null, (s, e) => SwitchViewMode(ViewMode.Overlay));
             overlayModeItem.ShortcutKeys = Keys.Control | Keys.D4;
             webMenu.DropDownItems.Add(overlayModeItem);
+            
+            // Add separator before webmodules
+            webMenu.DropDownItems.Add(new ToolStripSeparator());
+            
+            // Discover and add web modules
+            var webModules = WebModuleManager.DiscoverModules();
+            if (webModules.Length > 0)
+            {
+                foreach (var module in webModules)
+                {
+                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(module));
+                    webMenu.DropDownItems.Add(moduleItem);
+                }
+            }
+            else
+            {
+                var noModulesItem = new ToolStripMenuItem("(No modules available)")
+                {
+                    Enabled = false
+                };
+                webMenu.DropDownItems.Add(noModulesItem);
+            }
             
             menuStrip.Items.Add(webMenu);
             
@@ -445,14 +449,35 @@ namespace BrokenNes.Windows
             // Initialize WebView2
             try
             {
-                webView = new WebView2
+                // Reuse existing WebView2 instance whenever possible
+                if (webView != null && !webView.IsDisposed)
                 {
-                    Visible = false // Start hidden
-                };
-                this.Controls.Add(webView);
-                
-                // Initialize WebView2 asynchronously
-                InitializeWebViewAsync();
+                    // Ensure it is in the controls collection
+                    if (!this.Controls.Contains(webView))
+                    {
+                        this.Controls.Add(webView);
+                    }
+                }
+                else
+                {
+                    // If we have a reference but it's disposed or null, create a new one
+                    // Note: If webView was not null, we are replacing the reference. 
+                    // The previous object is either disposed (per check) or we should ensure we don't leak.
+                    
+                    // Explicitly null out old reference if it existed (though we know it's unusable)
+                    if (webView != null)
+                    {
+                         webView.Dispose(); // Safety dispose
+                         webView = null;
+                    }
+
+                    webView = Helpers.WebViewHelper.CreateWebView(this);
+                    
+                    // Initialize WebView2 asynchronously
+                    Helpers.WebViewHelper.InitializeWebViewAsync(webView, (success) => {
+                        isWebViewInitialized = success;
+                    });
+                }
             }
             catch (Exception ex)
             {
