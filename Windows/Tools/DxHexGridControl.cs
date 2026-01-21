@@ -28,11 +28,12 @@ namespace BrokenNes.Windows.Tools
         private FactoryD2D d2dFactory;
         private FactoryDW dwFactory;
         private TextFormat textFormat;
-        private SolidColorBrush textBrush;
-        private SolidColorBrush dimTextBrush;
-        private SolidColorBrush headerBrush;
-        private SolidColorBrush backgroundBrush;
-        private SolidColorBrush gridLineBrush;
+        private SolidColorBrush? textBrush;
+        private SolidColorBrush? dimTextBrush;
+        private SolidColorBrush? headerBrush;
+        private SolidColorBrush? backgroundBrush;
+        private SolidColorBrush? altBackgroundBrush;
+        private SolidColorBrush? gridLineBrush;
         private bool initialized;
 
         private string domainLabel = string.Empty;
@@ -41,11 +42,11 @@ namespace BrokenNes.Windows.Tools
         private byte[] data = Array.Empty<byte>();
         private int bytesPerRow = 16;
 
-        private float cellWidth = 44f;
-        private float rowHeight = 22f;
-        private float headerHeight = 26f;
-        private float addressColWidth = 90f;
-        private const float Padding = 8f;
+        private float cellWidth = 36f;
+        private float rowHeight = 24f;
+        private float headerHeight = 30f;
+        private float addressColWidth = 80f;
+        private const float Padding = 6f;
 
         public event Action<int>? CellClicked;
 
@@ -147,10 +148,10 @@ namespace BrokenNes.Windows.Tools
 
             CreateRenderTarget();
 
-            textFormat = new TextFormat(dwFactory, "Consolas", FontWeight.Medium, DWFontStyle.Normal, 12f)
+            textFormat = new TextFormat(dwFactory, "Consolas", FontWeight.Normal, DWFontStyle.Normal, 13f)
             {
-                TextAlignment = TextAlignment.Leading,
-                ParagraphAlignment = ParagraphAlignment.Near
+                TextAlignment = TextAlignment.Center,
+                ParagraphAlignment = ParagraphAlignment.Center
             };
 
             initialized = true;
@@ -161,7 +162,7 @@ namespace BrokenNes.Windows.Tools
             DisposeBrushes();
 
             using var backBuffer = swapChain.GetBackBuffer<Surface>(0);
-            var props = new RenderTargetProperties(new PixelFormat(Format.Unknown, AlphaMode.Premultiplied));
+            var props = new RenderTargetProperties(new PixelFormat(Format.B8G8R8A8_UNorm, AlphaMode.Premultiplied));
             renderTarget = new RenderTarget(d2dFactory, backBuffer, props)
             {
                 TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode.Grayscale,
@@ -169,15 +170,21 @@ namespace BrokenNes.Windows.Tools
             };
 
             textBrush = new SolidColorBrush(renderTarget, new Color4(0.95f, 0.95f, 0.95f, 1f));
-            dimTextBrush = new SolidColorBrush(renderTarget, new Color4(0.6f, 0.6f, 0.6f, 1f));
+            dimTextBrush = new SolidColorBrush(renderTarget, new Color4(0.5f, 0.5f, 0.5f, 1f));
             headerBrush = new SolidColorBrush(renderTarget, new Color4(0.18f, 0.18f, 0.24f, 1f));
-            backgroundBrush = new SolidColorBrush(renderTarget, new Color4(0.10f, 0.10f, 0.12f, 1f));
-            gridLineBrush = new SolidColorBrush(renderTarget, new Color4(0.28f, 0.28f, 0.30f, 1f));
+            backgroundBrush = new SolidColorBrush(renderTarget, new Color4(0.12f, 0.12f, 0.14f, 1f));
+            altBackgroundBrush = new SolidColorBrush(renderTarget, new Color4(0.14f, 0.14f, 0.16f, 1f));
+            gridLineBrush = new SolidColorBrush(renderTarget, new Color4(0.30f, 0.30f, 0.35f, 1f));
         }
 
         private void Render()
         {
             if (!initialized || renderTarget == null) return;
+            if (textBrush == null || dimTextBrush == null || headerBrush == null || 
+                backgroundBrush == null || altBackgroundBrush == null || gridLineBrush == null)
+            {
+                return;
+            }
 
             renderTarget.BeginDraw();
             renderTarget.Clear(new Color4(0.08f, 0.08f, 0.1f, 1f));
@@ -186,62 +193,87 @@ namespace BrokenNes.Windows.Tools
             float y = Padding;
 
             // Draw header bar
-            var headerRect = new RectangleF(x, y, ClientSize.Width - (Padding * 2), headerHeight);
+            var headerRect = new RectangleF(x, y, x + addressColWidth + (bytesPerRow * cellWidth), y + headerHeight);
             renderTarget.FillRectangle(headerRect, headerBrush);
             renderTarget.DrawText($"{domainLabel} — Base 0x{baseAddress:X6}", textFormat, headerRect, textBrush);
-            y += headerHeight + 6f;
+            y += headerHeight + 4f;
 
             // Column headers
-            var colHeaderRect = new RectangleF(x + addressColWidth, y, ClientSize.Width - addressColWidth - (Padding * 2), rowHeight);
             for (int col = 0; col < bytesPerRow; col++)
             {
                 float cx = x + addressColWidth + (col * cellWidth);
-                var cellRect = new RectangleF(cx, y, cellWidth, rowHeight);
-                renderTarget.DrawText(col.ToString("X1"), textFormat, cellRect, textBrush);
+                var cellRect = new RectangleF(cx, y, cx + cellWidth, y + rowHeight);
+                renderTarget.DrawText(col.ToString("X1"), textFormat, cellRect, dimTextBrush);
             }
             y += rowHeight;
 
             // Grid lines and data
-            int rows = (int)Math.Ceiling(data.Length / (float)bytesPerRow);
+            int rows = data.Length == 0 ? 0 : (int)Math.Ceiling(data.Length / (float)bytesPerRow);
             for (int row = 0; row < rows; row++)
             {
                 float ry = y + (row * rowHeight);
                 int rowAddress = baseAddress + (row * bytesPerRow);
+                var bgBrush = (row % 2 == 0) ? backgroundBrush : altBackgroundBrush;
+
+                // Row background
+                var rowBgRect = new RectangleF(x, ry, x + addressColWidth + (bytesPerRow * cellWidth), ry + rowHeight);
+                renderTarget.FillRectangle(rowBgRect, bgBrush);
+
                 // Address column
-                var addrRect = new RectangleF(x, ry, addressColWidth, rowHeight);
+                var addrRect = new RectangleF(x, ry, x + addressColWidth, ry + rowHeight);
                 renderTarget.DrawText($"0x{rowAddress:X6}", textFormat, addrRect, dimTextBrush);
 
                 for (int col = 0; col < bytesPerRow; col++)
                 {
                     int idx = (row * bytesPerRow) + col;
                     float cx = x + addressColWidth + (col * cellWidth);
-                    var cellRect = new RectangleF(cx, ry, cellWidth, rowHeight);
+                    var cellRect = new RectangleF(cx, ry, cx + cellWidth, ry + rowHeight);
 
                     bool inRange = idx < data.Length && (rowAddress + col) < domainSize;
-                    var brush = inRange ? textBrush : dimTextBrush;
-                    string text = inRange ? data[idx].ToString("X2") : "";
+                    if (!inRange)
+                    {
+                        continue;
+                    }
 
-                    renderTarget.FillRectangle(cellRect, backgroundBrush);
+                    byte val = data[idx];
+                    string text = val.ToString("X2");
+                    var brush = val == 0 ? dimTextBrush : textBrush;
+
                     renderTarget.DrawText(text, textFormat, cellRect, brush);
                 }
             }
 
             // Grid lines (vertical)
-            float gridTop = y - rowHeight; // include column header line
+            float gridTop = y - rowHeight; // include column header row
             float gridBottom = y + (rows * rowHeight);
+            float gridLeft = x + addressColWidth;
+            float gridRight = x + addressColWidth + (bytesPerRow * cellWidth);
+
+            // Draw vertical lines separating cells
             for (int col = 0; col <= bytesPerRow; col++)
             {
                 float cx = x + addressColWidth + (col * cellWidth);
-                renderTarget.DrawLine(new SharpDX.Mathematics.Interop.RawVector2(cx, gridTop), new SharpDX.Mathematics.Interop.RawVector2(cx, gridBottom), gridLineBrush, 1f);
+                renderTarget.DrawLine(
+                    new SharpDX.Mathematics.Interop.RawVector2(cx, gridTop),
+                    new SharpDX.Mathematics.Interop.RawVector2(cx, gridBottom),
+                    gridLineBrush, 1f);
             }
-            // Horizontal lines
-            float gridLeft = x;
-            float gridRight = x + addressColWidth + (bytesPerRow * cellWidth);
-            for (int row = 0; row <= rows; row++)
+
+            // Draw horizontal lines separating rows
+            for (int row = 0; row <= rows + 1; row++) // +1 to include column header separator
             {
-                float ry = y + (row * rowHeight);
-                renderTarget.DrawLine(new SharpDX.Mathematics.Interop.RawVector2(gridLeft, ry), new SharpDX.Mathematics.Interop.RawVector2(gridRight, ry), gridLineBrush, 1f);
+                float ry = (row == 0) ? y - rowHeight : y + ((row - 1) * rowHeight);
+                renderTarget.DrawLine(
+                    new SharpDX.Mathematics.Interop.RawVector2(x, ry),
+                    new SharpDX.Mathematics.Interop.RawVector2(gridRight, ry),
+                    gridLineBrush, 1f);
             }
+
+            // Draw separator line between address column and data cells
+            renderTarget.DrawLine(
+                new SharpDX.Mathematics.Interop.RawVector2(gridLeft, gridTop),
+                new SharpDX.Mathematics.Interop.RawVector2(gridLeft, gridBottom),
+                gridLineBrush, 1f);
 
             renderTarget.EndDraw();
             swapChain.Present(1, PresentFlags.None);
@@ -281,15 +313,17 @@ namespace BrokenNes.Windows.Tools
         private void DisposeBrushes()
         {
             gridLineBrush?.Dispose();
+            altBackgroundBrush?.Dispose();
             backgroundBrush?.Dispose();
             headerBrush?.Dispose();
             dimTextBrush?.Dispose();
             textBrush?.Dispose();
-            gridLineBrush = null;
-            backgroundBrush = null;
-            headerBrush = null;
-            dimTextBrush = null;
-            textBrush = null;
+            gridLineBrush = null!;
+            altBackgroundBrush = null!;
+            backgroundBrush = null!;
+            headerBrush = null!;
+            dimTextBrush = null!;
+            textBrush = null!;
         }
 
         protected override void Dispose(bool disposing)
