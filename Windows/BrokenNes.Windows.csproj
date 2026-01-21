@@ -35,6 +35,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="HexEditor\**\*.cs" />
+    <EmbeddedResource Remove="HexEditor\**\*.resx" />
+    <None Remove="HexEditor\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Embed default ROM -->
     <EmbeddedResource Include="..\wwwroot\test.nes" Link="Resources\test.nes" />
   </ItemGroup>

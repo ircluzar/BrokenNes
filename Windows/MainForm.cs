@@ -88,6 +88,7 @@ namespace BrokenNes.Windows
         private RealTimeCorruptorForm? rtcForm;
         private GlitchHarvesterForm? ghForm;
         private ImagineForm? imagineForm;
+        private HexEditorForm? hexEditorForm;
         private readonly ConcurrentQueue<Action> emulationActions = new();
         public event Action? CorruptorStateChanged;
         
@@ -839,9 +840,12 @@ namespace BrokenNes.Windows
             var rtcItem = new ToolStripMenuItem("Real-Time Corruptor", null, OpenRtcTool_Click);
             var ghItem = new ToolStripMenuItem("Glitch Harvester", null, OpenGhTool_Click);
             var imagineItem = new ToolStripMenuItem("Imagine", null, OpenImagineTool_Click);
+            var hexEditorItem = new ToolStripMenuItem("Hex Editor", null, OpenHexEditor_Click);
             toolsMenu.DropDownItems.Add(rtcItem);
             toolsMenu.DropDownItems.Add(ghItem);
             toolsMenu.DropDownItems.Add(imagineItem);
+            toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+            toolsMenu.DropDownItems.Add(hexEditorItem);
             menuStrip.Items.Add(toolsMenu);
             
             // Web menu for view modes
@@ -2682,6 +2686,18 @@ namespace BrokenNes.Windows
             imagineForm.Show(this);
             imagineForm.Focus();
         }
+
+        private void OpenHexEditor_Click(object? sender, EventArgs e)
+        {
+            if (hexEditorForm == null || hexEditorForm.IsDisposed)
+            {
+                hexEditorForm = new HexEditorForm(this);
+                hexEditorForm.FormClosed += (_, _) => hexEditorForm = null;
+            }
+
+            hexEditorForm.Show(this);
+            hexEditorForm.Focus();
+        }
         
         private void SetCrashBehavior(string behavior)
         {
@@ -2867,6 +2883,103 @@ namespace BrokenNes.Windows
         {
             if (!IsEmulatorReady) return;
             QueueEmuAction(BuildMemoryDomains);
+        }
+
+        internal int GetMemoryDomainSize(string domainKey)
+        {
+            lock (corruptorLock)
+            {
+                var domain = corruptor.MemoryDomains.FirstOrDefault(d => string.Equals(d.Key, domainKey, StringComparison.OrdinalIgnoreCase));
+                return domain?.Size ?? 0;
+            }
+        }
+
+        internal Task<byte[]> ReadMemoryAsync(string domainKey, int start, int length)
+        {
+            if (nes == null || length <= 0)
+            {
+                return Task.FromResult(Array.Empty<byte>());
+            }
+
+            start = Math.Max(0, start);
+            int domainSize = GetMemoryDomainSize(domainKey);
+            if (domainSize > 0)
+            {
+                length = Math.Min(length, Math.Max(0, domainSize - start));
+            }
+
+            if (length <= 0)
+            {
+                return Task.FromResult(Array.Empty<byte>());
+            }
+
+            return RunOnEmulationThreadAsync(() =>
+            {
+                var buffer = new byte[length];
+                for (int i = 0; i < length; i++)
+                {
+                    buffer[i] = PeekDomainByte(domainKey, start + i);
+                }
+                return buffer;
+            });
+        }
+
+        internal Task WriteMemoryAsync(string domainKey, int address, byte value)
+        {
+            if (nes == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            address = Math.Max(0, address);
+            int domainSize = GetMemoryDomainSize(domainKey);
+            if (domainSize > 0 && address >= domainSize)
+            {
+                return Task.CompletedTask;
+            }
+
+            return RunOnEmulationThreadAsync(() => PokeDomainByte(domainKey, address, value));
+        }
+
+        private byte PeekDomainByte(string domainKey, int address)
+        {
+            if (nes == null || address < 0)
+            {
+                return 0;
+            }
+
+            return domainKey switch
+            {
+                "PRG" => nes.PeekPrg(address),
+                "PRGRAM" => nes.PeekPrgRam(address),
+                "CHR" => nes.PeekChr(address),
+                "RAM" => nes.PeekSystemRam(address),
+                _ => nes.PeekSystemRam(address)
+            };
+        }
+
+        private void PokeDomainByte(string domainKey, int address, byte value)
+        {
+            if (nes == null || address < 0)
+            {
+                return;
+            }
+
+            switch (domainKey)
+            {
+                case "PRG":
+                    nes.PokePrg(address, value);
+                    break;
+                case "PRGRAM":
+                    nes.PokePrgRam(address, value);
+                    break;
+                case "CHR":
+                    nes.PokeChr(address, value);
+                    break;
+                case "RAM":
+                    nes.PokeSystemRam(address, value);
+                    break;
+            }
         }
 
         internal void SetCorruptIntensity(int value)
