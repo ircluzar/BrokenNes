@@ -17,9 +17,19 @@ using BrokenNes.Windows.Rendering;
 using BrokenNes.Windows.Tools;
 using PngPayloadEmbedding;
 using System.Text;
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
 
 namespace BrokenNes.Windows
 {
+    public enum ViewMode
+    {
+        Emulator,  // Only emulator, no WebView2
+        Widget,    // Emulator + WebView2 side by side
+        Web,       // Only WebView2, emulator hidden
+        Overlay    // WebView2 transparent overlay on top of emulator
+    }
+    
     public partial class MainForm : Form
     {
         private NES? nes;
@@ -87,6 +97,11 @@ namespace BrokenNes.Windows
         private FormWindowState previousWindowState;
         private Rectangle previousBounds;
         
+        // WebView2 and view modes
+        private WebView2? webView;
+        private ViewMode currentViewMode = ViewMode.Emulator;
+        private bool isWebViewInitialized = false;
+        
         /// <summary>
         /// Toggle between fullscreen and windowed mode
         /// </summary>
@@ -129,6 +144,271 @@ namespace BrokenNes.Windows
             this.PerformLayout();
             displayPanel?.PerformLayout();
             dxRenderer?.Invalidate();
+            this.Refresh();
+        }
+        
+        /// <summary>
+        /// Initialize WebView2 asynchronously
+        /// </summary>
+        private async void InitializeWebViewAsync()
+        {
+            if (webView == null) return;
+            
+            try
+            {
+                await webView.EnsureCoreWebView2Async(null);
+                
+                // Enable transparency for overlay mode
+                webView.DefaultBackgroundColor = Color.Transparent;
+                
+                isWebViewInitialized = true;
+                Console.WriteLine("WebView2 initialized successfully with transparency");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WebView2 initialization error: {ex.Message}");
+                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
+                    "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        
+        /// <summary>
+        /// Switch between view modes (Emulator, Widget, Web)
+        /// </summary>
+        private async void SwitchViewMode(ViewMode mode)
+        {
+            if (webView == null)
+            {
+                MessageBox.Show("WebView2 is not available.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            // Wait for WebView2 to be initialized if switching to Widget, Overlay or Web mode
+            if ((mode == ViewMode.Widget || mode == ViewMode.Overlay || mode == ViewMode.Web) && !isWebViewInitialized)
+            {
+                MessageBox.Show("WebView2 is still initializing. Please try again in a moment.", 
+                    "Please Wait", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            
+            currentViewMode = mode;
+            
+            // Suspend layout during control rearrangement
+            this.SuspendLayout();
+            
+            int menuHeight = this.MainMenuStrip?.Height ?? 24;
+            int availableHeight = this.ClientSize.Height - menuHeight;
+            
+            switch (mode)
+            {
+                case ViewMode.Emulator:
+                    // Only emulator visible, below menu bar
+                    displayPanel.Visible = true;
+                    displayPanel.Location = new Point(0, menuHeight);
+                    displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                    webView.Visible = false;
+                    
+                    // Center the viewport
+                    if (useDirectX && dxRenderer != null)
+                    {
+                        dxRenderer.ViewportAlignmentX = 0.5f;
+                    }
+                    
+                    Console.WriteLine("Switched to Emulator mode");
+                    break;
+                    
+                case ViewMode.Widget:
+                    // Widget mode - background renders full width, WebView2 panel on right side
+                    // Display panel fills entire area (background visible everywhere)
+                    displayPanel.Visible = true;
+                    displayPanel.Location = new Point(0, menuHeight);
+                    displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                    
+                    // Calculate NES optimal width for the panel positioning
+                    float nesAspectRatio = (float)NES_WIDTH / NES_HEIGHT;
+                    int nesWidth = (int)(availableHeight * nesAspectRatio);
+                    int maxNesWidth = (int)(this.ClientSize.Width * 0.75f);
+                    if (nesWidth > maxNesWidth)
+                    {
+                        nesWidth = maxNesWidth;
+                    }
+                    
+                    // Align NES viewport flush to the left
+                    if (useDirectX && dxRenderer != null)
+                    {
+                        dxRenderer.ViewportAlignmentX = 0.0f; // Flush left
+                        
+                        // Get actual viewport width from renderer (calculates on-demand)
+                        var viewportRect = dxRenderer.GetViewportRect();
+                        int actualViewportWidth = (int)Math.Ceiling(viewportRect.Right);
+                        if (actualViewportWidth > 0 && actualViewportWidth < this.ClientSize.Width)
+                        {
+                            nesWidth = actualViewportWidth;
+                        }
+                    }
+                    
+                    // WebView2 overlays on the right side, flush to the viewport edge
+                    webView.Visible = true;
+                    webView.Location = new Point(nesWidth, menuHeight);
+                    webView.Size = new Size(this.ClientSize.Width - nesWidth, availableHeight);
+                    webView.BringToFront();
+                    
+                    // Load transparent HTML content with modal-like panel
+                    if (isWebViewInitialized && webView.CoreWebView2 != null)
+                    {
+                        string htmlContent = $@"
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <style>
+                                body {{
+                                    margin: 0;
+                                    padding: 20px;
+                                    background: transparent;
+                                    font-family: 'Segoe UI', Arial, sans-serif;
+                                    color: white;
+                                    overflow: hidden;
+                                    display: flex;
+                                    align-items: stretch;
+                                    height: calc(100vh - 40px);
+                                    box-sizing: border-box;
+                                }}
+                                .widget-panel {{
+                                    flex: 1;
+                                    background: rgba(20, 20, 30, 0.85);
+                                    backdrop-filter: blur(10px);
+                                    display: flex;
+                                    justify-content: center;
+                                    align-items: center;
+                                    flex-direction: column;
+                                    border-radius: 16px;
+                                    border: 2px solid rgba(255, 255, 255, 0.1);
+                                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                                }}
+                                .widget-content {{
+                                    text-align: center;
+                                    padding: 30px;
+                                }}
+                                h1 {{
+                                    font-size: 32px;
+                                    margin-bottom: 15px;
+                                    font-weight: 600;
+                                }}
+                                p {{
+                                    font-size: 16px;
+                                    opacity: 0.8;
+                                    line-height: 1.6;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class='widget-panel'>
+                                <div class='widget-content'>
+                                    <h1>Widget Panel</h1>
+                                    <p>Background renders underneath<br/>with transparent HTML overlay</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>";
+                        
+                        webView.CoreWebView2.NavigateToString(htmlContent);
+                    }
+                    Console.WriteLine($"Switched to Widget mode - Background full width, WebView panel width: {this.ClientSize.Width - nesWidth}px");
+                    break;
+                    
+                case ViewMode.Overlay:
+                    // Overlay mode - WebView2 transparent on top of emulator
+                    displayPanel.Visible = true;
+                    displayPanel.Location = new Point(0, menuHeight);
+                    displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                    
+                    // Center the viewport
+                    if (useDirectX && dxRenderer != null)
+                    {
+                        dxRenderer.ViewportAlignmentX = 0.5f;
+                    }
+                    
+                    // WebView2 overlays the entire display panel
+                    webView.Visible = true;
+                    webView.Location = new Point(0, menuHeight);
+                    webView.Size = new Size(this.ClientSize.Width, availableHeight);
+                    webView.BringToFront(); // Ensure WebView2 is on top
+                    
+                    // Load HTML with transparent background and a floating box
+                    if (isWebViewInitialized && webView.CoreWebView2 != null)
+                    {
+                        string htmlContent = @"
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <style>
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    background: transparent;
+                                    font-family: 'Segoe UI', Arial, sans-serif;
+                                }
+                                .floating-box {
+                                    position: absolute;
+                                    top: 50%;
+                                    left: 50%;
+                                    transform: translate(-50%, -50%);
+                                    background: rgba(30, 144, 255, 0.9);
+                                    color: white;
+                                    padding: 30px 50px;
+                                    border-radius: 15px;
+                                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                                    text-align: center;
+                                    font-size: 24px;
+                                    font-weight: bold;
+                                    backdrop-filter: blur(10px);
+                                    border: 2px solid rgba(255, 255, 255, 0.3);
+                                }
+                                .subtitle {
+                                    font-size: 14px;
+                                    margin-top: 10px;
+                                    opacity: 0.9;
+                                    font-weight: normal;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class='floating-box'>
+                                HTML Overlay
+                                <div class='subtitle'>Floating over DirectX render</div>
+                            </div>
+                        </body>
+                        </html>";
+                        
+                        webView.CoreWebView2.NavigateToString(htmlContent);
+                    }
+                    Console.WriteLine($"Switched to Overlay mode - Transparent HTML over NES");
+                    break;
+                    
+                case ViewMode.Web:
+                    // Only webview visible, emulator hidden, below menu bar
+                    displayPanel.Visible = false;
+                    webView.Visible = true;
+                    webView.Location = new Point(0, menuHeight);
+                    webView.Size = new Size(this.ClientSize.Width, availableHeight);
+                    
+                    // Reset viewport alignment (won't be visible anyway)
+                    if (useDirectX && dxRenderer != null)
+                    {
+                        dxRenderer.ViewportAlignmentX = 0.5f;
+                    }
+                    
+                    // Load Google for testing
+                    if (isWebViewInitialized && webView.CoreWebView2 != null)
+                    {
+                        webView.CoreWebView2.Navigate("https://www.google.com");
+                    }
+                    Console.WriteLine("Switched to Web mode");
+                    break;
+            }
+            
+            this.ResumeLayout();
+            this.PerformLayout();
             this.Refresh();
         }
         
@@ -273,6 +553,7 @@ namespace BrokenNes.Windows
             this.AllowDrop = true;
             this.DragEnter += MainForm_DragEnter;
             this.DragDrop += MainForm_DragDrop;
+            this.Resize += MainForm_Resize;
             
             // Create menu bar
             var menuStrip = new MenuStrip();
@@ -563,6 +844,27 @@ namespace BrokenNes.Windows
             toolsMenu.DropDownItems.Add(imagineItem);
             menuStrip.Items.Add(toolsMenu);
             
+            // Web menu for view modes
+            var webMenu = new ToolStripMenuItem("&Web");
+            
+            var emulatorModeItem = new ToolStripMenuItem("Emulator Mode", null, (s, e) => SwitchViewMode(ViewMode.Emulator));
+            emulatorModeItem.ShortcutKeys = Keys.Control | Keys.D1;
+            webMenu.DropDownItems.Add(emulatorModeItem);
+            
+            var widgetModeItem = new ToolStripMenuItem("Widget Mode", null, (s, e) => SwitchViewMode(ViewMode.Widget));
+            widgetModeItem.ShortcutKeys = Keys.Control | Keys.D2;
+            webMenu.DropDownItems.Add(widgetModeItem);
+            
+            var webModeItem = new ToolStripMenuItem("Web Mode", null, (s, e) => SwitchViewMode(ViewMode.Web));
+            webModeItem.ShortcutKeys = Keys.Control | Keys.D3;
+            webMenu.DropDownItems.Add(webModeItem);
+            
+            var overlayModeItem = new ToolStripMenuItem("Overlay Mode", null, (s, e) => SwitchViewMode(ViewMode.Overlay));
+            overlayModeItem.ShortcutKeys = Keys.Control | Keys.D4;
+            webMenu.DropDownItems.Add(overlayModeItem);
+            
+            menuStrip.Items.Add(webMenu);
+            
             // Core selection menus: SHADER, APU, CPU, PPU
             shaderMenu = new ToolStripMenuItem("&SHADER");
             menuStrip.Items.Add(shaderMenu);
@@ -587,17 +889,36 @@ namespace BrokenNes.Windows
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
             
-            // Create display panel
+            // Create display panel - positioned below menu bar
             displayPanel = new Panel
             {
-                Dock = DockStyle.Fill,
-                BackColor = Color.Black
+                BackColor = Color.Black,
+                Location = new Point(0, menuStrip.Height),
+                Size = new Size(this.ClientSize.Width, this.ClientSize.Height - menuStrip.Height)
             };
             
             // Add double-click handler for fullscreen toggle (fallback if DirectX not used)
             displayPanel.DoubleClick += (s, e) => ToggleFullscreen();
             
             this.Controls.Add(displayPanel);
+            
+            // Initialize WebView2
+            try
+            {
+                webView = new WebView2
+                {
+                    Visible = false // Start hidden
+                };
+                this.Controls.Add(webView);
+                
+                // Initialize WebView2 asynchronously
+                InitializeWebViewAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
+                    "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             
             // Create DirectX renderer for hardware-accelerated rendering
             try
@@ -1241,6 +1562,87 @@ namespace BrokenNes.Windows
                          LoadStateFile(path);
                      }
                  }
+            }
+        }
+
+        private void MainForm_Resize(object? sender, EventArgs e)
+        {
+            // Reapply layout when window is resized to maintain proper positioning
+            if (webView != null && displayPanel != null)
+            {
+                int menuHeight = this.MainMenuStrip?.Height ?? 24;
+                int availableHeight = this.ClientSize.Height - menuHeight;
+                
+                switch (currentViewMode)
+                {
+                    case ViewMode.Emulator:
+                        displayPanel.Location = new Point(0, menuHeight);
+                        displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                        
+                        if (useDirectX && dxRenderer != null)
+                        {
+                            dxRenderer.ViewportAlignmentX = 0.5f;
+                        }
+                        break;
+                        
+                    case ViewMode.Widget:
+                        // Background renders full width, WebView panel overlays on right
+                        displayPanel.Location = new Point(0, menuHeight);
+                        displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                        
+                        // Calculate NES width for panel positioning
+                        float nesAspectRatio = (float)NES_WIDTH / NES_HEIGHT;
+                        int nesWidth = (int)(availableHeight * nesAspectRatio);
+                        int maxNesWidth = (int)(this.ClientSize.Width * 0.75f);
+                        if (nesWidth > maxNesWidth)
+                        {
+                            nesWidth = maxNesWidth;
+                        }
+                        
+                        // Align viewport flush to left side
+                        if (useDirectX && dxRenderer != null)
+                        {
+                            dxRenderer.ViewportAlignmentX = 0.0f; // Flush left
+                            
+                            // Get actual viewport width from renderer
+                            var viewportRect = dxRenderer.GetViewportRect();
+                            int actualViewportWidth = (int)Math.Ceiling(viewportRect.Right);
+                            if (actualViewportWidth > 0 && actualViewportWidth < this.ClientSize.Width)
+                            {
+                                nesWidth = actualViewportWidth;
+                            }
+                        }
+                        
+                        webView.Location = new Point(nesWidth, menuHeight);
+                        webView.Size = new Size(this.ClientSize.Width - nesWidth, availableHeight);
+                        webView.BringToFront();
+                        break;
+                        
+                    case ViewMode.Overlay:
+                        // Overlay mode - both occupy the same space
+                        displayPanel.Location = new Point(0, menuHeight);
+                        displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
+                        
+                        if (useDirectX && dxRenderer != null)
+                        {
+                            dxRenderer.ViewportAlignmentX = 0.5f;
+                        }
+                        
+                        webView.Location = new Point(0, menuHeight);
+                        webView.Size = new Size(this.ClientSize.Width, availableHeight);
+                        webView.BringToFront();
+                        break;
+                        
+                    case ViewMode.Web:
+                        webView.Location = new Point(0, menuHeight);
+                        webView.Size = new Size(this.ClientSize.Width, availableHeight);
+                        
+                        if (useDirectX && dxRenderer != null)
+                        {
+                            dxRenderer.ViewportAlignmentX = 0.5f;
+                        }
+                        break;
+                }
             }
         }
 

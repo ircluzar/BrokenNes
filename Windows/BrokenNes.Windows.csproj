@@ -51,6 +51,9 @@
     
     <!-- NAudio for audio output -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+    
+    <!-- WebView2 for web content -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
 
   <ItemGroup>

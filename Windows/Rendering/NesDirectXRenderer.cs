@@ -145,6 +145,26 @@ namespace BrokenNes.Windows.Rendering
         public bool RenderViewportShadow { get; set; } = false;
         
         /// <summary>
+        /// Gets or sets the horizontal alignment of the viewport (0.0 = left, 0.5 = center, 1.0 = right)
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public float ViewportAlignmentX { get; set; } = 0.5f; // Default: centered
+        
+        /// <summary>
+        /// Gets the last calculated viewport rectangle (useful for positioning UI elements)
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public RawRectangleF LastViewportRect { get; private set; }
+        
+        /// <summary>
+        /// Calculate and return the current viewport rectangle without rendering
+        /// </summary>
+        public RawRectangleF GetViewportRect()
+        {
+            return CalculateDestinationRect();
+        }
+        
+        /// <summary>
         /// Gets the currently active shader type
         /// </summary>
         public NesShaderManager.ShaderType CurrentShaderType => currentShaderType;
@@ -612,17 +632,22 @@ namespace BrokenNes.Windows.Rendering
                 }
             }
             
-            // Center the image
-            float offsetX = (clientWidth - destWidth) / 2.0f;
+            // Position the image based on alignment (0.0 = left, 0.5 = center, 1.0 = right)
+            float offsetX = (clientWidth - destWidth) * ViewportAlignmentX;
             float offsetY = (clientHeight - destHeight) / 2.0f;
             
-            return new RawRectangleF
+            var rect = new RawRectangleF
             {
                 Left = offsetX,
                 Top = offsetY,
                 Right = offsetX + destWidth,
                 Bottom = offsetY + destHeight
             };
+            
+            // Store for external use
+            LastViewportRect = rect;
+            
+            return rect;
         }
 
         private void InitializeBackgrounds()
