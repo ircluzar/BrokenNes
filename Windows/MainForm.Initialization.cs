@@ -15,6 +15,7 @@ using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
 using BrokenNes.Windows.Tools;
+using BrokenNes.Windows.WebApi;
 using PngPayloadEmbedding;
 using System.Text;
 using Microsoft.Web.WebView2.WinForms;
@@ -374,8 +375,10 @@ namespace BrokenNes.Windows
             widgetModeItem.ShortcutKeys = Keys.Control | Keys.D2;
             webMenu.DropDownItems.Add(widgetModeItem);
             
-            var webModeItem = new ToolStripMenuItem("Web Mode", null, (s, e) => {
-                Helpers.WebViewHelper.NavigateToUri(webView, "https://www.google.com");
+            var webModeItem = new ToolStripMenuItem("Web Mode (Test Page)", null, (s, e) => {
+                // Load the webmodules index page
+                string webmodulesIndexUri = $"https://{WebModuleManager.SharedVirtualHostName}/index.html";
+                Helpers.WebViewHelper.NavigateToUri(webView, webmodulesIndexUri);
                 SwitchViewMode(ViewMode.Web);
             });
             webModeItem.ShortcutKeys = Keys.Control | Keys.D3;
@@ -567,6 +570,10 @@ namespace BrokenNes.Windows
                 autoScrambleTimer.Start();
             }
             
+            // Initialize Web API server immediately (before ROM loads)
+            // API will handle NES being null and can receive commands like loading ROMs
+            InitializeWebApiServer();
+            
             // Load the default embedded ROM
             LoadEmbeddedRom();
         }
@@ -628,6 +635,22 @@ namespace BrokenNes.Windows
                 catch (Exception ex) { Console.WriteLine($"ImagineShot error: {ex.Message}"); }
             };
             nes.SetStubbornFixEnabled(corruptor.StubbornMode);
+        }
+
+        private async void InitializeWebApiServer()
+        {
+            try
+            {
+                // Pass functions that return the current NES and Corruptor instances
+                webApiServer = new WebApiServer(() => nes, () => corruptor);
+                await webApiServer.StartAsync();
+                Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to start Web API server: {ex.Message}");
+                // Don't show error to user, API is optional
+            }
         }
     }
 }

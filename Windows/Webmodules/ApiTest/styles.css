@@ -1,0 +1,255 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Press Start 2P', monospace;
+  background: #0a0a0a;
+  color: #00ff00;
+  padding: 20px;
+  line-height: 1.6;
+  font-size: 10px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding: 20px;
+  border: 2px solid #00ff00;
+  background: rgba(0, 255, 0, 0.05);
+}
+
+h1 {
+  font-size: 18px;
+  margin-bottom: 15px;
+  text-shadow: 2px 2px #004400;
+}
+
+.subtitle {
+  font-size: 8px;
+  color: #00cc00;
+  margin-top: 10px;
+}
+
+code {
+  background: #001100;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #00ff00;
+}
+
+.test-section {
+  margin-bottom: 30px;
+  padding: 15px;
+  border: 2px solid #00ff00;
+  background: rgba(0, 255, 0, 0.03);
+}
+
+.test-section h2 {
+  font-size: 12px;
+  margin-bottom: 15px;
+  color: #00ff00;
+}
+
+.input-group {
+  margin-bottom: 10px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 9px;
+  color: #00cc00;
+}
+
+.input-field {
+  width: 100%;
+  padding: 8px;
+  background: #001100;
+  border: 2px solid #00ff00;
+  color: #00ff00;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.test-btn {
+  padding: 10px 20px;
+  background: #003300;
+  border: 2px solid #00ff00;
+  color: #00ff00;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 10px;
+}
+
+.test-btn:hover {
+  background: #004400;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.test-btn:active {
+  transform: translateY(2px);
+}
+
+.run-all-btn {
+  background: #004400;
+  font-size: 10px;
+  padding: 15px 30px;
+}
+
+.run-all-section {
+  background: rgba(0, 255, 0, 0.08);
+  border: 3px solid #00ff00;
+}
+
+.progress-container {
+  margin-top: 20px;
+  padding: 15px;
+  background: #001100;
+  border: 2px solid #00ff00;
+  border-radius: 3px;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 9px;
+  gap: 15px;
+}
+
+.stat-pass {
+  color: #00ff00;
+}
+
+.stat-fail {
+  color: #ff6666;
+}
+
+.stat-progress {
+  color: #00ccff;
+  margin-left: auto;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 20px;
+  background: #001100;
+  border: 2px solid #00ff00;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff00, #00cc00);
+  width: 0%;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.progress-status {
+  font-size: 8px;
+  color: #00cc00;
+  text-align: center;
+  margin-top: 5px;
+}
+
+.result-box {
+  margin-top: 15px;
+  padding: 15px;
+  background: #001100;
+  border: 2px solid #00ff00;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 80px;
+  max-height: 400px;
+  overflow-y: auto;
+  color: #00ff00;
+}
+
+.result-box.success {
+  border-color: #00ff00;
+  background: rgba(0, 255, 0, 0.05);
+}
+
+.result-box.error {
+  border-color: #ff0000;
+  background: rgba(255, 0, 0, 0.05);
+  color: #ff6666;
+}
+
+.result-box:empty {
+  display: none;
+}
+
+footer {
+  text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 2px solid #00ff00;
+  font-size: 9px;
+}
+
+footer a {
+  color: #00ff00;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+footer a:hover {
+  color: #00ff00;
+  text-shadow: 0 0 10px #00ff00;
+}
+
+/* Scrollbar styling */
+.result-box::-webkit-scrollbar {
+  width: 8px;
+}
+
+.result-box::-webkit-scrollbar-track {
+  background: #001100;
+}
+
+.result-box::-webkit-scrollbar-thumb {
+  background: #00ff00;
+  border-radius: 4px;
+}
+
+.result-box::-webkit-scrollbar-thumb:hover {
+  background: #00cc00;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  body {
+    font-size: 8px;
+    padding: 10px;
+  }
+  
+  h1 {
+    font-size: 14px;
+  }
+  
+  .test-section h2 {
+    font-size: 10px;
+  }
+}

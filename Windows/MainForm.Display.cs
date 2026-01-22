@@ -134,6 +134,12 @@ namespace BrokenNes.Windows
                 // Apply FPS display setting
                 dxRenderer.ShowFps = config.ShowFps;
                 
+                // Recalculate layout if we're in Widget mode (viewport size changed)
+                if (currentViewMode == ViewMode.Widget)
+                {
+                    SwitchViewMode(ViewMode.Widget, skipNavigation: true);
+                }
+                
                 // Apply background effects settings
                 dxRenderer.RenderScanlines = config.RenderScanlines;
                 dxRenderer.RenderViewportShadow = config.RenderViewportShadow;

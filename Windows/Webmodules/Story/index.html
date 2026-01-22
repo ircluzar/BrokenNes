@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Story - BrokenNes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <!-- Fade overlay for transitions -->
+  <div id="storyFadeOverlay" style="position:fixed;inset:0;background:#000;opacity:0;transition:opacity .6s ease;pointer-events:none;z-index:99999;"></div>
+  
+  <div class="options-root">
+    <h2 class="opt-title">STORY</h2>
+    <div class="opt-sections">
+      <section class="opt-section">
+        <h3 class="opt-h3">Prologue</h3>
+        <p class="opt-row small-note" id="statusText">Preparing story view...</p>
+        
+        <div class="story-placeholder">
+          <p class="story-text">The Story mode is a narrative experience that introduces you to the world of BrokenNes.</p>
+          <p class="story-text">In the full application, this would launch an interactive stage with voice synthesis and animated sequences.</p>
+          <p class="story-text">For the web module version, this serves as a placeholder to acknowledge you've viewed the story introduction.</p>
+        </div>
+        
+        <div class="story-actions">
+          <button class="story-btn" id="btnMarkViewed">Mark Story as Viewed</button>
+          <button class="story-btn" id="btnContinue">Continue to Deck Builder</button>
+        </div>
+      </section>
+    </div>
+    <div class="opt-footer">
+      <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link">DECK BUILDER</a>
+      <a href="../Home/index.html?skipHW=1" class="opt-link">HOME</a>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/storage.js"></script>
+  <script src="lib/music.js"></script>
+  <script src="lib/homePixelBg.js"></script>
+  <script src="story.js"></script>
+</body>
+</html>

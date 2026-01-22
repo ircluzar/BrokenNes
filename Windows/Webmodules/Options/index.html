@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Options - BrokenNes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="options-root">
+    <h2 class="opt-title">OPTIONS</h2>
+    <div class="opt-sections">
+      <section class="opt-section">
+        <h3 class="opt-h3">CORES</h3>
+        <div class="opt-row">
+          <button id="btnRestoreCores">Restore cores to FMC</button>
+        </div>
+        <div class="opt-row small-note">Resets CPU/PPU/APU/Clock core preferences to FMC for future sessions.</div>
+      </section>
+      
+      <section class="opt-section">
+        <h3 class="opt-h3">Emulator Audio</h3>
+        <div class="opt-row">
+          <label>Master Volume (%)</label>
+          <input type="range" min="0" max="100" value="100" id="masterVolume" />
+          <span id="masterValue" class="value-display">100</span>
+        </div>
+
+        <h3 class="opt-h3">BrokenNes Audio</h3>
+        <div class="opt-row">
+          <label>Music Volume (%)</label>
+          <input type="range" min="0" max="100" value="42" id="musicVolume" />
+          <span id="musicValue" class="value-display">42</span>
+        </div>
+        <div class="opt-row">
+          <label>SFX Volume (%)</label>
+          <input type="range" min="0" max="100" value="80" id="sfxVolume" />
+          <span id="sfxValue" class="value-display">80</span>
+        </div>
+      </section>
+      
+      <section class="opt-section">
+        <h3 class="opt-h3">INPUT</h3>
+        <div class="opt-row">
+          <span class="opt-link-text">Configure Input feature is not available in web module version</span>
+        </div>
+      </section>
+      
+      <section class="opt-section">
+        <h3 class="opt-h3">DeckBuilder Save</h3>
+        <div class="opt-row">
+          <button id="btnClearSave">Clear the save</button>
+        </div>
+        <div class="opt-row small-note">Empties achievements and owned cores, leaving only FMC (CPU/PPU/APU/Clock) and PX shader.</div>
+        <div class="opt-row">
+          <button id="btnUnlockAll">Unlock Everything</button>
+        </div>
+        <div class="opt-row small-note">Gives you all cores in your save for 100% completion. Achievements are not changed.</div>
+        <div class="opt-row">
+          <button id="btnToggleFeatures">Edit save</button>
+        </div>
+      </section>
+      
+      <section class="opt-section" id="featureUnlocks" style="display: none;">
+        <h3 class="opt-h3">Feature Unlocks</h3>
+        <div class="opt-row">
+          <span class="opt-link-text">CRUD editing is not available in web module version</span>
+        </div>
+        <div class="opt-row">
+          <button id="btnUnlockSavestates">Unlock Savestates</button>
+        </div>
+        <div class="opt-row">
+          <button id="btnUnlockRtc">Unlock Real-Time Corruptor</button>
+        </div>
+        <div class="opt-row">
+          <button id="btnUnlockGh">Unlock Glitch Harvester</button>
+        </div>
+        <div class="opt-row">
+          <button id="btnUnlockImagine">Unlock Imagine</button>
+        </div>
+        <div class="opt-row">
+          <button id="btnUnlockDebug">Unlock Debug</button>
+        </div>
+        <div class="opt-row small-note">Toggles the game-save gates for these advanced features. You can also unlock them by progressing in-game.</div>
+      </section>
+    </div>
+    
+    <div class="opt-footer">
+      <a href="../Home/index.html?skipHW=1" class="opt-link">RETURN</a>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="optModal" class="opt-modal-backdrop" style="display: none;" tabindex="-1">
+    <div class="opt-modal" role="dialog" aria-modal="true" aria-labelledby="optModalTitle" aria-describedby="optModalMsg">
+      <div class="opt-modal-header">
+        <h4 id="optModalTitle">Notice</h4>
+      </div>
+      <div class="opt-modal-body">
+        <p id="optModalMsg">Action completed.</p>
+      </div>
+      <div class="opt-modal-actions">
+        <button class="opt-modal-btn" id="optModalOk" autofocus>OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/storage.js"></script>
+  <script src="lib/music.js"></script>
+  <script src="lib/homePixelBg.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glitch Harvester - BrokenNes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="gh-root">
+    <h2 class="gh-title">GLITCH HARVESTER</h2>
+    
+    <div class="gh-container">
+      <!-- Section 1: Base States / SaveStates -->
+      <section class="gh-section gh-bases">
+        <h3 class="gh-section-title">1. SaveStates</h3>
+        
+        <div class="gh-input-row">
+          <label for="baseNameInput">New Name:</label>
+          <input type="text" id="baseNameInput" placeholder="e.g. TitleScreen" class="gh-input">
+          <button id="btnAddBase" class="gh-btn gh-btn-primary">Add Base</button>
+        </div>
+        
+        <div class="gh-list-container">
+          <div id="baseList" class="gh-list">
+            <div class="gh-empty">No base states yet. Add one to begin.</div>
+          </div>
+        </div>
+        
+        <div class="gh-actions">
+          <button id="btnLoadBase" class="gh-btn" disabled>Load</button>
+          <button id="btnDeleteBase" class="gh-btn gh-btn-danger" disabled>Delete</button>
+        </div>
+      </section>
+      
+      <!-- Section 2: Stash History -->
+      <section class="gh-section gh-stash">
+        <h3 class="gh-section-title">2. Stash History</h3>
+        
+        <div class="gh-checkbox-row">
+          <label>
+            <input type="checkbox" id="chkLoadOnOperation" checked>
+            <span>Load on operation</span>
+          </label>
+          <div class="gh-tooltip">ⓘ
+            <span class="gh-tooltip-text">When checked, loads the selected savestate before blasting to ensure consistent results.</span>
+          </div>
+        </div>
+        
+        <div class="gh-list-container">
+          <div id="stashList" class="gh-list">
+            <div class="gh-empty">Corruptions appear here when you blast.</div>
+          </div>
+        </div>
+        
+        <div class="gh-actions">
+          <button id="btnBlast" class="gh-btn gh-btn-warning" disabled>Blast</button>
+          <button id="btnReplayStash" class="gh-btn" disabled>Replay</button>
+          <button id="btnKeep" class="gh-btn gh-btn-success" disabled>Keep</button>
+          <button id="btnClearStash" class="gh-btn gh-btn-danger" disabled>Clear</button>
+        </div>
+      </section>
+      
+      <!-- Section 3: Stockpile Manager -->
+      <section class="gh-section gh-stockpile">
+        <h3 class="gh-section-title">3. Stockpile Manager</h3>
+        
+        <div class="gh-list-container">
+          <div id="stockpileList" class="gh-list">
+            <div class="gh-empty">Promoted entries are saved here permanently.</div>
+          </div>
+        </div>
+        
+        <div class="gh-actions">
+          <button id="btnReplayStock" class="gh-btn" disabled>Replay</button>
+          <button id="btnRenameStock" class="gh-btn" disabled>Rename</button>
+          <button id="btnDeleteStock" class="gh-btn gh-btn-danger" disabled>Delete</button>
+          <button id="btnExport" class="gh-btn" disabled>Export</button>
+          <label class="gh-btn gh-btn-file" for="fileImport" id="btnImportLabel">
+            Import
+            <input type="file" id="fileImport" accept="application/json" style="display: none;">
+          </label>
+        </div>
+      </section>
+    </div>
+    
+    <div class="gh-footer">
+      <a href="../Home/index.html?skipHW=1" class="gh-link">RETURN</a>
+    </div>
+  </div>
+
+  <!-- Rename Modal -->
+  <div id="renameModal" class="gh-modal-backdrop" style="display: none;">
+    <div class="gh-modal">
+      <div class="gh-modal-header">
+        <h3>Rename Entry</h3>
+      </div>
+      <div class="gh-modal-body">
+        <input type="text" id="renameInput" class="gh-input" placeholder="Enter new name">
+      </div>
+      <div class="gh-modal-footer">
+        <button id="btnRenameCancel" class="gh-btn">Cancel</button>
+        <button id="btnRenameConfirm" class="gh-btn gh-btn-primary">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Toast -->
+  <div id="toast" class="gh-toast"></div>
+
+  <script src="glitch-harvester.js"></script>
+</body>
+</html>

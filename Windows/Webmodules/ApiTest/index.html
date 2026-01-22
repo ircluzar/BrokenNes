@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrokenNes - API Test</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔧 Web API Test Suite</h1>
+      <p class="subtitle">Testing Memory Access endpoints at <code>http://127.0.0.1:42067</code></p>
+    </header>
+
+    <div class="test-section run-all-section">
+      <h2>🔄 Run All Tests</h2>
+      <button id="btnRunAll" class="test-btn run-all-btn">Run All Tests</button>
+      
+      <div id="progressContainer" class="progress-container" style="display: none;">
+        <div class="progress-stats">
+          <span class="stat-pass">✅ Pass: <span id="passCount">0</span></span>
+          <span class="stat-fail">❌ Fail: <span id="failCount">0</span></span>
+          <span class="stat-progress"><span id="progressPercent">0</span>%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div class="progress-status" id="progressStatus">Initializing...</div>
+      </div>
+    </div>
+
+    <div class="test-section">
+      <h2>📊 API Health Check</h2>
+      <button id="btnHealth" class="test-btn">Test Health Endpoint</button>
+      <div id="healthResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🗂️ Memory Domains</h2>
+      <button id="btnDomains" class="test-btn">Get Available Domains</button>
+      <div id="domainsResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>📏 Domain Size</h2>
+      <div class="input-group">
+        <label for="domainNameSize">Domain Name:</label>
+        <select id="domainNameSize" class="input-field">
+          <option value="System RAM">System RAM</option>
+          <option value="CPU Bus">CPU Bus</option>
+          <option value="PRG ROM">PRG ROM</option>
+          <option value="PRG RAM">PRG RAM</option>
+          <option value="CHR">CHR</option>
+        </select>
+      </div>
+      <button id="btnDomainSize" class="test-btn">Get Domain Size</button>
+      <div id="domainSizeResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🔍 Peek Memory</h2>
+      <div class="input-group">
+        <label for="domainNamePeek">Domain:</label>
+        <select id="domainNamePeek" class="input-field">
+          <option value="System RAM">System RAM</option>
+          <option value="CPU Bus">CPU Bus</option>
+          <option value="PRG ROM">PRG ROM</option>
+          <option value="PRG RAM">PRG RAM</option>
+          <option value="CHR">CHR</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="addressPeek">Address (hex):</label>
+        <input type="text" id="addressPeek" class="input-field" value="0000" placeholder="0000">
+      </div>
+      <button id="btnPeek" class="test-btn">Peek Byte</button>
+      <div id="peekResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>✏️ Poke Memory</h2>
+      <div class="input-group">
+        <label for="domainNamePoke">Domain:</label>
+        <select id="domainNamePoke" class="input-field">
+          <option value="System RAM">System RAM</option>
+          <option value="CPU Bus">CPU Bus</option>
+          <option value="PRG ROM">PRG ROM</option>
+          <option value="PRG RAM">PRG RAM</option>
+          <option value="CHR">CHR</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="addressPoke">Address (hex):</label>
+        <input type="text" id="addressPoke" class="input-field" value="0000" placeholder="0000">
+      </div>
+      <div class="input-group">
+        <label for="valuePoke">Value (hex):</label>
+        <input type="text" id="valuePoke" class="input-field" value="FF" placeholder="FF">
+      </div>
+      <button id="btnPoke" class="test-btn">Poke Byte</button>
+      <div id="pokeResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>📦 Peek Range</h2>
+      <div class="input-group">
+        <label for="domainNamePeekRange">Domain:</label>
+        <select id="domainNamePeekRange" class="input-field">
+          <option value="System RAM">System RAM</option>
+          <option value="CPU Bus">CPU Bus</option>
+          <option value="PRG ROM">PRG ROM</option>
+          <option value="PRG RAM">PRG RAM</option>
+          <option value="CHR">CHR</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="addressPeekRange">Address (hex):</label>
+        <input type="text" id="addressPeekRange" class="input-field" value="0000" placeholder="0000">
+      </div>
+      <div class="input-group">
+        <label for="lengthPeekRange">Length:</label>
+        <input type="number" id="lengthPeekRange" class="input-field" value="16" min="1" max="256">
+      </div>
+      <button id="btnPeekRange" class="test-btn">Peek Range</button>
+      <div id="peekRangeResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>📝 Poke Range</h2>
+      <div class="input-group">
+        <label for="domainNamePokeRange">Domain:</label>
+        <select id="domainNamePokeRange" class="input-field">
+          <option value="System RAM">System RAM</option>
+          <option value="CPU Bus">CPU Bus</option>
+          <option value="PRG ROM">PRG ROM</option>
+          <option value="PRG RAM">PRG RAM</option>
+          <option value="CHR">CHR</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="addressPokeRange">Address (hex):</label>
+        <input type="text" id="addressPokeRange" class="input-field" value="0000" placeholder="0000">
+      </div>
+      <div class="input-group">
+        <label for="dataPokeRange">Data (hex bytes, space-separated):</label>
+        <input type="text" id="dataPokeRange" class="input-field" value="FF EE DD CC" placeholder="FF EE DD CC">
+      </div>
+      <button id="btnPokeRange" class="test-btn">Poke Range</button>
+      <div id="pokeRangeResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🖥️ CPU State Access</h2>
+      <button id="btnCpuRegisters" class="test-btn">Get CPU Registers</button>
+      <div id="cpuRegistersResult" class="result-box"></div>
+      
+      <button id="btnCpuCore" class="test-btn">Get CPU Core ID</button>
+      <div id="cpuCoreResult" class="result-box"></div>
+      
+      <button id="btnCpuCores" class="test-btn">Get Available CPU Cores</button>
+      <div id="cpuCoresResult" class="result-box"></div>
+      
+      <button id="btnCpuState" class="test-btn">Get CPU State Snapshot</button>
+      <div id="cpuStateResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🎨 PPU State Access</h2>
+      <button id="btnPpuCore" class="test-btn">Get PPU Core ID</button>
+      <div id="ppuCoreResult" class="result-box"></div>
+      
+      <button id="btnPpuCores" class="test-btn">Get Available PPU Cores</button>
+      <div id="ppuCoresResult" class="result-box"></div>
+      
+      <button id="btnPpuFramebuffer" class="test-btn">Get Framebuffer Info</button>
+      <div id="ppuFramebufferResult" class="result-box"></div>
+      
+      <button id="btnPpuState" class="test-btn">Get PPU State Snapshot</button>
+      <div id="ppuStateResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🔊 APU State Access</h2>
+      <button id="btnApuCore" class="test-btn">Get APU Core ID</button>
+      <div id="apuCoreResult" class="result-box"></div>
+      
+      <button id="btnApuCores" class="test-btn">Get Available APU Cores</button>
+      <div id="apuCoresResult" class="result-box"></div>
+      
+      <button id="btnApuChannels" class="test-btn">Get APU Channels State</button>
+      <div id="apuChannelsResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🎮 CPU Register Manipulation</h2>
+      <button id="btnSetCpuRegisters" class="test-btn">Set CPU Registers (Test)</button>
+      <div id="setCpuRegistersResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>👾 PPU OAM Data</h2>
+      <button id="btnOamData" class="test-btn">Get OAM Data</button>
+      <div id="oamDataResult" class="result-box"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>⚡ Real-Time Corruptor</h2>
+      
+      <button id="btnRtcDomains" class="test-btn">Get RTC Domains</button>
+      <div id="rtcDomainsResult" class="result-box"></div>
+      
+      <button id="btnRtcIntensity" class="test-btn">Get Corruption Intensity</button>
+      <div id="rtcIntensityResult" class="result-box"></div>
+      
+      <button id="btnRtcSetIntensity" class="test-btn">Set Intensity to 5</button>
+      <div id="rtcSetIntensityResult" class="result-box"></div>
+      
+      <button id="btnRtcBlastType" class="test-btn">Get Blast Type</button>
+      <div id="rtcBlastTypeResult" class="result-box"></div>
+      
+      <button id="btnRtcSetBlastType" class="test-btn">Set Blast Type to TILT</button>
+      <div id="rtcSetBlastTypeResult" class="result-box"></div>
+      
+      <button id="btnRtcBlast" class="test-btn">Execute Blast</button>
+      <div id="rtcBlastResult" class="result-box"></div>
+      
+      <button id="btnRtcAutoCorrupt" class="test-btn">Get Auto-Corrupt State</button>
+      <div id="rtcAutoCorruptResult" class="result-box"></div>
+      
+      <button id="btnRtcToggleAutoCorrupt" class="test-btn">Toggle Auto-Corrupt</button>
+      <div id="rtcToggleAutoCorruptResult" class="result-box"></div>
+      
+      <button id="btnRtcLetItRip" class="test-btn">Let It Rip</button>
+      <div id="rtcLetItRipResult" class="result-box"></div>
+      
+      <button id="btnRtcCrashBehavior" class="test-btn">Get Crash Behavior</button>
+      <div id="rtcCrashBehaviorResult" class="result-box"></div>
+      
+      <button id="btnRtcStubbornMode" class="test-btn">Get Stubborn Mode</button>
+      <div id="rtcStubbornModeResult" class="result-box"></div>
+      
+      <button id="btnRtcSetStubbornMode" class="test-btn">Enable Stubborn Mode</button>
+      <div id="rtcSetStubbornModeResult" class="result-box"></div>
+      
+      <button id="btnRtcLastBlast" class="test-btn">Get Last Blast Info</button>
+      <div id="rtcLastBlastResult" class="result-box"></div>
+    </div>
+
+    <!-- Glitch Harvester Testing -->
+    <div class="test-section">
+      <h2>5. Glitch Harvester (GH)</h2>
+      
+      <h3>Base State Management</h3>
+      <button onclick="testGhGetBases()">Get Base States</button>
+      <div id="ghGetBasesResult" class="result-box"></div>
+      
+      <button onclick="testGhAddBase()">Add Base State</button>
+      <div id="ghAddBaseResult" class="result-box"></div>
+      
+      <button onclick="testGhSelectBase()">Select First Base</button>
+      <div id="ghSelectBaseResult" class="result-box"></div>
+      
+      <button onclick="testGhLoadBase()">Load Selected Base</button>
+      <div id="ghLoadBaseResult" class="result-box"></div>
+      
+      <button onclick="testGhDeleteBase()">Delete First Base</button>
+      <div id="ghDeleteBaseResult" class="result-box"></div>
+      
+      <button onclick="testGhLoadOnOperation()">Toggle Load On Operation</button>
+      <div id="ghLoadOnOperationResult" class="result-box"></div>
+      
+      <h3>Stash Operations</h3>
+      <button onclick="testGhCorruptAndStash()">Corrupt & Stash</button>
+      <div id="ghCorruptAndStashResult" class="result-box"></div>
+      
+      <button onclick="testGhGetStash()">Get Stash</button>
+      <div id="ghGetStashResult" class="result-box"></div>
+      
+      <button onclick="testGhReplayStash()">Replay First Stash</button>
+      <div id="ghReplayStashResult" class="result-box"></div>
+      
+      <button onclick="testGhPromoteStash()">Promote First Stash</button>
+      <div id="ghPromoteStashResult" class="result-box"></div>
+      
+      <button onclick="testGhDeleteStash()">Delete First Stash</button>
+      <div id="ghDeleteStashResult" class="result-box"></div>
+      
+      <button onclick="testGhClearStash()">Clear Stash</button>
+      <div id="ghClearStashResult" class="result-box"></div>
+      
+      <h3>Stockpile Operations</h3>
+      <button onclick="testGhGetStockpile()">Get Stockpile</button>
+      <div id="ghGetStockpileResult" class="result-box"></div>
+      
+      <button onclick="testGhReplayStockpile()">Replay First Stockpile</button>
+      <div id="ghReplayStockpileResult" class="result-box"></div>
+      
+      <button onclick="testGhRenameStockpile()">Rename First Stockpile</button>
+      <div id="ghRenameStockpileResult" class="result-box"></div>
+      
+      <button onclick="testGhDeleteStockpile()">Delete First Stockpile</button>
+      <div id="ghDeleteStockpileResult" class="result-box"></div>
+      
+      <button onclick="testGhExportStockpile()">Export Stockpile</button>
+      <div id="ghExportStockpileResult" class="result-box"></div>
+      
+      <button onclick="testGhImportStockpile()">Import Test Stockpile</button>
+      <div id="ghImportStockpileResult" class="result-box"></div>
+      
+      <h3>🎯 Complete ID-Based Workflow Test</h3>
+      <button onclick="testGhFullWorkflow()">Run Full Workflow Test</button>
+      <div id="ghFullWorkflowResult" class="result-box"></div>
+    </div>
+
+  </div>
+
+  <script src="apitest.js"></script>
+</body>
+</html>

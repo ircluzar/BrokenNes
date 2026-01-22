@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DECK BUILDER - BrokenNes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="deck-root">
+    <h2 class="deck-title">DECK BUILDER</h2>
+    
+    <section class="opt-section">
+      <h3 class="opt-h3">SUMMARY</h3>
+      <div class="summary-box">
+        <div class="summary-row">
+          <span class="label">Owned Cores</span>
+          <span class="value" id="ownedCores">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Achievement stars</span>
+          <span class="value" id="achievementStars">0</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Progress</span>
+          <span class="value" id="progressLevel">Level 1</span>
+        </div>
+      </div>
+    </section>
+    
+    <section class="opt-section">
+      <h3 class="opt-h3">ACTIONS</h3>
+      <div class="action-buttons">
+        <a class="btn-nes" href="../Continue/index.html">Continue Deck Builder</a>
+        <a class="btn-nes" href="../Story/index.html">Watch Story Again</a>
+        <a class="btn-nes" href="../Cores/index.html">View Unlocked Cores</a>
+      </div>
+    </section>
+    
+    <div class="deck-footer">
+      <a href="../index.html" class="deck-link">RETURN</a>
+    </div>
+  </div>
+
+  <!-- Audio System -->
+  <audio id="bgMusic" loop style="display: none;"></audio>
+
+  <!-- Dependencies -->
+  <script src="lib/music.js"></script>
+  <script src="lib/homePixelBg.js"></script>
+  <script src="lib/storage.js"></script>
+  <script src="deckbuilder.js"></script>
+</body>
+</html>

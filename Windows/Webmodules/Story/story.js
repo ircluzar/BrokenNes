@@ -1,0 +1,184 @@
+// story.js - Story page logic (standalone webmodule)
+
+(function() {
+  'use strict';
+
+  // Storage keys
+  const STORAGE_KEY = 'brokenNesGameSave';
+
+  // State
+  let gameSave = null;
+
+  // Initialize on page load
+  window.addEventListener('DOMContentLoaded', init);
+
+  async function init() {
+    try {
+      // Start pixel background
+      if (window.homePixelBgEnsure) {
+        window.homePixelBgEnsure();
+      }
+
+      // Initialize audio
+      initAudio();
+
+      // Load game save
+      await loadGameSave();
+
+      // Setup event listeners
+      setupEventListeners();
+
+      // Update status
+      updateStatus();
+
+      // Perform fade-in transition
+      performFadeTransition();
+    } catch (error) {
+      console.error('[Story] Initialization error:', error);
+    }
+  }
+
+  function initAudio() {
+    try {
+      // Fade down any existing music
+      if (window.music && typeof window.music.fadeOut === 'function') {
+        window.music.fadeOut(800, true);
+      }
+    } catch (error) {
+      console.warn('[Story] Audio init error:', error);
+    }
+  }
+
+  async function loadGameSave() {
+    try {
+      if (window.storage && typeof window.storage.load === 'function') {
+        gameSave = await window.storage.load(STORAGE_KEY);
+      } else {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (data) {
+          gameSave = JSON.parse(data);
+        }
+      }
+
+      // Initialize default save if none exists
+      if (!gameSave) {
+        gameSave = {
+          Level: 1,
+          Achievements: [],
+          OwnedCores: {
+            CPU: ['FMC'],
+            PPU: ['FMC'],
+            APU: ['FMC'],
+            Clock: ['FMC'],
+            Shader: ['PX']
+          },
+          SeenStory: false
+        };
+      }
+    } catch (error) {
+      console.error('[Story] Load save error:', error);
+      gameSave = {
+        Level: 1,
+        Achievements: [],
+        OwnedCores: { CPU: ['FMC'], PPU: ['FMC'], APU: ['FMC'], Clock: ['FMC'], Shader: ['PX'] },
+        SeenStory: false
+      };
+    }
+  }
+
+  async function saveGameSave() {
+    try {
+      if (window.storage && typeof window.storage.save === 'function') {
+        await window.storage.save(STORAGE_KEY, gameSave);
+      } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameSave));
+      }
+    } catch (error) {
+      console.error('[Story] Save error:', error);
+    }
+  }
+
+  function setupEventListeners() {
+    const btnMarkViewed = document.getElementById('btnMarkViewed');
+    if (btnMarkViewed) {
+      btnMarkViewed.addEventListener('click', onMarkViewed);
+    }
+
+    const btnContinue = document.getElementById('btnContinue');
+    if (btnContinue) {
+      btnContinue.addEventListener('click', onContinue);
+    }
+  }
+
+  function updateStatus() {
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+      if (gameSave && gameSave.SeenStory) {
+        statusText.textContent = 'You have already viewed the story introduction.';
+      } else {
+        statusText.textContent = 'This is your first time viewing the story.';
+      }
+    }
+  }
+
+  function performFadeTransition() {
+    // Fade in from black
+    const overlay = document.getElementById('storyFadeOverlay');
+    if (overlay) {
+      // Start with opacity 1
+      overlay.style.opacity = '1';
+      // Fade out after a short delay
+      setTimeout(() => {
+        overlay.style.opacity = '0';
+      }, 100);
+    }
+  }
+
+  async function onMarkViewed() {
+    try {
+      gameSave.SeenStory = true;
+      await saveGameSave();
+      updateStatus();
+      
+      const statusText = document.getElementById('statusText');
+      if (statusText) {
+        statusText.textContent = 'Story marked as viewed! You can now access the Deck Builder directly.';
+        statusText.style.color = '#ff5a26';
+      }
+    } catch (error) {
+      console.error('[Story] Mark viewed error:', error);
+    }
+  }
+
+  async function onContinue() {
+    try {
+      // Ensure story is marked as seen
+      if (!gameSave.SeenStory) {
+        gameSave.SeenStory = true;
+        await saveGameSave();
+      }
+
+      // Fade out before navigating
+      const overlay = document.getElementById('storyFadeOverlay');
+      if (overlay) {
+        overlay.style.pointerEvents = 'all';
+        overlay.style.opacity = '1';
+      }
+
+      // Wait for fade
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Navigate to deck builder
+      window.location.href = '../DeckBuilder/index.html';
+    } catch (error) {
+      console.error('[Story] Continue error:', error);
+      window.location.href = '../DeckBuilder/index.html';
+    }
+  }
+
+  // Expose API for debugging
+  window.storyPage = {
+    getGameSave: () => gameSave,
+    reload: init
+  };
+})();

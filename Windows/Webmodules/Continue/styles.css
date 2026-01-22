@@ -1,0 +1,686 @@
+/* Base styles and reset */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Press Start 2P', monospace;
+  background: #000;
+  color: #fff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Pixel background host */
+.pixel-bg-host {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Pixel tile styles (for homePixelBg.js) */
+.hp-tile {
+  position: absolute;
+  will-change: transform, opacity;
+}
+
+.hp-cluster {
+  display: grid;
+  gap: 0;
+}
+
+/* Options root base */
+.options-root {
+  max-width: 760px;
+  margin: 2rem auto;
+  padding: 1.5rem 2rem;
+  border: 4px solid #ffffff;
+  outline: 4px solid #ff5a26;
+  outline-offset: -8px;
+  background: transparent;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  position: relative;
+  overflow: hidden;
+}
+
+.opt-title {
+  margin: 0 0 1.25rem;
+  font-size: 1.6rem;
+  color: #ff5a26;
+}
+
+.opt-section {
+  border: 3px solid #fff;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.opt-h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #fff;
+}
+
+.opt-h3 .panel-toggle {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.opt-h3 .panel-toggle:focus {
+  outline: 2px solid #ff5a26;
+  outline-offset: 2px;
+}
+
+.opt-h3 .panel-toggle .toggle-ico {
+  opacity: 0.85;
+  font-size: 0.85em;
+}
+
+.small-note {
+  opacity: 0.6;
+  font-size: 0.55rem;
+}
+
+.opt-footer {
+  margin-top: 2rem;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.opt-link {
+  display: inline-block;
+  padding: 0.7rem 1.4rem;
+  border: 3px solid #ff5a26;
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.7rem;
+}
+
+.opt-link:hover,
+.opt-link:focus {
+  background: #ff5a26;
+  color: #000;
+}
+
+/* Start button specific states */
+.start-btn {
+  background: #000 !important;
+}
+
+.start-btn.unlocked {
+  border-color: #ff5a26;
+  color: #fff;
+  cursor: pointer;
+}
+
+.start-btn.unlocked:hover,
+.start-btn.unlocked:focus {
+  background: #0a0a0a;
+  color: #fff;
+  outline: 2px solid #ff5a26;
+  outline-offset: 2px;
+}
+
+.start-btn.locked {
+  border-color: #555;
+  color: #9ca3af;
+  cursor: default;
+}
+
+.start-btn.locked:hover,
+.start-btn.locked:focus {
+  background: #000;
+  color: #9ca3af;
+  outline: none;
+}
+
+/* Continue page customizations */
+.continue-root .cont-header {
+  border: 3px solid #fff;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.continue-root .hdr-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.continue-root .lvl-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.continue-root .lvl-title .chip {
+  display: inline-block;
+  background: #fff;
+  color: #000;
+  padding: 0.15rem 0.35rem;
+  border: 2px solid #ff5a26;
+}
+
+.continue-root .lvl-title strong {
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.continue-root .lvl-msg {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: 0.7em;
+  margin-top: 0.15rem;
+  margin-bottom: 0.25rem;
+}
+
+.continue-root .lvl-status .status-chip {
+  display: inline-block;
+  padding: 0.2rem 0.4rem;
+  border: 2px solid #fff;
+  font-size: 0.65rem;
+}
+
+.continue-root .lvl-status .status-chip.cleared {
+  background: #10b981;
+  border-color: #10b981;
+  color: #000;
+}
+
+.continue-root .lvl-status .status-chip.not-cleared {
+  background: #374151;
+  border-color: #9ca3af;
+  color: #fff;
+}
+
+.continue-root .hdr-cards {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.continue-root .hdr-cards.after-msg {
+  margin-top: 0.35rem;
+}
+
+.continue-root .enf-chip {
+  background: #000;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.35rem;
+  cursor: pointer;
+}
+
+.continue-root .enf-chip:hover {
+  background: #111;
+}
+
+.continue-root .hdr-cta {
+  margin-top: 0.75rem;
+}
+
+.continue-root .btn-next {
+  background: #000;
+  color: #fff;
+  border: 3px solid #ff5a26;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+.continue-root .btn-next:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.continue-root .btn-next:hover:not(:disabled) {
+  background: #0a0a0a;
+}
+
+/* Core Grid */
+.core-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  justify-items: center;
+}
+
+.core-slot {
+  position: relative;
+  border: 2px solid #fff;
+  min-height: 92px;
+  padding: 0.5rem;
+  width: 100%;
+}
+
+.core-slot .slot-title {
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+  color: #fff;
+  text-align: center;
+}
+
+.core-slot .slot-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+}
+
+.core-slot .slot-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  min-height: 80px;
+  background: #1a1a1a;
+  color: #9ca3af;
+  border: 2px dashed #9ca3af;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.core-slot .slot-empty:hover {
+  background: #202020;
+  color: #cbd5e1;
+  border-color: #cbd5e1;
+}
+
+.core-slot .card-wrap {
+  position: relative;
+  display: inline-block;
+  z-index: 1;
+  cursor: pointer;
+}
+
+.core-slot .slot-label {
+  display: block;
+  background: #0a0a0a;
+  border: 2px solid #ff5a26;
+  color: #fff;
+  padding: 0.5rem;
+  font-size: 0.7rem;
+  text-align: center;
+  min-width: 100px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ROM Selector */
+.rom-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.rom-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rom-search {
+  flex: 0 0 260px;
+  max-width: 60%;
+  background: #000;
+  border: 2px solid #ff5a26;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.65rem;
+  padding: 0.25rem 0.4rem;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.rom-empty {
+  border: 2px dashed #fff;
+  padding: 0.75rem;
+}
+
+.rom-table {
+  display: block;
+  border: 2px solid #fff;
+  --rom-cols: 3fr 1fr 1fr;
+}
+
+.rom-thead {
+  background: #111;
+  border-bottom: 2px solid #fff;
+}
+
+.rom-tr {
+  display: grid;
+  grid-template-columns: var(--rom-cols);
+  gap: 0;
+  align-items: center;
+}
+
+.rom-th,
+.rom-td {
+  padding: 0.5rem;
+}
+
+.rom-th {
+  font-size: 0.55rem;
+}
+
+.rom-td {
+  font-size: 0.75rem;
+  background: #000;
+  color: #fff;
+  border-bottom: 1px solid #333;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.rom-td:hover {
+  background: #0a0a0a;
+}
+
+.rom-td.selected {
+  outline: 2px solid #ff5a26;
+  outline-offset: -2px;
+  background: #111;
+}
+
+.rom-td.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rom-title {
+  font-weight: 700;
+  overflow: hidden;
+  font-size: 0.7rem;
+  line-height: 1.1;
+}
+
+.rom-table .c-title {
+  text-align: left;
+}
+
+.rom-table .c-compat {
+  text-align: center;
+}
+
+.rom-table .c-ach {
+  text-align: right;
+}
+
+.rom-td .chip {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border: 2px solid #fff;
+  font-size: 0.6rem;
+}
+
+.rom-td .chip.ok {
+  background: #10b981;
+  border-color: #10b981;
+  color: #000;
+}
+
+.rom-td .chip.no {
+  background: #374151;
+  border-color: #9ca3af;
+  color: #fff;
+}
+
+/* Game Info */
+.game-box {
+  border: 2px dashed #fff;
+  padding: 0.75rem;
+}
+
+.game-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.55rem;
+}
+
+.game-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.game-row .label {
+  opacity: 0.7;
+}
+
+.game-row .value {
+  word-break: break-word;
+}
+
+/* Achievements */
+.ach-box {
+  border: 2px dashed #fff;
+  padding: 0.75rem;
+}
+
+.ach-summary {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  font-size: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.ach-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ach-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+}
+
+.ach-item.done {
+  opacity: 0.6;
+}
+
+.ach-item .ach-check {
+  opacity: 0.85;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.ach-item .ach-title {
+  font-size: 0.64rem;
+  line-height: 1.2;
+}
+
+.ach-item .ach-desc {
+  opacity: 0.75;
+  margin-left: auto;
+}
+
+/* Core Picker Modal */
+.picker-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8000;
+  padding: 16px;
+}
+
+.picker-modal {
+  background: #000;
+  border: 3px solid #fff;
+  outline: 3px solid #ff5a26;
+  outline-offset: -6px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  width: min(760px, 96vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 3px solid #fff;
+  background: #0a0a0a;
+}
+
+.picker-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ff5a26;
+}
+
+.picker-close {
+  background: #000;
+  color: #fff;
+  border: 2px solid #ff5a26;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.picker-close:hover {
+  background: #ff5a26;
+  color: #000;
+}
+
+.picker-body {
+  padding: 0.8rem;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.picker-option {
+  background: #000;
+  color: #fff;
+  border: 2px solid #ff5a26;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.8rem 0.5rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.picker-option:hover:not(:disabled) {
+  background: #ff5a26;
+  color: #000;
+}
+
+.picker-option.locked {
+  border-color: #555;
+  color: #666;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 620px) {
+  .options-root {
+    margin: 1rem;
+    border-width: 3px;
+    outline-width: 3px;
+    padding: 1rem 1.1rem;
+  }
+  
+  .opt-title {
+    font-size: 1.2rem;
+  }
+  
+  .continue-root .hdr-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+  
+  .core-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .rom-tr {
+    grid-template-columns: 2fr 0.8fr 1fr;
+  }
+  
+  .rom-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  
+  .rom-toolbar-right {
+    flex: 1 1 100%;
+  }
+  
+  .rom-search {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .continue-root .lvl-title {
+    font-size: 0.8rem;
+  }
+  
+  .continue-root .btn-next {
+    font-size: 0.65rem;
+    padding: 0.42rem 0.7rem;
+  }
+}

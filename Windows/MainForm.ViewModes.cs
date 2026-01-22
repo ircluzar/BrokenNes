@@ -66,7 +66,9 @@ namespace BrokenNes.Windows
         /// <summary>
         /// Switch between view modes (Emulator, Widget, Web)
         /// </summary>
-        private async void SwitchViewMode(ViewMode mode)
+        /// <param name="mode">The view mode to switch to</param>
+        /// <param name="skipNavigation">If true, don't navigate WebView (useful when caller will navigate)</param>
+        private async void SwitchViewMode(ViewMode mode, bool skipNavigation = false)
         {
             // Check availability - only show message if we are trying to use a web mode
             bool isWebMode = (mode == ViewMode.Widget || mode == ViewMode.Overlay || mode == ViewMode.Web);
@@ -137,20 +139,26 @@ namespace BrokenNes.Windows
                         
                         // Get actual viewport width from renderer (calculates on-demand)
                         var viewportRect = dxRenderer.GetViewportRect();
-                        int actualViewportWidth = (int)Math.Ceiling(viewportRect.Right);
+                        int actualViewportWidth = (int)viewportRect.Right;
                         if (actualViewportWidth > 0 && actualViewportWidth < this.ClientSize.Width)
                         {
                             nesWidth = actualViewportWidth;
                         }
                     }
                     
+                    // WebView2 starts right after the emulator viewport (no gap needed since we removed ceiling)
+                    int webViewXPosition = nesWidth;
+                    
                     // WebView2 overlays on the right side, flush to the viewport edge
                     Helpers.WebViewHelper.SetLayout(webView, 
-                        new Point(nesWidth, menuHeight), 
-                        new Size(this.ClientSize.Width - nesWidth, availableHeight));
+                        new Point(webViewXPosition, menuHeight), 
+                        new Size(this.ClientSize.Width - webViewXPosition, availableHeight));
                     
-                    // Load transparent HTML content with modal-like panel
-                    Helpers.WebViewHelper.NavigateToString(webView, Helpers.HtmlContentHelper.GetWidgetModeHtml());
+                    // Load transparent HTML content with modal-like panel (unless caller will navigate)
+                    if (!skipNavigation)
+                    {
+                        Helpers.WebViewHelper.NavigateToString(webView, Helpers.HtmlContentHelper.GetWidgetModeHtml());
+                    }
                     
                     Console.WriteLine($"Switched to Widget mode - Background full width, WebView panel width: {this.ClientSize.Width - nesWidth}px");
                     break;
@@ -291,18 +299,26 @@ namespace BrokenNes.Windows
             
             try
             {
-                // Navigate to the module via the shared virtual host
-                // All modules share webmodules.local domain so they can communicate via localStorage
+                // Get the module URI
                 string uri = module.GetVirtualHostUri();
                 Console.WriteLine($"[LoadWebModule] Loading module: {module.Name}");
                 Console.WriteLine($"[LoadWebModule] URI: {uri}");
+                Console.WriteLine($"[LoadWebModule] Display Mode: {module.DisplayMode}");
                 
+                // Switch to appropriate ViewMode based on config FIRST (but don't navigate yet)
+                ViewMode targetMode = module.DisplayMode switch
+                {
+                    WebModuleDisplayMode.Widget => ViewMode.Widget,
+                    WebModuleDisplayMode.Overlay => ViewMode.Overlay,
+                    WebModuleDisplayMode.Web => ViewMode.Web,
+                    _ => ViewMode.Web
+                };
+                
+                Console.WriteLine($"[LoadWebModule] Switching to ViewMode: {targetMode}");
+                SwitchViewMode(targetMode, skipNavigation: true);
+                
+                // NOW navigate to the module (after layout is set up)
                 Helpers.WebViewHelper.NavigateToUri(webView, uri);
-                
-                // Switch to Web mode to show the module
-                Console.WriteLine($"[LoadWebModule] Switching to Web mode...");
-                SwitchViewMode(ViewMode.Web);
-                
                 Console.WriteLine($"[LoadWebModule] Successfully loaded web module: {module.Name}");
             }
             catch (Exception ex)
@@ -312,5 +328,7 @@ namespace BrokenNes.Windows
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+
     }
 }

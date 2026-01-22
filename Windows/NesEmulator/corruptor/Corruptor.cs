@@ -18,17 +18,46 @@ namespace BrokenNes
     public string CrashBehavior = "IgnoreErrors";
     public bool StubbornMode { get; set; } = false; // Imagine Fix periodic retries on freeze
 
-    // Glitch Harvester state
-    public List<HarvesterBaseState> GhBaseStates { get; set; } = new();
-    public List<HarvestEntry> GhStash { get; set; } = new();
-    public List<HarvestEntry> GhStockpile { get; set; } = new();
-    public string GhSelectedBaseId { get; set; } = string.Empty;
+    // Glitch Harvester engine (headless, shareable)
+    public GlitchHarvesterEngine GlitchHarvester { get; }
+
+    // Legacy Glitch Harvester properties for backward compatibility
+    // These now delegate to the GlitchHarvesterEngine
+    public List<HarvesterBaseState> GhBaseStates 
+    { 
+        get => GlitchHarvester.BaseStates; 
+        set => throw new NotSupportedException("Use GlitchHarvester.BaseStates directly");
+    }
+    public List<HarvestEntry> GhStash 
+    { 
+        get => GlitchHarvester.Stash; 
+        set => throw new NotSupportedException("Use GlitchHarvester.Stash directly");
+    }
+    public List<HarvestEntry> GhStockpile 
+    { 
+        get => GlitchHarvester.Stockpile; 
+        set => throw new NotSupportedException("Use GlitchHarvester.Stockpile directly");
+    }
+    public string GhSelectedBaseId 
+    { 
+        get => GlitchHarvester.SelectedBaseId; 
+        set => GlitchHarvester.SelectedBaseId = value;
+    }
     public string GhNewBaseName { get; set; } = string.Empty;
-    public bool GhLoadOnOperation { get; set; } = true;
+    public bool GhLoadOnOperation 
+    { 
+        get => GlitchHarvester.LoadOnOperation; 
+        set => GlitchHarvester.LoadOnOperation = value;
+    }
     public int GhStashCounter { get; set; } = 0;
     public int GhStockpileCounter { get; set; } = 0;
     public string? GhRenamingId { get; set; } = null;
     public string GhRenameText { get; set; } = string.Empty;
+
+    public Corruptor()
+    {
+        GlitchHarvester = new GlitchHarvesterEngine(this);
+    }
 
     // Methods to be filled in with logic
         public void Blast(NES nes)
@@ -137,75 +166,45 @@ namespace BrokenNes
             }
         }
 
-    // Glitch Harvester methods
+    // Glitch Harvester methods (legacy - delegate to engine)
         public void GhAddBaseState(NES nes)
         {
-            var raw = nes.SaveState();
-            if (string.IsNullOrEmpty(raw)) return;
-            var name = string.IsNullOrWhiteSpace(GhNewBaseName) ? $"Base {GhBaseStates.Count + 1}" : GhNewBaseName.Trim();
-            var b = new HarvesterBaseState { Name = name, State = raw };
-            GhBaseStates.Add(b);
-            GhSelectedBaseId = b.Id;
+            var name = string.IsNullOrWhiteSpace(GhNewBaseName) ? null : GhNewBaseName.Trim();
+            GlitchHarvester.AddBaseState(nes, name);
             GhNewBaseName = string.Empty;
         }
         public void GhDeleteSelectedBase()
         {
-            var b = GhBaseStates.FirstOrDefault(x => x.Id == GhSelectedBaseId);
-            if (b == null) return;
-            GhBaseStates.Remove(b);
-            if (!GhBaseStates.Any()) GhSelectedBaseId = string.Empty;
-            else GhSelectedBaseId = GhBaseStates.Last().Id;
+            GlitchHarvester.DeleteSelectedBaseState();
         }
         public void GhPromoteEntry(HarvestEntry e)
         {
-            GhStash.Remove(e);
-            e.Name = $"Entry {++GhStockpileCounter}";
-            GhStockpile.Add(e);
+            GlitchHarvester.PromoteToStockpile(e.Id);
         }
         public void GhDeleteStash(string id)
         {
-            var e = GhStash.FirstOrDefault(x => x.Id == id);
-            if (e != null) GhStash.Remove(e);
+            GlitchHarvester.DeleteStashEntry(id);
         }
         public void GhDeleteStock(string id)
         {
-            var e = GhStockpile.FirstOrDefault(x => x.Id == id);
-            if (e != null) GhStockpile.Remove(e);
+            GlitchHarvester.DeleteStockpileEntry(id);
             if (GhRenamingId == id) { GhRenamingId = null; GhRenameText = ""; }
         }
         public void GhClearStash()
         {
-            GhStash.Clear();
+            GlitchHarvester.ClearStash();
         }
         public void GhStashFromBlast(NES nes)
         {
-            if (!GhHasSelectedBase) return;
-            var baseState = GhBaseStates.FirstOrDefault(b => b.Id == GhSelectedBaseId);
-            if (baseState == null) return;
-            
-            // Load the base state if GhLoadOnOperation is enabled
-            if (GhLoadOnOperation)
+            try
             {
-                nes.LoadState(baseState.State);
+                GlitchHarvester.CorruptAndStash(nes);
+                LastBlastInfo = $"Blasted and stashed";
             }
-            
-            var writes = GenerateBlastLayer(CorruptIntensity);
-            
-            // Capture the exact pre-corruption state for perfect replayability
-            var capturedState = nes.SaveState();
-            
-            ApplyBlastLayer(writes, nes);
-            
-            // Bundle the savestate data with the entry for replayability
-            var entry = new HarvestEntry 
-            { 
-                Name = $"Stash {++GhStashCounter}", 
-                BaseStateId = baseState.Id,
-                State = capturedState,
-                Writes = writes 
-            };
-            GhStash.Add(entry);
-            LastBlastInfo = $"Blasted {writes.Count} writes to Stash";
+            catch (Exception ex)
+            {
+                LastBlastInfo = $"Stash failed: {ex.Message}";
+            }
         }
         public void GhBeginRename(HarvestEntry e)
         {
@@ -219,8 +218,14 @@ namespace BrokenNes
         }
         public void GhCommitRename(string id)
         {
-            var e = GhStockpile.FirstOrDefault(x => x.Id == id);
-            if (e != null && !string.IsNullOrWhiteSpace(GhRenameText)) e.Name = GhRenameText.Trim();
+            if (!string.IsNullOrWhiteSpace(GhRenameText))
+            {
+                try
+                {
+                    GlitchHarvester.RenameStockpileEntry(id, GhRenameText.Trim());
+                }
+                catch { }
+            }
             GhCancelRename();
         }
         
@@ -270,7 +275,7 @@ namespace BrokenNes
             }
         }
         
-    public bool GhHasSelectedBase => GhBaseStates.Any(b => b.Id == GhSelectedBaseId);
+    public bool GhHasSelectedBase => GlitchHarvester.HasSelectedBase;
     // Add more methods as needed for corruptor logic
     }
 }

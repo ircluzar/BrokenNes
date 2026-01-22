@@ -1,0 +1,6 @@
+{
+  "displayMode": "web",
+  "title": "API Test Suite",
+  "description": "Testing interface for BrokenNes Web API endpoints",
+  "version": "1.0.0"
+}

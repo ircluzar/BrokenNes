@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrokenNes - Main Menu</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <!-- Under Construction Modal -->
+  <div id="underConstructionModal" class="modal-backdrop hw-center" style="display: none;">
+    <div class="card shadow-xl health-warning-modal">
+      <div class="card-body">
+        <h2 class="hw-title">Under Construction</h2>
+        <div class="hw-text">
+          This software is in early development phase and is very much still in need of improvement, optimization, polishing and additional content. Please keep in mind that some of the jank is intentional, and some is intentional. New stuff will be added to the software over time.
+        </div>
+        <div class="hw-text">
+          If you find bugs that are clearly not supposed to happen, please report them to Ircluzar on the RTC Discord. Instructions for reproducing the issue are required with any bug report. Thanks!
+        </div>
+        <button class="hero-btn hw-ok-btn" id="underConstructionOk" aria-label="Acknowledge under construction message">I Understand</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Health Warning Modal -->
+  <div id="healthWarningModal" class="modal-backdrop hw-center" style="display: none;">
+    <div class="card shadow-xl health-warning-modal">
+      <div class="card-body">
+        <h2 class="hw-title">Health Warning</h2>
+        <div class="hw-text">
+          This software can and will generate flashing images and loud noises. Avoid using this software if you are prone to seizures.
+        </div>
+        <div class="hw-text">
+          A certain level of jank and glitchiness is to be expected as part of the intended experience. If you experience discomfort, please take a break or stop using the software.
+        </div>
+        <button class="hero-btn hw-ok-btn" id="healthWarningOk" aria-label="Acknowledge health warning">OK</button>
+        <audio id="plateWav" src="assets/sfx/plates.m4a" preload="auto"></audio>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Hero Screen -->
+  <div id="homeHero" class="home-hero hero-fade-in" style="display: none;">
+    <div class="hero-inner title-screen">
+      <h1 class="hero-title fade-seq" data-seq="0">Broken<span>Nes</span></h1>
+      <div class="title-buttons">
+        <button class="title-primary fade-seq" data-seq="1" id="btnDeckBuilder" aria-label="Open Deck Builder">Deck Builder</button>
+        <div class="title-secondary-group">
+          <button class="title-secondary fade-seq" data-seq="2" id="btnEmulator" aria-label="Open Emulator">BrokenNes Emulator</button>
+          <button class="title-secondary fade-seq" data-seq="3" id="btnOptions" aria-label="Options">Options</button>
+          <button class="title-secondary fade-seq" data-seq="4" id="btnAbout" aria-label="About">About</button>
+        </div>
+        <div class="title-footer fade-seq" data-seq="5">
+          <a href="https://redscientist.com" target="_blank" rel="noopener noreferrer" aria-label="Visit Redscientist Labs website">2025 - Redscientist Labs</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Modal -->
+  <div id="aboutModal" class="modal-backdrop about-backdrop" style="display: none;">
+    <div class="about-modal">
+      <div class="about-body">
+        <h2 class="about-title">About BrokenNes</h2>
+        <p class="about-text">BrokenNes is a browser‑based NES emulator and corruption toolkit, built loosely with care and love and attention to detal.</p>
+        <p class="about-text">Inspired by work on NET‑NES, QuickNES, and NesHawk. More info on that will be added later.</p>
+        <p class="about-text">Achievements are based on RetroAchievements. Certain have beed lifted, reimagined or modified. See Retroachievements.org for individual credits.</p>
+        <p class="about-text">Design and architecture: <strong>ircluzar</strong></p>
+        <button class="about-close" id="aboutClose" aria-label="Close About">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/storage.js"></script>
+  <script src="lib/music.js"></script>
+  <script src="lib/homePixelBg.js"></script>
+  <script src="home.js"></script>
+</body>
+</html>

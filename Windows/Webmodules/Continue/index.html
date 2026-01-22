@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deck Builder - BrokenNes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="options-root continue-root">
+    <h2 class="opt-title">DECK BUILDER</h2>
+
+    <section class="cont-header">
+      <div class="hdr-main">
+        <div class="lvl-title">
+          <span class="chip" id="levelChip">1</span>
+          <strong id="levelTitle">Loading...</strong>
+        </div>
+        <div class="lvl-status">
+          <span class="status-chip not-cleared" id="levelStatus">Not Cleared</span>
+        </div>
+      </div>
+      <div class="lvl-msg" id="levelMessage" style="display: none;"></div>
+      <div class="hdr-cards" id="enforcedCards">
+        <span class="small-note">Enforced:</span>
+      </div>
+      <div class="hdr-cta">
+        <button class="btn-next" id="btnProgress" disabled title="Requires level cleared and stars">
+          Progression: <span id="starsDisplay">0/5</span> ⭐
+        </button>
+      </div>
+    </section>
+
+    <section class="opt-section">
+      <h3 class="opt-h3">Build Console</h3>
+      <div class="core-grid">
+        <!-- CPU Slot -->
+        <div class="core-slot" id="cpuSlot">
+          <div class="slot-title">CPU</div>
+          <div class="slot-body">
+            <div class="slot-empty" id="cpuEmpty">
+              Select CPU
+            </div>
+            <div class="card-wrap" id="cpuCard" style="display: none;">
+              <div class="slot-label" id="cpuLabel"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- PPU Slot -->
+        <div class="core-slot" id="ppuSlot">
+          <div class="slot-title">PPU</div>
+          <div class="slot-body">
+            <div class="slot-empty" id="ppuEmpty">
+              Select PPU
+            </div>
+            <div class="card-wrap" id="ppuCard" style="display: none;">
+              <div class="slot-label" id="ppuLabel"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- APU Slot -->
+        <div class="core-slot" id="apuSlot">
+          <div class="slot-title">APU</div>
+          <div class="slot-body">
+            <div class="slot-empty" id="apuEmpty">
+              Select APU
+            </div>
+            <div class="card-wrap" id="apuCard" style="display: none;">
+              <div class="slot-label" id="apuLabel"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- SHADER Slot -->
+        <div class="core-slot" id="shaderSlot">
+          <div class="slot-title">SHADER</div>
+          <div class="slot-body">
+            <div class="slot-empty" id="shaderEmpty">
+              Select SHADER
+            </div>
+            <div class="card-wrap" id="shaderCard" style="display: none;">
+              <div class="slot-label" id="shaderLabel"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="opt-section">
+      <h3 class="opt-h3">
+        <button type="button" class="panel-toggle" id="cartridgeToggle" aria-expanded="true">
+          Cartridge <span class="toggle-ico">▾</span>
+        </button>
+      </h3>
+      <div class="rom-selector" id="cartridgePanel">
+        <div class="rom-toolbar">
+          <label class="small-note">
+            <input type="checkbox" id="filterCompatible" checked /> Only show compatible
+          </label>
+          <div class="rom-toolbar-right">
+            <input class="rom-search" id="romSearch" placeholder="Search title…" />
+          </div>
+        </div>
+        <div class="rom-empty small-note" id="romEmpty" style="display: none;">
+          No games found or available. Build your deck to unlock achievements!
+        </div>
+        <div class="rom-table" id="romTable" role="table" aria-label="ROM list">
+          <div class="rom-thead" role="rowgroup">
+            <div class="rom-tr rom-th" role="row">
+              <div class="c-title" role="columnheader">Title</div>
+              <div class="c-compat" role="columnheader">Compat</div>
+              <div class="c-ach" role="columnheader">Stars</div>
+            </div>
+          </div>
+          <div class="rom-tbody" id="romTbody" role="rowgroup">
+            <!-- ROM rows will be inserted here -->
+          </div>
+        </div>
+        
+        <div class="game-box" id="gameInfo" style="margin-top: 0.9rem;">
+          <div class="small-note">Select a game to view details.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="opt-section">
+      <h3 class="opt-h3">Achievements</h3>
+      <div class="ach-box" id="achBox">
+        <div class="small-note">Select a compatible game to view achievements.</div>
+      </div>
+    </section>
+
+    <div class="opt-footer">
+      <button class="opt-link start-btn locked" id="startBtn" disabled title="Build valid and game with achievements required">
+        Start the game
+      </button>
+      <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link">RETURN</a>
+    </div>
+  </div>
+
+  <!-- Core Picker Modal -->
+  <div class="picker-modal-backdrop" id="pickerModal" style="display: none;">
+    <div class="picker-modal">
+      <div class="picker-header">
+        <h3 id="pickerTitle">Select Core</h3>
+        <button class="picker-close" id="pickerClose" aria-label="Close">×</button>
+      </div>
+      <div class="picker-body">
+        <div class="picker-grid" id="pickerGrid">
+          <!-- Core options will be inserted here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/storage.js"></script>
+  <script src="lib/music.js"></script>
+  <script src="lib/homePixelBg.js"></script>
+  <script src="continue.js"></script>
+</body>
+</html>

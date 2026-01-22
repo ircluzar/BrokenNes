@@ -173,6 +173,14 @@ namespace BrokenNes.Windows
             }
 
             StopEmulation();
+            
+            // Shut down Web API server
+            if (webApiServer != null)
+            {
+                _ = webApiServer.StopAsync();
+                webApiServer.Dispose();
+            }
+            
             audioManager?.Dispose();
             inputManager?.Dispose();
             frameBuffer?.Dispose();

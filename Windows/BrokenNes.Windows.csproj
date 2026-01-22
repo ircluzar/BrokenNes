@@ -19,15 +19,20 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Reference to the core emulator code from parent project -->
-    <!-- Exclude Blazor-specific files -->
-    <Compile Include="..\NesEmulator\**\*.cs" 
-             Exclude="..\NesEmulator\board\Emulator*.cs;..\NesEmulator\board\NesController.cs;..\NesEmulator\board\Benchmark.cs;..\NesEmulator\board\StatePersistence.cs;..\NesEmulator\board\ClockRegistry.cs;..\NesEmulator\UI.cs;..\NesEmulator\corruptor\GlitchHarvester.cs;..\NesEmulator\StatusService.cs;..\NesEmulator\clocks\**" 
-             LinkBase="NesEmulator" />
-    <Compile Include="..\Models\GameSave.cs" Link="Models\GameSave.cs" />
+    <!-- Exclude Blazor-specific files from the NesEmulator folder (now local) -->
+    <Compile Remove="NesEmulator\board\Emulator*.cs" />
+    <Compile Remove="NesEmulator\board\NesController.cs" />
+    <Compile Remove="NesEmulator\board\Benchmark.cs" />
+    <Compile Remove="NesEmulator\board\StatePersistence.cs" />
+    <Compile Remove="NesEmulator\board\ClockRegistry.cs" />
+    <Compile Remove="NesEmulator\UI.cs" />
+    <Compile Remove="NesEmulator\corruptor\GlitchHarvester.cs" />
+    <Compile Remove="NesEmulator\StatusService.cs" />
+    <Compile Remove="NesEmulator\clocks\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,7 +47,7 @@
 
   <ItemGroup>
     <!-- Embed default ROM -->
-    <EmbeddedResource Include="..\wwwroot\test.nes" Link="Resources\test.nes" />
+    <EmbeddedResource Include="Resources\test.nes" />
   </ItemGroup>
 
   <ItemGroup>

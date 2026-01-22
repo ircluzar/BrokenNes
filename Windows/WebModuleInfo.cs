@@ -1,8 +1,33 @@
 using System;
 using System.IO;
+using System.Text.Json;
 
 namespace BrokenNes.Windows
 {
+    /// <summary>
+    /// Display mode for web modules - maps to ViewMode enum
+    /// </summary>
+    public enum WebModuleDisplayMode
+    {
+        /// <summary>Full screen mode - only WebView2</summary>
+        Web,
+        /// <summary>Side-by-side mode - emulator + WebView2</summary>
+        Widget,
+        /// <summary>Transparent overlay on top of emulator</summary>
+        Overlay
+    }
+
+    /// <summary>
+    /// Module configuration from config.json
+    /// </summary>
+    public class WebModuleConfig
+    {
+        public string DisplayMode { get; set; } = "web";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Version { get; set; } = "";
+    }
+
     /// <summary>
     /// Represents metadata about a web module available for loading
     /// </summary>
@@ -33,13 +58,60 @@ namespace BrokenNes.Windows
         /// </summary>
         public bool IsValid { get; }
 
+        /// <summary>
+        /// Gets the display mode for this module
+        /// </summary>
+        public WebModuleDisplayMode DisplayMode { get; }
+
+        /// <summary>
+        /// Gets the module configuration
+        /// </summary>
+        public WebModuleConfig Config { get; }
+
         public WebModuleInfo(string directoryPath)
         {
             DirectoryPath = directoryPath;
             FolderName = Path.GetFileName(directoryPath);
-            Name = FolderName; // Can be enhanced later with metadata file
             IndexPath = Path.Combine(directoryPath, "index.html");
             IsValid = File.Exists(IndexPath);
+
+            // Load config.json if it exists
+            string configPath = Path.Combine(directoryPath, "config.json");
+            if (File.Exists(configPath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(configPath);
+                    Config = JsonSerializer.Deserialize<WebModuleConfig>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }) ?? new WebModuleConfig();
+                    
+                    // Use title from config if available, otherwise use folder name
+                    Name = !string.IsNullOrWhiteSpace(Config.Title) ? Config.Title : FolderName;
+                    
+                    // Parse display mode
+                    DisplayMode = Config.DisplayMode?.ToLower() switch
+                    {
+                        "widget" => WebModuleDisplayMode.Widget,
+                        "overlay" => WebModuleDisplayMode.Overlay,
+                        _ => WebModuleDisplayMode.Web
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[WebModuleInfo] Failed to load config for {FolderName}: {ex.Message}");
+                    Config = new WebModuleConfig();
+                    Name = FolderName;
+                    DisplayMode = WebModuleDisplayMode.Web;
+                }
+            }
+            else
+            {
+                Config = new WebModuleConfig();
+                Name = FolderName;
+                DisplayMode = WebModuleDisplayMode.Web;
+            }
         }
 
         /// <summary>

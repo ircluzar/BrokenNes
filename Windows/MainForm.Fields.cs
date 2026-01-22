@@ -10,6 +10,7 @@ using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
 using BrokenNes.Windows.Tools;
+using BrokenNes.Windows.WebApi;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace BrokenNes.Windows
@@ -95,5 +96,8 @@ namespace BrokenNes.Windows
         private WebView2? webView;
         private ViewMode currentViewMode = ViewMode.Emulator;
         private bool isWebViewInitialized = false;
+        
+        // Web API server
+        private WebApiServer? webApiServer;
     }
 }
