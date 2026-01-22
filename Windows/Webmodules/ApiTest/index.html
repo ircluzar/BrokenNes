@@ -316,6 +316,62 @@
       <div id="ghFullWorkflowResult" class="result-box"></div>
     </div>
 
+    <!-- Imagine (AI-Powered Corruption) Testing -->
+    <div class="test-section">
+      <h2>6. Imagine (AI-Powered Corruption)</h2>
+      
+      <h3>Model Management</h3>
+      <button onclick="testImagineModelLoaded()">Get Model Loaded State</button>
+      <div id="imagineModelLoadedResult" class="result-box"></div>
+      
+      <button onclick="testImagineGetEpoch()">Get Current Epoch</button>
+      <div id="imagineGetEpochResult" class="result-box"></div>
+      
+      <label>Epoch: <input type="number" id="imagineEpoch" value="30" min="1" max="100"></label>
+      <button onclick="testImagineSetEpoch()">Set Epoch</button>
+      <div id="imagineSetEpochResult" class="result-box"></div>
+      
+      <label>Load Epoch: <input type="number" id="imagineLoadEpoch" value="30" min="1" max="100"></label>
+      <button onclick="testImagineLoadModel()">Load Model</button>
+      <div id="imagineLoadModelResult" class="result-box"></div>
+      
+      <h3>Generation Parameters</h3>
+      <button onclick="testImagineGetParams()">Get Generation Params</button>
+      <div id="imagineGetParamsResult" class="result-box"></div>
+      
+      <label>Bytes: <input type="number" id="imagineBytesToGenerate" value="2" min="1" max="32"></label>
+      <label>Temp: <input type="number" id="imagineTemperature" value="0.4" min="0" max="1.5" step="0.1"></label>
+      <label>TopK: <input type="number" id="imagineTopK" value="1" min="1" max="10"></label>
+      <button onclick="testImagineSetParams()">Set Generation Params</button>
+      <div id="imagineSetParamsResult" class="result-box"></div>
+      
+      <h3>CPU Snapshot & Prediction</h3>
+      <button onclick="testImagineFreezeAndFetch()">Freeze & Fetch (Capture CPU)</button>
+      <div id="imagineFreezeAndFetchResult" class="result-box"></div>
+      
+      <button onclick="testImagineGetSnapshot()">Get CPU Snapshot</button>
+      <div id="imagineGetSnapshotResult" class="result-box"></div>
+      
+      <button onclick="testImagineRunPrediction()">Run Prediction</button>
+      <div id="imagineRunPredictionResult" class="result-box"></div>
+      
+      <button onclick="testImagineGetPredictedBytes()">Get Predicted Bytes</button>
+      <div id="imagineGetPredictedBytesResult" class="result-box"></div>
+      
+      <h3>Patch Application</h3>
+      <label>PC: <input type="text" id="imaginePatchPc" value="0x8000" placeholder="0x8000"></label>
+      <label>Bytes: <input type="text" id="imaginePatchBytes" value="0xEA,0xEA" placeholder="0xEA,0xEA"></label>
+      <button onclick="testImagineApplyPatch()">Apply Patch</button>
+      <div id="imagineApplyPatchResult" class="result-box"></div>
+      
+      <h3>🎯 Automatic Corruption</h3>
+      <button onclick="testImagineABug()">Imagine a Bug</button>
+      <div id="imagineABugResult" class="result-box"></div>
+      
+      <button onclick="testImagineGetLastError()">Get Last Error</button>
+      <div id="imagineGetLastErrorResult" class="result-box"></div>
+    </div>
+
   </div>
 
   <script src="apitest.js"></script>

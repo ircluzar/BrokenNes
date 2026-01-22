@@ -166,6 +166,9 @@ namespace BrokenNes.Windows
                 {
                     if (nes != null)
                     {
+                        // Sync corruptor's crash behavior with config
+                        corruptor.CrashBehavior = config.CrashBehavior;
+                        
                         switch (config.CrashBehavior)
                         {
                             case "IgnoreErrors":

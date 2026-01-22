@@ -736,7 +736,20 @@ async function runAllTests() {
     { name: 'GH Clear Stash', fn: testGhClearStash, resultId: 'ghClearStashResult' },
     { name: 'GH Import Stockpile', fn: testGhImportStockpile, resultId: 'ghImportStockpileResult' },
     { name: 'GH Delete Base', fn: testGhDeleteBase, resultId: 'ghDeleteBaseResult' },
-    { name: 'GH Full Workflow (ID-based)', fn: testGhFullWorkflow, resultId: 'ghFullWorkflowResult' }
+    { name: 'GH Full Workflow (ID-based)', fn: testGhFullWorkflow, resultId: 'ghFullWorkflowResult' },
+    { name: 'Imagine Model Loaded', fn: testImagineModelLoaded, resultId: 'imagineModelLoadedResult' },
+    { name: 'Imagine Get Epoch', fn: testImagineGetEpoch, resultId: 'imagineGetEpochResult' },
+    { name: 'Imagine Set Epoch', fn: testImagineSetEpoch, resultId: 'imagineSetEpochResult' },
+    { name: 'Imagine Load Model', fn: testImagineLoadModel, resultId: 'imagineLoadModelResult' },
+    { name: 'Imagine Get Params', fn: testImagineGetParams, resultId: 'imagineGetParamsResult' },
+    { name: 'Imagine Set Params', fn: testImagineSetParams, resultId: 'imagineSetParamsResult' },
+    { name: 'Imagine Freeze & Fetch', fn: testImagineFreezeAndFetch, resultId: 'imagineFreezeAndFetchResult' },
+    { name: 'Imagine Get Snapshot', fn: testImagineGetSnapshot, resultId: 'imagineGetSnapshotResult' },
+    { name: 'Imagine Run Prediction', fn: testImagineRunPrediction, resultId: 'imagineRunPredictionResult' },
+    { name: 'Imagine Apply Patch', fn: testImagineApplyPatch, resultId: 'imagineApplyPatchResult' },
+    { name: 'Imagine a Bug', fn: testImagineABug, resultId: 'imagineABugResult' },
+    { name: 'Imagine Get Predicted Bytes', fn: testImagineGetPredictedBytes, resultId: 'imagineGetPredictedBytesResult' },
+    { name: 'Imagine Get Last Error', fn: testImagineGetLastError, resultId: 'imagineGetLastErrorResult' }
   ];
   
   let passCount = 0;
@@ -1370,5 +1383,293 @@ async function testGhFullWorkflow() {
   } catch (error) {
     log.push(`\n❌ ERROR: ${error.message}`);
     displayResult('ghFullWorkflowResult', log.join('\n'), true);
+  }
+}
+
+// ==============================================================================
+// IMAGINE (AI-Powered Corruption) TESTS
+// ==============================================================================
+
+// Test: Get Model Loaded State
+async function testImagineModelLoaded() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/model-loaded`);
+    const data = await response.json();
+    displayResult('imagineModelLoadedResult', data);
+  } catch (error) {
+    displayResult('imagineModelLoadedResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Get Current Epoch
+async function testImagineGetEpoch() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/epoch`);
+    const data = await response.json();
+    displayResult('imagineGetEpochResult', data);
+  } catch (error) {
+    displayResult('imagineGetEpochResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Set Epoch
+async function testImagineSetEpoch() {
+  const epoch = parseInt(document.getElementById('imagineEpoch')?.value || '30');
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/epoch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epoch: epoch })
+    });
+    const data = await response.json();
+    displayResult('imagineSetEpochResult', data);
+  } catch (error) {
+    displayResult('imagineSetEpochResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Load Model
+async function testImagineLoadModel() {
+  const epoch = parseInt(document.getElementById('imagineLoadEpoch')?.value || '30');
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/load-model`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epoch: epoch })
+    });
+    const data = await response.json();
+    displayResult('imagineLoadModelResult', data);
+  } catch (error) {
+    displayResult('imagineLoadModelResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Get Generation Parameters
+async function testImagineGetParams() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/generation-params`);
+    const data = await response.json();
+    displayResult('imagineGetParamsResult', data);
+  } catch (error) {
+    displayResult('imagineGetParamsResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Set Generation Parameters
+async function testImagineSetParams() {
+  const bytesToGenerate = parseInt(document.getElementById('imagineBytesToGenerate')?.value || '2');
+  const temperature = parseFloat(document.getElementById('imagineTemperature')?.value || '0.4');
+  const topK = parseInt(document.getElementById('imagineTopK')?.value || '1');
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/generation-params`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bytesToGenerate: bytesToGenerate,
+        temperature: temperature,
+        topK: topK
+      })
+    });
+    const data = await response.json();
+    displayResult('imagineSetParamsResult', data);
+  } catch (error) {
+    displayResult('imagineSetParamsResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Freeze and Fetch Next Instruction (Capture CPU Snapshot)
+async function testImagineFreezeAndFetch() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/freeze-and-fetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    
+    // Format snapshot for better display
+    if (data.success && data.snapshot) {
+      const prev8Array = Array.isArray(data.snapshot.prev8) ? data.snapshot.prev8 : (data.snapshot.prev8 ? Object.values(data.snapshot.prev8) : []);
+      const next16Array = Array.isArray(data.snapshot.next16) ? data.snapshot.next16 : (data.snapshot.next16 ? Object.values(data.snapshot.next16) : []);
+      
+      const formatted = {
+        success: data.success,
+        message: data.message,
+        snapshot: {
+          cpuCoreId: data.snapshot.cpuCoreId,
+          pc: `0x${toHex(data.snapshot.pc, 4)}`,
+          registers: {
+            a: `0x${toHex(data.snapshot.a)}`,
+            x: `0x${toHex(data.snapshot.x)}`,
+            y: `0x${toHex(data.snapshot.y)}`,
+            p: `0x${toHex(data.snapshot.p)}`,
+            sp: `0x${toHex(data.snapshot.sp, 4)}`
+          },
+          flags: {
+            irq: data.snapshot.irq,
+            nmi: data.snapshot.nmi,
+            inPrgRom: data.snapshot.inPrgRom
+          },
+          prev8: prev8Array.length > 0 ? prev8Array.map(b => `0x${toHex(b)}`).join(' ') : 'N/A',
+          next16: next16Array.length > 0 ? next16Array.slice(0, 8).map(b => `0x${toHex(b)}`).join(' ') + '...' : 'N/A'
+        }
+      };
+      displayResult('imagineFreezeAndFetchResult', formatted);
+    } else {
+      displayResult('imagineFreezeAndFetchResult', data);
+    }
+  } catch (error) {
+    displayResult('imagineFreezeAndFetchResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Get CPU Snapshot
+async function testImagineGetSnapshot() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/cpu-snapshot`);
+    const data = await response.json();
+    
+    // Format snapshot for better display
+    if (data.success && data.snapshot) {
+      const prev8Array = Array.isArray(data.snapshot.prev8) ? data.snapshot.prev8 : (data.snapshot.prev8 ? Object.values(data.snapshot.prev8) : []);
+      const next16Array = Array.isArray(data.snapshot.next16) ? data.snapshot.next16 : (data.snapshot.next16 ? Object.values(data.snapshot.next16) : []);
+      
+      const formatted = {
+        success: data.success,
+        snapshot: {
+          cpuCoreId: data.snapshot.cpuCoreId,
+          pc: `0x${toHex(data.snapshot.pc, 4)}`,
+          registers: {
+            a: `0x${toHex(data.snapshot.a)}`,
+            x: `0x${toHex(data.snapshot.x)}`,
+            y: `0x${toHex(data.snapshot.y)}`,
+            p: `0x${toHex(data.snapshot.p)}`,
+            sp: `0x${toHex(data.snapshot.sp, 4)}`
+          },
+          flags: {
+            irq: data.snapshot.irq,
+            nmi: data.snapshot.nmi,
+            inPrgRom: data.snapshot.inPrgRom
+          },
+          prev8: prev8Array.length > 0 ? prev8Array.map(b => `0x${toHex(b)}`).join(' ') : 'N/A',
+          next16: next16Array.length > 0 ? next16Array.slice(0, 8).map(b => `0x${toHex(b)}`).join(' ') + '...' : 'N/A'
+        }
+      };
+      displayResult('imagineGetSnapshotResult', formatted);
+    } else {
+      displayResult('imagineGetSnapshotResult', data);
+    }
+  } catch (error) {
+    displayResult('imagineGetSnapshotResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Run Prediction
+async function testImagineRunPrediction() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/run-prediction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    
+    // Format predicted bytes for better display
+    if (data.success && data.predictedBytes) {
+      const bytesArray = Array.isArray(data.predictedBytes) ? data.predictedBytes : Object.values(data.predictedBytes);
+      const formatted = {
+        success: data.success,
+        length: data.length,
+        predictedBytes: bytesArray.map(b => `0x${toHex(b)}`).join(' ')
+      };
+      displayResult('imagineRunPredictionResult', formatted);
+    } else {
+      displayResult('imagineRunPredictionResult', data);
+    }
+  } catch (error) {
+    displayResult('imagineRunPredictionResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Apply Patch
+async function testImagineApplyPatch() {
+  const pcHex = document.getElementById('imaginePatchPc')?.value || '0x8000';
+  const bytesStr = document.getElementById('imaginePatchBytes')?.value || '0xEA,0xEA';
+  
+  const pc = parseHex(pcHex);
+  const bytes = bytesStr.split(',').map(b => parseHex(b.trim()));
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/apply-patch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pc: pc,
+        bytes: bytes
+      })
+    });
+    const data = await response.json();
+    displayResult('imagineApplyPatchResult', data);
+  } catch (error) {
+    displayResult('imagineApplyPatchResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Imagine a Bug
+async function testImagineABug() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/imagine-a-bug`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    
+    // Format predicted bytes for better display
+    if (data.success && data.predictedBytes) {
+      const bytesArray = Array.isArray(data.predictedBytes) ? data.predictedBytes : Object.values(data.predictedBytes);
+      const formatted = {
+        success: data.success,
+        message: data.message,
+        predictedBytes: bytesArray.map(b => `0x${toHex(b)}`).join(' ')
+      };
+      displayResult('imagineABugResult', formatted);
+    } else {
+      displayResult('imagineABugResult', data);
+    }
+  } catch (error) {
+    displayResult('imagineABugResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Get Predicted Bytes
+async function testImagineGetPredictedBytes() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/predicted-bytes`);
+    const data = await response.json();
+    
+    // Format predicted bytes for better display
+    if (data.success && data.predictedBytes) {
+      const bytesArray = Array.isArray(data.predictedBytes) ? data.predictedBytes : Object.values(data.predictedBytes);
+      const formatted = {
+        success: data.success,
+        length: data.length,
+        predictedBytes: bytesArray.map(b => `0x${toHex(b)}`).join(' ')
+      };
+      displayResult('imagineGetPredictedBytesResult', formatted);
+    } else {
+      displayResult('imagineGetPredictedBytesResult', data);
+    }
+  } catch (error) {
+    displayResult('imagineGetPredictedBytesResult', `Error: ${error.message}`, true);
+  }
+}
+
+// Test: Get Last Error
+async function testImagineGetLastError() {
+  try {
+    const response = await fetch(`${API_BASE}/api/imagine/last-error`);
+    const data = await response.json();
+    displayResult('imagineGetLastErrorResult', data);
+  } catch (error) {
+    displayResult('imagineGetLastErrorResult', `Error: ${error.message}`, true);
   }
 }

@@ -719,6 +719,18 @@ body {
   color: var(--green);
 }
 
+.gh-crash-status.ignore-errors {
+  background: rgba(128, 128, 128, 0.2);
+  border: 1px solid #888;
+  color: #aaa;
+}
+
+.gh-crash-status.imagine-fix {
+  background: rgba(147, 51, 234, 0.2);
+  border: 1px solid #9333ea;
+  color: #a855f7;
+}
+
 /* Imagine Section */
 .gh-imagine-simple {
   max-width: 800px;

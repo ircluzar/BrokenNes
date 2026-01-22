@@ -70,19 +70,19 @@ This document lists all features/calls that need to be implemented as an API in 
 - [x] **Import Stockpile** - Import stockpile from JSON
 
 ### Imagine (AI-Powered Corruption)
-- [ ] **Get Model Loaded State** - Check if model is loaded
-- [ ] **Get Current Epoch** - Get loaded model epoch number
-- [ ] **Set Model Epoch** - Set epoch to load
-- [ ] **Load Model** - Load AI model by epoch
-- [ ] **Get Generation Parameters** - Read bytes, temperature, topK settings
-- [ ] **Set Generation Parameters** - Configure AI generation settings
-- [ ] **Freeze and Fetch Next Instruction** - Capture CPU state snapshot
-- [ ] **Get CPU Snapshot** - Read captured CPU state for analysis
-- [ ] **Run Prediction** - Generate predicted bytes from current state
-- [ ] **Apply Patch** - Write predicted bytes to memory
-- [ ] **Imagine a Bug** - Automatic corruption using AI prediction
-- [ ] **Get Predicted Bytes** - Read last AI prediction result
-- [ ] **Get Last Error** - Read last Imagine error message
+- [x] **Get Model Loaded State** - Check if model is loaded
+- [x] **Get Current Epoch** - Get loaded model epoch number
+- [x] **Set Model Epoch** - Set epoch to load
+- [x] **Load Model** - Load AI model by epoch
+- [x] **Get Generation Parameters** - Read bytes, temperature, topK settings
+- [x] **Set Generation Parameters** - Configure AI generation settings
+- [x] **Freeze and Fetch Next Instruction** - Capture CPU state snapshot
+- [x] **Get CPU Snapshot** - Read captured CPU state for analysis
+- [x] **Run Prediction** - Generate predicted bytes from current state
+- [x] **Apply Patch** - Write predicted bytes to memory
+- [x] **Imagine a Bug** - Automatic corruption using AI prediction
+- [x] **Get Predicted Bytes** - Read last AI prediction result
+- [x] **Get Last Error** - Read last Imagine error message
 
 ### Achievements
 - [ ] **Get Achievement List** - Retrieve achievements for current game

@@ -7,13 +7,13 @@ using NesEmulator;
 
 namespace BrokenNes.Windows
 {
-    internal sealed class ImagineEngine : ICorruptorEmulatorHooks
+    public sealed class ImagineEngine : ICorruptorEmulatorHooks
     {
         private readonly NES nes;
         private readonly Corruptor corruptor;
         private readonly Random rng = new Random();
 
-        public int Epoch { get; private set; } = 30;
+        public int Epoch { get; set; } = 30;
         public bool ModelLoaded { get; private set; }
         public string EpLabel { get; private set; } = string.Empty;
         public string LastError { get; private set; } = string.Empty;
@@ -261,7 +261,7 @@ namespace BrokenNes.Windows
         }
     }
 
-    internal sealed class ImagineSnapshot
+    public sealed class ImagineSnapshot
     {
         public string CpuCoreId { get; set; } = string.Empty;
         public ushort PC { get; set; }

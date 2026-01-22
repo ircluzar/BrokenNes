@@ -12,6 +12,8 @@ let currentRenameId = null;
 // RTC State
 let rtcAutoCorruptEnabled = false;
 let selectedDomains = [];
+let crashPollingInterval = null;
+let currentCrashBehavior = 'IgnoreErrors';
 
 // DOM Elements
 const elements = {
@@ -95,6 +97,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize RTC state
   loadRTCState();
   console.log('[GH] RTC state loading...');
+  
+  // Initialize Imagine state
+  loadImagineState();
+  console.log('[GH] Imagine state loading...');
   
   refreshAll();
   console.log('[GH] Initial refresh triggered');
@@ -222,7 +228,8 @@ function attachEventListeners() {
   // Imagine
   elements.btnLoadModel.addEventListener('click', imagineLoadModel);
   elements.imagineTemperature.addEventListener('input', () => {
-    const tempValue = (parseFloat(elements.imagineTemperature.value) / 40.0).toFixed(2);
+    // Temperature slider goes from 0-150, convert to 0.0-1.0 for display
+    const tempValue = (parseFloat(elements.imagineTemperature.value) / 150.0).toFixed(2);
     elements.imagineTemperatureValue.textContent = tempValue;
   });
   elements.btnImagineBug.addEventListener('click', imagineAutoBug);
@@ -278,8 +285,18 @@ async function loadRTCState() {
   
   const crashData = await apiCall('/api/rtc/crash-behavior');
   if (crashData.success) {
-    elements.crashBehavior.value = crashData.crashBehavior;
-    updateCrashStatus(crashData.crashed);
+    console.log('[RTC] Crash behavior from API:', crashData.crashBehavior);
+    if (elements.crashBehavior) {
+      elements.crashBehavior.value = crashData.crashBehavior;
+      console.log('[RTC] Crash behavior dropdown value set to:', elements.crashBehavior.value);
+    } else {
+      console.error('[RTC] Crash behavior dropdown element is null!');
+    }
+    currentCrashBehavior = crashData.crashBehavior;
+    updateCrashStatus(crashData.crashed, crashData.crashBehavior);
+    startCrashPolling(crashData.crashBehavior);
+  } else {
+    console.error('[RTC] Failed to load crash behavior:', crashData.error);
   }
 }
 
@@ -442,18 +459,62 @@ async function updateCrashBehavior() {
   
   if (data.success) {
     console.log('[RTC] Crash behavior updated');
+    // Update the crash status display with the new behavior
+    const crashData = await apiCall('/api/rtc/crash-behavior');
+    if (crashData.success) {
+      currentCrashBehavior = crashData.crashBehavior;
+      updateCrashStatus(crashData.crashed, crashData.crashBehavior);
+      startCrashPolling(crashData.crashBehavior);
+    }
   } else {
     showToast(data.error || 'Failed to update crash behavior', 'error');
   }
 }
 
-function updateCrashStatus(crashed) {
-  if (crashed) {
-    elements.crashStatus.textContent = '⚠️ CRASHED';
-    elements.crashStatus.className = 'gh-crash-status crashed';
+function updateCrashStatus(crashed, behavior) {
+  if (!behavior || behavior === 'RedScreen') {
+    // Only show crashed/running status for RedScreen mode
+    if (crashed) {
+      elements.crashStatus.textContent = '⚠️ CRASHED';
+      elements.crashStatus.className = 'gh-crash-status crashed';
+    } else {
+      elements.crashStatus.textContent = '✓ Running';
+      elements.crashStatus.className = 'gh-crash-status running';
+    }
+  } else if (behavior === 'IgnoreErrors') {
+    // Show gray idle state for IgnoreErrors
+    elements.crashStatus.textContent = '⚙️ Ignoring Errors';
+    elements.crashStatus.className = 'gh-crash-status ignore-errors';
+  } else if (behavior === 'ImagineFix') {
+    // Show purple idle state for ImagineFix
+    elements.crashStatus.textContent = '🔮 Imagine Fix';
+    elements.crashStatus.className = 'gh-crash-status imagine-fix';
+  }
+}
+
+function startCrashPolling(behavior) {
+  // Stop any existing polling
+  stopCrashPolling();
+  
+  // Only poll for RedScreen mode
+  if (behavior === 'RedScreen') {
+    console.log('[RTC] Starting crash polling for RedScreen mode');
+    crashPollingInterval = setInterval(async () => {
+      const crashData = await apiCall('/api/rtc/crash-behavior');
+      if (crashData.success && crashData.crashBehavior === currentCrashBehavior) {
+        updateCrashStatus(crashData.crashed, crashData.crashBehavior);
+      }
+    }, 500); // Poll every 500ms
   } else {
-    elements.crashStatus.textContent = '✓ Running';
-    elements.crashStatus.className = 'gh-crash-status running';
+    console.log('[RTC] Crash polling disabled for', behavior, 'mode');
+  }
+}
+
+function stopCrashPolling() {
+  if (crashPollingInterval) {
+    console.log('[RTC] Stopping crash polling');
+    clearInterval(crashPollingInterval);
+    crashPollingInterval = null;
   }
 }
 
@@ -1143,35 +1204,176 @@ function getRandomFlavorText() {
   return IMAGINE_FLAVOR_TEXTS[Math.floor(Math.random() * IMAGINE_FLAVOR_TEXTS.length)];
 }
 
-function imagineLoadModel() {
+async function imagineLoadModel() {
   console.log('[Imagine] Load Model clicked');
   const epoch = parseInt(elements.imagineEpoch.value);
+  
   elements.imagineStatus.textContent = `Status: Loading model epoch ${epoch}...`;
   elements.imagineStatus.style.color = 'var(--yellow)';
+  elements.btnLoadModel.disabled = true;
   
-  // TODO: Implement API call when backend is ready
-  // For now, just simulate the action
-  setTimeout(() => {
-    elements.imagineStatus.textContent = `Status: Model epoch ${epoch} loaded`;
-    elements.imagineStatus.style.color = 'var(--green)';
-    showToast(`Model epoch ${epoch} loaded (simulated)`, 'success');
-  }, 500);
+  try {
+    const data = await apiCall('/api/imagine/load-model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epoch })
+    });
+    
+    if (data.success) {
+      elements.imagineStatus.textContent = `Status: Model epoch ${epoch} loaded`;
+      elements.imagineStatus.style.color = 'var(--green)';
+      showToast(`Model epoch ${epoch} loaded successfully`, 'success');
+      console.log('[Imagine] Model loaded successfully:', data);
+      
+      // Update generation params after model load
+      await imagineUpdateParams();
+    } else {
+      elements.imagineStatus.textContent = `Status: Failed to load model - ${data.error || 'Unknown error'}`;
+      elements.imagineStatus.style.color = 'var(--red)';
+      showToast(data.error || 'Failed to load model', 'error');
+      console.error('[Imagine] Model load failed:', data.error);
+    }
+  } catch (error) {
+    elements.imagineStatus.textContent = `Status: Error - ${error.message}`;
+    elements.imagineStatus.style.color = 'var(--red)';
+    showToast(`Error loading model: ${error.message}`, 'error');
+    console.error('[Imagine] Model load error:', error);
+  } finally {
+    elements.btnLoadModel.disabled = false;
+  }
 }
 
-function imagineAutoBug() {
-  console.log('[Imagine] Imagine a Bug clicked');
+async function imagineUpdateParams() {
+  console.log('[Imagine] Updating generation parameters');
   
-  // Update flavor text
-  elements.imagineFlavor.textContent = getRandomFlavorText();
+  const bytesToGenerate = parseInt(elements.imagineBytesToPredict.value);
+  // Temperature is stored as 0-150 in UI, but API expects 0.0-1.0
+  // So we divide by 150 to normalize
+  const temperatureRaw = parseInt(elements.imagineTemperature.value);
+  const temperature = temperatureRaw / 150.0;
+  const topK = parseInt(elements.imagineTopK.value);
+  
+  try {
+    const data = await apiCall('/api/imagine/generation-params', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bytesToGenerate,
+        temperature,
+        topK
+      })
+    });
+    
+    if (data.success) {
+      console.log('[Imagine] Generation params updated:', {
+        bytesToGenerate,
+        temperature: temperature.toFixed(3),
+        topK
+      });
+    } else {
+      console.error('[Imagine] Failed to update generation params:', data.error);
+    }
+  } catch (error) {
+    console.error('[Imagine] Error updating generation params:', error);
+  }
+}
+
+async function imagineAutoBug() {
+  console.log('[Imagine] Imagine a Bug clicked');
   
   elements.imagineStatus.textContent = 'Status: Imagining a bug...';
   elements.imagineStatus.style.color = 'var(--yellow)';
+  elements.btnImagineBug.disabled = true;
   
-  // TODO: Implement API call when backend is ready
-  // For now, simulate the action
-  setTimeout(() => {
-    elements.imagineStatus.textContent = 'Status: Bug imagined successfully!';
-    elements.imagineStatus.style.color = 'var(--green)';
-    showToast('Bug imagined (simulated)', 'success');
-  }, 1000);
+  try {
+    // First, update generation parameters from UI
+    await imagineUpdateParams();
+    
+    // Call the imagine-a-bug API
+    const data = await apiCall('/api/imagine/imagine-a-bug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (data.success) {
+      // Format predicted bytes for display
+      const bytesArray = Array.isArray(data.predictedBytes) 
+        ? data.predictedBytes 
+        : (data.predictedBytes ? Object.values(data.predictedBytes) : []);
+      
+      const bytesHex = bytesArray.map(b => {
+        const hex = b.toString(16).toUpperCase().padStart(2, '0');
+        return `0x${hex}`;
+      }).join(' ');
+      
+      elements.imagineStatus.textContent = `Status: Bug imagined! [${bytesHex}]`;
+      elements.imagineStatus.style.color = 'var(--green)';
+      showToast(`Bug imagined: ${bytesArray.length} bytes predicted`, 'success');
+      console.log('[Imagine] Bug imagined successfully:', data);
+      console.log('[Imagine] Predicted bytes:', bytesHex);
+    } else {
+      elements.imagineStatus.textContent = `Status: Failed - ${data.error || 'Unknown error'}`;
+      elements.imagineStatus.style.color = 'var(--red)';
+      showToast(data.error || 'Failed to imagine a bug', 'error');
+      console.error('[Imagine] Imagine a bug failed:', data.error);
+    }
+  } catch (error) {
+    elements.imagineStatus.textContent = `Status: Error - ${error.message}`;
+    elements.imagineStatus.style.color = 'var(--red)';
+    showToast(`Error: ${error.message}`, 'error');
+    console.error('[Imagine] Imagine a bug error:', error);
+  } finally {
+    elements.btnImagineBug.disabled = false;
+  }
+}
+
+// Load Imagine state on initialization
+async function loadImagineState() {
+  console.log('[Imagine] Loading Imagine state...');
+  
+  // Set random flavor text once on page load
+  elements.imagineFlavor.textContent = getRandomFlavorText();
+  
+  try {
+    // Check if model is loaded
+    const modelData = await apiCall('/api/imagine/model-loaded');
+    if (modelData.success && modelData.modelLoaded) {
+      elements.imagineStatus.textContent = 'Status: Model loaded and ready';
+      elements.imagineStatus.style.color = 'var(--green)';
+      console.log('[Imagine] Model is loaded');
+    } else {
+      elements.imagineStatus.textContent = 'Status: No model loaded - click "Load Model"';
+      elements.imagineStatus.style.color = 'var(--gray)';
+      console.log('[Imagine] No model loaded');
+    }
+    
+    // Load current epoch
+    const epochData = await apiCall('/api/imagine/epoch');
+    if (epochData.success && epochData.epoch != null) {
+      elements.imagineEpoch.value = epochData.epoch;
+      console.log('[Imagine] Current epoch:', epochData.epoch);
+    }
+    
+    // Load generation params
+    const paramsData = await apiCall('/api/imagine/generation-params');
+    if (paramsData.success) {
+      if (paramsData.bytesToGenerate != null) {
+        elements.imagineBytesToPredict.value = paramsData.bytesToGenerate;
+      }
+      if (paramsData.temperature != null) {
+        // Convert from 0.0-1.0 to 0-150 for UI
+        const tempUI = Math.round(paramsData.temperature * 150);
+        elements.imagineTemperature.value = tempUI;
+        elements.imagineTemperatureValue.textContent = paramsData.temperature.toFixed(2);
+      }
+      if (paramsData.topK != null) {
+        elements.imagineTopK.value = paramsData.topK;
+      }
+      console.log('[Imagine] Generation params loaded:', paramsData);
+    }
+  } catch (error) {
+    console.error('[Imagine] Error loading Imagine state:', error);
+    elements.imagineStatus.textContent = 'Status: Error loading state';
+    elements.imagineStatus.style.color = 'var(--red)';
+  }
 }

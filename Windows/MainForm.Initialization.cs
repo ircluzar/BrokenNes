@@ -642,7 +642,7 @@ namespace BrokenNes.Windows
             try
             {
                 // Pass functions that return the current NES and Corruptor instances
-                webApiServer = new WebApiServer(() => nes, () => corruptor);
+                webApiServer = new WebApiServer(() => nes, () => corruptor, () => imagineEngine, SetCrashBehavior);
                 await webApiServer.StartAsync();
                 Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
             }
