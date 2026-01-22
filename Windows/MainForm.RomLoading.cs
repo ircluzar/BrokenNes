@@ -114,32 +114,29 @@ namespace BrokenNes.Windows
         
         private void CloseRom_Click(object? sender, EventArgs e)
         {
-            // Save state if not test rom
-            bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
-            if (!isTestRom && nes != null)
-            {
-                SaveContinueState();
-            }
+            if (nes == null || string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase)) 
+                return;
+            
+            Console.WriteLine($"Closing current ROM: {nes.RomName}");
+            
+            // Save state for the current game
+            SaveContinueState();
 
+            // Stop current emulation
             StopEmulation();
             
-            lock (emulationLock)
-            {
-                nes = null;
-            }
+            // Transition back to the base launcher state (test.nes)
+            LoadEmbeddedRom();
             
-            currentRomPath = string.Empty;
-            this.Text = "BrokenNes";
+            // Re-show the continue button if a save state exists
+            ShowContinueButton();
             
-            // Clear the display
-            if (displayPanel.InvokeRequired)
-            {
-                displayPanel.Invoke((Action)(() => displayPanel.Invalidate()));
-            }
-            else
-            {
-                displayPanel.Invalidate();
-            }
+            // Update UI menus to reflect the base state
+            UpdateCoresMenus();
+            
+            // Force a layout update and refresh
+            this.PerformLayout();
+            this.Refresh();
         }
         
         private void LoadEmbeddedRom()
@@ -181,9 +178,12 @@ namespace BrokenNes.Windows
                     Console.WriteLine($"Read {bytesRead} bytes from embedded ROM");
                     
                     // Create new NES instance
-                    nes = new NES();
-                    nes.LoadROM(romData);
-                    nes.RomName = "test.nes";
+                    lock (emulationLock)
+                    {
+                        nes = new NES();
+                        nes.LoadROM(romData);
+                        nes.RomName = "test.nes";
+                    }
                     
                     currentRomPath = "test.nes (embedded)";
                     this.Text = "BrokenNes - test.nes";

@@ -51,14 +51,25 @@ namespace BrokenNes.Windows
         private void StopEmulation()
         {
             isEmulationRunning = false;
+            isPaused = false; // Unpause to allow thread to exit loop
             
             // Wait for emulation thread to finish
             if (emulatorThread != null && emulatorThread.IsAlive)
             {
-                emulatorThread.Join(1000);
+                if (!emulatorThread.Join(500))
+                {
+                    Console.WriteLine("Emulation thread did not stop gracefully, continuing...");
+                }
             }
             
-            audioManager?.Stop();
+            try
+            {
+                audioManager?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error stopping audio: {ex.Message}");
+            }
         }
         
         private void EmulationThreadProc()
@@ -360,7 +371,7 @@ namespace BrokenNes.Windows
                         }
                         
                         // Spin-wait for remaining time (sub-millisecond precision)
-                        while (stopwatch.ElapsedTicks < nextFrameTime)
+                        while (isEmulationRunning && stopwatch.ElapsedTicks < nextFrameTime)
                         {
                             Thread.SpinWait(10);
                         }
