@@ -329,6 +329,16 @@ body {
   border-color: #5599ff;
 }
 
+.gh-btn-danger {
+  background: var(--red);
+  border-color: var(--red);
+}
+
+.gh-btn-danger:hover:not(:disabled) {
+  background: #ff4455;
+  border-color: #ff4455;
+}
+
 .gh-btn-success {
   background: var(--green);
   border-color: var(--green);
@@ -364,6 +374,9 @@ body {
 .gh-btn-file {
   position: relative;
   overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Footer */

@@ -115,6 +115,24 @@ namespace BrokenNes
         }
         
         /// <summary>
+        /// Load a specific base state by ID into the NES
+        /// </summary>
+        public void LoadBaseState(NES nes, string id)
+        {
+            if (nes == null)
+                throw new ArgumentNullException(nameof(nes));
+            
+            if (string.IsNullOrEmpty(id))
+                throw new ArgumentException("Base state ID cannot be null or empty", nameof(id));
+            
+            var baseState = GetBaseState(id);
+            if (baseState == null)
+                throw new InvalidOperationException($"Base state with ID '{id}' not found");
+            
+            nes.LoadState(baseState.State);
+        }
+        
+        /// <summary>
         /// Delete a base state by ID
         /// </summary>
         public void DeleteBaseState(string id)
@@ -151,6 +169,50 @@ namespace BrokenNes
             var baseState = GetSelectedBaseState();
             if (baseState == null)
                 throw new InvalidOperationException("No base state selected");
+            
+            // Load base state if configured to do so
+            if (LoadOnOperation)
+            {
+                nes.LoadState(baseState.State);
+            }
+            
+            // Generate corruption writes
+            var writes = _corruptor.GenerateBlastLayer(_corruptor.CorruptIntensity);
+            
+            // Capture the exact pre-corruption state for perfect replayability
+            var capturedState = nes.SaveState();
+            
+            // Apply corruption
+            _corruptor.ApplyBlastLayer(writes, nes);
+            
+            // Create stash entry
+            var entry = new HarvestEntry
+            {
+                Name = $"Stash {++_stashCounter}",
+                BaseStateId = baseState.Id,
+                State = capturedState,
+                Writes = writes
+            };
+            
+            Stash.Add(entry);
+            
+            return entry;
+        }
+        
+        /// <summary>
+        /// Corrupt and stash using a specific base state ID
+        /// </summary>
+        public HarvestEntry CorruptAndStash(NES nes, string baseStateId)
+        {
+            if (nes == null)
+                throw new ArgumentNullException(nameof(nes));
+            
+            if (string.IsNullOrEmpty(baseStateId))
+                throw new ArgumentException("Base state ID cannot be null or empty", nameof(baseStateId));
+            
+            var baseState = GetBaseState(baseStateId);
+            if (baseState == null)
+                throw new InvalidOperationException($"Base state with ID {baseStateId} not found");
             
             // Load base state if configured to do so
             if (LoadOnOperation)

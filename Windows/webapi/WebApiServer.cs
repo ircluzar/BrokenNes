@@ -1077,8 +1077,8 @@ namespace BrokenNes.Windows.WebApi
                 }
             });
 
-            // POST /api/gh/load-base - Load selected base state
-            app.MapPost("/api/gh/load-base", () =>
+            // POST /api/gh/load-base - Load base state (by ID or currently selected)
+            app.MapPost("/api/gh/load-base", async (HttpContext context) =>
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
@@ -1090,7 +1090,20 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var gh = corruptor.GlitchHarvester;
-                    gh.LoadSelectedBase(nes);
+                    
+                    // Try to read request body for optional ID
+                    var form = await context.Request.ReadFromJsonAsync<LoadBaseRequest>();
+                    
+                    if (form != null && !string.IsNullOrEmpty(form.Id))
+                    {
+                        // Load specific base state by ID
+                        gh.LoadBaseState(nes, form.Id);
+                    }
+                    else
+                    {
+                        // Load currently selected base state (backward compatibility)
+                        gh.LoadSelectedBase(nes);
+                    }
                     
                     return Results.Ok(new
                     {
@@ -1180,7 +1193,7 @@ namespace BrokenNes.Windows.WebApi
             });
 
             // POST /api/gh/corrupt-and-stash - Corrupt and add to stash
-            app.MapPost("/api/gh/corrupt-and-stash", () =>
+            app.MapPost("/api/gh/corrupt-and-stash", (HttpContext context) =>
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
@@ -1192,7 +1205,19 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var gh = corruptor.GlitchHarvester;
-                    var entry = gh.CorruptAndStash(nes);
+                    
+                    // Try to read the request body for optional base state ID
+                    CorruptAndStashRequest? form = null;
+                    try
+                    {
+                        form = context.Request.ReadFromJsonAsync<CorruptAndStashRequest>().Result;
+                    }
+                    catch { /* Ignore parse errors */ }
+                    
+                    // Use the provided base state ID if available, otherwise use the selected one
+                    var entry = (form?.Id != null) 
+                        ? gh.CorruptAndStash(nes, form.Id)
+                        : gh.CorruptAndStash(nes);
                     
                     return Results.Ok(new
                     {
@@ -1603,6 +1628,16 @@ namespace BrokenNes.Windows.WebApi
         private class SelectBaseRequest
         {
             public string Id { get; set; } = "";
+        }
+        
+        private class LoadBaseRequest
+        {
+            public string? Id { get; set; }
+        }
+        
+        private class CorruptAndStashRequest
+        {
+            public string? Id { get; set; }
         }
         
         private class LoadOnOperationRequest
