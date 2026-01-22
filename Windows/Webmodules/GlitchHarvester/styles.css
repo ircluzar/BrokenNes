@@ -24,7 +24,7 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: var(--bg-primary);
+  background: transparent;
   color: var(--text-primary);
   overflow-x: hidden;
   min-height: 100vh;
@@ -67,12 +67,14 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: rgba(26, 26, 26, 0.75);
+  backdrop-filter: blur(2px);
 }
 
 /* Tabs */
 .gh-tabs {
   display: flex;
-  background: var(--bg-secondary);
+  background: rgba(45, 45, 48, 0.7);
   border-bottom: 2px solid var(--border-color);
   flex-shrink: 0;
 }
@@ -80,7 +82,7 @@ body {
 .gh-tab {
   flex: 1;
   padding: 0.75rem 0.5rem;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.85);
   border: none;
   border-right: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -97,12 +99,12 @@ body {
 }
 
 .gh-tab:hover {
-  background: var(--bg-hover);
+  background: rgba(69, 69, 69, 0.8);
   color: var(--text-primary);
 }
 
 .gh-tab.active {
-  background: var(--bg-secondary);
+  background: rgba(45, 45, 48, 0.9);
   color: var(--cyan);
   border-bottom: 2px solid var(--cyan);
   margin-bottom: -2px;
@@ -117,7 +119,7 @@ body {
 }
 
 .gh-section {
-  background: var(--bg-secondary);
+  background: transparent;
   padding: 0.75rem;
   display: none;
   flex-direction: column;
@@ -172,7 +174,7 @@ body {
 .gh-input {
   flex: 1;
   padding: 0.4rem;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.85);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
@@ -230,7 +232,7 @@ body {
   bottom: 125%;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.9);
   color: var(--text-primary);
   padding: 0.5rem;
   border-radius: 4px;
@@ -240,6 +242,7 @@ body {
   text-align: center;
   z-index: 100;
   white-space: normal;
+  backdrop-filter: blur(3px);
 }
 
 .gh-tooltip:hover .gh-tooltip-text {
@@ -252,7 +255,7 @@ body {
   overflow: hidden;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--bg-primary);
+  background: rgba(26, 26, 26, 0.7);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -292,12 +295,12 @@ body {
 }
 
 .gh-item:hover {
-  background: var(--bg-hover);
+  background: rgba(69, 69, 69, 0.8);
   border-color: var(--cyan);
 }
 
 .gh-item.selected {
-  background: var(--bg-hover);
+  background: rgba(69, 69, 69, 0.8);
   border-color: var(--cyan);
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
 }
@@ -339,7 +342,7 @@ body {
 
 .gh-btn {
   padding: 0.4rem 0.75rem;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.9);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
@@ -350,7 +353,7 @@ body {
 }
 
 .gh-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: rgba(69, 69, 69, 0.85);
   border-color: var(--cyan);
   transform: translateY(-1px);
 }
@@ -463,12 +466,13 @@ body {
 }
 
 .gh-modal {
-  background: var(--bg-secondary);
+  background: rgba(45, 45, 48, 0.9);
   border: 2px solid var(--cyan);
   border-radius: 8px;
   width: 90%;
   max-width: 400px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
 }
 
 .gh-modal-header {
@@ -547,7 +551,7 @@ body {
 .gh-select {
   flex: 1;
   padding: 0.4rem;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.75);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
@@ -564,7 +568,7 @@ body {
 .gh-slider {
   flex: 1;
   height: 6px;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.7);
   border-radius: 3px;
   outline: none;
   -webkit-appearance: none;
