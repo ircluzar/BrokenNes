@@ -82,6 +82,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Include Data folder (ONNX models and JSON databases) -->
+    <None Include="Data\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="BrokenNes.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

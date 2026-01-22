@@ -189,15 +189,8 @@
     try {
       // Initialize audio context
       if (window.music) {
-        // Play title music (assuming there's a title theme)
-        // You can customize this to play a specific track
-        const titleTracks = [
-          'assets/music/title01.mp3',
-          'assets/music/title02.mp3'
-        ];
-        const randomTrack = titleTracks[Math.floor(Math.random() * titleTracks.length)];
-        
-        window.music.play(randomTrack, { 
+        // Play title music
+        window.music.play('assets/music/TitleScreen.mp3', { 
           loop: true, 
           fadeInMs: 800 
         }).catch(err => {

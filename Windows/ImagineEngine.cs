@@ -31,11 +31,32 @@ namespace BrokenNes.Windows
 
         public bool LoadModel(int epoch)
         {
-            Epoch = epoch;
-            ModelLoaded = true;
-            EpLabel = "stub";
-            LastError = string.Empty;
-            return true;
+            try
+            {
+                Epoch = epoch;
+                string modelPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", $"6502_span_predictor_epoch{epoch}.onnx");
+                
+                if (!File.Exists(modelPath))
+                {
+                    LastError = $"Model file not found: {modelPath}";
+                    ModelLoaded = false;
+                    EpLabel = string.Empty;
+                    return false;
+                }
+                
+                // TODO: Load actual ONNX model using Microsoft.ML.OnnxRuntime when integrated
+                ModelLoaded = true;
+                EpLabel = $"epoch{epoch}";
+                LastError = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                ModelLoaded = false;
+                EpLabel = string.Empty;
+                return false;
+            }
         }
 
         public ImagineSnapshot CaptureSnapshot()
