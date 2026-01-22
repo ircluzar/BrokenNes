@@ -353,14 +353,22 @@ namespace BrokenNes.Windows
 
             // Tools menu
             var toolsMenu = new ToolStripMenuItem("&Tools");
-            var rtcItem = new ToolStripMenuItem("Real-Time Corruptor", null, OpenRtcTool_Click);
-            var ghItem = new ToolStripMenuItem("Glitch Harvester", null, OpenGhTool_Click);
-            var imagineItem = new ToolStripMenuItem("Imagine", null, OpenImagineTool_Click);
+            
+            // Add webmodules that have ShowInToolsMenu flag
+            var webModules = WebModuleManager.DiscoverModules();
+            var toolWebModules = webModules.Where(m => m.Config.ShowInToolsMenu).ToArray();
+            if (toolWebModules.Length > 0)
+            {
+                foreach (var module in toolWebModules)
+                {
+                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(module));
+                    toolsMenu.DropDownItems.Add(moduleItem);
+                }
+                toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+            }
+            
+            // Native tools
             var hexEditorItem = new ToolStripMenuItem("Hex Editor", null, OpenHexEditor_Click);
-            toolsMenu.DropDownItems.Add(rtcItem);
-            toolsMenu.DropDownItems.Add(ghItem);
-            toolsMenu.DropDownItems.Add(imagineItem);
-            toolsMenu.DropDownItems.Add(new ToolStripSeparator());
             toolsMenu.DropDownItems.Add(hexEditorItem);
             menuStrip.Items.Add(toolsMenu);
             
@@ -391,8 +399,7 @@ namespace BrokenNes.Windows
             // Add separator before webmodules
             webMenu.DropDownItems.Add(new ToolStripSeparator());
             
-            // Discover and add web modules
-            var webModules = WebModuleManager.DiscoverModules();
+            // Add all web modules (webModules already discovered above for Tools menu)
             if (webModules.Length > 0)
             {
                 foreach (var module in webModules)

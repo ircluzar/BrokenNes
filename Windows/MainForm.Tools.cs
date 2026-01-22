@@ -24,42 +24,6 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
-        private void OpenRtcTool_Click(object? sender, EventArgs e)
-        {
-            if (rtcForm == null || rtcForm.IsDisposed)
-            {
-                rtcForm = new RealTimeCorruptorForm(this);
-                rtcForm.FormClosed += (_, _) => rtcForm = null;
-            }
-
-            rtcForm.Show(this);
-            rtcForm.Focus();
-        }
-
-        private void OpenGhTool_Click(object? sender, EventArgs e)
-        {
-            if (ghForm == null || ghForm.IsDisposed)
-            {
-                ghForm = new GlitchHarvesterForm(this);
-                ghForm.FormClosed += (_, _) => ghForm = null;
-            }
-
-            ghForm.Show(this);
-            ghForm.Focus();
-        }
-
-        private void OpenImagineTool_Click(object? sender, EventArgs e)
-        {
-            if (imagineForm == null || imagineForm.IsDisposed)
-            {
-                imagineForm = new ImagineForm(this);
-                imagineForm.FormClosed += (_, _) => imagineForm = null;
-            }
-
-            imagineForm.Show(this);
-            imagineForm.Focus();
-        }
-
         private void OpenHexEditor_Click(object? sender, EventArgs e)
         {
             if (hexEditorForm == null || hexEditorForm.IsDisposed)

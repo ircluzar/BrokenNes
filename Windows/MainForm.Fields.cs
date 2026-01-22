@@ -79,9 +79,6 @@ namespace BrokenNes.Windows
         private readonly Corruptor corruptor = new();
         private readonly object corruptorLock = new();
         private ImagineEngine? imagineEngine;
-        private RealTimeCorruptorForm? rtcForm;
-        private GlitchHarvesterForm? ghForm;
-        private ImagineForm? imagineForm;
         private HexEditorForm? hexEditorForm;
         private readonly ConcurrentQueue<Action> emulationActions = new();
         public event Action? CorruptorStateChanged;

@@ -138,6 +138,7 @@ Appears as a transparent or semi-transparent layer on top of the emulator view.
 | `hotkey` | string | Global hotkey to open/toggle module (e.g., "Ctrl+H") |
 | `autoStart` | boolean | Launch module on application startup |
 | `singleton` | boolean | Only allow one instance of this module |
+| `showInToolsMenu` | boolean | Show this module in the Tools menu above native tools |
 
 ## Default Behavior
 
@@ -170,6 +171,7 @@ If no `config.json` exists, the module defaults to:
   "requiresRom": true,
   "hotkey": "Ctrl+Shift+H",
   "singleton": true,
+  "showInToolsMenu": true,
   "widget": {
     "defaultWidth": 900,
     "defaultHeight": 700,
