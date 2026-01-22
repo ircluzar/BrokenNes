@@ -587,24 +587,23 @@ namespace BrokenNes.Windows.WebApi
             // GET /api/rtc/domains - Get memory domains available for corruption
             app.MapGet("/api/rtc/domains", () =>
             {
-                var nes = _getNes();
-                if (nes == null)
+                var corruptor = _getCorruptor();
+                if (corruptor == null)
                 {
-                    return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
+                    return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
                 }
 
                 try
                 {
-                    var domains = nes.GetAvailableMemoryDomains();
                     return Results.Ok(new
                     {
                         success = true,
-                        domains = domains.Select(d => new
+                        domains = corruptor.MemoryDomains.Select(d => new
                         {
-                            name = d.Name,
+                            key = d.Key,
+                            name = d.Label,
                             size = d.Size,
-                            description = d.Description,
-                            selected = d.Name == "System RAM" || d.Name == "PRG ROM"
+                            selected = d.Selected
                         })
                     });
                 }
@@ -619,13 +618,21 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
+                    var corruptor = _getCorruptor();
+                    if (corruptor == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                    }
+
                     var form = await context.Request.ReadFromJsonAsync<DomainSelectionRequest>();
                     if (form == null)
                     {
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
                     }
 
-                    // This would update the corruptor's domain selection
+                    // Update domain selection
+                    corruptor.DomainsChanged(form.SelectedDomains ?? Array.Empty<string>());
+                    
                     return Results.Ok(new
                     {
                         success = true,
@@ -641,10 +648,11 @@ namespace BrokenNes.Windows.WebApi
             // GET /api/rtc/intensity - Get corruption intensity
             app.MapGet("/api/rtc/intensity", () =>
             {
+                var corruptor = _getCorruptor();
                 return Results.Ok(new
                 {
                     success = true,
-                    intensity = 1 // Default value
+                    intensity = corruptor?.CorruptIntensity ?? 1
                 });
             });
 
@@ -653,6 +661,12 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
+                    var corruptor = _getCorruptor();
+                    if (corruptor == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                    }
+
                     var form = await context.Request.ReadFromJsonAsync<IntensityRequest>();
                     if (form == null)
                     {
@@ -660,6 +674,7 @@ namespace BrokenNes.Windows.WebApi
                     }
 
                     var intensity = Math.Clamp(form.Intensity, 1, 65535);
+                    corruptor.CorruptIntensity = intensity;
                     return Results.Ok(new
                     {
                         success = true,
@@ -675,10 +690,11 @@ namespace BrokenNes.Windows.WebApi
             // GET /api/rtc/blast-type - Get current blast type
             app.MapGet("/api/rtc/blast-type", () =>
             {
+                var corruptor = _getCorruptor();
                 return Results.Ok(new
                 {
                     success = true,
-                    blastType = "RANDOM"
+                    blastType = corruptor?.BlastType ?? "RANDOM"
                 });
             });
 
@@ -687,6 +703,12 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
+                    var corruptor = _getCorruptor();
+                    if (corruptor == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                    }
+
                     var form = await context.Request.ReadFromJsonAsync<BlastTypeRequest>();
                     if (form == null)
                     {
@@ -699,10 +721,11 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Invalid blast type" });
                     }
 
+                    corruptor.BlastType = form.BlastType?.ToUpperInvariant() ?? "RANDOM";
                     return Results.Ok(new
                     {
                         success = true,
-                        blastType = form.BlastType?.ToUpperInvariant()
+                        blastType = corruptor.BlastType
                     });
                 }
                 catch (Exception ex)
@@ -720,21 +743,36 @@ namespace BrokenNes.Windows.WebApi
                     return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
                 }
 
-                return Results.Ok(new
+                var corruptor = _getCorruptor();
+                if (corruptor == null)
                 {
-                    success = true,
-                    message = "Blast executed",
-                    writesApplied = 1
-                });
+                    return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                }
+
+                try
+                {
+                    corruptor.Blast(nes);
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        message = corruptor.LastBlastInfo,
+                        writesApplied = corruptor.CorruptIntensity
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
             });
 
             // GET /api/rtc/auto-corrupt - Get auto-corrupt state
             app.MapGet("/api/rtc/auto-corrupt", () =>
             {
+                var corruptor = _getCorruptor();
                 return Results.Ok(new
                 {
                     success = true,
-                    autoCorrupt = false
+                    autoCorrupt = corruptor?.AutoCorrupt ?? false
                 });
             });
 
@@ -743,16 +781,23 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
+                    var corruptor = _getCorruptor();
+                    if (corruptor == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                    }
+
                     var form = await context.Request.ReadFromJsonAsync<AutoCorruptRequest>();
                     if (form == null)
                     {
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
                     }
 
+                    corruptor.AutoCorrupt = form.Enabled;
                     return Results.Ok(new
                     {
                         success = true,
-                        autoCorrupt = form.Enabled
+                        autoCorrupt = corruptor.AutoCorrupt
                     });
                 }
                 catch (Exception ex)
@@ -764,14 +809,31 @@ namespace BrokenNes.Windows.WebApi
             // POST /api/rtc/let-it-rip - Apply "Let It Rip" preset
             app.MapPost("/api/rtc/let-it-rip", () =>
             {
-                return Results.Ok(new
+                var corruptor = _getCorruptor();
+                if (corruptor == null)
                 {
-                    success = true,
-                    message = "Let It Rip applied",
-                    intensity = 1,
-                    autoCorrupt = true,
-                    selectedDomains = new[] { "PRG ROM", "System RAM" }
-                });
+                    return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                }
+
+                try
+                {
+                    corruptor.LetItRip();
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        message = corruptor.LastBlastInfo,
+                        intensity = corruptor.CorruptIntensity,
+                        autoCorrupt = corruptor.AutoCorrupt,
+                        selectedDomains = corruptor.MemoryDomains
+                            .Where(d => d.Selected)
+                            .Select(d => d.Label)
+                            .ToArray()
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
             });
 
             // GET /api/rtc/crash-behavior - Get current crash handling mode
@@ -783,11 +845,12 @@ namespace BrokenNes.Windows.WebApi
                     return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
                 }
 
+                var corruptor = _getCorruptor();
                 var crashed = nes.IsCrashed();
                 return Results.Ok(new
                 {
                     success = true,
-                    crashBehavior = "RedScreen",
+                    crashBehavior = corruptor?.CrashBehavior ?? "IgnoreErrors",
                     crashed = crashed
                 });
             });
@@ -797,22 +860,23 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
+                    var corruptor = _getCorruptor();
+                    if (corruptor == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Corruptor not initialized" });
+                    }
+
                     var form = await context.Request.ReadFromJsonAsync<CrashBehaviorRequest>();
                     if (form == null)
                     {
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
                     }
 
-                    var validBehaviors = new[] { "RedScreen", "IgnoreErrors", "ImagineFix" };
-                    if (!validBehaviors.Contains(form.Behavior))
-                    {
-                        return Results.BadRequest(new { success = false, error = "Invalid crash behavior" });
-                    }
-
+                    corruptor.CrashBehavior = form.Behavior ?? "IgnoreErrors";
                     return Results.Ok(new
                     {
                         success = true,
-                        crashBehavior = form.Behavior
+                        crashBehavior = corruptor.CrashBehavior
                     });
                 }
                 catch (Exception ex)

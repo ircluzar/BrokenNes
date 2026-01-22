@@ -14,12 +14,85 @@
   <div id="pixelBgHost" class="pixel-bg-host"></div>
   
   <div class="gh-root">
-    <h2 class="gh-title">GLITCH HARVESTER</h2>
+    <div class="gh-tabs">
+      <button class="gh-tab active" data-tab="rtc">RTC</button>
+      <button class="gh-tab" data-tab="bases">SaveStates</button>
+      <button class="gh-tab" data-tab="stash">Stash</button>
+      <button class="gh-tab" data-tab="stockpile">Stockpile</button>
+      <button class="gh-tab" data-tab="imagine">Imagine</button>
+    </div>
     
     <div class="gh-container">
+      <!-- Section 0: Real-Time Corruptor -->
+      <section class="gh-section gh-rtc active" data-section="rtc">
+        <h3 class="gh-section-title">Real-Time Corruptor</h3>
+        
+        <!-- Auto-Corrupt Toggle -->
+        <div class="gh-checkbox-row">
+          <label>
+            <input type="checkbox" id="chkAutoCorrupt">
+            <span>Auto-Corrupt</span>
+          </label>
+          <div class="gh-tooltip">ⓘ
+            <span class="gh-tooltip-text">Automatically applies corruption every frame when enabled.</span>
+          </div>
+        </div>
+        
+        <!-- Blast Type Selection -->
+        <div class="gh-input-row">
+          <label for="blastTypeSelect">Blast Type:</label>
+          <select id="blastTypeSelect" class="gh-select">
+            <option value="RANDOM">RANDOM</option>
+            <option value="TILT">TILT</option>
+            <option value="RANDOMTILT">RANDOM TILT</option>
+            <option value="NOP">NOP</option>
+            <option value="BITFLIP">BITFLIP</option>
+            <option value="IMAGINE_NEXT">IMAGINE NEXT</option>
+            <option value="IMAGINE_RANDOM">IMAGINE RANDOM</option>
+          </select>
+        </div>
+        
+        <!-- Intensity -->
+        <div class="gh-input-row">
+          <label for="intensity">Intensity:</label>
+          <input type="range" id="intensity" class="gh-slider" min="1" max="10000" value="1">
+          <span id="intensityValue" class="gh-value">1</span>
+        </div>
+        
+        <!-- Quick Preset -->
+        <div class="gh-actions">
+          <button id="btnManualBlast" class="gh-btn gh-btn-warning">Manual Blast</button>
+          <button id="btnLetItRip" class="gh-btn gh-btn-danger">Let It Rip!</button>
+        </div>
+        
+        <!-- Memory Domains -->
+        <div class="gh-domains">
+          <h4 class="gh-stats-title">Memory Domains</h4>
+          <div class="gh-list-container">
+            <div id="domainList" class="gh-list">
+              <div class="gh-empty">Loading domains...</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Crash Behavior -->
+        <div class="gh-crash-section">
+          <h4 class="gh-stats-title">Crash Behavior</h4>
+          <div class="gh-input-row">
+            <label for="crashBehavior">On Crash:</label>
+            <select id="crashBehavior" class="gh-select">
+              <option value="RedScreen">Red Screen</option>
+              <option value="IgnoreErrors" selected>Ignore Errors</option>
+              <option value="ImagineFix">Imagine Fix</option>
+            </select>
+          </div>
+          <div id="crashStatus" class="gh-crash-status"></div>
+        </div>
+      </section>
+      
       <!-- Section 1: Base States / SaveStates -->
-      <section class="gh-section gh-bases">
-        <h3 class="gh-section-title">1. SaveStates</h3>
+      <section class="gh-section gh-bases" data-section="bases">
+        <h3 class="gh-section-title">SaveStates</h3>
         
         <div class="gh-input-row">
           <label for="baseNameInput">New Name:</label>
@@ -40,8 +113,8 @@
       </section>
       
       <!-- Section 2: Stash History -->
-      <section class="gh-section gh-stash">
-        <h3 class="gh-section-title">2. Stash History</h3>
+      <section class="gh-section gh-stash" data-section="stash">
+        <h3 class="gh-section-title">Stash History</h3>
         
         <div class="gh-checkbox-row">
           <label>
@@ -53,6 +126,18 @@
           </div>
         </div>
         
+        <!-- Intensity Slider for Stash -->
+        <div class="gh-input-row">
+          <label for="stashIntensity">Intensity:</label>
+          <input type="range" id="stashIntensity" class="gh-slider" min="1" max="10000" value="1">
+          <span id="stashIntensityValue" class="gh-value">1</span>
+        </div>
+        
+        <!-- Blast Button -->
+        <div class="gh-actions" style="margin-bottom: 0.5rem;">
+          <button id="btnBlast" class="gh-btn gh-btn-warning" disabled>Blast</button>
+        </div>
+        
         <div class="gh-list-container">
           <div id="stashList" class="gh-list">
             <div class="gh-empty">Corruptions appear here when you blast.</div>
@@ -60,7 +145,6 @@
         </div>
         
         <div class="gh-actions">
-          <button id="btnBlast" class="gh-btn gh-btn-warning" disabled>Blast</button>
           <button id="btnReplayStash" class="gh-btn" disabled>Replay</button>
           <button id="btnKeep" class="gh-btn gh-btn-success" disabled>Keep</button>
           <button id="btnClearStash" class="gh-btn gh-btn-danger" disabled>Clear</button>
@@ -68,8 +152,8 @@
       </section>
       
       <!-- Section 3: Stockpile Manager -->
-      <section class="gh-section gh-stockpile">
-        <h3 class="gh-section-title">3. Stockpile Manager</h3>
+      <section class="gh-section gh-stockpile" data-section="stockpile">
+        <h3 class="gh-section-title">Stockpile Manager</h3>
         
         <div class="gh-list-container">
           <div id="stockpileList" class="gh-list">
@@ -86,6 +170,58 @@
             Import
             <input type="file" id="fileImport" accept="application/json" style="display: none;">
           </label>
+        </div>
+      </section>
+
+      <!-- Section 4: Imagine (ML Byte Prediction) -->
+      <section class="gh-section gh-imagine" data-section="imagine">
+        <h3 class="gh-section-title">Imagine</h3>
+        
+        <div class="gh-imagine-simple">
+          <div class="gh-imagine-flavor" id="imagineFlavor">
+            imagine training a model of 6502 code and then forcing the nes cpu to run predicted bytes for some reason
+          </div>
+          
+          <!-- Model Settings -->
+          <div class="gh-imagine-group">
+            <h4 class="gh-imagine-group-title">Model Settings</h4>
+            <div class="gh-imagine-compact-settings">
+              <div class="gh-imagine-setting-row">
+                <button id="btnLoadModel" class="gh-btn gh-btn-small">Load Model</button>
+              </div>
+              
+              <div class="gh-imagine-settings-2x2">
+                <div class="gh-imagine-setting-item">
+                  <label for="imagineEpoch">Epoch:</label>
+                  <input type="number" id="imagineEpoch" class="gh-input-compact" min="1" max="40" value="30">
+                </div>
+                
+                <div class="gh-imagine-setting-item">
+                  <label for="imagineBytesToPredict">Bytes:</label>
+                  <input type="number" id="imagineBytesToPredict" class="gh-input-compact" min="1" max="32" value="2">
+                </div>
+                
+                <div class="gh-imagine-setting-item">
+                  <label for="imagineTemperature">Temp:</label>
+                  <input type="number" id="imagineTemperature" class="gh-input-compact" min="0" max="150" step="1" value="40">
+                </div>
+                
+                <div class="gh-imagine-setting-item">
+                  <label for="imagineTopK">Top K:</label>
+                  <input type="number" id="imagineTopK" class="gh-input-compact" min="0" max="256" value="1">
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="gh-imagine-group">
+            <h4 class="gh-imagine-group-title">Actions</h4>
+            <div class="gh-imagine-actions">
+              <button id="btnImagineBug" class="gh-btn gh-btn-purple gh-imagine-auto-btn">Imagine a Bug</button>
+            </div>
+          </div>
+          
+          <div id="imagineStatus" class="gh-imagine-status">Status: idle</div>
         </div>
       </section>
     </div>

@@ -9,8 +9,27 @@ let selectedStashId = null;
 let selectedStockpileId = null;
 let currentRenameId = null;
 
+// RTC State
+let rtcAutoCorruptEnabled = false;
+let selectedDomains = [];
+
 // DOM Elements
 const elements = {
+  // RTC
+  chkAutoCorrupt: null,
+  blastTypeSelect: null,
+  intensity: null,
+  intensityValue: null,
+  btnManualBlast: null,
+  btnLetItRip: null,
+  domainList: null,
+  crashBehavior: null,
+  crashStatus: null,
+  
+  // Stash intensity
+  stashIntensity: null,
+  stashIntensityValue: null,
+  
   // Base states
   baseNameInput: null,
   btnAddBase: null,
@@ -33,6 +52,17 @@ const elements = {
   btnDeleteStock: null,
   btnExport: null,
   fileImport: null,
+  
+  // Imagine
+  imagineFlavor: null,
+  imagineEpoch: null,
+  btnLoadModel: null,
+  imagineBytesToPredict: null,
+  imagineTemperature: null,
+  imagineTemperatureValue: null,
+  imagineTopK: null,
+  btnImagineBug: null,
+  imagineStatus: null,
   
   // Rename Modal
   renameModal: null,
@@ -61,6 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[GH] Elements initialized');
   attachEventListeners();
   console.log('[GH] Event listeners attached');
+  
+  // Initialize RTC state
+  loadRTCState();
+  console.log('[GH] RTC state loading...');
+  
   refreshAll();
   console.log('[GH] Initial refresh triggered');
   
@@ -70,6 +105,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeElements() {
+  // RTC
+  elements.chkAutoCorrupt = document.getElementById('chkAutoCorrupt');
+  elements.blastTypeSelect = document.getElementById('blastTypeSelect');
+  elements.intensity = document.getElementById('intensity');
+  elements.intensityValue = document.getElementById('intensityValue');
+  elements.btnManualBlast = document.getElementById('btnManualBlast');
+  elements.btnLetItRip = document.getElementById('btnLetItRip');
+  elements.domainList = document.getElementById('domainList');
+  elements.crashBehavior = document.getElementById('crashBehavior');
+  elements.crashStatus = document.getElementById('crashStatus');
+  
+  // Stash intensity
+  elements.stashIntensity = document.getElementById('stashIntensity');
+  elements.stashIntensityValue = document.getElementById('stashIntensityValue');
+  
   // Base states
   elements.baseNameInput = document.getElementById('baseNameInput');
   elements.btnAddBase = document.getElementById('btnAddBase');
@@ -93,6 +143,17 @@ function initializeElements() {
   elements.btnExport = document.getElementById('btnExport');
   elements.fileImport = document.getElementById('fileImport');
   
+  // Imagine
+  elements.imagineFlavor = document.getElementById('imagineFlavor');
+  elements.imagineEpoch = document.getElementById('imagineEpoch');
+  elements.btnLoadModel = document.getElementById('btnLoadModel');
+  elements.imagineBytesToPredict = document.getElementById('imagineBytesToPredict');
+  elements.imagineTemperature = document.getElementById('imagineTemperature');
+  elements.imagineTemperatureValue = document.getElementById('imagineTemperatureValue');
+  elements.imagineTopK = document.getElementById('imagineTopK');
+  elements.btnImagineBug = document.getElementById('btnImagineBug');
+  elements.imagineStatus = document.getElementById('imagineStatus');
+  
   // Rename Modal
   elements.renameModal = document.getElementById('renameModal');
   elements.renameInput = document.getElementById('renameInput');
@@ -111,6 +172,34 @@ function initializeElements() {
 }
 
 function attachEventListeners() {
+  // Tabs
+  document.querySelectorAll('.gh-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+  
+  // RTC
+  elements.chkAutoCorrupt.addEventListener('change', toggleAutoCorrupt);
+  elements.blastTypeSelect.addEventListener('change', updateBlastType);
+  elements.intensity.addEventListener('input', () => {
+    elements.intensityValue.textContent = elements.intensity.value;
+    // Sync stash intensity with RTC intensity
+    elements.stashIntensity.value = elements.intensity.value;
+    elements.stashIntensityValue.textContent = elements.intensity.value;
+  });
+  elements.intensity.addEventListener('change', updateIntensity);
+  elements.btnManualBlast.addEventListener('click', rtcManualBlast);
+  elements.btnLetItRip.addEventListener('click', rtcLetItRip);
+  elements.crashBehavior.addEventListener('change', updateCrashBehavior);
+  
+  // Stash intensity (synced with RTC intensity)
+  elements.stashIntensity.addEventListener('input', () => {
+    elements.stashIntensityValue.textContent = elements.stashIntensity.value;
+    // Sync RTC intensity with stash intensity
+    elements.intensity.value = elements.stashIntensity.value;
+    elements.intensityValue.textContent = elements.stashIntensity.value;
+  });
+  elements.stashIntensity.addEventListener('change', updateIntensity);
+  
   // Base states
   elements.btnAddBase.addEventListener('click', addBase);
   elements.btnLoadBase.addEventListener('click', loadBase);
@@ -129,6 +218,14 @@ function attachEventListeners() {
   elements.btnDeleteStock.addEventListener('click', deleteStockpile);
   elements.btnExport.addEventListener('click', exportStockpile);
   elements.fileImport.addEventListener('change', importStockpile);
+  
+  // Imagine
+  elements.btnLoadModel.addEventListener('click', imagineLoadModel);
+  elements.imagineTemperature.addEventListener('input', () => {
+    const tempValue = (parseFloat(elements.imagineTemperature.value) / 40.0).toFixed(2);
+    elements.imagineTemperatureValue.textContent = tempValue;
+  });
+  elements.btnImagineBug.addEventListener('click', imagineAutoBug);
   
   // Rename Modal
   elements.btnRenameCancel.addEventListener('click', hideRenameModal);
@@ -150,6 +247,235 @@ function attachEventListeners() {
       hideRenameModal();
       hideConfirmModal();
     }
+  });
+}
+
+// ==================== Real-Time Corruptor ====================
+
+async function loadRTCState() {
+  console.log('[RTC] Loading RTC state...');
+  
+  // Load domains
+  await refreshDomains();
+  
+  // Load current settings
+  const autoCorruptData = await apiCall('/api/rtc/auto-corrupt');
+  if (autoCorruptData.success) {
+    rtcAutoCorruptEnabled = autoCorruptData.autoCorrupt;
+    elements.chkAutoCorrupt.checked = rtcAutoCorruptEnabled;
+  }
+  
+  const intensityData = await apiCall('/api/rtc/intensity');
+  if (intensityData.success) {
+    elements.intensity.value = intensityData.intensity;
+    elements.intensityValue.textContent = intensityData.intensity;
+  }
+  
+  const blastTypeData = await apiCall('/api/rtc/blast-type');
+  if (blastTypeData.success) {
+    elements.blastTypeSelect.value = blastTypeData.blastType;
+  }
+  
+  const crashData = await apiCall('/api/rtc/crash-behavior');
+  if (crashData.success) {
+    elements.crashBehavior.value = crashData.crashBehavior;
+    updateCrashStatus(crashData.crashed);
+  }
+}
+
+async function refreshDomains() {
+  console.log('[RTC] Refreshing memory domains...');
+  
+  const data = await apiCall('/api/rtc/domains');
+  
+  if (!data.success) {
+    elements.domainList.innerHTML = '<div class="gh-empty">Failed to load domains</div>';
+    return;
+  }
+  
+  const domains = data.domains || [];
+  
+  if (domains.length === 0) {
+    elements.domainList.innerHTML = '<div class="gh-empty">No domains available</div>';
+    return;
+  }
+  
+  elements.domainList.innerHTML = domains.map(domain => `
+    <div class="gh-domain-item">
+      <label>
+        <input type="checkbox" 
+               data-domain="${escapeHtml(domain.key)}" 
+               ${domain.selected ? 'checked' : ''}
+               onchange="toggleDomain('${escapeHtml(domain.key)}', this.checked)">
+        <span>${escapeHtml(domain.name)} (${formatSize(domain.size)})</span>
+      </label>
+    </div>
+  `).join('');
+  
+  // Update selected domains list
+  selectedDomains = domains.filter(d => d.selected).map(d => d.key);
+}
+
+async function toggleDomain(domainKey, selected) {
+  console.log('[RTC] Toggling domain:', domainKey, selected);
+  
+  if (selected) {
+    if (!selectedDomains.includes(domainKey)) {
+      selectedDomains.push(domainKey);
+    }
+  } else {
+    selectedDomains = selectedDomains.filter(d => d !== domainKey);
+  }
+  
+  const data = await apiCall('/api/rtc/domains/selection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selectedDomains })
+  });
+  
+  if (data.success) {
+    console.log('[RTC] Domain selection updated');
+  } else {
+    showToast(data.error || 'Failed to update domain selection', 'error');
+  }
+}
+
+async function toggleAutoCorrupt() {
+  const enabled = elements.chkAutoCorrupt.checked;
+  console.log('[RTC] Auto-corrupt toggled:', enabled);
+  
+  const data = await apiCall('/api/rtc/auto-corrupt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+  
+  if (data.success) {
+    rtcAutoCorruptEnabled = enabled;
+    showToast(`Auto-corrupt ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'info');
+  } else {
+    showToast(data.error || 'Failed to toggle auto-corrupt', 'error');
+    elements.chkAutoCorrupt.checked = !enabled;
+  }
+}
+
+async function updateBlastType() {
+  const blastType = elements.blastTypeSelect.value;
+  console.log('[RTC] Updating blast type to:', blastType);
+  
+  const data = await apiCall('/api/rtc/blast-type', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blastType })
+  });
+  
+  if (data.success) {
+    console.log('[RTC] Blast type updated');
+  } else {
+    showToast(data.error || 'Failed to update blast type', 'error');
+  }
+}
+
+async function updateIntensity() {
+  const intensity = parseInt(elements.intensity.value);
+  console.log('[RTC] Updating intensity to:', intensity);
+  
+  const data = await apiCall('/api/rtc/intensity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ intensity })
+  });
+  
+  if (data.success) {
+    console.log('[RTC] Intensity updated');
+  } else {
+    showToast(data.error || 'Failed to update intensity', 'error');
+  }
+}
+
+async function rtcManualBlast() {
+  console.log('[RTC] Manual blast triggered');
+  
+  const data = await apiCall('/api/rtc/blast', {
+    method: 'POST'
+  });
+  
+  if (data.success) {
+    showToast(`Blast executed (${data.writesApplied || 1} writes)`, 'success');
+  } else {
+    showToast(data.error || 'Manual blast failed', 'error');
+  }
+}
+
+async function rtcLetItRip() {
+  console.log('[RTC] Let It Rip activated!');
+  
+  const data = await apiCall('/api/rtc/let-it-rip', {
+    method: 'POST'
+  });
+  
+  if (data.success) {
+    showToast('Let It Rip! 🔥', 'success');
+    
+    // Update UI to reflect the changes
+    elements.intensity.value = data.intensity;
+    elements.intensityValue.textContent = data.intensity;
+    elements.chkAutoCorrupt.checked = data.autoCorrupt;
+    rtcAutoCorruptEnabled = data.autoCorrupt;
+    
+    // Refresh domains to show selection
+    await refreshDomains();
+  } else {
+    showToast(data.error || 'Failed to apply Let It Rip', 'error');
+  }
+}
+
+async function updateCrashBehavior() {
+  const behavior = elements.crashBehavior.value;
+  console.log('[RTC] Updating crash behavior to:', behavior);
+  
+  const data = await apiCall('/api/rtc/crash-behavior', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ Behavior: behavior })
+  });
+  
+  if (data.success) {
+    console.log('[RTC] Crash behavior updated');
+  } else {
+    showToast(data.error || 'Failed to update crash behavior', 'error');
+  }
+}
+
+function updateCrashStatus(crashed) {
+  if (crashed) {
+    elements.crashStatus.textContent = '⚠️ CRASHED';
+    elements.crashStatus.className = 'gh-crash-status crashed';
+  } else {
+    elements.crashStatus.textContent = '✓ Running';
+    elements.crashStatus.className = 'gh-crash-status running';
+  }
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+// ==================== Tab Switching ====================
+
+function switchTab(tabName) {
+  console.log('[GH] Switching to tab:', tabName);
+  
+  // Update tab buttons
+  document.querySelectorAll('.gh-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.tab === tabName);
+  });
+  
+  // Update sections
+  document.querySelectorAll('.gh-section').forEach(section => {
+    section.classList.toggle('active', section.dataset.section === tabName);
   });
 }
 
@@ -187,7 +513,7 @@ async function apiCall(endpoint, options = {}) {
 
 // ==================== Base States ====================
 
-async function refreshBases() {
+async function refreshBases(autoScroll = false) {
   console.log('[GH] Refreshing base states...');
   const data = await apiCall('/api/gh/base-states');
   console.log('[GH] Base states API response:', data);
@@ -249,6 +575,11 @@ async function refreshBases() {
   // Enable blast button if a base is selected
   elements.btnBlast.disabled = selectedBaseId === null;
   console.log('[GH] Blast button enabled:', selectedBaseId !== null);
+  
+  // Auto-scroll to bottom if requested (when new item is added)
+  if (autoScroll && bases.length > 0) {
+    elements.baseList.scrollTop = elements.baseList.scrollHeight;
+  }
 }
 
 function selectBase(id) {
@@ -312,7 +643,7 @@ async function addBase() {
     elements.baseNameInput.value = '';
     selectedBaseId = baseState?.id;
     console.log('[GH] Selected base ID set to:', selectedBaseId);
-    await refreshBases();
+    await refreshBases(true); // Auto-scroll to bottom when new item is added
   } else {
     console.error('[GH] Failed to create base state:', data.error);
     showToast(data.error || 'Failed to create base state', 'error');
@@ -375,7 +706,7 @@ async function deleteBase() {
 
 // ==================== Stash ====================
 
-async function refreshStash() {
+async function refreshStash(autoScroll = false) {
   const data = await apiCall('/api/gh/stash');
   
   if (!data.success) {
@@ -403,6 +734,11 @@ async function refreshStash() {
   `).join('');
   
   updateStashButtons();
+  
+  // Auto-scroll to bottom if requested (when new item is added)
+  if (autoScroll && stash.length > 0) {
+    elements.stashList.scrollTop = elements.stashList.scrollHeight;
+  }
 }
 
 function selectStash(id) {
@@ -467,7 +803,7 @@ async function blast() {
     showToast('Corruption created and added to stash', 'success');
     selectedStashId = data.entry?.id;
     console.log('[GH] Selected stash ID set to:', selectedStashId);
-    await refreshStash();
+    await refreshStash(true); // Auto-scroll to bottom when new item is added
   } else {
     console.error('[GH] Blast failed:', data.error);
     showToast(data.error || 'Failed to create corruption', 'error');
@@ -504,7 +840,7 @@ async function promoteToStockpile() {
     selectedStockpileId = data.entry?.Id;
     selectedStashId = null;
     await refreshStash();
-    await refreshStockpile();
+    await refreshStockpile(true); // Auto-scroll to bottom when new item is added
   } else {
     showToast(data.error || 'Failed to promote entry', 'error');
   }
@@ -528,7 +864,7 @@ async function clearStash() {
 
 // ==================== Stockpile ====================
 
-async function refreshStockpile() {
+async function refreshStockpile(autoScroll = false) {
   const data = await apiCall('/api/gh/stockpile');
   
   if (!data.success) {
@@ -556,6 +892,11 @@ async function refreshStockpile() {
   `).join('');
   
   updateStockpileButtons();
+  
+  // Auto-scroll to bottom if requested (when new item is added)
+  if (autoScroll && stockpile.length > 0) {
+    elements.stockpileList.scrollTop = elements.stockpileList.scrollHeight;
+  }
 }
 
 function selectStockpile(id) {
@@ -708,7 +1049,7 @@ async function importStockpile(event) {
     
     if (data.success) {
       showToast(`Imported ${data.imported || 0} entries`, 'success');
-      await refreshStockpile();
+      await refreshStockpile(true); // Auto-scroll to bottom when items are imported
     } else {
       showToast(data.error || 'Failed to import stockpile', 'error');
     }
@@ -775,4 +1116,62 @@ function handleConfirmOk() {
   if (confirmCallback) {
     confirmCallback();
   }
+}
+
+// Expose functions that are called from inline HTML
+window.selectBase = selectBase;
+window.selectStash = selectStash;
+window.selectStockpile = selectStockpile;
+window.toggleDomain = toggleDomain;
+
+// ==================== Imagine (ML Byte Prediction) ====================
+
+const IMAGINE_FLAVOR_TEXTS = [
+  "imagine training a model of 6502 code and then forcing the nes cpu to run predicted bytes for some reason",
+  "what if we trained an AI on 6502 assembly and made the NES execute whatever it predicts",
+  "picture this: a neural net learns 6502 opcodes, then we just... run its predictions on real hardware",
+  "so we teach a model what 6502 looks like and convince the CPU to execute its hallucinations",
+  "train a machine learning model on processor instructions then force those predicted bytes into the NES for reasons",
+  "imagine spending epochs teaching AI about 6502 just to inject its predictions into a running console",
+  "what happens when you train a model on assembly code and pipe its output straight into the CPU",
+  "we basically taught an AI to dream in 6502 and now we're making the NES live that dream",
+  "train neural network on old game code → force predicted bytes into processor → chaos",
+  "an AI learned 6502 patterns and now we're feeding its imagination directly to the CPU because why not"
+];
+
+function getRandomFlavorText() {
+  return IMAGINE_FLAVOR_TEXTS[Math.floor(Math.random() * IMAGINE_FLAVOR_TEXTS.length)];
+}
+
+function imagineLoadModel() {
+  console.log('[Imagine] Load Model clicked');
+  const epoch = parseInt(elements.imagineEpoch.value);
+  elements.imagineStatus.textContent = `Status: Loading model epoch ${epoch}...`;
+  elements.imagineStatus.style.color = 'var(--yellow)';
+  
+  // TODO: Implement API call when backend is ready
+  // For now, just simulate the action
+  setTimeout(() => {
+    elements.imagineStatus.textContent = `Status: Model epoch ${epoch} loaded`;
+    elements.imagineStatus.style.color = 'var(--green)';
+    showToast(`Model epoch ${epoch} loaded (simulated)`, 'success');
+  }, 500);
+}
+
+function imagineAutoBug() {
+  console.log('[Imagine] Imagine a Bug clicked');
+  
+  // Update flavor text
+  elements.imagineFlavor.textContent = getRandomFlavorText();
+  
+  elements.imagineStatus.textContent = 'Status: Imagining a bug...';
+  elements.imagineStatus.style.color = 'var(--yellow)';
+  
+  // TODO: Implement API call when backend is ready
+  // For now, simulate the action
+  setTimeout(() => {
+    elements.imagineStatus.textContent = 'Status: Bug imagined successfully!';
+    elements.imagineStatus.style.color = 'var(--green)';
+    showToast('Bug imagined (simulated)', 'success');
+  }, 1000);
 }
