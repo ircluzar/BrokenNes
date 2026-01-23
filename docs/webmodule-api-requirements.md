@@ -223,10 +223,11 @@ This document lists all features/calls that need to be implemented as an API in 
 - [ ] **Set Random Track** - Choose random background track
 
 ### Navigation/Routing
-- [ ] **Navigate To Page** - Change page (e.g., /nes, /continue, /deck-builder)
-- [ ] **Get Query Parameters** - Read URL parameters
-- [ ] **Build URL with Parameters** - Construct navigation URL
-- [ ] **Get Current Route** - Read current page path
+- [x] **Navigate To Page** - Change page (e.g., /nes, /continue, /deck-builder)
+- [x] **Get Query Parameters** - Read URL parameters
+- [x] **Build URL with Parameters** - Construct navigation URL
+- [x] **Get Current Route** - Read current page path
+- [x] **Go To Emulator** - Switch to emulator mode (hide webform)
 
 ### Debug/Benchmarking
 - [ ] **Get Debug Unlocked** - Check if debug features are enabled

@@ -206,6 +206,13 @@ namespace BrokenNes.Windows
                     // Start emulation automatically
                     StartEmulation();
                     
+                    // Check if we should load the Home webmodule instead of staying in emulator mode
+                    if (!config.BootToEmulator)
+                    {
+                        // Load the Home webmodule
+                        LoadHomeWebModule();
+                    }
+                    
                     Console.WriteLine("Embedded ROM loaded successfully and emulation started");
                 }
             }

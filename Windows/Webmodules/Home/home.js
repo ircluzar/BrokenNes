@@ -23,9 +23,7 @@
       const skipHW = params.has('skipHW');
 
       // Show appropriate modal
-      if (!gameSave.UnderConstructionAcknowledged) {
-        showUnderConstructionModal();
-      } else if (!skipHW) {
+      if (!skipHW) {
         showHealthWarningModal();
       } else {
         showMainMenu();
@@ -63,7 +61,6 @@
             APU: [],
             Shader: []
           },
-          UnderConstructionAcknowledged: false,
           SeenStory: false
         };
       }
@@ -78,7 +75,6 @@
           APU: [],
           Shader: []
         },
-        UnderConstructionAcknowledged: false,
         SeenStory: false
       };
     }
@@ -97,12 +93,6 @@
   }
 
   function setupEventListeners() {
-    // Under Construction OK button
-    const underConstructionOk = document.getElementById('underConstructionOk');
-    if (underConstructionOk) {
-      underConstructionOk.addEventListener('click', onUnderConstructionOk);
-    }
-
     // Health Warning OK button
     const healthWarningOk = document.getElementById('healthWarningOk');
     if (healthWarningOk) {
@@ -144,13 +134,6 @@
           onAboutClose();
         }
       });
-    }
-  }
-
-  function showUnderConstructionModal() {
-    const modal = document.getElementById('underConstructionModal');
-    if (modal) {
-      modal.style.display = 'flex';
     }
   }
 
@@ -204,21 +187,6 @@
     }
   }
 
-  async function onUnderConstructionOk() {
-    // Hide modal
-    const modal = document.getElementById('underConstructionModal');
-    if (modal) {
-      modal.style.display = 'none';
-    }
-
-    // Save acknowledgment
-    gameSave.UnderConstructionAcknowledged = true;
-    await saveGameSave();
-
-    // Show health warning next
-    showHealthWarningModal();
-  }
-
   async function onHealthWarningOk() {
     // Play plate sound effect
     try {
@@ -258,10 +226,34 @@
     }
   }
 
-  function onEmulatorClick() {
-    // For web module, we can't launch the actual emulator
-    // Show a placeholder message or link back to main app
-    alert('The BrokenNes Emulator requires the full application. This is a standalone web module demo.');
+  async function onEmulatorClick() {
+    try {
+      // Fade out music before switching to emulator
+      if (window.music && window.music.fadeOut) {
+        window.music.fadeOut(500);
+      }
+
+      // Stop pixel background
+      if (window.homePixelBg && window.homePixelBg.stop) {
+        window.homePixelBg.stop();
+      }
+
+      // Call the API to switch to emulator mode
+      const response = await fetch('http://127.0.0.1:42067/api/navigation/go-to-emulator', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[Home] Switched to emulator mode:', data);
+      } else {
+        console.error('[Home] Failed to switch to emulator mode:', response.status);
+        alert('Failed to switch to emulator mode. Make sure BrokenNes is running.');
+      }
+    } catch (error) {
+      console.error('[Home] Emulator switch error:', error);
+      alert('Could not connect to BrokenNes API. Make sure the application is running.');
+    }
   }
 
   function onOptionsClick() {

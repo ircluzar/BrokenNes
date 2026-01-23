@@ -124,6 +124,8 @@ namespace BrokenNes.Windows
                     item.Checked = config.AutoScrambleCores;
                 else if (item.Text.Contains("Show Console"))
                     item.Checked = config.ShowConsole;
+                else if (item.Text.Contains("Boot to Emulator"))
+                    item.Checked = config.BootToEmulator;
             }
             
             // Update Crash Behavior submenu checkmarks

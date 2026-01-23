@@ -27,6 +27,7 @@ namespace BrokenNes.Windows
         public string Description { get; set; } = "";
         public string Version { get; set; } = "";
         public bool ShowInToolsMenu { get; set; } = false;
+        public bool HideMenuBar { get; set; } = false;
     }
 
     /// <summary>
@@ -65,6 +66,11 @@ namespace BrokenNes.Windows
         public WebModuleDisplayMode DisplayMode { get; }
 
         /// <summary>
+        /// Gets whether this module should hide the menu bar for immersive experience
+        /// </summary>
+        public bool HideMenuBar { get; }
+
+        /// <summary>
         /// Gets the module configuration
         /// </summary>
         public WebModuleConfig Config { get; }
@@ -98,6 +104,9 @@ namespace BrokenNes.Windows
                         "overlay" => WebModuleDisplayMode.Overlay,
                         _ => WebModuleDisplayMode.Web
                     };
+                    
+                    // Get hide menu bar flag
+                    HideMenuBar = Config.HideMenuBar;
                 }
                 catch (Exception ex)
                 {
@@ -105,6 +114,7 @@ namespace BrokenNes.Windows
                     Config = new WebModuleConfig();
                     Name = FolderName;
                     DisplayMode = WebModuleDisplayMode.Web;
+                    HideMenuBar = false;
                 }
             }
             else
@@ -112,6 +122,7 @@ namespace BrokenNes.Windows
                 Config = new WebModuleConfig();
                 Name = FolderName;
                 DisplayMode = WebModuleDisplayMode.Web;
+                HideMenuBar = false;
             }
         }
 

@@ -198,6 +198,19 @@ namespace BrokenNes.Windows
             }
         }
 
+        private void ToggleBootToEmulator_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                config.BootToEmulator = menuItem.Checked;
+                config.Save();
+                
+                Console.WriteLine($"Boot to Emulator set to: {config.BootToEmulator}");
+                
+                UpdateConfigMenus();
+            }
+        }
+
         private void ToggleProfiling_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)

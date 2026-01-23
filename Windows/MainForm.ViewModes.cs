@@ -91,6 +91,12 @@ namespace BrokenNes.Windows
             
             currentViewMode = mode;
             
+            // Restore menu bar when switching to Emulator mode
+            if (mode == ViewMode.Emulator && this.MainMenuStrip != null)
+            {
+                this.MainMenuStrip.Visible = true;
+            }
+            
             // Suspend layout during control rearrangement
             this.SuspendLayout();
             
@@ -304,6 +310,13 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[LoadWebModule] Loading module: {module.Name}");
                 Console.WriteLine($"[LoadWebModule] URI: {uri}");
                 Console.WriteLine($"[LoadWebModule] Display Mode: {module.DisplayMode}");
+                Console.WriteLine($"[LoadWebModule] Hide Menu Bar: {module.HideMenuBar}");
+                
+                // Hide or show menu bar based on module config
+                if (this.MainMenuStrip != null)
+                {
+                    this.MainMenuStrip.Visible = !module.HideMenuBar;
+                }
                 
                 // Switch to appropriate ViewMode based on config FIRST (but don't navigate yet)
                 ViewMode targetMode = module.DisplayMode switch
@@ -329,6 +342,32 @@ namespace BrokenNes.Windows
             }
         }
 
-
+        /// <summary>
+        /// Loads the Home webmodule
+        /// </summary>
+        private void LoadHomeWebModule()
+        {
+            try
+            {
+                Console.WriteLine("[LoadHomeWebModule] Searching for Home webmodule...");
+                var webModules = WebModuleManager.DiscoverModules();
+                var homeModule = System.Linq.Enumerable.FirstOrDefault(webModules, m => 
+                    string.Equals(m.FolderName, "Home", StringComparison.OrdinalIgnoreCase));
+                
+                if (homeModule != null && homeModule.IsValid)
+                {
+                    Console.WriteLine("[LoadHomeWebModule] Found Home webmodule, loading...");
+                    LoadWebModule(homeModule);
+                }
+                else
+                {
+                    Console.WriteLine("[LoadHomeWebModule] Home webmodule not found or invalid");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LoadHomeWebModule] Error: {ex.Message}");
+            }
+        }
     }
 }

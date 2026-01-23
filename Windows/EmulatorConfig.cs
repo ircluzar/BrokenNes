@@ -152,6 +152,12 @@ namespace BrokenNes.Windows
         [JsonPropertyName("showConsole")]
         public bool ShowConsole { get; set; } = false;
         
+        /// <summary>
+        /// Boot directly to emulator mode instead of loading Home webmodule
+        /// </summary>
+        [JsonPropertyName("bootToEmulator")]
+        public bool BootToEmulator { get; set; } = false;
+        
         // Controller configuration - NEW SYSTEM
         /// <summary>
         /// Player controller configurations (supports multiple players with keyboard and XInput)

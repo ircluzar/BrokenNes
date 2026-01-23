@@ -1,7 +1,7 @@
 {
   "displayMode": "web",
-  "title": "Home",
-  "description": "Main menu and navigation hub",
+  "title": "Story",
+  "description": "Introductory narrative",
   "version": "1.0.0",
   "hideMenuBar": true
 }

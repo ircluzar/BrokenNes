@@ -349,6 +349,10 @@ namespace BrokenNes.Windows
             showConsoleItem.CheckOnClick = true;
             configMenu.DropDownItems.Add(showConsoleItem);
             
+            var bootToEmulatorItem = new ToolStripMenuItem("Boot to Emulator", null, ToggleBootToEmulator_Click);
+            bootToEmulatorItem.CheckOnClick = true;
+            configMenu.DropDownItems.Add(bootToEmulatorItem);
+            
             menuStrip.Items.Add(configMenu);
 
             // Tools menu
@@ -649,7 +653,16 @@ namespace BrokenNes.Windows
             try
             {
                 // Pass functions that return the current NES and Corruptor instances
-                webApiServer = new WebApiServer(() => nes, () => corruptor, () => imagineEngine, SetCrashBehavior);
+                // Also pass webView and SwitchViewMode for navigation support
+                webApiServer = new WebApiServer(
+                    () => nes, 
+                    () => corruptor, 
+                    () => imagineEngine, 
+                    SetCrashBehavior,
+                    () => webView,
+                    (mode) => SwitchViewMode(mode),
+                    this  // Pass the main form as UI control for thread marshalling
+                );
                 await webApiServer.StartAsync();
                 Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
             }
