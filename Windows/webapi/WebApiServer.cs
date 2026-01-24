@@ -2549,18 +2549,37 @@ namespace BrokenNes.Windows.WebApi
                     }
                     else if (normalizedDomain == "SHADER")
                     {
-                        // For shaders, we'd need IShaderProvider - for now return a placeholder
-                        cardModel = new CoreCardModel
+                        // Get shader metadata from HLSL file comments
+                        var shaderInfo = Rendering.NesShaderControl.GetShaderInfoById(id);
+                        if (shaderInfo != null)
                         {
-                            Id = id,
-                            ShortName = id,
-                            DisplayName = id,
-                            Description = "Shader effect",
-                            Rating = 0,
-                            Performance = 0,
-                            FooterNote = "SHADER",
-                            Domain = "SHADER"
-                        };
+                            cardModel = new CoreCardModel
+                            {
+                                Id = id,
+                                ShortName = id,
+                                DisplayName = !string.IsNullOrWhiteSpace(shaderInfo.DisplayName) ? shaderInfo.DisplayName : id,
+                                Description = !string.IsNullOrWhiteSpace(shaderInfo.Description) ? shaderInfo.Description : "Shader effect",
+                                Rating = shaderInfo.Rating,
+                                Performance = shaderInfo.Performance,
+                                FooterNote = !string.IsNullOrWhiteSpace(shaderInfo.Category) ? shaderInfo.Category : "SHADER",
+                                Domain = "SHADER"
+                            };
+                        }
+                        else
+                        {
+                            // Fallback for unknown shader IDs
+                            cardModel = new CoreCardModel
+                            {
+                                Id = id,
+                                ShortName = id,
+                                DisplayName = id,
+                                Description = "Shader effect",
+                                Rating = 0,
+                                Performance = 0,
+                                FooterNote = "SHADER",
+                                Domain = "SHADER"
+                            };
+                        }
                     }
 
                     if (cardModel == null)
@@ -2799,14 +2818,56 @@ namespace BrokenNes.Windows.WebApi
 
             static List<object> GetClockMetadata()
             {
-                // ClockRegistry not available in Windows project
-                return new List<object>();
+                // Clock cores from Windows/NesEmulator/clocks
+                var clockDescriptions = new Dictionary<string, (string Name, string Description, int Performance, int Rating)>
+                {
+                    ["FMC"] = ("Standard Clock", "Default NES clock timing", 0, 5),
+                    ["TRB"] = ("Turbo Clock", "Overclocked CPU timing for faster gameplay", 2, 4),
+                    ["CLR"] = ("Clear Clock", "Ultra-precise timing with reduced jitter", 1, 4)
+                };
+
+                var result = new List<object>();
+                foreach (var kv in clockDescriptions)
+                {
+                    result.Add(new
+                    {
+                        id = kv.Key,
+                        name = kv.Value.Name,
+                        description = kv.Value.Description,
+                        performance = kv.Value.Performance,
+                        rating = kv.Value.Rating,
+                        category = "Clock"
+                    });
+                }
+                return result;
             }
 
             static List<object> GetShaderMetadata()
             {
-                // Placeholder - would need IShaderProvider injection
-                return new List<object>();
+                try
+                {
+                    var result = new List<object>();
+                    // Use the HlslMetadataParser to get actual metadata from HLSL shader files
+                    foreach (Rendering.NesShaderManager.ShaderType shaderType in Enum.GetValues(typeof(Rendering.NesShaderManager.ShaderType)))
+                    {
+                        var id = shaderType.ToString();
+                        var info = Rendering.NesShaderControl.GetShaderInfo(shaderType);
+                        result.Add(new
+                        {
+                            id = id,
+                            name = info.DisplayName,
+                            description = info.Description,
+                            performance = info.Performance,
+                            rating = info.Rating,
+                            category = info.Category
+                        });
+                    }
+                    return result;
+                }
+                catch
+                {
+                    return new List<object>();
+                }
             }
 
             // Helper to read instance properties from core types by creating a temporary instance

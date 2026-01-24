@@ -173,158 +173,39 @@ namespace BrokenNes.Windows.Rendering
         }
 
         /// <summary>
-        /// Get shader information including description
+        /// Get shader information including description, performance, and rating.
+        /// Metadata is parsed from HLSL shader file comments.
         /// </summary>
         public static ShaderInfo GetShaderInfo(NesShaderManager.ShaderType shaderType)
         {
-            return shaderType switch
+            var meta = HlslMetadataParser.GetMetadataForShaderType(shaderType);
+            var name = shaderType.ToString();
+            
+            return new ShaderInfo
             {
-                NesShaderManager.ShaderType.RF => new ShaderInfo 
-                { 
-                    Name = "RF", 
-                    DisplayName = "Analog RF",
-                    Description = "Mild analog RF simulation with chroma misalignment and shimmer"
-                },
-                NesShaderManager.ShaderType.TV => new ShaderInfo 
-                { 
-                    Name = "TV", 
-                    DisplayName = "CRT TV",
-                    Description = "Classic CRT television look"
-                },
-                NesShaderManager.ShaderType.MUSK => new ShaderInfo 
-                { 
-                    Name = "MUSK", 
-                    DisplayName = "Mars Horizon",
-                    Description = "Atmospheric Mars-themed shader"
-                },
-                NesShaderManager.ShaderType.TTF => new ShaderInfo 
-                { 
-                    Name = "TTF", 
-                    DisplayName = "Subpixel Clean",
-                    Description = "Sharp subpixel rendering"
-                },
-                NesShaderManager.ShaderType.BLD => new ShaderInfo 
-                { 
-                    Name = "BLD", 
-                    DisplayName = "4-Way Color Bleed",
-                    Description = "Directional color bleed effect"
-                },
-                NesShaderManager.ShaderType.VHS => new ShaderInfo 
-                { 
-                    Name = "VHS", 
-                    DisplayName = "Broken VCR",
-                    Description = "VHS tape distortion effect"
-                },
-                NesShaderManager.ShaderType.EXE => new ShaderInfo 
-                { 
-                    Name = "EXE", 
-                    DisplayName = "Creepy Look",
-                    Description = "Unsettling visual effect"
-                },
-                NesShaderManager.ShaderType.BUMP => new ShaderInfo 
-                { 
-                    Name = "BUMP", 
-                    DisplayName = "Pseudo Bump",
-                    Description = "Fake 3D bump mapping"
-                },
-                NesShaderManager.ShaderType.RGBX => new ShaderInfo 
-                { 
-                    Name = "RGBX", 
-                    DisplayName = "Chromatic Vector",
-                    Description = "RGB separation effect"
-                },
-                NesShaderManager.ShaderType.CCC => new ShaderInfo
-                {
-                    Name = "CCC",
-                    DisplayName = "Color Cycle",
-                    Description = "Hue rotation with inverted breaths"
-                },
-                NesShaderManager.ShaderType.CRY => new ShaderInfo
-                {
-                    Name = "CRY",
-                    DisplayName = "Crystalline",
-                    Description = "Facet-driven refraction with dispersion"
-                },
-                NesShaderManager.ShaderType.CRZ => new ShaderInfo
-                {
-                    Name = "CRZ",
-                    DisplayName = "Crystal Glass",
-                    Description = "Sharp glass facets with glints"
-                },
-                NesShaderManager.ShaderType.DOT => new ShaderInfo
-                {
-                    Name = "DOT",
-                    DisplayName = "Circular Shards",
-                    Description = "Overlapping circular refraction field"
-                },
-                NesShaderManager.ShaderType.LCD => new ShaderInfo
-                {
-                    Name = "LCD",
-                    DisplayName = "Aging LCD",
-                    Description = "Horizontal smear, ghost, frost diffusion"
-                },
-                NesShaderManager.ShaderType.PX => new ShaderInfo
-                {
-                    Name = "PX",
-                    DisplayName = "Passthrough",
-                    Description = "Identity shader for baseline"
-                },
-                NesShaderManager.ShaderType.CNMA => new ShaderInfo
-                {
-                    Name = "CNMA",
-                    DisplayName = "Cinematic",
-                    Description = "Filmic exposure and teal/orange grade"
-                },
-                NesShaderManager.ShaderType.HUE => new ShaderInfo
-                {
-                    Name = "HUE",
-                    DisplayName = "Hue Rotation",
-                    Description = "Hue inversion with slow rotation"
-                },
-                NesShaderManager.ShaderType.LAT => new ShaderInfo
-                {
-                    Name = "LAT",
-                    DisplayName = "Lattice",
-                    Description = "Micro-facet tile refraction"
-                },
-                NesShaderManager.ShaderType.LSD => new ShaderInfo
-                {
-                    Name = "LSD",
-                    DisplayName = "Psychedelic",
-                    Description = "Layered warps and chromatic splits"
-                },
-                NesShaderManager.ShaderType.MSH => new ShaderInfo
-                {
-                    Name = "MSH",
-                    DisplayName = "Pixel Mush",
-                    Description = "Temporal block mosh with glitches"
-                },
-                NesShaderManager.ShaderType.SPK => new ShaderInfo
-                {
-                    Name = "SPK",
-                    DisplayName = "Prism Sparkle",
-                    Description = "Edge prism with starfield sparkles"
-                },
-                NesShaderManager.ShaderType.TRI => new ShaderInfo
-                {
-                    Name = "TRI",
-                    DisplayName = "Faux Extrusion",
-                    Description = "Height-from-luma parallax lighting"
-                },
-                NesShaderManager.ShaderType.WARM => new ShaderInfo
-                {
-                    Name = "WARM",
-                    DisplayName = "Extra Warmth",
-                    Description = "Subtle warmth and soft contrast"
-                },
-                NesShaderManager.ShaderType.WTR => new ShaderInfo
-                {
-                    Name = "WTR",
-                    DisplayName = "Water Ripples",
-                    Description = "Compound vector-field warping"
-                },
-                _ => new ShaderInfo { Name = "Unknown", DisplayName = "Unknown", Description = "Unknown shader" }
+                Name = name,
+                DisplayName = !string.IsNullOrWhiteSpace(meta.DisplayName) ? meta.DisplayName : name,
+                Description = !string.IsNullOrWhiteSpace(meta.Description) ? meta.Description : "Shader effect",
+                Performance = meta.Performance,
+                Rating = meta.Rating,
+                Category = !string.IsNullOrWhiteSpace(meta.Category) ? meta.Category : "SHADER"
             };
+        }
+
+        /// <summary>
+        /// Get shader information by shader ID string.
+        /// </summary>
+        public static ShaderInfo? GetShaderInfoById(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return null;
+                
+            if (Enum.TryParse<NesShaderManager.ShaderType>(id, ignoreCase: true, out var shaderType))
+            {
+                return GetShaderInfo(shaderType);
+            }
+            
+            return null;
         }
 
         /// <summary>
@@ -335,6 +216,9 @@ namespace BrokenNes.Windows.Rendering
             public string Name { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
             public string Description { get; set; } = string.Empty;
+            public int Performance { get; set; }
+            public int Rating { get; set; }
+            public string Category { get; set; } = "SHADER";
         }
     }
 }

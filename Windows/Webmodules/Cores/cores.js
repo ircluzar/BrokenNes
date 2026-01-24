@@ -66,7 +66,7 @@
   
   async function loadCores() {
     try {
-      // Load game save to get owned cores
+      // Load game save using shared gameSave module (no more API call!)
       const save = await loadGameSave();
       console.log('Game save loaded:', save);
       console.log('Raw owned CPU IDs:', save.ownedCpuIds);
@@ -186,26 +186,28 @@
   
   async function loadGameSave() {
     try {
-      const response = await fetch(`${API_BASE}/save`);
-      if (!response.ok) {
+      // Use shared gameSave module instead of API
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        return await window.gameSave.load();
+      } else {
+        console.error('[Cores] gameSave module not available');
         // Return default empty save
         return {
-          OwnedCpuIds: [],
-          OwnedPpuIds: [],
-          OwnedApuIds: [],
-          OwnedClockIds: [],
-          OwnedShaderIds: []
+          ownedCpuIds: ['FMC'],
+          ownedPpuIds: ['FMC'],
+          ownedApuIds: ['FMC'],
+          ownedClockIds: ['FMC'],
+          ownedShaderIds: ['PX']
         };
       }
-      return await response.json();
     } catch (error) {
       console.error('Error loading game save:', error);
       return {
-        ownedCpuIds: [],
-        ownedPpuIds: [],
-        ownedApuIds: [],
-        ownedClockIds: [],
-        ownedShaderIds: []
+        ownedCpuIds: ['FMC'],
+        ownedPpuIds: ['FMC'],
+        ownedApuIds: ['FMC'],
+        ownedClockIds: ['FMC'],
+        ownedShaderIds: ['PX']
       };
     }
   }

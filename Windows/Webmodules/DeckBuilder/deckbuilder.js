@@ -3,9 +3,6 @@
 (function() {
   'use strict';
 
-  // Storage keys
-  const STORAGE_KEY = 'brokenNesGameSave';
-
   // State
   let gameSave = null;
 
@@ -48,42 +45,15 @@
 
   async function loadGameSave() {
     try {
-      // Use storage.js if available, otherwise fallback to localStorage
-      if (window.storage && typeof window.storage.load === 'function') {
-        gameSave = await window.storage.load(STORAGE_KEY);
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        gameSave = await window.gameSave.load();
       } else {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (data) {
-          gameSave = JSON.parse(data);
-        }
-      }
-
-      // Initialize default save if none exists
-      if (!gameSave) {
-        gameSave = {
-          Level: 1,
-          Achievements: [],
-          OwnedCores: {
-            CPU: [],
-            PPU: [],
-            APU: [],
-            Shader: []
-          }
-        };
+        console.error('[DeckBuilder] gameSave module not available');
+        gameSave = null;
       }
     } catch (error) {
       console.error('[DeckBuilder] Load save error:', error);
-      // Use default save
-      gameSave = {
-        Level: 1,
-        Achievements: [],
-        OwnedCores: {
-          CPU: [],
-          PPU: [],
-          APU: [],
-          Shader: []
-        }
-      };
+      gameSave = null;
     }
   }
 
@@ -92,7 +62,7 @@
       // Calculate stats
       const level = Math.max(1, gameSave.Level || 1);
       const stars = (gameSave.Achievements || []).length;
-      const ownedCores = countOwnedCores(gameSave);
+      const ownedCores = window.gameSave ? window.gameSave.countOwnedCores(gameSave) : 0;
       const totalCores = estimateTotalCores();
 
       // Update DOM elements
@@ -114,22 +84,6 @@
     } catch (error) {
       console.error('[DeckBuilder] Update UI error:', error);
     }
-  }
-
-  function countOwnedCores(save) {
-    let count = 0;
-    try {
-      if (save && save.OwnedCores) {
-        const cores = save.OwnedCores;
-        if (cores.CPU) count += cores.CPU.length;
-        if (cores.PPU) count += cores.PPU.length;
-        if (cores.APU) count += cores.APU.length;
-        if (cores.Shader) count += cores.Shader.length;
-      }
-    } catch (error) {
-      console.error('[DeckBuilder] Count cores error:', error);
-    }
-    return count;
   }
 
   function estimateTotalCores() {

@@ -3,10 +3,6 @@
 (function() {
   'use strict';
 
-  // Storage keys
-  const STORAGE_KEY = 'brokenNesGameSave';
-  const VOLUME_KEY = 'brokenNesAudioVolumes';
-
   // State
   let gameSave = null;
   let volumes = {
@@ -41,61 +37,24 @@
 
   async function loadGameSave() {
     try {
-      if (window.storage && typeof window.storage.load === 'function') {
-        gameSave = await window.storage.load(STORAGE_KEY);
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        gameSave = await window.gameSave.load();
       } else {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (data) {
-          gameSave = JSON.parse(data);
-        }
-      }
-
-      // Initialize default save if none exists
-      if (!gameSave) {
-        gameSave = {
-          Level: 1,
-          Achievements: [],
-          OwnedCores: {
-            CPU: ['FMC'],
-            PPU: ['FMC'],
-            APU: ['FMC'],
-            Clock: ['FMC'],
-            Shader: ['PX']
-          },
-          UnlockedFeatures: {
-            Savestates: false,
-            RTC: false,
-            GH: false,
-            Imagine: false,
-            Debug: false
-          }
-        };
+        console.error('[Options] gameSave module not available');
+        gameSave = null;
       }
     } catch (error) {
       console.error('[Options] Load save error:', error);
-      gameSave = {
-        Level: 1,
-        Achievements: [],
-        OwnedCores: { CPU: ['FMC'], PPU: ['FMC'], APU: ['FMC'], Clock: ['FMC'], Shader: ['PX'] },
-        UnlockedFeatures: { Savestates: false, RTC: false, GH: false, Imagine: false, Debug: false }
-      };
+      gameSave = null;
     }
   }
 
   async function loadVolumes() {
     try {
-      let data;
-      if (window.storage && typeof window.storage.load === 'function') {
-        data = await window.storage.load(VOLUME_KEY);
+      if (window.gameSave && typeof window.gameSave.loadVolumes === 'function') {
+        volumes = await window.gameSave.loadVolumes();
       } else {
-        const stored = localStorage.getItem(VOLUME_KEY);
-        if (stored) {
-          data = JSON.parse(stored);
-        }
-      }
-
-      if (data) {
-        volumes = { ...volumes, ...data };
+        console.error('[Options] gameSave module not available for volumes');
       }
     } catch (error) {
       console.error('[Options] Load volumes error:', error);
@@ -104,10 +63,10 @@
 
   async function saveGameSave() {
     try {
-      if (window.storage && typeof window.storage.save === 'function') {
-        await window.storage.save(STORAGE_KEY, gameSave);
+      if (window.gameSave && typeof window.gameSave.save === 'function') {
+        await window.gameSave.save(gameSave);
       } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameSave));
+        console.error('[Options] gameSave module not available for saving');
       }
     } catch (error) {
       console.error('[Options] Save error:', error);
@@ -116,10 +75,10 @@
 
   async function saveVolumes() {
     try {
-      if (window.storage && typeof window.storage.save === 'function') {
-        await window.storage.save(VOLUME_KEY, volumes);
+      if (window.gameSave && typeof window.gameSave.saveVolumes === 'function') {
+        await window.gameSave.saveVolumes(volumes);
       } else {
-        localStorage.setItem(VOLUME_KEY, JSON.stringify(volumes));
+        console.error('[Options] gameSave module not available for saving volumes');
       }
     } catch (error) {
       console.error('[Options] Save volumes error:', error);
@@ -267,61 +226,24 @@
   }
 
   async function onClearSave() {
-    // Reset save to defaults
-    gameSave = {
-      Level: 1,
-      Achievements: [],
-      OwnedCores: {
-        CPU: ['FMC'],
-        PPU: ['FMC'],
-        APU: ['FMC'],
-        Clock: ['FMC'],
-        Shader: ['PX']
-      },
-      UnlockedFeatures: {
-        Savestates: false,
-        RTC: false,
-        GH: false,
-        Imagine: false,
-        Debug: false
-      },
-      UnderConstructionAcknowledged: gameSave.UnderConstructionAcknowledged,
-      SeenStory: gameSave.SeenStory
-    };
-    
-    await saveGameSave();
-    showModal('Save Edit', 'DeckBuilder game save reset to defaults');
+    // Reset save to defaults using shared module
+    if (window.gameSave && typeof window.gameSave.reset === 'function') {
+      gameSave = await window.gameSave.reset();
+      showModal('Save Edit', 'DeckBuilder game save reset to defaults');
+    } else {
+      showModal('Error', 'Unable to reset save - gameSave module not available');
+    }
   }
 
   async function onUnlockAll() {
-    // Unlock all cores
-    const allCPU = ['FMC', 'EXE', 'LAT', 'QUK', 'HAW'];
-    const allPPU = ['FMC', 'LOW', 'MED', 'HI', 'OPT'];
-    const allAPU = ['FMC', 'LOW', 'MED', 'HI'];
-    const allClock = ['FMC', 'STD', 'OPT'];
-    const allShader = ['PX', '16B', 'BLD', 'BUMP', 'CCC', 'CNMA', 'CRY', 'CRZ', 'DOT', 'EXE', 
-                       'HUE', 'LAT', 'LCD', 'LSD', 'MSH', 'MUSK', 'RF', 'RGBX', 'SPK', 'TRI', 
-                       'TTF', 'TV', 'VHS', 'WARM', 'WTR'];
-
-    gameSave.OwnedCores = {
-      CPU: allCPU,
-      PPU: allPPU,
-      APU: allAPU,
-      Clock: allClock,
-      Shader: allShader
-    };
-
-    if (!gameSave.UnlockedFeatures) {
-      gameSave.UnlockedFeatures = {};
+    // Use shared gameSave module to unlock everything
+    if (window.gameSave && typeof window.gameSave.unlockAllCores === 'function') {
+      gameSave = window.gameSave.unlockAllCores(gameSave);
+      await saveGameSave();
+      showModal('Save Edit', 'All cores and advanced features unlocked in your DeckBuilder save.');
+    } else {
+      showModal('Error', 'Unable to unlock cores - gameSave module not available');
     }
-    gameSave.UnlockedFeatures.Savestates = true;
-    gameSave.UnlockedFeatures.RTC = true;
-    gameSave.UnlockedFeatures.GH = true;
-    gameSave.UnlockedFeatures.Imagine = true;
-    gameSave.UnlockedFeatures.Debug = true;
-
-    await saveGameSave();
-    showModal('Save Edit', 'All cores and advanced features unlocked in your DeckBuilder save.');
   }
 
   function onToggleFeatures() {

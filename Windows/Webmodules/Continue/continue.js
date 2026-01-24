@@ -3,9 +3,6 @@
 (function() {
   'use strict';
 
-  // Storage keys
-  const STORAGE_KEY = 'brokenNesGameSave';
-
   // State
   let gameSave = null;
   let currentLevel = 1;
@@ -131,35 +128,15 @@
 
   async function loadGameSave() {
     try {
-      if (window.storage && typeof window.storage.load === 'function') {
-        gameSave = await window.storage.load(STORAGE_KEY);
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        gameSave = await window.gameSave.load();
       } else {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (data) {
-          gameSave = JSON.parse(data);
-        }
+        console.error('[Continue] gameSave module not available');
+        gameSave = null;
       }
 
-      // Initialize default save if none exists
       if (!gameSave) {
-        gameSave = {
-          Level: 1,
-          Achievements: [],
-          OwnedCores: {
-            CPU: ['FMC'],
-            PPU: ['FMC'],
-            APU: ['FMC'],
-            Clock: ['FMC'],
-            Shader: ['PX']
-          },
-          LevelCleared: false,
-          Preferences: {
-            CPU: 'FMC',
-            PPU: 'FMC',
-            APU: 'FMC',
-            Shader: 'PX'
-          }
-        };
+        gameSave = await window.gameSave.load();
       }
 
       // Load state from save
@@ -174,22 +151,16 @@
       selectedShader = gameSave.Preferences?.Shader || 'PX';
     } catch (error) {
       console.error('[Continue] Load save error:', error);
-      gameSave = {
-        Level: 1,
-        Achievements: [],
-        OwnedCores: { CPU: ['FMC'], PPU: ['FMC'], APU: ['FMC'], Clock: ['FMC'], Shader: ['PX'] },
-        LevelCleared: false,
-        Preferences: { CPU: 'FMC', PPU: 'FMC', APU: 'FMC', Shader: 'PX' }
-      };
+      gameSave = null;
     }
   }
 
   async function saveGameSave() {
     try {
-      if (window.storage && typeof window.storage.save === 'function') {
-        await window.storage.save(STORAGE_KEY, gameSave);
+      if (window.gameSave && typeof window.gameSave.save === 'function') {
+        await window.gameSave.save(gameSave);
       } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameSave));
+        console.error('[Continue] gameSave module not available for saving');
       }
     } catch (error) {
       console.error('[Continue] Save error:', error);
@@ -570,8 +541,9 @@
     const slotType = slotName.toUpperCase();
     title.textContent = `Select ${slotType}`;
     
-    // Get owned cores for this type
-    const owned = gameSave.OwnedCores?.[slotType] || [];
+    // Get owned cores for this type using new property names
+    const key = `owned${slotType === 'CPU' ? 'Cpu' : slotType === 'PPU' ? 'Ppu' : slotType === 'APU' ? 'Apu' : slotType === 'CLOCK' ? 'Clock' : 'Shader'}Ids`;
+    const owned = gameSave?.[key] || [];
     const allCores = coreData[slotType] || [];
     
     // Render options

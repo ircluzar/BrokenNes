@@ -3,9 +3,6 @@
 (function() {
   'use strict';
 
-  // Storage keys
-  const STORAGE_KEY = 'brokenNesGameSave';
-
   // State
   let gameSave = null;
   let audioInitialized = false;
@@ -41,51 +38,24 @@
 
   async function loadGameSave() {
     try {
-      if (window.storage && typeof window.storage.load === 'function') {
-        gameSave = await window.storage.load(STORAGE_KEY);
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        gameSave = await window.gameSave.load();
       } else {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (data) {
-          gameSave = JSON.parse(data);
-        }
-      }
-
-      // Initialize default save if none exists
-      if (!gameSave) {
-        gameSave = {
-          Level: 1,
-          Achievements: [],
-          OwnedCores: {
-            CPU: [],
-            PPU: [],
-            APU: [],
-            Shader: []
-          },
-          SeenStory: false
-        };
+        console.error('[Home] gameSave module not available');
+        gameSave = null;
       }
     } catch (error) {
       console.error('[Home] Load save error:', error);
-      gameSave = {
-        Level: 1,
-        Achievements: [],
-        OwnedCores: {
-          CPU: [],
-          PPU: [],
-          APU: [],
-          Shader: []
-        },
-        SeenStory: false
-      };
+      gameSave = null;
     }
   }
 
   async function saveGameSave() {
     try {
-      if (window.storage && typeof window.storage.save === 'function') {
-        await window.storage.save(STORAGE_KEY, gameSave);
+      if (window.gameSave && typeof window.gameSave.save === 'function') {
+        await window.gameSave.save(gameSave);
       } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameSave));
+        console.error('[Home] gameSave module not available for saving');
       }
     } catch (error) {
       console.error('[Home] Save error:', error);
