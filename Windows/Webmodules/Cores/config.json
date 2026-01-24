@@ -1,0 +1,7 @@
+{
+  "name": "Cores",
+  "version": "1.0.0",
+  "description": "View unlocked cores with grouping, sorting, and filtering",
+  "author": "BrokenNes",
+  "entryPoint": "index.html"
+}

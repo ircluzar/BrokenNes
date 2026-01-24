@@ -70,6 +70,11 @@ namespace BrokenNes.Windows.WebApi
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.Listen(IPAddress.Loopback, _port);
+                // Also listen on HTTPS for WebView2 compatibility (development certificate)
+                options.Listen(IPAddress.Loopback, _port + 1, listenOptions =>
+                {
+                    listenOptions.UseHttps();
+                });
             });
 
             // Suppress most logging to avoid console spam
@@ -100,6 +105,9 @@ namespace BrokenNes.Windows.WebApi
             RegisterGlitchHarvesterEndpoints(app);
             RegisterImagineEndpoints(app);
             RegisterNavigationEndpoints(app);
+            RegisterCardEndpoints(app);
+            RegisterCoresEndpoints(app);
+            RegisterSaveEndpoints(app);
 
             _host = app;
 
@@ -2451,6 +2459,535 @@ namespace BrokenNes.Windows.WebApi
                     });
                 }
             });
+        }
+
+        /// <summary>
+        /// Register Card SVG API endpoints
+        /// </summary>
+        private void RegisterCardEndpoints(WebApplication app)
+        {
+            // GET /api/card/{domain}/{id} - Get SVG for a specific card
+            app.MapGet("/api/card/{domain}/{id}", (string domain, string id) =>
+            {
+                try
+                {
+                    // Initialize registries
+                    CoreRegistry.Initialize();
+
+                    // Build card model from core metadata
+                    CoreCardModel? cardModel = null;
+                    var normalizedDomain = domain.ToUpperInvariant();
+
+                    if (normalizedDomain == "CPU")
+                    {
+                        var cpuTypes = CoreRegistry.CpuTypes;
+                        if (cpuTypes.TryGetValue(id, out var type))
+                        {
+                            cardModel = new CoreCardModel
+                            {
+                                Id = id,
+                                ShortName = id,
+                                DisplayName = SafeGetStaticString(type, "CoreName") ?? id,
+                                Description = SafeGetStaticString(type, "Description") ?? string.Empty,
+                                Rating = SafeGetStaticInt(type, "Rating") ?? 0,
+                                Performance = SafeGetStaticInt(type, "Performance") ?? 0,
+                                FooterNote = SafeGetStaticString(type, "Category") ?? "CPU",
+                                Domain = "CPU"
+                            };
+                        }
+                    }
+                    else if (normalizedDomain == "PPU")
+                    {
+                        var ppuTypes = CoreRegistry.PpuTypes;
+                        if (ppuTypes.TryGetValue(id, out var type))
+                        {
+                            cardModel = new CoreCardModel
+                            {
+                                Id = id,
+                                ShortName = id,
+                                DisplayName = SafeGetStaticString(type, "CoreName") ?? id,
+                                Description = SafeGetStaticString(type, "Description") ?? string.Empty,
+                                Rating = SafeGetStaticInt(type, "Rating") ?? 0,
+                                Performance = SafeGetStaticInt(type, "Performance") ?? 0,
+                                FooterNote = SafeGetStaticString(type, "Category") ?? "PPU",
+                                Domain = "PPU"
+                            };
+                        }
+                    }
+                    else if (normalizedDomain == "APU")
+                    {
+                        var apuTypes = CoreRegistry.ApuTypes;
+                        if (apuTypes.TryGetValue(id, out var type))
+                        {
+                            cardModel = new CoreCardModel
+                            {
+                                Id = id,
+                                ShortName = id,
+                                DisplayName = SafeGetStaticString(type, "CoreName") ?? id,
+                                Description = SafeGetStaticString(type, "Description") ?? string.Empty,
+                                Rating = SafeGetStaticInt(type, "Rating") ?? 0,
+                                Performance = SafeGetStaticInt(type, "Performance") ?? 0,
+                                FooterNote = SafeGetStaticString(type, "Category") ?? "APU",
+                                Domain = "APU"
+                            };
+                        }
+                    }
+                    else if (normalizedDomain == "CLOCK")
+                    {
+                        // ClockRegistry not available in Windows project - return placeholder
+                        cardModel = new CoreCardModel
+                        {
+                            Id = id,
+                            ShortName = id,
+                            DisplayName = id,
+                            Description = "Clock timing core",
+                            Rating = 0,
+                            Performance = 0,
+                            FooterNote = "CLOCK",
+                            Domain = "CLOCK"
+                        };
+                    }
+                    else if (normalizedDomain == "SHADER")
+                    {
+                        // For shaders, we'd need IShaderProvider - for now return a placeholder
+                        cardModel = new CoreCardModel
+                        {
+                            Id = id,
+                            ShortName = id,
+                            DisplayName = id,
+                            Description = "Shader effect",
+                            Rating = 0,
+                            Performance = 0,
+                            FooterNote = "SHADER",
+                            Domain = "SHADER"
+                        };
+                    }
+
+                    if (cardModel == null)
+                    {
+                        return Results.NotFound(new { success = false, error = $"Card not found: {domain}/{id}" });
+                    }
+
+                    // Render SVG
+                    var svg = CardSvgRenderer.Render(cardModel);
+
+                    // Return as SVG content type
+                    return Results.Content(svg, "image/svg+xml");
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // Helper methods for safe reflection access (support both static and instance properties)
+            static string? SafeGetStaticString(Type type, string propertyName)
+            {
+                try
+                {
+                    // First try static property
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (prop != null && prop.PropertyType == typeof(string))
+                    {
+                        return prop.GetValue(null) as string;
+                    }
+                    // Fall back to instance property - create a temporary instance
+                    prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (prop != null && prop.PropertyType == typeof(string))
+                    {
+                        // Try to create instance with parameterless constructor or Bus constructor
+                        object? instance = null;
+                        var ctor = type.GetConstructor(Type.EmptyTypes);
+                        if (ctor != null)
+                        {
+                            instance = ctor.Invoke(null);
+                        }
+                        else
+                        {
+                            // Try constructor with Bus parameter (common for cores)
+                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
+                            if (busCtor != null)
+                            {
+                                instance = busCtor.Invoke(new object[] { null! });
+                            }
+                        }
+                        if (instance != null)
+                        {
+                            return prop.GetValue(instance) as string;
+                        }
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static int? SafeGetStaticInt(Type type, string propertyName)
+            {
+                try
+                {
+                    // First try static property
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (prop != null && prop.PropertyType == typeof(int))
+                    {
+                        return (int?)prop.GetValue(null);
+                    }
+                    // Fall back to instance property - create a temporary instance
+                    prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (prop != null && prop.PropertyType == typeof(int))
+                    {
+                        // Try to create instance with parameterless constructor or Bus constructor
+                        object? instance = null;
+                        var ctor = type.GetConstructor(Type.EmptyTypes);
+                        if (ctor != null)
+                        {
+                            instance = ctor.Invoke(null);
+                        }
+                        else
+                        {
+                            // Try constructor with Bus parameter (common for cores)
+                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
+                            if (busCtor != null)
+                            {
+                                instance = busCtor.Invoke(new object[] { null! });
+                            }
+                        }
+                        if (instance != null)
+                        {
+                            return (int?)prop.GetValue(instance);
+                        }
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static T? SafeGet<T>(Func<T> getter)
+            {
+                try { return getter(); } catch { return default; }
+            }
+
+            static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+            {
+                try { return getter(); } catch { return null; }
+            }
+        }
+
+        private void RegisterCoresEndpoints(WebApplication app)
+        {
+            // GET /api/cores - Get metadata for all available cores
+            app.MapGet("/api/cores", () =>
+            {
+                try
+                {
+                    // Initialize core registry
+                    CoreRegistry.Initialize();
+
+                    var result = new
+                    {
+                        cpu = GetCpuMetadata(),
+                        ppu = GetPpuMetadata(),
+                        apu = GetApuMetadata(),
+                        clock = new List<object>(), // ClockRegistry not available in Windows project
+                        shader = GetShaderMetadata()
+                    };
+
+                    return Results.Ok(result);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            static List<object> GetCpuMetadata()
+            {
+                try
+                {
+                    var cpuTypes = CoreRegistry.CpuTypes;
+                    var result = new List<object>();
+                    
+                    foreach (var kvp in cpuTypes)
+                    {
+                        var id = kvp.Key;
+                        var type = kvp.Value;
+                        result.Add(new
+                        {
+                            id = id,
+                            name = SafeGetInstanceString(type, "CoreName") ?? id,
+                            description = SafeGetInstanceString(type, "Description") ?? $"CPU core {id}",
+                            performance = SafeGetInstanceInt(type, "Performance") ?? 0,
+                            rating = SafeGetInstanceInt(type, "Rating") ?? 3,
+                            category = SafeGetInstanceString(type, "Category") ?? "Processor"
+                        });
+                    }
+                    
+                    return result;
+                }
+                catch
+                {
+                    return new List<object>();
+                }
+            }
+
+            static List<object> GetPpuMetadata()
+            {
+                try
+                {
+                    var ppuTypes = CoreRegistry.PpuTypes;
+                    var result = new List<object>();
+                    
+                    foreach (var kvp in ppuTypes)
+                    {
+                        var id = kvp.Key;
+                        var type = kvp.Value;
+                        result.Add(new
+                        {
+                            id = id,
+                            name = SafeGetInstanceString(type, "CoreName") ?? id,
+                            description = SafeGetInstanceString(type, "Description") ?? $"PPU core {id}",
+                            performance = SafeGetInstanceInt(type, "Performance") ?? 0,
+                            rating = SafeGetInstanceInt(type, "Rating") ?? 3,
+                            category = SafeGetInstanceString(type, "Category") ?? "Graphics"
+                        });
+                    }
+                    
+                    return result;
+                }
+                catch
+                {
+                    return new List<object>();
+                }
+            }
+
+            static List<object> GetApuMetadata()
+            {
+                try
+                {
+                    var apuTypes = CoreRegistry.ApuTypes;
+                    var result = new List<object>();
+                    
+                    foreach (var kvp in apuTypes)
+                    {
+                        var id = kvp.Key;
+                        var type = kvp.Value;
+                        result.Add(new
+                        {
+                            id = id,
+                            name = SafeGetInstanceString(type, "CoreName") ?? id,
+                            description = SafeGetInstanceString(type, "Description") ?? $"APU core {id}",
+                            performance = SafeGetInstanceInt(type, "Performance") ?? 0,
+                            rating = SafeGetInstanceInt(type, "Rating") ?? 3,
+                            category = SafeGetInstanceString(type, "Category") ?? "Audio"
+                        });
+                    }
+                    
+                    return result;
+                }
+                catch
+                {
+                    return new List<object>();
+                }
+            }
+
+            static List<object> GetClockMetadata()
+            {
+                // ClockRegistry not available in Windows project
+                return new List<object>();
+            }
+
+            static List<object> GetShaderMetadata()
+            {
+                // Placeholder - would need IShaderProvider injection
+                return new List<object>();
+            }
+
+            // Helper to read instance properties from core types by creating a temporary instance
+            static string? SafeGetInstanceString(Type type, string propertyName)
+            {
+                try
+                {
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (prop != null && prop.PropertyType == typeof(string))
+                    {
+                        // Try to create instance with parameterless constructor or Bus constructor
+                        object? instance = null;
+                        var ctor = type.GetConstructor(Type.EmptyTypes);
+                        if (ctor != null)
+                        {
+                            instance = ctor.Invoke(null);
+                        }
+                        else
+                        {
+                            // Try constructor with Bus parameter (common for cores)
+                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
+                            if (busCtor != null)
+                            {
+                                instance = busCtor.Invoke(new object?[] { null });
+                            }
+                        }
+                        if (instance != null)
+                        {
+                            return prop.GetValue(instance) as string;
+                        }
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static int? SafeGetInstanceInt(Type type, string propertyName)
+            {
+                try
+                {
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (prop != null && prop.PropertyType == typeof(int))
+                    {
+                        // Try to create instance with parameterless constructor or Bus constructor
+                        object? instance = null;
+                        var ctor = type.GetConstructor(Type.EmptyTypes);
+                        if (ctor != null)
+                        {
+                            instance = ctor.Invoke(null);
+                        }
+                        else
+                        {
+                            // Try constructor with Bus parameter (common for cores)
+                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
+                            if (busCtor != null)
+                            {
+                                instance = busCtor.Invoke(new object?[] { null });
+                            }
+                        }
+                        if (instance != null)
+                        {
+                            return (int?)prop.GetValue(instance);
+                        }
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static string? SafeGetStaticString(Type type, string propertyName)
+            {
+                try
+                {
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (prop != null && prop.PropertyType == typeof(string))
+                    {
+                        return prop.GetValue(null) as string;
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static int? SafeGetStaticInt(Type type, string propertyName)
+            {
+                try
+                {
+                    var prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (prop != null && prop.PropertyType == typeof(int))
+                    {
+                        return (int?)prop.GetValue(null);
+                    }
+                }
+                catch { }
+                return null;
+            }
+
+            static T? SafeGet<T>(Func<T> getter)
+            {
+                try { return getter(); } catch { return default; }
+            }
+
+            static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+            {
+                try { return getter(); } catch { return null; }
+            }
+        }
+
+        private void RegisterSaveEndpoints(WebApplication app)
+        {
+            // GET /api/save - Get game save data (owned cores, etc.)
+            app.MapGet("/api/save", async () =>
+            {
+                try
+                {
+                    var savePath = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "BrokenNes",
+                        "gamesave.json"
+                    );
+
+                    if (!System.IO.File.Exists(savePath))
+                    {
+                        // Return default empty save
+                        return Results.Ok(new
+                        {
+                            ownedCpuIds = new string[] { "FMC" },
+                            ownedPpuIds = new string[] { "FMC" },
+                            ownedApuIds = new string[] { "FMC" },
+                            ownedClockIds = new string[0],
+                            ownedShaderIds = new string[] { "PX" }
+                        });
+                    }
+
+                    var json = await System.IO.File.ReadAllTextAsync(savePath);
+                    var options = new System.Text.Json.JsonSerializerOptions 
+                    { 
+                        PropertyNameCaseInsensitive = true 
+                    };
+                    var save = System.Text.Json.JsonSerializer.Deserialize<GameSaveDto>(json, options);
+
+                    return Results.Ok(save);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+        }
+
+        private class GameSaveDto
+        {
+            public int Level { get; set; } = 1;
+            public bool LevelCleared { get; set; } = false;
+            public List<string>? Achievements { get; set; }
+            public bool SavestatesUnlocked { get; set; } = false;
+            public bool RtcUnlocked { get; set; } = false;
+            public bool GhUnlocked { get; set; } = false;
+            public bool ImagineUnlocked { get; set; } = false;
+            public bool DebugUnlocked { get; set; } = false;
+            public bool SeenStory { get; set; } = false;
+            public string[]? OwnedCpuIds { get; set; }
+            public string[]? OwnedPpuIds { get; set; }
+            public string[]? OwnedApuIds { get; set; }
+            public string[]? OwnedClockIds { get; set; }
+            public string[]? OwnedShaderIds { get; set; }
+            public string? PreferredCpuId { get; set; }
+            public string? PreferredPpuId { get; set; }
+            public string? PreferredApuId { get; set; }
+            public string? PreferredShaderId { get; set; }
+            public bool PendingDeckContinue { get; set; } = false;
+            public string? PendingDeckContinueRom { get; set; }
+            public string? PendingDeckContinueTitle { get; set; }
+            public DateTime? PendingDeckContinueAtUtc { get; set; }
+            public bool UnderConstructionAcknowledged { get; set; } = false;
+            public bool AllCoresUnlockedCongrats { get; set; } = false;
+            public Dictionary<string, string>? MasqueradeRomToGameId { get; set; }
         }
     }
 }

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Collections.Generic;
 using System.Text;
 
-namespace BrokenNes.Shared;
+namespace BrokenNes.Windows;
 
 public static class CardSvgRenderer
 {

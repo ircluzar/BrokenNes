@@ -40,6 +40,47 @@ namespace BrokenNes.Windows.Helpers
                     Console.WriteLine($"[WebView2] Warning: Webmodules directory not found at {webmodulesPath}");
                 }
                 
+                // Set up API proxy - intercept /api/* requests and proxy to localhost
+                webView.CoreWebView2.AddWebResourceRequestedFilter($"https://{WebModuleManager.SharedVirtualHostName}/api/*", CoreWebView2WebResourceContext.All);
+                webView.CoreWebView2.WebResourceRequested += (sender, e) =>
+                {
+                    var uri = e.Request.Uri;
+                    if (uri.StartsWith($"https://{WebModuleManager.SharedVirtualHostName}/api/"))
+                    {
+                        var deferral = e.GetDeferral();
+                        Task.Run(async () =>
+                        {
+                            try
+                            {
+                                // Extract the API path and proxy to localhost HTTP (avoid cert issues)
+                                var apiPath = uri.Substring($"https://{WebModuleManager.SharedVirtualHostName}".Length);
+                                var localUrl = $"http://localhost:42067{apiPath}";
+                                
+                                Console.WriteLine($"[WebView2] Proxying API request: {uri} -> {localUrl}");
+                                
+                                using var httpClient = new System.Net.Http.HttpClient();
+                                var response = await httpClient.GetAsync(localUrl);
+                                var content = await response.Content.ReadAsStreamAsync();
+                                var contentType = response.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+                                
+                                e.Response = webView.CoreWebView2.Environment.CreateWebResourceResponse(
+                                    content, (int)response.StatusCode, response.ReasonPhrase, 
+                                    $"Content-Type: {contentType}");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[WebView2] API proxy error: {ex.Message}");
+                                e.Response = webView.CoreWebView2.Environment.CreateWebResourceResponse(
+                                    null, 500, "Internal Server Error", "");
+                            }
+                            finally
+                            {
+                                deferral.Complete();
+                            }
+                        });
+                    }
+                };
+                
                 onInitialized?.Invoke(true);
                 Console.WriteLine("WebView2 initialized successfully with transparency");
             }

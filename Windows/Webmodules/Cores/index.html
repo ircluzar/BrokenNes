@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cores</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/reset.css">
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="pixel-bg"></div>
+  
+  <div class="cores-root">
+    <h2 class="cores-title">UNLOCKED CORES</h2>
+
+    <div class="filters-toolbar">
+      <div class="filters-row">
+        <div class="filter-field">
+          <label for="groupBy">Group by</label>
+          <select id="groupBy">
+            <option value="None">None</option>
+            <option value="Type">Type</option>
+            <option value="Category">Category</option>
+            <option value="Rating">Rating</option>
+          </select>
+        </div>
+
+        <div class="filter-field">
+          <label for="sortBy">Order</label>
+          <div class="order-control">
+            <select id="sortBy">
+              <option value="None">None</option>
+              <option value="Alphabetical">Alphabetical</option>
+              <option value="Performance">Performance</option>
+              <option value="Rating">Rating</option>
+            </select>
+            <button type="button" class="order-toggle" id="flipOrder" title="Flip order">⇅</button>
+          </div>
+        </div>
+        
+        <div class="filter-field">
+          <label for="viewMode">View</label>
+          <select id="viewMode">
+            <option value="Cards">Cards</option>
+            <option value="List">List</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="coresContainer"></div>
+
+    <div class="cores-footer">
+      <a href="#" id="returnBtn" class="cores-link">RETURN</a>
+    </div>
+  </div>
+
+  <div id="modalBackdrop" class="card-modal-backdrop" style="display:none;">
+    <div class="card-modal-content" id="modalContent"></div>
+  </div>
+
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/music.js"></script>
+  <script src="../shared/homePixelBg.js"></script>
+  <script src="cores.js"></script>
+</body>
+</html>

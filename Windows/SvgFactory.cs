@@ -1,7 +1,7 @@
 using System;
 using System.Reflection;
 
-namespace BrokenNes.Shared;
+namespace BrokenNes.Windows;
 
 /// <summary>
 /// Inline SVG assets for core cards. Properties are named PREFIX_ID (e.g., CPU_FMC).
