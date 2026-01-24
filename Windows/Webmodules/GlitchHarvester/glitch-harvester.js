@@ -1,8 +1,6 @@
 // Glitch Harvester Web Module
 // ID-based state machine implementation
 
-const API_BASE = 'http://127.0.0.1:42067';
-
 // State
 let selectedBaseId = null;
 let selectedStashId = null;
@@ -547,22 +545,16 @@ async function apiCall(endpoint, options = {}) {
   if (options.body) {
     console.log('[GH API] Request body:', options.body);
   }
-  
+
+  if (!window.webapi) {
+    const error = 'webapi helper not loaded';
+    console.error('[GH API] Error:', error);
+    showToast(`API Error: ${error}`, 'error');
+    return { success: false, error };
+  }
+
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, options);
-    console.log('[GH API] Response status:', response.status, response.statusText);
-    
-    // Check if response has content
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      console.error('[GH API] Response is not JSON, content-type:', contentType);
-      return { 
-        success: false, 
-        error: `Server returned ${response.status}: ${response.statusText}` 
-      };
-    }
-    
-    const data = await response.json();
+    const data = await window.webapi.request(endpoint, options);
     console.log('[GH API] Response data:', data);
     return data;
   } catch (error) {

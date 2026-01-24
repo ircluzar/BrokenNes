@@ -1,6 +1,13 @@
 // Cores WebModule - Display unlocked cores with grouping/sorting/filtering
 (function() {
-  const API_BASE = 'http://localhost:42067/api';
+  const api = window.webapi;
+
+  function getCardUrl(domain, id) {
+    if (api?.card?.getUrl) {
+      return api.card.getUrl(domain.toLowerCase(), id);
+    }
+    return `/api/card/${encodeURIComponent(domain.toLowerCase())}/${encodeURIComponent(id)}`;
+  }
   
   // State
   let groupBy = 'None'; // None, Type, Category, Rating
@@ -82,8 +89,12 @@
       console.log('Owned APU set:', Array.from(ownedApu));
       
       // Fetch all core metadata from API
-      const response = await fetch(`${API_BASE}/cores`);
-      const data = await response.json();
+      if (!api?.cores?.list) {
+        console.error('[Cores] webapi helper not loaded');
+        return;
+      }
+
+      const data = await api.cores.list();
       console.log('Cores metadata from API:', data);
       console.log('Owned sets - CPU:', ownedCpu.size, 'PPU:', ownedPpu.size, 'APU:', ownedApu.size);
       
@@ -411,7 +422,7 @@
   }
   
   function renderCard(item) {
-    const cardUrl = `${API_BASE}/card/${item.domain.toLowerCase()}/${encodeURIComponent(item.id)}`;
+    const cardUrl = getCardUrl(item.domain, item.id);
     return `
       <div class="core-card" data-key="${item.key}">
         <img src="${cardUrl}" alt="${item.displayName}" style="width:100%;height:auto;display:block;">
@@ -453,7 +464,7 @@
     const backdrop = document.getElementById('modalBackdrop');
     const content = document.getElementById('modalContent');
     
-    const cardUrl = `${API_BASE}/card/${item.domain.toLowerCase()}/${encodeURIComponent(item.id)}`;
+    const cardUrl = getCardUrl(item.domain, item.id);
     
     content.innerHTML = `<img src="${cardUrl}" alt="${item.displayName}" style="width:min(98vw,calc(98vh * 0.7059));max-width:98vw;height:auto;max-height:98vh;display:block;aspect-ratio:240/340;">`;
     

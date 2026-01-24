@@ -1,6 +1,6 @@
 // Overlay WebModule - Display a single card centered and filling the screen
 (function() {
-  const API_BASE = 'http://localhost:42067/api';
+  const api = window.webapi;
   
   // Initialize on load - no longer auto-loads a card
   document.addEventListener('DOMContentLoaded', () => {
@@ -9,14 +9,13 @@
     // Add click handler to close menus when clicking anywhere on the overlay
     document.addEventListener('click', async (e) => {
       try {
-        const response = await fetch(`${API_BASE}/ui/close-menus`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
+        if (!api?.ui?.closeMenus) {
+          throw new Error('webapi helper not loaded');
+        }
+
+        const data = await api.ui.closeMenus();
+
+        if (data?.success !== false) {
           console.log('Menu close requested');
         }
       } catch (error) {
@@ -27,14 +26,13 @@
     // Add double-click handler to toggle fullscreen
     document.addEventListener('dblclick', async (e) => {
       try {
-        const response = await fetch(`${API_BASE}/ui/toggle-fullscreen`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
+        if (!api?.ui?.toggleFullscreen) {
+          throw new Error('webapi helper not loaded');
+        }
+
+        const data = await api.ui.toggleFullscreen();
+
+        if (data?.success !== false) {
           console.log('Fullscreen toggle requested');
         }
       } catch (error) {
@@ -119,15 +117,20 @@
   async function displayCard(domain, id) {
     try {
       // Fetch card SVG from API using correct endpoint format
-      const url = `${API_BASE}/card/${domain}/${id}`;
-      console.log(`Fetching card from: ${url}`);
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch card: ${response.status} ${response.statusText}`);
+      if (!api?.card?.getUrl || !api?.card?.getSvg) {
+        throw new Error('webapi helper not loaded');
       }
-      
-      const svgContent = await response.text();
+
+      const url = api.card.getUrl(domain, id);
+      console.log(`Fetching card from: ${url}`);
+
+      const result = await api.card.getSvg(domain, id);
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to fetch card');
+      }
+
+      const svgContent = result.text;
       
       // Display the card in the container
       const container = document.getElementById('card-container');

@@ -1,6 +1,5 @@
 // Hex Editor Web Module
 
-const API_BASE = 'http://127.0.0.1:42067';
 const BYTES_PER_ROW = 16;
 const ROW_HEIGHT = 18;
 const SCROLL_BUFFER_ROWS = 8;
@@ -856,20 +855,13 @@ function updateRowAsciiRange(rowIndexes) {
 }
 
 async function apiCall(endpoint, options = {}) {
-  try {
-    // Add cache-busting to prevent stale data
-    const url = new URL(`${API_BASE}${endpoint}`);
-    url.searchParams.set('_t', Date.now());
-    
-    const response = await fetch(url.toString(), {
-      ...options,
-      cache: 'no-store'  // Disable HTTP caching
-    });
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-    return await response.json();
-  } catch (err) {
-    return { success: false, error: err.message || 'Network error' };
+  if (!window.webapi) {
+    return { success: false, error: 'webapi helper not loaded' };
   }
+
+  return window.webapi.request(endpoint, {
+    ...options,
+    cacheBust: true,
+    noCache: true
+  });
 }

@@ -1,5 +1,5 @@
 // Web API Test Suite for BrokenNes
-const API_BASE = 'http://127.0.0.1:42067';
+const api = window.webapi;
 
 // Utility: Display result
 function displayResult(elementId, data, isError = false) {
@@ -28,32 +28,22 @@ function toHex(byte, width = 2) {
 // Helper: Ensure a base state exists and is selected
 async function ensureBaseStateSelected() {
   // Check if a base state is already selected
-  const basesResponse = await fetch(`${API_BASE}/api/gh/base-states`);
-  const bases = await basesResponse.json();
+  const bases = api?.gh?.getBaseStates ? await api.gh.getBaseStates() : { success: false };
   
   if (!bases?.success) return false;
   
   // If no base states exist, add one
   if (bases.baseStates?.length === 0) {
-    await fetch(`${API_BASE}/api/gh/base-state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'TestBase' })
-    });
+    await api.gh.addBaseState('TestBase');
   }
   
   // Get bases again
-  const basesResponse2 = await fetch(`${API_BASE}/api/gh/base-states`);
-  const bases2 = await basesResponse2.json();
+  const bases2 = await api.gh.getBaseStates();
   
   if (bases2?.success && bases2.baseStates?.length > 0) {
     // Select the first base state
     const baseId = bases2.baseStates[0].Id;
-    await fetch(`${API_BASE}/api/gh/base-state/${baseId}/select`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
+    await api.gh.selectBaseState(baseId);
     return true;
   }
   return false;
@@ -62,8 +52,7 @@ async function ensureBaseStateSelected() {
 // Helper: Ensure stockpile has entries by running full workflow
 async function ensureStockpileHasEntries() {
   // Check stockpile first
-  const stockpileResponse = await fetch(`${API_BASE}/api/gh/stockpile`);
-  const stockpile = await stockpileResponse.json();
+  const stockpile = await api.gh.getStockpile();
   
   if (stockpile?.success && stockpile.stockpile?.length > 0) {
     return true; // Already have entries
@@ -73,20 +62,14 @@ async function ensureStockpileHasEntries() {
   await ensureBaseStateSelected();
   
   // Corrupt and stash
-  const corruptResponse = await fetch(`${API_BASE}/api/gh/corrupt-and-stash`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
-  const corruptResult = await corruptResponse.json();
+  const corruptResult = await api.gh.corruptAndStash();
   
   if (!corruptResult?.success) {
     return false;
   }
   
   // Get the stash entry
-  const stashResponse = await fetch(`${API_BASE}/api/gh/stash`);
-  const stash = await stashResponse.json();
+  const stash = await api.gh.getStash();
   
   if (!stash?.success || stash.stash?.length === 0) {
     return false;
@@ -94,12 +77,7 @@ async function ensureStockpileHasEntries() {
   
   // Promote to stockpile
   const stashId = stash.stash[0].Id;
-  const promoteResponse = await fetch(`${API_BASE}/api/gh/stash/${stashId}/promote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
-  const promoteResult = await promoteResponse.json();
+  const promoteResult = await api.gh.promoteStash(stashId);
   
   return promoteResult?.success === true;
 }
@@ -107,8 +85,7 @@ async function ensureStockpileHasEntries() {
 // Test: Health Check
 async function testHealth() {
   try {
-    const response = await fetch(`${API_BASE}/api/health`);
-    const data = await response.json();
+    const data = await api.health();
     displayResult('healthResult', data);
   } catch (error) {
     displayResult('healthResult', `Error: ${error.message}`, true);
@@ -118,8 +95,7 @@ async function testHealth() {
 // Test: Get Domains
 async function testDomains() {
   try {
-    const response = await fetch(`${API_BASE}/api/memory/domains`);
-    const data = await response.json();
+    const data = await api.memory.getDomains();
     displayResult('domainsResult', data);
   } catch (error) {
     displayResult('domainsResult', `Error: ${error.message}`, true);
@@ -130,8 +106,7 @@ async function testDomains() {
 async function testDomainSize() {
   const domainName = document.getElementById('domainNameSize').value;
   try {
-    const response = await fetch(`${API_BASE}/api/memory/domain/${encodeURIComponent(domainName)}/size`);
-    const data = await response.json();
+    const data = await api.memory.getDomainSize(domainName);
     displayResult('domainSizeResult', data);
   } catch (error) {
     displayResult('domainSizeResult', `Error: ${error.message}`, true);
@@ -145,8 +120,7 @@ async function testPeek() {
   const address = parseHex(addressHex);
   
   try {
-    const response = await fetch(`${API_BASE}/api/memory/peek?domain=${encodeURIComponent(domain)}&address=${address}`);
-    const data = await response.json();
+    const data = await api.memory.peek(domain, address);
     
     if (data.success) {
       const formatted = {
@@ -172,18 +146,7 @@ async function testPoke() {
   const value = parseHex(valueHex);
   
   try {
-    const response = await fetch(`${API_BASE}/api/memory/poke`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        Domain: domain,
-        Address: address,
-        Value: value
-      })
-    });
-    const data = await response.json();
+    const data = await api.memory.poke(domain, address, value);
     
     if (data.success) {
       const formatted = {
@@ -208,8 +171,7 @@ async function testPeekRange() {
   const address = parseHex(addressHex);
   
   try {
-    const response = await fetch(`${API_BASE}/api/memory/peek-range?domain=${encodeURIComponent(domain)}&address=${address}&length=${length}`);
-    const data = await response.json();
+    const data = await api.memory.peekRange(domain, address, length);
     
     if (data.success) {
       // Format data as hex dump
@@ -241,18 +203,7 @@ async function testPokeRange() {
   const dataBytes = dataStr.trim().split(/\s+/).map(b => parseHex(b));
   
   try {
-    const response = await fetch(`${API_BASE}/api/memory/poke-range`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        Domain: domain,
-        Address: address,
-        Data: dataBytes
-      })
-    });
-    const data = await response.json();
+    const data = await api.memory.pokeRange(domain, address, dataBytes);
     
     if (data.success) {
       const formatted = {
@@ -303,8 +254,7 @@ function formatHexDump(data, startAddress = 0) {
 // Test: Get CPU Registers
 async function testCpuRegisters() {
   try {
-    const response = await fetch(`${API_BASE}/api/cpu/registers`);
-    const data = await response.json();
+    const data = await api.cpu.getRegisters();
     displayResult('cpuRegistersResult', data);
   } catch (error) {
     displayResult('cpuRegistersResult', `Error: ${error.message}`, true);
@@ -314,8 +264,7 @@ async function testCpuRegisters() {
 // Test: Get CPU Core ID
 async function testCpuCore() {
   try {
-    const response = await fetch(`${API_BASE}/api/cpu/core`);
-    const data = await response.json();
+    const data = await api.cpu.getCore();
     displayResult('cpuCoreResult', data);
   } catch (error) {
     displayResult('cpuCoreResult', `Error: ${error.message}`, true);
@@ -325,8 +274,7 @@ async function testCpuCore() {
 // Test: Get Available CPU Cores
 async function testCpuCores() {
   try {
-    const response = await fetch(`${API_BASE}/api/cpu/cores`);
-    const data = await response.json();
+    const data = await api.cpu.getCores();
     displayResult('cpuCoresResult', data);
   } catch (error) {
     displayResult('cpuCoresResult', `Error: ${error.message}`, true);
@@ -336,8 +284,7 @@ async function testCpuCores() {
 // Test: Get CPU State Snapshot
 async function testCpuState() {
   try {
-    const response = await fetch(`${API_BASE}/api/cpu/state`);
-    const data = await response.json();
+    const data = await api.cpu.getState();
     displayResult('cpuStateResult', data);
   } catch (error) {
     displayResult('cpuStateResult', `Error: ${error.message}`, true);
@@ -347,8 +294,7 @@ async function testCpuState() {
 // Test: Get PPU Core ID
 async function testPpuCore() {
   try {
-    const response = await fetch(`${API_BASE}/api/ppu/core`);
-    const data = await response.json();
+    const data = await api.ppu.getCore();
     displayResult('ppuCoreResult', data);
   } catch (error) {
     displayResult('ppuCoreResult', `Error: ${error.message}`, true);
@@ -358,8 +304,7 @@ async function testPpuCore() {
 // Test: Get Available PPU Cores
 async function testPpuCores() {
   try {
-    const response = await fetch(`${API_BASE}/api/ppu/cores`);
-    const data = await response.json();
+    const data = await api.ppu.getCores();
     displayResult('ppuCoresResult', data);
   } catch (error) {
     displayResult('ppuCoresResult', `Error: ${error.message}`, true);
@@ -369,8 +314,7 @@ async function testPpuCores() {
 // Test: Get Framebuffer (just info, not full data)
 async function testPpuFramebuffer() {
   try {
-    const response = await fetch(`${API_BASE}/api/ppu/framebuffer`);
-    const data = await response.json();
+    const data = await api.ppu.getFramebuffer();
     
     // Don't display full framebuffer data, just summary
     if (data.success) {
@@ -396,8 +340,7 @@ async function testPpuFramebuffer() {
 // Test: Get PPU State Snapshot
 async function testPpuState() {
   try {
-    const response = await fetch(`${API_BASE}/api/ppu/state`);
-    const data = await response.json();
+    const data = await api.ppu.getState();
     displayResult('ppuStateResult', data);
   } catch (error) {
     displayResult('ppuStateResult', `Error: ${error.message}`, true);
@@ -407,8 +350,7 @@ async function testPpuState() {
 // Test: Get APU Core ID
 async function testApuCore() {
   try {
-    const response = await fetch(`${API_BASE}/api/apu/core`);
-    const data = await response.json();
+    const data = await api.apu.getCore();
     displayResult('apuCoreResult', data);
   } catch (error) {
     displayResult('apuCoreResult', `Error: ${error.message}`, true);
@@ -418,8 +360,7 @@ async function testApuCore() {
 // Test: Get Available APU Cores
 async function testApuCores() {
   try {
-    const response = await fetch(`${API_BASE}/api/apu/cores`);
-    const data = await response.json();
+    const data = await api.apu.getCores();
     displayResult('apuCoresResult', data);
   } catch (error) {
     displayResult('apuCoresResult', `Error: ${error.message}`, true);
@@ -429,8 +370,7 @@ async function testApuCores() {
 // Test: Get APU Channels State
 async function testApuChannels() {
   try {
-    const response = await fetch(`${API_BASE}/api/apu/channels`);
-    const data = await response.json();
+    const data = await api.apu.getChannels();
     displayResult('apuChannelsResult', data);
   } catch (error) {
     displayResult('apuChannelsResult', `Error: ${error.message}`, true);
@@ -440,21 +380,14 @@ async function testApuChannels() {
 // Test: Set CPU Registers
 async function testSetCpuRegisters() {
   try {
-    const response = await fetch(`${API_BASE}/api/cpu/registers`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        PC: 0x8000,
-        A: 0xFF,
-        X: 0x10,
-        Y: 0x20,
-        P: 0x24,
-        SP: 0xFD
-      })
+    const data = await api.cpu.setRegisters({
+      PC: 0x8000,
+      A: 0xFF,
+      X: 0x10,
+      Y: 0x20,
+      P: 0x24,
+      SP: 0xFD
     });
-    const data = await response.json();
     displayResult('setCpuRegistersResult', data);
   } catch (error) {
     displayResult('setCpuRegistersResult', `Error: ${error.message}`, true);
@@ -464,8 +397,7 @@ async function testSetCpuRegisters() {
 // Test: Get OAM Data
 async function testOamData() {
   try {
-    const response = await fetch(`${API_BASE}/api/ppu/oam`);
-    const data = await response.json();
+    const data = await api.ppu.getOam();
     
     if (data.success) {
       const summary = {
@@ -488,8 +420,7 @@ async function testOamData() {
 // Test: Get RTC Domains
 async function testRtcDomains() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/domains`);
-    const data = await response.json();
+    const data = await api.rtc.getDomains();
     displayResult('rtcDomainsResult', data);
   } catch (error) {
     displayResult('rtcDomainsResult', `Error: ${error.message}`, true);
@@ -499,8 +430,7 @@ async function testRtcDomains() {
 // Test: Get Corruption Intensity
 async function testRtcIntensity() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/intensity`);
-    const data = await response.json();
+    const data = await api.rtc.getIntensity();
     displayResult('rtcIntensityResult', data);
   } catch (error) {
     displayResult('rtcIntensityResult', `Error: ${error.message}`, true);
@@ -510,16 +440,7 @@ async function testRtcIntensity() {
 // Test: Set Corruption Intensity
 async function testRtcSetIntensity() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/intensity`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        Intensity: 5
-      })
-    });
-    const data = await response.json();
+    const data = await api.rtc.setIntensity(5);
     displayResult('rtcSetIntensityResult', data);
   } catch (error) {
     displayResult('rtcSetIntensityResult', `Error: ${error.message}`, true);
@@ -529,8 +450,7 @@ async function testRtcSetIntensity() {
 // Test: Get Blast Type
 async function testRtcBlastType() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/blast-type`);
-    const data = await response.json();
+    const data = await api.rtc.getBlastType();
     displayResult('rtcBlastTypeResult', data);
   } catch (error) {
     displayResult('rtcBlastTypeResult', `Error: ${error.message}`, true);
@@ -540,16 +460,7 @@ async function testRtcBlastType() {
 // Test: Set Blast Type
 async function testRtcSetBlastType() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/blast-type`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        BlastType: 'TILT'
-      })
-    });
-    const data = await response.json();
+    const data = await api.rtc.setBlastType('TILT');
     displayResult('rtcSetBlastTypeResult', data);
   } catch (error) {
     displayResult('rtcSetBlastTypeResult', `Error: ${error.message}`, true);
@@ -559,13 +470,7 @@ async function testRtcSetBlastType() {
 // Test: Execute Blast
 async function testRtcBlast() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/blast`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    const data = await response.json();
+    const data = await api.rtc.blast();
     displayResult('rtcBlastResult', data);
   } catch (error) {
     displayResult('rtcBlastResult', `Error: ${error.message}`, true);
@@ -575,8 +480,7 @@ async function testRtcBlast() {
 // Test: Get Auto-Corrupt State
 async function testRtcAutoCorrupt() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/auto-corrupt`);
-    const data = await response.json();
+    const data = await api.rtc.getAutoCorrupt();
     displayResult('rtcAutoCorruptResult', data);
   } catch (error) {
     displayResult('rtcAutoCorruptResult', `Error: ${error.message}`, true);
@@ -586,16 +490,7 @@ async function testRtcAutoCorrupt() {
 // Test: Toggle Auto-Corrupt
 async function testRtcToggleAutoCorrupt() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/auto-corrupt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        Enabled: true
-      })
-    });
-    const data = await response.json();
+    const data = await api.rtc.setAutoCorrupt(true);
     displayResult('rtcToggleAutoCorruptResult', data);
   } catch (error) {
     displayResult('rtcToggleAutoCorruptResult', `Error: ${error.message}`, true);
@@ -605,13 +500,7 @@ async function testRtcToggleAutoCorrupt() {
 // Test: Let It Rip
 async function testRtcLetItRip() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/let-it-rip`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    const data = await response.json();
+    const data = await api.rtc.letItRip();
     displayResult('rtcLetItRipResult', data);
   } catch (error) {
     displayResult('rtcLetItRipResult', `Error: ${error.message}`, true);
@@ -621,8 +510,7 @@ async function testRtcLetItRip() {
 // Test: Get Crash Behavior
 async function testRtcCrashBehavior() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/crash-behavior`);
-    const data = await response.json();
+    const data = await api.rtc.getCrashBehavior();
     displayResult('rtcCrashBehaviorResult', data);
   } catch (error) {
     displayResult('rtcCrashBehaviorResult', `Error: ${error.message}`, true);
@@ -632,8 +520,7 @@ async function testRtcCrashBehavior() {
 // Test: Get Stubborn Mode
 async function testRtcStubbornMode() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/stubborn-mode`);
-    const data = await response.json();
+    const data = await api.rtc.getStubbornMode();
     displayResult('rtcStubbornModeResult', data);
   } catch (error) {
     displayResult('rtcStubbornModeResult', `Error: ${error.message}`, true);
@@ -643,16 +530,7 @@ async function testRtcStubbornMode() {
 // Test: Set Stubborn Mode
 async function testRtcSetStubbornMode() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/stubborn-mode`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        Enabled: true
-      })
-    });
-    const data = await response.json();
+    const data = await api.rtc.setStubbornMode(true);
     displayResult('rtcSetStubbornModeResult', data);
   } catch (error) {
     displayResult('rtcSetStubbornModeResult', `Error: ${error.message}`, true);
@@ -662,8 +540,7 @@ async function testRtcSetStubbornMode() {
 // Test: Get Last Blast Info
 async function testRtcLastBlast() {
   try {
-    const response = await fetch(`${API_BASE}/api/rtc/last-blast`);
-    const data = await response.json();
+    const data = await api.rtc.getLastBlast();
     displayResult('rtcLastBlastResult', data);
   } catch (error) {
     displayResult('rtcLastBlastResult', `Error: ${error.message}`, true);
@@ -852,8 +729,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function testGhGetBases() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/base-states`);
-    const data = await response.json();
+    const data = await api.gh.getBaseStates();
     if (data?.success) {
       const bases = data.baseStates || [];
       displayResult('ghGetBasesResult', { 
@@ -871,12 +747,7 @@ async function testGhGetBases() {
 
 async function testGhAddBase() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/base-state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Test Base ' + Date.now() })
-    });
-    const data = await response.json();
+    const data = await api.gh.addBaseState('Test Base ' + Date.now());
     displayResult('ghAddBaseResult', data);
   } catch (error) {
     displayResult('ghAddBaseResult', `Error: ${error.message}`, true);
@@ -886,17 +757,11 @@ async function testGhAddBase() {
 async function testGhSelectBase() {
   try {
     // First get the bases to find an ID
-    const basesResponse = await fetch(`${API_BASE}/api/gh/base-states`);
-    const bases = await basesResponse.json();
+    const bases = await api.gh.getBaseStates();
     
     if (bases?.success && bases.baseStates?.length > 0) {
       const firstId = bases.baseStates[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/select-base`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: firstId })
-      });
-      const data = await response.json();
+      const data = await api.gh.selectBase(firstId);
       displayResult('ghSelectBaseResult', data);
     } else {
       displayResult('ghSelectBaseResult', { error: 'No base states available. Add one first.' }, true);
@@ -908,12 +773,7 @@ async function testGhSelectBase() {
 
 async function testGhLoadBase() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/load-base`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const data = await response.json();
+    const data = await api.gh.loadBase();
     displayResult('ghLoadBaseResult', data);
   } catch (error) {
     displayResult('ghLoadBaseResult', `Error: ${error.message}`, true);
@@ -923,15 +783,11 @@ async function testGhLoadBase() {
 async function testGhDeleteBase() {
   try {
     // First get the bases to find an ID
-    const basesResponse = await fetch(`${API_BASE}/api/gh/base-states`);
-    const bases = await basesResponse.json();
+    const bases = await api.gh.getBaseStates();
     
     if (bases?.success && bases.baseStates?.length > 0) {
       const firstId = bases.baseStates[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/base-state/${firstId}`, { 
-        method: 'DELETE' 
-      });
-      const data = await response.json();
+      const data = await api.gh.deleteBaseState(firstId);
       displayResult('ghDeleteBaseResult', data);
     } else {
       displayResult('ghDeleteBaseResult', { error: 'No base states available to delete.' }, true);
@@ -944,18 +800,12 @@ async function testGhDeleteBase() {
 async function testGhLoadOnOperation() {
   try {
     // Get current value
-    const currentResponse = await fetch(`${API_BASE}/api/gh/load-on-operation`);
-    const current = await currentResponse.json();
+    const current = await api.gh.getLoadOnOperation();
     
     if (current?.success) {
       // Toggle it
       const newValue = !current.loadOnOperation;
-      const response = await fetch(`${API_BASE}/api/gh/load-on-operation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: newValue })
-      });
-      const data = await response.json();
+      const data = await api.gh.setLoadOnOperation(newValue);
       displayResult('ghLoadOnOperationResult', { 
         previous: current.loadOnOperation, 
         new: data.loadOnOperation 
@@ -970,12 +820,7 @@ async function testGhLoadOnOperation() {
 
 async function testGhCorruptAndStash() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/corrupt-and-stash`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const data = await response.json();
+    const data = await api.gh.corruptAndStash();
     displayResult('ghCorruptAndStashResult', data);
   } catch (error) {
     displayResult('ghCorruptAndStashResult', `Error: ${error.message}`, true);
@@ -984,8 +829,7 @@ async function testGhCorruptAndStash() {
 
 async function testGhGetStash() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/stash`);
-    const data = await response.json();
+    const data = await api.gh.getStash();
     if (data?.success) {
       const stash = data.stash || [];
       displayResult('ghGetStashResult', { 
@@ -1003,17 +847,11 @@ async function testGhGetStash() {
 async function testGhReplayStash() {
   try {
     // First get the stash to find an ID
-    const stashResponse = await fetch(`${API_BASE}/api/gh/stash`);
-    const stash = await stashResponse.json();
+    const stash = await api.gh.getStash();
     
     if (stash?.success && stash.stash?.length > 0) {
       const firstId = stash.stash[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stash/${firstId}/replay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      const data = await response.json();
+      const data = await api.gh.replayStash(firstId);
       displayResult('ghReplayStashResult', data);
     } else {
       displayResult('ghReplayStashResult', { error: 'No stash entries available. Corrupt and stash first.' }, true);
@@ -1026,33 +864,22 @@ async function testGhReplayStash() {
 async function testGhPromoteStash() {
   try {
     // First get the stash to find an ID
-    let stashResponse = await fetch(`${API_BASE}/api/gh/stash`);
-    let stash = await stashResponse.json();
+    let stash = await api.gh.getStash();
     
     // If stash is empty, create an entry
     if (!stash?.success || stash.stash?.length === 0) {
       // Ensure base state is selected first
       await ensureBaseStateSelected();
       
-      await fetch(`${API_BASE}/api/gh/corrupt-and-stash`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
+      await api.gh.corruptAndStash();
       
       // Refresh stash
-      stashResponse = await fetch(`${API_BASE}/api/gh/stash`);
-      stash = await stashResponse.json();
+      stash = await api.gh.getStash();
     }
     
     if (stash?.success && stash.stash?.length > 0) {
       const firstId = stash.stash[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stash/${firstId}/promote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      const data = await response.json();
+      const data = await api.gh.promoteStash(firstId);
       displayResult('ghPromoteStashResult', data);
     } else {
       displayResult('ghPromoteStashResult', { error: 'Failed to create stash entry for promotion.' }, true);
@@ -1065,15 +892,11 @@ async function testGhPromoteStash() {
 async function testGhDeleteStash() {
   try {
     // First get the stash to find an ID
-    const stashResponse = await fetch(`${API_BASE}/api/gh/stash`);
-    const stash = await stashResponse.json();
+    const stash = await api.gh.getStash();
     
     if (stash?.success && stash.stash?.length > 0) {
       const firstId = stash.stash[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stash/${firstId}`, { 
-        method: 'DELETE' 
-      });
-      const data = await response.json();
+      const data = await api.gh.deleteStash(firstId);
       displayResult('ghDeleteStashResult', data);
     } else {
       displayResult('ghDeleteStashResult', { error: 'No stash entries available to delete.' }, true);
@@ -1085,10 +908,7 @@ async function testGhDeleteStash() {
 
 async function testGhClearStash() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/stash`, { 
-      method: 'DELETE' 
-    });
-    const data = await response.json();
+    const data = await api.gh.clearStash();
     displayResult('ghClearStashResult', data);
   } catch (error) {
     displayResult('ghClearStashResult', `Error: ${error.message}`, true);
@@ -1100,8 +920,7 @@ async function testGhGetStockpile() {
     // Ensure stockpile has entries (creates base state, corrupts, promotes if needed)
     await ensureStockpileHasEntries();
     
-    const response = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const data = await response.json();
+    const data = await api.gh.getStockpile();
     
     if (data?.success) {
       const stockpile = data.stockpile || [];
@@ -1123,17 +942,11 @@ async function testGhReplayStockpile() {
     await ensureStockpileHasEntries();
     
     // Get the stockpile
-    const stockpileResponse = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const stockpile = await stockpileResponse.json();
+    const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
       const firstId = stockpile.stockpile[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stockpile/${firstId}/replay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      const data = await response.json();
+      const data = await api.gh.replayStockpile(firstId);
       displayResult('ghReplayStockpileResult', data);
     } else {
       displayResult('ghReplayStockpileResult', { error: 'Failed to create stockpile entry for test.' }, true);
@@ -1149,17 +962,11 @@ async function testGhRenameStockpile() {
     await ensureStockpileHasEntries();
     
     // Get the stockpile
-    const stockpileResponse = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const stockpile = await stockpileResponse.json();
+    const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
       const firstId = stockpile.stockpile[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stockpile/${firstId}/rename`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Renamed Entry ' + Date.now() })
-      });
-      const data = await response.json();
+      const data = await api.gh.renameStockpile(firstId, 'Renamed Entry ' + Date.now());
       displayResult('ghRenameStockpileResult', data);
     } else {
       displayResult('ghRenameStockpileResult', { error: 'Failed to create stockpile entry for test.' }, true);
@@ -1175,15 +982,11 @@ async function testGhDeleteStockpile() {
     await ensureStockpileHasEntries();
     
     // Get the stockpile
-    const stockpileResponse = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const stockpile = await stockpileResponse.json();
+    const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
       const firstId = stockpile.stockpile[0].Id;
-      const response = await fetch(`${API_BASE}/api/gh/stockpile/${firstId}`, { 
-        method: 'DELETE' 
-      });
-      const data = await response.json();
+      const data = await api.gh.deleteStockpile(firstId);
       displayResult('ghDeleteStockpileResult', data);
     } else {
       displayResult('ghDeleteStockpileResult', { error: 'Failed to create stockpile entry for test.' }, true);
@@ -1195,8 +998,7 @@ async function testGhDeleteStockpile() {
 
 async function testGhExportStockpile() {
   try {
-    const response = await fetch(`${API_BASE}/api/gh/stockpile/export`);
-    const data = await response.json();
+    const data = await api.gh.exportStockpile();
     if (data?.success) {
       displayResult('ghExportStockpileResult', { 
         success: true, 
@@ -1214,16 +1016,10 @@ async function testGhExportStockpile() {
 async function testGhImportStockpile() {
   try {
     // Export first to get valid JSON
-    const exportResponse = await fetch(`${API_BASE}/api/gh/stockpile/export`);
-    const exportResult = await exportResponse.json();
+    const exportResult = await api.gh.exportStockpile();
     
     if (exportResult?.success && exportResult.json) {
-      const response = await fetch(`${API_BASE}/api/gh/stockpile/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ json: exportResult.json })
-      });
-      const data = await response.json();
+      const data = await api.gh.importStockpile(exportResult.json);
       displayResult('ghImportStockpileResult', data);
     } else {
       displayResult('ghImportStockpileResult', { error: 'No stockpile to export/import. Create some entries first.' }, true);
@@ -1248,18 +1044,12 @@ async function testGhFullWorkflow() {
     
     // STEP 1: Setup - Ensure we have a base state (simulates initial app state)
     log.push('STEP 1: Query base states list (populate base state dropdown)');
-    let basesResp = await fetch(`${API_BASE}/api/gh/base-states`);
-    let basesData = await basesResp.json();
+    let basesData = await api.gh.getBaseStates();
     
     if (!basesData.success || basesData.baseStates.length === 0) {
       log.push('  → No base states found, creating one...');
-      await fetch(`${API_BASE}/api/gh/base-state`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'WebUI Test Base' })
-      });
-      basesResp = await fetch(`${API_BASE}/api/gh/base-states`);
-      basesData = await basesResp.json();
+      await api.gh.addBaseState('WebUI Test Base');
+      basesData = await api.gh.getBaseStates();
     }
     
     // Extract ID from list (simulates user selecting from dropdown)
@@ -1269,30 +1059,19 @@ async function testGhFullWorkflow() {
     
     // STEP 2: Select the base state (simulates clicking "Select" button)
     log.push('STEP 2: Select base state by ID (user clicks "Use This Base")');
-    const selectResp = await fetch(`${API_BASE}/api/gh/base-state/${baseStateId}/select`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const selectData = await selectResp.json();
+    const selectData = await api.gh.selectBaseState(baseStateId);
     log.push(`  ✓ Base state selected: ${selectData.success}\n`);
     
     // STEP 3: Corrupt and stash (simulates clicking "Corrupt & Add to Stash")
     log.push('STEP 3: Generate corruption (user clicks "Corrupt & Stash")');
-    const corruptResp = await fetch(`${API_BASE}/api/gh/corrupt-and-stash`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const corruptData = await corruptResp.json();
+    const corruptData = await api.gh.corruptAndStash();
     const createdStashId = corruptData.entry?.Id;
     log.push(`  ✓ Corruption created: ${corruptData.success}`);
     log.push(`  → New stash entry ID: "${createdStashId}"\n`);
     
     // STEP 4: Query stash list (simulates refreshing stash history UI list)
     log.push('STEP 4: Query stash list (populate stash history list in UI)');
-    const stashResp = await fetch(`${API_BASE}/api/gh/stash`);
-    const stashData = await stashResp.json();
+    const stashData = await api.gh.getStash();
     log.push(`  ✓ Stash entries listed: ${stashData.stash.length} items`);
     
     // Find our created entry in the list (simulates user scrolling/finding the item)
@@ -1301,30 +1080,19 @@ async function testGhFullWorkflow() {
     
     // STEP 5: Replay stash entry (simulates selecting item and clicking "Replay")
     log.push('STEP 5: Replay stash entry by ID (user selects item, clicks "Replay")');
-    const replayStashResp = await fetch(`${API_BASE}/api/gh/stash/${stashItem.Id}/replay`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const replayStashData = await replayStashResp.json();
+    const replayStashData = await api.gh.replayStash(stashItem.Id);
     log.push(`  ✓ Stash replay executed: ${replayStashData.success}\n`);
     
     // STEP 6: Promote to stockpile (simulates selecting item and clicking "Keep")
     log.push('STEP 6: Promote stash to stockpile by ID (user clicks "Keep")');
-    const promoteResp = await fetch(`${API_BASE}/api/gh/stash/${stashItem.Id}/promote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const promoteData = await promoteResp.json();
+    const promoteData = await api.gh.promoteStash(stashItem.Id);
     const promotedStockpileId = promoteData.entry?.Id;
     log.push(`  ✓ Promoted to stockpile: ${promoteData.success}`);
     log.push(`  → Stockpile entry ID: "${promotedStockpileId}"\n`);
     
     // STEP 7: Query stockpile list (simulates refreshing stockpile UI list)
     log.push('STEP 7: Query stockpile list (populate stockpile list in UI)');
-    const stockpileResp = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const stockpileData = await stockpileResp.json();
+    const stockpileData = await api.gh.getStockpile();
     log.push(`  ✓ Stockpile entries listed: ${stockpileData.stockpile.length} items`);
     
     // Find our promoted entry (simulates user finding it in the UI list)
@@ -1333,45 +1101,30 @@ async function testGhFullWorkflow() {
     
     // STEP 8: Replay stockpile entry (simulates selecting and clicking "Replay")
     log.push('STEP 8: Replay stockpile entry by ID (user selects, clicks "Replay")');
-    const replayStockResp = await fetch(`${API_BASE}/api/gh/stockpile/${stockpileItem.Id}/replay`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const replayStockData = await replayStockResp.json();
+    const replayStockData = await api.gh.replayStockpile(stockpileItem.Id);
     log.push(`  ✓ Stockpile replay executed: ${replayStockData.success}\n`);
     
     // STEP 9: Rename stockpile entry (simulates editing name in UI)
     log.push('STEP 9: Rename stockpile entry by ID (user edits name)');
     const newName = `Favorite Glitch ${Date.now()}`;
-    const renameResp = await fetch(`${API_BASE}/api/gh/stockpile/${stockpileItem.Id}/rename`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
-    const renameData = await renameResp.json();
+    const renameData = await api.gh.renameStockpile(stockpileItem.Id, newName);
     log.push(`  ✓ Renamed: ${renameData.success}`);
     log.push(`  → New name: "${newName}"\n`);
     
     // STEP 10: Export stockpile (simulates clicking "Export" button)
     log.push('STEP 10: Export stockpile (user clicks "Export")');
-    const exportResp = await fetch(`${API_BASE}/api/gh/stockpile/export`);
-    const exportData = await exportResp.json();
+    const exportData = await api.gh.exportStockpile();
     log.push(`  ✓ Export created: ${exportData.success}`);
     log.push(`  → JSON length: ${exportData.json?.length || 0} bytes\n`);
     
     // STEP 11: Delete stockpile entry (simulates selecting and clicking "Delete")
     log.push('STEP 11: Delete stockpile entry by ID (user clicks "Delete")');
-    const deleteResp = await fetch(`${API_BASE}/api/gh/stockpile/${stockpileItem.Id}`, {
-      method: 'DELETE'
-    });
-    const deleteData = await deleteResp.json();
+    const deleteData = await api.gh.deleteStockpile(stockpileItem.Id);
     log.push(`  ✓ Deleted: ${deleteData.success}\n`);
     
     // STEP 12: Verify deletion (simulates UI refresh)
     log.push('STEP 12: Verify deletion (UI refreshes list)');
-    const verifyResp = await fetch(`${API_BASE}/api/gh/stockpile`);
-    const verifyData = await verifyResp.json();
+    const verifyData = await api.gh.getStockpile();
     const stillExists = verifyData.stockpile.some(e => e.Id === stockpileItem.Id);
     log.push(`  ✓ Entry removed from list: ${!stillExists}\n`);
     
@@ -1393,8 +1146,7 @@ async function testGhFullWorkflow() {
 // Test: Get Model Loaded State
 async function testImagineModelLoaded() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/model-loaded`);
-    const data = await response.json();
+    const data = await api.imagine.isModelLoaded();
     displayResult('imagineModelLoadedResult', data);
   } catch (error) {
     displayResult('imagineModelLoadedResult', `Error: ${error.message}`, true);
@@ -1404,8 +1156,7 @@ async function testImagineModelLoaded() {
 // Test: Get Current Epoch
 async function testImagineGetEpoch() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/epoch`);
-    const data = await response.json();
+    const data = await api.imagine.getEpoch();
     displayResult('imagineGetEpochResult', data);
   } catch (error) {
     displayResult('imagineGetEpochResult', `Error: ${error.message}`, true);
@@ -1416,12 +1167,7 @@ async function testImagineGetEpoch() {
 async function testImagineSetEpoch() {
   const epoch = parseInt(document.getElementById('imagineEpoch')?.value || '30');
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/epoch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epoch: epoch })
-    });
-    const data = await response.json();
+    const data = await api.imagine.setEpoch(epoch);
     displayResult('imagineSetEpochResult', data);
   } catch (error) {
     displayResult('imagineSetEpochResult', `Error: ${error.message}`, true);
@@ -1432,12 +1178,7 @@ async function testImagineSetEpoch() {
 async function testImagineLoadModel() {
   const epoch = parseInt(document.getElementById('imagineLoadEpoch')?.value || '30');
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/load-model`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epoch: epoch })
-    });
-    const data = await response.json();
+    const data = await api.imagine.loadModel(epoch);
     displayResult('imagineLoadModelResult', data);
   } catch (error) {
     displayResult('imagineLoadModelResult', `Error: ${error.message}`, true);
@@ -1447,8 +1188,7 @@ async function testImagineLoadModel() {
 // Test: Get Generation Parameters
 async function testImagineGetParams() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/generation-params`);
-    const data = await response.json();
+    const data = await api.imagine.getGenerationParams();
     displayResult('imagineGetParamsResult', data);
   } catch (error) {
     displayResult('imagineGetParamsResult', `Error: ${error.message}`, true);
@@ -1462,16 +1202,11 @@ async function testImagineSetParams() {
   const topK = parseInt(document.getElementById('imagineTopK')?.value || '1');
   
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/generation-params`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bytesToGenerate: bytesToGenerate,
-        temperature: temperature,
-        topK: topK
-      })
+    const data = await api.imagine.setGenerationParams({
+      bytesToGenerate,
+      temperature,
+      topK
     });
-    const data = await response.json();
     displayResult('imagineSetParamsResult', data);
   } catch (error) {
     displayResult('imagineSetParamsResult', `Error: ${error.message}`, true);
@@ -1481,11 +1216,7 @@ async function testImagineSetParams() {
 // Test: Freeze and Fetch Next Instruction (Capture CPU Snapshot)
 async function testImagineFreezeAndFetch() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/freeze-and-fetch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
+    const data = await api.imagine.freezeAndFetch();
     
     // Format snapshot for better display
     if (data.success && data.snapshot) {
@@ -1526,8 +1257,7 @@ async function testImagineFreezeAndFetch() {
 // Test: Get CPU Snapshot
 async function testImagineGetSnapshot() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/cpu-snapshot`);
-    const data = await response.json();
+    const data = await api.imagine.getCpuSnapshot();
     
     // Format snapshot for better display
     if (data.success && data.snapshot) {
@@ -1567,11 +1297,7 @@ async function testImagineGetSnapshot() {
 // Test: Run Prediction
 async function testImagineRunPrediction() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/run-prediction`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
+    const data = await api.imagine.runPrediction();
     
     // Format predicted bytes for better display
     if (data.success && data.predictedBytes) {
@@ -1599,15 +1325,7 @@ async function testImagineApplyPatch() {
   const bytes = bytesStr.split(',').map(b => parseHex(b.trim()));
   
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/apply-patch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pc: pc,
-        bytes: bytes
-      })
-    });
-    const data = await response.json();
+    const data = await api.imagine.applyPatch(pc, bytes);
     displayResult('imagineApplyPatchResult', data);
   } catch (error) {
     displayResult('imagineApplyPatchResult', `Error: ${error.message}`, true);
@@ -1617,11 +1335,7 @@ async function testImagineApplyPatch() {
 // Test: Imagine a Bug
 async function testImagineABug() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/imagine-a-bug`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
+    const data = await api.imagine.imagineABug();
     
     // Format predicted bytes for better display
     if (data.success && data.predictedBytes) {
@@ -1643,8 +1357,7 @@ async function testImagineABug() {
 // Test: Get Predicted Bytes
 async function testImagineGetPredictedBytes() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/predicted-bytes`);
-    const data = await response.json();
+    const data = await api.imagine.getPredictedBytes();
     
     // Format predicted bytes for better display
     if (data.success && data.predictedBytes) {
@@ -1666,8 +1379,7 @@ async function testImagineGetPredictedBytes() {
 // Test: Get Last Error
 async function testImagineGetLastError() {
   try {
-    const response = await fetch(`${API_BASE}/api/imagine/last-error`);
-    const data = await response.json();
+    const data = await api.imagine.getLastError();
     displayResult('imagineGetLastErrorResult', data);
   } catch (error) {
     displayResult('imagineGetLastErrorResult', `Error: ${error.message}`, true);
