@@ -1135,6 +1135,8 @@ namespace NesEmulator
 		public byte PeekPrg(int index) => cartridge != null ? cartridge.PeekPrg(index) : (byte)0;
 		public void PokePrg(int index, byte val) { cartridge?.PokePrg(index, val); }
 		public int GetPrgRomSize() => cartridge?.PrgRomSize ?? 0;
+		public int GetPrgRamSize() => cartridge?.PrgRamSize ?? 0;
+		public int GetChrSize() => cartridge != null ? (cartridge.ChrRomSize > 0 ? cartridge.ChrRomSize : cartridge.ChrRamSize) : 0;
 		// Mapper-aware CPU($8000-$FFFF) -> PRG ROM index. Returns false if not resolvable to PRG.
 		public bool TryCpuToPrgIndex(ushort cpuAddr, out int prgIndex)
 		{

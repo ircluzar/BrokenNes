@@ -1,4 +1,5 @@
 using System;
+using BrokenNes.Windows.Rendering;
 
 namespace NesEmulator.NullProviders;
 
@@ -47,7 +48,7 @@ public class PerlinNoiseFieldNullProvider : INullProvider
                 value = (value + 1) * 0.5; // Normalize to 0-1
                 
                 double hue = (value * 180 + time * 20) % 360;
-                HsvToRgb(hue, 0.4, 0.4 + value * 0.2, out byte r, out byte g, out byte b);
+                ColorMath.HsvToRgb(hue, 0.4, 0.4 + value * 0.2, out byte r, out byte g, out byte b);
                 
                 int offset = (y * width + x) * 4;
                 frameBuffer[offset + 0] = r;
@@ -99,23 +100,4 @@ public class PerlinNoiseFieldNullProvider : INullProvider
         return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
     }
     
-    private void HsvToRgb(double h, double s, double v, out byte r, out byte g, out byte b)
-    {
-        h = h % 360;
-        double c = v * s;
-        double x = c * (1 - Math.Abs((h / 60) % 2 - 1));
-        double m = v - c;
-        double rPrime = 0, gPrime = 0, bPrime = 0;
-        
-        if (h < 60) { rPrime = c; gPrime = x; }
-        else if (h < 120) { rPrime = x; gPrime = c; }
-        else if (h < 180) { gPrime = c; bPrime = x; }
-        else if (h < 240) { gPrime = x; bPrime = c; }
-        else if (h < 300) { rPrime = x; bPrime = c; }
-        else { rPrime = c; bPrime = x; }
-        
-        r = (byte)((rPrime + m) * 255);
-        g = (byte)((gPrime + m) * 255);
-        b = (byte)((bPrime + m) * 255);
-    }
 }

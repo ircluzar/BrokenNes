@@ -126,7 +126,8 @@ namespace BrokenNes.Windows
             StopEmulation();
             
             // Transition back to the base launcher state (test.nes)
-            LoadEmbeddedRom();
+            // Close ROM is a special case: stay in emulator mode.
+            LoadEmbeddedRom(allowHomeWebModule: false);
             
             // Re-show the continue button if a save state exists
             ShowContinueButton();
@@ -139,7 +140,7 @@ namespace BrokenNes.Windows
             this.Refresh();
         }
         
-        private void LoadEmbeddedRom()
+        private void LoadEmbeddedRom(bool allowHomeWebModule = true)
         {
             try
             {
@@ -207,7 +208,7 @@ namespace BrokenNes.Windows
                     StartEmulation();
                     
                     // Check if we should load the Home webmodule instead of staying in emulator mode
-                    if (!config.BootToEmulator)
+                    if (allowHomeWebModule && !config.BootToEmulator)
                     {
                         // Load the Home webmodule
                         LoadHomeWebModule();

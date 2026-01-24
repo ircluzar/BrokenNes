@@ -74,37 +74,62 @@ namespace BrokenNes.Windows
             bool isWebMode = (mode == ViewMode.Widget || mode == ViewMode.Overlay || mode == ViewMode.Web);
             if (isWebMode)
             {
-               if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
+                await EnsureWebApiServerRunningAsync();
+                if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
             }
-            else if (webView == null) 
+            else if (webView == null)
             {
                 // If checking only for existence (not initialization) when not in web mode, we might skip the message
                 // but original code checked webView == null at the start.
                 // However, IsAvailable handles both checks.
                 // If we are in Emulator mode, we might not care if it is initialized, but we need webView object to hide it.
-                if (webView == null) 
+                if (webView == null)
                 {
-                     MessageBox.Show("WebView2 is not available.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                     return;
+                    MessageBox.Show("WebView2 is not available.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
             }
-            
+
+            if (mode == ViewMode.Emulator && currentViewMode != ViewMode.Emulator)
+            {
+                UnloadWebModuleContent();
+            }
+
             currentViewMode = mode;
-            
+
             // Restore menu bar when switching to Emulator mode
             if (mode == ViewMode.Emulator && this.MainMenuStrip != null)
             {
                 this.MainMenuStrip.Visible = true;
             }
-            
+
             // Suspend layout during control rearrangement
             this.SuspendLayout();
-            
+
             ApplyViewModeLayout(mode, shouldNavigate: !skipNavigation, log: true);
-            
+
             this.ResumeLayout();
             this.PerformLayout();
             this.Refresh();
+        }
+
+        /// <summary>
+        /// Unloads any active webmodule content so it does not remain in memory
+        /// when switching to emulator-only mode.
+        /// </summary>
+        private void UnloadWebModuleContent()
+        {
+            if (webView?.CoreWebView2 == null) return;
+
+            try
+            {
+                webView.CoreWebView2.Stop();
+                webView.CoreWebView2.Navigate("about:blank");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[UnloadWebModuleContent] Error: {ex.Message}");
+            }
         }
 
         private void MainForm_Resize(object? sender, EventArgs e)
@@ -268,12 +293,14 @@ namespace BrokenNes.Windows
         /// <summary>
         /// Loads a web module into the WebView2 control
         /// </summary>
-        private void LoadWebModule(WebModuleInfo module)
+        private async void LoadWebModule(WebModuleInfo module)
         {
             if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
             
             try
             {
+                await EnsureWebApiServerRunningAsync();
+
                 // Get the module URI
                 string uri = module.GetVirtualHostUri();
                 Console.WriteLine($"[LoadWebModule] Loading module: {module.Name}");

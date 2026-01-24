@@ -37,6 +37,11 @@ namespace NesEmulator
         /// </summary>
         public static List<MemoryDomainInfo> GetAvailableMemoryDomains(this NES nes)
         {
+            // Get actual sizes from cartridge (use 0 if not available)
+            int prgRomSize = nes.GetActualPrgRomSize();
+            int prgRamSize = nes.GetActualPrgRamSize();
+            int chrSize = nes.GetActualChrSize();
+            
             var domains = new List<MemoryDomainInfo>
             {
                 new MemoryDomainInfo
@@ -54,19 +59,19 @@ namespace NesEmulator
                 new MemoryDomainInfo
                 {
                     Name = "PRG ROM",
-                    Size = nes.GetPrgRomSize(),
+                    Size = prgRomSize,
                     Description = "Cartridge PRG ROM data"
                 },
                 new MemoryDomainInfo
                 {
                     Name = "PRG RAM",
-                    Size = nes.GetPrgRamSize(),
+                    Size = prgRamSize,
                     Description = "Cartridge PRG RAM/SRAM"
                 },
                 new MemoryDomainInfo
                 {
                     Name = "CHR",
-                    Size = nes.GetChrSize(),
+                    Size = chrSize,
                     Description = "Cartridge CHR ROM/RAM"
                 }
             };
@@ -83,9 +88,9 @@ namespace NesEmulator
             {
                 "System RAM" => 0x800,
                 "CPU Bus" => 0x10000,
-                "PRG ROM" => nes.GetPrgRomSize(),
-                "PRG RAM" => nes.GetPrgRamSize(),
-                "CHR" => nes.GetChrSize(),
+                "PRG ROM" => nes.GetActualPrgRomSize(),
+                "PRG RAM" => nes.GetActualPrgRamSize(),
+                "CHR" => nes.GetActualChrSize(),
                 _ => throw new ArgumentException($"Unknown memory domain: {domainName}")
             };
         }
@@ -157,21 +162,41 @@ namespace NesEmulator
             }
         }
 
-        // Helper methods to get memory sizes
-        private static int GetPrgRomSize(this NES nes)
+        // Helper methods to get actual memory sizes from cartridge
+        private static int GetActualPrgRomSize(this NES nes)
         {
-            // Default sizes if ROM not loaded
-            return 32768; // Typical size, can be adjusted
+            try
+            {
+                return nes.GetPrgRomSize();
+            }
+            catch
+            {
+                return 0; // Fallback
+            }
         }
 
-        private static int GetPrgRamSize(this NES nes)
+        private static int GetActualPrgRamSize(this NES nes)
         {
-            return 8192; // 8KB typical
+            try
+            {
+                return nes.GetPrgRamSize();
+            }
+            catch
+            {
+                return 0; // Fallback - better to show 0 than fake size
+            }
         }
 
-        private static int GetChrSize(this NES nes)
+        private static int GetActualChrSize(this NES nes)
         {
-            return 8192; // 8KB typical
+            try
+            {
+                return nes.GetChrSize();
+            }
+            catch
+            {
+                return 0; // Fallback - better to show 0 than fake size
+            }
         }
 
         // === CPU State Access ===

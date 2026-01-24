@@ -1,4 +1,5 @@
 using System;
+using BrokenNes.Windows.Rendering;
 
 namespace NesEmulator.NullProviders;
 
@@ -38,7 +39,7 @@ public class AuroraNullProvider : INullProvider
                 double sat = 0.6;
                 double val = (0.2 + intensity * 0.3) * (1 - skyGradient * 0.5);
                 
-                HsvToRgb(hue, sat, val, out byte r, out byte g, out byte b);
+                ColorMath.HsvToRgb(hue, sat, val, out byte r, out byte g, out byte b);
                 
                 int offset = (y * width + x) * 4;
                 frameBuffer[offset + 0] = r;
@@ -49,26 +50,4 @@ public class AuroraNullProvider : INullProvider
         }
     }
     
-    private void HsvToRgb(double h, double s, double v, out byte r, out byte g, out byte b)
-    {
-        while (h < 0) h += 360;
-        while (h >= 360) h -= 360;
-        
-        double c = v * s;
-        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
-        double m = v - c;
-        
-        double rPrime, gPrime, bPrime;
-        
-        if (h < 60) { rPrime = c; gPrime = x; bPrime = 0; }
-        else if (h < 120) { rPrime = x; gPrime = c; bPrime = 0; }
-        else if (h < 180) { rPrime = 0; gPrime = c; bPrime = x; }
-        else if (h < 240) { rPrime = 0; gPrime = x; bPrime = c; }
-        else if (h < 300) { rPrime = x; gPrime = 0; bPrime = c; }
-        else { rPrime = c; gPrime = 0; bPrime = x; }
-        
-        r = (byte)Math.Round((rPrime + m) * 255);
-        g = (byte)Math.Round((gPrime + m) * 255);
-        b = (byte)Math.Round((bPrime + m) * 255);
-    }
 }

@@ -223,7 +223,8 @@ namespace BrokenNes.Windows
                 foreach (var item in nullProviderMenu.DropDownItems.OfType<ToolStripMenuItem>())
                 {
                     // Check if this item matches the currently selected null provider
-                    item.Checked = item.Text.Equals(config.SelectedNullProvider, StringComparison.OrdinalIgnoreCase);
+                    var providerName = item.Tag as string ?? item.Text;
+                    item.Checked = providerName.Equals(config.SelectedNullProvider, StringComparison.OrdinalIgnoreCase);
                 }
             }
             

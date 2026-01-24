@@ -96,5 +96,6 @@ namespace BrokenNes.Windows
         
         // Web API server
         private WebApiServer? webApiServer;
+        private readonly System.Threading.SemaphoreSlim webApiServerLock = new System.Threading.SemaphoreSlim(1, 1);
     }
 }

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hex Editor - BrokenNes</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text x='0' y='14' font-size='14'>🧩</text></svg>">
+  <link rel="stylesheet" href="lib/tabulator.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+
+  <div class="hex-root">
+    <header class="hex-toolbar">
+      <div class="hex-title">
+        <span class="hex-title-text">Hex Editor</span>
+        <span id="domainMeta" class="hex-title-meta">Waiting for emulator…</span>
+      </div>
+
+      <div class="hex-controls">
+        <div class="hex-control">
+          <label for="domainSelect">Domain</label>
+          <div class="hex-control-inline">
+            <select id="domainSelect" class="hex-select"></select>
+            <button id="btnReloadDomains" class="hex-btn" title="Reload domains (use after game restart)">↻</button>
+          </div>
+        </div>
+
+        <div class="hex-control">
+          <label for="addressInput">Address</label>
+          <div class="hex-control-inline">
+            <input id="addressInput" class="hex-input" placeholder="0x000000" spellcheck="false">
+            <button id="btnGo" class="hex-btn">Go</button>
+          </div>
+        </div>
+
+        <div class="hex-control">
+          <label>Refresh</label>
+          <div class="hex-control-inline">
+            <button id="btnRefresh" class="hex-btn">Refresh Visible</button>
+            <label class="hex-toggle">
+              <input id="autoRefresh" type="checkbox" checked>
+              <span>Auto-refresh</span>
+            </label>
+            <select id="refreshRate" class="hex-select">
+              <option value="2">2 fps</option>
+              <option value="3">3 fps</option>
+              <option value="5" selected>5 fps</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="hex-grid-wrap">
+      <div id="hexGrid" class="hex-grid"></div>
+    </section>
+
+    <div id="statusText" class="hex-status-hidden" aria-live="polite"></div>
+  </div>
+
+  <script src="lib/tabulator.min.js"></script>
+  <script src="hex-editor.js"></script>
+</body>
+</html>

@@ -274,11 +274,43 @@ namespace BrokenNes.Windows
             var nullProviderMenu = new ToolStripMenuItem("&Null Providers (Test ROM)");
             
             // Get all available null providers via reflection
-            var availableNullProviders = NesEmulator.NES.GetAvailableNullProviders();
-            foreach (var providerName in availableNullProviders)
+            var availableNullProviders = NesEmulator.NES.GetAvailableNullProviders().ToList();
+            var defaultNullProviders = new[] { "Static", "Void" };
+
+            foreach (var providerName in defaultNullProviders)
             {
-                var menuItem = new ToolStripMenuItem(providerName, null, (s, e) => SetNullProvider(providerName));
+                if (!availableNullProviders.Any(p => p.Equals(providerName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var displayText = providerName.Equals("Static", StringComparison.OrdinalIgnoreCase)
+                    ? "Static (Default)"
+                    : "Void (Black)";
+
+                var menuItem = new ToolStripMenuItem(displayText, null, (s, e) => SetNullProvider(providerName))
+                {
+                    Tag = providerName
+                };
                 nullProviderMenu.DropDownItems.Add(menuItem);
+            }
+
+            var otherNullProviders = availableNullProviders
+                .Where(p => !defaultNullProviders.Any(d => d.Equals(p, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (otherNullProviders.Count > 0)
+            {
+                nullProviderMenu.DropDownItems.Add(new ToolStripSeparator());
+                foreach (var providerName in otherNullProviders)
+                {
+                    var menuItem = new ToolStripMenuItem(providerName, null, (s, e) => SetNullProvider(providerName))
+                    {
+                        Tag = providerName
+                    };
+                    nullProviderMenu.DropDownItems.Add(menuItem);
+                }
             }
             
             configMenu.DropDownItems.Add(nullProviderMenu);
@@ -583,7 +615,7 @@ namespace BrokenNes.Windows
             
             // Initialize Web API server immediately (before ROM loads)
             // API will handle NES being null and can receive commands like loading ROMs
-            InitializeWebApiServer();
+            _ = EnsureWebApiServerRunningAsync();
             
             // Load the default embedded ROM
             LoadEmbeddedRom();
@@ -648,28 +680,40 @@ namespace BrokenNes.Windows
             nes.SetStubbornFixEnabled(corruptor.StubbornMode);
         }
 
-        private async void InitializeWebApiServer()
+        private async Task EnsureWebApiServerRunningAsync()
         {
+            await webApiServerLock.WaitAsync();
             try
             {
-                // Pass functions that return the current NES and Corruptor instances
-                // Also pass webView and SwitchViewMode for navigation support
-                webApiServer = new WebApiServer(
-                    () => nes, 
-                    () => corruptor, 
-                    () => imagineEngine, 
-                    SetCrashBehavior,
-                    () => webView,
-                    (mode) => SwitchViewMode(mode),
-                    this  // Pass the main form as UI control for thread marshalling
-                );
-                await webApiServer.StartAsync();
-                Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
+                if (webApiServer == null)
+                {
+                    // Pass functions that return the current NES and Corruptor instances
+                    // Also pass webView and SwitchViewMode for navigation support
+                    webApiServer = new WebApiServer(
+                        () => nes,
+                        () => corruptor,
+                        () => imagineEngine,
+                        SetCrashBehavior,
+                        () => webView,
+                        (mode) => SwitchViewMode(mode),
+                        this  // Pass the main form as UI control for thread marshalling
+                    );
+                }
+
+                if (!webApiServer.IsRunning)
+                {
+                    await webApiServer.StartAsync();
+                    Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
+                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to start Web API server: {ex.Message}");
                 // Don't show error to user, API is optional
+            }
+            finally
+            {
+                webApiServerLock.Release();
             }
         }
     }

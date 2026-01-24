@@ -1,4 +1,5 @@
 using System;
+using BrokenNes.Windows.Rendering;
 using System.Collections.Generic;
 
 namespace NesEmulator.NullProviders;
@@ -59,7 +60,7 @@ public class LSystemFractalNullProvider : INullProvider
                 
                 // Color based on position and time
                 double hue = (y / height * 120 + time) % 360;
-                HsvToRgb(hue, 0.5, 0.5, out byte r, out byte g, out byte b);
+                ColorMath.HsvToRgb(hue, 0.5, 0.5, out byte r, out byte g, out byte b);
                 
                 DrawLine(frameBuffer, width, height, (int)x, (int)y, (int)newX, (int)newY, r, g, b);
                 
@@ -129,23 +130,4 @@ public class LSystemFractalNullProvider : INullProvider
         }
     }
     
-    private void HsvToRgb(double h, double s, double v, out byte r, out byte g, out byte b)
-    {
-        h = h % 360;
-        double c = v * s;
-        double x = c * (1 - Math.Abs((h / 60) % 2 - 1));
-        double m = v - c;
-        double rPrime = 0, gPrime = 0, bPrime = 0;
-        
-        if (h < 60) { rPrime = c; gPrime = x; }
-        else if (h < 120) { rPrime = x; gPrime = c; }
-        else if (h < 180) { gPrime = c; bPrime = x; }
-        else if (h < 240) { gPrime = x; bPrime = c; }
-        else if (h < 300) { rPrime = x; bPrime = c; }
-        else { rPrime = c; bPrime = x; }
-        
-        r = (byte)((rPrime + m) * 255);
-        g = (byte)((gPrime + m) * 255);
-        b = (byte)((bPrime + m) * 255);
-    }
 }

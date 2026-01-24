@@ -1,4 +1,5 @@
 using System;
+using BrokenNes.Windows.Rendering;
 
 namespace NesEmulator.NullProviders;
 
@@ -184,7 +185,7 @@ public class Penteract5DRotationNullProvider : INullProvider
             double pulse = Math.Sin(avg_5th * 3 + time * 2) * 0.2 + 1.0;
             brightness *= pulse;
             
-            HsvToRgb(hue, saturation, Math.Min(1.0, brightness), out byte r, out byte g, out byte b);
+            ColorMath.HsvToRgb(hue, saturation, Math.Min(1.0, brightness), out byte r, out byte g, out byte b);
             
             // Line thickness also varies with 5th dimension
             int thickness = (int)(1 + Math.Max(0, avg_5th + 1) * 1.5);
@@ -214,7 +215,7 @@ public class Penteract5DRotationNullProvider : INullProvider
             double pulse = Math.Sin(v5d * 3 + time * 2) * 0.2 + 1.0;
             brightness *= pulse;
             
-            HsvToRgb(hue, 0.7, Math.Min(1.0, brightness), out byte r, out byte g, out byte b);
+            ColorMath.HsvToRgb(hue, 0.7, Math.Min(1.0, brightness), out byte r, out byte g, out byte b);
             
             for (int y = 0; y < legendHeight; y++)
             {
@@ -266,25 +267,4 @@ public class Penteract5DRotationNullProvider : INullProvider
         }
     }
     
-    private void HsvToRgb(double h, double s, double v, out byte r, out byte g, out byte b)
-    {
-        h = h % 360;
-        if (h < 0) h += 360;
-        
-        double c = v * s;
-        double x = c * (1 - Math.Abs((h / 60) % 2 - 1));
-        double m = v - c;
-        double rPrime = 0, gPrime = 0, bPrime = 0;
-        
-        if (h < 60) { rPrime = c; gPrime = x; }
-        else if (h < 120) { rPrime = x; gPrime = c; }
-        else if (h < 180) { gPrime = c; bPrime = x; }
-        else if (h < 240) { gPrime = x; bPrime = c; }
-        else if (h < 300) { rPrime = x; bPrime = c; }
-        else { rPrime = c; bPrime = x; }
-        
-        r = (byte)Math.Min(255, Math.Max(0, (rPrime + m) * 255));
-        g = (byte)Math.Min(255, Math.Max(0, (gPrime + m) * 255));
-        b = (byte)Math.Min(255, Math.Max(0, (bPrime + m) * 255));
-    }
 }

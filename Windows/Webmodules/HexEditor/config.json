@@ -1,0 +1,7 @@
+{
+  "displayMode": "widget",
+  "title": "Hex Editor",
+  "description": "High-performance memory inspector and editor with virtual scrolling",
+  "version": "1.0.0",
+  "showInToolsMenu": true
+}

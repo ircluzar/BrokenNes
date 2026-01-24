@@ -35,6 +35,8 @@ namespace BrokenNes.Windows.WebApi
         private Action<ViewMode>? _switchViewMode;
         private Control? _uiControl;
 
+        public bool IsRunning => _host != null;
+
         public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null)
         {
             _getNes = getNes;
@@ -222,13 +224,30 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
                     }
 
-                    nes.PokeMemory(form.Domain, form.Address, form.Value);
+                    // Normalize domain name
+                    var normalizedDomain = form.Domain?.Trim() ?? "";
+                    
+                    // Read the value before writing
+                    var beforeValue = nes.PeekMemory(normalizedDomain, form.Address);
+                    
+                    // Write the new value
+                    nes.PokeMemory(normalizedDomain, form.Address, form.Value);
+                    
+                    // Read back to verify
+                    var afterValue = nes.PeekMemory(normalizedDomain, form.Address);
+                    
+                    // Log for debugging
+                    System.Diagnostics.Debug.WriteLine($"[WebAPI] poke domain='{normalizedDomain}' addr={form.Address} val={form.Value:X2} before={beforeValue:X2} after={afterValue:X2}");
+                    
                     return Results.Ok(new
                     {
                         success = true,
-                        domain = form.Domain,
+                        domain = normalizedDomain,
                         address = form.Address,
-                        value = form.Value
+                        value = form.Value,
+                        beforeValue = beforeValue,
+                        afterValue = afterValue,
+                        verified = afterValue == form.Value
                     });
                 }
                 catch (Exception ex)
@@ -252,14 +271,20 @@ namespace BrokenNes.Windows.WebApi
                 
                 try
                 {
-                    var data = nes.PeekMemoryRange(domain, address, length);
+                    // Normalize domain name (trim whitespace)
+                    var normalizedDomain = domain?.Trim() ?? "";
+                    var data = nes.PeekMemoryRange(normalizedDomain, address, length);
+                    
+                    // Convert byte[] to int[] so JSON serializer doesn't Base64 encode it
+                    var dataAsInts = data.Select(b => (int)b).ToArray();
+                    
                     return Results.Ok(new
                     {
                         success = true,
-                        domain = domain,
+                        domain = normalizedDomain,
                         address = address,
                         length = length,
-                        data = data
+                        data = dataAsInts
                     });
                 }
                 catch (Exception ex)
@@ -319,6 +344,55 @@ namespace BrokenNes.Windows.WebApi
                     status = "running",
                     timestamp = DateTime.UtcNow.ToString("o")
                 });
+            });
+
+            // GET /api/memory/test-poke - Diagnostic endpoint to test poke/peek consistency
+            app.MapGet("/api/memory/test-poke", (string domain, int address, byte value) =>
+            {
+                var nes = _getNes();
+                if (nes == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
+                }
+                
+                try
+                {
+                    // Read original value
+                    var original = nes.PeekMemory(domain, address);
+                    
+                    // Write test value
+                    nes.PokeMemory(domain, address, value);
+                    
+                    // Read back immediately
+                    var afterPoke = nes.PeekMemory(domain, address);
+                    
+                    // Write back original
+                    nes.PokeMemory(domain, address, original);
+                    
+                    // Verify restoration
+                    var afterRestore = nes.PeekMemory(domain, address);
+                    
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        domain = domain,
+                        address = address,
+                        testValue = value,
+                        original = original,
+                        afterPoke = afterPoke,
+                        afterRestore = afterRestore,
+                        pokeWorked = afterPoke == value,
+                        restoreWorked = afterRestore == original
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
             });
         }
 
@@ -2352,7 +2426,7 @@ namespace BrokenNes.Windows.WebApi
                     // Switch to Emulator mode on UI thread, which hides the webform
                     if (_uiControl.InvokeRequired)
                     {
-                        _uiControl.Invoke((MethodInvoker)delegate
+                        _uiControl.BeginInvoke((MethodInvoker)delegate
                         {
                             _switchViewMode(ViewMode.Emulator);
                         });
