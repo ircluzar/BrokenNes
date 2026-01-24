@@ -121,17 +121,7 @@
     
     <div class="module-list">
       <div class="module-card">
-        <h2 class="module-title">⚠️ Warning</h2>
-        <span class="module-status">Ready</span>
-        <p class="module-desc">
-          Health and safety warning screen displayed before starting the emulator. 
-          Provides important information about photosensitivity and includes a consent checkbox.
-        </p>
-        <a href="Warning/index.html" class="module-link">Launch Warning</a>
-      </div>
-      
-      <div class="module-card">
-        <h2 class="module-title">Main Menu (Home)</h2>
+        <h2 class="module-title">🏠 Main Menu (Home)</h2>
         <span class="module-status">Ready</span>
         <p class="module-desc">
           The main entry point with health warnings, under construction notice, and navigation to all sections.
@@ -141,7 +131,7 @@
       </div>
       
       <div class="module-card">
-        <h2 class="module-title">Deck Builder</h2>
+        <h2 class="module-title">🃏 Deck Builder</h2>
         <span class="module-status">Ready</span>
         <p class="module-desc">
           View your progress summary including owned cores, achievement stars, and current level. 
@@ -151,7 +141,17 @@
       </div>
       
       <div class="module-card">
-        <h2 class="module-title">Options Menu</h2>
+        <h2 class="module-title">🎮 Continue / Builder</h2>
+        <span class="module-status">Ready</span>
+        <p class="module-desc">
+          The main deck building interface where you select cores, load ROMs, and configure your console. 
+          Simplified version with level progression, core selection, ROM library, and achievement tracking.
+        </p>
+        <a href="Continue/index.html" class="module-link">Launch Builder</a>
+      </div>
+      
+      <div class="module-card">
+        <h2 class="module-title">⚙️ Options Menu</h2>
         <span class="module-status">Ready</span>
         <p class="module-desc">
           Configure audio volumes, manage DeckBuilder save data, unlock features, and restore core preferences.
@@ -161,7 +161,7 @@
       </div>
       
       <div class="module-card">
-        <h2 class="module-title">Story Mode</h2>
+        <h2 class="module-title">📖 Story Mode</h2>
         <span class="module-status">Ready</span>
         <p class="module-desc">
           Introduction to the BrokenNes narrative. In the full app, this launches interactive stages.
@@ -171,23 +171,62 @@
       </div>
       
       <div class="module-card">
-        <h2 class="module-title">Cores Gallery</h2>
-        <span class="module-status wip">Coming Soon</span>
+        <h2 class="module-title">🎯 Cores Gallery</h2>
+        <span class="module-status">Ready</span>
         <p class="module-desc">
           Browse all unlocked CPU, PPU, APU cores and shaders. View detailed information about each component.
-          (To be migrated from Cores.razor)
         </p>
-        <a href="#" class="module-link" style="opacity: 0.5; cursor: not-allowed;">Launch Cores</a>
+        <a href="Cores/index.html" class="module-link">Launch Cores</a>
       </div>
       
       <div class="module-card">
-        <h2 class="module-title">Continue / Builder</h2>
+        <h2 class="module-title">🔧 API Test Suite</h2>
         <span class="module-status">Ready</span>
         <p class="module-desc">
-          The main deck building interface where you select cores, load ROMs, and configure your console. 
-          Simplified version with level progression, core selection, ROM library, and achievement tracking.
+          Comprehensive test suite for the emulator's Web API. Tests memory access, register manipulation, 
+          state retrieval, and real-time corruption capabilities at http://127.0.0.1:42067.
         </p>
-        <a href="Continue/index.html" class="module-link">Launch Builder</a>
+        <a href="ApiTest/index.html" class="module-link">Launch API Tests</a>
+      </div>
+      
+      <div class="module-card">
+        <h2 class="module-title">🔍 Hex Editor</h2>
+        <span class="module-status">Ready</span>
+        <p class="module-desc">
+          Real-time memory viewer and editor with hexadecimal display. Inspect and modify memory domains 
+          including RAM, VRAM, and cartridge memory while the emulator is running.
+        </p>
+        <a href="HexEditor/index.html" class="module-link">Launch Hex Editor</a>
+      </div>
+      
+      <div class="module-card">
+        <h2 class="module-title">⚡ Glitch Harvester</h2>
+        <span class="module-status">Ready</span>
+        <p class="module-desc">
+          Advanced corruption toolkit with Real-Time Corruptor, SaveState management, Stash/Stockpile systems, 
+          and the Imagine engine for intelligent glitch generation and preservation.
+        </p>
+        <a href="GlitchHarvester/index.html" class="module-link">Launch Glitch Harvester</a>
+      </div>
+      
+      <div class="module-card">
+        <h2 class="module-title">🎴 Overlay</h2>
+        <span class="module-status">Ready</span>
+        <p class="module-desc">
+          In-game achievement overlay system that displays achievement cards during gameplay. 
+          Shows progress, unlocks, and milestones with retro pixel styling.
+        </p>
+        <a href="Overlay/index.html" class="module-link">Launch Overlay</a>
+      </div>
+      
+      <div class="module-card">
+        <h2 class="module-title">📝 Database Editor (CRUD)</h2>
+        <span class="module-status">Ready</span>
+        <p class="module-desc">
+          Edit and manage the DeckBuilder database. Add, modify, and remove cores, levels, and achievements. 
+          Advanced tool for content creation and game balance tuning.
+        </p>
+        <a href="DeckBuilderCrud/index.html" class="module-link">Launch DB Editor</a>
       </div>
     </div>
     

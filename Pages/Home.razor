@@ -14,7 +14,6 @@
                 <div class="title-secondary-group">
                     <button class="title-secondary fade-seq" data-seq="2" @onclick="BootAndEnter" aria-label="Open Emulator">BrokenNes Emulator</button>
                     <button class="title-secondary fade-seq" data-seq="3" @onclick="NavigateOptions" aria-label="Options">Options</button>
-                    <button class="title-secondary fade-seq" data-seq="4" @onclick="ShowAbout" aria-label="About">About</button>
                 </div>
                 <div class="title-footer fade-seq" data-seq="5">
                     <a href="https://redscientist.com" target="_blank" rel="noopener noreferrer" aria-label="Visit Redscientist Labs website">2025 - Redscientist Labs</a>
@@ -62,27 +61,10 @@
     </div>
 }
 
-@if (aboutVisible)
-{
-    <div class="modal-backdrop about-backdrop" style="position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;z-index:6500;">
-        <div class="about-modal">
-            <div class="about-body">
-                <h2 class="about-title">About BrokenNes</h2>
-                <p class="about-text">BrokenNes is a browser‑based NES emulator and corruption toolkit, built loosely with care and love and attention to detal.</p>
-                <p class="about-text">Inspired by work on NET‑NES, QuickNES, and NesHawk. More info on that will be added later.</p>
-                <p class="about-text">Achievements are based on RetroAchievements. Certain have beed lifted, reimagined or modified. See Retroachievements.org for individual credits.</p>
-                <p class="about-text">Design and architecture: <strong>ircluzar</strong></p>
-                <button class="about-close" @onclick="HideAbout" aria-label="Close About">CLOSE</button>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private bool _booting = false;
     private bool showHealthWarning = true; // Health warning shows by default unless skipped via query
     private bool showUnderConstruction = false; // One-time notice, loaded from save
-    private bool aboutVisible = false;
     private string BuildVersion => typeof(Program).Assembly.GetName().Version?.ToString() ?? "?";
     private bool _titleStarted = false;
     // (Inline DateTime used now; keeping property optional if needed later)
@@ -168,9 +150,6 @@
     // Keep animated background alive between Home and Options
     Nav.NavigateTo(BuildRel("options"), forceLoad: false);
     }
-
-    private void ShowAbout() => aboutVisible = true;
-    private void HideAbout() => aboutVisible = false;
 
     private async Task OnHealthOk()
     {

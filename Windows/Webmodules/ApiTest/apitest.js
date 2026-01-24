@@ -42,7 +42,7 @@ async function ensureBaseStateSelected() {
   
   if (bases2?.success && bases2.baseStates?.length > 0) {
     // Select the first base state
-    const baseId = bases2.baseStates[0].Id;
+    const baseId = bases2.baseStates[0].id;
     await api.gh.selectBaseState(baseId);
     return true;
   }
@@ -76,7 +76,7 @@ async function ensureStockpileHasEntries() {
   }
   
   // Promote to stockpile
-  const stashId = stash.stash[0].Id;
+  const stashId = stash.stash[0].id;
   const promoteResult = await api.gh.promoteStash(stashId);
   
   return promoteResult?.success === true;
@@ -760,7 +760,7 @@ async function testGhSelectBase() {
     const bases = await api.gh.getBaseStates();
     
     if (bases?.success && bases.baseStates?.length > 0) {
-      const firstId = bases.baseStates[0].Id;
+      const firstId = bases.baseStates[0].id;
       const data = await api.gh.selectBase(firstId);
       displayResult('ghSelectBaseResult', data);
     } else {
@@ -786,7 +786,7 @@ async function testGhDeleteBase() {
     const bases = await api.gh.getBaseStates();
     
     if (bases?.success && bases.baseStates?.length > 0) {
-      const firstId = bases.baseStates[0].Id;
+      const firstId = bases.baseStates[0].id;
       const data = await api.gh.deleteBaseState(firstId);
       displayResult('ghDeleteBaseResult', data);
     } else {
@@ -850,7 +850,7 @@ async function testGhReplayStash() {
     const stash = await api.gh.getStash();
     
     if (stash?.success && stash.stash?.length > 0) {
-      const firstId = stash.stash[0].Id;
+      const firstId = stash.stash[0].id;
       const data = await api.gh.replayStash(firstId);
       displayResult('ghReplayStashResult', data);
     } else {
@@ -878,7 +878,7 @@ async function testGhPromoteStash() {
     }
     
     if (stash?.success && stash.stash?.length > 0) {
-      const firstId = stash.stash[0].Id;
+      const firstId = stash.stash[0].id;
       const data = await api.gh.promoteStash(firstId);
       displayResult('ghPromoteStashResult', data);
     } else {
@@ -895,7 +895,7 @@ async function testGhDeleteStash() {
     const stash = await api.gh.getStash();
     
     if (stash?.success && stash.stash?.length > 0) {
-      const firstId = stash.stash[0].Id;
+      const firstId = stash.stash[0].id;
       const data = await api.gh.deleteStash(firstId);
       displayResult('ghDeleteStashResult', data);
     } else {
@@ -945,7 +945,7 @@ async function testGhReplayStockpile() {
     const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
-      const firstId = stockpile.stockpile[0].Id;
+      const firstId = stockpile.stockpile[0].id;
       const data = await api.gh.replayStockpile(firstId);
       displayResult('ghReplayStockpileResult', data);
     } else {
@@ -965,7 +965,7 @@ async function testGhRenameStockpile() {
     const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
-      const firstId = stockpile.stockpile[0].Id;
+      const firstId = stockpile.stockpile[0].id;
       const data = await api.gh.renameStockpile(firstId, 'Renamed Entry ' + Date.now());
       displayResult('ghRenameStockpileResult', data);
     } else {
@@ -985,7 +985,7 @@ async function testGhDeleteStockpile() {
     const stockpile = await api.gh.getStockpile();
     
     if (stockpile?.success && stockpile.stockpile?.length > 0) {
-      const firstId = stockpile.stockpile[0].Id;
+      const firstId = stockpile.stockpile[0].id;
       const data = await api.gh.deleteStockpile(firstId);
       displayResult('ghDeleteStockpileResult', data);
     } else {
@@ -1053,7 +1053,7 @@ async function testGhFullWorkflow() {
     }
     
     // Extract ID from list (simulates user selecting from dropdown)
-    const baseStateId = basesData.baseStates[0].Id;
+    const baseStateId = basesData.baseStates[0].id;
     log.push(`  ✓ Base states listed: ${basesData.baseStates.length} items`);
     log.push(`  → User selects base: ID="${baseStateId}"\n`);
     
@@ -1065,7 +1065,7 @@ async function testGhFullWorkflow() {
     // STEP 3: Corrupt and stash (simulates clicking "Corrupt & Add to Stash")
     log.push('STEP 3: Generate corruption (user clicks "Corrupt & Stash")');
     const corruptData = await api.gh.corruptAndStash();
-    const createdStashId = corruptData.entry?.Id;
+    const createdStashId = corruptData.entry?.id;
     log.push(`  ✓ Corruption created: ${corruptData.success}`);
     log.push(`  → New stash entry ID: "${createdStashId}"\n`);
     
@@ -1075,18 +1075,18 @@ async function testGhFullWorkflow() {
     log.push(`  ✓ Stash entries listed: ${stashData.stash.length} items`);
     
     // Find our created entry in the list (simulates user scrolling/finding the item)
-    const stashItem = stashData.stash.find(e => e.Id === createdStashId);
-    log.push(`  → User finds entry: "${stashItem.Name}" (ID="${stashItem.Id}")\n`);
+    const stashItem = stashData.stash.find(e => e.id === createdStashId);
+    log.push(`  → User finds entry: "${stashItem.name}" (ID="${stashItem.id}")\n`);
     
     // STEP 5: Replay stash entry (simulates selecting item and clicking "Replay")
     log.push('STEP 5: Replay stash entry by ID (user selects item, clicks "Replay")');
-    const replayStashData = await api.gh.replayStash(stashItem.Id);
+    const replayStashData = await api.gh.replayStash(stashItem.id);
     log.push(`  ✓ Stash replay executed: ${replayStashData.success}\n`);
     
     // STEP 6: Promote to stockpile (simulates selecting item and clicking "Keep")
     log.push('STEP 6: Promote stash to stockpile by ID (user clicks "Keep")');
-    const promoteData = await api.gh.promoteStash(stashItem.Id);
-    const promotedStockpileId = promoteData.entry?.Id;
+    const promoteData = await api.gh.promoteStash(stashItem.id);
+    const promotedStockpileId = promoteData.entry?.id;
     log.push(`  ✓ Promoted to stockpile: ${promoteData.success}`);
     log.push(`  → Stockpile entry ID: "${promotedStockpileId}"\n`);
     
@@ -1096,18 +1096,18 @@ async function testGhFullWorkflow() {
     log.push(`  ✓ Stockpile entries listed: ${stockpileData.stockpile.length} items`);
     
     // Find our promoted entry (simulates user finding it in the UI list)
-    const stockpileItem = stockpileData.stockpile.find(e => e.Id === promotedStockpileId);
-    log.push(`  → User finds entry: "${stockpileItem.Name}" (ID="${stockpileItem.Id}")\n`);
+    const stockpileItem = stockpileData.stockpile.find(e => e.id === promotedStockpileId);
+    log.push(`  → User finds entry: "${stockpileItem.name}" (ID="${stockpileItem.id}")\n`);
     
     // STEP 8: Replay stockpile entry (simulates selecting and clicking "Replay")
     log.push('STEP 8: Replay stockpile entry by ID (user selects, clicks "Replay")');
-    const replayStockData = await api.gh.replayStockpile(stockpileItem.Id);
+    const replayStockData = await api.gh.replayStockpile(stockpileItem.id);
     log.push(`  ✓ Stockpile replay executed: ${replayStockData.success}\n`);
     
     // STEP 9: Rename stockpile entry (simulates editing name in UI)
     log.push('STEP 9: Rename stockpile entry by ID (user edits name)');
     const newName = `Favorite Glitch ${Date.now()}`;
-    const renameData = await api.gh.renameStockpile(stockpileItem.Id, newName);
+    const renameData = await api.gh.renameStockpile(stockpileItem.id, newName);
     log.push(`  ✓ Renamed: ${renameData.success}`);
     log.push(`  → New name: "${newName}"\n`);
     
@@ -1119,13 +1119,13 @@ async function testGhFullWorkflow() {
     
     // STEP 11: Delete stockpile entry (simulates selecting and clicking "Delete")
     log.push('STEP 11: Delete stockpile entry by ID (user clicks "Delete")');
-    const deleteData = await api.gh.deleteStockpile(stockpileItem.Id);
+    const deleteData = await api.gh.deleteStockpile(stockpileItem.id);
     log.push(`  ✓ Deleted: ${deleteData.success}\n`);
     
     // STEP 12: Verify deletion (simulates UI refresh)
     log.push('STEP 12: Verify deletion (UI refreshes list)');
     const verifyData = await api.gh.getStockpile();
-    const stillExists = verifyData.stockpile.some(e => e.Id === stockpileItem.Id);
+    const stillExists = verifyData.stockpile.some(e => e.id === stockpileItem.id);
     log.push(`  ✓ Entry removed from list: ${!stillExists}\n`);
     
     log.push('=== WORKFLOW TEST COMPLETE ===');

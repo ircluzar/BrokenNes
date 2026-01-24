@@ -17,42 +17,6 @@
     <h2 class="opt-title">OPTIONS</h2>
     <div class="opt-sections">
       <section class="opt-section">
-        <h3 class="opt-h3">CORES</h3>
-        <div class="opt-row">
-          <button id="btnRestoreCores">Restore cores to FMC</button>
-        </div>
-        <div class="opt-row small-note">Resets CPU/PPU/APU/Clock core preferences to FMC for future sessions.</div>
-      </section>
-      
-      <section class="opt-section">
-        <h3 class="opt-h3">Emulator Audio</h3>
-        <div class="opt-row">
-          <label>Master Volume (%)</label>
-          <input type="range" min="0" max="100" value="100" id="masterVolume" />
-          <span id="masterValue" class="value-display">100</span>
-        </div>
-
-        <h3 class="opt-h3">BrokenNes Audio</h3>
-        <div class="opt-row">
-          <label>Music Volume (%)</label>
-          <input type="range" min="0" max="100" value="42" id="musicVolume" />
-          <span id="musicValue" class="value-display">42</span>
-        </div>
-        <div class="opt-row">
-          <label>SFX Volume (%)</label>
-          <input type="range" min="0" max="100" value="80" id="sfxVolume" />
-          <span id="sfxValue" class="value-display">80</span>
-        </div>
-      </section>
-      
-      <section class="opt-section">
-        <h3 class="opt-h3">INPUT</h3>
-        <div class="opt-row">
-          <span class="opt-link-text">Configure Input feature is not available in web module version</span>
-        </div>
-      </section>
-      
-      <section class="opt-section">
         <h3 class="opt-h3">DeckBuilder Save</h3>
         <div class="opt-row">
           <button id="btnClearSave">Clear the save</button>
@@ -62,15 +26,12 @@
           <button id="btnUnlockAll">Unlock Everything</button>
         </div>
         <div class="opt-row small-note">Gives you all cores in your save for 100% completion. Achievements are not changed.</div>
-        <div class="opt-row">
-          <button id="btnToggleFeatures">Edit save</button>
-        </div>
       </section>
       
-      <section class="opt-section" id="featureUnlocks" style="display: none;">
+      <section class="opt-section" id="featureUnlocks">
         <h3 class="opt-h3">Feature Unlocks</h3>
         <div class="opt-row">
-          <span class="opt-link-text">CRUD editing is not available in web module version</span>
+          <span class="opt-link-text">These features normally get unlocked during gameplay</span>
         </div>
         <div class="opt-row">
           <button id="btnUnlockSavestates">Unlock Savestates</button>
@@ -83,9 +44,6 @@
         </div>
         <div class="opt-row">
           <button id="btnUnlockImagine">Unlock Imagine</button>
-        </div>
-        <div class="opt-row">
-          <button id="btnUnlockDebug">Unlock Debug</button>
         </div>
         <div class="opt-row small-note">Toggles the game-save gates for these advanced features. You can also unlock them by progressing in-game.</div>
       </section>

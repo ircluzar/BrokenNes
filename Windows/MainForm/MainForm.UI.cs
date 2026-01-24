@@ -26,15 +26,10 @@ namespace BrokenNes.Windows
         private void About_Click(object? sender, EventArgs e)
         {
             MessageBox.Show(
-                "BrokenNes - Windows Edition\n\n" +
-                "A NES emulator with multiple CPU, PPU, and APU core options.\n\n" +
-                "Controls:\n" +
-                "Z - A Button\n" +
-                "X - B Button\n" +
-                "A - Select\n" +
-                "S - Start\n" +
-                "Arrow Keys - D-Pad\n" +
-                "Space - Pause/Resume",
+                "BrokenNes is a NES emulator and corruption toolkit, built loosely with care and love and attention to detal.\n\n" +
+                "Inspired by work on NET‑NES, QuickNES, and NesHawk. More info on that will be added later if I feel like it.\n\n" +
+                "Achievements are based on RetroAchievements. Certain have beed lifted, reimagined or modified. Search Retroachievements.org for individual credits.\n\n" +
+                "Design and architecture: ircluzar",
                 "About BrokenNes",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
