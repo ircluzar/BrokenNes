@@ -766,7 +766,8 @@ namespace BrokenNes.Windows
                         () => webView,
                         (mode) => SwitchViewMode(mode),
                         this,  // Pass the main form as UI control for thread marshalling
-                        CloseAllMenus  // Pass the close menus handler
+                        CloseAllMenus,  // Pass the close menus handler
+                        ToggleFullscreen  // Pass the fullscreen toggle handler
                     );
                 }
 

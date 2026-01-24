@@ -23,6 +23,24 @@
         console.error('Failed to request menu close:', error);
       }
     });
+    
+    // Add double-click handler to toggle fullscreen
+    document.addEventListener('dblclick', async (e) => {
+      try {
+        const response = await fetch(`${API_BASE}/ui/toggle-fullscreen`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          console.log('Fullscreen toggle requested');
+        }
+      } catch (error) {
+        console.error('Failed to request fullscreen toggle:', error);
+      }
+    });
   });
   
   /**

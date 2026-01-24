@@ -35,10 +35,11 @@ namespace BrokenNes.Windows.WebApi
         private Action<ViewMode>? _switchViewMode;
         private Control? _uiControl;
         private Action? _closeAllMenus;
+        private Action? _toggleFullscreen;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -48,6 +49,7 @@ namespace BrokenNes.Windows.WebApi
             _switchViewMode = switchViewMode;
             _uiControl = uiControl;
             _closeAllMenus = closeAllMenus;
+            _toggleFullscreen = toggleFullscreen;
         }
 
         /// <summary>
@@ -3077,6 +3079,38 @@ namespace BrokenNes.Windows.WebApi
                     else
                     {
                         _closeAllMenus();
+                    }
+
+                    return Results.Ok(new { success = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+            
+            // POST /api/ui/toggle-fullscreen - Toggle fullscreen mode
+            app.MapPost("/api/ui/toggle-fullscreen", () =>
+            {
+                if (_toggleFullscreen == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Toggle fullscreen handler not available" });
+                }
+
+                try
+                {
+                    // Invoke on UI thread if we have a control reference
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke(_toggleFullscreen);
+                    }
+                    else
+                    {
+                        _toggleFullscreen();
                     }
 
                     return Results.Ok(new { success = true });
