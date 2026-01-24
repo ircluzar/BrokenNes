@@ -295,6 +295,17 @@ body {
   background: rgba(0, 212, 255, 0.08);
 }
 
+/* Heatmap styling for cells that change frequently */
+.tabulator .tabulator-cell.heatmap-active {
+  --heatmap-intensity: 0;
+  background: rgba(255, 68, 68, var(--heatmap-intensity)) !important;
+  transition: background 0.3s ease;
+}
+
+.tabulator .tabulator-cell.heatmap-active:hover {
+  background: rgba(255, 68, 68, calc(var(--heatmap-intensity) + 0.1)) !important;
+}
+
 @media (max-width: 900px) {
   .hex-status {
     flex-direction: column;

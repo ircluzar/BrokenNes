@@ -33,6 +33,11 @@ const DOMAIN_REFRESH_INTERVAL = 5000; // Refresh domains every 5 seconds if need
 const recentEdits = new Map(); // key: "rowIndex:field" -> { value, timestamp }
 const EDIT_PROTECTION_MS = 5000; // Protect edited cells for 5 seconds (increased for debugging)
 
+// Heatmap tracking: monitors how often each visible cell's value changes
+// key: "rowIndex:colIndex" -> { lastValue, changeCount, totalCount }
+const heatmapStats = new Map();
+let heatmapVisibleRange = { start: -1, end: -1 };
+
 const hexFields = Array.from({ length: BYTES_PER_ROW }, (_, i) => `b${i}`);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -76,6 +81,7 @@ function initializeTable() {
       width: 20,
       minWidth: 20,
       hozAlign: 'center',
+      headerHozAlign: 'center',
       headerSort: false,
       cssClass: 'hex-cell-editable',
       formatter: (cell) => formatByteCell(cell.getValue()),
@@ -232,6 +238,10 @@ async function onDomainChanged() {
 
   // Clear edit protections when switching domains - they're no longer valid
   recentEdits.clear();
+  
+  // Clear heatmap stats when domain changes
+  heatmapStats.clear();
+  heatmapVisibleRange = { start: -1, end: -1 };
 
   // Reset scroll position to avoid confusion
   const holder = document.querySelector('#hexGrid .tabulator-tableholder');
@@ -369,6 +379,18 @@ async function fetchRange(startRow, endRow) {
       recentEdits.delete(key);
     }
   }
+  
+  // Heatmap: clear stats for cells that are no longer in the visible range
+  if (heatmapVisibleRange.start !== startRow || heatmapVisibleRange.end !== endRow) {
+    for (const key of heatmapStats.keys()) {
+      const [rowStr] = key.split(':');
+      const row = parseInt(rowStr, 10);
+      if (row < startRow || row > endRow) {
+        heatmapStats.delete(key);
+      }
+    }
+    heatmapVisibleRange = { start: startRow, end: endRow };
+  }
 
   for (let row = startRow; row <= endRow; row += 1) {
     const rowStart = (row - startRow) * BYTES_PER_ROW;
@@ -400,6 +422,22 @@ async function fetchRange(startRow, endRow) {
         value = fetchedValue;
       }
       
+      // Heatmap: track value changes for this cell
+      const heatmapKey = `${row}:${col}`;
+      let stats = heatmapStats.get(heatmapKey);
+      if (!stats) {
+        // First time seeing this cell - initialize stats
+        stats = { lastValue: value, changeCount: 0, totalCount: 0 };
+        heatmapStats.set(heatmapKey, stats);
+      } else {
+        // Compare to previous value
+        stats.totalCount++;
+        if (value !== null && stats.lastValue !== null && value !== stats.lastValue) {
+          stats.changeCount++;
+        }
+        stats.lastValue = value;
+      }
+      
       rowData[field] = value;
 
       if (value === null || value === undefined) {
@@ -416,6 +454,9 @@ async function fetchRange(startRow, endRow) {
   }
 
   table.updateData(updates);
+  
+  // Apply heatmap styling to visible cells
+  applyHeatmapStyles(startRow, endRow);
   elements.statusText.textContent = `Showing ${endRow - startRow + 1} rows • ${length} bytes @ 0x${startAddress.toString(16).toUpperCase()}`;
 }
 
@@ -425,6 +466,52 @@ function handleCellEditStart() {
 
 function handleCellEditEnd() {
   editInProgress = false;
+}
+
+function applyHeatmapStyles(startRow, endRow) {
+  // Apply red background intensity based on change frequency
+  // We need to find the actual DOM cells and style them
+  for (let row = startRow; row <= endRow; row++) {
+    const tabulatorRow = table.getRow(row);
+    if (!tabulatorRow) continue;
+    
+    const rowElement = tabulatorRow.getElement();
+    if (!rowElement) continue;
+    
+    for (let col = 0; col < BYTES_PER_ROW; col++) {
+      const heatmapKey = `${row}:${col}`;
+      const stats = heatmapStats.get(heatmapKey);
+      
+      const field = hexFields[col];
+      const cell = tabulatorRow.getCell(field);
+      if (!cell) continue;
+      
+      const cellElement = cell.getElement();
+      if (!cellElement) continue;
+      
+      if (!stats || stats.totalCount === 0) {
+        // No data yet, clear any heatmap styling
+        cellElement.style.removeProperty('--heatmap-intensity');
+        cellElement.classList.remove('heatmap-active');
+        continue;
+      }
+      
+      // Calculate change frequency (0 to 1)
+      const changeRatio = stats.changeCount / stats.totalCount;
+      
+      if (changeRatio > 0) {
+        // Apply intensity: more changes = more red
+        // Use a scale that makes even moderate activity visible
+        // Cap at 0.8 opacity to keep text readable
+        const intensity = Math.min(0.8, changeRatio);
+        cellElement.style.setProperty('--heatmap-intensity', intensity);
+        cellElement.classList.add('heatmap-active');
+      } else {
+        cellElement.style.removeProperty('--heatmap-intensity');
+        cellElement.classList.remove('heatmap-active');
+      }
+    }
+  }
 }
 
 async function handleCellEdited(cell) {
