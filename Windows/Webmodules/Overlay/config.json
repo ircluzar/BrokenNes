@@ -1,0 +1,10 @@
+{
+  "name": "Overlay",
+  "version": "1.0.0",
+  "description": "Display a single card overlay on top of the emulator with transparent background",
+  "author": "BrokenNes",
+  "entryPoint": "index.html",
+  "displayMode": "overlay",
+  "showInToolsMenu": true,
+  "pauseEmulatorOnOpen": false
+}

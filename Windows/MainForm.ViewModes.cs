@@ -409,5 +409,74 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[LoadHomeWebModule] Error: {ex.Message}");
             }
         }
+        
+        /// <summary>
+        /// Requests the overlay to display a card for the specified core
+        /// </summary>
+        /// <param name="domain">Core domain (cpu, ppu, apu, shader)</param>
+        /// <param name="coreId">The core ID to display</param>
+        private async void RequestOverlayDisplayCard(string domain, string coreId)
+        {
+            // Only send to overlay if we're in overlay mode and webView is initialized
+            if (currentViewMode != ViewMode.Overlay || webView?.CoreWebView2 == null)
+                return;
+                
+            try
+            {
+                // Call the JavaScript displayCard function exposed by overlay.js
+                string script = $"if (typeof window.displayCard === 'function') {{ window.displayCard('{domain}', '{coreId}'); }}";
+                await webView.CoreWebView2.ExecuteScriptAsync(script);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to request overlay card display: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Requests the overlay to clear the displayed card
+        /// </summary>
+        private async void RequestOverlayClearCard()
+        {
+            // Only send to overlay if we're in overlay mode and webView is initialized
+            if (currentViewMode != ViewMode.Overlay || webView?.CoreWebView2 == null)
+                return;
+                
+            try
+            {
+                // Call the JavaScript clearCard function exposed by overlay.js
+                string script = "if (typeof window.clearCard === 'function') { window.clearCard(); }";
+                await webView.CoreWebView2.ExecuteScriptAsync(script);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to request overlay card clear: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Closes all open menus in the menu strip
+        /// </summary>
+        private void CloseAllMenus()
+        {
+            if (this.MainMenuStrip == null)
+                return;
+                
+            try
+            {
+                // Close all drop-down menus by iterating through top-level items
+                foreach (ToolStripMenuItem item in this.MainMenuStrip.Items.OfType<ToolStripMenuItem>())
+                {
+                    if (item.DropDown.Visible)
+                    {
+                        item.HideDropDown();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to close menus: {ex.Message}");
+            }
+        }
     }
 }

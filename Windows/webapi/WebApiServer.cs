@@ -34,10 +34,11 @@ namespace BrokenNes.Windows.WebApi
         private Func<WebView2?> _getWebView;
         private Action<ViewMode>? _switchViewMode;
         private Control? _uiControl;
+        private Action? _closeAllMenus;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -46,6 +47,7 @@ namespace BrokenNes.Windows.WebApi
             _getWebView = getWebView ?? (() => null);
             _switchViewMode = switchViewMode;
             _uiControl = uiControl;
+            _closeAllMenus = closeAllMenus;
         }
 
         /// <summary>
@@ -108,6 +110,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterCardEndpoints(app);
             RegisterCoresEndpoints(app);
             RegisterSaveEndpoints(app);
+            RegisterUIEndpoints(app);
 
             _host = app;
 
@@ -3049,6 +3052,44 @@ namespace BrokenNes.Windows.WebApi
             public bool UnderConstructionAcknowledged { get; set; } = false;
             public bool AllCoresUnlockedCongrats { get; set; } = false;
             public Dictionary<string, string>? MasqueradeRomToGameId { get; set; }
+        }
+
+        /// <summary>
+        /// Register UI Control API endpoints
+        /// </summary>
+        private void RegisterUIEndpoints(WebApplication app)
+        {
+            // POST /api/ui/close-menus - Close all open menus
+            app.MapPost("/api/ui/close-menus", () =>
+            {
+                if (_closeAllMenus == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Close menus handler not available" });
+                }
+
+                try
+                {
+                    // Invoke on UI thread if we have a control reference
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke(_closeAllMenus);
+                    }
+                    else
+                    {
+                        _closeAllMenus();
+                    }
+
+                    return Results.Ok(new { success = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
         }
     }
 }

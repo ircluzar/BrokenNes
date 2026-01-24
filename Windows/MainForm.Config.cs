@@ -277,6 +277,11 @@ namespace BrokenNes.Windows
                     });
                     item.ToolTipText = shaderInfo.Description;
                     item.Checked = (shaderName == config.CurrentShader);
+                    
+                    // Add hover event to request overlay display
+                    string capturedShaderName = shaderName; // Capture for closure
+                    item.MouseEnter += (s, e) => RequestOverlayDisplayCard("shader", capturedShaderName);
+                    
                     shaderMenu.DropDownItems.Add(item);
                 }
                 
@@ -302,6 +307,9 @@ namespace BrokenNes.Windows
                 noShaderItem.Enabled = false;
                 shaderMenu.DropDownItems.Add(noShaderItem);
             }
+            
+            // Add event to clear overlay when shader menu closes
+            shaderMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
 
             // APU - single select with checkmarks
             apuMenu.DropDownItems.Clear();
@@ -310,8 +318,15 @@ namespace BrokenNes.Windows
             {
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetApuCore(coreId));
                 item.Checked = (coreId == currentApuCore);
+                
+                // Add hover event to request overlay display
+                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("apu", coreId);
+                
                 apuMenu.DropDownItems.Add(item);
             }
+            
+            // Add event to clear overlay when APU menu closes
+            apuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
 
             // CPU - single select with checkmarks
             cpuMenu.DropDownItems.Clear();
@@ -320,8 +335,15 @@ namespace BrokenNes.Windows
             {
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetCpuCore(coreId));
                 item.Checked = (coreId == currentCpuCore);
+                
+                // Add hover event to request overlay display
+                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("cpu", coreId);
+                
                 cpuMenu.DropDownItems.Add(item);
             }
+            
+            // Add event to clear overlay when CPU menu closes
+            cpuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
 
             // PPU - single select with checkmarks
             ppuMenu.DropDownItems.Clear();
@@ -330,8 +352,15 @@ namespace BrokenNes.Windows
             {
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetPpuCore(coreId));
                 item.Checked = (coreId == currentPpuCore);
+                
+                // Add hover event to request overlay display
+                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("ppu", coreId);
+                
                 ppuMenu.DropDownItems.Add(item);
             }
+            
+            // Add event to clear overlay when PPU menu closes
+            ppuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
         }
         
         private void ApplySavedCoreSelections()

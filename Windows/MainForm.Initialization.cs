@@ -765,7 +765,8 @@ namespace BrokenNes.Windows
                         SetCrashBehavior,
                         () => webView,
                         (mode) => SwitchViewMode(mode),
-                        this  // Pass the main form as UI control for thread marshalling
+                        this,  // Pass the main form as UI control for thread marshalling
+                        CloseAllMenus  // Pass the close menus handler
                     );
                 }
 
