@@ -93,6 +93,22 @@ namespace BrokenNes.Windows
             if (mode == ViewMode.Emulator && currentViewMode != ViewMode.Emulator)
             {
                 UnloadWebModuleContent();
+                currentToolOrActivityModule = null; // Clear tracked module
+                
+                // Resume emulation if there's a loaded game and it's paused
+                bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+                bool isTestRom = currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+                
+                if (hasLoadedGame && !isTestRom && isPaused && isEmulationRunning)
+                {
+                    Console.WriteLine("[SwitchViewMode] Resuming paused emulator when switching to Emulator mode");
+                    isPaused = false;
+                    audioManager?.Play();
+                    if (!string.IsNullOrEmpty(this.Text))
+                    {
+                        this.Text = this.Text.Replace(" [PAUSED]", "");
+                    }
+                }
             }
 
             currentViewMode = mode;
@@ -307,6 +323,27 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[LoadWebModule] URI: {uri}");
                 Console.WriteLine($"[LoadWebModule] Display Mode: {module.DisplayMode}");
                 Console.WriteLine($"[LoadWebModule] Hide Menu Bar: {module.HideMenuBar}");
+                Console.WriteLine($"[LoadWebModule] Pause Emulator On Open: {module.Config.PauseEmulatorOnOpen}");
+                
+                // Pause emulator if configured and conditions are met
+                if (module.Config.PauseEmulatorOnOpen)
+                {
+                    // Check if there's a loaded game (not test ROM) and it's currently running
+                    bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+                    bool isTestRom = currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+                    bool isCurrentlyRunning = isEmulationRunning && !isPaused;
+                    
+                    if (hasLoadedGame && !isTestRom && isCurrentlyRunning)
+                    {
+                        Console.WriteLine($"[LoadWebModule] Pausing emulator as configured for module: {module.Name}");
+                        isPaused = true;
+                        audioManager?.Stop();
+                        if (!string.IsNullOrEmpty(this.Text) && !this.Text.Contains("[PAUSED]"))
+                        {
+                            this.Text = this.Text + " [PAUSED]";
+                        }
+                    }
+                }
                 
                 // Hide or show menu bar based on module config
                 if (this.MainMenuStrip != null)
@@ -328,6 +365,13 @@ namespace BrokenNes.Windows
                 
                 // NOW navigate to the module (after layout is set up)
                 Helpers.WebViewHelper.NavigateToUri(webView, uri);
+                
+                // Track if this is a tool or activity module
+                if (module.Config.ShowInToolsMenu)
+                {
+                    currentToolOrActivityModule = module;
+                }
+                
                 Console.WriteLine($"[LoadWebModule] Successfully loaded web module: {module.Name}");
             }
             catch (Exception ex)

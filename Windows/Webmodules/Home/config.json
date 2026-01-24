@@ -3,5 +3,6 @@
   "title": "Home",
   "description": "Main menu and navigation hub",
   "version": "1.0.0",
-  "hideMenuBar": true
+  "hideMenuBar": true,
+  "pauseEmulatorOnOpen": true
 }

@@ -3,5 +3,8 @@
   "title": "Deck Builder",
   "description": "Customize your core collection",
   "version": "1.0.0",
-  "hideMenuBar": true
+  "showInToolsMenu": true,
+  "isActivity": true,
+  "hideMenuBar": true,
+  "loadModule": "Home"
 }

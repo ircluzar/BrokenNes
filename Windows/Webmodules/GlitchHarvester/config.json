@@ -1,7 +1,8 @@
 {
   "displayMode": "widget",
-  "title": "Glitch Harvester",
+  "title": "RTC + Glitch Harvester",
   "description": "Advanced corruption workflow manager for creating, testing, and saving glitches",
   "version": "1.0.0",
-  "showInToolsMenu": true
+  "showInToolsMenu": true,
+  "isActivity": false
 }

@@ -14,7 +14,6 @@ using BrokenNes.CorruptorModels;
 using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
-using BrokenNes.Windows.Tools;
 using BrokenNes.Windows.WebApi;
 using PngPayloadEmbedding;
 using System.Text;
@@ -387,26 +386,96 @@ namespace BrokenNes.Windows
             
             menuStrip.Items.Add(configMenu);
 
-            // Tools menu
-            var toolsMenu = new ToolStripMenuItem("&Tools");
+            // Tools & Activities menu
+            var toolsMenu = new ToolStripMenuItem("&Tools && Activities");
             
             // Add webmodules that have ShowInToolsMenu flag
             var webModules = WebModuleManager.DiscoverModules();
             var toolWebModules = webModules.Where(m => m.Config.ShowInToolsMenu).ToArray();
-            if (toolWebModules.Length > 0)
+            
+            // Separate activities from tools
+            var activities = toolWebModules.Where(m => m.Config.IsActivity).ToArray();
+            var tools = toolWebModules.Where(m => !m.Config.IsActivity).ToArray();
+            
+            // Add activities first
+            if (activities.Length > 0)
             {
-                foreach (var module in toolWebModules)
+                foreach (var module in activities)
                 {
-                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(module));
+                    var moduleToLoad = module;
+                    // Check if this module redirects to another module
+                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
+                    {
+                        var targetModule = webModules.FirstOrDefault(m => 
+                            m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
+                        if (targetModule != null)
+                        {
+                            moduleToLoad = targetModule;
+                        }
+                    }
+                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(moduleToLoad));
                     toolsMenu.DropDownItems.Add(moduleItem);
                 }
+            }
+            
+            // Add separator between activities and tools
+            if (activities.Length > 0 && tools.Length > 0)
+            {
                 toolsMenu.DropDownItems.Add(new ToolStripSeparator());
             }
             
-            // Native tools
-            var hexEditorItem = new ToolStripMenuItem("Hex Editor", null, OpenHexEditor_Click);
-            toolsMenu.DropDownItems.Add(hexEditorItem);
+            // Add tools
+            if (tools.Length > 0)
+            {
+                foreach (var module in tools)
+                {
+                    var moduleToLoad = module;
+                    // Check if this module redirects to another module
+                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
+                    {
+                        var targetModule = webModules.FirstOrDefault(m => 
+                            m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
+                        if (targetModule != null)
+                        {
+                            moduleToLoad = targetModule;
+                        }
+                    }
+                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(moduleToLoad));
+                    toolsMenu.DropDownItems.Add(moduleItem);
+                }
+            }
+            
             menuStrip.Items.Add(toolsMenu);
+            
+            // Handle menu opening to dynamically add exit option for current tool/activity
+            toolsMenu.DropDownOpening += (s, e) =>
+            {
+                // Remove any existing exit items first
+                var itemsToRemove = toolsMenu.DropDownItems.OfType<ToolStripItem>()
+                    .Where(item => item.Tag?.ToString() == "ExitModule")
+                    .ToList();
+                foreach (var item in itemsToRemove)
+                {
+                    toolsMenu.DropDownItems.Remove(item);
+                }
+                
+                // Add exit item if we have a current tool/activity loaded
+                if (currentToolOrActivityModule != null)
+                {
+                    var exitSeparator = new ToolStripSeparator { Tag = "ExitModule" };
+                    toolsMenu.DropDownItems.Add(exitSeparator);
+                    
+                    var exitItem = new ToolStripMenuItem(
+                        $"Exit {currentToolOrActivityModule.Name}",
+                        null,
+                        (sender, args) => SwitchViewMode(ViewMode.Emulator))
+                    {
+                        Font = new Font(toolsMenu.Font, FontStyle.Bold),
+                        Tag = "ExitModule"
+                    };
+                    toolsMenu.DropDownItems.Add(exitItem);
+                }
+            };
             
             // Web menu for view modes
             var webMenu = new ToolStripMenuItem("&Web");

@@ -1,96 +1,7 @@
-/* Base styles and reset */
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Press Start 2P', monospace;
-  background: #000;
-  color: #fff;
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* Pixel background host */
-.pixel-bg-host {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: -1;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* Pixel tile styles (for homePixelBg.js) */
-.hp-tile {
-  position: absolute;
-  will-change: transform, opacity;
-}
-
-.hp-cluster {
-  display: grid;
-  gap: 0;
-}
-
-/* Story Styles (based on Options) */
-.options-root {
-  max-width: 760px;
-  margin: 2rem auto;
-  padding: 1.5rem 2rem;
-  border: 4px solid #ffffff;
-  outline: 4px solid #ff5a26;
-  outline-offset: -8px;
-  background: transparent;
-  color: #fff;
-  font-family: 'Press Start 2P', monospace;
-  position: relative;
-  overflow: hidden;
-}
-
-.opt-title {
-  margin: 0 0 1.25rem;
-  font-size: 1.6rem;
-  color: #ff5a26;
-  text-align: center;
-}
-
-.opt-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.opt-section {
-  border: 3px solid #fff;
-  padding: 1.5rem;
-}
-
-.opt-h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-  color: #fff;
-  text-align: center;
-}
-
-.opt-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.7rem;
-  margin-bottom: 0.6rem;
-  justify-content: center;
-}
-
-.small-note {
-  opacity: 0.8;
-  font-size: 0.6rem;
-  text-align: center;
-  color: #c0c0c0;
-}
+/* 
+  Story-specific styles 
+  Common styles loaded from ../shared/common.css
+*/
 
 .story-placeholder {
   margin: 1.5rem 0;
@@ -98,6 +9,70 @@ body {
   border: 2px dashed #666;
   background: rgba(255, 90, 38, 0.05);
 }
+
+.story-text {
+  font-size: 0.65rem;
+  line-height: 1.6;
+  color: #e0e0e0;
+  margin: 0.8rem 0;
+  text-align: center;
+}
+
+.story-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  align-items: center;
+}
+
+.story-btn {
+  background: #000;
+  color: #fff;
+  border: 3px solid #ff5a26;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.8rem 1.5rem;
+  cursor: pointer;
+  transition: background 0.05s steps(2, end), color 0.05s steps(2, end);
+  min-width: 280px;
+}
+
+.story-btn:hover,
+.story-btn:focus {
+  background: #ff5a26;
+  color: #000;
+}
+
+.story-btn:active {
+  background: #b23f1a;
+  color: #fff;
+}
+
+@media (max-width: 620px) {
+  .options-root {
+    margin: 1rem;
+    border-width: 3px;
+    outline-width: 3px;
+    padding: 1rem 1.1rem;
+  }
+  .opt-title {
+    font-size: 1.2rem;
+  }
+  .story-btn {
+    min-width: 100%;
+    font-size: 0.65rem;
+    padding: 0.7rem 1.2rem;
+  }
+  .opt-footer {
+    flex-direction: column;
+    align-items: center;
+  }
+  .opt-link {
+    min-width: 200px;
+  }
+}
+
 
 .story-text {
   font-size: 0.65rem;

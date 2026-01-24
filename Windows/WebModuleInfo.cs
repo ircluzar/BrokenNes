@@ -27,7 +27,10 @@ namespace BrokenNes.Windows
         public string Description { get; set; } = "";
         public string Version { get; set; } = "";
         public bool ShowInToolsMenu { get; set; } = false;
+        public bool IsActivity { get; set; } = false;
         public bool HideMenuBar { get; set; } = false;
+        public string LoadModule { get; set; } = ""; // If set, clicking this menu item loads a different module
+        public bool PauseEmulatorOnOpen { get; set; } = false; // If true, pauses emulator when opening this module (if game is loaded and running)
     }
 
     /// <summary>

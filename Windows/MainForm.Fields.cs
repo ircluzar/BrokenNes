@@ -9,7 +9,6 @@ using BrokenNes.CorruptorModels;
 using NesEmulator;
 using NesEmulator.Shaders;
 using BrokenNes.Windows.Rendering;
-using BrokenNes.Windows.Tools;
 using BrokenNes.Windows.WebApi;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -79,7 +78,6 @@ namespace BrokenNes.Windows
         private readonly Corruptor corruptor = new();
         private readonly object corruptorLock = new();
         private ImagineEngine? imagineEngine;
-        private HexEditorForm? hexEditorForm;
         private readonly ConcurrentQueue<Action> emulationActions = new();
         public event Action? CorruptorStateChanged;
         
@@ -93,6 +91,7 @@ namespace BrokenNes.Windows
         private WebView2? webView;
         private ViewMode currentViewMode = ViewMode.Emulator;
         private bool isWebViewInitialized = false;
+        private WebModuleInfo? currentToolOrActivityModule = null;
         
         // Web API server
         private WebApiServer? webApiServer;
