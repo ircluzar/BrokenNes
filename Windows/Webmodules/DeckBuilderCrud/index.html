@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DATABASE EDITOR - BrokenNes</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="crud-root">
+    <h2 class="crud-title">DATABASE EDITOR</h2>
+    
+    <div class="crud-toolbar">
+      <a class="crud-link" href="../Options/index.html">Return to Options</a>
+    </div>
+    
+    <div class="crud-toolbar">
+      <button id="btnExportJson">Export DB JSON</button>
+      <button id="btnImportJson">Import DB JSON</button>
+      <input id="crud-import" type="file" accept="application/json" style="display:none" />
+      <button id="btnAutoReload" class="toggle-btn" title="Auto-Reload from default-db.json on startup">Auto-Reload</button>
+      <div class="crud-columns">
+        <button id="btnColumnPicker">Columns</button>
+        <div id="columnPicker" class="column-picker" style="display:none">
+          <div class="picker-row"><label><input type="checkbox" id="colId" /> ID</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colTitle" checked disabled /> Title</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colCommonName" checked /> Common Name</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colStatus" checked /> Status</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colNote" /> Note</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colSystem" /> System</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colBuiltIn" checked /> Built-in</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colSize" /> Size</label></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="crud-tabs">
+      <button class="tab-btn active" data-tab="games">Games</button>
+      <button class="tab-btn" data-tab="achievements">Achievements</button>
+      <button class="tab-btn" data-tab="cards">Cards</button>
+      <button class="tab-btn" data-tab="meta">Meta</button>
+      <button class="tab-btn" data-tab="levels">Levels</button>
+    </div>
+
+    <div class="crud-pane">
+      <!-- GAMES TAB -->
+      <div id="tab-games" class="tab-content active">
+        <h3>Games</h3>
+        <div class="games-toolbar">
+          <button id="btnRefreshGames">Refresh</button>
+          <span class="small-note">Shows ROMs you've loaded; auto-added to continue DB on load.</span>
+        </div>
+        <div id="gamesGrid" class="grid-container">
+          <div class="grid-empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- ACHIEVEMENTS TAB -->
+      <div id="tab-achievements" class="tab-content">
+        <h3>Achievements</h3>
+        <div class="games-toolbar">
+          <button id="btnRefreshAchievements">Refresh</button>
+          <button id="btnAddAchievement">Add new achievement</button>
+          <span class="small-note">Link to a Game by its ID; select a Meta Achievement (formulas resolved from Meta DB).</span>
+        </div>
+        <div id="achievementsGrid" class="grid-container">
+          <div class="grid-empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- CARDS TAB -->
+      <div id="tab-cards" class="tab-content">
+        <h3>Cards</h3>
+        <div class="games-toolbar">
+          <button id="btnRefreshCards">Refresh Cards</button>
+          <span class="small-note">Scans CPU/PPU/APU/Clock/Shaders via reflection. Type/Note are persisted.</span>
+        </div>
+        <div id="cardsGrid" class="grid-container">
+          <div class="grid-empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- META TAB -->
+      <div id="tab-meta" class="tab-content">
+        <h3>Meta Achievements</h3>
+        <div class="games-toolbar">
+          <input type="text" id="metaFilterTitle" placeholder="Filter by game title (exact match)" />
+          <button id="btnRefreshMeta">Refresh</button>
+          <button id="btnTestAllFormulas">Test All Formulas</button>
+          <span class="small-note">Read-only view from models/meta_games.json</span>
+        </div>
+        <div id="metaGrid" class="grid-container">
+          <div class="grid-empty">Loading…</div>
+        </div>
+      </div>
+
+      <!-- LEVELS TAB -->
+      <div id="tab-levels" class="tab-content">
+        <h3>Levels</h3>
+        <div class="games-toolbar">
+          <button id="btnRefreshLevels">Refresh</button>
+          <button id="btnAddLevel">Add new level</button>
+          <span class="small-note">Manual entry. Index must be unique.</span>
+        </div>
+        <div id="levelsGrid" class="grid-container">
+          <div class="grid-empty">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="lib/continue-db.js"></script>
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/music.js"></script>
+  <script src="../shared/homePixelBg.js"></script>
+  <script src="crud.js"></script>
+</body>
+</html>
