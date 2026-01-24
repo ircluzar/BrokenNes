@@ -219,9 +219,17 @@ body {
   background: transparent;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   color: var(--cyan);
-  font-size: 0.7rem;
+  font-size: 0.55rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+  padding: 1px 0px;
+  line-height: 1.2;
+}
+
+.tabulator .tabulator-header .tabulator-col[tabulator-field^="b"] {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
 }
 
 .tabulator .tabulator-row {
@@ -240,8 +248,18 @@ body {
 .tabulator .tabulator-cell {
   color: var(--text-primary);
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 0.75rem;
-  padding: 3px 6px;
+  font-size: 0.6rem;
+  padding: 1px 0px;
+  line-height: 1.2;
+  margin: 0;
+  border-right: none;
+  box-sizing: border-box;
+}
+
+.tabulator .tabulator-cell.hex-cell-editable {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
 }
 
 .tabulator .tabulator-cell.tabulator-editing {

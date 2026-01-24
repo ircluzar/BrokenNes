@@ -2,14 +2,12 @@
 
 const API_BASE = 'http://127.0.0.1:42067';
 const BYTES_PER_ROW = 16;
-const ROW_HEIGHT = 26;
+const ROW_HEIGHT = 18;
 const SCROLL_BUFFER_ROWS = 8;
 
 const elements = {
   domainSelect: null,
   domainMeta: null,
-  addressInput: null,
-  btnGo: null,
   btnRefresh: null,
   btnReloadDomains: null,
   autoRefresh: null,
@@ -48,8 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeElements() {
   elements.domainSelect = document.getElementById('domainSelect');
   elements.domainMeta = document.getElementById('domainMeta');
-  elements.addressInput = document.getElementById('addressInput');
-  elements.btnGo = document.getElementById('btnGo');
   elements.btnRefresh = document.getElementById('btnRefresh');
   elements.btnReloadDomains = document.getElementById('btnReloadDomains');
   elements.autoRefresh = document.getElementById('autoRefresh');
@@ -59,16 +55,10 @@ function initializeElements() {
 
 function attachEventListeners() {
   elements.domainSelect.addEventListener('change', onDomainChanged);
-  elements.btnGo.addEventListener('click', onGoToAddress);
   elements.btnRefresh.addEventListener('click', () => refreshVisible(true));
   elements.btnReloadDomains.addEventListener('click', () => reloadDomains());
   elements.autoRefresh.addEventListener('change', updateAutoRefresh);
   elements.refreshRate.addEventListener('change', updateAutoRefresh);
-  elements.addressInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      onGoToAddress();
-    }
-  });
 }
 
 function initializeTable() {
@@ -76,14 +66,15 @@ function initializeTable() {
     {
       title: 'Addr',
       field: 'address',
-      width: 90,
+      width: 52,
       headerSort: false,
       formatter: (cell) => cell.getValue() ?? ''
     },
     ...hexFields.map((field, index) => ({
       title: index.toString(16).toUpperCase().padStart(2, '0'),
       field,
-      width: 44,
+      width: 20,
+      minWidth: 20,
       hozAlign: 'center',
       headerSort: false,
       cssClass: 'hex-cell-editable',
@@ -552,22 +543,7 @@ async function writeByte(address, value) {
   };
 }
 
-function onGoToAddress() {
-  const text = elements.addressInput.value.trim();
-  if (!text) {
-    return;
-  }
 
-  const address = parseAddress(text);
-  if (address === null || address < 0 || address >= domainSize) {
-    elements.statusText.textContent = 'Invalid address.';
-    return;
-  }
-
-  const rowIndex = Math.floor(address / BYTES_PER_ROW);
-  table.scrollToRow(rowIndex, 'top', true);
-  refreshVisible(true);
-}
 
 function updateAutoRefresh() {
   if (refreshTimer) {
