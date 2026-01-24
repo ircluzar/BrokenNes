@@ -65,7 +65,7 @@ namespace BrokenNes.Windows
                 }
                 
                 currentRomPath = path;
-                this.Text = $"BrokenNes - {Path.GetFileName(path)}";
+                Console.WriteLine($"ROM Loaded: {Path.GetFileName(path)}");
                 
                 // Add to recent ROMs
                 config.AddRecentRom(path);
@@ -186,7 +186,7 @@ namespace BrokenNes.Windows
                     }
                     
                     currentRomPath = "test.nes (embedded)";
-                    this.Text = "BrokenNes - test.nes";
+                    Console.WriteLine("ROM Loaded: test.nes");
                     
                     // Apply saved core selections
                     ApplySavedCoreSelections();

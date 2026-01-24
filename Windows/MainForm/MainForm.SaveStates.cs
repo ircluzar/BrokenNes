@@ -257,7 +257,7 @@ namespace BrokenNes.Windows
                 // Update menus to reflect restored settings
                 UpdateCoresMenus();
                 
-                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Loaded]";
+                Console.WriteLine($"State Loaded: {Path.GetFileName(currentRomPath)}");
             }
             catch (Exception ex)
             {
@@ -338,7 +338,7 @@ namespace BrokenNes.Windows
                     
                     screenshot.Dispose();
 
-                    this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [State Saved]";
+                    Console.WriteLine($"State Saved: {Path.GetFileName(currentRomPath)}");
                 }
                 catch (Exception ex)
                 {
@@ -372,16 +372,7 @@ namespace BrokenNes.Windows
                 
                 isPaused = wasPaused;
                 
-                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [Quick Saved]";
-                
-                // Clear the status message after 2 seconds
-                Task.Delay(2000).ContinueWith(_ => 
-                {
-                    if (this.InvokeRequired)
-                        this.Invoke(() => this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}");
-                    else
-                        this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}";
-                });
+                Console.WriteLine($"Quick Saved: {Path.GetFileName(currentRomPath)}");
             }
             catch (Exception ex)
             {
@@ -426,16 +417,7 @@ namespace BrokenNes.Windows
                 // Update menus to reflect restored settings
                 UpdateCoresMenus();
                 
-                this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)} [Quick Loaded]";
-                
-                // Clear the status message after 2 seconds
-                Task.Delay(2000).ContinueWith(_ => 
-                {
-                    if (this.InvokeRequired)
-                        this.Invoke(() => this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}");
-                    else
-                        this.Text = $"BrokenNes - {Path.GetFileName(currentRomPath)}";
-                });
+                Console.WriteLine($"Quick Loaded: {Path.GetFileName(currentRomPath)}");
             }
             catch (Exception ex)
             {

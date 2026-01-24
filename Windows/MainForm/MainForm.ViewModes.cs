@@ -117,10 +117,7 @@ namespace BrokenNes.Windows
                     Console.WriteLine("[SwitchViewMode] Resuming paused emulator when switching to Emulator mode");
                     isPaused = false;
                     audioManager?.Play();
-                    if (!string.IsNullOrEmpty(this.Text))
-                    {
-                        this.Text = this.Text.Replace(" [PAUSED]", "");
-                    }
+                    Console.WriteLine("Emulator Resumed (ViewMode change)");
                 }
             }
 
@@ -351,10 +348,7 @@ namespace BrokenNes.Windows
                         Console.WriteLine($"[LoadWebModule] Pausing emulator as configured for module: {module.Name}");
                         isPaused = true;
                         audioManager?.Stop();
-                        if (!string.IsNullOrEmpty(this.Text) && !this.Text.Contains("[PAUSED]"))
-                        {
-                            this.Text = this.Text + " [PAUSED]";
-                        }
+                        Console.WriteLine("Emulator Paused (ViewMode change)");
                     }
                 }
                 

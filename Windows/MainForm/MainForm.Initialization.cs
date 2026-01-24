@@ -61,7 +61,8 @@ namespace BrokenNes.Windows
 
         private void InitializeComponent()
         {
-            this.Text = "BrokenNes - Windows";
+            this.Text = "BrokenNes";
+            Console.WriteLine("BrokenNes - Windows");
             this.ClientSize = new Size(1280, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;

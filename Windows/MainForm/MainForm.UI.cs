@@ -98,16 +98,7 @@ namespace BrokenNes.Windows
                      {
                          this.Invoke((MethodInvoker)delegate 
                          {
-                             string currentText = this.Text;
-                             // Prevent duplicate status messages
-                             string baseText = currentText.Replace(" [Screenshot Saved]", "");
-                             this.Text = $"{baseText} [Screenshot Saved]";
-                             
-                             Task.Delay(1500).ContinueWith(_ => 
-                             {
-                                 if (this.IsHandleCreated && !this.IsDisposed) 
-                                     this.BeginInvoke(new Action(() => this.Text = baseText));
-                             });
+                             Console.WriteLine("Screenshot Saved");
                          });
                      }
 
@@ -141,12 +132,12 @@ namespace BrokenNes.Windows
             if (isPaused)
             {
                 audioManager?.Stop();
-                this.Text = this.Text + " [PAUSED]";
+                Console.WriteLine("Emulator Paused");
             }
             else
             {
                 audioManager?.Play();
-                this.Text = this.Text.Replace(" [PAUSED]", "");
+                Console.WriteLine("Emulator Resumed");
             }
         }
 
