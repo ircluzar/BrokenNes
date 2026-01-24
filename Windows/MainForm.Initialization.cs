@@ -86,29 +86,18 @@ namespace BrokenNes.Windows
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
+            recentRomsMenu = new ToolStripMenuItem("Recent &Roms");
+            emulatorMenu.DropDownItems.Add(recentRomsMenu);
+            // Recent ROMs menu will be populated after LoadConfig() is called
+            
+            emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
+            
             var pauseResumeItem = new ToolStripMenuItem("&Pause/Resume", null, PauseResume_Click);
             emulatorMenu.DropDownItems.Add(pauseResumeItem);
             
             var resetItem = new ToolStripMenuItem("&Reset Emulator", null, ResetEmulator_Click);
             resetItem.ShortcutKeys = Keys.Control | Keys.R;
             emulatorMenu.DropDownItems.Add(resetItem);
-            
-            emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
-            
-            var loadStateItem = new ToolStripMenuItem("Load State...", null, LoadStateFromFile_Click);
-            loadStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.L;
-            emulatorMenu.DropDownItems.Add(loadStateItem);
-            
-            var saveStateItem = new ToolStripMenuItem("Save State...", null, SaveStateToFile_Click);
-            saveStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.S;
-            emulatorMenu.DropDownItems.Add(saveStateItem);
-
-            var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
-            screenshotItem.ShortcutKeys = Keys.F12;
-            emulatorMenu.DropDownItems.Add(screenshotItem);
-
-            var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
-            emulatorMenu.DropDownItems.Add(openFolderItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -122,9 +111,22 @@ namespace BrokenNes.Windows
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
-            recentRomsMenu = new ToolStripMenuItem("Recent &Roms");
-            emulatorMenu.DropDownItems.Add(recentRomsMenu);
-            // Recent ROMs menu will be populated after LoadConfig() is called
+            var loadStateItem = new ToolStripMenuItem("Load State...", null, LoadStateFromFile_Click);
+            loadStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.L;
+            emulatorMenu.DropDownItems.Add(loadStateItem);
+            
+            var saveStateItem = new ToolStripMenuItem("Save State...", null, SaveStateToFile_Click);
+            saveStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.S;
+            emulatorMenu.DropDownItems.Add(saveStateItem);
+
+            emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
+            screenshotItem.ShortcutKeys = Keys.F12;
+            emulatorMenu.DropDownItems.Add(screenshotItem);
+
+            var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
+            emulatorMenu.DropDownItems.Add(openFolderItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -171,8 +173,15 @@ namespace BrokenNes.Windows
             
             var hideMenuBarItem = new ToolStripMenuItem("Hide Menu Bar in Full Screen", null, ToggleHideMenuBar_Click);
             hideMenuBarItem.CheckOnClick = true;
-            hideMenuBarItem.Checked = config.HideMenuBarInFullscreen;
             displayMenu.DropDownItems.Add(hideMenuBarItem);
+            
+            // VSync option (DirectX only)
+            if (useDirectX)
+            {
+                var vsyncItem = new ToolStripMenuItem("V-Sync", null, ToggleVSync_Click);
+                vsyncItem.CheckOnClick = true;
+                displayMenu.DropDownItems.Add(vsyncItem);
+            }
             
             configMenu.DropDownItems.Add(displayMenu);
             
@@ -327,7 +336,26 @@ namespace BrokenNes.Windows
             
             configMenu.DropDownItems.Add(backgroundEffectsMenu);
             
-            // Crash Behavior submenu
+            // Emulation Speed submenu
+            var emulationSpeedMenu = new ToolStripMenuItem("Emulation &Speed");
+            
+            var noSpeedLimitItem = new ToolStripMenuItem("No Speed Limit", null, ToggleNoSpeedLimit_Click);
+            noSpeedLimitItem.CheckOnClick = true;
+            emulationSpeedMenu.DropDownItems.Add(noSpeedLimitItem);
+            
+            var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
+            emulationSpeedMenu.DropDownItems.Add(speedControlItem);
+            
+            configMenu.DropDownItems.Add(emulationSpeedMenu);
+            
+            // Emulator Behaviors submenu
+            var emulatorBehaviorsMenu = new ToolStripMenuItem("Emulator &Behaviors");
+            
+            var bootToEmulatorItem = new ToolStripMenuItem("Boot to Emulator", null, ToggleBootToEmulator_Click);
+            bootToEmulatorItem.CheckOnClick = true;
+            emulatorBehaviorsMenu.DropDownItems.Add(bootToEmulatorItem);
+            
+            // Crash Behavior submenu (moved here)
             var crashBehaviorMenu = new ToolStripMenuItem("C&rash Behavior");
             
             var redScreenItem = new ToolStripMenuItem("Red Screen", null, (s, e) => SetCrashBehavior("RedScreen"));
@@ -340,49 +368,34 @@ namespace BrokenNes.Windows
             imagineFixItem.Enabled = false;
             crashBehaviorMenu.DropDownItems.Add(imagineFixItem);
             
-            configMenu.DropDownItems.Add(crashBehaviorMenu);
-            
-            configMenu.DropDownItems.Add(new ToolStripSeparator());
-            
-            // Emulation options
-            var noSpeedLimitItem = new ToolStripMenuItem("No Speed Limit", null, ToggleNoSpeedLimit_Click);
-            noSpeedLimitItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(noSpeedLimitItem);
-            
-            var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
-            configMenu.DropDownItems.Add(speedControlItem);
+            emulatorBehaviorsMenu.DropDownItems.Add(crashBehaviorMenu);
             
             var showFpsItem = new ToolStripMenuItem("Show FPS and Input", null, ToggleShowFps_Click);
             showFpsItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(showFpsItem);
+            emulatorBehaviorsMenu.DropDownItems.Add(showFpsItem);
             
-            // VSync option (DirectX only)
-            if (useDirectX)
-            {
-                var vsyncItem = new ToolStripMenuItem("V-Sync", null, ToggleVSync_Click);
-                vsyncItem.CheckOnClick = true;
-                configMenu.DropDownItems.Add(vsyncItem);
-            }
+            configMenu.DropDownItems.Add(emulatorBehaviorsMenu);
+            
+            // Debug Tools submenu
+            var debugToolsMenu = new ToolStripMenuItem("&Debug Tools");
             
             var startProfilingItem = new ToolStripMenuItem("Start Profiling Performance", null, ToggleProfiling_Click);
             startProfilingItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(startProfilingItem);
-            
-            configMenu.DropDownItems.Add(new ToolStripSeparator());
+            debugToolsMenu.DropDownItems.Add(startProfilingItem);
             
             var autoScrambleItem = new ToolStripMenuItem("Auto-Scramble Cores (Testing)", null, ToggleAutoScrambleCores_Click);
             autoScrambleItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(autoScrambleItem);
-            
-            configMenu.DropDownItems.Add(new ToolStripSeparator());
+            debugToolsMenu.DropDownItems.Add(autoScrambleItem);
             
             var showConsoleItem = new ToolStripMenuItem("Show Console", null, ToggleShowConsole_Click);
             showConsoleItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(showConsoleItem);
+            debugToolsMenu.DropDownItems.Add(showConsoleItem);
             
-            var bootToEmulatorItem = new ToolStripMenuItem("Boot to Emulator", null, ToggleBootToEmulator_Click);
-            bootToEmulatorItem.CheckOnClick = true;
-            configMenu.DropDownItems.Add(bootToEmulatorItem);
+            var showWebmodulesMenuItem = new ToolStripMenuItem("Show Webmodules Menu", null, ToggleShowWebmodulesMenu_Click);
+            showWebmodulesMenuItem.CheckOnClick = true;
+            debugToolsMenu.DropDownItems.Add(showWebmodulesMenuItem);
+            
+            configMenu.DropDownItems.Add(debugToolsMenu);
             
             menuStrip.Items.Add(configMenu);
 
@@ -477,16 +490,16 @@ namespace BrokenNes.Windows
                 }
             };
             
-            // Web menu for view modes
-            var webMenu = new ToolStripMenuItem("&Web");
+            // Webmodules menu for view modes
+            webModulesMenu = new ToolStripMenuItem("&Webmodules");
             
             var emulatorModeItem = new ToolStripMenuItem("Emulator Mode", null, (s, e) => SwitchViewMode(ViewMode.Emulator));
             emulatorModeItem.ShortcutKeys = Keys.Control | Keys.D1;
-            webMenu.DropDownItems.Add(emulatorModeItem);
+            webModulesMenu.DropDownItems.Add(emulatorModeItem);
             
             var widgetModeItem = new ToolStripMenuItem("Widget Mode", null, (s, e) => SwitchViewMode(ViewMode.Widget));
             widgetModeItem.ShortcutKeys = Keys.Control | Keys.D2;
-            webMenu.DropDownItems.Add(widgetModeItem);
+            webModulesMenu.DropDownItems.Add(widgetModeItem);
             
             var webModeItem = new ToolStripMenuItem("Web Mode (Test Page)", null, (s, e) => {
                 // Load the webmodules index page
@@ -495,14 +508,14 @@ namespace BrokenNes.Windows
                 SwitchViewMode(ViewMode.Web);
             });
             webModeItem.ShortcutKeys = Keys.Control | Keys.D3;
-            webMenu.DropDownItems.Add(webModeItem);
+            webModulesMenu.DropDownItems.Add(webModeItem);
             
             var overlayModeItem = new ToolStripMenuItem("Overlay Mode", null, (s, e) => SwitchViewMode(ViewMode.Overlay));
             overlayModeItem.ShortcutKeys = Keys.Control | Keys.D4;
-            webMenu.DropDownItems.Add(overlayModeItem);
+            webModulesMenu.DropDownItems.Add(overlayModeItem);
             
             // Add separator before webmodules
-            webMenu.DropDownItems.Add(new ToolStripSeparator());
+            webModulesMenu.DropDownItems.Add(new ToolStripSeparator());
             
             // Add all web modules (webModules already discovered above for Tools menu)
             if (webModules.Length > 0)
@@ -510,7 +523,7 @@ namespace BrokenNes.Windows
                 foreach (var module in webModules)
                 {
                     var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(module));
-                    webMenu.DropDownItems.Add(moduleItem);
+                    webModulesMenu.DropDownItems.Add(moduleItem);
                 }
             }
             else
@@ -519,10 +532,10 @@ namespace BrokenNes.Windows
                 {
                     Enabled = false
                 };
-                webMenu.DropDownItems.Add(noModulesItem);
+                webModulesMenu.DropDownItems.Add(noModulesItem);
             }
             
-            menuStrip.Items.Add(webMenu);
+            menuStrip.Items.Add(webModulesMenu);
             
             // Core selection menus: SHADER, APU, CPU, PPU
             shaderMenu = new ToolStripMenuItem("&SHADER");
@@ -588,10 +601,8 @@ namespace BrokenNes.Windows
 
                     webView = Helpers.WebViewHelper.CreateWebView(this);
                     
-                    // Initialize WebView2 asynchronously
-                    Helpers.WebViewHelper.InitializeWebViewAsync(webView, (success) => {
-                        isWebViewInitialized = success;
-                    });
+                    // Initialize WebView2 asynchronously on UI thread (don't await to avoid blocking constructor)
+                    _ = InitializeWebView2Async();
                 }
             }
             catch (Exception ex)
@@ -686,8 +697,37 @@ namespace BrokenNes.Windows
             // API will handle NES being null and can receive commands like loading ROMs
             _ = EnsureWebApiServerRunningAsync();
             
-            // Load the default embedded ROM
-            LoadEmbeddedRom();
+            // Load the default embedded ROM (but don't load Home yet - wait for WebView2)
+            LoadEmbeddedRom(allowHomeWebModule: false);
+            
+            // If we need to load Home, do it after WebView2 is ready
+            if (!config.BootToEmulator)
+            {
+                _ = LoadHomeWhenReadyAsync();
+            }
+        }
+        
+        private async Task LoadHomeWhenReadyAsync()
+        {
+            // Wait for WebView2 to be ready (up to 5 seconds)
+            Console.WriteLine("[LoadHomeWhenReady] Waiting for WebView2 to initialize...");
+            for (int i = 0; i < 50; i++) // 50 * 100ms = 5 seconds max
+            {
+                if (isWebViewInitialized) break;
+                await Task.Delay(100);
+            }
+            
+            if (isWebViewInitialized)
+            {
+                Console.WriteLine("[LoadHomeWhenReady] WebView2 ready, loading Home...");
+                LoadHomeWebModule();
+            }
+            else
+            {
+                Console.WriteLine("[LoadHomeWhenReady] WebView2 failed to initialize in time");
+                MessageBox.Show("WebView2 initialization took too long. You can manually switch to web modes from the menu.", 
+                    "Initialization Timeout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void SetupKeyMapping()
@@ -785,6 +825,23 @@ namespace BrokenNes.Windows
             finally
             {
                 webApiServerLock.Release();
+            }
+        }
+        
+        private async Task InitializeWebView2Async()
+        {
+            try
+            {
+                isWebViewInitialized = await Helpers.WebViewHelper.InitializeWebViewAsync(webView);
+                if (isWebViewInitialized)
+                {
+                    Console.WriteLine("[MainForm] WebView2 is now ready for use");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MainForm] WebView2 initialization failed: {ex.Message}");
+                isWebViewInitialized = false;
             }
         }
     }

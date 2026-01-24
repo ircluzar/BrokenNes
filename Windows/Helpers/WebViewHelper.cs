@@ -13,9 +13,9 @@ namespace BrokenNes.Windows.Helpers
     /// </summary>
     public static class WebViewHelper
     {
-        public static async void InitializeWebViewAsync(WebView2 webView, Action<bool> onInitialized)
+        public static async Task<bool> InitializeWebViewAsync(WebView2 webView)
         {
-            if (webView == null) return;
+            if (webView == null) return false;
             
             try
             {
@@ -81,15 +81,15 @@ namespace BrokenNes.Windows.Helpers
                     }
                 };
                 
-                onInitialized?.Invoke(true);
                 Console.WriteLine("WebView2 initialized successfully with transparency");
+                return true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"WebView2 initialization error: {ex.Message}");
                 MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
                     "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                onInitialized?.Invoke(false);
+                return false;
             }
         }
 

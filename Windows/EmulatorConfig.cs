@@ -158,6 +158,12 @@ namespace BrokenNes.Windows
         [JsonPropertyName("bootToEmulator")]
         public bool BootToEmulator { get; set; } = false;
         
+        /// <summary>
+        /// Show the Webmodules menu in the menu bar
+        /// </summary>
+        [JsonPropertyName("showWebmodulesMenu")]
+        public bool ShowWebmodulesMenu { get; set; } = false;
+        
         // Controller configuration - NEW SYSTEM
         /// <summary>
         /// Player controller configurations (supports multiple players with keyboard and XInput)

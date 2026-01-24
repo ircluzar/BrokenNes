@@ -207,6 +207,24 @@ namespace BrokenNes.Windows
             }
         }
 
+        private void ToggleShowWebmodulesMenu_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                Helpers.ConfigHelper.Update(config, c => c.ShowWebmodulesMenu = menuItem.Checked);
+                
+                // Update menu visibility
+                if (webModulesMenu != null)
+                {
+                    webModulesMenu.Visible = config.ShowWebmodulesMenu;
+                }
+                
+                Console.WriteLine($"Show Webmodules Menu set to: {config.ShowWebmodulesMenu}");
+                
+                UpdateConfigMenus();
+            }
+        }
+
         private void ToggleProfiling_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)

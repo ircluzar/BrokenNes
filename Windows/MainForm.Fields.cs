@@ -69,6 +69,7 @@ namespace BrokenNes.Windows
         private ToolStripMenuItem cpuMenu;
         private ToolStripMenuItem ppuMenu;
         private ToolStripMenuItem recentRomsMenu;
+        private ToolStripMenuItem webModulesMenu;
         
         // NES display dimensions
         private const int NES_WIDTH = 256;

@@ -88,6 +88,12 @@ namespace BrokenNes.Windows
             
             if (configMenu == null) return;
             
+            // Update Webmodules menu visibility
+            if (webModulesMenu != null)
+            {
+                webModulesMenu.Visible = config.ShowWebmodulesMenu;
+            }
+            
             // Update Display submenu checkmarks
             var displayMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
                 .FirstOrDefault(m => m.Text == "&Display");
@@ -104,43 +110,81 @@ namespace BrokenNes.Windows
                         item.Checked = config.ScalingNearestNeighbor;
                     else if (item.Text.Contains("Hide Menu Bar"))
                         item.Checked = config.HideMenuBarInFullscreen;
+                    else if (item.Text.Contains("V-Sync"))
+                        item.Checked = config.EnableVSync;
                     // Zoom options are not checkboxes, so we don't update them
                 }
             }
             
-            // Update emulation options checkmarks
-            foreach (var item in configMenu.DropDownItems.OfType<ToolStripMenuItem>())
+            // Update emulation options checkmarks (now in various submenus)
+            
+            // Update Emulation Speed submenu
+            var emulationSpeedMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "Emulation &Speed");
+            
+            if (emulationSpeedMenu != null)
             {
-                if (item.Text.Contains("No Speed Limit"))
-                    item.Checked = config.NoSpeedLimit;
-                else if (item.Text.Contains("Show FPS and Input"))
-                    item.Checked = config.ShowFps;
-                else if (item.Text.Contains("V-Sync"))
-                    item.Checked = config.EnableVSync;
-                else if (item.Text.Contains("Start Profiling Performance"))
-                    item.Checked = config.ProfilingEnabled;
-                else if (item.Text.Contains("Auto-Scramble Cores"))
-                    item.Checked = config.AutoScrambleCores;
-                else if (item.Text.Contains("Show Console"))
-                    item.Checked = config.ShowConsole;
-                else if (item.Text.Contains("Boot to Emulator"))
-                    item.Checked = config.BootToEmulator;
+                foreach (var item in emulationSpeedMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    if (item.Text.Contains("No Speed Limit"))
+                        item.Checked = config.NoSpeedLimit;
+                }
             }
             
-            // Update Crash Behavior submenu checkmarks
-            var crashBehaviorMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
-                .FirstOrDefault(m => m.Text == "C&rash Behavior");
+            // Update Emulator Behaviors submenu
+            var emulatorBehaviorsMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "Emulator &Behaviors");
             
-            if (crashBehaviorMenu != null)
+            if (emulatorBehaviorsMenu != null)
             {
-                foreach (var item in crashBehaviorMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                foreach (var item in emulatorBehaviorsMenu.DropDownItems.OfType<ToolStripMenuItem>())
                 {
-                    if (item.Text.Contains("Red Screen"))
-                        item.Checked = (config.CrashBehavior == "RedScreen");
-                    else if (item.Text.Contains("Ignore Errors"))
-                        item.Checked = (config.CrashBehavior == "IgnoreErrors");
-                    else if (item.Text.Contains("Imagine Fix"))
-                        item.Checked = (config.CrashBehavior == "ImagineFix");
+                    if (item.Text.Contains("Boot to Emulator"))
+                        item.Checked = config.BootToEmulator;
+                    else if (item.Text.Contains("Show FPS and Input"))
+                        item.Checked = config.ShowFps;
+                }
+            }
+            
+            // Update Debug Tools submenu
+            var debugToolsMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "&Debug Tools");
+            
+            if (debugToolsMenu != null)
+            {
+                foreach (var item in debugToolsMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    if (item.Text.Contains("Start Profiling Performance"))
+                        item.Checked = config.ProfilingEnabled;
+                    else if (item.Text.Contains("Auto-Scramble Cores"))
+                        item.Checked = config.AutoScrambleCores;
+                    else if (item.Text.Contains("Show Console"))
+                        item.Checked = config.ShowConsole;
+                    else if (item.Text.Contains("Show Webmodules Menu"))
+                        item.Checked = config.ShowWebmodulesMenu;
+                }
+            }
+            
+            // Update Crash Behavior submenu checkmarks (nested inside Emulator Behaviors menu)
+            var emulatorBehaviorsMenuForCrash = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "Emulator &Behaviors");
+            
+            if (emulatorBehaviorsMenuForCrash != null)
+            {
+                var crashBehaviorMenu = emulatorBehaviorsMenuForCrash.DropDownItems.OfType<ToolStripMenuItem>()
+                    .FirstOrDefault(m => m.Text == "C&rash Behavior");
+                
+                if (crashBehaviorMenu != null)
+                {
+                    foreach (var item in crashBehaviorMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                    {
+                        if (item.Text.Contains("Red Screen"))
+                            item.Checked = (config.CrashBehavior == "RedScreen");
+                        else if (item.Text.Contains("Ignore Errors"))
+                            item.Checked = (config.CrashBehavior == "IgnoreErrors");
+                        else if (item.Text.Contains("Imagine Fix"))
+                            item.Checked = (config.CrashBehavior == "ImagineFix");
+                    }
                 }
             }
             

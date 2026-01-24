@@ -76,6 +76,18 @@ namespace BrokenNes.Windows
             if (isWebMode)
             {
                 await EnsureWebApiServerRunningAsync();
+                
+                // If WebView2 is still initializing, wait up to 3 seconds for it to finish
+                if (webView != null && !isWebViewInitialized)
+                {
+                    Console.WriteLine("[SwitchViewMode] WebView2 still initializing, waiting...");
+                    for (int i = 0; i < 30; i++) // 30 * 100ms = 3 seconds max
+                    {
+                        await Task.Delay(100);
+                        if (isWebViewInitialized) break;
+                    }
+                }
+                
                 if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
             }
             else if (webView == null)
