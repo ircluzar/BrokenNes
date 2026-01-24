@@ -28,8 +28,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.NoSpeedLimit = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.NoSpeedLimit = menuItem.Checked);
                 UpdateConfigMenus();
                 
                 // Clear audio buffer to prevent desync

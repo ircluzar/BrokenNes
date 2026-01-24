@@ -28,8 +28,7 @@ namespace BrokenNes.Windows
         {
             // Toggle the bit for this channel
             int mask = 1 << channelIndex;
-            config.EnabledChannels ^= mask;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.EnabledChannels ^= mask);
             
             // Apply to NES if available
             ApplySoundSettings();
@@ -40,8 +39,7 @@ namespace BrokenNes.Windows
         
         private void SetSoundQuality(int sampleRate)
         {
-            config.SoundQuality = sampleRate;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SoundQuality = sampleRate);
             
             // Reinitialize audio manager with new settings
             ReinitializeAudio();
@@ -52,8 +50,7 @@ namespace BrokenNes.Windows
         
         private void SetSoundBuffer(int bufferSize)
         {
-            config.SoundBuffer = bufferSize;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SoundBuffer = bufferSize);
             
             // Reinitialize audio manager with new settings
             ReinitializeAudio();

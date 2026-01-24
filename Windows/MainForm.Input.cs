@@ -59,7 +59,7 @@ namespace BrokenNes.Windows
                 if (configWindow.ShowDialog(this) == DialogResult.OK)
                 {
                     // Save the updated configuration
-                    config.Save();
+                    Helpers.ConfigHelper.Save(config);
                     
                     // Reload input mappings for the configured player
                     if (playerNumber == 1)

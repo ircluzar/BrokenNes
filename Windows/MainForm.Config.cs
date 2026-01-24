@@ -256,8 +256,7 @@ namespace BrokenNes.Windows
                 {
                     dxRenderer.UseShader = !dxRenderer.UseShader;
                     ((ToolStripMenuItem)s).Checked = dxRenderer.UseShader;
-                    config.ShadersEnabled = dxRenderer.UseShader;
-                    config.Save();
+                    Helpers.ConfigHelper.Update(config, c => c.ShadersEnabled = dxRenderer.UseShader);
                 }
             });
             toggleShaderItem.Checked = useDirectX && dxRenderer?.UseShader == true;
@@ -273,8 +272,7 @@ namespace BrokenNes.Windows
                         Enum.Parse<NesShaderManager.ShaderType>(shaderName));
                     var item = new ToolStripMenuItem(shaderInfo.DisplayName, null, (s, e) => {
                         NesShaderControl.SwitchShader(shaderName);
-                        config.CurrentShader = shaderName;
-                        config.Save();
+                        Helpers.ConfigHelper.Update(config, c => c.CurrentShader = shaderName);
                         UpdateCoresMenus(); // Refresh to update checkmarks
                     });
                     item.ToolTipText = shaderInfo.Description;
@@ -290,8 +288,7 @@ namespace BrokenNes.Windows
                 {
                     var strengthItem = new ToolStripMenuItem($"{strength:F1}x", null, (s, e) => {
                         NesShaderControl.SetShaderStrength(strength);
-                        config.ShaderStrength = strength;
-                        config.Save();
+                        Helpers.ConfigHelper.Update(config, c => c.ShaderStrength = strength);
                         UpdateCoresMenus(); // Refresh to update checkmarks
                     });
                     strengthItem.Checked = (Math.Abs(config.ShaderStrength - strength) < 0.01f);
@@ -348,9 +345,8 @@ namespace BrokenNes.Windows
             }
             else
             {
-                config.SelectedCpuCore = "FMC";
+                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = "FMC");
                 nes.SetCpuCore("FMC");
-                config.Save();
             }
             
             // Apply PPU core (default to FMC if not valid)
@@ -360,9 +356,8 @@ namespace BrokenNes.Windows
             }
             else
             {
-                config.SelectedPpuCore = "FMC";
+                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = "FMC");
                 nes.SetPpuCore("FMC");
-                config.Save();
             }
             
             // Apply APU core (default to FMC if not valid)
@@ -372,9 +367,8 @@ namespace BrokenNes.Windows
             }
             else
             {
-                config.SelectedApuCore = "FMC";
+                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FMC");
                 nes.SetApuCore("FMC");
-                config.Save();
             }
             
             // Apply shader settings

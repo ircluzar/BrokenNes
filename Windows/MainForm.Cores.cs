@@ -28,8 +28,7 @@ namespace BrokenNes.Windows
         {
             if (nes == null) return;
             nes.SetCpuCore(coreId);
-            config.SelectedCpuCore = coreId;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = coreId);
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
@@ -37,8 +36,7 @@ namespace BrokenNes.Windows
         {
             if (nes == null) return;
             nes.SetPpuCore(coreId);
-            config.SelectedPpuCore = coreId;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = coreId);
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
@@ -46,8 +44,7 @@ namespace BrokenNes.Windows
         {
             if (nes == null) return;
             nes.SetApuCore(coreId);
-            config.SelectedApuCore = coreId;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
@@ -118,8 +115,7 @@ namespace BrokenNes.Windows
                                 var randomShader = availableShaders[scrambleRandom.Next(availableShaders.Count)];
                                 Console.WriteLine($"Auto-scramble: Switching Shader to {randomShader}");
                                 NesShaderControl.SwitchShader(randomShader);
-                                config.CurrentShader = randomShader;
-                                config.Save();
+                                Helpers.ConfigHelper.Update(config, c => c.CurrentShader = randomShader);
                             }
                         }
                     }
@@ -129,8 +125,7 @@ namespace BrokenNes.Windows
         
         private void SetNullProvider(string providerName)
         {
-            config.SelectedNullProvider = providerName;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SelectedNullProvider = providerName);
             
             // Apply to current NES instance if one is running
             if (nes != null)
@@ -145,8 +140,7 @@ namespace BrokenNes.Windows
         
         private void SetCrashBehavior(string behavior)
         {
-            config.CrashBehavior = behavior;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.CrashBehavior = behavior);
             
             // Apply to current NES instance if one is running
             ApplyCrashBehavior();

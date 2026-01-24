@@ -167,8 +167,7 @@ namespace BrokenNes.Windows
 
         private void SetWindowZoom(int zoom)
         {
-            config.WindowZoom = zoom;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.WindowZoom = zoom);
             
             // Calculate new window size based on NES resolution and zoom
             int newWidth = NES_WIDTH * zoom;
@@ -187,8 +186,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ShowConsole = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.ShowConsole = menuItem.Checked);
                 
                 Program.SetConsoleVisibility(config.ShowConsole);
                 
@@ -202,8 +200,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.BootToEmulator = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.BootToEmulator = menuItem.Checked);
                 
                 Console.WriteLine($"Boot to Emulator set to: {config.BootToEmulator}");
                 
@@ -215,9 +212,8 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ProfilingEnabled = menuItem.Checked;
+                Helpers.ConfigHelper.Update(config, c => c.ProfilingEnabled = menuItem.Checked);
                 PerformanceProfiler.Enabled = menuItem.Checked;
-                config.Save();
                 
                 if (menuItem.Checked)
                 {
@@ -235,9 +231,8 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem && useDirectX && dxRenderer != null)
             {
-                config.EnableVSync = menuItem.Checked;
+                Helpers.ConfigHelper.Update(config, c => c.EnableVSync = menuItem.Checked);
                 dxRenderer.EnableVSync = menuItem.Checked;
-                config.Save();
                 // Note: VSync can reduce performance and may cause stuttering
                 // It's off by default for maximum performance
             }
@@ -247,8 +242,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ShowFps = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.ShowFps = menuItem.Checked);
                 if (useDirectX && dxRenderer != null)
                 {
                     dxRenderer.ShowFps = config.ShowFps;
@@ -261,8 +255,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.AutoScrambleCores = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.AutoScrambleCores = menuItem.Checked);
                 
                 if (autoScrambleTimer != null)
                 {

@@ -29,8 +29,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ForcePixelPerfect = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.ForcePixelPerfect = menuItem.Checked);
                 ApplyImageSettings();
                 UpdateConfigMenus();
             }
@@ -40,8 +39,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ForceNativeAspectRatio = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.ForceNativeAspectRatio = menuItem.Checked);
                 ApplyImageSettings();
                 UpdateConfigMenus();
             }
@@ -51,8 +49,7 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.ScalingNearestNeighbor = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.ScalingNearestNeighbor = menuItem.Checked);
                 ApplyImageSettings();
                 UpdateConfigMenus();
             }
@@ -62,46 +59,48 @@ namespace BrokenNes.Windows
         {
             if (sender is ToolStripMenuItem menuItem)
             {
-                config.HideMenuBarInFullscreen = menuItem.Checked;
-                config.Save();
+                Helpers.ConfigHelper.Update(config, c => c.HideMenuBarInFullscreen = menuItem.Checked);
                 UpdateConfigMenus();
             }
         }
         
         private void ToggleScanlines_Click(object? sender, EventArgs e)
         {
-            config.RenderScanlines = !config.RenderScanlines;
-            config.Save();
+            bool renderScanlines = Helpers.ConfigHelper.Toggle(
+                config,
+                c => c.RenderScanlines,
+                (c, value) => c.RenderScanlines = value);
             
             // Apply to DirectX renderer if available
             if (useDirectX && dxRenderer != null)
             {
-                dxRenderer.RenderScanlines = config.RenderScanlines;
+                dxRenderer.RenderScanlines = renderScanlines;
             }
             
             UpdateConfigMenus();
-            Console.WriteLine($"Render Scanlines: {config.RenderScanlines}");
+            Console.WriteLine($"Render Scanlines: {renderScanlines}");
         }
         
         private void ToggleViewportShadow_Click(object? sender, EventArgs e)
         {
-            config.RenderViewportShadow = !config.RenderViewportShadow;
-            config.Save();
+            bool renderViewportShadow = Helpers.ConfigHelper.Toggle(
+                config,
+                c => c.RenderViewportShadow,
+                (c, value) => c.RenderViewportShadow = value);
             
             // Apply to DirectX renderer if available
             if (useDirectX && dxRenderer != null)
             {
-                dxRenderer.RenderViewportShadow = config.RenderViewportShadow;
+                dxRenderer.RenderViewportShadow = renderViewportShadow;
             }
             
             UpdateConfigMenus();
-            Console.WriteLine($"Render Viewport Shadow: {config.RenderViewportShadow}");
+            Console.WriteLine($"Render Viewport Shadow: {renderViewportShadow}");
         }
         
         private void SetBackground(string backgroundName)
         {
-            config.SelectedBackground = backgroundName;
-            config.Save();
+            Helpers.ConfigHelper.Update(config, c => c.SelectedBackground = backgroundName);
             
             // Apply to DirectX renderer if available
             if (useDirectX && dxRenderer != null)
