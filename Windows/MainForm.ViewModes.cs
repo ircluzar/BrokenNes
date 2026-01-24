@@ -54,7 +54,8 @@ namespace BrokenNes.Windows
             }
             
             // Re-apply the current view mode to recalculate layout with new menu visibility
-            SwitchViewMode(currentViewMode);
+            // Skip navigation to preserve the current WebView content (webmodule or page)
+            SwitchViewMode(currentViewMode, skipNavigation: true);
             
             // Force layout and rendering refresh
             this.PerformLayout();
