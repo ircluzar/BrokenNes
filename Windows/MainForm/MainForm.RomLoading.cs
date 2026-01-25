@@ -37,6 +37,14 @@ namespace BrokenNes.Windows
             }
         }
         
+        private void ResetGame()
+        {
+            if (!string.IsNullOrEmpty(currentRomPath) && File.Exists(currentRomPath))
+            {
+                LoadRomFile(currentRomPath);
+            }
+        }
+
         private void LoadRomFile(string path)
         {
             HideContinueButton();

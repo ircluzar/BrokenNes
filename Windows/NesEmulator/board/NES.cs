@@ -15,6 +15,14 @@ namespace NesEmulator
 		private INullProvider? currentNullProvider; // null provider for test ROM/no ROM scenarios
 		private string selectedNullProviderName = "TV Static"; // name of the selected null provider
 		private int staticFrameCounter = 0; // shared frame counter for null providers
+		
+		// --- Atomic savestate snapshot mechanism ---
+		// Request flag: when set, next RunFrame() will capture state at frame boundary
+		private volatile bool _snapshotRequested = false;
+		// Staging area for captured snapshot (cleared after callback completes)
+		private string? _pendingSnapshot = null;
+		// Optional callback invoked when snapshot is ready (runs on emulation thread)
+		private Action<string>? _snapshotCallback = null;
 		// --- Fixed-point frame timing ---
 		// Replaces prior double-based fractional cycle accounting. We model CPU cycles per frame as:
 		//   CpuFrequencyInt = BaseCyclesPerFrame * 60 + ExtraCyclesNumerator
@@ -45,6 +53,37 @@ namespace NesEmulator
 		// NES will invoke this action with the current PC. The host can run the Imagine
 		// pipeline to predict bytes and patch PRG ROM.
 		public Action<ushort>? ImagineShot { get; set; }
+		
+		/// <summary>
+		/// Request an atomic snapshot at the next frame boundary. This is the recommended way
+		/// to capture savestates passively in the background without causing desync or hitching.
+		/// The snapshot will be captured at the start of the next RunFrame() call when all
+		/// subsystems are synchronized, then delivered via the callback.
+		/// </summary>
+		/// <param name="callback">Called with the savestate JSON when ready (on emulation thread)</param>
+		public void RequestAtomicSnapshot(Action<string> callback)
+		{
+			_snapshotCallback = callback;
+			_snapshotRequested = true;
+		}
+		
+		/// <summary>
+		/// Check if a snapshot is pending delivery. Useful for polling-based consumers.
+		/// Call GetPendingSnapshot() to retrieve and clear the staged snapshot.
+		/// </summary>
+		public bool HasPendingSnapshot() => _pendingSnapshot != null;
+		
+		/// <summary>
+		/// Retrieve and clear a pending snapshot captured at frame boundary.
+		/// Returns null if no snapshot is ready. Use with RequestAtomicSnapshot(null)
+		/// for polling-based usage instead of callback-based.
+		/// </summary>
+		public string? GetPendingSnapshot()
+		{
+			var result = _pendingSnapshot;
+			_pendingSnapshot = null;
+			return result;
+		}
 
 		// Controls whether Imagine Fix will keep retrying during a freeze at intervals
 		private bool stubbornFixEnabled = false;
@@ -527,6 +566,32 @@ namespace NesEmulator
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
+			
+			// --- Atomic snapshot capture at frame boundary (before any CPU cycles execute) ---
+			if (_snapshotRequested)
+			{
+				_snapshotRequested = false;
+				try
+				{
+					// All subsystems are at frame boundary - safe to capture atomically
+					string snapshot = SaveState();
+					if (_snapshotCallback != null)
+					{
+						_snapshotCallback(snapshot);
+						_snapshotCallback = null; // one-shot callback
+					}
+					else
+					{
+						_pendingSnapshot = snapshot; // stage for polling retrieval
+					}
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine($"[NES] Atomic snapshot failed: {ex.Message}");
+					_snapshotCallback = null;
+				}
+			}
+			
 			framesExecutedTotal++;
 			// Snapshot PC at frame start for simple freeze detection
 			ushort frameStartPc = 0; try { frameStartPc = bus!.cpu!.GetRegisters().PC; } catch { frameStartPc = 0; }

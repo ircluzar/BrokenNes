@@ -125,6 +125,38 @@ body {
   margin-bottom: 0.5rem;
 }
 
+/* Welcome Card */
+.tj-welcome-card {
+  max-width: 600px;
+  margin: 2rem auto;
+}
+
+.tj-welcome-message {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tj-welcome-message p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.tj-welcome-message strong {
+  color: var(--accent-primary);
+}
+
+.tj-error-message {
+  padding: 1rem;
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 /* Input Group */
 .tj-input-group {
   display: flex;
@@ -228,6 +260,12 @@ body {
   box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
 }
 
+.tj-btn-large {
+  font-size: 1.125rem;
+  padding: 1rem 2rem;
+  min-width: 200px;
+}
+
 .tj-btn-danger {
   background: linear-gradient(135deg, #c62828 0%, #f44336 100%);
   border-color: #f44336;
@@ -326,6 +364,68 @@ body {
   color: var(--text-muted);
 }
 
+/* Level Container */
+.tj-level-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0.5rem;
+}
+
+.tj-level-display {
+  font-size: 1rem;
+  color: var(--accent-primary);
+  text-align: center;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.tj-level-progress {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.tj-level-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00d4ff 0%, #ff6b35 100%);
+  width: 0%;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  position: relative;
+}
+
+.tj-level-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.3) 50%, 
+    transparent 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* Visualization */
 .tj-visualization {
   background: var(--bg-tertiary);
@@ -382,6 +482,12 @@ body {
   transform: scale(1.15);
   box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
   border-color: rgba(0, 212, 255, 1);
+}
+
+.tj-state-block:active {
+  transform: scale(1.05);
+  box-shadow: 0 0 30px rgba(255, 255, 0, 0.9);
+  border-color: rgba(255, 255, 0, 1);
 }
 
 .tj-state-block.burning {
@@ -499,4 +605,168 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-primary);
+}
+
+/* ==================== Start Screen Redesign ==================== */
+
+.tj-start-screen {
+  /* When not active, it will be hidden by .tj-panel styles (display: none) */
+  /* When active, we want full screen overlay */
+}
+
+.tj-start-screen.active {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #030303;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tj-start-content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Logo */
+.tj-logo {
+  font-family: 'Px437 IBM VGA 8x16', monospace;
+  font-size: 6rem;
+  line-height: 1;
+  font-weight: bold;
+  color: #fff;
+  text-transform: uppercase;
+  text-shadow: 
+    0 0 20px var(--accent-primary),
+    0 0 40px var(--accent-primary);
+  margin-bottom: 4rem;
+  letter-spacing: 0.5rem;
+  animation: logoPulse 4s ease-in-out infinite;
+  pointer-events: none;
+  text-align: center;
+}
+
+@keyframes logoPulse {
+  0%, 100% { 
+    text-shadow: 0 0 20px var(--accent-primary), 0 0 40px var(--accent-primary); 
+    opacity: 1; 
+  }
+  50% { 
+    text-shadow: 0 0 10px var(--accent-primary), 0 0 20px var(--accent-primary); 
+    opacity: 0.9; 
+  }
+}
+
+/* Big Start Button */
+.tj-btn-start-big {
+  font-family: 'Px437 IBM VGA 8x16', monospace;
+  font-size: 2.5rem;
+  padding: 1.5rem 6rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 3px solid var(--accent-primary);
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.3rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+  outline: none;
+  position: relative;
+  z-index: 20;
+}
+
+.tj-btn-start-big:hover {
+  background: var(--accent-primary);
+  color: #000;
+  box-shadow: 0 0 50px var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.tj-btn-start-big:active {
+  transform: scale(0.98);
+}
+
+/* Galaxy Container and Animation */
+.tj-galaxy-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1000px;
+  height: 1000px;
+  transform: translate(-50%, -40%) perspective(1000px) rotateX(65deg);
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.tj-galaxy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* Spiral effect using conic gradient */
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 40deg,
+    var(--accent-primary) 60deg,
+    transparent 100deg,
+    transparent 180deg,
+    var(--accent-secondary) 210deg,
+    transparent 240deg,
+    transparent 280deg,
+    var(--accent-primary) 300deg,
+    transparent 360deg
+  );
+  /* Soften edges */
+  mask-image: radial-gradient(circle, transparent 20%, black 40%, black 60%, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle, transparent 20%, black 40%, black 60%, transparent 70%);
+  
+  filter: blur(8px);
+  animation: galaxySpin 60s linear infinite;
+  box-shadow: inset 0 0 100px rgba(0,0,0,0.9);
+}
+
+.tj-galaxy::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 180deg,
+    transparent 0deg, 
+    rgba(0, 212, 255, 0.4) 40deg,
+    transparent 80deg
+  );
+  animation: galaxySpin 40s linear infinite reverse;
+  filter: blur(20px);
+}
+
+@keyframes galaxySpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Error Message styling for Start Screen */
+.tj-start-content .tj-error-message {
+  position: absolute;
+  bottom: 2rem;
+  background: rgba(40, 0, 0, 0.8);
+  border: 1px solid #f00;
+  color: #fca;
+  padding: 1rem 2rem;
+  border-radius: 4px;
 }

@@ -39,14 +39,17 @@ namespace BrokenNes.Windows.WebApi
         private Control? _uiControl;
         private Action? _closeAllMenus;
         private Action? _toggleFullscreen;
+        private Action? _hideMenu;
+        private Action? _showMenu;
         private Func<AudioEngine?> _getAudioEngine;
         private Func<string, bool, Task<bool>>? _loadBuiltInRom;
         private Action? _resumeEmulation;
         private Action? _hideContinueButton;
+        private Action? _resetGame;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -67,9 +70,12 @@ namespace BrokenNes.Windows.WebApi
             _getAudioEngine = getAudioEngine ?? (() => null);
             _closeAllMenus = closeAllMenus;
             _toggleFullscreen = toggleFullscreen;
+            _hideMenu = hideMenu;
+            _showMenu = showMenu;
             _loadBuiltInRom = loadBuiltInRom;
             _resumeEmulation = resumeEmulation;
             _hideContinueButton = hideContinueButton;
+            _resetGame = resetGame;
         }
 
         /// <summary>

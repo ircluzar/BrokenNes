@@ -488,5 +488,49 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"Failed to close menus: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Hides the top menu bar
+        /// </summary>
+        private void HideMenu()
+        {
+            if (this.MainMenuStrip != null)
+            {
+                this.MainMenuStrip.Visible = false;
+                Console.WriteLine("[MainForm] Menu bar hidden");
+                
+                // Re-apply the current view mode to recalculate layout with new menu visibility
+                // Skip navigation to preserve the current WebView content (webmodule or page)
+                SwitchViewMode(currentViewMode, skipNavigation: true);
+                
+                // Force layout and rendering refresh
+                this.PerformLayout();
+                displayPanel?.PerformLayout();
+                dxRenderer?.Invalidate();
+                this.Refresh();
+            }
+        }
+
+        /// <summary>
+        /// Shows the top menu bar
+        /// </summary>
+        private void ShowMenu()
+        {
+            if (this.MainMenuStrip != null)
+            {
+                this.MainMenuStrip.Visible = true;
+                Console.WriteLine("[MainForm] Menu bar shown");
+                
+                // Re-apply the current view mode to recalculate layout with new menu visibility
+                // Skip navigation to preserve the current WebView content (webmodule or page)
+                SwitchViewMode(currentViewMode, skipNavigation: true);
+                
+                // Force layout and rendering refresh
+                this.PerformLayout();
+                displayPanel?.PerformLayout();
+                dxRenderer?.Invalidate();
+                this.Refresh();
+            }
+        }
     }
 }

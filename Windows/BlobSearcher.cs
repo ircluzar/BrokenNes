@@ -109,6 +109,17 @@ public class BlobSearcher
     }
 
     /// <summary>
+    /// Clears all indexed blobs from the search index.
+    /// </summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            _index.Clear();
+        }
+    }
+
+    /// <summary>
     /// Projects the 2KB blob onto 64 random vectors to generate a 64-bit fingerprint.
     /// Positive dot product = 1, Negative = 0.
     /// </summary>

@@ -48,6 +48,8 @@ namespace BrokenNes
         // --- Controller instances (migrated) ---
         private NesController nesController = new();
         private Corruptor corruptor = new();
+        private int autoCorruptFrameCounter = 0;
+        private const int AutoCorruptFrameInterval = 8;
 
         // Constructor
     public Emulator(ILogger logger,
@@ -419,7 +421,19 @@ namespace BrokenNes
                 nes.EnableStatic(autoStatic);
                 nes.SetInputs(inputState, inputStateP2);
                 if (nesController.FastForward) nes.RunFrames(3); else nes.RunFrame();
-                if (corruptor.AutoCorrupt) { _ = Blast(); }
+                if (corruptor.AutoCorrupt)
+                {
+                    autoCorruptFrameCounter++;
+                    if (autoCorruptFrameCounter >= AutoCorruptFrameInterval)
+                    {
+                        autoCorruptFrameCounter = 0;
+                        _ = Blast();
+                    }
+                }
+                else
+                {
+                    autoCorruptFrameCounter = 0;
+                }
                 // Evaluate achievements after the frame
                 try
                 {

@@ -243,7 +243,9 @@
 
     ui: {
       closeMenus: () => request('/api/ui/close-menus', { method: 'POST' }),
-      toggleFullscreen: () => request('/api/ui/toggle-fullscreen', { method: 'POST' })
+      toggleFullscreen: () => request('/api/ui/toggle-fullscreen', { method: 'POST' }),
+      hideMenu: () => request('/api/ui/hide-menu', { method: 'POST' }),
+      showMenu: () => request('/api/ui/show-menu', { method: 'POST' })
     },
 
     cores: {
@@ -278,6 +280,14 @@
       setShader: (shaderName) => request('/api/shader/set', { method: 'POST', json: { shaderName } }),
       enable: () => request('/api/shader/enable', { method: 'POST' }),
       disable: () => request('/api/shader/disable', { method: 'POST' })
+    },
+
+    timejump: {
+      validateRom: () => request('/api/timejump/validate-rom'),
+      capture: () => request('/api/timejump/capture', { method: 'POST', timeoutMs: 30000 }),
+      jump: () => request('/api/timejump/jump', { method: 'POST' }),
+      query: (hash) => request('/api/timejump/query', { method: 'POST', json: { hash } }),
+      reset: () => request('/api/timejump/reset', { method: 'POST' })
     }
   };
 

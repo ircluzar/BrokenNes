@@ -22,6 +22,9 @@ namespace BrokenNes.Windows
         // Track burned/used states that should not be returned in future queries
         private readonly HashSet<string> _burnedStates;
         
+        // Track if a capture is currently in progress to prevent concurrent requests
+        private volatile bool _isCapturing;
+        
         /// <summary>
         /// Gets the total number of states stored (including burned states)
         /// </summary>
@@ -37,15 +40,18 @@ namespace BrokenNes.Windows
             _blobSearcher = new BlobSearcher(NES_RAM_SIZE);
             _random = new Random();
             _burnedStates = new HashSet<string>();
+            _isCapturing = false;
             TotalStatesStored = 0;
         }
 
         /// <summary>
-        /// Captures the current state and adds it to the blob searcher.
+        /// Captures the current state atomically and adds it to the blob searcher.
         /// The blob is the NES RAM (2KB), and the payload is the full savestate JSON.
+        /// DEPRECATED: Use CaptureStateAsync() instead for atomic frame-boundary capture.
         /// </summary>
         /// <param name="nes">NES emulator instance</param>
         /// <returns>Tuple of (hash, thumbnailBase64), or null if capture failed</returns>
+        [Obsolete("Use CaptureStateAsync() for atomic frame-boundary capture to prevent desync")]
         public (string hash, string thumbnail)? CaptureState(NES nes)
         {
             if (nes == null)
@@ -56,7 +62,7 @@ namespace BrokenNes.Windows
 
             try
             {
-                // Get the full savestate
+                // Get the full savestate (WARNING: May capture mid-frame, causing potential desync)
                 string savestateJson = nes.SaveState();
                 if (string.IsNullOrEmpty(savestateJson))
                 {
@@ -92,6 +98,90 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[TimeJump] Failed to capture state: {ex.Message}");
                 return null;
             }
+        }
+        
+        /// <summary>
+        /// Request atomic capture of the current state at the next frame boundary.
+        /// This is the RECOMMENDED method for passive background recording as it prevents
+        /// subsystem desync by capturing all components at a synchronized moment.
+        /// Uses a TaskCompletionSource to return the result asynchronously.
+        /// </summary>
+        /// <param name="nes">NES emulator instance</param>
+        /// <returns>Task that completes with (hash, thumbnailBase64) or null if failed</returns>
+        public System.Threading.Tasks.Task<(string hash, string thumbnail)?> CaptureStateAsync(NES nes)
+        {
+            if (nes == null)
+            {
+                Console.WriteLine("[TimeJump] Cannot capture state: NES is null");
+                return System.Threading.Tasks.Task.FromResult<(string, string)?>(null);
+            }
+
+            // Prevent concurrent captures - if already capturing, return null immediately
+            if (_isCapturing)
+            {
+                Console.WriteLine("[TimeJump] Skipping capture - previous capture still in progress");
+                return System.Threading.Tasks.Task.FromResult<(string, string)?>(null);
+            }
+
+            _isCapturing = true;
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<(string, string)?>();
+            
+            try
+            {
+                // Request atomic snapshot at next frame boundary
+                nes.RequestAtomicSnapshot(savestateJson =>
+                {
+                    try
+                    {
+                        if (string.IsNullOrEmpty(savestateJson))
+                        {
+                            Console.WriteLine("[TimeJump] Atomic snapshot returned empty");
+                            tcs.SetResult(null);
+                            return;
+                        }
+
+                        // Extract RAM as the blob (2KB) using the public API
+                        byte[] ram = new byte[NES_RAM_SIZE];
+                        for (int i = 0; i < NES_RAM_SIZE; i++)
+                        {
+                            ram[i] = nes.PeekSystemRam(i);
+                        }
+
+                        // Convert savestate JSON to bytes for storage
+                        byte[] savestateBytes = System.Text.Encoding.UTF8.GetBytes(savestateJson);
+
+                        // Compute hash before adding
+                        string stateHash = ComputeStateHash(savestateBytes);
+
+                        // Capture thumbnail of current frame
+                        string thumbnailBase64 = CaptureThumbnail(nes);
+
+                        // Add to blob searcher
+                        _blobSearcher.Add(ram, savestateBytes);
+                        TotalStatesStored++;
+
+                        Console.WriteLine($"[TimeJump] Atomic state captured. Hash: {stateHash.Substring(0, 8)}..., Total: {TotalStatesStored}, Available: {AvailableStatesCount}");
+                        tcs.SetResult((stateHash, thumbnailBase64));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[TimeJump] Failed to process atomic snapshot: {ex.Message}");
+                        tcs.SetException(ex);
+                    }
+                    finally
+                    {
+                        _isCapturing = false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TimeJump] Failed to request atomic snapshot: {ex.Message}");
+                _isCapturing = false;
+                tcs.SetException(ex);
+            }
+
+            return tcs.Task;
         }
 
         /// <summary>
@@ -145,6 +235,109 @@ namespace BrokenNes.Windows
             {
                 Console.WriteLine($"[TimeJump] Failed to capture thumbnail: {ex.Message}");
                 return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Performs a TimeJump with a specific query state: uses that state's blob to find top 3 similar states,
+        /// picks a random one to load, and burns the top 8 states.
+        /// </summary>
+        /// <param name="nes">NES emulator instance</param>
+        /// <param name="queryStateHash">Hash of the state to use as query</param>
+        /// <returns>Tuple of (loadedHash, burnedHashes) or null if query failed</returns>
+        public (string loadedHash, List<string> burnedHashes)? QueryState(NES nes, string queryStateHash)
+        {
+            if (nes == null)
+            {
+                Console.WriteLine("[TimeJump] Cannot query: NES is null");
+                return null;
+            }
+
+            try
+            {
+                // Find the state with matching hash to use as query blob
+                byte[]? queryBlob = null;
+                var allResults = _blobSearcher.FindTopSimilar(new byte[NES_RAM_SIZE], TotalStatesStored);
+                
+                foreach (var result in allResults)
+                {
+                    string hash = ComputeStateHash(result.AuxData);
+                    if (hash == queryStateHash)
+                    {
+                        queryBlob = result.Blob;
+                        break;
+                    }
+                }
+
+                if (queryBlob == null)
+                {
+                    Console.WriteLine($"[TimeJump] Query state not found: {queryStateHash.Substring(0, 8)}...");
+                    return null;
+                }
+
+                Console.WriteLine($"[TimeJump] Querying with state hash: {queryStateHash.Substring(0, 8)}...");
+
+                // Search using the clicked state's blob, query more than needed for burning
+                int queryCount = Math.Min(8 * QUERY_MULTIPLIER, TotalStatesStored);
+                var results = _blobSearcher.FindTopSimilar(queryBlob, queryCount);
+                
+                Console.WriteLine($"[TimeJump] Query returned {results?.Length ?? 0} results");
+                
+                if (results == null || results.Length == 0)
+                {
+                    Console.WriteLine("[TimeJump] No states found for query");
+                    return null;
+                }
+
+                // Filter out burned states
+                var availableResults = results
+                    .Where(r => !IsStateBurned(r.AuxData))
+                    .ToArray();
+                
+                Console.WriteLine($"[TimeJump] After filtering burned: {availableResults.Length} available");
+
+                if (availableResults.Length < 3)
+                {
+                    Console.WriteLine("[TimeJump] Not enough available states for query (need at least 3)");
+                    return null;
+                }
+
+                // Take top 3 for loading selection
+                var top3 = availableResults.Take(3).ToArray();
+                
+                // Take top 4 for burning
+                var top4ToBurn = availableResults.Take(4).ToArray();
+
+                // Pick random from top 3
+                var selectedResult = top3[_random.Next(top3.Length)];
+
+                // Convert auxData back to JSON string
+                string savestateJson = System.Text.Encoding.UTF8.GetString(selectedResult.AuxData);
+
+                // Load the selected state
+                nes.LoadState(savestateJson);
+
+                // Get hash of loaded state
+                string loadedHash = ComputeStateHash(selectedResult.AuxData);
+
+                // Burn the top 4
+                var burnedHashes = new List<string>();
+                foreach (var result in top4ToBurn)
+                {
+                    string hash = ComputeStateHash(result.AuxData);
+                    BurnState(result.AuxData);
+                    burnedHashes.Add(hash);
+                }
+
+                Console.WriteLine($"[TimeJump] Query successful! Loaded random from top 3 (similarity {selectedResult.SimilarityScore:F3}). Burned {top4ToBurn.Length} states.");
+                Console.WriteLine($"[TimeJump] Remaining available states: {AvailableStatesCount}");
+                
+                return (loadedHash, burnedHashes);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TimeJump] Failed to perform query: {ex.Message}");
+                return null;
             }
         }
 
@@ -209,16 +402,17 @@ namespace BrokenNes.Windows
                 // Get hash of loaded state
                 string loadedHash = ComputeStateHash(selectedResult.AuxData);
 
-                // Burn only the available results we actually considered (not already-burned ones)
+                // Burn only the top 3 available results
+                var top3ToBurn = availableResults.Take(3).ToArray();
                 var burnedHashes = new List<string>();
-                foreach (var result in availableResults)
+                foreach (var result in top3ToBurn)
                 {
                     string hash = ComputeStateHash(result.AuxData);
                     BurnState(result.AuxData);
                     burnedHashes.Add(hash);
                 }
 
-                Console.WriteLine($"[TimeJump] Jump successful! Loaded state with similarity {selectedResult.SimilarityScore:F3}. Burned {availableResults.Length} states.");
+                Console.WriteLine($"[TimeJump] Jump successful! Loaded state with similarity {selectedResult.SimilarityScore:F3}. Burned {top3ToBurn.Length} states.");
                 Console.WriteLine($"[TimeJump] Remaining available states: {AvailableStatesCount}");
                 
                 return (loadedHash, burnedHashes);
@@ -278,10 +472,16 @@ namespace BrokenNes.Windows
         /// </summary>
         public void Reset()
         {
-            // Note: BlobSearcher doesn't have a Clear method, so we can't actually remove states
-            // But we can clear the burned states list and reset counters
+            // Clear the BlobSearcher index
+            _blobSearcher.Clear();
+            
+            // Clear the burned states list
             _burnedStates.Clear();
-            Console.WriteLine("[TimeJump] Reset: cleared burned states list");
+            
+            // Reset the counter
+            TotalStatesStored = 0;
+            
+            Console.WriteLine("[TimeJump] Reset: cleared BlobSearcher index, burned states, and reset counters");
         }
     }
 

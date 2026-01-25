@@ -14,41 +14,21 @@
   <div class="tj-root">
     <main class="tj-main">
       <!-- Start Panel -->
-      <section id="startPanel" class="tj-panel active">
-        <div class="tj-card">
-          <h2 class="tj-card-title">Configuration</h2>
-          
-          <div class="tj-input-group">
-            <label for="intervalInput" class="tj-label">
-              Time Between Saves:
-            </label>
-            <div class="tj-input-row">
-              <input 
-                type="number" 
-                id="intervalInput" 
-                class="tj-input" 
-                value="2" 
-                min="0.1" 
-                max="60" 
-                step="0.1"
-              >
-              <span class="tj-unit">seconds</span>
-            </div>
-            <p class="tj-hint">
-              TimeJump will capture a savestate every N seconds while running
-            </p>
+      <section id="startPanel" class="tj-panel active tj-start-screen">
+        <div class="tj-start-content">
+          <div class="tj-galaxy-container">
+            <div class="tj-galaxy"></div>
           </div>
-
-          <div class="tj-actions">
-            <button id="btnStart" class="tj-btn tj-btn-primary">
-              <span class="tj-btn-icon">▶</span>
-              Start TimeJump
+          
+          <h1 class="tj-logo">TIME JUMP</h1>
+          
+          <div class="tj-start-actions">
+            <button id="btnStart" class="tj-btn tj-btn-start-big">
+              START
             </button>
           </div>
-        </div>
 
-        <div class="tj-info">
-          <p>TimeJump automatically captures savestates at regular intervals, allowing you to jump backward in time during gameplay.</p>
+          <div id="errorMessage" class="tj-error-message" style="display: none;"></div>
         </div>
       </section>
 
@@ -60,10 +40,21 @@
               <span class="tj-btn-icon">⚡</span>
               JUMP
             </button>
+            <button id="btnReset" class="tj-btn tj-btn-warning">
+              <span class="tj-btn-icon">🔄</span>
+              Reset
+            </button>
             <button id="btnStop" class="tj-btn tj-btn-danger">
               <span class="tj-btn-icon">⏹</span>
               Stop
             </button>
+          </div>
+
+          <div class="tj-level-container">
+            <div id="levelDisplay" class="tj-level-display">Level 0</div>
+            <div class="tj-level-progress">
+              <div id="levelProgressBar" class="tj-level-progress-bar"></div>
+            </div>
           </div>
 
           <div class="tj-visualization">

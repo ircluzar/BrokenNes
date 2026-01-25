@@ -825,7 +825,10 @@ namespace BrokenNes.Windows
                         ResumeEmulationIfPaused,  // Pass the resume emulation handler
                         HideContinueButton,  // Pass the continue button hide handler
                         () => achievementsEngine,  // Pass the achievements engine
-                        engine => achievementsEngine = engine  // Allow WebAPI to initialize achievements
+                        engine => achievementsEngine = engine,  // Allow WebAPI to initialize achievements
+                        HideMenu,  // Pass the hide menu handler
+                        ShowMenu,  // Pass the show menu handler
+                        ResetGame  // Pass the reset game handler
                     );
                 }
 
