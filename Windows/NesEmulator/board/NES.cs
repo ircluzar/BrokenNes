@@ -1116,6 +1116,19 @@ namespace NesEmulator
 		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
 		public string GetApuCoreId() => bus?.ActiveAPU?.GetType().Name ?? string.Empty;
 
+		// APU channel enable/disable control
+		public void SetApuChannelEnableMask(int channelMask)
+		{
+			if (bus?.ActiveAPU == null) return;
+			// Call SetEnabledChannels on the active APU instance
+			var apu = bus.ActiveAPU;
+			var method = apu.GetType().GetMethod("SetEnabledChannels");
+			if (method != null)
+			{
+				method.Invoke(apu, new object[] { channelMask });
+			}
+		}
+
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()
 		{

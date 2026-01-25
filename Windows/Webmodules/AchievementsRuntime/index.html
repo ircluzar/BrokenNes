@@ -3,26 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Achievements Test - BrokenNes</title>
+  <title>Achievements Runtime - BrokenNes</title>
   <link rel="stylesheet" href="../shared/common.css">
   <link rel="stylesheet" href="../shared/fonts.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>🏆 Achievements</h1>
-    </header>
-
-    <div id="achievementsContainer" class="achievements-container">
-      <p class="empty-state">Loading achievements...</p>
-    </div>
-
-    <!-- Hidden controls for programmatic access -->
-    <button id="btnInit" style="display:none;"></button>
-    <button id="btnRefresh" style="display:none;"></button>
-    <button id="btnMonitor" style="display:none;"></button>
-    <div id="statusMessage" style="display:none;"></div>
+  <div class="achievements-overlay">
+    <!-- Achievements will be dynamically added here -->
   </div>
 
   <!-- Achievement Unlock Modal -->

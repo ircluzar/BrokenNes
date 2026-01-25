@@ -1,0 +1,8 @@
+{
+  "displayMode": "overlay",
+  "title": "Achievements Runtime",
+  "description": "Achievement tracking overlay",
+  "version": "1.0.0",
+  "hideMenuBar": false,
+  "showInToolsMenu": true
+}

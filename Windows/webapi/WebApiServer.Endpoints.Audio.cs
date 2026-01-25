@@ -200,6 +200,25 @@ namespace BrokenNes.Windows.WebApi
                 });
             });
 
+            // GET /api/audio/status - Get audio engine status
+            app.MapGet("/api/audio/status", () =>
+            {
+                var audioEngine = _getAudioEngine();
+                if (audioEngine == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Audio engine not available" });
+                }
+
+                return Results.Ok(new
+                {
+                    success = true,
+                    currentMusicFile = audioEngine.CurrentMusicFile,
+                    isMusicPlaying = audioEngine.IsMusicPlaying,
+                    musicVolume = audioEngine.MusicVolume,
+                    sfxVolume = audioEngine.SfxVolume
+                });
+            });
+
             // POST /api/audio/volume - Set volume levels
             app.MapPost("/api/audio/volume", async (HttpContext context) =>
             {

@@ -1,4 +1,5 @@
 {
+  "displayMode": "widget",
   "name": "AchievementsTest",
   "displayName": "Achievements Test",
   "description": "Test and display RetroAchievements for the currently loaded game",

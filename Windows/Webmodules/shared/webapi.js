@@ -164,7 +164,8 @@
     apu: {
       getCore: () => request('/api/apu/core'),
       getCores: () => request('/api/apu/cores'),
-      getChannels: () => request('/api/apu/channels')
+      getChannels: () => request('/api/apu/channels'),
+      setChannelEnableMask: (channelMask) => request('/api/apu/channels/enable', { method: 'POST', json: { channelMask } })
     },
 
     rtc: {
@@ -262,6 +263,7 @@
       getVolume: () => request('/api/audio/volume'),
       setVolume: (musicVolume, sfxVolume) => request('/api/audio/volume', { method: 'POST', json: { musicVolume, sfxVolume } }),
       getStatus: () => request('/api/audio/status'),
+      getCurrentMusic: () => request('/api/audio/music/current'),
       listMusic: () => request('/api/audio/music/list'),
       listSfx: () => request('/api/audio/sfx/list')
     },

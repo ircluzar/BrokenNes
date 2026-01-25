@@ -1,4 +1,4 @@
-// AchievementsTest - Main Script
+// AchievementsRuntime - Overlay Mode Script
 (function () {
   'use strict';
 
@@ -8,11 +8,7 @@
   let isInitialized = false;
 
   // DOM Elements
-  const btnInit = document.getElementById('btnInit');
-  const btnRefresh = document.getElementById('btnRefresh');
-  const btnMonitor = document.getElementById('btnMonitor');
-  const statusMessage = document.getElementById('statusMessage');
-  const achievementsContainer = document.getElementById('achievementsContainer');
+  const achievementsOverlay = document.querySelector('.achievements-overlay');
 
   // Monitoring state
   let isMonitoring = false;
@@ -27,19 +23,14 @@
   const modalAchievementName = document.getElementById('modalAchievementName');
   const modalProgressBar = document.getElementById('modalProgressBar');
 
-  // Initialize event listeners
+  // Initialize on page load
   function init() {
-    btnInit.addEventListener('click', initializeAchievements);
-    btnRefresh.addEventListener('click', refreshAchievementsList);
-    btnMonitor.addEventListener('click', toggleMonitoring);
-    
-    // Auto-initialize on load
     autoInitialize();
   }
 
   // Auto-initialize achievements on page load
   async function autoInitialize() {
-    achievementsContainer.innerHTML = '<div class="loading">Initializing achievements</div>';
+    achievementsOverlay.innerHTML = '<div class="loading">Loading...</div>';
     
     // Small delay to let UI render
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -63,11 +54,11 @@
         // Auto-start monitoring
         startMonitoring();
       } else {
-        achievementsContainer.innerHTML = '<p class="empty-state">Failed to initialize achievements. Make sure a game is loaded.</p>';
+        achievementsOverlay.innerHTML = '<div class="empty-state">Failed to initialize</div>';
       }
     } catch (error) {
       console.error('Achievement initialization error:', error);
-      achievementsContainer.innerHTML = '<p class="empty-state">Error during initialization. Check console for details.</p>';
+      achievementsOverlay.innerHTML = '<div class="empty-state">Error loading</div>';
     }
   }
 
@@ -78,58 +69,61 @@
     }
 
     try {
-      // Show loading state
-      achievementsContainer.innerHTML = '<div class="loading">Loading achievements</div>';
-
       const result = await api.achievements.getList();
-
-      // Debug: Log the actual structure
-      console.log('Achievements API result:', result);
-      if (result.achievements && result.achievements.length > 0) {
-        console.log('First achievement structure:', result.achievements[0]);
-        console.log('First achievement as JSON:', JSON.stringify(result.achievements[0], null, 2));
-        console.log('All keys:', Object.keys(result.achievements[0]));
-      }
 
       if (result.success && result.achievements) {
         achievementsList = result.achievements;
         
         if (achievementsList.length === 0) {
-          achievementsContainer.innerHTML = '<p class="empty-state">No achievements found for the current game</p>';
+          achievementsOverlay.innerHTML = '<div class="empty-state">No achievements</div>';
         } else {
           displayAchievements(achievementsList);
         }
       } else {
-        achievementsContainer.innerHTML = '<p class="empty-state">Failed to load achievements. Engine may not be initialized.</p>';
+        achievementsOverlay.innerHTML = '<div class="empty-state">Load failed</div>';
       }
     } catch (error) {
-      achievementsContainer.innerHTML = '<p class="empty-state">Error loading achievements</p>';
+      achievementsOverlay.innerHTML = '<div class="empty-state">Error</div>';
       console.error('Error loading achievements:', error);
     }
   }
 
-  // Display achievements in the UI
+  // Display achievements in the overlay
   function displayAchievements(achievements) {
-    achievementsContainer.innerHTML = '';
+    achievementsOverlay.innerHTML = '';
 
-    achievements.forEach(achievement => {
+    // Only show unlocked achievements in overlay mode
+    const unlockedAchievements = achievements.filter(achievement => 
+      lib.isAchievementCompleted(achievement)
+    );
+
+    if (unlockedAchievements.length === 0) {
+      achievementsOverlay.innerHTML = '<div class="empty-state">No achievements unlocked yet</div>';
+      return;
+    }
+
+    unlockedAchievements.forEach(achievement => {
       const card = createAchievementCard(achievement);
-      achievementsContainer.appendChild(card);
+      achievementsOverlay.appendChild(card);
     });
   }
 
-  // Create achievement card element
+  // Create achievement card element (two-line version)
   function createAchievementCard(achievement) {
     const isCompleted = lib.isAchievementCompleted(achievement);
     const card = document.createElement('div');
     card.className = `achievement-card ${isCompleted ? 'completed' : 'locked'}`;
-    card.title = lib.getAchievementDescription(achievement); // Show description on hover
     
     const icon = isCompleted ? '✓' : '○';
+    const title = lib.getAchievementTitle(achievement);
+    const description = lib.getAchievementDescription(achievement);
 
     card.innerHTML = `
-      <span class="achievement-icon">${icon}</span>
-      <span class="achievement-title">${lib.escapeHtml(lib.getAchievementTitle(achievement))}</span>
+      <div class="achievement-header">
+        <span class="achievement-icon">${icon}</span>
+        <span class="achievement-title">${lib.escapeHtml(title)}</span>
+      </div>
+      <div class="achievement-description">${lib.escapeHtml(description)}</div>
     `;
 
     return card;
@@ -144,19 +138,6 @@
         knownUnlockedAchievements.add(id);
       }
     });
-  }
-
-  // Toggle achievement monitoring
-  async function toggleMonitoring() {
-    if (!isInitialized) {
-      return;
-    }
-
-    if (isMonitoring) {
-      stopMonitoring();
-    } else {
-      startMonitoring();
-    }
   }
 
   // Start monitoring for achievement unlocks
@@ -209,21 +190,19 @@
     console.log(`Achievement unlocked: ${achievementId}`);
     
     // Find the achievement details
-    const achievement = achievementsList.find(a => getAchievementId(a) === achievementId);
-    const title = achievement ? getAchievementTitle(achievement) : achievementId;
+    const achievement = achievementsList.find(a => lib.getAchievementId(a) === achievementId);
+    const title = achievement ? lib.getAchievementTitle(achievement) : achievementId;
     
     console.log(`🎉 Achievement Unlocked: ${title}`);
     
-    // Save the achievement to game save (using the shared library if available)
-    if (window.achievementsLib && typeof window.achievementsLib.saveAchievement === 'function') {
-      await window.achievementsLib.saveAchievement(achievementId);
-    }
+    // Save the achievement to game save
+    await lib.saveAchievement(achievementId);
     
     // Queue the achievement modal
     queueAchievementModal(title);
     
     // Play a random VictorySfx (VictorySong1.mp3 through VictorySong5.mp3)
-    await playRandomVictorySfx();
+    await lib.playRandomVictorySfx();
   }
 
   // Queue an achievement modal for display
@@ -273,24 +252,12 @@
       modalProgressBar.style.transition = `width ${MODAL_DISPLAY_DURATION}ms linear`;
       modalProgressBar.style.width = '100%';
       
-      // Hide modal after display duration
+      // Hide modal after duration
       setTimeout(() => {
         achievementModal.style.display = 'none';
         resolve();
       }, MODAL_DISPLAY_DURATION);
     });
-  }
-
-  // Play a random victory sound effect
-  async function playRandomVictorySfx() {
-    const randomNum = Math.floor(Math.random() * 5) + 1;
-    const sfxPath = `VictorySong${randomNum}.mp3`;
-    
-    try {
-      await api.audio.playSfx(sfxPath);
-    } catch (error) {
-      console.error('Error playing victory sfx:', error);
-    }
   }
 
   // Start the app
