@@ -432,14 +432,41 @@ public class Bus : IBus
 			return;
 		}
 		int pageIndex = baseAddr >> 8;
+		
+		// Safety bounds check for corrupted state
+		if (pageIndex < 0 || pageIndex >= pages.Length)
+		{
+			// Corrupted page index - use safe fallback
+			for (int i=0;i<256;i++) destOam[oamAddr++] = Read((ushort)(baseAddr + i));
+			return;
+		}
+		
 		var srcPage = pages[pageIndex];
 		bool isRam = srcPage.data == ram; // all mirrors point to same array
 		if (isRam)
 		{
 			// Compute linear offset inside 2KB RAM mirroring
 			int mirrorBase = (pageIndex % 0x08) * 0x100; // same as BuildPageTable
-			System.Buffer.BlockCopy(ram, mirrorBase, destOam, oamAddr, 256);
-			oamAddr = (byte)(oamAddr + 256);
+			
+			// Safety bounds check before BlockCopy
+			if (ram != null && destOam != null && 
+			    mirrorBase >= 0 && mirrorBase + 256 <= ram.Length &&
+			    oamAddr + 256 <= destOam.Length)
+			{
+				System.Buffer.BlockCopy(ram, mirrorBase, destOam, oamAddr, 256);
+				oamAddr = (byte)(oamAddr + 256);
+			}
+			else
+			{
+				// Bounds would be violated - use safe per-byte copy with bounds checks
+				for (int i = 0; i < 256; i++)
+				{
+					if (oamAddr < destOam.Length)
+						destOam[oamAddr++] = Read((ushort)(baseAddr + i));
+					else
+						break;
+				}
+			}
 			return;
 		}
 		// Fallback per-byte for non-linear / mapper controlled sources

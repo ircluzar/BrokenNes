@@ -68,33 +68,51 @@ namespace BrokenNes.Windows
         /// <param name="samples">Float samples in range [-1.0, 1.0]</param>
         public void QueueSamples(float[] samples)
         {
-            if (disposed || samples == null || samples.Length == 0)
+            if (disposed || samples == null || samples.Length == 0 || sampleBuffer == null)
                 return;
             
-            // Resample audio based on speed multiplier
-            // For speeds != 1.0, we need to resample to maintain correct pitch
-            float[] processedSamples;
-            if (Math.Abs(speedMultiplier - 1.0f) > 0.05f)
+            try
             {
-                // Speed changed significantly - resample audio
-                processedSamples = ResampleAudio(samples, speedMultiplier);
-            }
-            else
-            {
-                // Normal play - queue samples directly without modification
-                processedSamples = samples;
-            }
-            
-            // Accumulate samples in our buffer
-            for (int i = 0; i < processedSamples.Length; i++)
-            {
-                sampleBuffer[bufferPosition++] = processedSamples[i];
-                
-                // When buffer is full, convert and send to NAudio
-                if (bufferPosition >= BufferSize)
+                // Resample audio based on speed multiplier
+                // For speeds != 1.0, we need to resample to maintain correct pitch
+                float[] processedSamples;
+                if (Math.Abs(speedMultiplier - 1.0f) > 0.05f)
                 {
-                    FlushBuffer();
+                    // Speed changed significantly - resample audio
+                    processedSamples = ResampleAudio(samples, speedMultiplier);
                 }
+                else
+                {
+                    // Normal play - queue samples directly without modification
+                    processedSamples = samples;
+                }
+                
+                // Accumulate samples in our buffer with bounds checking
+                for (int i = 0; i < processedSamples.Length; i++)
+                {
+                    // Safety check to prevent overflow during shutdown/corruption
+                    if (bufferPosition >= sampleBuffer.Length)
+                    {
+                        FlushBuffer();
+                        if (disposed) return; // Exit if disposed during flush
+                    }
+                    
+                    if (bufferPosition < sampleBuffer.Length)
+                    {
+                        sampleBuffer[bufferPosition++] = processedSamples[i];
+                    }
+                    
+                    // When buffer is full, convert and send to NAudio
+                    if (bufferPosition >= BufferSize)
+                    {
+                        FlushBuffer();
+                        if (disposed) return; // Exit if disposed during flush
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioManager] Error queueing samples: {ex.Message}");
             }
         }
         
@@ -103,30 +121,56 @@ namespace BrokenNes.Windows
         /// </summary>
         private float[] ResampleAudio(float[] samples, float speed)
         {
-            if (speed <= 0 || Math.Abs(speed - 1.0f) < 0.01f)
-                return samples; // No resampling needed at normal speed
-            
-            int outputLength = (int)(samples.Length / speed);
-            if (outputLength <= 0)
-                return Array.Empty<float>();
-            
-            float[] output = new float[outputLength];
-            
-            for (int i = 0; i < outputLength; i++)
+            try
             {
-                float sourceIndex = i * speed;
-                int index0 = (int)sourceIndex;
-                int index1 = Math.Min(index0 + 1, samples.Length - 1);
-                float fraction = sourceIndex - index0;
+                // Safety checks for invalid inputs
+                if (samples == null || samples.Length == 0)
+                    return Array.Empty<float>();
+                    
+                if (speed <= 0 || !float.IsFinite(speed))
+                    return samples;
+                    
+                if (Math.Abs(speed - 1.0f) < 0.01f)
+                    return samples; // No resampling needed at normal speed
                 
-                // Linear interpolation between samples
-                if (index0 < samples.Length)
+                // Clamp speed to reasonable range to prevent overflow
+                speed = Math.Clamp(speed, 0.1f, 10.0f);
+                
+                long outputLengthLong = (long)(samples.Length / speed);
+                if (outputLengthLong <= 0 || outputLengthLong > int.MaxValue)
+                    return Array.Empty<float>();
+                    
+                int outputLength = (int)outputLengthLong;
+                
+                // Prevent excessive memory allocation
+                if (outputLength > 1000000)
+                    return samples;
+                
+                float[] output = new float[outputLength];
+                
+                for (int i = 0; i < outputLength; i++)
                 {
+                    float sourceIndex = i * speed;
+                    int index0 = (int)sourceIndex;
+                    
+                    // Bounds check
+                    if (index0 >= samples.Length)
+                        break;
+                        
+                    int index1 = Math.Min(index0 + 1, samples.Length - 1);
+                    float fraction = sourceIndex - index0;
+                    
+                    // Linear interpolation between samples
                     output[i] = samples[index0] * (1 - fraction) + samples[index1] * fraction;
                 }
+                
+                return output;
             }
-            
-            return output;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioManager] Error resampling audio: {ex.Message}");
+                return samples; // Return original on error
+            }
         }
         
         /// <summary>
@@ -166,14 +210,20 @@ namespace BrokenNes.Windows
         /// </summary>
         private void FlushBuffer()
         {
-            if (bufferPosition == 0)
+            if (bufferPosition == 0 || sampleBuffer == null)
+                return;
+            
+            // Safety bounds check for corrupted state during shutdown
+            int safeBufferPosition = Math.Min(bufferPosition, sampleBuffer.Length);
+            
+            if (safeBufferPosition <= 0)
                 return;
             
             // Convert float samples to 16-bit PCM
-            byte[] audioData = new byte[bufferPosition * bytesPerSample * channels];
+            byte[] audioData = new byte[safeBufferPosition * bytesPerSample * channels];
             int byteIndex = 0;
             
-            for (int i = 0; i < bufferPosition; i++)
+            for (int i = 0; i < safeBufferPosition; i++)
             {
                 // Clamp to [-1.0, 1.0] and convert to 16-bit signed integer
                 float sample = Math.Clamp(sampleBuffer[i], -1.0f, 1.0f);
@@ -191,8 +241,18 @@ namespace BrokenNes.Windows
                 }
             }
             
-            // Add samples to NAudio buffer
-            waveProvider.AddSamples(audioData, 0, audioData.Length);
+            // Add samples to NAudio buffer (with safety check)
+            if (waveProvider != null && audioData.Length > 0)
+            {
+                try
+                {
+                    waveProvider.AddSamples(audioData, 0, audioData.Length);
+                }
+                catch
+                {
+                    // Ignore errors during shutdown
+                }
+            }
             
             // Reset buffer position
             bufferPosition = 0;
@@ -254,12 +314,26 @@ namespace BrokenNes.Windows
             
             disposed = true;
             
-            // Flush any remaining samples
-            FlushBuffer();
+            // Flush any remaining samples (with safety checks)
+            try
+            {
+                FlushBuffer();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioManager] Error flushing buffer during dispose: {ex.Message}");
+            }
             
             // Stop and dispose of NAudio components
-            waveOut?.Stop();
-            waveOut?.Dispose();
+            try
+            {
+                waveOut?.Stop();
+                waveOut?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioManager] Error disposing WaveOut: {ex.Message}");
+            }
             
             Console.WriteLine("AudioManager disposed");
         }

@@ -112,6 +112,16 @@
     try {
       console.log('[Story] Initializing story mode...');
 
+      // Set crash behavior to ignore errors for story mode
+      try {
+        if (window.webapi && window.webapi.rtc && window.webapi.rtc.setCrashBehavior) {
+          await window.webapi.rtc.setCrashBehavior('IgnoreErrors');
+          console.log('[Story] Set crash behavior to IgnoreErrors');
+        }
+      } catch (e) {
+        console.error('[Story] Failed to set crash behavior:', e);
+      }
+
       // Load game save
       try {
         if (window.gameSave && typeof window.gameSave.load === 'function') {

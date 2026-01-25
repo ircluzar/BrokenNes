@@ -60,7 +60,9 @@ namespace NesEmulator
                 T = (T & 0xFF) | ((val << 8) & 0x700);
                 L = val >> 3;
                 estart = true;
-                if (Enable) length = lenlookup[L];
+                // Bounds check L before accessing lenlookup array
+                if (Enable && L < lenlookup.Length) 
+                    length = lenlookup[L];
                 sequence = 0;
             }
             public void SetEnable(bool val)
@@ -97,7 +99,12 @@ namespace NesEmulator
                 {
                     clock = T * 2 + 1;
                     sequence--; if (sequence < 0) sequence += 8;
-                    int sequenceval = sequencelookup[D, sequence];
+                    
+                    // Bounds check for corrupted state
+                    int safeD = Math.Max(0, Math.Min(3, D));
+                    int safeSeq = Math.Max(0, Math.Min(7, sequence));
+                    
+                    int sequenceval = sequencelookup[safeD, safeSeq];
                     int newvol = 0;
                     if (sequenceval > 0 && length > 0)
                         newvol = ConstantVolume ? V : ecount;

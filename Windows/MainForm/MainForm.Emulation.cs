@@ -52,12 +52,21 @@ namespace BrokenNes.Windows
             isEmulationRunning = false;
             isPaused = false; // Unpause to allow thread to exit loop
             
-            // Wait for emulation thread to finish
+            // Wait for emulation thread to finish - should be much faster now with frequent checks
             if (emulatorThread != null && emulatorThread.IsAlive)
             {
+                // First attempt: wait up to 500ms for graceful shutdown (should be plenty now)
                 if (!emulatorThread.Join(500))
                 {
-                    Console.WriteLine("Emulation thread did not stop gracefully, continuing...");
+                    Console.WriteLine("[Emulation] Thread did not stop within 500ms, waiting longer...");
+                    
+                    // Second attempt: wait another 1.5 seconds
+                    if (!emulatorThread.Join(1500))
+                    {
+                        Console.WriteLine("[Emulation] WARNING: Thread still running after 2s total. Possible deadlock.");
+                        // Note: Don't abort - background threads will be cleaned up on app exit
+                        // Aborting can corrupt state. Instead, just proceed carefully.
+                    }
                 }
             }
             
@@ -95,10 +104,14 @@ namespace BrokenNes.Windows
             
             while (isEmulationRunning)
             {
+                // Process queued actions
                 while (emulationActions.TryDequeue(out var act))
                 {
                     try { act(); }
                     catch (Exception ex) { Console.WriteLine($"Emu action error: {ex.Message}"); }
+                    
+                    // Check for early exit after each action
+                    if (!isEmulationRunning) return;
                 }
 
                 using (PerformanceProfiler.Time("Frame"))
@@ -200,6 +213,13 @@ namespace BrokenNes.Windows
                         // Not yet time for next frame
                         framesToRun = 0;
                     }
+                }
+                
+                // If no frames to run, sleep briefly to allow thread to respond to stop signal
+                if (framesToRun == 0)
+                {
+                    Thread.Sleep(1); // 1ms sleep allows thread to check isEmulationRunning frequently
+                    continue;
                 }
                 
                 // Run the calculated number of frames
@@ -420,11 +440,6 @@ namespace BrokenNes.Windows
                     using (PerformanceProfiler.Time("DirectX.DrawFrame"))
                     {
                         dxRenderer.DrawFrame(frameBuffer, currentInputs);
-                        debugRenderFrameCounter++;
-                        if (debugRenderFrameCounter % 60 == 0) // Log every 60 frames (1 second at 60fps)
-                        {
-                            Console.WriteLine($"[RenderFrame] Rendered {debugRenderFrameCounter} frames");
-                        }
                     }
                 }
                 catch (Exception ex)

@@ -13,13 +13,46 @@ namespace BrokenNes.Windows.Helpers
     /// </summary>
     public static class WebViewHelper
     {
+        private static CoreWebView2Environment? _sharedEnvironment;
+        
+        /// <summary>
+        /// Gets or creates a shared WebView2 environment with autoplay enabled
+        /// </summary>
+        private static async Task<CoreWebView2Environment> GetOrCreateEnvironmentAsync()
+        {
+            if (_sharedEnvironment != null)
+                return _sharedEnvironment;
+                
+            // Create environment with Chromium flags to enable autoplay
+            var options = new CoreWebView2EnvironmentOptions();
+            
+            // CRITICAL: Disable autoplay policy to allow AudioContext without user gesture
+            // --autoplay-policy=no-user-gesture-required allows audio to play automatically
+            options.AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required";
+            
+            _sharedEnvironment = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: null,
+                options: options);
+                
+            return _sharedEnvironment;
+        }
+        
         public static async Task<bool> InitializeWebViewAsync(WebView2 webView)
         {
             if (webView == null) return false;
             
             try
             {
-                await webView.EnsureCoreWebView2Async(null);
+                // Use our custom environment with autoplay enabled
+                var environment = await GetOrCreateEnvironmentAsync();
+                await webView.EnsureCoreWebView2Async(environment);
+                
+                // Configure WebView2 settings
+                var settings = webView.CoreWebView2.Settings;
+                settings.IsScriptEnabled = true;
+                settings.AreDefaultContextMenusEnabled = true;
+                settings.IsWebMessageEnabled = true;
                 
                 // Enable transparency for overlay mode
                 webView.DefaultBackgroundColor = Color.Transparent;

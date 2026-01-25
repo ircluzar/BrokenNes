@@ -306,13 +306,18 @@ namespace BrokenNes.Windows
                 // Execute on UI thread
                 await InvokeAsync(() =>
                 {
+                    // CRITICAL: Check if running and stop OUTSIDE the lock to avoid deadlock
+                    // The emulation thread needs to acquire emulationLock briefly, so we can't hold it while waiting
+                    wasRunning = isEmulationRunning;
+                    
+                    if (wasRunning)
+                    {
+                        StopEmulation(); // This already waits for thread to stop
+                    }
+                    
+                    // Now that thread is stopped, we can safely acquire lock and modify NES state
                     lock (emulationLock)
                     {
-                        wasRunning = isEmulationRunning;
-                        
-                        if (wasRunning)
-                            StopEmulation();
-                        
                         if (nes == null)
                             nes = new NES();
                         
@@ -335,10 +340,11 @@ namespace BrokenNes.Windows
                             dxRenderer?.Invalidate();
                         }
                         catch { }
-                        
-                        if (wasRunning)
-                            StartEmulation();
                     }
+                    
+                    // Start emulation outside lock as well
+                    if (wasRunning)
+                        StartEmulation();
                 });
 
                 Console.WriteLine($"[Story] Successfully loaded page ROM: {filename}");
