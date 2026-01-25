@@ -45,7 +45,6 @@ Continue/
 ├── styles.css          # Complete styling (based on Continue.razor.css)
 ├── lib/                # Shared libraries
 │   ├── storage.js      # localStorage wrapper
-│   ├── music.js        # Audio playback system
 │   └── homePixelBg.js  # Animated background
 └── assets/             # Audio files
     ├── music/          # Background tracks (DeckBuilder1-4.mp3)

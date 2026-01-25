@@ -142,17 +142,11 @@
 
   function initializeAudio() {
     try {
-      // Initialize audio context
-      if (window.music) {
-        // Play title music
-        window.music.play('assets/music/TitleScreen.mp3', { 
-          loop: true, 
-          fadeInMs: 800 
-        }).catch(err => {
-          console.warn('[Home] Music play failed:', err);
+      // Request title music via audio engine
+      if (api?.audio?.requestMusic) {
+        api.audio.requestMusic('TitleScreen.mp3', true, 800).catch(err => {
+          console.warn('[Home] Music request failed:', err);
         });
-
-        window.music.setLocalVolume(0.5);
       }
     } catch (error) {
       console.error('[Home] Audio init error:', error);
@@ -160,11 +154,10 @@
   }
 
   async function onHealthWarningOk() {
-    // Play plate sound effect
+    // Play plate sound effect via audio engine
     try {
-      const plateAudio = document.getElementById('plateWav');
-      if (plateAudio) {
-        plateAudio.play().catch(err => {
+      if (api?.audio?.playSfx) {
+        api.audio.playSfx('plates.m4a').catch(err => {
           console.warn('[Home] Plate SFX play failed:', err);
         });
       }
@@ -200,9 +193,11 @@
 
   async function onEmulatorClick() {
     try {
-      // Fade out music before switching to emulator
-      if (window.music && window.music.fadeOut) {
-        window.music.fadeOut(500);
+      // Stop music via audio engine (await to ensure it completes first)
+      if (api?.audio?.stopMusic) {
+        await api.audio.stopMusic(0).catch(err => {
+          console.warn('[Home] Music stop failed:', err);
+        });
       }
 
       // Stop pixel background

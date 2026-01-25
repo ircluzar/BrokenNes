@@ -16,9 +16,6 @@
         window.homePixelBgEnsure();
       }
 
-      // Initialize audio system
-      initAudio();
-
       // Load game save data
       await loadGameSave();
 
@@ -29,17 +26,6 @@
       playRandomMusic();
     } catch (error) {
       console.error('[DeckBuilder] Initialization error:', error);
-    }
-  }
-
-  function initAudio() {
-    try {
-      // Initialize the music library if available
-      if (window.music && typeof window.music.setLocalVolume === 'function') {
-        window.music.setLocalVolume(0.5); // Set default volume
-      }
-    } catch (error) {
-      console.error('[DeckBuilder] Audio init error:', error);
     }
   }
 
@@ -94,22 +80,12 @@
 
   function playRandomMusic() {
     try {
-      // DeckBuilder music tracks (1-4)
-      const tracks = [
-        'assets/music/DeckBuilder1.mp3',
-        'assets/music/DeckBuilder2.mp3',
-        'assets/music/DeckBuilder3.mp3',
-        'assets/music/DeckBuilder4.mp3'
-      ];
+      // Play TitleScreen music for DeckBuilder page
+      const musicTrack = 'TitleScreen.mp3';
 
-      const randomTrack = tracks[Math.floor(Math.random() * tracks.length)];
-
-      if (window.music && typeof window.music.play === 'function') {
-        window.music.play(randomTrack, {
-          loop: true,
-          fadeInMs: 800
-        }).catch(error => {
-          console.warn('[DeckBuilder] Music play error (may be blocked by browser):', error);
+      if (window.webapi?.audio?.requestMusic) {
+        window.webapi.audio.requestMusic(musicTrack, true, 800).catch(error => {
+          console.warn('[DeckBuilder] Music request error (may be blocked by browser):', error);
         });
       }
     } catch (error) {

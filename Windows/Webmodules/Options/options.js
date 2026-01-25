@@ -25,6 +25,9 @@
         window.homePixelBgEnsure();
       }
 
+      // Initialize audio (play title screen music)
+      initAudio();
+
       // Setup event listeners
       setupEventListeners();
 
@@ -32,6 +35,19 @@
       updateVolumeUI();
     } catch (error) {
       console.error('[Options] Initialization error:', error);
+    }
+  }
+
+  function initAudio() {
+    try {
+      // Request title screen music via audio engine
+      if (window.webapi?.audio?.requestMusic) {
+        window.webapi.audio.requestMusic('TitleScreen.mp3', true, 800).catch(err => {
+          console.warn('[Options] Music request failed:', err);
+        });
+      }
+    } catch (error) {
+      console.warn('[Options] Audio init error:', error);
     }
   }
 
@@ -206,12 +222,18 @@
       valueEl.textContent = pct;
     }
 
-    // Apply volume if music library is available
-    if (kind === 'music' && window.music) {
+    // Apply volume via audio engine API
+    if (window.webapi?.request) {
       try {
-        window.music.setLocalVolume(normalized);
+        await window.webapi.request('/api/audio/volume', {
+          method: 'POST',
+          json: {
+            musicVolume: volumes.music,
+            sfxVolume: volumes.sfx
+          }
+        });
       } catch (error) {
-        console.warn('[Options] Music volume set error:', error);
+        console.warn('[Options] Audio volume set error:', error);
       }
     }
 

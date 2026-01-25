@@ -23,7 +23,6 @@ DeckBuilder/
 ├── deckbuilder.js       # Main logic and initialization
 ├── README.md            # This file
 ├── lib/
-│   ├── music.js         # Music playback system
 │   ├── homePixelBg.js   # Animated pixel background
 │   └── storage.js       # LocalStorage wrapper
 └── assets/
@@ -39,7 +38,7 @@ DeckBuilder/
 ## Dependencies
 
 - **Press Start 2P Font**: Loaded from Google Fonts
-- **music.js**: Manages audio playback with Web Audio API
+- **Audio Engine**: Music and SFX handled via webAPI (`/api/audio/*`)
 - **homePixelBg.js**: Creates animated pixel background effect
 - **storage.js**: Simple localStorage wrapper
 
@@ -56,7 +55,7 @@ Simply open `index.html` in a web browser. The page will:
 To integrate into a larger application:
 ```html
 <!-- Include in your main HTML -->
-<script src="webmodules/DeckBuilder/lib/music.js"></script>
+<!-- Audio is now handled by the audio engine via webAPI -->
 <script src="webmodules/DeckBuilder/lib/homePixelBg.js"></script>
 <script src="webmodules/DeckBuilder/lib/storage.js"></script>
 <script src="webmodules/DeckBuilder/deckbuilder.js"></script>
@@ -82,9 +81,13 @@ Expected format:
 ```
 
 ### Music Volume
-Default volume is set to 0.5 (50%). Modify in `deckbuilder.js`:
+Music volume is controlled via the Options webmodule or through the audio engine API:
 ```javascript
-window.music.setLocalVolume(0.5); // 0.0 to 1.0
+// Set volume via webAPI
+await window.webapi.request('/api/audio/volume', {
+  method: 'POST',
+  json: { musicVolume: 0.5, sfxVolume: 0.8 }
+});
 ```
 
 ## Navigation

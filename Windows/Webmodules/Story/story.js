@@ -37,9 +37,17 @@
 
   function initAudio() {
     try {
-      // Fade down any existing music
-      if (window.music && typeof window.music.fadeOut === 'function') {
-        window.music.fadeOut(800, true);
+      console.log('[Story] Initializing audio');
+      // Play Story music via audio engine
+      if (window.webapi?.audio?.requestMusic) {
+        console.log('[Story] Requesting Story.mp3');
+        window.webapi.audio.requestMusic('Story.mp3', true, 800).then(() => {
+          console.log('[Story] Music request sent successfully');
+        }).catch(err => {
+          console.warn('[Story] Music request failed:', err);
+        });
+      } else {
+        console.error('[Story] webapi.audio.requestMusic not available');
       }
     } catch (error) {
       console.warn('[Story] Audio init error:', error);

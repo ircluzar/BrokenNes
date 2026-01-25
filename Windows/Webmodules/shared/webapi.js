@@ -241,6 +241,18 @@
     card: {
       getUrl: (domain, id) => buildUrl(`/api/card/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`),
       getSvg: (domain, id) => request('/api/card/' + encodeURIComponent(domain) + '/' + encodeURIComponent(id), { responseType: 'text' })
+    },
+
+    audio: {
+      playMusic: (filename, loop = true) => request('/api/audio/music/play', { method: 'POST', json: { filename, loop } }),
+      requestMusic: (filename, loop = true, fadeDurationMs = 1000) => request('/api/audio/music/request', { method: 'POST', json: { filename, loop, fadeDurationMs } }),
+      stopMusic: (fadeDurationMs = 1000) => request('/api/audio/music/stop', { method: 'POST', json: { fadeDurationMs } }),
+      playSfx: (filename) => request('/api/audio/sfx/play', { method: 'POST', json: { filename } }),
+      getVolume: () => request('/api/audio/volume'),
+      setVolume: (musicVolume, sfxVolume) => request('/api/audio/volume', { method: 'POST', json: { musicVolume, sfxVolume } }),
+      getStatus: () => request('/api/audio/status'),
+      listMusic: () => request('/api/audio/music/list'),
+      listSfx: () => request('/api/audio/sfx/list')
     }
   };
 

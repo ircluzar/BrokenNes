@@ -9,7 +9,6 @@
   "icon": "assets/icon.png",
   "dependencies": [
     "../shared/storage.js",
-    "../shared/music.js",
     "../shared/homePixelBg.js"
   ],
   "permissions": [

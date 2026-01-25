@@ -78,11 +78,11 @@
         window.homePixelBgEnsure();
       }
 
-      // Initialize audio
-      initAudio();
-
-      // Load game save
+      // Load game save first (needed for currentLevel)
       await loadGameSave();
+
+      // Initialize audio after level is loaded
+      initAudio();
 
       // Setup event listeners
       setupEventListeners();
@@ -102,24 +102,21 @@
 
   function initAudio() {
     try {
-      // Play deck builder music
-      if (window.music) {
-        const tracks = [
-          'assets/music/DeckBuilder1.mp3',
-          'assets/music/DeckBuilder2.mp3',
-          'assets/music/DeckBuilder3.mp3',
-          'assets/music/DeckBuilder4.mp3'
-        ];
-        const randomTrack = tracks[Math.floor(Math.random() * tracks.length)];
-        
-        window.music.play(randomTrack, { 
-          loop: true, 
-          fadeInMs: 800 
+      console.log('[Continue] Initializing audio, currentLevel:', currentLevel);
+      // Select DeckBuilder music based on current level (1-4)
+      // If level > 4, use modulo to cycle through tracks
+      const trackNumber = ((currentLevel - 1) % 4) + 1;
+      const musicTrack = `DeckBuilder${trackNumber}.mp3`;
+      console.log('[Continue] Requesting music:', musicTrack);
+      
+      if (window.webapi?.audio?.requestMusic) {
+        window.webapi.audio.requestMusic(musicTrack, true, 800).then(() => {
+          console.log('[Continue] Music request sent successfully:', musicTrack);
         }).catch(err => {
-          console.warn('[Continue] Music play failed:', err);
+          console.warn('[Continue] Music request failed:', err);
         });
-
-        window.music.setLocalVolume(0.4);
+      } else {
+        console.error('[Continue] webapi.audio.requestMusic not available');
       }
     } catch (error) {
       console.warn('[Continue] Audio init error:', error);
