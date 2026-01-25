@@ -181,6 +181,7 @@ namespace BrokenNes.Windows
             }
             
             audioManager?.Dispose();
+            audioEngine?.Dispose();
             inputManager?.Dispose();
             frameBuffer?.Dispose();
             backBuffer?.Dispose();

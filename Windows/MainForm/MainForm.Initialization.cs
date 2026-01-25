@@ -683,6 +683,17 @@ namespace BrokenNes.Windows
                     "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             
+            // Initialize high-level audio engine for music and SFX
+            try
+            {
+                audioEngine = new AudioEngine();
+                Console.WriteLine("AudioEngine initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to initialize audio engine: {ex.Message}");
+            }
+            
             // Initialize auto-scramble timer
             autoScrambleTimer = new System.Windows.Forms.Timer();
             autoScrambleTimer.Interval = 200; // 200ms (5 times per second)
@@ -808,7 +819,8 @@ namespace BrokenNes.Windows
                         (mode) => SwitchViewMode(mode),
                         this,  // Pass the main form as UI control for thread marshalling
                         CloseAllMenus,  // Pass the close menus handler
-                        ToggleFullscreen  // Pass the fullscreen toggle handler
+                        ToggleFullscreen,  // Pass the fullscreen toggle handler
+                        () => audioEngine  // Pass the audio engine
                     );
                 }
 

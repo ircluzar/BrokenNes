@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Test - Music & SFX Player</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="../shared/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🎵 Audio Test</h1>
+      <p class="subtitle">Test music playback, SFX, and crossfading</p>
+    </header>
+
+    <main class="main-content">
+      <!-- Current Status -->
+      <section class="panel status-panel">
+        <h2>Current Status</h2>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="label">Now Playing:</span>
+            <span id="nowPlaying" class="value">None</span>
+          </div>
+          <div class="status-item">
+            <span class="label">Status:</span>
+            <span id="playbackStatus" class="value">Idle</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Volume Controls -->
+      <section class="panel">
+        <h2>Volume Controls</h2>
+        <div class="volume-grid">
+          <div class="control-group">
+            <label for="musicVolumeSlider">
+              Music Volume: <span id="musicVolumeValue" class="value-display">70%</span>
+            </label>
+            <input 
+              type="range" 
+              id="musicVolumeSlider" 
+              min="0" 
+              max="100" 
+              value="70" 
+              class="slider"
+            >
+          </div>
+          <div class="control-group">
+            <label for="sfxVolumeSlider">
+              SFX Volume: <span id="sfxVolumeValue" class="value-display">80%</span>
+            </label>
+            <input 
+              type="range" 
+              id="sfxVolumeSlider" 
+              min="0" 
+              max="100" 
+              value="80" 
+              class="slider"
+            >
+          </div>
+        </div>
+      </section>
+
+      <!-- Music Player -->
+      <section class="panel">
+        <h2>🎵 Music Player</h2>
+        <div class="music-controls">
+          <div class="control-row">
+            <label for="fadeSlider">
+              Fade Duration: <span id="fadeValue" class="value-display">1000ms</span>
+            </label>
+            <input 
+              type="range" 
+              id="fadeSlider" 
+              min="250" 
+              max="3000" 
+              step="250" 
+              value="1000" 
+              class="slider"
+            >
+          </div>
+          <div class="control-row">
+            <label class="checkbox-label">
+              <input type="checkbox" id="loopCheckbox" checked>
+              Loop Music
+            </label>
+          </div>
+        </div>
+        
+        <div class="file-list" id="musicList">
+          <div class="loading">Loading music files...</div>
+        </div>
+
+        <div class="button-row">
+          <button id="stopMusicBtn" class="btn btn-danger">
+            ⏹️ Stop Music
+          </button>
+        </div>
+      </section>
+
+      <!-- SFX Player -->
+      <section class="panel">
+        <h2>🔊 Sound Effects</h2>
+        <div class="file-list" id="sfxList">
+          <div class="loading">Loading SFX files...</div>
+        </div>
+      </section>
+
+      <!-- Info Panel -->
+      <section class="panel info-panel">
+        <h3>ℹ️ How to Use</h3>
+        <ul>
+          <li><strong>Music:</strong> Click "Play" to start immediately, "Request" to crossfade from current track</li>
+          <li><strong>SFX:</strong> Click any SFX to play it instantly (multiple can play at once)</li>
+          <li><strong>Crossfade:</strong> Use "Request" on a different track while music is playing to hear the smooth transition</li>
+          <li><strong>Volume:</strong> Adjust music and SFX volumes independently</li>
+          <li><strong>Loop:</strong> Toggle whether music should loop continuously</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="../shared/webapi.js"></script>
+  <script src="audiotest.js"></script>
+</body>
+</html>

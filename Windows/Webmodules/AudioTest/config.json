@@ -1,0 +1,9 @@
+{
+  "id": "audiotest",
+  "name": "Audio Test",
+  "description": "Test music playback, sound effects, and audio crossfading",
+  "icon": "🎵",
+  "category": "tools",
+  "version": "1.0.0",
+  "entryPoint": "index.html"
+}

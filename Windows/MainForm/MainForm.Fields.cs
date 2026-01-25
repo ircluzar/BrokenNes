@@ -32,6 +32,7 @@ namespace BrokenNes.Windows
         
         // Audio fields
         private AudioManager? audioManager;
+        private AudioEngine? audioEngine;
         
         // ROM and configuration
         private string currentRomPath = string.Empty;
