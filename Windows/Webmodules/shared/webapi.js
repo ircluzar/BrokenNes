@@ -253,6 +253,10 @@
       getStatus: () => request('/api/audio/status'),
       listMusic: () => request('/api/audio/music/list'),
       listSfx: () => request('/api/audio/sfx/list')
+    },
+
+    emulator: {
+      loadBuiltInRom: (filename) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename } })
     }
   };
 

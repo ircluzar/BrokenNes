@@ -400,26 +400,61 @@
   function updateCoreSlot(slotName, selected, enforced) {
     const emptyEl = document.getElementById(`${slotName}Empty`);
     const cardEl = document.getElementById(`${slotName}Card`);
-    const labelEl = document.getElementById(`${slotName}Label`);
     
     const core = enforced || selected;
+    const domain = slotName.toUpperCase();
     
     if (core) {
       emptyEl.style.display = 'none';
       cardEl.style.display = 'block';
-      labelEl.textContent = core;
       
-      // Change appearance if enforced
-      if (enforced) {
-        cardEl.style.opacity = '0.6';
-        cardEl.title = 'Enforced';
+      // Load SVG from webapi
+      if (window.webapi?.card?.getSvg) {
+        cardEl.innerHTML = '<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#666;">Loading...</div>';
+        
+        window.webapi.card.getSvg(domain, core).then(result => {
+          if (result.success && result.text) {
+            cardEl.innerHTML = `<div class="card-wrap" style="position:relative;width:142px;height:200px;line-height:0;display:inline-block;">${result.text}</div>`;
+            
+            // Add enforced overlay if needed
+            if (enforced) {
+              const overlay = document.createElement('div');
+              overlay.className = 'card-enforced-overlay';
+              overlay.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none;';
+              overlay.title = 'Enforced by level';
+              overlay.innerHTML = `
+                <svg viewBox="0 0 64 64" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:128px;height:128px;opacity:.22;fill:#fff;stroke:#fff;stroke-width:4;">
+                  <rect x="16" y="28" width="32" height="28" rx="5" ry="5"/>
+                  <path d="M22 28 V20 a10 10 0 0 1 20 0 v8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div style="color:#fff;font-size:0.9rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.8);">Enforced</div>
+              `;
+              cardEl.querySelector('.card-wrap').appendChild(overlay);
+            }
+            
+            // Make card clickable
+            const cardWrap = cardEl.querySelector('.card-wrap');
+            if (cardWrap) {
+              cardWrap.style.cursor = enforced ? 'default' : 'pointer';
+              if (!enforced) {
+                cardWrap.addEventListener('click', () => openCorePicker(slotName));
+              }
+            }
+          } else {
+            cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
+          }
+        }).catch(err => {
+          console.warn(`[Continue] Failed to load SVG for ${domain}/${core}:`, err);
+          cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
+        });
       } else {
-        cardEl.style.opacity = '1';
-        cardEl.title = 'Click to change';
+        // Fallback to text label
+        cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
       }
     } else {
       emptyEl.style.display = 'flex';
       cardEl.style.display = 'none';
+      cardEl.innerHTML = '';
     }
   }
 

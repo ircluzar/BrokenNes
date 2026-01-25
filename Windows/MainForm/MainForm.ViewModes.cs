@@ -271,6 +271,9 @@ namespace BrokenNes.Windows
                     // WebView2 overlays the entire display panel
                     if (webView != null)
                     {
+                        // Ensure transparency is enabled
+                        webView.DefaultBackgroundColor = Color.Transparent;
+
                         Helpers.WebViewHelper.SetLayout(webView,
                             new Point(0, menuHeight),
                             new Size(this.ClientSize.Width, availableHeight));

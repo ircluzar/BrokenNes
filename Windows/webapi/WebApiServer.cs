@@ -37,10 +37,11 @@ namespace BrokenNes.Windows.WebApi
         private Action? _closeAllMenus;
         private Action? _toggleFullscreen;
         private Func<AudioEngine?> _getAudioEngine;
+        private Func<string, Task<bool>>? _loadBuiltInRom;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, Task<bool>>? loadBuiltInRom = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -52,6 +53,7 @@ namespace BrokenNes.Windows.WebApi
             _getAudioEngine = getAudioEngine ?? (() => null);
             _closeAllMenus = closeAllMenus;
             _toggleFullscreen = toggleFullscreen;
+            _loadBuiltInRom = loadBuiltInRom;
         }
 
         /// <summary>
@@ -116,6 +118,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterSaveEndpoints(app);
             RegisterUIEndpoints(app);
             RegisterAudioEndpoints(app);
+            RegisterEmulatorEndpoints(app);
 
             _host = app;
 
@@ -2126,9 +2129,29 @@ namespace BrokenNes.Windows.WebApi
 
         public void Dispose()
         {
-            _cancellationTokenSource?.Cancel();
-            _host?.Dispose();
-            _cancellationTokenSource?.Dispose();
+            try
+            {
+                if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+                {
+                    _cancellationTokenSource.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed, ignore
+            }
+            
+            try
+            {
+                _host?.Dispose();
+            }
+            catch { }
+            
+            try
+            {
+                _cancellationTokenSource?.Dispose();
+            }
+            catch { }
         }
 
         // Request models
@@ -2622,26 +2645,12 @@ namespace BrokenNes.Windows.WebApi
                     {
                         return prop.GetValue(null) as string;
                     }
-                    // Fall back to instance property - create a temporary instance
+                    // Fall back to instance property - use GetUninitializedObject to avoid constructor issues
                     prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
                     if (prop != null && prop.PropertyType == typeof(string))
                     {
-                        // Try to create instance with parameterless constructor or Bus constructor
-                        object? instance = null;
-                        var ctor = type.GetConstructor(Type.EmptyTypes);
-                        if (ctor != null)
-                        {
-                            instance = ctor.Invoke(null);
-                        }
-                        else
-                        {
-                            // Try constructor with Bus parameter (common for cores)
-                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
-                            if (busCtor != null)
-                            {
-                                instance = busCtor.Invoke(new object[] { null! });
-                            }
-                        }
+                        // Create uninitialized instance without calling constructor (avoids dependency issues)
+                        var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
                         if (instance != null)
                         {
                             return prop.GetValue(instance) as string;
@@ -2662,26 +2671,12 @@ namespace BrokenNes.Windows.WebApi
                     {
                         return (int?)prop.GetValue(null);
                     }
-                    // Fall back to instance property - create a temporary instance
+                    // Fall back to instance property - use GetUninitializedObject to avoid constructor issues
                     prop = type.GetProperty(propertyName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
                     if (prop != null && prop.PropertyType == typeof(int))
                     {
-                        // Try to create instance with parameterless constructor or Bus constructor
-                        object? instance = null;
-                        var ctor = type.GetConstructor(Type.EmptyTypes);
-                        if (ctor != null)
-                        {
-                            instance = ctor.Invoke(null);
-                        }
-                        else
-                        {
-                            // Try constructor with Bus parameter (common for cores)
-                            var busCtor = type.GetConstructor(new[] { typeof(Bus) });
-                            if (busCtor != null)
-                            {
-                                instance = busCtor.Invoke(new object[] { null! });
-                            }
-                        }
+                        // Create uninitialized instance without calling constructor (avoids dependency issues)
+                        var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
                         if (instance != null)
                         {
                             return (int?)prop.GetValue(instance);
@@ -3370,6 +3365,44 @@ namespace BrokenNes.Windows.WebApi
         {
             public float? MusicVolume { get; set; }
             public float? SfxVolume { get; set; }
+        }
+
+        private void RegisterEmulatorEndpoints(WebApplication app)
+        {
+            // POST /api/emulator/load-builtin-rom - Load a built-in ROM file (for story mode)
+            app.MapPost("/api/emulator/load-builtin-rom", async (HttpContext context) =>
+            {
+                if (_loadBuiltInRom == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "ROM loading not available" });
+                }
+
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<LoadBuiltInRomRequest>();
+                    if (body == null || string.IsNullOrWhiteSpace(body.Filename))
+                    {
+                        return Results.BadRequest(new { success = false, error = "Filename is required" });
+                    }
+
+                    bool success = await _loadBuiltInRom(body.Filename);
+
+                    return Results.Ok(new
+                    {
+                        success,
+                        filename = body.Filename
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+        }
+
+        private class LoadBuiltInRomRequest
+        {
+            public string? Filename { get; set; }
         }
     }
 }

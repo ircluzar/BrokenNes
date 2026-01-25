@@ -820,7 +820,8 @@ namespace BrokenNes.Windows
                         this,  // Pass the main form as UI control for thread marshalling
                         CloseAllMenus,  // Pass the close menus handler
                         ToggleFullscreen,  // Pass the fullscreen toggle handler
-                        () => audioEngine  // Pass the audio engine
+                        () => audioEngine,  // Pass the audio engine
+                        (filename) => LoadBuiltInRomAsync(filename)  // Pass the ROM loader
                     );
                 }
 

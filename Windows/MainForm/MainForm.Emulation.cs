@@ -387,7 +387,14 @@ namespace BrokenNes.Windows
         
         private void RenderFrame()
         {
-            if (backBuffer == null || frameBuffer == null || !useDirectX || dxRenderer?.IsReady != true) return;
+            if (backBuffer == null || frameBuffer == null || !useDirectX || dxRenderer?.IsReady != true)
+            {
+                if (backBuffer == null) Console.WriteLine("[RenderFrame] Skipped: backBuffer is null");
+                else if (frameBuffer == null) Console.WriteLine("[RenderFrame] Skipped: frameBuffer is null");
+                else if (!useDirectX) Console.WriteLine("[RenderFrame] Skipped: useDirectX is false");
+                else if (dxRenderer?.IsReady != true) Console.WriteLine("[RenderFrame] Skipped: dxRenderer not ready");
+                return;
+            }
             
             using (PerformanceProfiler.Time("RenderFrame"))
             {
@@ -413,6 +420,11 @@ namespace BrokenNes.Windows
                     using (PerformanceProfiler.Time("DirectX.DrawFrame"))
                     {
                         dxRenderer.DrawFrame(frameBuffer, currentInputs);
+                        debugRenderFrameCounter++;
+                        if (debugRenderFrameCounter % 60 == 0) // Log every 60 frames (1 second at 60fps)
+                        {
+                            Console.WriteLine($"[RenderFrame] Rendered {debugRenderFrameCounter} frames");
+                        }
                     }
                 }
                 catch (Exception ex)

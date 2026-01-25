@@ -129,6 +129,35 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
+    // CPU_Z80 — experimental chip with zigzag and warning elements
+    public static string CPU_Z80 =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_Z80'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <g fill='" + Stroke + "'>" +
+        // irregular pins to suggest experimental nature
+        "      <rect x='20' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='44' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='72' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='96' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='124' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='148' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='20' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='44' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='72' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='96' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='124' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='148' y='112' width='8' height='4' rx='1'/>" +
+        "    </g>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + AccentToken + "' stroke-width='2' stroke-dasharray='4 2'/>" +
+        // zigzag pattern for Z80
+        "    <path d='M75 50 L85 60 L95 50 L105 60 L115 50 L125 60 L135 50' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <path d='M75 75 L85 85 L95 75 L105 85 L115 75 L125 85 L135 75' fill='none' stroke='" + Stroke + "' stroke-width='2' opacity='0.6'/>" +
+        // warning indicator
+        "    <circle cx='130' cy='48' r='4' fill='" + AccentToken + "' opacity='0.8'/>" +
+        "  </g>" +
+        "</svg>";
+
     // PPU_FMC — baseline with tiny tile grid on die
     public static string PPU_FMC =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_FMC'>" +
@@ -217,6 +246,39 @@ public static class SvgFactory
         "      <rect x='80' y='64' width='10' height='10'/>" +
         "      <rect x='100' y='64' width='10' height='10'/>" +
         "      <rect x='120' y='64' width='10' height='10'/>" +
+        "    </g>" +
+        "  </g>" +
+        "</svg>";
+
+    // PPU_CUBEX — enhanced CUBE with outlined structures, bigger shadows, stronger gradients
+    public static string PPU_CUBEX =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_CUBEX'>" +
+        "  <defs>" +
+        "    <linearGradient id='cubeGrad' x1='0%' y1='0%' x2='0%' y2='100%'>" +
+        "      <stop offset='0%' style='stop-color:" + ChipFillB + ";stop-opacity:1'/>" +
+        "      <stop offset='100%' style='stop-color:#000;stop-opacity:1'/>" +
+        "    </linearGradient>" +
+        "  </defs>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='2' fill='url(#cubeGrad)' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <g fill='" + AccentToken + "' opacity='0.9'>" +
+        // enhanced cubes with outlines
+        "      <rect x='70' y='44' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "      <rect x='90' y='44' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "      <rect x='110' y='44' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "      <rect x='80' y='64' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "      <rect x='100' y='64' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "      <rect x='120' y='64' width='10' height='10' stroke='" + Stroke + "' stroke-width='1'/>" +
+        "    </g>" +
+        // bigger shadow effects
+        "    <g fill='#000' opacity='0.35'>" +
+        "      <rect x='73' y='56' width='10' height='3'/>" +
+        "      <rect x='93' y='56' width='10' height='3'/>" +
+        "      <rect x='113' y='56' width='10' height='3'/>" +
+        "      <rect x='83' y='76' width='10' height='3'/>" +
+        "      <rect x='103' y='76' width='10' height='3'/>" +
+        "      <rect x='123' y='76' width='10' height='3'/>" +
         "    </g>" +
         "  </g>" +
         "</svg>";

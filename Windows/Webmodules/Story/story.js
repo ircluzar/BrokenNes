@@ -1,166 +1,270 @@
-// story.js - Story page logic (standalone webmodule)
+// story.js - Story mode orchestration for WinForms overlay
 
 (function() {
   'use strict';
 
-  // State
   let gameSave = null;
 
-  // Initialize on page load
-  window.addEventListener('DOMContentLoaded', init);
+  // Tiny chainable scheduler: supports sync and async Do steps
+  // API: Do(fn|asyncFn), Wait(seconds), Start(), Reset()
+  let queue = [];
+  let idx = 0;
+  let started = false;
 
+  function Do(fn) {
+    queue.push({ t: 'do', fn: fn });
+    return api;
+  }
+
+  function Wait(seconds) {
+    const ms = Math.max(0, (seconds || 0) * 1000);
+    queue.push({ t: 'wait', ms: ms });
+    return api;
+  }
+
+  function _run() {
+    if (idx >= queue.length) return;
+    const it = queue[idx++];
+    if (it.t === 'do') {
+      try {
+        const res = it.fn && it.fn();
+        if (res && typeof res.then === 'function') {
+          res.then(() => _run()).catch(() => _run());
+        } else {
+          _run();
+        }
+      } catch (_) {
+        _run();
+      }
+    } else {
+      setTimeout(_run, it.ms);
+    }
+  }
+
+  function Start() {
+    if (started) return;
+    started = true;
+    _run();
+  }
+
+  function Reset() {
+    idx = 0;
+    started = false;
+  }
+
+  const api = { Do, Wait, Start, Reset };
+
+  // Helper to set subtitle text
+  function setSubtitle(text) {
+    try {
+      const host = document.getElementById('storySubtitles');
+      if (host) {
+        host.textContent = text || '';
+      }
+    } catch (e) {
+      console.error('[Story] Failed to set subtitle:', e);
+    }
+  }
+
+  // Helper to narrate text using TTS
+  function narrate(text) {
+    try {
+      setSubtitle(text);
+      
+      // Try to use speak.js if available
+      if (window.speakit) {
+        window.speakit(text);
+      } else if (window.speak) {
+        window.speak(text, { speed: 125, variant: 'croak', voiceName: 'en-us' });
+      } else {
+        console.warn('[Story] TTS not available');
+      }
+    } catch (e) {
+      console.error('[Story] Failed to narrate:', e);
+    }
+  }
+
+  // Helper to load a narration ROM (page1.nes, page2.nes, etc.)
+  async function loadNarrationRom(name) {
+    try {
+      if (!window.webapi || !window.webapi.emulator || !window.webapi.emulator.loadBuiltInRom) {
+        console.error('[Story] webapi.emulator.loadBuiltInRom not available');
+        return false;
+      }
+
+      const result = await window.webapi.emulator.loadBuiltInRom(name);
+      
+      if (result && result.success) {
+        console.log(`[Story] Successfully loaded ${name}`);
+        return true;
+      } else {
+        console.error(`[Story] Failed to load ${name}:`, result?.error || 'Unknown error');
+        return false;
+      }
+    } catch (e) {
+      console.error(`[Story] Error loading ${name}:`, e);
+      return false;
+    }
+  }
+
+  // Initialize and start the story
   async function init() {
     try {
-      // Start pixel background
-      if (window.homePixelBgEnsure) {
-        window.homePixelBgEnsure();
-      }
-
-      // Initialize audio
-      initAudio();
+      console.log('[Story] Initializing story mode...');
 
       // Load game save
-      await loadGameSave();
-
-      // Setup event listeners
-      setupEventListeners();
-
-      // Update status
-      updateStatus();
-
-      // Perform fade-in transition
-      performFadeTransition();
-    } catch (error) {
-      console.error('[Story] Initialization error:', error);
-    }
-  }
-
-  function initAudio() {
-    try {
-      console.log('[Story] Initializing audio');
-      // Play Story music via audio engine
-      if (window.webapi?.audio?.requestMusic) {
-        console.log('[Story] Requesting Story.mp3');
-        window.webapi.audio.requestMusic('Story.mp3', true, 800).then(() => {
-          console.log('[Story] Music request sent successfully');
-        }).catch(err => {
-          console.warn('[Story] Music request failed:', err);
-        });
-      } else {
-        console.error('[Story] webapi.audio.requestMusic not available');
+      try {
+        if (window.gameSave && typeof window.gameSave.load === 'function') {
+          gameSave = await window.gameSave.load();
+          console.log('[Story] Game save loaded:', gameSave);
+        }
+      } catch (e) {
+        console.error('[Story] Failed to load game save:', e);
+        gameSave = {};
       }
-    } catch (error) {
-      console.warn('[Story] Audio init error:', error);
-    }
-  }
 
-  async function loadGameSave() {
-    try {
-      if (window.gameSave && typeof window.gameSave.load === 'function') {
-        gameSave = await window.gameSave.load();
-      } else {
-        console.error('[Story] gameSave module not available');
-        gameSave = null;
+      // Ensure speak.js is loaded
+      await loadSpeak();
+
+      // Preload meSpeak to avoid first-line delay
+      try {
+        if (window.speakPreload) {
+          window.speakPreload({ voiceName: 'en-us' });
+        }
+      } catch (e) {
+        console.warn('[Story] Failed to preload TTS:', e);
       }
-    } catch (error) {
-      console.error('[Story] Load save error:', error);
-      gameSave = null;
-    }
-  }
 
-  async function saveGameSave() {
-    try {
-      if (window.gameSave && typeof window.gameSave.save === 'function') {
-        await window.gameSave.save(gameSave);
-      } else {
-        console.error('[Story] gameSave module not available for saving');
+      // Start background story music immediately (loop with gentle fade-in)
+      try {
+        if (window.webapi && window.webapi.audio && window.webapi.audio.requestMusic) {
+          await window.webapi.audio.requestMusic('Story.mp3', true, 800);
+          console.log('[Story] Music started');
+        } else {
+          console.warn('[Story] Audio API not available');
+        }
+      } catch (e) {
+        console.warn('[Story] Failed to start music:', e);
       }
-    } catch (error) {
-      console.error('[Story] Save error:', error);
-    }
-  }
 
-  function setupEventListeners() {
-    const btnMarkViewed = document.getElementById('btnMarkViewed');
-    if (btnMarkViewed) {
-      btnMarkViewed.addEventListener('click', onMarkViewed);
-    }
+      // Build the story sequence
+      buildStorySequence();
 
-    const btnContinue = document.getElementById('btnContinue');
-    if (btnContinue) {
-      btnContinue.addEventListener('click', onContinue);
-    }
-  }
-
-  function updateStatus() {
-    const statusText = document.getElementById('statusText');
-    if (statusText) {
-      if (gameSave && gameSave.SeenStory) {
-        statusText.textContent = 'You have already viewed the story introduction.';
-      } else {
-        statusText.textContent = 'This is your first time viewing the story.';
-      }
-    }
-  }
-
-  function performFadeTransition() {
-    // Fade in from black
-    const overlay = document.getElementById('storyFadeOverlay');
-    if (overlay) {
-      // Start with opacity 1
-      overlay.style.opacity = '1';
-      // Fade out after a short delay
+      // Start the story after a brief delay
       setTimeout(() => {
-        overlay.style.opacity = '0';
-      }, 100);
+        console.log('[Story] Starting story sequence...');
+        Start();
+      }, 1000);
+
+    } catch (e) {
+      console.error('[Story] Initialization failed:', e);
     }
   }
 
-  async function onMarkViewed() {
-    try {
-      gameSave.SeenStory = true;
-      await saveGameSave();
-      updateStatus();
-      
-      const statusText = document.getElementById('statusText');
-      if (statusText) {
-        statusText.textContent = 'Story marked as viewed! You can now access the Deck Builder directly.';
-        statusText.style.color = '#ff5a26';
+  // Load speak.js dynamically
+  function loadSpeak() {
+    return new Promise((resolve) => {
+      try {
+        if (window.speak) {
+          resolve();
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = '../shared/speak.js';
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => resolve(); // Continue even if speak.js fails
+        document.head.appendChild(script);
+      } catch (e) {
+        resolve(); // Continue even if loading fails
       }
-    } catch (error) {
-      console.error('[Story] Mark viewed error:', error);
-    }
+    });
   }
 
-  async function onContinue() {
+  // Build the story sequence using the scheduler
+  function buildStorySequence() {
+    // Clear subtitle initially
+    Do(() => setSubtitle(' '))
+      .Wait(2)
+      // Page 1
+      .Do(async () => await loadNarrationRom('page1.nes'))
+      .Do(() => narrate('All that little Jimmy wanted was a functional video game console.'))
+      .Wait(6)
+      // Page 2
+      .Do(async () => await loadNarrationRom('page2.nes'))
+      .Do(() => narrate('But his mom would keep buying him janky clones instead.'))
+      .Wait(6)
+      // Page 3
+      .Do(async () => await loadNarrationRom('page3.nes'))
+      .Do(() => narrate('So little Jimmy broke them all into parts.'))
+      .Wait(6)
+      // Page 4
+      .Do(async () => await loadNarrationRom('page4.nes'))
+      .Do(() => narrate('And now, he is ready to build his ultimate console.'))
+      .Wait(5)
+      // Page 5 (final)
+      .Do(async () => await loadNarrationRom('page5.nes'))
+      .Wait(7)
+      // End: Fade out and navigate to Continue
+      .Do(() => finishStory());
+  }
+
+  // Finish the story and navigate to Continue
+  async function finishStory() {
     try {
-      // Ensure story is marked as seen
-      if (!gameSave.SeenStory) {
+      console.log('[Story] Finishing story...');
+
+      // Clear subtitle
+      setSubtitle('');
+
+      // Mark story as seen
+      if (gameSave) {
         gameSave.SeenStory = true;
-        await saveGameSave();
+        try {
+          if (window.gameSave && window.gameSave.save) {
+            await window.gameSave.save(gameSave);
+            console.log('[Story] Marked story as seen');
+          }
+        } catch (e) {
+          console.error('[Story] Failed to save:', e);
+        }
       }
 
-      // Fade out before navigating
+      // Fade to black
       const overlay = document.getElementById('storyFadeOverlay');
       if (overlay) {
-        overlay.style.pointerEvents = 'all';
         overlay.style.opacity = '1';
       }
 
       // Wait for fade
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise(resolve => setTimeout(resolve, 650));
 
-      // Navigate to deck builder
-      window.location.href = '../DeckBuilder/index.html';
-    } catch (error) {
-      console.error('[Story] Continue error:', error);
-      window.location.href = '../DeckBuilder/index.html';
+      // Navigate to Continue module
+      try {
+        window.location.href = '../Continue/index.html';
+      } catch (e) {
+        console.error('[Story] Failed to navigate:', e);
+      }
+    } catch (e) {
+      console.error('[Story] Failed to finish story:', e);
     }
   }
 
+  // Start when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
   // Expose API for debugging
-  window.storyPage = {
-    getGameSave: () => gameSave,
-    reload: init
+  window.storyMode = {
+    api,
+    setSubtitle,
+    narrate,
+    loadNarrationRom,
+    getGameSave: () => gameSave
   };
+
 })();

@@ -262,5 +262,119 @@ namespace BrokenNes.Windows
                  }
             }
         }
+
+        /// <summary>
+        /// Load a built-in ROM file from wwwroot (for story mode and other built-in content)
+        /// Returns true on success
+        /// </summary>
+        public async Task<bool> LoadBuiltInRomAsync(string filename)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filename))
+                    return false;
+
+                Console.WriteLine($"[Story] Loading built-in page ROM: {filename}");
+
+                // Check Data/story folder first (Windows build location)
+                string dataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "story", filename);
+                
+                // Fall back to wwwroot if not found
+                string wwwrootPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", filename);
+                
+                string romPath = File.Exists(dataPath) ? dataPath : wwwrootPath;
+                
+                if (!File.Exists(romPath))
+                {
+                    Console.WriteLine($"[Story] Page ROM not found in either location:");
+                    Console.WriteLine($"  - {dataPath}");
+                    Console.WriteLine($"  - {wwwrootPath}");
+                    return false;
+                }
+
+                Console.WriteLine($"[Story] Loading ROM from: {romPath}");
+                byte[] romData = await Task.Run(() => File.ReadAllBytes(romPath));
+                
+                if (romData == null || romData.Length == 0)
+                {
+                    Console.WriteLine($"[Story] Page ROM empty: {filename}");
+                    return false;
+                }
+
+                bool wasRunning = false;
+                
+                // Execute on UI thread
+                await InvokeAsync(() =>
+                {
+                    lock (emulationLock)
+                    {
+                        wasRunning = isEmulationRunning;
+                        
+                        if (wasRunning)
+                            StopEmulation();
+                        
+                        if (nes == null)
+                            nes = new NES();
+                        
+                        nes.RomName = filename;
+                        nes.RomPath = romPath;
+                        nes.LoadROM(romData);
+                        
+                        // Apply core selections
+                        ApplySavedCoreSelections();
+                        
+                        // Apply crash behavior
+                        ApplyCrashBehavior();
+                        
+                        // Warm up a frame to avoid stale canvas
+                        try
+                        {
+                            nes.RunFrame();
+                            // Redraw the canvas
+                            displayPanel?.Invalidate();
+                            dxRenderer?.Invalidate();
+                        }
+                        catch { }
+                        
+                        if (wasRunning)
+                            StartEmulation();
+                    }
+                });
+
+                Console.WriteLine($"[Story] Successfully loaded page ROM: {filename}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Story] Failed to load page ROM: {filename}, Error: {ex.Message}");
+                return false;
+            }
+        }
+
+        private Task InvokeAsync(Action action)
+        {
+            if (InvokeRequired)
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        action();
+                        tcs.SetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                }));
+                return tcs.Task;
+            }
+            else
+            {
+                action();
+                return Task.CompletedTask;
+            }
+        }
     }
 }

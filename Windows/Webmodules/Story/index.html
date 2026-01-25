@@ -9,42 +9,21 @@
   <link rel="stylesheet" href="../shared/fonts.css">
 </head>
 <body>
-  <div id="pixelBgHost" class="pixel-bg-host"></div>
-  
   <!-- Fade overlay for transitions -->
-  <div id="storyFadeOverlay" style="position:fixed;inset:0;background:#000;opacity:0;transition:opacity .6s ease;pointer-events:none;z-index:99999;"></div>
+  <div id="storyFadeOverlay"></div>
   
-  <div class="options-root">
-    <h2 class="opt-title">STORY</h2>
-    <div class="opt-sections">
-      <section class="opt-section">
-        <h3 class="opt-h3">Prologue</h3>
-        <p class="opt-row small-note" id="statusText">Preparing story view...</p>
-        
-        <div class="story-placeholder">
-          <p class="story-text">The Story mode is a narrative experience that introduces you to the world of BrokenNes.</p>
-          <p class="story-text">In the full application, this would launch an interactive stage with voice synthesis and animated sequences.</p>
-          <p class="story-text">For the web module version, this serves as a placeholder to acknowledge you've viewed the story introduction.</p>
-        </div>
-        
-        <div class="story-actions">
-          <button class="story-btn" id="btnMarkViewed">Mark Story as Viewed</button>
-          <button class="story-btn" id="btnContinue">Continue to Deck Builder</button>
-        </div>
-      </section>
-    </div>
-    <div class="opt-footer">
-      <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link">DECK BUILDER</a>
-      <a href="../Home/index.html?skipHW=1" class="opt-link">HOME</a>
-    </div>
-  </div>
+  <!-- Subtitles container (positioned below emulator viewport) -->
+  <div id="storySubtitles" role="log" aria-live="polite"></div>
 
   <!-- Dependencies -->
+  <script>
+    // Configure TTS base path before loading speak.js
+    window.SPEAK_TTS_BASE = '../shared/lib/mespeak';
+  </script>
   <script src="../shared/storage.js"></script>
   <script src="../shared/gameSave.js"></script>
   <script src="../shared/webapi.js"></script>
-  <!-- Audio now handled by audio engine via webAPI -->
-  <script src="../shared/homePixelBg.js"></script>
+  <script src="../shared/speak.js"></script>
   <script src="story.js"></script>
 </body>
 </html>

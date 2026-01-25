@@ -51,6 +51,9 @@ namespace BrokenNes.Windows
         private int fpsFrameCount = 0;
         private System.Diagnostics.Stopwatch? fpsStopwatch;
         
+        // Debug: Track render frame calls
+        private int debugRenderFrameCounter = 0;
+        
         // Speed control
         private SpeedControlForm? speedControlForm;
         private volatile float speedOverride = 1.0f;
