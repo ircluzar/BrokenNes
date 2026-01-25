@@ -137,6 +137,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterAudioEndpoints(app);
             RegisterEmulatorEndpoints(app);
             RegisterShaderEndpoints(app);
+            RegisterTimeJumpEndpoints(app);
 
             _host = app;
 

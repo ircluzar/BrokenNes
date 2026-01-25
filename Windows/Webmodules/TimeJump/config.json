@@ -1,0 +1,16 @@
+{
+  "displayMode": "widget",
+  "title": "TimeJump",
+  "description": "Automated time-based savestate capture for temporal navigation",
+  "version": "1.0.0",
+  "showInToolsMenu": true,
+  "isActivity": false,
+  "widget": {
+    "defaultWidth": 500,
+    "defaultHeight": 350,
+    "minWidth": 400,
+    "minHeight": 300,
+    "resizable": true,
+    "startPosition": "centerScreen"
+  }
+}
