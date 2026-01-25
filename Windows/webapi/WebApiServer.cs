@@ -37,12 +37,13 @@ namespace BrokenNes.Windows.WebApi
         private Action? _closeAllMenus;
         private Action? _toggleFullscreen;
         private Func<AudioEngine?> _getAudioEngine;
-        private Func<string, Task<bool>>? _loadBuiltInRom;
+        private Func<string, bool, Task<bool>>? _loadBuiltInRom;
         private Action? _resumeEmulation;
+        private Action? _hideContinueButton;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? hideContinueButton = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -56,6 +57,7 @@ namespace BrokenNes.Windows.WebApi
             _toggleFullscreen = toggleFullscreen;
             _loadBuiltInRom = loadBuiltInRom;
             _resumeEmulation = resumeEmulation;
+            _hideContinueButton = hideContinueButton;
         }
 
         /// <summary>
@@ -121,6 +123,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterUIEndpoints(app);
             RegisterAudioEndpoints(app);
             RegisterEmulatorEndpoints(app);
+            RegisterShaderEndpoints(app);
 
             _host = app;
 
@@ -2509,15 +2512,18 @@ namespace BrokenNes.Windows.WebApi
                     }
 
                     // Switch to Overlay mode on UI thread (skipNavigation=true to preserve current page content)
+                    // Also hide continue button if displayed (Story mode and other overlays shouldn't show it)
                     if (_uiControl.InvokeRequired)
                     {
                         _uiControl.BeginInvoke((MethodInvoker)delegate
                         {
+                            _hideContinueButton?.Invoke();
                             _switchViewMode(ViewMode.Overlay, true);
                         });
                     }
                     else
                     {
+                        _hideContinueButton?.Invoke();
                         _switchViewMode(ViewMode.Overlay, true);
                     }
 
@@ -2537,6 +2543,166 @@ namespace BrokenNes.Windows.WebApi
                     });
                 }
             });
+        }
+
+        /// <summary>
+        /// Register Shader API endpoints for managing visual effects
+        /// </summary>
+        private void RegisterShaderEndpoints(WebApplication app)
+        {
+            // GET /api/shader/current - Get current shader name and enabled state
+            app.MapGet("/api/shader/current", () =>
+            {
+                try
+                {
+                    var shaderName = Rendering.NesShaderControl.GetCurrentShaderName();
+                    var useShader = Rendering.NesShaderControl.CurrentRenderer?.UseShader ?? false;
+                    
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        shader = shaderName,
+                        enabled = useShader
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // POST /api/shader/set - Set shader by name
+            app.MapPost("/api/shader/set", async (HttpContext context) =>
+            {
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<SetShaderRequest>();
+                    if (body == null || string.IsNullOrWhiteSpace(body.ShaderName))
+                    {
+                        return Results.BadRequest(new { success = false, error = "Shader name is required" });
+                    }
+
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    bool success = false;
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke((MethodInvoker)delegate
+                        {
+                            success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                        });
+                    }
+                    else
+                    {
+                        success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                    }
+
+                    if (success)
+                    {
+                        return Results.Ok(new
+                        {
+                            success = true,
+                            shader = body.ShaderName
+                        });
+                    }
+                    else
+                    {
+                        return Results.BadRequest(new
+                        {
+                            success = false,
+                            error = "Failed to switch shader"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // POST /api/shader/enable - Enable shaders
+            app.MapPost("/api/shader/enable", () =>
+            {
+                try
+                {
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke((MethodInvoker)delegate
+                        {
+                            Rendering.NesShaderControl.EnableShaders();
+                        });
+                    }
+                    else
+                    {
+                        Rendering.NesShaderControl.EnableShaders();
+                    }
+
+                    return Results.Ok(new { success = true, enabled = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // POST /api/shader/disable - Disable shaders
+            app.MapPost("/api/shader/disable", () =>
+            {
+                try
+                {
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke((MethodInvoker)delegate
+                        {
+                            Rendering.NesShaderControl.DisableShaders();
+                        });
+                    }
+                    else
+                    {
+                        Rendering.NesShaderControl.DisableShaders();
+                    }
+
+                    return Results.Ok(new { success = true, enabled = false });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+        }
+
+        private class SetShaderRequest
+        {
+            public string ShaderName { get; set; } = "";
         }
 
         /// <summary>
@@ -3461,7 +3627,7 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Filename is required" });
                     }
 
-                    bool success = await _loadBuiltInRom(body.Filename);
+                    bool success = await _loadBuiltInRom(body.Filename, body.PreserveShader);
 
                     return Results.Ok(new
                     {
@@ -3479,6 +3645,7 @@ namespace BrokenNes.Windows.WebApi
         private class LoadBuiltInRomRequest
         {
             public string? Filename { get; set; }
+            public bool PreserveShader { get; set; } = false;
         }
     }
 }

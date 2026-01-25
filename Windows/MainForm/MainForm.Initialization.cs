@@ -821,8 +821,9 @@ namespace BrokenNes.Windows
                         CloseAllMenus,  // Pass the close menus handler
                         ToggleFullscreen,  // Pass the fullscreen toggle handler
                         () => audioEngine,  // Pass the audio engine
-                        (filename) => LoadBuiltInRomAsync(filename),  // Pass the ROM loader
-                        ResumeEmulationIfPaused  // Pass the resume emulation handler
+                        (filename, preserveShader) => LoadBuiltInRomAsync(filename, preserveShader),  // Pass the ROM loader
+                        ResumeEmulationIfPaused,  // Pass the resume emulation handler
+                        HideContinueButton  // Pass the continue button hide handler
                     );
                 }
 

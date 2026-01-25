@@ -4,6 +4,7 @@
   'use strict';
 
   let gameSave = null;
+  let savedShaderState = null; // Store original shader state to restore later
 
   // Tiny chainable scheduler: supports sync and async Do steps
   // API: Do(fn|asyncFn), Wait(seconds), Start(), Reset()
@@ -92,7 +93,7 @@
         return false;
       }
 
-      const result = await window.webapi.emulator.loadBuiltInRom(name);
+      const result = await window.webapi.emulator.loadBuiltInRom(name, true); // preserveShader = true
       
       if (result && result.success) {
         console.log(`[Story] Successfully loaded ${name}`);
@@ -150,6 +151,30 @@
         }
       } catch (e) {
         console.error('[Story] Failed to set crash behavior:', e);
+      }
+
+      // Save current shader state and switch to TV (CRT) shader for story mode
+      try {
+        if (window.webapi && window.webapi.shader) {
+          const currentState = await window.webapi.shader.getCurrent();
+          if (currentState && currentState.success) {
+            savedShaderState = {
+              shader: currentState.shader,
+              enabled: currentState.enabled
+            };
+            console.log('[Story] Saved shader state:', savedShaderState);
+          }
+
+          // Switch to TV (CRT) shader
+          await window.webapi.shader.setShader('TV');
+          console.log('[Story] Switched to TV (CRT) shader');
+
+          // Enable shaders
+          await window.webapi.shader.enable();
+          console.log('[Story] Enabled shaders');
+        }
+      } catch (e) {
+        console.error('[Story] Failed to set shader:', e);
       }
 
       // Load game save
@@ -254,6 +279,30 @@
   async function finishStory() {
     try {
       console.log('[Story] Finishing story...');
+
+      // Restore original shader state
+      try {
+        if (savedShaderState && window.webapi && window.webapi.shader) {
+          console.log('[Story] Restoring shader state:', savedShaderState);
+          
+          // Restore shader
+          if (savedShaderState.shader) {
+            await window.webapi.shader.setShader(savedShaderState.shader);
+            console.log('[Story] Restored shader:', savedShaderState.shader);
+          }
+
+          // Restore enabled state
+          if (savedShaderState.enabled) {
+            await window.webapi.shader.enable();
+            console.log('[Story] Restored shaders enabled');
+          } else {
+            await window.webapi.shader.disable();
+            console.log('[Story] Restored shaders disabled');
+          }
+        }
+      } catch (e) {
+        console.error('[Story] Failed to restore shader:', e);
+      }
 
       // Clear subtitle
       setSubtitle('');

@@ -257,8 +257,15 @@
     },
 
     emulator: {
-      loadBuiltInRom: (filename) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename } }),
+      loadBuiltInRom: (filename, preserveShader = false) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename, preserveShader } }),
       resume: () => request('/api/emulator/resume', { method: 'POST' })
+    },
+
+    shader: {
+      getCurrent: () => request('/api/shader/current'),
+      setShader: (shaderName) => request('/api/shader/set', { method: 'POST', json: { shaderName } }),
+      enable: () => request('/api/shader/enable', { method: 'POST' }),
+      disable: () => request('/api/shader/disable', { method: 'POST' })
     }
   };
 

@@ -267,14 +267,28 @@ namespace BrokenNes.Windows
         /// Load a built-in ROM file from wwwroot (for story mode and other built-in content)
         /// Returns true on success
         /// </summary>
-        public async Task<bool> LoadBuiltInRomAsync(string filename)
+        /// <param name="preserveShader">If true, preserve current shader settings during load</param>
+        public async Task<bool> LoadBuiltInRomAsync(string filename, bool preserveShader = false)
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(filename))
                     return false;
 
+                // Hide continue button if it's being displayed (story mode shouldn't show it)
+                HideContinueButton();
+
                 Console.WriteLine($"[Story] Loading built-in page ROM: {filename}");
+
+                // Save shader state if preserving
+                Rendering.NesShaderManager.ShaderType? savedShader = null;
+                bool? savedShaderEnabled = null;
+                if (preserveShader && useDirectX && dxRenderer != null)
+                {
+                    savedShader = dxRenderer.CurrentShaderType;
+                    savedShaderEnabled = dxRenderer.UseShader;
+                    Console.WriteLine($"[Story] Preserving shader: {savedShader}, Enabled: {savedShaderEnabled}");
+                }
 
                 // Check Data/story folder first (Windows build location)
                 string dataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "story", filename);
@@ -347,6 +361,14 @@ namespace BrokenNes.Windows
                     if (!isEmulationRunning)
                     {
                         StartEmulation();
+                    }
+                    
+                    // Restore shader if we were preserving it
+                    if (preserveShader && savedShader.HasValue && savedShaderEnabled.HasValue && useDirectX && dxRenderer != null)
+                    {
+                        dxRenderer.SwitchShader(savedShader.Value);
+                        dxRenderer.UseShader = savedShaderEnabled.Value;
+                        Console.WriteLine($"[Story] Restored shader: {savedShader}, Enabled: {savedShaderEnabled}");
                     }
                 });
 
