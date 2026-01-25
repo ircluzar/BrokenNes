@@ -111,6 +111,68 @@ function addStateBlock(stateHash, thumbnailBase64) {
   block.addEventListener('click', () => performStateQuery(stateHash));
   
   elements.stateGrid.appendChild(block);
+  
+  // Recalculate grid layout to fit all blocks
+  updateGridLayout();
+}
+
+function updateGridLayout() {
+  if (!elements.stateGrid) return;
+  
+  const blocks = elements.stateGrid.querySelectorAll('.tj-state-block:not(.burning):not(.loaded)');
+  const blockCount = blocks.length;
+  
+  if (blockCount === 0) return;
+  
+  // Get the visualization container dimensions
+  const visualization = elements.stateGrid.closest('.tj-visualization');
+  if (!visualization) return;
+  
+  const containerWidth = visualization.clientWidth - 32; // Account for padding
+  const containerHeight = visualization.clientHeight - 48; // Account for padding and label space
+  
+  // Define base size and minimum size
+  const baseSize = 52;
+  const minSize = 24;
+  const gap = 6;
+  
+  // Calculate optimal grid layout
+  let blockSize = baseSize;
+  let cols = 1;
+  let rows = 1;
+  
+  // Try different block sizes starting from base size down to minimum
+  for (let size = baseSize; size >= minSize; size -= 2) {
+    // Calculate how many columns we can fit
+    const maxCols = Math.floor((containerWidth + gap) / (size + gap));
+    if (maxCols < 1) continue;
+    
+    // Calculate how many rows we need
+    const neededRows = Math.ceil(blockCount / maxCols);
+    
+    // Calculate total height needed
+    const totalHeight = neededRows * size + (neededRows - 1) * gap;
+    
+    // If this fits, use it
+    if (totalHeight <= containerHeight) {
+      blockSize = size;
+      cols = maxCols;
+      rows = neededRows;
+      break;
+    }
+  }
+  
+  // Update grid template
+  elements.stateGrid.style.gridTemplateColumns = `repeat(${cols}, ${blockSize}px)`;
+  elements.stateGrid.style.gap = `${gap}px`;
+  
+  // Update all block sizes
+  blocks.forEach(block => {
+    block.style.width = `${blockSize}px`;
+    block.style.height = `${blockSize * 0.92}px`; // Maintain aspect ratio
+  });
+  
+  console.log(`[TimeJump] Grid layout: ${blockCount} blocks, ${cols}x${rows}, ${blockSize}px each`);
 }
 
 function removeStateBlocksByHash(hashes, loadedHash) {
@@ -128,6 +190,8 @@ function removeStateBlocksByHash(hashes, loadedHash) {
         block.classList.add(isLoaded ? 'loaded' : 'burning');
         setTimeout(() => {
           block.remove();
+          // Recalculate grid layout after removal
+          updateGridLayout();
         }, 500); // Match animation duration
       }, index * 50); // Stagger the burning animation
     }

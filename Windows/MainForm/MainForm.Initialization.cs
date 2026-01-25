@@ -64,6 +64,7 @@ namespace BrokenNes.Windows
             this.Text = "BrokenNes";
             Console.WriteLine("BrokenNes - Windows");
             this.ClientSize = new Size(1280, 720);
+            this.MinimumSize = new Size(1280, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.KeyPreview = true;
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;

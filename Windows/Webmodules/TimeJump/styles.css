@@ -1,18 +1,20 @@
 /* TimeJump Web Module Styles */
 
 :root {
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #1a1a1a;
-  --bg-tertiary: #2a2a2a;
-  --border-color: #333;
-  --text-primary: #e0e0e0;
-  --text-secondary: #b0b0b0;
-  --text-muted: #808080;
-  --accent-primary: #00d4ff;
-  --accent-secondary: #ff6b35;
-  --success: #4caf50;
-  --danger: #f44336;
-  --warning: #ff9800;
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d30;
+  --bg-tertiary: #3c3c3c;
+  --bg-hover: #454545;
+  --border-color: #555555;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --text-muted: #888888;
+  --cyan: #00d4ff;
+  --red: #ff5a26;
+  --red-glow: rgba(255, 90, 38, 0.4);
+  --green: #00ff88;
+  --yellow: #ffcc00;
+  --blue: #4488ff;
   --shadow: rgba(0, 0, 0, 0.5);
 }
 
@@ -23,15 +25,15 @@
 }
 
 body {
-  font-family: 'Px437 IBM VGA 8x16', 'Courier New', monospace;
-  background: var(--bg-primary);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: transparent;
   color: var(--text-primary);
   overflow: hidden;
   width: 100vw;
   height: 100vh;
 }
 
-/* Background */
+/* Pixel Background */
 .pixel-bg-host {
   position: fixed;
   top: 0;
@@ -39,8 +41,21 @@ body {
   width: 100%;
   height: 100%;
   z-index: -1;
-  opacity: 0.03;
-  pointer-events: none;
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 212, 255, 0.03) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(0, 212, 255, 0.03) 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 212, 255, 0.03) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(0, 212, 255, 0.03) 3px
+    );
 }
 
 /* Root Container */
@@ -49,30 +64,35 @@ body {
   flex-direction: column;
   width: 100%;
   height: 100vh;
-  padding: 1rem;
-  gap: 1rem;
+  padding: 0;
+  gap: 0;
+  background: rgba(26, 26, 26, 0.75);
+  backdrop-filter: blur(2px);
 }
 
 /* Header */
 .tj-header {
   text-align: center;
-  padding: 1rem;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
+  padding: 0.75rem;
+  background: rgba(45, 45, 48, 0.9);
+  border-bottom: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .tj-header h1 {
-  font-size: 1.5rem;
-  color: var(--accent-primary);
-  margin-bottom: 0.25rem;
+  font-size: 1.25rem;
+  color: var(--cyan);
+  margin-bottom: 0;
   text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
 }
 
 .tj-subtitle {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
-  font-style: italic;
+  margin-top: 0.25rem;
 }
 
 /* Main Content */
@@ -89,6 +109,8 @@ body {
   flex-direction: column;
   gap: 1rem;
   animation: fadeIn 0.3s ease;
+  flex: 1;
+  min-height: 0;
 }
 
 .tj-panel.active {
@@ -108,21 +130,25 @@ body {
 
 /* Card */
 .tj-card {
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
-  padding: 1.5rem;
+  background: rgba(45, 45, 48, 0.85);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .tj-card-title {
-  font-size: 1rem;
-  color: var(--accent-primary);
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--cyan);
+  border-bottom: 1px solid var(--cyan);
+  padding-bottom: 0.35rem;
   margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Welcome Card */
@@ -148,12 +174,12 @@ body {
 }
 
 .tj-error-message {
-  padding: 1rem;
-  background: rgba(244, 67, 54, 0.1);
-  border: 1px solid var(--danger);
+  padding: 0.75rem;
+  background: rgba(255, 90, 38, 0.1);
+  border: 1px solid var(--red);
   border-radius: 4px;
-  color: var(--danger);
-  font-size: 0.875rem;
+  color: var(--red);
+  font-size: 0.8rem;
   text-align: center;
 }
 
@@ -165,33 +191,33 @@ body {
 }
 
 .tj-label {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  font-weight: bold;
+  font-weight: normal;
 }
 
 .tj-input-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .tj-input {
   flex: 1;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.85);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 0.8rem;
   transition: border-color 0.2s ease;
 }
 
 .tj-input:focus {
   outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+  border-color: var(--cyan);
+  box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
 }
 
 .tj-unit {
@@ -221,89 +247,97 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
+  gap: 0.35rem;
+  padding: 0.6rem 1.2rem;
   font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: bold;
-  border: 2px solid var(--border-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.85);
   color: var(--text-primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .tj-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px var(--shadow);
+  background: rgba(69, 69, 69, 0.9);
+  border-color: var(--cyan);
 }
 
 .tj-btn:active:not(:disabled) {
-  transform: translateY(0);
+  transform: scale(0.98);
 }
 
 .tj-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .tj-btn-primary {
-  background: linear-gradient(135deg, #00a8cc 0%, #00d4ff 100%);
-  border-color: #00d4ff;
-  color: #000;
+  background: rgba(0, 212, 255, 0.2);
+  border-color: var(--cyan);
+  color: var(--cyan);
 }
 
 .tj-btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+  background: var(--cyan);
+  color: #000;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
 }
 
 .tj-btn-large {
-  font-size: 1.125rem;
-  padding: 1rem 2rem;
-  min-width: 200px;
+  font-size: 0.85rem;
+  padding: 0.75rem 1.5rem;
+  min-width: 150px;
 }
 
 .tj-btn-danger {
-  background: linear-gradient(135deg, #c62828 0%, #f44336 100%);
-  border-color: #f44336;
+  background: rgba(255, 90, 38, 0.2);
+  border-color: var(--red);
+  color: var(--red);
 }
 
 .tj-btn-danger:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+  background: var(--red);
+  color: #000;
+  box-shadow: 0 0 10px var(--red-glow);
 }
 
 .tj-btn-jump {
-  background: linear-gradient(135deg, #ff6b35 0%, #ff9800 100%);
-  border-color: #ff9800;
-  color: #000;
-  font-size: 1rem;
-  padding: 1rem 2rem;
+  background: rgba(255, 90, 38, 0.3);
+  border: 2px solid var(--red);
+  color: var(--red);
+  font-size: 0.85rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 700;
   animation: jumpPulse 3s ease-in-out infinite;
 }
 
 .tj-btn-jump:disabled {
-  background: linear-gradient(135deg, #444 0%, #666 100%);
-  border-color: #666;
-  color: #888;
+  background: rgba(60, 60, 60, 0.85);
+  border-color: var(--border-color);
+  color: var(--text-muted);
   cursor: not-allowed;
   animation: none;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .tj-btn-jump:hover:not(:disabled) {
-  box-shadow: 0 4px 16px rgba(255, 152, 0, 0.6);
+  background: var(--red);
+  color: #000;
+  box-shadow: 0 0 20px var(--red-glow);
   animation: none;
 }
 
 @keyframes jumpPulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7);
+    box-shadow: 0 0 0 0 var(--red-glow);
   }
   50% {
-    box-shadow: 0 0 20px 5px rgba(255, 152, 0, 0);
+    box-shadow: 0 0 15px 3px rgba(255, 90, 38, 0);
   }
 }
 
@@ -315,10 +349,10 @@ body {
 .tj-info {
   background: rgba(0, 212, 255, 0.05);
   border: 1px solid rgba(0, 212, 255, 0.2);
-  border-radius: 8px;
-  padding: 1rem;
-  font-size: 0.75rem;
-  line-height: 1.6;
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
   color: var(--text-secondary);
 }
 
@@ -326,41 +360,44 @@ body {
 .tj-status {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: var(--bg-tertiary);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(60, 60, 60, 0.85);
   border-radius: 4px;
+  border: 1px solid var(--border-color);
 }
 
 .tj-status-indicator {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   position: relative;
+  flex-shrink: 0;
 }
 
 .tj-status-indicator.running {
-  background: var(--success);
+  background: var(--green);
   animation: pulse 2s ease-in-out infinite;
 }
 
 @keyframes pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+    box-shadow: 0 0 0 8px rgba(0, 255, 136, 0);
   }
 }
 
 .tj-status-text h3 {
-  font-size: 0.875rem;
-  color: var(--success);
-  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--green);
+  margin-bottom: 0.15rem;
+  font-weight: 600;
 }
 
 .tj-status-text p {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
@@ -369,37 +406,36 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 1rem 0;
+  padding: 0.75rem 0;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 0.5rem;
 }
 
 .tj-level-display {
-  font-size: 1rem;
-  color: var(--accent-primary);
+  font-size: 0.85rem;
+  color: var(--cyan);
   text-align: center;
-  font-weight: bold;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
 }
 
 .tj-level-progress {
   width: 100%;
-  height: 8px;
-  background: var(--bg-tertiary);
+  height: 6px;
+  background: rgba(60, 60, 60, 0.85);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 3px;
   overflow: hidden;
   position: relative;
 }
 
 .tj-level-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #00d4ff 0%, #ff6b35 100%);
+  background: linear-gradient(90deg, var(--cyan) 0%, var(--red) 100%);
   width: 0%;
   transition: width 0.1s linear;
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
   position: relative;
 }
 
@@ -428,20 +464,23 @@ body {
 
 /* Visualization */
 .tj-visualization {
-  background: var(--bg-tertiary);
-  border-radius: 8px;
-  padding: 1.5rem 0.25rem;
+  background: rgba(60, 60, 60, 0.5);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  padding: 1rem 0.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   min-height: 200px;
+  flex: 1;
+  min-height: 0;
 }
 
 .tj-viz-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   text-align: center;
 }
 
@@ -452,19 +491,21 @@ body {
   justify-content: center;
   padding: 0.5rem 0;
   min-height: 150px;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .tj-state-block {
   width: 52px;
   height: 48px;
-  background: linear-gradient(135deg, #00d4ff 0%, #0088cc 100%);
+  background: linear-gradient(135deg, var(--cyan) 0%, rgba(0, 212, 255, 0.7) 100%);
   background-size: cover;
   background-position: center;
-  border-radius: 4px;
-  border: 2px solid rgba(0, 212, 255, 0.5);
-  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  border-radius: 3px;
+  border: 2px solid rgba(0, 212, 255, 0.6);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
   animation: blockAppear 0.3s ease;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -474,20 +515,21 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(0, 136, 204, 0.2) 100%);
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15) 0%, rgba(0, 136, 204, 0.15) 100%);
   pointer-events: none;
 }
 
 .tj-state-block:hover {
-  transform: scale(1.15);
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
-  border-color: rgba(0, 212, 255, 1);
+  transform: scale(1.1);
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.7);
+  border-color: var(--cyan);
+  z-index: 10;
 }
 
 .tj-state-block:active {
   transform: scale(1.05);
-  box-shadow: 0 0 30px rgba(255, 255, 0, 0.9);
-  border-color: rgba(255, 255, 0, 1);
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+  border-color: var(--yellow);
 }
 
 .tj-state-block.burning {
@@ -517,14 +559,14 @@ body {
   }
   50% {
     transform: scale(1.3);
-    filter: brightness(1.5) hue-rotate(-20deg);
-    box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
-    border-color: rgba(255, 0, 0, 0.8);
+    filter: brightness(1.5) hue-rotate(180deg);
+    box-shadow: 0 0 20px var(--red-glow);
+    border-color: var(--red);
   }
   100% {
     opacity: 0;
     transform: scale(0);
-    filter: brightness(1.5) hue-rotate(-40deg) saturate(2);
+    filter: brightness(1.5) hue-rotate(180deg) saturate(2);
   }
 }
 
@@ -552,12 +594,12 @@ body {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background: var(--bg-secondary);
-  border: 2px solid var(--border-color);
+  background: rgba(45, 45, 48, 0.95);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.25rem;
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   box-shadow: 0 4px 12px var(--shadow);
   opacity: 0;
   transform: translateY(20px);
@@ -565,6 +607,7 @@ body {
   transition: all 0.3s ease;
   z-index: 1000;
   max-width: 300px;
+  backdrop-filter: blur(3px);
 }
 
 .tj-toast.show {
@@ -574,18 +617,18 @@ body {
 }
 
 .tj-toast.success {
-  border-color: var(--success);
-  background: rgba(76, 175, 80, 0.1);
+  border-color: var(--green);
+  background: rgba(0, 255, 136, 0.1);
 }
 
 .tj-toast.error {
-  border-color: var(--danger);
-  background: rgba(244, 67, 54, 0.1);
+  border-color: var(--red);
+  background: rgba(255, 90, 38, 0.1);
 }
 
 .tj-toast.warning {
-  border-color: var(--warning);
-  background: rgba(255, 152, 0, 0.1);
+  border-color: var(--yellow);
+  background: rgba(255, 204, 0, 0.1);
 }
 
 /* Scrollbar */
@@ -595,7 +638,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-tertiary);
+  background: rgba(60, 60, 60, 0.85);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -604,7 +647,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-primary);
+  background: var(--cyan);
 }
 
 /* ==================== Start Screen Redesign ==================== */
@@ -641,15 +684,16 @@ body {
 
 /* Logo */
 .tj-logo {
-  font-family: 'Px437 IBM VGA 8x16', monospace;
-  font-size: 6rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 5rem;
   line-height: 1;
-  font-weight: bold;
+  font-weight: 700;
   color: #fff;
   text-transform: uppercase;
   text-shadow: 
-    0 0 20px var(--accent-primary),
-    0 0 40px var(--accent-primary);
+    0 0 20px var(--cyan),
+    0 0 40px var(--cyan),
+    0 0 60px var(--red);
   margin-bottom: 4rem;
   letter-spacing: 0.5rem;
   animation: logoPulse 4s ease-in-out infinite;
@@ -659,37 +703,38 @@ body {
 
 @keyframes logoPulse {
   0%, 100% { 
-    text-shadow: 0 0 20px var(--accent-primary), 0 0 40px var(--accent-primary); 
+    text-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan), 0 0 60px var(--red); 
     opacity: 1; 
   }
   50% { 
-    text-shadow: 0 0 10px var(--accent-primary), 0 0 20px var(--accent-primary); 
+    text-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan), 0 0 30px var(--red); 
     opacity: 0.9; 
   }
 }
 
 /* Big Start Button */
 .tj-btn-start-big {
-  font-family: 'Px437 IBM VGA 8x16', monospace;
-  font-size: 2.5rem;
-  padding: 1.5rem 6rem;
-  background: rgba(0, 0, 0, 0.4);
-  border: 3px solid var(--accent-primary);
-  color: var(--accent-primary);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 2rem;
+  padding: 1.25rem 5rem;
+  background: rgba(0, 0, 0, 0.6);
+  border: 3px solid var(--red);
+  color: var(--red);
   text-transform: uppercase;
   letter-spacing: 0.3rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+  box-shadow: 0 0 20px var(--red-glow);
   outline: none;
   position: relative;
   z-index: 20;
+  font-weight: 600;
 }
 
 .tj-btn-start-big:hover {
-  background: var(--accent-primary);
+  background: var(--red);
   color: #000;
-  box-shadow: 0 0 50px var(--accent-primary);
+  box-shadow: 0 0 50px var(--red-glow);
   transform: scale(1.05);
 }
 
@@ -722,13 +767,13 @@ body {
     from 0deg,
     transparent 0deg,
     transparent 40deg,
-    var(--accent-primary) 60deg,
+    var(--cyan) 60deg,
     transparent 100deg,
     transparent 180deg,
-    var(--accent-secondary) 210deg,
+    var(--red) 210deg,
     transparent 240deg,
     transparent 280deg,
-    var(--accent-primary) 300deg,
+    var(--cyan) 300deg,
     transparent 360deg
   );
   /* Soften edges */
@@ -748,7 +793,7 @@ body {
   background: conic-gradient(
     from 180deg,
     transparent 0deg, 
-    rgba(0, 212, 255, 0.4) 40deg,
+    rgba(255, 90, 38, 0.4) 40deg,
     transparent 80deg
   );
   animation: galaxySpin 40s linear infinite reverse;
@@ -765,7 +810,7 @@ body {
   position: absolute;
   bottom: 2rem;
   background: rgba(40, 0, 0, 0.8);
-  border: 1px solid #f00;
+  border: 1px solid var(--red);
   color: #fca;
   padding: 1rem 2rem;
   border-radius: 4px;

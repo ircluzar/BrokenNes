@@ -88,6 +88,8 @@ namespace BrokenNes.Windows
         private ImagineEngine? imagineEngine;
         private readonly ConcurrentQueue<Action> emulationActions = new();
         public event Action? CorruptorStateChanged;
+        private int autoCorruptFrameCounter = 0;
+        private const int AutoCorruptFrameInterval = 8;
         
         // Fullscreen support
         private bool isFullscreen = false;

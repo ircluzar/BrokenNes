@@ -268,11 +268,20 @@ namespace BrokenNes.Windows
 
                             if (corruptor.AutoCorrupt)
                             {
-                                lock (corruptorLock)
+                                autoCorruptFrameCounter++;
+                                if (autoCorruptFrameCounter >= AutoCorruptFrameInterval)
                                 {
-                                    try { corruptor.Blast(nes); }
-                                    catch (Exception ex) { Console.WriteLine($"Auto-corrupt error: {ex.Message}"); }
+                                    autoCorruptFrameCounter = 0;
+                                    lock (corruptorLock)
+                                    {
+                                        try { corruptor.Blast(nes); }
+                                        catch (Exception ex) { Console.WriteLine($"Auto-corrupt error: {ex.Message}"); }
+                                    }
                                 }
+                            }
+                            else
+                            {
+                                autoCorruptFrameCounter = 0;
                             }
                             
                             // Track FPS for display and audio speed adjustment
