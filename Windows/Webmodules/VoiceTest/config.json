@@ -1,0 +1,9 @@
+{
+  "id": "voicetest",
+  "name": "Voice Test",
+  "description": "Test speak.js TTS library with configurable parameters",
+  "icon": "🗣️",
+  "category": "tools",
+  "version": "1.0.0",
+  "entryPoint": "index.html"
+}

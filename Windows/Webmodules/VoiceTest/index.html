@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Test - speak.js Playground</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="../shared/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🗣️ Voice Test</h1>
+      <p class="subtitle">Test speak.js with custom parameters</p>
+    </header>
+
+    <main class="main-content">
+      <!-- Text Input Section -->
+      <section class="panel">
+        <h2>Text to Speak</h2>
+        <textarea 
+          id="textInput" 
+          class="text-input" 
+          placeholder="Enter text to speak here..."
+          rows="4"
+        >Hello! This is a test of the speak dot js library. It uses meSpeak for text to speech synthesis.</textarea>
+      </section>
+
+      <!-- Voice Configuration Section -->
+      <section class="panel">
+        <h2>Voice Configuration</h2>
+        
+        <div class="config-grid">
+          <!-- Speed Control -->
+          <div class="control-group">
+            <label for="speedSlider">
+              Speed: <span id="speedValue" class="value-display">125</span>
+            </label>
+            <input 
+              type="range" 
+              id="speedSlider" 
+              min="80" 
+              max="450" 
+              value="125" 
+              class="slider"
+            >
+            <div class="hint">Range: 80-450 (default: 125)</div>
+          </div>
+
+          <!-- Pitch Control -->
+          <div class="control-group">
+            <label for="pitchSlider">
+              Pitch: <span id="pitchValue" class="value-display">1.0</span>
+            </label>
+            <input 
+              type="range" 
+              id="pitchSlider" 
+              min="0.1" 
+              max="5.0" 
+              step="0.1" 
+              value="1.0" 
+              class="slider"
+            >
+            <div class="hint">Range: 0.1-5.0 (default: 1.0)</div>
+          </div>
+
+          <!-- Volume Control -->
+          <div class="control-group">
+            <label for="volumeSlider">
+              Volume: <span id="volumeValue" class="value-display">1.0</span>
+            </label>
+            <input 
+              type="range" 
+              id="volumeSlider" 
+              min="0" 
+              max="2" 
+              step="0.1" 
+              value="1.0" 
+              class="slider"
+            >
+            <div class="hint">Range: 0-2 (default: 1.0)</div>
+          </div>
+
+          <!-- Variant Selector -->
+          <div class="control-group">
+            <label for="variantSelect">
+              Variant: <span id="variantValue" class="value-display">croak</span>
+            </label>
+            <select id="variantSelect" class="select">
+              <option value="croak" selected>croak</option>
+              <option value="whisper">whisper</option>
+              <option value="whisperf">whisperf</option>
+              <option value="klatt">klatt</option>
+              <option value="klatt2">klatt2</option>
+              <option value="klatt3">klatt3</option>
+              <option value="m1">m1</option>
+              <option value="m2">m2</option>
+              <option value="m3">m3</option>
+              <option value="m4">m4</option>
+              <option value="m5">m5</option>
+              <option value="m6">m6</option>
+              <option value="m7">m7</option>
+              <option value="f1">f1</option>
+              <option value="f2">f2</option>
+              <option value="f3">f3</option>
+              <option value="f4">f4</option>
+              <option value="f5">f5</option>
+            </select>
+            <div class="hint">Voice variant style</div>
+          </div>
+
+          <!-- Voice Selector -->
+          <div class="control-group">
+            <label for="voiceSelect">
+              Voice: <span id="voiceValue" class="value-display">en-us</span>
+            </label>
+            <select id="voiceSelect" class="select">
+              <option value="en-us" selected>English (US)</option>
+              <option value="en-gb">English (GB)</option>
+              <option value="en-sc">English (Scotland)</option>
+            </select>
+            <div class="hint">Voice language/accent</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="actions">
+        <button id="speakBtn" class="btn btn-primary">
+          🔊 Speak
+        </button>
+        <button id="resetBtn" class="btn btn-secondary">
+          🔄 Reset to Defaults
+        </button>
+        <button id="stopBtn" class="btn btn-danger">
+          ⏹️ Stop
+        </button>
+      </section>
+
+      <!-- Status Section -->
+      <section class="panel status-panel">
+        <h3>Status</h3>
+        <div id="status" class="status-text">Ready</div>
+      </section>
+
+      <!-- Info Section -->
+      <section class="panel info-panel">
+        <h3>ℹ️ About</h3>
+        <p>This page allows you to test the speak.js TTS library with various configuration parameters.</p>
+        <ul>
+          <li><strong>Speed:</strong> Controls how fast the speech is (words per minute)</li>
+          <li><strong>Pitch:</strong> Controls the pitch/tone of the voice</li>
+          <li><strong>Volume:</strong> Controls the amplitude (loudness) of the voice</li>
+          <li><strong>Variant:</strong> Different voice characteristics (robotic, whisper, etc.)</li>
+          <li><strong>Voice:</strong> Language and accent selection</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <!-- Load speak.js and dependencies -->
+  <script>
+    // Set base path for mespeak library
+    window.SPEAK_TTS_BASE = '../shared/lib/mespeak';
+  </script>
+  <script src="../shared/speak.js"></script>
+  <script src="voicetest.js"></script>
+</body>
+</html>
