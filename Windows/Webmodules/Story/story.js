@@ -112,6 +112,36 @@
     try {
       console.log('[Story] Initializing story mode...');
 
+      // CRITICAL: Switch to Overlay mode so the emulator is visible behind the transparent WebView
+      // This is necessary when navigating directly from another webmodule (e.g., Home)
+      try {
+        if (window.webapi && window.webapi.navigation && window.webapi.navigation.goToOverlay) {
+          const result = await window.webapi.navigation.goToOverlay();
+          if (result && result.success) {
+            console.log('[Story] Switched to Overlay mode');
+          } else {
+            console.log('[Story] Overlay mode switch returned:', result);
+          }
+        }
+      } catch (e) {
+        console.warn('[Story] Failed to switch to Overlay mode:', e);
+      }
+
+      // CRITICAL: Resume emulation if it was paused (e.g., when navigating from Home webmodule)
+      // Story mode needs the emulator running to display the NES page ROMs
+      try {
+        if (window.webapi && window.webapi.emulator && window.webapi.emulator.resume) {
+          const result = await window.webapi.emulator.resume();
+          if (result && result.success) {
+            console.log('[Story] Emulation resumed successfully');
+          } else {
+            console.log('[Story] Emulation resume returned:', result);
+          }
+        }
+      } catch (e) {
+        console.warn('[Story] Failed to resume emulation:', e);
+      }
+
       // Set crash behavior to ignore errors for story mode
       try {
         if (window.webapi && window.webapi.rtc && window.webapi.rtc.setCrashBehavior) {

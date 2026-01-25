@@ -342,9 +342,12 @@ namespace BrokenNes.Windows
                         catch { }
                     }
                     
-                    // Start emulation outside lock as well
-                    if (wasRunning)
+                    // ALWAYS start emulation for built-in ROMs (story mode needs emulator running)
+                    // This ensures the emulator is running even when loaded from Web mode
+                    if (!isEmulationRunning)
+                    {
                         StartEmulation();
+                    }
                 });
 
                 Console.WriteLine($"[Story] Successfully loaded page ROM: {filename}");

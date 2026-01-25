@@ -226,7 +226,8 @@
     },
 
     navigation: {
-      goToEmulator: () => request('/api/navigation/go-to-emulator', { method: 'POST' })
+      goToEmulator: () => request('/api/navigation/go-to-emulator', { method: 'POST' }),
+      goToOverlay: () => request('/api/navigation/go-to-overlay', { method: 'POST' })
     },
 
     ui: {
@@ -256,7 +257,8 @@
     },
 
     emulator: {
-      loadBuiltInRom: (filename) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename } })
+      loadBuiltInRom: (filename) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename } }),
+      resume: () => request('/api/emulator/resume', { method: 'POST' })
     }
   };
 

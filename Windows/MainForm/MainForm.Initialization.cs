@@ -816,12 +816,13 @@ namespace BrokenNes.Windows
                         () => imagineEngine,
                         SetCrashBehavior,
                         () => webView,
-                        (mode) => SwitchViewMode(mode),
+                        (mode, skipNav) => SwitchViewMode(mode, skipNavigation: skipNav),
                         this,  // Pass the main form as UI control for thread marshalling
                         CloseAllMenus,  // Pass the close menus handler
                         ToggleFullscreen,  // Pass the fullscreen toggle handler
                         () => audioEngine,  // Pass the audio engine
-                        (filename) => LoadBuiltInRomAsync(filename)  // Pass the ROM loader
+                        (filename) => LoadBuiltInRomAsync(filename),  // Pass the ROM loader
+                        ResumeEmulationIfPaused  // Pass the resume emulation handler
                     );
                 }
 

@@ -141,6 +141,35 @@ namespace BrokenNes.Windows
             }
         }
 
+        /// <summary>
+        /// Resume emulation if it is currently paused and a game is loaded.
+        /// Called by the Web API when Story mode or other overlay modules need the emulator running.
+        /// </summary>
+        private void ResumeEmulationIfPaused()
+        {
+            // Check if there's a loaded game (not test ROM) and it's paused
+            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+            
+            if (hasLoadedGame && !isTestRom && isPaused && isEmulationRunning)
+            {
+                Console.WriteLine("[ResumeEmulationIfPaused] Resuming paused emulator via API");
+                isPaused = false;
+                audioManager?.Play();
+                Console.WriteLine("Emulator Resumed (API call)");
+            }
+            else if (!isEmulationRunning && hasLoadedGame && !isTestRom)
+            {
+                // If emulation is not running but we have a game loaded, start it
+                Console.WriteLine("[ResumeEmulationIfPaused] Starting emulation via API");
+                StartEmulation();
+            }
+            else
+            {
+                Console.WriteLine($"[ResumeEmulationIfPaused] No action needed - hasLoadedGame={hasLoadedGame}, isTestRom={isTestRom}, isPaused={isPaused}, isEmulationRunning={isEmulationRunning}");
+            }
+        }
+
         private void ResetEmulator_Click(object? sender, EventArgs e)
         {
             if (nes != null && !string.IsNullOrEmpty(currentRomPath))

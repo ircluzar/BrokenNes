@@ -32,16 +32,17 @@ namespace BrokenNes.Windows.WebApi
         private Action<string>? _setCrashBehavior;
         private CancellationTokenSource? _cancellationTokenSource;
         private Func<WebView2?> _getWebView;
-        private Action<ViewMode>? _switchViewMode;
+        private Action<ViewMode, bool>? _switchViewMode;
         private Control? _uiControl;
         private Action? _closeAllMenus;
         private Action? _toggleFullscreen;
         private Func<AudioEngine?> _getAudioEngine;
         private Func<string, Task<bool>>? _loadBuiltInRom;
+        private Action? _resumeEmulation;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, Task<bool>>? loadBuiltInRom = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -54,6 +55,7 @@ namespace BrokenNes.Windows.WebApi
             _closeAllMenus = closeAllMenus;
             _toggleFullscreen = toggleFullscreen;
             _loadBuiltInRom = loadBuiltInRom;
+            _resumeEmulation = resumeEmulation;
         }
 
         /// <summary>
@@ -2467,18 +2469,63 @@ namespace BrokenNes.Windows.WebApi
                     {
                         _uiControl.BeginInvoke((MethodInvoker)delegate
                         {
-                            _switchViewMode(ViewMode.Emulator);
+                            _switchViewMode(ViewMode.Emulator, false);
                         });
                     }
                     else
                     {
-                        _switchViewMode(ViewMode.Emulator);
+                        _switchViewMode(ViewMode.Emulator, false);
                     }
 
                     return Results.Ok(new
                     {
                         success = true,
                         mode = "Emulator"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // POST /api/navigation/go-to-overlay - Switch to overlay mode (transparent WebView over emulator)
+            app.MapPost("/api/navigation/go-to-overlay", () =>
+            {
+                try
+                {
+                    if (_switchViewMode == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "View mode switching not available" });
+                    }
+
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    // Switch to Overlay mode on UI thread (skipNavigation=true to preserve current page content)
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        {
+                            _switchViewMode(ViewMode.Overlay, true);
+                        });
+                    }
+                    else
+                    {
+                        _switchViewMode(ViewMode.Overlay, true);
+                    }
+
+                    Console.WriteLine("[WebApi] Switched to Overlay mode via API");
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        mode = "Overlay"
                     });
                 }
                 catch (Exception ex)
@@ -3369,6 +3416,35 @@ namespace BrokenNes.Windows.WebApi
 
         private void RegisterEmulatorEndpoints(WebApplication app)
         {
+            // POST /api/emulator/resume - Resume emulation (used by Story mode and other overlays)
+            app.MapPost("/api/emulator/resume", () =>
+            {
+                if (_resumeEmulation == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Resume emulation not available" });
+                }
+
+                try
+                {
+                    // Invoke on UI thread if we have a UI control
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke(_resumeEmulation);
+                    }
+                    else
+                    {
+                        _resumeEmulation();
+                    }
+
+                    Console.WriteLine("[WebApi] Emulation resumed via API");
+                    return Results.Ok(new { success = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
             // POST /api/emulator/load-builtin-rom - Load a built-in ROM file (for story mode)
             app.MapPost("/api/emulator/load-builtin-rom", async (HttpContext context) =>
             {
