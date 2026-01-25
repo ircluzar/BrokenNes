@@ -173,6 +173,8 @@
   align-items: center;
   justify-content: center;
   min-height: 56px;
+  max-height: 180px;
+  overflow: hidden;
 }
 
 .core-slot .slot-empty {
@@ -198,9 +200,32 @@
 
 .core-slot .card-wrap {
   position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
   display: inline-block;
-  z-index: 1;
+  line-height: 0;
+}
+
+.core-slot .card-wrap svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto !important;
+  height: auto !important;
+  display: block;
   cursor: pointer;
+}
+
+.core-slot .card-enforced-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: none;
 }
 
 .core-slot .slot-label {

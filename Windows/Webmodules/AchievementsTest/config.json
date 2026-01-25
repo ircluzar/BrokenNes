@@ -1,0 +1,11 @@
+{
+  "name": "AchievementsTest",
+  "displayName": "Achievements Test",
+  "description": "Test and display RetroAchievements for the currently loaded game",
+  "version": "1.0.0",
+  "author": "BrokenNes",
+  "category": "testing",
+  "icon": "🏆",
+  "requiresEmulator": true,
+  "requiresGame": true
+}

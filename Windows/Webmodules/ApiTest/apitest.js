@@ -626,7 +626,14 @@ async function runAllTests() {
     { name: 'Imagine Apply Patch', fn: testImagineApplyPatch, resultId: 'imagineApplyPatchResult' },
     { name: 'Imagine a Bug', fn: testImagineABug, resultId: 'imagineABugResult' },
     { name: 'Imagine Get Predicted Bytes', fn: testImagineGetPredictedBytes, resultId: 'imagineGetPredictedBytesResult' },
-    { name: 'Imagine Get Last Error', fn: testImagineGetLastError, resultId: 'imagineGetLastErrorResult' }
+    { name: 'Imagine Get Last Error', fn: testImagineGetLastError, resultId: 'imagineGetLastErrorResult' },
+    { name: 'Achievement Init', fn: testAchInit, resultId: 'achInitResult' },
+    { name: 'Achievement Get List', fn: testAchGetList, resultId: 'achGetListResult' },
+    { name: 'Achievement Get State', fn: testAchGetState, resultId: 'achGetStateResult' },
+    { name: 'Achievement Get Progress', fn: testAchGetProgress, resultId: 'achGetProgressResult' },
+    { name: 'Achievement Get Conditions', fn: testAchGetConditions, resultId: 'achGetConditionsResult' },
+    { name: 'Achievement Force Complete', fn: testAchForceComplete, resultId: 'achForceCompleteResult' },
+    { name: 'Achievement Evaluate Frame', fn: testAchEvaluate, resultId: 'achEvaluateResult' }
   ];
   
   let passCount = 0;

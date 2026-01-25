@@ -225,6 +225,16 @@
       getLastError: () => request('/api/imagine/last-error')
     },
 
+    achievements: {
+      init: (options) => request('/api/achievements/init', { method: 'POST', json: options }),
+      getList: () => request('/api/achievements/list'),
+      getState: (id) => request(`/api/achievements/state/${encodeURIComponent(id)}`),
+      getProgress: (id) => request(`/api/achievements/progress/${encodeURIComponent(id)}`),
+      getConditions: (id) => request(`/api/achievements/conditions/${encodeURIComponent(id)}`),
+      forceComplete: (id) => request('/api/achievements/force-complete', { method: 'POST', json: { id } }),
+      evaluateFrame: () => request('/api/achievements/evaluate-frame', { method: 'POST' })
+    },
+
     navigation: {
       goToEmulator: () => request('/api/navigation/go-to-emulator', { method: 'POST' }),
       goToOverlay: () => request('/api/navigation/go-to-overlay', { method: 'POST' })

@@ -34,6 +34,9 @@ namespace BrokenNes.Windows
         private AudioManager? audioManager;
         private AudioEngine? audioEngine;
         
+        // Achievements field (optional, for WebAPI)
+        private NesEmulator.RetroAchievements.AchievementsEngine? achievementsEngine;
+        
         // ROM and configuration
         private string currentRomPath = string.Empty;
         private EmulatorConfig config = new EmulatorConfig();

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Achievements Test - BrokenNes</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="../shared/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏆 Achievements Test</h1>
+      <p class="subtitle">Testing RetroAchievements for the currently loaded game</p>
+    </header>
+
+    <div class="controls-section">
+      <button id="btnInit" class="btn btn-primary">Initialize Achievements</button>
+      <button id="btnRefresh" class="btn btn-secondary">Refresh List</button>
+      <div id="statusMessage" class="status-message"></div>
+    </div>
+
+    <div id="achievementsContainer" class="achievements-container">
+      <p class="empty-state">Click "Initialize Achievements" to load achievements for the current game</p>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/gameSave.js"></script>
+  <script src="../shared/webapi.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

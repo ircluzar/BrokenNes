@@ -236,6 +236,24 @@ namespace NesEmulator.RetroAchievements
         public Achievement? Get(string id) => _byId.TryGetValue(id, out var a) ? a : null;
 
         /// <summary>
+        /// Get all loaded achievements (for API access)
+        /// </summary>
+        public IEnumerable<Achievement> GetAll() => _byId.Values;
+
+        /// <summary>
+        /// Force complete an achievement (for debugging/testing)
+        /// </summary>
+        public bool ForceComplete(string id)
+        {
+            if (_byId.TryGetValue(id, out var a))
+            {
+                a.Unlocked = true;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Evaluate all loaded achievements against current RAM. Returns IDs unlocked this frame.
         /// </summary>
         public List<string> EvaluateFrame()

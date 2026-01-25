@@ -410,11 +410,11 @@
       
       // Load SVG from webapi
       if (window.webapi?.card?.getSvg) {
-        cardEl.innerHTML = '<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#666;">Loading...</div>';
+        cardEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;color:#666;">Loading...</div>';
         
         window.webapi.card.getSvg(domain, core).then(result => {
           if (result.success && result.text) {
-            cardEl.innerHTML = `<div class="card-wrap" style="position:relative;width:142px;height:200px;line-height:0;display:inline-block;">${result.text}</div>`;
+            cardEl.innerHTML = `<div class="card-wrap">${result.text}</div>`;
             
             // Add enforced overlay if needed
             if (enforced) {
@@ -441,15 +441,15 @@
               }
             }
           } else {
-            cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
+            cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
           }
         }).catch(err => {
           console.warn(`[Continue] Failed to load SVG for ${domain}/${core}:`, err);
-          cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
+          cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
         });
       } else {
         // Fallback to text label
-        cardEl.innerHTML = `<div style="width:142px;height:200px;display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
+        cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
       }
     } else {
       emptyEl.style.display = 'flex';

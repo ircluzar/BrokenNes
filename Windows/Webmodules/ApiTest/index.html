@@ -370,9 +370,47 @@
       <div id="imagineGetLastErrorResult" class="result-box"></div>
     </div>
 
+    <!-- Achievements Testing -->
+    <div class="test-section">
+      <h2>7. Achievements</h2>
+
+      <h3>Initialize Achievements</h3>
+      <button id="btnAchInit" onclick="testAchInit()">Initialize Achievements Engine</button>
+      <div id="achInitResult" class="result-box"></div>
+      
+      <h3>Achievement List</h3>
+      <button id="btnAchGetList" onclick="testAchGetList()">Get Achievement List</button>
+      <div id="achGetListResult" class="result-box"></div>
+      
+      <h3>Achievement State</h3>
+      <label>Achievement ID: <input type="text" id="achStateId" value="1" placeholder="1"></label>
+      <button id="btnAchGetState" onclick="testAchGetState()">Get Achievement State</button>
+      <div id="achGetStateResult" class="result-box"></div>
+      
+      <h3>Achievement Progress</h3>
+      <label>Achievement ID: <input type="text" id="achProgressId" value="1" placeholder="1"></label>
+      <button id="btnAchGetProgress" onclick="testAchGetProgress()">Get Achievement Progress</button>
+      <div id="achGetProgressResult" class="result-box"></div>
+      
+      <h3>Achievement Conditions</h3>
+      <label>Achievement ID: <input type="text" id="achConditionsId" value="1" placeholder="1"></label>
+      <button id="btnAchGetConditions" onclick="testAchGetConditions()">Get Achievement Conditions</button>
+      <div id="achGetConditionsResult" class="result-box"></div>
+      
+      <h3>Force Complete Achievement</h3>
+      <label>Achievement ID: <input type="text" id="achForceCompleteId" value="1" placeholder="1"></label>
+      <button id="btnAchForceComplete" onclick="testAchForceComplete()">Force Complete</button>
+      <div id="achForceCompleteResult" class="result-box"></div>
+      
+      <h3>Evaluate Achievements</h3>
+      <button id="btnAchEvaluate" onclick="testAchEvaluate()">Evaluate Achievements Frame</button>
+      <div id="achEvaluateResult" class="result-box"></div>
+    </div>
+
   </div>
 
   <script src="../shared/webapi.js"></script>
   <script src="apitest.js"></script>
+  <script src="achievement-tests.js"></script>
 </body>
 </html>

@@ -85,12 +85,12 @@ This document lists all features/calls that need to be implemented as an API in 
 - [x] **Get Last Error** - Read last Imagine error message
 
 ### Achievements
-- [ ] **Get Achievement List** - Retrieve achievements for current game
-- [ ] **Get Achievement State** - Check unlock status
-- [ ] **Get Achievement Progress** - Read progress (hits, measured values, etc.)
-- [ ] **Get Achievement Conditions** - Read condition details for debugging
-- [ ] **Force Complete Achievement** - Debug: manually unlock achievement
-- [ ] **Evaluate Achievements Frame** - Run achievement evaluation step
+- [x] **Get Achievement List** - Retrieve achievements for current game
+- [x] **Get Achievement State** - Check unlock status
+- [x] **Get Achievement Progress** - Read progress (hits, measured values, etc.)
+- [x] **Get Achievement Conditions** - Read condition details for debugging
+- [x] **Force Complete Achievement** - Debug: manually unlock achievement
+- [x] **Evaluate Achievements Frame** - Run achievement evaluation step
 
 ---
 
