@@ -5,6 +5,6 @@
   "author": "BrokenNes",
   "entryPoint": "index.html",
   "displayMode": "overlay",
-  "showInToolsMenu": true,
+  "showInToolsMenu": false,
   "pauseEmulatorOnOpen": false
 }

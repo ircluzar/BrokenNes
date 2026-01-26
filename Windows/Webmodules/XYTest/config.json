@@ -3,7 +3,7 @@
   "title": "XY Test",
   "description": "Test webmodule input events for X and Y buttons",
   "version": "1.0.0",
-  "showInToolsMenu": true,
+  "showInToolsMenu": false,
   "isActivity": false,
   "widget": {
     "defaultWidth": 520,
