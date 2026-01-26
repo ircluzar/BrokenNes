@@ -4,5 +4,6 @@
   "description": "Achievement tracking overlay",
   "version": "1.0.0",
   "hideMenuBar": false,
-  "showInToolsMenu": true
+  "showInToolsMenu": false,
+  "isActivity": false
 }

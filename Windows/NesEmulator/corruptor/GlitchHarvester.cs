@@ -95,8 +95,9 @@ namespace BrokenNes
                 }
                 var writes = corruptor.GenerateBlastLayer(corruptor.CorruptIntensity);
                 
-                // Capture the exact pre-corruption state for perfect replayability
-                var capturedState = nes!.SaveState();
+                // Capture the exact pre-corruption state atomically for perfect replayability
+                var capturedState = await nes!.CaptureAtomicSnapshotAsync(2000);
+                if (string.IsNullOrEmpty(capturedState)) { Status.Set("Savestate capture timed out"); return; }
                 
                 corruptor.ApplyBlastLayer(writes, nes!);
                 

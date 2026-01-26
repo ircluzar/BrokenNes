@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROM Manager - BrokenNes</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../shared/fonts.css">
+</head>
+<body>
+  <div id="pixelBgHost" class="pixel-bg-host"></div>
+  
+  <div class="rom-manager-root">
+    <h2 class="rom-manager-title">ROM MANAGER</h2>
+    
+    <section class="opt-section">
+      <h3 class="opt-h3">ROM LIBRARY</h3>
+      <div class="rom-toolbar">
+        <label class="small-note">
+          <input type="checkbox" id="filterCompatibleOnly" />
+          Only show compatible ROMs
+        </label>
+        <div class="rom-toolbar-right">
+          <button type="button" class="rom-import-btn" id="importBtn">Import ROMs</button>
+          <input class="rom-search" id="searchInput" placeholder="Search ROMs…" />
+        </div>
+      </div>
+
+      <div id="romListContainer" class="rom-list-container">
+        <div class="rom-empty small-note">Loading ROMs...</div>
+      </div>
+    </section>
+
+    <section class="opt-section" id="romDetailsSection" style="display: none;">
+      <h3 class="opt-h3">ROM DETAILS</h3>
+      <div class="rom-details-box" id="romDetailsBox">
+        <div class="rom-details-grid" aria-label="Selected ROM details">
+          <div class="rom-detail-row">
+            <div class="label small-note">Title</div>
+            <div class="value" id="detailTitle">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">File Name</div>
+            <div class="value" id="detailFileName">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">Size</div>
+            <div class="value" id="detailSize">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">System</div>
+            <div class="value" id="detailSystem">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">Game ID</div>
+            <div class="value" id="detailGameId">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">Achievements</div>
+            <div class="value" id="detailAchievements">-</div>
+          </div>
+          <div class="rom-detail-row">
+            <div class="label small-note">Compatible</div>
+            <div class="value" id="detailCompatible">-</div>
+          </div>
+        </div>
+        <div class="rom-actions">
+          <button type="button" class="rom-action-btn danger" id="deleteBtn">Delete ROM</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="rom-manager-footer">
+      <a href="../Home/index.html?skipHW=1" class="rom-manager-link">RETURN</a>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div id="importModal" class="import-modal-backdrop" style="display: none;">
+    <div class="import-modal" onclick="event.stopPropagation()">
+      <h3 class="import-title">Import ROMs</h3>
+      <div class="import-body">
+        <div class="import-controls">
+          <button type="button" class="rom-import-btn" id="browseBtn">Browse…</button>
+          <input id="fileInput" type="file" accept=".nes" multiple style="display:none" />
+        </div>
+        <div id="dropArea" class="import-drop">Drag and drop .nes files here</div>
+        <div id="pendingList" class="import-list-container">
+          <div class="small-note">No files added yet.</div>
+        </div>
+      </div>
+      <div class="import-footer">
+        <button type="button" class="rom-import-btn" id="confirmImportBtn">Import Games</button>
+        <button type="button" class="rom-cancel-btn" id="cancelImportBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="import-modal-backdrop" style="display: none;">
+    <div class="import-modal" onclick="event.stopPropagation()">
+      <h3 class="import-title">Confirm Delete</h3>
+      <div class="import-body">
+        <p id="deleteMessage">Are you sure you want to delete this ROM?</p>
+        <p class="small-note">This action cannot be undone.</p>
+      </div>
+      <div class="import-footer">
+        <button type="button" class="rom-action-btn danger" id="confirmDeleteBtn">Delete</button>
+        <button type="button" class="rom-cancel-btn" id="cancelDeleteBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/continue-db.js"></script>
+  <script src="../shared/gameSave.js"></script>
+  <script src="../shared/webapi.js"></script>
+  <script src="../shared/homePixelBg.js"></script>
+  <script src="rommanager.js"></script>
+</body>
+</html>

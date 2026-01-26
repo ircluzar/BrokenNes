@@ -44,9 +44,9 @@ namespace BrokenNes
             if (nes == null)
                 throw new ArgumentNullException(nameof(nes));
             
-            var stateJson = nes.SaveState();
+            var stateJson = nes.CaptureAtomicSnapshot(2000);
             if (string.IsNullOrEmpty(stateJson))
-                throw new InvalidOperationException("Failed to save NES state");
+                throw new InvalidOperationException("Failed to capture atomic NES state");
             
             var baseName = string.IsNullOrWhiteSpace(name) 
                 ? $"Base {BaseStates.Count + 1}" 
@@ -180,7 +180,9 @@ namespace BrokenNes
             var writes = _corruptor.GenerateBlastLayer(_corruptor.CorruptIntensity);
             
             // Capture the exact pre-corruption state for perfect replayability
-            var capturedState = nes.SaveState();
+            var capturedState = nes.CaptureAtomicSnapshot(2000);
+            if (string.IsNullOrEmpty(capturedState))
+                throw new InvalidOperationException("Failed to capture atomic NES state");
             
             // Apply corruption
             _corruptor.ApplyBlastLayer(writes, nes);
@@ -224,7 +226,9 @@ namespace BrokenNes
             var writes = _corruptor.GenerateBlastLayer(_corruptor.CorruptIntensity);
             
             // Capture the exact pre-corruption state for perfect replayability
-            var capturedState = nes.SaveState();
+            var capturedState = nes.CaptureAtomicSnapshot(2000);
+            if (string.IsNullOrEmpty(capturedState))
+                throw new InvalidOperationException("Failed to capture atomic NES state");
             
             // Apply corruption
             _corruptor.ApplyBlastLayer(writes, nes);

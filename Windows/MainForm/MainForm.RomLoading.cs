@@ -146,6 +146,33 @@ namespace BrokenNes.Windows
             this.PerformLayout();
             this.Refresh();
         }
+
+        private void CloseRomFromApi()
+        {
+            CloseRom_Click(null, EventArgs.Empty);
+        }
+
+        private bool LoadRomFromApi(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return false;
+
+            try
+            {
+                if (!File.Exists(path))
+                {
+                    Console.WriteLine($"[WebApi] ROM file not found: {path}");
+                    return false;
+                }
+
+                LoadRomFile(path);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WebApi] Failed to load ROM from path: {ex.Message}");
+                return false;
+            }
+        }
         
         private void LoadEmbeddedRom(bool allowHomeWebModule = true)
         {

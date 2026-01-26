@@ -193,7 +193,7 @@ namespace BrokenNes.Windows
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
 
-            var buttonNames = new[] { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" };
+            var buttonNames = new[] { "B", "A", "Y", "X", "Select", "Start", "Up", "Down", "Left", "Right" };
 
             foreach (var name in buttonNames)
             {
@@ -238,6 +238,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Down", config.Down.Key);
                 UpdateButtonText("Left", config.Left.Key);
                 UpdateButtonText("Right", config.Right.Key);
+                UpdateButtonText("X", config.X.Key);
+                UpdateButtonText("Y", config.Y.Key);
             }
             else
             {
@@ -249,6 +251,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Down", config.Down.GamepadButton?.ToString());
                 UpdateButtonText("Left", config.Left.GamepadButton?.ToString());
                 UpdateButtonText("Right", config.Right.GamepadButton?.ToString());
+                UpdateButtonText("X", config.X.GamepadButton?.ToString());
+                UpdateButtonText("Y", config.Y.GamepadButton?.ToString());
             }
         }
 
@@ -391,6 +395,8 @@ namespace BrokenNes.Windows
                 "Down" => config.Down,
                 "Left" => config.Left,
                 "Right" => config.Right,
+                "X" => config.X,
+                "Y" => config.Y,
                 _ => throw new ArgumentException($"Unknown button: {buttonName}")
             };
         }

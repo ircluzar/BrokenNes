@@ -1,0 +1,10 @@
+{
+  "displayMode": "web",
+  "title": "ROM Manager",
+  "description": "Manage your ROM collection",
+  "version": "1.0.0",
+  "showInToolsMenu": true,
+  "isActivity": false,
+  "hideMenuBar": true,
+  "pauseEmulatorOnOpen": true
+}

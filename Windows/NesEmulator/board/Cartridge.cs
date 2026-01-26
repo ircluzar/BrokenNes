@@ -199,6 +199,27 @@ public class Cartridge
 		public int PrgRamSize => prgRAM.Length;
 		public int ChrRamSize => chrRAM.Length;
 
+		public void RefreshRomDomainsFromRom()
+		{
+			if (rom == null || rom.Length < 16) return;
+			int offset = 16;
+			if (hasTrainer) offset += 512;
+			int prgSize = prgBanks * 16 * 1024;
+			if (prgROM != null && prgROM.Length == prgSize && rom.Length >= offset + prgSize)
+			{
+				Buffer.BlockCopy(rom, offset, prgROM, 0, prgSize);
+			}
+			offset += prgSize;
+			if (chrBanks > 0)
+			{
+				int chrSize = chrBanks * 8 * 1024;
+				if (chrROM != null && chrROM.Length == chrSize && rom.Length >= offset + chrSize)
+				{
+					Buffer.BlockCopy(rom, offset, chrROM, 0, chrSize);
+				}
+			}
+		}
+
 		public byte PeekPrg(int index) => (index >= 0 && index < prgROM.Length) ? prgROM[index] : (byte)0;
 		public void PokePrg(int index, byte value) { if (index >= 0 && index < prgROM.Length) prgROM[index] = value; }
 

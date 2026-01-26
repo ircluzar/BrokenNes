@@ -7,6 +7,9 @@ let selectedStashId = null;
 let selectedStockpileId = null;
 let currentRenameId = null;
 
+// Web API
+const api = window.webapi;
+
 // RTC State
 let rtcAutoCorruptEnabled = false;
 let selectedDomains = [];
@@ -39,6 +42,7 @@ const elements = {
   
   // Stash
   chkLoadOnOperation: null,
+  chkLoadOnClick: null,
   stashList: null,
   btnBlast: null,
   btnReplayStash: null,
@@ -87,6 +91,11 @@ let confirmCallback = null;
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[GH] DOM Content Loaded - Initializing Glitch Harvester');
+  if (!api) {
+    console.error('[GH] webapi helper not loaded');
+    showToast('Web API not available', 'error');
+    return;
+  }
   initializeElements();
   console.log('[GH] Elements initialized');
   attachEventListeners();
@@ -133,6 +142,7 @@ function initializeElements() {
   
   // Stash
   elements.chkLoadOnOperation = document.getElementById('chkLoadOnOperation');
+  elements.chkLoadOnClick = document.getElementById('chkLoadOnClick');
   elements.stashList = document.getElementById('stashList');
   elements.btnBlast = document.getElementById('btnBlast');
   elements.btnReplayStash = document.getElementById('btnReplayStash');
@@ -264,24 +274,24 @@ async function loadRTCState() {
   await refreshDomains();
   
   // Load current settings
-  const autoCorruptData = await apiCall('/api/rtc/auto-corrupt');
+  const autoCorruptData = await api.rtc.getAutoCorrupt();
   if (autoCorruptData.success) {
     rtcAutoCorruptEnabled = autoCorruptData.autoCorrupt;
     elements.chkAutoCorrupt.checked = rtcAutoCorruptEnabled;
   }
   
-  const intensityData = await apiCall('/api/rtc/intensity');
+  const intensityData = await api.rtc.getIntensity();
   if (intensityData.success) {
     elements.intensity.value = intensityData.intensity;
     elements.intensityValue.textContent = intensityData.intensity;
   }
   
-  const blastTypeData = await apiCall('/api/rtc/blast-type');
+  const blastTypeData = await api.rtc.getBlastType();
   if (blastTypeData.success) {
     elements.blastTypeSelect.value = blastTypeData.blastType;
   }
   
-  const crashData = await apiCall('/api/rtc/crash-behavior');
+  const crashData = await api.rtc.getCrashBehavior();
   if (crashData.success) {
     console.log('[RTC] Crash behavior from API:', crashData.crashBehavior);
     if (elements.crashBehavior) {
@@ -301,7 +311,7 @@ async function loadRTCState() {
 async function refreshDomains() {
   console.log('[RTC] Refreshing memory domains...');
   
-  const data = await apiCall('/api/rtc/domains');
+  const data = await api.rtc.getDomains();
   
   if (!data.success) {
     elements.domainList.innerHTML = '<div class="gh-empty">Failed to load domains</div>';
@@ -342,11 +352,7 @@ async function toggleDomain(domainKey, selected) {
     selectedDomains = selectedDomains.filter(d => d !== domainKey);
   }
   
-  const data = await apiCall('/api/rtc/domains/selection', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ selectedDomains })
-  });
+  const data = await api.rtc.setDomainSelection(selectedDomains);
   
   if (data.success) {
     console.log('[RTC] Domain selection updated');
@@ -359,11 +365,7 @@ async function toggleAutoCorrupt() {
   const enabled = elements.chkAutoCorrupt.checked;
   console.log('[RTC] Auto-corrupt toggled:', enabled);
   
-  const data = await apiCall('/api/rtc/auto-corrupt', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  });
+  const data = await api.rtc.setAutoCorrupt(enabled);
   
   if (data.success) {
     rtcAutoCorruptEnabled = enabled;
@@ -378,11 +380,7 @@ async function updateBlastType() {
   const blastType = elements.blastTypeSelect.value;
   console.log('[RTC] Updating blast type to:', blastType);
   
-  const data = await apiCall('/api/rtc/blast-type', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ blastType })
-  });
+  const data = await api.rtc.setBlastType(blastType);
   
   if (data.success) {
     console.log('[RTC] Blast type updated');
@@ -395,11 +393,7 @@ async function updateIntensity() {
   const intensity = parseInt(elements.intensity.value);
   console.log('[RTC] Updating intensity to:', intensity);
   
-  const data = await apiCall('/api/rtc/intensity', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ intensity })
-  });
+  const data = await api.rtc.setIntensity(intensity);
   
   if (data.success) {
     console.log('[RTC] Intensity updated');
@@ -411,9 +405,7 @@ async function updateIntensity() {
 async function rtcManualBlast() {
   console.log('[RTC] Manual blast triggered');
   
-  const data = await apiCall('/api/rtc/blast', {
-    method: 'POST'
-  });
+  const data = await api.rtc.blast();
   
   if (data.success) {
     showToast(`Blast executed (${data.writesApplied || 1} writes)`, 'success');
@@ -425,9 +417,7 @@ async function rtcManualBlast() {
 async function rtcLetItRip() {
   console.log('[RTC] Let It Rip activated!');
   
-  const data = await apiCall('/api/rtc/let-it-rip', {
-    method: 'POST'
-  });
+  const data = await api.rtc.letItRip();
   
   if (data.success) {
     showToast('Let It Rip! 🔥', 'success');
@@ -449,16 +439,12 @@ async function updateCrashBehavior() {
   const behavior = elements.crashBehavior.value;
   console.log('[RTC] Updating crash behavior to:', behavior);
   
-  const data = await apiCall('/api/rtc/crash-behavior', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ Behavior: behavior })
-  });
+  const data = await api.rtc.setCrashBehavior(behavior);
   
   if (data.success) {
     console.log('[RTC] Crash behavior updated');
     // Update the crash status display with the new behavior
-    const crashData = await apiCall('/api/rtc/crash-behavior');
+    const crashData = await api.rtc.getCrashBehavior();
     if (crashData.success) {
       currentCrashBehavior = crashData.crashBehavior;
       updateCrashStatus(crashData.crashed, crashData.crashBehavior);
@@ -498,7 +484,7 @@ function startCrashPolling(behavior) {
   if (behavior === 'RedScreen') {
     console.log('[RTC] Starting crash polling for RedScreen mode');
     crashPollingInterval = setInterval(async () => {
-      const crashData = await apiCall('/api/rtc/crash-behavior');
+      const crashData = await api.rtc.getCrashBehavior();
       if (crashData.success && crashData.crashBehavior === currentCrashBehavior) {
         updateCrashStatus(crashData.crashed, crashData.crashBehavior);
       }
@@ -538,37 +524,11 @@ function switchTab(tabName) {
   });
 }
 
-// ==================== API Calls ====================
-
-async function apiCall(endpoint, options = {}) {
-  console.log('[GH API] Calling:', endpoint, options.method || 'GET');
-  if (options.body) {
-    console.log('[GH API] Request body:', options.body);
-  }
-
-  if (!window.webapi) {
-    const error = 'webapi helper not loaded';
-    console.error('[GH API] Error:', error);
-    showToast(`API Error: ${error}`, 'error');
-    return { success: false, error };
-  }
-
-  try {
-    const data = await window.webapi.request(endpoint, options);
-    console.log('[GH API] Response data:', data);
-    return data;
-  } catch (error) {
-    console.error('[GH API] Error:', error);
-    showToast(`API Error: ${error.message}`, 'error');
-    return { success: false, error: error.message };
-  }
-}
-
 // ==================== Base States ====================
 
 async function refreshBases(autoScroll = false) {
   console.log('[GH] Refreshing base states...');
-  const data = await apiCall('/api/gh/base-states');
+  const data = await api.gh.getBaseStates();
   console.log('[GH] Base states API response:', data);
   
   if (!data.success) {
@@ -676,11 +636,7 @@ async function addBase() {
   }
   
   console.log('[GH] Creating base state...');
-  const data = await apiCall('/api/gh/base-state', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
-  });
+  const data = await api.gh.addBaseState(name);
   
   console.log('[GH] Create base state response:', data);
   console.log('[GH] Response keys:', Object.keys(data));
@@ -713,11 +669,7 @@ async function loadBase() {
   }
   
   console.log('[GH] Loading base state with ID:', selectedBaseId);
-  const data = await apiCall(`/api/gh/load-base`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: selectedBaseId })
-  });
+  const data = await api.gh.loadBase(selectedBaseId);
   
   console.log('[GH] Load base response:', data);
   
@@ -738,9 +690,7 @@ async function deleteBase() {
     'Are you sure you want to delete this base state?',
     async () => {
       console.log('[GH] Deleting base state:', selectedBaseId);
-      const data = await apiCall(`/api/gh/base-state/${selectedBaseId}`, {
-        method: 'DELETE'
-      });
+      const data = await api.gh.deleteBaseState(selectedBaseId);
       
       console.log('[GH] Delete base response:', data);
       
@@ -760,7 +710,7 @@ async function deleteBase() {
 // ==================== Stash ====================
 
 async function refreshStash(autoScroll = false) {
-  const data = await apiCall('/api/gh/stash');
+  const data = await api.gh.getStash();
   
   if (!data.success) {
     elements.stashList.innerHTML = '<div class="gh-empty">Failed to load stash</div>';
@@ -794,7 +744,7 @@ async function refreshStash(autoScroll = false) {
   }
 }
 
-function selectStash(id) {
+async function selectStash(id) {
   if (!id || id === 'undefined') {
     console.error('selectStash called with invalid ID:', id);
     return;
@@ -808,6 +758,10 @@ function selectStash(id) {
   });
   
   updateStashButtons();
+
+  if (elements.chkLoadOnClick && elements.chkLoadOnClick.checked) {
+    await replayStash();
+  }
 }
 
 function updateStashButtons() {
@@ -822,11 +776,7 @@ function updateStashButtons() {
 async function toggleLoadOnOperation() {
   const enabled = elements.chkLoadOnOperation.checked;
   
-  const data = await apiCall('/api/gh/load-on-operation', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  });
+  const data = await api.gh.setLoadOnOperation(enabled);
   
   if (data.success) {
     showToast(`Load on operation ${enabled ? 'enabled' : 'disabled'}`);
@@ -843,11 +793,7 @@ async function blast() {
     return;
   }
   
-  const data = await apiCall('/api/gh/corrupt-and-stash', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: selectedBaseId })
-  });
+  const data = await api.gh.corruptAndStash(selectedBaseId);
   
   console.log('[GH] Blast response:', data);
   
@@ -866,11 +812,7 @@ async function blast() {
 async function replayStash() {
   if (!selectedStashId) return;
   
-  const data = await apiCall(`/api/gh/stash/${selectedStashId}/replay`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
+  const data = await api.gh.replayStash(selectedStashId);
   
   if (data.success) {
     showToast('Stash entry replayed', 'success');
@@ -882,11 +824,7 @@ async function replayStash() {
 async function promoteToStockpile() {
   if (!selectedStashId) return;
   
-  const data = await apiCall(`/api/gh/stash/${selectedStashId}/promote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
+  const data = await api.gh.promoteStash(selectedStashId);
   
   if (data.success) {
     showToast('Entry promoted to stockpile', 'success');
@@ -900,25 +838,27 @@ async function promoteToStockpile() {
 }
 
 async function clearStash() {
-  if (!confirm('Clear all stash entries?')) return;
-  
-  const data = await apiCall('/api/gh/stash', {
-    method: 'DELETE'
-  });
-  
-  if (data.success) {
-    showToast('Stash cleared', 'success');
-    selectedStashId = null;
-    await refreshStash();
-  } else {
-    showToast(data.error || 'Failed to clear stash', 'error');
-  }
+  showConfirm(
+    'Clear Stash',
+    'Clear all stash entries? This cannot be undone.',
+    async () => {
+      const data = await api.gh.clearStash();
+      
+      if (data.success) {
+        showToast('Stash cleared', 'success');
+        selectedStashId = null;
+        await refreshStash();
+      } else {
+        showToast(data.error || 'Failed to clear stash', 'error');
+      }
+    }
+  );
 }
 
 // ==================== Stockpile ====================
 
 async function refreshStockpile(autoScroll = false) {
-  const data = await apiCall('/api/gh/stockpile');
+  const data = await api.gh.getStockpile();
   
   if (!data.success) {
     elements.stockpileList.innerHTML = '<div class="gh-empty">Failed to load stockpile</div>';
@@ -981,11 +921,7 @@ function updateStockpileButtons() {
 async function replayStockpile() {
   if (!selectedStockpileId) return;
   
-  const data = await apiCall(`/api/gh/stockpile/${selectedStockpileId}/replay`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
+  const data = await api.gh.replayStockpile(selectedStockpileId);
   
   if (data.success) {
     showToast('Stockpile entry replayed', 'success');
@@ -1024,11 +960,7 @@ async function confirmRename() {
     return;
   }
   
-  const data = await apiCall(`/api/gh/stockpile/${currentRenameId}/rename`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: newName })
-  });
+  const data = await api.gh.renameStockpile(currentRenameId, newName);
   
   if (data.success) {
     showToast('Entry renamed', 'success');
@@ -1047,9 +979,7 @@ async function deleteStockpile() {
     'Are you sure you want to delete this stockpile entry?',
     async () => {
       console.log('[GH] Deleting stockpile entry:', selectedStockpileId);
-      const data = await apiCall(`/api/gh/stockpile/${selectedStockpileId}`, {
-        method: 'DELETE'
-      });
+      const data = await api.gh.deleteStockpile(selectedStockpileId);
       
       console.log('[GH] Delete stockpile response:', data);
       
@@ -1067,7 +997,7 @@ async function deleteStockpile() {
 }
 
 async function exportStockpile() {
-  const data = await apiCall('/api/gh/stockpile/export');
+  const data = await api.gh.exportStockpile();
   
   if (data.success && data.json) {
     // Create download
@@ -1094,11 +1024,7 @@ async function importStockpile(event) {
   try {
     const text = await file.text();
     
-    const data = await apiCall('/api/gh/stockpile/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ json: text })
-    });
+    const data = await api.gh.importStockpile(text);
     
     if (data.success) {
       showToast(`Imported ${data.imported || 0} entries`, 'success');
@@ -1165,9 +1091,10 @@ function hideConfirmModal() {
 
 function handleConfirmOk() {
   console.log('[GH] Confirmation accepted');
+  const callback = confirmCallback;
   hideConfirmModal();
-  if (confirmCallback) {
-    confirmCallback();
+  if (callback) {
+    callback();
   }
 }
 
@@ -1205,11 +1132,7 @@ async function imagineLoadModel() {
   elements.btnLoadModel.disabled = true;
   
   try {
-    const data = await apiCall('/api/imagine/load-model', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ epoch })
-    });
+    const data = await api.imagine.loadModel(epoch);
     
     if (data.success) {
       elements.imagineStatus.textContent = `Status: Model epoch ${epoch} loaded`;
@@ -1246,14 +1169,10 @@ async function imagineUpdateParams() {
   const topK = parseInt(elements.imagineTopK.value);
   
   try {
-    const data = await apiCall('/api/imagine/generation-params', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bytesToGenerate,
-        temperature,
-        topK
-      })
+    const data = await api.imagine.setGenerationParams({
+      bytesToGenerate,
+      temperature,
+      topK
     });
     
     if (data.success) {
@@ -1282,10 +1201,7 @@ async function imagineAutoBug() {
     await imagineUpdateParams();
     
     // Call the imagine-a-bug API
-    const data = await apiCall('/api/imagine/imagine-a-bug', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const data = await api.imagine.imagineABug();
     
     if (data.success) {
       // Format predicted bytes for display
@@ -1328,7 +1244,7 @@ async function loadImagineState() {
   
   try {
     // Check if model is loaded
-    const modelData = await apiCall('/api/imagine/model-loaded');
+    const modelData = await api.imagine.isModelLoaded();
     if (modelData.success && modelData.modelLoaded) {
       elements.imagineStatus.textContent = 'Status: Model loaded and ready';
       elements.imagineStatus.style.color = 'var(--green)';
@@ -1340,14 +1256,14 @@ async function loadImagineState() {
     }
     
     // Load current epoch
-    const epochData = await apiCall('/api/imagine/epoch');
+    const epochData = await api.imagine.getEpoch();
     if (epochData.success && epochData.epoch != null) {
       elements.imagineEpoch.value = epochData.epoch;
       console.log('[Imagine] Current epoch:', epochData.epoch);
     }
     
     // Load generation params
-    const paramsData = await apiCall('/api/imagine/generation-params');
+    const paramsData = await api.imagine.getGenerationParams();
     if (paramsData.success) {
       if (paramsData.bytesToGenerate != null) {
         elements.imagineBytesToPredict.value = paramsData.bytesToGenerate;

@@ -20,6 +20,10 @@ public class KeyboardMapping
     public string B { get; set; } = "KeyZ"; // emulator current default
     public string Select { get; set; } = "Space";
     public string Start { get; set; } = "Enter";
+    
+    // Webmodule control buttons (not routed to NES)
+    public string X { get; set; } = "KeyA"; // webmodule button 1
+    public string Y { get; set; } = "KeyS"; // webmodule button 2
 }
 
 public class GamepadMapping
@@ -37,6 +41,10 @@ public class GamepadMapping
     public int B { get; set; } = 1; // East (B on Xbox, Circle on PS)
     public int Select { get; set; } = 8; // Back/View
     public int Start { get; set; } = 9;  // Start/Menu
+    
+    // Webmodule control buttons (not routed to NES)
+    public int X { get; set; } = 2; // West (X on Xbox, Square on PS)
+    public int Y { get; set; } = 3; // North (Y on Xbox, Triangle on PS)
 }
 
 public class PlayerInputConfig

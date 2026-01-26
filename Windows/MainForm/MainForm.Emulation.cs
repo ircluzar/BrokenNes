@@ -254,6 +254,9 @@ namespace BrokenNes.Windows
                                 }
                                 
                                 nes.SetInputs(p1Inputs, p2Inputs);
+                                
+                                // Poll webmodule input (X/Y buttons) - separate from NES input
+                                webModuleInputManager?.Poll();
                             }
                             
                             // Enable static for test.nes ROM (like in web version)

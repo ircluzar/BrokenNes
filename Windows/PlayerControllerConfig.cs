@@ -102,12 +102,27 @@ namespace BrokenNes.Windows
         [JsonPropertyName("right")]
         public ButtonBinding Right { get; set; } = ButtonBinding.FromKey("Right");
 
+        // Webmodule control buttons (not routed to NES)
+        [JsonPropertyName("x")]
+        public ButtonBinding X { get; set; } = ButtonBinding.FromKey("A");
+
+        [JsonPropertyName("y")]
+        public ButtonBinding Y { get; set; } = ButtonBinding.FromKey("S");
+
         /// <summary>
         /// Get all button bindings in NES order (A, B, Select, Start, Up, Down, Left, Right)
         /// </summary>
         public ButtonBinding[] GetAllBindings()
         {
             return new[] { A, B, Select, Start, Up, Down, Left, Right };
+        }
+        
+        /// <summary>
+        /// Get webmodule button bindings (X, Y)
+        /// </summary>
+        public ButtonBinding[] GetWebmoduleBindings()
+        {
+            return new[] { X, Y };
         }
 
         /// <summary>
@@ -127,7 +142,9 @@ namespace BrokenNes.Windows
                 Up = ButtonBinding.FromKey("Up"),
                 Down = ButtonBinding.FromKey("Down"),
                 Left = ButtonBinding.FromKey("Left"),
-                Right = ButtonBinding.FromKey("Right")
+                Right = ButtonBinding.FromKey("Right"),
+                X = ButtonBinding.FromKey("A"),
+                Y = ButtonBinding.FromKey("S")
             };
         }
 
@@ -149,7 +166,9 @@ namespace BrokenNes.Windows
                 Up = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadUp),
                 Down = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadDown),
                 Left = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadLeft),
-                Right = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadRight)
+                Right = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadRight),
+                X = ButtonBinding.FromGamepadButton(GamepadButtonFlags.X),
+                Y = ButtonBinding.FromGamepadButton(GamepadButtonFlags.Y)
             };
         }
     }

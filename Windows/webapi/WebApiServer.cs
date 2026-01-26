@@ -46,10 +46,18 @@ namespace BrokenNes.Windows.WebApi
         private Action? _resumeEmulation;
         private Action? _hideContinueButton;
         private Action? _resetGame;
+        private Func<IEnumerable<string>>? _getAvailableBackgrounds;
+        private Action<string>? _setBackground;
+        private Func<IEnumerable<string>>? _getAvailableNullProviders;
+        private Action<string>? _setNullProvider;
+        private Action? _closeRom;
+        private Func<string?>? _getCurrentRomPath;
+        private Func<string?>? _getCurrentRomName;
+        private Func<string, bool>? _loadRomFromPath;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action? closeRom = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -76,6 +84,14 @@ namespace BrokenNes.Windows.WebApi
             _resumeEmulation = resumeEmulation;
             _hideContinueButton = hideContinueButton;
             _resetGame = resetGame;
+            _getAvailableBackgrounds = getAvailableBackgrounds;
+            _setBackground = setBackground;
+            _getAvailableNullProviders = getAvailableNullProviders;
+            _setNullProvider = setNullProvider;
+            _closeRom = closeRom;
+            _getCurrentRomPath = getCurrentRomPath;
+            _getCurrentRomName = getCurrentRomName;
+            _loadRomFromPath = loadRomFromPath;
         }
 
         /// <summary>
@@ -144,6 +160,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterEmulatorEndpoints(app);
             RegisterShaderEndpoints(app);
             RegisterTimeJumpEndpoints(app);
+            RegisterInputEndpoints(app);
 
             _host = app;
 

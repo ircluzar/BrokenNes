@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   initializeElements();
   attachEventListeners();
+  setupWebmoduleButtons();
   
   console.log('[TimeJump] Ready');
 });
@@ -721,6 +722,53 @@ async function performStateQuery(queryHash) {
     console.error('[TimeJump] Failed to query state:', error);
     showToast('Failed to query state', 'error');
     return false;
+  }
+}
+
+// ==================== Webmodule Button Handling (X/Y) ====================
+
+function setupWebmoduleButtons() {
+  // Start polling for X/Y button events
+  if (window.webapi && window.webapi.input && window.webapi.input.startPolling) {
+    window.webapi.input.startPolling(50);
+    
+    // Listen for button press events
+    window.addEventListener('buttonPressed', (event) => {
+      const button = event.detail.button;
+      console.log(`[TimeJump] Webmodule button ${button} pressed`);
+      
+      if (button === 'X') {
+        handleXButton();
+      } else if (button === 'Y') {
+        handleYButton();
+      }
+    });
+    
+    console.log('[TimeJump] Webmodule button handlers registered (X=Jump, Y=Reset)');
+  } else {
+    console.warn('[TimeJump] Webmodule input API not available');
+  }
+}
+
+function handleXButton() {
+  // X button = Perform Jump (if running and states available)
+  if (isRunning && availableStatesCount > 0) {
+    console.log('[TimeJump] X button -> Performing jump');
+    performJump();
+  } else if (!isRunning) {
+    console.log('[TimeJump] X button ignored - TimeJump not running');
+  } else {
+    console.log('[TimeJump] X button ignored - No states available');
+  }
+}
+
+function handleYButton() {
+  // Y button = Reset (if running)
+  if (isRunning) {
+    console.log('[TimeJump] Y button -> Resetting');
+    resetTimeJump();
+  } else {
+    console.log('[TimeJump] Y button ignored - TimeJump not running');
   }
 }
 

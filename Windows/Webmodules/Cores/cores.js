@@ -6,7 +6,8 @@
     if (api?.card?.getUrl) {
       return api.card.getUrl(domain.toLowerCase(), id);
     }
-    return `/api/card/${encodeURIComponent(domain.toLowerCase())}/${encodeURIComponent(id)}`;
+    console.error('[Cores] webapi.card.getUrl not available');
+    return '';
   }
   
   // State
@@ -57,7 +58,7 @@
     
     document.getElementById('returnBtn').addEventListener('click', (e) => {
       e.preventDefault();
-      window.history.back();
+      window.location.href = '../Home/index.html?skipHW=1';
     });
     
     // Modal backdrop click to close

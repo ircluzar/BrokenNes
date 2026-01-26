@@ -62,11 +62,11 @@ namespace BrokenNes.Windows
 
             try
             {
-                // Get the full savestate (WARNING: May capture mid-frame, causing potential desync)
-                string savestateJson = nes.SaveState();
+                // Get the full savestate atomically at frame boundary
+                string? savestateJson = nes.CaptureAtomicSnapshot(2000);
                 if (string.IsNullOrEmpty(savestateJson))
                 {
-                    Console.WriteLine("[TimeJump] SaveState returned empty");
+                    Console.WriteLine("[TimeJump] Atomic snapshot returned empty");
                     return null;
                 }
 

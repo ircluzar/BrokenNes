@@ -11,6 +11,7 @@
   const btnInit = document.getElementById('btnInit');
   const btnRefresh = document.getElementById('btnRefresh');
   const btnMonitor = document.getElementById('btnMonitor');
+  const btnResetAchievements = document.getElementById('btnResetAchievements');
   const statusMessage = document.getElementById('statusMessage');
   const achievementsContainer = document.getElementById('achievementsContainer');
 
@@ -32,6 +33,7 @@
     btnInit.addEventListener('click', initializeAchievements);
     btnRefresh.addEventListener('click', refreshAchievementsList);
     btnMonitor.addEventListener('click', toggleMonitoring);
+    btnResetAchievements.addEventListener('click', resetAchievements);
     
     // Auto-initialize on load
     autoInitialize();
@@ -63,11 +65,15 @@
         // Auto-start monitoring
         startMonitoring();
       } else {
-        achievementsContainer.innerHTML = '<p class="empty-state">Failed to initialize achievements. Make sure a game is loaded.</p>';
+        // Display the actual error message from the server
+        const errorMsg = result.error || 'Failed to initialize achievements. Make sure a game is loaded.';
+        console.error('Achievement initialization failed:', errorMsg);
+        achievementsContainer.innerHTML = `<p class="empty-state">${lib.escapeHtml(errorMsg)}</p>`;
       }
     } catch (error) {
       console.error('Achievement initialization error:', error);
-      achievementsContainer.innerHTML = '<p class="empty-state">Error during initialization. Check console for details.</p>';
+      const errorMsg = error?.message || 'Error during initialization. Check console for details.';
+      achievementsContainer.innerHTML = `<p class="empty-state">${lib.escapeHtml(errorMsg)}</p>`;
     }
   }
 
@@ -209,21 +215,19 @@
     console.log(`Achievement unlocked: ${achievementId}`);
     
     // Find the achievement details
-    const achievement = achievementsList.find(a => getAchievementId(a) === achievementId);
-    const title = achievement ? getAchievementTitle(achievement) : achievementId;
+    const achievement = achievementsList.find(a => lib.getAchievementId(a) === achievementId);
+    const title = achievement ? lib.getAchievementTitle(achievement) : achievementId;
     
     console.log(`🎉 Achievement Unlocked: ${title}`);
     
-    // Save the achievement to game save (using the shared library if available)
-    if (window.achievementsLib && typeof window.achievementsLib.saveAchievement === 'function') {
-      await window.achievementsLib.saveAchievement(achievementId);
-    }
+    // Save the achievement to game save
+    await lib.saveAchievement(achievementId);
     
     // Queue the achievement modal
     queueAchievementModal(title);
     
-    // Play a random VictorySfx (VictorySong1.mp3 through VictorySong5.mp3)
-    await playRandomVictorySfx();
+    // Play a random VictorySfx with full orchestration (disables channels, plays, gradually restores)
+    await lib.playRandomVictorySfx();
   }
 
   // Queue an achievement modal for display
@@ -281,15 +285,65 @@
     });
   }
 
-  // Play a random victory sound effect
-  async function playRandomVictorySfx() {
-    const randomNum = Math.floor(Math.random() * 5) + 1;
-    const sfxPath = `VictorySong${randomNum}.mp3`;
-    
+  // Reset all achievements for the current game
+  async function resetAchievements() {
+    if (!isInitialized) {
+      console.warn('Cannot reset achievements: engine not initialized');
+      return;
+    }
+
+    // Confirm with user
+    if (!confirm('Are you sure you want to reset all achievements for the current game? This cannot be undone.')) {
+      return;
+    }
+
     try {
-      await api.audio.playSfx(sfxPath);
+      // Disable button during reset
+      btnResetAchievements.disabled = true;
+      btnResetAchievements.textContent = 'Resetting...';
+
+      // Step 1: Reset the achievements engine on the backend
+      const result = await api.achievements.reset();
+      
+      if (!result.success) {
+        console.error('Failed to reset achievements engine:', result.error);
+        alert(`Failed to reset achievements: ${result.error}`);
+        return;
+      }
+
+      console.log('Achievements engine reset successfully');
+
+      // Step 2: Clear saved achievements from game save
+      if (window.gameSave && typeof window.gameSave.load === 'function') {
+        try {
+          const save = await window.gameSave.load();
+          save.Achievements = [];
+          const saveSuccess = await window.gameSave.save(save);
+          
+          if (saveSuccess) {
+            console.log('Game save achievements cleared successfully');
+          } else {
+            console.warn('Failed to clear game save achievements');
+          }
+        } catch (saveError) {
+          console.error('Error clearing game save achievements:', saveError);
+        }
+      }
+
+      // Step 3: Reset local tracking
+      knownUnlockedAchievements.clear();
+
+      // Step 4: Refresh the display
+      await refreshAchievementsList();
+
+      console.log('✅ All achievements reset successfully');
     } catch (error) {
-      console.error('Error playing victory sfx:', error);
+      console.error('Error resetting achievements:', error);
+      alert('An error occurred while resetting achievements. See console for details.');
+    } finally {
+      // Re-enable button
+      btnResetAchievements.disabled = false;
+      btnResetAchievements.textContent = 'Reset Achievements';
     }
   }
 

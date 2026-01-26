@@ -27,10 +27,10 @@ namespace BrokenNes
             Diag("UI SaveState invoked");
             try
             {
-                Diag("Calling nes.SaveState()");
-                var raw = nes.SaveState();
-                Diag(raw==null?"nes.SaveState returned null":"nes.SaveState returned length="+raw.Length);
-                if (string.IsNullOrEmpty(raw)) { Status.Set("Empty state"); Diag("Empty state early return"); return; }
+                Diag("Requesting atomic savestate snapshot");
+                    var raw = await nes.CaptureAtomicSnapshotAsync(2000);
+                    Diag(raw==null?"Atomic snapshot returned null":"Atomic snapshot returned length="+raw.Length);
+                    if (string.IsNullOrEmpty(raw)) { Status.Set("State capture timed out"); Diag("Empty state early return"); return; }
                 string payload = raw; bool compressed = false;
                 try
                 {

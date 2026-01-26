@@ -152,7 +152,13 @@ function initializeTable() {
 }
 
 async function loadDomains() {
-  const result = await apiCall('/api/memory/domains');
+  const memoryApi = window.webapi?.memory;
+  if (!memoryApi?.getDomains) {
+    elements.statusText.textContent = 'webapi.memory not available.';
+    return;
+  }
+
+  const result = await memoryApi.getDomains();
   if (!result.success) {
     elements.statusText.textContent = result.error || 'Failed to load memory domains.';
     return;
@@ -183,8 +189,14 @@ async function loadDomains() {
 async function reloadDomains() {
   // Preserve the current domain selection if possible
   const previousDomain = currentDomain;
-  
-  const result = await apiCall('/api/memory/domains');
+
+  const memoryApi = window.webapi?.memory;
+  if (!memoryApi?.getDomains) {
+    elements.statusText.textContent = 'webapi.memory not available.';
+    return;
+  }
+
+  const result = await memoryApi.getDomains();
   if (!result.success) {
     elements.statusText.textContent = 'Domains may be stale. ' + (result.error || 'Failed to reload.');
     return;
@@ -349,14 +361,19 @@ async function refreshVisible(force) {
 }
 
 async function fetchRange(startRow, endRow) {
+  const memoryApi = window.webapi?.memory;
+  if (!memoryApi?.peekRange) {
+    elements.statusText.textContent = 'webapi.memory not available.';
+    return;
+  }
+
   const startAddress = startRow * BYTES_PER_ROW;
   const length = Math.min(domainSize - startAddress, (endRow - startRow + 1) * BYTES_PER_ROW);
   if (length <= 0) return;
 
-  const url = `/api/memory/peek-range?domain=${encodeURIComponent(currentDomain)}&address=${startAddress}&length=${length}`;
-  console.log(`[HexEditor] Fetching: ${url}`);
-  
-  const result = await apiCall(url);
+  console.log(`[HexEditor] Fetching: ${currentDomain} @ ${startAddress} (${length} bytes)`);
+
+  const result = await memoryApi.peekRange(currentDomain, startAddress, length);
   
   // Debug: log the raw response
   console.log(`[HexEditor] peek-range response for ${currentDomain}@${startAddress}:`, 
@@ -605,15 +622,13 @@ function updateRowAscii(rowIndex) {
 async function writeByte(address, value) {
   if (!currentDomain) return { success: false };
 
-  const result = await apiCall('/api/memory/poke', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      Domain: currentDomain,
-      Address: address,
-      Value: value
-    })
-  });
+  const memoryApi = window.webapi?.memory;
+  if (!memoryApi?.poke) {
+    elements.statusText.textContent = 'webapi.memory not available.';
+    return { success: false };
+  }
+
+  const result = await memoryApi.poke(currentDomain, address, value);
 
   if (!result.success) {
     elements.statusText.textContent = result.error || 'Failed to write memory.';
@@ -834,15 +849,13 @@ async function writeRange(address, data) {
     return;
   }
 
-  const result = await apiCall('/api/memory/poke-range', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      Domain: currentDomain,
-      Address: address,
-      Data: data
-    })
-  });
+  const memoryApi = window.webapi?.memory;
+  if (!memoryApi?.pokeRange) {
+    elements.statusText.textContent = 'webapi.memory not available.';
+    return;
+  }
+
+  const result = await memoryApi.pokeRange(currentDomain, address, data);
 
   if (!result.success) {
     elements.statusText.textContent = result.error || 'Failed to write memory range.';
@@ -854,14 +867,3 @@ function updateRowAsciiRange(rowIndexes) {
   unique.forEach((rowIndex) => updateRowAscii(rowIndex));
 }
 
-async function apiCall(endpoint, options = {}) {
-  if (!window.webapi) {
-    return { success: false, error: 'webapi helper not loaded' };
-  }
-
-  return window.webapi.request(endpoint, {
-    ...options,
-    cacheBust: true,
-    noCache: true
-  });
-}

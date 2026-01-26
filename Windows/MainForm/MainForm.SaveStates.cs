@@ -281,7 +281,7 @@ namespace BrokenNes.Windows
             }
         }
         
-        private void SaveStateToFile_Click(object? sender, EventArgs e)
+        private async void SaveStateToFile_Click(object? sender, EventArgs e)
         {
             if (nes == null)
             {
@@ -301,23 +301,21 @@ namespace BrokenNes.Windows
             {
                 try
                 {
-                    // Pause emulation during state save
-                    bool wasPaused = isPaused;
-                    isPaused = true;
-                    
-                    string stateJson;
-                    Bitmap screenshot = null;
+                    string? stateJson = await nes.CaptureAtomicSnapshotAsync(2000);
+                    if (string.IsNullOrEmpty(stateJson))
+                    {
+                        MessageBox.Show("Failed to capture atomic savestate.", "Save State Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
 
+                    Bitmap? screenshot;
                     lock (emulationLock)
                     {
-                        stateJson = nes.SaveState();
                         screenshot = GetScreenshot();
                     }
-                    
+
                     // Extend state with UI settings (shader config)
                     stateJson = ExtendStateWithUISettings(stateJson);
-                    
-                    isPaused = wasPaused;
 
                     if (screenshot == null)
                     {
@@ -348,7 +346,7 @@ namespace BrokenNes.Windows
             }
         }
         
-        private void QuickSaveState_Click(object? sender, EventArgs e)
+        private async void QuickSaveState_Click(object? sender, EventArgs e)
         {
             if (nes == null)
             {
@@ -358,19 +356,15 @@ namespace BrokenNes.Windows
             
             try
             {
-                // Pause emulation during state save
-                bool wasPaused = isPaused;
-                isPaused = true;
-                
-                lock (emulationLock)
+                quickSaveState = await nes.CaptureAtomicSnapshotAsync(2000);
+                if (string.IsNullOrEmpty(quickSaveState))
                 {
-                    quickSaveState = nes.SaveState();
+                    MessageBox.Show("Failed to capture atomic savestate.", "Quick Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
-                
+
                 // Extend state with UI settings (shader config)
                 quickSaveState = ExtendStateWithUISettings(quickSaveState);
-                
-                isPaused = wasPaused;
                 
                 Console.WriteLine($"Quick Saved: {Path.GetFileName(currentRomPath)}");
             }
@@ -434,21 +428,25 @@ namespace BrokenNes.Windows
              
              try
              {
-                 lock(emulationLock)
+                 string? stateJson = nes.CaptureAtomicSnapshot(2000);
+                 if (string.IsNullOrEmpty(stateJson)) return;
+
+                 Bitmap? screenshot;
+                 lock (emulationLock)
                  {
-                     // Synchronous capture
-                     using (var screenshot = GetScreenshot())
+                     screenshot = GetScreenshot();
+                 }
+
+                 using (screenshot)
+                 {
+                     if (screenshot != null)
                      {
-                         string stateJson = nes.SaveState();
-                         if (screenshot != null && stateJson != null)
+                         byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                         using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
                          {
-                             byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
-                             using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
-                             {
-                                 embedded?.Save(continuePath, ImageFormat.Png);
-                             }
-                             Console.WriteLine("Game saved to continue.png");
+                             embedded?.Save(continuePath, ImageFormat.Png);
                          }
+                         Console.WriteLine("Game saved to continue.png");
                      }
                  }
              }

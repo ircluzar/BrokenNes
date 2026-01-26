@@ -35,7 +35,7 @@ namespace BrokenNes.Windows
                 MessageBoxIcon.Information);
         }
 
-        private void TakeScreenshot_Click(object? sender, EventArgs e)
+        private async void TakeScreenshot_Click(object? sender, EventArgs e)
         {
              if (nes == null) return;
 
@@ -44,18 +44,23 @@ namespace BrokenNes.Windows
              string? stateJson = null;
              string localRomPath = currentRomPath;
 
-             lock(emulationLock)
+             try
              {
-                 try
+                 stateJson = await nes.CaptureAtomicSnapshotAsync(2000);
+                 if (string.IsNullOrEmpty(stateJson))
                  {
-                     screenshot = GetScreenshot();
-                     stateJson = nes.SaveState();
-                 }
-                 catch (Exception ex)
-                 {
-                     Console.WriteLine($"Screenshot capture failed: {ex.Message}");
+                     Console.WriteLine("Screenshot capture failed: atomic snapshot timed out");
                      return;
                  }
+                 lock (emulationLock)
+                 {
+                     screenshot = GetScreenshot();
+                 }
+             }
+             catch (Exception ex)
+             {
+                 Console.WriteLine($"Screenshot capture failed: {ex.Message}");
+                 return;
              }
 
              if (screenshot == null || stateJson == null) return;

@@ -26,6 +26,11 @@ header {
   padding-bottom: 0.5rem;
   border-bottom: 2px solid #ff5a26;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  position: relative;
 }
 
 header h1 {
@@ -33,6 +38,39 @@ header h1 {
   color: #ff5a26;
   margin: 0;
   text-shadow: 2px 2px 0 #000;
+}
+
+/* Reset Button */
+.reset-button {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: #e74c3c;
+  color: #fff;
+  border: 2px solid #c0392b;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 1px 1px 0 #000;
+  white-space: nowrap;
+}
+
+.reset-button:hover {
+  background: #c0392b;
+  border-color: #a93226;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(231, 76, 60, 0.5);
+}
+
+.reset-button:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Achievements Container */

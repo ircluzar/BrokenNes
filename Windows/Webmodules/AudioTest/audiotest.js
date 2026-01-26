@@ -57,13 +57,7 @@
       const musicVolume = parseInt(musicVolumeSlider.value) / 100;
       const sfxVolume = parseInt(sfxVolumeSlider.value) / 100;
       
-      const result = await window.webapi.request('/api/audio/volume', {
-        method: 'POST',
-        json: {
-          musicVolume,
-          sfxVolume
-        }
-      });
+      const result = await window.webapi.audio.setVolume(musicVolume, sfxVolume);
 
       if (!result.success) {
         console.error('Failed to set volume:', result.error);
@@ -77,7 +71,7 @@
   async function loadAudioFiles() {
     try {
       // Load music files
-      const musicResult = await window.webapi.request('/api/audio/music/list');
+      const musicResult = await window.webapi.audio.listMusic();
       if (musicResult.success) {
         musicFiles = musicResult.files || [];
         renderMusicList();
@@ -86,7 +80,7 @@
       }
 
       // Load SFX files
-      const sfxResult = await window.webapi.request('/api/audio/sfx/list');
+      const sfxResult = await window.webapi.audio.listSfx();
       if (sfxResult.success) {
         sfxFiles = sfxResult.files || [];
         renderSfxList();
@@ -148,13 +142,7 @@
       playbackStatus.className = 'value status-loading';
       
       const loop = loopCheckbox.checked;
-      const result = await window.webapi.request('/api/audio/music/play', {
-        method: 'POST',
-        json: {
-          filename,
-          loop
-        }
-      });
+      const result = await window.webapi.audio.playMusic(filename, loop);
 
       if (result.success) {
         nowPlaying.textContent = filename;
@@ -182,14 +170,7 @@
       const loop = loopCheckbox.checked;
       const fadeDurationMs = parseInt(fadeSlider.value);
       
-      const result = await window.webapi.request('/api/audio/music/request', {
-        method: 'POST',
-        json: {
-          filename,
-          loop,
-          fadeDurationMs
-        }
-      });
+      const result = await window.webapi.audio.requestMusic(filename, loop, fadeDurationMs);
 
       if (result.success) {
         // Status will be updated by the polling
@@ -214,12 +195,7 @@
       playbackStatus.className = 'value status-loading';
       
       const fadeDurationMs = parseInt(fadeSlider.value);
-      const result = await window.webapi.request('/api/audio/music/stop', {
-        method: 'POST',
-        json: {
-          fadeDurationMs
-        }
-      });
+      const result = await window.webapi.audio.stopMusic(fadeDurationMs);
 
       if (result.success) {
         setTimeout(() => {
@@ -243,12 +219,7 @@
   // Play SFX
   async function playSfx(filename) {
     try {
-      const result = await window.webapi.request('/api/audio/sfx/play', {
-        method: 'POST',
-        json: {
-          filename
-        }
-      });
+      const result = await window.webapi.audio.playSfx(filename);
 
       if (!result.success) {
         alert('Failed to play SFX: ' + result.error);
@@ -263,7 +234,7 @@
   // Update current status
   async function updateStatus() {
     try {
-      const result = await window.webapi.request('/api/audio/music/current');
+      const result = await window.webapi.audio.getCurrentMusic();
       if (result.success) {
         if (result.currentFile) {
           nowPlaying.textContent = result.currentFile;

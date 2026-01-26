@@ -54,11 +54,15 @@
         // Auto-start monitoring
         startMonitoring();
       } else {
-        achievementsOverlay.innerHTML = '<div class="empty-state">Failed to initialize</div>';
+        // Display the actual error message from the server
+        const errorMsg = result.error || 'Failed to initialize';
+        console.error('Achievement initialization failed:', errorMsg);
+        achievementsOverlay.innerHTML = `<div class="empty-state">${lib.escapeHtml(errorMsg)}</div>`;
       }
     } catch (error) {
       console.error('Achievement initialization error:', error);
-      achievementsOverlay.innerHTML = '<div class="empty-state">Error loading</div>';
+      const errorMsg = error?.message || 'Error loading';
+      achievementsOverlay.innerHTML = `<div class="empty-state">${lib.escapeHtml(errorMsg)}</div>`;
     }
   }
 

@@ -1,0 +1,13 @@
+{
+  "name": "Corruption Slop",
+  "title": "Corruption Slop",
+  "version": "1.0.0",
+  "description": "Automated corruption loop overlay for rapid slop generation",
+  "author": "BrokenNes",
+  "entryPoint": "index.html",
+  "displayMode": "overlay",
+  "showInToolsMenu": true,
+  "isActivity": true,
+  "hideMenuBar": true,
+  "pauseEmulatorOnOpen": false
+}

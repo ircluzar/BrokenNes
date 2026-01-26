@@ -179,4 +179,19 @@ namespace BrokenNes.Windows.WebApi
         public string? Filename { get; set; }
         public bool PreserveShader { get; set; } = false;
     }
+
+    internal class SetBackgroundRequest
+    {
+        public string Name { get; set; } = "";
+    }
+
+    internal class SetNullProviderRequest
+    {
+        public string Name { get; set; } = "";
+    }
+
+    internal class LoadRomRequest
+    {
+        public string? Path { get; set; }
+    }
 }

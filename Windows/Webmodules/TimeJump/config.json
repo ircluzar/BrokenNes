@@ -1,10 +1,10 @@
 {
   "displayMode": "widget",
-  "title": "TimeJump",
+  "title": "Time Jump Challenge",
   "description": "Automated time-based savestate capture for temporal navigation",
   "version": "1.0.0",
   "showInToolsMenu": true,
-  "isActivity": false,
+  "isActivity": true,
   "widget": {
     "defaultWidth": 500,
     "defaultHeight": 350,

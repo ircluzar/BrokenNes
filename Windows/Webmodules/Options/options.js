@@ -223,15 +223,9 @@
     }
 
     // Apply volume via audio engine API
-    if (window.webapi?.request) {
+    if (window.webapi?.audio?.setVolume) {
       try {
-        await window.webapi.request('/api/audio/volume', {
-          method: 'POST',
-          json: {
-            musicVolume: volumes.music,
-            sfxVolume: volumes.sfx
-          }
-        });
+        await window.webapi.audio.setVolume(volumes.music, volumes.sfx);
       } catch (error) {
         console.warn('[Options] Audio volume set error:', error);
       }

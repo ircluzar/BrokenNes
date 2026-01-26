@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Linq;
 using System.Text;
 using System.Reflection;
+using System.Threading.Tasks;
 using NesEmulator.NullProviders;
 
 namespace NesEmulator
@@ -83,6 +84,43 @@ namespace NesEmulator
 			var result = _pendingSnapshot;
 			_pendingSnapshot = null;
 			return result;
+		}
+
+		/// <summary>
+		/// Await an atomic snapshot captured at the next frame boundary.
+		/// Returns null if the snapshot did not arrive within the timeout.
+		/// </summary>
+		public async Task<string?> CaptureAtomicSnapshotAsync(int timeoutMs = 2000)
+		{
+			var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+			try
+			{
+				RequestAtomicSnapshot(snapshot =>
+				{
+					try { tcs.TrySetResult(snapshot); }
+					catch { tcs.TrySetResult(null); }
+				});
+			}
+			catch (Exception ex)
+			{
+				tcs.TrySetException(ex);
+			}
+
+			if (timeoutMs <= 0)
+				return await tcs.Task.ConfigureAwait(false);
+
+			var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
+			if (completed != tcs.Task) return null;
+			return await tcs.Task.ConfigureAwait(false);
+		}
+
+		/// <summary>
+		/// Synchronous helper for atomic snapshot capture. Returns null on timeout or error.
+		/// </summary>
+		public string? CaptureAtomicSnapshot(int timeoutMs = 2000)
+		{
+			try { return CaptureAtomicSnapshotAsync(timeoutMs).GetAwaiter().GetResult(); }
+			catch { return null; }
 		}
 
 		// Controls whether Imagine Fix will keep retrying during a freeze at intervals
@@ -439,6 +477,8 @@ namespace NesEmulator
 				} catch { return; }
 			}
 			if (bus == null || cartridge == null) return; // still cannot proceed
+			// Always refresh ROM-backed domains from the ROM image to ensure clean PRG/CHR at load
+			try { cartridge.RefreshRomDomainsFromRom(); } catch { }
 			// Restore fixed-point timing accumulators (fallback to double if new ints absent)
 			if (st.extraCycleAcc != 0 || st.overshootCarry != 0)
 			{

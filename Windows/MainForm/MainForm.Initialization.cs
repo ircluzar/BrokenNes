@@ -409,7 +409,11 @@ namespace BrokenNes.Windows
             var toolWebModules = webModules.Where(m => m.Config.ShowInToolsMenu).ToArray();
             
             // Separate activities from tools
-            var activities = toolWebModules.Where(m => m.Config.IsActivity).ToArray();
+            var activities = toolWebModules
+                .Where(m => m.Config.IsActivity)
+                .OrderBy(m => m.FolderName.Equals("DeckBuilder", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             var tools = toolWebModules.Where(m => !m.Config.IsActivity).ToArray();
             
             // Add activities first
@@ -787,6 +791,29 @@ namespace BrokenNes.Windows
             Console.WriteLine($"  Down: {p2Config.Down.DisplayName}");
             Console.WriteLine($"  Left: {p2Config.Left.DisplayName}");
             Console.WriteLine($"  Right: {p2Config.Right.DisplayName}");
+            
+            // Initialize webmodule input manager (X/Y buttons)
+            // Use Player 1 config for webmodule buttons
+            if (webModuleInputManager == null)
+            {
+                webModuleInputManager = new WebModuleInputManager();
+            }
+            
+            webModuleInputManager.SetPlayerConfig(p1Config);
+            Console.WriteLine($"Webmodule input (X/Y) configured:");
+            Console.WriteLine($"  X: {p1Config.X.DisplayName}");
+            Console.WriteLine($"  Y: {p1Config.Y.DisplayName}");
+            
+            // Wire up button events to WebAPI
+            webModuleInputManager.OnButtonPressed += (button) =>
+            {
+                webApiServer?.NotifyButtonPressed(button);
+            };
+            
+            webModuleInputManager.OnButtonReleased += (button) =>
+            {
+                webApiServer?.NotifyButtonReleased(button);
+            };
         }
 
         private void InitializeImagineEngine()
@@ -829,7 +856,15 @@ namespace BrokenNes.Windows
                         engine => achievementsEngine = engine,  // Allow WebAPI to initialize achievements
                         HideMenu,  // Pass the hide menu handler
                         ShowMenu,  // Pass the show menu handler
-                        ResetGame  // Pass the reset game handler
+                        ResetGame,  // Pass the reset game handler
+                        () => BrokenNes.Windows.Rendering.NesDirectXRenderer.GetAvailableBackgrounds(),  // Available backgrounds
+                        SetBackground,  // Set background handler
+                        () => NesEmulator.NES.GetAvailableNullProviders(),  // Available null providers
+                        SetNullProvider,  // Set null provider handler
+                        CloseRomFromApi,  // Close ROM handler
+                        () => nes?.RomPath,  // Current ROM path
+                        () => nes?.RomName,  // Current ROM name
+                        LoadRomFromApi  // Load ROM by path
                     );
                 }
 

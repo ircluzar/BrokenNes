@@ -82,6 +82,11 @@
       btnEmulator.addEventListener('click', onEmulatorClick);
     }
 
+    const btnRomManager = document.getElementById('btnRomManager');
+    if (btnRomManager) {
+      btnRomManager.addEventListener('click', onRomManagerClick);
+    }
+
     const btnOptions = document.getElementById('btnOptions');
     if (btnOptions) {
       btnOptions.addEventListener('click', onOptionsClick);
@@ -234,6 +239,10 @@
 
   function onOptionsClick() {
     window.location.href = '../Options/index.html';
+  }
+
+  function onRomManagerClick() {
+    window.location.href = '../RomManager/index.html';
   }
 
   function onAboutClick() {

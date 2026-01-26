@@ -192,7 +192,7 @@
       addBaseState: (name) => request('/api/gh/base-state', { method: 'POST', json: { name } }),
       selectBaseState: (id) => request(`/api/gh/base-state/${encodeURIComponent(id)}/select`, { method: 'POST', json: {} }),
       selectBase: (id) => request('/api/gh/select-base', { method: 'POST', json: { id } }),
-      loadBase: () => request('/api/gh/load-base', { method: 'POST', json: {} }),
+      loadBase: (id) => request('/api/gh/load-base', { method: 'POST', json: id ? { id } : {} }),
       deleteBaseState: (id) => request(`/api/gh/base-state/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       getLoadOnOperation: () => request('/api/gh/load-on-operation'),
       setLoadOnOperation: (enabled) => request('/api/gh/load-on-operation', { method: 'POST', json: { enabled } }),
@@ -233,7 +233,8 @@
       getProgress: (id) => request(`/api/achievements/progress/${encodeURIComponent(id)}`),
       getConditions: (id) => request(`/api/achievements/conditions/${encodeURIComponent(id)}`),
       forceComplete: (id) => request('/api/achievements/force-complete', { method: 'POST', json: { id } }),
-      evaluateFrame: () => request('/api/achievements/evaluate-frame', { method: 'POST' })
+      evaluateFrame: () => request('/api/achievements/evaluate-frame', { method: 'POST' }),
+      reset: () => request('/api/achievements/reset', { method: 'POST' })
     },
 
     navigation: {
@@ -272,7 +273,14 @@
 
     emulator: {
       loadBuiltInRom: (filename, preserveShader = false) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename, preserveShader } }),
-      resume: () => request('/api/emulator/resume', { method: 'POST' })
+      resume: () => request('/api/emulator/resume', { method: 'POST' }),
+      closeRom: () => request('/api/emulator/close-rom', { method: 'POST' }),
+      getBackgrounds: () => request('/api/emulator/backgrounds'),
+      setBackground: (name) => request('/api/emulator/background', { method: 'POST', json: { name } }),
+      getNullProviders: () => request('/api/emulator/null-providers'),
+      setNullProvider: (name) => request('/api/emulator/null-provider', { method: 'POST', json: { name } }),
+      getCurrentRom: () => request('/api/emulator/current-rom'),
+      loadRom: (path) => request('/api/emulator/load-rom', { method: 'POST', json: { path } })
     },
 
     shader: {
@@ -288,8 +296,74 @@
       jump: () => request('/api/timejump/jump', { method: 'POST' }),
       query: (hash) => request('/api/timejump/query', { method: 'POST', json: { hash } }),
       reset: () => request('/api/timejump/reset', { method: 'POST' })
+    },
+    
+    input: {
+      pollButtonEvent: () => request('/api/input/button-event')
     }
   };
+  
+  // Webmodule button event system (X/Y buttons)
+  let inputPollInterval = null;
+  
+  /**
+   * Start polling for X/Y button events and dispatch them as custom events
+   * Webmodules should call this during initialization to receive button events
+   */
+  webapi.input.startPolling = function(intervalMs = 50) {
+    if (inputPollInterval) {
+      console.warn('[WebAPI] Input polling already started');
+      return;
+    }
+    
+    console.log('[WebAPI] Starting input polling for X/Y buttons');
+    
+    inputPollInterval = setInterval(async () => {
+      try {
+        const result = await webapi.input.pollButtonEvent();
+        
+        if (result.success && result.hasEvent) {
+          const eventName = result.eventType === 'pressed' ? 'buttonPressed' : 'buttonReleased';
+          const button = result.button; // "X" or "Y"
+          
+          // Dispatch as custom event
+          const customEvent = new CustomEvent(eventName, {
+            detail: { button }
+          });
+          window.dispatchEvent(customEvent);
+          
+          // Also dispatch a combined event for convenience
+          const genericEvent = new CustomEvent('webmoduleButton', {
+            detail: {
+              button,
+              pressed: result.eventType === 'pressed'
+            }
+          });
+          window.dispatchEvent(genericEvent);
+          
+          console.log(`[WebAPI] Button ${button} ${result.eventType}`);
+        }
+      } catch (error) {
+        // Silently ignore polling errors to avoid console spam
+      }
+    }, intervalMs);
+  };
+  
+  /**
+   * Stop polling for button events
+   */
+  webapi.input.stopPolling = function() {
+    if (inputPollInterval) {
+      clearInterval(inputPollInterval);
+      inputPollInterval = null;
+      console.log('[WebAPI] Stopped input polling');
+    }
+  };
+  
+  // Clean up polling when page unloads
+  window.addEventListener('beforeunload', () => {
+    webapi.input.stopPolling();
+  });
 
   window.webapi = webapi;
 })();

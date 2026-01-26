@@ -522,6 +522,33 @@ namespace BrokenNes.Windows.WebApi
                     return Results.BadRequest(new { success = false, error = ex.Message });
                 }
             });
+
+            // POST /api/achievements/reset - Reset achievements for current game
+            app.MapPost("/api/achievements/reset", () =>
+            {
+                var achEngine = _getAchievementsEngine();
+                if (achEngine == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Achievements engine not initialized" });
+                }
+
+                try
+                {
+                    // Reset the engine state (clears all progress, unlocked status, etc.)
+                    achEngine.ResetToPowerOn();
+                    
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        message = "All achievements reset to initial state. Note: Game save must be cleared separately via JavaScript.",
+                        count = achEngine.GetAll().Count()
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
         }
     }
 }
