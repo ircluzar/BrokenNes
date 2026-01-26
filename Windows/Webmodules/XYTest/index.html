@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XY Test - BrokenNes</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text x='0' y='14' font-size='14'>🎮</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../shared/fonts.css">
+</head>
+<body>
+  <div class="xy-root">
+    <header class="xy-header">
+      <h1>XY Test</h1>
+      <p>Verify webmodule input events for X and Y (Player 1)</p>
+    </header>
+
+    <main class="xy-main">
+      <section class="xy-cards">
+        <div class="xy-card" id="cardX">
+          <div class="xy-card-title">X Button</div>
+          <div class="xy-indicator" id="indicatorX">
+            <span class="xy-indicator-label">Idle</span>
+          </div>
+          <div class="xy-stats">
+            <div class="xy-stat">
+              <span class="xy-stat-label">Presses</span>
+              <span class="xy-stat-value" id="countX">0</span>
+            </div>
+            <div class="xy-stat">
+              <span class="xy-stat-label">Last Event</span>
+              <span class="xy-stat-value" id="lastX">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="xy-card" id="cardY">
+          <div class="xy-card-title">Y Button</div>
+          <div class="xy-indicator" id="indicatorY">
+            <span class="xy-indicator-label">Idle</span>
+          </div>
+          <div class="xy-stats">
+            <div class="xy-stat">
+              <span class="xy-stat-label">Presses</span>
+              <span class="xy-stat-value" id="countY">0</span>
+            </div>
+            <div class="xy-stat">
+              <span class="xy-stat-label">Last Event</span>
+              <span class="xy-stat-value" id="lastY">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="xy-log">
+        <div class="xy-log-header">
+          <h2>Event Log</h2>
+          <button id="btnClear" class="xy-btn">Clear</button>
+        </div>
+        <div id="logList" class="xy-log-list">
+          <div class="xy-log-empty">Waiting for input...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../shared/webapi.js"></script>
+  <script src="xytest.js"></script>
+</body>
+</html>

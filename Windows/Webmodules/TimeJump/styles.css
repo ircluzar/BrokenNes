@@ -271,6 +271,10 @@ body {
   transform: scale(0.98);
 }
 
+.tj-btn.tj-btn-pressed {
+  transform: scale(0.98);
+}
+
 .tj-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -343,6 +347,33 @@ body {
 
 .tj-btn-icon {
   font-size: 1rem;
+}
+
+.tj-btn-bind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: rgba(60, 60, 60, 0.8);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  margin-left: 0.35rem;
+  flex-shrink: 0;
+}
+
+.tj-btn-bind-x {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(255, 90, 38, 0.15);
+}
+
+.tj-btn:disabled .tj-btn-bind {
+  opacity: 0.5;
 }
 
 /* Info Section */

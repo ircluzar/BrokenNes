@@ -1,0 +1,16 @@
+{
+  "displayMode": "widget",
+  "title": "XY Test",
+  "description": "Test webmodule input events for X and Y buttons",
+  "version": "1.0.0",
+  "showInToolsMenu": true,
+  "isActivity": false,
+  "widget": {
+    "defaultWidth": 520,
+    "defaultHeight": 420,
+    "minWidth": 420,
+    "minHeight": 320,
+    "resizable": true,
+    "startPosition": "centerScreen"
+  }
+}

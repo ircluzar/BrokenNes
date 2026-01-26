@@ -661,11 +661,10 @@
     
     try {
       console.log('[RomManager] Deleting ROM:', romToDelete.romKey);
-       using nesInterop
       if (window.nesInterop && typeof window.nesInterop.removeStoredRom === 'function') {
         await window.nesInterop.removeStoredRom(romToDelete.romKey);
       } else {
-        throw new Error('nesInterop not available'
+        console.warn('[RomManager] nesInterop not available, falling back to storage.');
         await window.nesStorage.removeItem(romToDelete.romKey);
       }
       

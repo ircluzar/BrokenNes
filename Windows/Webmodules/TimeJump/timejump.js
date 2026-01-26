@@ -754,12 +754,31 @@ function handleXButton() {
   // X button = Perform Jump (if running and states available)
   if (isRunning && availableStatesCount > 0) {
     console.log('[TimeJump] X button -> Performing jump');
-    performJump();
+    pressJumpButton();
   } else if (!isRunning) {
     console.log('[TimeJump] X button ignored - TimeJump not running');
   } else {
     console.log('[TimeJump] X button ignored - No states available');
   }
+}
+
+function pressJumpButton() {
+  if (!elements.btnJump) {
+    performJump();
+    return;
+  }
+
+  if (elements.btnJump.disabled) {
+    console.log('[TimeJump] Jump button press ignored - disabled');
+    return;
+  }
+
+  elements.btnJump.classList.add('tj-btn-pressed');
+  elements.btnJump.click();
+
+  setTimeout(() => {
+    elements.btnJump.classList.remove('tj-btn-pressed');
+  }, 120);
 }
 
 function handleYButton() {
