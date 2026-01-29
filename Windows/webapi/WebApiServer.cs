@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -9,6 +11,7 @@ using System.Windows.Forms;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -116,10 +119,10 @@ namespace BrokenNes.Windows.WebApi
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.Listen(IPAddress.Loopback, _port);
-                // Also listen on HTTPS for WebView2 compatibility (development certificate)
+                // Also listen on HTTPS for WebView2 compatibility (self-signed certificate)
                 options.Listen(IPAddress.Loopback, _port + 1, listenOptions =>
                 {
-                    listenOptions.UseHttps();
+                    listenOptions.UseHttps(CreateSelfSignedCertificate());
                 });
             });
 
@@ -180,6 +183,50 @@ namespace BrokenNes.Windows.WebApi
                 _host.Dispose();
                 _host = null;
             }
+        }
+
+        /// <summary>
+        /// Creates a self-signed certificate for HTTPS on localhost.
+        /// This avoids requiring the dotnet dev-certs on deployed machines.
+        /// </summary>
+        private static X509Certificate2 CreateSelfSignedCertificate()
+        {
+            var distinguishedName = new X500DistinguishedName("CN=localhost");
+            
+            using var rsa = RSA.Create(2048);
+            var request = new CertificateRequest(
+                distinguishedName,
+                rsa,
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1);
+            
+            // Add extensions for localhost usage
+            request.CertificateExtensions.Add(
+                new X509KeyUsageExtension(
+                    X509KeyUsageFlags.DataEncipherment | X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature,
+                    false));
+            
+            request.CertificateExtensions.Add(
+                new X509EnhancedKeyUsageExtension(
+                    new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, // Server Authentication
+                    false));
+            
+            // Add Subject Alternative Name for localhost
+            var sanBuilder = new SubjectAlternativeNameBuilder();
+            sanBuilder.AddDnsName("localhost");
+            sanBuilder.AddIpAddress(IPAddress.Loopback);
+            request.CertificateExtensions.Add(sanBuilder.Build());
+            
+            // Create self-signed certificate valid for 1 year
+            var certificate = request.CreateSelfSigned(
+                DateTimeOffset.UtcNow.AddDays(-1),
+                DateTimeOffset.UtcNow.AddYears(1));
+            
+            // Export and reimport to make the private key usable on Windows
+            // Use UserKeySet instead of MachineKeySet to avoid permission issues
+            // (MachineKeySet can cause "network password is not correct" errors)
+            var pfxBytes = certificate.Export(X509ContentType.Pfx, string.Empty);
+            return new X509Certificate2(pfxBytes, string.Empty, X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.Exportable);
         }
 
         public void Dispose()

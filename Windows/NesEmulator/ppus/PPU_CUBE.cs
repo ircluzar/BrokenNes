@@ -453,6 +453,9 @@ public class PPU_CUBE : IPPU
 		// Guard against null during hot-swap
 		if (bgMask == null || paletteRAM == null || oam == null || vram == null) return;
 		EnsureFrameBuffer();
+		// Capture to local to avoid races with ClearBuffers()
+		var fb = frameBuffer;
+		if (fb == null) return;
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
@@ -473,16 +476,18 @@ public class PPU_CUBE : IPPU
 					int sx = x + ShadowOffsetX;
 					if (sx < 0 || sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
-					frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * 69) / 100);
-					frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * 69) / 100);
-					frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * 69) / 100);
+					fb[fi + 0] = (byte)((fb[fi + 0] * 69) / 100);
+					fb[fi + 1] = (byte)((fb[fi + 1] * 69) / 100);
+					fb[fi + 2] = (byte)((fb[fi + 2] * 69) / 100);
 				}
 			}
 		}
 
 		int coverageRowIndex = scanline % ShadowVerticalDistance;
 		int spriteRowBase = coverageRowIndex * ScreenWidth;
-		for (int cx = 0; cx < ScreenWidth; cx++) spriteCoverageRows[spriteRowBase + cx] = 0;
+		int maxWidth = Math.Min(ScreenWidth, spritePixelDrawnReuse.Length);
+		if (bgMask.Length < maxWidth) maxWidth = bgMask.Length;
+		for (int cx = 0; cx < maxWidth; cx++) spriteCoverageRows[spriteRowBase + cx] = 0;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
@@ -533,7 +538,7 @@ public class PPU_CUBE : IPPU
 				if (color == 0) continue; // Transparent pixel
 
 				int px = spriteX + x;
-				if (px < 0 || px >= ScreenWidth) continue;
+				if (px < 0 || px >= maxWidth) continue;
 
 				// Sprite 0 hit detection
 				if (i == 0 && bgMask[px] && color != 0)
@@ -557,15 +562,18 @@ public class PPU_CUBE : IPPU
 				int palBase = 0x11 + (paletteIndex << 2) + color - 1;
 				palBase &= 0x1F;
 				int pBase = palBase * 3;
-				spriteCoverageRows[spriteRowBase + px] = 1;
+				int coverageIndex = spriteRowBase + px;
+				if ((uint)coverageIndex >= (uint)spriteCoverageRows.Length) continue;
+				if ((uint)(pBase + 2) >= (uint)paletteResolved.Length) continue;
+				spriteCoverageRows[coverageIndex] = 1;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				if (frameIndex + 3 < frameBuffer!.Length)
+				if (frameIndex + 3 < fb.Length)
 				{
-					frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
-					frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
-					frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
-					frameBuffer![frameIndex + 3] = 255;
+					fb[frameIndex + 0] = paletteResolved[pBase + 0];
+					fb[frameIndex + 1] = paletteResolved[pBase + 1];
+					fb[frameIndex + 2] = paletteResolved[pBase + 2];
+					fb[frameIndex + 3] = 255;
 				}
 				spritePixelDrawnReuse[px] = true;
 			}

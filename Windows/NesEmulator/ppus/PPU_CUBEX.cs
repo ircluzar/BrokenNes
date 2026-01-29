@@ -753,6 +753,8 @@ public class PPU_CUBEX : IPPU
 		// Guard against null during hot-swap
 		if (bgMask == null || paletteRAM == null || oam == null || vram == null) return;
 		EnsureFrameBuffer();
+		var fb = frameBuffer;
+		if (fb == null) return;
 		// Check if sprite rendering is enabled
 		bool showSprites = (PPUMASK & 0x10) != 0;
 		if (!showSprites) return;
@@ -767,9 +769,9 @@ public class PPU_CUBEX : IPPU
 				if (nextScanlineSpriteOpaque[x])
 				{
 					int fi = spriteScanlineBaseForLookahead + (x << 2);
-					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 				}
 			}
 		}
@@ -782,9 +784,9 @@ public class PPU_CUBEX : IPPU
 			if (spriteUpOutlines[spriteUpOutlineBase + x])
 			{
 				int fi = spriteScanlineBaseForUp + (x << 2);
-				frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-				frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-				frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 			}
 		}
 
@@ -806,9 +808,9 @@ public class PPU_CUBEX : IPPU
 					if (sx < 0 || sx >= ScreenWidth) continue;
 					int fi = shadowBase + sx * 4;
 					int darkenFactor = (int)(65 * distanceFactor);
-					frameBuffer![fi + 0] = (byte)((frameBuffer![fi + 0] * darkenFactor) / 100);
-					frameBuffer![fi + 1] = (byte)((frameBuffer![fi + 1] * darkenFactor) / 100);
-					frameBuffer![fi + 2] = (byte)((frameBuffer![fi + 2] * darkenFactor) / 100);
+					fb[fi + 0] = (byte)((fb[fi + 0] * darkenFactor) / 100);
+					fb[fi + 1] = (byte)((fb[fi + 1] * darkenFactor) / 100);
+					fb[fi + 2] = (byte)((fb[fi + 2] * darkenFactor) / 100);
 				}
 			}
 		}
@@ -825,9 +827,9 @@ public class PPU_CUBEX : IPPU
 				{
 					// Draw outline pixel (white border with configurable opacity)
 					int fi = scanlineBase + (x << 2);
-					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 				}
 			}
 		}
@@ -925,12 +927,12 @@ public class PPU_CUBEX : IPPU
 				currentRowSpriteOpaque[px] = true;
 
 				int frameIndex = (scanline * ScreenWidth + px) * 4;
-				if (frameIndex + 3 < frameBuffer!.Length)
+				if (frameIndex + 3 < fb.Length)
 				{
-					frameBuffer![frameIndex + 0] = paletteResolved[pBase + 0];
-					frameBuffer![frameIndex + 1] = paletteResolved[pBase + 1];
-					frameBuffer![frameIndex + 2] = paletteResolved[pBase + 2];
-					frameBuffer![frameIndex + 3] = 255;
+					fb[frameIndex + 0] = paletteResolved[pBase + 0];
+					fb[frameIndex + 1] = paletteResolved[pBase + 1];
+					fb[frameIndex + 2] = paletteResolved[pBase + 2];
+					fb[frameIndex + 3] = 255;
 				}
 				spritePixelDrawnReuse[px] = true;
 			}
@@ -947,17 +949,17 @@ public class PPU_CUBEX : IPPU
 				if (x > 0 && !currentRowSpriteOpaque[x - 1])
 				{
 					int fi = spriteScanlineBase + ((x - 1) << 2);
-					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 				}
 				// Right
 				if (x < ScreenWidth - 1 && !currentRowSpriteOpaque[x + 1])
 				{
 					int fi = spriteScanlineBase + ((x + 1) << 2);
-					frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-					frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+					fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 				}
 				// Up: if pixel above was transparent, mark outline for previous scanline
 				if (prevSpriteRowBase < 0 || spriteCoverageRows[prevSpriteRowBase + x] == 0)
@@ -980,9 +982,9 @@ public class PPU_CUBEX : IPPU
 			{
 				// Below-edge outline: pixel above was opaque, current is transparent - draw immediately
 				int fi = spriteScanlineBase + (x << 2);
-				frameBuffer![fi + 0] = (byte)(frameBuffer![fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-				frameBuffer![fi + 1] = (byte)(frameBuffer![fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
-				frameBuffer![fi + 2] = (byte)(frameBuffer![fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 0] = (byte)(fb[fi + 0] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 1] = (byte)(fb[fi + 1] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
+				fb[fi + 2] = (byte)(fb[fi + 2] * (1f - OutlineOpacity) + 255 * OutlineOpacity);
 			}
 		}
 	}
