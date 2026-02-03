@@ -851,6 +851,7 @@ namespace BrokenNes.Windows
                         () => audioEngine,  // Pass the audio engine
                         (filename, preserveShader) => LoadBuiltInRomAsync(filename, preserveShader),  // Pass the ROM loader
                         ResumeEmulationIfPaused,  // Pass the resume emulation handler
+                        PauseEmulationIfRunning,  // Pass the pause emulation handler
                         HideContinueButton,  // Pass the continue button hide handler
                         () => achievementsEngine,  // Pass the achievements engine
                         engine => achievementsEngine = engine,  // Allow WebAPI to initialize achievements

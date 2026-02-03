@@ -27,6 +27,15 @@ namespace BrokenNes.Windows
         {
             this.nes = nes;
             this.corruptor = corruptor;
+            try { SetupTargetedImagine(); } catch { }
+        }
+
+        public void SetupTargetedImagine()
+        {
+            nes.ImagineTargetedShot = (pc, captureData) =>
+            {
+                ImagineTargetedBug(pc, captureData);
+            };
         }
 
         public bool LoadModel(int epoch)
@@ -169,6 +178,50 @@ namespace BrokenNes.Windows
 
             var bytes = GeneratePatch(snap.PC, BytesToGenerate);
             return ApplyPatch(snap.PC, bytes);
+        }
+
+        /// <summary>
+        /// Targeted Imagine Bug: Apply corruption at specific PC captured during scanline.
+        /// </summary>
+        public bool ImagineTargetedBug(ushort pc, ImagineCaptureData captureData)
+        {
+            if (!ModelLoaded)
+            {
+                LastError = "Model not loaded";
+                return false;
+            }
+
+            if (pc < 0x8000 || pc > 0xFFFF)
+            {
+                LastError = $"PC ${pc:X4} not in PRG ROM range";
+                return false;
+            }
+
+            try
+            {
+                var bytes = GeneratePatch(pc, BytesToGenerate);
+                bool applied = ApplyPatch(pc, bytes);
+
+                if (applied)
+                {
+                    try
+                    {
+                        var lastEntry = corruptor.GhStash.LastOrDefault();
+                        if (lastEntry != null)
+                        {
+                            lastEntry.Name = $"IMG SL{captureData.Scanline} PC=${pc:X4} {captureData.FramePhase} L={bytes.Length} E{Epoch}";
+                        }
+                    }
+                    catch { }
+                }
+
+                return applied;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                return false;
+            }
         }
 
         public void ImagineFromPc(ushort pc, int bytesToGenerate)

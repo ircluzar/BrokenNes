@@ -175,6 +175,28 @@ namespace BrokenNes.Windows
             }
         }
 
+        /// <summary>
+        /// Pause emulation if it is currently running and a game is loaded.
+        /// Used by overlay modules that need a static frame for interaction.
+        /// </summary>
+        private void PauseEmulationIfRunning()
+        {
+            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+
+            if (hasLoadedGame && !isTestRom && isEmulationRunning && !isPaused)
+            {
+                Console.WriteLine("[PauseEmulationIfRunning] Pausing emulator via API");
+                isPaused = true;
+                audioManager?.Stop();
+                Console.WriteLine("Emulator Paused (API call)");
+            }
+            else
+            {
+                Console.WriteLine($"[PauseEmulationIfRunning] No action needed - hasLoadedGame={hasLoadedGame}, isTestRom={isTestRom}, isPaused={isPaused}, isEmulationRunning={isEmulationRunning}");
+            }
+        }
+
         private void ResetEmulator_Click(object? sender, EventArgs e)
         {
             if (nes != null && !string.IsNullOrEmpty(currentRomPath))

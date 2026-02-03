@@ -54,6 +54,23 @@ namespace NesEmulator
 		// NES will invoke this action with the current PC. The host can run the Imagine
 		// pipeline to predict bytes and patch PRG ROM.
 		public Action<ushort>? ImagineShot { get; set; }
+
+		// === Targeted Imagine Support ===
+		private readonly System.Collections.Generic.List<ImagineCaptureData> _imagineCaptureBuffer = new System.Collections.Generic.List<ImagineCaptureData>(262);
+		private ImagineTargetConfig? _imagineTargetConfig;
+		private readonly Random _imagineCaptureRng = new Random();
+		public ImagineCaptureData? LastImagineCapture { get; private set; }
+		public Action<ushort, ImagineCaptureData>? ImagineTargetedShot { get; set; }
+		public ImagineTargetConfig? ImagineTargetConfig
+		{
+			get => _imagineTargetConfig;
+			set
+			{
+				_imagineTargetConfig = value;
+				if (_imagineTargetConfig == null) LastImagineCapture = null;
+				ApplyImagineTargetConfig();
+			}
+		}
 		
 		/// <summary>
 		/// Request an atomic snapshot at the next frame boundary. This is the recommended way
@@ -121,6 +138,42 @@ namespace NesEmulator
 		{
 			try { return CaptureAtomicSnapshotAsync(timeoutMs).GetAwaiter().GetResult(); }
 			catch { return null; }
+		}
+
+		public void ApplyImagineTargetConfig()
+		{
+			if (bus?.ppu is PPU_IMG imgPpu)
+			{
+				if (_imagineTargetConfig != null && _imagineTargetConfig.Enabled)
+				{
+					imgPpu.SetImagineTarget(_imagineTargetConfig, (captureData) =>
+					{
+						try
+						{
+							var regs = bus!.cpu!.GetRegisters();
+							captureData.PC = regs.PC;
+							captureData.A = regs.A;
+							captureData.X = regs.X;
+							captureData.Y = regs.Y;
+							captureData.P = regs.P;
+							captureData.SP = regs.SP;
+							_imagineCaptureBuffer.Add(captureData);
+						}
+						catch { }
+					});
+				}
+				else
+				{
+					imgPpu.ClearImagineTarget();
+				}
+			}
+		}
+
+		private ImagineCaptureData SelectCaptureFromBuffer(System.Collections.Generic.List<ImagineCaptureData> captures)
+		{
+			if (captures.Count == 1) return captures[0];
+			int index = _imagineCaptureRng.Next(captures.Count);
+			return captures[index];
 		}
 
 		// Controls whether Imagine Fix will keep retrying during a freeze at intervals
@@ -606,6 +659,17 @@ namespace NesEmulator
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
+
+			// --- Targeted Imagine: reset per-frame capture buffer and apply target configuration ---
+			if (bus.ppu is PPU_IMG imgPpu)
+			{
+				ApplyImagineTargetConfig();
+				if (_imagineTargetConfig != null && _imagineTargetConfig.Enabled)
+				{
+					imgPpu.ResetFrameCaptures();
+					_imagineCaptureBuffer.Clear();
+				}
+			}
 			
 			// --- Atomic snapshot capture at frame boundary (before any CPU cycles execute) ---
 			if (_snapshotRequested)
@@ -743,6 +807,15 @@ namespace NesEmulator
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
+
+			// === Targeted Imagine: apply captures if any were collected ===
+			if (_imagineTargetConfig != null && _imagineTargetConfig.Enabled && _imagineCaptureBuffer.Count > 0 && ImagineTargetedShot != null)
+			{
+				var selectedCapture = SelectCaptureFromBuffer(_imagineCaptureBuffer);
+				LastImagineCapture = selectedCapture;
+				try { ImagineTargetedShot(selectedCapture.PC, selectedCapture); } catch { }
+				_imagineCaptureBuffer.Clear();
+			}
 
 			// Freeze detection (Imagine Fix mode only)
 			if (crashBehavior == CrashBehavior.ImagineFix && !crashed)

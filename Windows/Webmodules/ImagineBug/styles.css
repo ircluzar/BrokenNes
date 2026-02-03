@@ -1,0 +1,123 @@
+/* Imagine a Bug - overlay styles */
+
+:root {
+  --panel-bg: rgba(10, 10, 14, 0.65);
+  --panel-border: rgba(255, 255, 255, 0.15);
+  --text: #e9eef4;
+  --text-muted: rgba(233, 238, 244, 0.75);
+  --accent: #7cffb5;
+  --accent-2: #6fb2ff;
+  --danger: #9aa0a6;
+}
+
+html {
+  background: transparent !important;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  overflow: hidden;
+  font-family: 'Press Start 2P', monospace;
+  color: var(--text);
+}
+
+#imagineBugRoot {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ib-panel {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  width: 88px;
+  height: 88px;
+  padding: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.ib-panel-right {
+  left: auto;
+  right: 16px;
+}
+
+.ib-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 12px;
+  width: 72px;
+  height: 72px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.2s ease, border-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ib-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.ib-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ib-btn-icon {
+  color: var(--accent-2);
+  border-color: rgba(111, 178, 255, 0.6);
+}
+
+.ib-btn-icon svg {
+  width: 42px;
+  height: 42px;
+}
+
+.ib-draw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.ib-draw-hint {
+  margin-top: 18px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  font-size: 9px;
+  color: var(--text);
+  z-index: 2;
+  pointer-events: none;
+}
+
+#drawCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hidden {
+  display: none !important;
+}

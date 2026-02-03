@@ -221,9 +221,33 @@
       getCpuSnapshot: () => request('/api/imagine/cpu-snapshot'),
       runPrediction: () => request('/api/imagine/run-prediction', { method: 'POST' }),
       applyPatch: (pc, bytes) => request('/api/imagine/apply-patch', { method: 'POST', json: { pc, bytes } }),
-      imagineABug: () => request('/api/imagine/imagine-a-bug', { method: 'POST' }),
+      imagineABug: (loadOnImagine = false) => request('/api/imagine/imagine-a-bug', { 
+        method: 'POST',
+        json: { loadOnImagine }
+      }),
+      imagineTargetedBug: (config, loadOnImagine = false) => request('/api/imagine/imagine-targeted-bug', {
+        method: 'POST',
+        json: {
+          loadOnImagine,
+          mode: config?.mode || 'SingleScanline',
+          targetScanline: config?.targetScanline ?? 120,
+          rangeStart: config?.rangeStart ?? 0,
+          rangeEnd: config?.rangeEnd ?? 239
+        }
+      }),
       getPredictedBytes: () => request('/api/imagine/predicted-bytes'),
-      getLastError: () => request('/api/imagine/last-error')
+      getLastError: () => request('/api/imagine/last-error'),
+      setTargetedMode: (enabled, config) => request('/api/imagine/set-targeted-mode', {
+        method: 'POST',
+        json: {
+          enabled: enabled,
+          mode: config?.mode || 'SingleScanline',
+          targetScanline: config?.targetScanline ?? 120,
+          rangeStart: config?.rangeStart ?? 0,
+          rangeEnd: config?.rangeEnd ?? 239
+        }
+      }),
+      getTargetedStatus: () => request('/api/imagine/targeted-status')
     },
 
     achievements: {
@@ -239,7 +263,8 @@
 
     navigation: {
       goToEmulator: () => request('/api/navigation/go-to-emulator', { method: 'POST' }),
-      goToOverlay: () => request('/api/navigation/go-to-overlay', { method: 'POST' })
+      goToOverlay: () => request('/api/navigation/go-to-overlay', { method: 'POST' }),
+      goToWidget: () => request('/api/navigation/go-to-widget', { method: 'POST' })
     },
 
     ui: {
@@ -273,6 +298,7 @@
 
     emulator: {
       loadBuiltInRom: (filename, preserveShader = false) => request('/api/emulator/load-builtin-rom', { method: 'POST', json: { filename, preserveShader } }),
+      pause: () => request('/api/emulator/pause', { method: 'POST' }),
       resume: () => request('/api/emulator/resume', { method: 'POST' }),
       closeRom: () => request('/api/emulator/close-rom', { method: 'POST' }),
       getBackgrounds: () => request('/api/emulator/backgrounds'),

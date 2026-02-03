@@ -4,11 +4,11 @@ namespace NesEmulator
 public class PPU_LOW : IPPU
 {
 	    // Core metadata
-    public string CoreName => "Low Power";
-    public string Description => "Based on the Famiclone (FMC) core, this core adds optimizations that result is degraded experience.";
-    public int Performance => 10;
-    public int Rating => 4;
-    public string Category => "Degraded";
+	public virtual string CoreName => "Low Power";
+	public virtual string Description => "Based on the Famiclone (FMC) core, this core adds optimizations that result is degraded experience.";
+	public virtual int Performance => 10;
+	public virtual int Rating => 4;
+	public virtual string Category => "Degraded";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM
@@ -80,7 +80,7 @@ public class PPU_LOW : IPPU
 
 
 	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
-	public void Step(int elapsedCycles)
+	public virtual void Step(int elapsedCycles)
 	{
 		for (int c = 0; c < elapsedCycles; c++)
 		{
@@ -149,8 +149,16 @@ public class PPU_LOW : IPPU
 				{
 					scanline = 0;
 				}
+				OnScanlineAdvanced(scanline);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Optional scanline-advance hook for derived PPU cores.
+	/// </summary>
+	protected virtual void OnScanlineAdvanced(int currentScanline)
+	{
 	}
 
 	private readonly bool[] bgMask = new bool[ScreenWidth];

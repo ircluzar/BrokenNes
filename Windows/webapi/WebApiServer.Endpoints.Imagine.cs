@@ -1,4 +1,5 @@
 using System;
+using NesEmulator;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
@@ -301,16 +302,31 @@ namespace BrokenNes.Windows.WebApi
             });
 
             // POST /api/imagine/imagine-a-bug - Automatic corruption using AI prediction
-            app.MapPost("/api/imagine/imagine-a-bug", () =>
+            app.MapPost("/api/imagine/imagine-a-bug", async (HttpContext context) =>
             {
                 var imagine = _getImagineEngine();
-                if (imagine == null)
+                var nes = _getNes();
+                var corruptor = _getCorruptor();
+                if (imagine == null || nes == null || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Imagine engine not initialized" });
                 }
 
                 try
                 {
+                    var form = await context.Request.ReadFromJsonAsync<ImagineBugRequest>();
+                    bool loadOnImagine = form?.LoadOnImagine ?? false;
+
+                    // Load base state if requested
+                    if (loadOnImagine && corruptor.GhHasSelectedBase)
+                    {
+                        var baseState = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == corruptor.GhSelectedBaseId);
+                        if (baseState != null)
+                        {
+                            nes.LoadState(baseState.State);
+                        }
+                    }
+
                     bool success = imagine.ImagineBug();
                     
                     return Results.Ok(new
@@ -319,6 +335,77 @@ namespace BrokenNes.Windows.WebApi
                         message = success ? "Bug imagined successfully" : "Failed to imagine bug",
                         error = success ? null : imagine.LastError,
                         predictedBytes = imagine.PredictedBytes
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/imagine/imagine-targeted-bug - Targeted scanline corruption using AI prediction
+            app.MapPost("/api/imagine/imagine-targeted-bug", async (HttpContext context) =>
+            {
+                var imagine = _getImagineEngine();
+                var nes = _getNes();
+                var corruptor = _getCorruptor();
+                if (imagine == null || nes == null || corruptor == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Imagine engine not initialized" });
+                }
+
+                try
+                {
+                    var form = await context.Request.ReadFromJsonAsync<TargetedImagineBugRequest>();
+                    if (form == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Invalid request" });
+                    }
+
+                    // Load base state if requested
+                    if (form.LoadOnImagine && corruptor.GhHasSelectedBase)
+                    {
+                        var baseState = corruptor.GhBaseStates.FirstOrDefault(b => b.Id == corruptor.GhSelectedBaseId);
+                        if (baseState != null)
+                        {
+                            nes.LoadState(baseState.State);
+                        }
+                    }
+
+                    // Apply targeted config
+                    var config = new ImagineTargetConfig
+                    {
+                        Mode = Enum.TryParse<ImagineTargetMode>(form.Mode, out var mode) ? mode : ImagineTargetMode.SingleScanline,
+                        TargetScanline = form.TargetScanline,
+                        RangeStart = form.RangeStart,
+                        RangeEnd = form.RangeEnd
+                    };
+
+                    // Normalize range
+                    if (config.RangeStart > config.RangeEnd)
+                    {
+                        int tmp = config.RangeStart;
+                        config.RangeStart = config.RangeEnd;
+                        config.RangeEnd = tmp;
+                    }
+
+                    // Set the config property (this calls ApplyImagineTargetConfig internally)
+                    nes.ImagineTargetConfig = config;
+
+                    // Run one frame to capture and trigger imagine
+                    nes.RunFrame();
+                    
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        message = "Targeted bug imagined",
+                        predictedBytes = imagine.PredictedBytes,
+                        lastCapture = nes.LastImagineCapture != null ? new
+                        {
+                            scanline = nes.LastImagineCapture.Scanline,
+                            pc = nes.LastImagineCapture.PC,
+                            framePhase = nes.LastImagineCapture.FramePhase.ToString()
+                        } : null
                     });
                 }
                 catch (Exception ex)
@@ -369,6 +456,170 @@ namespace BrokenNes.Windows.WebApi
                     lastError = imagine.LastError
                 });
             });
+
+            // POST /api/imagine/set-targeted-mode - Configure scanline targeting
+            app.MapPost("/api/imagine/set-targeted-mode", async (HttpContext context) =>
+            {
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<TargetedImagineRequest>();
+                    if (body == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Invalid request body" });
+                    }
+
+                    var nes = _getNes();
+                    if (nes == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
+                    }
+
+                    ImagineTargetConfig? config = null;
+                    if (body.Enabled)
+                    {
+                        var mode = Enum.TryParse<ImagineTargetMode>(body.Mode, true, out var parsedMode)
+                            ? parsedMode
+                            : ImagineTargetMode.SingleScanline;
+                        config = new ImagineTargetConfig
+                        {
+                            Mode = mode,
+                            TargetScanline = body.TargetScanline,
+                            RangeStart = body.RangeStart,
+                            RangeEnd = body.RangeEnd,
+                            Enabled = true
+                        };
+
+                        if (config.RangeStart > config.RangeEnd)
+                        {
+                            int tmp = config.RangeStart;
+                            config.RangeStart = config.RangeEnd;
+                            config.RangeEnd = tmp;
+                        }
+                    }
+
+                    nes.ImagineTargetConfig = config;
+
+                    var imagine = _getImagineEngine();
+                    try { imagine?.SetupTargetedImagine(); } catch { }
+
+                    // Switch to PPU_IMG if targeting enabled and not already using it
+                    if (body.Enabled && nes.GetPpuCoreId() != "PPU_IMG")
+                    {
+                        try
+                        {
+                            var ppuState = nes.GetPpuState();
+                            nes.SetPpuCore("IMG");
+                            if (ppuState != null)
+                            {
+                                nes.SetPpuState(ppuState);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            return Results.BadRequest(new
+                            {
+                                success = false,
+                                error = $"Failed to switch to PPU_IMG: {ex.Message}"
+                            });
+                        }
+                    }
+
+                    var configDto = config == null ? null : new
+                    {
+                        mode = config.Mode.ToString(),
+                        targetScanline = config.TargetScanline,
+                        rangeStart = config.RangeStart,
+                        rangeEnd = config.RangeEnd,
+                        enabled = config.Enabled
+                    };
+                    var lastCapture = nes.LastImagineCapture;
+                    var lastCaptureDto = lastCapture == null ? null : new
+                    {
+                        scanline = lastCapture.Scanline,
+                        framePhase = lastCapture.FramePhase.ToString(),
+                        timestamp = lastCapture.Timestamp,
+                        pc = lastCapture.PC,
+                        a = lastCapture.A,
+                        x = lastCapture.X,
+                        y = lastCapture.Y,
+                        p = lastCapture.P,
+                        sp = lastCapture.SP
+                    };
+
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        config = configDto,
+                        ppuCore = nes.GetPpuCoreId(),
+                        lastCapture = lastCaptureDto
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // GET /api/imagine/targeted-status - Get current targeted imagine status
+            app.MapGet("/api/imagine/targeted-status", () =>
+            {
+                var nes = _getNes();
+                if (nes == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
+                }
+
+                var config = nes.ImagineTargetConfig;
+                var configDto = config == null ? null : new
+                {
+                    mode = config.Mode.ToString(),
+                    targetScanline = config.TargetScanline,
+                    rangeStart = config.RangeStart,
+                    rangeEnd = config.RangeEnd,
+                    enabled = config.Enabled
+                };
+                var lastCapture = nes.LastImagineCapture;
+                var lastCaptureDto = lastCapture == null ? null : new
+                {
+                    scanline = lastCapture.Scanline,
+                    framePhase = lastCapture.FramePhase.ToString(),
+                    timestamp = lastCapture.Timestamp,
+                    pc = lastCapture.PC,
+                    a = lastCapture.A,
+                    x = lastCapture.X,
+                    y = lastCapture.Y,
+                    p = lastCapture.P,
+                    sp = lastCapture.SP
+                };
+
+                return Results.Ok(new
+                {
+                    success = true,
+                    enabled = config != null,
+                    config = configDto,
+                    ppuCore = nes.GetPpuCoreId(),
+                    isImgCore = nes.GetPpuCoreId() == "PPU_IMG",
+                    lastCapture = lastCaptureDto
+                });
+            });
         }
+
+        private record ImagineBugRequest(bool LoadOnImagine);
+
+        private record TargetedImagineBugRequest(
+            bool LoadOnImagine,
+            string Mode,
+            int TargetScanline,
+            int RangeStart,
+            int RangeEnd
+        );
+
+        private record TargetedImagineRequest(
+            bool Enabled,
+            string Mode,
+            int TargetScanline,
+            int RangeStart,
+            int RangeEnd
+        );
     }
 }

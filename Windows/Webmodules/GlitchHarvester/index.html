@@ -211,7 +211,10 @@
                 
                 <div class="gh-imagine-setting-item">
                   <label for="imagineTemperature">Temp:</label>
-                  <input type="number" id="imagineTemperature" class="gh-input-compact" min="0" max="150" step="1" value="40">
+                  <div class="gh-imagine-range-group">
+                    <input type="range" id="imagineTemperature" class="gh-slider-compact" min="0" max="150" step="1" value="40">
+                    <span id="imagineTemperatureValue" class="gh-value-compact">0.27</span>
+                  </div>
                 </div>
                 
                 <div class="gh-imagine-setting-item">
@@ -223,10 +226,91 @@
           </div>
           
           <div class="gh-imagine-group">
-            <h4 class="gh-imagine-group-title">Actions</h4>
-            <div class="gh-imagine-actions">
-              <button id="btnImagineBug" class="gh-btn gh-btn-purple gh-imagine-auto-btn">Imagine a Bug</button>
+            <h4 class="gh-imagine-group-title">Targeted Imagine (Scanline Mode)</h4>
+
+            <div class="gh-input-row">
+              <label>
+                <input type="checkbox" id="chkTargetedImagine">
+                <span>Enable Scanline Targeting</span>
+              </label>
+              <div class="gh-tooltip">ⓘ
+                <span class="gh-tooltip-text">
+                  When enabled, Imagine a Bug will target specific scanlines during frame processing
+                  instead of between frames. Allows corruption of code executing during active rendering or VBlank.
+                </span>
+              </div>
             </div>
+
+            <div class="gh-input-row">
+              <label>
+                <input type="checkbox" id="chkLoadOnImagine" checked>
+                <span>Load on Imagine</span>
+              </label>
+              <div class="gh-tooltip">ⓘ
+                <span class="gh-tooltip-text">
+                  Reload the selected base state before running Imagine, similar to Load on Corrupt.
+                </span>
+              </div>
+            </div>
+
+            <div class="gh-input-row" id="targetModeRow" style="display: none;">
+              <label for="targetModeSelect">Target Mode:</label>
+              <select id="targetModeSelect" class="gh-select">
+                <option value="SingleScanline">Single Scanline</option>
+                <option value="ScanlineRange">Scanline Range</option>
+                <option value="ActiveRender">Active Render (0-239)</option>
+                <option value="VBlankPeriod">VBlank Period (241-261)</option>
+                <option value="FullFrame">Full Frame (All)</option>
+              </select>
+            </div>
+
+            <div class="gh-scanline-selector" id="singleScanlineSelector" style="display: none;">
+              <div class="gh-input-row">
+                <label for="targetScanline">Target Scanline:</label>
+                <input type="range" id="targetScanline" class="gh-slider" min="0" max="261" value="120" step="1">
+                <span id="targetScanlineValue" class="gh-value">120</span>
+              </div>
+
+              <div class="gh-frame-map">
+                <canvas id="frameMapCanvas" width="400" height="262"></canvas>
+                <div class="gh-frame-legend">
+                  <span class="legend-active">Active Render (0-239)</span>
+                  <span class="legend-post">Post (240)</span>
+                  <span class="legend-vblank">VBlank (241-261)</span>
+                  <span class="legend-target">● Target</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="gh-scanline-range" id="scanlineRangeSelector" style="display: none;">
+              <div class="gh-input-row">
+                <label for="rangeStart">Start Scanline:</label>
+                <input type="range" id="rangeStart" class="gh-slider" min="0" max="261" value="100" step="1">
+                <span id="rangeStartValue" class="gh-value">100</span>
+              </div>
+
+              <div class="gh-input-row">
+                <label for="rangeEnd">End Scanline:</label>
+                <input type="range" id="rangeEnd" class="gh-slider" min="0" max="261" value="139" step="1">
+                <span id="rangeEndValue" class="gh-value">139</span>
+              </div>
+
+              <div class="gh-range-summary">
+                Targeting <span id="rangeCount">40</span> scanlines
+              </div>
+            </div>
+
+            <div class="gh-targeted-status" id="targetedImagineStatus" style="display: none;">
+              <strong>Status:</strong> <span id="targetStatusText">Ready</span>
+              <div class="target-info">
+                <small>Last capture: <span id="lastCaptureInfo">None</span></small>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Imagine Actions -->
+          <div class="gh-actions">
+            <button id="btnImagineBug" class="gh-btn gh-btn-primary">Imagine a Bug</button>
           </div>
           
           <div id="imagineStatus" class="gh-imagine-status">Status: idle</div>

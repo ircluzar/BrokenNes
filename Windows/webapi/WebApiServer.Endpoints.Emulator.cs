@@ -10,6 +10,35 @@ namespace BrokenNes.Windows.WebApi
     {
         private void RegisterEmulatorEndpoints(WebApplication app)
         {
+            // POST /api/emulator/pause - Pause emulation (used by overlay modules)
+            app.MapPost("/api/emulator/pause", () =>
+            {
+                if (_pauseEmulation == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Pause emulation not available" });
+                }
+
+                try
+                {
+                    // Invoke on UI thread if we have a UI control
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke(_pauseEmulation);
+                    }
+                    else
+                    {
+                        _pauseEmulation();
+                    }
+
+                    Console.WriteLine("[WebApi] Emulation paused via API");
+                    return Results.Ok(new { success = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
             // POST /api/emulator/resume - Resume emulation (used by Story mode and other overlays)
             app.MapPost("/api/emulator/resume", () =>
             {

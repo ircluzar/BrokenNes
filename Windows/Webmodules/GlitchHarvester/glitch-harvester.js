@@ -67,6 +67,24 @@ const elements = {
   imagineTopK: null,
   btnImagineBug: null,
   imagineStatus: null,
+
+  // Targeted Imagine
+  chkTargetedImagine: null,
+  chkLoadOnImagine: null,
+  targetModeSelect: null,
+  targetModeRow: null,
+  singleScanlineSelector: null,
+  scanlineRangeSelector: null,
+  targetScanline: null,
+  targetScanlineValue: null,
+  rangeStart: null,
+  rangeStartValue: null,
+  rangeEnd: null,
+  rangeEndValue: null,
+  rangeCount: null,
+  frameMapCanvas: null,
+  targetStatusText: null,
+  lastCaptureInfo: null,
   
   // Rename Modal
   renameModal: null,
@@ -167,6 +185,25 @@ function initializeElements() {
   elements.imagineTopK = document.getElementById('imagineTopK');
   elements.btnImagineBug = document.getElementById('btnImagineBug');
   elements.imagineStatus = document.getElementById('imagineStatus');
+
+  // Targeted Imagine
+  elements.chkTargetedImagine = document.getElementById('chkTargetedImagine');
+  elements.chkLoadOnImagine = document.getElementById('chkLoadOnImagine');
+  elements.targetModeSelect = document.getElementById('targetModeSelect');
+  elements.targetModeRow = document.getElementById('targetModeRow');
+  elements.singleScanlineSelector = document.getElementById('singleScanlineSelector');
+  elements.scanlineRangeSelector = document.getElementById('scanlineRangeSelector');
+  elements.targetScanline = document.getElementById('targetScanline');
+  elements.targetScanlineValue = document.getElementById('targetScanlineValue');
+  elements.rangeStart = document.getElementById('rangeStart');
+  elements.rangeStartValue = document.getElementById('rangeStartValue');
+  elements.rangeEnd = document.getElementById('rangeEnd');
+  elements.rangeEndValue = document.getElementById('rangeEndValue');
+  elements.rangeCount = document.getElementById('rangeCount');
+  elements.frameMapCanvas = document.getElementById('frameMapCanvas');
+  elements.targetStatusText = document.getElementById('targetStatusText');
+  elements.lastCaptureInfo = document.getElementById('lastCaptureInfo');
+  elements.targetedImagineStatus = document.getElementById('targetedImagineStatus');
   
   // Rename Modal
   elements.renameModal = document.getElementById('renameModal');
@@ -192,69 +229,120 @@ function attachEventListeners() {
   });
   
   // RTC
-  elements.chkAutoCorrupt.addEventListener('change', toggleAutoCorrupt);
-  elements.blastTypeSelect.addEventListener('change', updateBlastType);
-  elements.intensity.addEventListener('input', () => {
-    elements.intensityValue.textContent = elements.intensity.value;
-    // Sync stash intensity with RTC intensity
-    elements.stashIntensity.value = elements.intensity.value;
-    elements.stashIntensityValue.textContent = elements.intensity.value;
-  });
-  elements.intensity.addEventListener('change', updateIntensity);
-  elements.btnManualBlast.addEventListener('click', rtcManualBlast);
-  elements.btnLetItRip.addEventListener('click', rtcLetItRip);
-  elements.crashBehavior.addEventListener('change', updateCrashBehavior);
+  if (elements.chkAutoCorrupt) elements.chkAutoCorrupt.addEventListener('change', toggleAutoCorrupt);
+  if (elements.blastTypeSelect) elements.blastTypeSelect.addEventListener('change', updateBlastType);
+  if (elements.intensity) {
+    elements.intensity.addEventListener('input', () => {
+      if (elements.intensityValue) elements.intensityValue.textContent = elements.intensity.value;
+      // Sync stash intensity with RTC intensity
+      if (elements.stashIntensity) {
+        elements.stashIntensity.value = elements.intensity.value;
+        if (elements.stashIntensityValue) elements.stashIntensityValue.textContent = elements.intensity.value;
+      }
+    });
+    elements.intensity.addEventListener('change', updateIntensity);
+  }
+  if (elements.btnManualBlast) elements.btnManualBlast.addEventListener('click', rtcManualBlast);
+  if (elements.btnLetItRip) elements.btnLetItRip.addEventListener('click', rtcLetItRip);
+  if (elements.crashBehavior) elements.crashBehavior.addEventListener('change', updateCrashBehavior);
   
   // Stash intensity (synced with RTC intensity)
-  elements.stashIntensity.addEventListener('input', () => {
-    elements.stashIntensityValue.textContent = elements.stashIntensity.value;
-    // Sync RTC intensity with stash intensity
-    elements.intensity.value = elements.stashIntensity.value;
-    elements.intensityValue.textContent = elements.stashIntensity.value;
-  });
-  elements.stashIntensity.addEventListener('change', updateIntensity);
+  if (elements.stashIntensity) {
+    elements.stashIntensity.addEventListener('input', () => {
+      if (elements.stashIntensityValue) elements.stashIntensityValue.textContent = elements.stashIntensity.value;
+      // Sync RTC intensity with stash intensity
+      if (elements.intensity) {
+        elements.intensity.value = elements.stashIntensity.value;
+        if (elements.intensityValue) elements.intensityValue.textContent = elements.stashIntensity.value;
+      }
+    });
+    elements.stashIntensity.addEventListener('change', updateIntensity);
+  }
   
   // Base states
-  elements.btnAddBase.addEventListener('click', addBase);
-  elements.btnLoadBase.addEventListener('click', loadBase);
-  elements.btnDeleteBase.addEventListener('click', deleteBase);
+  if (elements.btnAddBase) elements.btnAddBase.addEventListener('click', addBase);
+  if (elements.btnLoadBase) elements.btnLoadBase.addEventListener('click', loadBase);
+  if (elements.btnDeleteBase) elements.btnDeleteBase.addEventListener('click', deleteBase);
   
   // Stash
-  elements.chkLoadOnOperation.addEventListener('change', toggleLoadOnOperation);
-  elements.btnBlast.addEventListener('click', blast);
-  elements.btnReplayStash.addEventListener('click', replayStash);
-  elements.btnKeep.addEventListener('click', promoteToStockpile);
-  elements.btnClearStash.addEventListener('click', clearStash);
+  if (elements.chkLoadOnOperation) elements.chkLoadOnOperation.addEventListener('change', toggleLoadOnOperation);
+  if (elements.btnBlast) elements.btnBlast.addEventListener('click', blast);
+  if (elements.btnReplayStash) elements.btnReplayStash.addEventListener('click', replayStash);
+  if (elements.btnKeep) elements.btnKeep.addEventListener('click', promoteToStockpile);
+  if (elements.btnClearStash) elements.btnClearStash.addEventListener('click', clearStash);
   
   // Stockpile
-  elements.btnReplayStock.addEventListener('click', replayStockpile);
-  elements.btnRenameStock.addEventListener('click', showRenameModal);
-  elements.btnDeleteStock.addEventListener('click', deleteStockpile);
-  elements.btnExport.addEventListener('click', exportStockpile);
-  elements.fileImport.addEventListener('change', importStockpile);
+  if (elements.btnReplayStock) elements.btnReplayStock.addEventListener('click', replayStockpile);
+  if (elements.btnRenameStock) elements.btnRenameStock.addEventListener('click', showRenameModal);
+  if (elements.btnDeleteStock) elements.btnDeleteStock.addEventListener('click', deleteStockpile);
+  if (elements.btnExport) elements.btnExport.addEventListener('click', exportStockpile);
+  if (elements.fileImport) elements.fileImport.addEventListener('change', importStockpile);
   
   // Imagine
-  elements.btnLoadModel.addEventListener('click', imagineLoadModel);
-  elements.imagineTemperature.addEventListener('input', () => {
-    // Temperature slider goes from 0-150, convert to 0.0-1.0 for display
-    const tempValue = (parseFloat(elements.imagineTemperature.value) / 150.0).toFixed(2);
-    elements.imagineTemperatureValue.textContent = tempValue;
-  });
-  elements.btnImagineBug.addEventListener('click', imagineAutoBug);
+  if (elements.btnLoadModel) elements.btnLoadModel.addEventListener('click', imagineLoadModel);
+  if (elements.imagineTemperature) {
+    elements.imagineTemperature.addEventListener('input', () => {
+      // Temperature slider goes from 0-150, convert to 0.0-1.0 for display
+      const tempValue = (parseFloat(elements.imagineTemperature.value) / 150.0).toFixed(2);
+      if (elements.imagineTemperatureValue) elements.imagineTemperatureValue.textContent = tempValue;
+      saveImagineConfig();
+    });
+  }
+  if (elements.btnImagineBug) elements.btnImagineBug.addEventListener('click', imagineAutoBug);
+  if (elements.imagineEpoch) elements.imagineEpoch.addEventListener('change', saveImagineConfig);
+  if (elements.imagineBytesToPredict) elements.imagineBytesToPredict.addEventListener('change', saveImagineConfig);
+  if (elements.imagineTopK) elements.imagineTopK.addEventListener('change', saveImagineConfig);
+
+  // Targeted Imagine
+  if (elements.chkTargetedImagine) {
+    elements.chkTargetedImagine.addEventListener('change', toggleTargetedImagine);
+  }
+  if (elements.targetModeSelect) {
+    elements.targetModeSelect.addEventListener('change', () => {
+      updateTargetMode();
+    });
+  }
+  if (elements.targetScanline) {
+    elements.targetScanline.addEventListener('input', () => {
+      elements.targetScanlineValue.textContent = elements.targetScanline.value;
+      drawFrameMap();
+    });
+  }
+  if (elements.rangeStart) {
+    elements.rangeStart.addEventListener('input', () => {
+      elements.rangeStartValue.textContent = elements.rangeStart.value;
+      updateRangeCount();
+      drawFrameMap();
+    });
+  }
+  if (elements.rangeEnd) {
+    elements.rangeEnd.addEventListener('input', () => {
+      elements.rangeEndValue.textContent = elements.rangeEnd.value;
+      updateRangeCount();
+      drawFrameMap();
+    });
+  }
+  if (elements.frameMapCanvas) {
+    elements.frameMapCanvas.addEventListener('click', onFrameMapClick);
+  }
   
   // Rename Modal
-  elements.btnRenameCancel.addEventListener('click', hideRenameModal);
-  elements.btnRenameConfirm.addEventListener('click', confirmRename);
-  elements.renameModal.addEventListener('click', (e) => {
-    if (e.target === elements.renameModal) hideRenameModal();
-  });
+  if (elements.btnRenameCancel) elements.btnRenameCancel.addEventListener('click', hideRenameModal);
+  if (elements.btnRenameConfirm) elements.btnRenameConfirm.addEventListener('click', confirmRename);
+  if (elements.renameModal) {
+    elements.renameModal.addEventListener('click', (e) => {
+      if (e.target === elements.renameModal) hideRenameModal();
+    });
+  }
   
   // Confirm Modal
-  elements.btnConfirmCancel.addEventListener('click', hideConfirmModal);
-  elements.btnConfirmOk.addEventListener('click', handleConfirmOk);
-  elements.confirmModal.addEventListener('click', (e) => {
-    if (e.target === elements.confirmModal) hideConfirmModal();
-  });
+  if (elements.btnConfirmCancel) elements.btnConfirmCancel.addEventListener('click', hideConfirmModal);
+  if (elements.btnConfirmOk) elements.btnConfirmOk.addEventListener('click', handleConfirmOk);
+  if (elements.confirmModal) {
+    elements.confirmModal.addEventListener('click', (e) => {
+      if (e.target === elements.confirmModal) hideConfirmModal();
+    });
+  }
   
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
@@ -1119,13 +1207,102 @@ const IMAGINE_FLAVOR_TEXTS = [
   "an AI learned 6502 patterns and now we're feeding its imagination directly to the CPU because why not"
 ];
 
+const IMAGINE_CONFIG_KEY = 'glitchHarvester.imagineConfig';
+
 function getRandomFlavorText() {
   return IMAGINE_FLAVOR_TEXTS[Math.floor(Math.random() * IMAGINE_FLAVOR_TEXTS.length)];
+}
+
+function getImagineConfigFromUI() {
+  return {
+    epoch: elements.imagineEpoch ? parseInt(elements.imagineEpoch.value) : null,
+    bytesToPredict: elements.imagineBytesToPredict ? parseInt(elements.imagineBytesToPredict.value) : null,
+    temperatureUi: elements.imagineTemperature ? parseInt(elements.imagineTemperature.value) : null,
+    topK: elements.imagineTopK ? parseInt(elements.imagineTopK.value) : null
+  };
+}
+
+function saveImagineConfig() {
+  try {
+    const config = getImagineConfigFromUI();
+    localStorage.setItem(IMAGINE_CONFIG_KEY, JSON.stringify(config));
+  } catch (error) {
+    console.warn('[Imagine] Failed to save config:', error);
+  }
+}
+
+function loadImagineConfig() {
+  try {
+    const raw = localStorage.getItem(IMAGINE_CONFIG_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn('[Imagine] Failed to load config:', error);
+    return null;
+  }
+}
+
+function applyImagineConfig(config) {
+  if (!config) return;
+  if (Number.isFinite(config.epoch) && elements.imagineEpoch) {
+    elements.imagineEpoch.value = config.epoch;
+  }
+  if (Number.isFinite(config.bytesToPredict) && elements.imagineBytesToPredict) {
+    elements.imagineBytesToPredict.value = config.bytesToPredict;
+  }
+  if (Number.isFinite(config.temperatureUi) && elements.imagineTemperature) {
+    elements.imagineTemperature.value = config.temperatureUi;
+    if (elements.imagineTemperatureValue) {
+      elements.imagineTemperatureValue.textContent = (config.temperatureUi / 150.0).toFixed(2);
+    }
+  }
+  if (Number.isFinite(config.topK) && elements.imagineTopK) {
+    elements.imagineTopK.value = config.topK;
+  }
+}
+
+async function ensureImagineModelLoaded() {
+  const modelState = await api.imagine.isModelLoaded();
+  if (modelState.success && modelState.modelLoaded) return true;
+
+  const saved = loadImagineConfig();
+  const epoch = Number.isFinite(saved?.epoch) ? saved.epoch : parseInt(elements.imagineEpoch?.value ?? '0');
+  if (!Number.isFinite(epoch) || epoch <= 0) {
+    return false;
+  }
+
+  elements.imagineStatus.textContent = `Status: Loading model epoch ${epoch}...`;
+  elements.imagineStatus.style.color = 'var(--yellow)';
+  elements.btnLoadModel.disabled = true;
+
+  try {
+    const data = await api.imagine.loadModel(epoch);
+    if (data.success) {
+      elements.imagineStatus.textContent = `Status: Model epoch ${epoch} loaded`;
+      elements.imagineStatus.style.color = 'var(--green)';
+      showToast(`Model epoch ${epoch} loaded successfully`, 'success');
+      await imagineUpdateParams();
+      return true;
+    }
+    elements.imagineStatus.textContent = `Status: Failed to load model - ${data.error || 'Unknown error'}`;
+    elements.imagineStatus.style.color = 'var(--red)';
+    showToast(data.error || 'Failed to load model', 'error');
+    return false;
+  } catch (error) {
+    elements.imagineStatus.textContent = `Status: Error - ${error.message}`;
+    elements.imagineStatus.style.color = 'var(--red)';
+    showToast(`Error loading model: ${error.message}`, 'error');
+    return false;
+  } finally {
+    elements.btnLoadModel.disabled = false;
+  }
 }
 
 async function imagineLoadModel() {
   console.log('[Imagine] Load Model clicked');
   const epoch = parseInt(elements.imagineEpoch.value);
+
+  saveImagineConfig();
   
   elements.imagineStatus.textContent = `Status: Loading model epoch ${epoch}...`;
   elements.imagineStatus.style.color = 'var(--yellow)';
@@ -1167,6 +1344,8 @@ async function imagineUpdateParams() {
   const temperatureRaw = parseInt(elements.imagineTemperature.value);
   const temperature = temperatureRaw / 150.0;
   const topK = parseInt(elements.imagineTopK.value);
+
+  saveImagineConfig();
   
   try {
     const data = await api.imagine.setGenerationParams({
@@ -1197,11 +1376,30 @@ async function imagineAutoBug() {
   elements.btnImagineBug.disabled = true;
   
   try {
+    const modelReady = await ensureImagineModelLoaded();
+    if (!modelReady) {
+      elements.imagineStatus.textContent = 'Status: No model loaded - set a valid epoch';
+      elements.imagineStatus.style.color = 'var(--red)';
+      showToast('No model loaded - set a valid epoch', 'error');
+      return;
+    }
+
     // First, update generation parameters from UI
     await imagineUpdateParams();
     
-    // Call the imagine-a-bug API
-    const data = await api.imagine.imagineABug();
+    // Check if targeted mode is enabled
+    const isTargeted = elements.chkTargetedImagine && elements.chkTargetedImagine.checked;
+    const loadOnImagine = elements.chkLoadOnImagine && elements.chkLoadOnImagine.checked;
+    
+    let data;
+    if (isTargeted) {
+      // Use targeted imagine with scanline config
+      const config = getTargetConfig();
+      data = await api.imagine.imagineTargetedBug(config, loadOnImagine);
+    } else {
+      // Use normal inter-frame imagine
+      data = await api.imagine.imagineABug(loadOnImagine);
+    }
     
     if (data.success) {
       // Format predicted bytes for display
@@ -1231,7 +1429,228 @@ async function imagineAutoBug() {
     showToast(`Error: ${error.message}`, 'error');
     console.error('[Imagine] Imagine a bug error:', error);
   } finally {
+    try { await refreshTargetedStatus(); } catch { }
     elements.btnImagineBug.disabled = false;
+  }
+}
+
+// ==================== Targeted Imagine ====================
+
+let targetedUpdateTimer = null;
+
+async function toggleTargetedImagine() {
+  const enabled = elements.chkTargetedImagine.checked;
+  console.log('[Imagine] Targeted mode UI:', enabled);
+
+  if (elements.targetModeRow) {
+    elements.targetModeRow.style.display = enabled ? 'flex' : 'none';
+  }
+  
+  if (elements.targetedImagineStatus) {
+    elements.targetedImagineStatus.style.display = enabled ? 'block' : 'none';
+  }
+
+  if (enabled) {
+    updateTargetMode();
+    updateRangeCount();
+    drawFrameMap();
+  } else {
+    if (elements.singleScanlineSelector) elements.singleScanlineSelector.style.display = 'none';
+    if (elements.scanlineRangeSelector) elements.scanlineRangeSelector.style.display = 'none';
+  }
+
+  try {
+    await api.imagine.setTargetedMode(enabled, enabled ? getTargetConfig() : null);
+  } catch (error) {
+    console.error('[Imagine] Failed to toggle targeted mode:', error);
+  }
+}
+
+function updateTargetMode() {
+  if (!elements.targetModeSelect) return;
+
+  if (!elements.chkTargetedImagine || !elements.chkTargetedImagine.checked) {
+    if (elements.singleScanlineSelector) elements.singleScanlineSelector.style.display = 'none';
+    if (elements.scanlineRangeSelector) elements.scanlineRangeSelector.style.display = 'none';
+    return;
+  }
+  
+  const mode = elements.targetModeSelect.value;
+  console.log('[Imagine] Target mode:', mode);
+
+  if (elements.singleScanlineSelector) {
+    elements.singleScanlineSelector.style.display = mode === 'SingleScanline' ? 'block' : 'none';
+  }
+  if (elements.scanlineRangeSelector) {
+    elements.scanlineRangeSelector.style.display = mode === 'ScanlineRange' ? 'block' : 'none';
+  }
+
+  if (!elements.rangeStart || !elements.rangeEnd || !elements.rangeCount) return;
+
+  drawFrameMap();
+}
+
+function updateRangeCount() {
+  const start = parseInt(elements.rangeStart.value);
+  const end = parseInt(elements.rangeEnd.value);
+  const count = Math.abs(end - start) + 1;
+  elements.rangeCount.textContent = count;
+}
+
+function drawFrameMap() {
+  const canvas = elements.frameMapCanvas;
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+
+  const lineHeight = height / 262;
+
+  for (let i = 0; i < 262; i++) {
+    const y = i * lineHeight;
+
+    if (i <= 239) {
+      ctx.fillStyle = '#4CAF50';
+    } else if (i === 240) {
+      ctx.fillStyle = '#FF9800';
+    } else {
+      ctx.fillStyle = '#2196F3';
+    }
+
+    ctx.fillRect(0, y, width, lineHeight);
+  }
+
+  ctx.fillStyle = 'rgba(255, 0, 255, 0.5)';
+
+  const mode = elements.targetModeSelect.value;
+
+  if (mode === 'SingleScanline') {
+    const line = parseInt(elements.targetScanline.value);
+    const y = line * lineHeight;
+    ctx.fillRect(0, y, width, lineHeight * 2);
+  } else if (mode === 'ScanlineRange') {
+    const start = parseInt(elements.rangeStart.value);
+    const end = parseInt(elements.rangeEnd.value);
+    const y1 = Math.min(start, end) * lineHeight;
+    const y2 = Math.max(start, end) * lineHeight;
+    ctx.fillRect(0, y1, width, (y2 - y1) + lineHeight);
+  } else if (mode === 'ActiveRender') {
+    ctx.fillRect(0, 0, width, 240 * lineHeight);
+  } else if (mode === 'VBlankPeriod') {
+    ctx.fillRect(0, 241 * lineHeight, width, 21 * lineHeight);
+  } else if (mode === 'FullFrame') {
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText('0', 5, 10);
+  ctx.fillText('120', 5, 120 * lineHeight + 10);
+  ctx.fillText('239', 5, 239 * lineHeight + 10);
+  ctx.fillText('240', 5, 240 * lineHeight + 10);
+  ctx.fillText('241', 5, 241 * lineHeight + 10);
+  ctx.fillText('261', 5, 261 * lineHeight + 10);
+}
+
+function onFrameMapClick(event) {
+  const canvas = elements.frameMapCanvas;
+  const rect = canvas.getBoundingClientRect();
+  const y = event.clientY - rect.top;
+  const scanline = Math.floor((y / rect.height) * 262);
+
+  console.log('[Imagine] Frame map clicked at scanline', scanline);
+
+  elements.targetScanline.value = scanline;
+  elements.targetScanlineValue.textContent = scanline;
+  elements.targetModeSelect.value = 'SingleScanline';
+  updateTargetMode();
+}
+
+function getTargetConfig() {
+  const mode = elements.targetModeSelect.value;
+  return {
+    mode: mode,
+    targetScanline: parseInt(elements.targetScanline.value),
+    rangeStart: parseInt(elements.rangeStart.value),
+    rangeEnd: parseInt(elements.rangeEnd.value),
+    enabled: elements.chkTargetedImagine.checked
+  };
+}
+
+function scheduleTargetedUpdate() {
+  if (!elements.chkTargetedImagine.checked) return;
+  if (targetedUpdateTimer) clearTimeout(targetedUpdateTimer);
+  targetedUpdateTimer = setTimeout(() => {
+    try {
+      updateTargetMode();
+      updateRangeCount();
+      drawFrameMap();
+    } catch (error) {
+      console.error('[Imagine] Failed to update targeted UI:', error);
+    }
+  }, 150);
+}
+
+async function refreshTargetedStatus() {
+  try {
+    const data = await api.imagine.getTargetedStatus();
+    applyTargetedStatus(data);
+  } catch (error) {
+    console.error('[Imagine] Failed to load targeted status:', error);
+  }
+}
+
+function applyTargetedStatus(data) {
+  if (!data || !data.success) return;
+
+  const enabled = (data.enabled !== undefined)
+    ? !!data.enabled
+    : (data.config?.enabled !== undefined)
+      ? !!data.config.enabled
+      : !!(elements.chkTargetedImagine && elements.chkTargetedImagine.checked);
+
+  if (elements.chkTargetedImagine) elements.chkTargetedImagine.checked = enabled;
+  if (elements.targetModeRow) elements.targetModeRow.style.display = enabled ? 'flex' : 'none';
+  if (elements.targetedImagineStatus) elements.targetedImagineStatus.style.display = enabled ? 'block' : 'none';
+
+  if (data.config) {
+    if (data.config.mode && elements.targetModeSelect) elements.targetModeSelect.value = data.config.mode;
+    if (Number.isFinite(data.config.targetScanline)) {
+      if (elements.targetScanline) elements.targetScanline.value = data.config.targetScanline;
+      if (elements.targetScanlineValue) elements.targetScanlineValue.textContent = data.config.targetScanline;
+    }
+    if (Number.isFinite(data.config.rangeStart)) {
+      if (elements.rangeStart) elements.rangeStart.value = data.config.rangeStart;
+      if (elements.rangeStartValue) elements.rangeStartValue.textContent = data.config.rangeStart;
+    }
+    if (Number.isFinite(data.config.rangeEnd)) {
+      if (elements.rangeEnd) elements.rangeEnd.value = data.config.rangeEnd;
+      if (elements.rangeEndValue) elements.rangeEndValue.textContent = data.config.rangeEnd;
+    }
+  }
+
+  updateTargetMode();
+  updateRangeCount();
+  drawFrameMap();
+
+  if (elements.targetStatusText) {
+    elements.targetStatusText.textContent = enabled ? 'Enabled' : 'Disabled';
+  }
+
+  const capture = data.lastCapture;
+  if (elements.lastCaptureInfo) {
+    if (capture && Number.isFinite(capture.scanline)) {
+      const pc = capture.pc != null ? capture.pc : capture.PC;
+      const pcHex = pc != null ? pc.toString(16).toUpperCase().padStart(4, '0') : '----';
+      const phase = capture.framePhase || capture.FramePhase || '';
+      elements.lastCaptureInfo.textContent = `SL ${capture.scanline} ${phase} PC=$${pcHex}`;
+    } else {
+      elements.lastCaptureInfo.textContent = 'None';
+    }
   }
 }
 
@@ -1241,6 +1660,11 @@ async function loadImagineState() {
   
   // Set random flavor text once on page load
   elements.imagineFlavor.textContent = getRandomFlavorText();
+
+  const savedConfig = loadImagineConfig();
+  if (savedConfig) {
+    applyImagineConfig(savedConfig);
+  }
   
   try {
     // Check if model is loaded
@@ -1262,23 +1686,29 @@ async function loadImagineState() {
       console.log('[Imagine] Current epoch:', epochData.epoch);
     }
     
-    // Load generation params
-    const paramsData = await api.imagine.getGenerationParams();
-    if (paramsData.success) {
-      if (paramsData.bytesToGenerate != null) {
-        elements.imagineBytesToPredict.value = paramsData.bytesToGenerate;
+    // Load generation params (only if no saved config is present)
+    if (!savedConfig) {
+      const paramsData = await api.imagine.getGenerationParams();
+      if (paramsData.success) {
+        if (paramsData.bytesToGenerate != null) {
+          elements.imagineBytesToPredict.value = paramsData.bytesToGenerate;
+        }
+        if (paramsData.temperature != null) {
+          // Convert from 0.0-1.0 to 0-150 for UI
+          const tempUI = Math.round(paramsData.temperature * 150);
+          elements.imagineTemperature.value = tempUI;
+          elements.imagineTemperatureValue.textContent = paramsData.temperature.toFixed(2);
+        }
+        if (paramsData.topK != null) {
+          elements.imagineTopK.value = paramsData.topK;
+        }
+        console.log('[Imagine] Generation params loaded:', paramsData);
       }
-      if (paramsData.temperature != null) {
-        // Convert from 0.0-1.0 to 0-150 for UI
-        const tempUI = Math.round(paramsData.temperature * 150);
-        elements.imagineTemperature.value = tempUI;
-        elements.imagineTemperatureValue.textContent = paramsData.temperature.toFixed(2);
-      }
-      if (paramsData.topK != null) {
-        elements.imagineTopK.value = paramsData.topK;
-      }
-      console.log('[Imagine] Generation params loaded:', paramsData);
+    } else {
+      await imagineUpdateParams();
     }
+
+    await refreshTargetedStatus();
   } catch (error) {
     console.error('[Imagine] Error loading Imagine state:', error);
     elements.imagineStatus.textContent = 'Status: Error loading state';

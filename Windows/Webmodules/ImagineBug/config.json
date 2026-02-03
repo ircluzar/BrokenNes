@@ -1,0 +1,10 @@
+{
+  "displayMode": "overlay",
+  "title": "Target the Beam",
+  "description": "Standalone Imagine mode with scanline targeting overlay",
+  "version": "1.0.0",
+  "hideMenuBar": false,
+  "pauseEmulatorOnOpen": false,
+  "showInToolsMenu": true,
+  "isActivity": true
+}

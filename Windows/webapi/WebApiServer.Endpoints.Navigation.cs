@@ -281,6 +281,51 @@ namespace BrokenNes.Windows.WebApi
                     });
                 }
             });
+
+            // POST /api/navigation/go-to-widget - Switch to widget mode (side-by-side WebView + emulator)
+            app.MapPost("/api/navigation/go-to-widget", () =>
+            {
+                try
+                {
+                    if (_switchViewMode == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "View mode switching not available" });
+                    }
+
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    // Switch to Widget mode on UI thread (skipNavigation=true to preserve current page content)
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        {
+                            _switchViewMode(ViewMode.Widget, true);
+                        });
+                    }
+                    else
+                    {
+                        _switchViewMode(ViewMode.Widget, true);
+                    }
+
+                    Console.WriteLine("[WebApi] Switched to Widget mode via API");
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        mode = "Widget"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
         }
     }
 }
