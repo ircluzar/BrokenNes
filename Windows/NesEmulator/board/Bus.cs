@@ -201,7 +201,7 @@ public class Bus : IBus
 	}
 
 	// === PPU Core Hot-Swap Support ===
-		public enum PpuCore { FMC = 0, FIX = 1, LQ = 2, CUBE = 3, LOW = 4, BFR = 5 }
+		public enum PpuCore { FMC = 0, FIX = 1, LQ = 2, ULQ = 3, CUBE = 4, LOW = 5, BFR = 6 }
 		public void SetPpuCore(PpuCore core)
 	{
 		var prevState = activePpu != null ? activePpu.GetState() : new object();
@@ -209,6 +209,7 @@ public class Bus : IBus
 				PpuCore.FMC => GetPpu("FMC") ?? activePpu,
 				PpuCore.FIX => GetPpu("FIX") ?? activePpu,
 				PpuCore.LQ => GetPpu("LQ") ?? activePpu,
+				PpuCore.ULQ => GetPpu("ULQ") ?? activePpu,
 				PpuCore.CUBE => GetPpu("CUBE") ?? activePpu,
 				PpuCore.LOW => GetPpu("LOW") ?? activePpu,
 				PpuCore.BFR => GetPpu("BFR") ?? activePpu,
@@ -228,7 +229,7 @@ public class Bus : IBus
 			// Find by instance dictionary
 			foreach (var kv in _ppuInstances)
 				if (object.ReferenceEquals(kv.Value, activePpu))
-					return kv.Key switch { "FMC" => PpuCore.FMC, "FIX" => PpuCore.FIX, "LQ" => PpuCore.LQ, "CUBE" => PpuCore.CUBE, "LOW" => PpuCore.LOW, "BFR" => PpuCore.BFR, _ => PpuCore.FMC };
+					return kv.Key switch { "FMC" => PpuCore.FMC, "FIX" => PpuCore.FIX, "LQ" => PpuCore.LQ, "ULQ" => PpuCore.ULQ, "CUBE" => PpuCore.CUBE, "LOW" => PpuCore.LOW, "BFR" => PpuCore.BFR, _ => PpuCore.FMC };
 			return PpuCore.FMC;
 		}
 
@@ -479,7 +480,15 @@ public class Bus : IBus
 	public byte PeekRam(int index) => (index >=0 && index < ram.Length) ? ram[index] : (byte)0;
 	public void PokeRam(int index, byte value) { if (index>=0 && index < ram.Length) ram[index]=value; }
 
-	public void StepAPU(int cpuCycles) { activeApu.Step(cpuCycles); mmc5Audio?.Step(cpuCycles); instr.ApuSteps += cpuCycles; }
+	public void StepAPU(int cpuCycles)
+	{
+		int apuCycles = cpuCycles;
+		if (activeCpu is IApuCycleScaler scaler)
+			apuCycles = scaler.ScaleApuCycles(cpuCycles);
+		activeApu.Step(apuCycles);
+		mmc5Audio?.Step(apuCycles);
+		instr.ApuSteps += apuCycles;
+	}
 	public float[] GetAudioSamples(int max=0)
 	{
 		var samples = activeApu.GetAudioSamples(max);

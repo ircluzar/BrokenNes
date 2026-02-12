@@ -136,6 +136,30 @@ namespace BrokenNes.Windows
                 
                 // Get current audio buffer level to guide timing
                 int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? TargetAudioBufferMs;
+
+                // Core-based slowdown (CPU_ULQ) should not trigger audio-driven catch-up.
+                bool cpuUlq = false;
+                float coreSpeedMultiplier = 1.0f;
+                if (nes != null)
+                {
+                    try
+                    {
+                        string cpuId = nes.GetCpuCoreId();
+                        if (!string.IsNullOrWhiteSpace(cpuId) && cpuId.EndsWith("CPU_ULQ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            cpuUlq = true;
+                            coreSpeedMultiplier = 0.75f;
+                        }
+                    }
+                    catch { }
+                }
+
+                if (!hasSpeedOverride)
+                {
+                    // Slow audio for ULQ; otherwise keep normal playback.
+                    float targetSpeed = cpuUlq ? coreSpeedMultiplier : 1.0f;
+                    audioManager?.SetSpeedMultiplier(targetSpeed, preserveBuffer: true);
+                }
                 
                 // Determine how many frames to run based on audio buffer state
                 int framesToRun = 0;
@@ -163,6 +187,25 @@ namespace BrokenNes.Windows
                     if (framesToRun == 0)
                     {
                         Thread.Sleep(1); // Small sleep to prevent CPU spinning
+                    }
+                }
+                else if (cpuUlq)
+                {
+                    // Time-based pacing for ULQ: avoid audio-driven catch-up that would speed emulation.
+                    double deltaTime = stopwatch.Elapsed.TotalSeconds;
+                    stopwatch.Restart();
+                    accumulator += deltaTime;
+                    double effectiveFrameTime = targetFrameTime; // keep 60 FPS pacing
+                    framesToRun = 0;
+                    while (accumulator >= effectiveFrameTime)
+                    {
+                        framesToRun++;
+                        accumulator -= effectiveFrameTime;
+                    }
+
+                    if (framesToRun == 0)
+                    {
+                        Thread.Sleep(1);
                     }
                 }
                 else

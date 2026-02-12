@@ -175,7 +175,7 @@ namespace BrokenNes
                 else if (nesController.CpuCoreOptions.Count>0) nesController.CpuCoreSel = nesController.CpuCoreOptions[0];
             }
             nesController.PpuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
-            var desiredOrder = new List<string>{"FMC","SPD","CUBE","EIL","BFR","LQ","LOW"};
+            var desiredOrder = new List<string>{"FMC","SPD","CUBE","EIL","BFR","LQ","ULQ","LOW"};
             nesController.PpuCoreOptions = nesController.PpuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
             if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel) && nesController.PpuCoreOptions.Count>0)
             {
@@ -770,7 +770,7 @@ namespace BrokenNes
                 }
                 if (!nes.SetPpuCore(nesController.PpuCoreSel))
                 {
-                    nes.SetPpuCore(nesController.PpuCoreSel switch { "FIX" => NesEmulator.Bus.PpuCore.FIX, "LQ" => NesEmulator.Bus.PpuCore.LQ, "CUBE" => NesEmulator.Bus.PpuCore.CUBE, "BFR" => NesEmulator.Bus.PpuCore.BFR, _ => NesEmulator.Bus.PpuCore.FMC });
+                    nes.SetPpuCore(nesController.PpuCoreSel switch { "FIX" => NesEmulator.Bus.PpuCore.FIX, "LQ" => NesEmulator.Bus.PpuCore.LQ, "ULQ" => NesEmulator.Bus.PpuCore.ULQ, "CUBE" => NesEmulator.Bus.PpuCore.CUBE, "BFR" => NesEmulator.Bus.PpuCore.BFR, _ => NesEmulator.Bus.PpuCore.FMC });
                 }
                 if (!string.IsNullOrEmpty(nesController.ApuCoreSel))
                 {

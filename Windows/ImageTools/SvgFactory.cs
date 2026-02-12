@@ -129,6 +129,28 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
+    // CPU_ULQ — scarred die and missing pins
+    public static string CPU_ULQ =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_ULQ'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <g fill='" + Stroke + "' opacity='0.65'>" +
+        "      <rect x='18' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='42' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='90' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='138' y='14' width='8' height='4' rx='1'/>" +
+        "      <rect x='18' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='66' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='114' y='112' width='8' height='4' rx='1'/>" +
+        "      <rect x='162' y='112' width='8' height='4' rx='1'/>" +
+        "    </g>" +
+        "    <rect x='70' y='42' width='74' height='48' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <path d='M78 48 L98 68 L78 88' fill='none' stroke='" + Stroke + "' stroke-width='2' opacity='0.7'/>" +
+        "    <path d='M116 46 L96 66 L116 86' fill='none' stroke='" + AccentToken + "' stroke-width='2' opacity='0.8'/>" +
+        "    <circle cx='130' cy='52' r='3' fill='" + AccentToken + "' opacity='0.6'/>" +
+        "  </g>" +
+        "</svg>";
+
     // CPU_Z80 — experimental chip with zigzag and warning elements
     public static string CPU_Z80 =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_Z80'>" +
@@ -189,6 +211,48 @@ public static class SvgFactory
         "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
         "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
         "    <path d='M64 60 H148' stroke='" + Stroke + "' stroke-width='2' stroke-dasharray='3 2' opacity='0.6'/>" +
+        "  </g>" +
+        "</svg>";
+    
+    // PPU_IMG — image-focused: viewfinder frame with pixel grid
+    public static string PPU_IMG =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_IMG'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='58' y='34' width='96' height='62' rx='4' fill='" + ChipFillB + "' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <g stroke='" + Stroke + "' stroke-width='1' opacity='0.45'>" +
+        "      <path d='M70 34 V96 M82 34 V96 M94 34 V96 M106 34 V96 M118 34 V96 M130 34 V96 M142 34 V96'/>" +
+        "      <path d='M58 48 H154 M58 62 H154 M58 76 H154 M58 90 H154'/>" +
+        "    </g>" +
+        "    <g stroke='" + AccentToken + "' stroke-width='2'>" +
+        "      <path d='M58 34 h10 M58 34 v10'/>" +
+        "      <path d='M154 34 h-10 M154 34 v10'/>" +
+        "      <path d='M58 96 h10 M58 96 v-10'/>" +
+        "      <path d='M154 96 h-10 M154 96 v-10'/>" +
+        "    </g>" +
+        "  </g>" +
+        "</svg>";
+
+    // PPU_ULQ — chunky blocks
+    public static string PPU_ULQ =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_ULQ'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <g fill='" + Stroke + "' opacity='0.6'>" +
+        "      <rect x='72' y='46' width='10' height='8'/>" +
+        "      <rect x='90' y='46' width='10' height='8'/>" +
+        "      <rect x='108' y='46' width='10' height='8'/>" +
+        "      <rect x='126' y='46' width='10' height='8'/>" +
+        "      <rect x='72' y='62' width='10' height='8'/>" +
+        "      <rect x='90' y='62' width='10' height='8'/>" +
+        "      <rect x='108' y='62' width='10' height='8'/>" +
+        "      <rect x='126' y='62' width='10' height='8'/>" +
+        "      <rect x='72' y='78' width='10' height='8'/>" +
+        "      <rect x='90' y='78' width='10' height='8'/>" +
+        "      <rect x='108' y='78' width='10' height='8'/>" +
+        "      <rect x='126' y='78' width='10' height='8'/>" +
+        "    </g>" +
         "  </g>" +
         "</svg>";
 
@@ -325,6 +389,51 @@ public static class SvgFactory
         "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
         "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
         "    <polyline points='70,74 78,62 86,78 94,64 102,80 110,60 118,76' fill='none' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "  </g>" +
+        "</svg>";
+    
+    // APU_HI — clean double waveform with accent shimmer
+    public static string APU_HI =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='APU_HI'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <path d='M70 70 C78 50, 86 90, 94 70 S110 50, 118 70' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <path d='M70 76 C78 60, 86 88, 94 76 S110 60, 118 76' fill='none' stroke='" + Stroke + "' stroke-width='1.5' opacity='0.6'/>" +
+        "  </g>" +
+        "</svg>";
+    
+    // APU_HI2 — warm layer under detail waveform
+    public static string APU_HI2 =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='APU_HI2'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <path d='M70 78 C78 66, 86 84, 94 78 S110 66, 118 78' fill='none' stroke='" + Stroke + "' stroke-width='3' opacity='0.25'/>" +
+        "    <path d='M70 70 C78 50, 86 90, 94 70 S110 50, 118 70' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "  </g>" +
+        "</svg>";
+    
+    // APU_HI2X — layered waveform with reverb echoes
+    public static string APU_HI2X =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='APU_HI2X'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <path d='M70 78 C78 66, 86 84, 94 78 S110 66, 118 78' fill='none' stroke='" + Stroke + "' stroke-width='3' opacity='0.25'/>" +
+        "    <path d='M70 70 C78 50, 86 90, 94 70 S110 50, 118 70' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <path d='M124 64 C132 54, 140 74, 148 64' fill='none' stroke='" + AccentToken + "' stroke-width='2' opacity='0.35'/>" +
+        "    <path d='M128 74 C134 66, 142 80, 148 74' fill='none' stroke='" + AccentToken + "' stroke-width='2' opacity='0.2'/>" +
+        "  </g>" +
+        "</svg>";
+
+    // APU_ULQ — stepped 1-bit blocks
+    public static string APU_ULQ =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='APU_ULQ'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <polyline points='70,74 80,74 80,64 92,64 92,78 104,78 104,60 116,60 116,74' fill='none' stroke='" + Stroke + "' stroke-width='2'/>" +
         "  </g>" +
         "</svg>";
 
