@@ -7,3 +7,10 @@
 
 # FTP Credentials
 scripts/ftp_credentials.conf
+/SubProjects/65-o-borked/.vs
+/SubProjects/65-o-borked/bin
+/SubProjects/65-o-borked/obj
+/SubProjects/65-o-borked/prg
+/SubProjects/OfflineRA/.vs
+/SubProjects/OfflineRA/obj
+/SubProjects/OfflineRA/bin

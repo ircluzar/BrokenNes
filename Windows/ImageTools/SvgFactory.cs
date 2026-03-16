@@ -297,6 +297,27 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
+    // PPU_EXE — secret: phase echo shimmer
+    public static string PPU_EXE =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_EXE'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='62' y='36' width='88' height='58' rx='3' fill='" + ChipFillB + "' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <g stroke='" + Stroke + "' stroke-width='1' opacity='0.5'>" +
+        "      <path d='M66 44 H146 M66 54 H146 M66 64 H146 M66 74 H146 M66 84 H146'/>" +
+        "    </g>" +
+        "    <g stroke='" + AccentToken + "' stroke-width='2' opacity='0.9'>" +
+        "      <path d='M68 48 C78 40, 96 56, 106 48 S132 40, 142 50'/>" +
+        "      <path d='M70 78 C82 70, 98 86, 110 78 S128 70, 142 82'/>" +
+        "    </g>" +
+        "    <g fill='" + AccentToken + "' opacity='0.8'>" +
+        "      <rect x='56' y='50' width='6' height='6'/>" +
+        "      <rect x='150' y='64' width='6' height='6'/>" +
+        "      <rect x='58' y='78' width='6' height='6'/>" +
+        "    </g>" +
+        "  </g>" +
+        "</svg>";
+
     // PPU_CUBE — checker squares
     public static string PPU_CUBE =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_CUBE'>" +

@@ -1,0 +1,66 @@
+{
+  "GameID": 1,
+  "Title": "Super Example Bros.",
+  "ConsoleID": 7,
+  "ConsoleName": "Nintendo Entertainment System",
+  "ImageIcon": "/Images/12345.png",
+  "ImageIconURL": "https://retroachievements.org/Images/12345.png",
+  "Developer": "ExampleDev",
+  "Publisher": "ExamplePub",
+  "Genre": "Platformer",
+  "Released": "1985",
+  "ReleasedAt": "1985-09-13",
+  "RichPresencePatch": "Lookup:Example\nFormat:Example",
+  "NumAchievements": 2,
+  "NumDistinctPlayers": 100,
+  "ForumTopicID": 42,
+  "Achievements": {
+    "1001": {
+      "ID": 1001,
+      "Title": "Get a Mushroom",
+      "Description": "Collect your first power-up",
+      "Points": 5,
+      "Author": "Admin",
+      "BadgeName": "examplebadge1",
+      "BadgeURL": "https://retroachievements.org/badges/1.png",
+      "BadgeLockedURL": "https://retroachievements.org/badges/1_locked.png",
+      "DateCreated": "2020-01-01 00:00:00",
+      "DateModified": "2020-01-02 00:00:00",
+      "MemAddr": "0xH1234=1",
+      "DisplayOrder": 0,
+      "Flags": 3,
+      "Type": "progression",
+      "Rarity": 45.6,
+      "RarityHardcore": 40.1
+    },
+    "1002": {
+      "ID": 1002,
+      "Title": "Beat World 1",
+      "Description": "Finish the first world",
+      "Points": 10,
+      "Author": "Admin",
+      "BadgeName": "examplebadge2",
+      "BadgeURL": "https://retroachievements.org/badges/2.png",
+      "BadgeLockedURL": "https://retroachievements.org/badges/2_locked.png",
+      "DateCreated": "2020-01-03 00:00:00",
+      "DateModified": "2020-01-04 00:00:00",
+      "MemAddr": "0xH5678=1",
+      "DisplayOrder": 1,
+      "Flags": 3,
+      "Type": "progression",
+      "Rarity": 30.2,
+      "RarityHardcore": 28.4
+    }
+  },
+  "Leaderboards": {
+    "2001": {
+      "ID": 2001,
+      "Title": "Speedrun to 1-1 Flag",
+      "Description": "Fastest time to reach the first flag",
+      "Format": "time",
+      "Mem": "STA:0xH0010::SUB:0xH0011::END:0xH0012",
+      "LowerIsBetter": 1,
+      "Hidden": false
+    }
+  }
+}
