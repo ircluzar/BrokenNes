@@ -51,7 +51,9 @@
   <ItemGroup>
     <Compile Remove="Tools/**/*.cs" />
     <Compile Remove="Windows/**/*.cs" />
+    <Compile Remove="docs/**/*.cs" />
     <None Include="Tools/**/*.cs" />
+    <None Include="docs/**/*.cs" />
   </ItemGroup>
 
 

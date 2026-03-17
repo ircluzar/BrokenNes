@@ -4,28 +4,10 @@
 		{
 			"label": "Build BrokenNes (Debug)",
 			"type": "shell",
-			"command": "dotnet build -c Debug",
+			"command": "dotnet build Windows/BrokenNes.Windows.csproj -c Debug",
 			"problemMatcher": [
 				"$msbuild"
 			],
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Debug)",
-			"type": "shell",
-			"command": "dotnet build -c Debug",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Debug)",
-			"type": "shell",
-			"command": "dotnet build -c Debug",
-			"group": "build"
-		},
-		{
-			"label": "Build BrokenNes (Debug)",
-			"type": "shell",
-			"command": "dotnet build -c Debug",
 			"group": "build"
 		}
 	]

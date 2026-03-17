@@ -22,17 +22,23 @@ A Windows desktop version of BrokenNes, built with WinForms and reusing the core
 
 ## Building
 
+From the solution root:
+
+```bash
+dotnet build
+```
+
+Or target the Windows project directly:
+
+```bash
+dotnet build Windows/BrokenNes.Windows.csproj
+```
+
 From the Windows directory:
 
 ```bash
 cd Windows
 dotnet build
-```
-
-Or from the solution root:
-
-```bash
-dotnet build Windows/BrokenNes.Windows.csproj
 ```
 
 ## Running
