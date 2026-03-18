@@ -23,7 +23,7 @@ namespace BrokenNes.Windows.WebApi
                         cpu = GetCpuMetadata(),
                         ppu = GetPpuMetadata(),
                         apu = GetApuMetadata(),
-                        clock = new List<object>(), // ClockRegistry not available in Windows project
+                        clock = GetClockMetadata(),
                         shader = GetShaderMetadata()
                     };
 

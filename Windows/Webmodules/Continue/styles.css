@@ -989,11 +989,11 @@
 .card-preview-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.82);
+  background: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 8100;
+  z-index: 8400;
   padding: 16px;
 }
 
@@ -1080,6 +1080,278 @@
   text-rendering: geometricPrecision;
 }
 
+.unlock-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 181, 94, 0.18), rgba(0, 0, 0, 0.92) 56%),
+    linear-gradient(180deg, rgba(255, 90, 38, 0.12), rgba(0, 0, 0, 0.92));
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  z-index: 8200;
+  padding: 0;
+}
+
+.unlock-modal {
+  width: 100vw;
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow: auto;
+  padding: 1.35rem 1.25rem 1.1rem;
+  border: none;
+  outline: none;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.13), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    #020202;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+  animation: unlock-modal-pop 220ms ease-out;
+}
+
+.unlock-modal-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.9rem;
+}
+
+.unlock-kicker {
+  color: #ffd37b;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.unlock-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #fff;
+}
+
+.unlock-copy {
+  color: #ffd3c4;
+  font-size: 0.58rem;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.unlock-notices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.unlock-notice {
+  border: 2px solid #ffd166;
+  background: rgba(255, 209, 102, 0.1);
+  color: #fff7df;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.52rem;
+  line-height: 1.45;
+}
+
+.unlock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.9rem;
+  align-items: start;
+  overflow: visible;
+  padding-bottom: 0.35rem;
+}
+
+.unlock-card {
+  position: relative;
+  overflow: visible;
+  min-width: 0;
+  animation: unlock-card-rise 340ms ease-out both;
+  animation-delay: var(--unlock-delay, 0ms);
+}
+
+.unlock-card-shell {
+  position: relative;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  background:
+    linear-gradient(180deg, rgba(255, 90, 38, 0.12), rgba(0, 0, 0, 0.7) 22%, rgba(0, 0, 0, 0.92)),
+    #050505;
+  padding: 0.75rem 0.75rem 0.85rem;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.36);
+}
+
+.unlock-card-shell::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+.unlock-card-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.65rem;
+}
+
+.unlock-card-id {
+  color: #fff;
+  font-size: 0.58rem;
+}
+
+.unlock-card-domain {
+  color: #ffd37b;
+  font-size: 0.48rem;
+  letter-spacing: 0.08em;
+}
+
+.unlock-card-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 255px;
+  cursor: zoom-in;
+}
+
+.unlock-card-visual {
+  width: min(100%, 208px);
+  line-height: 0;
+  transform: translateZ(0);
+}
+
+.unlock-card-visual svg {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+  max-width: none;
+  max-height: none;
+}
+
+.unlock-card-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 250px;
+  border: 2px dashed #ff5a26;
+  background: #090909;
+  color: #fff;
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 0.9rem;
+}
+
+.unlock-card-actions {
+  margin-top: 0.8rem;
+}
+
+.unlock-card-equip {
+  width: 100%;
+  border: 2px solid #ff5a26;
+  background: #050505;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  padding: 0.65rem 0.55rem;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.unlock-card-equip:hover:not(:disabled),
+.unlock-card-equip:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  background: #ff5a26;
+  color: #000;
+}
+
+.unlock-card.equipped .unlock-card-equip {
+  border-color: #93ffae;
+  background: rgba(16, 185, 129, 0.16);
+  color: #d4ffe0;
+}
+
+.unlock-card-equip:disabled,
+.unlock-card.passive .unlock-card-equip {
+  border-color: #666;
+  color: #9ca3af;
+  cursor: default;
+  background: #080808;
+}
+
+.unlock-empty {
+  border: 2px dashed #ffd166;
+  color: #fff7df;
+  padding: 0.95rem;
+  font-size: 0.62rem;
+  line-height: 1.6;
+  margin-bottom: 0.85rem;
+}
+
+.unlock-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.unlock-action {
+  min-width: 180px;
+  border: 3px solid #fff;
+  outline: 3px solid #ff5a26;
+  outline-offset: -7px;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.95rem;
+  cursor: pointer;
+}
+
+.unlock-action:hover,
+.unlock-action:focus-visible {
+  background: #0c0c0c;
+}
+
+.unlock-equip-all {
+  border-color: #ffd166;
+  outline-color: #ffd166;
+  color: #fff7df;
+}
+
+.unlock-return {
+  border-color: #fff;
+}
+
+@keyframes unlock-modal-pop {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes unlock-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* Responsive */
 @media (max-width: 620px) {
   .options-root {
@@ -1120,6 +1392,34 @@
   .rom-search {
     flex: 1 1 100%;
     max-width: 100%;
+  }
+
+  .unlock-modal {
+    width: 100vw;
+    min-height: 100vh;
+    max-height: 100vh;
+    padding: 1rem 0.9rem 0.9rem;
+  }
+
+  .unlock-modal-header {
+    grid-template-columns: 1fr;
+  }
+
+  .unlock-copy {
+    text-align: left;
+  }
+
+  .unlock-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .unlock-actions {
+    flex-direction: column-reverse;
+  }
+
+  .unlock-action {
+    width: 100%;
+    min-width: 0;
   }
 }
 

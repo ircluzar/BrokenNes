@@ -20,7 +20,7 @@
       await loadGameSave();
 
       // Update UI with save data
-      updateUI();
+      await updateUI();
 
       // Play background music randomly
       playRandomMusic();
@@ -43,13 +43,13 @@
     }
   }
 
-  function updateUI() {
+  async function updateUI() {
     try {
       // Calculate stats
       const level = Math.max(1, gameSave.Level || 1);
       const stars = (gameSave.Achievements || []).length;
       const ownedCores = window.gameSave ? window.gameSave.countOwnedCores(gameSave) : 0;
-      const totalCores = estimateTotalCores();
+      const totalCores = await getTotalCores(ownedCores);
 
       // Update DOM elements
       const ownedCoresEl = document.getElementById('ownedCores');
@@ -72,10 +72,23 @@
     }
   }
 
-  function estimateTotalCores() {
-    // Rough estimate of total cores available in the game
-    // This would ideally come from a manifest or be calculated from game data
-    return 100; // Placeholder value
+  async function getTotalCores(fallbackValue) {
+    try {
+      const result = await window.webapi?.cores?.list?.();
+      if (result && typeof result === 'object') {
+        const total = ['cpu', 'ppu', 'apu', 'clock', 'shader']
+          .map(key => Array.isArray(result[key]) ? result[key].length : 0)
+          .reduce((sum, count) => sum + count, 0);
+
+        if (Number.isFinite(total) && total > 0) {
+          return total;
+        }
+      }
+    } catch (error) {
+      console.warn('[DeckBuilder] Total core fetch failed:', error);
+    }
+
+    return Number.isFinite(fallbackValue) ? fallbackValue : 0;
   }
 
   function playRandomMusic() {

@@ -194,6 +194,25 @@
     </div>
   </div>
 
+  <div class="unlock-modal-backdrop" id="unlockModal" style="display: none;">
+    <div class="unlock-modal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+      <div class="unlock-modal-header">
+        <div>
+          <div class="unlock-kicker">Level Intermission</div>
+          <h3 id="unlockTitle">New Cards Unlocked</h3>
+        </div>
+        <div class="unlock-copy" id="unlockCopy">Route these cards into your current build before you head back out.</div>
+      </div>
+      <div class="unlock-notices" id="unlockNotices" hidden></div>
+      <div class="unlock-grid" id="unlockGrid"></div>
+      <div class="unlock-empty" id="unlockEmpty" hidden>Deck systems updated. Your new rewards are ready.</div>
+      <div class="unlock-actions">
+        <button type="button" class="unlock-action unlock-return" id="unlockReturnBtn">Return</button>
+        <button type="button" class="unlock-action unlock-equip-all" id="unlockEquipAllBtn">Equip All</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Dependencies -->
   <script src="../shared/continue-db.js"></script>
   <script src="../shared/storage.js"></script>

@@ -19,6 +19,32 @@
     toggle: 'SFX02.mp3',
     launch: 'SFX07.mp3'
   };
+  const OWNED_KEY_BY_DOMAIN = {
+    CPU: 'ownedCpuIds',
+    PPU: 'ownedPpuIds',
+    APU: 'ownedApuIds',
+    CLOCK: 'ownedClockIds',
+    SHADER: 'ownedShaderIds'
+  };
+  const PREFERRED_KEY_BY_DOMAIN = {
+    CPU: 'PreferredCpuId',
+    PPU: 'PreferredPpuId',
+    APU: 'PreferredApuId',
+    SHADER: 'PreferredShaderId'
+  };
+  const PREFERENCE_NAME_BY_DOMAIN = {
+    CPU: 'CPU',
+    PPU: 'PPU',
+    APU: 'APU',
+    SHADER: 'Shader'
+  };
+  const STARTER_CORE_BY_DOMAIN = {
+    CPU: 'FMC',
+    PPU: 'FMC',
+    APU: 'FMC',
+    CLOCK: 'FMC',
+    SHADER: 'PX'
+  };
 
   // State
   let gameSave = null;
@@ -50,17 +76,28 @@
     CPU: [],
     PPU: [],
     APU: [],
+    CLOCK: [],
     SHADER: []
   };
   const fallbackCoreData = {
     CPU: ['FMC', 'LOW', 'LW2', 'SPD', 'EIL', 'Z80'],
     PPU: ['FMC', 'LOW', 'LQ', 'SPD', 'BFR', 'CUBE', 'CUBEX', 'EIL'],
     APU: ['FMC', 'LOW', 'LQ', 'LQ2', 'QLOW', 'QLQ', 'QLQ2', 'QN', 'SPD', 'SPD2', 'WF', 'EIL', 'MNES'],
+    CLOCK: ['FMC', 'TRB', 'CLR'],
     SHADER: ['PX', '16B', 'BLD', 'BUMP', 'CCC', 'CNMA', 'CRY', 'CRZ', 'DOT', 'EXE', 'HUE', 'LAT', 'LCD', 'LSD', 'MSH', 'MUSK', 'RF', 'RGBX', 'SPK', 'TRI', 'TTF', 'TV', 'VHS', 'WARM', 'WTR']
   };
   const coreLookup = new Map();
+  const cardRecordLookup = new Map();
   const cardSvgCache = new Map();
   let currentPreviewToken = 0;
+  let cardRecords = [];
+  let rewardModalState = {
+    items: [],
+    featureUnlocks: [],
+    showCongrats: false,
+    showAllCores: false,
+    autoCloseTimer: 0
+  };
 
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
@@ -77,6 +114,7 @@
 
       // Load live core metadata and level rules before first render.
       await loadCoreCatalog();
+      await loadCardRecords();
 
       // Load level data
       await loadLevel();
@@ -338,11 +376,13 @@
     await sleep(180);
     await animateNumber('arrivalStarsValue', previousStars, stars, 900);
 
+    let levelAdvanceResult = null;
+
     if (levelCleared && stars >= requiredStars) {
       setArrivalText('arrivalStatus', 'Threshold reached. Unlocking the next level…');
       await sleep(500);
-      const advanced = await advanceLevel({ silent: true });
-      if (advanced) {
+      levelAdvanceResult = await advanceLevel({ silent: true, deferPresentation: true });
+      if (levelAdvanceResult?.advanced) {
         setArrivalText('arrivalLevelValue', `${previousLevel} -> ${currentLevel}`);
         setArrivalText('arrivalReveal', levelRecord?.cardChallenge || `Level ${currentLevel} unlocked`);
       }
@@ -354,6 +394,9 @@
     await sleep(1300);
     hideArrivalOverlay();
     arrivalInProgress = false;
+    if (levelAdvanceResult?.advanced) {
+      await presentLevelRewards(levelAdvanceResult.rewards);
+    }
     updateUI();
   }
 
@@ -374,12 +417,8 @@
       currentLevel = gameSave.Level || 1;
       stars = (gameSave.Achievements || []).length;
       levelCleared = gameSave.LevelCleared || false;
-      
-      // Apply preferences
-      selectedCpu = chooseSavedCore('CPU', gameSave.PreferredCpuId || gameSave.Preferences?.CPU, gameSave.ownedCpuIds, 'FMC');
-      selectedPpu = chooseSavedCore('PPU', gameSave.PreferredPpuId || gameSave.Preferences?.PPU, gameSave.ownedPpuIds, 'FMC');
-      selectedApu = chooseSavedCore('APU', gameSave.PreferredApuId || gameSave.Preferences?.APU, gameSave.ownedApuIds, 'FMC');
-      selectedShader = chooseSavedCore('SHADER', gameSave.PreferredShaderId || gameSave.Preferences?.Shader, gameSave.ownedShaderIds, 'PX');
+
+      applySavedSelections(gameSave);
     } catch (error) {
       console.error('[Continue] Load save error:', error);
       gameSave = null;
@@ -430,6 +469,7 @@
       hydrateCoreCatalog('CPU', data.cpu);
       hydrateCoreCatalog('PPU', data.ppu);
       hydrateCoreCatalog('APU', data.apu);
+      hydrateCoreCatalog('CLOCK', data.clock);
       hydrateCoreCatalog('SHADER', data.shader);
     } catch (error) {
       console.warn('[Continue] Core catalog unavailable:', error);
@@ -453,9 +493,144 @@
     });
   }
 
+  async function loadCardRecords() {
+    cardRecords = [];
+    cardRecordLookup.clear();
+
+    if (!window.continueDb?.getAll) {
+      return;
+    }
+
+    try {
+      await window.continueDb.open();
+      const records = await window.continueDb.getAll('cards');
+      if (!Array.isArray(records)) {
+        return;
+      }
+
+      cardRecords = records.map(record => {
+        const compositeId = typeof record?.id === 'string' ? record.id.trim() : '';
+        if (!compositeId) {
+          return null;
+        }
+
+        const parts = compositeId.split('_', 2);
+        if (parts.length !== 2) {
+          return null;
+        }
+
+        const domain = parts[0].toUpperCase();
+        const id = normalizeCoreId(parts[1]);
+        if (!OWNED_KEY_BY_DOMAIN[domain] || !id) {
+          return null;
+        }
+
+        const normalized = {
+          domain,
+          id,
+          type: typeof record?.type === 'string' ? record.type.trim().toUpperCase() : '',
+          note: typeof record?.note === 'string' ? record.note.trim() : ''
+        };
+
+        cardRecordLookup.set(`${domain}:${id}`, normalized);
+        return normalized;
+      }).filter(Boolean);
+    } catch (error) {
+      console.warn('[Continue] Failed to load card records:', error);
+    }
+  }
+
+  function normalizeOwnedArray(values, fallback = []) {
+    const seen = new Set();
+    const normalized = [];
+    const source = Array.isArray(values) ? values : fallback;
+
+    source.forEach(value => {
+      const normalizedValue = normalizeCoreId(value);
+      if (!normalizedValue || seen.has(normalizedValue)) {
+        return;
+      }
+
+      seen.add(normalizedValue);
+      normalized.push(normalizedValue);
+    });
+
+    fallback.forEach(value => {
+      const normalizedValue = normalizeCoreId(value);
+      if (!normalizedValue || seen.has(normalizedValue)) {
+        return;
+      }
+
+      seen.add(normalizedValue);
+      normalized.push(normalizedValue);
+    });
+
+    return normalized;
+  }
+
+  function syncGameSaveCompatFields(save) {
+    if (!save || typeof save !== 'object') {
+      return save;
+    }
+
+    save.ownedCpuIds = normalizeOwnedArray(save.ownedCpuIds, ['FMC']);
+    save.ownedPpuIds = normalizeOwnedArray(save.ownedPpuIds, ['FMC']);
+    save.ownedApuIds = normalizeOwnedArray(save.ownedApuIds, ['FMC']);
+    save.ownedClockIds = normalizeOwnedArray(save.ownedClockIds, ['FMC']);
+    save.ownedShaderIds = normalizeOwnedArray(save.ownedShaderIds, ['PX']);
+
+    const preferences = save.Preferences && typeof save.Preferences === 'object'
+      ? { ...save.Preferences }
+      : {};
+
+    save.PreferredCpuId = normalizeCoreId(save.PreferredCpuId || preferences.CPU || 'FMC') || 'FMC';
+    save.PreferredPpuId = normalizeCoreId(save.PreferredPpuId || preferences.PPU || 'FMC') || 'FMC';
+    save.PreferredApuId = normalizeCoreId(save.PreferredApuId || preferences.APU || 'FMC') || 'FMC';
+    save.PreferredShaderId = normalizeCoreId(save.PreferredShaderId || preferences.Shader || preferences.SHADER || 'PX') || 'PX';
+
+    const unlockedFeatures = save.UnlockedFeatures && typeof save.UnlockedFeatures === 'object'
+      ? { ...save.UnlockedFeatures }
+      : {};
+
+    save.SavestatesUnlocked = Boolean(save.SavestatesUnlocked || unlockedFeatures.Savestates);
+    save.RtcUnlocked = Boolean(save.RtcUnlocked || unlockedFeatures.RTC);
+    save.GhUnlocked = Boolean(save.GhUnlocked || unlockedFeatures.GH);
+    save.ImagineUnlocked = Boolean(save.ImagineUnlocked || unlockedFeatures.Imagine);
+    save.DebugUnlocked = Boolean(save.DebugUnlocked || unlockedFeatures.Debug);
+    save.AllCoresUnlockedCongrats = Boolean(save.AllCoresUnlockedCongrats);
+
+    save.UnlockedFeatures = {
+      Savestates: save.SavestatesUnlocked,
+      RTC: save.RtcUnlocked,
+      GH: save.GhUnlocked,
+      Imagine: save.ImagineUnlocked,
+      Debug: save.DebugUnlocked
+    };
+
+    save.Preferences = {
+      ...preferences,
+      CPU: save.PreferredCpuId,
+      PPU: save.PreferredPpuId,
+      APU: save.PreferredApuId,
+      Shader: save.PreferredShaderId,
+      SHADER: save.PreferredShaderId
+    };
+
+    return save;
+  }
+
+  function applySavedSelections(save) {
+    syncGameSaveCompatFields(save);
+    selectedCpu = chooseSavedCore('CPU', save.PreferredCpuId || save.Preferences?.CPU, save.ownedCpuIds, 'FMC');
+    selectedPpu = chooseSavedCore('PPU', save.PreferredPpuId || save.Preferences?.PPU, save.ownedPpuIds, 'FMC');
+    selectedApu = chooseSavedCore('APU', save.PreferredApuId || save.Preferences?.APU, save.ownedApuIds, 'FMC');
+    selectedShader = chooseSavedCore('SHADER', save.PreferredShaderId || save.Preferences?.Shader || save.Preferences?.SHADER, save.ownedShaderIds, 'PX');
+  }
+
   async function saveGameSave() {
     try {
       if (window.gameSave && typeof window.gameSave.save === 'function') {
+        syncGameSaveCompatFields(gameSave);
         await window.gameSave.save(gameSave);
       } else {
         console.error('[Continue] gameSave module not available for saving');
@@ -1365,6 +1540,27 @@
       });
     }
 
+    const unlockModal = document.getElementById('unlockModal');
+    if (unlockModal) {
+      unlockModal.addEventListener('click', (event) => {
+        if (event.target === unlockModal) {
+          closeUnlockModal();
+        }
+      });
+    }
+
+    const unlockReturnBtn = document.getElementById('unlockReturnBtn');
+    if (unlockReturnBtn) {
+      unlockReturnBtn.addEventListener('click', closeUnlockModal);
+    }
+
+    const unlockEquipAllBtn = document.getElementById('unlockEquipAllBtn');
+    if (unlockEquipAllBtn) {
+      unlockEquipAllBtn.addEventListener('click', () => {
+        void equipAllRewardItems();
+      });
+    }
+
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') {
         return;
@@ -1375,6 +1571,12 @@
         closeCardPreview();
         return;
       }
+
+        const unlockOpen = document.getElementById('unlockModal')?.style.display === 'flex';
+        if (unlockOpen) {
+          closeUnlockModal();
+          return;
+        }
 
       const pickerOpen = document.getElementById('pickerModal')?.style.display === 'flex';
       if (pickerOpen) {
@@ -1451,6 +1653,526 @@
     modal.style.display = 'none';
     stage.dataset.previewToken = '';
     stage.innerHTML = '';
+  }
+
+  function clearRewardAutoCloseTimer() {
+    if (rewardModalState.autoCloseTimer) {
+      clearTimeout(rewardModalState.autoCloseTimer);
+      rewardModalState.autoCloseTimer = 0;
+    }
+  }
+
+  function closeUnlockModal() {
+    const modal = document.getElementById('unlockModal');
+    const grid = document.getElementById('unlockGrid');
+    const notices = document.getElementById('unlockNotices');
+    const empty = document.getElementById('unlockEmpty');
+    if (!modal || !grid || !notices || !empty) {
+      return;
+    }
+
+    clearRewardAutoCloseTimer();
+    modal.style.display = 'none';
+    grid.innerHTML = '';
+    notices.innerHTML = '';
+    notices.hidden = true;
+    empty.hidden = true;
+    rewardModalState = {
+      items: [],
+      featureUnlocks: [],
+      showCongrats: false,
+      showAllCores: false,
+      autoCloseTimer: 0
+    };
+  }
+
+  function getOwnedCoreIdsByDomain(save, domain) {
+    const key = OWNED_KEY_BY_DOMAIN[domain];
+    if (!key) {
+      return [];
+    }
+
+    return normalizeOwnedArray(save?.[key], []);
+  }
+
+  function addOwnedCore(save, domain, id) {
+    const key = OWNED_KEY_BY_DOMAIN[domain];
+    const normalizedId = normalizeCoreId(id);
+    if (!key || !normalizedId) {
+      return false;
+    }
+
+    const owned = getOwnedCoreIdsByDomain(save, domain);
+    if (owned.includes(normalizedId)) {
+      save[key] = owned;
+      return false;
+    }
+
+    owned.push(normalizedId);
+    save[key] = owned;
+    return true;
+  }
+
+  function countOwnedCores(save) {
+    return Object.keys(OWNED_KEY_BY_DOMAIN).reduce((count, domain) => {
+      return count + getOwnedCoreIdsByDomain(save, domain).length;
+    }, 0);
+  }
+
+  function getTotalCoreCount() {
+    return ['CPU', 'PPU', 'APU', 'CLOCK', 'SHADER'].reduce((count, domain) => {
+      return count + getCoreOptions(domain).length;
+    }, 0);
+  }
+
+  function dedupeRewardPairs(items) {
+    const seen = new Set();
+    return (Array.isArray(items) ? items : []).filter(item => {
+      const domain = String(item?.domain || '').toUpperCase();
+      const id = normalizeCoreId(item?.id);
+      const key = `${domain}:${id}`;
+      if (!OWNED_KEY_BY_DOMAIN[domain] || !id || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      item.domain = domain;
+      item.id = id;
+      return true;
+    });
+  }
+
+  function shuffleItems(items) {
+    const result = Array.isArray(items) ? items.slice() : [];
+    for (let index = result.length - 1; index > 0; index--) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      const temp = result[index];
+      result[index] = result[swapIndex];
+      result[swapIndex] = temp;
+    }
+    return result;
+  }
+
+  function pickSubset(items, minimum, maximum) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return [];
+    }
+
+    const upper = Math.min(maximum, items.length);
+    const lower = Math.min(minimum, upper);
+    const count = upper <= lower
+      ? upper
+      : lower + Math.floor(Math.random() * (upper - lower + 1));
+    return shuffleItems(items).slice(0, count);
+  }
+
+  async function pickRandomBonusCards(save) {
+    const lastCandidates = [];
+    const randomCandidates = [];
+
+    cardRecords.forEach(record => {
+      if (!record || !['CPU', 'PPU', 'APU', 'SHADER'].includes(record.domain)) {
+        return;
+      }
+
+      const owned = getOwnedCoreIdsByDomain(save, record.domain);
+      if (owned.includes(record.id)) {
+        return;
+      }
+
+      if (record.type === 'LAST') {
+        lastCandidates.push({ domain: record.domain, id: record.id });
+        return;
+      }
+
+      if (record.type === 'RANDOM' || !record.type) {
+        randomCandidates.push({ domain: record.domain, id: record.id });
+      }
+    });
+
+    const result = pickSubset(lastCandidates, 2, 3);
+
+    if (result.length < 2 && randomCandidates.length > 0) {
+      const needed = 2 - result.length;
+      const filler = shuffleItems(randomCandidates).filter(candidate => {
+        return !result.some(item => item.domain === candidate.domain && item.id === candidate.id);
+      });
+      result.push(...filler.slice(0, needed));
+    }
+
+    if (result.length < 2) {
+      const fallback = [];
+      ['CPU', 'PPU', 'APU', 'SHADER'].forEach(domain => {
+        const starterId = STARTER_CORE_BY_DOMAIN[domain];
+        const owned = new Set(getOwnedCoreIdsByDomain(save, domain));
+        getCoreOptions(domain).forEach(core => {
+          if (!core?.id || core.id === starterId || owned.has(core.id)) {
+            return;
+          }
+
+          fallback.push({ domain, id: core.id });
+        });
+      });
+
+      const filler = shuffleItems(fallback).filter(candidate => {
+        return !result.some(item => item.domain === candidate.domain && item.id === candidate.id);
+      });
+      result.push(...filler.slice(0, Math.max(0, 2 - result.length)));
+      if (result.length === 2 && filler.length > 2) {
+        result.push(filler[2]);
+      }
+    }
+
+    return dedupeRewardPairs(result).slice(0, 3);
+  }
+
+  function getCurrentLevelRewardPairs() {
+    const pairs = [];
+    for (const raw of levelRecord?.requiredCards || []) {
+      if (typeof raw !== 'string' || !raw.trim()) {
+        continue;
+      }
+
+      const parts = raw.split('_', 2);
+      if (parts.length !== 2) {
+        continue;
+      }
+
+      const domain = parts[0].toUpperCase();
+      const id = normalizeCoreId(parts[1]);
+      if (!OWNED_KEY_BY_DOMAIN[domain] || !id) {
+        continue;
+      }
+
+      pairs.push({ domain, id });
+    }
+
+    return dedupeRewardPairs(pairs);
+  }
+
+  function getFeatureUnlocksForLevel(save, previousLevel) {
+    const unlocked = [];
+
+    switch (previousLevel) {
+      case 4:
+        if (!save.SavestatesUnlocked) {
+          save.SavestatesUnlocked = true;
+          unlocked.push('Savestates unlocked');
+        }
+        break;
+      case 8:
+        if (!save.RtcUnlocked) {
+          save.RtcUnlocked = true;
+          unlocked.push('Real-Time Corruptor unlocked');
+        }
+        break;
+      case 12:
+        if (!save.GhUnlocked) {
+          save.GhUnlocked = true;
+          unlocked.push('Glitch Harvester unlocked');
+        }
+        break;
+      case 16:
+        if (!save.ImagineUnlocked) {
+          save.ImagineUnlocked = true;
+          unlocked.push('Imagine unlocked');
+        }
+        break;
+      default:
+        break;
+    }
+
+    syncGameSaveCompatFields(save);
+    return unlocked;
+  }
+
+  async function buildLevelRewards(previousLevel) {
+    const rewardPairs = getCurrentLevelRewardPairs();
+    const anyCoreEnforced = rewardPairs.some(pair => ['CPU', 'PPU', 'APU', 'SHADER'].includes(pair.domain));
+    const alwaysBonusPack = previousLevel >= 21;
+
+    if (!anyCoreEnforced || alwaysBonusPack) {
+      rewardPairs.push(...await pickRandomBonusCards(gameSave));
+    }
+
+    if (previousLevel === 16) {
+      rewardPairs.push({ domain: 'CLOCK', id: 'CLR' });
+      rewardPairs.push({ domain: 'CLOCK', id: 'TRB' });
+    }
+
+    const newlyUnlocked = [];
+    dedupeRewardPairs(rewardPairs).forEach(pair => {
+      if (addOwnedCore(gameSave, pair.domain, pair.id)) {
+        newlyUnlocked.push(pair);
+      }
+    });
+
+    const featureUnlocks = getFeatureUnlocksForLevel(gameSave, previousLevel);
+
+    let showAllCores = false;
+    const totalCoreCount = getTotalCoreCount();
+    if (totalCoreCount > 0 && countOwnedCores(gameSave) >= totalCoreCount && !gameSave.AllCoresUnlockedCongrats) {
+      gameSave.AllCoresUnlockedCongrats = true;
+      showAllCores = true;
+    }
+
+    gameSave.Level = previousLevel + 1;
+    gameSave.LevelCleared = false;
+    syncGameSaveCompatFields(gameSave);
+
+    return {
+      newlyUnlocked,
+      featureUnlocks,
+      showCongrats: previousLevel === 16,
+      showAllCores
+    };
+  }
+
+  function isEquipableDomain(domain) {
+    return ['CPU', 'PPU', 'APU', 'SHADER'].includes(String(domain || '').toUpperCase());
+  }
+
+  function getSelectedCoreForDomain(domain) {
+    switch (domain) {
+      case 'CPU':
+        return selectedCpu;
+      case 'PPU':
+        return selectedPpu;
+      case 'APU':
+        return selectedApu;
+      case 'SHADER':
+        return selectedShader;
+      default:
+        return null;
+    }
+  }
+
+  function setSelectedCoreForDomain(domain, coreId) {
+    if (domain === 'CPU') selectedCpu = coreId;
+    else if (domain === 'PPU') selectedPpu = coreId;
+    else if (domain === 'APU') selectedApu = coreId;
+    else if (domain === 'SHADER') selectedShader = coreId;
+  }
+
+  function getRewardNoticeLines(rewards) {
+    const notices = [];
+    (rewards?.featureUnlocks || []).forEach(item => notices.push(item));
+    if (rewards?.showCongrats) {
+      notices.push('Every level completion now guarantees a fresh core pack.');
+    }
+    if (rewards?.showAllCores) {
+      notices.push('All cores unlocked. The entire library is now in your deck.');
+    }
+    return notices;
+  }
+
+  function allRewardItemsEquipped() {
+    const equipableItems = rewardModalState.items.filter(item => item.equipable);
+    return equipableItems.length > 0 && equipableItems.every(item => item.equipped);
+  }
+
+  function scheduleRewardAutoCloseIfComplete() {
+    if (!allRewardItemsEquipped()) {
+      return;
+    }
+
+    clearRewardAutoCloseTimer();
+    rewardModalState.autoCloseTimer = setTimeout(() => {
+      closeUnlockModal();
+    }, 260);
+  }
+
+  function renderRewardModal() {
+    const modal = document.getElementById('unlockModal');
+    const grid = document.getElementById('unlockGrid');
+    const notices = document.getElementById('unlockNotices');
+    const empty = document.getElementById('unlockEmpty');
+    const copy = document.getElementById('unlockCopy');
+    const equipAllBtn = document.getElementById('unlockEquipAllBtn');
+    if (!modal || !grid || !notices || !empty || !copy || !equipAllBtn) {
+      return;
+    }
+
+    const rewardCount = rewardModalState.items.length;
+    const equipableCount = rewardModalState.items.filter(item => item.equipable).length;
+    copy.textContent = rewardCount > 0
+      ? 'Click a card to inspect it, equip what you want now, or route everything into the build at once.'
+      : 'Deck systems updated. Confirm the reward state and head back into the run.';
+    equipAllBtn.textContent = equipableCount > 0 ? 'Equip All' : 'Acknowledge';
+
+    const noticeLines = getRewardNoticeLines(rewardModalState);
+    notices.hidden = noticeLines.length === 0;
+    notices.innerHTML = noticeLines.map(line => (
+      `<div class="unlock-notice">${escapeHtml(line)}</div>`
+    )).join('');
+
+    empty.hidden = rewardCount > 0;
+    grid.innerHTML = rewardCount > 0
+      ? rewardModalState.items.map((item, index) => {
+          const buttonLabel = item.equipable
+            ? (item.equipped ? 'Equipped' : 'Equip')
+            : 'Passive Unlock';
+          const buttonDisabled = item.equipable ? '' : 'disabled';
+          const cardBody = item.svgMarkup
+            ? `<div class="unlock-card-visual">${item.svgMarkup}</div>`
+            : `<div class="unlock-card-visual unlock-card-fallback">${escapeHtml(`${item.domain}_${item.id}`)}</div>`;
+
+          return `
+            <article class="unlock-card${item.equipped ? ' equipped' : ''}${item.equipable ? '' : ' passive'}" style="--unlock-delay:${index * 85}ms" data-unlock-index="${index}">
+              <div class="unlock-card-shell">
+                <div class="unlock-card-label">
+                  <span class="unlock-card-id">${escapeHtml(item.name)}</span>
+                  <span class="unlock-card-domain">${escapeHtml(item.domain)}</span>
+                </div>
+                <div class="unlock-card-stage">${cardBody}</div>
+                <div class="unlock-card-actions">
+                  <button type="button" class="unlock-card-equip" data-unlock-equip="${index}" ${buttonDisabled}>${escapeHtml(buttonLabel)}</button>
+                </div>
+              </div>
+            </article>
+          `;
+        }).join('')
+      : '';
+
+    grid.querySelectorAll('.unlock-card-visual').forEach(node => applySvgRenderQuality(node));
+    grid.querySelectorAll('[data-unlock-index]').forEach(card => {
+      card.addEventListener('click', () => {
+        const index = Number.parseInt(card.getAttribute('data-unlock-index') || '-1', 10);
+        const item = rewardModalState.items[index];
+        if (!item) {
+          return;
+        }
+
+        openCardPreview(item.domain, item.id, {
+          title: item.name,
+          subtitle: `Unlocked ${item.domain} card`
+        });
+      });
+    });
+    grid.querySelectorAll('[data-unlock-equip]').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Number.parseInt(button.getAttribute('data-unlock-equip') || '-1', 10);
+        if (!Number.isFinite(index) || index < 0) {
+          return;
+        }
+        void equipRewardItem(index);
+      });
+    });
+
+    modal.style.display = 'flex';
+  }
+
+  async function presentLevelRewards(rewards) {
+    const shouldOpen = (rewards?.newlyUnlocked?.length || 0) > 0
+      || (rewards?.featureUnlocks?.length || 0) > 0
+      || rewards?.showCongrats
+      || rewards?.showAllCores;
+    if (!shouldOpen) {
+      return false;
+    }
+
+    clearRewardAutoCloseTimer();
+    void playUiSfx(UI_SFX.modalOpen, { key: 'reward-modal-open', cooldownMs: 120 });
+
+    const items = await Promise.all((rewards?.newlyUnlocked || []).map(async pair => {
+      const core = coreLookup.get(`${pair.domain}:${pair.id}`);
+      const svgMarkup = await getCoreSvgMarkup(pair.domain, pair.id);
+      return {
+        domain: pair.domain,
+        id: pair.id,
+        name: core?.name || `${pair.domain}_${pair.id}`,
+        svgMarkup,
+        equipable: isEquipableDomain(pair.domain),
+        equipped: isEquipableDomain(pair.domain) && getSelectedCoreForDomain(pair.domain) === pair.id
+      };
+    }));
+
+    rewardModalState = {
+      items,
+      featureUnlocks: Array.isArray(rewards?.featureUnlocks) ? rewards.featureUnlocks.slice() : [],
+      showCongrats: Boolean(rewards?.showCongrats),
+      showAllCores: Boolean(rewards?.showAllCores),
+      autoCloseTimer: 0
+    };
+
+    renderRewardModal();
+    scheduleRewardAutoCloseIfComplete();
+    return true;
+  }
+
+  async function persistRewardSelections(indices) {
+    const targetIndices = Array.isArray(indices) ? indices : [];
+    const updatedItems = rewardModalState.items.slice();
+    let changed = false;
+
+    targetIndices.forEach(index => {
+      const item = updatedItems[index];
+      if (!item || !item.equipable) {
+        return;
+      }
+
+      changed = true;
+      item.equipped = true;
+      setSelectedCoreForDomain(item.domain, item.id);
+      const preferredKey = PREFERRED_KEY_BY_DOMAIN[item.domain];
+      const preferenceName = PREFERENCE_NAME_BY_DOMAIN[item.domain];
+      if (!gameSave.Preferences || typeof gameSave.Preferences !== 'object') {
+        gameSave.Preferences = {};
+      }
+      if (preferredKey) {
+        gameSave[preferredKey] = item.id;
+      }
+      if (preferenceName) {
+        gameSave.Preferences[preferenceName] = item.id;
+        if (item.domain === 'SHADER') {
+          gameSave.Preferences.SHADER = item.id;
+        }
+      }
+    });
+
+    if (!changed) {
+      closeUnlockModal();
+      return false;
+    }
+
+    rewardModalState.items = updatedItems;
+    syncGameSaveCompatFields(gameSave);
+    await saveGameSave();
+    updateUI();
+    renderRewardModal();
+    scheduleRewardAutoCloseIfComplete();
+    return true;
+  }
+
+  async function equipRewardItem(index) {
+    const item = rewardModalState.items[index];
+    if (!item || !item.equipable) {
+      return;
+    }
+
+    if (item.equipped) {
+      scheduleRewardAutoCloseIfComplete();
+      return;
+    }
+
+    void playUiSfx(UI_SFX.select, { key: `reward-equip:${item.domain}:${item.id}`, cooldownMs: 70 });
+    await persistRewardSelections([index]);
+  }
+
+  async function equipAllRewardItems() {
+    const indices = rewardModalState.items
+      .map((item, index) => ({ item, index }))
+      .filter(entry => entry.item.equipable && !entry.item.equipped)
+      .map(entry => entry.index);
+
+    if (indices.length > 0) {
+      void playUiSfx(UI_SFX.select, { key: 'reward-equip-all', cooldownMs: 120 });
+      await persistRewardSelections(indices);
+    }
+
+    closeUnlockModal();
   }
 
   function openCorePicker(slotName) {
@@ -1554,12 +2276,17 @@
     
     // Save preference
     if (!gameSave.Preferences) gameSave.Preferences = {};
-    gameSave.Preferences[slotName.toUpperCase()] = coreId;
+    if (slotName === 'shader') {
+      gameSave.Preferences.Shader = coreId;
+      gameSave.Preferences.SHADER = coreId;
+    } else {
+      gameSave.Preferences[slotName.toUpperCase()] = coreId;
+    }
     if (slotName === 'cpu') gameSave.PreferredCpuId = coreId;
     else if (slotName === 'ppu') gameSave.PreferredPpuId = coreId;
     else if (slotName === 'apu') gameSave.PreferredApuId = coreId;
     else if (slotName === 'shader') gameSave.PreferredShaderId = coreId;
-    saveGameSave();
+    void saveGameSave();
 
     if (previousCoreId !== coreId) {
       void playUiSfx(UI_SFX.select, { key: `select-core:${slotName}`, cooldownMs: 70 });
@@ -1578,26 +2305,28 @@
 
   async function advanceLevel(options = {}) {
     if (!levelCleared || stars < requiredStars) {
-      return false;
+      return { advanced: false, rewards: null };
     }
 
     void playUiSfx(UI_SFX.levelAdvance, { key: 'level-advance', cooldownMs: 250 });
-    
-    currentLevel++;
-    gameSave.Level = currentLevel;
-    gameSave.LevelCleared = false;
+
+    const previousLevel = currentLevel;
+    const rewards = await buildLevelRewards(previousLevel);
+
+    currentLevel = gameSave.Level;
     levelCleared = false;
-    
+
     await saveGameSave();
-    
+
     await loadLevel();
+    applySavedSelections(gameSave);
     updateUI();
-    
-    if (!options.silent) {
-      alert(`Advanced to Level ${currentLevel}!`);
+
+    if (!options.deferPresentation) {
+      await presentLevelRewards(rewards);
     }
 
-    return true;
+    return { advanced: true, rewards };
   }
 
   async function launchSelectedGame(mode) {

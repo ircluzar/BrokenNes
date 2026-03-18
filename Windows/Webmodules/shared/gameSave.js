@@ -20,6 +20,21 @@
       ownedApuIds: ['FMC'],
       ownedClockIds: ['FMC'],
       ownedShaderIds: ['PX'],
+      SavestatesUnlocked: false,
+      RtcUnlocked: false,
+      GhUnlocked: false,
+      ImagineUnlocked: false,
+      DebugUnlocked: false,
+      PreferredCpuId: 'FMC',
+      PreferredPpuId: 'FMC',
+      PreferredApuId: 'FMC',
+      PreferredShaderId: 'PX',
+      Preferences: {
+        CPU: 'FMC',
+        PPU: 'FMC',
+        APU: 'FMC',
+        Shader: 'PX'
+      },
       UnlockedFeatures: {
         Savestates: false,
         RTC: false,
@@ -33,7 +48,8 @@
       PendingDeckContinueAtUtc: null,
       ContinueSlots: {},
       SeenStory: false,
-      UnderConstructionAcknowledged: false
+      UnderConstructionAcknowledged: false,
+      AllCoresUnlockedCongrats: false
     };
   }
 
@@ -145,6 +161,7 @@
 
     // Ensure all required properties exist
     const defaults = createDefaultSave();
+    const preferences = save.Preferences || {};
     const merged = {
       ...defaults,
       ...save,
@@ -153,6 +170,34 @@
         ...(save.UnlockedFeatures || {})
       }
     };
+
+    merged.SavestatesUnlocked = Boolean(save.SavestatesUnlocked || merged.UnlockedFeatures.Savestates);
+    merged.RtcUnlocked = Boolean(save.RtcUnlocked || merged.UnlockedFeatures.RTC);
+    merged.GhUnlocked = Boolean(save.GhUnlocked || merged.UnlockedFeatures.GH);
+    merged.ImagineUnlocked = Boolean(save.ImagineUnlocked || merged.UnlockedFeatures.Imagine);
+    merged.DebugUnlocked = Boolean(save.DebugUnlocked || merged.UnlockedFeatures.Debug);
+
+    merged.UnlockedFeatures = {
+      Savestates: merged.SavestatesUnlocked,
+      RTC: merged.RtcUnlocked,
+      GH: merged.GhUnlocked,
+      Imagine: merged.ImagineUnlocked,
+      Debug: merged.DebugUnlocked
+    };
+
+    merged.PreferredCpuId = merged.PreferredCpuId || preferences.CPU || defaults.PreferredCpuId;
+    merged.PreferredPpuId = merged.PreferredPpuId || preferences.PPU || defaults.PreferredPpuId;
+    merged.PreferredApuId = merged.PreferredApuId || preferences.APU || defaults.PreferredApuId;
+    merged.PreferredShaderId = merged.PreferredShaderId || preferences.Shader || preferences.SHADER || defaults.PreferredShaderId;
+    merged.Preferences = {
+      ...(preferences || {}),
+      CPU: merged.PreferredCpuId,
+      PPU: merged.PreferredPpuId,
+      APU: merged.PreferredApuId,
+      Shader: merged.PreferredShaderId,
+      SHADER: merged.PreferredShaderId
+    };
+    merged.AllCoresUnlockedCongrats = Boolean(save.AllCoresUnlockedCongrats);
 
     merged.ContinueSlots = normalizeContinueSlots(save?.ContinueSlots, merged);
 

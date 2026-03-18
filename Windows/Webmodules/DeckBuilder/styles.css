@@ -4,8 +4,19 @@
 */
 
 /* Deck Builder Specific */
+body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 0;
+}
+
 .deck-root {
   --deck-box-width: 600px;
+  margin: 1rem auto;
+  padding-top: 1.35rem;
+  padding-bottom: 1.2rem;
 }
 
 .deck-grid {
@@ -65,14 +76,50 @@
 }
 
 /* Action buttons */
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.75rem;
-  margin: 0 auto 1.5rem;
+.action-panel {
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0;
+  border: none;
+}
+
+.action-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 1fr);
+  gap: 0.9rem;
+  margin: 0 auto;
   width: var(--deck-box-width);
   max-width: 100%;
+}
+
+.action-primary,
+.action-secondary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.action-primary {
+  min-height: 100%;
+  padding: 1.2rem 1.4rem;
+  font-size: 0.8rem;
+}
+
+.action-secondary {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.action-secondary-btn {
+  width: 100%;
+  min-height: 3.65rem;
+}
+
+.deck-footer {
+  margin-top: 1rem;
 }
 
 /* Responsive design */
@@ -97,7 +144,22 @@
     padding: 0.8rem 0.9rem;
   }
 
+  .action-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .action-primary,
+  .action-secondary-btn {
+    min-height: auto;
+  }
+
   .btn-nes {
     font-size: 0.75rem;
+  }
+}
+
+@media (max-height: 760px) {
+  body {
+    justify-content: flex-start;
   }
 }
