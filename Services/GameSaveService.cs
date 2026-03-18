@@ -29,6 +29,7 @@ public class GameSaveService
                 var loaded = JsonSerializer.Deserialize<GameSave>(json, opts);
                 if (loaded != null)
                 {
+                    NormalizeContinueSlots(loaded);
                     if (loaded.Level < 1) loaded.Level = 1;
                     if (loaded.Achievements == null) loaded.Achievements = new();
                     // Back-compat default for LevelCleared if missing in older saves
@@ -72,6 +73,7 @@ public class GameSaveService
 
     public async Task SaveAsync(GameSave save)
     {
+        NormalizeContinueSlots(save);
         if (save.Level < 1) save.Level = 1;
         save.Achievements ??= new();
     // Persist LevelCleared as-is
@@ -204,34 +206,168 @@ public class GameSaveService
 
     // Trusted DeckBuilder Continue helpers
     public async Task SetPendingDeckContinueAsync(string romKey, string? title)
+        => await SetPendingDeckContinueAsync(romKey, title, null);
+
+    public async Task SetPendingDeckContinueAsync(string romKey, string? title, string? previewImagePath)
     {
         try
         {
+            var normalizedRomKey = NormalizeContinueSlotKey(romKey);
+            if (string.IsNullOrWhiteSpace(normalizedRomKey))
+            {
+                return;
+            }
+
             var save = await LoadAsync();
+            NormalizeContinueSlots(save);
+            var slot = new ContinueStateSlot
+            {
+                RomKey = romKey,
+                Title = string.IsNullOrWhiteSpace(title) ? romKey : title,
+                UpdatedAtUtc = DateTime.UtcNow,
+                PreviewImagePath = string.IsNullOrWhiteSpace(previewImagePath) ? null : previewImagePath
+            };
+            save.ContinueSlots[normalizedRomKey] = slot;
             save.PendingDeckContinue = true;
             save.PendingDeckContinueRom = romKey;
             save.PendingDeckContinueTitle = string.IsNullOrWhiteSpace(title) ? romKey : title;
-            save.PendingDeckContinueAtUtc = DateTime.UtcNow;
+            save.PendingDeckContinueAtUtc = slot.UpdatedAtUtc;
             await SaveAsync(save);
         }
         catch { }
     }
 
     public async Task ClearPendingDeckContinueAsync()
+        => await ClearPendingDeckContinueAsync(null);
+
+    public async Task ClearPendingDeckContinueAsync(string? romKey)
     {
         try
         {
             var save = await LoadAsync();
-            if (save.PendingDeckContinue || !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) || !string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle))
+            NormalizeContinueSlots(save);
+            var normalizedRomKey = NormalizeContinueSlotKey(romKey);
+            var changed = false;
+
+            if (!string.IsNullOrWhiteSpace(normalizedRomKey))
+            {
+                changed = save.ContinueSlots.Remove(normalizedRomKey);
+            }
+            else if (save.PendingDeckContinue || !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) || !string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle) || save.ContinueSlots.Count > 0)
+            {
+                changed = save.ContinueSlots.Count > 0;
+                save.ContinueSlots.Clear();
+            }
+
+            if (!changed && string.IsNullOrWhiteSpace(normalizedRomKey))
+            {
+                if (!save.PendingDeckContinue && string.IsNullOrWhiteSpace(save.PendingDeckContinueRom) && string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle))
+                {
+                    return;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedRomKey)
+                && string.Equals(NormalizeContinueSlotKey(save.PendingDeckContinueRom), normalizedRomKey, StringComparison.Ordinal))
+            {
+                var latest = GetLatestContinueSlot(save);
+                ApplyLegacyPendingDeckContinue(save, latest);
+                changed = true;
+            }
+            else if (string.IsNullOrWhiteSpace(normalizedRomKey))
             {
                 save.PendingDeckContinue = false;
                 save.PendingDeckContinueRom = null;
                 save.PendingDeckContinueTitle = null;
                 save.PendingDeckContinueAtUtc = null;
+                changed = true;
+            }
+
+            if (changed)
+            {
                 await SaveAsync(save);
             }
         }
         catch { }
+    }
+
+    private static void NormalizeContinueSlots(GameSave save)
+    {
+        save.ContinueSlots ??= new();
+
+        if (save.ContinueSlots.Count > 0)
+        {
+            var normalizedSlots = new Dictionary<string, ContinueStateSlot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in save.ContinueSlots)
+            {
+                var normalizedKey = NormalizeContinueSlotKey(entry.Key);
+                if (string.IsNullOrWhiteSpace(normalizedKey))
+                {
+                    normalizedKey = NormalizeContinueSlotKey(entry.Value?.RomKey);
+                }
+
+                if (string.IsNullOrWhiteSpace(normalizedKey))
+                {
+                    continue;
+                }
+
+                var slot = entry.Value ?? new ContinueStateSlot();
+                slot.RomKey = string.IsNullOrWhiteSpace(slot.RomKey) ? entry.Key : slot.RomKey;
+                slot.Title = string.IsNullOrWhiteSpace(slot.Title) ? slot.RomKey : slot.Title;
+                normalizedSlots[normalizedKey] = slot;
+            }
+
+            save.ContinueSlots = normalizedSlots;
+        }
+
+        if (save.ContinueSlots.Count == 0 && save.PendingDeckContinue && !string.IsNullOrWhiteSpace(save.PendingDeckContinueRom))
+        {
+            var normalizedKey = NormalizeContinueSlotKey(save.PendingDeckContinueRom);
+            if (!string.IsNullOrWhiteSpace(normalizedKey))
+            {
+                save.ContinueSlots[normalizedKey] = new ContinueStateSlot
+                {
+                    RomKey = save.PendingDeckContinueRom!,
+                    Title = string.IsNullOrWhiteSpace(save.PendingDeckContinueTitle) ? save.PendingDeckContinueRom : save.PendingDeckContinueTitle,
+                    UpdatedAtUtc = save.PendingDeckContinueAtUtc
+                };
+            }
+        }
+
+        var latestSlot = GetLatestContinueSlot(save);
+        ApplyLegacyPendingDeckContinue(save, latestSlot);
+    }
+
+    private static void ApplyLegacyPendingDeckContinue(GameSave save, ContinueStateSlot? slot)
+    {
+        if (slot == null)
+        {
+            save.PendingDeckContinue = false;
+            save.PendingDeckContinueRom = null;
+            save.PendingDeckContinueTitle = null;
+            save.PendingDeckContinueAtUtc = null;
+            return;
+        }
+
+        save.PendingDeckContinue = true;
+        save.PendingDeckContinueRom = slot.RomKey;
+        save.PendingDeckContinueTitle = string.IsNullOrWhiteSpace(slot.Title) ? slot.RomKey : slot.Title;
+        save.PendingDeckContinueAtUtc = slot.UpdatedAtUtc;
+    }
+
+    private static ContinueStateSlot? GetLatestContinueSlot(GameSave save)
+    {
+        return save.ContinueSlots.Values
+            .OrderByDescending(slot => slot.UpdatedAtUtc ?? DateTime.MinValue)
+            .ThenBy(slot => slot.RomKey, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static string NormalizeContinueSlotKey(string? romKey)
+    {
+        return string.IsNullOrWhiteSpace(romKey)
+            ? string.Empty
+            : romKey.Trim().ToLowerInvariant();
     }
 
     // Count cores the player owns across all categories.

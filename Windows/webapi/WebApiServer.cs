@@ -54,14 +54,22 @@ namespace BrokenNes.Windows.WebApi
         private Action<string>? _setBackground;
         private Func<IEnumerable<string>>? _getAvailableNullProviders;
         private Action<string>? _setNullProvider;
+        private Action<string>? _setCpuCore;
+        private Action<string>? _setPpuCore;
+        private Action<string>? _setApuCore;
+        private Action<string>? _setShader;
         private Action? _closeRom;
+        private Func<string, Task<bool>>? _loadRomByKey;
+        private Action<string, byte[]>? _loadRomFromBytes;
+        private Func<bool>? _saveContinueState;
+        private Func<string?, bool>? _loadContinueState;
         private Func<string?>? _getCurrentRomPath;
         private Func<string?>? _getCurrentRomName;
         private Func<string, bool>? _loadRomFromPath;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action? closeRom = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null)
         {
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
@@ -93,7 +101,15 @@ namespace BrokenNes.Windows.WebApi
             _setBackground = setBackground;
             _getAvailableNullProviders = getAvailableNullProviders;
             _setNullProvider = setNullProvider;
+            _setCpuCore = setCpuCore;
+            _setPpuCore = setPpuCore;
+            _setApuCore = setApuCore;
+            _setShader = setShader;
             _closeRom = closeRom;
+            _loadRomByKey = loadRomByKey;
+            _loadRomFromBytes = loadRomFromBytes;
+            _saveContinueState = saveContinueState;
+            _loadContinueState = loadContinueState;
             _getCurrentRomPath = getCurrentRomPath;
             _getCurrentRomName = getCurrentRomName;
             _loadRomFromPath = loadRomFromPath;

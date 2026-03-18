@@ -51,7 +51,8 @@
   // Initialize achievements
   async function initializeAchievements() {
     try {
-      const result = await api.achievements.init();
+      const completedIds = await lib.getSavedAchievements();
+      const result = await api.achievements.init({ completedIds });
 
       if (result.success) {
         isInitialized = true;

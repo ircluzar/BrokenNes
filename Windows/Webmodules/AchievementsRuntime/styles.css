@@ -18,11 +18,11 @@ body {
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 280px;
+  width: 232px;
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   overflow-y: auto;
   pointer-events: none;
   z-index: 1000;
@@ -39,11 +39,11 @@ body {
   background: rgba(20, 20, 30, 0.95);
   border: 2px solid #666;
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 7px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 48px;
+  min-height: 44px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
   transition: all 0.3s ease;
   animation: slideInRight 0.4s ease-out;
@@ -91,21 +91,22 @@ body {
 /* Achievement icon and title row */
 .achievement-header {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .achievement-icon {
   flex-shrink: 0;
-  font-size: 0.9rem;
-  width: 20px;
+  font-size: 0.8rem;
+  width: 16px;
   text-align: center;
   color: #fff;
+  padding-top: 1px;
 }
 
 .achievement-title {
   flex: 1;
-  font-size: 0.6rem;
+  font-size: 0.53rem;
   color: #fff;
   line-height: 1.2;
   white-space: nowrap;
@@ -116,14 +117,46 @@ body {
 
 /* Achievement description row */
 .achievement-description {
-  font-size: 0.5rem;
+  font-size: 0.46rem;
   color: #aaa;
   line-height: 1.3;
-  padding-left: 28px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding-left: 22px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.return-to-deck-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  padding: 10px 12px;
+  border: 2px solid rgba(134, 212, 255, 0.85);
+  border-radius: 8px;
+  background: rgba(10, 18, 28, 0.88);
+  color: #dff7ff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 1001;
+}
+
+.return-to-deck-button:hover {
+  background: rgba(16, 32, 46, 0.94);
+  transform: translateY(-1px);
+}
+
+.return-to-deck-button:active {
+  transform: translateY(0);
+}
+
+.return-to-deck-button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 /* Achievement Unlock Modal */

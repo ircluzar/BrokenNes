@@ -3,11 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Deck Builder - BrokenNes</title>  <link rel="stylesheet" href="../shared/common.css">  <link rel="stylesheet" href="styles.css">
+  <title>Deck Builder - BrokenNes</title>
+  <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="../shared/fonts.css">
 </head>
 <body>
   <div id="pixelBgHost" class="pixel-bg-host"></div>
+  <div class="arrival-overlay" id="arrivalOverlay" hidden>
+    <div class="arrival-backdrop"></div>
+    <div class="arrival-panel">
+      <div class="arrival-kicker">Achievement Return</div>
+      <div class="arrival-title" id="arrivalTitle">Achievement unlocked</div>
+      <div class="arrival-status" id="arrivalStatus">Updating your deck progress…</div>
+      <div class="arrival-stats">
+        <div class="arrival-stat">
+          <span class="arrival-label">Stars</span>
+          <strong id="arrivalStarsValue">0</strong>
+        </div>
+        <div class="arrival-stat">
+          <span class="arrival-label">Level</span>
+          <strong id="arrivalLevelValue">1</strong>
+        </div>
+      </div>
+      <div class="arrival-reveal" id="arrivalReveal"></div>
+    </div>
+  </div>
   
   <div class="options-root continue-root">
     <h2 class="opt-title">DECK BUILDER</h2>
@@ -85,26 +106,23 @@
     <section class="opt-section">
       <h3 class="opt-h3">
         <button type="button" class="panel-toggle" id="cartridgeToggle" aria-expanded="true">
-          Cartridge <span class="toggle-ico">▾</span>
+          Cartridges <span class="toggle-ico">▾</span>
         </button>
       </h3>
       <div class="rom-selector" id="cartridgePanel">
         <div class="rom-toolbar">
-          <label class="small-note">
-            <input type="checkbox" id="filterCompatible" checked /> Only show compatible
-          </label>
+          <div class="small-note">Installed ROMs with challenge stars</div>
           <div class="rom-toolbar-right">
             <input class="rom-search" id="romSearch" placeholder="Search title…" />
           </div>
         </div>
         <div class="rom-empty small-note" id="romEmpty" style="display: none;">
-          No games found or available. Build your deck to unlock achievements!
+          No installed cartridges with achievements were found.
         </div>
         <div class="rom-table" id="romTable" role="table" aria-label="ROM list">
           <div class="rom-thead" role="rowgroup">
             <div class="rom-tr rom-th" role="row">
               <div class="c-title" role="columnheader">Title</div>
-              <div class="c-compat" role="columnheader">Compat</div>
               <div class="c-ach" role="columnheader">Stars</div>
             </div>
           </div>
@@ -119,18 +137,30 @@
       </div>
     </section>
 
-    <section class="opt-section">
+    <section class="opt-section" id="achievementsSection" hidden>
       <h3 class="opt-h3">Achievements</h3>
       <div class="ach-box" id="achBox">
-        <div class="small-note">Select a compatible game to view achievements.</div>
+        <div class="small-note">Select an installed cartridge to view achievements.</div>
       </div>
     </section>
 
     <div class="opt-footer">
-      <button class="opt-link start-btn locked" id="startBtn" disabled title="Build valid and game with achievements required">
-        Start the game
-      </button>
-      <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link">RETURN</a>
+      <div class="launch-actions">
+        <button class="opt-link start-btn locked" id="startBtn" hidden disabled title="Build valid and select an installed game">
+          <span class="start-btn-frame" aria-hidden="true"></span>
+          <span class="start-btn-overlay" aria-hidden="true"></span>
+          <span class="start-btn-content">
+            <span class="start-btn-title" id="startBtnTitle">START GAME</span>
+          </span>
+        </button>
+        <button class="opt-link reset-btn locked" id="resetBtn" hidden disabled title="Build valid and select an installed game">
+          <span class="reset-btn-frame" aria-hidden="true"></span>
+          <span class="reset-btn-content">
+            <span class="reset-btn-title">RESET GAME</span>
+          </span>
+        </button>
+      </div>
+      <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link" id="returnLink">RETURN</a>
     </div>
   </div>
 
@@ -149,7 +179,23 @@
     </div>
   </div>
 
+  <div class="card-preview-backdrop" id="cardPreviewModal" style="display: none;">
+    <div class="card-preview-modal" role="dialog" aria-modal="true" aria-labelledby="cardPreviewTitle">
+      <div class="card-preview-header">
+        <div class="card-preview-heading">
+          <h3 id="cardPreviewTitle">Core Card</h3>
+          <div class="card-preview-subtitle" id="cardPreviewSubtitle"></div>
+        </div>
+        <button class="card-preview-close" id="cardPreviewClose" aria-label="Close">×</button>
+      </div>
+      <div class="card-preview-body">
+        <div class="card-preview-stage" id="cardPreviewStage"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Dependencies -->
+  <script src="../shared/continue-db.js"></script>
   <script src="../shared/storage.js"></script>
   <script src="../shared/gameSave.js"></script>
   <script src="../shared/webapi.js"></script>

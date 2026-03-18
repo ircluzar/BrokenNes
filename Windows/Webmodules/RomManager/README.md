@@ -14,8 +14,8 @@ The ROM Manager provides a comprehensive interface for:
 ## Features
 
 ### ROM Library View
-- **Table Layout**: Displays ROMs in a sortable table with Title, System, Compatible status, and Achievement count
-- **Filtering**: Toggle to show only compatible ROMs (those with achievements)
+- **Table Layout**: Displays ROMs in a sortable table with Title, System, Compatible status, and compatible star count from continueDb
+- **Filtering**: Defaults to showing all challenge-compatible games from continueDb, even before their ROMs are imported, so players can see what they should load
 - **Search**: Real-time search filtering by ROM title
 - **Selection**: Click any ROM to view detailed information
 
@@ -75,6 +75,7 @@ The module is configured via `config.json`:
 ### Storage Integration
 - Uses `nesStorage` (localStorage) for ROM data
 - Uses `continueDb` (IndexedDB) for game metadata and achievements
+- Uses the `achievements` store in `continueDb` to derive each ROM's compatible star total
 - Computes SHA-1 hashes for game identification
 
 ### ROM ID Computation

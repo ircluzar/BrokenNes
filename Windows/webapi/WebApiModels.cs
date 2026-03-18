@@ -132,6 +132,13 @@ namespace BrokenNes.Windows.WebApi
         public string ShaderName { get; set; } = "";
     }
 
+    internal class ApplyCoresRequest
+    {
+        public string? CpuId { get; set; }
+        public string? PpuId { get; set; }
+        public string? ApuId { get; set; }
+    }
+
     internal class GameSaveDto
     {
         public int Level { get; set; } = 1;
@@ -156,9 +163,18 @@ namespace BrokenNes.Windows.WebApi
         public string? PendingDeckContinueRom { get; set; }
         public string? PendingDeckContinueTitle { get; set; }
         public DateTime? PendingDeckContinueAtUtc { get; set; }
+        public Dictionary<string, ContinueStateSlotDto>? ContinueSlots { get; set; }
         public bool UnderConstructionAcknowledged { get; set; } = false;
         public bool AllCoresUnlockedCongrats { get; set; } = false;
         public Dictionary<string, string>? MasqueradeRomToGameId { get; set; }
+    }
+
+    internal class ContinueStateSlotDto
+    {
+        public string RomKey { get; set; } = string.Empty;
+        public string? Title { get; set; }
+        public DateTime? UpdatedAtUtc { get; set; }
+        public string? PreviewImagePath { get; set; }
     }
 
     internal class AudioPlayRequest
@@ -193,5 +209,21 @@ namespace BrokenNes.Windows.WebApi
     internal class LoadRomRequest
     {
         public string? Path { get; set; }
+    }
+
+    internal class LoadRomKeyRequest
+    {
+        public string? RomKey { get; set; }
+    }
+
+    internal class LoadRomBase64Request
+    {
+        public string? Name { get; set; }
+        public string? Base64 { get; set; }
+    }
+
+    internal class LoadContinueStateRequest
+    {
+        public string? ExpectedRomName { get; set; }
     }
 }

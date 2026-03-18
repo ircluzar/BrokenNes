@@ -5,19 +5,39 @@
 
 /* ROM Manager Root */
 .rom-manager-root {
-  --rom-box-width: 800px;
-  max-width: var(--rom-box-width);
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
+  width: min(1440px, calc(100vw - 2rem));
+  margin: clamp(0.75rem, 2vh, 1.5rem) auto;
+  padding: clamp(0.75rem, 1.5vw, 1.25rem);
 }
 
-.rom-manager-title {
-  font-size: 2rem;
-  text-align: center;
-  color: #fff;
-  margin-bottom: 2rem;
-  text-shadow: 0 0 10px #ff5a26;
-  letter-spacing: 0.2em;
+.rom-manager-layout {
+  display: block;
+}
+
+.rom-manager-layout.has-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.rom-library-section,
+.rom-details-section {
+  min-width: 0;
+}
+
+.rom-library-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.rom-details-section {
+  height: 100%;
+}
+
+.rom-library-section .opt-h3,
+.rom-details-section .opt-h3 {
+  margin-bottom: 1rem;
 }
 
 /* Toolbar */
@@ -28,6 +48,11 @@
   gap: 1rem;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+}
+
+.rom-toolbar-note {
+  flex: 1 1 220px;
+  text-align: center;
 }
 
 .rom-toolbar-right {
@@ -82,8 +107,8 @@
   outline: 3px solid #ff5a26;
   outline-offset: -6px;
   background: rgba(0, 0, 0, 0.7);
-  min-height: 400px;
-  max-height: 500px;
+  min-height: min(64vh, 720px);
+  max-height: min(64vh, 720px);
   overflow-y: auto;
 }
 
@@ -101,7 +126,7 @@
 
 .rom-tr {
   display: grid;
-  grid-template-columns: 1fr 120px 100px 80px;
+  grid-template-columns: minmax(0, 1fr) 120px 110px;
   gap: 0.5rem;
   padding: 0.6rem 0.8rem;
   border-bottom: 1px solid #333;
@@ -140,9 +165,24 @@
   outline-offset: -2px;
 }
 
-.rom-td.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.rom-td.not-present {
+  color: #d0d0d0;
+}
+
+.rom-td.installed {
+  color: #8cff8c;
+}
+
+.rom-td.not-present:hover,
+.rom-td.not-present:focus {
+  background: rgba(255, 204, 0, 0.12);
+  outline-color: #ffcc00;
+}
+
+.rom-td.installed:hover,
+.rom-td.installed:focus {
+  background: rgba(0, 255, 128, 0.12);
+  outline-color: #4dff88;
 }
 
 .rom-title {
@@ -153,10 +193,30 @@
   text-overflow: ellipsis;
 }
 
+.rom-td.installed .rom-title {
+  color: #a6ffb3;
+}
+
 .rom-subtitle {
   font-size: 0.5rem;
   color: #999;
   margin-top: 0.2rem;
+}
+
+.rom-availability {
+  color: #ffcc00;
+}
+
+.rom-td.installed .rom-availability {
+  color: #4dff88;
+}
+
+.rom-star-count {
+  color: #ffcc00;
+}
+
+.rom-star-count.zero {
+  color: #ff4d4d;
 }
 
 .chip {
@@ -200,6 +260,7 @@
   outline-offset: -6px;
   padding: 1.5rem;
   background: rgba(0, 0, 0, 0.7);
+  min-height: min(64vh, 720px);
 }
 
 .rom-details-grid {
@@ -259,10 +320,17 @@
   transform: scale(1.05);
 }
 
+.rom-action-btn:disabled {
+  background: #444;
+  color: #888;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Footer */
 .rom-manager-footer {
   text-align: center;
-  margin-top: 2rem;
+  margin-top: 1.25rem;
 }
 
 .rom-manager-link {
@@ -395,16 +463,19 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .rom-manager-root {
-    --rom-box-width: 100%;
-    padding: 1rem;
+    width: min(100%, calc(100vw - 1.25rem));
+    margin: 0.625rem auto 1rem;
+    padding: 0.625rem;
   }
 
-  .rom-manager-title {
-    font-size: 1.5rem;
+  .rom-manager-layout,
+  .rom-manager-layout.has-details {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .rom-tr {
-    grid-template-columns: 1fr 80px 70px 60px;
+    grid-template-columns: minmax(0, 1fr) 80px 70px;
     font-size: 0.55rem;
     padding: 0.5rem;
   }
@@ -418,6 +489,11 @@
     justify-content: space-between;
   }
 
+  .rom-toolbar-note {
+    order: 3;
+    text-align: left;
+  }
+
   .rom-search {
     min-width: 0;
     flex: 1;
@@ -426,6 +502,12 @@
   .rom-detail-row {
     grid-template-columns: 100px 1fr;
     gap: 0.5rem;
+  }
+
+  .rom-list-container,
+  .rom-details-box {
+    min-height: auto;
+    max-height: none;
   }
 
   .import-modal {

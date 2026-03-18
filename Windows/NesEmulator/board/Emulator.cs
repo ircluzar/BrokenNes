@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -148,6 +150,67 @@ namespace BrokenNes
         }
         private readonly ClockHostFacade _clockHost;
     // mobileFsViewPending handled in UI partial
+
+            private string GetCurrentSaveKey() => GetSaveKeyForRom(GetCurrentSaveSlotRomKey());
+
+            private IEnumerable<string> GetSaveKeyCandidates(string? romKey = null)
+            {
+                var currentKey = GetSaveKeyForRom(romKey ?? GetCurrentSaveSlotRomKey());
+                yield return currentKey;
+                if (!string.Equals(currentKey, SaveKey, StringComparison.Ordinal))
+                {
+                    yield return SaveKey;
+                }
+            }
+
+            private string? GetCurrentSaveSlotRomKey()
+            {
+                try
+                {
+                    return nesController.RomFileName
+                        ?? nesController.CurrentRomName
+                        ?? nes?.RomName;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            private string GetSaveKeyForRom(string? romKey)
+            {
+                var normalized = NormalizeSaveSlotKey(romKey);
+                return string.IsNullOrWhiteSpace(normalized)
+                    ? SaveKey
+                    : $"{SaveKey}:{normalized}";
+            }
+
+            private static string NormalizeSaveSlotKey(string? romKey)
+            {
+                if (string.IsNullOrWhiteSpace(romKey))
+                {
+                    return string.Empty;
+                }
+
+                var trimmed = romKey.Trim().ToLowerInvariant();
+                var fileName = Path.GetFileName(trimmed);
+                var prefixBuilder = new StringBuilder(fileName.Length);
+                foreach (var ch in fileName)
+                {
+                    prefixBuilder.Append(char.IsLetterOrDigit(ch) ? ch : '_');
+                }
+
+                var prefix = prefixBuilder.ToString().Trim('_');
+                if (prefix.Length > 48)
+                {
+                    prefix = prefix[..48];
+                }
+
+                var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(trimmed))).ToLowerInvariant();
+                return string.IsNullOrWhiteSpace(prefix)
+                    ? hash
+                    : $"{prefix}:{hash[..16]}";
+            }
         private IEnumerable<RomOption> FilteredRomOptions => string.IsNullOrWhiteSpace(nesController.RomSearch)
             ? nesController.RomOptions.OrderBy(o=>o.BuiltIn ? 0 : 1).ThenBy(o=>o.Label)
             : nesController.RomOptions.Where(o=>o.Label.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase) || o.Key.Contains(nesController.RomSearch, StringComparison.OrdinalIgnoreCase))
@@ -608,29 +671,37 @@ namespace BrokenNes
             string? gameState = null;
             try
             {
-                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
-                if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+                foreach (var saveKey in GetSaveKeyCandidates())
                 {
-                    int parts = ExtractInt(manifestJson, "parts");
-                    bool compressed = manifestJson.Contains("\"compressed\":true");
-                    var sb = new System.Text.StringBuilder();
-                    for (int i = 0; i < parts; i++)
+                    var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + ".manifest");
+                    if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
                     {
-                        var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
-                        if (part == null) { sb.Clear(); break; }
-                        sb.Append(part);
+                        int parts = ExtractInt(manifestJson, "parts");
+                        bool compressed = manifestJson.Contains("\"compressed\":true");
+                        var sb = new System.Text.StringBuilder();
+                        for (int i = 0; i < parts; i++)
+                        {
+                            var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + $".part{i}");
+                            if (part == null) { sb.Clear(); break; }
+                            sb.Append(part);
+                        }
+                        var full = sb.ToString();
+                        if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
+                        if (!string.IsNullOrWhiteSpace(full)) gameState = full;
                     }
-                    var full = sb.ToString();
-                    if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
-                    if (!string.IsNullOrWhiteSpace(full)) gameState = full;
-                }
-                else
-                {
-                    var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
-                    if (!string.IsNullOrWhiteSpace(single))
+                    else
                     {
-                        if (single.StartsWith("GZ:")) { try { gameState = DecompressString(single.Substring(3)); } catch { gameState = null; } }
-                        else gameState = single;
+                        var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey);
+                        if (!string.IsNullOrWhiteSpace(single))
+                        {
+                            if (single.StartsWith("GZ:")) { try { gameState = DecompressString(single.Substring(3)); } catch { gameState = null; } }
+                            else gameState = single;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(gameState))
+                    {
+                        break;
                     }
                 }
             }

@@ -27,6 +27,7 @@ namespace BrokenNes
             Diag("UI SaveState invoked");
             try
             {
+                var saveKey = GetCurrentSaveKey();
                 Diag("Requesting atomic savestate snapshot");
                     var raw = await nes.CaptureAtomicSnapshotAsync(2000);
                     Diag(raw==null?"Atomic snapshot returned null":"Atomic snapshot returned length="+raw.Length);
@@ -43,17 +44,17 @@ namespace BrokenNes
                 }
                 catch (Exception ex){ Diag("Compression failed: "+ex.Message); }
                 Diag("Removing existing chunks (if any)");
-                await RemoveExistingChunks();
+                await RemoveExistingChunks(saveKey);
                 Diag("Existing chunks removed");
         if (payload.Length <= SaveChunkCharSize)
                 {
                     try
                     {
-                        await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey, payload);
-                        await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
+                    await JS.InvokeVoidAsync("nesInterop.saveStateChunk", saveKey, payload);
+                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", saveKey + ".manifest");
                         Status.Set(compressed ? "State saved (compressed)" : "State saved");
                         // If saving outside of achievements mode, drop trusted continue flag
-                        try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
+                    try { if (_achEngine == null) await ClearTrustedContinueAsync(GetCurrentSaveSlotRomKey()); } catch {}
                         // Persist paired achievements snapshot when achievements are enabled
                         try { if (_achEngine != null) await SaveLatestAchievementSnapshotAsync(); } catch {}
                         Diag("Single chunk save complete");
@@ -71,20 +72,20 @@ namespace BrokenNes
                 try
                 {
                     for (int i=0;i<parts.Count;i++)
-                        await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + $".part{i}", parts[i]);
+                        await JS.InvokeVoidAsync("nesInterop.saveStateChunk", saveKey + $".part{i}", parts[i]);
                     string manifest = $"{{\"version\":1,\"compressed\":{compressed.ToString().ToLowerInvariant()},\"parts\":{parts.Count}}}";
-                    await JS.InvokeVoidAsync("nesInterop.saveStateChunk", SaveKey + ".manifest", manifest);
-                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey);
+                    await JS.InvokeVoidAsync("nesInterop.saveStateChunk", saveKey + ".manifest", manifest);
+                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", saveKey);
                     Status.Set(compressed ? $"State saved in {parts.Count} parts (compressed)" : $"State saved in {parts.Count} parts");
                     // If saving outside of achievements mode, drop trusted continue flag
-                    try { if (_achEngine == null) await ClearTrustedContinueAsync(); } catch {}
+                    try { if (_achEngine == null) await ClearTrustedContinueAsync(GetCurrentSaveSlotRomKey()); } catch {}
                     // Persist paired achievements snapshot when achievements are enabled
                     try { if (_achEngine != null) await SaveLatestAchievementSnapshotAsync(); } catch {}
                 }
                 catch (JSException jsex)
                 {
                     nesController.ErrorMessage = "Save error (chunked): " + jsex.Message;
-                    try { await RemoveExistingChunks(); } catch {}
+                    try { await RemoveExistingChunks(saveKey); } catch {}
                 }
             }
             catch (Exception ex)
@@ -100,33 +101,44 @@ namespace BrokenNes
             try
             {
                 if (wasRunning) await PauseEmulation();
-                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
                 string full = string.Empty;
-                if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+                foreach (var saveKey in GetSaveKeyCandidates())
                 {
-                    try
+                    var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + ".manifest");
+                    if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
                     {
-                        int parts = ExtractInt(manifestJson, "parts");
-                        bool compressed = manifestJson.Contains("\"compressed\":true");
-                        var sb = new StringBuilder();
-                        for (int i=0;i<parts;i++)
+                        try
                         {
-                            var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
-                            if (part == null) { nesController.ErrorMessage = "Load error: missing part " + i; stateBusy=false; return; }
-                            sb.Append(part);
+                            int parts = ExtractInt(manifestJson, "parts");
+                            bool compressed = manifestJson.Contains("\"compressed\":true");
+                            var sb = new StringBuilder();
+                            for (int i=0;i<parts;i++)
+                            {
+                                var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + $".part{i}");
+                                if (part == null) { nesController.ErrorMessage = "Load error: missing part " + i; stateBusy=false; return; }
+                                sb.Append(part);
+                            }
+                            full = sb.ToString();
+                            if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
                         }
-                        full = sb.ToString();
-                        if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
+                        catch (Exception ex) { nesController.ErrorMessage = "Load error (chunked): " + ex.Message; return; }
                     }
-                    catch (Exception ex) { nesController.ErrorMessage = "Load error (chunked): " + ex.Message; return; }
+                    else
+                    {
+                        var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey);
+                        if (!string.IsNullOrWhiteSpace(single))
+                        {
+                            if (single.StartsWith("GZ:")) { try { full = DecompressString(single.Substring(3)); } catch (Exception ex){ nesController.ErrorMessage = "Decompress error: " + ex.Message; return; } }
+                            else full = single;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(full))
+                    {
+                        break;
+                    }
                 }
-                else
-                {
-                    var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
-                    if (string.IsNullOrWhiteSpace(single)) { Status.Set("No saved state"); return; }
-                    if (single.StartsWith("GZ:")) { try { full = DecompressString(single.Substring(3)); } catch (Exception ex){ nesController.ErrorMessage = "Decompress error: " + ex.Message; return; } }
-                    else full = single;
-                }
+                if (string.IsNullOrWhiteSpace(full)) { Status.Set("No saved state"); return; }
                 if (!string.IsNullOrEmpty(full))
                 {
                     try
@@ -213,17 +225,17 @@ namespace BrokenNes
             try { var token = "\""+prop+"\":"; int idx = json.IndexOf(token, StringComparison.Ordinal); if (idx>=0){ idx += token.Length; int end=idx; while(end<json.Length && char.IsDigit(json[end])) end++; if (int.TryParse(json.Substring(idx,end-idx), out var val)) return val; } } catch {}
             return 0;
         }
-        private async Task RemoveExistingChunks()
+        private async Task RemoveExistingChunks(string saveKey)
         {
             try
             {
-                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
+                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + ".manifest");
                 if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
                 {
                     int parts = ExtractInt(manifestJson, "parts");
                     for (int i=0;i<parts;i++)
-                        await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + $".part{i}");
-                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", SaveKey + ".manifest");
+                        await JS.InvokeVoidAsync("nesInterop.removeStateKey", saveKey + $".part{i}");
+                    await JS.InvokeVoidAsync("nesInterop.removeStateKey", saveKey + ".manifest");
                 }
             }
             catch { }
@@ -235,7 +247,7 @@ namespace BrokenNes
             try { await _gameSaveService.SetPendingDeckContinueAsync(romKey, title); } catch { }
         }
 
-    private async Task ClearTrustedContinueAsync()
-    { try { await _gameSaveService.ClearPendingDeckContinueAsync(); } catch { } }
+    private async Task ClearTrustedContinueAsync(string? romKey)
+    { try { await _gameSaveService.ClearPendingDeckContinueAsync(romKey); } catch { } }
     }
 }

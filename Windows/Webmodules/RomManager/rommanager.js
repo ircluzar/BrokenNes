@@ -3,10 +3,16 @@
 (function() {
   'use strict';
 
+  const DEFAULT_DB_URL = '../shared/models/default-db.json';
+  const ROM_STORAGE_DB_NAME = 'nesStorage';
+  const ROM_STORAGE_DB_VERSION = 1;
+  const ROM_STORAGE_STORE = 'roms';
+  const LEGACY_ROM_KEY_PREFIX = 'rom_';
+
   // State
   let allRoms = [];
   let selectedRomKey = null;
-  let filterCompatibleOnly = false;
+  let filterCompatibleOnly = true;
   let searchQuery = '';
   let pendingImports = [];
   let continueDb = null;
@@ -53,6 +59,7 @@
 
   function cacheElements() {
     elements = {
+      romManagerLayout: document.getElementById('romManagerLayout'),
       filterCheckbox: document.getElementById('filterCompatibleOnly'),
       searchInput: document.getElementById('searchInput'),
       importBtn: document.getElementById('importBtn'),
@@ -67,7 +74,6 @@
       detailSystem: document.getElementById('detailSystem'),
       detailGameId: document.getElementById('detailGameId'),
       detailAchievements: document.getElementById('detailAchievements'),
-      detailCompatible: document.getElementById('detailCompatible'),
       
       // Import modal
       importModal: document.getElementById('importModal'),
@@ -84,6 +90,20 @@
       confirmDeleteBtn: document.getElementById('confirmDeleteBtn'),
       cancelDeleteBtn: document.getElementById('cancelDeleteBtn')
     };
+
+    if (elements.filterCheckbox) {
+      elements.filterCheckbox.checked = filterCompatibleOnly;
+    }
+
+    updateLayoutState(false);
+  }
+
+  function updateLayoutState(hasDetails) {
+    if (!elements.romManagerLayout) {
+      return;
+    }
+
+    elements.romManagerLayout.classList.toggle('has-details', hasDetails);
   }
 
   function setupEventListeners() {
@@ -175,27 +195,11 @@
       const romKeys = await getAllRomKeys();
       console.log('[RomManager] Found ROM keys:', romKeys);
 
-      // Get all games from continueDb
-      let games = [];
-      if (continueDb && typeof continueDb.getAll === 'function') {
-        try {
-          games = await continueDb.getAll('games');
-          console.log('[RomManager] Loaded games from DB:', games.length);
-        } catch (error) {
-          console.error('[RomManager] Error loading games:', error);
-        }
-      }
-
-      // Get achievements for compatibility check
-      let achievements = [];
-      if (continueDb && typeof continueDb.getAll === 'function') {
-        try {
-          achievements = await continueDb.getAll('achievements');
-          console.log('[RomManager] Loaded achievements:', achievements.length);
-        } catch (error) {
-          console.error('[RomManager] Error loading achievements:', error);
-        }
-      }
+      const { games, achievements, source } = await loadCatalogRecords();
+      console.log(`[RomManager] Loaded catalog from ${source}:`, {
+        games: games.length,
+        achievements: achievements.length
+      });
 
       // Build achievement count map
       const achCountMap = {};
@@ -215,14 +219,14 @@
         
         allRoms.push({
           id: game.id,
-          title: game.title || game.commonName || game.name || romKey,
+          title: game.commonName || game.title || game.name || romKey,
           subtitle: game.subtitle || '',
           romKey: romKey,
           system: game.system || game.platform || 'NES',
           present: hasRom,
           compatible: achCount > 0,
           achievements: achCount,
-          notes: game.notes || '',
+          notes: game.notes || game.note || '',
           size: 0,
           unknown: false
         });
@@ -258,15 +262,244 @@
     }
   }
 
+  async function loadCatalogRecords() {
+    let games = [];
+    let achievements = [];
+
+    if (continueDb && typeof continueDb.getAll === 'function') {
+      try {
+        const [dbGames, dbAchievements] = await Promise.all([
+          continueDb.getAll('games'),
+          continueDb.getAll('achievements')
+        ]);
+
+        games = Array.isArray(dbGames) ? dbGames : [];
+        achievements = Array.isArray(dbAchievements) ? dbAchievements : [];
+
+        if (games.length > 0 || achievements.length > 0) {
+          return { games, achievements, source: 'continueDb' };
+        }
+
+        console.warn('[RomManager] continueDb returned an empty catalog, falling back to bundled default DB');
+      } catch (error) {
+        console.error('[RomManager] Error loading catalog from continueDb:', error);
+      }
+    }
+
+    try {
+      const response = await fetch(DEFAULT_DB_URL, { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Default DB fetch failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const data = payload && typeof payload === 'object' ? payload.data || {} : {};
+      games = Array.isArray(data.games) ? data.games : [];
+      achievements = Array.isArray(data.achievements) ? data.achievements : [];
+
+      return { games, achievements, source: 'default-db.json' };
+    } catch (error) {
+      console.error('[RomManager] Error loading fallback default DB:', error);
+      return { games: [], achievements: [], source: 'none' };
+    }
+  }
+
+  async function openRomStorageStore(mode) {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB not available'));
+        return;
+      }
+
+      const request = indexedDB.open(ROM_STORAGE_DB_NAME, ROM_STORAGE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv');
+        }
+        if (!db.objectStoreNames.contains(ROM_STORAGE_STORE)) {
+          db.createObjectStore(ROM_STORAGE_STORE, { keyPath: 'name' });
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          resolve(db.transaction(ROM_STORAGE_STORE, mode).objectStore(ROM_STORAGE_STORE));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('IndexedDB open error'));
+    });
+  }
+
+  async function migrateLegacyLocalStorageRoms() {
+    try {
+      if (!window.localStorage) {
+        return;
+      }
+
+      const legacyKeys = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+          legacyKeys.push(key);
+        }
+      }
+
+      if (legacyKeys.length === 0) {
+        return;
+      }
+
+      const existing = await getStoredRomsFromIndexedDb(false);
+      const existingNames = new Set(existing.map(rom => rom.name));
+
+      for (const key of legacyKeys) {
+        const base64 = localStorage.getItem(key);
+        const name = key.substring(LEGACY_ROM_KEY_PREFIX.length);
+        if (!base64 || !name || existingNames.has(name)) {
+          continue;
+        }
+
+        await saveRomToIndexedDb(name, base64);
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // ignore legacy cleanup failures
+        }
+      }
+    } catch (error) {
+      console.warn('[RomManager] Legacy ROM migration failed:', error);
+    }
+  }
+
+  async function getStoredRomsFromIndexedDb(runMigration = true) {
+    try {
+      if (runMigration) {
+        await migrateLegacyLocalStorageRoms();
+      }
+
+      const store = await openRomStorageStore('readonly');
+      return await new Promise((resolve, reject) => {
+        if ('getAll' in store) {
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = () => reject(request.error);
+          return;
+        }
+
+        const records = [];
+        const request = store.openCursor();
+        request.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (cursor) {
+            records.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(records);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.warn('[RomManager] IndexedDB ROM read failed, checking legacy localStorage:', error);
+      return getStoredRomsFromLegacyLocalStorage();
+    }
+  }
+
+  function getStoredRomsFromLegacyLocalStorage() {
+    try {
+      if (!window.localStorage) {
+        return [];
+      }
+
+      const records = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (!key || !key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+          continue;
+        }
+
+        const base64 = localStorage.getItem(key);
+        if (!base64) {
+          continue;
+        }
+
+        records.push({
+          name: key.substring(LEGACY_ROM_KEY_PREFIX.length),
+          base64
+        });
+      }
+
+      return records;
+    } catch (error) {
+      console.warn('[RomManager] Legacy ROM fallback read failed:', error);
+      return [];
+    }
+  }
+
+  async function getStoredRoms() {
+    if (window.nesInterop && typeof window.nesInterop.getStoredRoms === 'function') {
+      return window.nesInterop.getStoredRoms();
+    }
+
+    return getStoredRomsFromIndexedDb();
+  }
+
+  async function saveRomToIndexedDb(name, base64) {
+    const store = await openRomStorageStore('readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.put({ name, base64 });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function saveStoredRom(name, base64) {
+    if (window.nesInterop && typeof window.nesInterop.saveRom === 'function') {
+      await window.nesInterop.saveRom(name, base64);
+      return;
+    }
+
+    try {
+      await saveRomToIndexedDb(name, base64);
+    } catch (error) {
+      console.warn('[RomManager] IndexedDB ROM save failed, falling back to localStorage:', error);
+      if (!window.localStorage) {
+        throw error;
+      }
+      localStorage.setItem(`${LEGACY_ROM_KEY_PREFIX}${name}`, base64);
+    }
+  }
+
+  async function removeStoredRom(name) {
+    if (window.nesInterop && typeof window.nesInterop.removeStoredRom === 'function') {
+      await window.nesInterop.removeStoredRom(name);
+      return;
+    }
+
+    try {
+      const store = await openRomStorageStore('readwrite');
+      await new Promise((resolve, reject) => {
+        const request = store.delete(name);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.warn('[RomManager] IndexedDB ROM delete failed, falling back to localStorage:', error);
+    }
+
+    try {
+      localStorage.removeItem(`${LEGACY_ROM_KEY_PREFIX}${name}`);
+    } catch {
+      // ignore localStorage cleanup failures
+    }
+  }
+
   async function getAllRomKeys() {
     try {
-      // Use nesInterop.getStoredRoms() which returns array of {name, base64}
-      if (window.nesInterop && typeof window.nesInterop.getStoredRoms === 'function') {
-        const roms = await window.nesInterop.getStoredRoms();
-        return roms.map(rom => rom.name);
-      }
-      
-      return [];
+      const roms = await getStoredRoms();
+      return roms.map(rom => rom.name);
     } catch (error) {
       console.error('[RomManager] Error getting ROM keys:', error);
       return [];
@@ -290,15 +523,11 @@
 
   async function getRomData(romKey) {
     try {
-      // getStoredRoms returns {name, base64}, find the matching one
-      if (window.nesInterop && typeof window.nesInterop.getStoredRoms === 'function') {
-        const roms = await window.nesInterop.getStoredRoms();
-        const rom = roms.find(r => r.name === romKey);
-        if (rom && rom.base64) {
-          // Decode base64 to get size
-          const bin = atob(rom.base64);
-          return new Uint8Array(bin.length).map((_, i) => bin.charCodeAt(i));
-        }
+      const roms = await getStoredRoms();
+      const rom = roms.find(r => r.name === romKey);
+      if (rom && rom.base64) {
+        const bin = atob(rom.base64);
+        return new Uint8Array(bin.length).map((_, i) => bin.charCodeAt(i));
       }
       
       return null;
@@ -313,9 +542,12 @@
     
     // Filter ROMs
     let filtered = allRoms.filter(rom => {
-      // Filter by compatibility
-      if (filterCompatibleOnly && !rom.compatible && !rom.unknown) {
-        return false;
+      // Default mode is an import catalog: show all challenge-compatible games,
+      // even when the ROM has not been imported yet.
+      if (filterCompatibleOnly) {
+        if (!rom.compatible) {
+          return false;
+        }
       }
       
       // Filter by search
@@ -326,18 +558,20 @@
       return true;
     });
 
-    // Sort: unknown first (if filter off), then present, then compatible, then alphabetically
+    // Sort for discoverability: compatible games first, then installed ones,
+    // then by star count and title. Unknown imported ROMs sink to the bottom.
     filtered.sort((a, b) => {
-      if (!filterCompatibleOnly) {
-        if (a.unknown !== b.unknown) return b.unknown ? 1 : -1;
-      }
-      if (a.present !== b.present) return b.present ? 1 : -1;
       if (a.compatible !== b.compatible) return b.compatible ? 1 : -1;
+      if (a.present !== b.present) return b.present ? 1 : -1;
+      if (a.achievements !== b.achievements) return b.achievements - a.achievements;
+      if (a.unknown !== b.unknown) return a.unknown ? 1 : -1;
       return a.title.localeCompare(b.title);
     });
 
     if (filtered.length === 0) {
-      container.innerHTML = '<div class="rom-empty small-note">No ROMs found matching criteria.</div>';
+      container.innerHTML = filterCompatibleOnly
+        ? '<div class="rom-empty small-note">No challenge-compatible ROMs were found in continueDb.</div>'
+        : '<div class="rom-empty small-note">No ROMs found matching criteria.</div>';
       return;
     }
 
@@ -347,30 +581,30 @@
     html += '<div class="rom-tr rom-th" role="row">';
     html += '<div role="columnheader">Title</div>';
     html += '<div role="columnheader">System</div>';
-    html += '<div role="columnheader">Compatible</div>';
-    html += '<div role="columnheader">Stars</div>';
+    html += '<div role="columnheader" title="Compatible challenges found in continueDb">Stars</div>';
     html += '</div></div>';
     html += '<div class="rom-tbody" role="rowgroup">';
 
     filtered.forEach(rom => {
       const selected = rom.romKey === selectedRomKey ? 'selected' : '';
-      const disabled = !rom.present ? 'disabled' : '';
-      const compatChip = rom.unknown ? 
-        '<span class="chip unknown">Unknown</span>' :
-        (rom.compatible ? '<span class="chip ok">Yes</span>' : '<span class="chip no">No</span>');
+      const installed = rom.present ? 'installed' : '';
+      const notPresent = !rom.present ? 'not-present' : '';
+      const availabilityLine = rom.present
+        ? '<div class="rom-subtitle rom-availability">Installed</div>'
+        : '<div class="rom-subtitle rom-availability">Not imported yet</div>';
+      const starClass = rom.achievements > 0 ? 'rom-star-count' : 'rom-star-count zero';
       
-      html += `<button type="button" class="rom-tr rom-td ${selected} ${disabled}" 
-                role="row" data-rom-key="${escapeHtml(rom.romKey)}" 
-                ${disabled ? 'disabled' : ''}>`;
+      html += `<button type="button" class="rom-tr rom-td ${selected} ${installed} ${notPresent}" 
+                role="row" data-rom-key="${escapeHtml(rom.romKey)}">`;
       html += `<div role="cell">`;
       html += `<div class="rom-title">${escapeHtml(rom.title)}</div>`;
       if (rom.subtitle) {
         html += `<div class="rom-subtitle">${escapeHtml(rom.subtitle)}</div>`;
       }
+      html += availabilityLine;
       html += `</div>`;
       html += `<div role="cell">${escapeHtml(rom.system)}</div>`;
-      html += `<div role="cell">${compatChip}</div>`;
-      html += `<div role="cell">${rom.achievements}</div>`;
+      html += `<div role="cell"><span class="${starClass}">${rom.achievements}</span></div>`;
       html += `</button>`;
     });
 
@@ -378,7 +612,7 @@
     container.innerHTML = html;
 
     // Attach click handlers
-    container.querySelectorAll('.rom-td:not(.disabled)').forEach(btn => {
+    container.querySelectorAll('.rom-td').forEach(btn => {
       btn.addEventListener('click', () => {
         const romKey = btn.getAttribute('data-rom-key');
         selectRom(romKey);
@@ -399,15 +633,15 @@
   function displayRomDetails(rom) {
     elements.detailTitle.textContent = rom.title;
     elements.detailFileName.textContent = rom.romKey;
-    elements.detailSize.textContent = formatSize(rom.size);
+    elements.detailSize.textContent = rom.present ? formatSize(rom.size) : 'Not imported';
     elements.detailSystem.textContent = rom.system;
     elements.detailGameId.textContent = rom.id;
-    elements.detailAchievements.textContent = rom.achievements > 0 ? 
-      `${rom.achievements} available` : 'None';
-    elements.detailCompatible.textContent = rom.unknown ? 
-      'Unknown' : (rom.compatible ? 'Yes' : 'No');
+    elements.detailAchievements.textContent = `${rom.achievements} star${rom.achievements === 1 ? '' : 's'}`;
+    elements.deleteBtn.disabled = !rom.present;
+    elements.deleteBtn.title = rom.present ? 'Delete imported ROM' : 'This ROM is not installed yet';
     
     elements.romDetailsSection.style.display = 'block';
+    updateLayoutState(true);
   }
 
   function formatSize(bytes) {
@@ -518,12 +752,7 @@
       // Read file as base64
       const base64 = await readFileAsBase64(item.file);
       
-      // Save to nesStorage using nesInterop
-      if (window.nesInterop && typeof window.nesInterop.saveRom === 'function') {
-        await window.nesInterop.saveRom(item.name, base64);
-      } else {
-        throw new Error('nesInterop not available');
-      }
+      await saveStoredRom(item.name, base64);
       
       // Add to continueDb if not present
       if (continueDb) {
@@ -661,12 +890,7 @@
     
     try {
       console.log('[RomManager] Deleting ROM:', romToDelete.romKey);
-      if (window.nesInterop && typeof window.nesInterop.removeStoredRom === 'function') {
-        await window.nesInterop.removeStoredRom(romToDelete.romKey);
-      } else {
-        console.warn('[RomManager] nesInterop not available, falling back to storage.');
-        await window.nesStorage.removeItem(romToDelete.romKey);
-      }
+      await removeStoredRom(romToDelete.romKey);
       
       console.log('[RomManager] ROM deleted successfully');
       closeDeleteModal();
@@ -675,6 +899,7 @@
       if (selectedRomKey === romToDelete.romKey) {
         selectedRomKey = null;
         elements.romDetailsSection.style.display = 'none';
+        updateLayoutState(false);
       }
       
       // Reload and refresh

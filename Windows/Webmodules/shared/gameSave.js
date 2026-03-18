@@ -4,13 +4,15 @@
 (function() {
   'use strict';
 
-  const STORAGE_KEY = 'brokenNesGameSave';
+  const STORAGE_KEY = 'game_save_v1';
+  const LEGACY_STORAGE_KEY = 'brokenNesGameSave';
   const VOLUME_KEY = 'brokenNesAudioVolumes';
 
   // Default save structure - use this as the canonical format
   function createDefaultSave() {
     return {
       Level: 1,
+      LevelCleared: false,
       Achievements: [],
       // Use flat arrays with consistent property names (camelCase with Ids suffix)
       ownedCpuIds: ['FMC'],
@@ -25,9 +27,98 @@
         Imagine: false,
         Debug: false
       },
+      PendingDeckContinue: false,
+      PendingDeckContinueRom: null,
+      PendingDeckContinueTitle: null,
+      PendingDeckContinueAtUtc: null,
+      ContinueSlots: {},
       SeenStory: false,
       UnderConstructionAcknowledged: false
     };
+  }
+
+  function normalizeContinueSlotKey(romKey) {
+    return typeof romKey === 'string' && romKey.trim()
+      ? romKey.trim().toLowerCase()
+      : '';
+  }
+
+  function normalizeContinueSlots(slots, legacySave) {
+    const normalized = {};
+    const source = slots && typeof slots === 'object' ? slots : {};
+
+    Object.entries(source).forEach(([key, value]) => {
+      const slotRomKey = value && typeof value.romKey === 'string' && value.romKey.trim()
+        ? value.romKey.trim()
+        : value && typeof value.RomKey === 'string' && value.RomKey.trim()
+          ? value.RomKey.trim()
+          : '';
+      const romKey = slotRomKey || (typeof key === 'string' ? key : '');
+      const normalizedKey = normalizeContinueSlotKey(romKey || key);
+      if (!normalizedKey) {
+        return;
+      }
+
+      const slotTitle = value && typeof value.title === 'string' && value.title.trim()
+        ? value.title
+        : value && typeof value.Title === 'string' && value.Title.trim()
+          ? value.Title
+          : '';
+
+      const slotUpdatedAtUtc = value && value.updatedAtUtc
+        ? value.updatedAtUtc
+        : value && value.UpdatedAtUtc
+          ? value.UpdatedAtUtc
+          : null;
+
+      const slotPreviewImagePath = value && value.previewImagePath
+        ? value.previewImagePath
+        : value && value.PreviewImagePath
+          ? value.PreviewImagePath
+          : null;
+
+      normalized[normalizedKey] = {
+        romKey,
+        title: slotTitle
+          ? slotTitle
+          : romKey,
+        updatedAtUtc: slotUpdatedAtUtc,
+        previewImagePath: slotPreviewImagePath
+      };
+    });
+
+    const legacyKey = normalizeContinueSlotKey(legacySave?.PendingDeckContinueRom);
+    if (legacySave?.PendingDeckContinue && legacyKey && !normalized[legacyKey]) {
+      normalized[legacyKey] = {
+        romKey: legacySave.PendingDeckContinueRom,
+        title: legacySave.PendingDeckContinueTitle || legacySave.PendingDeckContinueRom,
+        updatedAtUtc: legacySave.PendingDeckContinueAtUtc || null,
+        previewImagePath: null
+      };
+    }
+
+    return normalized;
+  }
+
+  function getLatestContinueSlot(slots) {
+    const values = Object.values(slots || {});
+    if (values.length === 0) {
+      return null;
+    }
+
+    values.sort((left, right) => {
+      const leftTime = left && left.updatedAtUtc ? Date.parse(left.updatedAtUtc) : 0;
+      const rightTime = right && right.updatedAtUtc ? Date.parse(right.updatedAtUtc) : 0;
+      if (rightTime !== leftTime) {
+        return rightTime - leftTime;
+      }
+
+      const leftKey = (left && left.romKey) || '';
+      const rightKey = (right && right.romKey) || '';
+      return leftKey.localeCompare(rightKey);
+    });
+
+    return values[0] || null;
   }
 
   // Migrate old save format to new format
@@ -53,10 +144,30 @@
     }
 
     // Ensure all required properties exist
+    const defaults = createDefaultSave();
     const merged = {
-      ...createDefaultSave(),
-      ...save
+      ...defaults,
+      ...save,
+      UnlockedFeatures: {
+        ...defaults.UnlockedFeatures,
+        ...(save.UnlockedFeatures || {})
+      }
     };
+
+    merged.ContinueSlots = normalizeContinueSlots(save?.ContinueSlots, merged);
+
+    const latestContinueSlot = getLatestContinueSlot(merged.ContinueSlots);
+    if (latestContinueSlot) {
+      merged.PendingDeckContinue = true;
+      merged.PendingDeckContinueRom = latestContinueSlot.romKey;
+      merged.PendingDeckContinueTitle = latestContinueSlot.title || latestContinueSlot.romKey;
+      merged.PendingDeckContinueAtUtc = latestContinueSlot.updatedAtUtc || null;
+    } else {
+      merged.PendingDeckContinue = false;
+      merged.PendingDeckContinueRom = null;
+      merged.PendingDeckContinueTitle = null;
+      merged.PendingDeckContinueAtUtc = null;
+    }
 
     return merged;
   }
@@ -69,13 +180,26 @@
     async load() {
       try {
         let save = null;
-        
-        if (window.storage && typeof window.storage.load === 'function') {
-          save = await window.storage.load(STORAGE_KEY);
-        } else {
-          const data = localStorage.getItem(STORAGE_KEY);
+
+        if (window.nesInterop && typeof window.nesInterop.idbGetItem === 'function') {
+          const data = await window.nesInterop.idbGetItem(STORAGE_KEY);
           if (data) {
             save = JSON.parse(data);
+          }
+        }
+
+        if (!save) {
+          const legacyData = localStorage.getItem(LEGACY_STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
+          if (legacyData) {
+            save = JSON.parse(legacyData);
+            try {
+              if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
+                await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(save));
+              }
+              localStorage.removeItem(LEGACY_STORAGE_KEY);
+            } catch (migrationError) {
+              console.warn('[gameSave] Legacy save migration warning:', migrationError);
+            }
           }
         }
 
@@ -98,13 +222,19 @@
       try {
         // Ensure the save uses the correct format
         const validatedSave = migrateSave(save);
-        
-        if (window.storage && typeof window.storage.save === 'function') {
-          return await window.storage.save(STORAGE_KEY, validatedSave);
-        } else {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(validatedSave));
+
+        if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
+          await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(validatedSave));
+          try {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+          } catch {
+            // ignore legacy cleanup failures
+          }
           return true;
         }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(validatedSave));
+        return true;
       } catch (error) {
         console.error('[gameSave] Save error:', error);
         return false;

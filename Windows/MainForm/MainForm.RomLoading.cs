@@ -23,6 +23,12 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
+        private sealed class StoredRomRecord
+        {
+            public string? Name { get; set; }
+            public string? Base64 { get; set; }
+        }
+
         private void LoadRom_Click(object? sender, EventArgs e)
         {
             using var openFileDialog = new OpenFileDialog
@@ -58,65 +64,67 @@ namespace BrokenNes.Windows
                 }
                 
                 byte[] romData = File.ReadAllBytes(path);
-                
-                // Stop current emulation if running
-                StopEmulation();
-                
-                // Create new NES instance
-                lock (emulationLock)
-                {
-                    nes = new NES();
-                    nes.LoadROM(romData);
-                    nes.RomName = Path.GetFileName(path);
-                    nes.RomPath = path;
-                    InitializeImagineEngine();
-                }
-                
-                currentRomPath = path;
-                Console.WriteLine($"ROM Loaded: {Path.GetFileName(path)}");
-                
-                // Add to recent ROMs
-                config.AddRecentRom(path);
-                
-                // Apply saved core selections
-                ApplySavedCoreSelections();
-                
-                // Apply crash behavior
-                ApplyCrashBehavior();
-                
-                // Apply saved null provider
-                nes.SetNullProvider(config.SelectedNullProvider);
-                
-                // Apply image settings (restores user preference for Pixel Perfect)
-                ApplyImageSettings();
 
-                // Initialize corruptor domains
-                BuildMemoryDomains();
-                
-                // Apply sound channel settings
-                ApplySoundSettings();
-                
-                // Update cores menus
-                UpdateCoresMenus();
-                
-                // Update recent ROMs menu
-                var fileMenu = this.MainMenuStrip?.Items.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text == "&Emulator");
-                if (fileMenu != null)
-                {
-                    var recentMenu = fileMenu.DropDownItems.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text.Contains("Recent"));
-                    if (recentMenu != null)
-                    {
-                        UpdateRecentRomsMenu(recentMenu);
-                    }
-                }
-                
-                // Start emulation on background thread
-                StartEmulation();
+                LoadRomBytes(Path.GetFileName(path), romData, path, addToRecentRoms: true);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error loading ROM: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void LoadRomBytes(string romName, byte[] romData, string? romPath = null, bool addToRecentRoms = false)
+        {
+            if (romData == null || romData.Length == 0)
+            {
+                throw new InvalidOperationException("ROM data is empty.");
+            }
+
+            // Stop current emulation if running
+            StopEmulation();
+
+            // Create new NES instance
+            lock (emulationLock)
+            {
+                nes = new NES();
+                nes.LoadROM(romData);
+                nes.RomName = romName;
+                nes.RomPath = romPath ?? romName;
+                InitializeImagineEngine();
+            }
+
+            currentRomPath = romPath ?? romName;
+            Console.WriteLine($"ROM Loaded: {romName}");
+
+            if (addToRecentRoms && !string.IsNullOrWhiteSpace(romPath))
+            {
+                config.AddRecentRom(romPath);
+            }
+
+            ApplySavedCoreSelections();
+            ApplyCrashBehavior();
+            nes.SetNullProvider(config.SelectedNullProvider);
+            ApplyImageSettings();
+            BuildMemoryDomains();
+            ApplySoundSettings();
+            UpdateCoresMenus();
+
+            var fileMenu = this.MainMenuStrip?.Items.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text == "&Emulator");
+            if (fileMenu != null)
+            {
+                var recentMenu = fileMenu.DropDownItems.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text.Contains("Recent"));
+                if (recentMenu != null)
+                {
+                    UpdateRecentRomsMenu(recentMenu);
+                }
+            }
+
+            StartEmulation();
+        }
+
+        private void LoadRomBytesFromApi(string romName, byte[] romData)
+        {
+            LoadRomBytes(romName, romData, romName, addToRecentRoms: false);
         }
         
         private void CloseRom_Click(object? sender, EventArgs e)
@@ -170,6 +178,158 @@ namespace BrokenNes.Windows
             catch (Exception ex)
             {
                 Console.WriteLine($"[WebApi] Failed to load ROM from path: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task<bool> LoadRomKeyFromApiAsync(string romKey)
+        {
+            if (string.IsNullOrWhiteSpace(romKey)) return false;
+
+            var normalizedKey = romKey.Trim();
+
+            try
+            {
+                if (webView?.CoreWebView2 != null)
+                {
+                    var keyJson = System.Text.Json.JsonSerializer.Serialize(normalizedKey);
+                    var script = $@"(async()=>{{
+    try {{
+        const target = {keyJson};
+        const normalizedTarget = typeof target === 'string' ? target.toLowerCase() : '';
+
+        async function readFromIndexedDb() {{
+            if (!window.indexedDB) {{
+                return null;
+            }}
+
+            const db = await new Promise((resolve, reject) => {{
+                const req = indexedDB.open('nesStorage', 1);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error || new Error('IndexedDB open error'));
+            }});
+
+            return await new Promise((resolve, reject) => {{
+                try {{
+                    const tx = db.transaction('roms', 'readonly');
+                    const store = tx.objectStore('roms');
+                    const directReq = store.get(target);
+                    directReq.onsuccess = () => {{
+                        const direct = directReq.result;
+                        if (direct && typeof direct.name === 'string' && direct.base64) {{
+                            resolve(direct);
+                            return;
+                        }}
+
+                        if ('getAll' in store) {{
+                            const allReq = store.getAll();
+                            allReq.onsuccess = () => {{
+                                const rows = Array.isArray(allReq.result) ? allReq.result : [];
+                                resolve(rows.find(entry => entry && typeof entry.name === 'string' && entry.name.toLowerCase() === normalizedTarget) || null);
+                            }};
+                            allReq.onerror = () => reject(allReq.error || new Error('IndexedDB read error'));
+                            return;
+                        }}
+
+                        const rows = [];
+                        const cursorReq = store.openCursor();
+                        cursorReq.onsuccess = (event) => {{
+                            const cursor = event.target.result;
+                            if (cursor) {{
+                                rows.push(cursor.value);
+                                cursor.continue();
+                                return;
+                            }}
+
+                            resolve(rows.find(entry => entry && typeof entry.name === 'string' && entry.name.toLowerCase() === normalizedTarget) || null);
+                        }};
+                        cursorReq.onerror = () => reject(cursorReq.error || new Error('IndexedDB cursor error'));
+                    }};
+                    directReq.onerror = () => reject(directReq.error || new Error('IndexedDB direct lookup error'));
+                }} catch (error) {{
+                    reject(error);
+                }}
+            }});
+        }}
+
+        async function readFromInterop() {{
+            if (!window.nesInterop || typeof window.nesInterop.getStoredRoms !== 'function') {{
+                return null;
+            }}
+
+            const roms = await window.nesInterop.getStoredRoms();
+            if (!Array.isArray(roms)) {{
+                return null;
+            }}
+
+            return roms.find(entry => entry && typeof entry.name === 'string' && entry.name.toLowerCase() === normalizedTarget) || null;
+        }}
+
+        async function readFromLegacyLocalStorage() {{
+            try {{
+                if (!window.localStorage) {{
+                    return null;
+                }}
+
+                const base64 = localStorage.getItem('rom_' + target);
+                if (base64) {{
+                    return {{ name: target, base64 }};
+                }}
+
+                for (let index = 0; index < localStorage.length; index++) {{
+                    const key = localStorage.key(index);
+                    if (!key || !key.startsWith('rom_')) {{
+                        continue;
+                    }}
+
+                    const storedName = key.substring(4);
+                    if (storedName.toLowerCase() === normalizedTarget) {{
+                        return {{ name: storedName, base64: localStorage.getItem(key) }};
+                    }}
+                }}
+            }} catch (error) {{
+                return null;
+            }}
+
+            return null;
+        }}
+
+        return await readFromIndexedDb()
+            || await readFromInterop()
+            || await readFromLegacyLocalStorage();
+    }} catch (e) {{
+        return null;
+    }}
+}})()";
+
+                    var resultJson = await webView.CoreWebView2.ExecuteScriptAsync(script);
+                    if (!string.IsNullOrWhiteSpace(resultJson) && !string.Equals(resultJson, "null", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var stored = System.Text.Json.JsonSerializer.Deserialize<StoredRomRecord>(resultJson, new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (!string.IsNullOrWhiteSpace(stored?.Base64))
+                        {
+                            var romBytes = Convert.FromBase64String(stored.Base64);
+                            LoadRomBytes(stored.Name ?? normalizedKey, romBytes, stored.Name ?? normalizedKey, addToRecentRoms: false);
+                            return true;
+                        }
+                    }
+                }
+
+                if (File.Exists(normalizedKey))
+                {
+                    LoadRomFile(normalizedKey);
+                    return true;
+                }
+
+                return await LoadBuiltInRomAsync(normalizedKey, preserveShader: false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WebApi] Failed to load ROM by key '{normalizedKey}': {ex.Message}");
                 return false;
             }
         }

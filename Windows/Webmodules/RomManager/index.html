@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ROM Manager - BrokenNes</title>
-  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🎮</text></svg>">
   <link rel="stylesheet" href="../shared/common.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="../shared/fonts.css">
@@ -13,64 +13,61 @@
   <div id="pixelBgHost" class="pixel-bg-host"></div>
   
   <div class="rom-manager-root">
-    <h2 class="rom-manager-title">ROM MANAGER</h2>
-    
-    <section class="opt-section">
-      <h3 class="opt-h3">ROM LIBRARY</h3>
-      <div class="rom-toolbar">
-        <label class="small-note">
-          <input type="checkbox" id="filterCompatibleOnly" />
-          Only show compatible ROMs
-        </label>
-        <div class="rom-toolbar-right">
-          <button type="button" class="rom-import-btn" id="importBtn">Import ROMs</button>
-          <input class="rom-search" id="searchInput" placeholder="Search ROMs…" />
+    <div class="rom-manager-layout" id="romManagerLayout">
+      <section class="opt-section rom-library-section">
+        <h3 class="opt-h3">ROM MANAGER</h3>
+        <div class="rom-toolbar">
+          <label class="small-note">
+            <input type="checkbox" id="filterCompatibleOnly" />
+            Only show compatible ROMs
+          </label>
+          <div class="small-note rom-toolbar-note">Compatible games stay visible here even before their ROMs are imported.</div>
+          <div class="rom-toolbar-right">
+            <button type="button" class="rom-import-btn" id="importBtn">Import ROMs</button>
+            <input class="rom-search" id="searchInput" placeholder="Search ROMs…" />
+          </div>
         </div>
-      </div>
 
-      <div id="romListContainer" class="rom-list-container">
-        <div class="rom-empty small-note">Loading ROMs...</div>
-      </div>
-    </section>
+        <div id="romListContainer" class="rom-list-container">
+          <div class="rom-empty small-note">Loading ROMs...</div>
+        </div>
+      </section>
 
-    <section class="opt-section" id="romDetailsSection" style="display: none;">
-      <h3 class="opt-h3">ROM DETAILS</h3>
-      <div class="rom-details-box" id="romDetailsBox">
-        <div class="rom-details-grid" aria-label="Selected ROM details">
-          <div class="rom-detail-row">
-            <div class="label small-note">Title</div>
-            <div class="value" id="detailTitle">-</div>
+      <section class="opt-section rom-details-section" id="romDetailsSection" style="display: none;">
+        <h3 class="opt-h3">ROM DETAILS</h3>
+        <div class="rom-details-box" id="romDetailsBox">
+          <div class="rom-details-grid" aria-label="Selected ROM details">
+            <div class="rom-detail-row">
+              <div class="label small-note">Title</div>
+              <div class="value" id="detailTitle">-</div>
+            </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">File Name</div>
+              <div class="value" id="detailFileName">-</div>
+            </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">Size</div>
+              <div class="value" id="detailSize">-</div>
+            </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">System</div>
+              <div class="value" id="detailSystem">-</div>
+            </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">Game ID</div>
+              <div class="value" id="detailGameId">-</div>
+            </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">Achievements</div>
+              <div class="value" id="detailAchievements">-</div>
+            </div>
           </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">File Name</div>
-            <div class="value" id="detailFileName">-</div>
-          </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">Size</div>
-            <div class="value" id="detailSize">-</div>
-          </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">System</div>
-            <div class="value" id="detailSystem">-</div>
-          </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">Game ID</div>
-            <div class="value" id="detailGameId">-</div>
-          </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">Achievements</div>
-            <div class="value" id="detailAchievements">-</div>
-          </div>
-          <div class="rom-detail-row">
-            <div class="label small-note">Compatible</div>
-            <div class="value" id="detailCompatible">-</div>
+          <div class="rom-actions">
+            <button type="button" class="rom-action-btn danger" id="deleteBtn">Delete ROM</button>
           </div>
         </div>
-        <div class="rom-actions">
-          <button type="button" class="rom-action-btn danger" id="deleteBtn">Delete ROM</button>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <div class="rom-manager-footer">
       <a href="../Home/index.html?skipHW=1" class="rom-manager-link">RETURN</a>

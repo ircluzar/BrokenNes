@@ -1,5 +1,13 @@
 namespace BrokenNes.Models;
 
+public class ContinueStateSlot
+{
+    public string RomKey { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+    public string? PreviewImagePath { get; set; }
+}
+
 public class GameSave
 {
     // Current level (starts at 1)
@@ -43,6 +51,7 @@ public class GameSave
     public string? PendingDeckContinueRom { get; set; } // romKey/filename of the game
     public string? PendingDeckContinueTitle { get; set; } // optional display title
     public DateTime? PendingDeckContinueAtUtc { get; set; } // optional timestamp
+    public Dictionary<string, ContinueStateSlot> ContinueSlots { get; set; } = new();
 
     // One-time acknowledgements
     public bool UnderConstructionAcknowledged { get; set; } = false; // Set after user accepts Under Construction notice

@@ -46,6 +46,27 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
+
+        private void SetShaderById(string shaderId)
+        {
+            if (!useDirectX || dxRenderer == null || string.IsNullOrWhiteSpace(shaderId)) return;
+
+            string normalizedShaderId = shaderId.Trim().ToUpperInvariant();
+            dxRenderer.UseShader = true;
+
+            if (!NesShaderControl.SwitchShader(normalizedShaderId))
+            {
+                return;
+            }
+
+            Helpers.ConfigHelper.Update(config, c =>
+            {
+                c.CurrentShader = normalizedShaderId;
+                c.ShadersEnabled = true;
+            });
+
+            UpdateConfigMenus();
+        }
         
         private void AutoScrambleTimer_Tick(object? sender, EventArgs e)
         {

@@ -326,6 +326,50 @@ namespace BrokenNes.Windows.WebApi
                     });
                 }
             });
+
+            // POST /api/navigation/go-to-web - Switch to full webmodule mode
+            app.MapPost("/api/navigation/go-to-web", () =>
+            {
+                try
+                {
+                    if (_switchViewMode == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "View mode switching not available" });
+                    }
+
+                    if (_uiControl == null || _uiControl.IsDisposed)
+                    {
+                        return Results.BadRequest(new { success = false, error = "UI control not available" });
+                    }
+
+                    if (_uiControl.InvokeRequired)
+                    {
+                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        {
+                            _switchViewMode(ViewMode.Web, true);
+                        });
+                    }
+                    else
+                    {
+                        _switchViewMode(ViewMode.Web, true);
+                    }
+
+                    Console.WriteLine("[WebApi] Switched to Web mode via API");
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        mode = "Web"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
         }
     }
 }

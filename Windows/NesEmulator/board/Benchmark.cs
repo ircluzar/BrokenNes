@@ -159,27 +159,37 @@ namespace BrokenNes
             try
             {
                 if (stateBusy) return false;
-                var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + ".manifest");
                 string full = string.Empty;
-                if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
+                foreach (var saveKey in GetSaveKeyCandidates())
                 {
-                    int parts = ExtractInt(manifestJson, "parts");
-                    bool compressed = manifestJson.Contains("\"compressed\":true");
-                    var sb = new System.Text.StringBuilder();
-                    for (int i=0;i<parts;i++)
+                    var manifestJson = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + ".manifest");
+                    if (!string.IsNullOrWhiteSpace(manifestJson) && manifestJson.Contains("parts"))
                     {
-                        var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey + $".part{i}");
-                        if (string.IsNullOrEmpty(part)) return false;
-                        sb.Append(part);
+                        int parts = ExtractInt(manifestJson, "parts");
+                        bool compressed = manifestJson.Contains("\"compressed\":true");
+                        var sb = new System.Text.StringBuilder();
+                        for (int i=0;i<parts;i++)
+                        {
+                            var part = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey + $".part{i}");
+                            if (string.IsNullOrEmpty(part)) return false;
+                            sb.Append(part);
+                        }
+                        full = sb.ToString();
+                        if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
                     }
-                    full = sb.ToString();
-                    if (compressed && full.StartsWith("GZ:")) full = DecompressString(full.Substring(3));
-                }
-                else
-                {
-                    var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", SaveKey);
-                    if (string.IsNullOrWhiteSpace(single)) return false;
-                    full = single.StartsWith("GZ:") ? DecompressString(single.Substring(3)) : single;
+                    else
+                    {
+                        var single = await JS.InvokeAsync<string>("nesInterop.getStateChunk", saveKey);
+                        if (!string.IsNullOrWhiteSpace(single))
+                        {
+                            full = single.StartsWith("GZ:") ? DecompressString(single.Substring(3)) : single;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(full))
+                    {
+                        break;
+                    }
                 }
                 if (string.IsNullOrEmpty(full)) return false;
                 try

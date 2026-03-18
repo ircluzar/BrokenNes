@@ -3,6 +3,23 @@
 (function() {
   'use strict';
 
+  const DEFAULT_DB_URL = '../shared/models/default-db.json';
+  const ROM_STORAGE_DB_NAME = 'nesStorage';
+  const ROM_STORAGE_DB_VERSION = 1;
+  const ROM_STORAGE_STORE = 'roms';
+  const LEGACY_ROM_KEY_PREFIX = 'rom_';
+  const WORKFLOW_LAUNCH_KEY = 'brokenNes.workflow.launch';
+  const WORKFLOW_RETURN_KEY = 'brokenNes.workflow.return';
+  const WORKFLOW_ROM_CACHE_KEY = 'brokenNes.workflow.rom';
+  const UI_SFX = {
+    firstClear: 'SFX01.mp3',
+    levelAdvance: 'SFX09.mp3',
+    modalOpen: 'SFX04.mp3',
+    select: 'SFX03.mp3',
+    toggle: 'SFX02.mp3',
+    launch: 'SFX07.mp3'
+  };
+
   // State
   let gameSave = null;
   let currentLevel = 1;
@@ -26,47 +43,24 @@
   let romRows = [];
   let gameAchievements = [];
   let cartridgeCollapsed = false;
+  let levelRecord = null;
+  let arrivalInProgress = false;
   
-  // Core data
-  const coreData = {
-    CPU: ['FMC', 'EXE', 'LAT', 'QUK', 'HAW'],
-    PPU: ['FMC', 'LOW', 'MED', 'HI', 'OPT'],
-    APU: ['FMC', 'LOW', 'MED', 'HI'],
-    Shader: ['PX', '16B', 'BLD', 'BUMP', 'CCC', 'CNMA', 'CRY', 'CRZ', 'DOT', 'EXE', 
-             'HUE', 'LAT', 'LCD', 'LSD', 'MSH', 'MUSK', 'RF', 'RGBX', 'SPK', 'TRI', 
-             'TTF', 'TV', 'VHS', 'WARM', 'WTR']
+  const coreCatalog = {
+    CPU: [],
+    PPU: [],
+    APU: [],
+    SHADER: []
   };
-  
-  // Sample game database (simplified)
-  const gamesDb = [
-    { id: 'smb', title: 'Super Mario Bros.', compat: true, achTotal: 12 },
-    { id: 'zelda', title: 'The Legend of Zelda', compat: true, achTotal: 15 },
-    { id: 'metroid', title: 'Metroid', compat: true, achTotal: 10 },
-    { id: 'megaman', title: 'Mega Man', compat: true, achTotal: 8 },
-    { id: 'castlevania', title: 'Castlevania', compat: true, achTotal: 9 }
-  ];
-
-  // Level progression data
-  const levelData = {
-    1: {
-      title: 'Tutorial',
-      message: 'Welcome to BrokenNes! Build your first console.',
-      requiredStars: 5,
-      enforced: {}
-    },
-    2: {
-      title: 'CPU Focus',
-      message: 'Experiment with different CPU cores.',
-      requiredStars: 12,
-      enforced: { CPU: 'EXE' }
-    },
-    3: {
-      title: 'Visual Arts',
-      message: 'Try different PPU and shader combinations.',
-      requiredStars: 20,
-      enforced: { PPU: 'LOW' }
-    }
+  const fallbackCoreData = {
+    CPU: ['FMC', 'LOW', 'LW2', 'SPD', 'EIL', 'Z80'],
+    PPU: ['FMC', 'LOW', 'LQ', 'SPD', 'BFR', 'CUBE', 'CUBEX', 'EIL'],
+    APU: ['FMC', 'LOW', 'LQ', 'LQ2', 'QLOW', 'QLQ', 'QLQ2', 'QN', 'SPD', 'SPD2', 'WF', 'EIL', 'MNES'],
+    SHADER: ['PX', '16B', 'BLD', 'BUMP', 'CCC', 'CNMA', 'CRY', 'CRZ', 'DOT', 'EXE', 'HUE', 'LAT', 'LCD', 'LSD', 'MSH', 'MUSK', 'RF', 'RGBX', 'SPK', 'TRI', 'TTF', 'TV', 'VHS', 'WARM', 'WTR']
   };
+  const coreLookup = new Map();
+  const cardSvgCache = new Map();
+  let currentPreviewToken = 0;
 
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
@@ -81,20 +75,27 @@
       // Load game save first (needed for currentLevel)
       await loadGameSave();
 
+      // Load live core metadata and level rules before first render.
+      await loadCoreCatalog();
+
+      // Load level data
+      await loadLevel();
+
+      // Initialize ROM list
+      await initializeRomList();
+
+      restoreSelectedGame();
+
+      await consumeWorkflowReturn();
+
+      // Update UI
+      updateUI();
+
       // Initialize audio after level is loaded
       initAudio();
 
       // Setup event listeners
       setupEventListeners();
-
-      // Load level data
-      loadLevel();
-
-      // Initialize ROM list
-      initializeRomList();
-
-      // Update UI
-      updateUI();
     } catch (error) {
       console.error('[Continue] Initialization error:', error);
     }
@@ -123,6 +124,239 @@
     }
   }
 
+  function readWorkflowPayload(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.warn('[Continue] Failed to read workflow payload:', error);
+      return null;
+    }
+  }
+
+  function writeWorkflowPayload(key, payload) {
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+      return true;
+    } catch (error) {
+      console.warn('[Continue] Failed to write workflow payload:', error);
+      return false;
+    }
+  }
+
+  function clearWorkflowPayload(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn('[Continue] Failed to clear workflow payload:', error);
+    }
+  }
+
+  function playUiSfx(filename, options = {}) {
+    if (!filename || !window.webapi?.audio?.playSfx) {
+      return Promise.resolve(false);
+    }
+
+    const key = options.key || filename;
+    const cooldownMs = Number.isFinite(options.cooldownMs) ? options.cooldownMs : 90;
+    playUiSfx.lastPlayedAt ??= new Map();
+
+    const now = performance.now();
+    const lastPlayedAt = playUiSfx.lastPlayedAt.get(key) || 0;
+    if (now - lastPlayedAt < cooldownMs) {
+      return Promise.resolve(false);
+    }
+
+    playUiSfx.lastPlayedAt.set(key, now);
+    return window.webapi.audio.playSfx(filename).then(() => true).catch(error => {
+      console.warn(`[Continue] Failed to play SFX ${filename}:`, error);
+      return false;
+    });
+  }
+
+  function restoreSelectedGame() {
+    if (selectedGameId && romRows.some(row => row.id === selectedGameId)) {
+      return;
+    }
+
+    selectedGameId = null;
+  }
+
+  function getContinueSlots() {
+    const slots = gameSave?.ContinueSlots;
+    return slots && typeof slots === 'object' ? slots : {};
+  }
+
+  function getContinueSlotForRom(romKey) {
+    const normalizedKey = normalizeRomStorageName(romKey);
+    if (!normalizedKey) {
+      return null;
+    }
+
+    return getContinueSlots()[normalizedKey] || null;
+  }
+
+  function hasTrustedContinueSelected() {
+    const selectedGame = romRows.find(row => row.id === selectedGameId);
+    if (!selectedGame) {
+      return false;
+    }
+
+    return Boolean(getContinueSlotForRom(selectedGame.romKey));
+  }
+
+  function buildLaunchPayload(mode) {
+    const selectedGame = romRows.find(row => row.id === selectedGameId);
+    if (!selectedGame) {
+      return null;
+    }
+
+    return {
+      mode,
+      level: currentLevel,
+      previousStarCount: stars,
+      romKey: selectedGame.romKey,
+      gameId: selectedGame.id,
+      title: selectedGame.title,
+      subtitle: selectedGame.subtitle || '',
+      createdAt: new Date().toISOString(),
+      cores: {
+        cpuId: enforcedCpu || selectedCpu,
+        ppuId: enforcedPpu || selectedPpu,
+        apuId: enforcedApu || selectedApu,
+        shaderId: enforcedShader || selectedShader
+      }
+    };
+  }
+
+  async function getStoredRomByName(romName) {
+    const normalizedTarget = normalizeRomStorageName(romName);
+    const roms = await getStoredRoms();
+    if (!Array.isArray(roms)) {
+      return null;
+    }
+
+    return roms.find(rom => normalizeRomStorageName(rom && rom.name) === normalizedTarget) || null;
+  }
+
+  function setArrivalText(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.textContent = value;
+    }
+  }
+
+  function showArrivalOverlay() {
+    const overlay = document.getElementById('arrivalOverlay');
+    if (overlay) {
+      overlay.hidden = false;
+    }
+  }
+
+  function hideArrivalOverlay() {
+    const overlay = document.getElementById('arrivalOverlay');
+    if (overlay) {
+      overlay.hidden = true;
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function animateNumber(id, from, to, durationMs) {
+    const element = document.getElementById(id);
+    if (!element) {
+      return;
+    }
+
+    if (from === to) {
+      element.textContent = String(to);
+      return;
+    }
+
+    const start = performance.now();
+    return new Promise(resolve => {
+      function step(now) {
+        const progress = Math.min(1, (now - start) / durationMs);
+        const value = Math.round(from + ((to - from) * progress));
+        element.textContent = String(value);
+        if (progress < 1) {
+          requestAnimationFrame(step);
+          return;
+        }
+
+        resolve();
+      }
+
+      requestAnimationFrame(step);
+    });
+  }
+
+  async function consumeWorkflowReturn() {
+    const payload = readWorkflowPayload(WORKFLOW_RETURN_KEY);
+    if (!payload) {
+      return;
+    }
+
+    clearWorkflowPayload(WORKFLOW_RETURN_KEY);
+
+    if (payload.romKey) {
+      const match = romRows.find(row => normalizeRomStorageName(row.romKey) === normalizeRomStorageName(payload.romKey));
+      if (match) {
+        selectGame(match.id, { silent: true });
+      }
+    }
+
+    const shouldShowArrival = payload.showArrival === true
+      || Boolean(payload.achievementId || payload.achievementTitle || payload.firstClear);
+    if (!shouldShowArrival) {
+      return;
+    }
+
+    await runArrivalSequence(payload);
+  }
+
+  async function runArrivalSequence(payload) {
+    arrivalInProgress = true;
+    showArrivalOverlay();
+
+    const previousStars = Number.isFinite(payload.previousStarCount) ? payload.previousStarCount : Math.max(0, stars - 1);
+    const previousLevel = Number.isFinite(payload.previousLevel) ? payload.previousLevel : currentLevel;
+    const achievementTitle = payload.achievementTitle || payload.title || 'Achievement unlocked';
+
+    setArrivalText('arrivalTitle', achievementTitle);
+    setArrivalText('arrivalStatus', payload.firstClear ? 'Deck challenge cleared. Banking your star count…' : 'Star count updated. Returning to deck builder…');
+    setArrivalText('arrivalStarsValue', String(previousStars));
+    setArrivalText('arrivalLevelValue', String(previousLevel));
+    setArrivalText('arrivalReveal', payload.firstClear ? 'First clear confirmed for this level.' : 'Achievement saved to your collection.');
+
+    if (payload.firstClear) {
+      void playUiSfx(UI_SFX.firstClear, { key: 'arrival-first-clear', cooldownMs: 300 });
+    }
+
+    await sleep(180);
+    await animateNumber('arrivalStarsValue', previousStars, stars, 900);
+
+    if (levelCleared && stars >= requiredStars) {
+      setArrivalText('arrivalStatus', 'Threshold reached. Unlocking the next level…');
+      await sleep(500);
+      const advanced = await advanceLevel({ silent: true });
+      if (advanced) {
+        setArrivalText('arrivalLevelValue', `${previousLevel} -> ${currentLevel}`);
+        setArrivalText('arrivalReveal', levelRecord?.cardChallenge || `Level ${currentLevel} unlocked`);
+      }
+    } else {
+      setArrivalText('arrivalLevelValue', String(currentLevel));
+      setArrivalText('arrivalReveal', levelRecord?.cardChallenge || `Level ${currentLevel}`);
+    }
+
+    await sleep(1300);
+    hideArrivalOverlay();
+    arrivalInProgress = false;
+    updateUI();
+  }
+
   async function loadGameSave() {
     try {
       if (window.gameSave && typeof window.gameSave.load === 'function') {
@@ -142,14 +376,81 @@
       levelCleared = gameSave.LevelCleared || false;
       
       // Apply preferences
-      selectedCpu = gameSave.Preferences?.CPU || 'FMC';
-      selectedPpu = gameSave.Preferences?.PPU || 'FMC';
-      selectedApu = gameSave.Preferences?.APU || 'FMC';
-      selectedShader = gameSave.Preferences?.Shader || 'PX';
+      selectedCpu = chooseSavedCore('CPU', gameSave.PreferredCpuId || gameSave.Preferences?.CPU, gameSave.ownedCpuIds, 'FMC');
+      selectedPpu = chooseSavedCore('PPU', gameSave.PreferredPpuId || gameSave.Preferences?.PPU, gameSave.ownedPpuIds, 'FMC');
+      selectedApu = chooseSavedCore('APU', gameSave.PreferredApuId || gameSave.Preferences?.APU, gameSave.ownedApuIds, 'FMC');
+      selectedShader = chooseSavedCore('SHADER', gameSave.PreferredShaderId || gameSave.Preferences?.Shader, gameSave.ownedShaderIds, 'PX');
     } catch (error) {
       console.error('[Continue] Load save error:', error);
       gameSave = null;
     }
+  }
+
+  function chooseSavedCore(domain, preferredId, ownedIds, fallbackId) {
+    const owned = Array.isArray(ownedIds) ? ownedIds : [];
+    const normalizedPreferred = normalizeCoreId(preferredId);
+    if (normalizedPreferred && owned.some(id => normalizeCoreId(id) === normalizedPreferred)) {
+      return normalizedPreferred;
+    }
+
+    const normalizedFallback = normalizeCoreId(fallbackId);
+    if (normalizedFallback && owned.some(id => normalizeCoreId(id) === normalizedFallback)) {
+      return normalizedFallback;
+    }
+
+    if (owned.length > 0) {
+      return normalizeCoreId(owned[0]);
+    }
+
+    const fallbackList = fallbackCoreData[domain] || [];
+    return fallbackList.length > 0 ? fallbackList[0] : normalizedFallback;
+  }
+
+  function normalizeCoreId(value) {
+    return typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : null;
+  }
+
+  async function loadCoreCatalog() {
+    coreLookup.clear();
+    Object.keys(coreCatalog).forEach(domain => {
+      coreCatalog[domain] = [];
+    });
+
+    if (!window.webapi?.cores?.list) {
+      return;
+    }
+
+    try {
+      const data = await window.webapi.cores.list();
+      if (!data || data.success === false) {
+        console.warn('[Continue] Failed to load core catalog:', data?.error || 'Unknown error');
+        return;
+      }
+
+      hydrateCoreCatalog('CPU', data.cpu);
+      hydrateCoreCatalog('PPU', data.ppu);
+      hydrateCoreCatalog('APU', data.apu);
+      hydrateCoreCatalog('SHADER', data.shader);
+    } catch (error) {
+      console.warn('[Continue] Core catalog unavailable:', error);
+    }
+  }
+
+  function hydrateCoreCatalog(domain, items) {
+    const normalized = Array.isArray(items)
+      ? items.map(item => ({
+          id: normalizeCoreId(item?.id),
+          name: item?.name || item?.displayName || item?.id || '',
+          description: item?.description || '',
+          rating: Number.isFinite(item?.rating) ? item.rating : 0,
+          category: item?.category || ''
+        })).filter(item => item.id)
+      : [];
+
+    coreCatalog[domain] = normalized;
+    normalized.forEach(item => {
+      coreLookup.set(`${domain}:${item.id}`, item);
+    });
   }
 
   async function saveGameSave() {
@@ -164,25 +465,74 @@
     }
   }
 
-  function loadLevel() {
-    const level = levelData[currentLevel] || levelData[1];
-    requiredStars = level.requiredStars;
+  async function loadLevel() {
+    levelRecord = await getLevelRecord(currentLevel);
+    requiredStars = Number.isFinite(levelRecord?.requiredStars) ? levelRecord.requiredStars : 5;
+    if (currentLevel >= 17) {
+      requiredStars = Math.max(0, (currentLevel - 6) * 2);
+    }
     
     // Set enforced cores
-    enforcedCpu = level.enforced?.CPU || null;
-    enforcedPpu = level.enforced?.PPU || null;
-    enforcedApu = level.enforced?.APU || null;
-    enforcedShader = level.enforced?.Shader || null;
+    enforcedCpu = null;
+    enforcedPpu = null;
+    enforcedApu = null;
+    enforcedShader = null;
+
+    const enforced = [];
+    for (const raw of levelRecord?.requiredCards || []) {
+      if (typeof raw !== 'string' || !raw.trim()) {
+        continue;
+      }
+
+      const parts = raw.split('_', 2);
+      if (parts.length !== 2) {
+        continue;
+      }
+
+      const domain = parts[0].toUpperCase();
+      const id = normalizeCoreId(parts[1]);
+      if (!id) {
+        continue;
+      }
+
+      switch (domain) {
+        case 'CPU':
+          enforcedCpu = id;
+          break;
+        case 'PPU':
+          enforcedPpu = id;
+          break;
+        case 'APU':
+          enforcedApu = id;
+          break;
+        case 'SHADER':
+          enforcedShader = id;
+          break;
+        default:
+          break;
+      }
+
+      if (domain === 'CLOCK') {
+        continue;
+      }
+
+      enforced.push({
+        domain,
+        id,
+        label: `${domain}_${id}`
+      });
+    }
     
     // Update UI elements
     document.getElementById('levelChip').textContent = currentLevel;
-    document.getElementById('levelTitle').textContent = level.title;
+    document.getElementById('levelTitle').textContent = levelRecord?.cardChallenge || `Level ${currentLevel}`;
     
     const messageEl = document.getElementById('levelMessage');
-    if (level.message) {
-      messageEl.textContent = level.message;
+    if (levelRecord?.message) {
+      messageEl.textContent = levelRecord.message;
       messageEl.style.display = 'block';
     } else {
+      messageEl.textContent = '';
       messageEl.style.display = 'none';
     }
     
@@ -190,20 +540,22 @@
     const enforcedCardsEl = document.getElementById('enforcedCards');
     enforcedCardsEl.innerHTML = '<span class="small-note">Enforced:</span>';
     
-    const enforced = [];
-    if (enforcedCpu) enforced.push({ domain: 'CPU', id: enforcedCpu, label: enforcedCpu });
-    if (enforcedPpu) enforced.push({ domain: 'PPU', id: enforcedPpu, label: enforcedPpu });
-    if (enforcedApu) enforced.push({ domain: 'APU', id: enforcedApu, label: enforcedApu });
-    if (enforcedShader) enforced.push({ domain: 'Shader', id: enforcedShader, label: enforcedShader });
-    
     if (enforced.length === 0) {
       enforcedCardsEl.innerHTML += '<span class="small-note">None</span>';
     } else {
       enforced.forEach(e => {
         const chip = document.createElement('button');
+        chip.type = 'button';
         chip.className = 'enf-chip';
         chip.textContent = e.label;
         chip.style.borderColor = getCoreColor(e.domain);
+        chip.title = `Preview ${e.label}`;
+        chip.addEventListener('click', () => {
+          openCardPreview(e.domain, e.id, {
+            title: e.label,
+            subtitle: 'Enforced by level'
+          });
+        });
         enforcedCardsEl.appendChild(chip);
       });
     }
@@ -219,43 +571,337 @@
     }
   }
 
+  async function getLevelRecord(index) {
+    if (!window.continueDb?.get) {
+      return null;
+    }
+
+    try {
+      await window.continueDb.open();
+      return await window.continueDb.get('levels', index);
+    } catch (error) {
+      console.warn('[Continue] Failed to load level from continueDb:', error);
+      return null;
+    }
+  }
+
   function getCoreColor(domain) {
     const colors = {
       CPU: '#ff5a26',
       PPU: '#10b981',
       APU: '#3b82f6',
-      Shader: '#a855f7'
+      SHADER: '#f59e0b'
     };
     return colors[domain] || '#fff';
   }
 
-  function initializeRomList() {
-    // Build ROM rows from games DB
-    romRows = gamesDb.map(g => {
-      const achCompleted = (gameSave.Achievements || []).filter(a => a.startsWith(g.id + '_')).length;
-      return {
-        id: g.id,
-        title: g.title,
-        compat: g.compat,
-        achTotal: g.achTotal,
-        achCompleted: achCompleted
-      };
-    });
-    
+  async function getCoreSvgMarkup(domain, core) {
+    const normalizedDomain = String(domain || '').toUpperCase();
+    const normalizedCore = normalizeCoreId(core);
+    if (!normalizedDomain || !normalizedCore || !window.webapi?.card?.getSvg) {
+      return '';
+    }
+
+    const cacheKey = `${normalizedDomain}:${normalizedCore}`;
+    if (cardSvgCache.has(cacheKey)) {
+      return cardSvgCache.get(cacheKey);
+    }
+
+    try {
+      const result = await window.webapi.card.getSvg(normalizedDomain, normalizedCore);
+      const markup = result?.success && result?.text ? result.text : '';
+      cardSvgCache.set(cacheKey, markup);
+      return markup;
+    } catch (error) {
+      console.warn(`[Continue] Failed to load SVG for ${normalizedDomain}/${normalizedCore}:`, error);
+      cardSvgCache.set(cacheKey, '');
+      return '';
+    }
+  }
+
+  function applySvgRenderQuality(rootEl) {
+    const svg = rootEl?.querySelector('svg');
+    if (!svg) {
+      return false;
+    }
+
+    svg.classList.add('core-card-svg');
+    if (!svg.hasAttribute('preserveAspectRatio')) {
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+    if (!svg.hasAttribute('shape-rendering')) {
+      svg.setAttribute('shape-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('text-rendering')) {
+      svg.setAttribute('text-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('color-rendering')) {
+      svg.setAttribute('color-rendering', 'optimizeQuality');
+    }
+
+    return true;
+  }
+
+  async function initializeRomList() {
+    try {
+      romRows = await loadInstalledRomRows();
+    } catch (error) {
+      console.error('[Continue] Failed to initialize ROM list:', error);
+      romRows = [];
+    }
+
+    if (selectedGameId && !romRows.some(row => row.id === selectedGameId)) {
+      selectedGameId = null;
+    }
+
     renderRomList();
+    updateGameInfo();
+    updateAchievements();
+    updateStartButton();
+  }
+
+  async function loadInstalledRomRows() {
+    const storedRoms = await getStoredRoms();
+    const storedKeys = new Set(
+      (Array.isArray(storedRoms) ? storedRoms : [])
+        .map(rom => normalizeRomStorageName(rom && rom.name))
+        .filter(Boolean)
+    );
+
+    if (storedKeys.size === 0) {
+      return [];
+    }
+
+    const { games, achievements } = await loadCatalogRecords();
+    const achievementsByGameId = new Map();
+
+    achievements.forEach(achievement => {
+      const gameId = achievement && achievement.gameId;
+      if (!gameId) {
+        return;
+      }
+
+      if (!achievementsByGameId.has(gameId)) {
+        achievementsByGameId.set(gameId, []);
+      }
+
+      achievementsByGameId.get(gameId).push(achievement);
+    });
+
+    const savedAchievementIds = new Set(Array.isArray(gameSave?.Achievements) ? gameSave.Achievements : []);
+
+    return games
+      .map(game => {
+        const romKey = game?.romKey || game?.name || '';
+        const normalizedRomKey = normalizeRomStorageName(romKey);
+        const achievementList = achievementsByGameId.get(game?.id) || [];
+
+        if (!normalizedRomKey || !storedKeys.has(normalizedRomKey) || achievementList.length === 0) {
+          return null;
+        }
+
+        const achCompleted = achievementList.reduce((count, achievement) => (
+          savedAchievementIds.has(achievement.id) ? count + 1 : count
+        ), 0);
+
+        return {
+          id: game.id,
+          title: game.commonName || game.title || game.name || romKey,
+          subtitle: game.title && game.commonName && game.title !== game.commonName ? game.title : '',
+          system: String(game.system || game.platform || 'NES').toUpperCase(),
+          romKey,
+          note: typeof game.note === 'string' ? game.note.trim() : '',
+          status: game.status || 'Unknown',
+          achTotal: achievementList.length,
+          achCompleted,
+          achievements: achievementList.slice().sort((left, right) => {
+            const leftTitle = (left?.title || left?.metaAchievementName || left?.id || '').toLowerCase();
+            const rightTitle = (right?.title || right?.metaAchievementName || right?.id || '').toLowerCase();
+            return leftTitle.localeCompare(rightTitle);
+          })
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (right.achTotal !== left.achTotal) {
+          return right.achTotal - left.achTotal;
+        }
+        return left.title.localeCompare(right.title);
+      });
+  }
+
+  async function loadCatalogRecords() {
+    let games = [];
+    let achievements = [];
+
+    if (window.continueDb && typeof window.continueDb.getAll === 'function') {
+      try {
+        await window.continueDb.open();
+        const [dbGames, dbAchievements] = await Promise.all([
+          window.continueDb.getAll('games'),
+          window.continueDb.getAll('achievements')
+        ]);
+
+        games = Array.isArray(dbGames) ? dbGames : [];
+        achievements = Array.isArray(dbAchievements) ? dbAchievements : [];
+
+        if (games.length > 0 || achievements.length > 0) {
+          return { games, achievements };
+        }
+      } catch (error) {
+        console.warn('[Continue] Failed to load catalog from continueDb:', error);
+      }
+    }
+
+    try {
+      const response = await fetch(DEFAULT_DB_URL, { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Default DB fetch failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const data = payload && typeof payload === 'object' ? payload.data || {} : {};
+      games = Array.isArray(data.games) ? data.games : [];
+      achievements = Array.isArray(data.achievements) ? data.achievements : [];
+    } catch (error) {
+      console.error('[Continue] Failed to load fallback catalog:', error);
+    }
+
+    return { games, achievements };
+  }
+
+  function normalizeRomStorageName(value) {
+    return typeof value === 'string' && value.trim()
+      ? value.trim().toLowerCase()
+      : '';
+  }
+
+  async function openRomStorageStore(mode) {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB not available'));
+        return;
+      }
+
+      const request = indexedDB.open(ROM_STORAGE_DB_NAME, ROM_STORAGE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv');
+        }
+        if (!db.objectStoreNames.contains(ROM_STORAGE_STORE)) {
+          db.createObjectStore(ROM_STORAGE_STORE, { keyPath: 'name' });
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          resolve(db.transaction(ROM_STORAGE_STORE, mode).objectStore(ROM_STORAGE_STORE));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('IndexedDB open error'));
+    });
+  }
+
+  async function migrateLegacyLocalStorageRoms() {
+    try {
+      if (!window.localStorage) {
+        return;
+      }
+
+      const legacyKeys = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+          legacyKeys.push(key);
+        }
+      }
+
+      if (legacyKeys.length === 0) {
+        return;
+      }
+
+      const existing = await getStoredRomsFromIndexedDb(false);
+      const existingNames = new Set(existing.map(rom => rom.name));
+
+      for (const key of legacyKeys) {
+        const base64 = localStorage.getItem(key);
+        const name = key.substring(LEGACY_ROM_KEY_PREFIX.length);
+        if (!base64 || !name || existingNames.has(name)) {
+          continue;
+        }
+
+        const store = await openRomStorageStore('readwrite');
+        await new Promise((resolve, reject) => {
+          const request = store.put({ name, base64 });
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
+    } catch (error) {
+      console.warn('[Continue] Failed to migrate legacy ROM storage:', error);
+    }
+  }
+
+  async function getStoredRomsFromIndexedDb(runMigration = true) {
+    if (runMigration) {
+      await migrateLegacyLocalStorageRoms();
+    }
+
+    try {
+      const store = await openRomStorageStore('readonly');
+      return await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.warn('[Continue] IndexedDB ROM storage unavailable:', error);
+      return getStoredRomsFromLegacyLocalStorage();
+    }
+  }
+
+  function getStoredRomsFromLegacyLocalStorage() {
+    if (!window.localStorage) {
+      return [];
+    }
+
+    const roms = [];
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+        continue;
+      }
+
+      const name = key.substring(LEGACY_ROM_KEY_PREFIX.length);
+      const base64 = localStorage.getItem(key);
+      if (name && base64) {
+        roms.push({ name, base64 });
+      }
+    }
+
+    return roms;
+  }
+
+  async function getStoredRoms() {
+    if (window.nesInterop && typeof window.nesInterop.getStoredRoms === 'function') {
+      return window.nesInterop.getStoredRoms();
+    }
+
+    return getStoredRomsFromIndexedDb();
   }
 
   function renderRomList() {
     const tbody = document.getElementById('romTbody');
     const emptyEl = document.getElementById('romEmpty');
     const tableEl = document.getElementById('romTable');
-    
-    const filterCompatible = document.getElementById('filterCompatible').checked;
+
     const searchText = document.getElementById('romSearch').value.toLowerCase();
     
     // Filter
     const filtered = romRows.filter(r => {
-      if (filterCompatible && !r.compat) return false;
       if (searchText && !r.title.toLowerCase().includes(searchText)) return false;
       return true;
     });
@@ -282,12 +928,10 @@
       
       row.innerHTML = `
         <div class="c-title" role="cell">
-          <div class="rom-title">${r.title}</div>
+          <div class="rom-title">${escapeHtml(r.title)}</div>
+          ${r.subtitle ? `<div class="rom-subtitle">${escapeHtml(r.subtitle)}</div>` : ''}
         </div>
-        <div class="c-compat" role="cell">
-          <span class="chip ${r.compat ? 'ok' : 'no'}">${r.compat ? 'Yes' : 'No'}</span>
-        </div>
-        <div class="c-ach" role="cell">${r.achCompleted}/${r.achTotal}</div>
+        <div class="c-ach rom-stars" role="cell">${r.achCompleted}/${r.achTotal}</div>
       `;
       
       row.addEventListener('click', () => selectGame(r.id));
@@ -295,11 +939,16 @@
     });
   }
 
-  function selectGame(gameId) {
+  function selectGame(gameId, options = {}) {
+    const previousGameId = selectedGameId;
     selectedGameId = gameId;
+    if (!options.silent && previousGameId !== gameId) {
+      void playUiSfx(UI_SFX.select, { key: 'select-game', cooldownMs: 70 });
+    }
     renderRomList();
     updateGameInfo();
     updateAchievements();
+    updateSelectionDependentUi();
     updateStartButton();
   }
 
@@ -307,28 +956,46 @@
     const infoEl = document.getElementById('gameInfo');
     
     if (!selectedGameId) {
-      infoEl.innerHTML = '<div class="small-note">Select a game to view details.</div>';
+      infoEl.innerHTML = '<div class="small-note">Select an installed game to view details.</div>';
       return;
     }
     
     const game = romRows.find(r => r.id === selectedGameId);
     if (!game) return;
+    const statusClass = `status-${String(game.status || '').toLowerCase()}`;
+    const noteMarkup = game.note
+      ? `
+        <div class="game-note" role="note" aria-label="Compatibility note">
+          <div class="game-note-label">Note</div>
+          <div class="game-note-copy">${escapeHtml(game.note)}</div>
+        </div>
+      `
+      : '';
     
     infoEl.innerHTML = `
       <div class="game-grid">
         <div class="game-row">
           <div class="label small-note">Title</div>
-          <div class="value">${game.title}</div>
+          <div class="value">${escapeHtml(game.title)}</div>
         </div>
         <div class="game-row">
-          <div class="label small-note">Compatible</div>
-          <div class="value">${game.compat ? 'Yes' : 'No'}</div>
+          <div class="label small-note">ROM</div>
+          <div class="value">${escapeHtml(game.romKey)}</div>
         </div>
         <div class="game-row">
-          <div class="label small-note">Achievements</div>
+          <div class="label small-note">System</div>
+          <div class="value">${escapeHtml(game.system)}</div>
+        </div>
+        <div class="game-row">
+          <div class="label small-note">Status</div>
+          <div class="value ${statusClass}">${escapeHtml(game.status)}</div>
+        </div>
+        <div class="game-row">
+          <div class="label small-note">Stars</div>
           <div class="value">${game.achCompleted}/${game.achTotal} completed</div>
         </div>
       </div>
+      ${noteMarkup}
     `;
   }
 
@@ -336,34 +1003,29 @@
     const achBox = document.getElementById('achBox');
     
     if (!selectedGameId) {
-      achBox.innerHTML = '<div class="small-note">Select a compatible game to view achievements.</div>';
+      achBox.innerHTML = '<div class="small-note">Select an installed cartridge to view achievements.</div>';
       return;
     }
     
     const game = romRows.find(r => r.id === selectedGameId);
-    if (!game || !game.compat) {
-      achBox.innerHTML = '<div class="small-note">This game is not compatible or has no achievements.</div>';
+    if (!game || !Array.isArray(game.achievements) || game.achievements.length === 0) {
+      achBox.innerHTML = '<div class="small-note">This cartridge has no achievement data.</div>';
       return;
     }
-    
-    // Generate sample achievements
-    const achievements = [];
-    for (let i = 1; i <= game.achTotal; i++) {
-      const achId = `${game.id}_ach${i}`;
-      const completed = (gameSave.Achievements || []).includes(achId);
-      achievements.push({
-        id: achId,
-        title: `Achievement ${i}`,
-        description: `Complete objective ${i} in ${game.title}`,
-        completed: completed
-      });
-    }
-    
-    const completedCount = achievements.filter(a => a.completed).length;
+
+    const savedAchievementIds = new Set(Array.isArray(gameSave?.Achievements) ? gameSave.Achievements : []);
+    const achievements = game.achievements.map(achievement => ({
+      id: achievement.id,
+      title: achievement.title || achievement.metaAchievementName || achievement.id,
+      description: achievement.description || achievement.metaAchievementName || '',
+      completed: savedAchievementIds.has(achievement.id)
+    }));
+
+    const completedCount = achievements.filter(achievement => achievement.completed).length;
     
     achBox.innerHTML = `
       <div class="ach-summary">
-        <span class="small-note">${game.title}</span>
+        <span class="small-note">${escapeHtml(game.title)}</span>
         <strong>${completedCount}/${achievements.length}</strong>
         <span class="small-note">completed</span>
       </div>
@@ -371,12 +1033,33 @@
         ${achievements.map(a => `
           <li class="ach-item ${a.completed ? 'done' : 'todo'}">
             <span class="ach-check">${a.completed ? '▣' : '▢'}</span>
-            <span class="ach-title">${a.title}</span>
-            <span class="ach-desc small-note">${a.description}</span>
+            <span class="ach-main">
+              <span class="ach-title">${escapeHtml(a.title)}</span>
+              ${a.description && a.description !== a.title ? `<span class="ach-desc small-note">${escapeHtml(a.description)}</span>` : ''}
+            </span>
           </li>
         `).join('')}
       </ul>
     `;
+  }
+
+  function updateSelectionDependentUi() {
+    const hasGameSelected = selectedGameId !== null;
+    const achievementsSection = document.getElementById('achievementsSection');
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    if (achievementsSection) {
+      achievementsSection.hidden = !hasGameSelected;
+    }
+
+    if (startBtn) {
+      startBtn.hidden = !hasGameSelected;
+    }
+
+    if (resetBtn) {
+      resetBtn.hidden = !hasGameSelected;
+    }
   }
 
   function updateUI() {
@@ -394,85 +1077,204 @@
     updateCoreSlot('apu', selectedApu, enforcedApu);
     updateCoreSlot('shader', selectedShader, enforcedShader);
     
+    updateSelectionDependentUi();
     updateStartButton();
   }
 
   function updateCoreSlot(slotName, selected, enforced) {
+    const slotEl = document.getElementById(`${slotName}Slot`);
     const emptyEl = document.getElementById(`${slotName}Empty`);
     const cardEl = document.getElementById(`${slotName}Card`);
     
     const core = enforced || selected;
     const domain = slotName.toUpperCase();
+    const isLocked = Boolean(enforced);
+
+    if (slotEl) {
+      slotEl.classList.toggle('locked', isLocked);
+    }
     
     if (core) {
       emptyEl.style.display = 'none';
       cardEl.style.display = 'block';
-      
-      // Load SVG from webapi
-      if (window.webapi?.card?.getSvg) {
-        cardEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;color:#666;">Loading...</div>';
-        
-        window.webapi.card.getSvg(domain, core).then(result => {
-          if (result.success && result.text) {
-            cardEl.innerHTML = `<div class="card-wrap">${result.text}</div>`;
-            
-            // Add enforced overlay if needed
-            if (enforced) {
-              const overlay = document.createElement('div');
-              overlay.className = 'card-enforced-overlay';
-              overlay.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:1000;pointer-events:none;';
-              overlay.title = 'Enforced by level';
-              overlay.innerHTML = `
-                <svg viewBox="0 0 64 64" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:128px;height:128px;opacity:.22;fill:#fff;stroke:#fff;stroke-width:4;">
-                  <rect x="16" y="28" width="32" height="28" rx="5" ry="5"/>
-                  <path d="M22 28 V20 a10 10 0 0 1 20 0 v8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <div style="color:#fff;font-size:0.9rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.8);">Enforced</div>
-              `;
-              cardEl.querySelector('.card-wrap').appendChild(overlay);
-            }
-            
-            // Make card clickable
-            const cardWrap = cardEl.querySelector('.card-wrap');
-            if (cardWrap) {
-              cardWrap.style.cursor = enforced ? 'default' : 'pointer';
-              if (!enforced) {
-                cardWrap.addEventListener('click', () => openCorePicker(slotName));
-              }
-            }
-          } else {
-            cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
-          }
-        }).catch(err => {
-          console.warn(`[Continue] Failed to load SVG for ${domain}/${core}:`, err);
-          cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
-        });
-      } else {
-        // Fallback to text label
-        cardEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;color:#888;font-size:0.8rem;text-align:center;padding:1rem;">${core}</div>`;
-      }
+
+      const requestKey = `${domain}:${core}:${isLocked ? 'locked' : 'selectable'}`;
+      cardEl.dataset.requestKey = requestKey;
+      cardEl.innerHTML = '<div class="card-loading">Loading...</div>';
+
+      getCoreSvgMarkup(domain, core).then(svgMarkup => {
+        if (cardEl.dataset.requestKey !== requestKey) {
+          return;
+        }
+        renderSlotCard(cardEl, slotName, domain, core, svgMarkup, isLocked);
+      });
     } else {
       emptyEl.style.display = 'flex';
       cardEl.style.display = 'none';
+      delete cardEl.dataset.requestKey;
       cardEl.innerHTML = '';
     }
   }
 
+  function renderSlotCard(cardEl, slotName, domain, core, svgMarkup, isLocked) {
+    const body = svgMarkup
+      ? svgMarkup
+      : `<div class="slot-label">${escapeHtml(domain)}_${escapeHtml(core)}</div>`;
+
+    cardEl.innerHTML = `<div class="card-wrap${svgMarkup ? '' : ' card-wrap-fallback'}">${body}</div>`;
+
+    const cardWrap = cardEl.querySelector('.card-wrap');
+    if (!cardWrap) {
+      return;
+    }
+
+    applySvgRenderQuality(cardWrap);
+
+    if (isLocked) {
+      cardWrap.appendChild(createLockedOverlay());
+      cardWrap.style.cursor = 'zoom-in';
+      cardWrap.appendChild(createCardActionButton(`Preview ${domain} core`, () => {
+        openCardPreview(domain, core, {
+          title: `${domain}_${core}`,
+          subtitle: 'Enforced by level'
+        });
+      }));
+      return;
+    }
+
+    cardWrap.style.cursor = 'pointer';
+    cardWrap.appendChild(createCardActionButton(`Select ${domain} core`, () => openCorePicker(slotName)));
+  }
+
+  function createCardActionButton(label, onClick) {
+    const cover = document.createElement('button');
+    cover.type = 'button';
+    cover.className = 'card-cover-btn';
+    cover.setAttribute('aria-label', label);
+    cover.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick();
+    });
+    return cover;
+  }
+
+  function createLockedOverlay() {
+    const overlay = document.createElement('div');
+    overlay.className = 'card-enforced-overlay';
+    overlay.title = 'Enforced by level';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+      <svg viewBox="0 0 64 64" class="card-lock-icon">
+        <rect x="16" y="28" width="32" height="28" rx="5" ry="5"></rect>
+        <path d="M22 28 V20 a10 10 0 0 1 20 0 v8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      <div class="enforced-text">Enforced</div>
+    `;
+    return overlay;
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[char]));
+  }
+
+  function setStartButtonText(title) {
+    const titleEl = document.getElementById('startBtnTitle');
+
+    if (titleEl) {
+      titleEl.textContent = title;
+    }
+  }
+
+  function buildContinuePreviewUrl(romKey, cacheKey) {
+    if (typeof romKey !== 'string' || !romKey.trim()) {
+      return '';
+    }
+
+    const baseUrl = typeof window.webapi?.getBaseUrl === 'function'
+      ? window.webapi.getBaseUrl()
+      : 'http://127.0.0.1:42067';
+    const requestUrl = new URL('/api/save/continue-preview', `${String(baseUrl || 'http://127.0.0.1:42067').replace(/\/$/, '')}/`);
+    requestUrl.searchParams.set('romKey', romKey);
+    requestUrl.searchParams.set('_t', cacheKey || String(Date.now()));
+    return requestUrl.toString();
+  }
+
+  function updateStartButtonArtwork() {
+    const startBtn = document.getElementById('startBtn');
+    if (!startBtn) {
+      return;
+    }
+
+    const selectedGame = romRows.find(row => row.id === selectedGameId);
+    const slot = selectedGame ? getContinueSlotForRom(selectedGame.romKey) : null;
+    const previewUrl = slot && selectedGame
+      ? buildContinuePreviewUrl(selectedGame.romKey, slot.updatedAtUtc || slot.previewImagePath || '')
+      : '';
+
+    if (previewUrl) {
+      startBtn.style.setProperty('--start-btn-bg', `url("${previewUrl}")`);
+      startBtn.classList.add('has-art');
+      return;
+    }
+
+    startBtn.style.removeProperty('--start-btn-bg');
+    startBtn.classList.remove('has-art');
+  }
+
+  function updateResetButton() {
+    const resetBtn = document.getElementById('resetBtn');
+    if (!resetBtn) {
+      return;
+    }
+
+    const hasValidBuild = (enforcedCpu || selectedCpu) && (enforcedPpu || selectedPpu) && (enforcedApu || selectedApu) && (enforcedShader || selectedShader);
+    const hasGameSelected = selectedGameId !== null;
+    const canReset = hasValidBuild && hasGameSelected;
+
+    if (canReset) {
+      resetBtn.disabled = false;
+      resetBtn.className = 'opt-link reset-btn unlocked';
+      resetBtn.title = 'Restart the emulator and resume achievement hunting from the beginning';
+      return;
+    }
+
+    resetBtn.disabled = true;
+    resetBtn.className = 'opt-link reset-btn locked';
+    resetBtn.title = 'Build valid and select an installed game';
+  }
+
   function updateStartButton() {
     const startBtn = document.getElementById('startBtn');
-    const hasValidBuild = selectedCpu && selectedPpu && selectedApu && selectedShader;
+    if (!startBtn) {
+      return;
+    }
+
+    const hasValidBuild = (enforcedCpu || selectedCpu) && (enforcedPpu || selectedPpu) && (enforcedApu || selectedApu) && (enforcedShader || selectedShader);
     const hasGameSelected = selectedGameId !== null;
     const canStart = hasValidBuild && hasGameSelected;
+    const canContinue = canStart && hasTrustedContinueSelected();
     
     if (canStart) {
       startBtn.disabled = false;
       startBtn.className = 'opt-link start-btn unlocked';
-      startBtn.title = 'Start the game';
+      startBtn.title = canContinue ? 'Resume from the last trusted checkpoint' : 'Start the game';
+      setStartButtonText(canContinue ? 'CONTINUE GAME' : 'START GAME');
     } else {
       startBtn.disabled = true;
       startBtn.className = 'opt-link start-btn locked';
-      startBtn.title = 'Build valid and game with achievements required';
+      startBtn.title = 'Build valid and select an installed game';
+      setStartButtonText('START GAME');
     }
+
+    updateStartButtonArtwork();
+    updateResetButton();
   }
 
   function setupEventListeners() {
@@ -480,12 +1282,6 @@
     const cartridgeToggle = document.getElementById('cartridgeToggle');
     if (cartridgeToggle) {
       cartridgeToggle.addEventListener('click', toggleCartridge);
-    }
-    
-    // Filter checkbox
-    const filterCompatible = document.getElementById('filterCompatible');
-    if (filterCompatible) {
-      filterCompatible.addEventListener('change', renderRomList);
     }
     
     // Search input
@@ -527,6 +1323,18 @@
     if (startBtn) {
       startBtn.addEventListener('click', startGame);
     }
+
+    const resetBtn = document.getElementById('resetBtn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', resetGame);
+    }
+
+    const returnLink = document.getElementById('returnLink');
+    if (returnLink) {
+      returnLink.addEventListener('click', () => {
+        void playUiSfx(UI_SFX.toggle, { key: 'return-link', cooldownMs: 120 });
+      });
+    }
     
     // Picker modal
     const pickerClose = document.getElementById('pickerClose');
@@ -542,9 +1350,41 @@
         }
       });
     }
+
+    const previewClose = document.getElementById('cardPreviewClose');
+    if (previewClose) {
+      previewClose.addEventListener('click', closeCardPreview);
+    }
+
+    const previewModal = document.getElementById('cardPreviewModal');
+    if (previewModal) {
+      previewModal.addEventListener('click', (e) => {
+        if (e.target === previewModal) {
+          closeCardPreview();
+        }
+      });
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      const previewOpen = document.getElementById('cardPreviewModal')?.style.display === 'flex';
+      if (previewOpen) {
+        closeCardPreview();
+        return;
+      }
+
+      const pickerOpen = document.getElementById('pickerModal')?.style.display === 'flex';
+      if (pickerOpen) {
+        closePicker();
+      }
+    });
   }
 
   function toggleCartridge() {
+    void playUiSfx(UI_SFX.toggle, { key: 'toggle-cartridge', cooldownMs: 120 });
     cartridgeCollapsed = !cartridgeCollapsed;
     const panel = document.getElementById('cartridgePanel');
     const toggle = document.getElementById('cartridgeToggle');
@@ -563,7 +1403,63 @@
 
   let currentPickerSlot = null;
 
+  async function openCardPreview(domain, core, options = {}) {
+    const modal = document.getElementById('cardPreviewModal');
+    const title = document.getElementById('cardPreviewTitle');
+    const subtitle = document.getElementById('cardPreviewSubtitle');
+    const stage = document.getElementById('cardPreviewStage');
+    if (!modal || !title || !subtitle || !stage) {
+      return;
+    }
+
+    void playUiSfx(UI_SFX.modalOpen, { key: 'card-preview-open', cooldownMs: 120 });
+
+    const label = `${domain}_${core}`;
+    title.textContent = options.title || label;
+    subtitle.textContent = options.subtitle || '';
+    subtitle.style.display = subtitle.textContent ? 'block' : 'none';
+
+    modal.style.display = 'flex';
+    stage.innerHTML = '<div class="card-loading">Loading...</div>';
+
+    const previewToken = String(++currentPreviewToken);
+    stage.dataset.previewToken = previewToken;
+    const svgMarkup = await getCoreSvgMarkup(domain, core);
+    if (stage.dataset.previewToken !== previewToken) {
+      return;
+    }
+
+    renderCardPreview(stage, domain, core, svgMarkup);
+  }
+
+  function renderCardPreview(stageEl, domain, core, svgMarkup) {
+    const body = svgMarkup
+      ? svgMarkup
+      : `<div class="slot-label">${escapeHtml(domain)}_${escapeHtml(core)}</div>`;
+
+    stageEl.innerHTML = `<div class="card-preview-wrap${svgMarkup ? '' : ' card-wrap-fallback'}">${body}</div>`;
+    applySvgRenderQuality(stageEl);
+  }
+
+  function closeCardPreview() {
+    const modal = document.getElementById('cardPreviewModal');
+    const stage = document.getElementById('cardPreviewStage');
+    if (!modal || !stage) {
+      return;
+    }
+
+    modal.style.display = 'none';
+    stage.dataset.previewToken = '';
+    stage.innerHTML = '';
+  }
+
   function openCorePicker(slotName) {
+    if (isSlotLocked(slotName)) {
+      return;
+    }
+
+    void playUiSfx(UI_SFX.modalOpen, { key: `picker-open:${slotName}`, cooldownMs: 120 });
+
     currentPickerSlot = slotName;
     
     const modal = document.getElementById('pickerModal');
@@ -574,24 +1470,24 @@
     title.textContent = `Select ${slotType}`;
     
     // Get owned cores for this type using new property names
-    const key = `owned${slotType === 'CPU' ? 'Cpu' : slotType === 'PPU' ? 'Ppu' : slotType === 'APU' ? 'Apu' : slotType === 'CLOCK' ? 'Clock' : 'Shader'}Ids`;
-    const owned = gameSave?.[key] || [];
-    const allCores = coreData[slotType] || [];
+    const owned = new Set(getOwnedCoreIds(slotType));
+    const allCores = getCoreOptions(slotType);
     
     // Render options
     grid.innerHTML = '';
-    allCores.forEach(coreId => {
-      const isOwned = owned.includes(coreId);
+    allCores.forEach(core => {
+      const isOwned = owned.has(core.id);
       const btn = document.createElement('button');
       btn.className = 'picker-option';
-      btn.textContent = coreId;
+      btn.textContent = core.id;
+      btn.title = core.name || core.id;
       
       if (!isOwned) {
         btn.disabled = true;
         btn.classList.add('locked');
         btn.title = 'Not unlocked';
       } else {
-        btn.addEventListener('click', () => selectCore(slotName, coreId));
+        btn.addEventListener('click', () => selectCore(slotName, core.id));
       }
       
       grid.appendChild(btn);
@@ -600,7 +1496,56 @@
     modal.style.display = 'flex';
   }
 
+  function isSlotLocked(slotName) {
+    switch (slotName) {
+      case 'cpu':
+        return Boolean(enforcedCpu);
+      case 'ppu':
+        return Boolean(enforcedPpu);
+      case 'apu':
+        return Boolean(enforcedApu);
+      case 'shader':
+        return Boolean(enforcedShader);
+      default:
+        return false;
+    }
+  }
+
+  function getOwnedCoreIds(domain) {
+    switch (domain) {
+      case 'CPU':
+        return (gameSave?.ownedCpuIds || []).map(id => normalizeCoreId(id)).filter(Boolean);
+      case 'PPU':
+        return (gameSave?.ownedPpuIds || []).map(id => normalizeCoreId(id)).filter(Boolean);
+      case 'APU':
+        return (gameSave?.ownedApuIds || []).map(id => normalizeCoreId(id)).filter(Boolean);
+      case 'SHADER':
+        return (gameSave?.ownedShaderIds || []).map(id => normalizeCoreId(id)).filter(Boolean);
+      default:
+        return [];
+    }
+  }
+
+  function getCoreOptions(domain) {
+    if (coreCatalog[domain] && coreCatalog[domain].length > 0) {
+      return coreCatalog[domain];
+    }
+
+    return (fallbackCoreData[domain] || []).map(id => ({
+      id,
+      name: id,
+      description: '',
+      rating: 0,
+      category: ''
+    }));
+  }
+
   function selectCore(slotName, coreId) {
+    const previousCoreId = slotName === 'cpu' ? selectedCpu :
+      slotName === 'ppu' ? selectedPpu :
+      slotName === 'apu' ? selectedApu :
+      selectedShader;
+
     // Update selection
     if (slotName === 'cpu') selectedCpu = coreId;
     else if (slotName === 'ppu') selectedPpu = coreId;
@@ -610,7 +1555,15 @@
     // Save preference
     if (!gameSave.Preferences) gameSave.Preferences = {};
     gameSave.Preferences[slotName.toUpperCase()] = coreId;
+    if (slotName === 'cpu') gameSave.PreferredCpuId = coreId;
+    else if (slotName === 'ppu') gameSave.PreferredPpuId = coreId;
+    else if (slotName === 'apu') gameSave.PreferredApuId = coreId;
+    else if (slotName === 'shader') gameSave.PreferredShaderId = coreId;
     saveGameSave();
+
+    if (previousCoreId !== coreId) {
+      void playUiSfx(UI_SFX.select, { key: `select-core:${slotName}`, cooldownMs: 70 });
+    }
     
     // Update UI
     updateUI();
@@ -623,10 +1576,12 @@
     currentPickerSlot = null;
   }
 
-  async function advanceLevel() {
+  async function advanceLevel(options = {}) {
     if (!levelCleared || stars < requiredStars) {
-      return;
+      return false;
     }
+
+    void playUiSfx(UI_SFX.levelAdvance, { key: 'level-advance', cooldownMs: 250 });
     
     currentLevel++;
     gameSave.Level = currentLevel;
@@ -635,15 +1590,60 @@
     
     await saveGameSave();
     
-    loadLevel();
+    await loadLevel();
     updateUI();
     
-    alert(`Advanced to Level ${currentLevel}!`);
+    if (!options.silent) {
+      alert(`Advanced to Level ${currentLevel}!`);
+    }
+
+    return true;
   }
 
-  function startGame() {
-    // In web module, just show a message
-    alert('Game starting! In the full application, this would launch the emulator with your selected configuration.');
+  async function launchSelectedGame(mode) {
+    const actionBtn = mode === 'stage'
+      ? document.getElementById('resetBtn')
+      : document.getElementById('startBtn');
+    if (!actionBtn || actionBtn.disabled || arrivalInProgress) {
+      return;
+    }
+
+    const payload = buildLaunchPayload(mode);
+    if (!payload) {
+      return;
+    }
+
+    actionBtn.disabled = true;
+
+    try {
+      const romRecord = await getStoredRomByName(payload.romKey);
+      if (!romRecord || !romRecord.base64) {
+        throw new Error(`Selected ROM is not available in storage: ${payload.romKey}`);
+      }
+
+      writeWorkflowPayload(WORKFLOW_LAUNCH_KEY, payload);
+      writeWorkflowPayload(WORKFLOW_ROM_CACHE_KEY, {
+        name: romRecord.name,
+        base64: romRecord.base64
+      });
+      if (window.webapi?.audio?.stopMusic) {
+        await window.webapi.audio.stopMusic(350);
+      }
+      window.location.href = '../AchievementsRuntime/index.html';
+    } catch (error) {
+      console.error('[Continue] Failed to start game:', error);
+      actionBtn.disabled = false;
+      updateStartButton();
+    }
+  }
+
+  async function startGame() {
+    const mode = hasTrustedContinueSelected() ? 'continue' : 'stage';
+    return launchSelectedGame(mode);
+  }
+
+  async function resetGame() {
+    return launchSelectedGame('stage');
   }
 
   // Expose API for debugging

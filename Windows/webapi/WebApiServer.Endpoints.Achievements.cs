@@ -77,6 +77,11 @@ namespace BrokenNes.Windows.WebApi
             public List<MetaGamesAchievement>? Achievements { get; set; }
         }
 
+        private sealed class AchievementInitRequest
+        {
+            public List<string>? CompletedIds { get; set; }
+        }
+
         private class AchievementMetadata
         {
             public string Title { get; set; } = string.Empty;
@@ -85,6 +90,46 @@ namespace BrokenNes.Windows.WebApi
         }
 
         private Dictionary<string, AchievementMetadata> _achievementMetadata = new Dictionary<string, AchievementMetadata>();
+        private string? _achievementEngineRomName;
+
+        private static List<string> NormalizeCompletedAchievementIds(IEnumerable<string>? ids)
+        {
+            if (ids == null)
+            {
+                return new List<string>();
+            }
+
+            return ids
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static int ApplyCompletedAchievements(
+            NesEmulator.RetroAchievements.AchievementsEngine engine,
+            IEnumerable<string>? completedIds)
+        {
+            var normalizedIds = NormalizeCompletedAchievementIds(completedIds);
+            if (normalizedIds.Count == 0)
+            {
+                return 0;
+            }
+
+            engine.RestoreState(new NesEmulator.RetroAchievements.AchievementsEngine.AchvStateDTO
+            {
+                CompletedIds = normalizedIds
+            });
+
+            return normalizedIds.Count;
+        }
+
+        private void ResetAchievementsEngineState()
+        {
+            _setAchievementsEngine(null);
+            _achievementMetadata.Clear();
+            _achievementEngineRomName = null;
+        }
 
         private static readonly JsonSerializerOptions s_jsonOptions = new JsonSerializerOptions
         {
@@ -127,16 +172,10 @@ namespace BrokenNes.Windows.WebApi
             // POST /api/achievements/init - Initialize achievements engine
             app.MapPost("/api/achievements/init", async (HttpContext context) =>
             {
-                var existing = _getAchievementsEngine();
-                if (existing != null)
+                AchievementInitRequest? initRequest = null;
+                if (context.Request.ContentLength.GetValueOrDefault() > 0)
                 {
-                    return Results.Ok(new
-                    {
-                        success = true,
-                        initialized = true,
-                        alreadyInitialized = true,
-                        count = existing.GetAll().Count()
-                    });
+                    initRequest = await context.Request.ReadFromJsonAsync<AchievementInitRequest>(s_jsonOptions);
                 }
 
                 // Get current ROM name from emulator
@@ -147,6 +186,25 @@ namespace BrokenNes.Windows.WebApi
                 }
 
                 var currentRomName = nes.RomName;
+                var existing = _getAchievementsEngine();
+                if (existing != null)
+                {
+                    if (string.Equals(_achievementEngineRomName, currentRomName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var restoredCount = ApplyCompletedAchievements(existing, initRequest?.CompletedIds);
+                        return Results.Ok(new
+                        {
+                            success = true,
+                            initialized = true,
+                            alreadyInitialized = true,
+                            count = existing.GetAll().Count(),
+                            restoredCompletedCount = restoredCount,
+                            romKey = currentRomName
+                        });
+                    }
+
+                    ResetAchievementsEngineState();
+                }
 
                 // Load continueDb data
                 var continueDbPath = FindContinueDbPath();
@@ -280,7 +338,9 @@ namespace BrokenNes.Windows.WebApi
                     var engine = new NesEmulator.RetroAchievements.AchievementsEngine(
                         new NesEmulator.RetroAchievements.NesRamDomainRef(_getNes));
                     engine.Load(list);
+                    var restoredCompletedCount = ApplyCompletedAchievements(engine, initRequest?.CompletedIds);
                     _setAchievementsEngine(engine);
+                    _achievementEngineRomName = currentRomName;
 
                     var gameDisplayName = !string.IsNullOrWhiteSpace(matchedGame.CommonName) 
                         ? matchedGame.CommonName 
@@ -292,6 +352,7 @@ namespace BrokenNes.Windows.WebApi
                         initialized = true,
                         alreadyInitialized = false,
                         count = list.Count,
+                        restoredCompletedCount,
                         gameTitle = gameDisplayName,
                         gameId = matchedGame.Id,
                         romKey = matchedGame.RomKey,
@@ -509,12 +570,26 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var unlocked = achEngine.EvaluateFrame();
+                    var continueCheckpointCaptured = false;
+
+                    if (unlocked.Count > 0 && _saveContinueState != null)
+                    {
+                        if (_uiControl != null && _uiControl.InvokeRequired)
+                        {
+                            continueCheckpointCaptured = (bool)_uiControl.Invoke(_saveContinueState);
+                        }
+                        else
+                        {
+                            continueCheckpointCaptured = _saveContinueState();
+                        }
+                    }
                     
                     return Results.Ok(new
                     {
                         success = true,
                         unlockedThisFrame = unlocked,
-                        unlockedCount = unlocked.Count
+                        unlockedCount = unlocked.Count,
+                        continueCheckpointCaptured
                     });
                 }
                 catch (Exception ex)

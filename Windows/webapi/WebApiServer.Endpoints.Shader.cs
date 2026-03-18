@@ -58,12 +58,28 @@ namespace BrokenNes.Windows.WebApi
                     {
                         _uiControl.Invoke((MethodInvoker)delegate
                         {
-                            success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                            if (_setShader != null)
+                            {
+                                _setShader(body.ShaderName);
+                                success = true;
+                            }
+                            else
+                            {
+                                success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                            }
                         });
                     }
                     else
                     {
-                        success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                        if (_setShader != null)
+                        {
+                            _setShader(body.ShaderName);
+                            success = true;
+                        }
+                        else
+                        {
+                            success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                        }
                     }
 
                     if (success)

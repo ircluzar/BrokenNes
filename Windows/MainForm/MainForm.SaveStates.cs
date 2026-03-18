@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -59,6 +60,46 @@ namespace BrokenNes.Windows
             }
         }
         
+        private bool SaveDeckContinueState()
+        {
+             if (nes == null) return false;
+             var continuePath = GetDeckContinueStatePathForCurrentRom();
+             if (string.IsNullOrWhiteSpace(continuePath)) return false;
+
+             try
+             {
+                 Directory.CreateDirectory(Path.GetDirectoryName(continuePath)!);
+                 string? stateJson = nes.CaptureAtomicSnapshot(2000);
+                 if (string.IsNullOrEmpty(stateJson)) return false;
+
+                 Bitmap? screenshot;
+                 lock (emulationLock)
+                 {
+                     screenshot = GetScreenshot();
+                 }
+
+                 using (screenshot)
+                 {
+                     if (screenshot != null)
+                     {
+                         byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
+                         using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
+                         {
+                             embedded?.Save(continuePath, ImageFormat.Png);
+                         }
+                         Console.WriteLine($"Deck continue saved to {continuePath}");
+                         return File.Exists(continuePath);
+                     }
+                 }
+
+                 return false;
+             }
+             catch (Exception ex)
+             {
+                 Console.WriteLine("Failed to save deck continue state: " + ex.Message);
+                 return false;
+             }
+        }
         /// <summary>
         /// Restore UI settings (shader configuration) from extended state JSON
         /// </summary>
@@ -423,11 +464,13 @@ namespace BrokenNes.Windows
         private void SaveContinueState()
         {
              if (nes == null) return;
-             
-             string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+               var continuePath = GetGenericContinueStatePathForCurrentRom();
+             if (string.IsNullOrWhiteSpace(continuePath)) return;
+             var legacyContinuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
              
              try
              {
+                 Directory.CreateDirectory(Path.GetDirectoryName(continuePath)!);
                  string? stateJson = nes.CaptureAtomicSnapshot(2000);
                  if (string.IsNullOrEmpty(stateJson)) return;
 
@@ -445,8 +488,9 @@ namespace BrokenNes.Windows
                          using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
                          {
                              embedded?.Save(continuePath, ImageFormat.Png);
+                             try { embedded?.Save(legacyContinuePath, ImageFormat.Png); } catch { }
                          }
-                         Console.WriteLine("Game saved to continue.png");
+                         Console.WriteLine($"Game saved to {continuePath}");
                      }
                  }
              }
@@ -454,6 +498,109 @@ namespace BrokenNes.Windows
              {
                  Console.WriteLine("Failed to save continue state: " + ex.Message);
              }
+        }
+
+        private bool SaveContinueStateFromApi()
+        {
+            try
+            {
+                var saved = SaveDeckContinueState();
+                if (saved)
+                {
+                    PauseEmulationIfRunning();
+                }
+
+                return saved;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to save continue state via API: " + ex.Message);
+                return false;
+            }
+        }
+
+        private bool LoadContinueStateFromApi(string? romKey)
+        {
+            try
+            {
+                var continuePath = ResolveDeckContinueStatePathForRom(romKey);
+                if (!File.Exists(continuePath)) return false;
+                LoadStateFile(continuePath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to load continue state via API: " + ex.Message);
+                return false;
+            }
+        }
+
+        private string ResolveDeckContinueStatePathForRom(string? romKey)
+        {
+            var perRomPath = GetDeckContinueStatePathForRom(romKey);
+            if (!string.IsNullOrWhiteSpace(perRomPath) && File.Exists(perRomPath))
+            {
+                return perRomPath;
+            }
+
+            return string.Empty;
+        }
+
+        private string? GetGenericContinueStatePathForCurrentRom()
+        {
+            var romKey = GetCurrentContinueRomKey();
+            return string.IsNullOrWhiteSpace(romKey) ? null : GetContinueStatePath("ContinueStates", romKey);
+        }
+
+        private string? GetDeckContinueStatePathForCurrentRom()
+        {
+            var romKey = GetCurrentContinueRomKey();
+            return string.IsNullOrWhiteSpace(romKey) ? null : GetContinueStatePath("DeckContinueStates", romKey);
+        }
+
+        private string? GetDeckContinueStatePathForRom(string? romKey)
+        {
+            var resolvedRomKey = string.IsNullOrWhiteSpace(romKey) ? GetCurrentContinueRomKey() : romKey;
+            return string.IsNullOrWhiteSpace(resolvedRomKey) ? null : GetContinueStatePath("DeckContinueStates", resolvedRomKey);
+        }
+
+        private string GetContinueStatePath(string directoryName, string romKey)
+        {
+            var continueDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "BrokenNes",
+                directoryName
+            );
+
+            var normalized = romKey.Trim().ToLowerInvariant();
+            var fileName = Path.GetFileName(normalized);
+            var sb = new StringBuilder(fileName.Length);
+            foreach (var ch in fileName)
+            {
+                sb.Append(char.IsLetterOrDigit(ch) ? ch : '_');
+            }
+
+            var prefix = sb.ToString().Trim('_');
+            if (prefix.Length > 48)
+            {
+                prefix = prefix[..48];
+            }
+
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant();
+            var safeName = string.IsNullOrWhiteSpace(prefix)
+                ? hash[..16]
+                : $"{prefix}-{hash[..16]}";
+            return Path.Combine(continueDir, $"{safeName}.png");
+        }
+
+        private string? GetCurrentContinueRomKey()
+        {
+            if (!string.IsNullOrWhiteSpace(currentRomPath))
+            {
+                return Path.GetFileName(currentRomPath);
+            }
+
+            return string.IsNullOrWhiteSpace(nes?.RomName) ? null : nes.RomName;
         }
     }
 }

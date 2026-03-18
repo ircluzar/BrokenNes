@@ -19,18 +19,17 @@ The Continue / Deck Builder module is the main interface for building your NES c
 - Owned cores are selectable; locked cores are disabled
 - Selections are saved to localStorage preferences
 
-### ROM Library
-- Filterable list of available games
-- "Only show compatible" filter (with achievements)
+### Cartridge Library
+- Filterable list of installed ROMs that have achievement data
 - Search by game title
-- Display compatibility and achievement counts
-- Click to select game and view details
+- Display completed and total stars for each installed cartridge
+- Click to select a game and view its real achievement list
 
 ### Achievement Tracking
-- View all achievements for selected game
+- View all `continueDb` achievements for the selected installed game
 - Shows completed vs total count
 - Individual achievement items with checkmarks
-- Achievement descriptions
+- Completion is driven by `gameSave.Achievements`
 
 ### Collapsible Panels
 - Cartridge panel can be toggled open/closed
@@ -66,7 +65,7 @@ Continue/
 - Enforced cores (from level data)
 - Selected game ID
 - Cartridge panel collapsed state
-- Filter and search values
+- Search value
 
 ## Level System
 
@@ -86,24 +85,19 @@ Simplified core lists are included:
 - **APU**: FMC, LOW, MED, HI
 - **Shader**: 25+ shader options (PX, TV, VHS, etc.)
 
-## Game Database
+## Cartridge Data
 
-Sample games are included for demonstration:
-- Super Mario Bros.
-- The Legend of Zelda
-- Metroid
-- Mega Man
-- Castlevania
-
-Each has compatibility flag and achievement counts. Achievements are procedurally generated for demo purposes.
+The cartridge list is built from the real ROM storage plus achievement metadata:
+- Installed ROMs come from `nesStorage` / `nesInterop` with localStorage fallback
+- Game and achievement metadata come from `continueDb`
+- If `continueDb` is empty, the module falls back to `../shared/models/default-db.json`
+- Only installed games with at least one achievement are shown
 
 ## Differences from Full Application
 
 ### Simplified Features
-- No actual ROM file management (import disabled in web version)
 - No SVG card rendering (using simple text labels)
 - No masquerade system
-- Simplified achievement data (procedurally generated)
 - No connection to actual emulator backend
 
 ### Retained Functionality
@@ -111,7 +105,7 @@ Each has compatibility flag and achievement counts. Achievements are procedurall
 - Level progression system
 - Achievement tracking
 - Save data persistence
-- ROM filtering and search
+- Installed-cartridge filtering and search
 - Responsive layout
 
 ## Usage
@@ -124,10 +118,9 @@ Each has compatibility flag and achievement counts. Achievements are procedurall
 5. Enforced cores cannot be changed
 
 ### Selecting a Game
-1. Use "Only show compatible" filter to narrow list
-2. Search by game title
-3. Click a game row to select it
-4. View game details and achievements below
+1. Search the installed cartridge list
+2. Click a game row to select it
+3. View game details and achievements below
 
 ### Advancing Levels
 1. Complete at least one achievement to clear the level
@@ -137,12 +130,11 @@ Each has compatibility flag and achievement counts. Achievements are procedurall
 
 ### Starting a Game
 1. Build a valid console (all 4 cores selected)
-2. Select a compatible game
+2. Select an installed game with achievements
 3. "Start the game" button becomes enabled
 4. Click to see launch message (placeholder in web module)
 
 ## Browser Compatibility
-
 - Modern browsers with ES6+ support
 - localStorage API required
 - Web Audio API for music playback

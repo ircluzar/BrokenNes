@@ -48,11 +48,17 @@
     if (typeof window.loadGameSave === 'function') {
       return await window.loadGameSave();
     }
-    // Fallback if shared module not loaded
-    const save = localStorage.getItem('brokenNesGameSave');
-    if (save) {
-      return JSON.parse(save);
+    if (window.nesInterop && typeof window.nesInterop.idbGetItem === 'function') {
+      try {
+        const raw = await window.nesInterop.idbGetItem('game_save_v1');
+        if (raw) {
+          return JSON.parse(raw);
+        }
+      } catch (error) {
+        console.warn('Overlay save fallback failed', error);
+      }
     }
+    // Fallback if shared module not loaded
     return {
       ownedCpuIds: ['FMC'],
       ownedPpuIds: ['FMC'],

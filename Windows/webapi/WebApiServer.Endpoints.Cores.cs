@@ -39,6 +39,61 @@ namespace BrokenNes.Windows.WebApi
                 }
             });
 
+            // POST /api/cores/apply - Apply selected CPU/PPU/APU cores to the running emulator
+            app.MapPost("/api/cores/apply", async (HttpContext context) =>
+            {
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<ApplyCoresRequest>();
+                    if (body == null)
+                    {
+                        return Results.BadRequest(new { success = false, error = "Core payload is required" });
+                    }
+
+                    void ApplyIfPresent(Action<string>? setter, string? value)
+                    {
+                        if (setter == null || string.IsNullOrWhiteSpace(value))
+                        {
+                            return;
+                        }
+
+                        setter(value.Trim().ToUpperInvariant());
+                    }
+
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke((Action)(() =>
+                        {
+                            ApplyIfPresent(_setCpuCore, body.CpuId);
+                            ApplyIfPresent(_setPpuCore, body.PpuId);
+                            ApplyIfPresent(_setApuCore, body.ApuId);
+                        }));
+                    }
+                    else
+                    {
+                        ApplyIfPresent(_setCpuCore, body.CpuId);
+                        ApplyIfPresent(_setPpuCore, body.PpuId);
+                        ApplyIfPresent(_setApuCore, body.ApuId);
+                    }
+
+                    return Results.Ok(new
+                    {
+                        success = true,
+                        cpu = body.CpuId,
+                        ppu = body.PpuId,
+                        apu = body.ApuId
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
             static List<object> GetCpuMetadata()
             {
                 try

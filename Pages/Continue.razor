@@ -3,6 +3,7 @@
 @using NesEmulator.Shaders
 @using System.Text.Json
 @using BrokenNes.Shared
+@using BrokenNes.Models
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Web
 @inject IJSRuntime JS
@@ -456,12 +457,11 @@
   private string? LevelMessage = null;
   private int RequiredStars = 5;
   private bool CanContinueSelected =>
-    _pendingDeckContinue && SelectedGame != null &&
-    !string.IsNullOrWhiteSpace(SelectedGame.RomKey) &&
-    string.Equals(_pendingDeckContinueRom, SelectedGame.RomKey, StringComparison.OrdinalIgnoreCase);
+    SelectedGame != null && TryGetContinueSlot(SelectedGame.RomKey) != null;
   private bool _pendingDeckContinue = false;
   private string? _pendingDeckContinueRom = null;
   private string? _pendingDeckContinueTitle = null;
+  private Dictionary<string, ContinueStateSlot> _continueSlots = new(StringComparer.OrdinalIgnoreCase);
 
   private (string domain, string id, string label, string border)[] EnforcedCards = Array.Empty<(string,string,string,string)>();
 
@@ -553,6 +553,7 @@
 
   // Load save, then fetch level data from continueDb and derive enforced chips and cost
   var save = await SaveSvc.LoadAsync();
+  _continueSlots = new Dictionary<string, ContinueStateSlot>(save.ContinueSlots ?? new(), StringComparer.OrdinalIgnoreCase);
   // Trusted continue marker from save (set early so ROM load can prioritize selection)
   _pendingDeckContinue = save.PendingDeckContinue;
   _pendingDeckContinueRom = save.PendingDeckContinueRom;
@@ -1562,6 +1563,26 @@ if(!g){ const rec = { id: id, title: title, system:'nes', romKey:name, builtIn:f
       }
     }
     catch { }
+  }
+
+  private ContinueStateSlot? TryGetContinueSlot(string? romKey)
+  {
+    if (string.IsNullOrWhiteSpace(romKey)) return null;
+
+    var normalized = romKey.Trim().ToLowerInvariant();
+    if (_continueSlots.TryGetValue(normalized, out var slot)) return slot;
+
+    if (_pendingDeckContinue && string.Equals(_pendingDeckContinueRom, romKey, StringComparison.OrdinalIgnoreCase))
+    {
+      return new ContinueStateSlot
+      {
+        RomKey = romKey,
+        Title = string.IsNullOrWhiteSpace(_pendingDeckContinueTitle) ? romKey : _pendingDeckContinueTitle,
+        UpdatedAtUtc = null
+      };
+    }
+
+    return null;
   }
 
   // ===== Game info panel (continueDb) =====

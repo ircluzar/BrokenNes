@@ -1,8 +1,13 @@
 using System;
+using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using NesEmulator;
+using PngPayloadEmbedding;
 
 namespace BrokenNes.Windows.WebApi
 {
@@ -277,6 +282,147 @@ namespace BrokenNes.Windows.WebApi
                     }
 
                     return Results.Ok(new { success, path = body.Path });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/emulator/load-rom-key - Load ROM from browser storage or built-ins using the ROM key/name
+            app.MapPost("/api/emulator/load-rom-key", async (HttpContext context) =>
+            {
+                if (_loadRomByKey == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "ROM key loading not available" });
+                }
+
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<LoadRomKeyRequest>();
+                    if (body == null || string.IsNullOrWhiteSpace(body.RomKey))
+                    {
+                        return Results.BadRequest(new { success = false, error = "RomKey is required" });
+                    }
+
+                    bool success = await _loadRomByKey(body.RomKey);
+                    return Results.Ok(new { success, romKey = body.RomKey });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/emulator/load-rom-base64 - Load ROM bytes passed directly from the webmodule
+            app.MapPost("/api/emulator/load-rom-base64", async (HttpContext context) =>
+            {
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<LoadRomBase64Request>();
+                    if (body == null || string.IsNullOrWhiteSpace(body.Base64))
+                    {
+                        return Results.BadRequest(new { success = false, error = "Base64 payload is required" });
+                    }
+
+                    var romBytes = Convert.FromBase64String(body.Base64);
+                    var romName = string.IsNullOrWhiteSpace(body.Name) ? "Imported.nes" : body.Name.Trim();
+
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke((Action)(() =>
+                        {
+                            if (_loadRomFromBytes == null)
+                            {
+                                throw new InvalidOperationException("Direct ROM-byte loading not available");
+                            }
+
+                            _loadRomFromBytes(romName, romBytes);
+                        }));
+                    }
+                    else
+                    {
+                        if (_loadRomFromBytes == null)
+                        {
+                            return Results.BadRequest(new { success = false, error = "Direct ROM-byte loading not available" });
+                        }
+
+                        _loadRomFromBytes(romName, romBytes);
+                    }
+
+                    return Results.Ok(new { success = true, name = romName, size = romBytes.Length });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/emulator/save-continue-state - Capture the persistent continue checkpoint
+            app.MapPost("/api/emulator/save-continue-state", () =>
+            {
+                if (_saveContinueState == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Continue-state capture not available" });
+                }
+
+                try
+                {
+                    bool success;
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        success = (bool)_uiControl.Invoke(_saveContinueState);
+                    }
+                    else
+                    {
+                        success = _saveContinueState();
+                    }
+
+                    return Results.Ok(new { success });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/emulator/load-continue-state - Restore the persistent continue checkpoint
+            app.MapPost("/api/emulator/load-continue-state", async (HttpContext context) =>
+            {
+                if (_loadContinueState == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Continue-state load not available" });
+                }
+
+                try
+                {
+                    var body = await context.Request.ReadFromJsonAsync<LoadContinueStateRequest>();
+                    var expectedRomName = body?.ExpectedRomName?.Trim();
+                    if (!string.IsNullOrWhiteSpace(expectedRomName))
+                    {
+                        var currentRomName = _getCurrentRomName?.Invoke()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(currentRomName)
+                            && !string.Equals(currentRomName, expectedRomName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Results.BadRequest(new
+                            {
+                                success = false,
+                                error = $"Current ROM '{currentRomName}' does not match expected continue ROM '{expectedRomName}'"
+                            });
+                        }
+                    }
+
+                    bool success;
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        success = (bool)_uiControl.Invoke(_loadContinueState, expectedRomName);
+                    }
+                    else
+                    {
+                        success = _loadContinueState(expectedRomName);
+                    }
+
+                    return Results.Ok(new { success });
                 }
                 catch (Exception ex)
                 {
