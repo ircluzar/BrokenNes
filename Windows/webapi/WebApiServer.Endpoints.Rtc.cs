@@ -153,7 +153,14 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Invalid blast type" });
                     }
 
-                    corruptor.BlastType = form.BlastType?.ToUpperInvariant() ?? "RANDOM";
+                    var requestedBlastType = form.BlastType?.ToUpperInvariant() ?? "RANDOM";
+                    var imagineBlastType = requestedBlastType == "IMAGINE_NEXT" || requestedBlastType == "IMAGINE_RANDOM";
+                    if (imagineBlastType && !await IsImagineUnlockedAsync())
+                    {
+                        return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
+                    }
+
+                    corruptor.BlastType = requestedBlastType;
                     return Results.Ok(new
                     {
                         success = true,
@@ -167,7 +174,7 @@ namespace BrokenNes.Windows.WebApi
             });
 
             // POST /api/rtc/blast - Execute a corruption blast
-            app.MapPost("/api/rtc/blast", () =>
+            app.MapPost("/api/rtc/blast", async () =>
             {
                 var nes = _getNes();
                 if (nes == null)
@@ -183,6 +190,13 @@ namespace BrokenNes.Windows.WebApi
 
                 try
                 {
+                    var imagineBlastType = string.Equals(corruptor.BlastType, "IMAGINE_NEXT", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(corruptor.BlastType, "IMAGINE_RANDOM", StringComparison.OrdinalIgnoreCase);
+                    if (imagineBlastType && !await IsImagineUnlockedAsync())
+                    {
+                        return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
+                    }
+
                     corruptor.Blast(nes);
                     return Results.Ok(new
                     {
@@ -223,6 +237,13 @@ namespace BrokenNes.Windows.WebApi
                     if (form == null)
                     {
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
+                    }
+
+                    var imagineBlastType = string.Equals(corruptor.BlastType, "IMAGINE_NEXT", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(corruptor.BlastType, "IMAGINE_RANDOM", StringComparison.OrdinalIgnoreCase);
+                    if (form.Enabled && imagineBlastType && !await IsImagineUnlockedAsync())
+                    {
+                        return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
                     }
 
                     corruptor.AutoCorrupt = form.Enabled;
@@ -311,6 +332,10 @@ namespace BrokenNes.Windows.WebApi
                     }
 
                     var behavior = form.Behavior ?? "IgnoreErrors";
+                    if (string.Equals(behavior, "ImagineFix", StringComparison.OrdinalIgnoreCase) && !await IsImagineUnlockedAsync())
+                    {
+                        return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
+                    }
                     
                     // Use the callback to properly save config if available
                     if (_setCrashBehavior != null)
@@ -352,10 +377,11 @@ namespace BrokenNes.Windows.WebApi
             // GET /api/rtc/stubborn-mode - Get stubborn mode state
             app.MapGet("/api/rtc/stubborn-mode", () =>
             {
+                var corruptor = _getCorruptor();
                 return Results.Ok(new
                 {
                     success = true,
-                    stubbornMode = false
+                    stubbornMode = corruptor?.StubbornMode ?? false
                 });
             });
 
@@ -370,7 +396,18 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Invalid request" });
                     }
 
+                    if (form.Enabled && !await IsImagineUnlockedAsync())
+                    {
+                        return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
+                    }
+
                     var nes = _getNes();
+                    var corruptor = _getCorruptor();
+                    if (corruptor != null)
+                    {
+                        corruptor.StubbornMode = form.Enabled;
+                    }
+
                     if (nes != null)
                     {
                         nes.SetStubbornFixEnabled(form.Enabled);

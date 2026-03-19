@@ -29,6 +29,7 @@ namespace BrokenNes.Windows
         private DirectBitmap? frameBuffer;
         private DirectBitmap? backBuffer; // Double buffering
         private bool useDirectX = true;
+        private int pendingRenderFrameRequest = 0;
         
         // Audio fields
         private AudioManager? audioManager;
@@ -76,6 +77,10 @@ namespace BrokenNes.Windows
         private ToolStripMenuItem cpuMenu;
         private ToolStripMenuItem ppuMenu;
         private ToolStripMenuItem recentRomsMenu;
+        private ToolStripMenuItem configMenu;
+        private ToolStripMenuItem backgroundMenu;
+        private ToolStripMenuItem nullProviderMenu;
+        private ToolStripMenuItem toolsMenu;
         private ToolStripMenuItem webModulesMenu;
         
         // NES display dimensions
@@ -101,10 +106,12 @@ namespace BrokenNes.Windows
         private WebView2? webView;
         private ViewMode currentViewMode = ViewMode.Emulator;
         private bool isWebViewInitialized = false;
+        private bool isWebViewInitializationFailed = false;
         private WebModuleInfo? currentToolOrActivityModule = null;
         
         // Web API server
         private WebApiServer? webApiServer;
+        private readonly ProgressionSaveService progressionSaveService = new ProgressionSaveService();
         private readonly System.Threading.SemaphoreSlim webApiServerLock = new System.Threading.SemaphoreSlim(1, 1);
         
         // Webmodule input (X/Y buttons)

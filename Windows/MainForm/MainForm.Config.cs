@@ -29,6 +29,7 @@ namespace BrokenNes.Windows
             {
                 config = EmulatorConfig.Load();
                 useDirectX = config.UseDirectX;
+                EnsureUnlockedProgressionCapabilities();
                 
                 // Update recent ROMs menu now that config is loaded
                 if (recentRomsMenu != null)
@@ -176,14 +177,21 @@ namespace BrokenNes.Windows
                 
                 if (crashBehaviorMenu != null)
                 {
+                    var progressionSave = LoadProgressionSnapshot();
+                    var imagineUnlocked = IsImagineBugUnlocked(progressionSave);
                     foreach (var item in crashBehaviorMenu.DropDownItems.OfType<ToolStripMenuItem>())
                     {
-                        if (item.Text.Contains("Red Screen"))
+                        var behavior = item.Tag as string;
+                        if (string.Equals(behavior, "RedScreen", StringComparison.OrdinalIgnoreCase))
                             item.Checked = (config.CrashBehavior == "RedScreen");
-                        else if (item.Text.Contains("Ignore Errors"))
+                        else if (string.Equals(behavior, "IgnoreErrors", StringComparison.OrdinalIgnoreCase))
                             item.Checked = (config.CrashBehavior == "IgnoreErrors");
-                        else if (item.Text.Contains("Imagine Fix"))
+                        else if (string.Equals(behavior, "ImagineFix", StringComparison.OrdinalIgnoreCase))
+                        {
                             item.Checked = (config.CrashBehavior == "ImagineFix");
+                            item.Enabled = imagineUnlocked;
+                            item.Text = imagineUnlocked ? "Imagine Fix" : "Imagine Fix [Locked]";
+                        }
                     }
                 }
             }
@@ -253,7 +261,8 @@ namespace BrokenNes.Windows
                 foreach (var item in backgroundMenu.DropDownItems.OfType<ToolStripMenuItem>())
                 {
                     // Check if this item matches the currently selected background
-                    item.Checked = item.Text.Equals(config.SelectedBackground, StringComparison.OrdinalIgnoreCase);
+                    var backgroundName = item.Tag as string ?? item.Text;
+                    item.Checked = backgroundName.Equals(config.SelectedBackground, StringComparison.OrdinalIgnoreCase);
                 }
             }
             
@@ -290,6 +299,8 @@ namespace BrokenNes.Windows
         private void UpdateCoresMenus()
         {
             if (nes == null) return;
+            var progressionSave = LoadProgressionSnapshot();
+            EnsureUnlockedProgressionSelections(progressionSave);
             
             // SHADER
             shaderMenu.DropDownItems.Clear();
@@ -312,6 +323,7 @@ namespace BrokenNes.Windows
             {
                 foreach (var shaderName in NesDirectXRenderer.GetAvailableShaders())
                 {
+                    var unlocked = IsShaderUnlocked(shaderName, progressionSave);
                     var shaderInfo = NesShaderControl.GetShaderInfo(
                         Enum.Parse<NesShaderManager.ShaderType>(shaderName));
                     var item = new ToolStripMenuItem(shaderInfo.DisplayName, null, (s, e) => {
@@ -320,6 +332,11 @@ namespace BrokenNes.Windows
                         UpdateCoresMenus(); // Refresh to update checkmarks
                     });
                     item.ToolTipText = shaderInfo.Description;
+                    item.Enabled = unlocked;
+                    if (!unlocked)
+                    {
+                        item.Text = $"{shaderInfo.DisplayName} [Locked]";
+                    }
                     item.Checked = (shaderName == config.CurrentShader);
                     
                     // Add hover event to request overlay display
@@ -360,7 +377,13 @@ namespace BrokenNes.Windows
             string currentApuCore = config.SelectedApuCore;
             foreach (var coreId in CoreRegistry.ApuIds)
             {
+                var unlocked = IsApuCoreUnlocked(coreId, progressionSave);
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetApuCore(coreId));
+                item.Enabled = unlocked;
+                if (!unlocked)
+                {
+                    item.Text = $"{coreId} [Locked]";
+                }
                 item.Checked = (coreId == currentApuCore);
                 
                 // Add hover event to request overlay display
@@ -377,7 +400,13 @@ namespace BrokenNes.Windows
             string currentCpuCore = config.SelectedCpuCore;
             foreach (var coreId in CoreRegistry.CpuIds)
             {
+                var unlocked = IsCpuCoreUnlocked(coreId, progressionSave);
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetCpuCore(coreId));
+                item.Enabled = unlocked;
+                if (!unlocked)
+                {
+                    item.Text = $"{coreId} [Locked]";
+                }
                 item.Checked = (coreId == currentCpuCore);
                 
                 // Add hover event to request overlay display
@@ -394,7 +423,13 @@ namespace BrokenNes.Windows
             string currentPpuCore = config.SelectedPpuCore;
             foreach (var coreId in CoreRegistry.PpuIds)
             {
+                var unlocked = IsPpuCoreUnlocked(coreId, progressionSave);
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetPpuCore(coreId));
+                item.Enabled = unlocked;
+                if (!unlocked)
+                {
+                    item.Text = $"{coreId} [Locked]";
+                }
                 item.Checked = (coreId == currentPpuCore);
                 
                 // Add hover event to request overlay display
@@ -410,9 +445,13 @@ namespace BrokenNes.Windows
         private void ApplySavedCoreSelections()
         {
             if (nes == null) return;
+            var progressionSave = LoadProgressionSnapshot();
+            EnsureUnlockedProgressionSelections(progressionSave);
             
             // Apply CPU core (default to FMC if not valid)
-            if (!string.IsNullOrEmpty(config.SelectedCpuCore) && CoreRegistry.CpuIds.Contains(config.SelectedCpuCore))
+            if (!string.IsNullOrEmpty(config.SelectedCpuCore)
+                && CoreRegistry.CpuIds.Contains(config.SelectedCpuCore)
+                && IsCpuCoreUnlocked(config.SelectedCpuCore, progressionSave))
             {
                 nes.SetCpuCore(config.SelectedCpuCore);
             }
@@ -423,7 +462,9 @@ namespace BrokenNes.Windows
             }
             
             // Apply PPU core (default to FMC if not valid)
-            if (!string.IsNullOrEmpty(config.SelectedPpuCore) && CoreRegistry.PpuIds.Contains(config.SelectedPpuCore))
+            if (!string.IsNullOrEmpty(config.SelectedPpuCore)
+                && CoreRegistry.PpuIds.Contains(config.SelectedPpuCore)
+                && IsPpuCoreUnlocked(config.SelectedPpuCore, progressionSave))
             {
                 nes.SetPpuCore(config.SelectedPpuCore);
             }
@@ -434,7 +475,9 @@ namespace BrokenNes.Windows
             }
             
             // Apply APU core (default to FMC if not valid)
-            if (!string.IsNullOrEmpty(config.SelectedApuCore) && CoreRegistry.ApuIds.Contains(config.SelectedApuCore))
+            if (!string.IsNullOrEmpty(config.SelectedApuCore)
+                && CoreRegistry.ApuIds.Contains(config.SelectedApuCore)
+                && IsApuCoreUnlocked(config.SelectedApuCore, progressionSave))
             {
                 nes.SetApuCore(config.SelectedApuCore);
             }
@@ -454,9 +497,17 @@ namespace BrokenNes.Windows
                 if (!string.IsNullOrEmpty(config.CurrentShader))
                 {
                     var availableShaders = NesDirectXRenderer.GetAvailableShaders();
-                    if (availableShaders.Contains(config.CurrentShader))
+                    if (availableShaders.Contains(config.CurrentShader) && IsShaderUnlocked(config.CurrentShader, progressionSave))
                     {
                         NesShaderControl.SwitchShader(config.CurrentShader);
+                    }
+                    else
+                    {
+                        Helpers.ConfigHelper.Update(config, c => c.CurrentShader = ResolveUnlockedShaderSelection(config.CurrentShader, availableShaders, progressionSave.OwnedShaderIds, "PX"));
+                        if (availableShaders.Contains(config.CurrentShader) && IsShaderUnlocked(config.CurrentShader, progressionSave))
+                        {
+                            NesShaderControl.SwitchShader(config.CurrentShader);
+                        }
                     }
                 }
                 

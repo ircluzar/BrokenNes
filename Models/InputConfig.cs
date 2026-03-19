@@ -16,8 +16,8 @@ public class KeyboardMapping
     public string Down { get; set; } = "ArrowDown";
     public string Left { get; set; } = "ArrowLeft";
     public string Right { get; set; } = "ArrowRight";
-    public string A { get; set; } = "KeyX"; // emulator current default
-    public string B { get; set; } = "KeyZ"; // emulator current default
+    public string A { get; set; } = "KeyX";
+    public string B { get; set; } = "KeyZ";
     public string Select { get; set; } = "Space";
     public string Start { get; set; } = "Enter";
     

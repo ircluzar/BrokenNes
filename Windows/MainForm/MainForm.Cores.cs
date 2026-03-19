@@ -25,6 +25,18 @@ namespace BrokenNes.Windows
     {
         private void SetCpuCore(string coreId)
         {
+            if (!IsCpuCoreUnlocked(coreId))
+            {
+                Console.WriteLine($"[Progression] CPU core locked: {coreId}");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LoadProgressionSnapshot().OwnedCpuIds, "FMC");
+                if (!string.Equals(config.SelectedCpuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = fallbackCore);
+                }
+                UpdateCoresMenus();
+                return;
+            }
+
             if (nes == null) return;
             nes.SetCpuCore(coreId);
             Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = coreId);
@@ -33,6 +45,18 @@ namespace BrokenNes.Windows
         
         private void SetPpuCore(string coreId)
         {
+            if (!IsPpuCoreUnlocked(coreId))
+            {
+                Console.WriteLine($"[Progression] PPU core locked: {coreId}");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LoadProgressionSnapshot().OwnedPpuIds, "FMC");
+                if (!string.Equals(config.SelectedPpuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = fallbackCore);
+                }
+                UpdateCoresMenus();
+                return;
+            }
+
             if (nes == null) return;
             nes.SetPpuCore(coreId);
             Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = coreId);
@@ -41,6 +65,18 @@ namespace BrokenNes.Windows
         
         private void SetApuCore(string coreId)
         {
+            if (!IsApuCoreUnlocked(coreId))
+            {
+                Console.WriteLine($"[Progression] APU core locked: {coreId}");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LoadProgressionSnapshot().OwnedApuIds, "FMC");
+                if (!string.Equals(config.SelectedApuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = fallbackCore);
+                }
+                UpdateCoresMenus();
+                return;
+            }
+
             if (nes == null) return;
             nes.SetApuCore(coreId);
             Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
@@ -52,6 +88,18 @@ namespace BrokenNes.Windows
             if (!useDirectX || dxRenderer == null || string.IsNullOrWhiteSpace(shaderId)) return;
 
             string normalizedShaderId = shaderId.Trim().ToUpperInvariant();
+            if (!IsShaderUnlocked(normalizedShaderId))
+            {
+                Console.WriteLine($"[Progression] Shader locked: {normalizedShaderId}");
+                var fallbackShader = ResolveUnlockedShaderSelection(config.CurrentShader, NesDirectXRenderer.GetAvailableShaders(), LoadProgressionSnapshot().OwnedShaderIds, "PX");
+                if (!string.Equals(config.CurrentShader, fallbackShader, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.CurrentShader = fallbackShader);
+                }
+                UpdateCoresMenus();
+                return;
+            }
+
             dxRenderer.UseShader = true;
 
             if (!NesShaderControl.SwitchShader(normalizedShaderId))
@@ -145,6 +193,18 @@ namespace BrokenNes.Windows
         
         private void SetNullProvider(string providerName)
         {
+            if (!IsNullProviderUnlocked(providerName))
+            {
+                Console.WriteLine($"[Progression] Null provider locked: {providerName}");
+                var fallbackProvider = ResolveUnlockedNullProviderSelection(config.SelectedNullProvider);
+                if (!string.Equals(config.SelectedNullProvider, fallbackProvider, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.SelectedNullProvider = fallbackProvider);
+                }
+                UpdateConfigMenus();
+                return;
+            }
+
             Helpers.ConfigHelper.Update(config, c => c.SelectedNullProvider = providerName);
             
             // Apply to current NES instance if one is running
@@ -160,19 +220,30 @@ namespace BrokenNes.Windows
         
         private void SetCrashBehavior(string behavior)
         {
-            Helpers.ConfigHelper.Update(config, c => c.CrashBehavior = behavior);
+            var safeBehavior = ResolveUnlockedCrashBehavior(behavior);
+            if (!string.Equals(safeBehavior, behavior, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("[Progression] Imagine Fix is locked.");
+            }
+
+            Helpers.ConfigHelper.Update(config, c => c.CrashBehavior = safeBehavior);
             
             // Apply to current NES instance if one is running
             ApplyCrashBehavior();
             
             UpdateConfigMenus();
             
-            Console.WriteLine($"Crash behavior set to: {behavior}");
+            Console.WriteLine($"Crash behavior set to: {safeBehavior}");
         }
         
         private void ApplyCrashBehavior()
         {
             if (nes == null) return;
+
+            var save = LoadProgressionSnapshot();
+            EnsureUnlockedProgressionCapabilities(save);
+            var resolvedBehavior = ResolveUnlockedCrashBehavior(config.CrashBehavior, save);
+            var imagineUnlocked = IsImagineBugUnlocked(save);
             
             try
             {
@@ -181,28 +252,40 @@ namespace BrokenNes.Windows
                     if (nes != null)
                     {
                         // Sync corruptor's crash behavior with config
-                        corruptor.CrashBehavior = config.CrashBehavior;
+                        corruptor.CrashBehavior = resolvedBehavior;
                         
-                        switch (config.CrashBehavior)
+                        switch (resolvedBehavior)
                         {
                             case "IgnoreErrors":
                                 nes.SetCrashBehavior(NES.CrashBehavior.IgnoreErrors);
+                                nes.SetStubbornFixEnabled(false);
                                 break;
                             case "ImagineFix":
                                 nes.SetCrashBehavior(NES.CrashBehavior.ImagineFix);
-                                nes.SetStubbornFixEnabled(corruptor.StubbornMode);
+                                nes.SetStubbornFixEnabled(imagineUnlocked && corruptor.StubbornMode);
                                 break;
                             default: // "RedScreen"
                                 nes.SetCrashBehavior(NES.CrashBehavior.RedScreen);
+                                nes.SetStubbornFixEnabled(false);
                                 break;
                         }
-                        if (imagineEngine != null)
+
+                        if (!string.Equals(config.CrashBehavior, resolvedBehavior, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Helpers.ConfigHelper.Update(config, c => c.CrashBehavior = resolvedBehavior);
+                        }
+
+                        if (imagineEngine != null && imagineUnlocked)
                         {
                             nes.ImagineShot = pc =>
                             {
                                 try { imagineEngine.ImagineFromPc(pc, Math.Clamp(corruptor.CorruptIntensity, 1, 32)); }
                                 catch (Exception ex) { Console.WriteLine($"ImagineShot error: {ex.Message}"); }
                             };
+                        }
+                        else
+                        {
+                            nes.ImagineShot = null;
                         }
                     }
                 }

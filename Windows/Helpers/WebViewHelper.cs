@@ -1,7 +1,10 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows.Forms;
+using System.Net.Http;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
 using BrokenNes.Windows.Rendering;
@@ -14,6 +17,45 @@ namespace BrokenNes.Windows.Helpers
     public static class WebViewHelper
     {
         private static CoreWebView2Environment? _sharedEnvironment;
+        private static readonly HttpClient ProxyHttpClient = new();
+
+        private static string GetBaseDirectoryProfileSuffix()
+        {
+            var baseDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(baseDirectory));
+            return Convert.ToHexString(bytes[..8]).ToLowerInvariant();
+        }
+
+        private static string GetPrimaryUserDataFolder()
+        {
+            var basePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "BrokenNes",
+                "WebView2",
+                GetBaseDirectoryProfileSuffix());
+            Directory.CreateDirectory(basePath);
+            return basePath;
+        }
+
+        private static string GetFallbackUserDataFolder()
+        {
+            var fallbackPath = Path.Combine(
+                Path.GetTempPath(),
+                "BrokenNes",
+                "WebView2",
+                $"{GetBaseDirectoryProfileSuffix()}-{Environment.ProcessId}");
+            Directory.CreateDirectory(fallbackPath);
+            return fallbackPath;
+        }
+
+        private static async Task<CoreWebView2Environment> CreateEnvironmentAsync(string userDataFolder, CoreWebView2EnvironmentOptions options)
+        {
+            Console.WriteLine($"[WebView2] Using user data folder: {userDataFolder}");
+            return await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: userDataFolder,
+                options: options).ConfigureAwait(false);
+        }
         
         /// <summary>
         /// Gets or creates a shared WebView2 environment with autoplay enabled
@@ -29,16 +71,29 @@ namespace BrokenNes.Windows.Helpers
             // CRITICAL: Disable autoplay policy to allow AudioContext without user gesture
             // --autoplay-policy=no-user-gesture-required allows audio to play automatically
             options.AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required";
-            
-            _sharedEnvironment = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
-                userDataFolder: null,
-                options: options);
+
+            var primaryUserDataFolder = GetPrimaryUserDataFolder();
+            try
+            {
+                _sharedEnvironment = await CreateEnvironmentAsync(primaryUserDataFolder, options).ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                var fallbackUserDataFolder = GetFallbackUserDataFolder();
+                Console.WriteLine($"[WebView2] Access denied for primary user data folder. Falling back to: {fallbackUserDataFolder}");
+                _sharedEnvironment = await CreateEnvironmentAsync(fallbackUserDataFolder, options).ConfigureAwait(false);
+            }
+            catch (System.Runtime.InteropServices.COMException ex) when ((uint)ex.HResult == 0x80070005)
+            {
+                var fallbackUserDataFolder = GetFallbackUserDataFolder();
+                Console.WriteLine($"[WebView2] Primary user data folder failed with access denied. Falling back to: {fallbackUserDataFolder}");
+                _sharedEnvironment = await CreateEnvironmentAsync(fallbackUserDataFolder, options).ConfigureAwait(false);
+            }
                 
             return _sharedEnvironment;
         }
         
-        public static async Task<bool> InitializeWebViewAsync(WebView2 webView)
+        public static async Task<bool> InitializeWebViewAsync(WebView2 webView, bool showErrorDialog = true)
         {
             if (webView == null) return false;
             
@@ -46,7 +101,21 @@ namespace BrokenNes.Windows.Helpers
             {
                 // Use our custom environment with autoplay enabled
                 var environment = await GetOrCreateEnvironmentAsync();
-                await webView.EnsureCoreWebView2Async(environment);
+                try
+                {
+                    await webView.EnsureCoreWebView2Async(environment);
+                }
+                catch (System.Runtime.InteropServices.COMException ex) when ((uint)ex.HResult == 0x80070005)
+                {
+                    var fallbackUserDataFolder = GetFallbackUserDataFolder();
+                    var fallbackOptions = new CoreWebView2EnvironmentOptions
+                    {
+                        AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required"
+                    };
+                    Console.WriteLine($"[WebView2] EnsureCoreWebView2Async failed with access denied. Retrying with isolated profile: {fallbackUserDataFolder}");
+                    _sharedEnvironment = await CreateEnvironmentAsync(fallbackUserDataFolder, fallbackOptions).ConfigureAwait(false);
+                    await webView.EnsureCoreWebView2Async(_sharedEnvironment);
+                }
                 
                 // Configure WebView2 settings
                 var settings = webView.CoreWebView2.Settings;
@@ -91,14 +160,56 @@ namespace BrokenNes.Windows.Helpers
                                 
                                 Console.WriteLine($"[WebView2] Proxying API request: {uri} -> {localUrl}");
                                 
-                                using var httpClient = new System.Net.Http.HttpClient();
-                                var response = await httpClient.GetAsync(localUrl);
-                                var content = await response.Content.ReadAsStreamAsync();
-                                var contentType = response.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
-                                
+                                using var requestMessage = new HttpRequestMessage(new HttpMethod(e.Request.Method), localUrl);
+
+                                foreach (var header in e.Request.Headers)
+                                {
+                                    if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                                    {
+                                        requestMessage.Content ??= new ByteArrayContent([]);
+                                        requestMessage.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                                    }
+                                }
+
+                                var requestContent = e.Request.Content;
+                                if (requestContent != null)
+                                {
+                                    using var requestBuffer = new MemoryStream();
+                                    if (requestContent.CanSeek)
+                                    {
+                                        requestContent.Position = 0;
+                                    }
+
+                                    await requestContent.CopyToAsync(requestBuffer);
+                                    requestBuffer.Position = 0;
+                                    requestMessage.Content = new ByteArrayContent(requestBuffer.ToArray());
+
+                                    foreach (var header in e.Request.Headers)
+                                    {
+                                        requestMessage.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                                    }
+                                }
+
+                                using var response = await ProxyHttpClient.SendAsync(requestMessage);
+                                var responseBytes = await response.Content.ReadAsByteArrayAsync();
+                                var responseStream = new MemoryStream(responseBytes);
+                                var responseHeaders = new StringBuilder();
+
+                                foreach (var header in response.Headers)
+                                {
+                                    responseHeaders.Append(header.Key).Append(": ").AppendJoin(", ", header.Value).Append("\r\n");
+                                }
+
+                                foreach (var header in response.Content.Headers)
+                                {
+                                    responseHeaders.Append(header.Key).Append(": ").AppendJoin(", ", header.Value).Append("\r\n");
+                                }
+
                                 e.Response = webView.CoreWebView2.Environment.CreateWebResourceResponse(
-                                    content, (int)response.StatusCode, response.ReasonPhrase, 
-                                    $"Content-Type: {contentType}");
+                                    responseStream,
+                                    (int)response.StatusCode,
+                                    response.ReasonPhrase,
+                                    responseHeaders.ToString());
                             }
                             catch (Exception ex)
                             {
@@ -120,8 +231,11 @@ namespace BrokenNes.Windows.Helpers
             catch (Exception ex)
             {
                 Console.WriteLine($"WebView2 initialization error: {ex.Message}");
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
-                    "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (showErrorDialog)
+                {
+                    MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
+                        "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
                 return false;
             }
         }
@@ -142,13 +256,23 @@ namespace BrokenNes.Windows.Helpers
              return webView;
         }
 
-        public static bool IsAvailable(WebView2 webView, bool isInitialized, bool showMessage = true)
+        public static bool IsAvailable(WebView2 webView, bool isInitialized, bool initializationFailed = false, bool showMessage = true)
         {
             if (webView == null)
             {
                 if (showMessage)
                 {
                     MessageBox.Show("WebView2 is not available.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                return false;
+            }
+
+            if (initializationFailed)
+            {
+                if (showMessage)
+                {
+                    MessageBox.Show("WebView2 failed to initialize. Check the earlier WebView2 error dialog for details.",
+                        "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
                 return false;
             }

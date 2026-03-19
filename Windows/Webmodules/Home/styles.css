@@ -203,6 +203,62 @@
   box-shadow: none;
 }
 
+.reward-inbox-banner {
+  width: min(100%, 620px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.35rem;
+  border: 3px solid #ffd166;
+  background: linear-gradient(180deg, rgba(255, 209, 102, 0.12), rgba(0, 0, 0, 0.88));
+}
+
+.reward-inbox-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+}
+
+.reward-inbox-kicker {
+  color: #ffd37b;
+  font-size: 0.48rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.reward-inbox-copy strong {
+  color: #fff;
+  font-size: 0.62rem;
+  line-height: 1.5;
+}
+
+.reward-inbox-copy span:last-child {
+  color: #dbe4ef;
+  font-size: 0.54rem;
+  line-height: 1.6;
+}
+
+.reward-inbox-btn {
+  flex: 0 0 auto;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.56rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.95rem;
+  border: 3px solid #ffd166;
+  background: #000;
+  color: #fff7df;
+  cursor: pointer;
+}
+
+.reward-inbox-btn:hover,
+.reward-inbox-btn:focus {
+  background: #ffd166;
+  color: #000;
+}
+
 .title-buttons {
   display: flex;
   flex-direction: column;
@@ -317,6 +373,15 @@
 }
 
 @media (max-width: 620px) {
+  .reward-inbox-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reward-inbox-btn {
+    width: 100%;
+  }
+
   .title-primary {
     font-size: clamp(1.2rem, 5vw, 2.1rem);
     padding: 1rem 1.6rem;

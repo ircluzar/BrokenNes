@@ -66,11 +66,14 @@ namespace BrokenNes.Windows.WebApi
         private Func<string?>? _getCurrentRomPath;
         private Func<string?>? _getCurrentRomName;
         private Func<string, bool>? _loadRomFromPath;
+        private Action? _refreshProgressionUi;
+        private readonly ProgressionSaveService _progressionSave;
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null, Action? refreshProgressionUi = null)
         {
+            _progressionSave = new ProgressionSaveService();
             _getNes = getNes;
             _getCorruptor = getCorruptor ?? (() => null);
             _getImagineEngine = getImagineEngine ?? (() => null);
@@ -113,6 +116,23 @@ namespace BrokenNes.Windows.WebApi
             _getCurrentRomPath = getCurrentRomPath;
             _getCurrentRomName = getCurrentRomName;
             _loadRomFromPath = loadRomFromPath;
+            _refreshProgressionUi = refreshProgressionUi;
+        }
+
+        private void RefreshProgressionUi()
+        {
+            if (_refreshProgressionUi == null)
+            {
+                return;
+            }
+
+            if (_uiControl != null && _uiControl.InvokeRequired)
+            {
+                _uiControl.Invoke(_refreshProgressionUi);
+                return;
+            }
+
+            _refreshProgressionUi();
         }
 
         /// <summary>
@@ -162,6 +182,7 @@ namespace BrokenNes.Windows.WebApi
             var app = builder.Build();
 
             app.UseCors();
+            app.Use(ApplyProgressionGateAsync);
 
             // Register API endpoints
             RegisterMemoryAccessEndpoints(app);
@@ -176,6 +197,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterCardEndpoints(app);
             RegisterCoresEndpoints(app);
             RegisterSaveEndpoints(app);
+            RegisterProgressionEndpoints(app);
             RegisterUIEndpoints(app);
             RegisterAudioEndpoints(app);
             RegisterEmulatorEndpoints(app);

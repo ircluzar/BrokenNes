@@ -144,7 +144,7 @@ namespace BrokenNes.Windows
         /// Crash behavior when the emulator encounters an error (RedScreen, IgnoreErrors, ImagineFix)
         /// </summary>
         [JsonPropertyName("crashBehavior")]
-        public string CrashBehavior { get; set; } = "RedScreen";
+        public string CrashBehavior { get; set; } = "IgnoreErrors";
         
         /// <summary>
         /// Show the Windows console window
@@ -179,10 +179,10 @@ namespace BrokenNes.Windows
         /// Player 1 Controller key bindings (LEGACY - use PlayerControllers instead)
         /// </summary>
         [JsonPropertyName("p1KeyA")]
-        public string P1KeyA { get; set; } = "Z";
+        public string P1KeyA { get; set; } = "X";
         
         [JsonPropertyName("p1KeyB")]
-        public string P1KeyB { get; set; } = "X";
+        public string P1KeyB { get; set; } = "Z";
         
         [JsonPropertyName("p1KeySelect")]
         public string P1KeySelect { get; set; } = "Space";
@@ -237,25 +237,80 @@ namespace BrokenNes.Windows
                 p1.Right = ButtonBinding.FromKey(P1KeyRight);
             }
         }
+
+        public bool NormalizePlayer1DefaultKeyboardBindings()
+        {
+            var changed = false;
+
+            if (HasLegacyDefaultKeyboardBindings())
+            {
+                P1KeyA = "X";
+                P1KeyB = "Z";
+                changed = true;
+            }
+
+            var player1 = PlayerControllers.FirstOrDefault(p => p.PlayerNumber == 1);
+            if (player1 != null && HasOldDefaultPlayer1Bindings(player1))
+            {
+                player1.A = ButtonBinding.FromKey("X");
+                player1.B = ButtonBinding.FromKey("Z");
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private bool HasLegacyDefaultKeyboardBindings()
+        {
+            return string.Equals(P1KeyA, "Z", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyB, "X", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeySelect, "Space", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyStart, "Return", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyUp, "Up", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyDown, "Down", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyLeft, "Left", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(P1KeyRight, "Right", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasOldDefaultPlayer1Bindings(PlayerControllerConfig player)
+        {
+            return player.DeviceType == InputDeviceType.Keyboard
+                && HasKeyboardBinding(player.A, "Z")
+                && HasKeyboardBinding(player.B, "X")
+                && HasKeyboardBinding(player.Select, "Space")
+                && HasKeyboardBinding(player.Start, "Return")
+                && HasKeyboardBinding(player.Up, "Up")
+                && HasKeyboardBinding(player.Down, "Down")
+                && HasKeyboardBinding(player.Left, "Left")
+                && HasKeyboardBinding(player.Right, "Right")
+                && HasKeyboardBinding(player.X, "A")
+                && HasKeyboardBinding(player.Y, "S");
+        }
+
+        private static bool HasKeyboardBinding(ButtonBinding? binding, string expectedKey)
+        {
+            return binding?.GamepadButton == null
+                && string.Equals(binding?.Key, expectedKey, StringComparison.OrdinalIgnoreCase);
+        }
         
         // Background configuration
         /// <summary>
         /// Selected background renderer (Wave, Bubble, Gradient, None)
         /// </summary>
         [JsonPropertyName("selectedBackground")]
-        public string SelectedBackground { get; set; } = "Gradient";
+        public string SelectedBackground { get; set; } = "Gradient (Default)";
         
         /// <summary>
         /// Render scanlines on the background for a more authentic look
         /// </summary>
         [JsonPropertyName("renderScanlines")]
-        public bool RenderScanlines { get; set; } = false;
+        public bool RenderScanlines { get; set; } = true;
         
         /// <summary>
         /// Render a shadow/glow behind the emulator viewport
         /// </summary>
         [JsonPropertyName("renderViewportShadow")]
-        public bool RenderViewportShadow { get; set; } = false;
+        public bool RenderViewportShadow { get; set; } = true;
         
         /// <summary>
         /// Selected null provider (TV Static, Rainbow Plasma, etc) - used when test ROM is loaded
@@ -289,12 +344,19 @@ namespace BrokenNes.Windows
                     {
                         // Migrate legacy bindings if needed
                         config.MigrateLegacyBindings();
+                        var bindingsChanged = config.NormalizePlayer1DefaultKeyboardBindings();
                         
                         // Validate that recent ROMs still exist
                         config.RecentRoms = config.RecentRoms
                             .Where(File.Exists)
                             .Take(config.MaxRecentRoms)
                             .ToList();
+
+                        if (bindingsChanged)
+                        {
+                            config.Save();
+                        }
+
                         return config;
                     }
                 }

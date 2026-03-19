@@ -2,7 +2,16 @@
 (function () {
   'use strict';
 
-  const DEFAULT_BASE_URL = (window.WEBAPI_BASE || window.__WEBAPI_BASE || 'http://127.0.0.1:42067').toString().trim();
+  function resolveDefaultBaseUrl() {
+    const configuredBaseUrl = window.WEBAPI_BASE || window.__WEBAPI_BASE;
+    if (configuredBaseUrl) {
+      return configuredBaseUrl.toString().trim();
+    }
+
+    return 'http://127.0.0.1:42067';
+  }
+
+  const DEFAULT_BASE_URL = resolveDefaultBaseUrl();
   let baseUrl = DEFAULT_BASE_URL.replace(/\/$/, '');
   let defaultTimeoutMs = 15000;
 
@@ -35,6 +44,28 @@
     }
 
     return `${trimmedBase}${normalizedPath}`;
+  }
+
+  function getAlternateBaseUrl() {
+    const normalizedBaseUrl = (baseUrl || '').replace(/\/$/, '');
+    const proxyBaseUrl = window.location?.protocol === 'https:' && window.location?.hostname === 'app.brokennes'
+      ? `${window.location.origin}/api`
+      : '';
+    const directBaseUrl = 'http://127.0.0.1:42067';
+
+    if (normalizedBaseUrl === directBaseUrl && proxyBaseUrl) {
+      return proxyBaseUrl;
+    }
+
+    if (proxyBaseUrl && normalizedBaseUrl === proxyBaseUrl) {
+      return directBaseUrl;
+    }
+
+    return '';
+  }
+
+  async function executeFetch(url, fetchOptions) {
+    return fetch(url, fetchOptions);
   }
 
   async function request(path, options = {}) {
@@ -81,7 +112,23 @@
     }
 
     try {
-      const response = await fetch(urlObj.toString(), fetchOptions);
+      let response;
+
+      try {
+        response = await executeFetch(urlObj.toString(), fetchOptions);
+      } catch (error) {
+        const alternateBaseUrl = !/^https?:\/\//i.test(path || '') ? getAlternateBaseUrl() : '';
+        if (!alternateBaseUrl) {
+          throw error;
+        }
+
+        const alternateUrl = new URL(buildUrl(path).replace(baseUrl.replace(/\/$/, ''), alternateBaseUrl.replace(/\/$/, '')), window.location.href);
+        if (cacheBust) {
+          alternateUrl.searchParams.set('_t', Date.now().toString());
+        }
+
+        response = await executeFetch(alternateUrl.toString(), fetchOptions);
+      }
 
       if (responseType === 'raw') {
         return response;
@@ -261,6 +308,18 @@
       reset: () => request('/api/achievements/reset', { method: 'POST' })
     },
 
+    progression: {
+      getState: () => request('/api/progression'),
+      getRoster: () => request('/api/progression/roster'),
+      claimPending: () => request('/api/progression/claim-pending', { method: 'POST' }),
+      acknowledge: (rewardIds) => request('/api/progression/acknowledge', {
+        method: 'POST',
+        json: { rewardIds: Array.isArray(rewardIds) ? rewardIds : [] }
+      }),
+      equipBackground: (name) => request('/api/progression/equip-background', { method: 'POST', json: { name } }),
+      equipNullProvider: (name) => request('/api/progression/equip-null-provider', { method: 'POST', json: { name } })
+    },
+
     navigation: {
       goToEmulator: () => request('/api/navigation/go-to-emulator', { method: 'POST' }),
       goToOverlay: () => request('/api/navigation/go-to-overlay', { method: 'POST' }),
@@ -323,7 +382,10 @@
 
     shader: {
       getCurrent: () => request('/api/shader/current'),
-      setShader: (shaderName) => request('/api/shader/set', { method: 'POST', json: { shaderName } }),
+      setShader: (shaderName, overrideReason = null) => request('/api/shader/set', {
+        method: 'POST',
+        json: { shaderName, overrideReason }
+      }),
       enable: () => request('/api/shader/enable', { method: 'POST' }),
       disable: () => request('/api/shader/disable', { method: 'POST' })
     },

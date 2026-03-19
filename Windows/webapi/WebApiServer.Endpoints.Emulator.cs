@@ -165,6 +165,14 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Name is required" });
                     }
 
+                    var save = await _progressionSave.LoadAsync();
+                    if (!_progressionSave.IsBackgroundUnlocked(save, body.Name))
+                    {
+                        return Results.BadRequest(new { success = false, error = "Background is locked" });
+                    }
+
+                    await _progressionSave.SetPreferredBackgroundAsync(body.Name);
+
                     if (_uiControl != null && _uiControl.InvokeRequired)
                     {
                         _uiControl.Invoke(() => _setBackground(body.Name));
@@ -216,6 +224,14 @@ namespace BrokenNes.Windows.WebApi
                     {
                         return Results.BadRequest(new { success = false, error = "Name is required" });
                     }
+
+                    var save = await _progressionSave.LoadAsync();
+                    if (!_progressionSave.IsNullProviderUnlocked(save, body.Name))
+                    {
+                        return Results.BadRequest(new { success = false, error = "Null provider is locked" });
+                    }
+
+                    await _progressionSave.SetPreferredNullProviderAsync(body.Name);
 
                     if (_uiControl != null && _uiControl.InvokeRequired)
                     {

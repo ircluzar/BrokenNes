@@ -111,6 +111,12 @@
         }
       }
 
+      try {
+        await api.emulator.pause();
+      } catch (error) {
+        console.warn('[AchievementsRuntime] Failed to pause before return:', error);
+      }
+
       const save = await markTrustedContinueState();
 
       writePayload(WORKFLOW_RETURN_KEY, {
@@ -194,10 +200,10 @@
           ppuId: launchPayload.cores.ppuId,
           apuId: launchPayload.cores.apuId
         });
-      }
 
-      if (launchPayload.cores?.shaderId) {
-        await api.shader.setShader(launchPayload.cores.shaderId);
+        if (launchPayload.cores.shaderId) {
+          await api.shader.setShader(launchPayload.cores.shaderId);
+        }
       }
 
       if (isContinueLaunch) {
@@ -430,6 +436,12 @@
       const firstClear = !Boolean(save.LevelCleared);
       save.LevelCleared = true;
       await window.gameSave.save(save);
+
+      try {
+        await api.emulator.pause();
+      } catch (error) {
+        console.warn('[AchievementsRuntime] Failed to pause after unlock:', error);
+      }
 
       const modalPromise = displayAchievementModal(title);
       const sfxPromise = lib.playRandomVictorySfx();

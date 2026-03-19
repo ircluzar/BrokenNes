@@ -1,6 +1,7 @@
 using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using BrokenNes.Models;
 
 namespace BrokenNes.Windows.WebApi
 {
@@ -13,32 +14,58 @@ namespace BrokenNes.Windows.WebApi
             {
                 try
                 {
-                    var savePath = System.IO.Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        "BrokenNes",
-                        "gamesave.json"
-                    );
-
-                    if (!System.IO.File.Exists(savePath))
+                    var save = await _progressionSave.LoadAsync();
+                    return Results.Ok(save);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
                     {
-                        // Return default empty save
-                        return Results.Ok(new
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
+
+            // POST /api/save - Merge and persist game save through the native progression authority.
+            app.MapPost("/api/save", async (HttpContext context) =>
+            {
+                try
+                {
+                    var incoming = await context.Request.ReadFromJsonAsync<GameSave>();
+                    if (incoming == null)
+                    {
+                        return Results.BadRequest(new
                         {
-                            ownedCpuIds = new string[] { "FMC" },
-                            ownedPpuIds = new string[] { "FMC" },
-                            ownedApuIds = new string[] { "FMC" },
-                            ownedClockIds = new string[0],
-                            ownedShaderIds = new string[] { "PX" }
+                            success = false,
+                            error = "Request body is required"
                         });
                     }
 
-                    var json = await System.IO.File.ReadAllTextAsync(savePath);
-                    var options = new System.Text.Json.JsonSerializerOptions 
-                    { 
-                        PropertyNameCaseInsensitive = true 
-                    };
-                    var save = System.Text.Json.JsonSerializer.Deserialize<GameSaveDto>(json, options);
+                    var save = await _progressionSave.MergeAndSaveAsync(
+                        incoming,
+                        _getAvailableBackgrounds?.Invoke(),
+                        _getAvailableNullProviders?.Invoke());
+                    RefreshProgressionUi();
+                    return Results.Ok(save);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
 
+            // POST /api/save/reset - Reset progression to a fresh canonical save and clear trusted continue artifacts.
+            app.MapPost("/api/save/reset", async () =>
+            {
+                try
+                {
+                    var save = await _progressionSave.ResetAsync();
+                    RefreshProgressionUi();
                     return Results.Ok(save);
                 }
                 catch (Exception ex)
@@ -72,36 +99,28 @@ namespace BrokenNes.Windows.WebApi
                     var savePath = System.IO.Path.Combine(appDataRoot, "gamesave.json");
 
                     string? previewPath = null;
-                    if (System.IO.File.Exists(savePath))
+                    var save = await _progressionSave.LoadAsync();
+                    var normalizedRomKey = romKey.Trim().ToLowerInvariant();
+
+                    if (save?.ContinueSlots != null)
                     {
-                        var json = await System.IO.File.ReadAllTextAsync(savePath);
-                        var options = new System.Text.Json.JsonSerializerOptions
+                        if (save.ContinueSlots.TryGetValue(normalizedRomKey, out var slot))
                         {
-                            PropertyNameCaseInsensitive = true
-                        };
-                        var save = System.Text.Json.JsonSerializer.Deserialize<GameSaveDto>(json, options);
-                        var normalizedRomKey = romKey.Trim().ToLowerInvariant();
-
-                        if (save?.ContinueSlots != null)
+                            previewPath = slot?.PreviewImagePath;
+                        }
+                        else
                         {
-                            if (save.ContinueSlots.TryGetValue(normalizedRomKey, out var slot))
+                            foreach (var entry in save.ContinueSlots.Values)
                             {
-                                previewPath = slot?.PreviewImagePath;
-                            }
-                            else
-                            {
-                                foreach (var entry in save.ContinueSlots.Values)
+                                if (entry == null || string.IsNullOrWhiteSpace(entry.RomKey))
                                 {
-                                    if (entry == null || string.IsNullOrWhiteSpace(entry.RomKey))
-                                    {
-                                        continue;
-                                    }
+                                    continue;
+                                }
 
-                                    if (string.Equals(entry.RomKey.Trim(), romKey.Trim(), StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        previewPath = entry.PreviewImagePath;
-                                        break;
-                                    }
+                                if (string.Equals(entry.RomKey.Trim(), romKey.Trim(), StringComparison.OrdinalIgnoreCase))
+                                {
+                                    previewPath = entry.PreviewImagePath;
+                                    break;
                                 }
                             }
                         }

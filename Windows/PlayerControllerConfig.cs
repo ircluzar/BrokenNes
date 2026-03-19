@@ -79,10 +79,10 @@ namespace BrokenNes.Windows
 
         // NES button bindings
         [JsonPropertyName("a")]
-        public ButtonBinding A { get; set; } = ButtonBinding.FromKey("Z");
+        public ButtonBinding A { get; set; } = ButtonBinding.FromKey("X");
 
         [JsonPropertyName("b")]
-        public ButtonBinding B { get; set; } = ButtonBinding.FromKey("X");
+        public ButtonBinding B { get; set; } = ButtonBinding.FromKey("Z");
 
         [JsonPropertyName("select")]
         public ButtonBinding Select { get; set; } = ButtonBinding.FromKey("Space");
@@ -135,8 +135,8 @@ namespace BrokenNes.Windows
                 PlayerNumber = 1,
                 Enabled = true,
                 DeviceType = InputDeviceType.Keyboard,
-                A = ButtonBinding.FromKey("Z"),
-                B = ButtonBinding.FromKey("X"),
+                A = ButtonBinding.FromKey("X"),
+                B = ButtonBinding.FromKey("Z"),
                 Select = ButtonBinding.FromKey("Space"),
                 Start = ButtonBinding.FromKey("Return"),
                 Up = ButtonBinding.FromKey("Up"),

@@ -139,7 +139,7 @@ namespace BrokenNes.Windows
             menuStrip.Items.Add(emulatorMenu);
             
             // Config menu
-            var configMenu = new ToolStripMenuItem("&Config");
+            configMenu = new ToolStripMenuItem("&Config");
             
             // Display submenu
             var displayMenu = new ToolStripMenuItem("&Display");
@@ -260,68 +260,16 @@ namespace BrokenNes.Windows
             configMenu.DropDownItems.Add(controllersMenu);
             
             // Background submenu - automatically populated via reflection
-            var backgroundMenu = new ToolStripMenuItem("&Backgrounds");
-            
-            // Get all available backgrounds via reflection
-            var availableBackgrounds = BrokenNes.Windows.Rendering.NesDirectXRenderer.GetAvailableBackgrounds();
-            foreach (var backgroundName in availableBackgrounds)
-            {
-                if (backgroundName == "---")
-                {
-                    // Add separator
-                    backgroundMenu.DropDownItems.Add(new ToolStripSeparator());
-                }
-                else
-                {
-                    var menuItem = new ToolStripMenuItem(backgroundName, null, (s, e) => SetBackground(backgroundName));
-                    backgroundMenu.DropDownItems.Add(menuItem);
-                }
-            }
+            backgroundMenu = new ToolStripMenuItem("&Backgrounds");
+            RebuildBackgroundMenu();
+            backgroundMenu.DropDownOpening += (s, e) => RebuildBackgroundMenu();
             
             configMenu.DropDownItems.Add(backgroundMenu);
             
             // Null Provider submenu - automatically populated via reflection
-            var nullProviderMenu = new ToolStripMenuItem("&Null Providers (Test ROM)");
-            
-            // Get all available null providers via reflection
-            var availableNullProviders = NesEmulator.NES.GetAvailableNullProviders().ToList();
-            var defaultNullProviders = new[] { "Static", "Void" };
-
-            foreach (var providerName in defaultNullProviders)
-            {
-                if (!availableNullProviders.Any(p => p.Equals(providerName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    continue;
-                }
-
-                var displayText = providerName.Equals("Static", StringComparison.OrdinalIgnoreCase)
-                    ? "Static (Default)"
-                    : "Void (Black)";
-
-                var menuItem = new ToolStripMenuItem(displayText, null, (s, e) => SetNullProvider(providerName))
-                {
-                    Tag = providerName
-                };
-                nullProviderMenu.DropDownItems.Add(menuItem);
-            }
-
-            var otherNullProviders = availableNullProviders
-                .Where(p => !defaultNullProviders.Any(d => d.Equals(p, StringComparison.OrdinalIgnoreCase)))
-                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (otherNullProviders.Count > 0)
-            {
-                nullProviderMenu.DropDownItems.Add(new ToolStripSeparator());
-                foreach (var providerName in otherNullProviders)
-                {
-                    var menuItem = new ToolStripMenuItem(providerName, null, (s, e) => SetNullProvider(providerName))
-                    {
-                        Tag = providerName
-                    };
-                    nullProviderMenu.DropDownItems.Add(menuItem);
-                }
-            }
+            nullProviderMenu = new ToolStripMenuItem("&Null Providers (Test ROM)");
+            RebuildNullProviderMenu();
+            nullProviderMenu.DropDownOpening += (s, e) => RebuildNullProviderMenu();
             
             configMenu.DropDownItems.Add(nullProviderMenu);
             
@@ -361,14 +309,17 @@ namespace BrokenNes.Windows
             var crashBehaviorMenu = new ToolStripMenuItem("C&rash Behavior");
             
             var redScreenItem = new ToolStripMenuItem("Red Screen", null, (s, e) => SetCrashBehavior("RedScreen"));
+            redScreenItem.Tag = "RedScreen";
             crashBehaviorMenu.DropDownItems.Add(redScreenItem);
             
             var ignoreErrorsItem = new ToolStripMenuItem("Ignore Errors", null, (s, e) => SetCrashBehavior("IgnoreErrors"));
+            ignoreErrorsItem.Tag = "IgnoreErrors";
             crashBehaviorMenu.DropDownItems.Add(ignoreErrorsItem);
             
-            var imagineFixItem = new ToolStripMenuItem("Imagine Fix (Not Implemented)", null, (s, e) => { /* Disabled */ });
-            imagineFixItem.Enabled = false;
+            var imagineFixItem = new ToolStripMenuItem("Imagine Fix", null, (s, e) => SetCrashBehavior("ImagineFix"));
+            imagineFixItem.Tag = "ImagineFix";
             crashBehaviorMenu.DropDownItems.Add(imagineFixItem);
+            crashBehaviorMenu.DropDownOpening += (s, e) => UpdateConfigMenus();
             
             emulatorBehaviorsMenu.DropDownItems.Add(crashBehaviorMenu);
             
@@ -402,144 +353,21 @@ namespace BrokenNes.Windows
             menuStrip.Items.Add(configMenu);
 
             // Tools & Activities menu
-            var toolsMenu = new ToolStripMenuItem("&Tools && Activities");
-            
-            // Add webmodules that have ShowInToolsMenu flag
-            var webModules = WebModuleManager.DiscoverModules();
-            var toolWebModules = webModules.Where(m => m.Config.ShowInToolsMenu).ToArray();
-            
-            // Separate activities from tools
-            var activities = toolWebModules
-                .Where(m => m.Config.IsActivity)
-                .OrderBy(m => m.FolderName.Equals("DeckBuilder", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var tools = toolWebModules.Where(m => !m.Config.IsActivity).ToArray();
-            
-            // Add activities first
-            if (activities.Length > 0)
-            {
-                foreach (var module in activities)
-                {
-                    var moduleToLoad = module;
-                    // Check if this module redirects to another module
-                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
-                    {
-                        var targetModule = webModules.FirstOrDefault(m => 
-                            m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
-                        if (targetModule != null)
-                        {
-                            moduleToLoad = targetModule;
-                        }
-                    }
-                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(moduleToLoad));
-                    toolsMenu.DropDownItems.Add(moduleItem);
-                }
-            }
-            
-            // Add separator between activities and tools
-            if (activities.Length > 0 && tools.Length > 0)
-            {
-                toolsMenu.DropDownItems.Add(new ToolStripSeparator());
-            }
-            
-            // Add tools
-            if (tools.Length > 0)
-            {
-                foreach (var module in tools)
-                {
-                    var moduleToLoad = module;
-                    // Check if this module redirects to another module
-                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
-                    {
-                        var targetModule = webModules.FirstOrDefault(m => 
-                            m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
-                        if (targetModule != null)
-                        {
-                            moduleToLoad = targetModule;
-                        }
-                    }
-                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(moduleToLoad));
-                    toolsMenu.DropDownItems.Add(moduleItem);
-                }
-            }
+            toolsMenu = new ToolStripMenuItem("&Tools && Activities");
+            RebuildToolsMenu();
             
             menuStrip.Items.Add(toolsMenu);
             
             // Handle menu opening to dynamically add exit option for current tool/activity
             toolsMenu.DropDownOpening += (s, e) =>
             {
-                // Remove any existing exit items first
-                var itemsToRemove = toolsMenu.DropDownItems.OfType<ToolStripItem>()
-                    .Where(item => item.Tag?.ToString() == "ExitModule")
-                    .ToList();
-                foreach (var item in itemsToRemove)
-                {
-                    toolsMenu.DropDownItems.Remove(item);
-                }
-                
-                // Add exit item if we have a current tool/activity loaded
-                if (currentToolOrActivityModule != null)
-                {
-                    var exitSeparator = new ToolStripSeparator { Tag = "ExitModule" };
-                    toolsMenu.DropDownItems.Add(exitSeparator);
-                    
-                    var exitItem = new ToolStripMenuItem(
-                        $"Exit {currentToolOrActivityModule.Name}",
-                        null,
-                        (sender, args) => SwitchViewMode(ViewMode.Emulator))
-                    {
-                        Font = new Font(toolsMenu.Font, FontStyle.Bold),
-                        Tag = "ExitModule"
-                    };
-                    toolsMenu.DropDownItems.Add(exitItem);
-                }
+                RebuildToolsMenu();
             };
             
             // Webmodules menu for view modes
             webModulesMenu = new ToolStripMenuItem("&Webmodules");
-            
-            var emulatorModeItem = new ToolStripMenuItem("Emulator Mode", null, (s, e) => SwitchViewMode(ViewMode.Emulator));
-            emulatorModeItem.ShortcutKeys = Keys.Control | Keys.D1;
-            webModulesMenu.DropDownItems.Add(emulatorModeItem);
-            
-            var widgetModeItem = new ToolStripMenuItem("Widget Mode", null, (s, e) => SwitchViewMode(ViewMode.Widget));
-            widgetModeItem.ShortcutKeys = Keys.Control | Keys.D2;
-            webModulesMenu.DropDownItems.Add(widgetModeItem);
-            
-            var webModeItem = new ToolStripMenuItem("Web Mode (Test Page)", null, (s, e) => {
-                // Load the webmodules index page
-                string webmodulesIndexUri = $"https://{WebModuleManager.SharedVirtualHostName}/index.html";
-                Helpers.WebViewHelper.NavigateToUri(webView, webmodulesIndexUri);
-                SwitchViewMode(ViewMode.Web);
-            });
-            webModeItem.ShortcutKeys = Keys.Control | Keys.D3;
-            webModulesMenu.DropDownItems.Add(webModeItem);
-            
-            var overlayModeItem = new ToolStripMenuItem("Overlay Mode", null, (s, e) => SwitchViewMode(ViewMode.Overlay));
-            overlayModeItem.ShortcutKeys = Keys.Control | Keys.D4;
-            webModulesMenu.DropDownItems.Add(overlayModeItem);
-            
-            // Add separator before webmodules
-            webModulesMenu.DropDownItems.Add(new ToolStripSeparator());
-            
-            // Add all web modules (webModules already discovered above for Tools menu)
-            if (webModules.Length > 0)
-            {
-                foreach (var module in webModules)
-                {
-                    var moduleItem = new ToolStripMenuItem(module.Name, null, (s, e) => LoadWebModule(module));
-                    webModulesMenu.DropDownItems.Add(moduleItem);
-                }
-            }
-            else
-            {
-                var noModulesItem = new ToolStripMenuItem("(No modules available)")
-                {
-                    Enabled = false
-                };
-                webModulesMenu.DropDownItems.Add(noModulesItem);
-            }
+            RebuildWebModulesMenu();
+            webModulesMenu.DropDownOpening += (s, e) => RebuildWebModulesMenu();
             
             menuStrip.Items.Add(webModulesMenu);
             
@@ -652,6 +480,8 @@ namespace BrokenNes.Windows
             // Initialize DirectX renderer if available
             if (useDirectX && dxRenderer != null)
             {
+                EnsureUnlockedProgressionSelections();
+
                 // Apply VSync setting from config
                 dxRenderer.EnableVSync = config.EnableVSync;
                 
@@ -730,7 +560,7 @@ namespace BrokenNes.Windows
             Console.WriteLine("[LoadHomeWhenReady] Waiting for WebView2 to initialize...");
             for (int i = 0; i < 50; i++) // 50 * 100ms = 5 seconds max
             {
-                if (isWebViewInitialized) break;
+                if (isWebViewInitialized || isWebViewInitializationFailed) break;
                 await Task.Delay(100);
             }
             
@@ -738,6 +568,10 @@ namespace BrokenNes.Windows
             {
                 Console.WriteLine("[LoadHomeWhenReady] WebView2 ready, loading Home...");
                 LoadHomeWebModule();
+            }
+            else if (isWebViewInitializationFailed)
+            {
+                Console.WriteLine("[LoadHomeWhenReady] WebView2 initialization failed; skipping Home auto-load.");
             }
             else
             {
@@ -821,12 +655,7 @@ namespace BrokenNes.Windows
             if (nes == null) return;
             imagineEngine = new ImagineEngine(nes, corruptor);
             corruptor.EmulatorHooks = imagineEngine;
-            nes.ImagineShot = pc =>
-            {
-                try { imagineEngine.ImagineFromPc(pc, Math.Clamp(corruptor.CorruptIntensity, 1, 32)); }
-                catch (Exception ex) { Console.WriteLine($"ImagineShot error: {ex.Message}"); }
-            };
-            nes.SetStubbornFixEnabled(corruptor.StubbornMode);
+            ApplyCrashBehavior();
         }
 
         private async Task EnsureWebApiServerRunningAsync()
@@ -873,7 +702,8 @@ namespace BrokenNes.Windows
                         LoadContinueStateFromApi,  // Restore persistent continue checkpoint
                         () => nes?.RomPath,  // Current ROM path
                         () => nes?.RomName,  // Current ROM name
-                        LoadRomFromApi  // Load ROM by path
+                        LoadRomFromApi,  // Load ROM by path
+                        RefreshProgressionUi  // Refresh progression-gated WinForms menus/state
                     );
                 }
 
@@ -898,16 +728,26 @@ namespace BrokenNes.Windows
         {
             try
             {
-                isWebViewInitialized = await Helpers.WebViewHelper.InitializeWebViewAsync(webView);
+                isWebViewInitializationFailed = false;
+                isWebViewInitialized = await Helpers.WebViewHelper.InitializeWebViewAsync(webView, showErrorDialog: false);
+                isWebViewInitializationFailed = !isWebViewInitialized;
                 if (isWebViewInitialized)
                 {
                     Console.WriteLine("[MainForm] WebView2 is now ready for use");
+                }
+                else
+                {
+                    MessageBox.Show("Failed to initialize WebView2. Web modules will remain unavailable for this session.",
+                        "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[MainForm] WebView2 initialization failed: {ex.Message}");
                 isWebViewInitialized = false;
+                isWebViewInitializationFailed = true;
+                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}",
+                    "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
     }

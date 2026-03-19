@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Net.Http.Json;
 using Microsoft.JSInterop;
 using BrokenNes.Models;
 using NesEmulator;
@@ -9,13 +10,23 @@ namespace BrokenNes.Services;
 public class GameSaveService
 {
     private const string StorageKey = "game_save_v1";
+    private const string LegacyStorageKey = "brokenNesGameSave";
     private readonly IJSRuntime _js;
     private readonly IShaderProvider _shaderProvider;
+    private readonly HttpClient _http;
+    private static readonly string[] DefaultUnlockedWebmodules = new[]
+    {
+        "Home", "Continue", "DeckBuilder", "Cores", "Options", "Story", "RomManager", "HexEditor"
+    };
+    private static readonly string[] DefaultUnlockedBackgrounds = new[] { "Gradient (Default)", "None (Black)" };
+    private static readonly string[] DefaultUnlockedNullProviders = new[] { "Static", "Void" };
+    private static readonly string[] ProgressionMilestoneWebmodules = new[] { "GlitchHarvester", "TimeJump", "CorruptionSlop", "ImagineBug" };
 
-    public GameSaveService(IJSRuntime js, IShaderProvider shaderProvider)
+    public GameSaveService(IJSRuntime js, IShaderProvider shaderProvider, HttpClient http)
     {
         _js = js;
         _shaderProvider = shaderProvider;
+        _http = http;
     }
 
     public async Task<GameSave> LoadAsync()
@@ -45,6 +56,13 @@ public class GameSaveService
                     loaded.PreferredPpuId ??= "FMC";
                     loaded.PreferredApuId ??= "FMC";
                     loaded.PreferredShaderId ??= "PX";
+                    loaded.UnlockedWebmodules = NormalizeStringList(loaded.UnlockedWebmodules, DefaultUnlockedWebmodules);
+                    loaded.UnlockedBackgrounds = NormalizeStringList(loaded.UnlockedBackgrounds, DefaultUnlockedBackgrounds, NormalizeBackgroundId);
+                    loaded.UnlockedNullProviders = NormalizeStringList(loaded.UnlockedNullProviders, DefaultUnlockedNullProviders);
+                    loaded.PreferredBackgroundId = NormalizePreferredValue(loaded.PreferredBackgroundId, loaded.UnlockedBackgrounds, "Gradient (Default)", NormalizeBackgroundId);
+                    loaded.PreferredNullProviderId = NormalizePreferredValue(loaded.PreferredNullProviderId, loaded.UnlockedNullProviders, "Static");
+                    loaded.PendingUnlocks ??= new();
+                    NormalizePendingUnlocks(loaded.PendingUnlocks);
                     // Ensure unlock flags are present (backward compatibility defaults)
                     // Keep them off by default to respect progression; options can unlock.
                     // Note: when adding more flags in future, guard similarly.
@@ -84,6 +102,13 @@ public class GameSaveService
         save.OwnedClockIds ??= new();
         save.OwnedShaderIds ??= new();
     save.MasqueradeRomToGameId ??= new();
+    save.UnlockedWebmodules = NormalizeStringList(save.UnlockedWebmodules, DefaultUnlockedWebmodules);
+    save.UnlockedBackgrounds = NormalizeStringList(save.UnlockedBackgrounds, DefaultUnlockedBackgrounds, NormalizeBackgroundId);
+    save.UnlockedNullProviders = NormalizeStringList(save.UnlockedNullProviders, DefaultUnlockedNullProviders);
+    save.PreferredBackgroundId = NormalizePreferredValue(save.PreferredBackgroundId, save.UnlockedBackgrounds, "Gradient (Default)", NormalizeBackgroundId);
+    save.PreferredNullProviderId = NormalizePreferredValue(save.PreferredNullProviderId, save.UnlockedNullProviders, "Static");
+    save.PendingUnlocks ??= new();
+    NormalizePendingUnlocks(save.PendingUnlocks);
     // Trusted continue fields are optional; keep as-is
     // Unlock flags already default to false if missing
     // One-time flags are persisted as-is
@@ -119,13 +144,120 @@ public class GameSaveService
             PreferredCpuId = "FMC",
             PreferredPpuId = "FMC",
             PreferredApuId = "FMC",
-            PreferredShaderId = "PX"
+            PreferredShaderId = "PX",
+            UnlockedWebmodules = DefaultUnlockedWebmodules.ToList(),
+            UnlockedBackgrounds = DefaultUnlockedBackgrounds.ToList(),
+            UnlockedNullProviders = DefaultUnlockedNullProviders.ToList(),
+            PreferredBackgroundId = "Gradient (Default)",
+            PreferredNullProviderId = "Static",
+            PendingUnlocks = new()
         };
         return gs;
     }
 
+    private static List<string> NormalizeStringList(IEnumerable<string>? values, IEnumerable<string>? defaults, Func<string, string>? normalizer = null)
+    {
+        var result = new List<string>();
+
+        void AddRange(IEnumerable<string>? source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            foreach (var value in source)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                var normalizedValue = normalizer != null ? normalizer(value) : value.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedValue))
+                {
+                    continue;
+                }
+
+                if (!result.Any(existing => existing.Equals(normalizedValue, StringComparison.OrdinalIgnoreCase)))
+                {
+                    result.Add(normalizedValue);
+                }
+            }
+        }
+
+        AddRange(defaults);
+        AddRange(values);
+        return result;
+    }
+
+    private static string NormalizePreferredValue(string? preferredValue, IReadOnlyCollection<string> unlockedValues, string fallback, Func<string, string>? normalizer = null)
+    {
+        var normalizedPreferredValue = string.IsNullOrWhiteSpace(preferredValue)
+            ? null
+            : normalizer != null ? normalizer(preferredValue) : preferredValue.Trim();
+        var normalizedFallback = normalizer != null ? normalizer(fallback) : fallback;
+
+        if (!string.IsNullOrWhiteSpace(normalizedPreferredValue) && unlockedValues.Any(value => value.Equals(normalizedPreferredValue, StringComparison.OrdinalIgnoreCase)))
+        {
+            return unlockedValues.First(value => value.Equals(normalizedPreferredValue, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (unlockedValues.Any(value => value.Equals(normalizedFallback, StringComparison.OrdinalIgnoreCase)))
+        {
+            return unlockedValues.First(value => value.Equals(normalizedFallback, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return unlockedValues.FirstOrDefault() ?? normalizedFallback;
+    }
+
+    private static string NormalizeBackgroundId(string value)
+    {
+        var trimmed = value?.Trim() ?? string.Empty;
+        if (trimmed.Equals("Gradient", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("Gradient (Default)", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("StaticGradient", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gradient (Default)";
+        }
+
+        if (trimmed.Equals("Black", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("None", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("None (Black)", StringComparison.OrdinalIgnoreCase))
+        {
+            return "None (Black)";
+        }
+
+        return trimmed;
+    }
+
+    private static void NormalizePendingUnlocks(List<PendingUnlockBundle> pendingUnlocks)
+    {
+        foreach (var bundle in pendingUnlocks)
+        {
+            bundle.Id = string.IsNullOrWhiteSpace(bundle.Id) ? Guid.NewGuid().ToString("N") : bundle.Id;
+            bundle.Source ??= string.Empty;
+            bundle.Items ??= new();
+
+            foreach (var item in bundle.Items)
+            {
+                item.Id = item.Id?.Trim() ?? string.Empty;
+                item.Type = item.Type?.Trim() ?? string.Empty;
+            }
+        }
+    }
+
     public async Task ClearDeckBuilderSaveAsync()
     {
+        try
+        {
+            await _http.PostAsync("/api/save/reset", content: null);
+        }
+        catch { }
+
+        try { await _js.InvokeVoidAsync("nesInterop.idbRemoveItem", StorageKey); } catch { }
+        try { await _js.InvokeVoidAsync("eval", $"try{{localStorage.removeItem('{StorageKey}');localStorage.removeItem('{LegacyStorageKey}');}}catch{{}}"); } catch { }
+
         // Reset achievements and owned cores to default set (FMC + PX)
         var save = CreateDefaultSave();
         await SaveAsync(save);
@@ -163,6 +295,7 @@ public class GameSaveService
     {
         var save = await LoadAsync();
         save.SavestatesUnlocked = true;
+        AddUnlockedWebmodule(save, "TimeJump");
         await SaveAsync(save);
     }
 
@@ -170,6 +303,7 @@ public class GameSaveService
     {
         var save = await LoadAsync();
         save.RtcUnlocked = true;
+        AddUnlockedWebmodule(save, "GlitchHarvester");
         await SaveAsync(save);
     }
 
@@ -177,6 +311,7 @@ public class GameSaveService
     {
         var save = await LoadAsync();
         save.GhUnlocked = true;
+        AddUnlockedWebmodule(save, "GlitchHarvester");
         await SaveAsync(save);
     }
 
@@ -184,16 +319,21 @@ public class GameSaveService
     {
         var save = await LoadAsync();
         save.ImagineUnlocked = true;
+        AddUnlockedWebmodule(save, "ImagineBug");
         await SaveAsync(save);
     }
 
     public async Task UnlockAllFeaturesAsync()
     {
         var save = await LoadAsync();
-    save.SavestatesUnlocked = true;
+        save.SavestatesUnlocked = true;
         save.RtcUnlocked = true;
         save.GhUnlocked = true;
         save.ImagineUnlocked = true;
+        foreach (var moduleId in ProgressionMilestoneWebmodules)
+        {
+            AddUnlockedWebmodule(save, moduleId);
+        }
         await SaveAsync(save);
     }
 
@@ -202,6 +342,15 @@ public class GameSaveService
         var save = await LoadAsync();
         save.DebugUnlocked = true;
         await SaveAsync(save);
+    }
+
+    private static void AddUnlockedWebmodule(GameSave save, string moduleId)
+    {
+        save.UnlockedWebmodules ??= new();
+        if (!save.UnlockedWebmodules.Any(existing => existing.Equals(moduleId, StringComparison.OrdinalIgnoreCase)))
+        {
+            save.UnlockedWebmodules.Add(moduleId);
+        }
     }
 
     // Trusted DeckBuilder Continue helpers

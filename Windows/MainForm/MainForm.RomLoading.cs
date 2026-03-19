@@ -103,6 +103,7 @@ namespace BrokenNes.Windows
 
             ApplySavedCoreSelections();
             ApplyCrashBehavior();
+            EnsureUnlockedProgressionSelections();
             nes.SetNullProvider(config.SelectedNullProvider);
             ApplyImageSettings();
             BuildMemoryDomains();
@@ -385,11 +386,13 @@ namespace BrokenNes.Windows
                     
                     // Apply saved core selections
                     ApplySavedCoreSelections();
+                    EnsureUnlockedProgressionCapabilities();
                     
                     // Apply crash behavior
                     ApplyCrashBehavior();
                     
                     // Apply saved null provider
+                    EnsureUnlockedProgressionSelections();
                     nes.SetNullProvider(config.SelectedNullProvider);
 
                     // Apply image settings (will force Pixel Perfect for Test ROM)
@@ -536,6 +539,7 @@ namespace BrokenNes.Windows
                         
                         // Apply core selections
                         ApplySavedCoreSelections();
+                        EnsureUnlockedProgressionCapabilities();
                         
                         // Apply crash behavior
                         ApplyCrashBehavior();

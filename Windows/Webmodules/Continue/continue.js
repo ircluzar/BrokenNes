@@ -96,6 +96,10 @@
     featureUnlocks: [],
     showCongrats: false,
     showAllCores: false,
+    pendingRewardIds: [],
+    title: 'New Cards Unlocked',
+    kicker: 'Level Intermission',
+    copy: '',
     autoCloseTimer: 0
   };
 
@@ -125,6 +129,10 @@
       restoreSelectedGame();
 
       await consumeWorkflowReturn();
+
+      if (document.getElementById('unlockModal')?.style.display !== 'flex') {
+        await presentPendingUnlocks();
+      }
 
       // Update UI
       updateUI();
@@ -394,8 +402,16 @@
     await sleep(1300);
     hideArrivalOverlay();
     arrivalInProgress = false;
-    if (levelAdvanceResult?.advanced) {
-      await presentLevelRewards(levelAdvanceResult.rewards);
+    const pendingBundles = await claimPendingUnlockBundles();
+    if (levelAdvanceResult?.advanced || pendingBundles.length > 0) {
+      await presentLevelRewards(levelAdvanceResult?.rewards, {
+        pendingBundles,
+        kicker: 'Achievement Return',
+        title: levelAdvanceResult?.advanced ? 'Run Rewards Ready' : 'Achievement Rewards Ready',
+        copy: levelAdvanceResult?.advanced
+          ? 'Level rewards and queued unlocks are ready. Inspect the cards, equip what you want now, then continue the run.'
+          : 'Queued rewards are ready. Inspect the cards, equip what you want now, then continue the run.'
+      });
     }
     updateUI();
   }
@@ -1544,14 +1560,16 @@
     if (unlockModal) {
       unlockModal.addEventListener('click', (event) => {
         if (event.target === unlockModal) {
-          closeUnlockModal();
+          void closeUnlockModal();
         }
       });
     }
 
     const unlockReturnBtn = document.getElementById('unlockReturnBtn');
     if (unlockReturnBtn) {
-      unlockReturnBtn.addEventListener('click', closeUnlockModal);
+      unlockReturnBtn.addEventListener('click', () => {
+        void closeUnlockModal();
+      });
     }
 
     const unlockEquipAllBtn = document.getElementById('unlockEquipAllBtn');
@@ -1574,7 +1592,7 @@
 
         const unlockOpen = document.getElementById('unlockModal')?.style.display === 'flex';
         if (unlockOpen) {
-          closeUnlockModal();
+            void closeUnlockModal();
           return;
         }
 
@@ -1626,15 +1644,26 @@
 
     const previewToken = String(++currentPreviewToken);
     stage.dataset.previewToken = previewToken;
+
+    if (options.previewMarkup) {
+      renderCardPreview(stage, domain, core, '', options);
+      return;
+    }
+
     const svgMarkup = await getCoreSvgMarkup(domain, core);
     if (stage.dataset.previewToken !== previewToken) {
       return;
     }
 
-    renderCardPreview(stage, domain, core, svgMarkup);
+    renderCardPreview(stage, domain, core, svgMarkup, options);
   }
 
-  function renderCardPreview(stageEl, domain, core, svgMarkup) {
+  function renderCardPreview(stageEl, domain, core, svgMarkup, options = {}) {
+    if (options.previewMarkup) {
+      stageEl.innerHTML = `<div class="card-preview-wrap card-wrap-generic">${options.previewMarkup}</div>`;
+      return;
+    }
+
     const body = svgMarkup
       ? svgMarkup
       : `<div class="slot-label">${escapeHtml(domain)}_${escapeHtml(core)}</div>`;
@@ -1662,13 +1691,25 @@
     }
   }
 
-  function closeUnlockModal() {
+  async function closeUnlockModal() {
     const modal = document.getElementById('unlockModal');
     const grid = document.getElementById('unlockGrid');
     const notices = document.getElementById('unlockNotices');
     const empty = document.getElementById('unlockEmpty');
     if (!modal || !grid || !notices || !empty) {
       return;
+    }
+
+    const pendingRewardIds = Array.isArray(rewardModalState.pendingRewardIds)
+      ? rewardModalState.pendingRewardIds.slice()
+      : [];
+
+    if (pendingRewardIds.length > 0) {
+      try {
+        await acknowledgePendingUnlockBundles(pendingRewardIds);
+      } catch (error) {
+        console.warn('[Continue] Failed to acknowledge pending rewards:', error);
+      }
     }
 
     clearRewardAutoCloseTimer();
@@ -1682,8 +1723,112 @@
       featureUnlocks: [],
       showCongrats: false,
       showAllCores: false,
+      pendingRewardIds: [],
+      title: 'New Cards Unlocked',
+      kicker: 'Level Intermission',
+      copy: '',
       autoCloseTimer: 0
     };
+  }
+
+  function getRewardDomainLabel(domain) {
+    switch (String(domain || '').toUpperCase()) {
+      case 'WEBMODULE':
+        return 'Module';
+      case 'BACKGROUND':
+        return 'Background';
+      case 'NULLPROVIDER':
+        return 'Null Provider';
+      case 'FEATURE':
+        return 'Feature';
+      default:
+        return String(domain || '').toUpperCase();
+    }
+  }
+
+  function buildGenericRewardFallback(item) {
+    return `
+      <div class="unlock-card-visual unlock-card-fallback">
+        <div class="unlock-card-fallback-domain">${escapeHtml(getRewardDomainLabel(item.domain))}</div>
+        <div class="unlock-card-fallback-title">${escapeHtml(item.name || item.id)}</div>
+      </div>
+    `;
+  }
+
+  function buildRewardPreviewMarkup(item) {
+    return `
+      <div class="card-preview-generic">
+        <div class="card-preview-generic-domain">${escapeHtml(getRewardDomainLabel(item.domain))}</div>
+        <div class="card-preview-generic-title">${escapeHtml(item.name || item.id)}</div>
+        ${item.subtitle ? `<div class="card-preview-generic-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+        ${item.description ? `<div class="card-preview-generic-description">${escapeHtml(item.description)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function normalizePendingRewardItem(bundleId, item) {
+    const itemType = String(item?.type || '').trim();
+    const normalizedDomain = itemType.toUpperCase();
+    const canEquip = Boolean(item?.canEquip)
+      && (item?.equipAction === 'equip-background' || item?.equipAction === 'equip-null-provider');
+    const name = String(item?.title || item?.id || '').trim();
+
+    return {
+      bundleId,
+      domain: normalizedDomain,
+      id: String(item?.id || '').trim(),
+      name,
+      subtitle: typeof item?.subtitle === 'string' ? item.subtitle : '',
+      description: typeof item?.description === 'string' ? item.description : '',
+      svgMarkup: '',
+      equipable: canEquip,
+      equipped: Boolean(item?.isEquipped),
+      equipAction: typeof item?.equipAction === 'string' ? item.equipAction : '',
+      previewMarkup: buildRewardPreviewMarkup({
+        domain: normalizedDomain,
+        id: item?.id,
+        name,
+        subtitle: typeof item?.subtitle === 'string' ? item.subtitle : '',
+        description: typeof item?.description === 'string' ? item.description : ''
+      })
+    };
+  }
+
+  async function claimPendingUnlockBundles() {
+    if (!window.webapi?.progression?.claimPending) {
+      return [];
+    }
+
+    try {
+      const result = await window.webapi.progression.claimPending();
+      return Array.isArray(result?.pendingUnlocks) ? result.pendingUnlocks : [];
+    } catch (error) {
+      console.warn('[Continue] Failed to claim pending unlocks:', error);
+      return [];
+    }
+  }
+
+  async function acknowledgePendingUnlockBundles(rewardIds) {
+    if (!window.webapi?.progression?.acknowledge || !Array.isArray(rewardIds) || rewardIds.length === 0) {
+      return false;
+    }
+
+    const result = await window.webapi.progression.acknowledge(rewardIds);
+    return Boolean(result?.success);
+  }
+
+  async function presentPendingUnlocks() {
+    const pendingBundles = await claimPendingUnlockBundles();
+    if (pendingBundles.length === 0) {
+      return false;
+    }
+
+    return presentLevelRewards(null, {
+      pendingBundles,
+      kicker: 'Unlock Inbox',
+      title: 'Queued Rewards Ready',
+      copy: 'Queued rewards are waiting in your deck. Inspect the cards, equip what you want now, then return to the build.'
+    });
   }
 
   function getOwnedCoreIdsByDomain(save, domain) {
@@ -1855,34 +2000,21 @@
 
     switch (previousLevel) {
       case 4:
-        if (!save.SavestatesUnlocked) {
-          save.SavestatesUnlocked = true;
-          unlocked.push('Savestates unlocked');
-        }
+        unlocked.push('RTC + Glitch Harvester added to your module roster.');
         break;
       case 8:
-        if (!save.RtcUnlocked) {
-          save.RtcUnlocked = true;
-          unlocked.push('Real-Time Corruptor unlocked');
-        }
+        unlocked.push('Time Jump added to your module roster.');
         break;
       case 12:
-        if (!save.GhUnlocked) {
-          save.GhUnlocked = true;
-          unlocked.push('Glitch Harvester unlocked');
-        }
+        unlocked.push('Corruption Slop added to your module roster.');
         break;
       case 16:
-        if (!save.ImagineUnlocked) {
-          save.ImagineUnlocked = true;
-          unlocked.push('Imagine unlocked');
-        }
+        unlocked.push('ImagineBug added to your module roster.');
         break;
       default:
         break;
     }
 
-    syncGameSaveCompatFields(save);
     return unlocked;
   }
 
@@ -1978,7 +2110,7 @@
 
     clearRewardAutoCloseTimer();
     rewardModalState.autoCloseTimer = setTimeout(() => {
-      closeUnlockModal();
+      void closeUnlockModal();
     }, 260);
   }
 
@@ -1988,16 +2120,20 @@
     const notices = document.getElementById('unlockNotices');
     const empty = document.getElementById('unlockEmpty');
     const copy = document.getElementById('unlockCopy');
+    const kicker = document.getElementById('unlockKicker');
+    const title = document.getElementById('unlockTitle');
     const equipAllBtn = document.getElementById('unlockEquipAllBtn');
-    if (!modal || !grid || !notices || !empty || !copy || !equipAllBtn) {
+    if (!modal || !grid || !notices || !empty || !copy || !equipAllBtn || !kicker || !title) {
       return;
     }
 
     const rewardCount = rewardModalState.items.length;
     const equipableCount = rewardModalState.items.filter(item => item.equipable).length;
-    copy.textContent = rewardCount > 0
+    kicker.textContent = rewardModalState.kicker || 'Level Intermission';
+    title.textContent = rewardModalState.title || 'New Cards Unlocked';
+    copy.textContent = rewardModalState.copy || (rewardCount > 0
       ? 'Click a card to inspect it, equip what you want now, or route everything into the build at once.'
-      : 'Deck systems updated. Confirm the reward state and head back into the run.';
+      : 'Deck systems updated. Confirm the reward state and head back into the run.');
     equipAllBtn.textContent = equipableCount > 0 ? 'Equip All' : 'Acknowledge';
 
     const noticeLines = getRewardNoticeLines(rewardModalState);
@@ -2015,16 +2151,18 @@
           const buttonDisabled = item.equipable ? '' : 'disabled';
           const cardBody = item.svgMarkup
             ? `<div class="unlock-card-visual">${item.svgMarkup}</div>`
-            : `<div class="unlock-card-visual unlock-card-fallback">${escapeHtml(`${item.domain}_${item.id}`)}</div>`;
+            : buildGenericRewardFallback(item);
 
           return `
             <article class="unlock-card${item.equipped ? ' equipped' : ''}${item.equipable ? '' : ' passive'}" style="--unlock-delay:${index * 85}ms" data-unlock-index="${index}">
               <div class="unlock-card-shell">
                 <div class="unlock-card-label">
                   <span class="unlock-card-id">${escapeHtml(item.name)}</span>
-                  <span class="unlock-card-domain">${escapeHtml(item.domain)}</span>
+                  <span class="unlock-card-domain">${escapeHtml(getRewardDomainLabel(item.domain))}</span>
                 </div>
                 <div class="unlock-card-stage">${cardBody}</div>
+                ${item.subtitle ? `<div class="unlock-card-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+                ${item.description ? `<div class="unlock-card-description">${escapeHtml(item.description)}</div>` : ''}
                 <div class="unlock-card-actions">
                   <button type="button" class="unlock-card-equip" data-unlock-equip="${index}" ${buttonDisabled}>${escapeHtml(buttonLabel)}</button>
                 </div>
@@ -2045,7 +2183,8 @@
 
         openCardPreview(item.domain, item.id, {
           title: item.name,
-          subtitle: `Unlocked ${item.domain} card`
+          subtitle: item.subtitle || `Unlocked ${getRewardDomainLabel(item.domain)} reward`,
+          previewMarkup: item.previewMarkup || ''
         });
       });
     });
@@ -2064,11 +2203,13 @@
     modal.style.display = 'flex';
   }
 
-  async function presentLevelRewards(rewards) {
+  async function presentLevelRewards(rewards, options = {}) {
+    const pendingBundles = Array.isArray(options.pendingBundles) ? options.pendingBundles : [];
     const shouldOpen = (rewards?.newlyUnlocked?.length || 0) > 0
       || (rewards?.featureUnlocks?.length || 0) > 0
       || rewards?.showCongrats
-      || rewards?.showAllCores;
+      || rewards?.showAllCores
+      || pendingBundles.length > 0;
     if (!shouldOpen) {
       return false;
     }
@@ -2089,11 +2230,26 @@
       };
     }));
 
+    const pendingItems = pendingBundles.flatMap(bundle => {
+      const bundleId = String(bundle?.id || '').trim();
+      return (Array.isArray(bundle?.items) ? bundle.items : [])
+        .map(item => normalizePendingRewardItem(bundleId, item))
+        .filter(item => item.id && item.name);
+    });
+
+    const pendingRewardIds = pendingBundles
+      .map(bundle => String(bundle?.id || '').trim())
+      .filter(Boolean);
+
     rewardModalState = {
-      items,
+      items: [...items, ...pendingItems],
       featureUnlocks: Array.isArray(rewards?.featureUnlocks) ? rewards.featureUnlocks.slice() : [],
       showCongrats: Boolean(rewards?.showCongrats),
       showAllCores: Boolean(rewards?.showAllCores),
+      pendingRewardIds,
+      title: options.title || (pendingItems.length > 0 ? 'New Rewards Ready' : 'New Cards Unlocked'),
+      kicker: options.kicker || (pendingItems.length > 0 ? 'Unlock Inbox' : 'Level Intermission'),
+      copy: options.copy || '',
       autoCloseTimer: 0
     };
 
@@ -2107,39 +2263,74 @@
     const updatedItems = rewardModalState.items.slice();
     let changed = false;
 
-    targetIndices.forEach(index => {
+    for (const index of targetIndices) {
       const item = updatedItems[index];
       if (!item || !item.equipable) {
-        return;
+        continue;
       }
+
+      updatedItems.forEach((entry, entryIndex) => {
+        if (entryIndex === index) {
+          return;
+        }
+
+        const sameCoreDomain = ['CPU', 'PPU', 'APU', 'SHADER'].includes(item.domain)
+          && entry.domain === item.domain;
+        const sameEquipAction = item.equipAction && entry.equipAction === item.equipAction;
+        if (sameCoreDomain || sameEquipAction) {
+          entry.equipped = false;
+        }
+      });
 
       changed = true;
       item.equipped = true;
-      setSelectedCoreForDomain(item.domain, item.id);
-      const preferredKey = PREFERRED_KEY_BY_DOMAIN[item.domain];
-      const preferenceName = PREFERENCE_NAME_BY_DOMAIN[item.domain];
-      if (!gameSave.Preferences || typeof gameSave.Preferences !== 'object') {
-        gameSave.Preferences = {};
-      }
-      if (preferredKey) {
-        gameSave[preferredKey] = item.id;
-      }
-      if (preferenceName) {
-        gameSave.Preferences[preferenceName] = item.id;
-        if (item.domain === 'SHADER') {
-          gameSave.Preferences.SHADER = item.id;
+      if (['CPU', 'PPU', 'APU', 'SHADER'].includes(item.domain)) {
+        setSelectedCoreForDomain(item.domain, item.id);
+        const preferredKey = PREFERRED_KEY_BY_DOMAIN[item.domain];
+        const preferenceName = PREFERENCE_NAME_BY_DOMAIN[item.domain];
+        if (!gameSave.Preferences || typeof gameSave.Preferences !== 'object') {
+          gameSave.Preferences = {};
         }
+        if (preferredKey) {
+          gameSave[preferredKey] = item.id;
+        }
+        if (preferenceName) {
+          gameSave.Preferences[preferenceName] = item.id;
+          if (item.domain === 'SHADER') {
+            gameSave.Preferences.SHADER = item.id;
+          }
+        }
+        continue;
       }
-    });
+
+      if (item.equipAction === 'equip-background') {
+        const result = await window.webapi?.progression?.equipBackground?.(item.id);
+        if (result?.success === false) {
+          throw new Error(result.error || 'Failed to equip background');
+        }
+        gameSave.PreferredBackgroundId = item.id;
+        continue;
+      }
+
+      if (item.equipAction === 'equip-null-provider') {
+        const result = await window.webapi?.progression?.equipNullProvider?.(item.id);
+        if (result?.success === false) {
+          throw new Error(result.error || 'Failed to equip null provider');
+        }
+        gameSave.PreferredNullProviderId = item.id;
+      }
+    }
 
     if (!changed) {
-      closeUnlockModal();
+      await closeUnlockModal();
       return false;
     }
 
     rewardModalState.items = updatedItems;
     syncGameSaveCompatFields(gameSave);
-    await saveGameSave();
+    if (updatedItems.some(item => ['CPU', 'PPU', 'APU', 'SHADER'].includes(item.domain) && item.equipped)) {
+      await saveGameSave();
+    }
     updateUI();
     renderRewardModal();
     scheduleRewardAutoCloseIfComplete();
@@ -2172,7 +2363,7 @@
       await persistRewardSelections(indices);
     }
 
-    closeUnlockModal();
+    await closeUnlockModal();
   }
 
   function openCorePicker(slotName) {
@@ -2317,13 +2508,22 @@
     levelCleared = false;
 
     await saveGameSave();
+    await loadGameSave();
 
     await loadLevel();
     applySavedSelections(gameSave);
     updateUI();
 
     if (!options.deferPresentation) {
-      await presentLevelRewards(rewards);
+      const pendingBundles = await claimPendingUnlockBundles();
+      await presentLevelRewards(rewards, {
+        pendingBundles,
+        kicker: 'Level Intermission',
+        title: pendingBundles.length > 0 ? 'Level Rewards Ready' : 'New Cards Unlocked',
+        copy: pendingBundles.length > 0
+          ? 'Level rewards and queued unlocks are ready. Inspect the cards, equip what you want now, then return to the build.'
+          : ''
+      });
     }
 
     return { advanced: true, rewards };

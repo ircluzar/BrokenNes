@@ -1080,6 +1080,44 @@
   text-rendering: geometricPrecision;
 }
 
+.card-preview-wrap.card-wrap-generic {
+  line-height: 1.6;
+}
+
+.card-preview-generic {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  background:
+    linear-gradient(180deg, rgba(255, 90, 38, 0.14), rgba(0, 0, 0, 0.86) 30%, rgba(0, 0, 0, 0.96)),
+    #050505;
+  color: #fff;
+}
+
+.card-preview-generic-domain {
+  color: #ffd37b;
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.card-preview-generic-title {
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.card-preview-generic-subtitle,
+.card-preview-generic-description {
+  color: #dbe4ef;
+  font-size: 0.56rem;
+}
+
+.card-preview-generic-description {
+  line-height: 1.8;
+}
+
 .unlock-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1234,6 +1272,8 @@
 
 .unlock-card-fallback {
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   align-items: center;
   justify-content: center;
   min-height: 250px;
@@ -1243,6 +1283,32 @@
   font-size: 0.75rem;
   text-align: center;
   padding: 0.9rem;
+}
+
+.unlock-card-fallback-domain {
+  color: #ffd37b;
+  font-size: 0.48rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.unlock-card-fallback-title {
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.unlock-card-subtitle {
+  margin-top: 0.55rem;
+  color: #ffd3c4;
+  font-size: 0.5rem;
+  line-height: 1.55;
+}
+
+.unlock-card-description {
+  margin-top: 0.4rem;
+  color: #dbe4ef;
+  font-size: 0.54rem;
+  line-height: 1.65;
 }
 
 .unlock-card-actions {

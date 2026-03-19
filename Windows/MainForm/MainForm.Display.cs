@@ -99,17 +99,30 @@ namespace BrokenNes.Windows
         
         private void SetBackground(string backgroundName)
         {
-            Helpers.ConfigHelper.Update(config, c => c.SelectedBackground = backgroundName);
+            var normalizedBackground = NormalizeBackgroundId(backgroundName);
+            if (!IsBackgroundUnlocked(normalizedBackground))
+            {
+                Console.WriteLine($"[Progression] Background locked: {normalizedBackground}");
+                var fallbackBackground = ResolveUnlockedBackgroundSelection(config.SelectedBackground);
+                if (!string.Equals(config.SelectedBackground, fallbackBackground, StringComparison.OrdinalIgnoreCase))
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.SelectedBackground = fallbackBackground);
+                }
+                UpdateConfigMenus();
+                return;
+            }
+
+            Helpers.ConfigHelper.Update(config, c => c.SelectedBackground = normalizedBackground);
             
             // Apply to DirectX renderer if available
             if (useDirectX && dxRenderer != null)
             {
-                dxRenderer.SetBackground(backgroundName);
+                dxRenderer.SetBackground(normalizedBackground);
             }
             
             UpdateConfigMenus();
             
-            Console.WriteLine($"Background set to: {backgroundName}");
+            Console.WriteLine($"Background set to: {normalizedBackground}");
         }
         
         private void ApplyImageSettings()

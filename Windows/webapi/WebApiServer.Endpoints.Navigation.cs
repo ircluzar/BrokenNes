@@ -208,7 +208,7 @@ namespace BrokenNes.Windows.WebApi
                     // Switch to Emulator mode on UI thread, which hides the webform
                     if (_uiControl.InvokeRequired)
                     {
-                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        _uiControl.Invoke((MethodInvoker)delegate
                         {
                             _switchViewMode(ViewMode.Emulator, false);
                         });
@@ -253,7 +253,7 @@ namespace BrokenNes.Windows.WebApi
                     // Also hide continue button if displayed (Story mode and other overlays shouldn't show it)
                     if (_uiControl.InvokeRequired)
                     {
-                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        _uiControl.Invoke((MethodInvoker)delegate
                         {
                             _hideContinueButton?.Invoke();
                             _switchViewMode(ViewMode.Overlay, true);
@@ -300,7 +300,7 @@ namespace BrokenNes.Windows.WebApi
                     // Switch to Widget mode on UI thread (skipNavigation=true to preserve current page content)
                     if (_uiControl.InvokeRequired)
                     {
-                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        _uiControl.Invoke((MethodInvoker)delegate
                         {
                             _switchViewMode(ViewMode.Widget, true);
                         });
@@ -344,7 +344,7 @@ namespace BrokenNes.Windows.WebApi
 
                     if (_uiControl.InvokeRequired)
                     {
-                        _uiControl.BeginInvoke((MethodInvoker)delegate
+                        _uiControl.Invoke((MethodInvoker)delegate
                         {
                             _switchViewMode(ViewMode.Web, true);
                         });

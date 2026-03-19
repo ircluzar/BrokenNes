@@ -130,6 +130,7 @@ namespace BrokenNes.Windows.WebApi
     internal class SetShaderRequest
     {
         public string ShaderName { get; set; } = "";
+        public string? OverrideReason { get; set; }
     }
 
     internal class ApplyCoresRequest
@@ -159,6 +160,12 @@ namespace BrokenNes.Windows.WebApi
         public string? PreferredPpuId { get; set; }
         public string? PreferredApuId { get; set; }
         public string? PreferredShaderId { get; set; }
+        public string[]? UnlockedWebmodules { get; set; }
+        public string[]? UnlockedBackgrounds { get; set; }
+        public string[]? UnlockedNullProviders { get; set; }
+        public string? PreferredBackgroundId { get; set; }
+        public string? PreferredNullProviderId { get; set; }
+        public List<PendingUnlockBundleDto>? PendingUnlocks { get; set; }
         public bool PendingDeckContinue { get; set; } = false;
         public string? PendingDeckContinueRom { get; set; }
         public string? PendingDeckContinueTitle { get; set; }
@@ -175,6 +182,34 @@ namespace BrokenNes.Windows.WebApi
         public string? Title { get; set; }
         public DateTime? UpdatedAtUtc { get; set; }
         public string? PreviewImagePath { get; set; }
+    }
+
+    internal class UnlockRewardItemDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string? Title { get; set; }
+        public string? Subtitle { get; set; }
+        public string? Description { get; set; }
+        public bool CanEquip { get; set; } = false;
+        public bool IsEquipped { get; set; } = false;
+        public string? EquipAction { get; set; }
+    }
+
+    internal class PendingUnlockBundleDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string? AchievementId { get; set; }
+        public int? LevelIndex { get; set; }
+        public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+        public bool Presented { get; set; } = false;
+        public List<UnlockRewardItemDto>? Items { get; set; }
+    }
+
+    internal class ProgressionAcknowledgeRequest
+    {
+        public string[] RewardIds { get; set; } = Array.Empty<string>();
     }
 
     internal class AudioPlayRequest

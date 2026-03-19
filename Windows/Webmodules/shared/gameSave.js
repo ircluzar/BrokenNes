@@ -7,6 +7,206 @@
   const STORAGE_KEY = 'game_save_v1';
   const LEGACY_STORAGE_KEY = 'brokenNesGameSave';
   const VOLUME_KEY = 'brokenNesAudioVolumes';
+  const DEFAULT_UNLOCKED_WEBMODULES = ['Home', 'Continue', 'DeckBuilder', 'Cores', 'Options', 'Story', 'RomManager', 'HexEditor'];
+  const DEFAULT_UNLOCKED_BACKGROUNDS = ['Gradient (Default)', 'None (Black)'];
+  const DEFAULT_UNLOCKED_NULL_PROVIDERS = ['Static', 'Void'];
+  const PROGRESSION_MILESTONE_MODULES = ['GlitchHarvester', 'TimeJump', 'CorruptionSlop', 'ImagineBug'];
+
+  function normalizeBackgroundId(value) {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed) {
+      return '';
+    }
+
+    if (/^(gradient|gradient \(default\)|staticgradient)$/i.test(trimmed)) {
+      return 'Gradient (Default)';
+    }
+
+    if (/^(black|none|none \(black\))$/i.test(trimmed)) {
+      return 'None (Black)';
+    }
+
+    return trimmed;
+  }
+
+  function normalizeStringList(values, defaults, normalizer) {
+    const result = [];
+    const normalizeValue = typeof normalizer === 'function'
+      ? normalizer
+      : value => (typeof value === 'string' ? value.trim() : '');
+
+    function append(source) {
+      (source || []).forEach(value => {
+        if (typeof value !== 'string') {
+          return;
+        }
+
+        const trimmed = normalizeValue(value);
+        if (!trimmed) {
+          return;
+        }
+
+        if (!result.some(existing => existing.toLowerCase() === trimmed.toLowerCase())) {
+          result.push(trimmed);
+        }
+      });
+    }
+
+    append(defaults);
+    append(values);
+    return result;
+  }
+
+  function normalizePreferredValue(value, unlockedValues, fallback, normalizer) {
+    const normalizeValue = typeof normalizer === 'function'
+      ? normalizer
+      : entry => (typeof entry === 'string' ? entry.trim() : '');
+
+    if (typeof value === 'string') {
+      const normalizedValue = normalizeValue(value);
+      const match = (unlockedValues || []).find(entry => entry.toLowerCase() === normalizedValue.toLowerCase());
+      if (match) {
+        return match;
+      }
+    }
+
+    const normalizedFallback = normalizeValue(fallback);
+    const fallbackMatch = (unlockedValues || []).find(entry => entry.toLowerCase() === String(normalizedFallback).toLowerCase());
+    if (fallbackMatch) {
+      return fallbackMatch;
+    }
+
+    return (unlockedValues || [normalizedFallback])[0] || normalizedFallback;
+  }
+
+  function normalizePendingUnlocks(pendingUnlocks) {
+    return (Array.isArray(pendingUnlocks) ? pendingUnlocks : []).map(bundle => ({
+      id: typeof bundle?.id === 'string' && bundle.id.trim() ? bundle.id.trim() : `reward-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      source: typeof bundle?.source === 'string' ? bundle.source : '',
+      achievementId: typeof bundle?.achievementId === 'string' ? bundle.achievementId : null,
+      levelIndex: Number.isFinite(bundle?.levelIndex) ? bundle.levelIndex : null,
+      createdAtUtc: bundle?.createdAtUtc || new Date().toISOString(),
+      presented: Boolean(bundle?.presented),
+      items: (Array.isArray(bundle?.items) ? bundle.items : []).map(item => ({
+        id: typeof item?.id === 'string' ? item.id : '',
+        type: typeof item?.type === 'string' ? item.type : '',
+        title: typeof item?.title === 'string' ? item.title : null,
+        subtitle: typeof item?.subtitle === 'string' ? item.subtitle : null,
+        description: typeof item?.description === 'string' ? item.description : null,
+        canEquip: Boolean(item?.canEquip),
+        isEquipped: Boolean(item?.isEquipped),
+        equipAction: typeof item?.equipAction === 'string' ? item.equipAction : null
+      }))
+    }));
+  }
+
+  function mergePendingUnlocks(primary, secondary) {
+    const merged = [];
+    const seen = new Set();
+
+    function append(source) {
+      normalizePendingUnlocks(source).forEach(bundle => {
+        const key = String(bundle.id || '').trim().toLowerCase();
+        if (key && seen.has(key)) {
+          return;
+        }
+
+        if (key) {
+          seen.add(key);
+        }
+
+        merged.push(bundle);
+      });
+    }
+
+    append(primary);
+    append(secondary);
+    return merged;
+  }
+
+  function mergeSaveSnapshots(primary, secondary) {
+    const left = migrateSave(primary);
+    const right = migrateSave(secondary);
+
+    const merged = {
+      ...left,
+      ...right,
+      Level: Math.max(Number(left.Level) || 1, Number(right.Level) || 1),
+      LevelCleared: Boolean(left.LevelCleared || right.LevelCleared),
+      Achievements: normalizeStringList(right.Achievements, left.Achievements),
+      ownedCpuIds: normalizeStringList(right.ownedCpuIds || right.OwnedCpuIds, left.ownedCpuIds || left.OwnedCpuIds),
+      ownedPpuIds: normalizeStringList(right.ownedPpuIds || right.OwnedPpuIds, left.ownedPpuIds || left.OwnedPpuIds),
+      ownedApuIds: normalizeStringList(right.ownedApuIds || right.OwnedApuIds, left.ownedApuIds || left.OwnedApuIds),
+      ownedClockIds: normalizeStringList(right.ownedClockIds || right.OwnedClockIds, left.ownedClockIds || left.OwnedClockIds),
+      ownedShaderIds: normalizeStringList(right.ownedShaderIds || right.OwnedShaderIds, left.ownedShaderIds || left.OwnedShaderIds),
+      SavestatesUnlocked: Boolean(left.SavestatesUnlocked || right.SavestatesUnlocked),
+      RtcUnlocked: Boolean(left.RtcUnlocked || right.RtcUnlocked),
+      GhUnlocked: Boolean(left.GhUnlocked || right.GhUnlocked),
+      ImagineUnlocked: Boolean(left.ImagineUnlocked || right.ImagineUnlocked),
+      DebugUnlocked: Boolean(left.DebugUnlocked || right.DebugUnlocked),
+      SeenStory: Boolean(left.SeenStory || right.SeenStory),
+      UnlockedWebmodules: normalizeStringList(right.UnlockedWebmodules, left.UnlockedWebmodules),
+      UnlockedBackgrounds: normalizeStringList(right.UnlockedBackgrounds, left.UnlockedBackgrounds, normalizeBackgroundId),
+      UnlockedNullProviders: normalizeStringList(right.UnlockedNullProviders, left.UnlockedNullProviders),
+      PendingUnlocks: mergePendingUnlocks(left.PendingUnlocks, right.PendingUnlocks),
+      ContinueSlots: {
+        ...(left.ContinueSlots || {}),
+        ...(right.ContinueSlots || {})
+      },
+      PendingDeckContinue: Boolean(left.PendingDeckContinue || right.PendingDeckContinue),
+      PendingDeckContinueRom: right.PendingDeckContinueRom || left.PendingDeckContinueRom || null,
+      PendingDeckContinueTitle: right.PendingDeckContinueTitle || left.PendingDeckContinueTitle || null,
+      PendingDeckContinueAtUtc: right.PendingDeckContinueAtUtc || left.PendingDeckContinueAtUtc || null,
+      UnderConstructionAcknowledged: Boolean(left.UnderConstructionAcknowledged || right.UnderConstructionAcknowledged),
+      AllCoresUnlockedCongrats: Boolean(left.AllCoresUnlockedCongrats || right.AllCoresUnlockedCongrats)
+    };
+
+    const mergedPreferences = {
+      ...(left.Preferences || {}),
+      ...(right.Preferences || {})
+    };
+
+    merged.PreferredCpuId = right.PreferredCpuId || left.PreferredCpuId || mergedPreferences.CPU || 'FMC';
+    merged.PreferredPpuId = right.PreferredPpuId || left.PreferredPpuId || mergedPreferences.PPU || 'FMC';
+    merged.PreferredApuId = right.PreferredApuId || left.PreferredApuId || mergedPreferences.APU || 'FMC';
+    merged.PreferredShaderId = right.PreferredShaderId || left.PreferredShaderId || mergedPreferences.Shader || mergedPreferences.SHADER || 'PX';
+    merged.PreferredBackgroundId = right.PreferredBackgroundId || left.PreferredBackgroundId || 'Gradient (Default)';
+    merged.PreferredNullProviderId = right.PreferredNullProviderId || left.PreferredNullProviderId || 'Static';
+
+    return migrateSave(merged);
+  }
+
+  function addUniqueValue(list, value, normalizer) {
+    if (typeof value !== 'string') {
+      return;
+    }
+
+    const normalizeValue = typeof normalizer === 'function'
+      ? normalizer
+      : entry => (typeof entry === 'string' ? entry.trim() : '');
+    const normalized = normalizeValue(value);
+    if (!normalized) {
+      return;
+    }
+
+    if (!Array.isArray(list)) {
+      return;
+    }
+
+    if (!list.some(existing => String(existing).toLowerCase() === normalized.toLowerCase())) {
+      list.push(normalized);
+    }
+  }
+
+  function pickFirstDefined(...values) {
+    for (const value of values) {
+      if (value !== undefined) {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
 
   // Default save structure - use this as the canonical format
   function createDefaultSave() {
@@ -29,6 +229,11 @@
       PreferredPpuId: 'FMC',
       PreferredApuId: 'FMC',
       PreferredShaderId: 'PX',
+      UnlockedWebmodules: DEFAULT_UNLOCKED_WEBMODULES.slice(),
+      UnlockedBackgrounds: DEFAULT_UNLOCKED_BACKGROUNDS.slice(),
+      UnlockedNullProviders: DEFAULT_UNLOCKED_NULL_PROVIDERS.slice(),
+      PreferredBackgroundId: 'Gradient (Default)',
+      PreferredNullProviderId: 'Static',
       Preferences: {
         CPU: 'FMC',
         PPU: 'FMC',
@@ -47,6 +252,7 @@
       PendingDeckContinueTitle: null,
       PendingDeckContinueAtUtc: null,
       ContinueSlots: {},
+      PendingUnlocks: [],
       SeenStory: false,
       UnderConstructionAcknowledged: false,
       AllCoresUnlockedCongrats: false
@@ -159,23 +365,92 @@
       return migrated;
     }
 
+    const normalizedSave = {
+      ...save,
+      Level: pickFirstDefined(save.Level, save.level),
+      LevelCleared: pickFirstDefined(save.LevelCleared, save.levelCleared),
+      Achievements: pickFirstDefined(save.Achievements, save.achievements),
+      SavestatesUnlocked: pickFirstDefined(save.SavestatesUnlocked, save.savestatesUnlocked),
+      RtcUnlocked: pickFirstDefined(save.RtcUnlocked, save.rtcUnlocked),
+      GhUnlocked: pickFirstDefined(save.GhUnlocked, save.ghUnlocked),
+      ImagineUnlocked: pickFirstDefined(save.ImagineUnlocked, save.imagineUnlocked),
+      DebugUnlocked: pickFirstDefined(save.DebugUnlocked, save.debugUnlocked),
+      SeenStory: pickFirstDefined(save.SeenStory, save.seenStory),
+      PreferredCpuId: pickFirstDefined(save.PreferredCpuId, save.preferredCpuId),
+      PreferredPpuId: pickFirstDefined(save.PreferredPpuId, save.preferredPpuId),
+      PreferredApuId: pickFirstDefined(save.PreferredApuId, save.preferredApuId),
+      PreferredShaderId: pickFirstDefined(save.PreferredShaderId, save.preferredShaderId),
+      UnlockedWebmodules: pickFirstDefined(save.UnlockedWebmodules, save.unlockedWebmodules),
+      UnlockedBackgrounds: pickFirstDefined(save.UnlockedBackgrounds, save.unlockedBackgrounds),
+      UnlockedNullProviders: pickFirstDefined(save.UnlockedNullProviders, save.unlockedNullProviders),
+      PreferredBackgroundId: pickFirstDefined(save.PreferredBackgroundId, save.preferredBackgroundId),
+      PreferredNullProviderId: pickFirstDefined(save.PreferredNullProviderId, save.preferredNullProviderId),
+      PendingUnlocks: pickFirstDefined(save.PendingUnlocks, save.pendingUnlocks),
+      PendingDeckContinue: pickFirstDefined(save.PendingDeckContinue, save.pendingDeckContinue),
+      PendingDeckContinueRom: pickFirstDefined(save.PendingDeckContinueRom, save.pendingDeckContinueRom),
+      PendingDeckContinueTitle: pickFirstDefined(save.PendingDeckContinueTitle, save.pendingDeckContinueTitle),
+      PendingDeckContinueAtUtc: pickFirstDefined(save.PendingDeckContinueAtUtc, save.pendingDeckContinueAtUtc),
+      ContinueSlots: pickFirstDefined(save.ContinueSlots, save.continueSlots),
+      UnderConstructionAcknowledged: pickFirstDefined(save.UnderConstructionAcknowledged, save.underConstructionAcknowledged),
+      AllCoresUnlockedCongrats: pickFirstDefined(save.AllCoresUnlockedCongrats, save.allCoresUnlockedCongrats),
+      MasqueradeRomToGameId: pickFirstDefined(save.MasqueradeRomToGameId, save.masqueradeRomToGameId),
+      ownedCpuIds: pickFirstDefined(save.ownedCpuIds, save.OwnedCpuIds),
+      ownedPpuIds: pickFirstDefined(save.ownedPpuIds, save.OwnedPpuIds),
+      ownedApuIds: pickFirstDefined(save.ownedApuIds, save.OwnedApuIds),
+      ownedClockIds: pickFirstDefined(save.ownedClockIds, save.OwnedClockIds),
+      ownedShaderIds: pickFirstDefined(save.ownedShaderIds, save.OwnedShaderIds)
+    };
+
+    delete normalizedSave.level;
+    delete normalizedSave.levelCleared;
+    delete normalizedSave.achievements;
+    delete normalizedSave.savestatesUnlocked;
+    delete normalizedSave.rtcUnlocked;
+    delete normalizedSave.ghUnlocked;
+    delete normalizedSave.imagineUnlocked;
+    delete normalizedSave.debugUnlocked;
+    delete normalizedSave.seenStory;
+    delete normalizedSave.preferredCpuId;
+    delete normalizedSave.preferredPpuId;
+    delete normalizedSave.preferredApuId;
+    delete normalizedSave.preferredShaderId;
+    delete normalizedSave.unlockedWebmodules;
+    delete normalizedSave.unlockedBackgrounds;
+    delete normalizedSave.unlockedNullProviders;
+    delete normalizedSave.preferredBackgroundId;
+    delete normalizedSave.preferredNullProviderId;
+    delete normalizedSave.pendingUnlocks;
+    delete normalizedSave.pendingDeckContinue;
+    delete normalizedSave.pendingDeckContinueRom;
+    delete normalizedSave.pendingDeckContinueTitle;
+    delete normalizedSave.pendingDeckContinueAtUtc;
+    delete normalizedSave.continueSlots;
+    delete normalizedSave.underConstructionAcknowledged;
+    delete normalizedSave.allCoresUnlockedCongrats;
+    delete normalizedSave.masqueradeRomToGameId;
+    delete normalizedSave.OwnedCpuIds;
+    delete normalizedSave.OwnedPpuIds;
+    delete normalizedSave.OwnedApuIds;
+    delete normalizedSave.OwnedClockIds;
+    delete normalizedSave.OwnedShaderIds;
+
     // Ensure all required properties exist
     const defaults = createDefaultSave();
-    const preferences = save.Preferences || {};
+    const preferences = normalizedSave.Preferences || {};
     const merged = {
       ...defaults,
-      ...save,
+      ...normalizedSave,
       UnlockedFeatures: {
         ...defaults.UnlockedFeatures,
-        ...(save.UnlockedFeatures || {})
+        ...(normalizedSave.UnlockedFeatures || {})
       }
     };
 
-    merged.SavestatesUnlocked = Boolean(save.SavestatesUnlocked || merged.UnlockedFeatures.Savestates);
-    merged.RtcUnlocked = Boolean(save.RtcUnlocked || merged.UnlockedFeatures.RTC);
-    merged.GhUnlocked = Boolean(save.GhUnlocked || merged.UnlockedFeatures.GH);
-    merged.ImagineUnlocked = Boolean(save.ImagineUnlocked || merged.UnlockedFeatures.Imagine);
-    merged.DebugUnlocked = Boolean(save.DebugUnlocked || merged.UnlockedFeatures.Debug);
+    merged.SavestatesUnlocked = Boolean(normalizedSave.SavestatesUnlocked || merged.UnlockedFeatures.Savestates);
+    merged.RtcUnlocked = Boolean(normalizedSave.RtcUnlocked || merged.UnlockedFeatures.RTC);
+    merged.GhUnlocked = Boolean(normalizedSave.GhUnlocked || merged.UnlockedFeatures.GH);
+    merged.ImagineUnlocked = Boolean(normalizedSave.ImagineUnlocked || merged.UnlockedFeatures.Imagine);
+    merged.DebugUnlocked = Boolean(normalizedSave.DebugUnlocked || merged.UnlockedFeatures.Debug);
 
     merged.UnlockedFeatures = {
       Savestates: merged.SavestatesUnlocked,
@@ -189,6 +464,12 @@
     merged.PreferredPpuId = merged.PreferredPpuId || preferences.PPU || defaults.PreferredPpuId;
     merged.PreferredApuId = merged.PreferredApuId || preferences.APU || defaults.PreferredApuId;
     merged.PreferredShaderId = merged.PreferredShaderId || preferences.Shader || preferences.SHADER || defaults.PreferredShaderId;
+    merged.UnlockedWebmodules = normalizeStringList(normalizedSave.UnlockedWebmodules, DEFAULT_UNLOCKED_WEBMODULES);
+    merged.UnlockedBackgrounds = normalizeStringList(normalizedSave.UnlockedBackgrounds, DEFAULT_UNLOCKED_BACKGROUNDS, normalizeBackgroundId);
+    merged.UnlockedNullProviders = normalizeStringList(normalizedSave.UnlockedNullProviders, DEFAULT_UNLOCKED_NULL_PROVIDERS);
+    merged.PreferredBackgroundId = normalizePreferredValue(normalizedSave.PreferredBackgroundId, merged.UnlockedBackgrounds, defaults.PreferredBackgroundId, normalizeBackgroundId);
+    merged.PreferredNullProviderId = normalizePreferredValue(normalizedSave.PreferredNullProviderId, merged.UnlockedNullProviders, defaults.PreferredNullProviderId);
+    merged.PendingUnlocks = normalizePendingUnlocks(normalizedSave.PendingUnlocks);
     merged.Preferences = {
       ...(preferences || {}),
       CPU: merged.PreferredCpuId,
@@ -197,9 +478,9 @@
       Shader: merged.PreferredShaderId,
       SHADER: merged.PreferredShaderId
     };
-    merged.AllCoresUnlockedCongrats = Boolean(save.AllCoresUnlockedCongrats);
+    merged.AllCoresUnlockedCongrats = Boolean(normalizedSave.AllCoresUnlockedCongrats);
 
-    merged.ContinueSlots = normalizeContinueSlots(save?.ContinueSlots, merged);
+    merged.ContinueSlots = normalizeContinueSlots(normalizedSave?.ContinueSlots, merged);
 
     const latestContinueSlot = getLatestContinueSlot(merged.ContinueSlots);
     if (latestContinueSlot) {
@@ -217,6 +498,96 @@
     return merged;
   }
 
+  async function persistLocalCopy(save) {
+    if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
+      await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(save));
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(save));
+    }
+
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // ignore legacy cleanup failures
+    }
+  }
+
+  async function loadFromApi() {
+    if (!window.webapi || typeof window.webapi.request !== 'function') {
+      return null;
+    }
+
+    const response = await window.webapi.request('/api/save', { cacheBust: true, noCache: true });
+    if (!response || response.success === false) {
+      return null;
+    }
+
+    return response;
+  }
+
+  async function loadLocalSnapshot() {
+    let save = null;
+
+    if (window.nesInterop && typeof window.nesInterop.idbGetItem === 'function') {
+      const data = await window.nesInterop.idbGetItem(STORAGE_KEY);
+      if (data) {
+        save = JSON.parse(data);
+      }
+    }
+
+    if (!save) {
+      const legacyData = localStorage.getItem(LEGACY_STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
+      if (legacyData) {
+        save = JSON.parse(legacyData);
+        try {
+          if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
+            await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(save));
+          }
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch (migrationError) {
+          console.warn('[gameSave] Legacy save migration warning:', migrationError);
+        }
+      }
+    }
+
+    return save;
+  }
+
+  async function saveToApi(save) {
+    if (!window.webapi || typeof window.webapi.request !== 'function') {
+      return null;
+    }
+
+    const response = await window.webapi.request('/api/save', {
+      method: 'POST',
+      json: save,
+      noCache: true
+    });
+
+    if (!response || response.success === false) {
+      return null;
+    }
+
+    return response;
+  }
+
+  async function resetViaApi() {
+    if (!window.webapi || typeof window.webapi.request !== 'function') {
+      throw new Error('Web API is not available');
+    }
+
+    const response = await window.webapi.request('/api/save/reset', {
+      method: 'POST',
+      noCache: true
+    });
+
+    if (!response || response.success === false) {
+      throw new Error(response?.error || 'Failed to reset canonical save');
+    }
+
+    return response;
+  }
+
   const gameSave = {
     /**
      * Load game save from storage
@@ -224,34 +595,23 @@
      */
     async load() {
       try {
-        let save = null;
+        const apiSave = await loadFromApi();
+        const localSave = await loadLocalSnapshot();
 
-        if (window.nesInterop && typeof window.nesInterop.idbGetItem === 'function') {
-          const data = await window.nesInterop.idbGetItem(STORAGE_KEY);
-          if (data) {
-            save = JSON.parse(data);
-          }
+        if (apiSave && localSave) {
+          const mergedSave = mergeSaveSnapshots(apiSave, localSave);
+          await persistLocalCopy(mergedSave);
+          const syncedApiSave = await saveToApi(mergedSave);
+          return migrateSave(syncedApiSave || mergedSave);
         }
 
-        if (!save) {
-          const legacyData = localStorage.getItem(LEGACY_STORAGE_KEY) || localStorage.getItem(STORAGE_KEY);
-          if (legacyData) {
-            save = JSON.parse(legacyData);
-            try {
-              if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
-                await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(save));
-              }
-              localStorage.removeItem(LEGACY_STORAGE_KEY);
-            } catch (migrationError) {
-              console.warn('[gameSave] Legacy save migration warning:', migrationError);
-            }
-          }
+        if (apiSave) {
+          const migratedApiSave = migrateSave(apiSave);
+          await persistLocalCopy(migratedApiSave);
+          return migratedApiSave;
         }
 
-        // Migrate and merge with defaults
-        const migratedSave = migrateSave(save);
-        
-        return migratedSave;
+        return migrateSave(localSave);
       } catch (error) {
         console.error('[gameSave] Load error:', error);
         return createDefaultSave();
@@ -268,17 +628,16 @@
         // Ensure the save uses the correct format
         const validatedSave = migrateSave(save);
 
-        if (window.nesInterop && typeof window.nesInterop.idbSetItem === 'function') {
-          await window.nesInterop.idbSetItem(STORAGE_KEY, JSON.stringify(validatedSave));
-          try {
-            localStorage.removeItem(LEGACY_STORAGE_KEY);
-          } catch {
-            // ignore legacy cleanup failures
-          }
+        await persistLocalCopy(validatedSave);
+
+        const savedApiCopy = await saveToApi(validatedSave);
+        if (savedApiCopy) {
+          const canonicalSave = migrateSave(savedApiCopy);
+          await persistLocalCopy(canonicalSave);
           return true;
         }
 
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(validatedSave));
+        console.warn('[gameSave] API save unavailable, keeping local snapshot until next merge');
         return true;
       } catch (error) {
         console.error('[gameSave] Save error:', error);
@@ -291,9 +650,9 @@
      * @returns {Promise<Object>} - New default save
      */
     async reset() {
-      const defaultSave = createDefaultSave();
-      await this.save(defaultSave);
-      return defaultSave;
+      const resetSave = migrateSave(await resetViaApi());
+      await persistLocalCopy(resetSave);
+      return resetSave;
     },
 
     /**
@@ -302,7 +661,7 @@
      * @returns {Object} - Updated save object
      */
     unlockAllCores(save) {
-      const updated = { ...save };
+      const updated = migrateSave({ ...save });
       
       // These must match the actual core class suffixes (CPU_FMC -> FMC, etc.)
       updated.ownedCpuIds = ['FMC', 'LOW', 'LW2', 'SPD', 'EIL', 'Z80'];
@@ -317,15 +676,48 @@
         'TTF', 'TV', 'VHS', 'WARM', 'WTR'
       ];
 
-      if (!updated.UnlockedFeatures) {
-        updated.UnlockedFeatures = {};
-      }
-      updated.UnlockedFeatures.Savestates = true;
-      updated.UnlockedFeatures.RTC = true;
-      updated.UnlockedFeatures.GH = true;
-      updated.UnlockedFeatures.Imagine = true;
-      updated.UnlockedFeatures.Debug = true;
+      updated.SavestatesUnlocked = true;
+      updated.RtcUnlocked = true;
+      updated.GhUnlocked = true;
+      updated.ImagineUnlocked = true;
+      updated.DebugUnlocked = true;
 
+      updated.UnlockedWebmodules = normalizeStringList(
+        [...(updated.UnlockedWebmodules || []), ...PROGRESSION_MILESTONE_MODULES],
+        DEFAULT_UNLOCKED_WEBMODULES
+      );
+      updated.PendingUnlocks = [];
+
+      return updated;
+    },
+
+    unlockFeature(save, featureName) {
+      const updated = migrateSave({ ...save });
+      const feature = String(featureName || '').trim().toLowerCase();
+
+      switch (feature) {
+        case 'savestates':
+          updated.SavestatesUnlocked = true;
+          addUniqueValue(updated.UnlockedWebmodules, 'TimeJump');
+          break;
+        case 'rtc':
+          updated.RtcUnlocked = true;
+          addUniqueValue(updated.UnlockedWebmodules, 'GlitchHarvester');
+          break;
+        case 'gh':
+          updated.GhUnlocked = true;
+          addUniqueValue(updated.UnlockedWebmodules, 'GlitchHarvester');
+          break;
+        case 'imagine':
+          updated.ImagineUnlocked = true;
+          addUniqueValue(updated.UnlockedWebmodules, 'ImagineBug');
+          break;
+        case 'debug':
+          updated.DebugUnlocked = true;
+          break;
+      }
+
+      updated.UnlockedWebmodules = normalizeStringList(updated.UnlockedWebmodules, DEFAULT_UNLOCKED_WEBMODULES);
       return updated;
     },
 

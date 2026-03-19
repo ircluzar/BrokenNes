@@ -244,8 +244,13 @@
   async function onClearSave() {
     // Reset save to defaults using shared module
     if (window.gameSave && typeof window.gameSave.reset === 'function') {
-      gameSave = await window.gameSave.reset();
-      showModal('Save Edit', 'DeckBuilder game save reset to defaults');
+      try {
+        gameSave = await window.gameSave.reset();
+        showModal('Save Edit', 'DeckBuilder game save reset to defaults');
+      } catch (error) {
+        console.error('[Options] Clear save failed:', error);
+        showModal('Error', error?.message || 'Unable to reset canonical save');
+      }
     } else {
       showModal('Error', 'Unable to reset save - gameSave module not available');
     }
@@ -255,8 +260,25 @@
     // Use shared gameSave module to unlock everything
     if (window.gameSave && typeof window.gameSave.unlockAllCores === 'function') {
       gameSave = window.gameSave.unlockAllCores(gameSave);
+
+      try {
+        const roster = await window.webapi?.progression?.getRoster?.();
+        if (Array.isArray(roster?.backgrounds)) {
+          gameSave.UnlockedBackgrounds = roster.backgrounds
+            .map(entry => entry?.id)
+            .filter(id => typeof id === 'string' && id.trim());
+        }
+        if (Array.isArray(roster?.nullProviders)) {
+          gameSave.UnlockedNullProviders = roster.nullProviders
+            .map(entry => entry?.id)
+            .filter(id => typeof id === 'string' && id.trim());
+        }
+      } catch (error) {
+        console.warn('[Options] Failed to load progression roster for unlock-all:', error);
+      }
+
       await saveGameSave();
-      showModal('Save Edit', 'All cores and advanced features unlocked in your DeckBuilder save.');
+      showModal('Save Edit', 'All cores, milestone modules, backgrounds, null providers, and advanced features unlocked in your DeckBuilder save.');
     } else {
       showModal('Error', 'Unable to unlock cores - gameSave module not available');
     }
@@ -270,12 +292,14 @@
   }
 
   async function onUnlockFeature(feature) {
-    if (!gameSave.UnlockedFeatures) {
-      gameSave.UnlockedFeatures = {};
+    if (window.gameSave && typeof window.gameSave.unlockFeature === 'function') {
+      gameSave = window.gameSave.unlockFeature(gameSave, feature);
+      await saveGameSave();
+      showModal('Save Edit', `${feature} unlocked.`);
+      return;
     }
-    gameSave.UnlockedFeatures[feature] = true;
-    await saveGameSave();
-    showModal('Save Edit', `${feature} unlocked.`);
+
+    showModal('Error', 'Unable to unlock feature - gameSave module not available');
   }
 
   function showModal(title, message) {

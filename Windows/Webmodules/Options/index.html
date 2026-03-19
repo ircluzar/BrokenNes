@@ -19,11 +19,11 @@
         <div class="opt-row">
           <button id="btnClearSave">Clear the save</button>
         </div>
-        <div class="opt-row small-note">Empties achievements and owned cores, leaving only FMC (CPU/PPU/APU/Clock) and PX shader.</div>
+        <div class="opt-row small-note">Resets progression to defaults: baseline modules only, default background/null providers, no queued rewards, and only FMC plus PX core inventory.</div>
         <div class="opt-row">
           <button id="btnUnlockAll">Unlock Everything</button>
         </div>
-        <div class="opt-row small-note">Gives you all cores in your save for 100% completion. Achievements are not changed.</div>
+        <div class="opt-row small-note">Unlocks all cores, milestone modules, backgrounds, null providers, and advanced feature gates. Achievements are not changed.</div>
       </section>
       
       <section class="opt-section" id="featureUnlocks">
@@ -69,6 +69,7 @@
 
   <!-- Dependencies -->
   <script src="../shared/storage.js"></script>
+  <script src="../shared/webapi.js"></script>
   <script src="../shared/gameSave.js"></script>
   <!-- Audio now handled by audio engine via webAPI -->
   <script src="../shared/homePixelBg.js"></script>

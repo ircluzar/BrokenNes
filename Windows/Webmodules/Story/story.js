@@ -166,7 +166,7 @@
           }
 
           // Switch to TV (CRT) shader
-          await window.webapi.shader.setShader('TV');
+          await window.webapi.shader.setShader('TV', 'story-cutscene');
           console.log('[Story] Switched to TV (CRT) shader');
 
           // Enable shaders
@@ -287,7 +287,7 @@
           
           // Restore shader
           if (savedShaderState.shader) {
-            await window.webapi.shader.setShader(savedShaderState.shader);
+            await window.webapi.shader.setShader(savedShaderState.shader, 'story-cutscene');
             console.log('[Story] Restored shader:', savedShaderState.shader);
           }
 

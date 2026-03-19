@@ -8,6 +8,29 @@ public class ContinueStateSlot
     public string? PreviewImagePath { get; set; }
 }
 
+public class UnlockRewardItem
+{
+    public string Id { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? Subtitle { get; set; }
+    public string? Description { get; set; }
+    public bool CanEquip { get; set; } = false;
+    public bool IsEquipped { get; set; } = false;
+    public string? EquipAction { get; set; }
+}
+
+public class PendingUnlockBundle
+{
+    public string Id { get; set; } = string.Empty;
+    public string Source { get; set; } = string.Empty;
+    public string? AchievementId { get; set; }
+    public int? LevelIndex { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public bool Presented { get; set; } = false;
+    public List<UnlockRewardItem> Items { get; set; } = new();
+}
+
 public class GameSave
 {
     // Current level (starts at 1)
@@ -42,6 +65,14 @@ public class GameSave
     public string? PreferredPpuId { get; set; }
     public string? PreferredApuId { get; set; }
     public string? PreferredShaderId { get; set; }
+
+    // Progression-owned modules and cosmetic/equipment unlocks
+    public List<string> UnlockedWebmodules { get; set; } = new();
+    public List<string> UnlockedBackgrounds { get; set; } = new();
+    public List<string> UnlockedNullProviders { get; set; } = new();
+    public string? PreferredBackgroundId { get; set; }
+    public string? PreferredNullProviderId { get; set; }
+    public List<PendingUnlockBundle> PendingUnlocks { get; set; } = new();
 
     // Trusted DeckBuilder resume marker
     // When an achievement unlock creates a savestate from DeckBuilder flow,

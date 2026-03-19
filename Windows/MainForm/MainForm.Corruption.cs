@@ -48,26 +48,61 @@ namespace BrokenNes.Windows
 
         internal void SetCorruptIntensity(int value)
         {
+            if (!IsRtcStackUnlocked())
+            {
+                Console.WriteLine("[Progression] RTC controls are locked.");
+                return;
+            }
+
             lock (corruptorLock) { corruptor.OnIntensityChange(value); }
             NotifyCorruptorChanged();
         }
 
         internal void SetBlastType(string blastType)
         {
-            lock (corruptorLock) { corruptor.OnBlastTypeChanged(blastType); }
+            var save = LoadProgressionSnapshot();
+            if (!IsRtcStackUnlocked(save))
+            {
+                Console.WriteLine("[Progression] RTC controls are locked.");
+                return;
+            }
+
+            var safeBlastType = ResolveUnlockedBlastType(blastType, save);
+            if (!safeBlastType.Equals((blastType ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("[Progression] Imagine blast types are locked.");
+            }
+
+            lock (corruptorLock) { corruptor.OnBlastTypeChanged(safeBlastType); }
             NotifyCorruptorChanged();
         }
 
         internal void SetSelectedDomains(IEnumerable<string> keys)
         {
+            if (!IsRtcStackUnlocked())
+            {
+                Console.WriteLine("[Progression] RTC controls are locked.");
+                return;
+            }
+
             lock (corruptorLock) { corruptor.DomainsChanged(keys); }
             NotifyCorruptorChanged();
         }
 
         internal void SetAutoCorrupt(bool enabled)
         {
+            var save = LoadProgressionSnapshot();
+            if (enabled && !IsRtcStackUnlocked(save))
+            {
+                Console.WriteLine("[Progression] Auto-corrupt is locked.");
+                return;
+            }
+
+            enabled = enabled && IsRtcStackUnlocked(save);
+            var safeBlastType = ResolveUnlockedBlastType(corruptor.BlastType, save);
             lock (corruptorLock)
             {
+                corruptor.BlastType = safeBlastType;
                 corruptor.AutoCorrupt = enabled;
                 corruptor.LastBlastInfo = enabled ? "Auto-corrupt enabled" : "Auto-corrupt disabled";
             }
@@ -76,12 +111,21 @@ namespace BrokenNes.Windows
 
         internal void RequestBlast()
         {
+            var save = LoadProgressionSnapshot();
+            if (!IsRtcStackUnlocked(save))
+            {
+                Console.WriteLine("[Progression] RTC controls are locked.");
+                return;
+            }
+
             if (!IsEmulatorReady) return;
+            var safeBlastType = ResolveUnlockedBlastType(corruptor.BlastType, save);
             QueueEmuAction(() =>
             {
                 if (nes == null) return;
                 lock (corruptorLock)
                 {
+                    corruptor.BlastType = safeBlastType;
                     corruptor.Blast(nes);
                 }
                 NotifyCorruptorChanged();
@@ -90,6 +134,12 @@ namespace BrokenNes.Windows
 
         internal void RequestLetItRip()
         {
+            if (!IsRtcStackUnlocked())
+            {
+                Console.WriteLine("[Progression] RTC controls are locked.");
+                return;
+            }
+
             lock (corruptorLock) { corruptor.LetItRip(); }
             RefreshMemoryDomainsRequested();
             NotifyCorruptorChanged();
@@ -238,6 +288,13 @@ namespace BrokenNes.Windows
 
         internal void SetStubbornMode(bool enabled)
         {
+            if (enabled && !IsImagineBugUnlocked())
+            {
+                Console.WriteLine("[Progression] ImagineBug is locked.");
+                return;
+            }
+
+            enabled = enabled && IsImagineBugUnlocked();
             lock (corruptorLock) { corruptor.StubbornMode = enabled; }
             if (nes != null)
             {

@@ -53,12 +53,21 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "UI control not available" });
                     }
 
+                    var useStoryCutsceneOverride = string.Equals(
+                        body.OverrideReason,
+                        "story-cutscene",
+                        StringComparison.OrdinalIgnoreCase);
+
                     bool success = false;
                     if (_uiControl.InvokeRequired)
                     {
                         _uiControl.Invoke((MethodInvoker)delegate
                         {
-                            if (_setShader != null)
+                            if (useStoryCutsceneOverride)
+                            {
+                                success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                            }
+                            else if (_setShader != null)
                             {
                                 _setShader(body.ShaderName);
                                 success = true;
@@ -71,7 +80,11 @@ namespace BrokenNes.Windows.WebApi
                     }
                     else
                     {
-                        if (_setShader != null)
+                        if (useStoryCutsceneOverride)
+                        {
+                            success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                        }
+                        else if (_setShader != null)
                         {
                             _setShader(body.ShaderName);
                             success = true;
@@ -87,7 +100,8 @@ namespace BrokenNes.Windows.WebApi
                         return Results.Ok(new
                         {
                             success = true,
-                            shader = body.ShaderName
+                            shader = body.ShaderName,
+                            overrideApplied = useStoryCutsceneOverride
                         });
                     }
                     else

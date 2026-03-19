@@ -8,6 +8,7 @@
   // State
   let gameSave = null;
   let audioInitialized = false;
+  let pendingRewardCount = 0;
 
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
@@ -16,6 +17,7 @@
     try {
       // Load game save data
       await loadGameSave();
+      await refreshPendingRewardState();
 
       // Check URL parameters
       const params = new URLSearchParams(window.location.search);
@@ -77,6 +79,11 @@
       btnDeckBuilder.addEventListener('click', onDeckBuilderClick);
     }
 
+    const rewardInboxBtn = document.getElementById('rewardInboxBtn');
+    if (rewardInboxBtn) {
+      rewardInboxBtn.addEventListener('click', onRewardInboxClick);
+    }
+
     const btnEmulator = document.getElementById('btnEmulator');
     if (btnEmulator) {
       btnEmulator.addEventListener('click', onEmulatorClick);
@@ -112,6 +119,40 @@
         }
       });
     }
+  }
+
+  async function refreshPendingRewardState() {
+    pendingRewardCount = 0;
+
+    try {
+      const result = await api?.progression?.getState?.();
+      const pendingUnlocks = Array.isArray(result?.pendingUnlocks) ? result.pendingUnlocks : [];
+      pendingRewardCount = pendingUnlocks.filter(bundle => !bundle?.presented).length;
+    } catch (error) {
+      console.warn('[Home] Failed to load pending reward state:', error);
+    }
+
+    updateRewardInboxBanner();
+  }
+
+  function updateRewardInboxBanner() {
+    const banner = document.getElementById('rewardInboxBanner');
+    const title = document.getElementById('rewardInboxTitle');
+    const detail = document.getElementById('rewardInboxDetail');
+    if (!banner || !title || !detail) {
+      return;
+    }
+
+    if (pendingRewardCount <= 0) {
+      banner.hidden = true;
+      return;
+    }
+
+    banner.hidden = false;
+    title.textContent = pendingRewardCount === 1
+      ? '1 queued reward bundle ready'
+      : `${pendingRewardCount} queued reward bundles ready`;
+    detail.textContent = 'Open Continue to review and equip your latest unlocks.';
   }
 
   function showHealthWarningModal() {
@@ -194,6 +235,10 @@
       console.error('[Home] Deck builder nav error:', error);
       window.location.href = '../DeckBuilder/index.html';
     }
+  }
+
+  function onRewardInboxClick() {
+    window.location.href = '../Continue/index.html?inbox=1';
   }
 
   async function onEmulatorClick() {

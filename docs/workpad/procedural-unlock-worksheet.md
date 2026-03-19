@@ -2,31 +2,35 @@
 
 ## Execution Mode
 
-- [ ] Work autonomously through the full progression implementation unless blocked by missing assets, missing modules, or a hard architectural conflict.
-- [ ] Treat the Windows save/backend as the canonical source of truth for all unlock state.
+- [x] Work autonomously through the full progression implementation unless blocked by missing assets, missing modules, or a hard architectural conflict.
+- [x] Treat the Windows save/backend as the canonical source of truth for all unlock state.
 - [ ] Preserve backward compatibility with existing saves while migrating into the new progression ledger.
+  - [x] Preserve legacy core inventories.
+  - [x] Preserve level and achievement progress.
+  - [x] Backfill active background/null-provider if possible.
+  - [x] Derive legacy feature booleans from the new progression state.
 
 ## Product Decisions Locked In
 
-- [ ] RTC + Glitch Harvester is the first milestone webmodule unlock.
-- [ ] Hex Editor remains available from the start.
-- [ ] ImagineBug is the current late-game replacement for the old Imagine unlock.
-- [ ] Every achievement should try to unlock one background and one null provider.
-- [ ] Backgrounds and null providers must be equippable from the reward flow like other core rewards.
+- [x] RTC + Glitch Harvester is the first milestone webmodule unlock.
+- [x] Hex Editor remains available from the start.
+- [x] ImagineBug is the current late-game replacement for the old Imagine unlock.
+- [x] Every achievement should try to unlock one background and one null provider.
+- [x] Backgrounds and null providers must be equippable from the reward flow like other core rewards.
 
 ## Phase 1: Progression Schema
 
-- [ ] Extend the save model with unlock inventories.
-  - [ ] Add `UnlockedWebmodules`.
-  - [ ] Add `UnlockedBackgrounds`.
-  - [ ] Add `UnlockedNullProviders`.
-  - [ ] Add `PreferredBackgroundId`.
-  - [ ] Add `PreferredNullProviderId`.
-  - [ ] Add `PendingUnlocks` queue.
-- [ ] Extend DTOs and browser-side compatibility models.
-  - [ ] Update Windows web API save DTOs.
-  - [ ] Update native save models.
-  - [ ] Update shared webmodule save migration logic.
+- [x] Extend the save model with unlock inventories.
+  - [x] Add `UnlockedWebmodules`.
+  - [x] Add `UnlockedBackgrounds`.
+  - [x] Add `UnlockedNullProviders`.
+  - [x] Add `PreferredBackgroundId`.
+  - [x] Add `PreferredNullProviderId`.
+  - [x] Add `PendingUnlocks` queue.
+- [x] Extend DTOs and browser-side compatibility models.
+  - [x] Update Windows web API save DTOs.
+  - [x] Update native save models.
+  - [x] Update shared webmodule save migration logic.
 - [ ] Add migration behavior.
   - [ ] Preserve legacy core inventories.
   - [ ] Preserve level and achievement progress.
@@ -36,76 +40,76 @@
 ## Phase 2: Progression Service
 
 - [ ] Introduce a dedicated native progression service.
-  - [ ] Load and save progression state.
-  - [ ] Add add-if-missing helpers.
-  - [ ] Add reward deduplication helpers.
-  - [ ] Add equip helpers for backgrounds and null providers.
-  - [ ] Add pending reward queue helpers.
-- [ ] Define generalized reward item models.
-  - [ ] Reward bundle model.
-  - [ ] Reward item type enum/schema.
-  - [ ] Equip/apply metadata.
-  - [ ] Presented/acknowledged state.
+  - [x] Load and save progression state.
+  - [x] Add add-if-missing helpers.
+  - [x] Add reward deduplication helpers.
+  - [x] Add equip helpers for backgrounds and null providers.
+  - [x] Add pending reward queue helpers.
+- [x] Define generalized reward item models.
+  - [x] Reward bundle model.
+  - [x] Reward item type enum/schema.
+  - [x] Equip/apply metadata.
+  - [x] Presented/acknowledged state.
 
 ## Phase 3: Achievement Rewards
 
 - [ ] Hook the achievement path into the progression service.
-  - [ ] Detect first-time achievement unlocks.
-  - [ ] Roll one random locked background.
-  - [ ] Roll one random locked null provider.
-  - [ ] Persist unlocked assets.
-  - [ ] Enqueue a reward bundle.
+  - [x] Detect first-time achievement unlocks.
+  - [x] Roll one random locked background.
+  - [x] Roll one random locked null provider.
+  - [x] Persist unlocked assets.
+  - [x] Enqueue a reward bundle.
 - [ ] Make reward rolls deterministic enough for retries.
-  - [ ] Choose a stable event seed or reward counter.
-  - [ ] Prevent duplicate rewards on replay.
-  - [ ] Handle exhausted pools safely.
+  - [x] Choose a stable event seed or reward counter.
+  - [x] Prevent duplicate rewards on replay.
+  - [x] Handle exhausted pools safely.
 
 ## Phase 4: Level-Up Rewards
 
 - [ ] Refactor level-up rewards into the same reward engine.
   - [ ] Keep existing core-card reward behavior.
   - [ ] Preserve bonus pack logic.
-  - [ ] Emit milestone module rewards as generalized reward items.
-  - [ ] Save and enqueue in one path.
+  - [x] Emit milestone module rewards as generalized reward items.
+  - [x] Save and enqueue in one path.
 - [ ] Apply the milestone order.
-  - [ ] Level 4 -> RTC + Glitch Harvester.
-  - [ ] Level 8 -> Time Jump.
-  - [ ] Level 12 -> Corruption Slop.
-  - [ ] Level 16 -> ImagineBug.
+  - [x] Level 4 -> RTC + Glitch Harvester.
+  - [x] Level 8 -> Time Jump.
+  - [x] Level 12 -> Corruption Slop.
+  - [x] Level 16 -> ImagineBug.
 
 ## Phase 5: Native Enforcement
 
 - [ ] Gate milestone webmodules in WinForms menus.
-  - [ ] Keep baseline modules always available.
-  - [ ] Keep Hex Editor always available.
-  - [ ] Disable or hide locked milestone modules consistently.
+  - [x] Keep baseline modules always available.
+  - [x] Keep Hex Editor always available.
+  - [x] Disable or hide locked milestone modules consistently.
 - [ ] Gate module launching at the native loader.
-  - [ ] Add a final permission check before load.
-  - [ ] Prevent deep-link or menu bypass.
+  - [x] Add a final permission check before load.
+  - [x] Prevent deep-link or menu bypass.
 - [ ] Gate native emulator surfaces.
   - [ ] RTC/GH native UI hidden until unlocked.
   - [ ] ImagineBug-related advanced RTC features hidden until unlocked.
   - [ ] Legacy flags populated from progression state.
 - [ ] Gate background and null-provider menus.
-  - [ ] Disable or hide locked entries.
-  - [ ] Force fallback to unlocked defaults.
-  - [ ] Reflect equipped background/null-provider selection.
+  - [x] Disable or hide locked entries.
+  - [x] Force fallback to unlocked defaults.
+  - [x] Reflect equipped background/null-provider selection.
 
 ## Phase 6: API Surface
 
-- [ ] Add progression endpoints.
-  - [ ] `GET /api/progression`.
-  - [ ] `POST /api/progression/claim-pending`.
-  - [ ] `POST /api/progression/acknowledge`.
-  - [ ] `GET /api/progression/roster`.
+- [x] Add progression endpoints.
+  - [x] `GET /api/progression`.
+  - [x] `POST /api/progression/claim-pending`.
+  - [x] `POST /api/progression/acknowledge`.
+  - [x] `GET /api/progression/roster`.
 - [ ] Expand roster metadata endpoints.
   - [ ] Background metadata.
   - [ ] Null-provider metadata.
   - [ ] Webmodule metadata.
-- [ ] Make existing setter endpoints progression-aware.
-  - [ ] Reject locked backgrounds.
-  - [ ] Reject locked null providers.
-  - [ ] Add explicit equip endpoints if needed.
+- [x] Make existing setter endpoints progression-aware.
+  - [x] Reject locked backgrounds.
+  - [x] Reject locked null providers.
+  - [x] Add explicit equip endpoints if needed.
 
 ## Phase 7: Reward Presentation
 
@@ -115,14 +119,14 @@
   - [ ] Equip-now metadata.
   - [ ] Equipped-state metadata.
 - [ ] Add pending reward inbox flow.
-  - [ ] Claim pending rewards.
-  - [ ] Present cards in order.
-  - [ ] Acknowledge completion.
+  - [x] Claim pending rewards.
+  - [x] Present cards in order.
+  - [x] Acknowledge completion.
   - [ ] Resume after restart if interrupted.
 - [ ] Use Continue as the primary reward presentation host.
-  - [ ] Achievement return flow.
-  - [ ] Level-up intermission flow.
-  - [ ] Fallback inbox from Home if needed.
+  - [x] Achievement return flow.
+  - [x] Level-up intermission flow.
+  - [x] Fallback inbox from Home if needed.
 
 ## Phase 8: Equip Flow For Backgrounds And Null Providers
 
@@ -135,8 +139,8 @@
   - [ ] Expose selected null provider via API.
   - [ ] Apply selected null provider natively.
 - [ ] Support equipping from reward cards.
-  - [ ] Equip background immediately from reward modal.
-  - [ ] Equip null provider immediately from reward modal.
+  - [x] Equip background immediately from reward modal.
+  - [x] Equip null provider immediately from reward modal.
   - [ ] Reflect equipped state in menus and inventory UI.
 
 ## Phase 9: Card Expansion
@@ -181,10 +185,10 @@
 ## Phase 11: Frontend Integration
 
 - [ ] Update Continue webmodule.
-  - [ ] Read generalized reward bundles.
-  - [ ] Render mixed reward types.
-  - [ ] Support equip-now for backgrounds/null providers.
-  - [ ] Acknowledge processed rewards.
+  - [x] Read generalized reward bundles.
+  - [x] Render mixed reward types.
+  - [x] Support equip-now for backgrounds/null providers.
+  - [x] Acknowledge processed rewards.
 - [ ] Update inventory surfaces.
   - [ ] Show modules collection.
   - [ ] Show backgrounds collection.

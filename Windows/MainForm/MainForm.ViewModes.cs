@@ -88,7 +88,7 @@ namespace BrokenNes.Windows
                     }
                 }
                 
-                if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
+                if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized, isWebViewInitializationFailed)) return;
             }
             else if (webView == null)
             {
@@ -324,7 +324,20 @@ namespace BrokenNes.Windows
         /// </summary>
         private async void LoadWebModule(WebModuleInfo module)
         {
-            if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized)) return;
+            if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized, isWebViewInitializationFailed)) return;
+            if (!IsWebModuleUnlocked(module))
+            {
+                var targetModuleName = !string.IsNullOrWhiteSpace(module.Config.LoadModule)
+                    ? module.Config.LoadModule
+                    : module.FolderName;
+                Console.WriteLine($"[Progression] Blocked locked webmodule launch: {targetModuleName}");
+                MessageBox.Show(
+                    $"{module.Name} is still locked in progression.",
+                    "Module Locked",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
             
             try
             {

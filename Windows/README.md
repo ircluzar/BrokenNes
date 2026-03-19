@@ -11,8 +11,8 @@ A Windows desktop version of BrokenNes, built with WinForms and reusing the core
 
 ### Keyboard Controls
 
-- **Z** = A Button
-- **X** = B Button
+- **Z** = B Button
+- **X** = A Button
 - **A** = Select
 - **S** = Start
 - **Arrow Keys** = D-Pad

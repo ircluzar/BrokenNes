@@ -379,14 +379,7 @@ namespace BrokenNes.Windows
                                     }
                                     
                                     // Render immediately after frame is ready (marshal to UI thread)
-                                    if (InvokeRequired)
-                                    {
-                                        BeginInvoke(new Action(RenderFrame));
-                                    }
-                                    else
-                                    {
-                                        RenderFrame();
-                                    }
+                                    RequestRenderFrame();
                                 }
                             }
                         }
@@ -407,14 +400,7 @@ namespace BrokenNes.Windows
                     accumulator = 0; // Reset accumulator to prevent catchup frames
                     
                     // Render the crash screen once per frame
-                    if (InvokeRequired)
-                    {
-                        BeginInvoke(new Action(RenderFrame));
-                    }
-                    else
-                    {
-                        RenderFrame();
-                    }
+                    RequestRenderFrame();
                     continue; // Skip normal throttling logic
                 }
                 
@@ -502,6 +488,32 @@ namespace BrokenNes.Windows
                     Console.WriteLine($"Render error: {ex.Message}");
                 }
             }
+        }
+
+        private void RequestRenderFrame()
+        {
+            if (InvokeRequired)
+            {
+                if (Interlocked.Exchange(ref pendingRenderFrameRequest, 1) != 0)
+                {
+                    return;
+                }
+
+                BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        RenderFrame();
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref pendingRenderFrameRequest, 0);
+                    }
+                }));
+                return;
+            }
+
+            RenderFrame();
         }
         
         private void EmulatorTimer_Tick(object? sender, EventArgs e)
