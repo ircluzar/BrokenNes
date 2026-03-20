@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using NesEmulator;
+using NesEmulator.NullProviders;
 
 namespace BrokenNes.Windows.WebApi
 {
@@ -127,10 +129,86 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
+                    else if (normalizedDomain == "WEBMODULE")
+                    {
+                        var module = WebModuleManager.DiscoverModules()
+                            .FirstOrDefault(entry => entry.FolderName.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+                        if (module != null)
+                        {
+                            cardModel = new CoreCardModel
+                            {
+                                Id = module.FolderName,
+                                ShortName = module.FolderName,
+                                DisplayName = !string.IsNullOrWhiteSpace(module.Name) ? module.Name : module.FolderName,
+                                Description = !string.IsNullOrWhiteSpace(module.Config.Description)
+                                    ? module.Config.Description
+                                    : "BrokenNes webmodule unlock.",
+                                Rating = RatingForWebModule(module.FolderName, module.DisplayMode),
+                                Performance = 0,
+                                FooterNote = $"WEBMODULE {module.DisplayMode.ToString().ToUpperInvariant()}",
+                                Domain = "WEBMODULE"
+                            };
+                        }
+                    }
+                    else if (normalizedDomain == "BACKGROUND")
+                    {
+                        var normalizedId = NormalizeBackgroundId(id);
+                        var backgroundName = Rendering.NesDirectXRenderer.GetAvailableBackgrounds()
+                            .FirstOrDefault(name => NormalizeBackgroundId(name).Equals(normalizedId, StringComparison.OrdinalIgnoreCase));
+
+                        if (!string.IsNullOrWhiteSpace(backgroundName))
+                        {
+                            cardModel = new CoreCardModel
+                            {
+                                Id = backgroundName,
+                                ShortName = BuildShortName(backgroundName),
+                                DisplayName = backgroundName,
+                                Description = BuildBackgroundDescription(backgroundName),
+                                Rating = RatingForBackground(backgroundName),
+                                Performance = 0,
+                                FooterNote = "BACKGROUND",
+                                Domain = "BACKGROUND"
+                            };
+                        }
+                    }
+                    else if (normalizedDomain == "NULLPROVIDER")
+                    {
+                        var providerName = NullProviderRegistry.GetAvailableProviders()
+                            .FirstOrDefault(name => name.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+                        if (!string.IsNullOrWhiteSpace(providerName))
+                        {
+                            var provider = NullProviderRegistry.GetProvider(providerName);
+                            cardModel = new CoreCardModel
+                            {
+                                Id = provider.DisplayName,
+                                ShortName = BuildShortName(provider.DisplayName),
+                                DisplayName = provider.DisplayName,
+                                Description = string.IsNullOrWhiteSpace(provider.Description)
+                                    ? "Animated null-provider visualizer."
+                                    : provider.Description,
+                                Rating = RatingForNullProvider(provider.DisplayName),
+                                Performance = 0,
+                                FooterNote = "NULL PROVIDER",
+                                Domain = "NULLPROVIDER"
+                            };
+                        }
+                    }
 
                     if (cardModel == null)
                     {
-                        return Results.NotFound(new { success = false, error = $"Card not found: {domain}/{id}" });
+                        cardModel = new CoreCardModel
+                        {
+                            Id = id,
+                            ShortName = BuildShortName(id),
+                            DisplayName = PrettifyName(id),
+                            Description = BuildFallbackDescription(normalizedDomain),
+                            Rating = 2,
+                            Performance = 0,
+                            FooterNote = normalizedDomain,
+                            Domain = normalizedDomain
+                        };
                     }
 
                     // Render SVG
@@ -202,14 +280,116 @@ namespace BrokenNes.Windows.WebApi
                 return null;
             }
 
-            static T? SafeGet<T>(Func<T> getter)
+            static string NormalizeBackgroundId(string value)
             {
-                try { return getter(); } catch { return default; }
+                var trimmed = value?.Trim() ?? string.Empty;
+                if (trimmed.Equals("Gradient", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("Gradient (Default)", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("StaticGradient", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Gradient (Default)";
+                }
+
+                if (trimmed.Equals("Black", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("None", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("None (Black)", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "None (Black)";
+                }
+
+                return trimmed;
             }
 
-            static T? SafeGetStruct<T>(Func<T> getter) where T : struct
+            static string BuildShortName(string value)
             {
-                try { return getter(); } catch { return null; }
+                var compact = new string((value ?? string.Empty).Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+                if (compact.Length == 0)
+                {
+                    return "CARD";
+                }
+
+                return compact.Length <= 4 ? compact : compact.Substring(0, 4);
+            }
+
+            static string PrettifyName(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return "Unknown Card";
+                }
+
+                var text = value.Replace("_", " ").Replace("-", " ").Trim();
+                var chars = new System.Collections.Generic.List<char>(text.Length + 8);
+                for (var index = 0; index < text.Length; index++)
+                {
+                    var current = text[index];
+                    if (index > 0 && char.IsUpper(current) && char.IsLetter(text[index - 1]) && char.IsLower(text[index - 1]))
+                    {
+                        chars.Add(' ');
+                    }
+                    chars.Add(current);
+                }
+
+                return new string(chars.ToArray()).Trim();
+            }
+
+            static string BuildBackgroundDescription(string backgroundName)
+            {
+                return backgroundName switch
+                {
+                    "Gradient (Default)" => "Default menu background with a clean static gradient.",
+                    "None (Black)" => "Pure black backdrop for minimal presentation.",
+                    _ => $"Procedural renderer background: {PrettifyName(backgroundName)}."
+                };
+            }
+
+            static string BuildFallbackDescription(string domainName)
+            {
+                return domainName switch
+                {
+                    "WEBMODULE" => "BrokenNes webmodule unlock.",
+                    "BACKGROUND" => "BrokenNes renderer background unlock.",
+                    "NULLPROVIDER" => "BrokenNes null-provider unlock.",
+                    _ => $"{domainName} unlock."
+                };
+            }
+
+            static int RatingForWebModule(string moduleId, WebModuleDisplayMode displayMode)
+            {
+                return moduleId.ToUpperInvariant() switch
+                {
+                    "HOME" => 3,
+                    "CONTINUE" => 4,
+                    "DECKBUILDER" => 4,
+                    "CORES" => 3,
+                    "OPTIONS" => 2,
+                    "STORY" => 2,
+                    "ROMMANAGER" => 3,
+                    "HEXEDITOR" => 3,
+                    "GLITCHHARVESTER" => 5,
+                    "TIMEJUMP" => 5,
+                    "CORRUPTIONSLOP" => 4,
+                    "IMAGINEBUG" => 5,
+                    _ => displayMode == WebModuleDisplayMode.Overlay ? 4 : 3
+                };
+            }
+
+            static int RatingForBackground(string backgroundName)
+            {
+                return backgroundName switch
+                {
+                    "Gradient (Default)" => 2,
+                    "None (Black)" => 1,
+                    _ => 3
+                };
+            }
+
+            static int RatingForNullProvider(string providerName)
+            {
+                return providerName.Equals("Static", StringComparison.OrdinalIgnoreCase)
+                    || providerName.Equals("Void", StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : 3;
             }
         }
     }

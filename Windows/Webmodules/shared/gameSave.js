@@ -728,14 +728,23 @@
      */
     countOwnedCores(save) {
       if (!save) return 0;
+
+      function countUnique(values) {
+        return new Set((Array.isArray(values) ? values : [])
+          .filter(value => typeof value === 'string' && value.trim())
+          .map(value => value.trim().toUpperCase())).size;
+      }
       
       const cpu = (save.ownedCpuIds || []).length;
       const ppu = (save.ownedPpuIds || []).length;
       const apu = (save.ownedApuIds || []).length;
       const clock = (save.ownedClockIds || []).length;
       const shader = (save.ownedShaderIds || []).length;
+      const webmodules = countUnique(save.UnlockedWebmodules);
+      const backgrounds = countUnique(save.UnlockedBackgrounds);
+      const nullProviders = countUnique(save.UnlockedNullProviders);
       
-      return cpu + ppu + apu + clock + shader;
+      return cpu + ppu + apu + clock + shader + webmodules + backgrounds + nullProviders;
     },
 
     /**

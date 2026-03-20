@@ -89,6 +89,7 @@
   const coreLookup = new Map();
   const cardRecordLookup = new Map();
   const cardSvgCache = new Map();
+  let progressionRoster = null;
   let currentPreviewToken = 0;
   let cardRecords = [];
   let rewardModalState = {
@@ -554,6 +555,44 @@
     } catch (error) {
       console.warn('[Continue] Failed to load card records:', error);
     }
+  }
+
+  async function getProgressionRoster(forceRefresh = false) {
+    if (!forceRefresh && progressionRoster) {
+      return progressionRoster;
+    }
+
+    if (!window.webapi?.progression?.getRoster) {
+      return null;
+    }
+
+    try {
+      const result = await window.webapi.progression.getRoster();
+      progressionRoster = result && result.success !== false ? result : null;
+      return progressionRoster;
+    } catch (error) {
+      console.warn('[Continue] Failed to load progression roster:', error);
+      progressionRoster = null;
+      return null;
+    }
+  }
+
+  function countUnlockedEntries(values) {
+    const seen = new Set();
+    (Array.isArray(values) ? values : []).forEach(value => {
+      if (typeof value !== 'string') {
+        return;
+      }
+
+      const normalizedValue = value.trim().toUpperCase();
+      if (!normalizedValue) {
+        return;
+      }
+
+      seen.add(normalizedValue);
+    });
+
+    return seen.size;
   }
 
   function normalizeOwnedArray(values, fallback = []) {
@@ -1736,9 +1775,9 @@
       case 'WEBMODULE':
         return 'Module';
       case 'BACKGROUND':
-        return 'Background';
+          return 'BG';
       case 'NULLPROVIDER':
-        return 'Null Provider';
+          return 'NULL';
       case 'FEATURE':
         return 'Feature';
       default:
@@ -1791,6 +1830,16 @@
         subtitle: typeof item?.subtitle === 'string' ? item.subtitle : '',
         description: typeof item?.description === 'string' ? item.description : ''
       })
+    };
+  }
+
+  async function hydratePendingRewardItem(bundleId, item) {
+    const normalized = normalizePendingRewardItem(bundleId, item);
+    const svgMarkup = await getCoreSvgMarkup(normalized.domain, normalized.id);
+    return {
+      ...normalized,
+      svgMarkup,
+      previewMarkup: svgMarkup ? '' : normalized.previewMarkup
     };
   }
 
@@ -1859,15 +1908,30 @@
   }
 
   function countOwnedCores(save) {
-    return Object.keys(OWNED_KEY_BY_DOMAIN).reduce((count, domain) => {
+    const legacyCoreCount = Object.keys(OWNED_KEY_BY_DOMAIN).reduce((count, domain) => {
       return count + getOwnedCoreIdsByDomain(save, domain).length;
     }, 0);
+
+    return legacyCoreCount
+      + countUnlockedEntries(save?.UnlockedWebmodules)
+      + countUnlockedEntries(save?.UnlockedBackgrounds)
+      + countUnlockedEntries(save?.UnlockedNullProviders);
   }
 
-  function getTotalCoreCount() {
-    return ['CPU', 'PPU', 'APU', 'CLOCK', 'SHADER'].reduce((count, domain) => {
+  async function getTotalCoreCount() {
+    const legacyCoreCount = ['CPU', 'PPU', 'APU', 'CLOCK', 'SHADER'].reduce((count, domain) => {
       return count + getCoreOptions(domain).length;
     }, 0);
+
+    const roster = await getProgressionRoster();
+    if (!roster) {
+      return legacyCoreCount;
+    }
+
+    const webmoduleCount = Array.isArray(roster.webmodules) ? roster.webmodules.length : 0;
+    const backgroundCount = Array.isArray(roster.backgrounds) ? roster.backgrounds.length : 0;
+    const nullProviderCount = Array.isArray(roster.nullProviders) ? roster.nullProviders.length : 0;
+    return legacyCoreCount + webmoduleCount + backgroundCount + nullProviderCount;
   }
 
   function dedupeRewardPairs(items) {
@@ -2042,7 +2106,7 @@
     const featureUnlocks = getFeatureUnlocksForLevel(gameSave, previousLevel);
 
     let showAllCores = false;
-    const totalCoreCount = getTotalCoreCount();
+    const totalCoreCount = await getTotalCoreCount();
     if (totalCoreCount > 0 && countOwnedCores(gameSave) >= totalCoreCount && !gameSave.AllCoresUnlockedCongrats) {
       gameSave.AllCoresUnlockedCongrats = true;
       showAllCores = true;
@@ -2145,6 +2209,7 @@
     empty.hidden = rewardCount > 0;
     grid.innerHTML = rewardCount > 0
       ? rewardModalState.items.map((item, index) => {
+          const showSubtitle = item.subtitle && !['BACKGROUND', 'NULLPROVIDER'].includes(String(item.domain || '').toUpperCase());
           const buttonLabel = item.equipable
             ? (item.equipped ? 'Equipped' : 'Equip')
             : 'Passive Unlock';
@@ -2161,7 +2226,7 @@
                   <span class="unlock-card-domain">${escapeHtml(getRewardDomainLabel(item.domain))}</span>
                 </div>
                 <div class="unlock-card-stage">${cardBody}</div>
-                ${item.subtitle ? `<div class="unlock-card-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
+                ${showSubtitle ? `<div class="unlock-card-subtitle">${escapeHtml(item.subtitle)}</div>` : ''}
                 ${item.description ? `<div class="unlock-card-description">${escapeHtml(item.description)}</div>` : ''}
                 <div class="unlock-card-actions">
                   <button type="button" class="unlock-card-equip" data-unlock-equip="${index}" ${buttonDisabled}>${escapeHtml(buttonLabel)}</button>
@@ -2230,12 +2295,11 @@
       };
     }));
 
-    const pendingItems = pendingBundles.flatMap(bundle => {
+    const pendingItems = (await Promise.all(pendingBundles.flatMap(bundle => {
       const bundleId = String(bundle?.id || '').trim();
       return (Array.isArray(bundle?.items) ? bundle.items : [])
-        .map(item => normalizePendingRewardItem(bundleId, item))
-        .filter(item => item.id && item.name);
-    });
+        .map(item => hydratePendingRewardItem(bundleId, item));
+    }))).filter(item => item.id && item.name);
 
     const pendingRewardIds = pendingBundles
       .map(bundle => String(bundle?.id || '').trim())

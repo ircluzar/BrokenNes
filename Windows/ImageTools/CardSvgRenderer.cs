@@ -77,8 +77,7 @@ public static class CardSvgRenderer
         }
         else
         {
-            sb.Append($"<rect x='0' y='0' width='{contentW}' height='{imageH}' fill='#111' stroke='#ffffff' stroke-width='2' stroke-dasharray='4 4' />");
-            sb.Append($"<text x='{contentW / 2}' y='{imageH / 2}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='#c0c0c0'>IMAGE</text>");
+            AppendGeneratedFallbackArt(sb, m, contentW, imageH, borderColor);
         }
         sb.Append("</g>");
 
@@ -242,7 +241,78 @@ public static class CardSvgRenderer
         if (footer.StartsWith("APU", StringComparison.OrdinalIgnoreCase)) return "APU";
         if (footer.StartsWith("CLOCK", StringComparison.OrdinalIgnoreCase)) return "CLOCK";
         if (footer.StartsWith("SHADER", StringComparison.OrdinalIgnoreCase)) return "SHADER";
+        if (footer.StartsWith("WEBMODULE", StringComparison.OrdinalIgnoreCase) || footer.StartsWith("MODULE", StringComparison.OrdinalIgnoreCase)) return "WEBMODULE";
+        if (footer.StartsWith("BACKGROUND", StringComparison.OrdinalIgnoreCase)) return "BACKGROUND";
+        if (footer.StartsWith("NULL", StringComparison.OrdinalIgnoreCase)) return "NULLPROVIDER";
         return null;
+    }
+
+    private static void AppendGeneratedFallbackArt(StringBuilder sb, CoreCardModel model, int width, int height, string accent)
+    {
+        var domain = (model.Domain ?? GuessDomainFromFooter(model.FooterNote) ?? "CARD").ToUpperInvariant();
+        var token = EscapeXml(GetVisualToken(model));
+        var domainLabel = EscapeXml(GetDomainBadgeLabel(domain));
+
+        sb.Append($"<rect x='0' y='0' width='{width}' height='{height}' rx='8' fill='#10141c' stroke='#ffffff' stroke-width='2' />");
+        sb.Append($"<rect x='8' y='8' width='{width - 16}' height='{height - 16}' rx='6' fill='none' stroke='{accent}' stroke-width='2' opacity='0.75' />");
+
+        switch (domain)
+        {
+            case "WEBMODULE":
+                sb.Append($"<rect x='18' y='18' width='{width - 36}' height='{height - 44}' rx='8' fill='#151b25' stroke='{accent}' stroke-width='2' />");
+                sb.Append($"<rect x='28' y='32' width='{width - 56}' height='14' rx='4' fill='{accent}' opacity='0.3' />");
+                sb.Append($"<rect x='28' y='56' width='{(width - 68) / 2}' height='42' rx='5' fill='#1f2937' stroke='#dbeafe' stroke-width='1.5' />");
+                sb.Append($"<rect x='{width / 2 + 6}' y='56' width='{(width - 68) / 2}' height='42' rx='5' fill='#1f2937' stroke='#dbeafe' stroke-width='1.5' />");
+                sb.Append($"<path d='M{width / 2 - 18} {height - 48} L{width / 2 + 24} {height - 66} L{width / 2 - 18} {height - 84} Z' fill='{accent}' opacity='0.85' />");
+                break;
+            case "BACKGROUND":
+                sb.Append($"<circle cx='{width * 0.22}' cy='{height * 0.28}' r='24' fill='{accent}' opacity='0.22' />");
+                sb.Append($"<circle cx='{width * 0.74}' cy='{height * 0.34}' r='30' fill='#60a5fa' opacity='0.18' />");
+                sb.Append($"<path d='M0 {height - 48} C38 {height - 76}, 70 {height - 10}, 110 {height - 38} C148 {height - 66}, 178 {height - 6}, {width} {height - 34} L{width} {height} L0 {height} Z' fill='{accent}' opacity='0.5' />");
+                sb.Append($"<path d='M0 {height - 26} C30 {height - 40}, 70 {height - 2}, 118 {height - 20} C160 {height - 36}, 190 {height - 4}, {width} {height - 16} L{width} {height} L0 {height} Z' fill='#38bdf8' opacity='0.45' />");
+                break;
+            case "NULLPROVIDER":
+                for (var y = 20; y < height - 18; y += 10)
+                {
+                    sb.Append($"<rect x='16' y='{y}' width='{width - 32}' height='3' fill='{accent}' opacity='0.22' />");
+                }
+                sb.Append($"<path d='M18 {height - 34} C42 {height - 88}, 78 {height - 6}, 110 {height - 58} C136 {height - 100}, 168 {height - 16}, {width - 18} {height - 72}' fill='none' stroke='{accent}' stroke-width='4' stroke-linecap='round' />");
+                sb.Append($"<circle cx='{width * 0.28}' cy='{height * 0.3}' r='10' fill='#f8fafc' opacity='0.78' />");
+                sb.Append($"<circle cx='{width * 0.7}' cy='{height * 0.38}' r='8' fill='#f8fafc' opacity='0.62' />");
+                break;
+            default:
+                sb.Append($"<rect x='20' y='20' width='{width - 40}' height='{height - 40}' rx='10' fill='#161b22' stroke='{accent}' stroke-width='2' opacity='0.95' />");
+                sb.Append($"<path d='M{width / 2} 30 L{width - 26} {height / 2} L{width / 2} {height - 30} L26 {height / 2} Z' fill='none' stroke='{accent}' stroke-width='3' opacity='0.65' />");
+                break;
+        }
+
+        sb.Append($"<rect x='16' y='{height - 30}' width='{width - 32}' height='16' rx='4' fill='#0b0f14' opacity='0.92' />");
+        sb.Append($"<text x='26' y='34' font-family=\"'Press Start 2P', monospace\" font-size='8' fill='{accent}'>{domainLabel}</text>");
+        sb.Append($"<text x='{width / 2}' y='{height / 2 + 8}' text-anchor='middle' font-family=\"'Press Start 2P', monospace\" font-size='20' fill='#f8fafc'>{token}</text>");
+    }
+
+    private static string GetVisualToken(CoreCardModel model)
+    {
+        var source = !string.IsNullOrWhiteSpace(model.ShortName)
+            ? model.ShortName!
+            : !string.IsNullOrWhiteSpace(model.Id)
+                ? model.Id!
+                : model.DisplayName ?? "CARD";
+
+        var compact = new string(source.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        if (compact.Length == 0) return "CARD";
+        return compact.Length <= 4 ? compact : compact.Substring(0, 4);
+    }
+
+    private static string GetDomainBadgeLabel(string domain)
+    {
+        return domain switch
+        {
+            "WEBMODULE" => "MODULE",
+            "BACKGROUND" => "BACKGROUND",
+            "NULLPROVIDER" => "NULL",
+            _ => domain
+        };
     }
     // Draw a 5x5 pixel star using small rects; each cell is 2x2 px for crisp retro look
     private static void AppendPixelStar(StringBuilder sb, int x, int y, bool filled)
@@ -277,7 +347,7 @@ public sealed class CoreCardModel
     public int Rating { get; set; }
     public int Performance { get; set; }
     public string? FooterNote { get; set; }
-    // Optional domain hint: CPU, PPU, APU, CLOCK, SHADER
+    // Optional domain hint: CPU, PPU, APU, CLOCK, SHADER, WEBMODULE, BACKGROUND, NULLPROVIDER
     public string? Domain { get; set; }
 }
 
@@ -293,6 +363,9 @@ static class CardSvgRendererHelpers
         if (footer.StartsWith("APU", StringComparison.OrdinalIgnoreCase)) return "APU";
         if (footer.StartsWith("CLOCK", StringComparison.OrdinalIgnoreCase)) return "CLOCK";
         if (footer.StartsWith("SHADER", StringComparison.OrdinalIgnoreCase)) return "SHADER";
+        if (footer.StartsWith("WEBMODULE", StringComparison.OrdinalIgnoreCase) || footer.StartsWith("MODULE", StringComparison.OrdinalIgnoreCase)) return "WEBMODULE";
+        if (footer.StartsWith("BACKGROUND", StringComparison.OrdinalIgnoreCase)) return "BACKGROUND";
+        if (footer.StartsWith("NULL", StringComparison.OrdinalIgnoreCase)) return "NULLPROVIDER";
         return null;
     }
 }

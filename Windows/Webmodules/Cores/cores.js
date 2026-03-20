@@ -90,19 +90,15 @@
       console.log('Owned APU set:', Array.from(ownedApu));
       
       // Fetch all core metadata from API
-      if (!api?.cores?.list) {
-        console.error('[Cores] webapi helper not loaded');
-        return;
-      }
-
-      const data = await api.cores.list();
+      const data = api?.cores?.list ? await api.cores.list() : null;
+      const roster = api?.progression?.getRoster ? await api.progression.getRoster() : null;
       console.log('Cores metadata from API:', data);
       console.log('Owned sets - CPU:', ownedCpu.size, 'PPU:', ownedPpu.size, 'APU:', ownedApu.size);
       
       // Filter to owned cores only
       allItems = [];
       
-      if (data.cpu) {
+      if (data?.cpu) {
         data.cpu.forEach(core => {
           if (ownedCpu.has(core.id.toUpperCase())) {
             allItems.push({
@@ -120,7 +116,7 @@
         });
       }
       
-      if (data.ppu) {
+      if (data?.ppu) {
         data.ppu.forEach(core => {
           if (ownedPpu.has(core.id.toUpperCase())) {
             allItems.push({
@@ -138,7 +134,7 @@
         });
       }
       
-      if (data.apu) {
+      if (data?.apu) {
         data.apu.forEach(core => {
           if (ownedApu.has(core.id.toUpperCase())) {
             allItems.push({
@@ -156,7 +152,7 @@
         });
       }
       
-      if (data.clock) {
+      if (data?.clock) {
         data.clock.forEach(core => {
           if (ownedClock.has(core.id.toUpperCase())) {
             allItems.push({
@@ -174,7 +170,7 @@
         });
       }
       
-      if (data.shader) {
+      if (data?.shader) {
         data.shader.forEach(core => {
           if (ownedShader.has(core.id.toUpperCase())) {
             allItems.push({
@@ -191,8 +187,100 @@
           }
         });
       }
+
+      if (roster && roster.success !== false) {
+        (Array.isArray(roster.webmodules) ? roster.webmodules : []).forEach(module => {
+          if (!module?.unlocked || !module?.id) {
+            return;
+          }
+
+          allItems.push({
+            domain: 'WEBMODULE',
+            id: module.id,
+            shortName: module.id,
+            displayName: module.title || prettifyName(module.id),
+            description: module.description || 'BrokenNes webmodule unlock.',
+            performance: 0,
+            rating: getProgressionRating('WEBMODULE', module.id, module),
+            category: module.displayMode || 'Webmodule',
+            key: `WEBMODULE:${module.id}`
+          });
+        });
+
+        (Array.isArray(roster.backgrounds) ? roster.backgrounds : []).forEach(entry => {
+          if (!entry?.unlocked || !entry?.id) {
+            return;
+          }
+
+          allItems.push({
+            domain: 'BACKGROUND',
+            id: entry.id,
+            shortName: entry.id,
+            displayName: entry.id,
+            description: buildBackgroundDescription(entry.id),
+            performance: 0,
+            rating: getProgressionRating('BACKGROUND', entry.id, entry),
+            category: 'Background',
+            key: `BACKGROUND:${entry.id}`
+          });
+        });
+
+        (Array.isArray(roster.nullProviders) ? roster.nullProviders : []).forEach(entry => {
+          if (!entry?.unlocked || !entry?.id) {
+            return;
+          }
+
+          allItems.push({
+            domain: 'NULLPROVIDER',
+            id: entry.id,
+            shortName: entry.id,
+            displayName: entry.id,
+            description: `Crash-visualizer unlock: ${prettifyName(entry.id)}.`,
+            performance: 0,
+            rating: getProgressionRating('NULLPROVIDER', entry.id, entry),
+            category: 'Null Provider',
+            key: `NULLPROVIDER:${entry.id}`
+          });
+        });
+      }
     } catch (error) {
       console.error('Error loading cores:', error);
+    }
+  }
+
+  function prettifyName(value) {
+    return String(value || '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .trim() || 'Unknown';
+  }
+
+  function buildBackgroundDescription(id) {
+    if (id === 'Gradient (Default)') {
+      return 'Default menu background with a clean static gradient.';
+    }
+    if (id === 'None (Black)') {
+      return 'Pure black backdrop for minimal presentation.';
+    }
+    return `Procedural renderer background: ${prettifyName(id)}.`;
+  }
+
+  function getProgressionRating(domain, id, meta) {
+    const normalizedId = String(id || '').toUpperCase();
+    switch (domain) {
+      case 'WEBMODULE':
+        if (['GLITCHHARVESTER', 'TIMEJUMP', 'IMAGINEBUG'].includes(normalizedId)) return 5;
+        if (['DECKBUILDER', 'CONTINUE', 'CORRUPTIONSLOP'].includes(normalizedId)) return 4;
+        return meta?.displayMode === 'Overlay' ? 4 : 3;
+      case 'BACKGROUND':
+        if (normalizedId === 'GRADIENT (DEFAULT)') return 2;
+        if (normalizedId === 'NONE (BLACK)') return 1;
+        return 3;
+      case 'NULLPROVIDER':
+        if (normalizedId === 'STATIC' || normalizedId === 'VOID') return 1;
+        return 3;
+      default:
+        return 2;
     }
   }
   
@@ -267,7 +355,10 @@
         { title: 'PPU', items: allItems.filter(i => i.domain === 'PPU') },
         { title: 'APU', items: allItems.filter(i => i.domain === 'APU') },
         { title: 'Clock', items: allItems.filter(i => i.domain === 'CLOCK') },
-        { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') }
+        { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') },
+        { title: 'Modules', items: allItems.filter(i => i.domain === 'WEBMODULE') },
+        { title: 'Backgrounds', items: allItems.filter(i => i.domain === 'BACKGROUND') },
+        { title: 'Null Providers', items: allItems.filter(i => i.domain === 'NULLPROVIDER') }
       ];
       
       container.innerHTML = '<div class="card-sections">' +
@@ -348,7 +439,10 @@
         { title: 'PPU', items: allItems.filter(i => i.domain === 'PPU') },
         { title: 'APU', items: allItems.filter(i => i.domain === 'APU') },
         { title: 'Clock', items: allItems.filter(i => i.domain === 'CLOCK') },
-        { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') }
+        { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') },
+        { title: 'Modules', items: allItems.filter(i => i.domain === 'WEBMODULE') },
+        { title: 'Backgrounds', items: allItems.filter(i => i.domain === 'BACKGROUND') },
+        { title: 'Null Providers', items: allItems.filter(i => i.domain === 'NULLPROVIDER') }
       ];
       
       container.innerHTML = '<div class="list-sections">' +

@@ -73,19 +73,35 @@
   }
 
   async function getTotalCores(fallbackValue) {
+    let legacyCoreCount = 0;
     try {
       const result = await window.webapi?.cores?.list?.();
       if (result && typeof result === 'object') {
-        const total = ['cpu', 'ppu', 'apu', 'clock', 'shader']
+        legacyCoreCount = ['cpu', 'ppu', 'apu', 'clock', 'shader']
           .map(key => Array.isArray(result[key]) ? result[key].length : 0)
           .reduce((sum, count) => sum + count, 0);
+      }
+    } catch (error) {
+      console.warn('[DeckBuilder] Total core fetch failed:', error);
+    }
 
+    try {
+      const roster = await window.webapi?.progression?.getRoster?.();
+      if (roster && roster.success !== false) {
+        const progressionTotal = (Array.isArray(roster.webmodules) ? roster.webmodules.length : 0)
+          + (Array.isArray(roster.backgrounds) ? roster.backgrounds.length : 0)
+          + (Array.isArray(roster.nullProviders) ? roster.nullProviders.length : 0);
+        const total = legacyCoreCount + progressionTotal;
         if (Number.isFinite(total) && total > 0) {
           return total;
         }
       }
     } catch (error) {
-      console.warn('[DeckBuilder] Total core fetch failed:', error);
+      console.warn('[DeckBuilder] Progression roster fetch failed:', error);
+    }
+
+    if (Number.isFinite(legacyCoreCount) && legacyCoreCount > 0) {
+      return legacyCoreCount;
     }
 
     return Number.isFinite(fallbackValue) ? fallbackValue : 0;

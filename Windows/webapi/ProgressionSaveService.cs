@@ -549,8 +549,8 @@ namespace BrokenNes.Windows.WebApi
                         Id = backgroundReward,
                         Type = "background",
                         Title = backgroundReward,
-                        Subtitle = "Background unlocked",
-                        Description = "A new renderer background can now be equipped.",
+                            Subtitle = "BG",
+                            Description = string.Empty,
                         CanEquip = true,
                         IsEquipped = string.Equals(save.PreferredBackgroundId, backgroundReward, StringComparison.OrdinalIgnoreCase),
                         EquipAction = "equip-background"
@@ -571,8 +571,8 @@ namespace BrokenNes.Windows.WebApi
                         Id = nullProviderReward,
                         Type = "nullProvider",
                         Title = nullProviderReward,
-                        Subtitle = "Null provider unlocked",
-                        Description = "A new crash renderer can now be equipped.",
+                            Subtitle = "NULL",
+                            Description = string.Empty,
                         CanEquip = true,
                         IsEquipped = string.Equals(save.PreferredNullProviderId, nullProviderReward, StringComparison.OrdinalIgnoreCase),
                         EquipAction = "equip-null-provider"
