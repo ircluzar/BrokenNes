@@ -151,6 +151,47 @@ namespace BrokenNes.Windows.WebApi
             return true;
         }
 
+        public async Task<GameSave> UnlockEverythingAsync(
+            IEnumerable<string>? cpuIds = null,
+            IEnumerable<string>? ppuIds = null,
+            IEnumerable<string>? apuIds = null,
+            IEnumerable<string>? clockIds = null,
+            IEnumerable<string>? shaderIds = null,
+            IEnumerable<string>? webmoduleIds = null,
+            IEnumerable<string>? backgroundIds = null,
+            IEnumerable<string>? nullProviderIds = null)
+        {
+            var save = await LoadAsync().ConfigureAwait(false);
+
+            save.OwnedCpuIds = NormalizeStringList(cpuIds, save.OwnedCpuIds);
+            save.OwnedPpuIds = NormalizeStringList(ppuIds, save.OwnedPpuIds);
+            save.OwnedApuIds = NormalizeStringList(apuIds, save.OwnedApuIds);
+            save.OwnedClockIds = NormalizeStringList(clockIds, save.OwnedClockIds);
+            save.OwnedShaderIds = NormalizeStringList(shaderIds, save.OwnedShaderIds);
+            save.UnlockedWebmodules = NormalizeStringList(webmoduleIds, save.UnlockedWebmodules);
+            save.UnlockedBackgrounds = NormalizeStringList(backgroundIds, save.UnlockedBackgrounds, NormalizeBackgroundId);
+            save.UnlockedNullProviders = NormalizeStringList(nullProviderIds, save.UnlockedNullProviders);
+
+            save.SavestatesUnlocked = true;
+            save.RtcUnlocked = true;
+            save.GhUnlocked = true;
+            save.ImagineUnlocked = true;
+            save.DebugUnlocked = true;
+            save.AllCoresUnlockedCongrats = true;
+            save.PendingUnlocks.Clear();
+
+            save.PreferredCpuId = NormalizePreferredValue(save.PreferredCpuId, save.OwnedCpuIds, "FMC");
+            save.PreferredPpuId = NormalizePreferredValue(save.PreferredPpuId, save.OwnedPpuIds, "FMC");
+            save.PreferredApuId = NormalizePreferredValue(save.PreferredApuId, save.OwnedApuIds, "FMC");
+            save.PreferredShaderId = NormalizePreferredValue(save.PreferredShaderId, save.OwnedShaderIds, "PX");
+            save.PreferredBackgroundId = NormalizePreferredValue(save.PreferredBackgroundId, save.UnlockedBackgrounds, "Gradient (Default)", NormalizeBackgroundId);
+            save.PreferredNullProviderId = NormalizePreferredValue(save.PreferredNullProviderId, save.UnlockedNullProviders, "Static");
+
+            Normalize(save);
+            await SaveAsync(save).ConfigureAwait(false);
+            return save;
+        }
+
         public bool IsBackgroundUnlocked(GameSave save, string backgroundId)
             => save.UnlockedBackgrounds.Any(value => value.Equals(backgroundId, StringComparison.OrdinalIgnoreCase));
 

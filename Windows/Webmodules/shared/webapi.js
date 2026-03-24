@@ -311,6 +311,7 @@
     progression: {
       getState: () => request('/api/progression'),
       getRoster: () => request('/api/progression/roster'),
+      unlockEverything: () => request('/api/progression/unlock-everything', { method: 'POST' }),
       claimPending: () => request('/api/progression/claim-pending', { method: 'POST' }),
       acknowledge: (rewardIds) => request('/api/progression/acknowledge', {
         method: 'POST',
@@ -331,7 +332,8 @@
       closeMenus: () => request('/api/ui/close-menus', { method: 'POST' }),
       toggleFullscreen: () => request('/api/ui/toggle-fullscreen', { method: 'POST' }),
       hideMenu: () => request('/api/ui/hide-menu', { method: 'POST' }),
-      showMenu: () => request('/api/ui/show-menu', { method: 'POST' })
+      showMenu: () => request('/api/ui/show-menu', { method: 'POST' }),
+      openControllerConfig: (playerNumber) => request(`/api/ui/controller/${encodeURIComponent(playerNumber)}/config`, { method: 'POST' })
     },
 
     cores: {

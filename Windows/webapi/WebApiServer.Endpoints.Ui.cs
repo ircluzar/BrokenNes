@@ -139,6 +139,42 @@ namespace BrokenNes.Windows.WebApi
                     });
                 }
             });
+
+            // POST /api/ui/controller/{playerNumber}/config - Open player controller config dialog
+            app.MapPost("/api/ui/controller/{playerNumber:int}/config", (int playerNumber) =>
+            {
+                if (playerNumber < 1 || playerNumber > 2)
+                {
+                    return Results.BadRequest(new { success = false, error = "Only player 1 or 2 is supported" });
+                }
+
+                if (_openControllerConfig == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Controller config handler not available" });
+                }
+
+                try
+                {
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        _uiControl.Invoke(new Action(() => _openControllerConfig(playerNumber)));
+                    }
+                    else
+                    {
+                        _openControllerConfig(playerNumber);
+                    }
+
+                    return Results.Ok(new { success = true });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new
+                    {
+                        success = false,
+                        error = ex.Message
+                    });
+                }
+            });
         }
     }
 }

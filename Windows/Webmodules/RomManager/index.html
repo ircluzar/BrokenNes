@@ -61,10 +61,17 @@
               <div class="label small-note">Achievements</div>
               <div class="value" id="detailAchievements">-</div>
             </div>
+            <div class="rom-detail-row">
+              <div class="label small-note">ROM Status</div>
+              <div class="value" id="detailMasqueradeStatus">Standard</div>
+            </div>
           </div>
           <div class="rom-actions">
             <button type="button" class="rom-action-btn danger" id="deleteBtn">Delete ROM</button>
+            <button type="button" class="rom-action-btn" id="forceImportBtn">Force Import ROM</button>
+            <button type="button" class="rom-action-btn" id="showAchievementsBtn">Show Achievements</button>
           </div>
+          <input id="forceImportFileInput" type="file" accept=".nes" style="display:none" />
         </div>
       </section>
     </div>
@@ -106,6 +113,22 @@
       <div class="import-footer">
         <button type="button" class="rom-action-btn danger" id="confirmDeleteBtn">Delete</button>
         <button type="button" class="rom-cancel-btn" id="cancelDeleteBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Achievements Modal -->
+  <div id="achievementsModal" class="import-modal-backdrop" style="display: none;">
+    <div class="import-modal achievements-modal" onclick="event.stopPropagation()">
+      <h3 class="import-title">Achievements</h3>
+      <div class="import-body">
+        <div id="achievementsSummary" class="small-note">0/0 unlocked</div>
+        <div id="achievementsList" class="achievements-list-container">
+          <div class="small-note">No achievements found for this game.</div>
+        </div>
+      </div>
+      <div class="import-footer">
+        <button type="button" class="rom-cancel-btn" id="closeAchievementsBtn">Close</button>
       </div>
     </div>
   </div>

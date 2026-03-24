@@ -25,26 +25,30 @@
         </div>
         <div class="opt-row small-note">Unlocks all cores, milestone modules, backgrounds, null providers, and advanced feature gates. Achievements are not changed.</div>
       </section>
+
+      <div class="options-controller-ports" aria-label="Controller ports">
+        <button type="button" class="opt-link controller-port-btn" id="controller1Btn">Controller 1</button>
+        <button type="button" class="opt-link controller-port-btn" id="controller2Btn">Controller 2</button>
+      </div>
       
-      <section class="opt-section" id="featureUnlocks">
-        <h3 class="opt-h3">Feature Unlocks</h3>
-        <div class="opt-row">
-          <span class="opt-link-text">These features normally get unlocked during gameplay</span>
+      <details class="opt-section feature-unlocks" id="featureUnlocks" hidden>
+        <summary class="opt-h3 feature-unlocks-summary">Feature Unlocks</summary>
+        <div class="feature-unlocks-content">
+          <div class="opt-row">
+            <button id="btnUnlockSavestates">Unlock Savestates</button>
+          </div>
+          <div class="opt-row">
+            <button id="btnUnlockRtc">Unlock Real-Time Corruptor</button>
+          </div>
+          <div class="opt-row">
+            <button id="btnUnlockGh">Unlock Glitch Harvester</button>
+          </div>
+          <div class="opt-row">
+            <button id="btnUnlockImagine">Unlock Imagine</button>
+          </div>
+          <div class="opt-row small-note">Toggles the game-save gates for these advanced features. You can also unlock them by progressing in-game.</div>
         </div>
-        <div class="opt-row">
-          <button id="btnUnlockSavestates">Unlock Savestates</button>
-        </div>
-        <div class="opt-row">
-          <button id="btnUnlockRtc">Unlock Real-Time Corruptor</button>
-        </div>
-        <div class="opt-row">
-          <button id="btnUnlockGh">Unlock Glitch Harvester</button>
-        </div>
-        <div class="opt-row">
-          <button id="btnUnlockImagine">Unlock Imagine</button>
-        </div>
-        <div class="opt-row small-note">Toggles the game-save gates for these advanced features. You can also unlock them by progressing in-game.</div>
-      </section>
+      </details>
     </div>
     
     <div class="opt-footer">

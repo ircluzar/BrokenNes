@@ -44,6 +44,7 @@ namespace BrokenNes.Windows.WebApi
         private Action? _toggleFullscreen;
         private Action? _hideMenu;
         private Action? _showMenu;
+        private Action<int>? _openControllerConfig;
         private Func<AudioEngine?> _getAudioEngine;
         private Func<string, bool, Task<bool>>? _loadBuiltInRom;
         private Action? _resumeEmulation;
@@ -71,7 +72,7 @@ namespace BrokenNes.Windows.WebApi
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null, Action? refreshProgressionUi = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null, Action? refreshProgressionUi = null, Action<int>? openControllerConfig = null)
         {
             _progressionSave = new ProgressionSaveService();
             _getNes = getNes;
@@ -95,6 +96,7 @@ namespace BrokenNes.Windows.WebApi
             _toggleFullscreen = toggleFullscreen;
             _hideMenu = hideMenu;
             _showMenu = showMenu;
+            _openControllerConfig = openControllerConfig;
             _loadBuiltInRom = loadBuiltInRom;
             _resumeEmulation = resumeEmulation;
             _pauseEmulation = pauseEmulation;

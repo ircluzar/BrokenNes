@@ -1128,13 +1128,7 @@
     const emptyEl = document.getElementById('romEmpty');
     const tableEl = document.getElementById('romTable');
 
-    const searchText = document.getElementById('romSearch').value.toLowerCase();
-    
-    // Filter
-    const filtered = romRows.filter(r => {
-      if (searchText && !r.title.toLowerCase().includes(searchText)) return false;
-      return true;
-    });
+    const filtered = romRows;
     
     if (filtered.length === 0) {
       emptyEl.style.display = 'block';
@@ -1154,6 +1148,7 @@
       if (selectedGameId === r.id) {
         row.classList.add('selected');
       }
+      row.dataset.gameId = String(r.id);
       row.setAttribute('role', 'row');
       
       row.innerHTML = `
@@ -1166,6 +1161,31 @@
       
       row.addEventListener('click', () => selectGame(r.id));
       tbody.appendChild(row);
+    });
+
+    requestAnimationFrame(() => {
+      ensureSelectedRomInView();
+    });
+  }
+
+  function ensureSelectedRomInView() {
+    if (!selectedGameId) {
+      return;
+    }
+
+    const tbody = document.getElementById('romTbody');
+    if (!tbody) {
+      return;
+    }
+
+    const selectedRow = tbody.querySelector(`.rom-td.selected[data-game-id="${CSS.escape(String(selectedGameId))}"]`);
+    if (!selectedRow) {
+      return;
+    }
+
+    selectedRow.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest'
     });
   }
 
@@ -1514,10 +1534,12 @@
       cartridgeToggle.addEventListener('click', toggleCartridge);
     }
     
-    // Search input
-    const romSearch = document.getElementById('romSearch');
-    if (romSearch) {
-      romSearch.addEventListener('input', renderRomList);
+    const openRomManagerBtn = document.getElementById('openRomManagerBtn');
+    if (openRomManagerBtn) {
+      openRomManagerBtn.addEventListener('click', () => {
+        void playUiSfx(UI_SFX.toggle, { key: 'open-rom-manager', cooldownMs: 120 });
+        window.location.href = '../RomManager/index.html';
+      });
     }
     
     // Core slot clicks
@@ -1563,6 +1585,20 @@
     if (returnLink) {
       returnLink.addEventListener('click', () => {
         void playUiSfx(UI_SFX.toggle, { key: 'return-link', cooldownMs: 120 });
+      });
+    }
+
+    const controller1Btn = document.getElementById('controller1Btn');
+    if (controller1Btn) {
+      controller1Btn.addEventListener('click', () => {
+        void openControllerConfigForPlayer(1);
+      });
+    }
+
+    const controller2Btn = document.getElementById('controller2Btn');
+    if (controller2Btn) {
+      controller2Btn.addEventListener('click', () => {
+        void openControllerConfigForPlayer(2);
       });
     }
     
@@ -1642,6 +1678,20 @@
     });
   }
 
+  async function openControllerConfigForPlayer(playerNumber) {
+    if (!window.webapi?.ui?.openControllerConfig) {
+      console.warn('[Continue] openControllerConfig UI endpoint is unavailable');
+      return;
+    }
+
+    void playUiSfx(UI_SFX.select, { key: `controller-port-${playerNumber}`, cooldownMs: 90 });
+
+    const result = await window.webapi.ui.openControllerConfig(playerNumber);
+    if (!result || result.success === false) {
+      console.warn(`[Continue] Failed to open controller config for player ${playerNumber}:`, result?.error || 'unknown error');
+    }
+  }
+
   function toggleCartridge() {
     void playUiSfx(UI_SFX.toggle, { key: 'toggle-cartridge', cooldownMs: 120 });
     cartridgeCollapsed = !cartridgeCollapsed;
@@ -1661,6 +1711,7 @@
   }
 
   let currentPickerSlot = null;
+  let currentPickerPreviewToken = 0;
 
   async function openCardPreview(domain, core, options = {}) {
     const modal = document.getElementById('cardPreviewModal');
@@ -2441,36 +2492,132 @@
     
     const modal = document.getElementById('pickerModal');
     const title = document.getElementById('pickerTitle');
-    const grid = document.getElementById('pickerGrid');
+    const list = document.getElementById('pickerList');
+    const previewStage = document.getElementById('pickerPreviewStage');
+    const previewTitle = document.getElementById('pickerPreviewTitle');
+    const previewSubtitle = document.getElementById('pickerPreviewSubtitle');
+
+    if (!modal || !title || !list || !previewStage || !previewTitle || !previewSubtitle) {
+      return;
+    }
     
     const slotType = slotName.toUpperCase();
     title.textContent = `Select ${slotType}`;
     
-    // Get owned cores for this type using new property names
+    // Show only owned cores in this picker.
     const owned = new Set(getOwnedCoreIds(slotType));
-    const allCores = getCoreOptions(slotType);
+    const availableCores = getCoreOptions(slotType).filter(core => owned.has(core.id));
+    const currentSelectedId = getSelectedCoreBySlot(slotName);
     
-    // Render options
-    grid.innerHTML = '';
-    allCores.forEach(core => {
-      const isOwned = owned.has(core.id);
+    list.innerHTML = '';
+    previewTitle.textContent = 'Hover a core';
+    previewSubtitle.textContent = '';
+    previewStage.innerHTML = '<div class="card-loading">Hover a core to preview its card.</div>';
+
+    if (availableCores.length === 0) {
+      list.innerHTML = '<div class="picker-empty">No cores available for this slot yet.</div>';
+      modal.style.display = 'flex';
+      return;
+    }
+
+    availableCores.forEach(core => {
       const btn = document.createElement('button');
-      btn.className = 'picker-option';
-      btn.textContent = core.id;
+      btn.type = 'button';
+      btn.className = 'picker-core-item';
+      btn.dataset.coreId = core.id;
+      const rating = normalizeCoreRating(core.rating);
+      btn.innerHTML = `
+        <span class="picker-core-top">
+          <span class="picker-core-id">${escapeHtml(core.id)}</span>
+          <span class="picker-core-rating rating-tier-${rating}" title="Rating">${renderRatingStars(rating)}</span>
+        </span>
+        <span class="picker-core-name">${escapeHtml(core.name || core.id)}</span>
+      `;
       btn.title = core.name || core.id;
+
+      const activatePreview = () => {
+        setPickerActiveItem(list, core.id);
+        void updatePickerPreview(slotType, core, {
+          stageEl: previewStage,
+          titleEl: previewTitle,
+          subtitleEl: previewSubtitle
+        });
+      };
+
+      btn.addEventListener('mouseenter', activatePreview);
+      btn.addEventListener('focus', activatePreview);
+      btn.addEventListener('click', () => selectCore(slotName, core.id));
       
-      if (!isOwned) {
-        btn.disabled = true;
-        btn.classList.add('locked');
-        btn.title = 'Not unlocked';
-      } else {
-        btn.addEventListener('click', () => selectCore(slotName, core.id));
-      }
-      
-      grid.appendChild(btn);
+      list.appendChild(btn);
     });
+
+    const firstCore = availableCores.find(core => core.id === currentSelectedId) || availableCores[0];
+    if (firstCore) {
+      setPickerActiveItem(list, firstCore.id);
+      void updatePickerPreview(slotType, firstCore, {
+        stageEl: previewStage,
+        titleEl: previewTitle,
+        subtitleEl: previewSubtitle
+      });
+    }
     
     modal.style.display = 'flex';
+  }
+
+  function getSelectedCoreBySlot(slotName) {
+    if (slotName === 'cpu') return selectedCpu;
+    if (slotName === 'ppu') return selectedPpu;
+    if (slotName === 'apu') return selectedApu;
+    if (slotName === 'shader') return selectedShader;
+    return null;
+  }
+
+  function normalizeCoreRating(value) {
+    const numeric = Number.isFinite(value) ? value : Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(5, Math.round(numeric)));
+  }
+
+  function renderRatingStars(rating) {
+    const filled = '\u2605';
+    const empty = '\u2606';
+    return filled.repeat(rating) + empty.repeat(5 - rating);
+  }
+
+  function setPickerActiveItem(listEl, coreId) {
+    listEl.querySelectorAll('.picker-core-item').forEach(node => {
+      if (node.dataset.coreId === coreId) {
+        node.classList.add('active');
+      } else {
+        node.classList.remove('active');
+      }
+    });
+  }
+
+  async function updatePickerPreview(domain, core, refs) {
+    const stageEl = refs?.stageEl;
+    const titleEl = refs?.titleEl;
+    const subtitleEl = refs?.subtitleEl;
+    if (!stageEl || !titleEl || !subtitleEl || !core?.id) {
+      return;
+    }
+
+    titleEl.textContent = `${domain}_${core.id}`;
+    subtitleEl.textContent = core.name || '';
+
+    stageEl.innerHTML = '<div class="card-loading">Loading...</div>';
+    const previewToken = String(++currentPickerPreviewToken);
+    stageEl.dataset.previewToken = previewToken;
+
+    const svgMarkup = await getCoreSvgMarkup(domain, core.id);
+    if (stageEl.dataset.previewToken !== previewToken) {
+      return;
+    }
+
+    renderCardPreview(stageEl, domain, core.id, svgMarkup);
   }
 
   function isSlotLocked(slotName) {
@@ -2554,6 +2701,23 @@
 
   function closePicker() {
     const modal = document.getElementById('pickerModal');
+    const stage = document.getElementById('pickerPreviewStage');
+    const list = document.getElementById('pickerList');
+    const title = document.getElementById('pickerPreviewTitle');
+    const subtitle = document.getElementById('pickerPreviewSubtitle');
+    if (stage) {
+      stage.dataset.previewToken = '';
+      stage.innerHTML = '';
+    }
+    if (list) {
+      list.innerHTML = '';
+    }
+    if (title) {
+      title.textContent = 'Hover a core';
+    }
+    if (subtitle) {
+      subtitle.textContent = '';
+    }
     modal.style.display = 'none';
     currentPickerSlot = null;
   }

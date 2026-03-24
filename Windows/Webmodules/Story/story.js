@@ -96,6 +96,7 @@
       const result = await window.webapi.emulator.loadBuiltInRom(name, true); // preserveShader = true
       
       if (result && result.success) {
+        await enforceStoryShader();
         console.log(`[Story] Successfully loaded ${name}`);
         return true;
       } else {
@@ -105,6 +106,26 @@
     } catch (e) {
       console.error(`[Story] Error loading ${name}:`, e);
       return false;
+    }
+  }
+
+  // Force TV shader for story cutscenes even when progression has not unlocked it.
+  async function enforceStoryShader() {
+    try {
+      if (!window.webapi || !window.webapi.shader) {
+        return;
+      }
+
+      const setResult = await window.webapi.shader.setShader('TV', 'story-cutscene');
+      if (!setResult || !setResult.success) {
+        console.warn('[Story] TV shader override was not applied:', setResult?.error || 'Unknown error');
+        return;
+      }
+
+      await window.webapi.shader.enable();
+      console.log('[Story] TV shader override applied');
+    } catch (e) {
+      console.warn('[Story] Failed to enforce TV shader override:', e);
     }
   }
 
@@ -165,13 +186,7 @@
             console.log('[Story] Saved shader state:', savedShaderState);
           }
 
-          // Switch to TV (CRT) shader
-          await window.webapi.shader.setShader('TV', 'story-cutscene');
-          console.log('[Story] Switched to TV (CRT) shader');
-
-          // Enable shaders
-          await window.webapi.shader.enable();
-          console.log('[Story] Enabled shaders');
+          await enforceStoryShader();
         }
       } catch (e) {
         console.error('[Story] Failed to set shader:', e);

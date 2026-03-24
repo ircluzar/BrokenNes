@@ -215,6 +215,10 @@
   color: #ffcc00;
 }
 
+.rom-td.installed .rom-star-count {
+  color: #9cff9c;
+}
+
 .rom-star-count.zero {
   color: #ff4d4d;
 }
@@ -296,16 +300,27 @@
 .rom-actions {
   display: flex;
   justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
 }
 
 .rom-action-btn {
   padding: 0.6rem 1.2rem;
   border: 3px solid #fff;
+  background: #111;
+  color: #fff;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.65rem;
   cursor: pointer;
   transition: all 0.1s;
+}
+
+.rom-action-btn:hover,
+.rom-action-btn:focus {
+  background: #ff5a26;
+  color: #000;
+  transform: scale(1.05);
 }
 
 .rom-action-btn.danger {
@@ -325,6 +340,74 @@
   color: #888;
   cursor: not-allowed;
   transform: none;
+}
+
+.rom-status-masqueraded {
+  color: #4dff88;
+}
+
+.rom-status-standard {
+  color: #d9d9d9;
+}
+
+.achievements-modal {
+  max-width: 760px;
+}
+
+.achievements-list-container {
+  margin-top: 0.8rem;
+  min-height: 180px;
+  max-height: 48vh;
+  overflow-y: auto;
+  border: 2px solid #333;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.achievement-row {
+  border: 2px solid #444;
+  padding: 0.6rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.achievement-row:last-child {
+  margin-bottom: 0;
+}
+
+.achievement-row.unlocked {
+  border-color: #30c46f;
+  background: rgba(48, 196, 111, 0.12);
+}
+
+.achievement-row.locked {
+  border-color: #777;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.achievement-title {
+  font-size: 0.62rem;
+  line-height: 1.45;
+  color: #fff;
+}
+
+.achievement-row.unlocked .achievement-title {
+  color: #7effa8;
+}
+
+.achievement-state {
+  margin-top: 0.4rem;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.achievement-row.unlocked .achievement-state {
+  color: #7effa8;
+}
+
+.achievement-row.locked .achievement-state {
+  color: #fff;
 }
 
 /* Footer */

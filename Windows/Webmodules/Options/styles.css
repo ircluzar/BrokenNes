@@ -33,6 +33,59 @@
   font-style: italic;
 }
 
+.options-controller-ports {
+  margin: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(1.2rem, 16vw, 10rem);
+}
+
+.feature-unlocks {
+  padding: 0;
+}
+
+.feature-unlocks-summary {
+  margin: 0;
+  padding: 1rem;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feature-unlocks-summary::-webkit-details-marker {
+  display: none;
+}
+
+.feature-unlocks-summary::after {
+  content: '+';
+  color: #ff5a26;
+}
+
+.feature-unlocks[open] .feature-unlocks-summary::after {
+  content: '-';
+}
+
+.feature-unlocks-content {
+  padding: 0 1rem 1rem;
+}
+
+.options-controller-ports .controller-port-btn {
+  min-width: clamp(140px, 26vw, 210px);
+  text-align: center;
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.options-controller-ports .controller-port-btn:focus-visible {
+  outline-color: #ffd166;
+}
+
 @media (max-width: 620px) {
   .options-root {
     margin: 1rem;
@@ -52,6 +105,16 @@
   .opt-row input[type=range] {
     flex: 1 1 100%;
     margin-left: 0;
+  }
+
+  .options-controller-ports {
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+
+  .options-controller-ports .controller-port-btn {
+    min-width: min(210px, 100%);
+    width: 100%;
   }
 }
 

@@ -703,7 +703,8 @@ namespace BrokenNes.Windows
                         () => nes?.RomPath,  // Current ROM path
                         () => nes?.RomName,  // Current ROM name
                         LoadRomFromApi,  // Load ROM by path
-                        RefreshProgressionUi  // Refresh progression-gated WinForms menus/state
+                        RefreshProgressionUi,  // Refresh progression-gated WinForms menus/state
+                        OpenControllerConfig  // Open player controller config window
                     );
                 }
 

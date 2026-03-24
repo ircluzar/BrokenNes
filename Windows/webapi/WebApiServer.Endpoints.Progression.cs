@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using NesEmulator;
 
 namespace BrokenNes.Windows.WebApi
 {
@@ -93,6 +97,48 @@ namespace BrokenNes.Windows.WebApi
                 var updatedCount = await _progressionSave.AcknowledgePendingAsync(body.RewardIds);
                 RefreshProgressionUi();
                 return Results.Ok(new { success = true, updatedCount });
+            });
+
+            app.MapPost("/api/progression/unlock-everything", async () =>
+            {
+                CoreRegistry.Initialize();
+
+                var allWebmodules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var module in WebModuleManager.DiscoverModules())
+                {
+                    if (!string.IsNullOrWhiteSpace(module.FolderName))
+                    {
+                        allWebmodules.Add(module.FolderName.Trim());
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
+                    {
+                        allWebmodules.Add(module.Config.LoadModule.Trim());
+                    }
+                }
+
+                var allBackgrounds = (_getAvailableBackgrounds?.Invoke() ?? Array.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name) && name != "---")
+                    .ToArray();
+
+                var allNullProviders = (_getAvailableNullProviders?.Invoke() ?? Array.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .ToArray();
+
+                var allShaders = Enum.GetNames(typeof(Rendering.NesShaderManager.ShaderType));
+
+                var save = await _progressionSave.UnlockEverythingAsync(
+                    CoreRegistry.CpuIds,
+                    CoreRegistry.PpuIds,
+                    CoreRegistry.ApuIds,
+                    new[] { "FMC", "TRB", "CLR" },
+                    allShaders,
+                    allWebmodules,
+                    allBackgrounds,
+                    allNullProviders);
+
+                RefreshProgressionUi();
+                return Results.Ok(new { success = true, save });
             });
 
             app.MapPost("/api/progression/equip-background", async (HttpContext context) =>

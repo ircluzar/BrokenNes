@@ -113,7 +113,7 @@
         <div class="rom-toolbar">
           <div class="small-note">Installed ROMs with challenge stars</div>
           <div class="rom-toolbar-right">
-            <input class="rom-search" id="romSearch" placeholder="Search title…" />
+            <button type="button" class="rom-manage-btn" id="openRomManagerBtn">ROM Manager</button>
           </div>
         </div>
         <div class="rom-empty small-note" id="romEmpty" style="display: none;">
@@ -162,6 +162,12 @@
       </div>
       <a href="../DeckBuilder/index.html?skipHW=1" class="opt-link" id="returnLink">RETURN</a>
     </div>
+
+  </div>
+
+  <div class="continue-controller-ports" aria-label="Controller ports">
+    <button type="button" class="opt-link controller-port-btn" id="controller1Btn">Controller 1</button>
+    <button type="button" class="opt-link controller-port-btn" id="controller2Btn">Controller 2</button>
   </div>
 
   <!-- Core Picker Modal -->
@@ -172,8 +178,17 @@
         <button class="picker-close" id="pickerClose" aria-label="Close">×</button>
       </div>
       <div class="picker-body">
-        <div class="picker-grid" id="pickerGrid">
-          <!-- Core options will be inserted here -->
+        <div class="picker-layout">
+          <div class="picker-list" id="pickerList" role="listbox" aria-label="Available cores"></div>
+          <div class="picker-preview-pane" id="pickerPreviewPane">
+            <div class="picker-preview-head">
+              <div class="picker-preview-title" id="pickerPreviewTitle">Hover a core</div>
+              <div class="picker-preview-subtitle" id="pickerPreviewSubtitle"></div>
+            </div>
+            <div class="picker-preview-stage" id="pickerPreviewStage">
+              <div class="card-loading">Hover a core to preview its card.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

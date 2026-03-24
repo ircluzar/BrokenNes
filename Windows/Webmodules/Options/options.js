@@ -118,11 +118,6 @@
     }
 
     // Action buttons
-    const btnRestoreCores = document.getElementById('btnRestoreCores');
-    if (btnRestoreCores) {
-      btnRestoreCores.addEventListener('click', onRestoreCores);
-    }
-
     const btnClearSave = document.getElementById('btnClearSave');
     if (btnClearSave) {
       btnClearSave.addEventListener('click', onClearSave);
@@ -131,11 +126,6 @@
     const btnUnlockAll = document.getElementById('btnUnlockAll');
     if (btnUnlockAll) {
       btnUnlockAll.addEventListener('click', onUnlockAll);
-    }
-
-    const btnToggleFeatures = document.getElementById('btnToggleFeatures');
-    if (btnToggleFeatures) {
-      btnToggleFeatures.addEventListener('click', onToggleFeatures);
     }
 
     // Feature unlock buttons
@@ -159,9 +149,18 @@
       btnUnlockImagine.addEventListener('click', () => onUnlockFeature('Imagine'));
     }
 
-    const btnUnlockDebug = document.getElementById('btnUnlockDebug');
-    if (btnUnlockDebug) {
-      btnUnlockDebug.addEventListener('click', () => onUnlockFeature('Debug'));
+    const controller1Btn = document.getElementById('controller1Btn');
+    if (controller1Btn) {
+      controller1Btn.addEventListener('click', () => {
+        void openControllerConfigForPlayer(1);
+      });
+    }
+
+    const controller2Btn = document.getElementById('controller2Btn');
+    if (controller2Btn) {
+      controller2Btn.addEventListener('click', () => {
+        void openControllerConfigForPlayer(2);
+      });
     }
 
     // Modal buttons
@@ -235,12 +234,6 @@
     await saveVolumes();
   }
 
-  async function onRestoreCores() {
-    // In web module, we simulate this by showing message
-    // In full app, this would use IndexedDB
-    showModal('Core Preferences', 'Core preferences have been reset to default (FMC).');
-  }
-
   async function onClearSave() {
     // Reset save to defaults using shared module
     if (window.gameSave && typeof window.gameSave.reset === 'function') {
@@ -257,7 +250,18 @@
   }
 
   async function onUnlockAll() {
-    // Use shared gameSave module to unlock everything
+    try {
+      if (window.webapi?.progression?.unlockEverything) {
+        await window.webapi.progression.unlockEverything();
+        await loadGameSave();
+        showModal('Save Edit', 'Everything has been unlocked using the canonical progression roster.');
+        return;
+      }
+    } catch (error) {
+      console.warn('[Options] Native unlock-everything API failed, falling back to local unlock:', error);
+    }
+
+    // Fallback path for environments where the native endpoint is unavailable.
     if (window.gameSave && typeof window.gameSave.unlockAllCores === 'function') {
       gameSave = window.gameSave.unlockAllCores(gameSave);
 
@@ -279,16 +283,10 @@
 
       await saveGameSave();
       showModal('Save Edit', 'All cores, milestone modules, backgrounds, null providers, and advanced features unlocked in your DeckBuilder save.');
-    } else {
-      showModal('Error', 'Unable to unlock cores - gameSave module not available');
+      return;
     }
-  }
 
-  function onToggleFeatures() {
-    const section = document.getElementById('featureUnlocks');
-    if (section) {
-      section.style.display = section.style.display === 'none' ? 'block' : 'none';
-    }
+    showModal('Error', 'Unable to unlock cores - gameSave module not available');
   }
 
   async function onUnlockFeature(feature) {
@@ -300,6 +298,18 @@
     }
 
     showModal('Error', 'Unable to unlock feature - gameSave module not available');
+  }
+
+  async function openControllerConfigForPlayer(playerNumber) {
+    if (!window.webapi?.ui?.openControllerConfig) {
+      console.warn('[Options] openControllerConfig UI endpoint is unavailable');
+      return;
+    }
+
+    const result = await window.webapi.ui.openControllerConfig(playerNumber);
+    if (!result || result.success === false) {
+      console.warn(`[Options] Failed to open controller config for player ${playerNumber}:`, result?.error || 'unknown error');
+    }
   }
 
   function showModal(title, message) {

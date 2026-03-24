@@ -216,26 +216,92 @@
   font-size: clamp(1.4rem, 3.8vw, 2.4rem);
   padding: 1.1rem 2.2rem;
   border: 4px solid #ff5a26;
-  background: #000;
+  background: #080000;
   color: #ffffff;
   letter-spacing: 2px;
   box-shadow: none;
   border-radius: 0;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   transition: background 0.05s steps(2, end), transform 0.05s steps(2, end), color 0.05s steps(2, end);
+}
+
+.title-primary::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  background:
+    radial-gradient(138% 92% at 24% 30%, rgba(255, 90, 60, 0.34) 0%, rgba(255, 90, 60, 0) 57%),
+    radial-gradient(108% 86% at 78% 70%, rgba(220, 28, 16, 0.5) 0%, rgba(220, 28, 16, 0) 60%),
+    linear-gradient(118deg, rgba(35, 0, 0, 0.9) 0%, rgba(140, 14, 8, 0.78) 35%, rgba(45, 0, 0, 0.92) 67%, rgba(170, 18, 12, 0.62) 100%);
+  background-size: 145% 145%, 145% 145%, 220% 220%;
+  background-position: 46% 48%, 56% 54%, 50% 50%;
+  transform: scale(1.15) rotate(-0.5deg);
+  transform-origin: center;
+  animation: deckPlasmaWave 2.9s ease-in-out infinite;
+  transition: filter 0.22s ease, opacity 0.22s ease, background 0.22s ease;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.title-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%);
+  mix-blend-mode: screen;
+  opacity: 0.4;
+  transition: opacity 0.22s ease, background 0.22s ease;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .title-primary:hover,
 .title-primary:focus {
-  background: #ff5a26;
-  color: #000;
+  background: #100000;
+  color: #ffffff;
   transform: translateY(-3px);
 }
 
+.title-primary:hover::before,
+.title-primary:focus::before {
+  background:
+    radial-gradient(138% 92% at 24% 30%, rgba(255, 80, 50, 0.46) 0%, rgba(255, 80, 50, 0) 57%),
+    radial-gradient(108% 86% at 78% 70%, rgba(255, 36, 18, 0.64) 0%, rgba(255, 36, 18, 0) 60%),
+    linear-gradient(118deg, rgba(90, 8, 8, 0.92) 0%, rgba(255, 68, 42, 0.72) 35%, rgba(100, 10, 10, 0.95) 67%, rgba(255, 42, 24, 0.58) 100%);
+  filter: saturate(1.2) brightness(1.03);
+}
+
+.title-primary:hover::after,
+.title-primary:focus::after {
+  background: linear-gradient(180deg, rgba(255, 100, 70, 0.33) 0%, rgba(255, 80, 52, 0.08) 45%, rgba(255, 80, 52, 0) 100%);
+  opacity: 0.82;
+}
+
 .title-primary:active {
-  background: #b23f1a;
+  background: #180000;
   color: #fff;
   transform: translateY(0);
+}
+
+@keyframes deckPlasmaWave {
+  0% {
+    transform: scale(1.15) rotate(-0.55deg);
+    filter: saturate(0.92) brightness(0.78);
+    background-position: 45% 47%, 57% 55%, 48% 50%;
+  }
+  50% {
+    transform: scale(1.19) rotate(0.5deg);
+    filter: saturate(1.02) brightness(0.9);
+    background-position: 52% 52%, 49% 48%, 53% 49%;
+  }
+  100% {
+    transform: scale(1.16) rotate(-0.45deg);
+    filter: saturate(0.94) brightness(0.8);
+    background-position: 47% 53%, 54% 50%, 50% 52%;
+  }
 }
 
 .title-secondary-group {
@@ -343,6 +409,10 @@
   .title-secondary,
   .hero-btn {
     transition: none;
+  }
+  .title-primary::before {
+    animation: none;
+    transform: scale(1.15);
   }
 }
 

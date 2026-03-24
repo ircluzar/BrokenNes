@@ -17,6 +17,9 @@
   let pendingImports = [];
   let continueDb = null;
   let romToDelete = null;
+  let catalogAchievements = [];
+  let savedAchievementIds = new Set();
+  let masqueradeMap = {};
 
   // DOM Elements (cached after init)
   let elements = {};
@@ -74,6 +77,10 @@
       detailSystem: document.getElementById('detailSystem'),
       detailGameId: document.getElementById('detailGameId'),
       detailAchievements: document.getElementById('detailAchievements'),
+      detailMasqueradeStatus: document.getElementById('detailMasqueradeStatus'),
+      forceImportBtn: document.getElementById('forceImportBtn'),
+      showAchievementsBtn: document.getElementById('showAchievementsBtn'),
+      forceImportFileInput: document.getElementById('forceImportFileInput'),
       
       // Import modal
       importModal: document.getElementById('importModal'),
@@ -88,7 +95,13 @@
       deleteModal: document.getElementById('deleteModal'),
       deleteMessage: document.getElementById('deleteMessage'),
       confirmDeleteBtn: document.getElementById('confirmDeleteBtn'),
-      cancelDeleteBtn: document.getElementById('cancelDeleteBtn')
+      cancelDeleteBtn: document.getElementById('cancelDeleteBtn'),
+
+      // Achievements modal
+      achievementsModal: document.getElementById('achievementsModal'),
+      achievementsSummary: document.getElementById('achievementsSummary'),
+      achievementsList: document.getElementById('achievementsList'),
+      closeAchievementsBtn: document.getElementById('closeAchievementsBtn')
     };
 
     if (elements.filterCheckbox) {
@@ -123,6 +136,9 @@
 
     // Delete button
     elements.deleteBtn.addEventListener('click', openDeleteModal);
+    elements.forceImportBtn.addEventListener('click', openForceImportDialog);
+    elements.showAchievementsBtn.addEventListener('click', openAchievementsModal);
+    elements.forceImportFileInput.addEventListener('change', handleForceImportFileSelect);
 
     // Import modal
     elements.browseBtn.addEventListener('click', () => elements.fileInput.click());
@@ -138,6 +154,12 @@
     elements.cancelDeleteBtn.addEventListener('click', closeDeleteModal);
     elements.deleteModal.addEventListener('click', (e) => {
       if (e.target === elements.deleteModal) closeDeleteModal();
+    });
+
+    // Achievements modal
+    elements.closeAchievementsBtn.addEventListener('click', closeAchievementsModal);
+    elements.achievementsModal.addEventListener('click', (e) => {
+      if (e.target === elements.achievementsModal) closeAchievementsModal();
     });
 
     // Drag and drop
@@ -196,17 +218,24 @@
       console.log('[RomManager] Found ROM keys:', romKeys);
 
       const { games, achievements, source } = await loadCatalogRecords();
+      catalogAchievements = Array.isArray(achievements) ? achievements : [];
       console.log(`[RomManager] Loaded catalog from ${source}:`, {
         games: games.length,
         achievements: achievements.length
       });
 
+      const save = await loadGameSaveSnapshot();
+      savedAchievementIds = new Set(Array.isArray(save?.Achievements) ? save.Achievements : []);
+      masqueradeMap = normalizeMasqueradeMap(save?.MasqueradeRomToGameId);
+
       // Build achievement count map
       const achCountMap = {};
       achievements.forEach(ach => {
-        const gid = ach.gameId || '';
+        const gid = normalizeValue(ach?.gameId);
         achCountMap[gid] = (achCountMap[gid] || 0) + 1;
       });
+
+      const unlockedCountByGameId = buildUnlockedCountByGameId(achievements, savedAchievementIds);
 
       // Build ROM list combining storage and database info
       allRoms = [];
@@ -216,6 +245,7 @@
         const romKey = game.romKey || game.name || '';
         const hasRom = romKeys.includes(romKey);
         const achCount = achCountMap[game.id] || 0;
+        const unlockedCount = unlockedCountByGameId[game.id] || 0;
         
         allRoms.push({
           id: game.id,
@@ -226,6 +256,8 @@
           present: hasRom,
           compatible: achCount > 0,
           achievements: achCount,
+          achievementsTotal: achCount,
+          achievementsUnlocked: Math.min(unlockedCount, achCount),
           notes: game.notes || game.note || '',
           size: 0,
           unknown: false
@@ -245,6 +277,8 @@
             present: true,
             compatible: false,
             achievements: 0,
+            achievementsTotal: 0,
+            achievementsUnlocked: 0,
             notes: 'Unknown ROM (not in database)',
             size: 0,
             unknown: true
@@ -563,7 +597,7 @@
     filtered.sort((a, b) => {
       if (a.compatible !== b.compatible) return b.compatible ? 1 : -1;
       if (a.present !== b.present) return b.present ? 1 : -1;
-      if (a.achievements !== b.achievements) return b.achievements - a.achievements;
+      if (a.achievementsTotal !== b.achievementsTotal) return b.achievementsTotal - a.achievementsTotal;
       if (a.unknown !== b.unknown) return a.unknown ? 1 : -1;
       return a.title.localeCompare(b.title);
     });
@@ -592,7 +626,10 @@
       const availabilityLine = rom.present
         ? '<div class="rom-subtitle rom-availability">Installed</div>'
         : '<div class="rom-subtitle rom-availability">Not imported yet</div>';
-      const starClass = rom.achievements > 0 ? 'rom-star-count' : 'rom-star-count zero';
+      const starClass = rom.achievementsTotal > 0 ? 'rom-star-count' : 'rom-star-count zero';
+      const starsText = rom.present
+        ? `${rom.achievementsUnlocked}/${rom.achievementsTotal}`
+        : `${rom.achievementsTotal}`;
       
       html += `<button type="button" class="rom-tr rom-td ${selected} ${installed} ${notPresent}" 
                 role="row" data-rom-key="${escapeHtml(rom.romKey)}">`;
@@ -604,7 +641,7 @@
       html += availabilityLine;
       html += `</div>`;
       html += `<div role="cell">${escapeHtml(rom.system)}</div>`;
-      html += `<div role="cell"><span class="${starClass}">${rom.achievements}</span></div>`;
+      html += `<div role="cell"><span class="${starClass}">${starsText}</span></div>`;
       html += `</button>`;
     });
 
@@ -631,12 +668,18 @@
   }
 
   function displayRomDetails(rom) {
+    const isMasqueraded = isRomMasqueraded(rom.romKey, rom.id);
     elements.detailTitle.textContent = rom.title;
     elements.detailFileName.textContent = rom.romKey;
     elements.detailSize.textContent = rom.present ? formatSize(rom.size) : 'Not imported';
     elements.detailSystem.textContent = rom.system;
     elements.detailGameId.textContent = rom.id;
-    elements.detailAchievements.textContent = `${rom.achievements} star${rom.achievements === 1 ? '' : 's'}`;
+    elements.detailAchievements.textContent = rom.present
+      ? `${rom.achievementsUnlocked}/${rom.achievementsTotal} stars`
+      : `${rom.achievementsTotal} stars`;
+    elements.detailMasqueradeStatus.textContent = isMasqueraded ? 'Masquaraded' : 'Standard';
+    elements.detailMasqueradeStatus.classList.toggle('rom-status-masqueraded', isMasqueraded);
+    elements.detailMasqueradeStatus.classList.toggle('rom-status-standard', !isMasqueraded);
     elements.deleteBtn.disabled = !rom.present;
     elements.deleteBtn.title = rom.present ? 'Delete imported ROM' : 'This ROM is not installed yet';
     
@@ -891,6 +934,7 @@
     try {
       console.log('[RomManager] Deleting ROM:', romToDelete.romKey);
       await removeStoredRom(romToDelete.romKey);
+      await setMasqueradeStatus(romToDelete.romKey, null);
       
       console.log('[RomManager] ROM deleted successfully');
       closeDeleteModal();
@@ -910,6 +954,185 @@
       console.error('[RomManager] Delete error:', error);
       alert('Error deleting ROM. See console for details.');
     }
+  }
+
+  async function loadGameSaveSnapshot() {
+    try {
+      if (!window.gameSave || typeof window.gameSave.load !== 'function') {
+        return null;
+      }
+
+      return await window.gameSave.load();
+    } catch (error) {
+      console.warn('[RomManager] Failed to load game save:', error);
+      return null;
+    }
+  }
+
+  function normalizeMasqueradeMap(value) {
+    if (!value || typeof value !== 'object') {
+      return {};
+    }
+
+    const map = {};
+    Object.entries(value).forEach(([key, gameId]) => {
+      const normalizedKey = normalizeValue(key);
+      const normalizedGameId = normalizeValue(gameId);
+      if (!normalizedKey || !normalizedGameId) {
+        return;
+      }
+
+      map[normalizedKey.toLowerCase()] = normalizedGameId;
+    });
+
+    return map;
+  }
+
+  function normalizeValue(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function buildUnlockedCountByGameId(achievements, unlockedIds) {
+    const unlockedCount = {};
+    const unlockedSet = unlockedIds instanceof Set ? unlockedIds : new Set();
+
+    (Array.isArray(achievements) ? achievements : []).forEach(achievement => {
+      const gameId = normalizeValue(achievement?.gameId);
+      const achievementId = normalizeValue(achievement?.id || achievement?.achievementId);
+      if (!gameId || !achievementId) {
+        return;
+      }
+
+      if (unlockedSet.has(achievementId)) {
+        unlockedCount[gameId] = (unlockedCount[gameId] || 0) + 1;
+      }
+    });
+
+    return unlockedCount;
+  }
+
+  function isRomMasqueraded(romKey, gameId) {
+    const normalizedKey = normalizeValue(romKey).toLowerCase();
+    const mappedGameId = masqueradeMap[normalizedKey];
+    return Boolean(mappedGameId && normalizeValue(mappedGameId) === normalizeValue(gameId));
+  }
+
+  async function setMasqueradeStatus(romKey, gameId) {
+    try {
+      if (!window.gameSave || typeof window.gameSave.load !== 'function' || typeof window.gameSave.save !== 'function') {
+        return false;
+      }
+
+      const normalizedKey = normalizeValue(romKey);
+      if (!normalizedKey) {
+        return false;
+      }
+
+      const save = await window.gameSave.load();
+      save.MasqueradeRomToGameId = normalizeMasqueradeMap(save.MasqueradeRomToGameId);
+
+      if (gameId) {
+        save.MasqueradeRomToGameId[normalizedKey.toLowerCase()] = gameId;
+      } else {
+        delete save.MasqueradeRomToGameId[normalizedKey.toLowerCase()];
+      }
+
+      const ok = await window.gameSave.save(save);
+      if (ok) {
+        masqueradeMap = normalizeMasqueradeMap(save.MasqueradeRomToGameId);
+      }
+
+      return ok;
+    } catch (error) {
+      console.error('[RomManager] Failed to update masquerade status:', error);
+      return false;
+    }
+  }
+
+  function openForceImportDialog() {
+    if (!selectedRomKey) {
+      return;
+    }
+
+    if (elements.forceImportFileInput) {
+      elements.forceImportFileInput.value = '';
+      elements.forceImportFileInput.click();
+    }
+  }
+
+  async function handleForceImportFileSelect(e) {
+    const file = (e.target?.files || [])[0];
+    e.target.value = '';
+    if (!file || !selectedRomKey) {
+      return;
+    }
+
+    const rom = allRoms.find(entry => entry.romKey === selectedRomKey);
+    if (!rom) {
+      return;
+    }
+
+    try {
+      const base64 = await readFileAsBase64(file);
+      await saveStoredRom(rom.romKey, base64);
+      await setMasqueradeStatus(rom.romKey, rom.id);
+
+      await loadRoms();
+      const reselected = allRoms.find(entry => entry.romKey === rom.romKey);
+      if (reselected) {
+        selectedRomKey = reselected.romKey;
+        displayRomDetails(reselected);
+      }
+      renderRomList();
+    } catch (error) {
+      console.error('[RomManager] Force import failed:', error);
+      alert('Error force importing ROM. See console for details.');
+    }
+  }
+
+  function openAchievementsModal() {
+    if (!selectedRomKey) {
+      return;
+    }
+
+    const rom = allRoms.find(entry => entry.romKey === selectedRomKey);
+    if (!rom) {
+      return;
+    }
+
+    const mappedGameId = masqueradeMap[normalizeValue(rom.romKey).toLowerCase()];
+    const targetGameId = normalizeValue(mappedGameId) || rom.id;
+    const list = catalogAchievements.filter(achievement => normalizeValue(achievement?.gameId) === targetGameId);
+    const unlockedSet = savedAchievementIds instanceof Set ? savedAchievementIds : new Set();
+    const unlockedCount = list.reduce((count, achievement) => {
+      const achievementId = normalizeValue(achievement?.id || achievement?.achievementId);
+      return achievementId && unlockedSet.has(achievementId) ? count + 1 : count;
+    }, 0);
+
+    elements.achievementsSummary.textContent = `${unlockedCount}/${list.length} unlocked`;
+
+    if (list.length === 0) {
+      elements.achievementsList.innerHTML = '<div class="small-note">No achievements found for this game.</div>';
+    } else {
+      let html = '';
+      list.forEach(achievement => {
+        const title = normalizeValue(achievement?.title) || normalizeValue(achievement?.name) || 'Untitled achievement';
+        const achievementId = normalizeValue(achievement?.id || achievement?.achievementId);
+        const unlocked = Boolean(achievementId && unlockedSet.has(achievementId));
+        html += `<div class="achievement-row ${unlocked ? 'unlocked' : 'locked'}">`;
+        html += `<div class="achievement-title">${escapeHtml(title)}</div>`;
+        html += `<div class="achievement-state">${unlocked ? 'Unlocked' : 'Locked'}</div>`;
+        html += '</div>';
+      });
+
+      elements.achievementsList.innerHTML = html;
+    }
+
+    elements.achievementsModal.style.display = 'flex';
+  }
+
+  function closeAchievementsModal() {
+    elements.achievementsModal.style.display = 'none';
   }
 
   function playBackgroundMusic() {
