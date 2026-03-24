@@ -338,9 +338,9 @@
 
     cores: {
       list: () => request('/api/cores'),
-      apply: ({ cpuId, ppuId, apuId } = {}) => request('/api/cores/apply', {
+      apply: ({ cpuId, ppuId, apuId, overrideReason = null } = {}) => request('/api/cores/apply', {
         method: 'POST',
-        json: { cpuId, ppuId, apuId }
+        json: { cpuId, ppuId, apuId, overrideReason }
       })
     },
 

@@ -159,6 +159,161 @@ body {
   outline-offset: 2px;
 }
 
+.achievements-button {
+  bottom: 72px;
+}
+
+.achievements-list-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+  pointer-events: auto;
+}
+
+.achievements-list-modal {
+  background: #000;
+  border: 3px solid #fff;
+  outline: 3px solid #ff8a48;
+  outline-offset: -6px;
+  width: min(760px, calc(100vw - 24px));
+  max-height: min(74vh, 760px);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.achievements-list-title {
+  margin: 0 0 0.85rem;
+  text-align: center;
+  color: #fff;
+  font-size: 0.78rem;
+  text-shadow: 0 0 8px #ff8a48;
+}
+
+.achievements-list-body {
+  min-height: 0;
+  flex: 1;
+}
+
+.achievements-list-summary {
+  color: #c7c7c7;
+  font-size: 0.47rem;
+  margin-bottom: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.achievements-list-container {
+  min-height: 180px;
+  max-height: 52vh;
+  overflow-y: auto;
+  border: 2px solid #333;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.achievements-list-empty {
+  color: #a2a2a2;
+  font-size: 0.5rem;
+}
+
+.achievements-list-row {
+  border: 2px solid #444;
+  padding: 0.6rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.achievements-list-row:last-child {
+  margin-bottom: 0;
+}
+
+.achievements-list-row.unlocked {
+  border-color: #30c46f;
+  background: rgba(48, 196, 111, 0.12);
+}
+
+.achievements-list-row.locked {
+  border-color: #777;
+}
+
+.achievements-list-row-title {
+  color: #fff;
+  font-size: 0.55rem;
+  line-height: 1.45;
+}
+
+.achievements-list-row.unlocked .achievements-list-row-title {
+  color: #7effa8;
+}
+
+.achievements-list-row-state {
+  margin-top: 0.4rem;
+  font-size: 0.45rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.achievements-list-row.unlocked .achievements-list-row-state {
+  color: #7effa8;
+}
+
+.achievements-list-row.locked .achievements-list-row-state {
+  color: #fff;
+}
+
+.achievements-list-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.85rem;
+}
+
+.achievements-list-close {
+  border: 2px solid #fff;
+  background: #1f1f1f;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+
+.achievements-list-close:hover,
+.achievements-list-close:focus-visible {
+  background: #fff;
+  color: #000;
+}
+
+@media (max-width: 720px) {
+  .return-to-deck-button {
+    right: 10px;
+    bottom: 10px;
+    font-size: 0.45rem;
+  }
+
+  .achievements-button {
+    bottom: 60px;
+  }
+
+  .achievements-list-modal {
+    width: calc(100vw - 12px);
+    max-height: 84vh;
+    padding: 0.9rem;
+  }
+
+  .achievements-list-title {
+    font-size: 0.66rem;
+  }
+}
+
 /* Achievement Unlock Modal */
 .achievement-modal {
   position: fixed;

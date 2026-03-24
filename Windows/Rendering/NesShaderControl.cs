@@ -43,7 +43,8 @@ namespace BrokenNes.Windows.Rendering
         {
             if (currentRenderer != null)
             {
-                currentRenderer.UseShader = false;
+                // Shaders are intentionally always-on.
+                currentRenderer.UseShader = true;
             }
         }
 
@@ -55,8 +56,8 @@ namespace BrokenNes.Windows.Rendering
         {
             if (currentRenderer != null)
             {
-                currentRenderer.UseShader = !currentRenderer.UseShader;
-                return currentRenderer.UseShader;
+                currentRenderer.UseShader = true;
+                return true;
             }
             return false;
         }

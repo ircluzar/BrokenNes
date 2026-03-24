@@ -138,6 +138,7 @@ namespace BrokenNes.Windows.WebApi
         public string? CpuId { get; set; }
         public string? PpuId { get; set; }
         public string? ApuId { get; set; }
+        public string? OverrideReason { get; set; }
     }
 
     internal class GameSaveDto

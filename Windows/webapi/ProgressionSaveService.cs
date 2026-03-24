@@ -255,6 +255,9 @@ namespace BrokenNes.Windows.WebApi
             save.PreferredBackgroundId = NormalizePreferredValue(save.PreferredBackgroundId, save.UnlockedBackgrounds, "Gradient (Default)", NormalizeBackgroundId);
             save.PreferredNullProviderId = NormalizePreferredValue(save.PreferredNullProviderId, save.UnlockedNullProviders, "Static");
             save.PendingUnlocks ??= new();
+            save.SelectedRomKey = string.IsNullOrWhiteSpace(save.SelectedRomKey)
+                ? null
+                : save.SelectedRomKey.Trim().ToLowerInvariant();
             save.ContinueSlots ??= new();
             save.MasqueradeRomToGameId ??= new();
             NormalizePendingUnlocks(save.PendingUnlocks, save.PreferredBackgroundId, save.PreferredNullProviderId);
@@ -396,6 +399,7 @@ namespace BrokenNes.Windows.WebApi
                 PendingDeckContinueRom = string.IsNullOrWhiteSpace(incoming.PendingDeckContinueRom) ? null : incoming.PendingDeckContinueRom,
                 PendingDeckContinueTitle = string.IsNullOrWhiteSpace(incoming.PendingDeckContinueTitle) ? null : incoming.PendingDeckContinueTitle,
                 PendingDeckContinueAtUtc = incoming.PendingDeckContinueAtUtc,
+                SelectedRomKey = string.IsNullOrWhiteSpace(incoming.SelectedRomKey) ? null : incoming.SelectedRomKey,
                 ContinueSlots = MergeContinueSlots(null, incoming.ContinueSlots),
                 UnderConstructionAcknowledged = incoming.UnderConstructionAcknowledged,
                 AllCoresUnlockedCongrats = incoming.AllCoresUnlockedCongrats,
@@ -722,9 +726,9 @@ namespace BrokenNes.Windows.WebApi
                 {
                     Id = "ImagineBug",
                     Type = "webmodule",
-                    Title = "ImagineBug",
+                    Title = "Target the Beam (ImagineBug)",
                     Subtitle = "Milestone module unlocked",
-                    Description = "Late-game advanced corruption tooling is now available.",
+                    Description = "Target the Beam / ImagineBug is now available.",
                     CanEquip = false,
                     EquipAction = "open-webmodule"
                 });

@@ -251,6 +251,7 @@
       PendingDeckContinueRom: null,
       PendingDeckContinueTitle: null,
       PendingDeckContinueAtUtc: null,
+      SelectedRomKey: null,
       ContinueSlots: {},
       PendingUnlocks: [],
       SeenStory: false,
@@ -390,6 +391,7 @@
       PendingDeckContinueRom: pickFirstDefined(save.PendingDeckContinueRom, save.pendingDeckContinueRom),
       PendingDeckContinueTitle: pickFirstDefined(save.PendingDeckContinueTitle, save.pendingDeckContinueTitle),
       PendingDeckContinueAtUtc: pickFirstDefined(save.PendingDeckContinueAtUtc, save.pendingDeckContinueAtUtc),
+      SelectedRomKey: pickFirstDefined(save.SelectedRomKey, save.selectedRomKey),
       ContinueSlots: pickFirstDefined(save.ContinueSlots, save.continueSlots),
       UnderConstructionAcknowledged: pickFirstDefined(save.UnderConstructionAcknowledged, save.underConstructionAcknowledged),
       AllCoresUnlockedCongrats: pickFirstDefined(save.AllCoresUnlockedCongrats, save.allCoresUnlockedCongrats),
@@ -424,6 +426,7 @@
     delete normalizedSave.pendingDeckContinueRom;
     delete normalizedSave.pendingDeckContinueTitle;
     delete normalizedSave.pendingDeckContinueAtUtc;
+    delete normalizedSave.selectedRomKey;
     delete normalizedSave.continueSlots;
     delete normalizedSave.underConstructionAcknowledged;
     delete normalizedSave.allCoresUnlockedCongrats;

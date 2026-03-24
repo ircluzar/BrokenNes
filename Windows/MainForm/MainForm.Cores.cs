@@ -23,9 +23,9 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
-        private void SetCpuCore(string coreId)
+        private void SetCpuCore(string coreId, bool bypassProgression = false)
         {
-            if (!IsCpuCoreUnlocked(coreId))
+            if (!bypassProgression && !IsCpuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] CPU core locked: {coreId}");
                 var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LoadProgressionSnapshot().OwnedCpuIds, "FMC");
@@ -43,9 +43,9 @@ namespace BrokenNes.Windows
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
-        private void SetPpuCore(string coreId)
+        private void SetPpuCore(string coreId, bool bypassProgression = false)
         {
-            if (!IsPpuCoreUnlocked(coreId))
+            if (!bypassProgression && !IsPpuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] PPU core locked: {coreId}");
                 var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LoadProgressionSnapshot().OwnedPpuIds, "FMC");
@@ -63,9 +63,9 @@ namespace BrokenNes.Windows
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
-        private void SetApuCore(string coreId)
+        private void SetApuCore(string coreId, bool bypassProgression = false)
         {
-            if (!IsApuCoreUnlocked(coreId))
+            if (!bypassProgression && !IsApuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] APU core locked: {coreId}");
                 var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LoadProgressionSnapshot().OwnedApuIds, "FMC");
@@ -83,12 +83,12 @@ namespace BrokenNes.Windows
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
 
-        private void SetShaderById(string shaderId)
+        private void SetShaderById(string shaderId, bool bypassProgression = false)
         {
             if (!useDirectX || dxRenderer == null || string.IsNullOrWhiteSpace(shaderId)) return;
 
             string normalizedShaderId = shaderId.Trim().ToUpperInvariant();
-            if (!IsShaderUnlocked(normalizedShaderId))
+            if (!bypassProgression && !IsShaderUnlocked(normalizedShaderId))
             {
                 Console.WriteLine($"[Progression] Shader locked: {normalizedShaderId}");
                 var fallbackShader = ResolveUnlockedShaderSelection(config.CurrentShader, NesDirectXRenderer.GetAvailableShaders(), LoadProgressionSnapshot().OwnedShaderIds, "PX");

@@ -305,16 +305,12 @@ namespace BrokenNes.Windows
             // SHADER
             shaderMenu.DropDownItems.Clear();
             
-            // Add shader enable/disable toggle
-            var toggleShaderItem = new ToolStripMenuItem("Enable Shaders", null, (s, e) => {
-                if (useDirectX && dxRenderer != null)
-                {
-                    dxRenderer.UseShader = !dxRenderer.UseShader;
-                    ((ToolStripMenuItem)s).Checked = dxRenderer.UseShader;
-                    Helpers.ConfigHelper.Update(config, c => c.ShadersEnabled = dxRenderer.UseShader);
-                }
-            });
-            toggleShaderItem.Checked = useDirectX && dxRenderer?.UseShader == true;
+            // Shaders are always-on; expose status instead of a toggle.
+            var toggleShaderItem = new ToolStripMenuItem("Shaders Always On")
+            {
+                Enabled = false,
+                Checked = useDirectX && dxRenderer?.UseShader == true
+            };
             shaderMenu.DropDownItems.Add(toggleShaderItem);
             shaderMenu.DropDownItems.Add(new ToolStripSeparator());
             
@@ -490,8 +486,12 @@ namespace BrokenNes.Windows
             // Apply shader settings
             if (useDirectX && dxRenderer != null)
             {
-                // Restore shader enabled state
-                dxRenderer.UseShader = config.ShadersEnabled;
+                // Shaders are always-on.
+                dxRenderer.UseShader = true;
+                if (!config.ShadersEnabled)
+                {
+                    Helpers.ConfigHelper.Update(config, c => c.ShadersEnabled = true);
+                }
                 
                 // Restore selected shader if valid
                 if (!string.IsNullOrEmpty(config.CurrentShader))

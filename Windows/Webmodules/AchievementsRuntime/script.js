@@ -16,6 +16,11 @@
   // DOM Elements
   const achievementsOverlay = document.querySelector('.achievements-overlay');
   const returnToDeckButton = document.getElementById('returnToDeckButton');
+  const showAchievementsButton = document.getElementById('showAchievementsButton');
+  const achievementsListModal = document.getElementById('achievementsListModal');
+  const achievementsListSummary = document.getElementById('achievementsListSummary');
+  const achievementsListContainer = document.getElementById('achievementsListContainer');
+  const closeAchievementsListButton = document.getElementById('closeAchievementsListButton');
 
   // Monitoring state
   let isMonitoring = false;
@@ -99,47 +104,68 @@
       return;
     }
 
-    const wasResolved = workflowResolved;
     workflowResolved = true;
     stopMonitoring();
 
-    try {
-      if (!options.checkpointAlreadyCaptured) {
-        const saveResult = await api.emulator.saveContinueState();
-        if (!saveResult || saveResult.success === false) {
-          throw new Error(saveResult?.error || 'Failed to save continue state');
-        }
-      }
+    let checkpointCaptured = Boolean(options.checkpointAlreadyCaptured);
+    let continueSaveError = null;
+    let save = null;
 
+    if (!checkpointCaptured) {
       try {
-        await api.emulator.pause();
+        const saveResult = await api.emulator.saveContinueState();
+        checkpointCaptured = Boolean(saveResult && saveResult.success !== false);
+        if (!checkpointCaptured) {
+          continueSaveError = saveResult?.error || 'Failed to save continue state';
+          console.warn('[AchievementsRuntime] Continue-state capture failed. Returning anyway and keeping existing checkpoint:', continueSaveError);
+        }
       } catch (error) {
-        console.warn('[AchievementsRuntime] Failed to pause before return:', error);
+        continueSaveError = error?.message || 'Failed to save continue state';
+        console.warn('[AchievementsRuntime] Continue-state capture threw. Returning anyway and keeping existing checkpoint:', error);
       }
-
-      const save = await markTrustedContinueState();
-
-      writePayload(WORKFLOW_RETURN_KEY, {
-        achievementId: options.achievementId || null,
-        achievementTitle: options.achievementTitle || null,
-        showArrival: Boolean(options.showArrival || options.achievementId || options.achievementTitle || options.firstClear),
-        romKey: launchPayload?.romKey || null,
-        title: launchPayload?.title || launchPayload?.romKey || null,
-        previousLevel: Number.isFinite(launchPayload?.level) ? launchPayload.level : (save?.Level || 1),
-        previousStarCount: Number.isFinite(launchPayload?.previousStarCount)
-          ? launchPayload.previousStarCount
-          : Math.max(0, (save?.Achievements || []).length),
-        firstClear: Boolean(options.firstClear),
-        createdAt: new Date().toISOString()
-      });
-
-      await api.navigation.goToWeb();
-      window.location.href = '../Continue/index.html';
-    } catch (error) {
-      workflowResolved = wasResolved;
-      console.error('[AchievementsRuntime] Failed to return to Continue:', error);
-      achievementsOverlay.innerHTML = `<div class="empty-state">${lib.escapeHtml(error?.message || 'Failed to return to Continue')}</div>`;
     }
+
+    try {
+      await api.emulator.pause();
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to pause before return:', error);
+    }
+
+    if (checkpointCaptured) {
+      try {
+        save = await markTrustedContinueState();
+      } catch (error) {
+        console.warn('[AchievementsRuntime] Failed to mark trusted continue state:', error);
+      }
+    }
+
+    const payloadWritten = writePayload(WORKFLOW_RETURN_KEY, {
+      achievementId: options.achievementId || null,
+      achievementTitle: options.achievementTitle || null,
+      showArrival: Boolean(options.showArrival || options.achievementId || options.achievementTitle || options.firstClear),
+      romKey: launchPayload?.romKey || null,
+      title: launchPayload?.title || launchPayload?.romKey || null,
+      previousLevel: Number.isFinite(launchPayload?.level) ? launchPayload.level : (save?.Level || 1),
+      previousStarCount: Number.isFinite(launchPayload?.previousStarCount)
+        ? launchPayload.previousStarCount
+        : Math.max(0, (save?.Achievements || []).length),
+      firstClear: Boolean(options.firstClear),
+      continueCheckpointCaptured: checkpointCaptured,
+      continueCheckpointError: continueSaveError,
+      createdAt: new Date().toISOString()
+    });
+
+    if (!payloadWritten) {
+      console.warn('[AchievementsRuntime] Failed to persist return payload; navigating anyway.');
+    }
+
+    try {
+      await api.navigation.goToWeb();
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to switch to web host before return:', error);
+    }
+
+    window.location.href = '../Continue/index.html';
   }
 
   function handleGlobalKeydown(event) {
@@ -147,8 +173,83 @@
       return;
     }
 
+    if (isAchievementsListModalOpen()) {
+      event.preventDefault();
+      closeAchievementsModal();
+      return;
+    }
+
     event.preventDefault();
     void returnToContinue();
+  }
+
+  function isAchievementsListModalOpen() {
+    return achievementsListModal && achievementsListModal.style.display !== 'none';
+  }
+
+  async function ensureAchievementsLoaded() {
+    if (achievementsList.length > 0) {
+      return achievementsList;
+    }
+
+    if (!isInitialized) {
+      return [];
+    }
+
+    try {
+      const result = await api.achievements.getList();
+      if (result.success && Array.isArray(result.achievements)) {
+        achievementsList = result.achievements;
+      }
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to load achievements list for modal:', error);
+    }
+
+    return achievementsList;
+  }
+
+  async function openAchievementsModal() {
+    const list = await ensureAchievementsLoaded();
+    renderAchievementsModal(list);
+    if (achievementsListModal) {
+      achievementsListModal.style.display = 'flex';
+    }
+  }
+
+  function closeAchievementsModal() {
+    if (achievementsListModal) {
+      achievementsListModal.style.display = 'none';
+    }
+  }
+
+  function renderAchievementsModal(achievements) {
+    if (!achievementsListSummary || !achievementsListContainer) {
+      return;
+    }
+
+    const list = Array.isArray(achievements) ? achievements : [];
+    const unlockedCount = list.reduce((count, achievement) => (
+      lib.isAchievementCompleted(achievement) ? count + 1 : count
+    ), 0);
+
+    achievementsListSummary.textContent = `${unlockedCount}/${list.length} unlocked`;
+
+    if (list.length === 0) {
+      achievementsListContainer.innerHTML = '<div class="achievements-list-empty">No achievements found for this game.</div>';
+      return;
+    }
+
+    let html = '';
+    list.forEach(achievement => {
+      const title = lib.getAchievementTitle(achievement) || 'Untitled achievement';
+      const unlocked = lib.isAchievementCompleted(achievement);
+      html += `<div class="achievements-list-row ${unlocked ? 'unlocked' : 'locked'}">`;
+      html += `<div class="achievements-list-row-title">${lib.escapeHtml(title)}</div>`;
+      html += `<div class="achievements-list-row-state">${unlocked ? 'Unlocked' : 'Locked'}</div>`;
+      html += '</div>';
+    });
+
+    achievementsListContainer.innerHTML = html;
   }
 
   // Initialize on page load
@@ -156,6 +257,15 @@
     document.addEventListener('keydown', handleGlobalKeydown);
     returnToDeckButton?.addEventListener('click', () => {
       void returnToContinue();
+    });
+    showAchievementsButton?.addEventListener('click', () => {
+      void openAchievementsModal();
+    });
+    closeAchievementsListButton?.addEventListener('click', closeAchievementsModal);
+    achievementsListModal?.addEventListener('click', (event) => {
+      if (event.target === achievementsListModal) {
+        closeAchievementsModal();
+      }
     });
     autoInitialize();
   }
@@ -194,18 +304,6 @@
         return false;
       }
 
-      if (!isContinueLaunch && launchPayload.cores) {
-        await api.cores.apply({
-          cpuId: launchPayload.cores.cpuId,
-          ppuId: launchPayload.cores.ppuId,
-          apuId: launchPayload.cores.apuId
-        });
-
-        if (launchPayload.cores.shaderId) {
-          await api.shader.setShader(launchPayload.cores.shaderId);
-        }
-      }
-
       if (isContinueLaunch) {
         const loadStateResult = await api.emulator.loadContinueState(launchPayload.romKey);
         if (!loadStateResult || loadStateResult.success === false) {
@@ -213,6 +311,19 @@
           console.warn('[AchievementsRuntime] Continue-state load failed:', errorMessage);
           achievementsOverlay.innerHTML = `<div class="empty-state">${lib.escapeHtml(errorMessage)}</div>`;
           return false;
+        }
+      }
+
+      if (launchPayload.cores) {
+        await api.cores.apply({
+          cpuId: launchPayload.cores.cpuId,
+          ppuId: launchPayload.cores.ppuId,
+          apuId: launchPayload.cores.apuId,
+          overrideReason: 'deck-enforced'
+        });
+
+        if (launchPayload.cores.shaderId) {
+          await api.shader.setShader(launchPayload.cores.shaderId, 'deck-enforced');
         }
       }
 

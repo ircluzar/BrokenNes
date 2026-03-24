@@ -59,6 +59,10 @@ namespace BrokenNes.Windows.WebApi
         private Action<string>? _setPpuCore;
         private Action<string>? _setApuCore;
         private Action<string>? _setShader;
+        private Action<string>? _setCpuCoreOverride;
+        private Action<string>? _setPpuCoreOverride;
+        private Action<string>? _setApuCoreOverride;
+        private Action<string>? _setShaderOverride;
         private Action? _closeRom;
         private Func<string, Task<bool>>? _loadRomByKey;
         private Action<string, byte[]>? _loadRomFromBytes;
@@ -72,7 +76,7 @@ namespace BrokenNes.Windows.WebApi
 
         public bool IsRunning => _host != null;
 
-        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null, Action? refreshProgressionUi = null, Action<int>? openControllerConfig = null)
+        public WebApiServer(Func<NES?> getNes, Func<Corruptor?>? getCorruptor = null, Func<ImagineEngine?>? getImagineEngine = null, Action<string>? setCrashBehavior = null, Func<WebView2?>? getWebView = null, Action<ViewMode, bool>? switchViewMode = null, Control? uiControl = null, Action? closeAllMenus = null, Action? toggleFullscreen = null, Func<AudioEngine?>? getAudioEngine = null, Func<string, bool, Task<bool>>? loadBuiltInRom = null, Action? resumeEmulation = null, Action? pauseEmulation = null, Action? hideContinueButton = null, Func<NesEmulator.RetroAchievements.AchievementsEngine?>? getAchievementsEngine = null, Action<NesEmulator.RetroAchievements.AchievementsEngine?>? setAchievementsEngine = null, Action? hideMenu = null, Action? showMenu = null, Action? resetGame = null, Func<IEnumerable<string>>? getAvailableBackgrounds = null, Action<string>? setBackground = null, Func<IEnumerable<string>>? getAvailableNullProviders = null, Action<string>? setNullProvider = null, Action<string>? setCpuCore = null, Action<string>? setPpuCore = null, Action<string>? setApuCore = null, Action<string>? setShader = null, Action<string>? setCpuCoreOverride = null, Action<string>? setPpuCoreOverride = null, Action<string>? setApuCoreOverride = null, Action<string>? setShaderOverride = null, Action? closeRom = null, Func<string, Task<bool>>? loadRomByKey = null, Action<string, byte[]>? loadRomFromBytes = null, Func<bool>? saveContinueState = null, Func<string?, bool>? loadContinueState = null, Func<string?>? getCurrentRomPath = null, Func<string?>? getCurrentRomName = null, Func<string, bool>? loadRomFromPath = null, Action? refreshProgressionUi = null, Action<int>? openControllerConfig = null)
         {
             _progressionSave = new ProgressionSaveService();
             _getNes = getNes;
@@ -110,6 +114,10 @@ namespace BrokenNes.Windows.WebApi
             _setPpuCore = setPpuCore;
             _setApuCore = setApuCore;
             _setShader = setShader;
+            _setCpuCoreOverride = setCpuCoreOverride;
+            _setPpuCoreOverride = setPpuCoreOverride;
+            _setApuCoreOverride = setApuCoreOverride;
+            _setShaderOverride = setShaderOverride;
             _closeRom = closeRom;
             _loadRomByKey = loadRomByKey;
             _loadRomFromBytes = loadRomFromBytes;

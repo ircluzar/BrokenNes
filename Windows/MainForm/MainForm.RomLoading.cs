@@ -566,8 +566,8 @@ namespace BrokenNes.Windows
                     if (preserveShader && savedShader.HasValue && savedShaderEnabled.HasValue && useDirectX && dxRenderer != null)
                     {
                         dxRenderer.SwitchShader(savedShader.Value);
-                        dxRenderer.UseShader = savedShaderEnabled.Value;
-                        Console.WriteLine($"[Story] Restored shader: {savedShader}, Enabled: {savedShaderEnabled}");
+                        dxRenderer.UseShader = true;
+                        Console.WriteLine($"[Story] Restored shader: {savedShader}, Enabled: True");
                     }
                 });
 

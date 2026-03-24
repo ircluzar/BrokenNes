@@ -546,7 +546,8 @@ namespace BrokenNes.Windows
                     NesShaderControl.SwitchShader(config.CurrentShader);
                 }
 
-                dxRenderer.UseShader = config.ShadersEnabled;
+                dxRenderer.UseShader = true;
+                config.ShadersEnabled = true;
             }
 
             if (nes != null)

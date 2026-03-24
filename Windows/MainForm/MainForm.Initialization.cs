@@ -691,10 +691,14 @@ namespace BrokenNes.Windows
                         SetBackground,  // Set background handler
                         () => NesEmulator.NES.GetAvailableNullProviders(),  // Available null providers
                         SetNullProvider,  // Set null provider handler
-                        SetCpuCore,  // Set CPU core handler
-                        SetPpuCore,  // Set PPU core handler
-                        SetApuCore,  // Set APU core handler
-                        SetShaderById,  // Set shader handler
+                        coreId => SetCpuCore(coreId),  // Set CPU core handler
+                        coreId => SetPpuCore(coreId),  // Set PPU core handler
+                        coreId => SetApuCore(coreId),  // Set APU core handler
+                        shaderId => SetShaderById(shaderId),  // Set shader handler
+                        coreId => SetCpuCore(coreId, bypassProgression: true),  // Override CPU core handler
+                        coreId => SetPpuCore(coreId, bypassProgression: true),  // Override PPU core handler
+                        coreId => SetApuCore(coreId, bypassProgression: true),  // Override APU core handler
+                        shaderId => SetShaderById(shaderId, bypassProgression: true),  // Override shader handler
                         CloseRomFromApi,  // Close ROM handler
                         LoadRomKeyFromApiAsync,  // Load ROM by browser storage key
                         LoadRomBytesFromApi,  // Load ROM from direct base64 payload

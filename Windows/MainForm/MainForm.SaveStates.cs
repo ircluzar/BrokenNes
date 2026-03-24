@@ -38,13 +38,13 @@ namespace BrokenNes.Windows
                 // Add UI settings
                 if (useDirectX && dxRenderer != null)
                 {
-                    stateDict["uiShadersEnabled"] = dxRenderer.UseShader;
+                    stateDict["uiShadersEnabled"] = true;
                     stateDict["uiCurrentShader"] = config.CurrentShader ?? string.Empty;
                     stateDict["uiShaderStrength"] = config.ShaderStrength;
                 }
                 else
                 {
-                    stateDict["uiShadersEnabled"] = false;
+                    stateDict["uiShadersEnabled"] = true;
                     stateDict["uiCurrentShader"] = string.Empty;
                     stateDict["uiShaderStrength"] = 1.0f;
                 }
@@ -65,6 +65,7 @@ namespace BrokenNes.Windows
              if (nes == null) return false;
              var continuePath = GetDeckContinueStatePathForCurrentRom();
              if (string.IsNullOrWhiteSpace(continuePath)) return false;
+               var tempPath = continuePath + ".tmp";
 
              try
              {
@@ -85,8 +86,16 @@ namespace BrokenNes.Windows
                          byte[] stateBytes = Encoding.UTF8.GetBytes(stateJson);
                          using (Bitmap embedded = PngPayload.EmbedData(screenshot, stateBytes))
                          {
-                             embedded?.Save(continuePath, ImageFormat.Png);
+                             if (embedded == null)
+                             {
+                                 return false;
+                             }
+
+                             // Write to a temp file first so an existing checkpoint remains intact on failures.
+                             embedded.Save(tempPath, ImageFormat.Png);
                          }
+
+                         File.Copy(tempPath, continuePath, true);
                          Console.WriteLine($"Deck continue saved to {continuePath}");
                          return File.Exists(continuePath);
                      }
@@ -98,6 +107,20 @@ namespace BrokenNes.Windows
              {
                  Console.WriteLine("Failed to save deck continue state: " + ex.Message);
                  return false;
+             }
+             finally
+             {
+                 try
+                 {
+                     if (File.Exists(tempPath))
+                     {
+                         File.Delete(tempPath);
+                     }
+                 }
+                 catch
+                 {
+                     // Best-effort cleanup only.
+                 }
              }
         }
         /// <summary>
@@ -111,11 +134,10 @@ namespace BrokenNes.Windows
                 var root = doc.RootElement;
                 
                 // Check if UI settings are present in the state
-                bool hasShadersEnabled = root.TryGetProperty("uiShadersEnabled", out var shadersEnabledEl);
                 bool hasCurrentShader = root.TryGetProperty("uiCurrentShader", out var currentShaderEl);
                 bool hasShaderStrength = root.TryGetProperty("uiShaderStrength", out var shaderStrengthEl);
                 
-                if (!hasShadersEnabled && !hasCurrentShader && !hasShaderStrength)
+                if (!hasCurrentShader && !hasShaderStrength)
                 {
                     // Old savestate without UI settings - skip restoration
                     Console.WriteLine("Savestate does not contain UI settings - keeping current configuration");
@@ -125,14 +147,10 @@ namespace BrokenNes.Windows
                     // Restore shader settings if DirectX is available
                     if (useDirectX && dxRenderer != null)
                     {
-                        // Restore shaders enabled state
-                        if (hasShadersEnabled)
-                        {
-                            bool shadersEnabled = shadersEnabledEl.GetBoolean();
-                            dxRenderer.UseShader = shadersEnabled;
-                            config.ShadersEnabled = shadersEnabled;
-                            Console.WriteLine($"Restored shaders enabled: {shadersEnabled}");
-                        }
+                        // Shaders are always-on.
+                        dxRenderer.UseShader = true;
+                        config.ShadersEnabled = true;
+                        Console.WriteLine("Restored shaders enabled: True");
                         
                         // Restore current shader
                         if (hasCurrentShader)

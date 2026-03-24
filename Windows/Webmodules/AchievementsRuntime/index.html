@@ -18,6 +18,25 @@
     Return to Deck Builder
   </button>
 
+  <button id="showAchievementsButton" class="return-to-deck-button achievements-button" type="button">
+    Achievements
+  </button>
+
+  <div id="achievementsListModal" class="achievements-list-modal-backdrop" style="display:none;">
+    <div class="achievements-list-modal" onclick="event.stopPropagation()">
+      <h3 class="achievements-list-title">Achievements</h3>
+      <div class="achievements-list-body">
+        <div id="achievementsListSummary" class="achievements-list-summary">0/0 unlocked</div>
+        <div id="achievementsListContainer" class="achievements-list-container">
+          <div class="achievements-list-empty">No achievements found for this game.</div>
+        </div>
+      </div>
+      <div class="achievements-list-footer">
+        <button id="closeAchievementsListButton" type="button" class="achievements-list-close">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Achievement Unlock Modal -->
   <div id="achievementModal" class="achievement-modal" style="display:none;">
     <div class="modal-content">

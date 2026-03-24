@@ -82,6 +82,7 @@ public class GameSave
     public string? PendingDeckContinueRom { get; set; } // romKey/filename of the game
     public string? PendingDeckContinueTitle { get; set; } // optional display title
     public DateTime? PendingDeckContinueAtUtc { get; set; } // optional timestamp
+    public string? SelectedRomKey { get; set; } // last selected ROM key in Continue/Deck Builder
     public Dictionary<string, ContinueStateSlot> ContinueSlots { get; set; } = new();
 
     // One-time acknowledgements

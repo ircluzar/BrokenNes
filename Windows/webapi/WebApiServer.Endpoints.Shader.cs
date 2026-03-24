@@ -18,7 +18,7 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var shaderName = Rendering.NesShaderControl.GetCurrentShaderName();
-                    var useShader = Rendering.NesShaderControl.CurrentRenderer?.UseShader ?? false;
+                    var useShader = true;
                     
                     return Results.Ok(new
                     {
@@ -57,15 +57,28 @@ namespace BrokenNes.Windows.WebApi
                         body.OverrideReason,
                         "story-cutscene",
                         StringComparison.OrdinalIgnoreCase);
+                    var useDeckOverride = string.Equals(
+                        body.OverrideReason,
+                        "deck-enforced",
+                        StringComparison.OrdinalIgnoreCase);
+                    var useOverride = useStoryCutsceneOverride || useDeckOverride;
 
                     bool success = false;
                     if (_uiControl.InvokeRequired)
                     {
                         _uiControl.Invoke((MethodInvoker)delegate
                         {
-                            if (useStoryCutsceneOverride)
+                            if (useOverride)
                             {
-                                success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                                if (_setShaderOverride != null)
+                                {
+                                    _setShaderOverride(body.ShaderName);
+                                    success = true;
+                                }
+                                else
+                                {
+                                    success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                                }
                             }
                             else if (_setShader != null)
                             {
@@ -80,9 +93,17 @@ namespace BrokenNes.Windows.WebApi
                     }
                     else
                     {
-                        if (useStoryCutsceneOverride)
+                        if (useOverride)
                         {
-                            success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                            if (_setShaderOverride != null)
+                            {
+                                _setShaderOverride(body.ShaderName);
+                                success = true;
+                            }
+                            else
+                            {
+                                success = Rendering.NesShaderControl.SwitchShader(body.ShaderName);
+                            }
                         }
                         else if (_setShader != null)
                         {
@@ -157,29 +178,12 @@ namespace BrokenNes.Windows.WebApi
                 }
             });
 
-            // POST /api/shader/disable - Disable shaders
+            // POST /api/shader/disable - Shaders are always-on
             app.MapPost("/api/shader/disable", () =>
             {
                 try
                 {
-                    if (_uiControl == null || _uiControl.IsDisposed)
-                    {
-                        return Results.BadRequest(new { success = false, error = "UI control not available" });
-                    }
-
-                    if (_uiControl.InvokeRequired)
-                    {
-                        _uiControl.Invoke((MethodInvoker)delegate
-                        {
-                            Rendering.NesShaderControl.DisableShaders();
-                        });
-                    }
-                    else
-                    {
-                        Rendering.NesShaderControl.DisableShaders();
-                    }
-
-                    return Results.Ok(new { success = true, enabled = false });
+                    return Results.Ok(new { success = true, enabled = true, message = "Shaders are always enabled." });
                 }
                 catch (Exception ex)
                 {

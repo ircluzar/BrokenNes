@@ -537,12 +537,8 @@ namespace BrokenNes.Windows.Rendering
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"Render error: {ex.Message}");
-                        // Try to recover by falling back to Direct2D
-                        if (UseShader)
-                        {
-                            useShader = false;
-                            DrawDirect2D(frameBuffer);
-                        }
+                        // Try to recover by drawing this frame via Direct2D without changing shader-on state.
+                        DrawDirect2D(frameBuffer);
                     }
                     }
                     finally

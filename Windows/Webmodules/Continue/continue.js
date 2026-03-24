@@ -45,6 +45,7 @@
     CLOCK: 'FMC',
     SHADER: 'PX'
   };
+  const POSTGAME_START_LEVEL = 17;
 
   // State
   let gameSave = null;
@@ -66,6 +67,7 @@
   
   // ROM state
   let selectedGameId = null;
+  let selectedRomKey = null;
   let romRows = [];
   let gameAchievements = [];
   let cartridgeCollapsed = false;
@@ -226,7 +228,59 @@
       return;
     }
 
+    if (selectedRomKey) {
+      const matched = romRows.find(row => normalizeRomStorageName(row.romKey) === selectedRomKey);
+      if (matched) {
+        selectedGameId = matched.id;
+        return;
+      }
+    }
+
     selectedGameId = null;
+    selectedRomKey = null;
+    persistSelectedGameSelection();
+  }
+
+  function normalizeSelectedGameId(value) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    return null;
+  }
+
+  function persistSelectedGameSelection(options = {}) {
+    if (!gameSave || typeof gameSave !== 'object') {
+      return Promise.resolve(false);
+    }
+
+    const selectedGame = romRows.find(row => row.id === selectedGameId);
+    const normalizedSelection = selectedGame ? normalizeRomStorageName(selectedGame.romKey) : null;
+    const previousSelection = normalizeRomStorageName(gameSave.SelectedRomKey ?? gameSave.Preferences?.SelectedRomKey);
+    const normalizedPrevious = previousSelection || null;
+    if (normalizedPrevious === normalizedSelection) {
+      return Promise.resolve(false);
+    }
+
+    selectedRomKey = normalizedSelection;
+    gameSave.SelectedRomKey = normalizedSelection;
+    if (!gameSave.Preferences || typeof gameSave.Preferences !== 'object') {
+      gameSave.Preferences = {};
+    }
+    gameSave.Preferences.SelectedRomKey = normalizedSelection;
+
+    const savePromise = saveGameSave();
+    if (options.awaitWrite) {
+      return savePromise;
+    }
+
+    void savePromise;
+    return Promise.resolve(true);
   }
 
   function getContinueSlots() {
@@ -638,6 +692,9 @@
       ? { ...save.Preferences }
       : {};
 
+    const normalizedSelectedRomKey = normalizeRomStorageName(save.SelectedRomKey ?? preferences.SelectedRomKey);
+    save.SelectedRomKey = normalizedSelectedRomKey || null;
+
     save.PreferredCpuId = normalizeCoreId(save.PreferredCpuId || preferences.CPU || 'FMC') || 'FMC';
     save.PreferredPpuId = normalizeCoreId(save.PreferredPpuId || preferences.PPU || 'FMC') || 'FMC';
     save.PreferredApuId = normalizeCoreId(save.PreferredApuId || preferences.APU || 'FMC') || 'FMC';
@@ -668,7 +725,8 @@
       PPU: save.PreferredPpuId,
       APU: save.PreferredApuId,
       Shader: save.PreferredShaderId,
-      SHADER: save.PreferredShaderId
+      SHADER: save.PreferredShaderId,
+      SelectedRomKey: save.SelectedRomKey
     };
 
     return save;
@@ -680,6 +738,8 @@
     selectedPpu = chooseSavedCore('PPU', save.PreferredPpuId || save.Preferences?.PPU, save.ownedPpuIds, 'FMC');
     selectedApu = chooseSavedCore('APU', save.PreferredApuId || save.Preferences?.APU, save.ownedApuIds, 'FMC');
     selectedShader = chooseSavedCore('SHADER', save.PreferredShaderId || save.Preferences?.Shader || save.Preferences?.SHADER, save.ownedShaderIds, 'PX');
+    selectedRomKey = normalizeRomStorageName(save.SelectedRomKey ?? save.Preferences?.SelectedRomKey) || null;
+    selectedGameId = normalizeSelectedGameId(save.SelectedGameId ?? save.Preferences?.SelectedGameId);
   }
 
   async function saveGameSave() {
@@ -882,6 +942,18 @@
 
     if (selectedGameId && !romRows.some(row => row.id === selectedGameId)) {
       selectedGameId = null;
+    }
+
+    if (!selectedGameId && selectedRomKey) {
+      const matched = romRows.find(row => normalizeRomStorageName(row.romKey) === selectedRomKey);
+      if (matched) {
+        selectedGameId = matched.id;
+      }
+    }
+
+    if (!selectedGameId && selectedRomKey) {
+      selectedRomKey = null;
+      persistSelectedGameSelection();
     }
 
     renderRomList();
@@ -1191,8 +1263,13 @@
 
   function selectGame(gameId, options = {}) {
     const previousGameId = selectedGameId;
-    selectedGameId = gameId;
-    if (!options.silent && previousGameId !== gameId) {
+    selectedGameId = normalizeSelectedGameId(gameId);
+    const selectedGame = romRows.find(row => row.id === selectedGameId);
+    selectedRomKey = selectedGame ? normalizeRomStorageName(selectedGame.romKey) : null;
+    if (previousGameId !== selectedGameId) {
+      persistSelectedGameSelection();
+    }
+    if (!options.silent && previousGameId !== selectedGameId) {
       void playUiSfx(UI_SFX.select, { key: 'select-game', cooldownMs: 70 });
     }
     renderRomList();
@@ -1969,6 +2046,18 @@
       + countUnlockedEntries(save?.UnlockedNullProviders);
   }
 
+  function countOwnedCoreCards(save) {
+    return Object.keys(OWNED_KEY_BY_DOMAIN).reduce((count, domain) => {
+      return count + getOwnedCoreIdsByDomain(save, domain).length;
+    }, 0);
+  }
+
+  function getTotalCoreCardCount() {
+    return Object.keys(OWNED_KEY_BY_DOMAIN).reduce((count, domain) => {
+      return count + getCoreOptions(domain).length;
+    }, 0);
+  }
+
   async function getTotalCoreCount() {
     const legacyCoreCount = ['CPU', 'PPU', 'APU', 'CLOCK', 'SHADER'].reduce((count, domain) => {
       return count + getCoreOptions(domain).length;
@@ -2086,6 +2175,25 @@
     return dedupeRewardPairs(result).slice(0, 3);
   }
 
+  function pickPostgameBlindBagCards(save, count = 3) {
+    const candidatePool = [];
+
+    Object.keys(OWNED_KEY_BY_DOMAIN).forEach(domain => {
+      const owned = new Set(getOwnedCoreIdsByDomain(save, domain));
+      getCoreOptions(domain).forEach(core => {
+        const id = normalizeCoreId(core?.id);
+        if (!id || owned.has(id)) {
+          return;
+        }
+
+        candidatePool.push({ domain, id });
+      });
+    });
+
+    const bagSize = Math.max(0, Math.min(count, candidatePool.length));
+    return dedupeRewardPairs(shuffleItems(candidatePool).slice(0, bagSize));
+  }
+
   function getCurrentLevelRewardPairs() {
     const pairs = [];
     for (const raw of levelRecord?.requiredCards || []) {
@@ -2135,16 +2243,13 @@
 
   async function buildLevelRewards(previousLevel) {
     const rewardPairs = getCurrentLevelRewardPairs();
-    const anyCoreEnforced = rewardPairs.some(pair => ['CPU', 'PPU', 'APU', 'SHADER'].includes(pair.domain));
-    const alwaysBonusPack = previousLevel >= 21;
-
-    if (!anyCoreEnforced || alwaysBonusPack) {
-      rewardPairs.push(...await pickRandomBonusCards(gameSave));
-    }
-
-    if (previousLevel === 16) {
-      rewardPairs.push({ domain: 'CLOCK', id: 'CLR' });
-      rewardPairs.push({ domain: 'CLOCK', id: 'TRB' });
+    if (previousLevel >= POSTGAME_START_LEVEL) {
+      rewardPairs.push(...pickPostgameBlindBagCards(gameSave, 3));
+    } else {
+      const anyCoreEnforced = rewardPairs.some(pair => ['CPU', 'PPU', 'APU', 'SHADER'].includes(pair.domain));
+      if (!anyCoreEnforced) {
+        rewardPairs.push(...await pickRandomBonusCards(gameSave));
+      }
     }
 
     const newlyUnlocked = [];
@@ -2157,8 +2262,8 @@
     const featureUnlocks = getFeatureUnlocksForLevel(gameSave, previousLevel);
 
     let showAllCores = false;
-    const totalCoreCount = await getTotalCoreCount();
-    if (totalCoreCount > 0 && countOwnedCores(gameSave) >= totalCoreCount && !gameSave.AllCoresUnlockedCongrats) {
+    const totalCoreCardCount = getTotalCoreCardCount();
+    if (totalCoreCardCount > 0 && countOwnedCoreCards(gameSave) >= totalCoreCardCount && !gameSave.AllCoresUnlockedCongrats) {
       gameSave.AllCoresUnlockedCongrats = true;
       showAllCores = true;
     }
@@ -2208,7 +2313,7 @@
       notices.push('Every level completion now guarantees a fresh core pack.');
     }
     if (rewards?.showAllCores) {
-      notices.push('All cores unlocked. The entire library is now in your deck.');
+      notices.push('Congratulations. You unlocked everything in BrokenNes.');
     }
     return notices;
   }
@@ -2769,6 +2874,8 @@
     if (!payload) {
       return;
     }
+
+    await persistSelectedGameSelection({ awaitWrite: true });
 
     actionBtn.disabled = true;
 

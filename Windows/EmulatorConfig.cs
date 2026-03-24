@@ -34,13 +34,13 @@ namespace BrokenNes.Windows
         /// Whether shaders are enabled
         /// </summary>
         [JsonPropertyName("shadersEnabled")]
-        public bool ShadersEnabled { get; set; } = false;
+        public bool ShadersEnabled { get; set; } = true;
         
         /// <summary>
         /// Last selected shader
         /// </summary>
         [JsonPropertyName("currentShader")]
-        public string? CurrentShader { get; set; }
+        public string? CurrentShader { get; set; } = "PX";
         
         /// <summary>
         /// Shader strength multiplier
@@ -345,6 +345,20 @@ namespace BrokenNes.Windows
                         // Migrate legacy bindings if needed
                         config.MigrateLegacyBindings();
                         var bindingsChanged = config.NormalizePlayer1DefaultKeyboardBindings();
+                        var shaderConfigChanged = false;
+
+                        // Shaders are always-on; keep persisted configs aligned.
+                        if (!config.ShadersEnabled)
+                        {
+                            config.ShadersEnabled = true;
+                            shaderConfigChanged = true;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(config.CurrentShader))
+                        {
+                            config.CurrentShader = "PX";
+                            shaderConfigChanged = true;
+                        }
                         
                         // Validate that recent ROMs still exist
                         config.RecentRoms = config.RecentRoms
@@ -352,7 +366,7 @@ namespace BrokenNes.Windows
                             .Take(config.MaxRecentRoms)
                             .ToList();
 
-                        if (bindingsChanged)
+                        if (bindingsChanged || shaderConfigChanged)
                         {
                             config.Save();
                         }

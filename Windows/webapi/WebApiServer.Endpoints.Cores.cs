@@ -50,6 +50,9 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Core payload is required" });
                     }
 
+                    var useOverride = string.Equals(body.OverrideReason, "deck-enforced", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(body.OverrideReason, "story-cutscene", StringComparison.OrdinalIgnoreCase);
+
                     void ApplyIfPresent(Action<string>? setter, string? value)
                     {
                         if (setter == null || string.IsNullOrWhiteSpace(value))
@@ -64,16 +67,16 @@ namespace BrokenNes.Windows.WebApi
                     {
                         _uiControl.Invoke((Action)(() =>
                         {
-                            ApplyIfPresent(_setCpuCore, body.CpuId);
-                            ApplyIfPresent(_setPpuCore, body.PpuId);
-                            ApplyIfPresent(_setApuCore, body.ApuId);
+                            ApplyIfPresent(useOverride ? (_setCpuCoreOverride ?? _setCpuCore) : _setCpuCore, body.CpuId);
+                            ApplyIfPresent(useOverride ? (_setPpuCoreOverride ?? _setPpuCore) : _setPpuCore, body.PpuId);
+                            ApplyIfPresent(useOverride ? (_setApuCoreOverride ?? _setApuCore) : _setApuCore, body.ApuId);
                         }));
                     }
                     else
                     {
-                        ApplyIfPresent(_setCpuCore, body.CpuId);
-                        ApplyIfPresent(_setPpuCore, body.PpuId);
-                        ApplyIfPresent(_setApuCore, body.ApuId);
+                        ApplyIfPresent(useOverride ? (_setCpuCoreOverride ?? _setCpuCore) : _setCpuCore, body.CpuId);
+                        ApplyIfPresent(useOverride ? (_setPpuCoreOverride ?? _setPpuCore) : _setPpuCore, body.PpuId);
+                        ApplyIfPresent(useOverride ? (_setApuCoreOverride ?? _setApuCore) : _setApuCore, body.ApuId);
                     }
 
                     return Results.Ok(new
