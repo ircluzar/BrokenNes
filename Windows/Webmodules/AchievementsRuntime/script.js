@@ -7,7 +7,9 @@
   const WORKFLOW_LAUNCH_KEY = 'brokenNes.workflow.launch';
   const WORKFLOW_RETURN_KEY = 'brokenNes.workflow.return';
   const WORKFLOW_ROM_CACHE_KEY = 'brokenNes.workflow.rom';
+  const NULL_PROVIDER_INTERMISSION_MS = 1337;
   const MAX_VISIBLE_ACHIEVEMENTS = 6;
+  const DEBUG_UNLOCK_CLICK_THRESHOLD = 5;
   let achievementsList = [];
   let isInitialized = false;
   let launchPayload = null;
@@ -31,6 +33,10 @@
   const MODAL_DISPLAY_DURATION = 3000; // milliseconds (configurable)
   let modalQueue = [];
   let isModalDisplaying = false;
+  let debugUnlockClickState = {
+    achievementId: null,
+    count: 0
+  };
   const achievementModal = document.getElementById('achievementModal');
   const modalAchievementName = document.getElementById('modalAchievementName');
   const modalProgressBar = document.getElementById('modalProgressBar');
@@ -60,6 +66,56 @@
       localStorage.removeItem(key);
     } catch (error) {
       console.warn('[AchievementsRuntime] Failed to clear payload:', error);
+    }
+  }
+
+  async function getPreferredNullProviderId() {
+    try {
+      const save = await window.gameSave.load();
+      const preferred = save?.PreferredNullProviderId;
+      return typeof preferred === 'string' && preferred.trim() ? preferred.trim() : 'Static';
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to read preferred null provider:', error);
+      return 'Static';
+    }
+  }
+
+  async function runNullProviderIntermission() {
+    const mode = String(launchPayload?.mode || '').toLowerCase();
+    if (mode !== 'continue' && mode !== 'stage') {
+      return;
+    }
+
+    const preferredNullProviderId = await getPreferredNullProviderId();
+
+    try {
+      // Null providers render on the test ROM path, so switch there for the intermission.
+      await api.emulator.closeRom();
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to switch to test ROM for null provider intermission:', error);
+    }
+
+    try {
+      const setResult = await api.emulator.setNullProvider(preferredNullProviderId);
+      if (!setResult || setResult.success === false) {
+        console.warn('[AchievementsRuntime] Failed to apply null provider intermission:', setResult?.error || preferredNullProviderId);
+      }
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Null provider intermission setup failed:', error);
+    }
+
+    try {
+      await api.emulator.resume();
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to resume for null provider intermission:', error);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, NULL_PROVIDER_INTERMISSION_MS));
+
+    try {
+      await api.emulator.pause();
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to pause after null provider intermission:', error);
     }
   }
 
@@ -168,6 +224,29 @@
     window.location.href = '../Continue/index.html';
   }
 
+  async function ensureCheckpointCapturedBeforeModal(initiallyCaptured) {
+    if (initiallyCaptured) {
+      return { checkpointCaptured: true, continueSaveError: null };
+    }
+
+    try {
+      const saveResult = await api.emulator.saveContinueState();
+      const checkpointCaptured = Boolean(saveResult && saveResult.success !== false);
+      const continueSaveError = checkpointCaptured
+        ? null
+        : (saveResult?.error || 'Failed to save continue state');
+      if (continueSaveError) {
+        console.warn('[AchievementsRuntime] Continue-state pre-capture failed after unlock:', continueSaveError);
+      }
+
+      return { checkpointCaptured, continueSaveError };
+    } catch (error) {
+      const continueSaveError = error?.message || 'Failed to save continue state';
+      console.warn('[AchievementsRuntime] Continue-state pre-capture threw after unlock:', error);
+      return { checkpointCaptured: false, continueSaveError };
+    }
+  }
+
   function handleGlobalKeydown(event) {
     if (event.key !== 'Escape' || event.defaultPrevented) {
       return;
@@ -217,8 +296,73 @@
   }
 
   function closeAchievementsModal() {
+    resetDebugUnlockClickState();
     if (achievementsListModal) {
       achievementsListModal.style.display = 'none';
+    }
+  }
+
+  function resetDebugUnlockClickState() {
+    debugUnlockClickState = {
+      achievementId: null,
+      count: 0
+    };
+  }
+
+  function registerDebugUnlockClick(achievementId) {
+    if (!achievementId) {
+      resetDebugUnlockClickState();
+      return 0;
+    }
+
+    if (debugUnlockClickState.achievementId !== achievementId) {
+      resetDebugUnlockClickState();
+      debugUnlockClickState.achievementId = achievementId;
+      debugUnlockClickState.count = 1;
+    } else {
+      debugUnlockClickState.count += 1;
+    }
+
+    return debugUnlockClickState.count;
+  }
+
+  async function handleAchievementListRowClick(event) {
+    const row = event.target.closest('.achievements-list-row');
+    if (!row || !achievementsListContainer || !achievementsListContainer.contains(row)) {
+      return;
+    }
+
+    const achievementId = row.dataset.achievementId;
+    if (!achievementId) {
+      return;
+    }
+
+    const achievement = achievementsList.find(a => lib.getAchievementId(a) === achievementId);
+    if (!achievement || lib.isAchievementCompleted(achievement)) {
+      resetDebugUnlockClickState();
+      return;
+    }
+
+    const clickCount = registerDebugUnlockClick(achievementId);
+    if (clickCount < DEBUG_UNLOCK_CLICK_THRESHOLD) {
+      return;
+    }
+
+    resetDebugUnlockClickState();
+
+    try {
+      const forceResult = await api.achievements.forceComplete(achievementId);
+      if (!forceResult || forceResult.success === false) {
+        console.warn('[AchievementsRuntime] Debug unlock failed:', forceResult?.error || achievementId);
+        return;
+      }
+
+      knownUnlockedAchievements.add(achievementId);
+      await refreshAchievementsList();
+      closeAchievementsModal();
+      await handleAchievementUnlock(achievementId, { checkpointCaptured: false });
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Debug unlock failed with exception:', error);
     }
   }
 
@@ -242,8 +386,9 @@
     let html = '';
     list.forEach(achievement => {
       const title = lib.getAchievementTitle(achievement) || 'Untitled achievement';
+      const achievementId = lib.getAchievementId(achievement);
       const unlocked = lib.isAchievementCompleted(achievement);
-      html += `<div class="achievements-list-row ${unlocked ? 'unlocked' : 'locked'}">`;
+      html += `<div class="achievements-list-row ${unlocked ? 'unlocked' : 'locked'}" data-achievement-id="${lib.escapeHtml(achievementId)}">`;
       html += `<div class="achievements-list-row-title">${lib.escapeHtml(title)}</div>`;
       html += `<div class="achievements-list-row-state">${unlocked ? 'Unlocked' : 'Locked'}</div>`;
       html += '</div>';
@@ -262,6 +407,9 @@
       void openAchievementsModal();
     });
     closeAchievementsListButton?.addEventListener('click', closeAchievementsModal);
+    achievementsListContainer?.addEventListener('click', (event) => {
+      void handleAchievementListRowClick(event);
+    });
     achievementsListModal?.addEventListener('click', (event) => {
       if (event.target === achievementsListModal) {
         closeAchievementsModal();
@@ -293,6 +441,8 @@
     try {
       await api.navigation.goToOverlay();
       const isContinueLaunch = launchPayload.mode === 'continue';
+
+      await runNullProviderIntermission();
 
       const romPayload = readPayload(WORKFLOW_ROM_CACHE_KEY);
       const romResult = romPayload && romPayload.base64
@@ -543,16 +693,11 @@
     await lib.saveAchievement(achievementId);
 
     try {
+      const checkpointResult = await ensureCheckpointCapturedBeforeModal(Boolean(options.checkpointCaptured));
       const save = await window.gameSave.load();
       const firstClear = !Boolean(save.LevelCleared);
       save.LevelCleared = true;
       await window.gameSave.save(save);
-
-      try {
-        await api.emulator.pause();
-      } catch (error) {
-        console.warn('[AchievementsRuntime] Failed to pause after unlock:', error);
-      }
 
       const modalPromise = displayAchievementModal(title);
       const sfxPromise = lib.playRandomVictorySfx();
@@ -563,7 +708,7 @@
         achievementTitle: title,
         showArrival: true,
         firstClear,
-        checkpointAlreadyCaptured: Boolean(options.checkpointCaptured),
+        checkpointAlreadyCaptured: checkpointResult.checkpointCaptured,
         force: true
       });
     } catch (error) {

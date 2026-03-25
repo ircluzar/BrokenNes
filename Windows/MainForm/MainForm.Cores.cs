@@ -87,7 +87,12 @@ namespace BrokenNes.Windows
         {
             if (!useDirectX || dxRenderer == null || string.IsNullOrWhiteSpace(shaderId)) return;
 
-            string normalizedShaderId = shaderId.Trim().ToUpperInvariant();
+            string normalizedShaderId = NormalizeShaderId(shaderId);
+            if (string.IsNullOrWhiteSpace(normalizedShaderId))
+            {
+                return;
+            }
+
             if (!bypassProgression && !IsShaderUnlocked(normalizedShaderId))
             {
                 Console.WriteLine($"[Progression] Shader locked: {normalizedShaderId}");
@@ -114,6 +119,28 @@ namespace BrokenNes.Windows
             });
 
             UpdateConfigMenus();
+        }
+
+        private static string NormalizeShaderId(string shaderId)
+        {
+            if (string.IsNullOrWhiteSpace(shaderId))
+            {
+                return string.Empty;
+            }
+
+            var normalized = shaderId.Trim().ToUpperInvariant();
+            if (normalized.StartsWith("SHADER_", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring("SHADER_".Length);
+            }
+
+            // Support legacy/alternate CRT naming used by older data paths.
+            if (normalized == "CRT" || normalized == "TV_SHADER")
+            {
+                normalized = "TV";
+            }
+
+            return normalized;
         }
         
         private void AutoScrambleTimer_Tick(object? sender, EventArgs e)

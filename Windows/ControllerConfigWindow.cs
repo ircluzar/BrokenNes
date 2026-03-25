@@ -13,6 +13,7 @@ namespace BrokenNes.Windows
     public partial class ControllerConfigWindow : Form
     {
         private readonly PlayerControllerConfig config;
+        private readonly PlayerControllerConfig originalConfigSnapshot;
         private List<Controller> controllers = new();
         private System.Windows.Forms.Timer? pollTimer;
         private bool isBinding = false;
@@ -30,6 +31,7 @@ namespace BrokenNes.Windows
         public ControllerConfigWindow(PlayerControllerConfig config)
         {
             this.config = config;
+            originalConfigSnapshot = CloneConfig(config);
             
             InitializeComponent();
             RefreshControllers();
@@ -45,7 +47,8 @@ namespace BrokenNes.Windows
         private void InitializeComponent()
         {
             Text = $"Player {config.PlayerNumber} Controller Configuration";
-            Size = new Size(500, 550);
+            Size = new Size(500, 620);
+            MinimumSize = new Size(500, 620);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -58,11 +61,11 @@ namespace BrokenNes.Windows
                 ColumnCount = 1,
                 RowCount = 5,
                 Padding = new Padding(15),
-                AutoSize = true
+                AutoSize = false
             };
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Title
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Input mode selector
-            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Bindings
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); // Bindings
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Info
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Buttons
 
@@ -117,6 +120,13 @@ namespace BrokenNes.Windows
 
             // Bindings panel
             var bindingsPanel = CreateBindingsPanel();
+            var bindingsContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Margin = new Padding(0)
+            };
+            bindingsContainer.Controls.Add(bindingsPanel);
 
             // Info label
             var infoLabel = new Label
@@ -134,19 +144,10 @@ namespace BrokenNes.Windows
             var buttonPanel = new FlowLayoutPanel
             {
                 AutoSize = true,
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.RightToLeft,
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
                 Margin = new Padding(0, 10, 0, 0)
             };
-
-            var okButton = new Button
-            {
-                Text = "OK",
-                Width = 80,
-                Height = 30,
-                Margin = new Padding(5, 0, 5, 0)
-            };
-            okButton.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
 
             var cancelButton = new Button
             {
@@ -155,24 +156,33 @@ namespace BrokenNes.Windows
                 Height = 30,
                 Margin = new Padding(5, 0, 5, 0)
             };
-            cancelButton.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+            cancelButton.Click += CancelButton_Click;
 
             var resetButton = new Button
             {
-                Text = "Reset to Defaults",
-                Width = 120,
+                Text = "Reset to default",
+                Width = 130,
                 Height = 30,
-                Margin = new Padding(20, 0, 5, 0)
+                Margin = new Padding(5, 0, 5, 0)
             };
             resetButton.Click += ResetButton_Click;
 
-            buttonPanel.Controls.Add(okButton);
+            var saveButton = new Button
+            {
+                Text = "Save",
+                Width = 80,
+                Height = 30,
+                Margin = new Padding(5, 0, 5, 0)
+            };
+            saveButton.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
+
             buttonPanel.Controls.Add(cancelButton);
             buttonPanel.Controls.Add(resetButton);
+            buttonPanel.Controls.Add(saveButton);
 
             mainPanel.Controls.Add(titleLabel, 0, 0);
             mainPanel.Controls.Add(selectorPanel, 0, 1);
-            mainPanel.Controls.Add(bindingsPanel, 0, 2);
+            mainPanel.Controls.Add(bindingsContainer, 0, 2);
             mainPanel.Controls.Add(infoLabel, 0, 3);
             mainPanel.Controls.Add(buttonPanel, 0, 4);
 
@@ -420,6 +430,78 @@ namespace BrokenNes.Windows
             currentBindingCallback = null;
         }
 
+        private static ButtonBinding CloneBinding(ButtonBinding source)
+        {
+            return new ButtonBinding
+            {
+                Key = source.Key,
+                GamepadButton = source.GamepadButton
+            };
+        }
+
+        private static PlayerControllerConfig CloneConfig(PlayerControllerConfig source)
+        {
+            return new PlayerControllerConfig
+            {
+                PlayerNumber = source.PlayerNumber,
+                Enabled = source.Enabled,
+                DeviceType = source.DeviceType,
+                GamepadIndex = source.GamepadIndex,
+                A = CloneBinding(source.A),
+                B = CloneBinding(source.B),
+                Select = CloneBinding(source.Select),
+                Start = CloneBinding(source.Start),
+                Up = CloneBinding(source.Up),
+                Down = CloneBinding(source.Down),
+                Left = CloneBinding(source.Left),
+                Right = CloneBinding(source.Right),
+                X = CloneBinding(source.X),
+                Y = CloneBinding(source.Y)
+            };
+        }
+
+        private static void CopyConfigValues(PlayerControllerConfig source, PlayerControllerConfig target)
+        {
+            target.PlayerNumber = source.PlayerNumber;
+            target.Enabled = source.Enabled;
+            target.DeviceType = source.DeviceType;
+            target.GamepadIndex = source.GamepadIndex;
+            target.A = CloneBinding(source.A);
+            target.B = CloneBinding(source.B);
+            target.Select = CloneBinding(source.Select);
+            target.Start = CloneBinding(source.Start);
+            target.Up = CloneBinding(source.Up);
+            target.Down = CloneBinding(source.Down);
+            target.Left = CloneBinding(source.Left);
+            target.Right = CloneBinding(source.Right);
+            target.X = CloneBinding(source.X);
+            target.Y = CloneBinding(source.Y);
+        }
+
+        private void CancelButton_Click(object? sender, EventArgs e)
+        {
+            CopyConfigValues(originalConfigSnapshot, config);
+            DialogResult = DialogResult.Cancel;
+            Close();
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (isBinding && isKeyboardMode && currentBindingCallback != null && currentBindingButton != null)
+            {
+                var keyCode = keyData & Keys.KeyCode;
+                if (keyCode != Keys.None)
+                {
+                    var binding = new ButtonBinding { Key = keyCode.ToString() };
+                    currentBindingCallback(binding);
+                    CompleteBinding();
+                    return true;
+                }
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
@@ -433,6 +515,16 @@ namespace BrokenNes.Windows
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (!e.Cancel && DialogResult == DialogResult.None)
+            {
+                DialogResult = DialogResult.OK;
+            }
+
+            base.OnFormClosing(e);
         }
 
         private void PollTimer_Tick(object? sender, EventArgs e)
@@ -489,20 +581,8 @@ namespace BrokenNes.Windows
 
             if (result == DialogResult.Yes)
             {
-                // Reset to defaults based on current device type
-                PlayerControllerConfig defaults;
-                
-                if (config.DeviceType == InputDeviceType.Gamepad)
-                {
-                    defaults = PlayerControllerConfig.CreateDefaultGamepad(config.PlayerNumber);
-                }
-                else
-                {
-                    defaults = PlayerControllerConfig.CreateDefaultPlayer1();
-                    // If not player 1, maybe we want different keys? 
-                    // But current CreateDefaultPlayer1 is hardcoded to WASD/Arrow keys.
-                    // For now, adhere to existing logic but match device type.
-                }
+                // Always use Player 1 keyboard layout as the reset baseline for any player.
+                var defaults = PlayerControllerConfig.CreateDefaultPlayer1();
 
                 config.A = defaults.A;
                 config.B = defaults.B;
@@ -512,6 +592,14 @@ namespace BrokenNes.Windows
                 config.Down = defaults.Down;
                 config.Left = defaults.Left;
                 config.Right = defaults.Right;
+                config.X = defaults.X;
+                config.Y = defaults.Y;
+                config.DeviceType = InputDeviceType.Keyboard;
+
+                if (inputModeCombo.Items.Count > 0)
+                {
+                    inputModeCombo.SelectedIndex = 0;
+                }
 
                 LoadBindings();
             }

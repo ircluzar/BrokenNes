@@ -73,6 +73,7 @@
   let cartridgeCollapsed = false;
   let levelRecord = null;
   let arrivalInProgress = false;
+  let pendingAllAchievementsModal = null;
   
   const coreCatalog = {
     CPU: [],
@@ -260,19 +261,23 @@
     }
 
     const selectedGame = romRows.find(row => row.id === selectedGameId);
+    const normalizedGameId = selectedGame ? normalizeSelectedGameId(selectedGame.id) : null;
     const normalizedSelection = selectedGame ? normalizeRomStorageName(selectedGame.romKey) : null;
     const previousSelection = normalizeRomStorageName(gameSave.SelectedRomKey ?? gameSave.Preferences?.SelectedRomKey);
     const normalizedPrevious = previousSelection || null;
-    if (normalizedPrevious === normalizedSelection) {
+    const previousGameId = normalizeSelectedGameId(gameSave.SelectedGameId ?? gameSave.Preferences?.SelectedGameId);
+    if (normalizedPrevious === normalizedSelection && previousGameId === normalizedGameId) {
       return Promise.resolve(false);
     }
 
     selectedRomKey = normalizedSelection;
     gameSave.SelectedRomKey = normalizedSelection;
+    gameSave.SelectedGameId = normalizedGameId;
     if (!gameSave.Preferences || typeof gameSave.Preferences !== 'object') {
       gameSave.Preferences = {};
     }
     gameSave.Preferences.SelectedRomKey = normalizedSelection;
+    gameSave.Preferences.SelectedGameId = normalizedGameId;
 
     const savePromise = saveGameSave();
     if (options.awaitWrite) {
@@ -338,6 +343,32 @@
     }
 
     return roms.find(rom => normalizeRomStorageName(rom && rom.name) === normalizedTarget) || null;
+  }
+
+  async function primeNullProviderIntermission() {
+    if (!window.webapi?.emulator) {
+      return;
+    }
+
+    const preferredNullProvider = typeof gameSave?.PreferredNullProviderId === 'string' && gameSave.PreferredNullProviderId.trim()
+      ? gameSave.PreferredNullProviderId.trim()
+      : 'Static';
+
+    try {
+      // Move emulator to test ROM before AchievementsRuntime opens to avoid flashing prior gameplay.
+      await window.webapi.emulator.closeRom();
+    } catch (error) {
+      console.warn('[Continue] Failed to prime test ROM before runtime launch:', error);
+    }
+
+    try {
+      const setResult = await window.webapi.emulator.setNullProvider(preferredNullProvider);
+      if (!setResult || setResult.success === false) {
+        console.warn('[Continue] Failed to prime null provider before runtime launch:', setResult?.error || preferredNullProvider);
+      }
+    } catch (error) {
+      console.warn('[Continue] Null-provider priming failed before runtime launch:', error);
+    }
   }
 
   function setArrivalText(id, value) {
@@ -409,6 +440,12 @@
       }
     }
 
+    const completionSummary = getCompletionSummaryForReturn(payload);
+    const shouldShowAllAchievementsModal = Boolean(payload.achievementId || payload.achievementTitle)
+      && Boolean(completionSummary)
+      && completionSummary.total > 0
+      && completionSummary.completed >= completionSummary.total;
+
     const shouldShowArrival = payload.showArrival === true
       || Boolean(payload.achievementId || payload.achievementTitle || payload.firstClear);
     if (!shouldShowArrival) {
@@ -416,6 +453,71 @@
     }
 
     await runArrivalSequence(payload);
+
+    if (shouldShowAllAchievementsModal && completionSummary) {
+      queueAllAchievementsCompletedModal(completionSummary);
+    }
+  }
+
+  function getCompletionSummaryForReturn(payload) {
+    const normalizedRomKey = normalizeRomStorageName(payload?.romKey);
+    const byRom = normalizedRomKey
+      ? romRows.find(row => normalizeRomStorageName(row.romKey) === normalizedRomKey)
+      : null;
+    const selected = selectedGameId !== null
+      ? romRows.find(row => row.id === selectedGameId)
+      : null;
+    const source = byRom || selected;
+    if (!source) {
+      return null;
+    }
+
+    return {
+      title: source.title || source.romKey || 'Selected game',
+      completed: Number.isFinite(source.achCompleted) ? source.achCompleted : 0,
+      total: Number.isFinite(source.achTotal) ? source.achTotal : 0
+    };
+  }
+
+  function isUnlockModalOpen() {
+    return document.getElementById('unlockModal')?.style.display === 'flex';
+  }
+
+  function isAllAchievementsModalOpen() {
+    return document.getElementById('allAchievementsModal')?.style.display === 'flex';
+  }
+
+  function queueAllAchievementsCompletedModal(summary) {
+    pendingAllAchievementsModal = summary;
+    tryShowAllAchievementsCompletedModal();
+  }
+
+  function tryShowAllAchievementsCompletedModal() {
+    if (!pendingAllAchievementsModal || isUnlockModalOpen()) {
+      return;
+    }
+
+    const modal = document.getElementById('allAchievementsModal');
+    const copy = document.getElementById('allAchievementsCopy');
+    if (!modal || !copy) {
+      pendingAllAchievementsModal = null;
+      return;
+    }
+
+    const summary = pendingAllAchievementsModal;
+    copy.textContent = `${summary.title} is now complete. You finished all ${summary.completed}/${summary.total} achievements for this game.`;
+    modal.style.display = 'flex';
+    pendingAllAchievementsModal = null;
+    void playUiSfx(UI_SFX.modalOpen, { key: 'all-achievements-modal-open', cooldownMs: 120 });
+  }
+
+  function closeAllAchievementsCompletedModal() {
+    const modal = document.getElementById('allAchievementsModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.style.display = 'none';
   }
 
   async function runArrivalSequence(payload) {
@@ -518,6 +620,63 @@
 
   function normalizeCoreId(value) {
     return typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : null;
+  }
+
+  function normalizeRequiredShaderId(value) {
+    const normalized = normalizeCoreId(value);
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.startsWith('SHADER_')) {
+      return normalizeCoreId(normalized.slice('SHADER_'.length));
+    }
+
+    // Maintain compatibility with legacy/alternate CRT naming.
+    if (normalized === 'CRT' || normalized === 'TV_SHADER') {
+      return 'TV';
+    }
+
+    return normalized;
+  }
+
+  function parseRequiredCard(raw) {
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return null;
+    }
+
+    const trimmed = raw.trim();
+    const normalized = trimmed.toUpperCase();
+    let domain = null;
+    let idToken = null;
+
+    const separator = normalized.includes('_')
+      ? '_'
+      : (normalized.includes(':') ? ':' : null);
+
+    if (separator) {
+      const parts = normalized.split(separator, 2);
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        return null;
+      }
+
+      domain = parts[0];
+      idToken = parts[1];
+    } else {
+      // Support bare shader IDs in level data (e.g. "TV").
+      domain = 'SHADER';
+      idToken = normalized;
+    }
+
+    const id = domain === 'SHADER'
+      ? normalizeRequiredShaderId(idToken)
+      : normalizeCoreId(idToken);
+
+    if (!domain || !id) {
+      return null;
+    }
+
+    return { domain, id };
   }
 
   async function loadCoreCatalog() {
@@ -692,7 +851,9 @@
       ? { ...save.Preferences }
       : {};
 
+    const normalizedSelectedGameId = normalizeSelectedGameId(save.SelectedGameId ?? preferences.SelectedGameId);
     const normalizedSelectedRomKey = normalizeRomStorageName(save.SelectedRomKey ?? preferences.SelectedRomKey);
+    save.SelectedGameId = normalizedSelectedGameId;
     save.SelectedRomKey = normalizedSelectedRomKey || null;
 
     save.PreferredCpuId = normalizeCoreId(save.PreferredCpuId || preferences.CPU || 'FMC') || 'FMC';
@@ -726,6 +887,7 @@
       APU: save.PreferredApuId,
       Shader: save.PreferredShaderId,
       SHADER: save.PreferredShaderId,
+      SelectedGameId: save.SelectedGameId,
       SelectedRomKey: save.SelectedRomKey
     };
 
@@ -770,20 +932,13 @@
 
     const enforced = [];
     for (const raw of levelRecord?.requiredCards || []) {
-      if (typeof raw !== 'string' || !raw.trim()) {
+      const parsed = parseRequiredCard(raw);
+      if (!parsed) {
         continue;
       }
 
-      const parts = raw.split('_', 2);
-      if (parts.length !== 2) {
-        continue;
-      }
-
-      const domain = parts[0].toUpperCase();
-      const id = normalizeCoreId(parts[1]);
-      if (!id) {
-        continue;
-      }
+      const domain = parsed.domain;
+      const id = parsed.id;
 
       switch (domain) {
         case 'CPU':
@@ -944,21 +1099,26 @@
       selectedGameId = null;
     }
 
-    if (!selectedGameId && selectedRomKey) {
+    if (selectedGameId === null && selectedRomKey) {
       const matched = romRows.find(row => normalizeRomStorageName(row.romKey) === selectedRomKey);
       if (matched) {
         selectedGameId = matched.id;
       }
     }
 
-    if (!selectedGameId && selectedRomKey) {
+    if (selectedGameId === null && selectedRomKey) {
       selectedRomKey = null;
       persistSelectedGameSelection();
     }
 
+    refreshSelectedGameUi();
+  }
+
+  function refreshSelectedGameUi() {
     renderRomList();
     updateGameInfo();
     updateAchievements();
+    updateSelectionDependentUi();
     updateStartButton();
   }
 
@@ -1241,7 +1401,7 @@
   }
 
   function ensureSelectedRomInView() {
-    if (!selectedGameId) {
+    if (selectedGameId === null) {
       return;
     }
 
@@ -1255,10 +1415,20 @@
       return;
     }
 
-    selectedRow.scrollIntoView({
-      block: 'nearest',
-      inline: 'nearest'
-    });
+    // Keep scrolling confined to the ROM list so opening Continue does not move the page.
+    const rowTop = selectedRow.offsetTop;
+    const rowBottom = rowTop + selectedRow.offsetHeight;
+    const viewTop = tbody.scrollTop;
+    const viewBottom = viewTop + tbody.clientHeight;
+
+    if (rowTop < viewTop) {
+      tbody.scrollTop = rowTop;
+      return;
+    }
+
+    if (rowBottom > viewBottom) {
+      tbody.scrollTop = rowBottom - tbody.clientHeight;
+    }
   }
 
   function selectGame(gameId, options = {}) {
@@ -1282,7 +1452,7 @@
   function updateGameInfo() {
     const infoEl = document.getElementById('gameInfo');
     
-    if (!selectedGameId) {
+    if (selectedGameId === null) {
       infoEl.innerHTML = '<div class="small-note">Select an installed game to view details.</div>';
       return;
     }
@@ -1329,7 +1499,7 @@
   function updateAchievements() {
     const achBox = document.getElementById('achBox');
     
-    if (!selectedGameId) {
+    if (selectedGameId === null) {
       achBox.innerHTML = '<div class="small-note">Select an installed cartridge to view achievements.</div>';
       return;
     }
@@ -1658,12 +1828,11 @@
       resetBtn.addEventListener('click', resetGame);
     }
 
-    const returnLink = document.getElementById('returnLink');
-    if (returnLink) {
+    document.querySelectorAll('.return-link-nav').forEach((returnLink) => {
       returnLink.addEventListener('click', () => {
         void playUiSfx(UI_SFX.toggle, { key: 'return-link', cooldownMs: 120 });
       });
-    }
+    });
 
     const controller1Btn = document.getElementById('controller1Btn');
     if (controller1Btn) {
@@ -1731,6 +1900,20 @@
       });
     }
 
+    const allAchievementsCloseBtn = document.getElementById('allAchievementsCloseBtn');
+    if (allAchievementsCloseBtn) {
+      allAchievementsCloseBtn.addEventListener('click', closeAllAchievementsCompletedModal);
+    }
+
+    const allAchievementsModal = document.getElementById('allAchievementsModal');
+    if (allAchievementsModal) {
+      allAchievementsModal.addEventListener('click', (event) => {
+        if (event.target === allAchievementsModal) {
+          closeAllAchievementsCompletedModal();
+        }
+      });
+    }
+
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') {
         return;
@@ -1747,6 +1930,12 @@
             void closeUnlockModal();
           return;
         }
+
+      const allAchievementsOpen = isAllAchievementsModalOpen();
+      if (allAchievementsOpen) {
+        closeAllAchievementsCompletedModal();
+        return;
+      }
 
       const pickerOpen = document.getElementById('pickerModal')?.style.display === 'flex';
       if (pickerOpen) {
@@ -1896,6 +2085,8 @@
       copy: '',
       autoCloseTimer: 0
     };
+
+    tryShowAllAchievementsCompletedModal();
   }
 
   function getRewardDomainLabel(domain) {
@@ -1994,9 +2185,42 @@
     return Boolean(result?.success);
   }
 
+  function pendingBundlesNeedUserAction(pendingBundles) {
+    const bundles = Array.isArray(pendingBundles) ? pendingBundles : [];
+
+    for (const bundle of bundles) {
+      const items = Array.isArray(bundle?.items) ? bundle.items : [];
+      for (const item of items) {
+        const canEquip = Boolean(item?.canEquip)
+          && (item?.equipAction === 'equip-background' || item?.equipAction === 'equip-null-provider');
+        const isEquipped = Boolean(item?.isEquipped);
+
+        // Any passive item or not-yet-equipped equipable item should still be shown.
+        if (!canEquip || !isEquipped) {
+          return true;
+        }
+      }
+    }
+
+    // Empty bundles do not need a modal.
+    return false;
+  }
+
   async function presentPendingUnlocks() {
     const pendingBundles = await claimPendingUnlockBundles();
     if (pendingBundles.length === 0) {
+      return false;
+    }
+
+    if (!pendingBundlesNeedUserAction(pendingBundles)) {
+      const pendingRewardIds = pendingBundles
+        .map(bundle => String(bundle?.id || '').trim())
+        .filter(Boolean);
+
+      if (pendingRewardIds.length > 0) {
+        await acknowledgePendingUnlockBundles(pendingRewardIds);
+      }
+
       return false;
     }
 
@@ -2197,17 +2421,13 @@
   function getCurrentLevelRewardPairs() {
     const pairs = [];
     for (const raw of levelRecord?.requiredCards || []) {
-      if (typeof raw !== 'string' || !raw.trim()) {
+      const parsed = parseRequiredCard(raw);
+      if (!parsed) {
         continue;
       }
 
-      const parts = raw.split('_', 2);
-      if (parts.length !== 2) {
-        continue;
-      }
-
-      const domain = parts[0].toUpperCase();
-      const id = normalizeCoreId(parts[1]);
+      const domain = parsed.domain;
+      const id = parsed.id;
       if (!OWNED_KEY_BY_DOMAIN[domain] || !id) {
         continue;
       }
@@ -2845,6 +3065,8 @@
 
     await loadLevel();
     applySavedSelections(gameSave);
+    restoreSelectedGame();
+    refreshSelectedGameUi();
     updateUI();
 
     if (!options.deferPresentation) {
@@ -2884,6 +3106,8 @@
       if (!romRecord || !romRecord.base64) {
         throw new Error(`Selected ROM is not available in storage: ${payload.romKey}`);
       }
+
+      await primeNullProviderIntermission();
 
       writeWorkflowPayload(WORKFLOW_LAUNCH_KEY, payload);
       writeWorkflowPayload(WORKFLOW_ROM_CACHE_KEY, {

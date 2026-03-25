@@ -357,9 +357,17 @@
 }
 
 .continue-root {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.continue-root .return-link-top {
+  position: absolute;
+  top: 1.5rem;
+  right: 2rem;
+  z-index: 2;
 }
 
 .continue-root .cont-header {
@@ -1608,6 +1616,69 @@
   }
 }
 
+.all-achievements-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8250;
+  padding: 1rem;
+}
+
+.all-achievements-modal {
+  width: min(560px, 100%);
+  border: 3px solid #ffd166;
+  outline: 3px solid #ff5a26;
+  outline-offset: -8px;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.18), transparent 42%),
+    #050505;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+  padding: 1.15rem 1.05rem;
+  animation: unlock-modal-pop 220ms ease-out;
+}
+
+.all-achievements-kicker {
+  color: #ffd37b;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.all-achievements-modal h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+}
+
+.all-achievements-copy {
+  margin-top: 0.75rem;
+  color: #fff7df;
+  font-size: 0.58rem;
+  line-height: 1.7;
+}
+
+.all-achievements-action {
+  margin-top: 1rem;
+  width: 100%;
+  border: 2px solid #ffd166;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  padding: 0.7rem 0.6rem;
+  cursor: pointer;
+}
+
+.all-achievements-action:hover,
+.all-achievements-action:focus-visible {
+  background: rgba(255, 209, 102, 0.12);
+}
+
 /* Responsive */
 @media (max-width: 620px) {
   .options-root {
@@ -1673,9 +1744,18 @@
     min-width: 0;
   }
 
+  .all-achievements-modal {
+    padding: 1rem 0.9rem;
+  }
+
   .continue-controller-ports {
     gap: 0.9rem;
     flex-wrap: wrap;
+  }
+
+  .continue-root .return-link-top {
+    position: static;
+    align-self: flex-end;
   }
 
   .continue-controller-ports .controller-port-btn {

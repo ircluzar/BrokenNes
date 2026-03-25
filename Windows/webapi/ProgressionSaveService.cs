@@ -394,7 +394,8 @@ namespace BrokenNes.Windows.WebApi
                 UnlockedWebmodules = NormalizeStringList(incoming.UnlockedWebmodules, null),
                 UnlockedBackgrounds = NormalizeStringList(incoming.UnlockedBackgrounds, null, NormalizeBackgroundId),
                 UnlockedNullProviders = NormalizeStringList(incoming.UnlockedNullProviders, null),
-                PendingUnlocks = MergePendingUnlocks(incoming.PendingUnlocks, null),
+                // Prefer existing authoritative queue state, then fold in any unknown incoming ids.
+                PendingUnlocks = MergePendingUnlocks(existing.PendingUnlocks, incoming.PendingUnlocks),
                 PendingDeckContinue = incoming.PendingDeckContinue,
                 PendingDeckContinueRom = string.IsNullOrWhiteSpace(incoming.PendingDeckContinueRom) ? null : incoming.PendingDeckContinueRom,
                 PendingDeckContinueTitle = string.IsNullOrWhiteSpace(incoming.PendingDeckContinueTitle) ? null : incoming.PendingDeckContinueTitle,

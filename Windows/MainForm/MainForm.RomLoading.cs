@@ -158,7 +158,21 @@ namespace BrokenNes.Windows
 
         private void CloseRomFromApi()
         {
-            CloseRom_Click(null, EventArgs.Empty);
+            if (nes == null || string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            Console.WriteLine($"[WebApi] Closing current ROM without saving continue checkpoint: {nes.RomName}");
+
+            // Intentionally do not save continue state here; API-driven transitions may be
+            // preparing to restore a trusted continue checkpoint immediately afterward.
+            StopEmulation();
+            LoadEmbeddedRom(allowHomeWebModule: false);
+
+            HideContinueButton();
+            UpdateCoresMenus();
+
+            this.PerformLayout();
+            this.Refresh();
         }
 
         private bool LoadRomFromApi(string path)
