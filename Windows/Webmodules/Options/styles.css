@@ -3,6 +3,20 @@
   Common styles loaded from ../shared/common.css
 */
 
+html,
+body {
+  height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  padding: 7rem 0 0.5rem;
+}
+
+.options-root {
+  margin: 0 auto;
+}
+
 .opt-row select,
 .opt-row button,
 .opt-row input[type=range] {
@@ -88,7 +102,7 @@
 
 @media (max-width: 620px) {
   .options-root {
-    margin: 1rem;
+    margin: 0 auto;
     border-width: 3px;
     outline-width: 3px;
     padding: 1rem 1.1rem;
@@ -189,7 +203,7 @@
 
 @media (max-width: 620px) {
   .options-root {
-    margin: 1rem;
+    margin: 0 auto;
     border-width: 3px;
     outline-width: 3px;
     padding: 1rem 1.1rem;

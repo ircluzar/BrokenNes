@@ -163,6 +163,18 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("showWebmodulesMenu")]
         public bool ShowWebmodulesMenu { get; set; } = false;
+
+        /// <summary>
+        /// Show locked menu entries instead of hiding them
+        /// </summary>
+        [JsonPropertyName("showLockedItems")]
+        public bool ShowLockedItems { get; set; } = false;
+
+        /// <summary>
+        /// Allow webmodules to trigger quick savestate shortcuts for debugging
+        /// </summary>
+        [JsonPropertyName("enableWebmoduleSavestateDebugShortcuts")]
+        public bool EnableWebmoduleSavestateDebugShortcuts { get; set; } = false;
         
         // Controller configuration - NEW SYSTEM
         /// <summary>

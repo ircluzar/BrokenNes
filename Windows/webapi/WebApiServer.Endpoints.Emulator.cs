@@ -445,6 +445,62 @@ namespace BrokenNes.Windows.WebApi
                     return Results.BadRequest(new { success = false, error = ex.Message });
                 }
             });
+
+            // POST /api/emulator/quick-save-state - Trigger quick save (F7 equivalent)
+            app.MapPost("/api/emulator/quick-save-state", () =>
+            {
+                if (_quickSaveState == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Quick-save not available" });
+                }
+
+                try
+                {
+                    bool success;
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        success = (bool)_uiControl.Invoke(_quickSaveState);
+                    }
+                    else
+                    {
+                        success = _quickSaveState();
+                    }
+
+                    return Results.Ok(new { success, gated = !success });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
+
+            // POST /api/emulator/quick-load-state - Trigger quick load (F5 equivalent)
+            app.MapPost("/api/emulator/quick-load-state", () =>
+            {
+                if (_quickLoadState == null)
+                {
+                    return Results.BadRequest(new { success = false, error = "Quick-load not available" });
+                }
+
+                try
+                {
+                    bool success;
+                    if (_uiControl != null && _uiControl.InvokeRequired)
+                    {
+                        success = (bool)_uiControl.Invoke(_quickLoadState);
+                    }
+                    else
+                    {
+                        success = _quickLoadState();
+                    }
+
+                    return Results.Ok(new { success, gated = !success });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(new { success = false, error = ex.Message });
+                }
+            });
         }
     }
 }

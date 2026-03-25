@@ -347,6 +347,14 @@ namespace BrokenNes.Windows
             var showWebmodulesMenuItem = new ToolStripMenuItem("Show Webmodules Menu", null, ToggleShowWebmodulesMenu_Click);
             showWebmodulesMenuItem.CheckOnClick = true;
             debugToolsMenu.DropDownItems.Add(showWebmodulesMenuItem);
+
+            var showLockedItemsItem = new ToolStripMenuItem("Show locked items", null, ToggleShowLockedItems_Click);
+            showLockedItemsItem.CheckOnClick = true;
+            debugToolsMenu.DropDownItems.Add(showLockedItemsItem);
+
+            var webmoduleSavestateShortcutsItem = new ToolStripMenuItem("Enable webmodule O/P savestate shortcuts", null, ToggleWebmoduleSavestateDebugShortcuts_Click);
+            webmoduleSavestateShortcutsItem.CheckOnClick = true;
+            debugToolsMenu.DropDownItems.Add(webmoduleSavestateShortcutsItem);
             
             configMenu.DropDownItems.Add(debugToolsMenu);
             
@@ -704,6 +712,8 @@ namespace BrokenNes.Windows
                         LoadRomBytesFromApi,  // Load ROM from direct base64 payload
                         SaveContinueStateFromApi,  // Save persistent continue checkpoint
                         LoadContinueStateFromApi,  // Restore persistent continue checkpoint
+                        QuickSaveStateFromApi,  // Quick save (F7 equivalent)
+                        QuickLoadStateFromApi,  // Quick load (F5 equivalent)
                         () => nes?.RomPath,  // Current ROM path
                         () => nes?.RomName,  // Current ROM name
                         LoadRomFromApi,  // Load ROM by path

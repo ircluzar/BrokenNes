@@ -376,6 +376,8 @@
       loadRomKey: (romKey) => request('/api/emulator/load-rom-key', { method: 'POST', json: { romKey } }),
       loadRomBase64: (name, base64) => request('/api/emulator/load-rom-base64', { method: 'POST', json: { name, base64 } }),
       saveContinueState: () => request('/api/emulator/save-continue-state', { method: 'POST' }),
+      quickSaveState: () => request('/api/emulator/quick-save-state', { method: 'POST' }),
+      quickLoadState: () => request('/api/emulator/quick-load-state', { method: 'POST' }),
       loadContinueState: (expectedRomName = null) => request('/api/emulator/load-continue-state', {
         method: 'POST',
         json: { expectedRomName }

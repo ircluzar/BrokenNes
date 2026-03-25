@@ -248,7 +248,23 @@
   }
 
   function handleGlobalKeydown(event) {
-    if (event.key !== 'Escape' || event.defaultPrevented) {
+    if (event.defaultPrevented) {
+      return;
+    }
+
+    if (event.code === 'KeyO') {
+      event.preventDefault();
+      void triggerDebugQuickStateAction('load');
+      return;
+    }
+
+    if (event.code === 'KeyP') {
+      event.preventDefault();
+      void triggerDebugQuickStateAction('save');
+      return;
+    }
+
+    if (event.key !== 'Escape') {
       return;
     }
 
@@ -260,6 +276,21 @@
 
     event.preventDefault();
     void returnToContinue();
+  }
+
+  async function triggerDebugQuickStateAction(action) {
+    try {
+      const result = action === 'save'
+        ? await api.emulator.quickSaveState()
+        : await api.emulator.quickLoadState();
+
+      if (!result || result.success !== true) {
+        const reason = result?.error || 'Disabled or unavailable';
+        console.debug(`[AchievementsRuntime] Debug ${action} ignored: ${reason}`);
+      }
+    } catch (error) {
+      console.warn(`[AchievementsRuntime] Debug ${action} failed:`, error);
+    }
   }
 
   function isAchievementsListModalOpen() {

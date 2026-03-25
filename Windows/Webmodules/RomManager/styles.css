@@ -3,10 +3,20 @@
   Common styles loaded from ../shared/common.css
 */
 
+html,
+body {
+  height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  padding: clamp(0.5rem, 2vh, 1.25rem) 0;
+}
+
 /* ROM Manager Root */
 .rom-manager-root {
   width: min(1440px, calc(100vw - 2rem));
-  margin: clamp(0.75rem, 2vh, 1.5rem) auto;
+  margin: 0 auto;
   padding: clamp(0.75rem, 1.5vw, 1.25rem);
 }
 

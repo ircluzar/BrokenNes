@@ -267,6 +267,32 @@ namespace BrokenNes.Windows
             }
         }
 
+        private void ToggleShowLockedItems_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                Helpers.ConfigHelper.Update(config, c => c.ShowLockedItems = menuItem.Checked);
+
+                var save = LoadProgressionSnapshot();
+                RebuildBackgroundMenu(save);
+                RebuildNullProviderMenu(save);
+                RebuildToolsMenu(save);
+                RebuildWebModulesMenu(save);
+                UpdateCoresMenus();
+                UpdateConfigMenus();
+            }
+        }
+
+        private void ToggleWebmoduleSavestateDebugShortcuts_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                Helpers.ConfigHelper.Update(config, c => c.EnableWebmoduleSavestateDebugShortcuts = menuItem.Checked);
+                Console.WriteLine($"Webmodule savestate debug shortcuts set to: {config.EnableWebmoduleSavestateDebugShortcuts}");
+                UpdateConfigMenus();
+            }
+        }
+
         private void ToggleProfiling_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)

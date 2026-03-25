@@ -163,6 +163,10 @@ namespace BrokenNes.Windows
                         item.Checked = config.ShowConsole;
                     else if (item.Text.Contains("Show Webmodules Menu"))
                         item.Checked = config.ShowWebmodulesMenu;
+                    else if (item.Text.Contains("Show locked items"))
+                        item.Checked = config.ShowLockedItems;
+                    else if (item.Text.Contains("webmodule O/P savestate shortcuts"))
+                        item.Checked = config.EnableWebmoduleSavestateDebugShortcuts;
                 }
             }
             
@@ -191,6 +195,7 @@ namespace BrokenNes.Windows
                             item.Checked = (config.CrashBehavior == "ImagineFix");
                             item.Enabled = imagineUnlocked;
                             item.Text = imagineUnlocked ? "Imagine Fix" : "Imagine Fix [Locked]";
+                            item.Visible = imagineUnlocked || config.ShowLockedItems;
                         }
                     }
                 }
@@ -305,21 +310,51 @@ namespace BrokenNes.Windows
             // SHADER
             shaderMenu.DropDownItems.Clear();
             
-            // Shaders are always-on; expose status instead of a toggle.
-            var toggleShaderItem = new ToolStripMenuItem("Shaders Always On")
-            {
-                Enabled = false,
-                Checked = useDirectX && dxRenderer?.UseShader == true
-            };
-            shaderMenu.DropDownItems.Add(toggleShaderItem);
-            shaderMenu.DropDownItems.Add(new ToolStripSeparator());
-            
             // Add DirectX shader options
             if (useDirectX && dxRenderer != null)
             {
-                foreach (var shaderName in NesDirectXRenderer.GetAvailableShaders())
+                var availableShaders = NesDirectXRenderer.GetAvailableShaders().ToList();
+                var orderedShaders = new List<string>();
+                if (availableShaders.Any(name => name.Equals("PX", StringComparison.OrdinalIgnoreCase)))
                 {
+                    orderedShaders.Add(availableShaders.First(name => name.Equals("PX", StringComparison.OrdinalIgnoreCase)));
+                }
+
+                var remainingShaders = availableShaders
+                    .Where(name => !name.Equals("PX", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (remainingShaders.Count > 0 && orderedShaders.Count > 0)
+                {
+                    orderedShaders.Add("---");
+                }
+
+                orderedShaders.AddRange(remainingShaders);
+
+                for (int i = 0; i < orderedShaders.Count; i++)
+                {
+                    var shaderName = orderedShaders[i];
+                    if (shaderName == "---")
+                    {
+                        var hasVisibleBefore = shaderMenu.DropDownItems.Count > 0;
+                        var hasVisibleAfter = orderedShaders
+                            .Skip(i + 1)
+                            .Any(name =>
+                                name != "---"
+                                && (IsShaderUnlocked(name, progressionSave) || config.ShowLockedItems));
+                        if (hasVisibleBefore && hasVisibleAfter)
+                        {
+                            shaderMenu.DropDownItems.Add(new ToolStripSeparator());
+                        }
+                        continue;
+                    }
+
                     var unlocked = IsShaderUnlocked(shaderName, progressionSave);
+                    if (!unlocked && !config.ShowLockedItems)
+                    {
+                        continue;
+                    }
                     var shaderInfo = NesShaderControl.GetShaderInfo(
                         Enum.Parse<NesShaderManager.ShaderType>(shaderName));
                     var item = new ToolStripMenuItem(shaderInfo.DisplayName, null, (s, e) => {
@@ -342,7 +377,10 @@ namespace BrokenNes.Windows
                     shaderMenu.DropDownItems.Add(item);
                 }
                 
-                shaderMenu.DropDownItems.Add(new ToolStripSeparator());
+                if (shaderMenu.DropDownItems.Count > 0)
+                {
+                    shaderMenu.DropDownItems.Add(new ToolStripSeparator());
+                }
                 
                 // Shader strength control
                 var strengthMenu = new ToolStripMenuItem("Shader Strength");
@@ -371,9 +409,47 @@ namespace BrokenNes.Windows
             // APU - single select with checkmarks
             apuMenu.DropDownItems.Clear();
             string currentApuCore = config.SelectedApuCore;
-            foreach (var coreId in CoreRegistry.ApuIds)
+            var orderedApuCores = new List<string>();
+            if (CoreRegistry.ApuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
             {
+                orderedApuCores.Add(CoreRegistry.ApuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+            }
+
+            var remainingApuCores = CoreRegistry.ApuIds
+                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (remainingApuCores.Count > 0 && orderedApuCores.Count > 0)
+            {
+                orderedApuCores.Add("---");
+            }
+
+            orderedApuCores.AddRange(remainingApuCores);
+
+            for (int i = 0; i < orderedApuCores.Count; i++)
+            {
+                var coreId = orderedApuCores[i];
+                if (coreId == "---")
+                {
+                    var hasVisibleBefore = apuMenu.DropDownItems.Count > 0;
+                    var hasVisibleAfter = orderedApuCores
+                        .Skip(i + 1)
+                        .Any(id =>
+                            id != "---"
+                            && (IsApuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
+                    if (hasVisibleBefore && hasVisibleAfter)
+                    {
+                        apuMenu.DropDownItems.Add(new ToolStripSeparator());
+                    }
+                    continue;
+                }
+
                 var unlocked = IsApuCoreUnlocked(coreId, progressionSave);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetApuCore(coreId));
                 item.Enabled = unlocked;
                 if (!unlocked)
@@ -394,9 +470,47 @@ namespace BrokenNes.Windows
             // CPU - single select with checkmarks
             cpuMenu.DropDownItems.Clear();
             string currentCpuCore = config.SelectedCpuCore;
-            foreach (var coreId in CoreRegistry.CpuIds)
+            var orderedCpuCores = new List<string>();
+            if (CoreRegistry.CpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
             {
+                orderedCpuCores.Add(CoreRegistry.CpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+            }
+
+            var remainingCpuCores = CoreRegistry.CpuIds
+                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (remainingCpuCores.Count > 0 && orderedCpuCores.Count > 0)
+            {
+                orderedCpuCores.Add("---");
+            }
+
+            orderedCpuCores.AddRange(remainingCpuCores);
+
+            for (int i = 0; i < orderedCpuCores.Count; i++)
+            {
+                var coreId = orderedCpuCores[i];
+                if (coreId == "---")
+                {
+                    var hasVisibleBefore = cpuMenu.DropDownItems.Count > 0;
+                    var hasVisibleAfter = orderedCpuCores
+                        .Skip(i + 1)
+                        .Any(id =>
+                            id != "---"
+                            && (IsCpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
+                    if (hasVisibleBefore && hasVisibleAfter)
+                    {
+                        cpuMenu.DropDownItems.Add(new ToolStripSeparator());
+                    }
+                    continue;
+                }
+
                 var unlocked = IsCpuCoreUnlocked(coreId, progressionSave);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetCpuCore(coreId));
                 item.Enabled = unlocked;
                 if (!unlocked)
@@ -417,9 +531,47 @@ namespace BrokenNes.Windows
             // PPU - single select with checkmarks
             ppuMenu.DropDownItems.Clear();
             string currentPpuCore = config.SelectedPpuCore;
-            foreach (var coreId in CoreRegistry.PpuIds)
+            var orderedPpuCores = new List<string>();
+            if (CoreRegistry.PpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
             {
+                orderedPpuCores.Add(CoreRegistry.PpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+            }
+
+            var remainingPpuCores = CoreRegistry.PpuIds
+                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (remainingPpuCores.Count > 0 && orderedPpuCores.Count > 0)
+            {
+                orderedPpuCores.Add("---");
+            }
+
+            orderedPpuCores.AddRange(remainingPpuCores);
+
+            for (int i = 0; i < orderedPpuCores.Count; i++)
+            {
+                var coreId = orderedPpuCores[i];
+                if (coreId == "---")
+                {
+                    var hasVisibleBefore = ppuMenu.DropDownItems.Count > 0;
+                    var hasVisibleAfter = orderedPpuCores
+                        .Skip(i + 1)
+                        .Any(id =>
+                            id != "---"
+                            && (IsPpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
+                    if (hasVisibleBefore && hasVisibleAfter)
+                    {
+                        ppuMenu.DropDownItems.Add(new ToolStripSeparator());
+                    }
+                    continue;
+                }
+
                 var unlocked = IsPpuCoreUnlocked(coreId, progressionSave);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var item = new ToolStripMenuItem(coreId, null, (s, e) => SetPpuCore(coreId));
                 item.Enabled = unlocked;
                 if (!unlocked)

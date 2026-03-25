@@ -348,6 +348,10 @@
   animation: fadeSeq 0.75s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
+.home-hero.menu-fade-lock .fade-seq {
+  pointer-events: none;
+}
+
 @keyframes fadeSeq {
   0% {
     opacity: 0;

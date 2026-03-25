@@ -405,78 +405,126 @@ namespace BrokenNes.Windows
             }
         }
         
-        private async void QuickSaveState_Click(object? sender, EventArgs e)
+        private void QuickSaveState_Click(object? sender, EventArgs e)
         {
-            if (nes == null)
-            {
-                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            
-            try
-            {
-                quickSaveState = await nes.CaptureAtomicSnapshotAsync(2000);
-                if (string.IsNullOrEmpty(quickSaveState))
-                {
-                    MessageBox.Show("Failed to capture atomic savestate.", "Quick Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                // Extend state with UI settings (shader config)
-                quickSaveState = ExtendStateWithUISettings(quickSaveState);
-                
-                Console.WriteLine($"Quick Saved: {Path.GetFileName(currentRomPath)}");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to quick save state:\n{ex.Message}", "Quick Save Error", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            TryQuickSaveState(showDialogs: true);
         }
         
         private void QuickLoadState_Click(object? sender, EventArgs e)
         {
+            TryQuickLoadState(showDialogs: true);
+        }
+
+        private bool TryQuickSaveState(bool showDialogs)
+        {
             if (nes == null)
             {
-                MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                if (showDialogs)
+                {
+                    MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                return false;
             }
-            
-            if (string.IsNullOrEmpty(quickSaveState))
-            {
-                MessageBox.Show("No quick save state available. Use Quick Save State (F7) first.", 
-                    "No Quick Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            
+
             try
             {
-                // Pause emulation during state load
-                bool wasPaused = isPaused;
-                isPaused = true;
-                
+                quickSaveState = nes.CaptureAtomicSnapshot(2000);
+                if (string.IsNullOrEmpty(quickSaveState))
+                {
+                    if (showDialogs)
+                    {
+                        MessageBox.Show("Failed to capture atomic savestate.", "Quick Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                    return false;
+                }
+
+                quickSaveState = ExtendStateWithUISettings(quickSaveState);
+                Console.WriteLine($"Quick Saved: {Path.GetFileName(currentRomPath)}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (showDialogs)
+                {
+                    MessageBox.Show($"Failed to quick save state:\n{ex.Message}", "Quick Save Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                Console.WriteLine("Failed to quick save state: " + ex.Message);
+                return false;
+            }
+        }
+
+        private bool TryQuickLoadState(bool showDialogs)
+        {
+            if (nes == null)
+            {
+                if (showDialogs)
+                {
+                    MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(quickSaveState))
+            {
+                if (showDialogs)
+                {
+                    MessageBox.Show("No quick save state available. Use Quick Save State (F7) first.",
+                        "No Quick Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                return false;
+            }
+
+            bool wasPaused = isPaused;
+            isPaused = true;
+
+            try
+            {
                 lock (emulationLock)
                 {
                     nes.LoadState(quickSaveState);
                 }
-                
-                // Restore UI settings (shader config) from state
+
                 RestoreUISettingsFromState(quickSaveState);
-                
                 BuildMemoryDomains();
-                
-                isPaused = wasPaused;
-                
-                // Update menus to reflect restored settings
                 UpdateCoresMenus();
-                
                 Console.WriteLine($"Quick Loaded: {Path.GetFileName(currentRomPath)}");
+                return true;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to quick load state:\n{ex.Message}", "Quick Load Error", 
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (showDialogs)
+                {
+                    MessageBox.Show($"Failed to quick load state:\n{ex.Message}", "Quick Load Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                Console.WriteLine("Failed to quick load state: " + ex.Message);
+                return false;
             }
+            finally
+            {
+                isPaused = wasPaused;
+            }
+        }
+
+        private bool QuickSaveStateFromApi()
+        {
+            if (!config.EnableWebmoduleSavestateDebugShortcuts)
+            {
+                return false;
+            }
+
+            return TryQuickSaveState(showDialogs: false);
+        }
+
+        private bool QuickLoadStateFromApi()
+        {
+            if (!config.EnableWebmoduleSavestateDebugShortcuts)
+            {
+                return false;
+            }
+
+            return TryQuickLoadState(showDialogs: false);
         }
 
         private void SaveContinueState()

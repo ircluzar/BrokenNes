@@ -8,6 +8,7 @@
   // State
   let gameSave = null;
   let audioInitialized = false;
+  let menuFadeUnlockTimer = null;
 
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
@@ -121,10 +122,53 @@
     }
   }
 
+  function restartMenuFadeSequence(hero) {
+    const seqItems = Array.from(hero.querySelectorAll('.fade-seq'));
+    if (seqItems.length === 0) {
+      return;
+    }
+
+    // Prevent hover/focus interactions while elements are still fading in.
+    hero.classList.add('menu-fade-lock');
+    if (menuFadeUnlockTimer) {
+      clearTimeout(menuFadeUnlockTimer);
+      menuFadeUnlockTimer = null;
+    }
+
+    // Restart animations so each menu reveal is consistently ordered.
+    seqItems.forEach((item) => {
+      item.style.animation = 'none';
+    });
+
+    void hero.offsetHeight;
+
+    const orderedItems = seqItems.slice().sort((a, b) => {
+      const rectA = a.getBoundingClientRect();
+      const rectB = b.getBoundingClientRect();
+      const topDelta = rectA.top - rectB.top;
+      return Math.abs(topDelta) > 1 ? topDelta : rectA.left - rectB.left;
+    });
+
+    const baseDelay = 0.15;
+    const stepDelay = 0.12;
+    const fadeDuration = 0.75;
+    orderedItems.forEach((item, index) => {
+      item.style.animation = '';
+      item.style.animationDelay = `${baseDelay + (stepDelay * index)}s`;
+    });
+
+    const totalSequenceTimeMs = ((baseDelay + (stepDelay * (orderedItems.length - 1)) + fadeDuration) * 1000) + 80;
+    menuFadeUnlockTimer = setTimeout(() => {
+      hero.classList.remove('menu-fade-lock');
+      menuFadeUnlockTimer = null;
+    }, totalSequenceTimeMs);
+  }
+
   function showMainMenu() {
     const hero = document.getElementById('homeHero');
     if (hero) {
       hero.style.display = 'flex';
+      restartMenuFadeSequence(hero);
     }
 
     // Initialize audio and start title music

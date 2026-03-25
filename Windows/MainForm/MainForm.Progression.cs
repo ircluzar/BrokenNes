@@ -331,6 +331,10 @@ namespace BrokenNes.Windows
 
                 var normalizedName = NormalizeBackgroundId(backgroundName);
                 var unlocked = progressionSaveService.IsBackgroundUnlocked(save, normalizedName);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var menuItem = new ToolStripMenuItem(unlocked ? normalizedName : $"{normalizedName} [Locked]", null, (s, e) => SetBackground(normalizedName))
                 {
                     Tag = normalizedName,
@@ -363,6 +367,10 @@ namespace BrokenNes.Windows
                 }
 
                 var unlocked = progressionSaveService.IsNullProviderUnlocked(save, providerName);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var menuItem = new ToolStripMenuItem(
                     unlocked ? GetNullProviderDisplayText(providerName) : $"{GetNullProviderDisplayText(providerName)} [Locked]",
                     null,
@@ -382,10 +390,25 @@ namespace BrokenNes.Windows
 
             if (otherProviders.Count > 0)
             {
-                nullProviderMenu.DropDownItems.Add(new ToolStripSeparator());
+                var anyDefaultVisible = nullProviderMenu.DropDownItems.Count > 0;
+                var anyOtherVisible = otherProviders.Any(providerName =>
+                {
+                    var unlocked = progressionSaveService.IsNullProviderUnlocked(save, providerName);
+                    return unlocked || config.ShowLockedItems;
+                });
+
+                if (anyDefaultVisible && anyOtherVisible)
+                {
+                    nullProviderMenu.DropDownItems.Add(new ToolStripSeparator());
+                }
+
                 foreach (var providerName in otherProviders)
                 {
                     var unlocked = progressionSaveService.IsNullProviderUnlocked(save, providerName);
+                    if (!unlocked && !config.ShowLockedItems)
+                    {
+                        continue;
+                    }
                     var menuItem = new ToolStripMenuItem(
                         unlocked ? providerName : $"{providerName} [Locked]",
                         null,
@@ -419,21 +442,31 @@ namespace BrokenNes.Windows
                 .ToArray();
             var tools = toolWebModules.Where(m => !m.Config.IsActivity).OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
+            WebModuleInfo ResolveModuleToLoad(WebModuleInfo module)
+            {
+                if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
+                {
+                    var targetModule = webModules.FirstOrDefault(m => m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
+                    if (targetModule != null)
+                    {
+                        return targetModule;
+                    }
+                }
+
+                return module;
+            }
+
             void AddModuleItems(IEnumerable<WebModuleInfo> modules)
             {
                 foreach (var module in modules)
                 {
-                    var moduleToLoad = module;
-                    if (!string.IsNullOrWhiteSpace(module.Config.LoadModule))
-                    {
-                        var targetModule = webModules.FirstOrDefault(m => m.FolderName.Equals(module.Config.LoadModule, StringComparison.OrdinalIgnoreCase));
-                        if (targetModule != null)
-                        {
-                            moduleToLoad = targetModule;
-                        }
-                    }
+                    var moduleToLoad = ResolveModuleToLoad(module);
 
                     var unlocked = IsWebModuleUnlocked(moduleToLoad, save);
+                    if (!unlocked && !config.ShowLockedItems)
+                    {
+                        continue;
+                    }
                     var moduleItem = new ToolStripMenuItem(unlocked ? module.Name : $"{module.Name} [Locked]", null, (s, e) => LoadWebModule(moduleToLoad))
                     {
                         Tag = moduleToLoad.FolderName,
@@ -444,7 +477,17 @@ namespace BrokenNes.Windows
             }
 
             AddModuleItems(activities);
-            if (activities.Length > 0 && tools.Length > 0)
+            var hasVisibleActivities = activities.Any(module =>
+            {
+                var moduleToLoad = ResolveModuleToLoad(module);
+                return IsWebModuleUnlocked(moduleToLoad, save) || config.ShowLockedItems;
+            });
+            var hasVisibleTools = tools.Any(module =>
+            {
+                var moduleToLoad = ResolveModuleToLoad(module);
+                return IsWebModuleUnlocked(moduleToLoad, save) || config.ShowLockedItems;
+            });
+            if (hasVisibleActivities && hasVisibleTools)
             {
                 toolsMenu.DropDownItems.Add(new ToolStripSeparator());
             }
@@ -517,6 +560,10 @@ namespace BrokenNes.Windows
             foreach (var module in webModules.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
             {
                 var unlocked = IsWebModuleUnlocked(module, save);
+                if (!unlocked && !config.ShowLockedItems)
+                {
+                    continue;
+                }
                 var moduleItem = new ToolStripMenuItem(unlocked ? module.Name : $"{module.Name} [Locked]", null, (s, e) => LoadWebModule(module))
                 {
                     Tag = module.FolderName,
