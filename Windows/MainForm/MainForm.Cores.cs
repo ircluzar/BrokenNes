@@ -23,6 +23,42 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
+        private void ApplyApuCoreSelection(string coreId)
+        {
+            if (nes == null || string.IsNullOrWhiteSpace(coreId)) return;
+
+            nes.SetApuCore(coreId);
+
+            try
+            {
+                audioManager?.ClearBuffer();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[APU] Failed to clear WinForms audio buffer during core switch: {ex.Message}");
+            }
+
+            try
+            {
+                if (string.Equals(coreId, "WF", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(coreId, "MNES", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!nes.EnableSoundFontMode(true, null))
+                    {
+                        Console.WriteLine($"[APU] SoundFont backend did not activate for {coreId}.");
+                    }
+                }
+                else
+                {
+                    nes.EnableSoundFontMode(false, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[APU] Failed to configure {coreId} audio routing: {ex.Message}");
+            }
+        }
+
         private void SetCpuCore(string coreId, bool bypassProgression = false)
         {
             if (!bypassProgression && !IsCpuCoreUnlocked(coreId))
@@ -78,7 +114,7 @@ namespace BrokenNes.Windows
             }
 
             if (nes == null) return;
-            nes.SetApuCore(coreId);
+            ApplyApuCoreSelection(coreId);
             Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
             UpdateCoresMenus(); // Refresh to update checkmarks
         }

@@ -652,12 +652,12 @@ namespace BrokenNes.Windows
                 && CoreRegistry.ApuIds.Contains(config.SelectedApuCore)
                 && IsApuCoreUnlocked(config.SelectedApuCore, progressionSave))
             {
-                nes.SetApuCore(config.SelectedApuCore);
+                ApplyApuCoreSelection(config.SelectedApuCore);
             }
             else
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FMC");
-                nes.SetApuCore("FMC");
+                ApplyApuCoreSelection("FMC");
             }
             
             // Apply shader settings

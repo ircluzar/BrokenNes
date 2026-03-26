@@ -115,12 +115,6 @@ namespace BrokenNes.Windows
                      return;
                  }
 
-                 if (TryLaunchDeckBuilderContinueFromProgression())
-                 {
-                     try { File.Delete(continuePath); } catch {}
-                     return;
-                 }
-
                  LoadStateFile(continuePath);
                  // Delete after loading so it doesn't appear again on next launch unless saved again
                  try { File.Delete(continuePath); } catch {}
@@ -187,6 +181,11 @@ namespace BrokenNes.Windows
                     return false;
                 }
 
+                if (!IsTrustedDeckContinueAlias(continuePath, romKey))
+                {
+                    return false;
+                }
+
                 var title = !string.IsNullOrWhiteSpace(slot?.Title)
                     ? slot!.Title!
                     : (!string.IsNullOrWhiteSpace(savedRomName) ? savedRomName : romKey);
@@ -222,6 +221,43 @@ namespace BrokenNes.Windows
             catch (Exception ex)
             {
                 Console.WriteLine($"[Continue] Failed to inspect continue state payload: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool IsTrustedDeckContinueAlias(string continuePath, string romKey)
+        {
+            try
+            {
+                var trustedPath = ResolveDeckContinueStatePathForRom(romKey);
+                if (string.IsNullOrWhiteSpace(trustedPath) || !File.Exists(trustedPath))
+                {
+                    return false;
+                }
+
+                var continueInfo = new FileInfo(continuePath);
+                var trustedInfo = new FileInfo(trustedPath);
+                if (continueInfo.Length != trustedInfo.Length)
+                {
+                    return false;
+                }
+
+                using var continueStream = File.OpenRead(continuePath);
+                using var trustedStream = File.OpenRead(trustedPath);
+
+                for (int continueByte = continueStream.ReadByte(); continueByte >= 0; continueByte = continueStream.ReadByte())
+                {
+                    if (continueByte != trustedStream.ReadByte())
+                    {
+                        return false;
+                    }
+                }
+
+                return trustedStream.ReadByte() < 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Continue] Failed to compare trusted Deck continue alias: {ex.Message}");
                 return false;
             }
         }

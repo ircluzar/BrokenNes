@@ -622,7 +622,7 @@ namespace BrokenNes.Windows
 
                 if (!string.IsNullOrWhiteSpace(config.SelectedApuCore))
                 {
-                    nes.SetApuCore(config.SelectedApuCore);
+                    ApplyApuCoreSelection(config.SelectedApuCore);
                 }
             }
 

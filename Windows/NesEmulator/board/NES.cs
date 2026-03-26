@@ -303,7 +303,18 @@ namespace NesEmulator
 		// Generic reflection-based core selection (suffix id strings)
 		public bool SetCpuCore(string suffixId) { return bus!=null && bus.SetCpuCoreById(suffixId); }
 		public bool SetPpuCore(string suffixId) { return bus!=null && bus.SetPpuCoreById(suffixId); }
-		public bool SetApuCore(string suffixId) { return bus!=null && bus.SetApuCoreById(suffixId); }
+		public bool SetApuCore(string suffixId)
+		{
+			if (bus == null) return false;
+			var currentIsSoundFontCore = bus.ActiveAPU is NesEmulator.APU_WF || bus.ActiveAPU is NesEmulator.APU_MNES;
+			var currentCoreId = bus.ActiveAPU?.GetType().Name ?? string.Empty;
+			var currentSuffix = CoreRegistry.ExtractSuffix(currentCoreId, "APU_");
+			if (currentIsSoundFontCore && !string.Equals(currentSuffix, suffixId, StringComparison.OrdinalIgnoreCase))
+			{
+				try { FlushSoundFont(); } catch { }
+			}
+			return bus.SetApuCoreById(suffixId);
+		}
 		public System.Collections.Generic.IReadOnlyList<string> GetCpuCoreIds() => bus?.GetCpuCoreIds() ?? System.Array.Empty<string>();
 		public System.Collections.Generic.IReadOnlyList<string> GetPpuCoreIds() => bus?.GetPpuCoreIds() ?? System.Array.Empty<string>();
 
@@ -1226,9 +1237,14 @@ namespace NesEmulator
 		}
 		public void FlushSoundFont()
 		{
-			// Always detach from the actually bound APU instance (may differ from current ActiveAPU during switches)
+			object? currentApu = bus?.ActiveAPU is NesEmulator.APU_WF or NesEmulator.APU_MNES ? bus.ActiveAPU : null;
 			EmitAllNoteOffFor(soundFontBoundApu);
 			DetachSoundFontBinding(soundFontBoundApu);
+			if (currentApu != null && !ReferenceEquals(currentApu, soundFontBoundApu))
+			{
+				EmitAllNoteOffFor(currentApu);
+				DetachSoundFontBinding(currentApu);
+			}
 			noteSub = null; soundFontBoundApu = null; soundFontEnabled = false;
 		}
 		public bool EnableSoundFontMode(bool enable, System.Action<string,int,int,int,bool,int>? noteCallback = null)
@@ -1260,6 +1276,12 @@ namespace NesEmulator
 				}
 				if (active is NesEmulator.APU_MNES mn)
 				{
+					if (!mn.IsSoundFontSynthAvailable)
+					{
+						var msg = $"MNES SF2 backend unavailable. {mn.SoundFontStatus}";
+						try { Console.Error.WriteLine(msg); } catch { }
+						throw new InvalidOperationException(msg);
+					}
 					mn.SoundFontMode = true;
 					Action<NesEmulator.APU_MNES.NesNoteEvent> del2 = (ev)=>{ try { noteCallback?.Invoke(ev.Channel, ev.Program, ev.MidiNote, ev.Velocity, ev.On, 0); } catch { } };
 					mn.NoteEvent += del2; noteSub = del2; soundFontBoundApu = mn; soundFontEnabled = true; return true;
@@ -1278,7 +1300,16 @@ namespace NesEmulator
 
 		// --- APU core selection (Modern/Jank/QN) ---
 		public enum ApuCore { Modern=0, Jank=1, QuickNes=2 }
-		public void SetApuCore(ApuCore core) { if (bus==null) return; bus.SetApuCore((Bus.ApuCore)core); }
+		public void SetApuCore(ApuCore core)
+		{
+			if (bus==null) return;
+			var currentIsSoundFontCore = bus.ActiveAPU is NesEmulator.APU_WF || bus.ActiveAPU is NesEmulator.APU_MNES;
+			if (currentIsSoundFontCore)
+			{
+				try { FlushSoundFont(); } catch { }
+			}
+			bus.SetApuCore((Bus.ApuCore)core);
+		}
 		public ApuCore GetApuCore() { if (bus==null) return ApuCore.Jank; return (ApuCore)bus.GetActiveApuCore(); }
 
 		// Debug helper: quick snapshot of CPU registers
@@ -1310,6 +1341,26 @@ namespace NesEmulator
 			catch { }
 
 			return false;
+		}
+
+		public string GetApuSoundFontStatus()
+		{
+			try
+			{
+				if (bus?.ActiveAPU is NesEmulator.APU_MNES mn)
+				{
+					var active = mn.IsNativeSoundFontActive ? "active" : "inactive";
+					return $"MNES native SF2 {active}. {mn.SoundFontStatus}";
+				}
+
+				if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
+				{
+					return $"WF note-event mode {(wf.SoundFontMode ? "active" : "inactive")}.";
+				}
+			}
+			catch { }
+
+			return "No SoundFont-capable APU active.";
 		}
 
 		// APU channel enable/disable control

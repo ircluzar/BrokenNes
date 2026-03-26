@@ -348,8 +348,28 @@ namespace NesEmulator
                     if (sharedMidiOut == null) return;
                     for (int ch = 0; ch < 16; ch++)
                     {
-                        // CC123: all notes off
+                        // Aggressive panic sequence for hosts that ignore CC123 alone.
+                        // CC64 sustain off, CC123 all notes off, CC120 all sound off, CC121 reset controllers.
+                        sharedMidiOut.Send(MidiMessage.ChangeControl(64, 0, ch).RawData);
                         sharedMidiOut.Send(MidiMessage.ChangeControl(123, 0, ch).RawData);
+                        sharedMidiOut.Send(MidiMessage.ChangeControl(120, 0, ch).RawData);
+                        sharedMidiOut.Send(MidiMessage.ChangeControl(121, 0, ch).RawData);
+
+                        // Force explicit note-off sweep as a last resort for sticky synths.
+                        for (int note = 0; note < 128; note++)
+                        {
+                            sharedMidiOut.Send(MidiMessage.StopNote(note, 0, ch).RawData);
+                        }
+
+                        // Re-center pitch wheel (LSB=0, MSB=64) to avoid bent residuals.
+                        int status = 0xE0 | (ch & 0x0F);
+                        int rawPitchCenter = status | (0 << 8) | (64 << 16);
+                        sharedMidiOut.Send(rawPitchCenter);
+                    }
+
+                    for (int i = 0; i < midiProgramByChannel.Length; i++)
+                    {
+                        midiProgramByChannel[i] = -1;
                     }
                 }
             }

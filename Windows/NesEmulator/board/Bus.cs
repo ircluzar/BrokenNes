@@ -190,7 +190,10 @@ public class Bus : IBus
 		var newApu = GetOrCreateApu(id);
 		if (newApu == null) return false;
 		if (ReferenceEquals(newApu, activeApu)) { return true; }
+		var previousApu = activeApu;
+		try { previousApu?.ClearAudioBuffers(); } catch { }
 		activeApu = newApu; // reapply latched registers so new core inherits state
+		try { activeApu.ClearAudioBuffers(); } catch { }
 		for (int i=0;i<apuRegLatch.Length;i++)
 		{
 			ushort addr = (ushort)(0x4000 + i);
@@ -274,11 +277,17 @@ public class Bus : IBus
 
 	public void SetApuCore(ApuCore core)
 	{
+		var previousApu = activeApu;
 		switch(core)
 		{
 			case ApuCore.Modern: activeApu = apu ?? GetOrCreateApu("FIX") ?? activeApu; break;
 			case ApuCore.Jank: activeApu = apuJank ?? GetOrCreateApu("FMC") ?? activeApu; break;
 			case ApuCore.QuickNes: activeApu = apuQN ?? GetOrCreateApu("QN") ?? activeApu; break;
+		}
+		if (!ReferenceEquals(previousApu, activeApu))
+		{
+			try { previousApu?.ClearAudioBuffers(); } catch { }
+			try { activeApu?.ClearAudioBuffers(); } catch { }
 		}
 		// Reapply latched register values so the new core picks up current state
 		for (int i=0;i<apuRegLatch.Length;i++)

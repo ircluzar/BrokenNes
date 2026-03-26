@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using MeltySynth;
 
 namespace NesEmulator
 {
@@ -11,9 +13,332 @@ namespace NesEmulator
         public int Rating => 4;
         public string Category => "Enhanced";
         private Bus bus;
+        private const string MnesSoundFontFileName = "MNES.sf2";
+        private readonly object sf2Lock = new();
+        private Synthesizer? sf2Synth;
+        private bool sf2Available;
+        private readonly int[] sf2ProgramsByChannel = new int[16];
+        private readonly int[] sf2ActiveNotesByChannel = new int[16];
+        private readonly int[] sf2ProgramTranspose = new int[128];
+        private float[] sf2LeftBuffer = Array.Empty<float>();
+        private float[] sf2RightBuffer = Array.Empty<float>();
+        private const float Sf2OutputGain = 0.55f;
+        private string sf2ResolvedPath = string.Empty;
+        private string sf2InitError = string.Empty;
+        public bool IsSoundFontSynthAvailable => sf2Available;
+        public bool IsNativeSoundFontActive => soundFontMode && sf2Available;
+        public string SoundFontStatus
+        {
+            get
+            {
+                if (sf2Available)
+                {
+                    return string.IsNullOrWhiteSpace(sf2ResolvedPath)
+                        ? "MNES SF2 loaded"
+                        : $"MNES SF2 loaded: {sf2ResolvedPath}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(sf2InitError))
+                {
+                    return $"MNES SF2 unavailable: {sf2InitError}";
+                }
+
+                return "MNES SF2 unavailable: file not found";
+            }
+        }
     public APU_MNES(Bus bus)
         {
             this.bus = bus;
+            for (int i = 0; i < sf2ProgramsByChannel.Length; i++) sf2ProgramsByChannel[i] = -1;
+            for (int i = 0; i < sf2ActiveNotesByChannel.Length; i++) sf2ActiveNotesByChannel[i] = -1;
+            Array.Clear(sf2ProgramTranspose, 0, sf2ProgramTranspose.Length);
+            sf2Available = TryInitializeSoundFontSynth();
+            if (sf2Available)
+            {
+                NoteEvent += HandleSoundFontNoteEvent;
+                PitchEvent += HandleSoundFontPitchEvent;
+            }
+        }
+
+        private bool TryInitializeSoundFontSynth()
+        {
+            try
+            {
+                var sf2Path = ResolveSoundFontPath();
+                if (string.IsNullOrWhiteSpace(sf2Path) || !File.Exists(sf2Path))
+                {
+                    sf2ResolvedPath = string.Empty;
+                    sf2InitError = "file not found";
+                    return false;
+                }
+
+                var soundFont = new SoundFont(sf2Path);
+                InitializeSoundFontProgramCalibration(soundFont);
+                var settings = new SynthesizerSettings(audioSampleRate)
+                {
+                    MaximumPolyphony = 256
+                };
+                sf2Synth = new Synthesizer(soundFont, settings);
+                sf2ResolvedPath = sf2Path;
+                sf2InitError = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                sf2Synth = null;
+                sf2ResolvedPath = string.Empty;
+                sf2InitError = ex.Message;
+                return false;
+            }
+        }
+
+        private void InitializeSoundFontProgramCalibration(SoundFont soundFont)
+        {
+            Array.Clear(sf2ProgramTranspose, 0, sf2ProgramTranspose.Length);
+
+            // MNES tonal presets are looped single-cycle samples with inconsistent OriginalPitch metadata.
+            // Calibrate each tonal program from the actual loop frequency so MIDI note mapping stays musical.
+            TryCalibrateProgramTranspose(soundFont, 0, ProgramForPulseDuty(0));
+            TryCalibrateProgramTranspose(soundFont, 0, ProgramForPulseDuty(1));
+            TryCalibrateProgramTranspose(soundFont, 0, ProgramForPulseDuty(2));
+            TryCalibrateProgramTranspose(soundFont, 0, ProgramForPulseDuty(3));
+            TryCalibrateProgramTranspose(soundFont, 0, ProgramTriangle);
+        }
+
+        private void TryCalibrateProgramTranspose(SoundFont soundFont, int bankNumber, int patchNumber)
+        {
+            if (patchNumber < 0 || patchNumber >= sf2ProgramTranspose.Length)
+            {
+                return;
+            }
+
+            try
+            {
+                var preset = soundFont.Presets.FirstOrDefault(p => p.BankNumber == bankNumber && p.PatchNumber == patchNumber);
+                var presetRegion = preset?.Regions.FirstOrDefault();
+                var instrumentRegion = presetRegion?.Instrument?.Regions.FirstOrDefault();
+                var sample = instrumentRegion?.Sample;
+                if (sample == null)
+                {
+                    return;
+                }
+
+                int loopLength = sample.EndLoop - sample.StartLoop;
+                if (loopLength <= 1 || sample.SampleRate <= 0)
+                {
+                    return;
+                }
+
+                double loopFrequency = sample.SampleRate / (double)loopLength;
+                double estimatedRootMidi = 69.0 + (12.0 * Math.Log(loopFrequency / 440.0, 2.0));
+                double effectiveRootMidi = sample.OriginalPitch - (sample.PitchCorrection / 100.0);
+                int transpose = (int)Math.Round(effectiveRootMidi - estimatedRootMidi);
+                sf2ProgramTranspose[patchNumber] = transpose;
+            }
+            catch
+            {
+                sf2ProgramTranspose[patchNumber] = 0;
+            }
+        }
+
+        private int TranslateMidiNoteForSoundFont(string channel, int program, int midiNote)
+        {
+            if (string.Equals(channel, "NOI", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(channel, "DPCM", StringComparison.OrdinalIgnoreCase))
+            {
+                return Math.Clamp(midiNote, 0, 127);
+            }
+
+            int transpose = 0;
+            if (program >= 0 && program < sf2ProgramTranspose.Length)
+            {
+                transpose = sf2ProgramTranspose[program];
+            }
+
+            return Math.Clamp(midiNote + transpose, 0, 127);
+        }
+
+        private static string? ResolveSoundFontPath()
+        {
+            string baseDir = AppContext.BaseDirectory;
+            string currentDir = Environment.CurrentDirectory;
+
+            string[] candidates =
+            {
+                Path.Combine(baseDir, "Data", MnesSoundFontFileName),
+                Path.Combine(baseDir, MnesSoundFontFileName),
+                Path.Combine(currentDir, "Data", MnesSoundFontFileName),
+                Path.Combine(currentDir, "Windows", "Data", MnesSoundFontFileName)
+            };
+
+            foreach (var path in candidates)
+            {
+                if (File.Exists(path)) return path;
+            }
+
+            return null;
+        }
+
+        private static int ChannelToMidiChannel(string channel)
+        {
+            return channel switch
+            {
+                "P1" => 0,
+                "P2" => 1,
+                "TRI" => 2,
+                "DPCM" => 3,
+                "NOI" => 9,
+                _ => 0
+            };
+        }
+
+        private void HandleSoundFontNoteEvent(NesNoteEvent ev)
+        {
+            if (!sf2Available || sf2Synth == null)
+            {
+                return;
+            }
+
+            int midiChannel = ChannelToMidiChannel(ev.Channel);
+            int note = TranslateMidiNoteForSoundFont(ev.Channel, ev.Program, ev.MidiNote);
+            int velocity = Math.Clamp(ev.Velocity, 0, 127);
+
+            lock (sf2Lock)
+            {
+                if (sf2Synth == null) return;
+
+                if (midiChannel != 9)
+                {
+                    int program = Math.Clamp(ev.Program, 0, 127);
+                    if (sf2ProgramsByChannel[midiChannel] != program)
+                    {
+                        sf2Synth.ProcessMidiMessage(midiChannel, 0xC0, program, 0);
+                        sf2ProgramsByChannel[midiChannel] = program;
+                    }
+                }
+
+                if (ev.On && velocity > 0)
+                {
+                    int previousNote = sf2ActiveNotesByChannel[midiChannel];
+                    if (previousNote >= 0 && previousNote != note)
+                    {
+                        sf2Synth.NoteOff(midiChannel, previousNote);
+                    }
+
+                    sf2Synth.NoteOn(midiChannel, note, velocity);
+                    sf2ActiveNotesByChannel[midiChannel] = note;
+                }
+                else
+                {
+                    int noteToStop = sf2ActiveNotesByChannel[midiChannel] >= 0
+                        ? sf2ActiveNotesByChannel[midiChannel]
+                        : note;
+                    sf2Synth.NoteOff(midiChannel, noteToStop);
+                    sf2ActiveNotesByChannel[midiChannel] = -1;
+                }
+            }
+        }
+
+        private void HandleSoundFontPitchEvent(string channel, int bend)
+        {
+            if (!sf2Available || sf2Synth == null)
+            {
+                return;
+            }
+
+            int midiChannel = ChannelToMidiChannel(channel);
+            int wheel = Math.Clamp(bend + 8192, 0, 16383);
+            int lsb = wheel & 0x7F;
+            int msb = (wheel >> 7) & 0x7F;
+
+            lock (sf2Lock)
+            {
+                sf2Synth?.ProcessMidiMessage(midiChannel, 0xE0, lsb, msb);
+            }
+        }
+
+        private void SoundFontPanic()
+        {
+            if (!sf2Available || sf2Synth == null)
+            {
+                return;
+            }
+
+            lock (sf2Lock)
+            {
+                if (sf2Synth == null) return;
+
+                for (int ch = 0; ch < 16; ch++)
+                {
+                    for (int n = 0; n < 128; n++)
+                    {
+                        sf2Synth.NoteOff(ch, n);
+                    }
+                    sf2ProgramsByChannel[ch] = -1;
+                    sf2ActiveNotesByChannel[ch] = -1;
+                }
+            }
+        }
+
+        private void EnsureSf2RenderBuffers(int sampleCount)
+        {
+            if (sf2LeftBuffer.Length < sampleCount)
+            {
+                sf2LeftBuffer = new float[sampleCount];
+            }
+            if (sf2RightBuffer.Length < sampleCount)
+            {
+                sf2RightBuffer = new float[sampleCount];
+            }
+        }
+
+        private void RenderSoundFontAudio(int sampleCount)
+        {
+            if (sampleCount <= 0)
+            {
+                return;
+            }
+
+            if (!sf2Available || sf2Synth == null)
+            {
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    if (ringCount >= AudioRingSize)
+                    {
+                        ringRead = (ringRead + 1) & (AudioRingSize - 1);
+                        ringCount--;
+                    }
+
+                    audioRing[ringWrite] = 0f;
+                    ringWrite = (ringWrite + 1) & (AudioRingSize - 1);
+                    ringCount++;
+                }
+                return;
+            }
+
+            EnsureSf2RenderBuffers(sampleCount);
+
+            lock (sf2Lock)
+            {
+                if (sf2Synth == null) return;
+                sf2Synth.Render(
+                    sf2LeftBuffer.AsSpan(0, sampleCount),
+                    sf2RightBuffer.AsSpan(0, sampleCount));
+            }
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                if (ringCount >= AudioRingSize)
+                {
+                    ringRead = (ringRead + 1) & (AudioRingSize - 1);
+                    ringCount--;
+                }
+
+                float mono = (sf2LeftBuffer[i] + sf2RightBuffer[i]) * 0.5f;
+                audioRing[ringWrite] = Math.Clamp(mono * Sf2OutputGain, -1f, 1f);
+                ringWrite = (ringWrite + 1) & (AudioRingSize - 1);
+                ringCount++;
+            }
         }
 
         // APU Registers
@@ -190,6 +515,7 @@ namespace NesEmulator
             if (activeDpcmNote.HasValue) NoteEvent?.Invoke(new NesNoteEvent("DPCM", activeDpcmNote.Value, 0, false, ProgramDpcm));
             activePulse1Note = activePulse2Note = activeTriangleNote = null;
             activeDpcmNote = null; dpcm_active = false; dpcm_remainingCycles = 0;
+            SoundFontPanic();
         }
         private static int VolumeToVelocity(int vol4bit)
         {
@@ -569,6 +895,7 @@ namespace NesEmulator
         {
             ClearAudioBuffers();
             ResetNoteTracking();
+            SoundFontPanic();
         }
 
         // Step 1 CPU cycle convenience
@@ -588,6 +915,14 @@ namespace NesEmulator
             if (soundFontMode)
             {
                 ProcessSoundFontNotes();
+                double sfSamplesFloat = cpuCycles * audioSampleRate / CpuFreq;
+                fractionalSampleAccumulator += sfSamplesFloat;
+                int sfSamplesToProduce = (int)fractionalSampleAccumulator;
+                if (sfSamplesToProduce > 0)
+                {
+                    fractionalSampleAccumulator -= sfSamplesToProduce;
+                    RenderSoundFontAudio(sfSamplesToProduce);
+                }
                 return;
             }
             double samplesFloat = cpuCycles * audioSampleRate / CpuFreq;

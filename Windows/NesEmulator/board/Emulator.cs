@@ -914,6 +914,8 @@ namespace BrokenNes
             {
                 // Always flush JS-side soundfont when changing cores to avoid stale processors/ports
                 try { JS.InvokeVoidAsync("nesInterop.flushSoundFont"); } catch {}
+                // Always flush native SoundFont bindings before reconfiguring APU core routing.
+                try { nes.FlushSoundFont(); } catch {}
                 if (string.Equals(nesController.ApuCoreSel, "WF", StringComparison.OrdinalIgnoreCase))
                 {
                     // Force rebind even if previously enabled to ensure switching WF<->MNES reattaches delegates
@@ -924,15 +926,30 @@ namespace BrokenNes
                 }
                 else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
                 {
-                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
-                    try { JS.InvokeVoidAsync("eval", "window.mnesSf2 && mnesSf2.enable && mnesSf2.enable();"); } catch {}
+                    soundFontMode = nes.EnableSoundFontMode(true, null);
+                    if (!soundFontMode)
+                    {
+                        var msg = "MNES failed to enable native SF2 backend. Fallback is disabled.";
+                        try { Console.Error.WriteLine(msg); } catch {}
+                        throw new InvalidOperationException(msg);
+                    }
+                    try { Status.Set(nes.GetApuSoundFontStatus()); } catch {}
                 }
                 else
                 {
                     if (soundFontMode) { nes.EnableSoundFontMode(false, null); soundFontMode = false; }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
+                {
+                    soundFontMode = false;
+                    try { nes.EnableSoundFontMode(false, null); } catch {}
+                    try { Console.Error.WriteLine($"MNES configuration error: {ex.Message}"); } catch {}
+                    try { Status.Set($"MNES error: {ex.Message}"); } catch {}
+                }
+            }
             _ = UpdateActiveSoundFontCoreAsync();
             StateHasChanged();
         }
