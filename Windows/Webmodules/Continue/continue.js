@@ -1185,10 +1185,7 @@
       })
       .filter(Boolean)
       .sort((left, right) => {
-        if (right.achTotal !== left.achTotal) {
-          return right.achTotal - left.achTotal;
-        }
-        return left.title.localeCompare(right.title);
+        return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
       });
   }
 
@@ -2644,6 +2641,40 @@
     modal.style.display = 'flex';
   }
 
+  function refreshRewardModalEquipStates() {
+    const grid = document.getElementById('unlockGrid');
+    const equipAllBtn = document.getElementById('unlockEquipAllBtn');
+    if (!grid || !equipAllBtn) {
+      return;
+    }
+
+    const equipableCount = rewardModalState.items.filter(item => item.equipable).length;
+    equipAllBtn.textContent = equipableCount > 0 ? 'Equip All' : 'Acknowledge';
+
+    rewardModalState.items.forEach((item, index) => {
+      const card = grid.querySelector(`[data-unlock-index="${index}"]`);
+      if (!card) {
+        return;
+      }
+
+      card.classList.toggle('equipped', Boolean(item.equipped));
+
+      const button = card.querySelector('[data-unlock-equip]');
+      if (!button) {
+        return;
+      }
+
+      if (!item.equipable) {
+        button.textContent = 'Passive Unlock';
+        button.disabled = true;
+        return;
+      }
+
+      button.textContent = item.equipped ? 'Equipped' : 'Equip';
+      button.disabled = false;
+    });
+  }
+
   async function presentLevelRewards(rewards, options = {}) {
     const pendingBundles = Array.isArray(options.pendingBundles) ? options.pendingBundles : [];
     const shouldOpen = (rewards?.newlyUnlocked?.length || 0) > 0
@@ -2772,7 +2803,7 @@
       await saveGameSave();
     }
     updateUI();
-    renderRewardModal();
+    refreshRewardModalEquipStates();
     scheduleRewardAutoCloseIfComplete();
     return true;
   }

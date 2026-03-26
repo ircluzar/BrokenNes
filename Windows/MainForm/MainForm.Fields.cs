@@ -49,6 +49,7 @@ namespace BrokenNes.Windows
         private InputManager? inputManager;
         private InputManager? inputManager2; // Player 2 input
         private Dictionary<Keys, int> keyMap = new();
+        private volatile bool isMainWindowFocused = true;
         
         // FPS tracking for audio speed adjustment
         private double currentFps = 60.0;
@@ -108,6 +109,9 @@ namespace BrokenNes.Windows
         private bool isWebViewInitialized = false;
         private bool isWebViewInitializationFailed = false;
         private WebModuleInfo? currentToolOrActivityModule = null;
+        private bool isOverlayPreloadedForEmulator = false;
+        private int overlayPreviewMenuOpenCount = 0;
+        private bool isOverlayPreviewVisible = false;
         
         // Web API server
         private WebApiServer? webApiServer;

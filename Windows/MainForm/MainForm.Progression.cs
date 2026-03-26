@@ -472,6 +472,12 @@ namespace BrokenNes.Windows
                         Tag = moduleToLoad.FolderName,
                         Enabled = unlocked
                     };
+
+                    if (module.FolderName.Equals("DeckBuilder", StringComparison.OrdinalIgnoreCase))
+                    {
+                        moduleItem.Font = new Font(toolsMenu.Font, FontStyle.Bold);
+                    }
+
                     toolsMenu.DropDownItems.Add(moduleItem);
                 }
             }

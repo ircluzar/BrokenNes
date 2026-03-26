@@ -2,6 +2,7 @@
 (() => {
   const api = window.webapi;
   const STOP_NAME = 'Corruption Slop';
+  const BASE_INTENSITY = 420;
   const INTERMISSION_CHANCE = 0.15;
   const INTERMISSION_MIN_CYCLES = 10;
   const INTERMISSION_GUARANTEE_AFTER = 25;
@@ -13,6 +14,9 @@
   let cachedNullProviders = null;
   let originalRomPath = null;
   let cycleCount = 0;
+  let intensityPercent = 50;
+  let knobDragState = null;
+  let intensitySyncTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!api) {
@@ -23,6 +27,11 @@
     const stopSquare = document.getElementById('stopSquare');
     if (stopSquare) {
       stopSquare.addEventListener('click', stopAndExit);
+    }
+
+    const funnyKnob = document.getElementById('funnyKnob');
+    if (funnyKnob) {
+      setupFunnyKnob(funnyKnob);
     }
 
     start();
@@ -86,7 +95,7 @@
       const blastType = await api.rtc.setBlastType('BITFLIP');
       if (!blastType?.success) return false;
 
-      const intensity = await api.rtc.setIntensity(420);
+      const intensity = await api.rtc.setIntensity(getScaledIntensity(intensityPercent));
       if (!intensity?.success) return false;
 
       const domains = await api.rtc.getDomains();
@@ -273,5 +282,165 @@
       console.warn('[CorruptionSlop] Failed to read current ROM path:', error);
       return null;
     }
+  }
+
+  function setupFunnyKnob(funnyKnob) {
+    intensityPercent = parsePercent(funnyKnob?.dataset?.value);
+    setFunnyKnobVisuals(funnyKnob, intensityPercent);
+
+    funnyKnob.addEventListener('pointerdown', onFunnyKnobPointerDown);
+    funnyKnob.addEventListener('wheel', onFunnyKnobWheel, { passive: false });
+    funnyKnob.addEventListener('keydown', onFunnyKnobKeyDown);
+  }
+
+  function onFunnyKnobPointerDown(event) {
+    if (!event || event.button !== 0) return;
+    const funnyKnob = event.currentTarget;
+    if (!funnyKnob) return;
+
+    event.preventDefault();
+    funnyKnob.focus();
+    funnyKnob.setPointerCapture(event.pointerId);
+    knobDragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPercent: intensityPercent
+    };
+
+    funnyKnob.addEventListener('pointermove', onFunnyKnobPointerMove);
+    funnyKnob.addEventListener('pointerup', onFunnyKnobPointerUp);
+    funnyKnob.addEventListener('lostpointercapture', onFunnyKnobPointerUp);
+  }
+
+  function onFunnyKnobPointerMove(event) {
+    if (!knobDragState || event.pointerId !== knobDragState.pointerId) return;
+
+    event.preventDefault();
+    const dy = knobDragState.startY - event.clientY;
+    const dx = event.clientX - knobDragState.startX;
+    const nextPercent = knobDragState.startPercent + (dy + (dx * 0.35)) * 0.35;
+    onFunnyKnobInput(nextPercent);
+  }
+
+  function onFunnyKnobPointerUp(event) {
+    const funnyKnob = event.currentTarget;
+    if (!funnyKnob) return;
+
+    funnyKnob.removeEventListener('pointermove', onFunnyKnobPointerMove);
+    funnyKnob.removeEventListener('pointerup', onFunnyKnobPointerUp);
+    funnyKnob.removeEventListener('lostpointercapture', onFunnyKnobPointerUp);
+    knobDragState = null;
+  }
+
+  function onFunnyKnobWheel(event) {
+    if (!event) return;
+    event.preventDefault();
+
+    const step = event.shiftKey ? 10 : 2;
+    const direction = event.deltaY < 0 ? 1 : -1;
+    onFunnyKnobInput(intensityPercent + (direction * step));
+  }
+
+  function onFunnyKnobKeyDown(event) {
+    if (!event) return;
+    const key = event.key;
+    let nextPercent = intensityPercent;
+
+    if (key === 'ArrowUp' || key === 'ArrowRight') {
+      nextPercent += event.shiftKey ? 10 : 1;
+    } else if (key === 'ArrowDown' || key === 'ArrowLeft') {
+      nextPercent -= event.shiftKey ? 10 : 1;
+    } else if (key === 'PageUp') {
+      nextPercent += 10;
+    } else if (key === 'PageDown') {
+      nextPercent -= 10;
+    } else if (key === 'Home') {
+      nextPercent = 0;
+    } else if (key === 'End') {
+      nextPercent = 100;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    onFunnyKnobInput(nextPercent);
+  }
+
+  function onFunnyKnobInput(value) {
+    intensityPercent = parsePercent(value);
+
+    const funnyKnob = document.getElementById('funnyKnob');
+    if (funnyKnob) {
+      setFunnyKnobVisuals(funnyKnob, intensityPercent);
+    }
+
+    scheduleIntensitySync();
+  }
+
+  function setFunnyKnobVisuals(funnyKnob, percent) {
+    const p = parsePercent(percent);
+    const rounded = Math.round(p);
+    const angle = Math.round(-140 + (p / 100) * 280);
+    const tempLabel = getAestheticTemperatureLabel(p);
+
+    funnyKnob.dataset.value = String(rounded);
+    funnyKnob.style.setProperty('--knob-angle', `${angle}deg`);
+    funnyKnob.setAttribute('aria-valuenow', String(rounded));
+    funnyKnob.setAttribute('aria-valuetext', tempLabel);
+
+    const valueNode = document.getElementById('funnyValue');
+    if (valueNode) {
+      valueNode.textContent = tempLabel;
+    }
+  }
+
+  function getAestheticTemperatureLabel(percent) {
+    const p = parsePercent(percent);
+
+    if (p >= 40 && p <= 60) {
+      return 'Mild\nTemp';
+    }
+
+    if (p < 40) {
+      const cold = Math.round(((40 - p) / 40) * 100);
+      return `${cold}%\nCold`;
+    }
+
+    const hot = Math.round(((p - 60) / 40) * 100);
+    return `${hot}%\nHot`;
+  }
+
+  function scheduleIntensitySync() {
+    if (intensitySyncTimer) {
+      clearTimeout(intensitySyncTimer);
+    }
+
+    intensitySyncTimer = setTimeout(async () => {
+      intensitySyncTimer = null;
+      try {
+        await api.rtc.setIntensity(getScaledIntensity(intensityPercent));
+      } catch (error) {
+        console.warn('[CorruptionSlop] Failed to update intensity from knob:', error);
+      }
+    }, 60);
+  }
+
+  function parsePercent(value) {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) {
+      return 50;
+    }
+
+    return Math.max(0, Math.min(100, parsed));
+  }
+
+  function getScaledIntensity(percent) {
+    const p = parsePercent(percent);
+    const multiplier = p <= 50
+      ? 0.05 + (p / 50) * 0.95
+      : 1 + ((p - 50) / 50) * 2;
+
+    return Math.max(1, Math.round(BASE_INTENSITY * multiplier));
   }
 })();

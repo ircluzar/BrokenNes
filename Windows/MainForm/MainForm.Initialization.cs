@@ -72,6 +72,8 @@ namespace BrokenNes.Windows
             this.DragEnter += MainForm_DragEnter;
             this.DragDrop += MainForm_DragDrop;
             this.Resize += MainForm_Resize;
+            this.Activated += (_, _) => isMainWindowFocused = true;
+            this.Deactivate += (_, _) => isMainWindowFocused = false;
             
             // Create menu bar
             var menuStrip = new MenuStrip();
@@ -216,7 +218,7 @@ namespace BrokenNes.Windows
             soundMenu.DropDownItems.Add(channelsMenu);
             
             // Sound quality submenu
-            var qualityMenu = new ToolStripMenuItem("Sound Quality");
+            var qualityMenu = new ToolStripMenuItem("Sound Quality (Affects CPU Speed)");
             
             var quality22050Item = new ToolStripMenuItem("22050 Hz (Low)", null, (s, e) => SetSoundQuality(22050));
             qualityMenu.DropDownItems.Add(quality22050Item);
@@ -256,6 +258,12 @@ namespace BrokenNes.Windows
             
             var player2Menu = new ToolStripMenuItem("Player 2 Configuration...", null, (s, e) => OpenControllerConfig(2));
             controllersMenu.DropDownItems.Add(player2Menu);
+
+            controllersMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var acceptBackgroundInputItem = new ToolStripMenuItem("Accept Background Input", null, ToggleAcceptBackgroundInput_Click);
+            acceptBackgroundInputItem.CheckOnClick = true;
+            controllersMenu.DropDownItems.Add(acceptBackgroundInputItem);
             
             configMenu.DropDownItems.Add(controllersMenu);
             
@@ -603,6 +611,7 @@ namespace BrokenNes.Windows
             {
                 inputManager = new InputManager(SharpDX.XInput.UserIndex.One);
             }
+            inputManager.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
             inputManager.SetPlayerConfig(p1Config);
             
             Console.WriteLine($"Player 1 controller configured:");
@@ -622,6 +631,7 @@ namespace BrokenNes.Windows
             {
                 inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
             }
+            inputManager2.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
             inputManager2.SetPlayerConfig(p2Config);
             
             Console.WriteLine($"Player 2 controller configured:");
@@ -640,6 +650,7 @@ namespace BrokenNes.Windows
             {
                 webModuleInputManager = new WebModuleInputManager();
             }
+            webModuleInputManager.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
             
             webModuleInputManager.SetPlayerConfig(p1Config);
             Console.WriteLine($"Webmodule input (X/Y) configured:");

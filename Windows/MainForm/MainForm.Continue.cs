@@ -109,10 +109,252 @@ namespace BrokenNes.Windows
              string continuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
              if (File.Exists(continuePath))
              {
+                 if (TryLaunchDeckBuilderContinueFromScreenshot(continuePath))
+                 {
+                     try { File.Delete(continuePath); } catch {}
+                     return;
+                 }
+
+                 if (TryLaunchDeckBuilderContinueFromProgression())
+                 {
+                     try { File.Delete(continuePath); } catch {}
+                     return;
+                 }
+
                  LoadStateFile(continuePath);
                  // Delete after loading so it doesn't appear again on next launch unless saved again
                  try { File.Delete(continuePath); } catch {}
              }
+        }
+
+        private bool TryLaunchDeckBuilderContinueFromProgression()
+        {
+            try
+            {
+                var save = LoadProgressionSnapshot();
+                if (save.ContinueSlots == null || save.ContinueSlots.Count == 0)
+                {
+                    return false;
+                }
+
+                var latestSlot = save.ContinueSlots.Values
+                    .Where(slot => slot != null && !string.IsNullOrWhiteSpace(slot.RomKey))
+                    .OrderByDescending(slot => slot!.UpdatedAtUtc ?? DateTime.MinValue)
+                    .FirstOrDefault();
+                if (latestSlot == null)
+                {
+                    return false;
+                }
+
+                var romKey = latestSlot.RomKey.Trim();
+                if (string.IsNullOrWhiteSpace(romKey))
+                {
+                    return false;
+                }
+
+                var title = !string.IsNullOrWhiteSpace(latestSlot.Title)
+                    ? latestSlot.Title!
+                    : romKey;
+
+                Console.WriteLine($"[Continue] Falling back to latest trusted Deck continue slot: {romKey}");
+                return TryLaunchAchievementsRuntimeContinue(romKey, title);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Continue] Failed progression fallback continue handoff: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryLaunchDeckBuilderContinueFromScreenshot(string continuePath)
+        {
+            try
+            {
+                if (!TryReadSavedRomIdentityFromState(continuePath, out var savedRomPath, out var savedRomName))
+                {
+                    return false;
+                }
+
+                var romKey = ResolveStateRomKey(savedRomPath, savedRomName);
+                if (string.IsNullOrWhiteSpace(romKey))
+                {
+                    return false;
+                }
+
+                var save = LoadProgressionSnapshot();
+                if (!TryGetTrustedDeckContinueSlot(save, romKey, out var slot))
+                {
+                    return false;
+                }
+
+                var title = !string.IsNullOrWhiteSpace(slot?.Title)
+                    ? slot!.Title!
+                    : (!string.IsNullOrWhiteSpace(savedRomName) ? savedRomName : romKey);
+
+                return TryLaunchAchievementsRuntimeContinue(romKey, title);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Continue] Failed Deck Builder continue handoff: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryReadSavedRomIdentityFromState(string filePath, out string? savedRomPath, out string? savedRomName)
+        {
+            savedRomPath = null;
+            savedRomName = null;
+
+            try
+            {
+                using var bmp = new Bitmap(filePath);
+                var data = PngPayload.ExtractData(bmp);
+                if (data == null || data.Length == 0)
+                {
+                    return false;
+                }
+
+                var stateJson = Encoding.UTF8.GetString(data);
+                savedRomPath = NES.GetSavedRomPath(stateJson);
+                savedRomName = NES.GetSavedRomName(stateJson);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Continue] Failed to inspect continue state payload: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static string? ResolveStateRomKey(string? savedRomPath, string? savedRomName)
+        {
+            if (!string.IsNullOrWhiteSpace(savedRomPath))
+            {
+                var keyFromPath = Path.GetFileName(savedRomPath.Trim());
+                if (!string.IsNullOrWhiteSpace(keyFromPath))
+                {
+                    return keyFromPath;
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(savedRomName) ? null : savedRomName.Trim();
+        }
+
+        private static string NormalizeContinueSlotKey(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var trimmed = value.Trim();
+            var fileName = Path.GetFileName(trimmed);
+            var normalized = string.IsNullOrWhiteSpace(fileName) ? trimmed : fileName;
+            return normalized.Trim().ToLowerInvariant();
+        }
+
+        private static bool TryGetTrustedDeckContinueSlot(BrokenNes.Models.GameSave save, string romKey, out BrokenNes.Models.ContinueStateSlot? slot)
+        {
+            slot = null;
+            var normalized = NormalizeContinueSlotKey(romKey);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            if (save.ContinueSlots == null || save.ContinueSlots.Count == 0)
+            {
+                return false;
+            }
+
+            if (save.ContinueSlots.TryGetValue(normalized, out var direct) && direct != null)
+            {
+                slot = direct;
+                return true;
+            }
+
+            foreach (var entry in save.ContinueSlots.Values)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                if (NormalizeContinueSlotKey(entry.RomKey) == normalized)
+                {
+                    slot = entry;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLaunchAchievementsRuntimeContinue(string romKey, string title)
+        {
+            if (!Helpers.WebViewHelper.IsAvailable(webView, isWebViewInitialized, isWebViewInitializationFailed))
+            {
+                return false;
+            }
+
+            try
+            {
+                EnsureWebApiServerRunningAsync().GetAwaiter().GetResult();
+
+                var webModules = WebModuleManager.DiscoverModules();
+                var runtimeModule = webModules.FirstOrDefault(m =>
+                    string.Equals(m.FolderName, "AchievementsRuntime", StringComparison.OrdinalIgnoreCase));
+                if (runtimeModule == null || !runtimeModule.IsValid)
+                {
+                    Console.WriteLine("[Continue] AchievementsRuntime module not found.");
+                    return false;
+                }
+
+                if (!IsWebModuleUnlocked(runtimeModule))
+                {
+                    Console.WriteLine("[Continue] AchievementsRuntime is locked; falling back to native continue load.");
+                    return false;
+                }
+
+                if (this.MainMenuStrip != null)
+                {
+                    this.MainMenuStrip.Visible = !runtimeModule.HideMenuBar;
+                }
+
+                ViewMode targetMode = runtimeModule.DisplayMode switch
+                {
+                    WebModuleDisplayMode.Widget => ViewMode.Widget,
+                    WebModuleDisplayMode.Overlay => ViewMode.Overlay,
+                    WebModuleDisplayMode.Web => ViewMode.Web,
+                    _ => ViewMode.Web
+                };
+
+                SwitchViewMode(targetMode, skipNavigation: true);
+
+                var uri = runtimeModule.GetVirtualHostUri();
+                var separator = uri.Contains('?') ? "&" : "?";
+                var launchUri = uri
+                    + separator
+                    + "mode=continue"
+                    + "&romKey=" + Uri.EscapeDataString(romKey)
+                    + "&title=" + Uri.EscapeDataString(title)
+                    + "&source=emulator-continue";
+
+                Helpers.WebViewHelper.NavigateToUri(webView, launchUri);
+
+                if (runtimeModule.Config.ShowInToolsMenu)
+                {
+                    currentToolOrActivityModule = runtimeModule;
+                }
+
+                Console.WriteLine($"[Continue] Routed trusted Deck continue to AchievementsRuntime for {romKey}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Continue] Failed to launch AchievementsRuntime continue: {ex.Message}");
+                return false;
+            }
         }
     }
 }

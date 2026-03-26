@@ -1293,6 +1293,24 @@ namespace NesEmulator
 		public string GetCpuCoreId() => bus?.cpu?.GetType().Name ?? string.Empty;
 		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
 		public string GetApuCoreId() => bus?.ActiveAPU?.GetType().Name ?? string.Empty;
+		public bool IsApuNoteEventModeActive()
+		{
+			try
+			{
+				if (bus?.ActiveAPU is NesEmulator.APU_WF wf)
+				{
+					return wf.SoundFontMode;
+				}
+
+				if (bus?.ActiveAPU is NesEmulator.APU_MNES mn)
+				{
+					return mn.SoundFontMode;
+				}
+			}
+			catch { }
+
+			return false;
+		}
 
 		// APU channel enable/disable control
 		public void SetApuChannelEnableMask(int channelMask)

@@ -65,7 +65,8 @@ namespace BrokenNes.Windows
              if (nes == null) return false;
              var continuePath = GetDeckContinueStatePathForCurrentRom();
              if (string.IsNullOrWhiteSpace(continuePath)) return false;
-               var tempPath = continuePath + ".tmp";
+                         var legacyContinuePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "continue.png");
+                             var tempPath = continuePath + ".tmp";
 
              try
              {
@@ -96,6 +97,14 @@ namespace BrokenNes.Windows
                          }
 
                          File.Copy(tempPath, continuePath, true);
+                         try
+                         {
+                             File.Copy(continuePath, legacyContinuePath, true);
+                         }
+                         catch
+                         {
+                             // Keep Deck continue checkpoint even if legacy alias update fails.
+                         }
                          Console.WriteLine($"Deck continue saved to {continuePath}");
                          return File.Exists(continuePath);
                      }
@@ -241,7 +250,7 @@ namespace BrokenNes.Windows
             }
         }
 
-        private void LoadStateFile(string filePath)
+        private bool LoadStateFile(string filePath)
         {
             try
             {
@@ -278,11 +287,28 @@ namespace BrokenNes.Windows
                         else
                         {
                             MessageBox.Show($"Cannot load state: No ROM loaded and original ROM path invalid.\nPath: {savedRomPath}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
+                            return false;
                         }
                 }
-                else if (!string.IsNullOrEmpty(savedRomPath) && !string.Equals(savedRomPath, currentRomPath, StringComparison.OrdinalIgnoreCase))
+                else if (!string.IsNullOrEmpty(savedRomPath))
                 {
+                    var savedRomFileName = Path.GetFileName(savedRomPath);
+                    var currentRomFileName = Path.GetFileName(currentRomPath ?? string.Empty);
+                    var currentRomLabel = nes?.RomName ?? string.Empty;
+                    var sameRomByName = !string.IsNullOrWhiteSpace(savedRomFileName)
+                        && (
+                            string.Equals(savedRomFileName, currentRomFileName, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(savedRomFileName, currentRomLabel, StringComparison.OrdinalIgnoreCase)
+                        );
+
+                    if (!sameRomByName && !string.IsNullOrWhiteSpace(savedRomName))
+                    {
+                        sameRomByName = string.Equals(savedRomName, currentRomFileName, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(savedRomName, currentRomLabel, StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    if (!sameRomByName && !string.Equals(savedRomPath, currentRomPath, StringComparison.OrdinalIgnoreCase))
+                    {
                         // Check if we should auto-switch
                         if (File.Exists(savedRomPath))
                         {
@@ -291,11 +317,12 @@ namespace BrokenNes.Windows
                         else
                         {
                             var r = MessageBox.Show($"State is for '{savedRomName}' but current ROM is different.\nOriginal path not found: {savedRomPath}\nLoad state anyway?", "ROM Mismatch", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                            if (r == DialogResult.No) return;
+                            if (r == DialogResult.No) return false;
                         }
+                    }
                 }
                 
-                if (nes == null) return;
+                if (nes == null) return false;
                 
                 // Pause emulation during state load
                 bool wasPaused = isPaused;
@@ -317,11 +344,13 @@ namespace BrokenNes.Windows
                 UpdateCoresMenus();
                 
                 Console.WriteLine($"State Loaded: {Path.GetFileName(currentRomPath)}");
+                return true;
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to load state:\n{ex.Message}", "Load State Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
         
@@ -591,8 +620,7 @@ namespace BrokenNes.Windows
             {
                 var continuePath = ResolveDeckContinueStatePathForRom(romKey);
                 if (!File.Exists(continuePath)) return false;
-                LoadStateFile(continuePath);
-                return true;
+                return LoadStateFile(continuePath);
             }
             catch (Exception ex)
             {

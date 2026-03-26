@@ -2506,6 +2506,11 @@
         "note": ""
       },
       {
+        "id": "APU_ULQ",
+        "type": "Reserved",
+        "note": ""
+      },
+      {
         "id": "APU_LQ",
         "type": "Reserved",
         "note": ""
@@ -2781,7 +2786,7 @@
       {
         "index": 11,
         "requiredCards": [
-          "APU_WF",
+          "APU_LQ",
           "SHADER_TV",
           "PPU_LQ",
           "CPU_LOW"
@@ -2825,7 +2830,7 @@
         "index": 15,
         "requiredCards": [
           "SHADER_EXE",
-          "APU_LQ"
+          "APU_ULQ"
         ],
         "requiredStars": 19,
         "cardChallenge": "Creepy",

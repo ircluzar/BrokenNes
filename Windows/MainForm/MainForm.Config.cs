@@ -118,6 +118,19 @@ namespace BrokenNes.Windows
             }
             
             // Update emulation options checkmarks (now in various submenus)
+
+            // Update Controllers submenu
+            var controllersMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                .FirstOrDefault(m => m.Text == "&Controllers");
+
+            if (controllersMenu != null)
+            {
+                foreach (var item in controllersMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                {
+                    if (item.Text.Contains("Accept Background Input"))
+                        item.Checked = config.AcceptBackgroundInput;
+                }
+            }
             
             // Update Emulation Speed submenu
             var emulationSpeedMenu = configMenu.DropDownItems.OfType<ToolStripMenuItem>()
@@ -222,7 +235,7 @@ namespace BrokenNes.Windows
                 
                 // Update Sound Quality submenu
                 var qualityMenu = soundMenu.DropDownItems.OfType<ToolStripMenuItem>()
-                    .FirstOrDefault(m => m.Text == "Sound Quality");
+                    .FirstOrDefault(m => m.Text == "Sound Quality (Affects CPU Speed)");
                 
                 if (qualityMenu != null)
                 {
@@ -403,8 +416,11 @@ namespace BrokenNes.Windows
                 shaderMenu.DropDownItems.Add(noShaderItem);
             }
             
-            // Add event to clear overlay when shader menu closes
-            shaderMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
+            // Toggle overlay preview while shader menu is open
+            shaderMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
+            shaderMenu.DropDownOpening += BeginOverlayPreviewForMenu;
+            shaderMenu.DropDownClosed -= EndOverlayPreviewForMenu;
+            shaderMenu.DropDownClosed += EndOverlayPreviewForMenu;
 
             // APU - single select with checkmarks
             apuMenu.DropDownItems.Clear();
@@ -464,8 +480,11 @@ namespace BrokenNes.Windows
                 apuMenu.DropDownItems.Add(item);
             }
             
-            // Add event to clear overlay when APU menu closes
-            apuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
+            // Toggle overlay preview while APU menu is open
+            apuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
+            apuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
+            apuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
+            apuMenu.DropDownClosed += EndOverlayPreviewForMenu;
 
             // CPU - single select with checkmarks
             cpuMenu.DropDownItems.Clear();
@@ -525,8 +544,11 @@ namespace BrokenNes.Windows
                 cpuMenu.DropDownItems.Add(item);
             }
             
-            // Add event to clear overlay when CPU menu closes
-            cpuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
+            // Toggle overlay preview while CPU menu is open
+            cpuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
+            cpuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
+            cpuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
+            cpuMenu.DropDownClosed += EndOverlayPreviewForMenu;
 
             // PPU - single select with checkmarks
             ppuMenu.DropDownItems.Clear();
@@ -586,8 +608,11 @@ namespace BrokenNes.Windows
                 ppuMenu.DropDownItems.Add(item);
             }
             
-            // Add event to clear overlay when PPU menu closes
-            ppuMenu.DropDownClosed += (s, e) => RequestOverlayClearCard();
+            // Toggle overlay preview while PPU menu is open
+            ppuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
+            ppuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
+            ppuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
+            ppuMenu.DropDownClosed += EndOverlayPreviewForMenu;
         }
         
         private void ApplySavedCoreSelections()

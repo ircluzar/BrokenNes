@@ -1,19 +1,34 @@
 using System;
+using NAudio.Midi;
 
 namespace NesEmulator
 {
     public class APU_WF : IAPU
     {
+        private static readonly object MidiInitLock = new();
+        private static MidiOut? sharedMidiOut;
+        private static bool sharedMidiInitAttempted;
+
         // Core metadata
         public string CoreName => "WebFont";
-        public string Description => "This APU converts Nes APU signals to Midi and routes them to a simple WebFont-based synthesizer";
+        public string Description => "This APU converts Nes APU signals to MIDI and routes them to the system MIDI synthesizer";
         public int Performance => -10;
         public int Rating => 5;
         public string Category => "Enhanced";
         private Bus bus;
+        private bool useSystemMidi;
+        private readonly int[] midiProgramByChannel = { -1, -1, -1, -1 };
     public APU_WF(Bus bus)
         {
             this.bus = bus;
+            useSystemMidi = TryInitializeSystemMidi();
+            if (useSystemMidi)
+            {
+                // Route note events directly to the default Windows MIDI synth.
+                NoteEvent += HandleSystemMidiNoteEvent;
+                PitchEvent += HandleSystemMidiPitchEvent;
+                SoundFontMode = true;
+            }
         }
 
         // APU Registers
@@ -164,6 +179,8 @@ namespace NesEmulator
     private const double PitchBendRangeSemitones = 2.0; // typical default
     private const double ReTriggerThresholdSemitones = 2.2; // if sweep exceeds range, re-trigger with new note
     private const double MinBendDeltaSemitones = 1.0 / 64.0; // vibrato sensitivity
+    private const int VelocityRetriggerThreshold = 22;
+    private const double VelocitySmoothingFactor = 0.22;
 
     // Pitch (bend) event for consumers wanting continuous pitch articulation
     public event Action<string,int>? PitchEvent; // (channel, bendValue -8192..8191)
@@ -186,6 +203,160 @@ namespace NesEmulator
             if (activePulse2Note.HasValue) NoteEvent?.Invoke(new NesNoteEvent("P2", activePulse2Note.Value, 0, false, ProgramPulse2));
             if (activeTriangleNote.HasValue) NoteEvent?.Invoke(new NesNoteEvent("TRI", activeTriangleNote.Value, 0, false, ProgramTriangle));
             activePulse1Note = activePulse2Note = activeTriangleNote = null;
+
+            if (useSystemMidi)
+            {
+                SendSystemMidiPanic();
+            }
+        }
+
+        private bool TryInitializeSystemMidi()
+        {
+            try
+            {
+                lock (MidiInitLock)
+                {
+                    if (!sharedMidiInitAttempted)
+                    {
+                        sharedMidiInitAttempted = true;
+                        if (MidiOut.NumberOfDevices > 0)
+                        {
+                            sharedMidiOut = new MidiOut(0);
+                        }
+                    }
+
+                    return sharedMidiOut != null;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static int ChannelToMidiChannel(string channel)
+        {
+            return channel switch
+            {
+                "P1" => 0,
+                "P2" => 1,
+                "TRI" => 2,
+                "NOI" => 9,
+                _ => 0
+            };
+        }
+
+        private int ChannelToProgramIndex(string channel)
+        {
+            return channel switch
+            {
+                "P1" => 0,
+                "P2" => 1,
+                "TRI" => 2,
+                _ => 3
+            };
+        }
+
+        private void HandleSystemMidiNoteEvent(NesNoteEvent ev)
+        {
+            if (!useSystemMidi || sharedMidiOut == null)
+            {
+                return;
+            }
+
+            int midiChannel = ChannelToMidiChannel(ev.Channel);
+            int programIndex = ChannelToProgramIndex(ev.Channel);
+            int note = Math.Clamp(ev.MidiNote, 0, 127);
+            int velocity = Math.Clamp(ev.Velocity, 0, 127);
+
+            try
+            {
+                lock (MidiInitLock)
+                {
+                    if (sharedMidiOut == null) return;
+
+                    // Channel 10 is percussion; ignore instrument program changes there.
+                    if (midiChannel != 9)
+                    {
+                        int program = Math.Clamp(ev.Program, 0, 127);
+                        if (midiProgramByChannel[programIndex] != program)
+                        {
+                            sharedMidiOut.Send(MidiMessage.ChangePatch(program, midiChannel).RawData);
+                            midiProgramByChannel[programIndex] = program;
+                        }
+                    }
+
+                    if (ev.On && velocity > 0)
+                    {
+                        sharedMidiOut.Send(MidiMessage.StartNote(note, velocity, midiChannel).RawData);
+                    }
+                    else
+                    {
+                        sharedMidiOut.Send(MidiMessage.StopNote(note, 0, midiChannel).RawData);
+                    }
+                }
+            }
+            catch
+            {
+                // Keep emulation running even if the MIDI device becomes unavailable.
+            }
+        }
+
+        private void HandleSystemMidiPitchEvent(string channel, int bend)
+        {
+            if (!useSystemMidi || sharedMidiOut == null)
+            {
+                return;
+            }
+
+            int midiChannel = ChannelToMidiChannel(channel);
+            if (midiChannel == 9)
+            {
+                return;
+            }
+
+            int wheel = Math.Clamp(bend + 8192, 0, 16383);
+            try
+            {
+                lock (MidiInitLock)
+                {
+                    if (sharedMidiOut == null) return;
+                    int status = 0xE0 | (midiChannel & 0x0F);
+                    int lsb = wheel & 0x7F;
+                    int msb = (wheel >> 7) & 0x7F;
+                    int raw = status | (lsb << 8) | (msb << 16);
+                    sharedMidiOut.Send(raw);
+                }
+            }
+            catch
+            {
+                // Keep emulation running even if pitch bend transmission fails.
+            }
+        }
+
+        private void SendSystemMidiPanic()
+        {
+            if (sharedMidiOut == null)
+            {
+                return;
+            }
+
+            try
+            {
+                lock (MidiInitLock)
+                {
+                    if (sharedMidiOut == null) return;
+                    for (int ch = 0; ch < 16; ch++)
+                    {
+                        // CC123: all notes off
+                        sharedMidiOut.Send(MidiMessage.ChangeControl(123, 0, ch).RawData);
+                    }
+                }
+            }
+            catch
+            {
+                // Non-fatal.
+            }
         }
         private static int VolumeToVelocity(int vol4bit)
         {
@@ -198,6 +369,14 @@ namespace NesEmulator
             int n = (int)Math.Round(69.0 + 12.0 * Math.Log(freq / 440.0, 2.0));
             if (n < 0) n = 0; else if (n > 127) n = 127;
             return n;
+        }
+        private static int SmoothVelocity(int previous, int current)
+        {
+            if (previous <= 0) return current;
+            int smoothed = (int)Math.Round((previous * (1.0 - VelocitySmoothingFactor)) + (current * VelocitySmoothingFactor));
+            if (smoothed < 1) smoothed = 1;
+            if (smoothed > 127) smoothed = 127;
+            return smoothed;
         }
         private void EmitNoteOn(string ch, ref int? active, int midi, int vel, int program, double baseFreq = 0)
         {
@@ -269,12 +448,12 @@ namespace NesEmulator
                 int rawVol = pulse1_constantVolume ? pulse1_volumeParam : pulse1_decayLevel; // 0..15
                 // instantaneous amplitude approximation considers duty occupancy
                 double amp = PulseGain * (rawVol / 15.0) * DutyHighFraction(pulse1_duty);
-                int vel = AmplitudeToVelocity(amp, MaxRefGain);
+                int vel = SmoothVelocity(lastP1Velocity, AmplitudeToVelocity(amp, MaxRefGain));
                 // Trigger if no active note, note number changed beyond bend range, or explicit attack
-                bool velocityChanged = Math.Abs(vel - lastP1Velocity) >= 10; // retrigger threshold
+                bool velocityChanged = Math.Abs(vel - lastP1Velocity) >= VelocityRetriggerThreshold;
+                lastP1Velocity = vel;
                 if (!activePulse1Note.HasValue || p1Attack || velocityChanged)
                 {
-                    lastP1Velocity = vel;
                     EmitNoteOn("P1", ref activePulse1Note, targetNote, vel, ProgramPulse1, freq);
                 }
                 else
@@ -309,11 +488,11 @@ namespace NesEmulator
                 int targetNote = FreqToMidi(freq);
                 int rawVol = pulse2_constantVolume ? pulse2_volumeParam : pulse2_decayLevel;
                 double amp = PulseGain * (rawVol / 15.0) * DutyHighFraction(pulse2_duty);
-                int vel = AmplitudeToVelocity(amp, MaxRefGain);
-                bool velocityChanged = Math.Abs(vel - lastP2Velocity) >= 10;
+                int vel = SmoothVelocity(lastP2Velocity, AmplitudeToVelocity(amp, MaxRefGain));
+                bool velocityChanged = Math.Abs(vel - lastP2Velocity) >= VelocityRetriggerThreshold;
+                lastP2Velocity = vel;
                 if (!activePulse2Note.HasValue || p2Attack || velocityChanged)
                 {
-                    lastP2Velocity = vel;
                     EmitNoteOn("P2", ref activePulse2Note, targetNote, vel, ProgramPulse2, freq);
                 }
                 else
@@ -524,6 +703,10 @@ namespace NesEmulator
         {
             ClearAudioBuffers();
             ResetNoteTracking();
+            if (useSystemMidi)
+            {
+                SendSystemMidiPanic();
+            }
         }
 
         // Step 1 CPU cycle convenience

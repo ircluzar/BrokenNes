@@ -51,6 +51,25 @@ body {
   right: 16px;
 }
 
+.ib-explain-square {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 170px;
+  min-height: 170px;
+  padding: 10px;
+  background: rgba(10, 10, 14, 0.72);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--text-muted);
+  font-size: 7px;
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
 .ib-btn {
   font-family: 'Press Start 2P', monospace;
   font-size: 10px;

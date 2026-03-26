@@ -15,6 +15,8 @@ let rtcAutoCorruptEnabled = false;
 let selectedDomains = [];
 let crashPollingInterval = null;
 let currentCrashBehavior = 'IgnoreErrors';
+let imagineBugUnlocked = false;
+let imagineStateInitialized = false;
 
 // DOM Elements
 const elements = {
@@ -107,7 +109,7 @@ const elements = {
 let confirmCallback = null;
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log('[GH] DOM Content Loaded - Initializing Glitch Harvester');
   if (!api) {
     console.error('[GH] webapi helper not loaded');
@@ -116,24 +118,101 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   initializeElements();
   console.log('[GH] Elements initialized');
+
+  await syncImagineUnlockState();
+  console.log('[GH] Imagine unlock state loaded:', imagineBugUnlocked);
+
   attachEventListeners();
   console.log('[GH] Event listeners attached');
   
   // Initialize RTC state
-  loadRTCState();
+  await loadRTCState();
   console.log('[GH] RTC state loading...');
   
-  // Initialize Imagine state
-  loadImagineState();
-  console.log('[GH] Imagine state loading...');
+  if (imagineBugUnlocked && !imagineStateInitialized) {
+    await loadImagineState();
+    imagineStateInitialized = true;
+    console.log('[GH] Imagine state loading...');
+  }
   
-  refreshAll();
+  await refreshAll();
   console.log('[GH] Initial refresh triggered');
   
   // Auto-refresh disabled for debugging
   // setInterval(refreshAll, 3000);
   console.log('[GH] Auto-refresh DISABLED for debugging');
 });
+
+async function syncImagineUnlockState() {
+  let unlocked = false;
+
+  try {
+    const progressionData = await api.progression.getState();
+    const unlockedWebmodules = Array.isArray(progressionData?.unlockedWebmodules)
+      ? progressionData.unlockedWebmodules
+      : [];
+
+    unlocked = unlockedWebmodules.some(id =>
+      String(id).trim().toLowerCase() === 'imaginebug'
+    );
+  } catch (error) {
+    console.warn('[GH] Failed to load progression state for Imagine unlock check:', error);
+  }
+
+  const unlockedChanged = imagineBugUnlocked !== unlocked;
+  imagineBugUnlocked = unlocked;
+  applyImagineUnlockUi(unlocked);
+
+  if (unlockedChanged && unlocked && !imagineStateInitialized) {
+    await loadImagineState();
+    imagineStateInitialized = true;
+  }
+}
+
+function applyImagineUnlockUi(unlocked) {
+  const imagineTab = document.querySelector('.gh-tab[data-tab="imagine"]');
+  const imagineSection = document.querySelector('.gh-section[data-section="imagine"]');
+
+  if (imagineTab) {
+    imagineTab.style.display = unlocked ? '' : 'none';
+  }
+
+  if (imagineSection) {
+    imagineSection.style.display = unlocked ? '' : 'none';
+  }
+
+  ensureImagineCrashBehaviorOption(unlocked);
+
+  if (!unlocked) {
+    const activeTab = document.querySelector('.gh-tab.active');
+    if (activeTab?.dataset?.tab === 'imagine') {
+      switchTab('rtc');
+    }
+  }
+}
+
+function ensureImagineCrashBehaviorOption(unlocked) {
+  if (!elements.crashBehavior) return;
+
+  let imagineFixOption = elements.crashBehavior.querySelector('option[value="ImagineFix"]');
+  if (unlocked) {
+    if (!imagineFixOption) {
+      imagineFixOption = document.createElement('option');
+      imagineFixOption.value = 'ImagineFix';
+      imagineFixOption.textContent = 'Imagine Fix';
+      elements.crashBehavior.appendChild(imagineFixOption);
+    }
+    return;
+  }
+
+  if (imagineFixOption) {
+    imagineFixOption.remove();
+  }
+
+  if (elements.crashBehavior.value === 'ImagineFix') {
+    elements.crashBehavior.value = 'IgnoreErrors';
+  }
+}
 
 function initializeElements() {
   // RTC
@@ -351,12 +430,27 @@ function attachEventListeners() {
       hideConfirmModal();
     }
   });
+
+  window.addEventListener('focus', () => {
+    syncImagineUnlockState().catch(error => {
+      console.warn('[GH] Failed to refresh Imagine unlock state on focus:', error);
+    });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    syncImagineUnlockState().catch(error => {
+      console.warn('[GH] Failed to refresh Imagine unlock state after visibility change:', error);
+    });
+  });
 }
 
 // ==================== Real-Time Corruptor ====================
 
 async function loadRTCState() {
   console.log('[RTC] Loading RTC state...');
+
+  ensureImagineCrashBehaviorOption(imagineBugUnlocked);
   
   // Load domains
   await refreshDomains();
@@ -381,16 +475,24 @@ async function loadRTCState() {
   
   const crashData = await api.rtc.getCrashBehavior();
   if (crashData.success) {
-    console.log('[RTC] Crash behavior from API:', crashData.crashBehavior);
+    const effectiveCrashBehavior = (crashData.crashBehavior === 'ImagineFix' && !imagineBugUnlocked)
+      ? 'IgnoreErrors'
+      : crashData.crashBehavior;
+
+    if (effectiveCrashBehavior !== crashData.crashBehavior) {
+      await api.rtc.setCrashBehavior(effectiveCrashBehavior);
+    }
+
+    console.log('[RTC] Crash behavior from API:', effectiveCrashBehavior);
     if (elements.crashBehavior) {
-      elements.crashBehavior.value = crashData.crashBehavior;
+      elements.crashBehavior.value = effectiveCrashBehavior;
       console.log('[RTC] Crash behavior dropdown value set to:', elements.crashBehavior.value);
     } else {
       console.error('[RTC] Crash behavior dropdown element is null!');
     }
-    currentCrashBehavior = crashData.crashBehavior;
-    updateCrashStatus(crashData.crashed, crashData.crashBehavior);
-    startCrashPolling(crashData.crashBehavior);
+    currentCrashBehavior = effectiveCrashBehavior;
+    updateCrashStatus(crashData.crashed, effectiveCrashBehavior);
+    startCrashPolling(effectiveCrashBehavior);
   } else {
     console.error('[RTC] Failed to load crash behavior:', crashData.error);
   }
@@ -599,6 +701,10 @@ function formatSize(bytes) {
 // ==================== Tab Switching ====================
 
 function switchTab(tabName) {
+  if (tabName === 'imagine' && !imagineBugUnlocked) {
+    tabName = 'rtc';
+  }
+
   console.log('[GH] Switching to tab:', tabName);
   
   // Update tab buttons

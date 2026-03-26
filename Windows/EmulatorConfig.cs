@@ -171,6 +171,12 @@ namespace BrokenNes.Windows
         public bool ShowLockedItems { get; set; } = false;
 
         /// <summary>
+        /// Continue accepting keyboard input when emulator window is not focused
+        /// </summary>
+        [JsonPropertyName("acceptBackgroundInput")]
+        public bool AcceptBackgroundInput { get; set; } = false;
+
+        /// <summary>
         /// Allow webmodules to trigger quick savestate shortcuts for debugging
         /// </summary>
         [JsonPropertyName("enableWebmoduleSavestateDebugShortcuts")]

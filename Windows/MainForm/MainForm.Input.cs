@@ -73,6 +73,7 @@ namespace BrokenNes.Windows
                         if (inputManager2 == null)
                         {
                             inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
+                            inputManager2.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
                         }
                         inputManager2.SetPlayerConfig(playerConfig);
                     }

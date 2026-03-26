@@ -237,6 +237,18 @@ namespace BrokenNes.Windows
             }
         }
 
+        private void ToggleAcceptBackgroundInput_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                Helpers.ConfigHelper.Update(config, c => c.AcceptBackgroundInput = menuItem.Checked);
+
+                Console.WriteLine($"Accept Background Input set to: {config.AcceptBackgroundInput}");
+
+                UpdateConfigMenus();
+            }
+        }
+
         private void ToggleBootToEmulator_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)

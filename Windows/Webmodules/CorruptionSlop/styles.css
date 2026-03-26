@@ -61,3 +61,101 @@ html, body {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
+
+.funny-box {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  width: 140px;
+  padding: 6px 7px 8px;
+  background: rgba(8, 8, 8, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  z-index: 9999;
+}
+
+.funny-label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 10px;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.9);
+  user-select: none;
+}
+
+.funny-knob-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.funny-knob {
+  --knob-angle: 0deg;
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  cursor: ns-resize;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.06) 35%, rgba(0, 0, 0, 0.5) 100%),
+    linear-gradient(160deg, #585858 0%, #222222 45%, #0f0f0f 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.22),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+  user-select: none;
+}
+
+.funny-knob::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 45% 40%, #747474 0%, #3a3a3a 55%, #171717 100%);
+}
+
+.funny-knob::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #f6f6f6 0%, #ff9f2d 100%);
+  transform: translate(-50%, -85%) rotate(var(--knob-angle));
+  transform-origin: 50% calc(100% + 7px);
+  box-shadow: 0 0 4px rgba(255, 168, 56, 0.75);
+}
+
+.funny-knob:hover {
+  filter: brightness(1.07);
+}
+
+.funny-knob:active {
+  transform: translateY(1px);
+}
+
+.funny-knob:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.funny-value {
+  min-width: 54px;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: right;
+  white-space: pre-line;
+}

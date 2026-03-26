@@ -44,11 +44,11 @@ These are the level templates currently loaded from ContinueDB (`levels` store).
 | 8 | 10 | APU_QN |
 | 9 | 11 | APU_SPD, PPU_SPD, CPU_SPD, SHADER_BUMP |
 | 10 | 13 | APU_QLOW, CPU_EIL, SHADER_SPK |
-| 11 | 14 | APU_WF, SHADER_TV, PPU_LQ, CPU_LOW |
+| 11 | 14 | APU_LQ, SHADER_TV, PPU_LQ, CPU_LOW |
 | 12 | 16 | (none) |
 | 13 | 17 | APU_QLQ, CPU_EIL, PPU_EIL, SHADER_LSD |
 | 14 | 18 | SHADER_LCD, PPU_BFR, APU_QLQ2, CPU_SPD |
-| 15 | 19 | SHADER_EXE, APU_LQ |
+| 15 | 19 | SHADER_EXE, APU_ULQ |
 | 16 | 20 | CPU_EIL, PPU_CUBE, APU_EIL, SHADER_BLD |
 
 ## Post-16 behavior

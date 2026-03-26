@@ -17,6 +17,7 @@ const levelDurationMs = 15000; // 15 seconds per level
 let levelStartTime = null;
 let levelProgressInterval = null;
 let autoCorruptEnabled = false;
+const stateProgressByHash = new Map();
 
 // DOM Elements
 const elements = {
@@ -36,6 +37,8 @@ const elements = {
   btnReset: null,
   levelDisplay: null,
   levelProgressBar: null,
+  levelProgressText: null,
+  timelineStatus: null,
   
   // Toast
   toast: null
@@ -71,6 +74,8 @@ function initializeElements() {
   elements.btnReset = document.getElementById('btnReset');
   elements.levelDisplay = document.getElementById('levelDisplay');
   elements.levelProgressBar = document.getElementById('levelProgressBar');
+  elements.levelProgressText = document.getElementById('levelProgressText');
+  elements.timelineStatus = document.getElementById('timelineStatus');
   
   // Toast
   elements.toast = document.getElementById('toast');
@@ -98,10 +103,11 @@ function updateJumpButtonState() {
 }
 
 function addStateBlock(stateHash, thumbnailBase64) {
+  const snapshot = getCurrentProgressSnapshot();
   const block = document.createElement('div');
   block.className = 'tj-state-block';
   block.dataset.hash = stateHash; // Store the actual state hash
-  block.title = `State: ${stateHash.substring(0, 8)}...`; // Show hash on hover
+  block.title = `State: ${stateHash.substring(0, 8)}... | L${snapshot.level} ${snapshot.progressPercent.toFixed(1)}%`; // Show hash/progress on hover
   
   // Set the thumbnail as background if available
   if (thumbnailBase64) {
@@ -191,6 +197,7 @@ function removeStateBlocksByHash(hashes, loadedHash) {
         block.classList.add(isLoaded ? 'loaded' : 'burning');
         setTimeout(() => {
           block.remove();
+          stateProgressByHash.delete(hash);
           // Recalculate grid layout after removal
           updateGridLayout();
         }, 500); // Match animation duration
@@ -208,6 +215,56 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
+function getCurrentProgressSnapshot() {
+  if (!levelStartTime) {
+    return {
+      level: currentLevel,
+      progressPercent: 0,
+      totalProgress: currentLevel
+    };
+  }
+
+  const elapsed = Math.max(0, Date.now() - levelStartTime);
+  const rawProgress = (elapsed / levelDurationMs) * 100;
+  const progressPercent = Math.max(0, Math.min(rawProgress, 99.9));
+
+  return {
+    level: currentLevel,
+    progressPercent,
+    totalProgress: currentLevel + (progressPercent / 100)
+  };
+}
+
+function setProgressFromSnapshot(snapshot, reason = 'current run') {
+  if (!snapshot) return;
+
+  currentLevel = snapshot.level;
+  const elapsedForLevel = (snapshot.progressPercent / 100) * levelDurationMs;
+  levelStartTime = Date.now() - elapsedForLevel;
+
+  updateLevelDisplay();
+  updateLevelProgress();
+
+  if (elements.timelineStatus) {
+    elements.timelineStatus.textContent = `Timeline anchor: ${reason}`;
+  }
+}
+
+function updateTimelineShift(previousSnapshot, nextSnapshot) {
+  if (!elements.timelineStatus || !previousSnapshot || !nextSnapshot) return;
+
+  const delta = nextSnapshot.totalProgress - previousSnapshot.totalProgress;
+
+  if (Math.abs(delta) < 0.01) {
+    elements.timelineStatus.textContent = 'Timeline anchor: same progression point';
+    return;
+  }
+
+  const direction = delta > 0 ? 'future' : 'past';
+  const magnitude = Math.abs(delta).toFixed(2);
+  elements.timelineStatus.textContent = `Timeline anchor: ${direction} (${magnitude} levels from previous)`;
+}
+
 // ==================== Level Progression ====================
 
 function startLevelProgression() {
@@ -215,7 +272,11 @@ function startLevelProgression() {
   
   currentLevel = 0;
   levelStartTime = Date.now();
+  if (elements.timelineStatus) {
+    elements.timelineStatus.textContent = 'Timeline anchor: current run';
+  }
   updateLevelDisplay();
+  updateLevelProgress();
   
   // Update progress bar every 100ms for smooth animation
   levelProgressInterval = setInterval(updateLevelProgress, 100);
@@ -231,6 +292,14 @@ function stopLevelProgression() {
   
   currentLevel = 0;
   levelStartTime = null;
+
+  if (elements.levelProgressText) {
+    elements.levelProgressText.textContent = '0.0%';
+  }
+
+  if (elements.timelineStatus) {
+    elements.timelineStatus.textContent = 'Timeline anchor: current run';
+  }
 }
 
 function updateLevelProgress() {
@@ -243,6 +312,10 @@ function updateLevelProgress() {
   if (elements.levelProgressBar) {
     elements.levelProgressBar.style.width = `${progress}%`;
   }
+
+  if (elements.levelProgressText) {
+    elements.levelProgressText.textContent = `${progress.toFixed(1)}%`;
+  }
   
   // Check if level should increase
   if (progress >= 100) {
@@ -251,8 +324,14 @@ function updateLevelProgress() {
 }
 
 function updateLevelDisplay() {
+  const snapshot = getCurrentProgressSnapshot();
+
   if (elements.levelDisplay) {
     elements.levelDisplay.textContent = `Level ${currentLevel}`;
+  }
+
+  if (elements.levelProgressText) {
+    elements.levelProgressText.textContent = `${snapshot.progressPercent.toFixed(1)}%`;
   }
 }
 
@@ -266,6 +345,10 @@ async function levelUp() {
   // Reset progress bar
   if (elements.levelProgressBar) {
     elements.levelProgressBar.style.width = '0%';
+  }
+
+  if (elements.levelProgressText) {
+    elements.levelProgressText.textContent = '0.0%';
   }
   
   showToast(`Level ${currentLevel}!`, 'success');
@@ -459,6 +542,7 @@ async function startTimeJump() {
   captureCount = 0;
   availableStatesCount = 0;
   currentLevel = 0;
+  stateProgressByHash.clear();
   startTime = Date.now();
   nextCaptureTime = startTime + (intervalSeconds * 1000);
   isRunning = true;
@@ -564,6 +648,7 @@ async function resetTimeJump() {
       captureCount = 0;
       availableStatesCount = 0;
       currentLevel = 0;
+      stateProgressByHash.clear();
       
       // Reset level display
       if (elements.levelDisplay) {
@@ -631,6 +716,9 @@ async function captureState() {
       
       // Add a visual block for the captured state with its hash and thumbnail
       addStateBlock(result.stateHash, result.thumbnail);
+
+      // Persist progress metadata for this state so jumps restore timeline context
+      stateProgressByHash.set(result.stateHash, getCurrentProgressSnapshot());
       
       // Update jump button state
       updateJumpButtonState();
@@ -657,6 +745,7 @@ async function captureState() {
 
 async function performJump() {
   console.log('[TimeJump] Performing jump...');
+  const previousSnapshot = getCurrentProgressSnapshot();
   
   try {
     // Call API to perform time jump
@@ -669,6 +758,15 @@ async function performJump() {
       
       // Sync with backend state
       availableStatesCount = result.availableStates;
+
+      // Restore level/progress from loaded state if we have a snapshot
+      const loadedSnapshot = stateProgressByHash.get(result.loadedHash);
+      if (loadedSnapshot) {
+        setProgressFromSnapshot(loadedSnapshot, `jumped to L${loadedSnapshot.level} ${loadedSnapshot.progressPercent.toFixed(1)}%`);
+        updateTimelineShift(previousSnapshot, loadedSnapshot);
+      } else if (elements.timelineStatus) {
+        elements.timelineStatus.textContent = 'Timeline anchor: state has no progress metadata';
+      }
       
       // Remove the specific blocks that correspond to the burned states
       removeStateBlocksByHash(result.burnedHashes, result.loadedHash);
@@ -692,6 +790,7 @@ async function performJump() {
 
 async function performStateQuery(queryHash) {
   console.log('[TimeJump] Querying state:', queryHash.substring(0, 8) + '...');
+  const previousSnapshot = getCurrentProgressSnapshot();
   
   try {
     // Call API to query a specific state (loads random from top 3, burns top 8)
@@ -704,6 +803,15 @@ async function performStateQuery(queryHash) {
       
       // Sync with backend state
       availableStatesCount = result.availableStates;
+
+      // Restore level/progress from loaded state if we have a snapshot
+      const loadedSnapshot = stateProgressByHash.get(result.loadedHash);
+      if (loadedSnapshot) {
+        setProgressFromSnapshot(loadedSnapshot, `queried L${loadedSnapshot.level} ${loadedSnapshot.progressPercent.toFixed(1)}%`);
+        updateTimelineShift(previousSnapshot, loadedSnapshot);
+      } else if (elements.timelineStatus) {
+        elements.timelineStatus.textContent = 'Timeline anchor: state has no progress metadata';
+      }
       
       // Remove the specific blocks that correspond to the burned states
       removeStateBlocksByHash(result.burnedHashes, result.loadedHash);

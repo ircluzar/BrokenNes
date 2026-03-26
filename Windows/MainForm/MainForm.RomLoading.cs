@@ -86,6 +86,7 @@ namespace BrokenNes.Windows
             // Create new NES instance
             lock (emulationLock)
             {
+                SaveBatteryRamForNes(nes);
                 nes = new NES();
                 nes.LoadROM(romData);
                 nes.RomName = romName;
@@ -109,6 +110,7 @@ namespace BrokenNes.Windows
             BuildMemoryDomains();
             ApplySoundSettings();
             UpdateCoresMenus();
+            LoadBatteryRamForCurrentRom();
 
             var fileMenu = this.MainMenuStrip?.Items.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text == "&Emulator");
             if (fileMenu != null)
@@ -134,6 +136,8 @@ namespace BrokenNes.Windows
                 return;
             
             Console.WriteLine($"Closing current ROM: {nes.RomName}");
+
+            SaveBatteryRamForCurrentRom();
             
             // Save state for the current game
             SaveContinueState();
@@ -162,6 +166,8 @@ namespace BrokenNes.Windows
                 return;
 
             Console.WriteLine($"[WebApi] Closing current ROM without saving continue checkpoint: {nes.RomName}");
+
+            SaveBatteryRamForCurrentRom();
 
             // Intentionally do not save continue state here; API-driven transitions may be
             // preparing to restore a trusted continue checkpoint immediately afterward.
@@ -390,6 +396,7 @@ namespace BrokenNes.Windows
                     // Create new NES instance
                     lock (emulationLock)
                     {
+                        SaveBatteryRamForNes(nes);
                         nes = new NES();
                         nes.LoadROM(romData);
                         nes.RomName = "test.nes";
@@ -411,6 +418,7 @@ namespace BrokenNes.Windows
 
                     // Apply image settings (will force Pixel Perfect for Test ROM)
                     ApplyImageSettings();
+                    LoadBatteryRamForCurrentRom();
                     
                     // Update cores menus
                     UpdateCoresMenus();
@@ -547,9 +555,13 @@ namespace BrokenNes.Windows
                         if (nes == null)
                             nes = new NES();
                         
+                        SaveBatteryRamForNes(nes);
+                        
                         nes.RomName = filename;
                         nes.RomPath = romPath;
                         nes.LoadROM(romData);
+                        currentRomPath = romPath;
+                        LoadBatteryRamForCurrentRom();
                         
                         // Apply core selections
                         ApplySavedCoreSelections();

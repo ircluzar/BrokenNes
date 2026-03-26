@@ -32,6 +32,7 @@ namespace BrokenNes.Windows
         
         private bool useController = false;
         private UserIndex controllerIndex;
+        private Func<bool>? keyboardFocusProvider;
         
         public InputManager(UserIndex controllerIndex = UserIndex.One)
         {
@@ -90,6 +91,14 @@ namespace BrokenNes.Windows
             
             Console.WriteLine($"Input manager configured for Player {config.PlayerNumber} with new binding system");
         }
+
+        /// <summary>
+        /// Set a callback that indicates whether keyboard input should be accepted.
+        /// </summary>
+        public void SetKeyboardFocusProvider(Func<bool> focusProvider)
+        {
+            keyboardFocusProvider = focusProvider;
+        }
         
         /// <summary>
         /// Handle keyboard key down (Legacy event-based - now using polling)
@@ -121,6 +130,10 @@ namespace BrokenNes.Windows
         {
             // Reset keyboard states before polling
             Array.Clear(keyboardStates, 0, keyboardStates.Length);
+
+            // Ignore keyboard polling when the emulator window is not focused.
+            if (keyboardFocusProvider != null && !keyboardFocusProvider())
+                return;
 
             // Optimization: Skip keyboard polling if only using gamepad
             if (playerConfig != null && playerConfig.DeviceType == InputDeviceType.Gamepad)

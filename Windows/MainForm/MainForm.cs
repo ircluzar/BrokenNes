@@ -167,6 +167,7 @@ namespace BrokenNes.Windows
             
             if (!isTestRom && nes != null && !string.IsNullOrEmpty(currentRomPath))
             {
+                SaveBatteryRamForCurrentRom();
                 // Auto-save "continue.png" on exit for non-test ROMs
                 SaveContinueState();
             }

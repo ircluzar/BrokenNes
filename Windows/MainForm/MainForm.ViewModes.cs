@@ -71,6 +71,13 @@ namespace BrokenNes.Windows
         /// <param name="skipNavigation">If true, don't navigate WebView (useful when caller will navigate)</param>
         private async void SwitchViewMode(ViewMode mode, bool skipNavigation = false)
         {
+            if (mode != ViewMode.Emulator)
+            {
+                overlayPreviewMenuOpenCount = 0;
+                isOverlayPreviewVisible = false;
+                isOverlayPreloadedForEmulator = false;
+            }
+
             // Check availability - only show message if we are trying to use a web mode
             bool isWebMode = (mode == ViewMode.Widget || mode == ViewMode.Overlay || mode == ViewMode.Web);
             if (isWebMode)
@@ -137,6 +144,11 @@ namespace BrokenNes.Windows
             this.ResumeLayout();
             this.PerformLayout();
             this.Refresh();
+
+            if (mode == ViewMode.Emulator)
+            {
+                _ = EnsureOverlayPreloadedForEmulatorAsync();
+            }
         }
 
         /// <summary>
@@ -151,10 +163,141 @@ namespace BrokenNes.Windows
             {
                 webView.CoreWebView2.Stop();
                 webView.CoreWebView2.Navigate("about:blank");
+                isOverlayPreloadedForEmulator = false;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[UnloadWebModuleContent] Error: {ex.Message}");
+            }
+        }
+
+        private WebModuleInfo? FindOverlayWebModule()
+        {
+            var webModules = WebModuleManager.DiscoverModules();
+            return System.Linq.Enumerable.FirstOrDefault(webModules, m =>
+                string.Equals(m.FolderName, "Overlay", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private async Task EnsureOverlayPreloadedForEmulatorAsync()
+        {
+            if (currentViewMode != ViewMode.Emulator || webView == null || !isWebViewInitialized)
+            {
+                return;
+            }
+
+            if (isOverlayPreloadedForEmulator)
+            {
+                return;
+            }
+
+            try
+            {
+                await EnsureWebApiServerRunningAsync();
+
+                var overlayModule = FindOverlayWebModule();
+                if (overlayModule == null || !overlayModule.IsValid)
+                {
+                    return;
+                }
+
+                webView.DefaultBackgroundColor = Color.Transparent;
+                Helpers.WebViewHelper.NavigateToUri(webView, overlayModule.GetVirtualHostUri());
+                isOverlayPreloadedForEmulator = true;
+                isOverlayPreviewVisible = false;
+
+                int menuHeight = GetEffectiveMenuHeight();
+                int availableHeight = this.ClientSize.Height - menuHeight;
+                Helpers.WebViewHelper.SetLayout(webView,
+                    new Point(0, menuHeight),
+                    new Size(this.ClientSize.Width, availableHeight));
+                webView.Visible = false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OverlayPreview] Preload failed: {ex.Message}");
+                isOverlayPreloadedForEmulator = false;
+            }
+        }
+
+        private async Task<bool> EnsureOverlayPreviewVisibleAsync()
+        {
+            if (currentViewMode != ViewMode.Emulator || webView == null || webView.CoreWebView2 == null)
+            {
+                return false;
+            }
+
+            await EnsureOverlayPreloadedForEmulatorAsync();
+            if (!isOverlayPreloadedForEmulator)
+            {
+                return false;
+            }
+
+            int menuHeight = GetEffectiveMenuHeight();
+            int availableHeight = this.ClientSize.Height - menuHeight;
+            webView.DefaultBackgroundColor = Color.Transparent;
+            Helpers.WebViewHelper.SetLayout(webView,
+                new Point(0, menuHeight),
+                new Size(this.ClientSize.Width, availableHeight));
+            webView.Visible = true;
+            isOverlayPreviewVisible = true;
+            return true;
+        }
+
+        private async Task HideOverlayPreviewAsync()
+        {
+            if (currentViewMode != ViewMode.Emulator || !isOverlayPreviewVisible || webView == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (webView.CoreWebView2 != null)
+                {
+                    await webView.CoreWebView2.ExecuteScriptAsync("if (typeof window.clearCard === 'function') { window.clearCard(); }");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OverlayPreview] Clear failed: {ex.Message}");
+            }
+
+            webView.Visible = false;
+            isOverlayPreviewVisible = false;
+        }
+
+        private async void BeginOverlayPreviewForMenu(object? sender, EventArgs e)
+        {
+            if (currentViewMode != ViewMode.Emulator)
+            {
+                return;
+            }
+
+            overlayPreviewMenuOpenCount++;
+            if (overlayPreviewMenuOpenCount == 1)
+            {
+                await EnsureOverlayPreviewVisibleAsync();
+            }
+        }
+
+        private async void EndOverlayPreviewForMenu(object? sender, EventArgs e)
+        {
+            RequestOverlayClearCard();
+
+            if (currentViewMode != ViewMode.Emulator)
+            {
+                overlayPreviewMenuOpenCount = 0;
+                return;
+            }
+
+            if (overlayPreviewMenuOpenCount > 0)
+            {
+                overlayPreviewMenuOpenCount--;
+            }
+
+            if (overlayPreviewMenuOpenCount == 0)
+            {
+                await HideOverlayPreviewAsync();
             }
         }
 
@@ -183,7 +326,16 @@ namespace BrokenNes.Windows
                         displayPanel.Size = new Size(this.ClientSize.Width, availableHeight);
                     }
 
-                    if (webView != null) webView.Visible = false;
+                    if (webView != null)
+                    {
+                        if (isOverlayPreviewVisible)
+                        {
+                            Helpers.WebViewHelper.SetLayout(webView,
+                                new Point(0, menuHeight),
+                                new Size(this.ClientSize.Width, availableHeight));
+                        }
+                        webView.Visible = isOverlayPreviewVisible;
+                    }
 
                     // Center the viewport
                     if (useDirectX && dxRenderer != null)
@@ -440,14 +592,31 @@ namespace BrokenNes.Windows
         /// <param name="coreId">The core ID to display</param>
         private async void RequestOverlayDisplayCard(string domain, string coreId)
         {
-            // Only send to overlay if we're in overlay mode and webView is initialized
-            if (currentViewMode != ViewMode.Overlay || webView?.CoreWebView2 == null)
+            bool isDirectOverlayMode = currentViewMode == ViewMode.Overlay;
+            bool isEmulatorPreviewMode = currentViewMode == ViewMode.Emulator;
+            if (!isDirectOverlayMode && !isEmulatorPreviewMode)
+            {
+                return;
+            }
+
+            if (isEmulatorPreviewMode)
+            {
+                var activated = await EnsureOverlayPreviewVisibleAsync();
+                if (!activated)
+                {
+                    return;
+                }
+            }
+
+            if (webView?.CoreWebView2 == null)
                 return;
                 
             try
             {
                 // Call the JavaScript displayCard function exposed by overlay.js
-                string script = $"if (typeof window.displayCard === 'function') {{ window.displayCard('{domain}', '{coreId}'); }}";
+                string safeDomain = domain.Replace("\\", "\\\\").Replace("'", "\\'");
+                string safeCoreId = coreId.Replace("\\", "\\\\").Replace("'", "\\'");
+                string script = $"if (typeof window.displayCard === 'function') {{ window.displayCard('{safeDomain}', '{safeCoreId}'); }}";
                 await webView.CoreWebView2.ExecuteScriptAsync(script);
             }
             catch (Exception ex)
@@ -461,8 +630,14 @@ namespace BrokenNes.Windows
         /// </summary>
         private async void RequestOverlayClearCard()
         {
-            // Only send to overlay if we're in overlay mode and webView is initialized
-            if (currentViewMode != ViewMode.Overlay || webView?.CoreWebView2 == null)
+            bool isDirectOverlayMode = currentViewMode == ViewMode.Overlay;
+            bool isEmulatorPreviewMode = currentViewMode == ViewMode.Emulator && isOverlayPreviewVisible;
+            if (!isDirectOverlayMode && !isEmulatorPreviewMode)
+            {
+                return;
+            }
+
+            if (webView?.CoreWebView2 == null)
                 return;
                 
             try

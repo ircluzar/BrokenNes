@@ -139,6 +139,7 @@ namespace BrokenNes.Windows
 
                 // Core-based slowdown (CPU_ULQ) should not trigger audio-driven catch-up.
                 bool cpuUlq = false;
+                bool apuNoteEventMode = false;
                 float coreSpeedMultiplier = 1.0f;
                 if (nes != null)
                 {
@@ -150,13 +151,15 @@ namespace BrokenNes.Windows
                             cpuUlq = true;
                             coreSpeedMultiplier = 0.75f;
                         }
+
+                        apuNoteEventMode = nes.IsApuNoteEventModeActive();
                     }
                     catch { }
                 }
 
                 if (!hasSpeedOverride)
                 {
-                    // Slow audio for ULQ; otherwise keep normal playback.
+                    // Slow audio for ULQ; note-event (MIDI) mode has no PCM buffer to steer against.
                     float targetSpeed = cpuUlq ? coreSpeedMultiplier : 1.0f;
                     audioManager?.SetSpeedMultiplier(targetSpeed, preserveBuffer: true);
                 }
@@ -189,9 +192,9 @@ namespace BrokenNes.Windows
                         Thread.Sleep(1); // Small sleep to prevent CPU spinning
                     }
                 }
-                else if (cpuUlq)
+                else if (cpuUlq || apuNoteEventMode)
                 {
-                    // Time-based pacing for ULQ: avoid audio-driven catch-up that would speed emulation.
+                    // Time-based pacing for ULQ and note-event APUs: avoid audio-driven catch-up speedups.
                     double deltaTime = stopwatch.Elapsed.TotalSeconds;
                     stopwatch.Restart();
                     accumulator += deltaTime;

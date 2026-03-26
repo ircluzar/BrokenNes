@@ -69,6 +69,33 @@
     }
   }
 
+  function readLaunchPayloadFromQuery() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const romKeyRaw = params.get('romKey');
+      if (!romKeyRaw || !romKeyRaw.trim()) {
+        return null;
+      }
+
+      const romKey = romKeyRaw.trim();
+      const modeRaw = (params.get('mode') || 'continue').trim().toLowerCase();
+      const mode = modeRaw === 'stage' ? 'stage' : 'continue';
+      const titleRaw = params.get('title');
+      const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : romKey;
+
+      return {
+        mode,
+        romKey,
+        title,
+        createdAt: new Date().toISOString(),
+        cores: null
+      };
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to parse launch payload from query:', error);
+      return null;
+    }
+  }
+
   async function getPreferredNullProviderId() {
     try {
       const save = await window.gameSave.load();
@@ -453,6 +480,14 @@
   async function autoInitialize() {
     achievementsOverlay.innerHTML = '<div class="loading">Loading...</div>';
     launchPayload = readPayload(WORKFLOW_LAUNCH_KEY);
+
+    if (!launchPayload || !launchPayload.romKey) {
+      const queryPayload = readLaunchPayloadFromQuery();
+      if (queryPayload && queryPayload.romKey) {
+        launchPayload = queryPayload;
+        writePayload(WORKFLOW_LAUNCH_KEY, queryPayload);
+      }
+    }
 
     if (!launchPayload || !launchPayload.romKey) {
       achievementsOverlay.innerHTML = '<div class="empty-state">No launch payload found.</div>';

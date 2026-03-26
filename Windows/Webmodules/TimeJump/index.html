@@ -28,6 +28,12 @@
             </button>
           </div>
 
+          <div class="tj-mode-explainer" role="note" aria-label="Time Jump mode explanation">
+            <p>
+              Time Jump lets you attempt playing a game while being corrupted and adds context-sensitive rewind. Time travel in this mode is not linear to your gameplay but to the game's context itself. It uses memory similarity to let you travel across parallel timelines as you Jump in Time.
+            </p>
+          </div>
+
           <div id="errorMessage" class="tj-error-message" style="display: none;"></div>
         </div>
       </section>
@@ -56,6 +62,8 @@
             <div class="tj-level-progress">
               <div id="levelProgressBar" class="tj-level-progress-bar"></div>
             </div>
+            <div id="levelProgressText" class="tj-level-progress-text">0.0%</div>
+            <div id="timelineStatus" class="tj-timeline-status">Timeline anchor: current run</div>
           </div>
 
           <div class="tj-visualization">

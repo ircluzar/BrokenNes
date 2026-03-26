@@ -20,6 +20,7 @@ namespace BrokenNes.Windows
         private UserIndex controllerIndex;
         
         private PlayerControllerConfig? playerConfig;
+        private Func<bool>? keyboardFocusProvider;
         
         // Track previous state to detect button press/release events
         private bool previousXKeyboard = false;
@@ -64,6 +65,14 @@ namespace BrokenNes.Windows
             
             Console.WriteLine($"[WebModuleInput] Configured for {config.DeviceType} device");
         }
+
+        /// <summary>
+        /// Set a callback that indicates whether keyboard input should be accepted.
+        /// </summary>
+        public void SetKeyboardFocusProvider(Func<bool> focusProvider)
+        {
+            keyboardFocusProvider = focusProvider;
+        }
         
         /// <summary>
         /// Poll X/Y button state and fire events on state changes
@@ -79,8 +88,16 @@ namespace BrokenNes.Windows
             // Poll keyboard
             if (playerConfig.DeviceType == InputDeviceType.Keyboard)
             {
-                currentX = IsKeyPressed(playerConfig.X.Key);
-                currentY = IsKeyPressed(playerConfig.Y.Key);
+                if (keyboardFocusProvider != null && !keyboardFocusProvider())
+                {
+                    currentX = false;
+                    currentY = false;
+                }
+                else
+                {
+                    currentX = IsKeyPressed(playerConfig.X.Key);
+                    currentY = IsKeyPressed(playerConfig.Y.Key);
+                }
                 
                 // Check for state changes
                 if (currentX && !previousXKeyboard)
