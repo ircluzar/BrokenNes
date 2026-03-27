@@ -14,6 +14,26 @@ namespace BrokenNes.Windows.WebApi
         /// </summary>
         private void RegisterCardEndpoints(WebApplication app)
         {
+            app.MapGet("/api/card/catalog", () =>
+            {
+                var cards = AuthoredCardCatalog.GetAllDefinitions()
+                    .Select(card => new
+                    {
+                        domain = card.Domain,
+                        id = card.Id,
+                        shortName = card.ShortName,
+                        displayName = card.DisplayName,
+                        description = card.Description,
+                        rating = card.Rating,
+                        performance = card.Performance,
+                        category = card.Category,
+                        footerNote = card.FooterNote
+                    })
+                    .ToArray();
+
+                return Results.Ok(new { success = true, cards });
+            });
+
             // GET /api/card/{domain}/{id} - Get SVG for a specific card
             app.MapGet("/api/card/{domain}/{id}", (string domain, string id) =>
             {
@@ -26,7 +46,12 @@ namespace BrokenNes.Windows.WebApi
                     CoreCardModel? cardModel = null;
                     var normalizedDomain = domain.ToUpperInvariant();
 
-                    if (normalizedDomain == "CPU")
+                    if (AuthoredCardCatalog.TryBuildCardModel(normalizedDomain, id, out var authoredCardModel))
+                    {
+                        cardModel = authoredCardModel;
+                    }
+
+                    if (cardModel == null && normalizedDomain == "CPU")
                     {
                         var cpuTypes = CoreRegistry.CpuTypes;
                         if (cpuTypes.TryGetValue(id, out var type))
@@ -44,7 +69,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "PPU")
+                    else if (cardModel == null && normalizedDomain == "PPU")
                     {
                         var ppuTypes = CoreRegistry.PpuTypes;
                         if (ppuTypes.TryGetValue(id, out var type))
@@ -62,7 +87,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "APU")
+                    else if (cardModel == null && normalizedDomain == "APU")
                     {
                         var apuTypes = CoreRegistry.ApuTypes;
                         if (apuTypes.TryGetValue(id, out var type))
@@ -80,7 +105,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "CLOCK")
+                    else if (cardModel == null && normalizedDomain == "CLOCK")
                     {
                         // ClockRegistry not available in Windows project - return placeholder
                         cardModel = new CoreCardModel
@@ -95,7 +120,7 @@ namespace BrokenNes.Windows.WebApi
                             Domain = "CLOCK"
                         };
                     }
-                    else if (normalizedDomain == "SHADER")
+                    else if (cardModel == null && normalizedDomain == "SHADER")
                     {
                         // Get shader metadata from HLSL file comments
                         var shaderInfo = Rendering.NesShaderControl.GetShaderInfoById(id);
@@ -129,7 +154,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "WEBMODULE")
+                    else if (cardModel == null && normalizedDomain == "WEBMODULE")
                     {
                         var module = WebModuleManager.DiscoverModules()
                             .FirstOrDefault(entry => entry.FolderName.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -151,7 +176,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "BACKGROUND")
+                    else if (cardModel == null && normalizedDomain == "BACKGROUND")
                     {
                         var normalizedId = NormalizeBackgroundId(id);
                         var backgroundName = Rendering.NesDirectXRenderer.GetAvailableBackgrounds()
@@ -172,7 +197,7 @@ namespace BrokenNes.Windows.WebApi
                             };
                         }
                     }
-                    else if (normalizedDomain == "NULLPROVIDER")
+                    else if (cardModel == null && normalizedDomain == "NULLPROVIDER")
                     {
                         var providerName = NullProviderRegistry.GetAvailableProviders()
                             .FirstOrDefault(name => name.Equals(id, StringComparison.OrdinalIgnoreCase));

@@ -71,12 +71,47 @@ namespace BrokenNes.Windows.WebApi
                     .OrderBy(entry => entry.id, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
+                var features = new[]
+                {
+                    new
+                    {
+                        id = "Savestates",
+                        unlocked = save.SavestatesUnlocked,
+                        derivedFrom = "TimeJump"
+                    },
+                    new
+                    {
+                        id = "RTC",
+                        unlocked = save.RtcUnlocked,
+                        derivedFrom = "GlitchHarvester"
+                    },
+                    new
+                    {
+                        id = "GH",
+                        unlocked = save.GhUnlocked,
+                        derivedFrom = "GlitchHarvester"
+                    },
+                    new
+                    {
+                        id = "Imagine",
+                        unlocked = save.ImagineUnlocked,
+                        derivedFrom = "ImagineBug"
+                    },
+                    new
+                    {
+                        id = "Debug",
+                        unlocked = save.DebugUnlocked,
+                        derivedFrom = string.Empty
+                    }
+                };
+
                 return Results.Ok(new
                 {
                     success = true,
                     webmodules,
                     backgrounds,
-                    nullProviders
+                    nullProviders,
+                    features
                 });
             });
 

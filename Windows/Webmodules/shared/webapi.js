@@ -346,7 +346,8 @@
 
     card: {
       getUrl: (domain, id) => buildUrl(`/api/card/${encodeURIComponent(domain)}/${encodeURIComponent(id)}`),
-      getSvg: (domain, id) => request('/api/card/' + encodeURIComponent(domain) + '/' + encodeURIComponent(id), { responseType: 'text' })
+      getSvg: (domain, id) => request('/api/card/' + encodeURIComponent(domain) + '/' + encodeURIComponent(id), { responseType: 'text' }),
+      getCatalog: () => request('/api/card/catalog')
     },
 
     audio: {

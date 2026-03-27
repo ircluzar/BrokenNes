@@ -92,6 +92,8 @@
       // Fetch all core metadata from API
       const data = api?.cores?.list ? await api.cores.list() : null;
       const roster = api?.progression?.getRoster ? await api.progression.getRoster() : null;
+      const authoredCatalog = api?.card?.getCatalog ? await api.card.getCatalog() : null;
+      const authoredCardIndex = createAuthoredCardIndex(authoredCatalog);
       console.log('Cores metadata from API:', data);
       console.log('Owned sets - CPU:', ownedCpu.size, 'PPU:', ownedPpu.size, 'APU:', ownedApu.size);
       
@@ -194,15 +196,17 @@
             return;
           }
 
+          const authored = getAuthoredCardMeta(authoredCardIndex, 'WEBMODULE', module.id);
+
           allItems.push({
             domain: 'WEBMODULE',
             id: module.id,
-            shortName: module.id,
-            displayName: module.title || prettifyName(module.id),
-            description: module.description || 'BrokenNes webmodule unlock.',
+            shortName: authored?.shortName || buildShortName(module.id),
+            displayName: authored?.displayName || module.title || prettifyName(module.id),
+            description: authored?.description || module.description || 'BrokenNes webmodule unlock.',
             performance: 0,
-            rating: getProgressionRating('WEBMODULE', module.id, module),
-            category: module.displayMode || 'Webmodule',
+            rating: authored?.rating ?? getProgressionRating('WEBMODULE', module.id, module),
+            category: authored?.category || module.displayMode || 'Webmodule',
             key: `WEBMODULE:${module.id}`
           });
         });
@@ -212,15 +216,17 @@
             return;
           }
 
+          const authored = getAuthoredCardMeta(authoredCardIndex, 'BACKGROUND', entry.id);
+
           allItems.push({
             domain: 'BACKGROUND',
             id: entry.id,
-            shortName: entry.id,
-            displayName: entry.id,
-            description: buildBackgroundDescription(entry.id),
+            shortName: authored?.shortName || buildShortName(entry.id),
+            displayName: authored?.displayName || entry.id,
+            description: authored?.description || buildBackgroundDescription(entry.id),
             performance: 0,
-            rating: getProgressionRating('BACKGROUND', entry.id, entry),
-            category: 'Background',
+            rating: authored?.rating ?? getProgressionRating('BACKGROUND', entry.id, entry),
+            category: authored?.category || 'Background',
             key: `BACKGROUND:${entry.id}`
           });
         });
@@ -230,16 +236,38 @@
             return;
           }
 
+          const authored = getAuthoredCardMeta(authoredCardIndex, 'NULLPROVIDER', entry.id);
+
           allItems.push({
             domain: 'NULLPROVIDER',
             id: entry.id,
-            shortName: entry.id,
-            displayName: entry.id,
-            description: `Crash-visualizer unlock: ${prettifyName(entry.id)}.`,
+            shortName: authored?.shortName || buildShortName(entry.id),
+            displayName: authored?.displayName || entry.id,
+            description: authored?.description || `Crash-visualizer unlock: ${prettifyName(entry.id)}.`,
             performance: 0,
-            rating: getProgressionRating('NULLPROVIDER', entry.id, entry),
-            category: 'Null Provider',
+            rating: authored?.rating ?? getProgressionRating('NULLPROVIDER', entry.id, entry),
+            category: authored?.category || 'Null Provider',
             key: `NULLPROVIDER:${entry.id}`
+          });
+        });
+
+        (Array.isArray(roster.features) ? roster.features : []).forEach(entry => {
+          if (!entry?.unlocked || !entry?.id) {
+            return;
+          }
+
+          const authored = getAuthoredCardMeta(authoredCardIndex, 'FEATURE', entry.id);
+
+          allItems.push({
+            domain: 'FEATURE',
+            id: entry.id,
+            shortName: authored?.shortName || buildShortName(entry.id),
+            displayName: authored?.displayName || prettifyName(entry.id),
+            description: authored?.description || `BrokenNes feature unlock: ${prettifyName(entry.id)}.`,
+            performance: 0,
+            rating: authored?.rating ?? getProgressionRating('FEATURE', entry.id, entry),
+            category: authored?.category || 'Feature',
+            key: `FEATURE:${entry.id}`
           });
         });
       }
@@ -253,6 +281,57 @@
       .replace(/[_-]+/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
       .trim() || 'Unknown';
+  }
+
+  function buildShortName(value) {
+    const compact = String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+    if (!compact) {
+      return 'CARD';
+    }
+    return compact.length <= 4 ? compact : compact.slice(0, 4);
+  }
+
+  function normalizeCatalogDomain(domain) {
+    return String(domain || '').trim().replace(/\s+/g, '').toUpperCase();
+  }
+
+  function normalizeCatalogId(domain, id) {
+    const normalizedDomain = normalizeCatalogDomain(domain);
+    const trimmed = String(id || '').trim();
+
+    if (normalizedDomain === 'BACKGROUND') {
+      if (/^(gradient|gradient \(default\)|staticgradient)$/i.test(trimmed)) {
+        return 'Gradient (Default)';
+      }
+      if (/^(black|none|none \(black\))$/i.test(trimmed)) {
+        return 'None (Black)';
+      }
+    }
+
+    return trimmed;
+  }
+
+  function buildCatalogKey(domain, id) {
+    return `${normalizeCatalogDomain(domain)}:${normalizeCatalogId(domain, id)}`;
+  }
+
+  function createAuthoredCardIndex(catalogResult) {
+    const index = new Map();
+    const cards = Array.isArray(catalogResult?.cards) ? catalogResult.cards : [];
+    cards.forEach(card => {
+      if (!card?.domain || !card?.id) {
+        return;
+      }
+      index.set(buildCatalogKey(card.domain, card.id), card);
+    });
+    return index;
+  }
+
+  function getAuthoredCardMeta(index, domain, id) {
+    if (!(index instanceof Map)) {
+      return null;
+    }
+    return index.get(buildCatalogKey(domain, id)) || null;
   }
 
   function buildBackgroundDescription(id) {
@@ -278,6 +357,10 @@
         return 3;
       case 'NULLPROVIDER':
         if (normalizedId === 'STATIC' || normalizedId === 'VOID') return 1;
+        return 3;
+      case 'FEATURE':
+        if (['SAVESTATES', 'RTC', 'GH', 'IMAGINE'].includes(normalizedId)) return 5;
+        if (normalizedId === 'DEBUG') return 4;
         return 3;
       default:
         return 2;
@@ -357,6 +440,7 @@
         { title: 'Clock', items: allItems.filter(i => i.domain === 'CLOCK') },
         { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') },
         { title: 'Modules', items: allItems.filter(i => i.domain === 'WEBMODULE') },
+        { title: 'Features', items: allItems.filter(i => i.domain === 'FEATURE') },
         { title: 'Backgrounds', items: allItems.filter(i => i.domain === 'BACKGROUND') },
         { title: 'Null Providers', items: allItems.filter(i => i.domain === 'NULLPROVIDER') }
       ];
@@ -441,6 +525,7 @@
         { title: 'Clock', items: allItems.filter(i => i.domain === 'CLOCK') },
         { title: 'Shaders', items: allItems.filter(i => i.domain === 'SHADER') },
         { title: 'Modules', items: allItems.filter(i => i.domain === 'WEBMODULE') },
+        { title: 'Features', items: allItems.filter(i => i.domain === 'FEATURE') },
         { title: 'Backgrounds', items: allItems.filter(i => i.domain === 'BACKGROUND') },
         { title: 'Null Providers', items: allItems.filter(i => i.domain === 'NULLPROVIDER') }
       ];
