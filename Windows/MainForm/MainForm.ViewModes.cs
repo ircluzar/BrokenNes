@@ -114,6 +114,7 @@ namespace BrokenNes.Windows
             {
                 UnloadWebModuleContent();
                 currentToolOrActivityModule = null; // Clear tracked module
+                ClearRuntimeCoreAndShaderOverrides(reapplyPersistedSelections: true);
                 
                 // Resume emulation if there's a loaded game and it's paused
                 bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);

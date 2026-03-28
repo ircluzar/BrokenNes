@@ -23,6 +23,28 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
+        private void ClearRuntimeCoreAndShaderOverrides(bool reapplyPersistedSelections = false)
+        {
+            bool hadOverrides = !string.IsNullOrWhiteSpace(runtimeCpuCoreOverride)
+                || !string.IsNullOrWhiteSpace(runtimePpuCoreOverride)
+                || !string.IsNullOrWhiteSpace(runtimeApuCoreOverride)
+                || !string.IsNullOrWhiteSpace(runtimeShaderOverride);
+
+            runtimeCpuCoreOverride = null;
+            runtimePpuCoreOverride = null;
+            runtimeApuCoreOverride = null;
+            runtimeShaderOverride = null;
+
+            if (!hadOverrides || !reapplyPersistedSelections || nes == null)
+            {
+                return;
+            }
+
+            ApplySavedCoreSelections();
+            UpdateCoresMenus();
+            UpdateConfigMenus();
+        }
+
         private void ApplyApuCoreSelection(string coreId)
         {
             if (nes == null || string.IsNullOrWhiteSpace(coreId)) return;
@@ -75,7 +97,17 @@ namespace BrokenNes.Windows
 
             if (nes == null) return;
             nes.SetCpuCore(coreId);
-            Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = coreId);
+
+            if (bypassProgression)
+            {
+                runtimeCpuCoreOverride = coreId;
+            }
+            else
+            {
+                runtimeCpuCoreOverride = null;
+                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = coreId);
+            }
+
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
@@ -95,7 +127,17 @@ namespace BrokenNes.Windows
 
             if (nes == null) return;
             nes.SetPpuCore(coreId);
-            Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = coreId);
+
+            if (bypassProgression)
+            {
+                runtimePpuCoreOverride = coreId;
+            }
+            else
+            {
+                runtimePpuCoreOverride = null;
+                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = coreId);
+            }
+
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
         
@@ -115,7 +157,17 @@ namespace BrokenNes.Windows
 
             if (nes == null) return;
             ApplyApuCoreSelection(coreId);
-            Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
+
+            if (bypassProgression)
+            {
+                runtimeApuCoreOverride = coreId;
+            }
+            else
+            {
+                runtimeApuCoreOverride = null;
+                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = coreId);
+            }
+
             UpdateCoresMenus(); // Refresh to update checkmarks
         }
 
@@ -148,11 +200,19 @@ namespace BrokenNes.Windows
                 return;
             }
 
-            Helpers.ConfigHelper.Update(config, c =>
+            if (bypassProgression)
             {
-                c.CurrentShader = normalizedShaderId;
-                c.ShadersEnabled = true;
-            });
+                runtimeShaderOverride = normalizedShaderId;
+            }
+            else
+            {
+                runtimeShaderOverride = null;
+                Helpers.ConfigHelper.Update(config, c =>
+                {
+                    c.CurrentShader = normalizedShaderId;
+                    c.ShadersEnabled = true;
+                });
+            }
 
             UpdateConfigMenus();
         }

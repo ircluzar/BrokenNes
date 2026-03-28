@@ -1679,6 +1679,186 @@
   background: rgba(255, 209, 102, 0.12);
 }
 
+.campaign-complete-modal-backdrop,
+.credits-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.campaign-complete-modal-backdrop {
+  background:
+    radial-gradient(circle at center, rgba(255, 209, 102, 0.16), rgba(0, 0, 0, 0.9) 58%),
+    linear-gradient(180deg, rgba(255, 90, 38, 0.12), rgba(0, 0, 0, 0.94));
+  z-index: 8260;
+}
+
+.credits-modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 209, 102, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(255, 90, 38, 0.08), rgba(0, 0, 0, 0.94));
+  z-index: 8265;
+}
+
+.campaign-complete-modal,
+.credits-modal {
+  border: 3px solid #ffd166;
+  outline: 3px solid #ff5a26;
+  outline-offset: -8px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+  animation: unlock-modal-pop 220ms ease-out;
+}
+
+.campaign-complete-modal {
+  width: min(640px, 100%);
+  padding: 1.2rem 1.1rem;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.18), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    #050505;
+}
+
+.credits-modal {
+  width: min(700px, 100%);
+  padding: 1.2rem 1.1rem;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    #040404;
+}
+
+.campaign-complete-kicker,
+.credits-kicker {
+  color: #ffd37b;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.campaign-complete-modal h3,
+.credits-modal h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+}
+
+.campaign-complete-copy,
+.credits-copy {
+  margin-top: 0.8rem;
+  color: #fff7df;
+  font-size: 0.58rem;
+  line-height: 1.75;
+}
+
+.campaign-complete-copy p,
+.credits-copy p {
+  margin: 0;
+}
+
+.campaign-complete-copy p + p,
+.credits-copy p + p {
+  margin-top: 0.8rem;
+}
+
+.campaign-complete-action,
+.credits-action {
+  margin-top: 1rem;
+  width: 100%;
+  border: 2px solid #ffd166;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  padding: 0.7rem 0.6rem;
+  cursor: pointer;
+}
+
+.campaign-complete-action:hover,
+.campaign-complete-action:focus-visible,
+.credits-action:hover,
+.credits-action:focus-visible {
+  background: rgba(255, 209, 102, 0.12);
+}
+
+.important-note-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 209, 102, 0.14), rgba(0, 0, 0, 0.9) 58%),
+    linear-gradient(180deg, rgba(255, 90, 38, 0.1), rgba(0, 0, 0, 0.92));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8275;
+  padding: 1rem;
+}
+
+.important-note-modal {
+  width: min(720px, 100%);
+  border: 3px solid #ffd166;
+  outline: 3px solid #ff5a26;
+  outline-offset: -8px;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.18), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    #050505;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+  padding: 1.2rem 1.1rem;
+  animation: unlock-modal-pop 220ms ease-out;
+}
+
+.important-note-kicker {
+  color: #ffd37b;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.important-note-modal h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+}
+
+.important-note-copy {
+  margin-top: 0.8rem;
+  color: #fff7df;
+  font-size: 0.58rem;
+  line-height: 1.75;
+}
+
+.important-note-copy p {
+  margin: 0;
+}
+
+.important-note-copy p + p {
+  margin-top: 0.8rem;
+}
+
+.important-note-action {
+  margin-top: 1rem;
+  width: 100%;
+  border: 2px solid #ffd166;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  padding: 0.7rem 0.6rem;
+  cursor: pointer;
+}
+
+.important-note-action:hover,
+.important-note-action:focus-visible {
+  background: rgba(255, 209, 102, 0.12);
+}
+
 /* Responsive */
 @media (max-width: 620px) {
   .options-root {
@@ -1745,6 +1925,15 @@
   }
 
   .all-achievements-modal {
+    padding: 1rem 0.9rem;
+  }
+
+  .campaign-complete-modal,
+  .credits-modal {
+    padding: 1rem 0.9rem;
+  }
+
+  .important-note-modal {
     padding: 1rem 0.9rem;
   }
 

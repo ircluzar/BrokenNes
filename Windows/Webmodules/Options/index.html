@@ -24,12 +24,19 @@
           <button id="btnUnlockAll">Unlock Everything</button>
         </div>
         <div class="opt-row small-note">Unlocks all cores, milestone modules, backgrounds, null providers, and advanced feature gates. Achievements are not changed.</div>
+        <div class="opt-row">
+          <button id="btnOpenCredits">Open Credits</button>
+        </div>
+        <div class="opt-row small-note">Opens the credits roll and crossfades to the credits theme until you close it.</div>
       </section>
 
-      <div class="options-controller-ports" aria-label="Controller ports">
-        <button type="button" class="opt-link controller-port-btn" id="controller1Btn">Controller 1</button>
-        <button type="button" class="opt-link controller-port-btn" id="controller2Btn">Controller 2</button>
-      </div>
+      <section class="opt-section input-configuration-section" aria-label="Input configuration">
+        <h3 class="opt-h3">Input configuration</h3>
+        <div class="options-controller-ports">
+          <button type="button" class="opt-link controller-port-btn" id="controller1Btn">Controller 1</button>
+          <button type="button" class="opt-link controller-port-btn" id="controller2Btn">Controller 2</button>
+        </div>
+      </section>
       
       <details class="opt-section feature-unlocks" id="featureUnlocks" hidden>
         <summary class="opt-h3 feature-unlocks-summary">Feature Unlocks</summary>
@@ -67,6 +74,24 @@
       </div>
       <div class="opt-modal-actions">
         <button class="opt-modal-btn" id="optModalOk" autofocus>OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="creditsModal" class="credits-modal-backdrop" style="display: none;" tabindex="-1">
+    <div class="credits-modal" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+      <div class="credits-kicker">Credits</div>
+      <h3 id="creditsTitle">BrokenNes - Deck Builder</h3>
+      <div class="credits-copy">
+        <p>An experiment by Redscientist Labs</p>
+        <p>Coding, music, sfx and design: Ircluzar</p>
+        <p>Base emulator: Net-Nes by BotRandomness</p>
+        <p>Achievements: RetroAchievements</p>
+        <p>QN Cores: QuickNes Emulator</p>
+        <p>A big thanks to everyone who helped me test and keep my hopes up in this insanity of a project. This project would not have been possible without the help of autonomous AI research.</p>
+      </div>
+      <div class="credits-actions">
+        <button class="credits-btn" id="creditsCloseBtn" autofocus>Continue</button>
       </div>
     </div>
   </div>

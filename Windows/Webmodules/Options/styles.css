@@ -10,7 +10,7 @@ body {
 
 body {
   min-height: 100dvh;
-  padding: 7rem 0 0.5rem;
+  padding: 4rem 0 0.5rem;
 }
 
 .options-root {
@@ -45,6 +45,12 @@ body {
   font-size: 0.6rem;
   color: #888;
   font-style: italic;
+}
+
+.input-configuration-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .options-controller-ports {
@@ -281,4 +287,86 @@ body {
 .opt-modal-btn:focus {
   background: #ff5a26;
   color: #000;
+}
+
+.credits-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 209, 102, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(255, 90, 38, 0.08), rgba(0, 0, 0, 0.94));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 12050;
+  padding: 16px;
+}
+
+.credits-modal {
+  width: min(700px, 100%);
+  padding: 1.2rem 1.1rem;
+  border: 3px solid #ffd166;
+  outline: 3px solid #ff5a26;
+  outline-offset: -8px;
+  background:
+    radial-gradient(circle at top, rgba(255, 209, 102, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    #040404;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+}
+
+.credits-kicker {
+  color: #ffd37b;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.credits-modal h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+}
+
+.credits-copy {
+  margin-top: 0.8rem;
+  color: #fff7df;
+  font-size: 0.58rem;
+  line-height: 1.75;
+}
+
+.credits-copy p {
+  margin: 0;
+}
+
+.credits-copy p + p {
+  margin-top: 0.8rem;
+}
+
+.credits-actions {
+  margin-top: 1rem;
+}
+
+.credits-btn {
+  width: 100%;
+  border: 2px solid #ffd166;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  padding: 0.7rem 0.6rem;
+  cursor: pointer;
+}
+
+.credits-btn:hover,
+.credits-btn:focus-visible {
+  background: rgba(255, 209, 102, 0.12);
+}
+
+@media (max-width: 620px) {
+  .credits-modal {
+    padding: 1rem 0.9rem;
+  }
 }

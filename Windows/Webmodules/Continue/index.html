@@ -238,6 +238,49 @@
     </div>
   </div>
 
+  <div class="campaign-complete-modal-backdrop" id="campaignCompleteModal" style="display: none;">
+    <div class="campaign-complete-modal" role="dialog" aria-modal="true" aria-labelledby="campaignCompleteTitle">
+      <div class="campaign-complete-kicker">Main Quest Complete</div>
+      <h3 id="campaignCompleteTitle">Congratulations!</h3>
+      <div class="campaign-complete-copy" id="campaignCompleteCopy">
+        <p>Thanks for playing BrokenNes Deck Builder.</p>
+        <p>You have completed the main campaign and unlocked all the main cores. You may continue getting achievements to unlock more cores in random packs.</p>
+      </div>
+      <button type="button" class="campaign-complete-action" id="campaignCompleteCloseBtn">Continue</button>
+    </div>
+  </div>
+
+  <div class="credits-modal-backdrop" id="creditsModal" style="display: none;">
+    <div class="credits-modal" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+      <div class="credits-kicker">Credits</div>
+      <h3 id="creditsTitle">BrokenNes - Deck Builder</h3>
+      <div class="credits-copy" id="creditsCopy">
+        <p>An experiment by Redscientist Labs</p>
+        <p>Coding, music, sfx and design: Ircluzar</p>
+        <p>Base emulator: Net-Nes by BotRandomness</p>
+        <p>Achievements: RetroAchievements</p>
+        <p>QN Cores: QuickNes Emulator</p>
+        <p>A big thanks to everyone who helped me test and keep my hopes up in this insanity of a project. This project would not have been possible without the help of autonomous AI research.</p>
+      </div>
+      <button type="button" class="credits-action" id="creditsCloseBtn">Continue</button>
+    </div>
+  </div>
+
+  <div class="important-note-modal-backdrop" id="importantNoteModal" style="display: none;">
+    <div class="important-note-modal" role="dialog" aria-modal="true" aria-labelledby="importantNoteTitle">
+      <div class="important-note-kicker">Deck Builder Progress</div>
+      <h3 id="importantNoteTitle">Important Note</h3>
+      <div class="important-note-copy" id="importantNoteCopy">
+        <p>Thanks for playing BrokenNes Deck Builder.</p>
+        <p>From now on, new unlocked Cores may break or invalidate savestates as your system evolves. Certain challenges might also require you to switch games.</p>
+        <p>You have completed one third of the main DeckBuilder campaign, which then is followed by many more Cores to unlock.</p>
+        <p>Now would be a great time to try Emulator Mode and play around with the various unlocked Cores before returning to DeckBuilder (in the Activities menu).</p>
+        <p>If you wish to skip the entire thing, you may click the "Unlock Everything" button in the Options to instantly unlock all the features BrokenNes Emulator has to offer.</p>
+      </div>
+      <button type="button" class="important-note-action" id="importantNoteCloseBtn">Continue</button>
+    </div>
+  </div>
+
   <!-- Dependencies -->
   <script src="../shared/continue-db.js"></script>
   <script src="../shared/storage.js"></script>

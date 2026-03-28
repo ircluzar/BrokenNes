@@ -3,6 +3,10 @@
 (function() {
   'use strict';
 
+  const OPTIONS_MUSIC_FADE_MS = 800;
+  const OPTIONS_TITLE_TRACK = 'TitleScreen.mp3';
+  const OPTIONS_CREDITS_TRACK = 'BrokeEverythingAgain.mp3';
+
   // State
   let gameSave = null;
   let volumes = {
@@ -42,13 +46,24 @@
     try {
       // Request title screen music via audio engine
       if (window.webapi?.audio?.requestMusic) {
-        window.webapi.audio.requestMusic('TitleScreen.mp3', true, 800).catch(err => {
+        window.webapi.audio.requestMusic(OPTIONS_TITLE_TRACK, true, OPTIONS_MUSIC_FADE_MS).catch(err => {
           console.warn('[Options] Music request failed:', err);
         });
       }
     } catch (error) {
       console.warn('[Options] Audio init error:', error);
     }
+  }
+
+  function requestOptionsMusic(filename) {
+    if (!filename || !window.webapi?.audio?.requestMusic) {
+      return Promise.resolve(false);
+    }
+
+    return window.webapi.audio.requestMusic(filename, true, OPTIONS_MUSIC_FADE_MS).then(() => true).catch(error => {
+      console.warn(`[Options] Music request failed for '${filename}':`, error);
+      return false;
+    });
   }
 
   async function loadGameSave() {
@@ -128,6 +143,13 @@
       btnUnlockAll.addEventListener('click', onUnlockAll);
     }
 
+    const btnOpenCredits = document.getElementById('btnOpenCredits');
+    if (btnOpenCredits) {
+      btnOpenCredits.addEventListener('click', () => {
+        void openCreditsModal();
+      });
+    }
+
     // Feature unlock buttons
     const btnUnlockSavestates = document.getElementById('btnUnlockSavestates');
     if (btnUnlockSavestates) {
@@ -182,6 +204,31 @@
         }
       });
     }
+
+    const creditsCloseBtn = document.getElementById('creditsCloseBtn');
+    if (creditsCloseBtn) {
+      creditsCloseBtn.addEventListener('click', () => {
+        void closeCreditsModal();
+      });
+    }
+
+    const creditsModal = document.getElementById('creditsModal');
+    if (creditsModal) {
+      creditsModal.addEventListener('click', (e) => {
+        if (e.target === creditsModal) {
+          void closeCreditsModal();
+        }
+      });
+      creditsModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          void closeCreditsModal();
+        }
+      });
+    }
+  }
+
+  function isCreditsModalOpen() {
+    return document.getElementById('creditsModal')?.style.display === 'flex';
   }
 
   function updateVolumeUI() {
@@ -340,6 +387,33 @@
     if (modal) {
       modal.style.display = 'none';
     }
+  }
+
+  async function openCreditsModal() {
+    const modal = document.getElementById('creditsModal');
+    if (!modal || isCreditsModalOpen()) {
+      return;
+    }
+
+    modal.style.display = 'flex';
+    const closeBtn = document.getElementById('creditsCloseBtn');
+    setTimeout(() => {
+      if (closeBtn) {
+        closeBtn.focus();
+      }
+    }, 100);
+
+    await requestOptionsMusic(OPTIONS_CREDITS_TRACK);
+  }
+
+  async function closeCreditsModal() {
+    const modal = document.getElementById('creditsModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.style.display = 'none';
+    await requestOptionsMusic(OPTIONS_TITLE_TRACK);
   }
 
   // Expose API for debugging

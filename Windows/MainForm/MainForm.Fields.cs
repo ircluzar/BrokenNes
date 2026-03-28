@@ -109,6 +109,10 @@ namespace BrokenNes.Windows
         private bool isWebViewInitialized = false;
         private bool isWebViewInitializationFailed = false;
         private WebModuleInfo? currentToolOrActivityModule = null;
+        private string? runtimeCpuCoreOverride;
+        private string? runtimePpuCoreOverride;
+        private string? runtimeApuCoreOverride;
+        private string? runtimeShaderOverride;
         private bool isOverlayPreloadedForEmulator = false;
         private int overlayPreviewMenuOpenCount = 0;
         private bool isOverlayPreviewVisible = false;

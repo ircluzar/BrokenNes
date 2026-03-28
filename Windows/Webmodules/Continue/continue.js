@@ -38,6 +38,9 @@
     APU: 'APU',
     SHADER: 'Shader'
   };
+  const CONTINUE_MUSIC_FADE_MS = 800;
+  const CONTINUE_CREDITS_TRACK = 'BrokeEverythingAgain.mp3';
+  const CONTINUE_TITLE_TRACK = 'TitleScreen.mp3';
   const STARTER_CORE_BY_DOMAIN = {
     CPU: 'FMC',
     PPU: 'FMC',
@@ -74,6 +77,8 @@
   let levelRecord = null;
   let arrivalInProgress = false;
   let pendingAllAchievementsModal = null;
+  let pendingCampaignCompleteModal = false;
+  let pendingCreditsModal = false;
   
   const coreCatalog = {
     CPU: [],
@@ -100,6 +105,7 @@
     featureUnlocks: [],
     showCongrats: false,
     showAllCores: false,
+    showImportantNote: false,
     pendingRewardIds: [],
     title: 'New Cards Unlocked',
     kicker: 'Level Intermission',
@@ -161,7 +167,7 @@
       console.log('[Continue] Requesting music:', musicTrack);
       
       if (window.webapi?.audio?.requestMusic) {
-        window.webapi.audio.requestMusic(musicTrack, true, 800).then(() => {
+        window.webapi.audio.requestMusic(musicTrack, true, CONTINUE_MUSIC_FADE_MS).then(() => {
           console.log('[Continue] Music request sent successfully:', musicTrack);
         }).catch(err => {
           console.warn('[Continue] Music request failed:', err);
@@ -487,13 +493,25 @@
     return document.getElementById('allAchievementsModal')?.style.display === 'flex';
   }
 
+  function isCampaignCompleteModalOpen() {
+    return document.getElementById('campaignCompleteModal')?.style.display === 'flex';
+  }
+
+  function isCreditsModalOpen() {
+    return document.getElementById('creditsModal')?.style.display === 'flex';
+  }
+
+  function isImportantNoteModalOpen() {
+    return document.getElementById('importantNoteModal')?.style.display === 'flex';
+  }
+
   function queueAllAchievementsCompletedModal(summary) {
     pendingAllAchievementsModal = summary;
     tryShowAllAchievementsCompletedModal();
   }
 
   function tryShowAllAchievementsCompletedModal() {
-    if (!pendingAllAchievementsModal || isUnlockModalOpen()) {
+    if (!pendingAllAchievementsModal || isUnlockModalOpen() || isImportantNoteModalOpen() || isCampaignCompleteModalOpen() || isCreditsModalOpen() || pendingCampaignCompleteModal || pendingCreditsModal) {
       return;
     }
 
@@ -518,6 +536,95 @@
     }
 
     modal.style.display = 'none';
+  }
+
+  function requestContinueMusic(filename) {
+    if (!filename || !window.webapi?.audio?.requestMusic) {
+      return Promise.resolve(false);
+    }
+
+    return window.webapi.audio.requestMusic(filename, true, CONTINUE_MUSIC_FADE_MS).then(() => true).catch(error => {
+      console.warn(`[Continue] Failed to request music '${filename}':`, error);
+      return false;
+    });
+  }
+
+  function showCampaignCompleteModal() {
+    const modal = document.getElementById('campaignCompleteModal');
+    if (!modal) {
+      pendingCampaignCompleteModal = false;
+      pendingCreditsModal = true;
+      void showCreditsModal();
+      return;
+    }
+
+    modal.style.display = 'flex';
+    pendingCampaignCompleteModal = false;
+    pendingCreditsModal = true;
+    void playUiSfx(UI_SFX.modalOpen, { key: 'campaign-complete-modal-open', cooldownMs: 120 });
+  }
+
+  function queueCampaignCompleteSequence() {
+    pendingCampaignCompleteModal = true;
+    pendingCreditsModal = false;
+    showCampaignCompleteModal();
+  }
+
+  function closeCampaignCompleteModal() {
+    const modal = document.getElementById('campaignCompleteModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+
+    if (pendingCreditsModal) {
+      void showCreditsModal();
+      return;
+    }
+
+    tryShowAllAchievementsCompletedModal();
+  }
+
+  async function showCreditsModal() {
+    const modal = document.getElementById('creditsModal');
+    pendingCreditsModal = false;
+    if (!modal) {
+      tryShowAllAchievementsCompletedModal();
+      return;
+    }
+
+    modal.style.display = 'flex';
+    void playUiSfx(UI_SFX.modalOpen, { key: 'credits-modal-open', cooldownMs: 120 });
+    await requestContinueMusic(CONTINUE_CREDITS_TRACK);
+  }
+
+  async function closeCreditsModal() {
+    const modal = document.getElementById('creditsModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+
+    await requestContinueMusic(CONTINUE_TITLE_TRACK);
+    tryShowAllAchievementsCompletedModal();
+  }
+
+  function showImportantDeckBuilderNote() {
+    const modal = document.getElementById('importantNoteModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.style.display = 'flex';
+    void playUiSfx(UI_SFX.modalOpen, { key: 'important-note-modal-open', cooldownMs: 120 });
+  }
+
+  function closeImportantDeckBuilderNote() {
+    const modal = document.getElementById('importantNoteModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.style.display = 'none';
+    tryShowAllAchievementsCompletedModal();
   }
 
   async function runArrivalSequence(payload) {
@@ -1911,6 +2018,50 @@
       });
     }
 
+    const campaignCompleteCloseBtn = document.getElementById('campaignCompleteCloseBtn');
+    if (campaignCompleteCloseBtn) {
+      campaignCompleteCloseBtn.addEventListener('click', closeCampaignCompleteModal);
+    }
+
+    const campaignCompleteModal = document.getElementById('campaignCompleteModal');
+    if (campaignCompleteModal) {
+      campaignCompleteModal.addEventListener('click', (event) => {
+        if (event.target === campaignCompleteModal) {
+          closeCampaignCompleteModal();
+        }
+      });
+    }
+
+    const creditsCloseBtn = document.getElementById('creditsCloseBtn');
+    if (creditsCloseBtn) {
+      creditsCloseBtn.addEventListener('click', () => {
+        void closeCreditsModal();
+      });
+    }
+
+    const creditsModal = document.getElementById('creditsModal');
+    if (creditsModal) {
+      creditsModal.addEventListener('click', (event) => {
+        if (event.target === creditsModal) {
+          void closeCreditsModal();
+        }
+      });
+    }
+
+    const importantNoteCloseBtn = document.getElementById('importantNoteCloseBtn');
+    if (importantNoteCloseBtn) {
+      importantNoteCloseBtn.addEventListener('click', closeImportantDeckBuilderNote);
+    }
+
+    const importantNoteModal = document.getElementById('importantNoteModal');
+    if (importantNoteModal) {
+      importantNoteModal.addEventListener('click', (event) => {
+        if (event.target === importantNoteModal) {
+          closeImportantDeckBuilderNote();
+        }
+      });
+    }
+
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') {
         return;
@@ -1931,6 +2082,24 @@
       const allAchievementsOpen = isAllAchievementsModalOpen();
       if (allAchievementsOpen) {
         closeAllAchievementsCompletedModal();
+        return;
+      }
+
+      const campaignCompleteOpen = isCampaignCompleteModalOpen();
+      if (campaignCompleteOpen) {
+        closeCampaignCompleteModal();
+        return;
+      }
+
+      const creditsOpen = isCreditsModalOpen();
+      if (creditsOpen) {
+        void closeCreditsModal();
+        return;
+      }
+
+      const importantNoteOpen = isImportantNoteModalOpen();
+      if (importantNoteOpen) {
+        closeImportantDeckBuilderNote();
         return;
       }
 
@@ -2065,6 +2234,9 @@
       }
     }
 
+    const shouldShowImportantNote = Boolean(rewardModalState.showImportantNote);
+    const shouldShowCampaignComplete = Boolean(rewardModalState.showCongrats);
+
     clearRewardAutoCloseTimer();
     modal.style.display = 'none';
     grid.innerHTML = '';
@@ -2076,12 +2248,23 @@
       featureUnlocks: [],
       showCongrats: false,
       showAllCores: false,
+      showImportantNote: false,
       pendingRewardIds: [],
       title: 'New Cards Unlocked',
       kicker: 'Level Intermission',
       copy: '',
       autoCloseTimer: 0
     };
+
+    if (shouldShowImportantNote) {
+      showImportantDeckBuilderNote();
+      return;
+    }
+
+    if (shouldShowCampaignComplete) {
+      queueCampaignCompleteSequence();
+      return;
+    }
 
     tryShowAllAchievementsCompletedModal();
   }
@@ -2458,6 +2641,15 @@
     return unlocked;
   }
 
+  function shouldShowLevelFiveImportantNote(pendingBundles) {
+    return (Array.isArray(pendingBundles) ? pendingBundles : []).some(bundle => {
+      const bundleId = String(bundle?.id || '').trim().toLowerCase();
+      const bundleSource = String(bundle?.source || '').trim().toLowerCase();
+      const levelIndex = Number(bundle?.levelIndex);
+      return bundleId === 'level:4' || (bundleSource === 'level' && levelIndex === 4);
+    });
+  }
+
   async function buildLevelRewards(previousLevel) {
     const rewardPairs = getCurrentLevelRewardPairs();
     if (previousLevel >= POSTGAME_START_LEVEL) {
@@ -2717,6 +2909,7 @@
       featureUnlocks: Array.isArray(rewards?.featureUnlocks) ? rewards.featureUnlocks.slice() : [],
       showCongrats: Boolean(rewards?.showCongrats),
       showAllCores: Boolean(rewards?.showAllCores),
+      showImportantNote: shouldShowLevelFiveImportantNote(pendingBundles),
       pendingRewardIds,
       title: options.title || (pendingItems.length > 0 ? 'New Rewards Ready' : 'New Cards Unlocked'),
       kicker: options.kicker || (pendingItems.length > 0 ? 'Unlock Inbox' : 'Level Intermission'),

@@ -583,6 +583,10 @@ namespace BrokenNes.Windows
         {
             var save = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(save);
+            var effectiveCpuCore = string.IsNullOrWhiteSpace(runtimeCpuCoreOverride) ? config.SelectedCpuCore : runtimeCpuCoreOverride;
+            var effectivePpuCore = string.IsNullOrWhiteSpace(runtimePpuCoreOverride) ? config.SelectedPpuCore : runtimePpuCoreOverride;
+            var effectiveApuCore = string.IsNullOrWhiteSpace(runtimeApuCoreOverride) ? config.SelectedApuCore : runtimeApuCoreOverride;
+            var effectiveShader = string.IsNullOrWhiteSpace(runtimeShaderOverride) ? config.CurrentShader : runtimeShaderOverride;
 
             if (useDirectX && dxRenderer != null)
             {
@@ -594,9 +598,9 @@ namespace BrokenNes.Windows
                     dxRenderer.SetBackground(config.SelectedBackground);
                 }
 
-                if (!string.IsNullOrWhiteSpace(config.CurrentShader))
+                if (!string.IsNullOrWhiteSpace(effectiveShader))
                 {
-                    NesShaderControl.SwitchShader(config.CurrentShader);
+                    NesShaderControl.SwitchShader(effectiveShader);
                 }
 
                 dxRenderer.UseShader = true;
@@ -610,19 +614,19 @@ namespace BrokenNes.Windows
                     nes.SetNullProvider(config.SelectedNullProvider);
                 }
 
-                if (!string.IsNullOrWhiteSpace(config.SelectedCpuCore))
+                if (!string.IsNullOrWhiteSpace(effectiveCpuCore))
                 {
-                    nes.SetCpuCore(config.SelectedCpuCore);
+                    nes.SetCpuCore(effectiveCpuCore);
                 }
 
-                if (!string.IsNullOrWhiteSpace(config.SelectedPpuCore))
+                if (!string.IsNullOrWhiteSpace(effectivePpuCore))
                 {
-                    nes.SetPpuCore(config.SelectedPpuCore);
+                    nes.SetPpuCore(effectivePpuCore);
                 }
 
-                if (!string.IsNullOrWhiteSpace(config.SelectedApuCore))
+                if (!string.IsNullOrWhiteSpace(effectiveApuCore))
                 {
-                    ApplyApuCoreSelection(config.SelectedApuCore);
+                    ApplyApuCoreSelection(effectiveApuCore);
                 }
             }
 
