@@ -38,6 +38,7 @@
 
   const STATUS_OPTIONS = ['Nothing', 'Broken', 'Jank', 'Works'];
   const CARD_TYPE_OPTIONS = ['Reserved', 'Random', 'Last'];
+  const DIFFICULTY_OPTIONS = ['Easy', 'Hard', 'Insane'];
 
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
@@ -523,7 +524,7 @@
   }
 
   async function saveGame(index) {
-    const row = document.querySelector(`.grid-row[data-index="${index}"]`);
+    const row = getGridRowByIndex('gamesGrid', index);
     const g = games[index];
 
     if (row) {
@@ -620,6 +621,7 @@
         title: a.title || '',
         requirements: a.requirements || [],
         metaAchievementName: a.metaAchievementName || '',
+        difficulty: normalizeDifficulty(a.difficulty),
         isEditing: false
       }));
 
@@ -640,12 +642,13 @@
       return;
     }
 
-    const gridTemplateColumns = '1fr 1fr 1fr 2fr 1fr';
+    const gridTemplateColumns = '1fr 1fr 1fr 1fr 2fr 1fr';
 
     let html = `<div class="grid-head" style="grid-template-columns: ${gridTemplateColumns};">
       <span>ID</span>
       <span>Game</span>
       <span>Title</span>
+      <span>Difficulty</span>
       <span>Meta Achievement</span>
       <span>Controls</span>
     </div>`;
@@ -678,6 +681,18 @@
         html += `<span><input type="text" class="edit-ach-title" value="${escapeHtml(a.title)}" /></span>`;
       } else {
         html += `<span>${escapeHtml(a.title)}</span>`;
+      }
+
+      // Difficulty
+      if (a.isEditing) {
+        html += `<span><select class="edit-ach-difficulty">`;
+        DIFFICULTY_OPTIONS.forEach(difficulty => {
+          const selected = difficulty === normalizeDifficulty(a.difficulty) ? 'selected' : '';
+          html += `<option value="${difficulty}" ${selected}>${difficulty}</option>`;
+        });
+        html += `</select></span>`;
+      } else {
+        html += `<span>${escapeHtml(normalizeDifficulty(a.difficulty))}</span>`;
       }
 
       // Meta Achievement
@@ -778,6 +793,7 @@
       id: nextId,
       gameId: gameOptions.length > 0 ? gameOptions[0].id : '',
       title: '',
+      difficulty: 'Easy',
       requirements: [],
       metaAchievementName: '',
       isEditing: true
@@ -806,18 +822,20 @@
   }
 
   async function saveAchievement(index) {
-    const row = document.querySelector(`.grid-row[data-index="${index}"]`);
+    const row = getGridRowByIndex('achievementsGrid', index);
     const a = achievements[index];
 
     if (row) {
       const idInput = row.querySelector('.edit-ach-id');
       const gameSelect = row.querySelector('.edit-ach-game');
       const titleInput = row.querySelector('.edit-ach-title');
+      const difficultySelect = row.querySelector('.edit-ach-difficulty');
       const metaSelect = row.querySelector('.edit-ach-meta');
 
       if (idInput) a.id = idInput.value;
       if (gameSelect) a.gameId = gameSelect.value;
       if (titleInput) a.title = titleInput.value;
+      if (difficultySelect) a.difficulty = normalizeDifficulty(difficultySelect.value);
       if (metaSelect) a.metaAchievementName = metaSelect.value;
     }
 
@@ -826,6 +844,7 @@
         id: a.id || '',
         gameId: a.gameId || '',
         title: a.title || '',
+        difficulty: normalizeDifficulty(a.difficulty),
         requirements: (a.requirements || []).filter(s => s),
         metaAchievementName: a.metaAchievementName || ''
       };
@@ -995,7 +1014,7 @@
   }
 
   async function saveCard(index) {
-    const row = document.querySelector(`.grid-row[data-index="${index}"]`);
+    const row = getGridRowByIndex('cardsGrid', index);
     const c = cards[index];
 
     if (row) {
@@ -1213,6 +1232,7 @@
         id: id,
         gameId: gameId,
         title: metaName,
+        difficulty: 'Easy',
         requirements: [],
         metaAchievementName: metaName
       };
@@ -1240,6 +1260,10 @@
   function slugifyId(s) {
     if (!s) return 'ach_empty';
     return s.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  }
+
+  function normalizeDifficulty(value) {
+    return DIFFICULTY_OPTIONS.includes(value) ? value : 'Easy';
   }
 
   async function testAllFormulas() {
@@ -1430,7 +1454,7 @@
   }
 
   async function saveLevel(index) {
-    const row = document.querySelector(`.grid-row[data-index="${index}"]`);
+    const row = getGridRowByIndex('levelsGrid', index);
     const l = levels[index];
 
     if (row) {
@@ -1605,6 +1629,11 @@
     }
 
     return getStoredRomsFromIndexedDb();
+  }
+
+  function getGridRowByIndex(containerId, index) {
+    const container = document.getElementById(containerId);
+    return container ? container.querySelector(`.grid-row[data-index="${index}"]`) : null;
   }
 
   // ===== UTILITY FUNCTIONS =====

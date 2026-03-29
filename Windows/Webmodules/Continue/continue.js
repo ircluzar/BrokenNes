@@ -49,6 +49,7 @@
     SHADER: 'PX'
   };
   const POSTGAME_START_LEVEL = 17;
+  const ACHIEVEMENT_DIFFICULTY_ORDER = ['Easy', 'Hard', 'Insane'];
 
   // State
   let gameSave = null;
@@ -1619,10 +1620,28 @@
       id: achievement.id,
       title: achievement.title || achievement.metaAchievementName || achievement.id,
       description: achievement.description || achievement.metaAchievementName || '',
+      difficulty: normalizeAchievementDifficulty(achievement.difficulty),
       completed: savedAchievementIds.has(achievement.id)
     }));
 
+    achievements.sort((left, right) => {
+      const difficultyCmp = ACHIEVEMENT_DIFFICULTY_ORDER.indexOf(left.difficulty) - ACHIEVEMENT_DIFFICULTY_ORDER.indexOf(right.difficulty);
+      if (difficultyCmp !== 0) {
+        return difficultyCmp;
+      }
+
+      if (left.completed !== right.completed) {
+        return left.completed ? 1 : -1;
+      }
+
+      return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
+    });
+
     const completedCount = achievements.filter(achievement => achievement.completed).length;
+    const groupedAchievements = ACHIEVEMENT_DIFFICULTY_ORDER.map(difficulty => ({
+      difficulty,
+      achievements: achievements.filter(achievement => achievement.difficulty === difficulty)
+    })).filter(group => group.achievements.length > 0);
     
     achBox.innerHTML = `
       <div class="ach-summary">
@@ -1630,18 +1649,35 @@
         <strong>${completedCount}/${achievements.length}</strong>
         <span class="small-note">completed</span>
       </div>
-      <ul class="ach-list">
-        ${achievements.map(a => `
-          <li class="ach-item ${a.completed ? 'done' : 'todo'}">
-            <span class="ach-check">${a.completed ? '▣' : '▢'}</span>
-            <span class="ach-main">
-              <span class="ach-title">${escapeHtml(a.title)}</span>
-              ${a.description && a.description !== a.title ? `<span class="ach-desc small-note">${escapeHtml(a.description)}</span>` : ''}
-            </span>
-          </li>
-        `).join('')}
-      </ul>
+      <div class="ach-groups">
+        ${groupedAchievements.map(group => {
+          const groupCompletedCount = group.achievements.filter(achievement => achievement.completed).length;
+          return `
+            <section class="ach-group ach-group-${group.difficulty.toLowerCase()}" aria-label="${escapeHtml(group.difficulty)} achievements">
+              <div class="ach-group-header">
+                <span class="ach-group-title">${escapeHtml(group.difficulty)}</span>
+                <span class="ach-group-progress">${groupCompletedCount}/${group.achievements.length}</span>
+              </div>
+              <ul class="ach-list">
+                ${group.achievements.map(a => `
+                  <li class="ach-item ${a.completed ? 'done' : 'todo'}">
+                    <span class="ach-check">${a.completed ? '▣' : '▢'}</span>
+                    <span class="ach-main">
+                      <span class="ach-title">${escapeHtml(a.title)}</span>
+                      ${a.description && a.description !== a.title ? `<span class="ach-desc small-note">${escapeHtml(a.description)}</span>` : ''}
+                    </span>
+                  </li>
+                `).join('')}
+              </ul>
+            </section>
+          `;
+        }).join('')}
+      </div>
     `;
+  }
+
+  function normalizeAchievementDifficulty(value) {
+    return ACHIEVEMENT_DIFFICULTY_ORDER.includes(value) ? value : 'Easy';
   }
 
   function updateSelectionDependentUi() {

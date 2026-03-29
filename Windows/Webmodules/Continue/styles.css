@@ -905,6 +905,52 @@
   gap: 0.3rem;
 }
 
+.ach-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.ach-group {
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.6rem;
+}
+
+.ach-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.ach-group-title {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ach-group-progress {
+  font-size: 0.55rem;
+  opacity: 0.72;
+}
+
+.ach-group-easy {
+  border-color: rgba(147, 255, 174, 0.45);
+  background: linear-gradient(180deg, rgba(147, 255, 174, 0.12), rgba(255, 255, 255, 0.02));
+}
+
+.ach-group-hard {
+  border-color: rgba(255, 224, 130, 0.45);
+  background: linear-gradient(180deg, rgba(255, 224, 130, 0.12), rgba(255, 255, 255, 0.02));
+}
+
+.ach-group-insane {
+  border-color: rgba(255, 128, 128, 0.45);
+  background: linear-gradient(180deg, rgba(255, 128, 128, 0.12), rgba(255, 255, 255, 0.02));
+}
+
 .ach-item {
   display: flex;
   align-items: flex-start;
