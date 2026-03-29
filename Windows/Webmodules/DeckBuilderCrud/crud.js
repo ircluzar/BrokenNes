@@ -3,6 +3,11 @@
 (function() {
   'use strict';
 
+  const ROM_STORAGE_DB_NAME = 'nesStorage';
+  const ROM_STORAGE_DB_VERSION = 1;
+  const ROM_STORAGE_STORE = 'roms';
+  const LEGACY_ROM_KEY_PREFIX = 'rom_';
+
   // State
   let activeTab = 'games';
   let games = [];
@@ -21,7 +26,11 @@
     id: false,
     commonName: true,
     status: true,
-    note: false,
+    note: true,
+    romKey: false,
+    achievementCount: true,
+    installedRom: true,
+    deckEligible: true,
     system: false,
     builtIn: true,
     size: false
@@ -90,6 +99,10 @@
     document.getElementById('colCommonName').addEventListener('change', (e) => updateColumn('commonName', e.target.checked));
     document.getElementById('colStatus').addEventListener('change', (e) => updateColumn('status', e.target.checked));
     document.getElementById('colNote').addEventListener('change', (e) => updateColumn('note', e.target.checked));
+    document.getElementById('colRomKey').addEventListener('change', (e) => updateColumn('romKey', e.target.checked));
+    document.getElementById('colAchievementCount').addEventListener('change', (e) => updateColumn('achievementCount', e.target.checked));
+    document.getElementById('colInstalledRom').addEventListener('change', (e) => updateColumn('installedRom', e.target.checked));
+    document.getElementById('colDeckEligible').addEventListener('change', (e) => updateColumn('deckEligible', e.target.checked));
     document.getElementById('colSystem').addEventListener('change', (e) => updateColumn('system', e.target.checked));
     document.getElementById('colBuiltIn').addEventListener('change', (e) => updateColumn('builtIn', e.target.checked));
     document.getElementById('colSize').addEventListener('change', (e) => updateColumn('size', e.target.checked));
@@ -120,6 +133,10 @@
     document.getElementById('colCommonName').checked = columnVisibility.commonName;
     document.getElementById('colStatus').checked = columnVisibility.status;
     document.getElementById('colNote').checked = columnVisibility.note;
+    document.getElementById('colRomKey').checked = columnVisibility.romKey;
+    document.getElementById('colAchievementCount').checked = columnVisibility.achievementCount;
+    document.getElementById('colInstalledRom').checked = columnVisibility.installedRom;
+    document.getElementById('colDeckEligible').checked = columnVisibility.deckEligible;
     document.getElementById('colSystem').checked = columnVisibility.system;
     document.getElementById('colBuiltIn').checked = columnVisibility.builtIn;
     document.getElementById('colSize').checked = columnVisibility.size;
@@ -156,7 +173,11 @@
           id: loaded.id || false,
           commonName: loaded.commonName !== false,
           status: loaded.status !== false,
-          note: loaded.note || false,
+          note: loaded.note !== false,
+          romKey: loaded.romKey || false,
+          achievementCount: loaded.achievementCount !== false,
+          installedRom: loaded.installedRom !== false,
+          deckEligible: loaded.deckEligible !== false,
           system: loaded.system || false,
           builtIn: loaded.builtIn !== false,
           size: loaded.size || false
@@ -236,13 +257,45 @@
 
     try {
       await window.continueDb.open();
-      const arr = await window.continueDb.getAll('games');
-      arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      const [arr, achArr, storedRoms] = await Promise.all([
+        window.continueDb.getAll('games'),
+        window.continueDb.getAll('achievements'),
+        getStoredRoms()
+      ]);
+      arr.sort((a, b) => getDisplayTitle(a).localeCompare(getDisplayTitle(b)));
+
+      const achievementsByGameId = new Map();
+      achArr.forEach(achievement => {
+        const gameId = achievement && achievement.gameId;
+        if (!gameId) {
+          return;
+        }
+
+        if (!achievementsByGameId.has(gameId)) {
+          achievementsByGameId.set(gameId, []);
+        }
+
+        achievementsByGameId.get(gameId).push(achievement);
+      });
+
+      const installedRomKeys = new Set(
+        (Array.isArray(storedRoms) ? storedRoms : [])
+          .map(rom => normalizeRomStorageName(rom && rom.name))
+          .filter(Boolean)
+      );
 
       games = arr.map(g => ({
         ...g,
+        title: getDisplayTitle(g),
+        commonName: getCommonName(g),
         status: g.status || 'Nothing',
-        note: g.note || '',
+        note: getGameNote(g),
+        romKey: getRomKey(g),
+        system: getSystemLabel(g),
+        linkedAchievementCount: (achievementsByGameId.get(g.id) || []).length,
+        installedRom: installedRomKeys.has(normalizeRomStorageName(getRomKey(g))),
+        deckEligible: isDeckEligible(g, achievementsByGameId, installedRomKeys),
+        deckEligibilityReason: getDeckEligibilityReason(g, achievementsByGameId, installedRomKeys),
         isEditing: false
       }));
 
@@ -267,6 +320,10 @@
     if (columnVisibility.commonName) cols.push('Common Name');
     if (columnVisibility.status) cols.push('Status');
     if (columnVisibility.note) cols.push('Note');
+    if (columnVisibility.romKey) cols.push('ROM Key');
+    if (columnVisibility.achievementCount) cols.push('Linked Achievements');
+    if (columnVisibility.installedRom) cols.push('ROM Installed');
+    if (columnVisibility.deckEligible) cols.push('Shown In Deck');
     if (columnVisibility.system) cols.push('System');
     if (columnVisibility.builtIn) cols.push('Built-in');
     if (columnVisibility.size) cols.push('Size');
@@ -328,9 +385,29 @@
         }
       }
 
+      // ROM Key
+      if (columnVisibility.romKey) {
+        html += `<span class="grid-compact" title="${escapeHtml(g.romKey || '')}">${escapeHtml(g.romKey || '')}</span>`;
+      }
+
+      // Linked Achievements
+      if (columnVisibility.achievementCount) {
+        html += `<span>${g.linkedAchievementCount || 0}</span>`;
+      }
+
+      // ROM Installed
+      if (columnVisibility.installedRom) {
+        html += `<span><span class="grid-chip ${g.installedRom ? 'grid-chip-positive' : 'grid-chip-negative'}">${g.installedRom ? 'Yes' : 'No'}</span></span>`;
+      }
+
+      // Deck Eligible
+      if (columnVisibility.deckEligible) {
+        html += `<span title="${escapeHtml(g.deckEligibilityReason || '')}"><span class="grid-chip ${g.deckEligible ? 'grid-chip-positive' : 'grid-chip-negative'}">${g.deckEligible ? 'Yes' : 'No'}</span></span>`;
+      }
+
       // System
       if (columnVisibility.system) {
-        html += `<span>${escapeHtml(g.system || 'nes')}</span>`;
+        html += `<span>${escapeHtml(g.system || 'NES')}</span>`;
       }
 
       // Built-in
@@ -375,9 +452,65 @@
   }
 
   function getCommonName(g) {
-    if (g.commonName) return g.commonName;
-    if (g.title) return g.title;
-    return g.romKey || '';
+    if (typeof g.commonName === 'string' && g.commonName.trim()) return g.commonName.trim();
+    if (typeof g.title === 'string' && g.title.trim()) return g.title.trim();
+    if (typeof g.name === 'string' && g.name.trim()) return g.name.trim();
+    return getRomKey(g);
+  }
+
+  function getDisplayTitle(g) {
+    if (typeof g.title === 'string' && g.title.trim()) return g.title.trim();
+    if (typeof g.name === 'string' && g.name.trim()) return g.name.trim();
+    return getRomKey(g);
+  }
+
+  function getGameNote(g) {
+    if (typeof g.note === 'string' && g.note.trim()) return g.note.trim();
+    if (typeof g.notes === 'string' && g.notes.trim()) return g.notes.trim();
+    return '';
+  }
+
+  function getRomKey(g) {
+    if (typeof g.romKey === 'string' && g.romKey.trim()) return g.romKey.trim();
+    if (typeof g.name === 'string' && g.name.trim()) return g.name.trim();
+    return '';
+  }
+
+  function getSystemLabel(g) {
+    const raw = typeof g.system === 'string' && g.system.trim()
+      ? g.system
+      : (typeof g.platform === 'string' && g.platform.trim() ? g.platform : 'nes');
+    return String(raw).toUpperCase();
+  }
+
+  function normalizeRomStorageName(value) {
+    return typeof value === 'string' && value.trim()
+      ? value.trim().toLowerCase()
+      : '';
+  }
+
+  function isDeckEligible(game, achievementsByGameId, installedRomKeys) {
+    return getDeckEligibilityReason(game, achievementsByGameId, installedRomKeys) === 'Shown in Deck/Continue.';
+  }
+
+  function getDeckEligibilityReason(game, achievementsByGameId, installedRomKeys) {
+    const romKey = getRomKey(game);
+    const normalizedRomKey = normalizeRomStorageName(romKey);
+    const linkedAchievementCount = (achievementsByGameId.get(game && game.id) || []).length;
+
+    if (!normalizedRomKey) {
+      return 'Missing ROM key.';
+    }
+
+    if (!installedRomKeys.has(normalizedRomKey)) {
+      return 'ROM is not installed in storage.';
+    }
+
+    if (linkedAchievementCount === 0) {
+      return 'No linked achievements.';
+    }
+
+    return 'Shown in Deck/Continue.';
   }
 
   function beginEditGame(index) {
@@ -412,7 +545,10 @@
         commonName: g.commonName || '',
         status: g.status || 'Nothing',
         note: g.note || '',
+        notes: g.note || '',
         system: g.system || 'nes',
+        platform: g.platform || g.system || 'nes',
+        name: g.name || g.romKey || g.title || '',
         romKey: g.romKey,
         headerSignature: g.headerSignature,
         builtIn: g.builtIn,
@@ -1352,6 +1488,123 @@
       console.error('[CRUD] Delete level failed:', error);
       alert('Delete failed: ' + error.message);
     }
+  }
+
+  async function openRomStorageStore(mode) {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB not available'));
+        return;
+      }
+
+      const request = indexedDB.open(ROM_STORAGE_DB_NAME, ROM_STORAGE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('kv')) {
+          db.createObjectStore('kv');
+        }
+        if (!db.objectStoreNames.contains(ROM_STORAGE_STORE)) {
+          db.createObjectStore(ROM_STORAGE_STORE, { keyPath: 'name' });
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          resolve(db.transaction(ROM_STORAGE_STORE, mode).objectStore(ROM_STORAGE_STORE));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('IndexedDB open error'));
+    });
+  }
+
+  async function migrateLegacyLocalStorageRoms() {
+    try {
+      if (!window.localStorage) {
+        return;
+      }
+
+      const legacyKeys = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+          legacyKeys.push(key);
+        }
+      }
+
+      if (legacyKeys.length === 0) {
+        return;
+      }
+
+      const existing = await getStoredRomsFromIndexedDb(false);
+      const existingNames = new Set(existing.map(rom => rom.name));
+
+      for (const key of legacyKeys) {
+        const base64 = localStorage.getItem(key);
+        const name = key.substring(LEGACY_ROM_KEY_PREFIX.length);
+        if (!base64 || !name || existingNames.has(name)) {
+          continue;
+        }
+
+        const store = await openRomStorageStore('readwrite');
+        await new Promise((resolve, reject) => {
+          const request = store.put({ name, base64 });
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
+    } catch (error) {
+      console.warn('[CRUD] Failed to migrate legacy ROM storage:', error);
+    }
+  }
+
+  async function getStoredRomsFromIndexedDb(runMigration = true) {
+    if (runMigration) {
+      await migrateLegacyLocalStorageRoms();
+    }
+
+    try {
+      const store = await openRomStorageStore('readonly');
+      return await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.warn('[CRUD] IndexedDB ROM storage unavailable:', error);
+      return getStoredRomsFromLegacyLocalStorage();
+    }
+  }
+
+  function getStoredRomsFromLegacyLocalStorage() {
+    if (!window.localStorage) {
+      return [];
+    }
+
+    const roms = [];
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(LEGACY_ROM_KEY_PREFIX)) {
+        continue;
+      }
+
+      const name = key.substring(LEGACY_ROM_KEY_PREFIX.length);
+      const base64 = localStorage.getItem(key);
+      if (name && base64) {
+        roms.push({ name, base64 });
+      }
+    }
+
+    return roms;
+  }
+
+  async function getStoredRoms() {
+    if (window.nesInterop && typeof window.nesInterop.getStoredRoms === 'function') {
+      return window.nesInterop.getStoredRoms();
+    }
+
+    return getStoredRomsFromIndexedDb();
   }
 
   // ===== UTILITY FUNCTIONS =====

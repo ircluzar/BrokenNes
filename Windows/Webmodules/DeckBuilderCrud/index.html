@@ -30,7 +30,11 @@
           <div class="picker-row"><label><input type="checkbox" id="colTitle" checked disabled /> Title</label></div>
           <div class="picker-row"><label><input type="checkbox" id="colCommonName" checked /> Common Name</label></div>
           <div class="picker-row"><label><input type="checkbox" id="colStatus" checked /> Status</label></div>
-          <div class="picker-row"><label><input type="checkbox" id="colNote" /> Note</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colNote" checked /> Note</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colRomKey" /> ROM Key</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colAchievementCount" checked /> Linked Achievements</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colInstalledRom" checked /> ROM Installed</label></div>
+          <div class="picker-row"><label><input type="checkbox" id="colDeckEligible" checked /> Shown In Deck</label></div>
           <div class="picker-row"><label><input type="checkbox" id="colSystem" /> System</label></div>
           <div class="picker-row"><label><input type="checkbox" id="colBuiltIn" checked /> Built-in</label></div>
           <div class="picker-row"><label><input type="checkbox" id="colSize" /> Size</label></div>
@@ -52,7 +56,7 @@
         <h3>Games</h3>
         <div class="games-toolbar">
           <button id="btnRefreshGames">Refresh</button>
-          <span class="small-note">Shows ROMs you've loaded; auto-added to continue DB on load.</span>
+          <span class="small-note">Shows catalog games in the continue DB. A game is shown in Deck/Continue only when its ROM is installed and it has at least one linked achievement; there is no separate visibility flag.</span>
         </div>
         <div id="gamesGrid" class="grid-container">
           <div class="grid-empty">Loading…</div>

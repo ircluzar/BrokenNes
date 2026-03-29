@@ -226,6 +226,27 @@
   color: #000;
 }
 
+.grid-chip {
+  display: inline-block;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.grid-chip-positive {
+  color: #4ade80;
+}
+
+.grid-chip-negative {
+  color: #f87171;
+}
+
+.grid-compact {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .grid-empty {
   font-size: 0.7rem;
   opacity: 0.7;
