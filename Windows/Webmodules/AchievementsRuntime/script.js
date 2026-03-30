@@ -4,6 +4,10 @@
 
   const api = window.webapi;
   const lib = window.achievementsLib;
+  const CONTINUE_DB_NAME = 'continue-db';
+  const CONTINUE_DB_VERSION = 1;
+  const DEFAULT_DB_URL = '../shared/models/default-db.json';
+  const ACHIEVEMENT_DIFFICULTY_ORDER = ['Easy', 'Hard', 'Insane'];
   const WORKFLOW_LAUNCH_KEY = 'brokenNes.workflow.launch';
   const WORKFLOW_RETURN_KEY = 'brokenNes.workflow.return';
   const WORKFLOW_ROM_CACHE_KEY = 'brokenNes.workflow.rom';
@@ -14,6 +18,10 @@
   let isInitialized = false;
   let launchPayload = null;
   let workflowResolved = false;
+  let activeAchievementGameId = '';
+  let activeAchievementRomKey = '';
+  let achievementCatalogContext = null;
+  let achievementCatalogContextPromise = null;
 
   // DOM Elements
   const achievementsOverlay = document.querySelector('.achievements-overlay');
@@ -94,6 +102,199 @@
       console.warn('[AchievementsRuntime] Failed to parse launch payload from query:', error);
       return null;
     }
+  }
+
+  function normalizeValue(value) {
+    return typeof value === 'string' && value.trim()
+      ? value.trim()
+      : '';
+  }
+
+  function normalizeLowerValue(value) {
+    const normalized = normalizeValue(value);
+    return normalized ? normalized.toLowerCase() : '';
+  }
+
+  function normalizeAchievementDifficulty(value) {
+    return ACHIEVEMENT_DIFFICULTY_ORDER.includes(value) ? value : 'Easy';
+  }
+
+  async function openContinueDbStore(storeName) {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB unavailable'));
+        return;
+      }
+
+      const request = indexedDB.open(CONTINUE_DB_NAME, CONTINUE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('games')) {
+          db.createObjectStore('games', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('achievements')) {
+          db.createObjectStore('achievements', { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => {
+        try {
+          resolve(request.result.transaction(storeName, 'readonly').objectStore(storeName));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('IndexedDB open error'));
+    });
+  }
+
+  async function getAllContinueDbRecords(storeName) {
+    try {
+      const store = await openContinueDbStore(storeName);
+      return await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error || new Error(`Failed to read ${storeName}`));
+      });
+    } catch (error) {
+      console.warn(`[AchievementsRuntime] Failed to read ${storeName} from continue-db:`, error);
+      return [];
+    }
+  }
+
+  async function loadCatalogRecords() {
+    const [dbGames, dbAchievements] = await Promise.all([
+      getAllContinueDbRecords('games'),
+      getAllContinueDbRecords('achievements')
+    ]);
+
+    if (dbGames.length > 0 || dbAchievements.length > 0) {
+      return { games: dbGames, achievements: dbAchievements };
+    }
+
+    try {
+      const response = await fetch(DEFAULT_DB_URL, { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Default DB fetch failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const data = payload && typeof payload === 'object' ? payload.data || {} : {};
+      return {
+        games: Array.isArray(data.games) ? data.games : [],
+        achievements: Array.isArray(data.achievements) ? data.achievements : []
+      };
+    } catch (error) {
+      console.warn('[AchievementsRuntime] Failed to load fallback catalog:', error);
+      return { games: [], achievements: [] };
+    }
+  }
+
+  function buildAchievementCatalogContext(records) {
+    const games = Array.isArray(records?.games) ? records.games : [];
+    const achievements = Array.isArray(records?.achievements) ? records.achievements : [];
+    const normalizedGameId = normalizeValue(activeAchievementGameId);
+    const normalizedRomKey = normalizeLowerValue(activeAchievementRomKey || launchPayload?.romKey);
+
+    let gameId = normalizedGameId;
+    if (!gameId && normalizedRomKey) {
+      const matchedGame = games.find(game => normalizeLowerValue(game?.romKey || game?.name) === normalizedRomKey);
+      gameId = normalizeValue(matchedGame?.id);
+    }
+
+    const visibleCatalogAchievements = gameId
+      ? achievements.filter(achievement => normalizeValue(achievement?.gameId) === gameId)
+      : [];
+    const achievementsById = new Map();
+    const achievementsByTitle = new Map();
+
+    visibleCatalogAchievements.forEach(achievement => {
+      const id = normalizeValue(achievement?.id);
+      const title = normalizeLowerValue(achievement?.title || achievement?.metaAchievementName);
+      if (id && !achievementsById.has(id)) {
+        achievementsById.set(id, achievement);
+      }
+      if (title && !achievementsByTitle.has(title)) {
+        achievementsByTitle.set(title, achievement);
+      }
+    });
+
+    return {
+      gameId,
+      achievements: visibleCatalogAchievements,
+      achievementsById,
+      achievementsByTitle
+    };
+  }
+
+  async function ensureAchievementCatalogContext(forceReload = false) {
+    if (!forceReload && achievementCatalogContext) {
+      return achievementCatalogContext;
+    }
+
+    if (!forceReload && achievementCatalogContextPromise) {
+      return achievementCatalogContextPromise;
+    }
+
+    achievementCatalogContextPromise = (async () => {
+      const records = await loadCatalogRecords();
+      achievementCatalogContext = buildAchievementCatalogContext(records);
+      return achievementCatalogContext;
+    })();
+
+    try {
+      return await achievementCatalogContextPromise;
+    } finally {
+      achievementCatalogContextPromise = null;
+    }
+  }
+
+  function getCatalogAchievementForRuntime(achievement, catalogContext) {
+    const achievementId = normalizeValue(lib.getAchievementId(achievement));
+    if (achievementId && catalogContext.achievementsById.has(achievementId)) {
+      return catalogContext.achievementsById.get(achievementId);
+    }
+
+    const titleKey = normalizeLowerValue(lib.getAchievementTitle(achievement) || lib.getAchievementDescription(achievement));
+    return titleKey ? catalogContext.achievementsByTitle.get(titleKey) || null : null;
+  }
+
+  async function getVisibleAchievements(achievements) {
+    const list = Array.isArray(achievements) ? achievements : [];
+    const catalogContext = await ensureAchievementCatalogContext();
+    const shouldFilterByCatalog = catalogContext.achievementsById.size > 0 || catalogContext.achievementsByTitle.size > 0;
+
+    const visibleAchievements = list
+      .map(achievement => {
+        const catalogAchievement = getCatalogAchievementForRuntime(achievement, catalogContext);
+        if (shouldFilterByCatalog && !catalogAchievement) {
+          return null;
+        }
+
+        return {
+          achievement,
+          difficulty: normalizeAchievementDifficulty(catalogAchievement?.difficulty),
+          title: lib.getAchievementTitle(achievement) || 'Untitled achievement',
+          description: lib.getAchievementDescription(achievement),
+          completed: lib.isAchievementCompleted(achievement),
+          id: normalizeValue(lib.getAchievementId(achievement))
+        };
+      })
+      .filter(Boolean);
+
+    visibleAchievements.sort((left, right) => {
+      const difficultyCmp = ACHIEVEMENT_DIFFICULTY_ORDER.indexOf(left.difficulty) - ACHIEVEMENT_DIFFICULTY_ORDER.indexOf(right.difficulty);
+      if (difficultyCmp !== 0) {
+        return difficultyCmp;
+      }
+
+      if (left.completed !== right.completed) {
+        return left.completed ? 1 : -1;
+      }
+
+      return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
+    });
+
+    return visibleAchievements;
   }
 
   async function getPreferredNullProviderId() {
@@ -347,7 +548,7 @@
 
   async function openAchievementsModal() {
     const list = await ensureAchievementsLoaded();
-    renderAchievementsModal(list);
+    await renderAchievementsModal(list);
     if (achievementsListModal) {
       achievementsListModal.style.display = 'flex';
     }
@@ -424,32 +625,47 @@
     }
   }
 
-  function renderAchievementsModal(achievements) {
+  async function renderAchievementsModal(achievements) {
     if (!achievementsListSummary || !achievementsListContainer) {
       return;
     }
 
-    const list = Array.isArray(achievements) ? achievements : [];
-    const unlockedCount = list.reduce((count, achievement) => (
-      lib.isAchievementCompleted(achievement) ? count + 1 : count
+    const visibleAchievements = await getVisibleAchievements(achievements);
+    const unlockedCount = visibleAchievements.reduce((count, achievement) => (
+      achievement.completed ? count + 1 : count
     ), 0);
 
-    achievementsListSummary.textContent = `${unlockedCount}/${list.length} unlocked`;
+    achievementsListSummary.textContent = `${unlockedCount}/${visibleAchievements.length} unlocked`;
 
-    if (list.length === 0) {
+    if (visibleAchievements.length === 0) {
       achievementsListContainer.innerHTML = '<div class="achievements-list-empty">No achievements found for this game.</div>';
       return;
     }
 
+    const groupedAchievements = ACHIEVEMENT_DIFFICULTY_ORDER.map(difficulty => ({
+      difficulty,
+      achievements: visibleAchievements.filter(achievement => achievement.difficulty === difficulty)
+    })).filter(group => group.achievements.length > 0);
+
     let html = '';
-    list.forEach(achievement => {
-      const title = lib.getAchievementTitle(achievement) || 'Untitled achievement';
-      const achievementId = lib.getAchievementId(achievement);
-      const unlocked = lib.isAchievementCompleted(achievement);
-      html += `<div class="achievements-list-row ${unlocked ? 'unlocked' : 'locked'}" data-achievement-id="${lib.escapeHtml(achievementId)}">`;
-      html += `<div class="achievements-list-row-title">${lib.escapeHtml(title)}</div>`;
-      html += `<div class="achievements-list-row-state">${unlocked ? 'Unlocked' : 'Locked'}</div>`;
+    groupedAchievements.forEach(group => {
+      const groupUnlockedCount = group.achievements.filter(achievement => achievement.completed).length;
+      html += `<section class="achievements-list-group achievements-list-group-${group.difficulty.toLowerCase()}">`;
+      html += '<div class="achievements-list-group-header">';
+      html += `<span class="achievements-list-group-title">${lib.escapeHtml(group.difficulty)}</span>`;
+      html += `<span class="achievements-list-group-progress">${groupUnlockedCount}/${group.achievements.length}</span>`;
       html += '</div>';
+      html += '<div class="achievements-list-group-items">';
+
+      group.achievements.forEach(item => {
+        html += `<div class="achievements-list-row ${item.completed ? 'unlocked' : 'locked'}" data-achievement-id="${lib.escapeHtml(item.id)}">`;
+        html += `<div class="achievements-list-row-title">${lib.escapeHtml(item.title)}</div>`;
+        html += `<div class="achievements-list-row-state">${item.completed ? 'Unlocked' : 'Locked'}</div>`;
+        html += '</div>';
+      });
+
+      html += '</div>';
+      html += '</section>';
     });
 
     achievementsListContainer.innerHTML = html;
@@ -562,6 +778,10 @@
 
       if (result.success) {
         isInitialized = true;
+        activeAchievementGameId = normalizeValue(result.gameId);
+        activeAchievementRomKey = normalizeValue(result.romKey || launchPayload?.romKey);
+        achievementCatalogContext = null;
+        achievementCatalogContextPromise = null;
         
         // Automatically load the achievements list after initialization
         await refreshAchievementsList();
@@ -646,7 +866,8 @@
   async function displayAchievements(achievements) {
     achievementsOverlay.innerHTML = '';
 
-    const unlockedAchievements = await getVisibleUnlockedAchievements(achievements);
+    const visibleAchievements = await getVisibleAchievements(achievements);
+    const unlockedAchievements = await getVisibleUnlockedAchievements(visibleAchievements.map(item => item.achievement));
 
     if (unlockedAchievements.length === 0) {
       achievementsOverlay.innerHTML = '<div class="empty-state">No achievements unlocked yet</div>';

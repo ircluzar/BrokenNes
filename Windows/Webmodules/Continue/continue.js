@@ -57,18 +57,18 @@
   let stars = 0;
   let requiredStars = 5;
   let levelCleared = false;
-  
+
   // Deck state
   let selectedCpu = null;
   let selectedPpu = null;
   let selectedApu = null;
   let selectedShader = null;
-  
+
   let enforcedCpu = null;
   let enforcedPpu = null;
   let enforcedApu = null;
   let enforcedShader = null;
-  
+
   // ROM state
   let selectedGameId = null;
   let selectedRomKey = null;
@@ -80,7 +80,8 @@
   let pendingAllAchievementsModal = null;
   let pendingCampaignCompleteModal = false;
   let pendingCreditsModal = false;
-  
+  let pendingLevelOneWelcomeModal = false;
+
   const coreCatalog = {
     CPU: [],
     PPU: [],
@@ -153,6 +154,10 @@
 
       // Setup event listeners
       setupEventListeners();
+
+      if (currentLevel === 1) {
+        queueLevelOneWelcomeModal();
+      }
     } catch (error) {
       console.error('[Continue] Initialization error:', error);
     }
@@ -494,6 +499,10 @@
     return document.getElementById('allAchievementsModal')?.style.display === 'flex';
   }
 
+  function isLevelOneWelcomeModalOpen() {
+    return document.getElementById('levelOneWelcomeModal')?.style.display === 'flex';
+  }
+
   function isCampaignCompleteModalOpen() {
     return document.getElementById('campaignCompleteModal')?.style.display === 'flex';
   }
@@ -511,8 +520,45 @@
     tryShowAllAchievementsCompletedModal();
   }
 
+  function queueLevelOneWelcomeModal() {
+    pendingLevelOneWelcomeModal = true;
+    tryShowLevelOneWelcomeModal();
+  }
+
+  function tryShowLevelOneWelcomeModal() {
+    if (!pendingLevelOneWelcomeModal
+      || isUnlockModalOpen()
+      || isAllAchievementsModalOpen()
+      || Boolean(pendingAllAchievementsModal)
+      || isLevelOneWelcomeModalOpen()
+      || isImportantNoteModalOpen()
+      || isCampaignCompleteModalOpen()
+      || isCreditsModalOpen()
+      || pendingCampaignCompleteModal
+      || pendingCreditsModal) {
+      return;
+    }
+
+    const modal = document.getElementById('levelOneWelcomeModal');
+    if (!modal) {
+      pendingLevelOneWelcomeModal = false;
+      return;
+    }
+
+    modal.style.display = 'flex';
+    pendingLevelOneWelcomeModal = false;
+    void playUiSfx(UI_SFX.modalOpen, { key: 'level-one-welcome-modal-open', cooldownMs: 120 });
+  }
+
   function tryShowAllAchievementsCompletedModal() {
-    if (!pendingAllAchievementsModal || isUnlockModalOpen() || isImportantNoteModalOpen() || isCampaignCompleteModalOpen() || isCreditsModalOpen() || pendingCampaignCompleteModal || pendingCreditsModal) {
+    if (!pendingAllAchievementsModal
+      || isUnlockModalOpen()
+      || isLevelOneWelcomeModalOpen()
+      || isImportantNoteModalOpen()
+      || isCampaignCompleteModalOpen()
+      || isCreditsModalOpen()
+      || pendingCampaignCompleteModal
+      || pendingCreditsModal) {
       return;
     }
 
@@ -537,6 +583,7 @@
     }
 
     modal.style.display = 'none';
+    tryShowLevelOneWelcomeModal();
   }
 
   function requestContinueMusic(filename) {
@@ -605,6 +652,17 @@
     }
 
     await requestContinueMusic(CONTINUE_TITLE_TRACK);
+    tryShowLevelOneWelcomeModal();
+    tryShowAllAchievementsCompletedModal();
+  }
+
+  function closeLevelOneWelcomeModal() {
+    const modal = document.getElementById('levelOneWelcomeModal');
+    if (!modal) {
+      return;
+    }
+
+    modal.style.display = 'none';
     tryShowAllAchievementsCompletedModal();
   }
 
@@ -2084,6 +2142,20 @@
       });
     }
 
+    const levelOneWelcomeCloseBtn = document.getElementById('levelOneWelcomeCloseBtn');
+    if (levelOneWelcomeCloseBtn) {
+      levelOneWelcomeCloseBtn.addEventListener('click', closeLevelOneWelcomeModal);
+    }
+
+    const levelOneWelcomeModal = document.getElementById('levelOneWelcomeModal');
+    if (levelOneWelcomeModal) {
+      levelOneWelcomeModal.addEventListener('click', (event) => {
+        if (event.target === levelOneWelcomeModal) {
+          closeLevelOneWelcomeModal();
+        }
+      });
+    }
+
     const importantNoteCloseBtn = document.getElementById('importantNoteCloseBtn');
     if (importantNoteCloseBtn) {
       importantNoteCloseBtn.addEventListener('click', closeImportantDeckBuilderNote);
@@ -2130,6 +2202,12 @@
       const creditsOpen = isCreditsModalOpen();
       if (creditsOpen) {
         void closeCreditsModal();
+        return;
+      }
+
+      const levelOneWelcomeOpen = isLevelOneWelcomeModalOpen();
+      if (levelOneWelcomeOpen) {
+        closeLevelOneWelcomeModal();
         return;
       }
 
@@ -2302,6 +2380,7 @@
       return;
     }
 
+    tryShowLevelOneWelcomeModal();
     tryShowAllAchievementsCompletedModal();
   }
 

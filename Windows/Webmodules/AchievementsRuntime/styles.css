@@ -233,15 +233,47 @@ body {
   font-size: 0.5rem;
 }
 
+.achievements-list-group {
+  margin-bottom: 0.8rem;
+}
+
+.achievements-list-group:last-child {
+  margin-bottom: 0;
+}
+
+.achievements-list-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+  padding: 0.2rem 0.1rem;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.22);
+}
+
+.achievements-list-group-title {
+  color: var(--nes-accent);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.achievements-list-group-progress {
+  color: #d1d5db;
+  font-size: 0.42rem;
+  letter-spacing: 0.08em;
+}
+
+.achievements-list-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .achievements-list-row {
   border: 2px solid #6b7280;
   padding: 0.6rem;
-  margin-bottom: 0.5rem;
   background: rgba(255, 255, 255, 0.02);
-}
-
-.achievements-list-row:last-child {
-  margin-bottom: 0;
 }
 
 .achievements-list-row.unlocked {
