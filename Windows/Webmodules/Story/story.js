@@ -5,6 +5,7 @@
 
   let gameSave = null;
   let savedShaderState = null; // Store original shader state to restore later
+  let currentStory = null;
 
   // Tiny chainable scheduler: supports sync and async Do steps
   // API: Do(fn|asyncFn), Wait(seconds), Start(), Reset()
@@ -71,12 +72,13 @@
   function narrate(text) {
     try {
       setSubtitle(text);
+      const voice = currentStory && currentStory.voice ? currentStory.voice : null;
       
       // Try to use speak.js if available
       if (window.speakit) {
         window.speakit(text);
-      } else if (window.speak) {
-        window.speak(text, { speed: 125, variant: 'croak', voiceName: 'en-us' });
+      } else if (window.speak && voice) {
+        window.speak(text, voice);
       } else {
         console.warn('[Story] TTS not available');
       }
@@ -85,26 +87,71 @@
     }
   }
 
-  // Helper to load a narration ROM (page1.nes, page2.nes, etc.)
-  async function loadNarrationRom(name) {
+  function getSelectedActor() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const actorId = params.get('actor');
+      if (window.storyActors && typeof window.storyActors.getActor === 'function') {
+        return window.storyActors.getActor(actorId);
+      }
+    } catch (e) {
+      console.warn('[Story] Failed to parse actor from URL:', e);
+    }
+
+    return {
+      id: 'jimmy',
+      name: 'Jimmy',
+      romSuffix: 'jimmy'
+    };
+  }
+
+  function buildStoryConfig(actor) {
+    const selectedActor = actor || getSelectedActor();
+    const actorStory = selectedActor.story;
+
+    if (!actorStory || !actorStory.voice || !Array.isArray(actorStory.pages) || actorStory.pages.length === 0) {
+      throw new Error(`[Story] Missing story config for actor: ${selectedActor.id || 'unknown'}`);
+    }
+
+    return {
+      actor: selectedActor,
+      voice: Object.assign({}, actorStory.voice),
+      pages: actorStory.pages.map((page) => ({
+        page: page.page,
+        text: page.text,
+        romCandidates: [
+          `page${page.page}_${selectedActor.romSuffix}.nes`,
+          `page${page.page}_jimmy.nes`,
+          `page${page.page}.nes`
+        ]
+      })),
+      finalPageRomCandidates: ['page5.nes']
+    };
+  }
+
+  // Helper to load a narration ROM candidate list
+  async function loadNarrationRom(names) {
+    const candidates = Array.isArray(names) ? names : [names];
     try {
       if (!window.webapi || !window.webapi.emulator || !window.webapi.emulator.loadBuiltInRom) {
         console.error('[Story] webapi.emulator.loadBuiltInRom not available');
         return false;
       }
 
-      const result = await window.webapi.emulator.loadBuiltInRom(name, true); // preserveShader = true
-      
-      if (result && result.success) {
-        await enforceStoryShader();
-        console.log(`[Story] Successfully loaded ${name}`);
-        return true;
-      } else {
-        console.error(`[Story] Failed to load ${name}:`, result?.error || 'Unknown error');
-        return false;
+      for (const name of candidates) {
+        const result = await window.webapi.emulator.loadBuiltInRom(name, true); // preserveShader = true
+        if (result && result.success) {
+          await enforceStoryShader();
+          console.log(`[Story] Successfully loaded ${name}`);
+          return true;
+        }
+
+        console.warn(`[Story] Failed to load ${name}:`, result?.error || 'Unknown error');
       }
+
+      return false;
     } catch (e) {
-      console.error(`[Story] Error loading ${name}:`, e);
+      console.error('[Story] Error loading narration ROM:', e);
       return false;
     }
   }
@@ -206,10 +253,13 @@
       // Ensure speak.js is loaded
       await loadSpeak();
 
+      currentStory = buildStoryConfig(getSelectedActor());
+      console.log('[Story] Selected actor:', currentStory.actor.id);
+
       // Preload meSpeak to avoid first-line delay
       try {
         if (window.speakPreload) {
-          window.speakPreload({ voiceName: 'en-us' });
+          window.speakPreload({ voiceName: currentStory.voice.voiceName });
         }
       } catch (e) {
         console.warn('[Story] Failed to preload TTS:', e);
@@ -264,27 +314,24 @@
 
   // Build the story sequence using the scheduler
   function buildStorySequence() {
+    const story = currentStory || buildStoryConfig(getSelectedActor());
+
+    queue = [];
+    Reset();
+
     // Clear subtitle initially
     Do(() => setSubtitle(' '))
       .Wait(2)
-      // Page 1
-      .Do(async () => await loadNarrationRom('page1.nes'))
-      .Do(() => narrate('All that little Jimmy wanted was a functional video game console.'))
-      .Wait(6)
-      // Page 2
-      .Do(async () => await loadNarrationRom('page2.nes'))
-      .Do(() => narrate('But his mom would keep buying him janky clones instead.'))
-      .Wait(6)
-      // Page 3
-      .Do(async () => await loadNarrationRom('page3.nes'))
-      .Do(() => narrate('So little Jimmy broke them all into parts.'))
-      .Wait(6)
-      // Page 4
-      .Do(async () => await loadNarrationRom('page4.nes'))
-      .Do(() => narrate('And now, he is ready to build his ultimate console.'))
-      .Wait(5)
-      // Page 5 (final)
-      .Do(async () => await loadNarrationRom('page5.nes'))
+      .Do(() => console.log(`[Story] Playing story for ${story.actor.name}`));
+
+    story.pages.forEach((page, index) => {
+      const waitSeconds = index === story.pages.length - 1 ? 5 : 6;
+      Do(async () => await loadNarrationRom(page.romCandidates))
+        .Do(() => narrate(page.text))
+        .Wait(waitSeconds);
+    });
+
+    Do(async () => await loadNarrationRom(story.finalPageRomCandidates))
       .Wait(7)
       // End: Fade out and navigate to Continue
       .Do(() => finishStory());
@@ -368,6 +415,7 @@
     setSubtitle,
     narrate,
     loadNarrationRom,
+    getCurrentStory: () => currentStory,
     getGameSave: () => gameSave
   };
 

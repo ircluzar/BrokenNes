@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DECK BUILDER - BrokenNes</title>
   <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="../shared/story-character-modal.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="../shared/fonts.css">
 </head>
@@ -36,7 +37,7 @@
       <div class="action-layout">
         <a class="btn-nes action-primary" href="../Continue/index.html">Continue Deck Builder</a>
         <div class="action-secondary">
-          <a class="btn-nes action-secondary-btn" href="../Story/index.html">Watch Story Again</a>
+          <a class="btn-nes action-secondary-btn" href="../Story/index.html" id="btnReplayStory">Watch Story Again</a>
           <a class="btn-nes action-secondary-btn" href="../Cores/index.html">View Unlocked Cores</a>
         </div>
       </div>
@@ -44,6 +45,19 @@
     
     <div class="deck-footer">
       <a href="../Home/index.html?skipHW=1" class="deck-link">RETURN</a>
+    </div>
+  </div>
+
+  <div id="storyCharacterModal" class="modal-backdrop" style="display: none;">
+    <div class="card shadow-xl story-character-modal">
+      <div class="card-body">
+        <h2 class="story-character-title">Choose a character</h2>
+        <p class="story-character-copy">Select who should replay the story cutscene.</p>
+        <div id="storyCharacterGrid" class="story-character-grid" role="group" aria-label="Story characters"></div>
+        <div class="story-character-actions">
+          <button class="btn-nes story-character-cancel" id="storyCharacterCancel" type="button">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -56,6 +70,7 @@
   <script src="../shared/webapi.js"></script>
   <!-- Audio now handled by audio engine via webAPI -->
   <script src="../shared/homePixelBg.js"></script>
+  <script src="../shared/story-actors.js"></script>
   <script src="deckbuilder.js"></script>
 </body>
 </html>

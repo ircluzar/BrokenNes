@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BrokenNes - Main Menu</title>
   <link rel="stylesheet" href="../shared/common.css">
+  <link rel="stylesheet" href="../shared/story-character-modal.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="../shared/fonts.css">
 </head>
@@ -46,12 +47,26 @@
     </div>
   </div>
 
+  <div id="storyCharacterModal" class="modal-backdrop hw-center" style="display: none;">
+    <div class="card shadow-xl story-character-modal">
+      <div class="card-body">
+        <h2 class="story-character-title">Choose a character</h2>
+        <p class="story-character-copy">Pick who will play the story cutscene. Each actor can use its own narration, voice, and page ROMs.</p>
+        <div id="storyCharacterGrid" class="story-character-grid" role="group" aria-label="Story characters"></div>
+        <div class="story-character-actions">
+          <button class="hero-btn story-character-cancel" id="storyCharacterCancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Dependencies -->
   <script src="../shared/storage.js"></script>
   <script src="../shared/gameSave.js"></script>
   <!-- Audio now handled by audio engine via webAPI -->
   <script src="../shared/homePixelBg.js"></script>
   <script src="../shared/webapi.js"></script>
+  <script src="../shared/story-actors.js"></script>
   <script src="home.js"></script>
 </body>
 </html>

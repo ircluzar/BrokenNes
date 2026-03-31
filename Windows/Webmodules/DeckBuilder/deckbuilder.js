@@ -22,6 +22,8 @@
       // Update UI with save data
       await updateUI();
 
+      setupEventListeners();
+
       // Play background music randomly
       playRandomMusic();
     } catch (error) {
@@ -120,6 +122,60 @@
     } catch (error) {
       console.error('[DeckBuilder] Music playback error:', error);
     }
+  }
+
+  function setupEventListeners() {
+    const replayStoryButton = document.getElementById('btnReplayStory');
+    if (replayStoryButton) {
+      replayStoryButton.addEventListener('click', onReplayStoryClick);
+    }
+
+    const storyCharacterCancel = document.getElementById('storyCharacterCancel');
+    if (storyCharacterCancel) {
+      storyCharacterCancel.addEventListener('click', hideStoryCharacterModal);
+    }
+
+    const storyCharacterModal = document.getElementById('storyCharacterModal');
+    if (storyCharacterModal) {
+      storyCharacterModal.addEventListener('click', (event) => {
+        if (event.target === storyCharacterModal) {
+          hideStoryCharacterModal();
+        }
+      });
+    }
+
+    populateStoryCharacterGrid();
+  }
+
+  function populateStoryCharacterGrid() {
+    const grid = document.getElementById('storyCharacterGrid');
+    if (!grid || !window.storyActors || typeof window.storyActors.renderCharacterCards !== 'function') {
+      return;
+    }
+
+    window.storyActors.renderCharacterCards(grid, (actor) => {
+      hideStoryCharacterModal();
+      window.location.href = window.storyActors.buildStoryUrl(actor.id);
+    });
+  }
+
+  function showStoryCharacterModal() {
+    const modal = document.getElementById('storyCharacterModal');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  function hideStoryCharacterModal() {
+    const modal = document.getElementById('storyCharacterModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function onReplayStoryClick(event) {
+    event.preventDefault();
+    showStoryCharacterModal();
   }
 
   // Expose API for debugging

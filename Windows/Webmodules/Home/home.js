@@ -113,6 +113,48 @@
         }
       });
     }
+
+    const storyCharacterCancel = document.getElementById('storyCharacterCancel');
+    if (storyCharacterCancel) {
+      storyCharacterCancel.addEventListener('click', hideStoryCharacterModal);
+    }
+
+    const storyCharacterModal = document.getElementById('storyCharacterModal');
+    if (storyCharacterModal) {
+      storyCharacterModal.addEventListener('click', (e) => {
+        if (e.target === storyCharacterModal) {
+          hideStoryCharacterModal();
+        }
+      });
+    }
+
+    populateStoryCharacterGrid();
+  }
+
+  function populateStoryCharacterGrid() {
+    const grid = document.getElementById('storyCharacterGrid');
+    if (!grid || !window.storyActors || typeof window.storyActors.renderCharacterCards !== 'function') {
+      return;
+    }
+
+    window.storyActors.renderCharacterCards(grid, (actor) => {
+      hideStoryCharacterModal();
+      window.location.href = window.storyActors.buildStoryUrl(actor.id);
+    });
+  }
+
+  function showStoryCharacterModal() {
+    const modal = document.getElementById('storyCharacterModal');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  function hideStoryCharacterModal() {
+    const modal = document.getElementById('storyCharacterModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
   }
 
   function showHealthWarningModal() {
@@ -228,8 +270,7 @@
     try {
       // Check if story has been seen
       if (!gameSave.SeenStory) {
-        // Route to story first
-        window.location.href = '../Story/index.html';
+        showStoryCharacterModal();
       } else {
         // Go directly to deck builder
         window.location.href = '../DeckBuilder/index.html';
