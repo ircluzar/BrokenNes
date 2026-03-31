@@ -932,15 +932,16 @@
     if (!romToDelete) return;
     
     try {
-      console.log('[RomManager] Deleting ROM:', romToDelete.romKey);
-      await removeStoredRom(romToDelete.romKey);
-      await setMasqueradeStatus(romToDelete.romKey, null);
+      const deletedRomKey = romToDelete.romKey;
+      console.log('[RomManager] Deleting ROM:', deletedRomKey);
+      await removeStoredRom(deletedRomKey);
+      await setMasqueradeStatus(deletedRomKey, null);
       
       console.log('[RomManager] ROM deleted successfully');
       closeDeleteModal();
       
       // Clear selection if deleted ROM was selected
-      if (selectedRomKey === romToDelete.romKey) {
+      if (selectedRomKey === deletedRomKey) {
         selectedRomKey = null;
         elements.romDetailsSection.style.display = 'none';
         updateLayoutState(false);
