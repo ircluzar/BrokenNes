@@ -1,10 +1,10 @@
 # BrokenNes
 
-BrokenNes is a Windows-first NES emulator project that mixes conventional emulation with progression systems, collectible cards, unlockable tools, and deliberate corruption workflows. Instead of presenting the emulator as a fixed appliance, BrokenNes treats it like a buildable loadout: you unlock parts, assemble a deck, launch cartridges through a progression layer, and then push the machine into unstable territory with RTC, Glitch Harvester, Imagine, and other activity modules.
+BrokenNes is an experimental NES emulator project that mixes conventional emulation with progression systems, collectible cards, unlockable tools, and deliberate corruption workflows. Instead of presenting the emulator as a fixed appliance, BrokenNes treats it like a buildable loadout: you unlock parts, assemble a deck, launch cartridges through a progression layer, and then push the machine into unstable territory with RTC, Glitch Harvester, Imagine, and other activity modules.
 
 At its core, this repository contains a desktop host, an NES emulation stack with multiple CPU, PPU, and APU implementations, a shader pipeline, RetroAchievements integration, audio tooling, ROM management, and a large set of embedded web modules that act as the front end and experimentation surface.
 
-## What Makes BrokenNes Different
+## Not your typical Nes emulator
 
 - It is an emulator and a meta-game at the same time. Progression, achievements, cards, unlocks, and challenge activities are part of the product rather than an external launcher layer.
 - It supports many interchangeable core variants across CPU, PPU, APU, clock, and shader categories, including fast, degraded, unstable, experimental, and secret variants.
