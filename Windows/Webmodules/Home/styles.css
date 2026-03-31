@@ -163,6 +163,34 @@
   animation: fadeInBg 0.35s ease;
 }
 
+/* Emulator early-access warning modal: two-button layout */
+.ew-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.ew-go-btn {
+  margin-top: 0;
+}
+
+.ew-back-btn {
+  border-color: #888;
+  color: #bbb;
+}
+
+.ew-back-btn:hover,
+.ew-back-btn:focus {
+  background: #888;
+  color: #000;
+}
+
+.ew-back-btn:active {
+  background: #555;
+  color: #fff;
+}
+
 /* Fade-in for hero after accepting warning */
 .hero-fade-in {
   opacity: 0;

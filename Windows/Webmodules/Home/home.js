@@ -10,6 +10,8 @@
   let audioInitialized = false;
   let menuFadeUnlockTimer = null;
 
+  const EMULATOR_WARNING_KEY = 'bn_emulator_warning_accepted';
+
   // Initialize on page load
   window.addEventListener('DOMContentLoaded', init);
 
@@ -114,6 +116,16 @@
       });
     }
 
+    const emulatorWarningGo = document.getElementById('emulatorWarningGo');
+    if (emulatorWarningGo) {
+      emulatorWarningGo.addEventListener('click', onEmulatorWarningAccept);
+    }
+
+    const emulatorWarningBack = document.getElementById('emulatorWarningBack');
+    if (emulatorWarningBack) {
+      emulatorWarningBack.addEventListener('click', hideEmulatorWarningModal);
+    }
+
     const storyCharacterCancel = document.getElementById('storyCharacterCancel');
     if (storyCharacterCancel) {
       storyCharacterCancel.addEventListener('click', hideStoryCharacterModal);
@@ -141,6 +153,38 @@
       hideStoryCharacterModal();
       window.location.href = window.storyActors.buildStoryUrl(actor.id);
     });
+  }
+
+  function shouldShowEmulatorWarning() {
+    // Already acknowledged during this or a previous session
+    if (localStorage.getItem(EMULATOR_WARNING_KEY) === '1') {
+      return false;
+    }
+    // Player is level 5 or above
+    const level = Number(gameSave?.Level) || 1;
+    if (level >= 5) {
+      return false;
+    }
+    // Unlock Everything was used — all feature gates are open
+    if (gameSave?.SavestatesUnlocked && gameSave?.RtcUnlocked &&
+        gameSave?.GhUnlocked && gameSave?.ImagineUnlocked && gameSave?.DebugUnlocked) {
+      return false;
+    }
+    return true;
+  }
+
+  function showEmulatorWarningModal() {
+    const modal = document.getElementById('emulatorWarningModal');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  function hideEmulatorWarningModal() {
+    const modal = document.getElementById('emulatorWarningModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
   }
 
   function showStoryCharacterModal() {
@@ -282,6 +326,20 @@
   }
 
   async function onEmulatorClick() {
+    if (shouldShowEmulatorWarning()) {
+      showEmulatorWarningModal();
+      return;
+    }
+    await proceedToEmulator();
+  }
+
+  async function onEmulatorWarningAccept() {
+    localStorage.setItem(EMULATOR_WARNING_KEY, '1');
+    hideEmulatorWarningModal();
+    await proceedToEmulator();
+  }
+
+  async function proceedToEmulator() {
     try {
       // Stop music via audio engine (await to ensure it completes first)
       if (api?.audio?.stopMusic) {

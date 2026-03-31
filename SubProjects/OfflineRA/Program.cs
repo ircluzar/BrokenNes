@@ -10,9 +10,9 @@ using OfflineRA.Models;
 
 class RetroAchievementsFetcher
 {
-    private static readonly string apiKey = "cVsc8qQQGHpKOmqEs6wT3A6yHn2rF840";
-    private static readonly string username = "ircluzar";
-    private static readonly string baseUrl = "https://retroachievements.org/API/";
+    private static readonly string apiKey = "";
+    private static readonly string username = "";
+    private static readonly string baseUrl = "";
     private static readonly string[] PriorityKeywords = new[] { "mario", "zelda", "kirby", "mega", "ice", "island" };
 
     static async Task Main()

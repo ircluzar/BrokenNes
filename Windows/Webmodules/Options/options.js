@@ -286,6 +286,7 @@
     if (window.gameSave && typeof window.gameSave.reset === 'function') {
       try {
         gameSave = await window.gameSave.reset();
+        localStorage.removeItem('bn_emulator_warning_accepted');
         showModal('Save Edit', 'DeckBuilder game save reset to defaults');
       } catch (error) {
         console.error('[Options] Clear save failed:', error);
