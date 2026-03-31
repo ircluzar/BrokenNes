@@ -1,7 +1,7 @@
 {
   "format": "continue-db/v1",
   "version": 1,
-  "exportedAt": "2026-03-31T00:28:18.251Z",
+  "exportedAt": "2026-03-30T03:00:34.756Z",
   "data": {
     "games": [
       {
@@ -784,10 +784,25 @@
         "metaAchievementName": "Who let the balls out? Who, who, who..."
       },
       {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_score_100_000_points",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Score 100,000 points",
+        "difficulty": "Hard",
+        "requirements": [],
+        "metaAchievementName": "Score 100,000 points"
+      },
+      {
+        "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_score_200_000_points",
+        "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
+        "title": "Score 200,000 points",
+        "difficulty": "Insane",
+        "requirements": [],
+        "metaAchievementName": "Score 200,000 points"
+      },
+      {
         "id": "ach_nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba_score_50_000_points",
         "gameId": "nes_bf43d93d36d7198e65b9b7c4e41db108fe43fcba",
         "title": "Score 50,000 points",
-        "difficulty": "Hard",
         "requirements": [],
         "metaAchievementName": "Score 50,000 points"
       },

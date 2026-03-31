@@ -1,91 +1,123 @@
-<p align="center">
-  <img src="wwwroot/nes-favicon.svg" width="96" height="96" alt="BrokenNes logo" />
-</p>
-
 # BrokenNes
 
-A browser-based NES emulator and corruption toolkit built with Blazor WebAssembly (.NET 10). It aims for approachability while experimenting with modern .NET performance options.
+BrokenNes is a Windows-first NES emulator project that mixes conventional emulation with progression systems, collectible cards, unlockable tools, and deliberate corruption workflows. Instead of presenting the emulator as a fixed appliance, BrokenNes treats it like a buildable loadout: you unlock parts, assemble a deck, launch cartridges through a progression layer, and then push the machine into unstable territory with RTC, Glitch Harvester, Imagine, and other activity modules.
 
-## DeckBuilder
+At its core, this repository contains a desktop host, an NES emulation stack with multiple CPU, PPU, and APU implementations, a shader pipeline, RetroAchievements integration, audio tooling, ROM management, and a large set of embedded web modules that act as the front end and experimentation surface.
 
-An achievement-based card-like game where you construct and experiement with emulator parts while playing a game of your choice.
+## What Makes BrokenNes Different
+
+- It is an emulator and a meta-game at the same time. Progression, achievements, cards, unlocks, and challenge activities are part of the product rather than an external launcher layer.
+- It supports many interchangeable core variants across CPU, PPU, APU, clock, and shader categories, including fast, degraded, unstable, experimental, and secret variants.
+- It includes corruption tooling as a first-class feature, not a side utility. Real-time blasting, savestate-based glitch harvesting, replayable stockpiles, automated slop loops, and scanline-targeted Imagine modes are built into the experience.
+- It leans into emulator personality. Some cores aim for performance or fidelity, while others are intentionally odd, glitch-prone, stylized, or outright questionable.
+
+## Feature Overview
+
+### Modular Emulator Core System
+
+BrokenNes ships with a large mix-and-match core roster rather than a single fixed emulation profile.
+
+- Swap CPU, PPU, APU, clock, and shader components as part of your current build.
+- Browse and inspect unlocked core cards through the Cores gallery.
+- Use standard control cores as baselines, then branch into faster, degraded, enhanced, unstable, debug, and experimental variants.
+- Explore unusual core ideas such as speedhack-heavy variants, Emit IL experiments, scanline-aware Imagine support, bleeding-frame visuals, MIDI-style audio output, and deliberately unreliable joke cores.
+
+This means BrokenNes is not just about whether a game runs. It is also about how it runs, how it sounds, how it looks, and how much instability you are willing to introduce.
+
+### Cards, Unlocks, and Deck Builder
+
+The card system is the progression backbone of BrokenNes.
+
+- Cards represent more than CPU and PPU parts. The project also tracks authored cards for backgrounds, null providers, webmodules, and feature unlocks.
+- Your save tracks owned cards, achievement stars, current level, and unlocked modules/features.
+- Deck Builder acts as the hub, showing your current collection, star count, and progression state.
+- Continue is the campaign-style build console where you equip your current CPU, PPU, APU, and shader loadout, inspect installed cartridges, review achievement progress, and advance when star requirements are met.
+- Level progression grants new cards and milestone rewards, including new activity modules such as Glitch Harvester, Time Jump, Corruption Slop, and Target the Beam.
+- After the authored campaign levels, progression continues with blind-bag style random unlocks so the collection loop keeps going.
+
+In practice, BrokenNes treats emulator configuration like a collectible deckbuilding game instead of a static settings page.
+
+### Achievements and Progression
+
+Achievements are part of the main progression loop, not just an overlay.
+
+- Achievement unlocks are saved into the game save and converted into star count.
+- Stars gate level progression in Continue.
+- Unlocks can award cards, backgrounds, null providers, and module milestones.
+- Achievements Runtime provides an in-game overlay for tracking unlocked and locked achievements.
+- The repository also contains RetroAchievements support and documentation for achievement authoring and testing.
+
+### Corruption Tools
+
+BrokenNes includes several distinct corruption workflows.
+
+- RTC (Real-Time Corruptor): choose memory domains, blast type, and intensity, then apply corruption manually or every frame. Experimental ML-based engine included.
+- Blast modes include random writes, tilt-style byte nudges, NOP injection, bit flips, and Imagine-based modes.
+- Crash behavior is configurable, including ignore-style behavior and Imagine-assisted recovery paths.
+- Glitch Harvester: create named savestate bases, blast from a known state, stash interesting results, replay them, and promote good outcomes into a permanent stockpile.
+- Stockpiled glitches can be renamed, replayed, exported, and imported.
+- Corruption Slop: an automated loop that repeatedly restores, corrupts, and reruns content for rapid glitch generation.
+- Target the Beam: a more experimental corruptor that predicts bytes and can target instruction flow at specific scanlines instead of only between frames.
+
+These tools are meant for both playful chaos and controlled experimentation. You can improvise live corruption or build repeatable glitch workflows around known savestates.
+
+### Emulator Quirks
+
+BrokenNes deliberately preserves a strange identity instead of flattening everything into a single "best" mode.
+
+- Some cores are intended to be dependable baselines.
+- Some are optimized at the cost of compatibility.
+- Some intentionally degrade sound, visuals, or timing.
+- Some expose experimental rendering ideas or aggressive CLR-level optimization attempts.
+- Some are openly unstable or comedic, such as obviously dubious processor experiments.
+
+That design choice is part of the appeal. BrokenNes is willing to let an emulator feel expressive, risky, and a little broken.
+
+## Typical Loop
+
+1. Load a ROM or install cartridges into the library.
+2. Earn achievements and convert them into stars.
+3. Use Deck Builder and Continue to unlock and equip better or stranger cards.
+4. Launch a game with your chosen CPU, PPU, APU, shader, and related systems.
+5. Use activities like Glitch Harvester, Time Jump, or Target the Beam to explore alternate states, replay glitches, and generate corruption-heavy runs.
+
+## Repository Highlights
+
+- `Windows/`: Windows desktop application, audio engine, web API, embedded web modules, and desktop-specific tooling.
+- `Windows/Webmodules/`: progression UI, activities, overlays, debug tools, and card-driven front-end surfaces.
+- `Windows/NesEmulator/`: emulator core, cores, mappers, shaders, RetroAchievements support, and corruption systems.
+- `docs/`: project notes, progression specs, RetroAchievements references, shader docs, and design workpads.
+- `SubProjects/`: related experiments and auxiliary work.
+
+## Building
+
+From the solution root:
+
+```bash
+dotnet build
+```
+
+Or build the Windows project directly:
+
+```bash
+dotnet build Windows/BrokenNes.Windows.csproj -c Debug
+```
+
+## Running
+
+From the solution root:
+
+```bash
+dotnet run --project Windows/BrokenNes.Windows.csproj
+```
+
+Or run the built executable directly from the Windows output folder.
 
 ## Status
-Early work-in-progress. Expect incomplete/experimental hardware features, timing quirks, and some UI jank (some of it intentional).
 
-## What’s here (current/partial)
-- Emulation
-  - 6502 CPU core(s)
-  - PPU with scanline/event scheduling experiments
-  - APU with two playback paths: raw PCM and SoundFont synth
-- SoundFont synth mode (toggle in Debug)
-  - Two selectable synth cores: WF (oscillators/sampled) and MNES (SF2/AudioWorklet)
-  - Optional layering, overlay counters, dev logging, and instant flush
-- Mappers implemented (various states): 0, 1, 2, 3, 4, 5, 7, 9, 33, 90, 228 (+ SPD variants for 1 and 4)
-- Core system & pickers
-  - Multiple CPU/PPU/APU/Clock implementations discoverable at runtime
-  - UI pickers with ratings/perf/category metadata; hot-swappable at runtime
-  - Shader picker with a growing set of post-processing passes
-- ROM Manager
-  - Built-in ROM entries plus user uploads (.nes), drag & drop import
-  - IndexedDB-backed persistence, search/filter, reload, delete uploads
-- Save states & SRAM
-  - Quick Load/Save (also available in mobile fullscreen controller view)
-- Tools/Debugging
-  - Real-Time Corruptor (RTC) with intensity, domains, and auto-corrupt
-  - Glitch Harvester (stash/stockpile, replay, export/import)
-  - Benchmarks modal (weighted runs, history, timeline, diff view, copy)
-  - Mini debug panel (state dump, event scheduler toggle)
-- Input
-  - Keyboard, gamepad, and mobile touch controller (fullscreen)
-
-## Pages and flows
-- Home: title screen with Deck Builder, Emulator, Options, About (health warning gate for audio)
-- Nes: main emulator view (ROM Manager, RTC, Glitch Harvester, Debug, Achievements panel)
-- Options: volume sliders (master/music/sfx), reset core prefs to FMC, save editing helpers, feature unlock toggles
-- Cores: gallery/list of unlocked cores (CPU/PPU/APU/Clock/Shaders) with grouping/sorting
-- Continue: meta flow integration (used by achievements/story)
-- Input/InputSettings: configure players (keyboard/gamepad), view bindings
-- DeckBuilder/Story: meta-progression and intro flow
-
-## Run locally
-Prerequisites: .NET 10 SDK and a modern browser.
-
-Run the dev server from the repo root:
-```bash
- dotnet run
-```
-Open the app in a browser (default: http://localhost:5000 or the HTTPS variant the dev server prints).
-
-## Build & publish
-- Debug build: use your IDE task or `dotnet build -c Debug`
-- Optional diagnostic define: add `-p:EnableDiagLog=true` to append `DIAG_LOG` to DefineConstants
-
-## Project layout
-- `NesEmulator/` core emulation (CPU/PPU/APU, clocks, mappers, shaders, retro achievements)
-- `Pages/` Blazor pages (e.g., `Nes.razor` is the emulator view)
-- `Layout/` shared shell and navigation
-- `wwwroot/` static assets (icons, audio, scripts)
-- `Tools/` shader generator wiring (used at build)
-
-## SoundFont synth mode (WF vs MNES)
-Two SoundFont playback paths are available when SoundFont Mode is enabled from Debug:
-- WF: lightweight WebAudio oscillators with optional sampled instruments
-- MNES: SF2 synthesizer running in an AudioWorklet
-
-You can switch the active core, enable layered mode for comparison, show an on-screen overlay, and flush all voices instantly to avoid lingering tails.
-
-## Core lifecycle (high level)
-- Cores are discovered by name (CPU_*, PPU_*, APU_*) and created via a small factory
-- CPU is eager; PPU/APU are created on first use to keep startup light
-- PPU and APU expose clear/reset helpers for hot swapping and recovery
-- Save states omit large transient buffers and use compact DTOs in WASM builds
-
-## Contributing
-Don't even bother
+BrokenNes is an active experimental project. A large part of its identity comes from iteration, unusual modules, unfinished ideas, and intentionally unstable features. Expect both polished systems and rough edges.
 
 ## License
-[Digital Lifeform License 1.1](LICENSE.txt)
 
-## Disclaimer
-The jank is normal.
+BrokenNes is licensed under the Digital Lifeform License 1.1. See [LICENSE.txt](LICENSE.txt).
+
