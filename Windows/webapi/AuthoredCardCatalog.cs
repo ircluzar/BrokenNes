@@ -629,7 +629,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE OVERLAY"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "AchievementsTest")] = new(
                     "WEBMODULE",
@@ -640,7 +640,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WIDGET"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "ApiTest")] = new(
                     "WEBMODULE",
@@ -651,7 +651,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "AudioTest")] = new(
                     "WEBMODULE",
@@ -662,7 +662,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Continue")] = new(
                     "WEBMODULE",
@@ -673,7 +673,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Cores")] = new(
                     "WEBMODULE",
@@ -684,7 +684,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "CorruptionSlop")] = new(
                     "WEBMODULE",
@@ -695,7 +695,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE OVERLAY"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "DeckBuilder")] = new(
                     "WEBMODULE",
@@ -706,7 +706,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "DeckBuilderCrud")] = new(
                     "WEBMODULE",
@@ -717,7 +717,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "GlitchHarvester")] = new(
                     "WEBMODULE",
@@ -728,7 +728,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WIDGET"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "HexEditor")] = new(
                     "WEBMODULE",
@@ -739,7 +739,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WIDGET"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Home")] = new(
                     "WEBMODULE",
@@ -750,7 +750,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "ImagineBug")] = new(
                     "WEBMODULE",
@@ -761,7 +761,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE OVERLAY"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Options")] = new(
                     "WEBMODULE",
@@ -772,7 +772,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Overlay")] = new(
                     "WEBMODULE",
@@ -783,7 +783,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Webmodule",
-                    "WEBMODULE OVERLAY"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "RomManager")] = new(
                     "WEBMODULE",
@@ -794,7 +794,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "Story")] = new(
                     "WEBMODULE",
@@ -805,7 +805,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE OVERLAY"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "TimeJump")] = new(
                     "WEBMODULE",
@@ -816,7 +816,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Webmodule",
-                    "WEBMODULE WIDGET"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "VoiceTest")] = new(
                     "WEBMODULE",
@@ -827,7 +827,7 @@ namespace BrokenNes.Windows.WebApi
                     3,
                     0,
                     "Webmodule",
-                    "WEBMODULE WEB"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("WEBMODULE", "XYTest")] = new(
                     "WEBMODULE",
@@ -838,7 +838,7 @@ namespace BrokenNes.Windows.WebApi
                     3,
                     0,
                     "Webmodule",
-                    "WEBMODULE WIDGET"
+                    "WEBMODULE CORE"
                 ),
                 [BuildKey("FEATURE", "Savestates")] = new(
                     "FEATURE",
@@ -849,7 +849,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Feature",
-                    "FEATURE TIMEJUMP"
+                    "SYSTEM FEATURE"
                 ),
                 [BuildKey("FEATURE", "RTC")] = new(
                     "FEATURE",
@@ -860,7 +860,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Feature",
-                    "FEATURE GLITCH"
+                    "SYSTEM FEATURE"
                 ),
                 [BuildKey("FEATURE", "GH")] = new(
                     "FEATURE",
@@ -871,7 +871,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Feature",
-                    "FEATURE GLITCH"
+                    "SYSTEM FEATURE"
                 ),
                 [BuildKey("FEATURE", "Imagine")] = new(
                     "FEATURE",
@@ -882,7 +882,7 @@ namespace BrokenNes.Windows.WebApi
                     5,
                     0,
                     "Feature",
-                    "FEATURE IMAGINE"
+                    "SYSTEM FEATURE"
                 ),
                 [BuildKey("FEATURE", "Debug")] = new(
                     "FEATURE",
@@ -893,7 +893,7 @@ namespace BrokenNes.Windows.WebApi
                     4,
                     0,
                     "Feature",
-                    "FEATURE FLAG"
+                    "SYSTEM FEATURE"
                 )
             };
 
