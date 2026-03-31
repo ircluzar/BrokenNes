@@ -46,7 +46,7 @@ namespace BrokenNes.Windows
 
              try
              {
-                 stateJson = await nes.CaptureAtomicSnapshotAsync(2000);
+                 stateJson = await CaptureStateNowAsync();
                  if (string.IsNullOrEmpty(stateJson))
                  {
                      Console.WriteLine("Screenshot capture failed: atomic snapshot timed out");

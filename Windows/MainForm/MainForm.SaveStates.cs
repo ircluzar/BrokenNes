@@ -60,6 +60,25 @@ namespace BrokenNes.Windows
             }
         }
         
+        /// <summary>
+        /// Captures NES state safely regardless of pause state.
+        /// When paused the emulation thread is dormant so SaveState() is safe and
+        /// avoids the 2-second timeout that CaptureAtomicSnapshot would otherwise hit.
+        /// When running, uses the atomic frame-boundary snapshot to avoid mid-frame tears.
+        /// </summary>
+        private string? CaptureStateNow()
+        {
+            if (nes == null) return null;
+            return isPaused ? nes.SaveState() : nes.CaptureAtomicSnapshot(2000);
+        }
+
+        private async Task<string?> CaptureStateNowAsync()
+        {
+            if (nes == null) return null;
+            if (isPaused) return nes.SaveState();
+            return await nes.CaptureAtomicSnapshotAsync(2000).ConfigureAwait(false);
+        }
+
         private bool SaveDeckContinueState()
         {
              if (nes == null) return false;
@@ -71,7 +90,7 @@ namespace BrokenNes.Windows
              try
              {
                  Directory.CreateDirectory(Path.GetDirectoryName(continuePath)!);
-                 string? stateJson = nes.CaptureAtomicSnapshot(2000);
+                 string? stateJson = CaptureStateNow();
                  if (string.IsNullOrEmpty(stateJson)) return false;
 
                  Bitmap? screenshot;
@@ -389,7 +408,7 @@ namespace BrokenNes.Windows
             {
                 try
                 {
-                    string? stateJson = await nes.CaptureAtomicSnapshotAsync(2000);
+                    string? stateJson = await CaptureStateNowAsync();
                     if (string.IsNullOrEmpty(stateJson))
                     {
                         MessageBox.Show("Failed to capture atomic savestate.", "Save State Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -457,7 +476,7 @@ namespace BrokenNes.Windows
 
             try
             {
-                quickSaveState = nes.CaptureAtomicSnapshot(2000);
+                quickSaveState = CaptureStateNow();
                 if (string.IsNullOrEmpty(quickSaveState))
                 {
                     if (showDialogs)
@@ -566,7 +585,7 @@ namespace BrokenNes.Windows
              try
              {
                  Directory.CreateDirectory(Path.GetDirectoryName(continuePath)!);
-                 string? stateJson = nes.CaptureAtomicSnapshot(2000);
+                 string? stateJson = CaptureStateNow();
                  if (string.IsNullOrEmpty(stateJson)) return;
 
                  Bitmap? screenshot;
