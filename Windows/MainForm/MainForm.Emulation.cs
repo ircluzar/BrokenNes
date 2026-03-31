@@ -70,6 +70,10 @@ namespace BrokenNes.Windows
                 }
             }
             
+            // Silence any hanging MIDI/SF2 notes before the emulation session ends.
+            // Must run after the thread is joined so we don't race with the note-emitting step loop.
+            try { nes?.SilenceMidiApu(); } catch { }
+
             try
             {
                 audioManager?.Stop();
@@ -87,6 +91,7 @@ namespace BrokenNes.Windows
             double accumulator = 0;
             int framesSinceReport = 0;
             var reportStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            bool emulationLoopWasPaused = false; // tracks pause edge for MIDI silence
             
             // Initialize FPS tracking for audio speed adjustment
             fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -118,13 +123,22 @@ namespace BrokenNes.Windows
                 {
                     if (isPaused)
                     {
+                        // First frame of pause: silence any hanging MIDI/SF2 notes immediately
+                        if (!emulationLoopWasPaused)
+                        {
+                            emulationLoopWasPaused = true;
+                            try { nes?.SilenceMidiApu(); } catch { }
+                        }
                         Thread.Sleep(10);
                         stopwatch.Restart();
                         nextFrameTime = stopwatch.ElapsedTicks;
                         accumulator = 0;
                         continue;
                     }
-                    
+
+                    // Resumed from pause — clear the edge-detect flag
+                    emulationLoopWasPaused = false;
+
                     // Check if we need to reset timing (after speed change)
                     if (resetTimingAccumulator)
                     {

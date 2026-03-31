@@ -874,6 +874,9 @@ namespace NesEmulator
         }
         private void PostRestore()
         {
+            // Silence any SF2 notes that were active before the state was loaded to prevent hangs
+            EmitAllNoteOff();
+            ResetNoteTracking();
             pulse1_output = ComputePulseOutput(1);
             pulse2_output = ComputePulseOutput(2);
             triangle_output = TriangleSequenceValue(triangle_sequenceIndex);

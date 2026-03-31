@@ -191,7 +191,7 @@ public class Bus : IBus
 		if (newApu == null) return false;
 		if (ReferenceEquals(newApu, activeApu)) { return true; }
 		var previousApu = activeApu;
-		try { previousApu?.ClearAudioBuffers(); } catch { }
+		try { previousApu?.Reset(); } catch { } // silences MIDI/SF2 voices on the outgoing core
 		activeApu = newApu; // reapply latched registers so new core inherits state
 		try { activeApu.ClearAudioBuffers(); } catch { }
 		for (int i=0;i<apuRegLatch.Length;i++)
@@ -286,7 +286,7 @@ public class Bus : IBus
 		}
 		if (!ReferenceEquals(previousApu, activeApu))
 		{
-			try { previousApu?.ClearAudioBuffers(); } catch { }
+			try { previousApu?.Reset(); } catch { } // silences MIDI/SF2 voices on the outgoing core
 			try { activeApu?.ClearAudioBuffers(); } catch { }
 		}
 		// Reapply latched register values so the new core picks up current state
@@ -314,8 +314,8 @@ public class Bus : IBus
 		public void HardResetAPUs()
 		{
 		   var prev = GetActiveApuCore();
-		   // Drop queued audio on the currently active core to avoid bleed into next game
-		   try { activeApu?.ClearAudioBuffers(); } catch {}
+		   // Silence MIDI/SF2 voices and drop queued audio on the active core before recreating
+		   try { activeApu?.Reset(); } catch {}
 		   // Drop and recreate known instances
 		   void Recreate(string key, ref IAPU field)
 		   {

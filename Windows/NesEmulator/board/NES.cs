@@ -1343,6 +1343,21 @@ namespace NesEmulator
 			return false;
 		}
 
+		/// <summary>
+		/// Silences any active MIDI/SF2 notes on the currently active APU.
+		/// Only acts on WF and MNES cores; all other cores are unaffected.
+		/// Safe to call at any time (pause, stop, load, reset, deckbuilder navigate).
+		/// </summary>
+		public void SilenceMidiApu()
+		{
+			try
+			{
+				if (bus?.ActiveAPU is NesEmulator.APU_WF wf) { wf.Reset(); return; }
+				if (bus?.ActiveAPU is NesEmulator.APU_MNES mn) { mn.Reset(); }
+			}
+			catch { }
+		}
+
 		public string GetApuSoundFontStatus()
 		{
 			try

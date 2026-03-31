@@ -702,6 +702,9 @@ namespace NesEmulator
         }
         private void PostRestore()
         {
+            // Silence any MIDI notes that were active before the state was loaded to prevent hangs
+            EmitAllNoteOff();
+            ResetNoteTracking();
             pulse1_output = ComputePulseOutput(1);
             pulse2_output = ComputePulseOutput(2);
             triangle_output = TriangleSequenceValue(triangle_sequenceIndex);
@@ -718,15 +721,12 @@ namespace NesEmulator
             lpLast = 0; dcLastIn = 0; dcLastOut = 0;
         }
 
-        // Minimal Reset hook: drop queued audio and pacing
+        // Minimal Reset hook: drop queued audio, silence any active MIDI notes, and reset tracking
         public void Reset()
         {
             ClearAudioBuffers();
-            ResetNoteTracking();
-            if (useSystemMidi)
-            {
-                SendSystemMidiPanic();
-            }
+            EmitAllNoteOff();    // fires note-off for any tracked notes and sends system MIDI panic
+            ResetNoteTracking(); // resets all remaining tracking state
         }
 
         // Step 1 CPU cycle convenience
