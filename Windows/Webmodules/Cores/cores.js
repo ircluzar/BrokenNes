@@ -1,13 +1,115 @@
 // Cores WebModule - Display unlocked cores with grouping/sorting/filtering
 (function() {
   const api = window.webapi;
+  const cardSvgCache = new Map();
+  let cardFontReadyPromise = null;
 
-  function getCardUrl(domain, id) {
-    if (api?.card?.getUrl) {
-      return api.card.getUrl(domain.toLowerCase(), id);
+  function normalizeCardDomain(domain) {
+    return String(domain || '').trim().toUpperCase();
+  }
+
+  function normalizeCardId(id) {
+    return String(id || '').trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function applySvgRenderQuality(rootEl) {
+    const svg = rootEl?.querySelector('svg');
+    if (!svg) {
+      return false;
     }
-    console.error('[Cores] webapi.card.getUrl not available');
-    return '';
+
+    svg.classList.add('core-card-svg');
+    if (!svg.hasAttribute('preserveAspectRatio')) {
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+    if (!svg.hasAttribute('shape-rendering')) {
+      svg.setAttribute('shape-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('text-rendering')) {
+      svg.setAttribute('text-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('color-rendering')) {
+      svg.setAttribute('color-rendering', 'optimizeQuality');
+    }
+
+    return true;
+  }
+
+  async function ensureCardFontReady() {
+    if (!document.fonts?.load) {
+      return;
+    }
+
+    cardFontReadyPromise ??= Promise.race([
+      Promise.all([
+        document.fonts.load("12px 'Press Start 2P'"),
+        document.fonts.ready
+      ]),
+      new Promise(resolve => window.setTimeout(resolve, 1500))
+    ]).catch(error => {
+      console.warn('[Cores] Card font preload failed:', error);
+    });
+
+    await cardFontReadyPromise;
+  }
+
+  async function getCoreSvgMarkup(domain, id) {
+    const normalizedDomain = normalizeCardDomain(domain);
+    const normalizedId = normalizeCardId(id);
+    if (!normalizedDomain || !normalizedId || !api?.card?.getSvg) {
+      return '';
+    }
+
+    const cacheKey = `${normalizedDomain}:${normalizedId}`;
+    if (cardSvgCache.has(cacheKey)) {
+      return cardSvgCache.get(cacheKey);
+    }
+
+    try {
+      const result = await api.card.getSvg(normalizedDomain, normalizedId);
+      const markup = result?.success && result?.text ? result.text : '';
+      cardSvgCache.set(cacheKey, markup);
+      return markup;
+    } catch (error) {
+      console.warn(`[Cores] Failed to load SVG for ${normalizedDomain}/${normalizedId}:`, error);
+      cardSvgCache.set(cacheKey, '');
+      return '';
+    }
+  }
+
+  async function renderCardMarkupInto(hostEl, item) {
+    if (!hostEl || !item) {
+      return;
+    }
+
+    const requestKey = `${item.key}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    hostEl.dataset.requestKey = requestKey;
+    hostEl.innerHTML = '<div class="card-loading">Loading...</div>';
+
+    const svgMarkup = await getCoreSvgMarkup(item.domain, item.id);
+    if (hostEl.dataset.requestKey !== requestKey) {
+      return;
+    }
+
+    if (svgMarkup) {
+      await ensureCardFontReady();
+    }
+
+    if (hostEl.dataset.requestKey !== requestKey) {
+      return;
+    }
+
+    hostEl.innerHTML = svgMarkup || `<div class="card-fallback-label">${escapeHtml(item.displayName)}</div>`;
+    applySvgRenderQuality(hostEl);
   }
   
   // State
@@ -514,6 +616,19 @@
         if (item) openCard(item);
       });
     });
+
+    container.querySelectorAll('.core-card').forEach(card => {
+      const key = card.getAttribute('data-key');
+      const item = allItems.find(i => i.key === key);
+      if (!item) {
+        return;
+      }
+
+      const host = card.querySelector('.core-card-art');
+      if (host) {
+        void renderCardMarkupInto(host, item);
+      }
+    });
   }
   
   function renderListView(container) {
@@ -602,10 +717,11 @@
   }
   
   function renderCard(item) {
-    const cardUrl = getCardUrl(item.domain, item.id);
     return `
       <div class="core-card" data-key="${item.key}">
-        <img src="${cardUrl}" alt="${item.displayName}" style="width:100%;height:auto;display:block;">
+        <div class="core-card-art" role="img" aria-label="${escapeHtml(item.displayName)}">
+          <div class="card-loading">Loading...</div>
+        </div>
       </div>
     `;
   }
@@ -644,9 +760,8 @@
     const backdrop = document.getElementById('modalBackdrop');
     const content = document.getElementById('modalContent');
     
-    const cardUrl = getCardUrl(item.domain, item.id);
-    
-    content.innerHTML = `<img src="${cardUrl}" alt="${item.displayName}" style="width:min(98vw,calc(98vh * 0.7059));max-width:98vw;height:auto;max-height:98vh;display:block;aspect-ratio:240/340;">`;
+    content.innerHTML = '<div class="card-loading">Loading...</div>';
+    void renderCardMarkupInto(content, item);
     
     backdrop.style.display = 'flex';
     backdrop.classList.remove('closing');

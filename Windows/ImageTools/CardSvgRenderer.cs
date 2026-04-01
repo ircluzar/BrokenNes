@@ -40,10 +40,10 @@ public static class CardSvgRenderer
     int descLineH = 9; // tighter line height
     int descInnerPadTotal = 20; // total left+right inner padding for text within box
     int descLeftPad = descInnerPadTotal / 2;
-    int descMaxLines = Math.Max(4, (descHeight - descTopPad - descTextTopInset) / descLineH + 1);
+    int descMaxLines = 15;//Math.Max(4, (descHeight - descTopPad - descTextTopInset) / descLineH + 1);
     // Conservative per-character width estimate for 'Press Start 2P' at font-size 6
     int approxCharWidth = 7; // smaller font, slightly narrower estimate
-    int maxCharsPerLine = Math.Max(12, (int)((contentW - descInnerPadTotal) / approxCharWidth * 1.6));
+    int maxCharsPerLine = Math.Max(12, (contentW - descInnerPadTotal) / approxCharWidth);//Math.Max(12, (int)((contentW - descInnerPadTotal) / approxCharWidth * 1.6));
     var descLines = Wrap(desc, maxCharsPerLine: maxCharsPerLine, maxLines: descMaxLines);
 
         var sb = new StringBuilder();

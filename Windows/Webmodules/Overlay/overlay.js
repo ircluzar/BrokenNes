@@ -1,6 +1,48 @@
 // Overlay WebModule - Display a single card centered and filling the screen
 (function() {
   const api = window.webapi;
+  let cardFontReadyPromise = null;
+
+  function applySvgRenderQuality(rootEl) {
+    const svg = rootEl?.querySelector('svg');
+    if (!svg) {
+      return false;
+    }
+
+    svg.classList.add('core-card-svg');
+    if (!svg.hasAttribute('preserveAspectRatio')) {
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+    if (!svg.hasAttribute('shape-rendering')) {
+      svg.setAttribute('shape-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('text-rendering')) {
+      svg.setAttribute('text-rendering', 'geometricPrecision');
+    }
+    if (!svg.hasAttribute('color-rendering')) {
+      svg.setAttribute('color-rendering', 'optimizeQuality');
+    }
+
+    return true;
+  }
+
+  async function ensureCardFontReady() {
+    if (!document.fonts?.load) {
+      return;
+    }
+
+    cardFontReadyPromise ??= Promise.race([
+      Promise.all([
+        document.fonts.load("12px 'Press Start 2P'"),
+        document.fonts.ready
+      ]),
+      new Promise(resolve => window.setTimeout(resolve, 1500))
+    ]).catch(error => {
+      console.warn('Overlay font preload failed', error);
+    });
+
+    await cardFontReadyPromise;
+  }
   
   // Initialize on load - no longer auto-loads a card
   document.addEventListener('DOMContentLoaded', () => {
@@ -137,11 +179,13 @@
       }
 
       const svgContent = result.text;
+      await ensureCardFontReady();
       
       // Display the card in the container
       const container = document.getElementById('card-container');
       if (container) {
         container.innerHTML = svgContent;
+        applySvgRenderQuality(container);
         console.log(`Successfully displayed card: ${domain}/${id}`);
       }
     } catch (error) {
