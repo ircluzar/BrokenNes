@@ -85,6 +85,54 @@ Verified: deterministic (identical ROM + cores + frame count → identical hash 
 runs), core selection genuinely changes core IDs and (on ROMs with real content) the resulting
 hash, and `--strict` measurably changes output on a real ROM.
 
+## Run (AccuracyCoin benchmark)
+
+Drives [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) (100thCoin/AccuracyCoin, a
+141-test NES accuracy ROM) to completion and reads its results directly out of RAM. The whole
+mechanism — how to trigger the automated run, where results are stored, how to decode a raw byte
+into pass/fail/error-code — was reverse-engineered from `AccuracyCoin.asm` itself; see
+`AccuracyCoinRunner.cs`'s doc comment for the exact asm line references. Not bundled into this
+repo: `AccuracyCoin.nes` (MIT-licensed, ~40KB) and its `.asm` source live at the upstream repo,
+not here.
+
+```bash
+# Single combo, full per-test breakdown to stdout:
+BrokenNes.Workshop.exe --accuracycoin --rom AccuracyCoin.nes [--cpu ID --ppu ID --apu ID] [--out results.json]
+
+# Full CPU x PPU x APU cross-product (or --cpus/--ppus/--apus subsets), parallelized:
+BrokenNes.Workshop.exe --accuracycoin --rom AccuracyCoin.nes --matrix --out matrix.json
+```
+
+Each result reports pass/fail/not-run/skipped counts per test (with the sub-check error code for
+fails), plus `RetryCount`/`AutoSkippedTests` — see the next two points for why those exist.
+
+**Every CPU core crashes on some illegal/unofficial 6502 opcode** — verified across all 7: each
+throws a different "Bad opcode" exception at a different point (`CPU_ULQ` earliest, `CPU_Z80`
+immediately, matching its known joke-core status). Real 6502 silicon never crashes on an
+undefined opcode. Left unhandled, this would truncate every single combination's run within the
+first ~20 of 141 tests, before almost all PPU/APU/timing tests get a chance to run at all. The
+harness pre-skips the 66 "Unofficial Instructions"/"Unofficial Immediates" tests by default via
+the ROM's own designed skip mechanism (a pre-existing `$FF` at a test's result address makes
+`RunTest` skip it entirely, never calling the test routine) — `--include-unofficial-opcodes`
+disables this to see the raw crash instead.
+
+**That alone isn't sufficient** — illegal opcodes also hide inside "All NOP instructions" (a
+`CPU Behavior` test, not one of the 66), and some tests genuinely *hang* rather than crash
+(`RunningAllTests` never returns to 0). Rather than hand-auditing the remaining 75 tests for
+similar hidden dependencies, the default runner (`RunSingleComboRobust`) generalizes the fix: on
+any crash or hang, `PostAllTestTally` identifies exactly which test was executing, adds it to the
+skip set, and retries from boot. Hangs are detected via stagnation (`PostAllTestTally` frozen for
+90 frames, well above the measured ~2-5 frames/test baseline) rather than waiting out the full
+frame budget every time — this is what makes the retry loop fast enough to run across a
+1000+-combination matrix (cut one measured combo from 65s to 8-9s in Release).
+
+**Parallelism**: `--matrix` runs the cross-product concurrently (`Environment.ProcessorCount - 2`
+workers) within one process — each `NES` instance is fully independent, confirmed during
+Workshop's design research. Three known process-wide mutable statics (`APU_WF`'s MIDI singleton,
+`APU_SPD2`'s unsynchronized lazy LUT build, `CPU_Z80`'s shared `Random`) are pre-warmed
+single-threaded before the parallel run starts, so their one-time lazy init can't race. Results
+checkpoint to `--out` every 50 completions so a long run doesn't lose everything if interrupted.
+
 ## Gotchas worth knowing
 
 - **The boot ROM needs an explicit copy-to-output step.** Unlike `Web/`'s `wwwroot` (copied to
