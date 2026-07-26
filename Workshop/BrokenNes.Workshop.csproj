@@ -1,0 +1,109 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Required transitively by PPU_EIL/PPU_SPD, CoreRegistry, SpeedConfig (same requirement
+         Windows/BrokenNes.Windows.csproj and Web/BrokenNes.Web.csproj both have). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <RootNamespace>BrokenNes.Workshop</RootNamespace>
+    <AssemblyName>BrokenNes.Workshop</AssemblyName>
+
+    <NoWarn>$(NoWarn);CA1416;CS8602;CS8618</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Forced by NES.cs: it hard-references NesEmulator.APU_WF (NAudio.Midi) and
+         NesEmulator.APU_MNES (MeltySynth) by type name on 27 lines - same requirement Web/
+         already discovered. Neither is actually wired to audio output here (Workshop ships
+         silent in v1); these packages exist purely so the apus/** glob compiles. -->
+    <PackageReference Include="NAudio.Midi" Version="2.2.1" />
+    <PackageReference Include="MeltySynth" Version="2.4.0" />
+  </ItemGroup>
+
+  <!-- ==========================================================================
+       Shared cores, linked from the same single source of truth as Windows/ and
+       Web/. NOTHING here is copied or forked - Windows/NesEmulator is the only
+       place these files exist.
+       ========================================================================== -->
+  <PropertyGroup>
+    <NesRoot>..\Windows\NesEmulator\</NesRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- board/: EXPLICIT list, never a glob - same reasoning as Web/: globbing this folder
+         pulls in the old Blazor shell (Emulator*.cs, NesController*.cs, Benchmark.cs,
+         StatePersistence.cs) and detonates the build. One difference from Web/'s list:
+         ClockRegistry.cs is dropped (the clock system is a pure Web-side convenience for
+         driving frames without a native game loop - Workshop uses a System.Windows.Forms.Timer
+         instead, same pattern MainForm.Emulation.cs already uses). NesMemoryExtensions.cs is
+         added - it's portable (only System/Collections.Generic/Linq) and provides the peek/
+         poke/register plumbing a debug tool needs; it compiles into Windows/ today but was
+         deliberately left out of Web/ since the minimal web build had no debug UI to use it. -->
+    <Compile Include="$(NesRoot)board\NES.cs"                  Link="NesEmulator\board\NES.cs" />
+    <Compile Include="$(NesRoot)board\Bus.cs"                  Link="NesEmulator\board\Bus.cs" />
+    <Compile Include="$(NesRoot)board\Cartridge.cs"            Link="NesEmulator\board\Cartridge.cs" />
+    <Compile Include="$(NesRoot)board\CoreRegistry.cs"         Link="NesEmulator\board\CoreRegistry.cs" />
+    <Compile Include="$(NesRoot)board\CpuSharedState.cs"       Link="NesEmulator\board\CpuSharedState.cs" />
+    <Compile Include="$(NesRoot)board\PpuSharedState.cs"       Link="NesEmulator\board\PpuSharedState.cs" />
+    <Compile Include="$(NesRoot)board\Input.cs"                Link="NesEmulator\board\Input.cs" />
+    <Compile Include="$(NesRoot)board\ApuExtensions.cs"        Link="NesEmulator\board\ApuExtensions.cs" />
+    <Compile Include="$(NesRoot)board\SpeedConfig.cs"          Link="NesEmulator\board\SpeedConfig.cs" />
+    <Compile Include="$(NesRoot)board\NesMemoryExtensions.cs"  Link="NesEmulator\board\NesMemoryExtensions.cs" />
+
+    <!-- Whole-folder globs, same as Web/. ppus/ must include PPU_IMG.cs (declares
+         ImagineTargetConfig/ImagineCaptureData, consumed by NES.cs). apus/ must include
+         APU_WF + APU_MNES (see the PackageReference comment above). -->
+    <Compile Include="$(NesRoot)cpus\**\*.cs"      LinkBase="NesEmulator\cpus" />
+    <Compile Include="$(NesRoot)ppus\**\*.cs"      LinkBase="NesEmulator\ppus" />
+    <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus" />
+    <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
+    <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
+
+    <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
+         which lives outside the emulator tree) - same subset Web/ uses. Discovery is
+         reflection-based so the other 19 are simply absent. At least one concrete provider
+         must remain - NullProviderRegistry throws if the discovered list is empty and
+         NES.GetFrameBuffer() calls it when forceStatic is set. -->
+    <Compile Include="$(NesRoot)nullproviders\INullProvider.cs"            Link="NesEmulator\nullproviders\INullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\NullProviderRegistry.cs"     Link="NesEmulator\nullproviders\NullProviderRegistry.cs" />
+    <Compile Include="$(NesRoot)nullproviders\StaticNullProvider.cs"       Link="NesEmulator\nullproviders\StaticNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\BlackNullProvider.cs"        Link="NesEmulator\nullproviders\BlackNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\CloudsNullProvider.cs"       Link="NesEmulator\nullproviders\CloudsNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\FireNullProvider.cs"         Link="NesEmulator\nullproviders\FireNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\WaterRipplesNullProvider.cs" Link="NesEmulator\nullproviders\WaterRipplesNullProvider.cs" />
+
+    <!-- Rendering: a single already-written, SharpDX-free GDI+ helper (RGBA byte[] -> packed
+         BGRA int[] -> System.Drawing.Bitmap via LockBits/Marshal.Copy). This is the ONLY file
+         pulled from Windows/Rendering/ - none of the shader pipeline, procedural backgrounds,
+         or DirectX machinery. -->
+    <Compile Include="$(NesRoot)..\Rendering\DirectBitmap.cs" Link="Rendering\DirectBitmap.cs" />
+  </ItemGroup>
+
+  <!-- ==========================================================================
+       Boot ROM: sourced from the desktop project, not duplicated - same
+       CopySharedRoms pattern Web/BrokenNes.Web.csproj established.
+       ========================================================================== -->
+  <!-- Unlike Web/'s wwwroot (copied to the output automatically by the Blazor SDK), a plain
+       WinForms project needs an explicit copy - WorkshopForm.LoadBootRom() and HeadlessRunner
+       both read relative to AppContext.BaseDirectory (the .exe's own folder), not the project
+       directory. A static <None CopyToOutputDirectory> item won't work here: item globs are
+       evaluated once at project load, before any target runs, so on a first-ever build the
+       glob would see an empty Roms/ folder. Instead, copy directly into $(OutDir) as a build
+       step, AFTER the normal build has established it. -->
+  <Target Name="CopySharedRoms" AfterTargets="Build">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\Roms" Condition="!Exists('$(MSBuildProjectDirectory)\Roms')" />
+    <Copy SourceFiles="$(NesRoot)..\Resources\test.nes" DestinationFiles="$(MSBuildProjectDirectory)\Roms\test.nes" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_SharedRomFiles Include="$(MSBuildProjectDirectory)\Roms\*.nes" />
+    </ItemGroup>
+    <MakeDir Directories="$(OutDir)Roms" Condition="!Exists('$(OutDir)Roms')" />
+    <Copy SourceFiles="@(_SharedRomFiles)" DestinationFolder="$(OutDir)Roms" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

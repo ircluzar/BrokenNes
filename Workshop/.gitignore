@@ -1,0 +1,6 @@
+bin/
+obj/
+
+# Staged from Windows/Resources at build time (CopySharedRoms target in
+# BrokenNes.Workshop.csproj) - not a second tracked copy of the same binary.
+Roms/

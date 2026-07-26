@@ -958,6 +958,36 @@ namespace NesEmulator
 			for (int i = 0; i < frames; i++) RunFrame();
 		}
 
+		// Single-instruction step for interactive debugging (Workshop's "Step Instruction").
+		// Deliberately does NOT replicate RunFrame()'s event-scheduling optimizations
+		// (nextPpuEventCycle/nextIrqCycle bookkeeping, which exist to batch many
+		// instructions efficiently) - for one instruction at a time those are unnecessary,
+		// and FlushBatch already advances PPU/APU by the correct cycle count regardless.
+		// Reuses FlushBatch exactly as its own comment anticipates ("Consolidated flush
+		// helper so later event-based stepping can reuse it").
+		public int StepInstruction()
+		{
+			if (bus == null || crashed) return 0;
+			try
+			{
+				int cpuCycles = bus.cpu!.ExecuteInstruction();
+				FlushBatch(cpuCycles);
+				return cpuCycles;
+			}
+			catch (Exception ex) when (ex.GetType().Name == "CpuCrashException")
+			{
+				HandleCpuCrash(ex);
+				return 0;
+			}
+		}
+
+		// Exposes Bus.SpeedConfig's accuracy-for-speed shortcuts (approximate OAM DMA
+		// timing, idle-loop skip, blank-scanline skip, adaptive batching, ...) so a caller
+		// can force them off before an accuracy-sensitive run. These apply identically
+		// under every CPU/PPU/APU core combination; without a way to disable them,
+		// failures get misattributed to whichever core happened to be selected.
+		public SpeedConfig? GetSpeedConfig() => bus?.SpeedConfig;
+
 		// === Instrumentation & Benchmarks ===
 		private long framesExecutedTotal = 0;
 		public record BenchResult(string Name, int Iterations, double MsTotal, double MsPerIter, long CpuReads, long CpuWrites, long ApuCycles, long OamDmaWrites, long BatchFlushes)

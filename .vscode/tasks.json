@@ -18,6 +18,15 @@
 				"$msbuild"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build BrokenNes Workshop (Debug)",
+			"type": "shell",
+			"command": "dotnet build Workshop/BrokenNes.Workshop.csproj -c Debug",
+			"problemMatcher": [
+				"$msbuild"
+			],
+			"group": "build"
 		}
 	]
 }

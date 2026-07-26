@@ -86,6 +86,11 @@ That design choice is part of the appeal. BrokenNes is willing to let an emulato
 - `Windows/`: Windows desktop application, audio engine, web API, embedded web modules, and desktop-specific tooling.
 - `Windows/Webmodules/`: progression UI, activities, overlays, debug tools, and card-driven front-end surfaces.
 - `Windows/NesEmulator/`: emulator core, cores, mappers, shaders, RetroAchievements support, and corruption systems.
+- `Workshop/`: **experimental** minimal WinForms tool for developing/debugging the shared cores
+  directly - frame/instruction stepping, register and memory viewers, core switching, save
+  states, plus a headless CLI mode for scripted accuracy runs (see
+  [Workshop/README.md](Workshop/README.md)). Links the same cores in `Windows/NesEmulator/`. Part
+  of `BrokenNes.sln` - it's a plain WinForms app with none of `Web/`'s AOT/trimming complexity.
 - `Web/`: **experimental** minimal Blazor WebAssembly build of just the emulator (no shaders, no
   progression/corruption features), linking the same cores in `Windows/NesEmulator/`. See
   [Web/README.md](Web/README.md). Not part of `BrokenNes.sln` by design - build/run it by path.
@@ -94,17 +99,18 @@ That design choice is part of the appeal. BrokenNes is willing to let an emulato
 
 ## Building
 
-From the solution root, this builds the desktop app only (`BrokenNes.sln` intentionally does not
-reference `Web/`):
+From the solution root - this builds both the desktop app and Workshop (`BrokenNes.sln`
+intentionally does not reference `Web/`, which has AOT/trimming complexity of its own):
 
 ```bash
 dotnet build
 ```
 
-Or build the Windows project directly:
+Or build a project directly:
 
 ```bash
 dotnet build Windows/BrokenNes.Windows.csproj -c Debug
+dotnet build Workshop/BrokenNes.Workshop.csproj -c Debug
 ```
 
 The experimental web build is separate - see [Web/README.md](Web/README.md):
@@ -122,6 +128,12 @@ dotnet run --project Windows/BrokenNes.Windows.csproj
 ```
 
 Or run the built executable directly from the Windows output folder.
+
+For the experimental Workshop dev/debug tool - see [Workshop/README.md](Workshop/README.md):
+
+```bash
+dotnet run --project Workshop/BrokenNes.Workshop.csproj
+```
 
 For the experimental web build:
 

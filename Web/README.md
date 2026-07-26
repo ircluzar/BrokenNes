@@ -37,34 +37,39 @@ Regression check that the coupling stays one-directional:
 git status --porcelain -- Windows/     # must be empty after any work here
 ```
 
-### What a new core needs to reach the web build
+### What a new core needs to reach the web build (and Workshop)
 
-`cpus/`, `ppus/`, `apus/`, `mappers/`, `expansion/`, and `clocks/` are linked as **wildcard
-globs** in `BrokenNes.Web.csproj` (`$(NesRoot)cpus\**\*.cs`, etc.), not a fixed file list. Drop a
-new `CPU_FOO.cs`/`PPU_FOO.cs`/`APU_FOO.cs`/mapper/clock file into the matching desktop folder
-and:
+`cpus/`, `ppus/`, `apus/`, `mappers/`, and `expansion/` are linked as **wildcard globs** in both
+`Web/BrokenNes.Web.csproj` and [Workshop/BrokenNes.Workshop.csproj](../Workshop/BrokenNes.Workshop.csproj)
+(`$(NesRoot)cpus\**\*.cs`, etc.), not a fixed file list — `clocks/` is Web-only, see
+[Workshop/README.md](../Workshop/README.md) for why. Drop a new
+`CPU_FOO.cs`/`PPU_FOO.cs`/`APU_FOO.cs`/mapper file into the matching desktop folder and:
 
-1. The next `dotnet build`/`dotnet publish` of `Web/BrokenNes.Web.csproj` compiles it in — MSBuild
-   globs are re-evaluated at build time, no csproj edit needed.
+1. The next `dotnet build`/`dotnet publish` of either project compiles it in — MSBuild globs are
+   re-evaluated at build time, no csproj edit needed in either project.
 2. `CoreRegistry`/`ClockRegistry` discover it at runtime via reflection (`Assembly.GetTypes()` +
-   name-prefix matching), so it appears in the web page's dropdowns automatically too.
-3. `LinkerConfig.xml`'s trim roots are also wildcards (`NesEmulator.CPU_*`, `PPU_*`, `APU_*`,
-   `CLOCK_*`), so AOT/trimmed publishes won't strip it either.
+   name-prefix matching), so it appears in both projects' core dropdowns automatically too.
+3. `LinkerConfig.xml`'s trim roots (Web only) are also wildcards (`NesEmulator.CPU_*`, `PPU_*`,
+   `APU_*`, `CLOCK_*`), so AOT/trimmed publishes won't strip it either.
 
-Two folders are **explicit file lists** instead, by design, and need a one-line csproj edit for
-a genuinely new file (not for edits to files already listed):
-- `board/` — only 10 named files are linked, specifically to keep the old, non-compiling Blazor
-  shell files out. A new *shared board-level* file (not a per-variant core) needs adding here.
+Two folders are **explicit file lists** instead, by design, and need a one-line csproj edit — in
+*each* project that needs the new file, since the two lists aren't identical (Workshop drops
+`ClockRegistry.cs` but adds `NesMemoryExtensions.cs`) — for a genuinely new file (not for edits
+to files already listed):
+- `board/` — only a handful of named files are linked, specifically to keep the old,
+  non-compiling Blazor shell files out. A new *shared board-level* file (not a per-variant core)
+  needs adding here.
 - `nullproviders/` — only 7 of 26 are linked; the other 19 depend on desktop-only
   `Windows/Rendering` (`ColorMath`). A new one needs adding here, and only works if it avoids
   that dependency.
 
-None of this is automatic in the sense of "the browser build updates itself" — there's no CI, so
-a core added on the desktop side only reaches the web build the next time someone actually runs
-`dotnet build Web/BrokenNes.Web.csproj` (the `.vscode` task covers this; nothing does it for you).
-If a new core happens to reference a desktop-only dependency (SharpDX, `System.Drawing`, a
-WinForms type), the web build fails loudly the moment the glob picks it up — not silently, but
-also not until someone builds `Web/` by hand.
+None of this is automatic in the sense of "the other builds update themselves" — there's no CI,
+so a core added on the desktop side only reaches Web/Workshop the next time someone actually
+builds them (the `.vscode` tasks cover this; nothing does it for you). If a new core happens to
+reference a desktop-only dependency (SharpDX, `System.Drawing`, a WinForms type — Workshop is
+itself a WinForms app, so this specifically means "a dependency only the *full* `Windows/`
+project has, like WebView2 or the shader pipeline"), the affected build fails loudly the moment
+the glob picks it up — not silently, but also not until someone builds it.
 
 ### ROMs are sourced, not duplicated
 
