@@ -347,7 +347,7 @@ public class PPU_LQ : IPPU
                 if (PPUADDR >= 0x3F00) { result = Read(PPUADDR); ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000)); }
                 else { result = ppuDataBuffer; ppuDataBuffer = Read(PPUADDR); }
                 PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1); return result;
-            default: return 0;
+            default: return bus.GetOpenBus(); // real open bus, not a hardcoded 0
         }
     }
 

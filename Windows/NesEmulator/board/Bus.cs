@@ -43,6 +43,14 @@ public class Bus : IBus
 		private Instrumentation instr;
 		public Instrumentation GetInstrumentation() => instr.Snapshot();
 		public void ResetInstrumentation() => instr.Reset();
+		// Open bus: real hardware has no "return 0" for unmapped reads - the data bus simply
+		// holds whatever byte was last driven onto it (decaying after ~600ms with no activity,
+		// which isn't modeled here; this is the same no-decay approximation most emulators use).
+		// Updated on every successful read/write so an unmapped-address read can fall back to it.
+		private byte lastBusValue = 0;
+		// Exposed so PPU cores can return real open-bus behavior for write-only/unimplemented
+		// PPU registers ($2000/$2001/$2003/$2005/$2006) instead of a hardcoded 0.
+		public byte GetOpenBus() => lastBusValue;
 		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
 		internal int PendingCpuStallCycles = 0;
 		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
@@ -341,9 +349,13 @@ public class Bus : IBus
 		if (page.data != null)
 		{
 			// address & 0xFF + page.offset gives direct index (mirroring handled in offset computation)
-			return page.data[page.offset + (address & 0xFF)];
+			byte v = page.data[page.offset + (address & 0xFF)];
+			lastBusValue = v;
+			return v;
 		}
-		return ReadSlow(address);
+		byte r = ReadSlow(address);
+		lastBusValue = r;
+		return r;
 	}
 
 	private byte ReadSlow(ushort address)
@@ -383,13 +395,18 @@ public class Bus : IBus
 			if (address >= 0x8000 && address <= 0xBFFF) mmc5Audio?.ReadROMTrigger(v);
 			return v;
 		}
-		return 0; // simplified open bus
+		// Open bus: no device drove the data bus for this address, so it holds whatever byte
+		// was last transferred anywhere on the bus (see lastBusValue's declaration).
+		return lastBusValue;
 	}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public void Write(ushort address, byte value)
 	{
 		instr.Writes++;
+		// A write always drives its value onto the data bus, whether or not any device at this
+		// address latches it - so it always updates the open-bus value (see lastBusValue).
+		lastBusValue = value;
 		var page = pages[address >> 8];
 		if (page.data != null && page.writable)
 		{

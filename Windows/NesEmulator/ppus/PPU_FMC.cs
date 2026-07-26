@@ -595,7 +595,9 @@ public class PPU_FMC : IPPU
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:
-				return 0;
+				// Write-only/unimplemented registers reflect the CPU's open bus (last byte
+				// driven anywhere on the bus), not a hardcoded 0.
+				return bus!.GetOpenBus();
 		}
 	}
 
