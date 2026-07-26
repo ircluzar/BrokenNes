@@ -46,8 +46,10 @@ namespace NesEmulator
         public bool PpuTileBatching = true; // pairs well with pattern cache
         // PPU: Skip fully blank scanlines (all background color & no sprites) via batch detection
         public bool PpuSkipBlankScanlines = true; // requires batching to detect
-    // PPU: Evaluate only up to first 8 sprites on a scanline instead of all 64 (sets overflow flag when exceeded)
-    public bool PpuSpriteLineEvaluation = true; // hardware-accurate cap; improves sprite rendering performance
+    // Formerly gated whether the 8-sprites-per-scanline cap/overflow flag was evaluated at all
+    // (PPU_SPD/PPU_EIL); that's real hardware behavior, not a speed trade-off, so it is now
+    // unconditional in both. Field kept (unused) to avoid breaking anything that still sets it.
+    public bool PpuSpriteLineEvaluation = true;
     // PPU: Use unsafe pointer-based scanline renderer (avoids bounds checks)
     public bool PpuUnsafeScanline = true; // default enabled (guards ensure buffer allocated)
     // PPU: Defer attribute fetch until non-zero tile bits known (saves reads on blank tiles)
@@ -68,9 +70,10 @@ namespace NesEmulator
     public bool CpuIdleLoopSkip = true; // enabled by default for testing
     public int CpuIdleLoopSkipMaxIterations = 32; // redline: matches internal PPU burst cap
     public int CpuIdleLoopMaxSpanBytes = 32; // redline: wider loop body allowance (still reset on unrelated writes)
-    // CPU: Approximate OAM DMA stall by lumping 513 cycles instead of per-cycle stepping loop.
-    // Safe accuracy trade: exact parity (513 vs 514) minor; negligible gameplay impact while saving loop overhead.
-    public bool CpuFastOamDmaStall = true; // default enabled
+    // Formerly gated whether the OAM DMA CPU stall was applied at all; the stall is real
+    // hardware behavior (see Bus.WriteSlow's $4014 handler), not a speed trade-off, so it is
+    // now unconditional. Field kept (unused) to avoid breaking anything that still sets it.
+    public bool CpuFastOamDmaStall = true;
     // CPU: Allow skipping confirmed APU status ($4015) idle loops (higher risk; disabled by default)
     public bool CpuIdleLoopSkipApuStatus = true; // now enabled after completing safeguards
     // CPU: Separate conservative cap for APU status loop bursts (APU IRQ flags may appear unpredictably)

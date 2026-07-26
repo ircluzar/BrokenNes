@@ -411,8 +411,12 @@ public class Bus : IBus
 		if (address == 0x4016) { input.Write4016(value); input2.Write4016(value); return; }
 		if (address == 0x4014) {
 			ppu.WriteOAMDMA(value); instr.OamDmaWrites++;
-			// Approximate 513 CPU cycle stall (NES hardware: 513 or 514 depending on alignment) if enabled
-			if (SpeedConfig.CpuFastOamDmaStall) PendingCpuStallCycles += 513;
+			// The CPU stall is real hardware behavior (513 or 514 cycles depending on
+			// alignment, approximated here as a flat 513), not a speed/accuracy trade-off -
+			// CpuFastOamDmaStall previously gated this off entirely, meaning "strict" mode
+			// (which disables SpeedConfig toggles) made OAM DMA cost zero CPU cycles instead
+			// of restoring accuracy. Always apply it.
+			PendingCpuStallCycles += 513;
 			return; }
 		if (address <= 0x4017 && address >= 0x4000)
 		{

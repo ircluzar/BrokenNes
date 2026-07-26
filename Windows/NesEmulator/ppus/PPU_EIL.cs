@@ -549,7 +549,11 @@ public class PPU_EIL : IPPU
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 		var cfg = bus!.SpeedConfig;
-		bool eval = cfg?.PpuSpriteLineEvaluation != false;
+		// The 8-sprites-per-scanline cap and overflow flag are real hardware behavior, not a
+		// speed trade-off - PpuSpriteLineEvaluation previously gated this off entirely, meaning
+		// disabling SpeedConfig toggles for accuracy testing made sprite overflow detection
+		// disappear instead of restoring accuracy. Always evaluate it.
+		bool eval = true;
 		bool usePatternCache = cfg?.PpuSpritePatternCache == true && bus!.cartridge!.mapper != null;
 		bool fastSprite = cfg?.PpuSpriteFastPath == true;
 		bool palCache = cfg?.PpuPaletteCache == true;
@@ -731,14 +735,20 @@ public class PPU_EIL : IPPU
 			case 0x0004: // OAM Data
 				return oam[OAMADDR];
 			case 0x0007: // PPU Data
-				result = ppuDataBuffer;
-				ppuDataBuffer = Read(PPUADDR);
-				
 				if (PPUADDR >= 0x3F00)
 				{
-					result = ppuDataBuffer;
+					// Palette reads are immediate, but the internal read buffer still gets
+					// refilled with the underlying nametable byte "under" the palette mirror -
+					// a real hardware quirk (a bare Read(PPUADDR) here would refill the buffer
+					// with the palette byte itself, corrupting the next non-palette $2007 read).
+					result = Read(PPUADDR);
+					ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000));
 				}
-				
+				else
+				{
+					result = ppuDataBuffer;
+					ppuDataBuffer = Read(PPUADDR);
+				}
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:

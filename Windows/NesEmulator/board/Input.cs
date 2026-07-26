@@ -48,8 +48,11 @@ public class Input
 		byte result = (byte)(controllerShift & 1);
 		if (!strobe)
 		{
-			// Only shift when strobe low (during serial read phase)
-			controllerShift >>= 1;
+			// Real hardware's shift register floats/reads as 1 once the 8 real bits are shifted
+			// out (verified against AccuracyCoin's "Controller Clocking" test, which expects 1s
+			// past the 8th read) - shifting in a 1 from the top reproduces that naturally instead
+			// of needing a separate read-count.
+			controllerShift = (byte)((controllerShift >> 1) | 0x80);
 		}
 		return result;
 	}

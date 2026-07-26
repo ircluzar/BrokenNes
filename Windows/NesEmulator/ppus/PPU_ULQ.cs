@@ -368,7 +368,12 @@ public class PPU_ULQ : IPPU
         {
             case 0x0002: result = PPUSTATUS; PPUSTATUS &= 0x3F; addrLatch = false; return result;
             case 0x0004: return oam[OAMADDR];
-            case 0x0007: result = ppuDataBuffer; ppuDataBuffer = Read(PPUADDR); if (PPUADDR >= 0x3F00) result = ppuDataBuffer; PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1); return result;
+            case 0x0007:
+                // Palette reads are immediate, but the internal buffer still refills from the
+                // underlying nametable byte "under" the palette mirror, not the palette byte.
+                if (PPUADDR >= 0x3F00) { result = Read(PPUADDR); ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000)); }
+                else { result = ppuDataBuffer; ppuDataBuffer = Read(PPUADDR); }
+                PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1); return result;
             default: return 0;
         }
     }
