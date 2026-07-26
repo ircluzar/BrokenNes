@@ -135,9 +135,8 @@ checkpoint to `--out` every 50 completions so a long run doesn't lose everything
 
 ## Run (TAS movie playback, recording, and bulk extraction)
 
-Three of the four phases of a broader TAS/self-play port (a separate side project, `ML_NesPlayer`,
-has a custom FCEUX fork this mirrors — see the architecture research doc for the full source
-system). Not yet implemented: the live self-play/checkpoint harness (phase 4).
+The first three of a four-phase TAS/self-play port (a separate side project, `ML_NesPlayer`, has a
+custom FCEUX fork this mirrors — see the architecture research doc for the full source system).
 
 ```bash
 BrokenNes.Workshop.exe --playmovie --movie path.fm2 --rom path.nes \
@@ -177,6 +176,50 @@ to what FCEUX emits — documented in `NesReflexDumpWriter`'s class doc: `IRQlow
 equivalent across BrokenNes's 7 CPU cores, written as 0) and `screen_hash` (CRC32 of an RGBA
 framebuffer here vs. FCEUX's 8bpp indexed buffer there — same algorithm, different input, so only
 useful as an internal dedup signal, not a cross-emulator comparison).
+
+## Run (SMB1 self-play)
+
+Phase 4 — live self-play against the source project's Python inference server
+(`scripts/nesreflex_inference_server.py`, protocol v2, **unmodified** — this is a client for the
+exact same server, not a reimplementation of it). Currently Super Mario Bros. 1 only (`game_id
+133`), ported from the source's `input.cpp` SMB1 profile: RAM addresses, event detection (flag
+capture, power-up gain, score/coin gain, scroll milestones, death, time-up), the checkpoint stack
+(creation/promotion/reload/pruning with the same lifeline counts and cooldowns), the hold-replay
+input merge with both "spazz" and "chill" play styles, and the periodic/stuck-X variety injector —
+see `Tas/SelfPlay/`'s per-file doc comments for exact line references into the source.
+
+```bash
+BrokenNes.Workshop.exe --selfplay --rom SuperMarioBros.nes [--cpu ID --ppu ID --apu ID] \
+    [--pipe-name nesreflex_inference] [--frames N] [--checkpoint-dir dir] [--seed N] \
+    [--out result.json] [--screenshot-every N --screenshot-dir dir] [--log-every N] \
+    [--auto-start-frame N]
+```
+
+The model is permanently blocked from pressing Start (matching the source's default profile) so a
+fresh session never leaves the title screen on its own — `--auto-start-frame N` injects a
+human-equivalent Start press for a few frames starting at frame `N`, the same role a person
+launching the interactive tool would otherwise play.
+
+**Verified end-to-end against the real, unmodified production server and the actual trained
+checkpoint** (`ML_NesPlayer/data/checkpoints/overnight_ppu_v2/epoch_0001.pt`, a real 19.8M-parameter
+model) and the correct ROM (`Super Mario Bros. (JU) (PRG0) [!].nes`) — not a mock or synthetic
+test. A 2,400-frame run: connected over the named pipe, the server logged genuine inference for
+every frame ("2400 frames served"), 8 checkpoints were created from real in-game events, 2 deaths
+correctly triggered reloads with re-randomized play style/temperature/top-k on each (Chill→Spazz→
+Chill, matching the source's per-reload randomization), the model was correctly blocked from
+pressing Start throughout (33 blocked attempts logged) while still never sending garbage input, and
+screenshots confirm real rightward progress through World 1-1 (recognizable pipe-hopping section by
+frame 2200) — not stuck, not crashed, not cosmetic.
+
+Known deliberate gaps from a byte-exact mirror, both documented in `SelfPlayManager`'s class doc:
+the source intercepts two RAM writes mid-frame to catch transient values before they're overwritten
+again later the same frame (BrokenNes has no generic write-interception hook, so this only reads
+state after each frame completes — low-risk, since the affected signals are also independently
+edge-detected on the next frame's read); and two probability-shaping helpers (temperature scaling,
+top-k filtering) use standard, well-known formulas rather than the source's exact implementation,
+which wasn't captured verbatim during research. `IsGameOver`/`IsLevelTransition` are reconstructed
+from their call-site effects rather than directly observed source, flagged inline in
+`Smb1EventDetection.cs`.
 
 New in shared code for this: `NES.Reset()` (soft CPU reset, for a movie's in-band reset command),
 `NES.ComputeRomMd5()`, `NES.GetP1/P2RawInputState()`, `NES.GetOpenBusValue()` (built on the open-bus

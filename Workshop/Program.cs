@@ -25,6 +25,10 @@ internal static class Program
         {
             return TasCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--selfplay", StringComparison.OrdinalIgnoreCase))
+        {
+            return SelfPlayCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 
