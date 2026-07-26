@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
 using NesEmulator;
@@ -313,6 +314,48 @@ public sealed partial class Emulator : IAsyncDisposable
     // ---- JS -> C# -----------------------------------------------------------
 
     [JSInvokable] public Task<FramePayload> FrameTick() => Task.FromResult(BuildFrame());
+
+    /// <summary>
+    /// Diagnostic only - isolates pure emulation cost (SetInputs+RunFrame, no framebuffer/audio
+    /// fetch, no interop marshaling of a payload back to JS) from the rest of FrameTick, so a
+    /// single JS-side round-trip measurement of FrameTick can be decomposed into "emulation",
+    /// "array fetch", and "interop marshaling" instead of guessing. Runs entirely server-side
+    /// (on the WASM thread) in a loop, so its own dispatch overhead is paid once, not per frame.
+    /// </summary>
+    [JSInvokable]
+    public double BenchEmulationOnlyMs(int frames)
+    {
+        var nes = _nes;
+        if (nes == null || frames <= 0) return 0;
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < frames; i++)
+        {
+            nes.SetInputs(_p1, _p2);
+            nes.RunFrame();
+        }
+        sw.Stop();
+        return sw.Elapsed.TotalMilliseconds / frames;
+    }
+
+    /// <summary>Diagnostic only - same as above, but also fetches the framebuffer/audio arrays
+    /// (mirrors everything BuildFrame() does except the FramePayload allocation), to isolate
+    /// array-fetch cost from interop marshaling cost.</summary>
+    [JSInvokable]
+    public double BenchEmulationPlusFetchMs(int frames)
+    {
+        var nes = _nes;
+        if (nes == null || frames <= 0) return 0;
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < frames; i++)
+        {
+            nes.SetInputs(_p1, _p2);
+            nes.RunFrame();
+            _ = nes.GetFrameBuffer();
+            _ = nes.GetAudioBuffer();
+        }
+        sw.Stop();
+        return sw.Elapsed.TotalMilliseconds / frames;
+    }
 
     [JSInvokable]
     public void UpdateInput(bool[] state)

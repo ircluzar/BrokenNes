@@ -14,23 +14,39 @@
     <!-- Required by NES.cs GetFrameBufferAddress, PPU_EIL/PPU_SPD, CoreRegistry, SpeedConfig -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <!-- AOT gives roughly a 4-5x speedup and is what made the old web build run full speed.
-         It requires the 'wasm-tools' workload, which must be installed from an ELEVATED
-         terminal (it runs an MSI):
+    <!-- SDK 10.0.300 bundles runtime 10.0.8 by default, but the packages below (and the
+         installed wasm-tools workload) are 10.0.10. Without this pin, different MSBuild
+         targets resolve different runtime pack versions for the managed corlib vs the native
+         Mono/AOT bits, and the app fails at boot with "MONO_WASM: mono_wasm_load_runtime()
+         failed" / "out of sync library: System.Private.CoreLib.dll". -->
+    <RuntimeFrameworkVersion>10.0.10</RuntimeFrameworkVersion>
+
+    <!-- AOT is an 8.4x speedup on the emulation itself (measured: 24.7ms/frame -> 2.9ms/frame),
+         which is what actually gets this to a steady 60fps - interop marshaling (the JS<->.NET
+         boundary) turned out to only cost ~1-1.4ms regardless of AOT, so it was never the
+         bottleneck despite being the obvious suspect. See Web/README.md "Performance and AOT"
+         for the full measured breakdown.
+         Requires the 'wasm-tools' workload, which must be installed from an ELEVATED terminal
+         (it runs an MSI):
 
              dotnet workload install wasm-tools
 
-         Once that succeeds, flip this to true (or pass -p:EnableWasmAot=true). Leaving it
-         true without the workload fails the build with NETSDK1147. -->
+         Once that succeeds, pass -p:EnableWasmAot=true on publish (this is now the recommended
+         way to ship this app). Leaving RunAOTCompilation true without the workload installed
+         fails the build with NETSDK1147. -->
     <EnableWasmAot Condition="'$(EnableWasmAot)'==''">false</EnableWasmAot>
     <RunAOTCompilation Condition="'$(Configuration)'=='Release'">$(EnableWasmAot)</RunAOTCompilation>
     <RunAOTCompilation Condition="'$(Configuration)'!='Release'">false</RunAOTCompilation>
     <WasmEnableSIMD>true</WasmEnableSIMD>
 
-    <!-- Off: CoreRegistry/ClockRegistry/NullProviderRegistry all discover via
-         Assembly.GetTypes() + name prefix, and every failure path is swallowed by catch {}.
-         Enabling this without a verified LinkerConfig.xml yields a silent black screen. -->
-    <PublishTrimmed>false</PublishTrimmed>
+    <!-- The WASM AOT compiler requires IL trimming (NETSDK error otherwise), so this is tied
+         to EnableWasmAot rather than a separate flag. CoreRegistry/ClockRegistry/
+         NullProviderRegistry all discover types via Assembly.GetTypes() + name prefix, which
+         the trimmer cannot see through and would otherwise strip - silent black screen, no
+         error. LinkerConfig.xml (wired below) explicitly roots every CPU_*/PPU_*/APU_*/
+         CLOCK_*/NullProviders.* type to prevent that. Verify after any trim-affecting change
+         by checking the clock/core dropdowns still list everything. -->
+    <PublishTrimmed>$(EnableWasmAot)</PublishTrimmed>
 
     <InvariantGlobalization>true</InvariantGlobalization>
     <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
@@ -40,6 +56,12 @@
 
     <NoWarn>$(NoWarn);CA1416;CS8618;CS8600;CS8601;CS8602;CS8604;CS8625</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only takes effect when PublishTrimmed is true (i.e. EnableWasmAot=true). See the
+         PublishTrimmed comment above for why this file exists. -->
+    <TrimmerRootDescriptor Include="LinkerConfig.xml" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />

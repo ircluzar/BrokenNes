@@ -86,37 +86,58 @@ Controls: D-pad `Arrows`/`WASD`, A `X`, B `Z`, Select `Space`, Start `Enter`.
 
 ## Performance and AOT
 
-Build configuration matters enormously here — far more than core choice.
+AOT is the whole story here — build configuration matters far more than core choice, and
+interop marshaling (the JS↔.NET boundary) turned out **not** to be the bottleneck despite
+looking like an obvious suspect.
 
-| Build | Median frame | Effective FPS |
-|---|---|---|
-| Debug (dev server) | 78 ms | ~13 |
-| Release, no AOT | 23 ms | ~35–43 |
-| Release, no AOT, `SPD/SPD/SPD` cores | 20 ms | ~51 |
+| Build | Emulation only¹ | Full `FrameTick` round-trip² | Effective FPS |
+|---|---|---|---|
+| Debug (dev server, no AOT) | ~24.7 ms | ~25.5 ms | ~13 |
+| Release, no AOT (native-relinked) | ~24.7 ms | ~25.5 ms | ~35–51 (core-dependent) |
+| **Release, AOT + trimmed** | **~2.9 ms** | **~4.3 ms** | **60 (pacing-gate capped)** |
 
-**Always measure in Release.** Debug is ~3.4x slower and is not representative.
+¹ `SetInputs`+`RunFrame()` only, timed server-side in a loop — no interop, no array fetch.
+² The real `[JSInvokable] FrameTick()` call as JS sees it, including the JSON marshaling of
+the framebuffer + audio payload back across the WASM boundary.
 
-To close the remaining gap to 60 fps, enable AOT. It needs the `wasm-tools` workload, which
-runs an MSI and therefore must be installed from an **elevated** terminal:
+The gap between columns 1 and 2 (interop marshaling cost) is consistently **~1–1.4 ms**
+regardless of build — it does not scale with the rest. AOT is an **8.4x** speedup on the
+emulation itself (2.9 ms vs 24.7 ms), which is what actually closes the gap to 60 fps; the
+`CLR`/`TRB` boundary crossing was a red herring, not the bottleneck. `Web/Emulation/Emulator.cs`
+exposes two diagnostic `[JSInvokable]` methods (`BenchEmulationOnlyMs`, `BenchEmulationPlusFetchMs`)
+if you want to re-run this split yourself after a future change.
+
+**Always measure in Release.** Debug never gets AOT (see the csproj) and is not representative.
+
+AOT needs the `wasm-tools` workload, which runs an MSI and therefore must be installed from an
+**elevated** terminal:
 
 ```powershell
 dotnet workload install wasm-tools
 ```
 
-Then build with AOT on:
+Then build with AOT on — this is now the recommended way to actually ship/deploy this app:
 
 ```bash
 dotnet publish Web/BrokenNes.Web.csproj -c Release -p:EnableWasmAot=true -o Web/pub
 ```
 
-(`EnableWasmAot` defaults to `false`; leaving it on without the workload fails with `NETSDK1147`.)
+(`EnableWasmAot` defaults to `false` so the project still builds on a machine without the
+workload; leaving it on without the workload fails with `NETSDK1147`. It also flips
+`PublishTrimmed` on — see the Gotchas entry below on what that requires.)
+
+One side effect worth knowing: `CLOCK_CLR` and `CLOCK_TRB` were previously **unsafe** (busy-wait
+could hang the tab — see the entry below) specifically because per-frame cost exceeded their
+16.7 ms budget. With AOT's 2.9 ms cost they're comfortably under budget and no longer hang —
+verified by switching to each live. `TRB` in particular is intentionally *uncapped* (not
+60 fps-gated like `FMC`/`CLR`) and will now run around 2x real speed once frame cost is cheap;
+that's existing, documented `TRB` behavior, not a bug introduced here.
 
 The frame loop paces itself to 60 fps regardless of display refresh rate (`nesInterop.js`
 `startEmulationLoop`), and `playAudio` time-stretches each buffer to the actual gap between
 calls rather than assuming a fixed 60 Hz cadence. Below ~30 emulated fps the stretch clamp
 (max 2x slowdown, to keep pitch shift bearable) can't fully absorb the deficit and some audio
-gaps return — this only affects Debug (~13 fps); the Release configs above stay effectively
-gapless.
+gaps return — this only affects Debug (~13 fps); Release stays effectively gapless, AOT or not.
 
 ## Gotchas worth knowing
 
@@ -131,10 +152,20 @@ These each cost real debugging time; they are load-bearing, not style.
   outside the project cone publishes fine but serves `Content-Length: 0` under the dev server.
 - **`NES.Get*CoreId()` returns the CLR type name (`CPU_SPD`) but `Set*Core()` and
   `CoreRegistry.*Ids` use the bare suffix (`SPD`).** `Emulator.StripCorePrefix` reconciles them.
-- **`PublishTrimmed` is off deliberately.** `CoreRegistry`, `ClockRegistry` and
-  `NullProviderRegistry` all discover by `Assembly.GetTypes()` + name prefix and swallow their
-  own failures, so trimming them away yields a silent black screen. Turn it on only with
-  `LinkerConfig.xml` wired up, and re-verify the clock dropdown still lists all three.
+- **`PublishTrimmed` is tied to `EnableWasmAot`** (AOT requires trimming — the SDK errors
+  otherwise). `CoreRegistry`, `ClockRegistry` and `NullProviderRegistry` all discover by
+  `Assembly.GetTypes()` + name prefix and swallow their own failures, so trimming them away
+  yields a silent black screen with no error. `LinkerConfig.xml` explicitly roots every
+  `CPU_*`/`PPU_*`/`APU_*`/`CLOCK_*`/`NullProviders.*` type against exactly this. Verified after
+  enabling AOT: all 3 clocks / 7 CPU / 11 PPU / 17 APU cores still populate their dropdowns.
+  Re-check this after adding a new core or changing `LinkerConfig.xml`.
+- **Pin `RuntimeFrameworkVersion` explicitly.** SDK 10.0.300 bundles runtime 10.0.8 by default,
+  but the packages here (and the `wasm-tools` workload) are 10.0.10. Without an explicit pin,
+  different MSBuild targets can resolve different pack versions for the managed corlib vs the
+  native Mono/AOT bits, and the app fails at boot with `MONO_WASM: mono_wasm_load_runtime()
+  failed` / "out of sync library: System.Private.CoreLib.dll" — a runtime failure with no build
+  error. If you ever hit that after touching package versions, `rm -rf Web/bin Web/obj` and
+  republish; a stale `obj/` from before the pin was added can also cause it.
 - **`MSBuildEnableWorkloadResolver=false` is deliberately absent.** It silently turns
   `RunAOTCompilation` into a no-op with no warning.
 - **`APU_WF` and `APU_MNES` are desktop-only** (winmm MIDI / filesystem SF2 probe). They are
@@ -143,8 +174,12 @@ These each cost real debugging time; they are load-bearing, not style.
   are referenced.
 - **`CLOCK_CLR` and `CLOCK_TRB` can wedge the tab** when a frame overruns its budget: their wait
   branch (which holds every `Task.Delay`/`Task.Yield`) is skipped when perpetually behind, and the
-  fallback yields only every 16 frames. On WASM's single thread that starves the renderer. They
-  are labelled experimental in the UI. `FMC` is the default and is always safe.
+  fallback yields only every 16 frames. On WASM's single thread that starves the renderer. **This
+  is a real risk without AOT** (non-AOT frame cost of ~24.7 ms already exceeds their 16.7 ms
+  budget) but **verified safe with AOT** (2.9 ms frame cost, comfortably under budget — switched
+  to both live without issue). They stay labelled experimental in the UI regardless, since a
+  future core/feature addition could push cost back over budget. `FMC` is the default and is
+  always safe either way, since it's externally paced by the JS rAF loop rather than self-timed.
 - **`nullproviders/`: only 7 of 26 are linked.** The other 19 `using BrokenNes.Windows.Rendering`
   (`ColorMath`), which lives outside the emulator tree. Discovery is reflection-based so the rest
   are simply absent. At least one concrete provider must remain — `NullProviderRegistry` throws if
