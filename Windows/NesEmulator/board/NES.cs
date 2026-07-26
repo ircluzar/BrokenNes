@@ -1174,6 +1174,10 @@ namespace NesEmulator
 			bus?.input.SetInput(buttons);
 		}
 
+		// Soft reset (CPU reset vector, not a full ROM reload) - needed to honor a TAS movie's
+		// in-band reset command (the FM2 input log's per-frame "c" bitfield, bit 0).
+		public void Reset() => bus?.cpu?.Reset();
+
 		// New: set both player inputs at once
 		public void SetInputs(bool[]? p1, bool[]? p2)
 		{

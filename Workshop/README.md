@@ -133,6 +133,33 @@ Workshop's design research. Three known process-wide mutable statics (`APU_WF`'s
 single-threaded before the parallel run starts, so their one-time lazy init can't race. Results
 checkpoint to `--out` every 50 completions so a long run doesn't lose everything if interrupted.
 
+## Run (TAS movie playback)
+
+Phase 1 of a broader TAS/self-play port (a separate side project, `ML_NesPlayer`, has a custom
+FCEUX fork with bulk-extraction and live self-play modes — this is deliberately just the first,
+smallest piece: read-only playback of an existing FM2 movie). Parses FCEUX's FM2 format
+(`Tas/Fm2Movie.cs`) and drives it through the exact same linked cores as everything else here.
+
+```bash
+BrokenNes.Workshop.exe --playmovie --movie path.fm2 --rom path.nes \
+    [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--out result.json] [--screenshot out.png]
+```
+
+**Button order is a straight reversal, not a remap table.** FM2's text columns are `RLDUTSBA`
+(Right,Left,Down,Up,Start,Select,B,A); BrokenNes's own order (`Input.cs:10`) is
+`A,B,Select,Start,Up,Down,Left,Right`. Those two happen to be exact reverses of each other, so
+`Fm2Movie`'s decoder is just `brokenNesIndex = 7 - fm2Index` — verified by hand against the real
+sample movie (`ML_NesPlayer/TAS/tas/meshuggah-ghostbusters.fm2`: frame 47 is `....T...` → Start
+only; frames 192+ are `R.......` → Right only) and end-to-end by playing that movie's full 5,670
+frames against `Ghostbusters (U).nes` (the closest available ROM — the movie was recorded against
+the `(J)` revision, so it's not a frame-perfect replay of the original run, but it boots straight
+through the title screen into real, recognizable gameplay purely from decoded FM2 input, which is
+what actually matters for this phase: proving the parser and playback loop are correct).
+
+Not yet implemented: recording (writing new FM2 files), the bulk RAM/PPU-state dump format the
+ML pipeline trains on, and the live self-play/checkpoint harness — see the architecture research
+doc for the full three-phase source system this is mirroring.
+
 ## Gotchas worth knowing
 
 - **The boot ROM needs an explicit copy-to-output step.** Unlike `Web/`'s `wwwroot` (copied to

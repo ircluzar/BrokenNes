@@ -21,6 +21,10 @@ internal static class Program
         {
             return AccuracyCoinCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--playmovie", StringComparison.OrdinalIgnoreCase))
+        {
+            return TasCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 
