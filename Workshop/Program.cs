@@ -17,6 +17,10 @@ internal static class Program
         {
             return HeadlessRunner.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--accuracycoin", StringComparison.OrdinalIgnoreCase))
+        {
+            return AccuracyCoinCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 
