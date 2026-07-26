@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using BrokenNes.Windows.Rendering;
 using BrokenNes.Workshop.Tas.SelfPlay;
@@ -61,6 +62,37 @@ public sealed class WorkshopForm : Form
     private readonly Button _loadStateBtn = new() { Text = "Load State" };
     private readonly Button _benchmarkBtn = new() { Text = "Run Benchmarks" };
 
+    // System.Windows.Forms.Timer rides on WM_TIMER, a low-priority message Windows posts at most
+    // once per queue (no backlog) and coalesces under load - a 16ms Interval measured 26-30ms in
+    // practice even after raising the process timer resolution (timeBeginPeriod), because the
+    // WM_TIMER post itself, not just its resolution, is what's irregular. Real per-frame work (ML
+    // pipe query + RunFrame + bitmap blit) totals ~13ms, well inside a 60fps budget - so instead
+    // of trusting WM_TIMER for pacing, drive frames from Application.Idle: PeekMessage confirms the
+    // message queue is empty (no pending input/paint work), and our own Stopwatch decides when a
+    // frame is actually due. This is the standard WinForms-era game-loop pattern for exactly this
+    // problem. `_timer` itself is kept only as the existing play/pause Enabled flag - Start()/Stop()
+    // call sites elsewhere are unchanged.
+    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint uMilliseconds);
+    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint uMilliseconds);
+    [DllImport("user32.dll")]
+    private static extern bool PeekMessage(out NativeMessage msg, IntPtr hWnd, uint messageFilterMin, uint messageFilterMax, uint flags);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMessage
+    {
+        public IntPtr Handle;
+        public uint Message;
+        public IntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public Point Point;
+    }
+
+    private const double TargetFrameMs = 1000.0 / 60.0;
+    private readonly System.Diagnostics.Stopwatch _frameClock = System.Diagnostics.Stopwatch.StartNew();
+    private double _frameAccumulatorMs;
+
     public WorkshopForm()
     {
         Text = "BrokenNes Workshop";
@@ -68,13 +100,38 @@ public sealed class WorkshopForm : Form
         Height = 800;
         KeyPreview = true;
 
+        TimeBeginPeriod(1);
+        FormClosed += (_, _) => TimeEndPeriod(1);
+
         BuildLayout();
         WireEvents();
         PopulateCoreSelectors();
 
-        _timer.Tick += Timer_Tick;
+        Application.Idle += OnApplicationIdle;
 
         LoadBootRom();
+    }
+
+    private void OnApplicationIdle(object? sender, EventArgs e)
+    {
+        while (_timer.Enabled && !PeekMessage(out _, IntPtr.Zero, 0, 0, 0))
+        {
+            double elapsed = _frameClock.Elapsed.TotalMilliseconds;
+            _frameClock.Restart();
+            _frameAccumulatorMs += elapsed;
+            if (_frameAccumulatorMs < TargetFrameMs)
+            {
+                System.Threading.Thread.Sleep(1);
+                continue;
+            }
+            // Clamp so a debugger break or window-drag stall doesn't fire a burst of catch-up frames.
+            if (_frameAccumulatorMs > TargetFrameMs * 4) _frameAccumulatorMs = TargetFrameMs;
+            _frameAccumulatorMs -= TargetFrameMs;
+
+            _interTickMs = _lastTickStopwatch.IsRunning ? _lastTickStopwatch.Elapsed.TotalMilliseconds : 0;
+            _lastTickStopwatch.Restart();
+            RunOneFrame();
+        }
     }
 
     // ---- Layout ---------------------------------------------------------
@@ -324,7 +381,12 @@ public sealed class WorkshopForm : Form
         SetStatus(strict ? "Strict accuracy mode ON (speed hacks disabled)" : "Strict accuracy mode OFF (default speed hacks)");
     }
 
-    private void Timer_Tick(object? sender, EventArgs e) => RunOneFrame();
+    // Per-frame timing breakdown (self-play only) - answers "where's the bottleneck" with real
+    // numbers instead of a guess. _lastTickStopwatch measures true wall-clock time between
+    // successive Timer_Tick calls (what the user actually perceives as frame rate, including any
+    // WinForms Timer/message-pump overhead); the others isolate the three real candidates.
+    private readonly System.Diagnostics.Stopwatch _lastTickStopwatch = new();
+    private double _interTickMs, _pipeMs, _runFrameMs, _presentMs;
 
     private void RunOneFrame()
     {
@@ -337,9 +399,15 @@ public sealed class WorkshopForm : Form
                 // merge rule SelfPlayManager already implements: the model may never press Start,
                 // a human still can (press Enter to kick off a fresh session, exactly like
                 // clicking "Start Autoplay" then pressing Start in the source project's UI).
+                var swPipe = System.Diagnostics.Stopwatch.StartNew();
                 var buttons = _selfPlayManager.ComputeFrameInput(_nes, _p1);
+                _pipeMs = swPipe.Elapsed.TotalMilliseconds;
+
                 _nes.SetInputs(buttons, null);
+                var swRun = System.Diagnostics.Stopwatch.StartNew();
                 _nes.RunFrame();
+                _runFrameMs = swRun.Elapsed.TotalMilliseconds;
+
                 _selfPlayManager.OnFrameComplete(_nes);
             }
             else
@@ -348,7 +416,9 @@ public sealed class WorkshopForm : Form
                 _nes.RunFrame();
             }
             _frameCount++;
+            var swPresent = System.Diagnostics.Stopwatch.StartNew();
             Present();
+            _presentMs = swPresent.Elapsed.TotalMilliseconds;
             RefreshRegisters();
             if (_nes.IsCrashed())
             {
@@ -358,7 +428,9 @@ public sealed class WorkshopForm : Form
             }
             else if (_selfPlayCheck.Checked && _selfPlayManager != null)
             {
-                SetStatus($"{_romName} - frame {_frameCount} | self-play: " +
+                SetStatus($"{_romName} - frame {_frameCount} | " +
+                    $"interTick={_interTickMs:F1}ms(~{(_interTickMs > 0 ? 1000.0 / _interTickMs : 0):F0}fps) " +
+                    $"pipe={_pipeMs:F1}ms run={_runFrameMs:F1}ms present={_presentMs:F1}ms | self-play: " +
                     $"{(_selfPlayManager.IsPipeConnected ? "connected" : "DISCONNECTED")} " +
                     $"style={_selfPlayManager.CurrentStyle} temp={_selfPlayManager.CurrentTemperature:F2} " +
                     $"checkpoints={_selfPlayManager.Checkpoints.Count} reloads={_selfPlayManager.ReloadCount} " +
