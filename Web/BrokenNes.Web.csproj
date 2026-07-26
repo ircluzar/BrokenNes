@@ -1,0 +1,101 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+
+    <!-- RootNamespace must stay BrokenNes: clocks/IClock.cs names BrokenNes.Emulator.FramePayload.
+         AssemblyName must stay BrokenNes to match LinkerConfig.xml's <assembly fullname>. -->
+    <RootNamespace>BrokenNes</RootNamespace>
+    <AssemblyName>BrokenNes</AssemblyName>
+
+    <!-- Required by NES.cs GetFrameBufferAddress, PPU_EIL/PPU_SPD, CoreRegistry, SpeedConfig -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- AOT gives roughly a 4-5x speedup and is what made the old web build run full speed.
+         It requires the 'wasm-tools' workload, which must be installed from an ELEVATED
+         terminal (it runs an MSI):
+
+             dotnet workload install wasm-tools
+
+         Once that succeeds, flip this to true (or pass -p:EnableWasmAot=true). Leaving it
+         true without the workload fails the build with NETSDK1147. -->
+    <EnableWasmAot Condition="'$(EnableWasmAot)'==''">false</EnableWasmAot>
+    <RunAOTCompilation Condition="'$(Configuration)'=='Release'">$(EnableWasmAot)</RunAOTCompilation>
+    <RunAOTCompilation Condition="'$(Configuration)'!='Release'">false</RunAOTCompilation>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+
+    <!-- Off: CoreRegistry/ClockRegistry/NullProviderRegistry all discover via
+         Assembly.GetTypes() + name prefix, and every failure path is swallowed by catch {}.
+         Enabling this without a verified LinkerConfig.xml yields a silent black screen. -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
+
+    <!-- NOTE: deliberately NOT setting MSBuildEnableWorkloadResolver=false. It silently
+         turns RunAOTCompilation into a no-op with no warning. -->
+
+    <NoWarn>$(NoWarn);CA1416;CS8618;CS8600;CS8601;CS8602;CS8604;CS8625</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" PrivateAssets="all" />
+    <!-- Forced by NES.cs: it hard-references NesEmulator.APU_WF (NAudio.Midi) and
+         NesEmulator.APU_MNES (MeltySynth) by type name on 27 lines. Excluding either
+         core would mean editing the shared NES.cs. -->
+    <PackageReference Include="NAudio.Midi" Version="2.2.1" />
+    <PackageReference Include="MeltySynth" Version="2.4.0" />
+  </ItemGroup>
+
+  <!-- ==========================================================================
+       Shared cores, linked from the desktop project. NOTHING here is copied or
+       forked - Windows/NesEmulator is the single source of truth for all cores.
+       ========================================================================== -->
+  <PropertyGroup>
+    <NesRoot>..\Windows\NesEmulator\</NesRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- board/: EXPLICIT list, never a glob. This list is precisely what keeps the old
+         Blazor shell out (Emulator*.cs, NesController*.cs, Benchmark.cs,
+         StatePersistence.cs, NesMemoryExtensions.cs). Globbing board/ detonates the build. -->
+    <Compile Include="$(NesRoot)board\NES.cs"            Link="NesEmulator\board\NES.cs" />
+    <Compile Include="$(NesRoot)board\Bus.cs"            Link="NesEmulator\board\Bus.cs" />
+    <Compile Include="$(NesRoot)board\Cartridge.cs"      Link="NesEmulator\board\Cartridge.cs" />
+    <Compile Include="$(NesRoot)board\CoreRegistry.cs"   Link="NesEmulator\board\CoreRegistry.cs" />
+    <Compile Include="$(NesRoot)board\ClockRegistry.cs"  Link="NesEmulator\board\ClockRegistry.cs" />
+    <Compile Include="$(NesRoot)board\CpuSharedState.cs" Link="NesEmulator\board\CpuSharedState.cs" />
+    <Compile Include="$(NesRoot)board\PpuSharedState.cs" Link="NesEmulator\board\PpuSharedState.cs" />
+    <Compile Include="$(NesRoot)board\Input.cs"          Link="NesEmulator\board\Input.cs" />
+    <Compile Include="$(NesRoot)board\ApuExtensions.cs"  Link="NesEmulator\board\ApuExtensions.cs" />
+    <Compile Include="$(NesRoot)board\SpeedConfig.cs"    Link="NesEmulator\board\SpeedConfig.cs" />
+
+    <!-- Whole-folder globs. ppus/ must include PPU_IMG.cs (it declares ImagineTargetConfig
+         and ImagineCaptureData, consumed by NES.cs). apus/ must include APU_WF + APU_MNES. -->
+    <Compile Include="$(NesRoot)cpus\**\*.cs"      LinkBase="NesEmulator\cpus" />
+    <Compile Include="$(NesRoot)ppus\**\*.cs"      LinkBase="NesEmulator\ppus" />
+    <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus" />
+    <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
+    <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
+
+    <!-- The web-exclusive clock system. -->
+    <Compile Include="$(NesRoot)clocks\**\*.cs"    LinkBase="NesEmulator\clocks" />
+
+    <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
+         which lives outside the emulator tree). Discovery is reflection-based so the other 19
+         are simply absent. At least one concrete provider MUST stay: NullProviderRegistry
+         throws if the discovered list is empty and NES.GetFrameBuffer() calls it. -->
+    <Compile Include="$(NesRoot)nullproviders\INullProvider.cs"            Link="NesEmulator\nullproviders\INullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\NullProviderRegistry.cs"     Link="NesEmulator\nullproviders\NullProviderRegistry.cs" />
+    <Compile Include="$(NesRoot)nullproviders\StaticNullProvider.cs"       Link="NesEmulator\nullproviders\StaticNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\BlackNullProvider.cs"        Link="NesEmulator\nullproviders\BlackNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\CloudsNullProvider.cs"       Link="NesEmulator\nullproviders\CloudsNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\FireNullProvider.cs"         Link="NesEmulator\nullproviders\FireNullProvider.cs" />
+    <Compile Include="$(NesRoot)nullproviders\WaterRipplesNullProvider.cs" Link="NesEmulator\nullproviders\WaterRipplesNullProvider.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,142 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<PageTitle>BrokenNes Web</PageTitle>
+
+<header>
+    <h1>BrokenNes <span class="tag">web</span></h1>
+    <p class="sub">Minimal Blazor WebAssembly shell over the shared BrokenNes cores.</p>
+</header>
+
+@if (!string.IsNullOrEmpty(emu?.ErrorMessage))
+{
+    <p class="error" role="alert">@emu!.ErrorMessage</p>
+}
+
+<div class="screen">
+    <canvas id="nes-canvas" width="512" height="480" tabindex="0" aria-label="NES screen"></canvas>
+</div>
+
+<div class="status">
+    <span class="@(emu?.IsRunning == true ? "on" : "off")">@(emu?.IsRunning == true ? "RUNNING" : "PAUSED")</span>
+    <span>@(emu?.Fps.ToString("F1") ?? "0.0") fps</span>
+    <span>frame @(emu?.FrameCount ?? 0)</span>
+    <span class="rom">@(string.IsNullOrEmpty(emu?.RomName) ? "no rom" : emu!.RomName)</span>
+</div>
+
+<div class="row">
+    <button @onclick="() => emu!.ToggleAsync()" disabled="@(emu is null)">
+        @(emu?.IsRunning == true ? "Pause" : "Play")
+    </button>
+    <button @onclick="() => emu!.ResetAsync()" disabled="@(emu is null)">Reset</button>
+    <label class="file">
+        Load ROM
+        <InputFile OnChange="OnRomPicked" accept=".nes" />
+    </label>
+</div>
+
+<div class="row cores">
+    <label>
+        Clock
+        <select value="@emu?.ClockCoreSel"
+                @onchange="e => emu!.SetClockCoreAsync(e.Value?.ToString() ?? string.Empty)">
+            @foreach (var id in emu?.ClockCoreOptions ?? new List<string>())
+            {
+                <option value="@id">@id@(Emulator.IsExperimentalClock(id) ? "  (experimental)" : "")</option>
+            }
+        </select>
+    </label>
+
+    <label>
+        CPU
+        <select value="@emu?.CpuCoreSel" @onchange="e => emu!.SetCpuCore(e.Value?.ToString() ?? string.Empty)">
+            @foreach (var id in emu?.CpuCoreOptions ?? new List<string>())
+            {
+                <option value="@id">@id</option>
+            }
+        </select>
+    </label>
+
+    <label>
+        PPU
+        <select value="@emu?.PpuCoreSel" @onchange="e => emu!.SetPpuCore(e.Value?.ToString() ?? string.Empty)">
+            @foreach (var id in emu?.PpuCoreOptions ?? new List<string>())
+            {
+                <option value="@id">@id</option>
+            }
+        </select>
+    </label>
+
+    <label>
+        APU
+        <select value="@emu?.ApuCoreSel" @onchange="e => emu!.SetApuCore(e.Value?.ToString() ?? string.Empty)">
+            @foreach (var id in emu?.ApuCoreOptions ?? new List<string>())
+            {
+                <option value="@id">@id@(Emulator.IsDesktopOnlyApu(id) ? "  (desktop only)" : "")</option>
+            }
+        </select>
+    </label>
+</div>
+
+@if (emu is not null && Emulator.IsExperimentalClock(emu.ClockCoreSel))
+{
+    <p class="warn">
+        <strong>@emu.ClockCoreSel</strong> busy-waits when a frame overruns its budget. If emulation
+        runs slower than 60 fps this can wedge the browser tab. Switch back to <strong>FMC</strong> if
+        the page stops responding.
+    </p>
+}
+
+<p class="keys">
+    Keys — D-pad <kbd>Arrows</kbd>/<kbd>WASD</kbd> · A <kbd>X</kbd> · B <kbd>Z</kbd> ·
+    Select <kbd>Space</kbd> · Start <kbd>Enter</kbd>
+</p>
+
+@code {
+    private Emulator? emu;
+
+    protected override void OnInitialized()
+    {
+        emu = new Emulator(JS) { OnStateChanged = () => InvokeAsync(StateHasChanged) };
+        emu.Initialize();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || emu is null) return;
+
+        await emu.RestorePreferencesAsync();
+        try { await JS.InvokeVoidAsync("nesInterop.registerInput", emu.SelfRef); } catch { }
+        try { await JS.InvokeVoidAsync("nesInterop.registerVisibility", emu.SelfRef); } catch { }
+
+        try
+        {
+            var rom = await Http.GetByteArrayAsync("roms/demo.nes");
+            await emu.LoadRomAsync("demo.nes", rom);
+            await emu.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnRomPicked(InputFileChangeEventArgs e)
+    {
+        if (emu is null) return;
+        using var ms = new MemoryStream();
+        // The default OpenReadStream cap is 512,000 bytes and silently rejects most ROMs.
+        await e.File.OpenReadStream(maxAllowedSize: 16 * 1024 * 1024).CopyToAsync(ms);
+        await emu.LoadRomAsync(e.File.Name, ms.ToArray());
+        await emu.StartAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (emu is not null) await emu.DisposeAsync();
+    }
+}
