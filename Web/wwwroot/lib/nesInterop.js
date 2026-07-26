@@ -184,7 +184,9 @@ window.nesInterop = {
     },
 
     // ---------------- input ----------------
-    // Index order is fixed by the cores: 0=Up 1=Down 2=Left 3=Right 4=A 5=B 6=Select 7=Start
+    // Index order is fixed by NesEmulator.Input.SetInput (Windows/NesEmulator/board/Input.cs:10):
+    // 0=A 1=B 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right. NES.SetInputs() passes the array
+    // straight through with no remapping (NES.cs:1148-1153), so this order is load-bearing.
     _mainRef: null, _kbdInstalled: false,
     setMainRef(ref) { this._mainRef = ref; },
 
@@ -196,9 +198,9 @@ window.nesInterop = {
         if (this._kbdInstalled) return;
         this._kbdInstalled = true;
         const map = {
-            ArrowUp: 0, ArrowDown: 1, ArrowLeft: 2, ArrowRight: 3,
-            KeyW: 0, KeyS: 1, KeyA: 2, KeyD: 3,
-            KeyX: 4, KeyZ: 5, Space: 6, Enter: 7
+            ArrowUp: 4, ArrowDown: 5, ArrowLeft: 6, ArrowRight: 7,
+            KeyW: 4, KeyS: 5, KeyA: 6, KeyD: 7,
+            KeyX: 0, KeyZ: 1, Space: 2, Enter: 3
         };
         // Also exempt SELECT/BUTTON so the page's own dropdowns and Play/Pause/Reset buttons
         // stay keyboard-operable (arrow keys navigate a focused <select>; Enter/Space activate

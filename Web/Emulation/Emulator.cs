@@ -48,7 +48,8 @@ public sealed partial class Emulator : IAsyncDisposable
     private IClock? _activeClock;
     private CancellationTokenSource? _clockCts;
 
-    // Fixed by the cores: 0=Up 1=Down 2=Left 3=Right 4=A 5=B 6=Select 7=Start
+    // Order fixed by NesEmulator.Input.SetInput (Windows/NesEmulator/board/Input.cs:10):
+    // 0=A 1=B 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right.
     private readonly bool[] _p1 = new bool[8];
     private readonly bool[] _p2 = new bool[8];
 
