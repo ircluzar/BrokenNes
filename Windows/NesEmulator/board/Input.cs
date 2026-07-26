@@ -5,6 +5,9 @@ public class Input
 	private byte controllerState = 0;   // Latched buttons
 	private byte controllerShift = 0;   // Shift register for reads
 	private bool strobe = false;        // Current strobe bit
+	// Counts $4016/$4017 reads since the last ConsumeReadCount() call - used for TAS-style lag
+	// frame detection (a frame where the game never polled the controller port at all).
+	private int readCount = 0;
 
 	// For Blazor: set input state from UI.
 	// Standard NES Index Order: 0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right
@@ -45,6 +48,7 @@ public class Input
 
 	public byte Read4016()
 	{
+		readCount++;
 		byte result = (byte)(controllerShift & 1);
 		if (!strobe)
 		{
@@ -56,6 +60,9 @@ public class Input
 		}
 		return result;
 	}
+
+	// Consume-and-reset accessor for the per-frame read counter (see readCount's declaration).
+	public int ConsumeReadCount() { int c = readCount; readCount = 0; return c; }
 
 	// Debug helpers for save state serialization (internal emulator use only)
 	public byte DebugGetRawState() => controllerState;

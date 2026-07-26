@@ -133,32 +133,55 @@ Workshop's design research. Three known process-wide mutable statics (`APU_WF`'s
 single-threaded before the parallel run starts, so their one-time lazy init can't race. Results
 checkpoint to `--out` every 50 completions so a long run doesn't lose everything if interrupted.
 
-## Run (TAS movie playback)
+## Run (TAS movie playback, recording, and bulk extraction)
 
-Phase 1 of a broader TAS/self-play port (a separate side project, `ML_NesPlayer`, has a custom
-FCEUX fork with bulk-extraction and live self-play modes — this is deliberately just the first,
-smallest piece: read-only playback of an existing FM2 movie). Parses FCEUX's FM2 format
-(`Tas/Fm2Movie.cs`) and drives it through the exact same linked cores as everything else here.
+Three of the four phases of a broader TAS/self-play port (a separate side project, `ML_NesPlayer`,
+has a custom FCEUX fork this mirrors — see the architecture research doc for the full source
+system). Not yet implemented: the live self-play/checkpoint harness (phase 4).
 
 ```bash
 BrokenNes.Workshop.exe --playmovie --movie path.fm2 --rom path.nes \
-    [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--out result.json] [--screenshot out.png]
+    [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--out result.json] [--screenshot out.png] \
+    [--record-out copy.fm2] [--dump-out trace.raw]
 ```
 
-**Button order is a straight reversal, not a remap table.** FM2's text columns are `RLDUTSBA`
-(Right,Left,Down,Up,Start,Select,B,A); BrokenNes's own order (`Input.cs:10`) is
-`A,B,Select,Start,Up,Down,Left,Right`. Those two happen to be exact reverses of each other, so
-`Fm2Movie`'s decoder is just `brokenNesIndex = 7 - fm2Index` — verified by hand against the real
-sample movie (`ML_NesPlayer/TAS/tas/meshuggah-ghostbusters.fm2`: frame 47 is `....T...` → Start
-only; frames 192+ are `R.......` → Right only) and end-to-end by playing that movie's full 5,670
-frames against `Ghostbusters (U).nes` (the closest available ROM — the movie was recorded against
-the `(J)` revision, so it's not a frame-perfect replay of the original run, but it boots straight
-through the title screen into real, recognizable gameplay purely from decoded FM2 input, which is
-what actually matters for this phase: proving the parser and playback loop are correct).
+**Phase 1 — playback** (`Tas/Fm2Movie.cs`) parses FCEUX's FM2 format and drives it through the
+exact same linked cores as everything else here. Button order is a straight reversal, not a remap
+table: FM2's text columns are `RLDUTSBA` (Right,Left,Down,Up,Start,Select,B,A); BrokenNes's own
+order (`Input.cs:10`) is `A,B,Select,Start,Up,Down,Left,Right` — those two happen to be exact
+reverses of each other, so the decoder is just `brokenNesIndex = 7 - fm2Index`. Verified by hand
+against the real sample movie (`ML_NesPlayer/TAS/tas/meshuggah-ghostbusters.fm2`: frame 47 is
+`....T...` → Start only; frames 192+ are `R.......` → Right only) and end-to-end by playing that
+movie's full 5,670 frames against `Ghostbusters (U).nes` (the closest available ROM — the movie
+was recorded against the `(J)` revision, so it's not a frame-perfect replay of the original run,
+but it boots straight through the title screen into real, recognizable gameplay purely from
+decoded FM2 input).
 
-Not yet implemented: recording (writing new FM2 files), the bulk RAM/PPU-state dump format the
-ML pipeline trains on, and the live self-play/checkpoint harness — see the architecture research
-doc for the full three-phase source system this is mirroring.
+**Phase 2 — recording** (`Tas/Fm2Writer.cs`, `--record-out`) re-emits whatever was actually played
+back as a new, independently-parseable FM2 file — a replay-and-re-record round trip rather than a
+live/human recording surface, but that's sufficient to prove the writer is spec-correct: verified
+by recording a 50-frame playback, then replaying *that* recording from scratch and confirming an
+identical final frame hash and CPU register state to the original 50-frame run. `romChecksum` is
+computed via `NES.ComputeRomMd5()` (MD5 of PRG+CHR only, matching FCEUX's own `GameInfo->MD5`
+convention) and written in the documented `0x<hex>` form.
+
+**Phase 3 — bulk extraction** (`Tas/NesReflexDumpWriter.cs`, `--dump-out`) writes the exact same
+"nesreflex-raw-v2" binary per-frame trace format the source project's FCEUX fork produces (magic
+`NRFXRAW2`, 4,432 bytes/frame: CPU regs, RAM, PPU registers/scroll/VRAM-address/scanline/dot, OAM,
+palette, nametables, a CRC32 screen hash), plus the matching `.raw.json` sidecar — so the existing
+Python training pipeline needs zero changes to accept BrokenNes-produced dumps. Verified: dump file
+size matches the calculated `16 + frames×4432` exactly, and spot-checked field values (CPU regs,
+non-zero RAM/OAM/nametable content, plausible lag-frame counts) against the CLI's own reported
+state for the same run. Two fields can't be genuinely byte-identical in *value* (not just layout)
+to what FCEUX emits — documented in `NesReflexDumpWriter`'s class doc: `IRQlow` (no uniform
+equivalent across BrokenNes's 7 CPU cores, written as 0) and `screen_hash` (CRC32 of an RGBA
+framebuffer here vs. FCEUX's 8bpp indexed buffer there — same algorithm, different input, so only
+useful as an internal dedup signal, not a cross-emulator comparison).
+
+New in shared code for this: `NES.Reset()` (soft CPU reset, for a movie's in-band reset command),
+`NES.ComputeRomMd5()`, `NES.GetP1/P2RawInputState()`, `NES.GetOpenBusValue()` (built on the open-bus
+model from the AccuracyCoin work), and `Input.ConsumeReadCount()` (drives lag-frame detection: a
+frame where neither controller port was polled at all).
 
 ## Gotchas worth knowing
 

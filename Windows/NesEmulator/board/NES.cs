@@ -293,6 +293,21 @@ namespace NesEmulator
 			catch { return (string.Empty, string.Empty); }
 		}
 
+		// MD5 of PRG+CHR only (no header/trainer) - the same convention FCEUX's internal
+		// GameInfo->MD5 uses, and what FM2's romChecksum key is meant to hold. Kept separate
+		// from ComputeGameIdentity() (SHA1, prefixed/formatted for BrokenNes's own save
+		// system) since movie-file compatibility specifically needs raw MD5 bytes.
+		public byte[] ComputeRomMd5()
+		{
+			if (cartridge == null) return Array.Empty<byte>();
+			using var md5 = System.Security.Cryptography.MD5.Create();
+			var prg = cartridge.prgROM ?? Array.Empty<byte>();
+			var chr = cartridge.chrROM ?? Array.Empty<byte>();
+			if (prg.Length > 0) md5.TransformBlock(prg, 0, prg.Length, null, 0);
+			md5.TransformFinalBlock(chr, 0, chr.Length);
+			return md5.Hash ?? Array.Empty<byte>();
+		}
+
 		// === UI Core Hot-Swap Helpers (CPU / PPU) ===
 		public object GetCpuState() => bus?.cpu.GetState() ?? new object();
 		public void SetCpuState(object state) { try { bus?.cpu.SetState(state); } catch { } }
@@ -1177,6 +1192,14 @@ namespace NesEmulator
 		// Soft reset (CPU reset vector, not a full ROM reload) - needed to honor a TAS movie's
 		// in-band reset command (the FM2 input log's per-frame "c" bitfield, bit 0).
 		public void Reset() => bus?.cpu?.Reset();
+
+		// === Bulk-dump support (TAS/self-play extraction, mirroring the source project's
+		// per-frame RAM+register+PPU-state trace format) ===
+		public byte GetP1RawInputState() => bus?.input.DebugGetRawState() ?? (byte)0;
+		public byte GetP2RawInputState() => bus?.input2.DebugGetRawState() ?? (byte)0;
+		public byte GetOpenBusValue() => bus?.GetOpenBus() ?? (byte)0;
+		public int ConsumeP1ReadCount() => bus?.input.ConsumeReadCount() ?? 0;
+		public int ConsumeP2ReadCount() => bus?.input2.ConsumeReadCount() ?? 0;
 
 		// New: set both player inputs at once
 		public void SetInputs(bool[]? p1, bool[]? p2)
