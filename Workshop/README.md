@@ -188,6 +188,18 @@ capture, power-up gain, score/coin gain, scroll milestones, death, time-up), the
 input merge with both "spazz" and "chill" play styles, and the periodic/stuck-X variety injector —
 see `Tas/SelfPlay/`'s per-file doc comments for exact line references into the source.
 
+**Interactive (a real, visible emulator window — the primary way to use this):** run
+`RunSmb1SelfPlay.bat` (starts the inference server, waits for the model to load, opens the
+Workshop window), or start the server yourself and launch `BrokenNes.Workshop.exe` with no
+arguments. Either way, check the **"Self-Play (SMB1)"** box — it auto-loads the SMB1 ROM (from
+the sibling `ML_NesPlayer` project) if a different one is loaded, connects to the pipe, and starts
+playback. The model can never press Start itself (matching the source's default profile), so click
+the game screen and press **Enter** once to begin a fresh run, the same role a person clicking
+"Start Autoplay" then pressing Start plays in the source project's UI. The status bar shows live
+connection state, play style, temperature, checkpoint count, and reload count.
+
+**Headless/scripted (no window, for batch runs or CI):**
+
 ```bash
 BrokenNes.Workshop.exe --selfplay --rom SuperMarioBros.nes [--cpu ID --ppu ID --apu ID] \
     [--pipe-name nesreflex_inference] [--frames N] [--checkpoint-dir dir] [--seed N] \
@@ -195,10 +207,8 @@ BrokenNes.Workshop.exe --selfplay --rom SuperMarioBros.nes [--cpu ID --ppu ID --
     [--auto-start-frame N]
 ```
 
-The model is permanently blocked from pressing Start (matching the source's default profile) so a
-fresh session never leaves the title screen on its own — `--auto-start-frame N` injects a
-human-equivalent Start press for a few frames starting at frame `N`, the same role a person
-launching the interactive tool would otherwise play.
+Same model-blocked-from-Start behavior applies — `--auto-start-frame N` injects a human-equivalent
+Start press for a few frames starting at frame `N`, since there's no one at a keyboard to do it.
 
 **Verified end-to-end against the real, unmodified production server and the actual trained
 checkpoint** (`ML_NesPlayer/data/checkpoints/overnight_ppu_v2/epoch_0001.pt`, a real 19.8M-parameter
