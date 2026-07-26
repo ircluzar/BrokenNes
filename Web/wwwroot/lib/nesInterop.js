@@ -39,20 +39,37 @@ window.nesInterop = {
 
     // ---------------- frame loop (FMC / rAF) ----------------
     _dotNetRef: null, _loopActive: false, _loopToken: 0, _rafId: null,
-    _lastRafTs: 0, _skipsThisBurst: 0, _targetFps: 60, _maxFrameSkips: 1,
+    _lastRafTs: 0, _skipsThisBurst: 0, _targetFps: 60, _maxFrameSkips: 1, _frameAccumMs: 0,
 
     startEmulationLoop(dotNetRef) {
         this._dotNetRef = dotNetRef;
         this._loopToken = (this._loopToken + 1) | 0;
         if (this._rafId != null) { try { cancelAnimationFrame(this._rafId); } catch { } this._rafId = null; }
-        this._loopActive = true; this._lastRafTs = 0; this._skipsThisBurst = 0;
+        this._loopActive = true; this._lastRafTs = 0; this._skipsThisBurst = 0; this._frameAccumMs = 0;
         const token = this._loopToken;
         const step = async (ts) => {
             if (!this._loopActive || token !== this._loopToken) return;
             const targetMs = 1000 / this._targetFps;
-            const dt = this._lastRafTs ? (ts - this._lastRafTs) : targetMs;
-            const behind = dt > targetMs * 1.5;
-            this._lastRafTs = ts || performance.now();
+            const now = ts || performance.now();
+            const dt = this._lastRafTs ? (now - this._lastRafTs) : targetMs;
+            this._lastRafTs = now;
+
+            // Pace emulation to _targetFps regardless of display refresh rate. rAF fires at the
+            // display's own rate (which can be 120/144/165 Hz), and without this gate every
+            // callback ran a full emulated frame - fine at 60 Hz, but on a faster display (or
+            // once AOT makes a frame cheap enough to keep up) the game ran 2-2.4x too fast and
+            // audio was produced faster than the 44.1kHz sink could drain it, so playback
+            // latency grew without bound. Accumulate elapsed time and only emulate once a full
+            // frame interval has passed; cap the accumulator so a long stall (backgrounded tab,
+            // debugger pause) can't trigger a burst of catch-up frames on return.
+            this._frameAccumMs = Math.min(this._frameAccumMs + dt, targetMs * 4);
+            if (this._frameAccumMs < targetMs) {
+                this._rafId = requestAnimationFrame(step);
+                return;
+            }
+            this._frameAccumMs -= targetMs;
+            const behind = this._frameAccumMs > targetMs * 0.5;
+
             if (this._dotNetRef) {
                 try {
                     const r = await this._dotNetRef.invokeMethodAsync('FrameTick');
@@ -105,6 +122,15 @@ window.nesInterop = {
         } catch (e) { return 'error'; }
     },
 
+    // Below 60 fps (the norm without AOT - see Web/README.md), each buffer only holds
+    // 1/60s of audio but arrives slower than every 1/60s, so scheduling it at its nominal
+    // duration falls behind real time on nearly every call. The old fix-up (jump the
+    // timeline to ctx.currentTime) covered the gap with silence - audible as constant
+    // crackle. Instead, stretch each buffer's playbackRate to span the actual wall-clock
+    // gap since the previous one, so playback stays continuous (at a correspondingly
+    // lower pitch when emulation is slow) instead of alternating audio/silence. The rate
+    // is clamped so pitch drift stays modest even under a large stall.
+    _lastPlayAudioAt: 0,
     playAudio(audioBuffer, sampleRate) {
         try {
             this.ensureAudioContext();
@@ -117,11 +143,27 @@ window.nesInterop = {
             const src = ctx.createBufferSource();
             src.buffer = buffer;
             src.connect(window._nesMasterGain);
-            if (window._nesAudioTimeline < ctx.currentTime) window._nesAudioTimeline = ctx.currentTime + 0.01;
+
+            const now = ctx.currentTime;
+            const nominalDuration = buffer.duration;
+            const observedGap = this._lastPlayAudioAt ? (now - this._lastPlayAudioAt) : nominalDuration;
+            this._lastPlayAudioAt = now;
+            let rate = observedGap > 0.001 ? nominalDuration / observedGap : 1.0;
+            rate = Math.min(Math.max(rate, 0.5), 1.5);
+            try { src.playbackRate.value = rate; } catch { }
+
+            // Bound the lead in both directions: below, top up so playback doesn't try to
+            // start in the past; above, clamp so a burst (e.g. tab regaining focus) can't
+            // schedule minutes of audio into the future - see the frame-pacing fix above
+            // for why that no longer happens in steady state, this is a safety net.
+            const maxLeadSeconds = 0.25;
+            if (window._nesAudioTimeline < now) window._nesAudioTimeline = now + 0.01;
+            if (window._nesAudioTimeline > now + maxLeadSeconds) window._nesAudioTimeline = now + maxLeadSeconds;
+
             try { src.start(window._nesAudioTimeline); } catch { }
             window._nesActiveSources.push(src);
             if (window._nesActiveSources.length > 64) window._nesActiveSources.splice(0, 32);
-            window._nesAudioTimeline += buffer.duration;
+            window._nesAudioTimeline += nominalDuration / rate;
         } catch { }
     },
 
@@ -130,6 +172,9 @@ window.nesInterop = {
             (window._nesActiveSources || []).forEach(s => { try { s.stop(); } catch { } });
             window._nesActiveSources = [];
             if (window.nesAudioCtx) window._nesAudioTimeline = window.nesAudioCtx.currentTime + 0.02;
+            // Otherwise the next playAudio() measures the pause itself as an "observed gap"
+            // and stretches its first buffer to match, producing a slow-motion pitch drop.
+            this._lastPlayAudioAt = 0;
         } catch { }
     },
     resetAudioTimeline() { this.flushAudioOutput(); },
@@ -155,13 +200,22 @@ window.nesInterop = {
             KeyW: 0, KeyS: 1, KeyA: 2, KeyD: 3,
             KeyX: 4, KeyZ: 5, Space: 6, Enter: 7
         };
-        const editable = () => {
+        // Also exempt SELECT/BUTTON so the page's own dropdowns and Play/Pause/Reset buttons
+        // stay keyboard-operable (arrow keys navigate a focused <select>; Enter/Space activate
+        // a focused <button>) instead of being swallowed as D-pad/Start input.
+        const blocksGameInput = () => {
             const a = document.activeElement;
-            return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+            if (!a) return false;
+            const t = a.tagName;
+            return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'BUTTON' || a.isContentEditable;
         };
         const apply = (e, down) => {
+            // Let OS/browser chords through untouched (Ctrl+A, Cmd+S, Alt+D, ...) - several
+            // single-letter shortcuts collide with the WASD map and would otherwise both
+            // block the browser action and inject a phantom press into the emulator.
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             const i = map[e.code];
-            if (i === undefined || editable()) return;
+            if (i === undefined || blocksGameInput()) return;
             e.preventDefault();
             if (window.nesInputState[i] === down) return;
             window.nesInputState[i] = down;
@@ -169,6 +223,21 @@ window.nesInterop = {
         };
         document.addEventListener('keydown', e => apply(e, true));
         document.addEventListener('keyup', e => apply(e, false));
+
+        // Alt-tabbing (or clicking outside the page) away while a key is held never delivers
+        // its keyup to this document, so without this the direction/button stays latched and
+        // drives the game indefinitely after the user returns.
+        const clearAllInputs = () => {
+            let changed = false;
+            for (let i = 0; i < window.nesInputState.length; i++) {
+                if (window.nesInputState[i]) { window.nesInputState[i] = false; changed = true; }
+            }
+            if (changed) { try { this._mainRef && this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState); } catch { } }
+        };
+        window.addEventListener('blur', clearAllInputs);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') clearAllInputs();
+        });
     },
 
     _ensureEmuFocusHooks() {

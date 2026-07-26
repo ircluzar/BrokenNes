@@ -9,6 +9,15 @@
 				"$msbuild"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build BrokenNes Web (Debug)",
+			"type": "shell",
+			"command": "dotnet build Web/BrokenNes.Web.csproj -c Debug",
+			"problemMatcher": [
+				"$msbuild"
+			],
+			"group": "build"
 		}
 	]
 }

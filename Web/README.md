@@ -111,6 +111,13 @@ dotnet publish Web/BrokenNes.Web.csproj -c Release -p:EnableWasmAot=true -o Web/
 
 (`EnableWasmAot` defaults to `false`; leaving it on without the workload fails with `NETSDK1147`.)
 
+The frame loop paces itself to 60 fps regardless of display refresh rate (`nesInterop.js`
+`startEmulationLoop`), and `playAudio` time-stretches each buffer to the actual gap between
+calls rather than assuming a fixed 60 Hz cadence. Below ~30 emulated fps the stretch clamp
+(max 2x slowdown, to keep pitch shift bearable) can't fully absorb the deficit and some audio
+gaps return — this only affects Debug (~13 fps); the Release configs above stay effectively
+gapless.
+
 ## Gotchas worth knowing
 
 These each cost real debugging time; they are load-bearing, not style.

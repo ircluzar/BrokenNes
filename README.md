@@ -86,12 +86,16 @@ That design choice is part of the appeal. BrokenNes is willing to let an emulato
 - `Windows/`: Windows desktop application, audio engine, web API, embedded web modules, and desktop-specific tooling.
 - `Windows/Webmodules/`: progression UI, activities, overlays, debug tools, and card-driven front-end surfaces.
 - `Windows/NesEmulator/`: emulator core, cores, mappers, shaders, RetroAchievements support, and corruption systems.
+- `Web/`: **experimental** minimal Blazor WebAssembly build of just the emulator (no shaders, no
+  progression/corruption features), linking the same cores in `Windows/NesEmulator/`. See
+  [Web/README.md](Web/README.md). Not part of `BrokenNes.sln` by design - build/run it by path.
 - `docs/`: project notes, progression specs, RetroAchievements references, shader docs, and design workpads.
 - `SubProjects/`: related experiments and auxiliary work.
 
 ## Building
 
-From the solution root:
+From the solution root, this builds the desktop app only (`BrokenNes.sln` intentionally does not
+reference `Web/`):
 
 ```bash
 dotnet build
@@ -103,6 +107,12 @@ Or build the Windows project directly:
 dotnet build Windows/BrokenNes.Windows.csproj -c Debug
 ```
 
+The experimental web build is separate - see [Web/README.md](Web/README.md):
+
+```bash
+dotnet build Web/BrokenNes.Web.csproj -c Debug
+```
+
 ## Running
 
 From the solution root:
@@ -112,6 +122,12 @@ dotnet run --project Windows/BrokenNes.Windows.csproj
 ```
 
 Or run the built executable directly from the Windows output folder.
+
+For the experimental web build:
+
+```bash
+dotnet run --project Web/BrokenNes.Web.csproj --urls http://localhost:5011
+```
 
 ## Status
 

@@ -32,8 +32,8 @@
     </button>
     <button @onclick="() => emu!.ResetAsync()" disabled="@(emu is null)">Reset</button>
     <label class="file">
-        Load ROM
-        <InputFile OnChange="OnRomPicked" accept=".nes" />
+        @(emu?.IsLoading == true ? "Loading…" : "Load ROM")
+        <InputFile OnChange="OnRomPicked" accept=".nes" disabled="@(emu?.IsLoading == true)" />
     </label>
 </div>
 

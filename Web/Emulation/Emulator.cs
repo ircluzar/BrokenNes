@@ -126,30 +126,48 @@ public sealed partial class Emulator : IAsyncDisposable
 
     // ---- ROM loading --------------------------------------------------------
 
+    public bool IsLoading { get; private set; }
+
+    /// <summary>
+    /// Guarded against overlapping calls: picking a second ROM while a first is still
+    /// streaming in (slow disk/network) previously raced, and whichever CopyToAsync finished
+    /// last silently won regardless of pick order. Nes.razor also disables the file picker
+    /// while IsLoading is true, but the guard here is authoritative either way.
+    /// </summary>
     public async Task LoadRomAsync(string name, byte[] rom)
     {
-        if (IsRunning) await PauseAsync();
+        if (IsLoading) return;
+        IsLoading = true;
+        OnStateChanged?.Invoke();
         try
         {
-            ErrorMessage = null;
-            _nes = new NES { RomName = name };
-            _nes.LoadROM(rom);
-            _romBytes = rom;
-            RomName = name;
-            FrameCount = 0;
-            // Run one frame so the canvas shows something before the clock starts.
-            _nes.RunFrame();
-            await JS.InvokeVoidAsync("nesInterop.drawFrame", CanvasId, _nes.GetFrameBuffer());
+            if (IsRunning) await PauseAsync();
+            try
+            {
+                ErrorMessage = null;
+                _nes = new NES { RomName = name };
+                _nes.LoadROM(rom);
+                _romBytes = rom;
+                RomName = name;
+                FrameCount = 0;
+                // Run one frame so the canvas shows something before the clock starts.
+                _nes.RunFrame();
+                await JS.InvokeVoidAsync("nesInterop.drawFrame", CanvasId, _nes.GetFrameBuffer());
+            }
+            catch (Cartridge.UnsupportedMapperException ex)
+            {
+                _nes = null;
+                ErrorMessage = $"Unsupported mapper {ex.MapperId} ({ex.MapperName}).";
+            }
+            catch (Exception ex)
+            {
+                _nes = null;
+                ErrorMessage = ex.Message;
+            }
         }
-        catch (Cartridge.UnsupportedMapperException ex)
+        finally
         {
-            _nes = null;
-            ErrorMessage = $"Unsupported mapper {ex.MapperId} ({ex.MapperName}).";
-        }
-        catch (Exception ex)
-        {
-            _nes = null;
-            ErrorMessage = ex.Message;
+            IsLoading = false;
         }
         OnStateChanged?.Invoke();
     }
@@ -319,6 +337,7 @@ public sealed partial class Emulator : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        IsRunning = false;
         try { await StopClockAsync(); } catch { }
         _selfRef?.Dispose();
         _selfRef = null;
