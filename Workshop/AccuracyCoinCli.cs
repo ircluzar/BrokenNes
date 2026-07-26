@@ -25,7 +25,7 @@ internal static class AccuracyCoinCli
         string? romPath = null, outPath = null;
         string? cpu = null, ppu = null, apu = null;
         string? cpuList = null, ppuList = null, apuList = null;
-        bool matrix = false, trace = false, includeUnofficialOpcodes = false;
+        bool matrix = false, trace = false, includeUnofficialOpcodes = false, strict = false;
         int waitFrames = 4000;
 
         for (int i = 1; i < args.Length; i++)
@@ -44,6 +44,7 @@ internal static class AccuracyCoinCli
                 case "--trace": trace = true; break;
                 case "--wait-frames": waitFrames = int.Parse(args[++i]); break;
                 case "--include-unofficial-opcodes": includeUnofficialOpcodes = true; break;
+                case "--strict": strict = true; break;
             }
         }
 
@@ -76,7 +77,7 @@ internal static class AccuracyCoinCli
             var ppus = ParseList(ppuList) ?? CoreRegistry.PpuIds.ToList();
             var apus = ParseList(apuList) ?? CoreRegistry.ApuIds.ToList();
             outPath ??= "accuracycoin_matrix.json";
-            return RunMatrix(romBytes, cpus, ppus, apus, waitFrames, outPath, preSkip);
+            return RunMatrix(romBytes, cpus, ppus, apus, waitFrames, outPath, preSkip, strict);
         }
 
         // --trace uses the raw single-attempt runner (retries would make the per-frame trace
@@ -85,8 +86,8 @@ internal static class AccuracyCoinCli
         // RunSingleComboRobust's own comment for why pre-skipping only the "Unofficial *"
         // suites isn't sufficient on its own.
         var result = trace
-            ? AccuracyCoinRunner.RunSingleCombo(romBytes, cpu, ppu, apu, waitFrames, trace, preSkip)
-            : AccuracyCoinRunner.RunSingleComboRobust(romBytes, cpu, ppu, apu, waitFrames, baseSkipAddresses: preSkip);
+            ? AccuracyCoinRunner.RunSingleCombo(romBytes, cpu, ppu, apu, waitFrames, trace, preSkip, strict)
+            : AccuracyCoinRunner.RunSingleComboRobust(romBytes, cpu, ppu, apu, waitFrames, baseSkipAddresses: preSkip, strict: strict);
         PrintSingleResult(result);
         if (outPath != null)
             File.WriteAllText(outPath, JsonSerializer.Serialize(result, JsonOpts));
@@ -127,7 +128,7 @@ internal static class AccuracyCoinCli
         }
     }
 
-    private static int RunMatrix(byte[] romBytes, List<string> cpus, List<string> ppus, List<string> apus, int waitFrames, string outPath, IReadOnlyCollection<ushort>? preSkip)
+    private static int RunMatrix(byte[] romBytes, List<string> cpus, List<string> ppus, List<string> apus, int waitFrames, string outPath, IReadOnlyCollection<ushort>? preSkip, bool strict = false)
     {
         var combos = new List<(string Cpu, string Ppu, string Apu)>();
         foreach (var c in cpus) foreach (var p in ppus) foreach (var a in apus) combos.Add((c, p, a));
@@ -156,7 +157,7 @@ internal static class AccuracyCoinCli
                 AccuracyCoinRunResult? result = null;
                 try
                 {
-                    result = AccuracyCoinRunner.RunSingleComboRobust(romBytes, c, p, a, waitFrames, baseSkipAddresses: preSkip);
+                    result = AccuracyCoinRunner.RunSingleComboRobust(romBytes, c, p, a, waitFrames, baseSkipAddresses: preSkip, strict: strict);
                     all.Add(result);
                 }
                 catch (Exception ex)

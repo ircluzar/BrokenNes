@@ -65,7 +65,7 @@ internal static class AccuracyCoinRunner
     public static AccuracyCoinRunResult RunSingleComboRobust(
         byte[] romBytes, string? cpu, string? ppu, string? apu,
         int maxWaitFrames = 1500, int maxRetries = 20,
-        IReadOnlyCollection<ushort>? baseSkipAddresses = null)
+        IReadOnlyCollection<ushort>? baseSkipAddresses = null, bool strict = false)
     {
         var skip = new HashSet<ushort>(baseSkipAddresses ?? Array.Empty<ushort>());
         var autoSkipped = new List<string>();
@@ -73,7 +73,7 @@ internal static class AccuracyCoinRunner
         int attempt = 0;
         while (true)
         {
-            result = RunSingleCombo(romBytes, cpu, ppu, apu, maxWaitFrames, trace: false, skip);
+            result = RunSingleCombo(romBytes, cpu, ppu, apu, maxWaitFrames, trace: false, skip, strict);
             bool stuck = result.Crashed || (result.AutomatedRunObserved && !result.CompletedNaturally);
             if (!stuck || attempt >= maxRetries)
                 return result with { RetryCount = attempt, AutoSkippedTests = autoSkipped };
@@ -94,13 +94,34 @@ internal static class AccuracyCoinRunner
     public static AccuracyCoinRunResult RunSingleCombo(
         byte[] romBytes, string? cpu, string? ppu, string? apu,
         int maxWaitFrames = 4000, bool trace = false,
-        IReadOnlyCollection<ushort>? preSkipAddresses = null)
+        IReadOnlyCollection<ushort>? preSkipAddresses = null, bool strict = false)
     {
         var nes = new NES { RomName = "AccuracyCoin.nes" };
         nes.LoadROM(romBytes);
         if (cpu != null && !nes.SetCpuCore(cpu)) throw new ArgumentException($"Unknown CPU core: {cpu}");
         if (ppu != null && !nes.SetPpuCore(ppu)) throw new ArgumentException($"Unknown PPU core: {ppu}");
         if (apu != null && !nes.SetApuCore(apu)) throw new ArgumentException($"Unknown APU core: {apu}");
+
+        // Bus.SpeedConfig ships several accuracy-for-speed shortcuts on by default (approximate
+        // OAM DMA stall timing, idle-loop skip, blank-scanline skip, ...), applied identically
+        // under every core combination - see HeadlessRunner's --strict for the same rationale.
+        // Left on, a global Bus-level shortcut failure would get misattributed to whichever core
+        // happened to be selected.
+        if (strict)
+        {
+            var cfg = nes.GetSpeedConfig();
+            if (cfg != null)
+            {
+                cfg.CpuFastOamDmaStall = false;
+                cfg.CpuIdleLoopDetect = false;
+                cfg.CpuIdleLoopSkip = false;
+                cfg.CpuIdleLoopSkipApuStatus = false;
+                cfg.CpuAdaptiveBatching = false;
+                cfg.PpuSkipBlankScanlines = false;
+                cfg.PpuUnsafeScanline = false;
+                cfg.PpuDeferAttributeFetch = false;
+            }
+        }
 
         int framesRun = 0;
         var p1 = new bool[8];
