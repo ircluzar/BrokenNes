@@ -2,3 +2,7 @@ bin/
 obj/
 pub/
 pub*/
+
+# Copied from Windows/Data & Windows/Resources at build time (CopySharedRoms target
+# in BrokenNes.Web.csproj) - not a second tracked copy of the same binary.
+wwwroot/roms/

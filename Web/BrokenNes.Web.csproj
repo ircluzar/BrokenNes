@@ -120,4 +120,18 @@
     <Compile Include="$(NesRoot)nullproviders\WaterRipplesNullProvider.cs" Link="NesEmulator\nullproviders\WaterRipplesNullProvider.cs" />
   </ItemGroup>
 
+  <!-- ==========================================================================
+       Boot ROMs: sourced from the desktop project, not duplicated in git. Only
+       the single copy under Windows/ is tracked; these are regenerated on every
+       build. Must be a real BeforeTargets="ResolveStaticWebAssetsInputs" copy
+       (not a <Content Link> to the outside file) - a Link pointing outside the
+       project cone publishes fine but serves Content-Length: 0 under the dev
+       server, which silently looks like "ROM not found".
+       ========================================================================== -->
+  <Target Name="CopySharedRoms" BeforeTargets="ResolveStaticWebAssetsInputs">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\wwwroot\roms" Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\roms')" />
+    <Copy SourceFiles="$(NesRoot)..\Data\story\page1_jimmy.nes" DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\roms\demo.nes" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NesRoot)..\Resources\test.nes"         DestinationFiles="$(MSBuildProjectDirectory)\wwwroot\roms\test.nes" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

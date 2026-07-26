@@ -37,6 +37,44 @@ Regression check that the coupling stays one-directional:
 git status --porcelain -- Windows/     # must be empty after any work here
 ```
 
+### What a new core needs to reach the web build
+
+`cpus/`, `ppus/`, `apus/`, `mappers/`, `expansion/`, and `clocks/` are linked as **wildcard
+globs** in `BrokenNes.Web.csproj` (`$(NesRoot)cpus\**\*.cs`, etc.), not a fixed file list. Drop a
+new `CPU_FOO.cs`/`PPU_FOO.cs`/`APU_FOO.cs`/mapper/clock file into the matching desktop folder
+and:
+
+1. The next `dotnet build`/`dotnet publish` of `Web/BrokenNes.Web.csproj` compiles it in — MSBuild
+   globs are re-evaluated at build time, no csproj edit needed.
+2. `CoreRegistry`/`ClockRegistry` discover it at runtime via reflection (`Assembly.GetTypes()` +
+   name-prefix matching), so it appears in the web page's dropdowns automatically too.
+3. `LinkerConfig.xml`'s trim roots are also wildcards (`NesEmulator.CPU_*`, `PPU_*`, `APU_*`,
+   `CLOCK_*`), so AOT/trimmed publishes won't strip it either.
+
+Two folders are **explicit file lists** instead, by design, and need a one-line csproj edit for
+a genuinely new file (not for edits to files already listed):
+- `board/` — only 10 named files are linked, specifically to keep the old, non-compiling Blazor
+  shell files out. A new *shared board-level* file (not a per-variant core) needs adding here.
+- `nullproviders/` — only 7 of 26 are linked; the other 19 depend on desktop-only
+  `Windows/Rendering` (`ColorMath`). A new one needs adding here, and only works if it avoids
+  that dependency.
+
+None of this is automatic in the sense of "the browser build updates itself" — there's no CI, so
+a core added on the desktop side only reaches the web build the next time someone actually runs
+`dotnet build Web/BrokenNes.Web.csproj` (the `.vscode` task covers this; nothing does it for you).
+If a new core happens to reference a desktop-only dependency (SharpDX, `System.Drawing`, a
+WinForms type), the web build fails loudly the moment the glob picks it up — not silently, but
+also not until someone builds `Web/` by hand.
+
+### ROMs are sourced, not duplicated
+
+`Web/wwwroot/roms/*.nes` are **not tracked in git** — they're copied at build time from
+`Windows/Data/story/page1_jimmy.nes` and `Windows/Resources/test.nes` by the `CopySharedRoms`
+MSBuild target (`BeforeTargets="ResolveStaticWebAssetsInputs"`), so there is exactly one tracked
+copy of each ROM in the repo, not two drifting independently. Confirmed correct for both
+`dotnet build` (dev server) and `dotnet publish` from a clean `bin`/`obj`/`pub`. See the Gotchas
+section for why this must be a real file copy rather than a `<Content Link>`.
+
 ### Why the old `Emulator*.cs` was not revived
 
 `Windows/NesEmulator/board/Emulator*.cs` is the old Blazor UI shell. It is retained in the repo
@@ -63,7 +101,7 @@ Web/
     ├── index.html
     ├── css/app.css
     ├── lib/nesInterop.js     # video/audio/input/IndexedDB. No WebGL, no shaders.
-    └── roms/demo.nes         # boot ROM
+    └── roms/                 # generated at build time - not tracked, see below
 ```
 
 ## Run
@@ -148,8 +186,11 @@ These each cost real debugging time; they are load-bearing, not style.
 - **Never write the fingerprint placeholder token anywhere in `index.html` except the real script
   tag** — not even inside a comment. The SDK rewriter substitutes the first occurrence it finds
   and leaves the real tag alone, which 404s at boot with no build error.
-- **ROMs must be physical files under `wwwroot/roms/`.** A `<Content Include Link=...>` pointing
-  outside the project cone publishes fine but serves `Content-Length: 0` under the dev server.
+- **ROMs must be real files physically present under `wwwroot/roms/` by the time Blazor resolves
+  static web assets** — a `<Content Include Link=...>` pointing outside the project cone
+  publishes fine but serves `Content-Length: 0` under the dev server. This is why
+  `CopySharedRoms` does an actual `<Copy>` into `wwwroot/roms/` hooked to
+  `BeforeTargets="ResolveStaticWebAssetsInputs"`, rather than a project-file link.
 - **`NES.Get*CoreId()` returns the CLR type name (`CPU_SPD`) but `Set*Core()` and
   `CoreRegistry.*Ids` use the bare suffix (`SPD`).** `Emulator.StripCorePrefix` reconciles them.
 - **`PublishTrimmed` is tied to `EnableWasmAot`** (AOT requires trimming — the SDK errors
