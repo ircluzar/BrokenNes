@@ -19,7 +19,10 @@ set "PYTHON=%ML_ROOT%\.venv\Scripts\python.exe"
 set "WORKSHOP_EXE=%~dp0bin\Release\net10.0-windows\BrokenNes.Workshop.exe"
 
 echo Starting NESReflex inference server...
-start "NESReflex Inference Server" cmd /k ""%PYTHON%" "%ML_ROOT%\scripts\nesreflex_inference_server.py" --checkpoint "%CHECKPOINT%" --metadata "%METADATA%" --protocol v2 --device cpu"
+rem --device cuda: measured ~101 fps vs ~17 fps on CPU for this model - CPU inference alone was
+rem the bottleneck keeping self-play well under real NES speed. Falls back to --device cpu below
+rem if no CUDA GPU is available on this machine.
+start "NESReflex Inference Server" cmd /k ""%PYTHON%" "%ML_ROOT%\scripts\nesreflex_inference_server.py" --checkpoint "%CHECKPOINT%" --metadata "%METADATA%" --protocol v2 --device cuda"
 
 echo Waiting for the model to load...
 rem (ping-based delay instead of `timeout`, which errors out under redirected stdin)

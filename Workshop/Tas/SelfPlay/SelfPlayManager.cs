@@ -38,6 +38,18 @@ public sealed class SelfPlayManager
     private int _deathStateFrames;
     private int _lastAliveLives = -1;
 
+    // Auto-boot: the source project never solved this - a human always had to press Start
+    // manually, both for the very first run and again every time the game returns to the title
+    // screen after a Game Over. Detected via OperMode==0 (title/demo screen, the well-known SMB1
+    // RAM convention - not independently re-verified against source, unlike the addresses in
+    // Smb1Addr which were read directly from input.cpp). Continuous, not one-shot: fires again
+    // any time the title screen reappears, self-healing through repeated Game Overs.
+    private const int AutoStartPressFrames = 4;
+    private const int AutoStartCooldownFrames = 120; // ~2s - avoid re-tapping Start during the title->game transition
+    private int _autoStartPressFramesRemaining;
+    private int _autoStartCooldownFramesRemaining;
+    public int AutoStartPressCount { get; private set; }
+
     public int GameId { get; }
     public CheckpointManager Checkpoints => _checkpoints;
     public bool IsPipeConnected => _pipe.IsConnected;
@@ -103,6 +115,8 @@ public sealed class SelfPlayManager
         var modelButtons = _merger.Resolve(probs, holdFrames, _temperature, _cfg);
         modelButtons = _variety.ApplyFlip(modelButtons);
 
+        bool autoStartActive = ComputeAutoStart();
+
         var final = new bool[8];
         byte blockedByMask = 0;
         for (int i = 0; i < 8; i++)
@@ -110,7 +124,7 @@ public sealed class SelfPlayManager
             bool modelWantsIt = modelButtons[i];
             bool allowedByMask = ((_modelButtonMask >> i) & 1) != 0;
             if (modelWantsIt && !allowedByMask) blockedByMask |= (byte)(1 << i);
-            final[i] = (modelWantsIt && allowedByMask) || (userOverrideP1 != null && userOverrideP1[i]);
+            final[i] = (modelWantsIt && allowedByMask) || (userOverrideP1 != null && userOverrideP1[i]) || (i == Start && autoStartActive);
         }
         if ((blockedByMask & (1 << Start)) != 0) BlockedStartCount++;
 
@@ -195,13 +209,38 @@ public sealed class SelfPlayManager
         }
 
         // Safety net: always keep at least one durable anchor available during ordinary play.
-        if (_checkpoints.Count == 0 && !Smb1EventDetection.IsDeathAnimationState(now) && !Smb1EventDetection.IsGameOver(now))
+        // Excludes the title screen (OperMode==0) - a baseline checkpoint saved there would just
+        // send a later reload straight back to the title screen instead of into real gameplay,
+        // fighting the auto-start logic above instead of complementing it.
+        if (_checkpoints.Count == 0 && now.OperMode != 0 && !Smb1EventDetection.IsDeathAnimationState(now) && !Smb1EventDetection.IsGameOver(now))
             if (_checkpoints.TryCreate(SelfPlayEventType.Baseline, _cfg.SucceededCheckpointUses, now, nes)) CheckpointsCreated++;
 
         if (Smb1EventDetection.IsDeathAnimationState(now)) _deathStateFrames++;
         else { _deathStateFrames = 0; _lastAliveLives = now.Lives; }
 
         _previous = now;
+    }
+
+    /// <summary>Returns true if Start should be force-pressed this frame to auto-boot out of the
+    /// title screen. Decrements the internal press/cooldown counters as a side effect - call
+    /// exactly once per frame.</summary>
+    private bool ComputeAutoStart()
+    {
+        bool active = false;
+        if (_autoStartPressFramesRemaining > 0)
+        {
+            active = true;
+            _autoStartPressFramesRemaining--;
+        }
+        else if (_autoStartCooldownFramesRemaining <= 0 && _previous != null && _previous.OperMode == 0)
+        {
+            _autoStartPressFramesRemaining = AutoStartPressFrames - 1;
+            _autoStartCooldownFramesRemaining = AutoStartCooldownFrames;
+            AutoStartPressCount++;
+            active = true;
+        }
+        if (_autoStartCooldownFramesRemaining > 0) _autoStartCooldownFramesRemaining--;
+        return active;
     }
 
     private void ResetTransientStateAfterReload()

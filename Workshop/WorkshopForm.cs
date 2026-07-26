@@ -362,7 +362,7 @@ public sealed class WorkshopForm : Form
                     $"{(_selfPlayManager.IsPipeConnected ? "connected" : "DISCONNECTED")} " +
                     $"style={_selfPlayManager.CurrentStyle} temp={_selfPlayManager.CurrentTemperature:F2} " +
                     $"checkpoints={_selfPlayManager.Checkpoints.Count} reloads={_selfPlayManager.ReloadCount} " +
-                    $"blockedStart={_selfPlayManager.BlockedStartCount}");
+                    $"blockedStart={_selfPlayManager.BlockedStartCount} autoStarts={_selfPlayManager.AutoStartPressCount}");
             }
             else
             {
@@ -407,7 +407,7 @@ public sealed class WorkshopForm : Form
         }
 
         if (!_timer.Enabled) TogglePlay();
-        SetStatus("Self-play enabled. Click the game window and press Enter to start (the model can never press Start itself).");
+        SetStatus("Self-play enabled - it will auto-boot past the title screen on its own (and again after every Game Over).");
     }
 
     private void Present()

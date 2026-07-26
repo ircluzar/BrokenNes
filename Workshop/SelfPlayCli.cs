@@ -100,7 +100,7 @@ internal static class SelfPlayCli
                     Console.Error.WriteLine(
                         $"[selfplay] frame={frame} connected={manager.IsPipeConnected} style={manager.CurrentStyle} " +
                         $"temp={manager.CurrentTemperature:F2} topK={manager.CurrentTopK} checkpoints={manager.Checkpoints.Count} " +
-                        $"created={manager.CheckpointsCreated} reloads={manager.ReloadCount} blockedStart={manager.BlockedStartCount}");
+                        $"created={manager.CheckpointsCreated} reloads={manager.ReloadCount} blockedStart={manager.BlockedStartCount} autoStarts={manager.AutoStartPressCount}");
                 }
                 if (screenshotEvery > 0 && screenshotDir != null && frame % screenshotEvery == 0)
                 {
