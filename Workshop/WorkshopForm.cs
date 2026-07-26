@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using BrokenNes.Windows.Rendering;
+using BrokenNes.Workshop.Tas.SelfPlay;
 using NesEmulator;
 
 namespace BrokenNes.Workshop;
@@ -30,6 +31,14 @@ public sealed class WorkshopForm : Form
     private long _frameCount;
     private string? _savedState;
 
+    // Self-play (SMB1) - see Tas/SelfPlay/SelfPlayManager.cs. The ROM lives in the sibling
+    // ML_NesPlayer project (not shipped with BrokenNes); if not found at this path, the
+    // "Self-Play (SMB1)" checkbox falls back to whatever ROM is already loaded instead of failing.
+    private static readonly string Smb1RomPath = Path.Combine(
+        @"C:\Users\philt\OneDrive\Documents\PROJECTS\!!! Experiments\ML_NesPlayer\TAS\Nintendo Entertainment System",
+        "Super Mario Bros. (JU) (PRG0) [!].nes");
+    private SelfPlayManager? _selfPlayManager;
+
     // UI
     private readonly PictureBox _screen = new();
     private readonly Button _playPauseBtn = new() { Text = "Play" };
@@ -38,6 +47,7 @@ public sealed class WorkshopForm : Form
     private readonly Button _stepInstructionBtn = new() { Text = "Step Instr." };
     private readonly Button _openRomBtn = new() { Text = "Open ROM..." };
     private readonly CheckBox _strictAccuracyCheck = new() { Text = "Strict accuracy (disable speed hacks)", AutoSize = true };
+    private readonly CheckBox _selfPlayCheck = new() { Text = "Self-Play (SMB1) - connects to Python inference server", AutoSize = true };
     private readonly Label _statusLabel = new() { AutoSize = true };
     private readonly ComboBox _cpuCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _ppuCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -94,6 +104,9 @@ public sealed class WorkshopForm : Form
         _strictAccuracyCheck.Location = new Point(12, transport.Bottom + 26);
         Controls.Add(_strictAccuracyCheck);
 
+        _selfPlayCheck.Location = new Point(12, transport.Bottom + 48);
+        Controls.Add(_selfPlayCheck);
+
         int rightX = _screen.Right + 20;
 
         var coresGroup = new GroupBox { Text = "Cores", Location = new Point(rightX, 12), Width = 340, Height = 110 };
@@ -142,6 +155,7 @@ public sealed class WorkshopForm : Form
         _stepInstructionBtn.Click += (_, __) => StepInstruction();
         _openRomBtn.Click += (_, __) => OpenRomDialog();
         _strictAccuracyCheck.CheckedChanged += (_, __) => ApplyStrictAccuracyMode(_strictAccuracyCheck.Checked);
+        _selfPlayCheck.CheckedChanged += (_, __) => ToggleSelfPlay(_selfPlayCheck.Checked);
         _cpuCombo.SelectedIndexChanged += (_, __) => { if (_cpuCombo.SelectedItem is string s) { _nes?.SetCpuCore(s); RefreshRegisters(); } };
         _ppuCombo.SelectedIndexChanged += (_, __) => { if (_ppuCombo.SelectedItem is string s) _nes?.SetPpuCore(s); };
         _apuCombo.SelectedIndexChanged += (_, __) => { if (_apuCombo.SelectedItem is string s) _nes?.SetApuCore(s); };
@@ -199,6 +213,10 @@ public sealed class WorkshopForm : Form
     private void LoadRom(byte[] rom, string name)
     {
         _timer.Stop();
+        // A new ROM invalidates any in-progress self-play session (checkpoints reference the old
+        // game's state) - drop it and let ToggleSelfPlay recreate one on demand.
+        _selfPlayManager?.DisconnectPipe();
+        _selfPlayManager = null;
         var nes = new NES { RomName = name };
         nes.LoadROM(rom);
         _nes = nes;
@@ -313,8 +331,22 @@ public sealed class WorkshopForm : Form
         if (_nes == null) return;
         try
         {
-            _nes.SetInputs(_p1, _p2);
-            _nes.RunFrame();
+            if (_selfPlayCheck.Checked && _selfPlayManager != null)
+            {
+                // _p1 (live keyboard state) is passed through as the human-override input, same
+                // merge rule SelfPlayManager already implements: the model may never press Start,
+                // a human still can (press Enter to kick off a fresh session, exactly like
+                // clicking "Start Autoplay" then pressing Start in the source project's UI).
+                var buttons = _selfPlayManager.ComputeFrameInput(_nes, _p1);
+                _nes.SetInputs(buttons, null);
+                _nes.RunFrame();
+                _selfPlayManager.OnFrameComplete(_nes);
+            }
+            else
+            {
+                _nes.SetInputs(_p1, _p2);
+                _nes.RunFrame();
+            }
             _frameCount++;
             Present();
             RefreshRegisters();
@@ -323,6 +355,14 @@ public sealed class WorkshopForm : Form
                 _timer.Stop();
                 _playPauseBtn.Text = "Play";
                 SetStatus($"CRASHED: {_nes.GetCrashInfo()}");
+            }
+            else if (_selfPlayCheck.Checked && _selfPlayManager != null)
+            {
+                SetStatus($"{_romName} - frame {_frameCount} | self-play: " +
+                    $"{(_selfPlayManager.IsPipeConnected ? "connected" : "DISCONNECTED")} " +
+                    $"style={_selfPlayManager.CurrentStyle} temp={_selfPlayManager.CurrentTemperature:F2} " +
+                    $"checkpoints={_selfPlayManager.Checkpoints.Count} reloads={_selfPlayManager.ReloadCount} " +
+                    $"blockedStart={_selfPlayManager.BlockedStartCount}");
             }
             else
             {
@@ -335,6 +375,39 @@ public sealed class WorkshopForm : Form
             _playPauseBtn.Text = "Play";
             SetStatus($"Exception: {ex.Message}");
         }
+    }
+
+    private void ToggleSelfPlay(bool enabled)
+    {
+        if (!enabled)
+        {
+            SetStatus("Self-play disabled.");
+            return;
+        }
+
+        if (!string.Equals(_romName, Path.GetFileName(Smb1RomPath), StringComparison.Ordinal) && File.Exists(Smb1RomPath))
+        {
+            try { LoadRom(File.ReadAllBytes(Smb1RomPath), Path.GetFileName(Smb1RomPath)); }
+            catch (Exception ex)
+            {
+                SetStatus($"Failed to auto-load SMB1 ROM: {ex.Message}");
+                _selfPlayCheck.Checked = false;
+                return;
+            }
+        }
+
+        _selfPlayManager ??= new SelfPlayManager(new SelfPlayConfig(), Path.Combine(Path.GetTempPath(), "brokennes_selfplay_checkpoints"));
+        if (!_selfPlayManager.IsPipeConnected && !_selfPlayManager.ConnectPipe("nesreflex_inference"))
+        {
+            MessageBox.Show(this,
+                "Could not connect to the NESReflex inference server pipe.\n\n" +
+                "Make sure it's running first:\n" +
+                "python scripts/nesreflex_inference_server.py --checkpoint <path> --metadata <path> --protocol v2",
+                "Self-play", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        if (!_timer.Enabled) TogglePlay();
+        SetStatus("Self-play enabled. Click the game window and press Enter to start (the model can never press Start itself).");
     }
 
     private void Present()

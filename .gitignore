@@ -1,6 +1,7 @@
 /bin
 .DS_Store
 /obj
+Workshop/SelfPlayOutput/
 /flatpublish
 /Tools/BrokenNes.Shaders.Generator/obj
 /Tools/BrokenNes.Shaders.Generator/bin
