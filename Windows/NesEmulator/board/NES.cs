@@ -240,6 +240,11 @@ namespace NesEmulator
 			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
+			// Bus-level state that lives outside any CPU/PPU/APU core's own GetState() - previously
+			// silently dropped by every SaveState()/LoadState() round trip (see project_tas_ml_
+			// integration memory for how the resulting transient post-reload desync was found).
+			public byte openBus;
+			public int pendingCpuStallCycles;
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public string romName = string.Empty; // optional metadata for UI labeling
@@ -402,6 +407,8 @@ namespace NesEmulator
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
+					openBus = bus.GetOpenBus(),
+					pendingCpuStallCycles = bus.PendingCpuStallCycles,
 					apuCore = (int)bus.GetActiveApuCore(),
 					cpuCore = (int)bus.GetActiveCpuCore(),
 					cpuCoreId = bus.cpu.GetType().Name,
@@ -520,6 +527,8 @@ namespace NesEmulator
 				if (root.TryGetProperty("controllerState", out var csEl)) st.controllerState = (byte)csEl.GetByte();
 				if (root.TryGetProperty("controllerShift", out var cshEl)) st.controllerShift = (byte)cshEl.GetByte();
 				if (root.TryGetProperty("controllerStrobe", out var cstEl)) st.controllerStrobe = cstEl.GetBoolean();
+				if (root.TryGetProperty("openBus", out var obEl)) st.openBus = (byte)obEl.GetByte();
+				if (root.TryGetProperty("pendingCpuStallCycles", out var pscEl)) st.pendingCpuStallCycles = pscEl.GetInt32();
 				if (root.TryGetProperty("romData", out var romEl)) {
 					if (romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
 					else if (romEl.ValueKind==System.Text.Json.JsonValueKind.String){ try { st.romData = romEl.GetBytesFromBase64(); } catch { st.romData=Array.Empty<byte>(); } }
@@ -571,6 +580,8 @@ namespace NesEmulator
 				extraCycleAccumulator = 0;
 			}
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
+			bus.SetOpenBus(st.openBus);
+			bus.PendingCpuStallCycles = st.pendingCpuStallCycles;
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
 			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);

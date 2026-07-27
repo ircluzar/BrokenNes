@@ -51,6 +51,10 @@ public class Bus : IBus
 		// Exposed so PPU cores can return real open-bus behavior for write-only/unimplemented
 		// PPU registers ($2000/$2001/$2003/$2005/$2006) instead of a hardcoded 0.
 		public byte GetOpenBus() => lastBusValue;
+		// Restores the open-bus value from a savestate - SaveState()/LoadState() previously dropped
+		// this silently (it lives on Bus, not inside any CPU/PPU/APU core's own GetState()), so a
+		// reload always reset it to 0 regardless of what the live bus was last driven with.
+		public void SetOpenBus(byte value) => lastBusValue = value;
 		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
 		internal int PendingCpuStallCycles = 0;
 		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
