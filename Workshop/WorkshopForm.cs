@@ -49,6 +49,7 @@ public sealed class WorkshopForm : Form
     private readonly Button _openRomBtn = new() { Text = "Open ROM..." };
     private readonly CheckBox _strictAccuracyCheck = new() { Text = "Strict accuracy (disable speed hacks)", AutoSize = true };
     private readonly CheckBox _selfPlayCheck = new() { Text = "Self-Play (SMB1) - connects to Python inference server", AutoSize = true };
+    private readonly CheckBox _turboCheck = new() { Text = "Turbo (uncapped speed - real ceiling is the ML pipe round-trip, ~110fps measured)", AutoSize = true };
     private readonly Label _statusLabel = new() { AutoSize = true };
     private readonly ComboBox _cpuCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _ppuCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -116,17 +117,27 @@ public sealed class WorkshopForm : Form
     {
         while (_timer.Enabled && !PeekMessage(out _, IntPtr.Zero, 0, 0, 0))
         {
-            double elapsed = _frameClock.Elapsed.TotalMilliseconds;
-            _frameClock.Restart();
-            _frameAccumulatorMs += elapsed;
-            if (_frameAccumulatorMs < TargetFrameMs)
+            if (_turboCheck.Checked)
             {
-                System.Threading.Thread.Sleep(1);
-                continue;
+                // No pacing at all - run whatever the emulation + (if self-play) ML pipe round-trip
+                // allows, yielding to the message pump between frames via the PeekMessage check above.
+                _frameAccumulatorMs = 0;
+                _frameClock.Restart();
             }
-            // Clamp so a debugger break or window-drag stall doesn't fire a burst of catch-up frames.
-            if (_frameAccumulatorMs > TargetFrameMs * 4) _frameAccumulatorMs = TargetFrameMs;
-            _frameAccumulatorMs -= TargetFrameMs;
+            else
+            {
+                double elapsed = _frameClock.Elapsed.TotalMilliseconds;
+                _frameClock.Restart();
+                _frameAccumulatorMs += elapsed;
+                if (_frameAccumulatorMs < TargetFrameMs)
+                {
+                    System.Threading.Thread.Sleep(1);
+                    continue;
+                }
+                // Clamp so a debugger break or window-drag stall doesn't fire a burst of catch-up frames.
+                if (_frameAccumulatorMs > TargetFrameMs * 4) _frameAccumulatorMs = TargetFrameMs;
+                _frameAccumulatorMs -= TargetFrameMs;
+            }
 
             _interTickMs = _lastTickStopwatch.IsRunning ? _lastTickStopwatch.Elapsed.TotalMilliseconds : 0;
             _lastTickStopwatch.Restart();
@@ -163,6 +174,9 @@ public sealed class WorkshopForm : Form
 
         _selfPlayCheck.Location = new Point(12, transport.Bottom + 48);
         Controls.Add(_selfPlayCheck);
+
+        _turboCheck.Location = new Point(12, transport.Bottom + 70);
+        Controls.Add(_turboCheck);
 
         int rightX = _screen.Right + 20;
 
@@ -387,6 +401,7 @@ public sealed class WorkshopForm : Form
     // WinForms Timer/message-pump overhead); the others isolate the three real candidates.
     private readonly System.Diagnostics.Stopwatch _lastTickStopwatch = new();
     private double _interTickMs, _pipeMs, _runFrameMs, _presentMs;
+    private const int TurboRenderEveryNthFrame = 8;
 
     private void RunOneFrame()
     {
@@ -416,17 +431,28 @@ public sealed class WorkshopForm : Form
                 _nes.RunFrame();
             }
             _frameCount++;
-            var swPresent = System.Diagnostics.Stopwatch.StartNew();
-            Present();
-            _presentMs = swPresent.Elapsed.TotalMilliseconds;
-            RefreshRegisters();
+
+            // In turbo mode, painting every single frame ties throughput to DWM/display vsync
+            // (measured ~64fps in-window vs ~114fps headless with rendering skipped entirely) -
+            // repainting only every Nth frame lets emulation+ML run at their own real pace while
+            // still giving a live (just choppier) preview instead of a frozen window.
+            bool shouldRender = !_turboCheck.Checked || _frameCount % TurboRenderEveryNthFrame == 0;
+            double presentMs = 0;
+            if (shouldRender)
+            {
+                var swPresent = System.Diagnostics.Stopwatch.StartNew();
+                Present();
+                presentMs = swPresent.Elapsed.TotalMilliseconds;
+                RefreshRegisters();
+            }
+            _presentMs = presentMs;
             if (_nes.IsCrashed())
             {
                 _timer.Stop();
                 _playPauseBtn.Text = "Play";
                 SetStatus($"CRASHED: {_nes.GetCrashInfo()}");
             }
-            else if (_selfPlayCheck.Checked && _selfPlayManager != null)
+            else if (shouldRender && _selfPlayCheck.Checked && _selfPlayManager != null)
             {
                 SetStatus($"{_romName} - frame {_frameCount} | " +
                     $"interTick={_interTickMs:F1}ms(~{(_interTickMs > 0 ? 1000.0 / _interTickMs : 0):F0}fps) " +
@@ -436,7 +462,7 @@ public sealed class WorkshopForm : Form
                     $"checkpoints={_selfPlayManager.Checkpoints.Count} reloads={_selfPlayManager.ReloadCount} " +
                     $"blockedStart={_selfPlayManager.BlockedStartCount} autoStarts={_selfPlayManager.AutoStartPressCount}");
             }
-            else
+            else if (shouldRender)
             {
                 SetStatus($"{_romName} - frame {_frameCount}");
             }
