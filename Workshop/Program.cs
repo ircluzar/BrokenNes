@@ -37,6 +37,10 @@ internal static class Program
         {
             return SaveStateRoundtripDiagCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            return BenchmarkCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 
