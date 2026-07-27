@@ -133,14 +133,22 @@ public class CPU_FIX : ICPU {
 			// === Unofficial NOP family (multi-byte safe no-ops) ===
 			// Implied 2-cycle NOPs
 			case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA: return 2; // single byte implied
-			// ZeroPage variants (consume operand, 3 cycles)
-			case 0x04: case 0x44: case 0x64: { ZeroPage(); return 3; }
-			// ZeroPage,X variants (operand + X indexing discard, 4 cycles)
-			case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: { ZeroPageX(); return 4; }
-			// Absolute (16-bit operand)
-			case 0x0C: { Absolute(); return 4; }
-			// Absolute,X (adds page cross penalty like regular AbsoluteX addressing)
-			case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: { var ar = AbsoluteX(); return 4 + ar.extraCycles; }
+			// Immediate 2-byte NOPs: the operand byte is genuinely fetched off the bus (that's
+			// the real cycle-2 access), just discarded rather than used.
+			case 0x80: case 0x82: case 0x89: case 0xC2: case 0xE2: { Fetch(); return 2; }
+			// ZeroPage variants: real hardware actually reads the target address (that's what
+			// lets e.g. "NOP $2002" clear PPUSTATUS's VBlank bit) - it's a genuine dummy read,
+			// not just a cycle to burn.
+			case 0x04: case 0x44: case 0x64: { var ar = ZeroPage(); bus.Read(ar.address); return 3; }
+			// ZeroPage,X variants (ZeroPageX() already performs the un-indexed dummy read; this
+			// is the real read of the indexed target address).
+			case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: { var ar = ZeroPageX(); bus.Read(ar.address); return 4; }
+			// Absolute (16-bit operand) - genuine read of the target address.
+			case 0x0C: { var ar = Absolute(); bus.Read(ar.address); return 4; }
+			// Absolute,X (adds page cross penalty like regular AbsoluteX addressing; AbsoluteX()
+			// already performs the wrong-page dummy read on an actual cross, this is the real
+			// read of the final target address).
+			case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: { var ar = AbsoluteX(); bus.Read(ar.address); return 4 + ar.extraCycles; }
 			//BRK, NOP, RTI
 			case 0x00: return BRK();
 			case 0xEA: return NOP();
@@ -168,10 +176,10 @@ public class CPU_FIX : ICPU {
 			case 0x85: return STR(ref A, ZeroPage, 3);
 			case 0x95: return STR(ref A, ZeroPageX, 4);
 			case 0x8D: return STR(ref A, Absolute, 4);
-			case 0x9D: return STR(ref A, AbsoluteX, 5);
-			case 0x99: return STR(ref A, AbsoluteY, 5);
+			case 0x9D: return STR(ref A, AbsoluteXStore, 5);
+			case 0x99: return STR(ref A, AbsoluteYStore, 5);
 			case 0x81: return STR(ref A, IndirectX, 6);
-			case 0x91: return STR(ref A, IndirectY, 6);
+			case 0x91: return STR(ref A, IndirectYStore, 6);
 			case 0x86: return STR(ref X, ZeroPage, 3);
 			case 0x96: return STR(ref X, ZeroPageY, 4);
 			case 0x8E: return STR(ref X, Absolute, 4);
@@ -476,7 +484,9 @@ public class CPU_FIX : ICPU {
 	//Increments and Decrements
 	private int INC(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte result = (byte)(bus.Read(addr.address) + 1);
+		byte original = bus.Read(addr.address);
+		byte result = (byte)(original + 1);
+		bus.Write(addr.address, original); // dummy write-back of the unmodified value (real RMW hardware behavior)
 		bus.Write(addr.address, result);
 		SetZN(result);
 
@@ -485,7 +495,9 @@ public class CPU_FIX : ICPU {
 
 	private int DEC(Func<AddrResult> mode, int baseCycles) {
 		var addr = mode();
-		byte result = (byte)(bus.Read(addr.address) - 1);
+		byte original = bus.Read(addr.address);
+		byte result = (byte)(original - 1);
+		bus.Write(addr.address, original); // dummy write-back of the unmodified value (real RMW hardware behavior)
 		bus.Write(addr.address, result);
 		SetZN(result);
 
@@ -514,6 +526,7 @@ public class CPU_FIX : ICPU {
 		if (mode == Accumulator) {
 			A = result;
 		} else {
+			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
 			bus.Write(addr.address, result);
 		}
 
@@ -531,6 +544,7 @@ public class CPU_FIX : ICPU {
 		if (mode == Accumulator) {
 			A = result;
 		} else {
+			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
 			bus.Write(addr.address, result);
 		}
 
@@ -549,6 +563,7 @@ public class CPU_FIX : ICPU {
 		if (mode == Accumulator) {
 			A = result;
 		} else {
+			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
 			bus.Write(addr.address, result);
 		}
 
@@ -567,6 +582,7 @@ public class CPU_FIX : ICPU {
 		if (mode == Accumulator) {
 			A = result;
 		} else {
+			bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
 			bus.Write(addr.address, result);
 		}
 
@@ -741,14 +757,22 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(addr, 0);
 	}
 
+	// Zero-page indexed modes always take their fixed cycle count (no page-cross variability -
+	// the zero-page pointer wraps within page 0), and real hardware always performs a genuine
+	// dummy read of the un-indexed zero-page address before adding the index. This is true
+	// regardless of whether the instruction using this mode is a load, a store, or a
+	// read-modify-write - so the dummy read lives here, unconditionally, rather than being
+	// gated per-caller.
 	private AddrResult ZeroPageX() {
 		byte baseAddr = Fetch();
+		bus.Read(baseAddr); // dummy read of the un-indexed zero-page address
 		byte addr = (byte)(baseAddr + X);
 		return new AddrResult(addr, 0);
 	}
 
 	private AddrResult ZeroPageY() {
 		byte baseAddr = Fetch();
+		bus.Read(baseAddr); // dummy read of the un-indexed zero-page address
 		byte addr = (byte)(baseAddr + Y);
 		return new AddrResult(addr, 0);
 	}
@@ -758,33 +782,88 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(addr, 0);
 	}
 
+	// Load-style absolute,X: real hardware only performs the extra bus cycle - a dummy read at
+	// the not-yet-fixed-up address (old high byte, new/wrapped low byte) - when the index
+	// addition actually crosses a page. When it doesn't cross, the "uncorrected" address is
+	// identical to the effective address anyway, so skipping the read there costs nothing
+	// observable and keeps the common (non-crossing) case to a single bus access, matching
+	// hardware's variable cycle count for loads. See AbsoluteXStore for the store-only
+	// unconditional variant.
 	private AddrResult AbsoluteX() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + X);
-		int penalty = HasPageCrossPenalty(baseAddr, effective) ? 1 : 0;
-		return new AddrResult(effective, penalty);
+		bool crossed = HasPageCrossPenalty(baseAddr, effective);
+		if (crossed) {
+			ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+			bus.Read(uncorrected); // dummy read at the wrong-page address
+		}
+		return new AddrResult(effective, crossed ? 1 : 0);
 	}
 
 	private AddrResult AbsoluteY() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + Y);
-		int penalty = HasPageCrossPenalty(baseAddr, effective) ? 1 : 0;
-		return new AddrResult(effective, penalty);
+		bool crossed = HasPageCrossPenalty(baseAddr, effective);
+		if (crossed) {
+			ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+			bus.Read(uncorrected); // dummy read at the wrong-page address
+		}
+		return new AddrResult(effective, crossed ? 1 : 0);
 	}
 
+	// Indexed absolute STORES always take the fixed max cycle count (5), unlike loads: the
+	// dummy read at the not-yet-fixed-up address always happens, cross or not (when there's no
+	// cross it just happens to read the same address the write will target next). Used only by
+	// STR for STA abs,X/Y - LDR/AND/EOR/ORA/ADC/SBC/CPR keep using the conditional AbsoluteX/Y
+	// above, since only STORES are fixed-cycle here.
+	private AddrResult AbsoluteXStore() {
+		ushort baseAddr = Fetch16Bits();
+		ushort effective = (ushort)(baseAddr + X);
+		ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+		bus.Read(uncorrected); // unconditional dummy read (store semantics)
+		return new AddrResult(effective, 0);
+	}
+
+	private AddrResult AbsoluteYStore() {
+		ushort baseAddr = Fetch16Bits();
+		ushort effective = (ushort)(baseAddr + Y);
+		ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+		bus.Read(uncorrected); // unconditional dummy read (store semantics)
+		return new AddrResult(effective, 0);
+	}
+
+	// (zp,X): the zero-page pointer is always dummy-read before X is added to it (fixed 6-cycle
+	// timing regardless of load/store/RMW), same rationale as ZeroPageX/Y above.
 	private AddrResult IndirectX() {
 		byte zp = Fetch();
+		bus.Read(zp); // dummy read of the pointer before X is added
 		byte ptr = (byte)(zp + X);
 		ushort addr = (ushort)(bus.Read(ptr) | (bus.Read((byte)(ptr + 1)) << 8));
 		return new AddrResult(addr, 0);
 	}
 
+	// Load-style (zp),Y: same conditional-on-cross dummy read as AbsoluteX/Y above.
 	private AddrResult IndirectY() {
 		byte zp = Fetch();
 		ushort baseAddr = (ushort)(bus.Read(zp) | (bus.Read((byte)(zp + 1)) << 8));
 		ushort effective = (ushort)(baseAddr + Y);
-		int penalty = HasPageCrossPenalty(baseAddr, effective) ? 1 : 0;
-		return new AddrResult(effective, penalty);
+		bool crossed = HasPageCrossPenalty(baseAddr, effective);
+		if (crossed) {
+			ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+			bus.Read(uncorrected); // dummy read at the wrong-page address
+		}
+		return new AddrResult(effective, crossed ? 1 : 0);
+	}
+
+	// STA (zp),Y: always 6 cycles, unconditional dummy read (store semantics) - see
+	// AbsoluteXStore for the same rationale.
+	private AddrResult IndirectYStore() {
+		byte zp = Fetch();
+		ushort baseAddr = (ushort)(bus.Read(zp) | (bus.Read((byte)(zp + 1)) << 8));
+		ushort effective = (ushort)(baseAddr + Y);
+		ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
+		bus.Read(uncorrected); // unconditional dummy read (store semantics)
+		return new AddrResult(effective, 0);
 	}
 
 	private AddrResult Indirect() {
