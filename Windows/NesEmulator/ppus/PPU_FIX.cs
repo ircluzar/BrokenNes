@@ -197,8 +197,11 @@ public class PPU_FIX : IPPU
 		
 		// Render background first (if enabled)
 		if (bgEnabled) RenderBackground(scanline, bgMask);
-		// Then render sprites on top (if enabled)
-		if (sprEnabled) RenderSprites(scanline, bgMask);
+		// Sprite evaluation (and possible overflow-flag set) runs whenever EITHER
+		// background or sprite rendering is on, independent of whether sprite pixels
+		// actually get drawn - RenderSprites internally gates the pixel-drawing loop
+		// on sprEnabled while always running evaluation.
+		if (bgEnabled || sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
@@ -266,6 +269,8 @@ public class PPU_FIX : IPPU
 	{
 		// Check if background rendering is enabled
 		if ((PPUMASK & 0x08) == 0) return;
+		// PPUMASK bit 1: show background in the leftmost 8 screen columns (left-edge clipping).
+		bool showBgLeft = (PPUMASK & 0x02) != 0;
 		// Guard against null during hot-swap
 		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
 
@@ -334,6 +339,18 @@ public class PPU_FIX : IPPU
 				int pixel = tile * 8 + i - fineX;
 				if (pixel < 0 || pixel >= ScreenWidth) continue;
 
+				// Left-edge clipping: force the universal backdrop color (and leave
+				// bgMask unset, i.e. transparent) in the leftmost 8 columns when disabled.
+				if (pixel < 8 && !showBgLeft)
+				{
+					int clipFrameIndex = scanlineBase + pixel * 4;
+					fb![clipFrameIndex + 0] = ubR;
+					fb![clipFrameIndex + 1] = ubG;
+					fb![clipFrameIndex + 2] = ubB;
+					fb![clipFrameIndex + 3] = 255;
+					continue;
+				}
+
 				int bitIndex = 7 - i;
 				int bit0 = (plane0 >> bitIndex) & 1;
 				int bit1 = (plane1 >> bitIndex) & 1;
@@ -368,9 +385,13 @@ public class PPU_FIX : IPPU
 
 	private void RenderSprites(int scanline, bool[] bgMask)
 	{
-		// Check if sprite rendering is enabled
+		// Check if sprite rendering is enabled. This flag only gates the per-sprite
+		// pixel-drawing/hit-test loop further down - evaluation below (which can set the
+		// overflow flag) always runs, since real hardware evaluates sprites whenever either
+		// background or sprite rendering is on (see RenderScanline call site).
 		bool showSprites = (PPUMASK & 0x10) != 0;
-		if (!showSprites) return;
+		// PPUMASK bit 2: show sprites in the leftmost 8 screen columns (left-edge clipping).
+		bool showSprLeft = (PPUMASK & 0x04) != 0;
 		// Guard against null during hot-swap
 		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
 
@@ -379,24 +400,34 @@ public class PPU_FIX : IPPU
 		var fb = frameBuffer;
 
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
-		// Inform mapper we're about to do sprite pattern fetches (MMC5 A/B CHR banking)
-		if (bus?.cartridge?.mapper is IMapper mSpr)
+		// Inform mapper we're about to do sprite pattern fetches (MMC5 A/B CHR banking) -
+		// only relevant when sprites are actually drawn below.
+		if (showSprites && bus?.cartridge?.mapper is IMapper mSpr)
 			mSpr.PpuPhaseHint(true, isSprite8x16, (PPUMASK & 0x18) != 0);
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
 		// Real hardware evaluates at most 8 sprites per scanline and sets the overflow flag
 		// (PPUSTATUS bit 5) when a 9th in-range sprite exists - this also gates sprite-0-hit,
 		// since sprite 0 can only be hit on a line if it falls within the first 8 evaluated.
+		// This loop runs unconditionally (see showSprites comment above).
 		int spriteEvalCount = 0;
 		Span<int> spriteLineIdx = stackalloc int[8];
 		for (int si = 0; si < 64; si++)
 		{
 			byte sy = oam[si * 4];
 			int sh = isSprite8x16 ? 16 : 8;
-			if (scanline < sy || scanline >= sy + sh) continue;
+			// OAM byte 0 is the sprite's Y coordinate minus 1: sprite data is delayed by
+			// one scanline on real hardware, so the first displayed row is sy + 1.
+			int spriteTop = sy + 1;
+			if (scanline < spriteTop || scanline >= spriteTop + sh) continue;
 			if (spriteEvalCount < 8) spriteLineIdx[spriteEvalCount++] = si;
 			else { PPUSTATUS |= 0x20; break; }
 		}
+
+		// Sprite pixel drawing (and sprite-0-hit testing) only happens when sprites are
+		// actually enabled for display on screen - matches hardware, where the hit flag
+		// cannot be set unless both background and sprite rendering are on.
+		if (!showSprites) return;
 
 		// Process only the (up to 8) sprites selected above
 		for (int li = 0; li < spriteEvalCount; li++)
@@ -416,8 +447,9 @@ public class PPU_FIX : IPPU
 
 			int tileHeight = isSprite8x16 ? 16 : 8;
 
-			// Calculate which row of the sprite we're rendering
-			int subY = scanline - spriteY;
+			// Calculate which row of the sprite we're rendering (Y delayed by one scanline,
+			// same as the evaluation loop above)
+			int subY = scanline - (spriteY + 1);
 			if (flipY) subY = tileHeight - 1 - subY;
 
 			// For 8x16 sprites, determine which tile and pattern table
@@ -442,9 +474,14 @@ public class PPU_FIX : IPPU
 
 				int px = spriteX + x;
 				if (px < 0 || px >= ScreenWidth) continue;
+				// Left-edge clipping: PPUMASK bit 2 (0x04) disables sprites in the leftmost
+				// 8 screen columns. When clipped, the pixel is treated as fully transparent
+				// for both drawing and sprite-0-hit purposes.
+				if (px < 8 && !showSprLeft) continue;
 
-				// Sprite 0 hit detection
-				if (i == 0 && bgMask[px] && color != 0)
+				// Sprite 0 hit detection. Real hardware never sets the hit flag when the
+				// colliding pixel is at x=255 (documented PPU quirk).
+				if (i == 0 && px != 255 && bgMask[px] && color != 0)
 				{
 					PPUSTATUS |= 0x40;
 				}
@@ -610,8 +647,21 @@ public class PPU_FIX : IPPU
 		switch (address & 0x0007)
 		{
 			case 0x0000: // PPU Control
-				PPUCTRL = value;
-				t = (ushort)((t & 0xF3FF) | ((value & 0x03) << 10));
+				{
+					bool oldNmiEnable = (PPUCTRL & 0x80) != 0;
+					PPUCTRL = value;
+					t = (ushort)((t & 0xF3FF) | ((value & 0x03) << 10));
+					bool newNmiEnable = (PPUCTRL & 0x80) != 0;
+					// Hardware: the /NMI line is the combinational AND of PPUSTATUS.VBlank and
+					// PPUCTRL.NMI-enable. Enabling NMI while the VBlank flag is already latched
+					// (from a previous, unread VBlank) fires an NMI right here, not just at the
+					// next scanline-241 boundary. This is the blargg nmi_control quirk (AccuracyCoin
+					// "NMI Control" tests 3/5/6/7).
+					if (!oldNmiEnable && newNmiEnable && (PPUSTATUS & 0x80) != 0)
+					{
+						bus.cpu.RequestNMI();
+					}
+				}
 				break;
 			case 0x0001: // PPU Mask
 				PPUMASK = value;

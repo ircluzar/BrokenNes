@@ -31,6 +31,15 @@ public class CPU_FIX : ICPU {
 	private bool irqRequested;
 	private bool nmiRequested;
 
+	// Mirrors the real 6502's internal IRQ-gate poll latch. On hardware, the poll checkpoint
+	// that decides whether a pending IRQ becomes a vectored interrupt sits at a fixed point
+	// inside an instruction's cycle sequence. For CLI/SEI/PLP that checkpoint falls one cycle
+	// *before* the instruction's own flag-store cycle, so the poll still sees the pre-instruction
+	// I flag for one more instruction after the flag write - pollFlagI captures exactly that
+	// stale-for-one-instruction value. Every other instruction (including RTI, whose flag pull
+	// happens before its own checkpoint) syncs pollFlagI to the live status flag immediately.
+	private bool pollFlagI;
+
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
 
@@ -44,6 +53,7 @@ public class CPU_FIX : ICPU {
 
 		irqRequested = false;
 		nmiRequested = false;
+		pollFlagI = GetFlag(FLAG_I);
 	}
 
 	public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters() => (PC, A, X, Y, status, SP);
@@ -57,6 +67,8 @@ public class CPU_FIX : ICPU {
 		byte low = bus.Read(0xFFFC);
 		byte high = bus.Read(0xFFFD);
 		PC = (ushort)((high << 8) | low);
+
+		pollFlagI = GetFlag(FLAG_I);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -88,16 +100,35 @@ public class CPU_FIX : ICPU {
 	public int ExecuteInstruction() {
 		if (nmiRequested) {
 			nmiRequested = false;
-			return NMI();
+			int nmiCycles = NMI();
+			// NMI's own flag-set (like IRQ's) is immediately visible to the poll checkpoint -
+			// only CLI/SEI/PLP get a one-instruction-delayed poll, per AccuracyCoin's model.
+			pollFlagI = GetFlag(FLAG_I);
+			return nmiCycles;
 		}
 
-		if (GetFlag(FLAG_I) == false && irqRequested) {
+		if (!pollFlagI && irqRequested) {
 			irqRequested = false;
-			return IRQ();
+			int irqCycles = IRQ();
+			pollFlagI = GetFlag(FLAG_I);
+			return irqCycles;
 		}
 
 		byte opcode = Fetch();
+		bool iBefore = GetFlag(FLAG_I);
 
+		int cycles = Dispatch(opcode);
+
+		// CLI (0x58), SEI (0x78) and PLP (0x28) write the I flag one cycle *after* the poll
+		// checkpoint that gates the next IRQ, so the poll keeps seeing the pre-instruction value
+		// for exactly one more instruction. Every other instruction (RTI included) syncs
+		// immediately.
+		pollFlagI = (opcode == 0x58 || opcode == 0x78 || opcode == 0x28) ? iBefore : GetFlag(FLAG_I);
+
+		return cycles;
+	}
+
+	private int Dispatch(byte opcode) {
 			switch (opcode) {
 			// === Unofficial NOP family (multi-byte safe no-ops) ===
 			// Implied 2-cycle NOPs
@@ -552,17 +583,20 @@ public class CPU_FIX : ICPU {
 	}
 
 	private int JSR() {
-		ushort targetLow = Fetch();
-		ushort targetHigh = Fetch();
+		// Real 6502 JSR order: fetch low byte -> dummy read from stack -> push PCH -> push PCL ->
+		// fetch high byte. Fetching the high byte *after* both pushes means a JSR run from a
+		// stack-page-overlapping RAM address observes the just-pushed return-address bytes if they
+		// land on the not-yet-read high-byte operand, matching hardware exactly.
+		byte low = Fetch();
+		bus.Read((ushort)(0x0100 + SP)); // cycle-3 dummy read of the current stack location
 
-		ushort targetAddr = (ushort)((targetHigh << 8) | targetLow);
-
-		ushort returnAddr = (ushort)(PC - 1);
+		ushort returnAddr = PC; // address of the (not yet fetched) high byte operand
 
 		StackPush((byte)((returnAddr >> 8) & 0xFF));
 		StackPush((byte)(returnAddr & 0xFF));
 
-		PC = targetAddr;
+		byte high = Fetch();
+		PC = (ushort)((high << 8) | low);
 		return 6;
 	}
 
@@ -579,6 +613,19 @@ public class CPU_FIX : ICPU {
 		int extra = 0;
 
 		if (condition) {
+			// Real hardware performs 1-2 extra bus reads on a taken branch instead of a pure
+			// arithmetic PC update: a dummy read at the not-taken continuation address (cycle 3),
+			// and, only when the branch crosses a page, a second dummy read at the wrong-page
+			// temporary address (cycle 4) before PCH is corrected. These are externally observable
+			// (e.g. a branch placed at a PPU register address clears vblank via its dummy read).
+			ushort pcAfterOperand = PC; // address of the fall-through instruction
+			bus.Read(pcAfterOperand);
+
+			ushort noCarryPC = (ushort)((pcAfterOperand & 0xFF00) | (addr.address & 0x00FF));
+			if ((noCarryPC & 0xFF00) != (addr.address & 0xFF00)) {
+				bus.Read(noCarryPC);
+			}
+
 			PC = addr.address;
 			extra = 1 + addr.extraCycles;
 		}
@@ -760,7 +807,7 @@ public class CPU_FIX : ICPU {
 
 	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested };
 	public void SetState(object state) {
-		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested; return; }
+		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested; pollFlagI = GetFlag(FLAG_I); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("A", out var pA)) A = (byte)pA.GetInt32();
 			if (je.TryGetProperty("X", out var pX)) X = (byte)pX.GetInt32();
@@ -770,6 +817,10 @@ public class CPU_FIX : ICPU {
 			if (je.TryGetProperty("SP", out var pSP)) SP = (ushort)pSP.GetInt32();
 			if (je.TryGetProperty("irqRequested", out var pi)) irqRequested = pi.GetBoolean();
 			if (je.TryGetProperty("nmiRequested", out var pn)) nmiRequested = pn.GetBoolean();
+			// pollFlagI has no cross-core representation in shared state; resync to the live I
+			// flag on load/hot-swap. This loses a mid-flight one-instruction delay across a
+			// savestate/hot-swap boundary, an acceptable edge case for a non-serialized latch.
+			pollFlagI = GetFlag(FLAG_I);
 		}
 	}
 }
