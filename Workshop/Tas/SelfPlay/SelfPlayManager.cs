@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using BrokenNes.Workshop.Tas;
 using NesEmulator;
 
@@ -62,6 +64,25 @@ public sealed class SelfPlayManager
     // frame 0 to now - export it with ExportInputLog or by reading InputLog directly.
     private readonly List<bool[]> _inputLog = new();
     public IReadOnlyList<bool[]> InputLog => _inputLog;
+
+    // Parallel to _inputLog, one FrameWitnessBreakdown per frame, appended in OnFrameComplete (after
+    // RunFrame) so it captures the resulting state, truncated in lockstep with _inputLog on reload.
+    // Exists purely so an exported movie can be verified (see MovieVerifyCli) to replay frame-for-
+    // frame identically to what was actually simulated live - not just "doesn't crash".
+    private readonly List<FrameWitnessBreakdown> _witnessLog = new();
+    public IReadOnlyList<FrameWitnessBreakdown> WitnessLog => _witnessLog;
+
+    // Auto-export: writes a fresh .fm2 (+ witness sidecar) whenever a Game Over happens (the
+    // natural "episode boundary", after the resulting checkpoint reload/truncation) and, as a
+    // safety net for long gaps between deaths, every AutoExportPeriodicFrames frames. Off by
+    // default - call EnableAutoExport to turn it on.
+    private string? _autoExportDir;
+    private byte[]? _autoExportRomMd5;
+    private string? _autoExportRomFilename;
+    private int _autoExportPeriodicFrames;
+    private int _framesSinceAutoExport;
+    public int AutoExportCount { get; private set; }
+    public string? LastAutoExportPath { get; private set; }
 
     public int GameId { get; }
     public CheckpointManager Checkpoints => _checkpoints;
@@ -153,6 +174,15 @@ public sealed class SelfPlayManager
     public void OnFrameComplete(NES nes)
     {
         _checkpoints.Tick();
+        _witnessLog.Add(FrameWitness.ComputeBreakdown(nes));
+
+        if (_autoExportDir != null)
+        {
+            _framesSinceAutoExport++;
+            if (_autoExportPeriodicFrames > 0 && _framesSinceAutoExport >= _autoExportPeriodicFrames)
+                TryAutoExport(nes);
+        }
+
         var now = Smb1State.Read(nes);
 
         if (_previous == null)
@@ -171,19 +201,24 @@ public sealed class SelfPlayManager
         bool weakDeathSignal = Smb1EventDetection.IsLikelyDeath(prev, now) || _deathStateFrames >= 1;
         if (strongDeathSignal || (_checkpoints.ReloadCooldownFrames == 0 && weakDeathSignal))
         {
+            bool isGameOver = Smb1EventDetection.IsGameOver(now);
             _checkpoints.InvalidateRecentScrollMilestone(now);
-            if (Smb1EventDetection.IsGameOver(now))
+            if (isGameOver)
                 _checkpoints.Prune(SelfPlayConfig.GameOverPruneCount, 2, 1);
             else if (Smb1EventDetection.IsLowTimerDeath(now))
                 _checkpoints.Prune(SelfPlayConfig.LowTimerDeathPruneCount, 2, 1);
             if (_checkpoints.Reload(nes))
             {
                 ReloadCount++;
-                TruncateInputLog(_checkpoints.LastReloadFrameIndex);
+                TruncateLogs(_checkpoints.LastReloadFrameIndex);
             }
             ResetTransientStateAfterReload();
             _previous = Smb1State.Read(nes);
             _deathStateFrames = 0;
+            // Game Over is the natural "episode boundary" - export whatever continuous path
+            // survives at this point, same as a manual export but automatic, so a long unattended
+            // session leaves a trail of movies without needing the button pressed.
+            if (isGameOver && _autoExportDir != null) TryAutoExport(nes);
             return;
         }
 
@@ -261,16 +296,21 @@ public sealed class SelfPlayManager
         return active;
     }
 
-    private void TruncateInputLog(int frameIndex)
+    private void TruncateLogs(int frameIndex)
     {
         if (frameIndex >= 0 && frameIndex < _inputLog.Count)
             _inputLog.RemoveRange(frameIndex, _inputLog.Count - frameIndex);
+        if (frameIndex >= 0 && frameIndex < _witnessLog.Count)
+            _witnessLog.RemoveRange(frameIndex, _witnessLog.Count - frameIndex);
     }
 
     /// <summary>Writes the current continuous input log (the surviving "best of all segments" path,
     /// live up to whatever frame this is called at - not just at session end) as a single .fm2
-    /// movie. p1-only, matching the SMB1 self-play profile (the model never touches P2).</summary>
-    public void ExportFm2(string path, byte[]? romChecksumMd5, string romFilename, bool palFlag = false)
+    /// movie, plus a "path.witness.json" sidecar (WitnessSidecar) recording one FrameWitness hash
+    /// per frame and the exact cores used - MovieVerifyCli replays the .fm2 independently and
+    /// compares against this to prove no frame was lost, duplicated, or desynced. p1-only, matching
+    /// the SMB1 self-play profile (the model never touches P2).</summary>
+    public void ExportFm2(string path, byte[]? romChecksumMd5, string romFilename, string cpuCoreId, string ppuCoreId, string apuCoreId, bool palFlag = false)
     {
         var writer = new Fm2Writer
         {
@@ -282,6 +322,43 @@ public sealed class SelfPlayManager
         writer.Comments.Add($"BrokenNes self-play export: {_inputLog.Count} frames, {ReloadCount} reload(s) already pruned out.");
         foreach (var frame in _inputLog) writer.RecordFrame(false, frame);
         writer.Save(path);
+
+        var sidecar = new WitnessSidecar(
+            RomMd5Hex: romChecksumMd5 != null ? Convert.ToHexString(romChecksumMd5).ToLowerInvariant() : null,
+            Cpu: cpuCoreId, Ppu: ppuCoreId, Apu: apuCoreId,
+            FrameCount: _witnessLog.Count, Frames: new List<FrameWitnessBreakdown>(_witnessLog));
+        File.WriteAllText(path + ".witness.json", JsonSerializer.Serialize(sidecar));
+    }
+
+    /// <summary>Turns on automatic export: a fresh .fm2 (+ witness sidecar) is written to `dir`
+    /// whenever a Game Over happens, and as a safety net every `periodicFrames` frames regardless
+    /// (0 disables the periodic trigger). Off by default.</summary>
+    public void EnableAutoExport(string dir, byte[]? romMd5, string romFilename, int periodicFrames = 3600)
+    {
+        Directory.CreateDirectory(dir);
+        _autoExportDir = dir;
+        _autoExportRomMd5 = romMd5;
+        _autoExportRomFilename = romFilename;
+        _autoExportPeriodicFrames = periodicFrames;
+        _framesSinceAutoExport = 0;
+    }
+
+    private void TryAutoExport(NES nes)
+    {
+        if (_autoExportDir == null || _inputLog.Count == 0) return;
+        _framesSinceAutoExport = 0;
+        AutoExportCount++;
+        string path = Path.Combine(_autoExportDir, $"selfplay_auto_{AutoExportCount:D4}_{_inputLog.Count}f.fm2");
+        try
+        {
+            ExportFm2(path, _autoExportRomMd5, _autoExportRomFilename ?? "rom", nes.GetCpuCoreId(), nes.GetPpuCoreId(), nes.GetApuCoreId());
+            LastAutoExportPath = path;
+        }
+        catch
+        {
+            // Best-effort: a failed auto-export (e.g. disk full) shouldn't take down self-play.
+            AutoExportCount--;
+        }
     }
 
     private void ResetTransientStateAfterReload()

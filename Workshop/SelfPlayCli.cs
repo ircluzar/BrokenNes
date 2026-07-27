@@ -21,7 +21,7 @@ internal static class SelfPlayCli
 {
     public static int Run(string[] args)
     {
-        string? romPath = null, checkpointDir = null, outPath = null, screenshotDir = null, movieOutPath = null;
+        string? romPath = null, checkpointDir = null, outPath = null, screenshotDir = null, movieOutPath = null, autoExportDir = null;
         string? cpu = null, ppu = null, apu = null;
         string pipeName = "nesreflex_inference";
         int maxFrames = 3600;
@@ -29,6 +29,7 @@ internal static class SelfPlayCli
         int logEvery = 300;
         int? seed = null;
         int autoStartFrame = -1;
+        int autoExportEveryFrames = 3600;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -48,12 +49,14 @@ internal static class SelfPlayCli
                 case "--log-every": logEvery = int.Parse(args[++i]); break;
                 case "--auto-start-frame": autoStartFrame = int.Parse(args[++i]); break;
                 case "--movie-out": movieOutPath = args[++i]; break;
+                case "--auto-export-dir": autoExportDir = args[++i]; break;
+                case "--auto-export-every-frames": autoExportEveryFrames = int.Parse(args[++i]); break;
             }
         }
 
         if (romPath == null)
         {
-            Console.Error.WriteLine("Usage: --selfplay --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--pipe-name name] [--frames N] [--checkpoint-dir dir] [--seed N] [--out result.json] [--screenshot-every N --screenshot-dir dir] [--log-every N] [--auto-start-frame N] [--movie-out path.fm2]");
+            Console.Error.WriteLine("Usage: --selfplay --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--pipe-name name] [--frames N] [--checkpoint-dir dir] [--seed N] [--out result.json] [--screenshot-every N --screenshot-dir dir] [--log-every N] [--auto-start-frame N] [--movie-out path.fm2] [--auto-export-dir dir --auto-export-every-frames N]");
             return 2;
         }
         checkpointDir ??= Path.Combine(Path.GetTempPath(), "brokennes_selfplay_checkpoints");
@@ -75,6 +78,12 @@ internal static class SelfPlayCli
             Console.Error.WriteLine(connected
                 ? $"[selfplay] Connected to pipe '{pipeName}'."
                 : $"[selfplay] Could not connect to pipe '{pipeName}' - make sure the Python inference server is running (scripts/nesreflex_inference_server.py --protocol v2). Falling back to a no-op policy for unconnected frames.");
+
+            if (autoExportDir != null)
+            {
+                manager.EnableAutoExport(autoExportDir, nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(romPath), autoExportEveryFrames);
+                Console.Error.WriteLine($"[selfplay] Auto-export enabled -> '{autoExportDir}' (on Game Over, and every {autoExportEveryFrames} frames).");
+            }
 
             if (screenshotDir != null) Directory.CreateDirectory(screenshotDir);
 
@@ -118,7 +127,7 @@ internal static class SelfPlayCli
 
             if (movieOutPath != null)
             {
-                manager.ExportFm2(movieOutPath, nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(romPath));
+                manager.ExportFm2(movieOutPath, nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(romPath), nes.GetCpuCoreId(), nes.GetPpuCoreId(), nes.GetApuCoreId());
                 Console.Error.WriteLine($"[selfplay] Wrote continuous movie ({manager.InputLog.Count} frames, {manager.ReloadCount} reload(s) pruned) to '{movieOutPath}'.");
             }
 
@@ -129,7 +138,8 @@ internal static class SelfPlayCli
                 FramesRun: frame, Crashed: nes.IsCrashed(), CrashInfo: nes.IsCrashed() ? nes.GetCrashInfo() : null,
                 CheckpointsCreated: manager.CheckpointsCreated, ReloadCount: manager.ReloadCount,
                 BlockedStartCount: manager.BlockedStartCount, FinalCheckpointStackSize: manager.Checkpoints.Count,
-                MovieFramesExported: movieOutPath != null ? manager.InputLog.Count : null);
+                MovieFramesExported: movieOutPath != null ? manager.InputLog.Count : null,
+                AutoExportCount: manager.AutoExportCount, LastAutoExportPath: manager.LastAutoExportPath);
 
             string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             if (outPath != null) File.WriteAllText(outPath, json);
@@ -154,4 +164,4 @@ internal sealed record SelfPlayResult(
     string Rom, string Cpu, string Ppu, string Apu, string PipeName, bool EverConnected, bool ConnectedAtEnd,
     int FramesRun, bool Crashed, string? CrashInfo,
     int CheckpointsCreated, int ReloadCount, int BlockedStartCount, int FinalCheckpointStackSize,
-    int? MovieFramesExported);
+    int? MovieFramesExported, int AutoExportCount, string? LastAutoExportPath);

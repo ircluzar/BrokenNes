@@ -29,6 +29,14 @@ internal static class Program
         {
             return SelfPlayCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--verify-selfplay-movie", StringComparison.OrdinalIgnoreCase))
+        {
+            return MovieVerifyCli.Run(args);
+        }
+        if (args.Length > 0 && args[0].Equals("--diag-savestate-roundtrip", StringComparison.OrdinalIgnoreCase))
+        {
+            return SaveStateRoundtripDiagCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 

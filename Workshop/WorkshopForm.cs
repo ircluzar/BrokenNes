@@ -463,7 +463,8 @@ public sealed class WorkshopForm : Form
                     $"{(_selfPlayManager.IsPipeConnected ? "connected" : "DISCONNECTED")} " +
                     $"style={_selfPlayManager.CurrentStyle} temp={_selfPlayManager.CurrentTemperature:F2} " +
                     $"checkpoints={_selfPlayManager.Checkpoints.Count} reloads={_selfPlayManager.ReloadCount} " +
-                    $"blockedStart={_selfPlayManager.BlockedStartCount} autoStarts={_selfPlayManager.AutoStartPressCount}");
+                    $"blockedStart={_selfPlayManager.BlockedStartCount} autoStarts={_selfPlayManager.AutoStartPressCount} " +
+                    $"autoExports={_selfPlayManager.AutoExportCount}");
             }
             else if (shouldRender)
             {
@@ -497,7 +498,17 @@ public sealed class WorkshopForm : Form
             }
         }
 
+        bool isNewManager = _selfPlayManager == null;
         _selfPlayManager ??= new SelfPlayManager(new SelfPlayConfig(), Path.Combine(Path.GetTempPath(), "brokennes_selfplay_checkpoints"));
+        if (isNewManager && _nes != null)
+        {
+            // Leaves a trail of movies (on every Game Over, plus every 3600 frames as a safety
+            // net) without needing the Export button pressed manually - see the class doc on
+            // SelfPlayManager.EnableAutoExport.
+            _selfPlayManager.EnableAutoExport(
+                Path.Combine(Path.GetTempPath(), "brokennes_selfplay_movies"),
+                _nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(_romName));
+        }
         if (!_selfPlayManager.IsPipeConnected && !_selfPlayManager.ConnectPipe("nesreflex_inference"))
         {
             MessageBox.Show(this,
@@ -654,7 +665,8 @@ public sealed class WorkshopForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
-            _selfPlayManager.ExportFm2(dialog.FileName, _nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(_romName));
+            _selfPlayManager.ExportFm2(dialog.FileName, _nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(_romName),
+                _nes.GetCpuCoreId(), _nes.GetPpuCoreId(), _nes.GetApuCoreId());
             SetStatus($"Exported {_selfPlayManager.InputLog.Count}-frame self-play movie to '{dialog.FileName}' " +
                 $"({_selfPlayManager.ReloadCount} reload(s) already pruned out).");
         }
