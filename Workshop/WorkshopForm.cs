@@ -62,6 +62,7 @@ public sealed class WorkshopForm : Form
     private readonly Button _saveStateBtn = new() { Text = "Save State" };
     private readonly Button _loadStateBtn = new() { Text = "Load State" };
     private readonly Button _benchmarkBtn = new() { Text = "Run Benchmarks" };
+    private readonly Button _exportMovieBtn = new() { Text = "Export Self-Play Movie (.fm2)" };
 
     // System.Windows.Forms.Timer rides on WM_TIMER, a low-priority message Windows posts at most
     // once per queue (no backlog) and coalesces under load - a 16ms Interval measured 26-30ms in
@@ -197,11 +198,12 @@ public sealed class WorkshopForm : Form
         regGroup.Controls.Add(_registersBox);
         Controls.Add(regGroup);
 
-        var stateGroup = new GroupBox { Text = "State", Location = new Point(rightX, regGroup.Bottom + 10), Width = 340, Height = 55 };
+        var stateGroup = new GroupBox { Text = "State", Location = new Point(rightX, regGroup.Bottom + 10), Width = 340, Height = 85 };
         _saveStateBtn.Location = new Point(10, 20); _saveStateBtn.Width = 100;
         _loadStateBtn.Location = new Point(118, 20); _loadStateBtn.Width = 100;
         _benchmarkBtn.Location = new Point(226, 20); _benchmarkBtn.Width = 104;
-        stateGroup.Controls.AddRange(new Control[] { _saveStateBtn, _loadStateBtn, _benchmarkBtn });
+        _exportMovieBtn.Location = new Point(10, 52); _exportMovieBtn.Width = 320;
+        stateGroup.Controls.AddRange(new Control[] { _saveStateBtn, _loadStateBtn, _benchmarkBtn, _exportMovieBtn });
         Controls.Add(stateGroup);
 
         var memGroup = new GroupBox { Text = "Memory Viewer", Location = new Point(rightX, stateGroup.Bottom + 10), Width = 340, Height = 400 };
@@ -235,6 +237,7 @@ public sealed class WorkshopForm : Form
         _saveStateBtn.Click += (_, __) => SaveState();
         _loadStateBtn.Click += (_, __) => LoadState();
         _benchmarkBtn.Click += (_, __) => RunBenchmarks();
+        _exportMovieBtn.Click += (_, __) => ExportSelfPlayMovie();
 
         KeyDown += (_, e) => ApplyKey(e.KeyCode, true);
         KeyUp += (_, e) => ApplyKey(e.KeyCode, false);
@@ -632,6 +635,32 @@ public sealed class WorkshopForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Load failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ExportSelfPlayMovie()
+    {
+        if (_nes == null || _selfPlayManager == null || _selfPlayManager.InputLog.Count == 0)
+        {
+            MessageBox.Show(this, "No self-play input log yet - enable Self-Play and let it run a bit first.",
+                "Export Self-Play Movie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "FCEUX movie (*.fm2)|*.fm2",
+            FileName = Path.ChangeExtension(_romName, ".fm2"),
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            _selfPlayManager.ExportFm2(dialog.FileName, _nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(_romName));
+            SetStatus($"Exported {_selfPlayManager.InputLog.Count}-frame self-play movie to '{dialog.FileName}' " +
+                $"({_selfPlayManager.ReloadCount} reload(s) already pruned out).");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

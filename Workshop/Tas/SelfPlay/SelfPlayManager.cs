@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using BrokenNes.Workshop.Tas;
 using NesEmulator;
 
 namespace BrokenNes.Workshop.Tas.SelfPlay;
@@ -49,6 +51,17 @@ public sealed class SelfPlayManager
     private int _autoStartPressFramesRemaining;
     private int _autoStartCooldownFramesRemaining;
     public int AutoStartPressCount { get; private set; }
+
+    // Continuous "best of all segments" input log: appended once per frame in ComputeFrameInput
+    // (before RunFrame), so its length always equals CheckpointManager's lifetime frame counter -
+    // a checkpoint's FrameIndex is therefore exactly this log's length at the moment the checkpoint
+    // was captured. On reload we truncate back to that length, discarding the dead-end frames that
+    // led to the death/timeout, the same effect FCEUX gets incidentally from movie/savestate
+    // coupling (see CheckpointManager's class doc and project_tas_ml_integration memory). What
+    // survives at any point in time is therefore always a single continuous, replayable path from
+    // frame 0 to now - export it with ExportInputLog or by reading InputLog directly.
+    private readonly List<bool[]> _inputLog = new();
+    public IReadOnlyList<bool[]> InputLog => _inputLog;
 
     public int GameId { get; }
     public CheckpointManager Checkpoints => _checkpoints;
@@ -131,6 +144,7 @@ public sealed class SelfPlayManager
         for (int i = 0; i < 8; i++)
             _holdElapsed[i] = final[i] ? (byte)Math.Min(64, _holdElapsed[i] + 1) : (byte)0;
 
+        _inputLog.Add(final);
         return final;
     }
 
@@ -162,7 +176,11 @@ public sealed class SelfPlayManager
                 _checkpoints.Prune(SelfPlayConfig.GameOverPruneCount, 2, 1);
             else if (Smb1EventDetection.IsLowTimerDeath(now))
                 _checkpoints.Prune(SelfPlayConfig.LowTimerDeathPruneCount, 2, 1);
-            if (_checkpoints.Reload(nes)) ReloadCount++;
+            if (_checkpoints.Reload(nes))
+            {
+                ReloadCount++;
+                TruncateInputLog(_checkpoints.LastReloadFrameIndex);
+            }
             ResetTransientStateAfterReload();
             _previous = Smb1State.Read(nes);
             _deathStateFrames = 0;
@@ -241,6 +259,29 @@ public sealed class SelfPlayManager
         }
         if (_autoStartCooldownFramesRemaining > 0) _autoStartCooldownFramesRemaining--;
         return active;
+    }
+
+    private void TruncateInputLog(int frameIndex)
+    {
+        if (frameIndex >= 0 && frameIndex < _inputLog.Count)
+            _inputLog.RemoveRange(frameIndex, _inputLog.Count - frameIndex);
+    }
+
+    /// <summary>Writes the current continuous input log (the surviving "best of all segments" path,
+    /// live up to whatever frame this is called at - not just at session end) as a single .fm2
+    /// movie. p1-only, matching the SMB1 self-play profile (the model never touches P2).</summary>
+    public void ExportFm2(string path, byte[]? romChecksumMd5, string romFilename, bool palFlag = false)
+    {
+        var writer = new Fm2Writer
+        {
+            PalFlag = palFlag,
+            RomFilename = romFilename,
+            RomChecksumMd5 = romChecksumMd5,
+            Port1 = (int)Fm2InputDevice.None, // self-play is P1-only - the model never touches P2
+        };
+        writer.Comments.Add($"BrokenNes self-play export: {_inputLog.Count} frames, {ReloadCount} reload(s) already pruned out.");
+        foreach (var frame in _inputLog) writer.RecordFrame(false, frame);
+        writer.Save(path);
     }
 
     private void ResetTransientStateAfterReload()

@@ -21,7 +21,7 @@ internal static class SelfPlayCli
 {
     public static int Run(string[] args)
     {
-        string? romPath = null, checkpointDir = null, outPath = null, screenshotDir = null;
+        string? romPath = null, checkpointDir = null, outPath = null, screenshotDir = null, movieOutPath = null;
         string? cpu = null, ppu = null, apu = null;
         string pipeName = "nesreflex_inference";
         int maxFrames = 3600;
@@ -47,12 +47,13 @@ internal static class SelfPlayCli
                 case "--screenshot-dir": screenshotDir = args[++i]; break;
                 case "--log-every": logEvery = int.Parse(args[++i]); break;
                 case "--auto-start-frame": autoStartFrame = int.Parse(args[++i]); break;
+                case "--movie-out": movieOutPath = args[++i]; break;
             }
         }
 
         if (romPath == null)
         {
-            Console.Error.WriteLine("Usage: --selfplay --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--pipe-name name] [--frames N] [--checkpoint-dir dir] [--seed N] [--out result.json] [--screenshot-every N --screenshot-dir dir] [--log-every N] [--auto-start-frame N]");
+            Console.Error.WriteLine("Usage: --selfplay --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--pipe-name name] [--frames N] [--checkpoint-dir dir] [--seed N] [--out result.json] [--screenshot-every N --screenshot-dir dir] [--log-every N] [--auto-start-frame N] [--movie-out path.fm2]");
             return 2;
         }
         checkpointDir ??= Path.Combine(Path.GetTempPath(), "brokennes_selfplay_checkpoints");
@@ -115,13 +116,20 @@ internal static class SelfPlayCli
                 }
             }
 
+            if (movieOutPath != null)
+            {
+                manager.ExportFm2(movieOutPath, nes.ComputeRomMd5(), Path.GetFileNameWithoutExtension(romPath));
+                Console.Error.WriteLine($"[selfplay] Wrote continuous movie ({manager.InputLog.Count} frames, {manager.ReloadCount} reload(s) pruned) to '{movieOutPath}'.");
+            }
+
             var result = new SelfPlayResult(
                 Rom: Path.GetFileName(romPath),
                 Cpu: nes.GetCpuCoreId(), Ppu: nes.GetPpuCoreId(), Apu: nes.GetApuCoreId(),
                 PipeName: pipeName, EverConnected: connected, ConnectedAtEnd: manager.IsPipeConnected,
                 FramesRun: frame, Crashed: nes.IsCrashed(), CrashInfo: nes.IsCrashed() ? nes.GetCrashInfo() : null,
                 CheckpointsCreated: manager.CheckpointsCreated, ReloadCount: manager.ReloadCount,
-                BlockedStartCount: manager.BlockedStartCount, FinalCheckpointStackSize: manager.Checkpoints.Count);
+                BlockedStartCount: manager.BlockedStartCount, FinalCheckpointStackSize: manager.Checkpoints.Count,
+                MovieFramesExported: movieOutPath != null ? manager.InputLog.Count : null);
 
             string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             if (outPath != null) File.WriteAllText(outPath, json);
@@ -145,4 +153,5 @@ internal static class SelfPlayCli
 internal sealed record SelfPlayResult(
     string Rom, string Cpu, string Ppu, string Apu, string PipeName, bool EverConnected, bool ConnectedAtEnd,
     int FramesRun, bool Crashed, string? CrashInfo,
-    int CheckpointsCreated, int ReloadCount, int BlockedStartCount, int FinalCheckpointStackSize);
+    int CheckpointsCreated, int ReloadCount, int BlockedStartCount, int FinalCheckpointStackSize,
+    int? MovieFramesExported);

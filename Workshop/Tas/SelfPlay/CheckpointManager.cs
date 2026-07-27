@@ -45,6 +45,11 @@ public sealed class CheckpointManager
     public int ReloadCooldownFrames { get; set; }
     public int LastReloadCheckpointId { get; private set; } = -1;
     public SelfPlayEventType LastReloadCheckpointEventType { get; private set; } = SelfPlayEventType.None;
+    // The reloaded checkpoint's FrameIndex - the caller (SelfPlayManager) uses this to truncate its
+    // running per-frame input log back to this point, so the log always reflects only the surviving
+    // path (dead-end frames past the last reload are discarded), the same effect FCEUX gets
+    // incidentally from savestate-coupled movie truncation. See CheckpointManager's class doc.
+    public int LastReloadFrameIndex { get; private set; } = -1;
     public int FramesSinceReload { get; private set; } = int.MaxValue;
 
     private int _framesSinceCheckpoint;
@@ -187,6 +192,7 @@ public sealed class CheckpointManager
 
             LastReloadCheckpointId = cp.Id;
             LastReloadCheckpointEventType = cp.EventType;
+            LastReloadFrameIndex = cp.FrameIndex;
             FramesSinceReload = 0;
             FlagSequenceActive = cp.EventType == SelfPlayEventType.Flag;
             ReloadCooldownFrames = _cfg.ReloadCooldownFrames;
