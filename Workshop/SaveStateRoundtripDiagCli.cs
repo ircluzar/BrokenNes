@@ -96,11 +96,13 @@ internal static class SaveStateRoundtripDiagCli
         for (int i = 0; i < warmupFrames; i++) { nesA.SetInputs(InputForFrame(i), null); nesA.RunFrame(); }
         var breakdownAAtWarmup = FrameWitness.ComputeBreakdown(nesA);
         var aPerFrame = new List<FrameWitnessBreakdown>(continueFrames);
+        var aRamPerFrame = new List<byte[]>(continueFrames);
         for (int i = 0; i < continueFrames; i++)
         {
             nesA.SetInputs(InputForFrame(warmupFrames + i), null);
             nesA.RunFrame();
             aPerFrame.Add(FrameWitness.ComputeBreakdown(nesA));
+            aRamPerFrame.Add(nesA.PeekMemoryRange("System RAM", 0, 0x800));
         }
 
         // Path B: identical warmup, then an in-place SaveState+LoadState round trip (zero frames
@@ -112,6 +114,7 @@ internal static class SaveStateRoundtripDiagCli
         var breakdownBAfterRoundtrip = FrameWitness.ComputeBreakdown(nesB);
         int firstMismatchFrame = -1, lastMismatchFrame = -1, mismatchedFrameCount = 0;
         List<string>? firstMismatchComponents = null;
+        List<object>? firstMismatchRamBytes = null;
         for (int i = 0; i < continueFrames; i++)
         {
             nesB.SetInputs(InputForFrame(warmupFrames + i), null);
@@ -133,6 +136,18 @@ internal static class SaveStateRoundtripDiagCli
                     if (actual.Palette != expected.Palette) firstMismatchComponents.Add(nameof(FrameWitnessBreakdown.Palette));
                     if (actual.Nametables != expected.Nametables) firstMismatchComponents.Add(nameof(FrameWitnessBreakdown.Nametables));
                     if (actual.Framebuffer != expected.Framebuffer) firstMismatchComponents.Add(nameof(FrameWitnessBreakdown.Framebuffer));
+
+                    if (actual.Ram != expected.Ram)
+                    {
+                        var actualRam = nesB.PeekMemoryRange("System RAM", 0, 0x800);
+                        var expectedRam = aRamPerFrame[i];
+                        firstMismatchRamBytes = new List<object>();
+                        for (int addr = 0; addr < 0x800 && firstMismatchRamBytes.Count < 32; addr++)
+                        {
+                            if (actualRam[addr] != expectedRam[addr])
+                                firstMismatchRamBytes.Add(new { Addr = $"0x{addr:X4}", Expected = $"0x{expectedRam[addr]:X2}", Actual = $"0x{actualRam[addr]:X2}" });
+                        }
+                    }
                 }
             }
         }
@@ -161,6 +176,7 @@ internal static class SaveStateRoundtripDiagCli
             ImmediateComponentsDiffering = immediateRoundtripLossy ? immediateComponentDiff : null,
             FirstMismatchFrameDuringContinuation = firstMismatchFrame,
             FirstMismatchComponents = firstMismatchComponents,
+            FirstMismatchRamBytes = firstMismatchRamBytes,
             LastMismatchFrameDuringContinuation = lastMismatchFrame,
             MismatchedFrameCount = mismatchedFrameCount,
             ConvergesBeforeEnd = mismatchedFrameCount > 0 && lastMismatchFrame < continueFrames - 1,
