@@ -667,7 +667,9 @@ public class PPU_FIX : IPPU
 				PPUMASK = value;
 				break;
 			case 0x0002: // PPU Status
-				PPUSTATUS &= 0x7F;
+				// $2002 is read-only: a write only resets the address/scroll latch (below) and
+				// drives open bus - it must NOT clear VBlank. Only a READ clears bit 7 (see the
+				// corresponding case in ReadPPURegister).
 				scrollLatch = false;
 				break;
 			case 0x0003: // OAM Address

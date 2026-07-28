@@ -41,5 +41,12 @@ public interface IMapper {
     // Optional: return per-quadrant nametable mode for an address in $2000-$2FFF when applicable.
     // Values: 0=CIRAM A, 1=CIRAM B, 2=ExRAM, 3=Fill. Return -1 when the mapper doesn’t define this.
     int GetMmc5NtModeForAddress(ushort address) { return -1; }
+
+    // Optional: report that this mapper does not decode/drive the CPU data bus for the given
+    // address (e.g. NROM's unmapped $4020-$5FFF expansion area), so Bus.cs can fall back to the
+    // open-bus value instead of treating the mapper's own "not mine" sentinel as real data.
+    // Default false preserves existing behavior for mappers whose CPURead always returns a value
+    // it actually drives within the ranges Bus.cs calls it for.
+    bool IsCpuReadOpenBus(ushort address) { return false; }
 }
 }

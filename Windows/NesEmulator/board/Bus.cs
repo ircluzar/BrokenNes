@@ -378,6 +378,7 @@ public class Bus : IBus
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
 	if (address >= 0x5000 && address < 0x6000)
 	{
+		if (cartridge.IsCpuReadOpenBus(address)) return lastBusValue;
 		byte val = cartridge.CPURead(address);
 		// Merge in MMC5 audio status/IRQ where applicable
 		if (address == 0x5015)
@@ -394,6 +395,7 @@ public class Bus : IBus
 	}
 		if (address >= 0x6000)
 		{
+			if (cartridge.IsCpuReadOpenBus(address)) return lastBusValue;
 			byte v = cartridge.CPURead(address);
 			// Trigger MMC5 PCM only on PRG ROM range $8000-$BFFF
 			if (address >= 0x8000 && address <= 0xBFFF) mmc5Audio?.ReadROMTrigger(v);

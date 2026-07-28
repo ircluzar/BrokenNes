@@ -171,6 +171,12 @@ public class Cartridge
 		return mapper.CPURead(address);
 	}
 
+	// Whether the mapper leaves the CPU data bus undriven for this address (see IMapper.IsCpuReadOpenBus).
+	public bool IsCpuReadOpenBus(ushort address)
+	{
+		return mapper.IsCpuReadOpenBus(address);
+	}
+
 	public void CPUWrite(ushort address, byte value)
 	{
 		mapper.CPUWrite(address, value);
