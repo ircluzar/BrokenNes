@@ -58,6 +58,17 @@ public class Bus : IBus
 		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
 		internal int PendingCpuStallCycles = 0;
 		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
+		// A DMC sample fetch halts the CPU while the APU takes the bus. Like OAM DMA's stall this is
+		// real hardware behavior, not a speed/accuracy trade-off, so it is unconditional. The exact
+		// cost is 3-4 cycles depending on where the request lands relative to the CPU's read/write
+		// cycle (and as little as 2 when it collides with an OAM DMA); a flat 4 is the standard
+		// approximation and is what the batched CPU->APU stepping here can actually express - the
+		// APU only runs after the CPU has already executed its cycles, so the stall is accounted at
+		// the next FlushBatch rather than injected mid-instruction. That makes the *aggregate* cycle
+		// budget correct (the CPU no longer gets free work during every DMA) without being able to
+		// place the stolen cycle exactly; tests that check which specific cycle a DMA steals still
+		// need genuine mid-instruction interleaving.
+		public void AddDmcDmaStallCycles() { PendingCpuStallCycles += 4; }
 		// Count a PPU/APU batch flush
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		public void CountBatchFlush() { instr.BatchFlushes++; }

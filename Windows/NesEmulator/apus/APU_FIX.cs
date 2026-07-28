@@ -218,6 +218,13 @@ namespace NesEmulator
                     triangle_enabled = (value & 0x04)!=0; if(!triangle_enabled) triangle_lengthCounter=0;
                     noise_enabled = (value & 0x08)!=0; if(!noise_enabled) noise_lengthCounter=0;
                     bool enableDMC = (value & 0x10)!=0;
+                    // NOTE: hardware restarts the sample whenever the DMC bit is set and
+                    // bytes-remaining is already 0, rather than only on a 0->1 enable transition as
+                    // modeled here - see project_dmc_dma_stall_gap. Correcting it in isolation
+                    // measurably regresses the cycle-sensitive tests, because a live DMC issues far
+                    // more DMAs and this core can still only account for a DMA's stolen cycles at a
+                    // batch boundary, not at the exact cycle. Left as-is deliberately until the
+                    // CPU/APU interleaving can place a stall mid-instruction.
                     if(enableDMC && !dmc_enabled) StartDMC();
                     dmc_enabled = enableDMC; if(!dmc_enabled) { dmc_sampleLengthRemaining=0; }
                     dmc_irqFlag = false; frameIRQFlag = false; break;
@@ -318,6 +325,7 @@ namespace NesEmulator
         {
             if(dmc_sampleBufferFilled) return; if(dmc_sampleLengthRemaining==0) return; // nothing to fetch
             byte sample = bus.Read((ushort)dmc_sampleAddress);
+            bus.AddDmcDmaStallCycles(); // the fetch steals the bus from the CPU - see Bus.AddDmcDmaStallCycles
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
             if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
