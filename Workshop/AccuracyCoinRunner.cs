@@ -165,7 +165,11 @@ internal static class AccuracyCoinRunner
             // than waiting out the full maxWaitFrames budget on every hang. This is what makes
             // RunSingleComboRobust's retry loop tractable across a 1000+ combination matrix -
             // without it, each hang costs the full budget instead of ~StagnationLimit frames.
-            const int StagnationLimit = 90;
+            // "PPU Register Open Bus" is a legitimate outlier: its 5th sub-test intentionally
+            // stalls ~120 frames (asm:3966-3974) to verify open-bus decay, with zero tally
+            // progress the whole time since the tally only increments once the test returns -
+            // so the limit needs enough headroom above 120 to not misfire on it.
+            const int StagnationLimit = 160;
             byte lastTally = nes.PeekCpu(AccuracyCoinTests.PostAllTestTally);
             int framesSinceProgress = 0;
 

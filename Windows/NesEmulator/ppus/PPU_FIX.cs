@@ -36,6 +36,31 @@ public class PPU_FIX : IPPU
 	private bool addrLatch = false;
 	private byte ppuDataBuffer;
 
+	// The PPU has its own 8-bit dynamic latch on the CPU<->PPU data pins ("PPU I/O bus", commonly
+	// called "PPU open bus") - completely separate from the CPU's own open bus (Bus.lastBusValue).
+	// It is refreshed by every CPU access to $2000-$2007, including writes to the read-only $2002,
+	// and is what a read of a write-only register (or the unused low bits of $2002, or the
+	// undriven high bits of a palette read) returns. Unlike the CPU bus it is NOT touched by
+	// instruction opcode/operand fetches - only by these register accesses - and each bit decays
+	// back to 0 after roughly 600ms if nothing refreshes it.
+	private byte ppuOpenBus;
+	private readonly long[] ppuOpenBusDecayAt = new long[8]; // absolute dot count at which each bit decays to 0
+	private long ppuDotCounter;
+	private const long PpuOpenBusDecayDots = 3_200_000; // ~600ms of PPU dots (real hardware decay)
+
+	private void RefreshPpuOpenBus(byte value, byte mask = 0xFF)
+	{
+		ppuOpenBus = (byte)((ppuOpenBus & (~mask & 0xFF)) | (value & mask));
+		long deadline = ppuDotCounter + PpuOpenBusDecayDots;
+		for (int b = 0; b < 8; b++) if ((mask & (1 << b)) != 0) ppuOpenBusDecayAt[b] = deadline;
+	}
+
+	private byte ReadPpuOpenBus()
+	{
+		for (int b = 0; b < 8; b++) if (ppuDotCounter >= ppuOpenBusDecayAt[b]) ppuOpenBus &= (byte)~(1 << b);
+		return ppuOpenBus;
+	}
+
 	private byte fineX; //x
 	private bool scrollLatch; //w
 	private ushort v; //current VRAM address
@@ -86,6 +111,7 @@ public class PPU_FIX : IPPU
 	// New batched step to reduce managed/WASM call overhead; processes 'elapsedCycles' PPU cycles
 	public void Step(int elapsedCycles)
 	{
+		ppuDotCounter += elapsedCycles;
 		for (int c = 0; c < elapsedCycles; c++)
 		{
 			if (scanline == 0 && scanlineCycle == 0)
@@ -612,12 +638,21 @@ public class PPU_FIX : IPPU
 		switch (address & 0x0007)
 		{
 			case 0x0002: // PPU Status
-				result = PPUSTATUS;
-				PPUSTATUS &= 0x3F; // Clear VBlank flag on read
-				addrLatch = false; // Reset address latch
-				return result;
+				{
+					// Only bits 7-5 (VBlank/Sprite0Hit/Overflow) are actually driven by the
+					// status register; bits 4-0 are whatever the PPU's own I/O bus (distinct
+					// from the CPU's open bus) is still holding from the last $2000-$2007 access.
+					byte status = PPUSTATUS;
+					result = (byte)((status & 0xE0) | (ReadPpuOpenBus() & 0x1F));
+					RefreshPpuOpenBus(status, 0xE0); // the read itself redrives bits 7-5 onto the latch
+					PPUSTATUS &= 0x3F; // Clear VBlank flag on read
+					addrLatch = false; // Reset address latch
+					return result;
+				}
 			case 0x0004: // OAM Data
-				return oam[OAMADDR];
+				result = oam[OAMADDR];
+				RefreshPpuOpenBus(result);
+				return result;
 			case 0x0007: // PPU Data
 				if (PPUADDR >= 0x3F00)
 				{
@@ -625,7 +660,12 @@ public class PPU_FIX : IPPU
 					// refilled with the underlying nametable byte "under" the palette mirror -
 					// a real hardware quirk (a bare Read(PPUADDR) here would refill the buffer
 					// with the palette byte itself, corrupting the next non-palette $2007 read).
-					result = Read(PPUADDR);
+					byte pal = Read(PPUADDR);
+					// Greyscale (PPUMASK bit 0) masks the value on the way OUT of palette RAM -
+					// it never affects what gets written. Palette RAM itself only drives 6 bits;
+					// the top 2 come from the PPU I/O bus, same as $2002's low bits above.
+					if ((PPUMASK & 0x01) != 0) pal &= 0x30;
+					result = (byte)((ReadPpuOpenBus() & 0xC0) | (pal & 0x3F));
 					ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000));
 				}
 				else
@@ -633,17 +673,22 @@ public class PPU_FIX : IPPU
 					result = ppuDataBuffer;
 					ppuDataBuffer = Read(PPUADDR);
 				}
+				RefreshPpuOpenBus(result);
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:
-				// Write-only/unimplemented registers reflect the CPU's open bus (last byte
-				// driven anywhere on the bus), not a hardcoded 0.
-				return bus!.GetOpenBus();
+				// Write-only registers ($2000/$2001/$2003/$2005/$2006): the PPU drives nothing
+				// here - this returns whatever the PPU's own I/O bus last latched.
+				return ReadPpuOpenBus();
 		}
 	}
 
 	public void WritePPURegister(ushort address, byte value)
 	{
+		// Any CPU write to $2000-$2007 drives the byte onto the PPU's own I/O bus, including a
+		// write to the read-only $2002 (the write has no effect on PPUSTATUS itself, but it
+		// still drives the latch - see RefreshPpuOpenBus).
+		RefreshPpuOpenBus(value);
 		switch (address & 0x0007)
 		{
 			case 0x0000: // PPU Control
@@ -783,7 +828,11 @@ public class PPU_FIX : IPPU
 		{
 			ushort mirrored = (ushort)(address & 0x1F);
 			if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
-			paletteRAM[mirrored] = value;
+			// Palette RAM cells are physically only 6 bits wide; the top 2 bits never get
+			// written and read back as whatever the PPU I/O bus holds (see ReadPPURegister's
+			// $2007 case). All render-time lookups already mask with & 0x3F, so this doesn't
+			// change what's drawn - it only changes what a $2007 read reports.
+			paletteRAM[mirrored] = (byte)(value & 0x3F);
 		}
 	}
 
