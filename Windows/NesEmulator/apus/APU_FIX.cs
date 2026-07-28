@@ -222,7 +222,7 @@ namespace NesEmulator
                     dmc_enabled = enableDMC; if(!dmc_enabled) { dmc_sampleLengthRemaining=0; }
                     dmc_irqFlag = false; frameIRQFlag = false; break;
                 case 0x4017: // frame counter
-                    frameMode5 = (value & 0x80)!=0; frameIRQInhibit = (value & 0x40)!=0; if(frameIRQInhibit) frameIRQFlag=false; 
+                    frameMode5 = (value & 0x80)!=0; frameIRQInhibit = (value & 0x40)!=0; if(frameIRQInhibit) frameIRQFlag=false;
                     // Reset sequencer timing per hardware approximation: counter cleared immediately
                     frameCycle = 0; frameStep = 0; nextFrameEventCycle = 7457; // first event
                     if(frameMode5){
@@ -231,9 +231,25 @@ namespace NesEmulator
                     }
                     // Writing 4017 clears frame IRQ flag
                     frameIRQFlag = false;
+                    UpdateIrqLine();
                     break;
             }
         }
+
+        // Recomputes the CPU-visible IRQ line as the OR of this APU's own sources (frame counter +
+        // DMC). Must be called any time either flag changes - both when newly asserted *and* when
+        // cleared. Missing the clear side is the exact bug this fixes: without it, a stale IRQ
+        // request that was already acknowledged/disabled at the APU level (e.g. by writing $4017
+        // with the inhibit bit, or $4010 to disable DMC IRQs) stays latched on the CPU's side
+        // indefinitely - because CPU_FIX's IRQ line is a plain level with no automatic decay, it
+        // waits, however many instructions or frames later, for the next moment interrupts happen
+        // to be re-enabled, then fires as a "ghost" of a request whose source is long gone. That's
+        // fine for a game that never lets interrupts go quiet for long, but SMB3's title-screen boot
+        // path does exactly that (frame IRQ becomes pending at power-on before $4017 disables it,
+        // then nothing repolls until a CLI ~330,000 cycles later, deep inside a routine that assumes
+        // no interrupt is pending at that exact instant) - the stale request then fires mid-flight
+        // through a PRG-bank transition, executing whatever happens to be in the wrong bank.
+        private void UpdateIrqLine() { bus.cpu.RequestIRQ(frameIRQFlag || dmc_irqFlag); }
 
         // ===== Reads =====
         public byte ReadAPURegister(ushort address)
@@ -304,7 +320,7 @@ namespace NesEmulator
             byte sample = bus.Read((ushort)dmc_sampleAddress);
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
-            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; bus.cpu.RequestIRQ(true); } }
+            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
         }
 
         private void StartDMC(){ RestartDMC(); dmc_timer = 1; dmc_bitsRemaining = 8; dmc_silence = !dmc_sampleBufferFilled; }
@@ -354,7 +370,7 @@ namespace NesEmulator
                         case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
                         case 3:
                             QuarterFrameTick(); HalfFrameTick();
-                            if(!frameIRQInhibit){ frameIRQFlag = true; bus.cpu.RequestIRQ(true); }
+                            if(!frameIRQInhibit){ frameIRQFlag = true; UpdateIrqLine(); }
                             frameStep = -1; 
                             frameCycle -= 29830; 
                             nextFrameEventCycle = 7457; 

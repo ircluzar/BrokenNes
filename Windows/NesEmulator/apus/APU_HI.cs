@@ -368,9 +368,17 @@ namespace NesEmulator
                     }
                     // Writing 4017 clears frame IRQ flag
                     frameIRQFlag = false;
+                    UpdateIrqLine();
                     break;
             }
         }
+
+        // Recomputes the CPU-visible IRQ line as the OR of this APU's own sources (frame counter +
+        // DMC). See APU_FIX.cs's copy of this method for the full rationale: a stale IRQ request
+        // that's already been acknowledged/disabled at the APU level (e.g. by writing $4017 with
+        // the inhibit bit) must also deassert the CPU's line, or it survives indefinitely and fires
+        // as a "ghost" request at the next unrelated CLI - which is exactly what breaks SMB3's boot.
+        private void UpdateIrqLine() { bus.cpu.RequestIRQ(frameIRQFlag || dmc_irqFlag); }
 
         // ===== Reads =====
         public byte ReadAPURegister(ushort address)
@@ -441,7 +449,7 @@ namespace NesEmulator
             byte sample = bus.Read((ushort)dmc_sampleAddress);
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
-            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; bus.cpu.RequestIRQ(true); } }
+            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
         }
 
         private void StartDMC(){ RestartDMC(); dmc_timer = 1; dmc_bitsRemaining = 8; dmc_silence = !dmc_sampleBufferFilled; }
@@ -491,7 +499,7 @@ namespace NesEmulator
                         case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
                         case 3:
                             QuarterFrameTick(); HalfFrameTick();
-                            if(!frameIRQInhibit){ frameIRQFlag = true; bus.cpu.RequestIRQ(true); }
+                            if(!frameIRQInhibit){ frameIRQFlag = true; UpdateIrqLine(); }
                             frameStep = -1; 
                             frameCycle -= 29830; 
                             nextFrameEventCycle = 7457; 

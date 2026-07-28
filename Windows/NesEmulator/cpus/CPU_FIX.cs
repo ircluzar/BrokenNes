@@ -692,25 +692,30 @@ public class CPU_FIX : ICPU {
 		return 6;
 	}
 
+	// The decision to service a pending IRQ is made entirely by the caller (ExecuteInstruction's
+	// `!pollFlagI && irqRequested` check), which already accounts for the one-instruction-delayed
+	// visibility of CLI/SEI/PLP's effect on the I flag. Re-checking the *live* status.I flag here
+	// is not just redundant - it's wrong whenever an intervening SEI/PLP has already flipped the
+	// live flag by the time this runs (e.g. CLI immediately followed by SEI): the caller correctly
+	// decided to service based on the pre-SEI state, but this stale re-check would then silently
+	// veto that decision, dropping the interrupt instead of servicing it. Real hardware has no such
+	// second gate - once polling latches the decision, the interrupt proceeds. NMI() below never
+	// had this guard, which is the correct model.
 	public int IRQ() {
-		if (GetFlag(FLAG_I) == false) {
-			StackPush((byte)((PC >> 8) & 0xFF));
-			StackPush((byte)(PC & 0xFF));
+		StackPush((byte)((PC >> 8) & 0xFF));
+		StackPush((byte)(PC & 0xFF));
 
-			SetFlag(FLAG_B, false);
-			SetFlag(FLAG_UNUSED, true);
-			StackPush(status);
+		SetFlag(FLAG_B, false);
+		SetFlag(FLAG_UNUSED, true);
+		StackPush(status);
 
-			SetFlag(FLAG_I, true);
+		SetFlag(FLAG_I, true);
 
-			byte low = bus.Read(0xFFFE);
-			byte high = bus.Read(0xFFFF);
-			PC = (ushort)((high << 8) | low);
+		byte low = bus.Read(0xFFFE);
+		byte high = bus.Read(0xFFFF);
+		PC = (ushort)((high << 8) | low);
 
-			return 7;
-		}
-
-		return 0;
+		return 7;
 	}
 
 	public int NMI() {

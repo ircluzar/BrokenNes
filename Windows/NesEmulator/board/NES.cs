@@ -318,6 +318,9 @@ namespace NesEmulator
 		public void SetCpuState(object state) { try { bus?.cpu.SetState(state); } catch { } }
 		public object GetPpuState() => bus?.ppu.GetState() ?? new object();
 		public void SetPpuState(object state) { try { bus?.ppu.SetState(state); } catch { } }
+		// Diagnostic: current mapper state (bank selections, IRQ counter, etc.) - useful for tools
+		// investigating bank-switching/timing bugs without needing a mapper-specific debug UI.
+		public object GetMapperState() => cartridge?.mapper?.GetMapperState() ?? new object();
 		public void SetCpuCore(Bus.CpuCore core) { try { bus?.SetCpuCore(core); } catch { } }
 		public void SetPpuCore(Bus.PpuCore core) { try { bus?.SetPpuCore(core); } catch { } }
 		// Generic reflection-based core selection (suffix id strings)

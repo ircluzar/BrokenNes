@@ -502,6 +502,14 @@ namespace NesEmulator
                         nextIrqCycle = lastTime + frameDelay + framePeriod * 3;
                 }
                 IrqChanged();
+                // IrqChanged() only ever asserts (it's a one-way "placeholder to mirror C++ flow" -
+                // see its own comment - that only calls RequestIRQ(true) for a live DMC flag). This
+                // write can be the one that *clears* the frame flag above (irqFlag &= irqEnabled);
+                // without also deasserting here, a frame IRQ that was requested long ago and never
+                // serviced (CPU interrupts masked the whole time) stays latched as pending on the
+                // CPU's side even though the APU has since disabled it - surfacing as a "ghost" IRQ
+                // at the next unrelated CLI. This is what breaks SMB3's title-screen boot.
+                bus.cpu.RequestIRQ(irqFlag || dmc.irqFlag);
             }
         }
 
