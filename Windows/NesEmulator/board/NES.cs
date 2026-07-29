@@ -808,10 +808,42 @@ namespace NesEmulator
 				try {
 					int dynamicThreshold = ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
+					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
+					// which is what keeps every other core on the untouched batched path.
+					var dmcSchedulable = bus!.GetDmcSchedulable();
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
 						{
+							// Predictive DMA split: the APU is `batchCpu` cycles behind the CPU, so a
+							// fetch reported as `untilDma` cycles away is already in the CPU's past once
+							// untilDma <= batchCpu. Catch the APU up to exactly that point and run the
+							// next instruction cycle-by-cycle, so the fetch's bus read and stall land on
+							// their real cycle instead of at the next batch boundary. Cheap because it
+							// only triggers when a fetch is genuinely within reach - see Bus.PreciseTick.
+							if (dmcSchedulable != null)
+							{
+								int untilDma = dmcSchedulable.CyclesUntilDmcFetch();
+								if (untilDma <= batchCpu + MaxInstructionCycles)
+								{
+									if (batchCpu > 0) { FlushBatch(batchCpu); batchCpu = 0; adaptiveAccumulator = 0; }
+									bus!.BeginPreciseWindow();
+									int preciseCycles = bus!.cpu!.ExecuteInstruction();
+									var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
+									// The window already advanced PPU/APU by accessCycles + stallCycles,
+									// so globalCpuCycle (which FlushBatch keeps level with them) owes the
+									// same. CPU_FIX doesn't touch the bus on literally every cycle
+									// (implied 2-cycle ops fetch once), so flush whatever the instruction
+									// spent beyond its accesses to keep the aggregate budget exact.
+									globalCpuCycle += accessCycles + stallCycles;
+									int residual = preciseCycles - accessCycles;
+									if (residual > 0) FlushBatch(residual);
+									// Stall cycles are real elapsed time the CPU spent halted, so they
+									// count against the frame budget on top of the instruction's own.
+									executed += preciseCycles + stallCycles;
+									continue;
+								}
+							}
 							int cpuCycles = bus!.cpu!.ExecuteInstruction();
 							executed += cpuCycles;
 							batchCpu += cpuCycles;
@@ -898,6 +930,10 @@ namespace NesEmulator
 		private const int ConfigMaxInstructionsPerBatch = 32;
 		// Cycle threshold: once accumulated CPU cycles exceed this, we flush to PPU/APU.
 		private const int ConfigBatchCycleThreshold = 24; // allows combining several short (2-3 cycle) ops
+		// Worst-case cycles a single 6502 instruction (or interrupt sequence) can take. Used as the
+		// look-ahead margin for the precise-DMA window: a fetch this close could land inside the
+		// instruction we're about to run, so that instruction has to run cycle-by-cycle.
+		private const int MaxInstructionCycles = 8;
 		// If remaining cycles to frame end are below this guard after a loop, flush leftover to keep timing bounded.
 		private const int ConfigMinRemainingFlushGuard = 16;
 		// Limit for a single event-loop CPU instruction burst to avoid extremely large batches when events are sparse.

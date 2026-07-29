@@ -7,7 +7,7 @@ namespace NesEmulator
     // control component" baseline - every other named core is either a speed/perf tradeoff or an
     // intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
     // frozen going forward. Accuracy fixes land here, not on APU_FMC or any other named core.
-    public class APU_FIX : IAPU
+    public class APU_FIX : IAPU, IDmcDmaSchedulable
     {
     // Core metadata
     public string CoreName => "Fix";
@@ -223,8 +223,10 @@ namespace NesEmulator
                     // modeled here - see project_dmc_dma_stall_gap. Correcting it in isolation
                     // measurably regresses the cycle-sensitive tests, because a live DMC issues far
                     // more DMAs and this core can still only account for a DMA's stolen cycles at a
-                    // batch boundary, not at the exact cycle. Left as-is deliberately until the
-                    // CPU/APU interleaving can place a stall mid-instruction.
+                    // batch boundary, not at the exact cycle. Re-tested on top of Bus's precise-DMA
+                    // window (which was the specific precondition this note used to name) and it
+                    // STILL regresses by exactly the same amounts, so the window is not the missing
+                    // piece - left as-is deliberately.
                     if(enableDMC && !dmc_enabled) StartDMC();
                     dmc_enabled = enableDMC; if(!dmc_enabled) { dmc_sampleLengthRemaining=0; }
                     dmc_irqFlag = false; frameIRQFlag = false; break;
@@ -264,9 +266,20 @@ namespace NesEmulator
             if(address==0x4015)
             {
                 byte result = 0;
-                if(pulse1_lengthCounter>0) result |= 0x01; if(pulse2_lengthCounter>0) result |= 0x02; if(triangle_lengthCounter>0) result |= 0x04; if(noise_lengthCounter>0) result |= 0x08; if(dmc_sampleLengthRemaining>0) result |= 0x10; if(frameIRQFlag) result |= 0x40; if(dmc_irqFlag) result |= 0x80; frameIRQFlag = false; return result;
+                if(pulse1_lengthCounter>0) result |= 0x01; if(pulse2_lengthCounter>0) result |= 0x02; if(triangle_lengthCounter>0) result |= 0x04; if(noise_lengthCounter>0) result |= 0x08; if(dmc_sampleLengthRemaining>0) result |= 0x10;
+                // Bit 5 is genuinely open bus even on this one readable register - only 4/6/7 are driven.
+                result |= (byte)(bus.GetOpenBus() & 0x20);
+                if(frameIRQFlag) result |= 0x40; if(dmc_irqFlag) result |= 0x80; frameIRQFlag = false; return result;
             }
-            return 0;
+            // Every other APU register ($4000-$4013, $4016/$4017 write-only from this side) is
+            // write-only from the CPU's perspective - reading it returns whatever the CPU's open
+            // bus last held, not a hardcoded 0. This is also the second half of what AccuracyCoin's
+            // boot-time DMA/open-bus pre-test requires (see project_dmc_dma_stall_gap): it polls a
+            // write-only register expecting a DMC-driven byte, then immediately re-reads expecting
+            // open bus to have decayed back to the address high byte - a hardcoded 0 satisfies
+            // neither half correctly (it happens to look like a decayed-to-0 open bus, but fails
+            // the very next check that a nonzero address byte is there instead).
+            return bus.GetOpenBus();
         }
 
         // ===== Internal helpers =====
@@ -329,6 +342,24 @@ namespace NesEmulator
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
             if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
+        }
+
+        /// <summary>
+        /// IDmcDmaSchedulable: how many CPU cycles until TryDmcFetch will actually take the bus.
+        /// Pure prediction - reads state, mutates nothing - so NES.RunFrame can call it before
+        /// every instruction without side effects. See IDmcDmaSchedulable for why this exists.
+        /// </summary>
+        public int CyclesUntilDmcFetch()
+        {
+            if(!dmc_enabled || dmc_sampleLengthRemaining == 0) return int.MaxValue; // TryDmcFetch would early-out
+            // ClockDMC refills the buffer eagerly the same cycle it empties (its trailing
+            // TryDmcFetch), so an empty buffer means a fetch is due on the very next APU cycle.
+            if(!dmc_sampleBufferFilled) return 0;
+            // Otherwise the buffer isn't consumed until the shift register runs dry: dmc_timer
+            // cycles to finish the current bit (ClockDMC fires on `--dmc_timer <= 0`), then one
+            // full period for each remaining bit after it.
+            int bits = dmc_bitsRemaining > 0 ? dmc_bitsRemaining : 8;
+            return dmc_timer + (bits - 1) * dmc_timerPeriod;
         }
 
         private void StartDMC(){ RestartDMC(); dmc_timer = 1; dmc_bitsRemaining = 8; dmc_silence = !dmc_sampleBufferFilled; }

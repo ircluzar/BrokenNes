@@ -68,7 +68,74 @@ public class Bus : IBus
 		// budget correct (the CPU no longer gets free work during every DMA) without being able to
 		// place the stolen cycle exactly; tests that check which specific cycle a DMA steals still
 		// need genuine mid-instruction interleaving.
-		public void AddDmcDmaStallCycles() { PendingCpuStallCycles += 4; }
+		public void AddDmcDmaStallCycles()
+		{
+			// Inside a precise window the DMC's stall is applied on the spot by PreciseTick, so it
+			// goes to its own counter. Critically this keeps it separate from OAM DMA's 513-cycle
+			// stall, which shares PendingCpuStallCycles but must keep landing exactly where it
+			// always has (see CpuFastOamDmaStall) - letting PreciseTick swallow that one instead
+			// measurably breaks NMI timing.
+			if (preciseWindow) PendingDmcStallCycles += 4; else PendingCpuStallCycles += 4;
+		}
+		private int PendingDmcStallCycles;
+
+		// === Precise-DMA window ===
+		// The batched CPU->PPU/APU model above runs a whole instruction (in fact up to ~24 cycles
+		// of them) before the APU gets to see those cycles, so a DMC sample fetch always lands
+		// late: its bus read updates the open bus *after* the CPU reads that should have observed
+		// it, and its stall cycles apply at the next batch boundary instead of the exact cycle.
+		// When NES.RunFrame predicts a fetch is imminent (see IDmcDmaSchedulable) it opens this
+		// window for one instruction, and every CPU bus access then advances PPU/APU by exactly
+		// one CPU cycle first - the 6502 performs one bus access per cycle, so access count is
+		// cycle position. That places the fetch on its real cycle without per-cycle interleaving
+		// anywhere else: the window is armed for well under 1% of instructions, and when it's
+		// closed the only cost on the hot path is the predictable `preciseWindow` branch below.
+		private bool preciseWindow;
+		private bool insidePreciseTick; // re-entrancy guard: the DMA's OWN bus read must not re-tick
+		// Kept separate because they mean different things to the caller: AccessCycles are cycles
+		// the CPU itself spent (so they offset against the instruction's own cycle count), while
+		// StallCycles are cycles the CPU was halted for (pure extra elapsed time on top of it).
+		private int preciseAccessCycles;
+		private int preciseStallCycles;
+
+		/// <summary>
+		/// The active APU if it can predict its DMC fetches, else null (which leaves NES.RunFrame
+		/// on its plain batched path). Resolved per frame rather than cached on core-switch since
+		/// the APU core can be swapped from many places, including savestate loads.
+		/// </summary>
+		public IDmcDmaSchedulable? GetDmcSchedulable() => activeApu as IDmcDmaSchedulable;
+
+		public void BeginPreciseWindow() { preciseWindow = true; preciseAccessCycles = 0; preciseStallCycles = 0; }
+
+		/// <summary>
+		/// Closes the window. accessCycles = CPU cycles advanced by bus accesses (one per access);
+		/// stallCycles = extra cycles PPU/APU advanced while the CPU sat halted for a DMA.
+		/// </summary>
+		public (int accessCycles, int stallCycles) EndPreciseWindow()
+		{
+			preciseWindow = false;
+			return (preciseAccessCycles, preciseStallCycles);
+		}
+
+		private void PreciseTick()
+		{
+			if (insidePreciseTick) return;
+			insidePreciseTick = true;
+			ppu!.Step(3); StepAPU(1); preciseAccessCycles++;
+			// If that cycle triggered a DMA, the CPU is halted for its duration right here - so
+			// advance PPU/APU across the stall while the CPU stands still, which is exactly what
+			// the DMA does on hardware. Outside this window the same cycles get consumed at the
+			// next FlushBatch instead (see ConsumePendingCpuStallCycles).
+			int stall = PendingDmcStallCycles;
+			if (stall > 0)
+			{
+				PendingDmcStallCycles = 0;
+				ppu!.Step(stall * 3);
+				StepAPU(stall);
+				preciseStallCycles += stall;
+			}
+			insidePreciseTick = false;
+		}
 		// Count a PPU/APU batch flush
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		public void CountBatchFlush() { instr.BatchFlushes++; }
@@ -358,6 +425,7 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
+		if (preciseWindow) PreciseTick(); // see BeginPreciseWindow - normally false, branch is free
 		instr.Reads++;
 		// Page table fast path: internal RAM and any future linear mapped regions
 		var page = pages[address >> 8];
@@ -420,6 +488,7 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public void Write(ushort address, byte value)
 	{
+		if (preciseWindow) PreciseTick(); // see BeginPreciseWindow - normally false, branch is free
 		instr.Writes++;
 		// A write always drives its value onto the data bus, whether or not any device at this
 		// address latches it - so it always updates the open-bus value (see lastBusValue).
