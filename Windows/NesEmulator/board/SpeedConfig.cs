@@ -89,6 +89,20 @@ namespace NesEmulator
     public int CpuAdaptiveBatchTargetCycles = 64; // redline: larger batches to amortize overhead
     public int CpuAdaptiveBatchMinCycles = 24;
     public int CpuAdaptiveBatchMaxCycles = 128;
+
+    // Not a speed hack (lives here for convenience, alongside the other opt-in per-session
+    // toggles) - an ACCURACY correction. NES.RunFrame() otherwise targets an exact 60.000fps
+    // (29829 CPU cycles/frame), which is a deliberate simplification that does not match real
+    // NTSC hardware's true ~60.0988fps (89341.5 PPU dots/frame average = 29780.5 CPU
+    // cycles/frame, from the well-known "PPU skips one dot every other frame" quirk). The ~48.5
+    // cycle/frame gap is invisible for ordinary play but compounds into a real, growing desync
+    // over a TAS movie's tens of thousands of frames - this is what breaks .fm2 portability with
+    // FCEUX. Off by default: every other consumer (AccuracyCoin, benchmarks, existing
+    // savestate-based tooling) is tuned around and verified against the exact-60fps baseline, and
+    // changing it globally risks exactly the batch-boundary-timing regressions this project has
+    // already hit before (see project_fceux_movie_parity / project_dmc_dma_stall_gap memories).
+    // Only movie replay/export paths (TasCli et al.) opt in. See NES.RunFrame for the mechanism.
+    public bool NtscAccurateFrameRate = false;
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }

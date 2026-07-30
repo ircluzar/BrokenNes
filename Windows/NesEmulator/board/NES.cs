@@ -41,6 +41,19 @@ namespace NesEmulator
 		private const int ExtraCyclesNumerator = CpuFrequencyInt % TargetFpsInt; // 33
 		private const int ExtraCyclesDenominator = TargetFpsInt; // 60
 
+		// === Opt-in NTSC-accurate (FCEUX-parity) frame timing - see Bus.SpeedConfig.NtscAccurateFrameRate ===
+		// 89342 PPU dots/frame normally, 89341 every other frame (unconditional toggle - matches the
+		// FCEUX build this targets parity with, which does not gate the skip on rendering being
+		// enabled; see project_fceux_movie_parity memory). ntscDotBudget is the cumulative dot count
+		// the session should have reached by the end of the current frame; globalCpuCycle*3 is always
+		// the cumulative dot count actually stepped (every CPU cycle this emulator runs feeds the PPU
+		// exactly 3 dots via FlushBatch). 89342 and 89341 both leave a remainder mod 3, so the two
+		// cumulative sums can't be kept exactly equal through CPU-cycle stepping alone - the leftover
+		// 0-2 dots are trued up with a direct, targeted bus.ppu.Step() call after the main loop, the
+		// one deliberate place in this emulator where the PPU is stepped independently of a CPU cycle.
+		private long ntscDotBudget = 0;
+		private bool ntscFrameParityToggle = false;
+
 		public NES() { }
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
 		public string RomPath { get; set; } = string.Empty; // optional full path to ROM file
@@ -747,9 +760,19 @@ namespace NesEmulator
 			}
 			// Compute target cycles for this frame using integer fixed-point method.
 			// Base cycles plus an extra cycle on frames where accumulator crosses denominator.
-			int targetCycles = BaseCyclesPerFrame;
-			extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
-			if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			int targetCycles;
+			if (bus!.SpeedConfig.NtscAccurateFrameRate)
+			{
+				ntscDotBudget += ntscFrameParityToggle ? 89341 : 89342;
+				ntscFrameParityToggle = !ntscFrameParityToggle;
+				targetCycles = (int)(ntscDotBudget / 3 - globalCpuCycle);
+			}
+			else
+			{
+				targetCycles = BaseCyclesPerFrame;
+				extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
+				if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			}
 			// Apply any overshoot carry from last frame (can reduce target this frame)
 			if (overshootCarry > 0) {
 				if (overshootCarry >= targetCycles) {
@@ -877,6 +900,16 @@ namespace NesEmulator
 			// (Exceptions already handled within each scheduling branch)
 			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
+			// True up the PPU's absolute dot position against ntscDotBudget - see the field's doc
+			// comment for why this remainder (always 0-2 dots) can't be absorbed by CPU-cycle
+			// stepping alone. A negative delta (CPU overshoot pushed globalCpuCycle*3 past budget)
+			// needs no action - it isn't undoable, and the next frame's strictly-increasing budget
+			// naturally reconciles against the also-strictly-increasing globalCpuCycle*3.
+			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed)
+			{
+				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
+				if (dotDelta > 0) bus!.ppu!.Step((int)dotDelta);
+			}
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
 

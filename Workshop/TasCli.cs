@@ -34,7 +34,7 @@ internal static class TasCli
         string? moviePath = null, romPath = null, outPath = null, screenshotPath = null, recordOutPath = null, dumpOutPath = null;
         string? cpu = null, ppu = null, apu = null;
         int maxFrames = int.MaxValue;
-        bool strict = false;
+        bool strict = false, ntscFrameRate = false;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -47,6 +47,7 @@ internal static class TasCli
                 case "--apu": apu = args[++i]; break;
                 case "--max-frames": maxFrames = int.Parse(args[++i]); break;
                 case "--strict": strict = true; break;
+                case "--ntsc-frame-rate": ntscFrameRate = true; break;
                 case "--out": outPath = args[++i]; break;
                 case "--screenshot": screenshotPath = args[++i]; break;
                 case "--record-out": recordOutPath = args[++i]; break;
@@ -56,7 +57,7 @@ internal static class TasCli
 
         if (moviePath == null || romPath == null)
         {
-            Console.Error.WriteLine("Usage: --playmovie --movie <path.fm2> --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--out result.json] [--screenshot out.png] [--record-out copy.fm2] [--dump-out trace.raw]");
+            Console.Error.WriteLine("Usage: --playmovie --movie <path.fm2> --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--ntsc-frame-rate] [--out result.json] [--screenshot out.png] [--record-out copy.fm2] [--dump-out trace.raw]");
             return 2;
         }
 
@@ -84,6 +85,15 @@ internal static class TasCli
             if (cpu != null && !nes.SetCpuCore(cpu)) { Console.Error.WriteLine($"Unknown CPU core: {cpu}"); return 3; }
             if (ppu != null && !nes.SetPpuCore(ppu)) { Console.Error.WriteLine($"Unknown PPU core: {ppu}"); return 3; }
             if (apu != null && !nes.SetApuCore(apu)) { Console.Error.WriteLine($"Unknown APU core: {apu}"); return 3; }
+
+            // Opt-in FCEUX-parity frame timing (see Bus.SpeedConfig.NtscAccurateFrameRate) - off by
+            // default everywhere else in the emulator; movie replay/export is exactly the path that
+            // needs it for .fm2 portability.
+            if (ntscFrameRate)
+            {
+                var speedCfg = nes.GetSpeedConfig();
+                if (speedCfg != null) speedCfg.NtscAccurateFrameRate = true;
+            }
 
             // Same rationale as HeadlessRunner's --strict: without this, a global Bus-level speed
             // shortcut could get misattributed as a "the movie desynced" playback bug.
