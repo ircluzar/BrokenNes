@@ -829,7 +829,19 @@ namespace NesEmulator
 				int batchCpu = 0;
 				if (nextPpuEventCycle < globalCpuCycle) nextPpuEventCycle = globalCpuCycle; // keep monotonic (placeholder)
 				try {
-					int dynamicThreshold = ConfigBatchCycleThreshold;
+					// Under NtscAccurateFrameRate, flush after every single instruction instead of
+					// batching ~24 cycles between PPU/APU catch-ups. Originally tried as a blunt
+					// stand-in for a narrower "catch up only on a $2002/$2004 register read" fix (that
+					// needs NES.cs's batch-cycle counter exposed to Bus.cs, plumbing that doesn't exist
+					// yet) hypothesized to close SMB1's frame-177 WORLD-1-1-banner desync - see
+					// project_fceux_movie_parity memory. Verified it does NOT: the frame-177 RAM
+					// divergence onset (diff=193 bytes) is bit-for-bit unchanged with this on, so
+					// stale-PPU-read-on-batch-boundary is not SMB1's actual root cause. Kept anyway
+					// because it independently and reproducibly fixes a real crash: Joe & Mac (3149M.fm2)
+					// hits an illegal JAM opcode at frame 326 under default batching and completes all
+					// 23471 frames clean with this on. ~415fps throughput measured (Joe & Mac, full
+					// movie) - comfortably above real-time, opt-in only for movie replay/export.
+					int dynamicThreshold = bus!.SpeedConfig.NtscAccurateFrameRate ? 1 : ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
 					// which is what keeps every other core on the untouched batched path.
@@ -875,7 +887,7 @@ namespace NesEmulator
 							{
 								FlushBatch(batchCpu);
 								batchCpu = 0;
-								if (bus.SpeedConfig.CpuAdaptiveBatching)
+								if (bus.SpeedConfig.CpuAdaptiveBatching && !bus.SpeedConfig.NtscAccurateFrameRate)
 								{
 									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
 									int target = bus!.SpeedConfig.CpuAdaptiveBatchTargetCycles;
