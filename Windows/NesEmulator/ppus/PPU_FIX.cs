@@ -83,8 +83,13 @@ public class PPU_FIX : IPPU
 		paletteRAM = new byte[32];
 		oam = new byte[256];
 
-		// Initialize palette RAM with some default values
-		InitializeDefaultPalette();
+		// Palette RAM powers on zero-filled, matching FCEUX (its PALRAM is zeroed at power-on).
+		// Real hardware powers up with indeterminate palette contents, so there is no single
+		// "correct" fill - but matching FCEUX is what lets a .fm2 recorded there replay
+		// identically here, which is the point of the FIX cores. The old cosmetic default ramp
+		// (InitializeDefaultPalette, kept below but no longer called) made every game's first
+		// frames differ from FCEUX before the game wrote its own palette.
+		// paletteRAM is already zero-filled by `new byte[32]`.
 
 		PPUADDR = 0x0000;
 		PPUCTRL = 0x00;

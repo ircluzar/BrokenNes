@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 
 namespace BrokenNes.Workshop.Tas;
 
@@ -57,7 +59,7 @@ public static class Fm2Movie
 {
     public static (Fm2Header Header, IReadOnlyList<Fm2Frame> Frames) Load(string path)
     {
-        string text = File.ReadAllText(path);
+        string text = ReadMovieText(path);
         // Newlines may be \r\n or \n per spec; normalize once up front.
         string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
@@ -103,6 +105,40 @@ public static class Fm2Movie
             throw new FormatException("FM2 parse error: no 'version' key found - not a valid FM2 file.");
 
         return (header, frames);
+    }
+
+    /// <summary>
+    /// TASVideos.org publishes movies as a .zip containing the .fm2 (often just renamed with a
+    /// .fm2 extension rather than .zip, per real files found in TAS/tas/ - every one of them
+    /// starts with the "PK" zip magic despite the extension). FCEUX's own movie loader already
+    /// handles this transparently; this mirrors that so the same files work here unmodified. Falls
+    /// back to reading the file as plain text if it isn't a zip at all.
+    /// </summary>
+    private static string ReadMovieText(string path)
+    {
+        using var fs = File.OpenRead(path);
+        Span<byte> magic = stackalloc byte[2];
+        int read = fs.Read(magic);
+        bool isZip = read == 2 && magic[0] == (byte)'P' && magic[1] == (byte)'K';
+        fs.Position = 0;
+        if (!isZip)
+            return File.ReadAllText(path);
+
+        using var archive = new ZipArchive(fs, ZipArchiveMode.Read);
+        var entry = archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".fm2", StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+        {
+            // Some older TASVideos submissions ship FCEUX's original binary movie format (.fcm,
+            // magic "FCM\x1A") instead of the later plain-text .fm2 - a genuinely different format
+            // this parser doesn't support. Name the specific entry so the caller can tell "legacy
+            // .fcm" apart from "corrupt zip" instead of getting a confusing downstream parse error.
+            var only = archive.Entries.FirstOrDefault();
+            string found = only != null ? $"'{only.Name}'" : "no entries";
+            throw new NotSupportedException($"'{path}' is a zip archive with no .fm2 entry (found {found}) - likely a legacy .fcm movie, which this parser doesn't support.");
+        }
+        using var entryStream = entry.Open();
+        using var reader = new StreamReader(entryStream);
+        return reader.ReadToEnd();
     }
 
     private static Fm2Frame ParseInputLine(string line, Fm2Header header)

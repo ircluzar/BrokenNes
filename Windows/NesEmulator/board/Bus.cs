@@ -195,11 +195,34 @@ public class Bus : IBus
 		apuQN = GetOrCreateApu("QN") ?? apu;
 		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
+		InitializeRamPowerOnPattern(ram);
 		BuildPageTable();
 		// Optional: allow cores to run deferred initialization that requires a constructed Bus
 		TryInitializeCores();
 		// Initialize MMC5 audio with IRQ callback into CPU
 		mmc5Audio = new MMC5Audio((irq) => { if (irq) cpu?.RequestIRQ(true); });
+	}
+
+	/// <summary>
+	/// Fills power-on RAM with the repeating 8-byte pattern 00 00 00 00 FF FF FF FF, matching
+	/// FCEUX's default RAMInitOption=0 (its FCEU_MemoryRand, fceu.cpp) - and, per FCEUX's own
+	/// comment there, "used in FCEUX since time immemorial".
+	///
+	/// This is not cosmetic. Several real games read uninitialized RAM at boot (RNG seeding,
+	/// debug-mode checks, high-score tables) - FCEUX's source names Cybernoid, Huang Di, F-15 City
+	/// War, 1942 and Cheetahmen II as examples that visibly change behavior with the fill pattern.
+	/// Zero-filling instead makes those games take a different path from their very first frame,
+	/// which is exactly what breaks .fm2 movie portability: a movie recorded against one power-on
+	/// RAM state desyncs when replayed against another. Matching FCEUX's pattern is what lets the
+	/// same .fm2 replay identically in both emulators.
+	///
+	/// Deliberately matches FCEUX's *default* only; its other RAMInitOption modes (all-FF, all-00,
+	/// seeded-random) exist for hardware-variation testing and aren't modeled here.
+	/// </summary>
+	private static void InitializeRamPowerOnPattern(byte[] target)
+	{
+		for (int i = 0; i < target.Length; i++)
+			target[i] = (i & 4) != 0 ? (byte)0xFF : (byte)0x00;
 	}
 
 	// Optional extension point: cores may implement this to receive a post-ctor Bus reference

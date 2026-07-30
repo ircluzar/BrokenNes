@@ -45,6 +45,18 @@ internal static class Program
         {
             return IrqTraceCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--compare-dumps", StringComparison.OrdinalIgnoreCase))
+        {
+            return DumpCompareCli.Run(args);
+        }
+        if (args.Length > 0 && args[0].Equals("--index-tas-library", StringComparison.OrdinalIgnoreCase))
+        {
+            return IndexTasLibraryCli.Run(args);
+        }
+        if (args.Length > 0 && args[0].Equals("--tas-baseline-batch", StringComparison.OrdinalIgnoreCase))
+        {
+            return TasBaselineBatchCli.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 
