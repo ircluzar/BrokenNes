@@ -473,8 +473,8 @@ public class Bus : IBus
 			return ppu.ReadPPURegister(reg);
 		}
 		// Controllers are read from 0x4016 (P1) and 0x4017 (P2) on real hardware
-		if (address == 0x4016) return input.Read4016();
-		if (address == 0x4017) return input2.Read4016();
+		if (address == 0x4016) return input.Read4016(lastBusValue);
+		if (address == 0x4017) return input2.Read4016(lastBusValue);
 		// APU registers (e.g., 0x4015 status) remain handled here
 		if (address <= 0x4017 && address >= 0x4000) return activeApu.ReadAPURegister(address);
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)

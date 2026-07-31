@@ -46,7 +46,11 @@ public class Input
 		strobe = newStrobe;
 	}
 
-	public byte Read4016()
+	// openBus: the CPU's data-bus latch value from the bus transaction immediately before this
+	// read (Bus.lastBusValue) - real hardware only drives bits 0-2 of $4016/$4017 (data plus the
+	// two expansion-port bits this emulator doesn't model), so bits 6-7 read back whatever the
+	// bus was last holding instead of a clean 0. Matches FCEUX's JPRead(): `ret|=X.DB&0xC0`.
+	public byte Read4016(byte openBus = 0)
 	{
 		readCount++;
 		byte result = (byte)(controllerShift & 1);
@@ -58,6 +62,7 @@ public class Input
 			// of needing a separate read-count.
 			controllerShift = (byte)((controllerShift >> 1) | 0x80);
 		}
+		result |= (byte)(openBus & 0xC0);
 		return result;
 	}
 
