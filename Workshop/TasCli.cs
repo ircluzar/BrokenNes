@@ -35,6 +35,8 @@ internal static class TasCli
         string? cpu = null, ppu = null, apu = null;
         int maxFrames = int.MaxValue;
         bool strict = false, ntscFrameRate = false;
+        string? traceOutPath = null;
+        int traceStartFrame = 0, traceEndFrame = -1;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -52,12 +54,15 @@ internal static class TasCli
                 case "--screenshot": screenshotPath = args[++i]; break;
                 case "--record-out": recordOutPath = args[++i]; break;
                 case "--dump-out": dumpOutPath = args[++i]; break;
+                case "--trace-out": traceOutPath = args[++i]; break;
+                case "--trace-start-frame": traceStartFrame = int.Parse(args[++i]); break;
+                case "--trace-end-frame": traceEndFrame = int.Parse(args[++i]); break;
             }
         }
 
         if (moviePath == null || romPath == null)
         {
-            Console.Error.WriteLine("Usage: --playmovie --movie <path.fm2> --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--ntsc-frame-rate] [--out result.json] [--screenshot out.png] [--record-out copy.fm2] [--dump-out trace.raw]");
+            Console.Error.WriteLine("Usage: --playmovie --movie <path.fm2> --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--ntsc-frame-rate] [--out result.json] [--screenshot out.png] [--record-out copy.fm2] [--dump-out trace.raw] [--trace-out instr.trace --trace-start-frame N --trace-end-frame N]");
             return 2;
         }
 
@@ -130,6 +135,7 @@ internal static class TasCli
                 };
             }
             NesReflexDumpWriter? dumper = dumpOutPath != null ? new NesReflexDumpWriter(dumpOutPath) : null;
+            InstructionTracer.Configure(traceOutPath, traceStartFrame, traceEndFrame);
 
             int framesToPlay = Math.Min(frames.Count, maxFrames);
             int framesPlayed = 0;
@@ -150,6 +156,7 @@ internal static class TasCli
             finally
             {
                 dumper?.Dispose();
+                InstructionTracer.Shutdown();
             }
             if (recorder != null) recorder.Save(recordOutPath!);
             if (dumper != null) WriteDumpSidecar(dumpOutPath!, romPath, moviePath, nes, maxFrames == int.MaxValue ? 0 : maxFrames, dumper.FramesWritten,

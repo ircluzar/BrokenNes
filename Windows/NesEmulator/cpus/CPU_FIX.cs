@@ -104,6 +104,7 @@ public class CPU_FIX : ICPU {
 			// NMI's own flag-set (like IRQ's) is immediately visible to the poll checkpoint -
 			// only CLI/SEI/PLP get a one-instruction-delayed poll, per AccuracyCoin's model.
 			pollFlagI = GetFlag(FLAG_I);
+			InstructionTracer.OnInterrupt(1, (byte)nmiCycles);
 			return nmiCycles;
 		}
 
@@ -111,13 +112,18 @@ public class CPU_FIX : ICPU {
 			irqRequested = false;
 			int irqCycles = IRQ();
 			pollFlagI = GetFlag(FLAG_I);
+			InstructionTracer.OnInterrupt(2, (byte)irqCycles);
 			return irqCycles;
 		}
 
 		byte opcode = Fetch();
+		ushort instructionPC = (ushort)(PC - 1);
+		byte preA = A, preX = X, preY = Y, preSP = (byte)SP, preStatus = status;
 		bool iBefore = GetFlag(FLAG_I);
 
 		int cycles = Dispatch(opcode);
+
+		InstructionTracer.OnInstruction(instructionPC, opcode, preA, preX, preY, preSP, preStatus, (byte)cycles);
 
 		// CLI (0x58), SEI (0x78) and PLP (0x28) write the I flag one cycle *after* the poll
 		// checkpoint that gates the next IRQ, so the poll keeps seeing the pre-instruction value

@@ -54,6 +54,7 @@
     <Compile Include="$(NesRoot)board\Input.cs"                Link="NesEmulator\board\Input.cs" />
     <Compile Include="$(NesRoot)board\ApuExtensions.cs"        Link="NesEmulator\board\ApuExtensions.cs" />
     <Compile Include="$(NesRoot)board\SpeedConfig.cs"          Link="NesEmulator\board\SpeedConfig.cs" />
+    <Compile Include="$(NesRoot)board\InstructionTracer.cs"    Link="NesEmulator\board\InstructionTracer.cs" />
     <Compile Include="$(NesRoot)board\NesMemoryExtensions.cs"  Link="NesEmulator\board\NesMemoryExtensions.cs" />
 
     <!-- Whole-folder globs, same as Web/. ppus/ must include PPU_IMG.cs (declares

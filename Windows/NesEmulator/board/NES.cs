@@ -924,6 +924,7 @@ namespace NesEmulator
 			}
 			// Always update frame buffer (no frameskip) for smoother perceived motion
 			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
+			InstructionTracer.OnFrameComplete();
 
 			// === Targeted Imagine: apply captures if any were collected ===
 			if (_imagineTargetConfig != null && _imagineTargetConfig.Enabled && _imagineCaptureBuffer.Count > 0 && ImagineTargetedShot != null)
