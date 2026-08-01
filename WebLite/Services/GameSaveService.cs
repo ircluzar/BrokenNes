@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Microsoft.JSInterop;
 using BrokenNes.Models;
@@ -97,29 +98,47 @@ public class GameSaveService
 
     private GameSave CreateDefaultSave()
     {
-        // Default save contains only FMC cores and PX shader, achievements empty, level 1.
+        // Lite has no campaign/achievement progression to gate against (the original build's
+        // deck-builder/story/RetroAchievements UI is deliberately not ported - see
+        // project_brokennes_lite memory), so the default save starts fully unlocked instead of
+        // the upstream "FMC + PX only, everything locked" default.
+        //
+        // Found via UAT: with the upstream default, FilterCoreOptionsBySave (Emulator.cs) reduces
+        // CpuCoreOptions/PpuCoreOptions/ApuCoreOptions down to a single entry ("FMC") whenever
+        // OwnedCpuIds.Count > 0, and ShowCpuPicker etc. all require Count > 1 - so the CPU/PPU/APU
+        // picker buttons silently render nothing, and RtcUnlocked/GhUnlocked being false hides the
+        // Real-Time Corruptor and Glitch Harvester tabs entirely. That's most of what Lite exists
+        // to ship. Owned lists are read from CoreRegistry/ClockRegistry/_shaderProvider rather than
+        // hardcoded, so this automatically matches whatever a trimmed Release build actually ships
+        // (see LinkerConfig.xml) instead of drifting from it.
         var gs = new GameSave
         {
             Level = 1,
             LevelCleared = false,
             Achievements = new(),
-            SavestatesUnlocked = false,
-            RtcUnlocked = false,
-            GhUnlocked = false,
-            ImagineUnlocked = false,
+            SavestatesUnlocked = true,
+            RtcUnlocked = true,
+            GhUnlocked = true,
+            ImagineUnlocked = true,
             DebugUnlocked = false,
-            SeenStory = false,
-            OwnedCpuIds = new() { "FMC" },
-            OwnedPpuIds = new() { "FMC" },
-            OwnedApuIds = new() { "FMC" },
-            OwnedClockIds = new() { "FMC" },
-            OwnedShaderIds = new() { "PX" },
+            SeenStory = true,
+            OwnedCpuIds = SafeList(() => CoreRegistry.CpuIds),
+            OwnedPpuIds = SafeList(() => CoreRegistry.PpuIds),
+            OwnedApuIds = SafeList(() => CoreRegistry.ApuIds),
+            OwnedClockIds = SafeList(() => ClockRegistry.Ids),
+            OwnedShaderIds = SafeList(() => _shaderProvider.All?.Select(s => s.Id)),
             PreferredCpuId = "FMC",
             PreferredPpuId = "FMC",
             PreferredApuId = "FMC",
             PreferredShaderId = "PX"
         };
         return gs;
+    }
+
+    private static List<string> SafeList(Func<IEnumerable<string>?> source)
+    {
+        try { return source()?.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new(); }
+        catch { return new(); }
     }
 
     public async Task ClearDeckBuilderSaveAsync()
