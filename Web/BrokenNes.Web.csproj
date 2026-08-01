@@ -95,6 +95,10 @@
     <Compile Include="$(NesRoot)board\Input.cs"          Link="NesEmulator\board\Input.cs" />
     <Compile Include="$(NesRoot)board\ApuExtensions.cs"  Link="NesEmulator\board\ApuExtensions.cs" />
     <Compile Include="$(NesRoot)board\SpeedConfig.cs"    Link="NesEmulator\board\SpeedConfig.cs" />
+    <!-- Referenced unconditionally by CPU_FIX.ExecuteInstruction and NES.RunFrame (the calls are
+         inert unless a trace path is configured), so this must be linked even though the tracer
+         is only ever driven from Workshop's TasCli. -->
+    <Compile Include="$(NesRoot)board\InstructionTracer.cs" Link="NesEmulator\board\InstructionTracer.cs" />
 
     <!-- Whole-folder globs. ppus/ must include PPU_IMG.cs (it declares ImagineTargetConfig
          and ImagineCaptureData, consumed by NES.cs). apus/ must include APU_WF + APU_MNES. -->
