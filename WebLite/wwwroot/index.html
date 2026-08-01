@@ -61,11 +61,13 @@
 
     <!-- Lean asset set. Deliberately dropped vs. the original: soundfont.js + mnesSf2.js (the
          SF2/MIDI synth stack behind APU_WF/APU_MNES, which Lite does not ship - see
-         LinkerConfig.xml) and music.js (menu music for the campaign UI that Lite drops). -->
-    <script src="lib/continue-db.js"></script>
+         LinkerConfig.xml), music.js (menu music for the campaign UI that Lite drops), and
+         continue-db.js (RetroAchievements/Continue lookup DB - Lite ships no campaign or
+         achievements, and this script fired an unconditional 404 fetch on every page load). -->
     <script src="lib/nesInterop.js"></script>
     <script src="lib/nesInput.js"></script>
     <script src="lib/imagine.js"></script>
+    <script src="lib/imagineTarget.js"></script>
 </body>
 
 </html>

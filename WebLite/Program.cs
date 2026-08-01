@@ -17,7 +17,6 @@ builder.Services.AddSingleton<NesEmulator.Shaders.IShaderProvider, NesEmulator.S
 builder.Services.AddScoped<Emulator>();
 builder.Services.AddScoped<BrokenNes.Services.InputSettingsService>();
 builder.Services.AddScoped<BrokenNes.Services.GameSaveService>();
-builder.Services.AddScoped<BrokenNes.Services.MetaGamesService>();
 
 // Warning-level only. The original build ran at Debug and added a per-category filter, which on a
 // low-end device means the logging pipeline formats and marshals strings across the JS boundary

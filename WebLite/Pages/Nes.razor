@@ -13,7 +13,6 @@
 @using NesEmulator
 @using NesEmulator.Shaders
 @using BrokenNes.Shared
-@using NesEmulator.RetroAchievements
 @inject ILogger<Nes> Logger
 @inject IJSRuntime JS
 @inject HttpClient Http
@@ -22,7 +21,6 @@
 @inject NavigationManager Nav
 @inject BrokenNes.Services.InputSettingsService InputSettingsService
 @inject BrokenNes.Services.GameSaveService GameSaveService
-@inject BrokenNes.Services.MetaGamesService MetaGames
 
 
 @if (!string.IsNullOrEmpty(emu!.Controller.ErrorMessage))
@@ -40,12 +38,6 @@
         {
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
             <div class="btn-group">
-                @if (QAchievements)
-                {
-                    <button class="btn btn-danger ctrl-btn me-2" @onclick="ReturnToContinue" title="Return to Continue" aria-label="Return">
-                        Return
-                    </button>
-                }
                 <button class="btn btn-success ctrl-btn" @onclick="(()=>emu!.StartAsync())" disabled="@(emu!.Controller.IsRunning || emu!.Controller.nes == null)" title="Start (Play)" aria-label="Start">
                     <svg viewBox="0 0 100 100" class="ctrl-ico play" role="img" focusable="false"><polygon points="28,18 82,50 28,82" /></svg>
                 </button>
@@ -236,6 +228,8 @@
                                     <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                                 </div>
                                 <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
+                                <hr class="my-2" />
+                                <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and blast it">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
                             </div>
                         </div>
                     </div>
@@ -349,76 +343,6 @@
             }
         </div>
     </section>
-    @if (QAchievements && emu!.DebugUnlocked && !_achPanelClosed)
-    {
-    <section class="panel-block" style="margin-top:1rem;">
-        <summary>Achievements (debug)</summary>
-        <div class="panel-content small">
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                <strong class="small mb-0">Achievements</strong>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshAchievements">Refresh</button>
-                <span class="text-muted small">@(_achRows.Count) loaded</span>
-                @if (_achEngine == null)
-                {
-                    <span class="badge bg-danger ms-2">Not initialized</span>
-                }
-                <button class="btn btn-sm btn-outline-danger ms-auto" title="Close and remove this panel" @onclick="CloseAchievementsPanel">Close Panel</button>
-            </div>
-            @if (_achRows.Count == 0)
-            {
-                <div class="small text-muted fst-italic">No achievements loaded.</div>
-            }
-            else
-            {
-                <div class="table-responsive" style="max-height:260px; overflow:auto;">
-                    <table class="table table-sm table-dark align-middle mb-0" style="--bs-table-bg:#1e1e1e;">
-                        <thead class="table-secondary text-dark" style="position:sticky;top:0;">
-                            <tr>
-                                <th style="width:1%">#</th>
-                                <th>Title</th>
-                                <th style="width:80px;">Status</th>
-                                <th style="width:120px;">Progress</th>
-                                <th style="width:1%">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var (row, idx) in _achRows.Select((r,i)=>(r,i+1)))
-                            {
-                                <tr class="@(row.Unlocked?"table-success":"")">
-                                    <td>@idx</td>
-                                    <td class="text-truncate" style="max-width:260px;" title="@row.Id">@row.Title</td>
-                                    <td>@(row.Unlocked?"Unlocked":"Locked")</td>
-                                    <td>@row.ProgressText</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-success" title="Force-complete this achievement (debug)" @onclick="(()=>OnForceCompleteAchievement(row.Id))" disabled="@row.Unlocked">Complete</button>
-                                    </td>
-                                </tr>
-                                @if (row.Conditions.Count > 0)
-                                {
-                                    <tr class="small"><td></td><td colspan="4">
-                                        <div class="cond-list">
-                                            @foreach (var c in row.Conditions)
-                                            {
-                                                <div class="cond-row @(c.Met?"text-success":"text-muted")" title="Hits: @c.Hits / @c.HitTarget">
-                                                    <code>@c.Flag</code>
-                                                    <span>@c.Lhs</span>
-                                                    <strong>@c.Op</strong>
-                                                    <span>@c.Rhs</span>
-                                                    <span class="ms-2">(@c.Hits/@(c.HitTarget>0?c.HitTarget:1))</span>
-                                                    <span class="ms-2">@(c.Met?"✓":"•")</span>
-                                                </div>
-                                            }
-                                        </div>
-                                    </td></tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-        </div>
-    </section>
-    }
     @if (!DisplayOnlyMode)
     {
     <aside class="side-panels">
@@ -541,6 +465,8 @@
                         <div class="col-6 small text-muted d-flex align-items-end">Random writes across selected domains.</div>
                     </div>
                     <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
+                    <hr class="my-2" />
+                    <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and blast it">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
                 </div>
             </div>
         </div>
@@ -706,7 +632,19 @@
             <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.OpenImagineModal())" disabled="@(!emu!.ImagineModelLoaded)">Debug</button>
                 <button class="btn btn-sm btn-outline-warning" @onclick="(()=>emu!.ImagineBugAsync())" disabled="@(!emu!.ImagineModelLoaded || emu!.ImagineBusy)">@(emu!.ImagineBusy?"Working…":"Imagine a bug")</button>
+                @if (emu!.ImagineTargetingActive)
+                {
+                    <button class="btn btn-sm btn-info" @onclick="(()=>emu!.CancelImagineTargetingAsync())">Cancel targeting</button>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-outline-info" @onclick="(()=>emu!.StartImagineTargetingAsync())" disabled="@(emu!.Controller.nes==null || emu!.ImagineBusy)" title="Drag a band on the screen to target the beam - simplified port of the Windows 'Target the Beam' tool">Target the Beam</button>
+                }
             </div>
+            @if (emu!.ImagineTargetingActive)
+            {
+                <div class="small text-info fst-italic mt-1">Drag up/down on the screen to pick a scanline range, release to imagine a bug there.</div>
+            }
             @if (emu!.ImagineModalOpen)
             {
                 <div class="modal-backdrop" style="position:fixed;inset:0;background:#000b;display:flex;align-items:flex-start;justify-content:center;z-index:5000;">
@@ -1185,17 +1123,6 @@
     }
 </div>
 
-@* Achievement Unlocked Modal (retro-styled to match Continue page) *@
-@if (emu != null && emu.IsAchievementModalOpen)
-{
-    <div class="ach-modal-backdrop">
-        <div class="ach-modal" role="dialog" aria-modal="true" aria-label="Achievement unlocked">
-            <div class="ach-title">ACHIEVEMENT UNLOCKED</div>
-            <div class="ach-sub">@emu.AchievementModalTitlePublic</div>
-        </div>
-    </div>
-}
-
 @* Core Picker Modal *@
 @if (CorePickerOpen)
 {
@@ -1267,13 +1194,8 @@
     private string? QScript; // optional JS to run post-load (stage mode only)
     private string? QScriptFile; // optional JS file to load & execute (stage mode only)
     private string? QScriptUrl;  // optional JS URL to load & execute (stage mode only)
-    private bool QAchievements = false; // enable achievements flow
     private bool QAutoloadState = false; // auto-load savestate after ROM
-    // Achievements runtime
-    private AchievementsEngine? _achEngine;
-    private string? _achGameId; // resolved from continueDb based on romKey
-    private Dictionary<string, (string title, string formula)> _achDefs = new(StringComparer.OrdinalIgnoreCase);
-    
+
     // Core picker modal state
     private bool CorePickerOpen = false;
     private string CorePickerDomain = string.Empty; // CPU/PPU/APU/CLOCK/SHADER
@@ -1341,7 +1263,6 @@
             QScript = GetStr("script");
             QScriptFile = GetStr("scriptFile");
             QScriptUrl = GetStr("scriptUrl");
-            QAchievements = GetBool("achievements");
             QAutoloadState = GetBool("autoloadState");
             // If cores=* provided, apply to all 3 unless specific overrides also provided
             if (!string.IsNullOrWhiteSpace(QCoresAll))
@@ -1418,40 +1339,11 @@
                     // Defer ROM selection until after init, but ensure the controller targets the query ROM
                     emu.Controller.RomFileName = QRom!;
                     await emu.LoadSelectedRomPublic();
-                    // If achievements requested, resolve game id and load definitions now that ROM is loaded
-                    if (QAchievements)
-                    {
-                        await TryInitAchievementsAsync();
-                    }
-                    // If requested, autoload the last saved state after loading ROM, then restore achievements snapshot if available
+                    // If requested, autoload the last saved state after loading ROM
                     if (QAutoloadState)
                     {
                         try { await emu.LoadStateAsyncPublic(); } catch { }
-                        // IMPORTANT: Restore achievements snapshot BEFORE applying any core overrides so the gameKey matches saved cores
-                        try
-                        {
-                            if (_achEngine != null)
-                            {
-                                // Ask JS for latest snapshot and restore it
-                                string gameKey = BuildGameKeyForPage();
-                                string latestKey = $"achv-snap-v1:{gameKey}:latest";
-                                var json = await JS.InvokeAsync<string>("nesInterop.idbGetItem", latestKey);
-                                if (!string.IsNullOrWhiteSpace(json))
-                                {
-                                    using var doc = System.Text.Json.JsonDocument.Parse(json);
-                                    var root = doc.RootElement;
-                                    if (root.TryGetProperty("achvState", out var st))
-                                    {
-                                        var dto = System.Text.Json.JsonSerializer.Deserialize<NesEmulator.RetroAchievements.AchievementsEngine.AchvStateDTO>(st.GetRawText());
-                                        if (dto != null) _achEngine.RestoreState(dto);
-                                    }
-                                }
-                                // Rebuild dashboard
-                                try { BuildAchRowsFromEngine(); await InvokeAsync(StateHasChanged); } catch { }
-                            }
-                        }
-                        catch { }
-                        // Re-apply query core overrides AFTER savestate load & snapshot restore to ensure query wins over embedded cores
+                        // Re-apply query core overrides AFTER savestate load to ensure query wins over embedded cores
                         try
                         {
                             if (!string.IsNullOrWhiteSpace(QShader)) await emu.SetShaderPublic(QShader!);
@@ -1822,331 +1714,6 @@
         return string.Empty;
     }
 
-    // ===== Achievements dashboard model + refresh =====
-    private sealed class CondRow
-    {
-        public string Flag { get; set; } = string.Empty;
-        public string Lhs { get; set; } = string.Empty;
-        public string Op { get; set; } = string.Empty;
-        public string Rhs { get; set; } = string.Empty;
-        public int Hits { get; set; }
-        public int HitTarget { get; set; }
-        public bool Met { get; set; }
-    }
-    private sealed class AchRow
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public bool Unlocked { get; set; }
-        public string ProgressText { get; set; } = string.Empty;
-        public List<CondRow> Conditions { get; set; } = new();
-    }
-    private readonly List<AchRow> _achRows = new();
-    private bool _achPanelClosed = false;
-
-    private void CloseAchievementsPanel()
-    {
-        _achPanelClosed = true;
-    }
-
-    private async Task RefreshAchievements()
-    {
-        try
-        {
-            if (_achEngine == null)
-            {
-                _achRows.Clear();
-                await InvokeAsync(StateHasChanged);
-                return;
-            }
-            // Optionally, force one evaluation step to update measured values
-            try { _ = _achEngine.EvaluateFrame(); } catch { }
-            BuildAchRowsFromEngine();
-            await InvokeAsync(StateHasChanged);
-        }
-        catch { }
-    }
-
-    private void BuildAchRowsFromEngine()
-    {
-        _achRows.Clear();
-        if (_achEngine == null) return;
-        foreach (var kv in _achDefs)
-        {
-            var id = kv.Key; var title = kv.Value.title;
-            var a = _achEngine.Get(id);
-            if (a == null) continue;
-            var row = new AchRow { Id = id, Title = title, Unlocked = a.Unlocked };
-            if (a.MeasuredActive && a.MeasuredTarget > 0)
-            {
-                var pct = Math.Clamp(a.MeasuredCurrent / a.MeasuredTarget * 100.0, 0, 100);
-                row.ProgressText = a.MeasuredIsPercent ? $"{pct:F0}%" : $"{a.MeasuredCurrent:F0}/{a.MeasuredTarget:F0} ({pct:F0}%)";
-            }
-            else
-            {
-                row.ProgressText = a.Unlocked ? "100%" : "—";
-            }
-            foreach (var c in a.Conditions)
-            {
-                row.Conditions.Add(new CondRow
-                {
-                    Flag = ShortFlag(c.Flag),
-                    Lhs = RenderOperand(c.Left),
-                    Op = RenderOp(c.Op),
-                    Rhs = RenderOperand(c.Right),
-                    Hits = c.Hits,
-                    HitTarget = c.HitTarget,
-                    Met = c.IsMet
-                });
-            }
-            _achRows.Add(row);
-        }
-    }
-
-    private async Task OnForceCompleteAchievement(string id)
-    {
-        try
-        {
-            if (emu != null && !string.IsNullOrWhiteSpace(id))
-            {
-                await emu.ForceCompleteAchievementPublic(id);
-            }
-        }
-        catch { }
-    }
-
-    private static string RenderOp(NesEmulator.RetroAchievements.ComparisonOp op)
-        => op switch { NesEmulator.RetroAchievements.ComparisonOp.Eq => "=", NesEmulator.RetroAchievements.ComparisonOp.Ne => "!=", NesEmulator.RetroAchievements.ComparisonOp.Lt => "<", NesEmulator.RetroAchievements.ComparisonOp.Le => "<=", NesEmulator.RetroAchievements.ComparisonOp.Gt => ">", NesEmulator.RetroAchievements.ComparisonOp.Ge => ">=", _ => "?" };
-
-    private static string ShortFlag(NesEmulator.RetroAchievements.ConditionFlag f)
-    {
-        return f switch
-        {
-            NesEmulator.RetroAchievements.ConditionFlag.None => "",
-            NesEmulator.RetroAchievements.ConditionFlag.PauseIf => "P:",
-            NesEmulator.RetroAchievements.ConditionFlag.ResetIf => "R:",
-            NesEmulator.RetroAchievements.ConditionFlag.ResetNextIf => "Z:",
-            NesEmulator.RetroAchievements.ConditionFlag.AddSource => "A:",
-            NesEmulator.RetroAchievements.ConditionFlag.SubSource => "B:",
-            NesEmulator.RetroAchievements.ConditionFlag.AddHits => "C:",
-            NesEmulator.RetroAchievements.ConditionFlag.SubHits => "D:",
-            NesEmulator.RetroAchievements.ConditionFlag.AddAddress => "I:",
-            NesEmulator.RetroAchievements.ConditionFlag.AndNext => "N:",
-            NesEmulator.RetroAchievements.ConditionFlag.OrNext => "O:",
-            NesEmulator.RetroAchievements.ConditionFlag.Measured => "M:",
-            NesEmulator.RetroAchievements.ConditionFlag.MeasuredPercent => "G:",
-            NesEmulator.RetroAchievements.ConditionFlag.MeasuredIf => "Q:",
-            NesEmulator.RetroAchievements.ConditionFlag.Trigger => "T:",
-            NesEmulator.RetroAchievements.ConditionFlag.Remember => "K:",
-            _ => string.Empty
-        };
-    }
-
-    private static string RenderOperand(NesEmulator.RetroAchievements.Operand op)
-    {
-        switch (op.Kind)
-        {
-            case NesEmulator.RetroAchievements.OperandKind.Constant:
-                return op.Const.Kind == NesEmulator.RetroAchievements.ValueKind.Float ? op.Const.F64.ToString("G") : op.Const.I64.ToString();
-            case NesEmulator.RetroAchievements.OperandKind.Recall:
-                return "{recall}";
-            case NesEmulator.RetroAchievements.OperandKind.Memory:
-                {
-                    var m = op.Mem!;
-                    var mods = string.Concat(m.UseDelta?"d":"", m.UsePrior?"p":"", m.UseBcd?"b":"", m.UseInvert?"~":"");
-                    string pf = m.Prefix.ToString();
-                    // Compact friendly prefix
-                    pf = m.Prefix switch
-                    {
-                        NesEmulator.RetroAchievements.MemoryPrefix.U8 => "0xH",
-                        NesEmulator.RetroAchievements.MemoryPrefix.LowerNibble => "0xL",
-                        NesEmulator.RetroAchievements.MemoryPrefix.UpperNibble => "0xU",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U16LE => "0x",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U24LE => "0xW",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U32LE => "0xX",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U16BE => "0xI",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U24BE => "0xJ",
-                        NesEmulator.RetroAchievements.MemoryPrefix.U32BE => "0xG",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit0 => "0xM",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit1 => "0xN",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit2 => "0xO",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit3 => "0xP",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit4 => "0xQ",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit5 => "0xR",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit6 => "0xS",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Bit7 => "0xT",
-                        NesEmulator.RetroAchievements.MemoryPrefix.BitCount => "0xK",
-                        NesEmulator.RetroAchievements.MemoryPrefix.F32LE => "fF",
-                        NesEmulator.RetroAchievements.MemoryPrefix.F32BE => "fB",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Double32LE => "fH",
-                        NesEmulator.RetroAchievements.MemoryPrefix.Double32BE => "fI",
-                        NesEmulator.RetroAchievements.MemoryPrefix.MBF32Native => "fM",
-                        NesEmulator.RetroAchievements.MemoryPrefix.MBF32LE => "fL",
-                        _ => "0x"
-                    };
-                    return (mods + pf + m.Address.ToString("X"));
-                }
-            default:
-                return "?";
-        }
-    }
-
-    // ===== Achievements integration =====
-    private async Task TryInitAchievementsAsync()
-    {
-        if (emu == null || emu.Controller.nes == null) return;
-        try
-        {
-            // Load user save to know which achievements are already unlocked
-            HashSet<string> unlocked = new(StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                var save = await GameSaveService.LoadAsync();
-                if (save?.Achievements != null)
-                {
-                    unlocked = new HashSet<string>(save.Achievements, StringComparer.OrdinalIgnoreCase);
-                }
-            }
-            catch { }
-            // Resolve gameId from continueDb by romKey (which equals QRom / current RomFileName)
-            string romKey = emu.Controller.RomFileName ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(romKey)) return;
-            var rkJson = System.Text.Json.JsonSerializer.Serialize(romKey);
-            var json = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const all=await window.continueDb.getAll('games'); const g=(all||[]).find(x=>x&&x.romKey==={rkJson}); return JSON.stringify(g||null); }} catch(e) {{ return ''; }} }})()");
-            if (string.IsNullOrWhiteSpace(json)) return;
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return;
-            _achGameId = root.TryGetProperty("id", out var pid) ? (pid.GetString() ?? string.Empty) : string.Empty;
-            if (string.IsNullOrWhiteSpace(_achGameId)) return;
-            // Check if ROM is mapped to masquerade as another game id in user save (case-insensitive lookup)
-            System.Text.Json.JsonElement? targetRoot = null;
-            try
-            {
-                var save = await GameSaveService.LoadAsync();
-                var map = save?.MasqueradeRomToGameId != null
-                    ? new System.Collections.Generic.Dictionary<string,string>(save.MasqueradeRomToGameId, System.StringComparer.OrdinalIgnoreCase)
-                    : null;
-                if (map != null && map.TryGetValue(romKey, out var target) && !string.IsNullOrWhiteSpace(target))
-                {
-                    _achGameId = target;
-                    // Fetch target game record to use its title for meta lookup
-                    var tgtJson = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return ''; await window.continueDb.open(); const rec=await window.continueDb.get('games', {System.Text.Json.JsonSerializer.Serialize(target)}); return JSON.stringify(rec||null); }} catch(e) {{ return ''; }} }})()");
-                    if (!string.IsNullOrWhiteSpace(tgtJson))
-                    {
-                        using var tdoc = System.Text.Json.JsonDocument.Parse(tgtJson);
-                        if (tdoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
-                        {
-                            targetRoot = tdoc.RootElement.Clone();
-                        }
-                    }
-                }
-            }
-            catch { }
-            // Prefer commonName for matching meta; fallback to title; if masquerading, prefer target's labels
-            var metaRoot = targetRoot.HasValue ? targetRoot.Value : root;
-            var gameTitleForMeta = metaRoot.TryGetProperty("commonName", out var pcn) ? (pcn.GetString() ?? string.Empty) : string.Empty;
-            if (string.IsNullOrWhiteSpace(gameTitleForMeta))
-            {
-                gameTitleForMeta = metaRoot.TryGetProperty("title", out var ptitle) ? (ptitle.GetString() ?? string.Empty) : string.Empty;
-            }
-            // Build a lookup of Meta description -> formula for this game (if available)
-            var metaMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(gameTitleForMeta))
-                {
-                    var metaItems = await MetaGames.GetAchievementsByTitleAsync(gameTitleForMeta);
-                    foreach (var m in metaItems)
-                    {
-                        var desc = m.Description ?? string.Empty; var form = m.Formula ?? string.Empty;
-                        if (!string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(form)) metaMap[desc] = form;
-                    }
-                }
-            }
-            catch { }
-            // Fetch all achievements for this game: id, title, formula
-            var gidJson = System.Text.Json.JsonSerializer.Serialize(_achGameId);
-            var listJson = await JS.InvokeAsync<string>("eval", @$"(async()=>{{ try {{ if(!window.continueDb) return '[]'; await window.continueDb.open(); let list = []; try {{ list = await window.continueDb.getAllFromIndex('achievements','by_gameId', {gidJson}) || []; }} catch(e) {{ }} if (!list || list.length===0) {{ const all = await window.continueDb.getAll('achievements'); list = (all||[]).filter(a => a && a.gameId === {gidJson}); }} const arr = (list||[]).map(a => {{ return {{ id: a.id||'', title: a.title||a.id||'', formula: (a.formula||''), requirements: Array.isArray(a.requirements)?a.requirements:[], metaAchievementName: (a.metaAchievementName||'') }}; }}); return JSON.stringify(arr); }} catch(e) {{ return '[]'; }} }})()");
-            _achDefs.Clear();
-            if (!string.IsNullOrWhiteSpace(listJson))
-            {
-                using var d2 = System.Text.Json.JsonDocument.Parse(listJson);
-                foreach (var e in d2.RootElement.EnumerateArray())
-                {
-                    var id = e.TryGetProperty("id", out var pe) ? (pe.GetString() ?? string.Empty) : string.Empty;
-                    if (string.IsNullOrWhiteSpace(id)) continue;
-                    // Skip loading/monitoring achievements the player already completed
-                    if (unlocked.Contains(id)) continue;
-                    var title = e.TryGetProperty("title", out var pt) ? (pt.GetString() ?? id) : id;
-                    var formula = e.TryGetProperty("formula", out var pf) ? (pf.GetString() ?? string.Empty) : string.Empty;
-                    var metaName = e.TryGetProperty("metaAchievementName", out var pm) ? (pm.GetString() ?? string.Empty) : string.Empty;
-                    // If no title set, prefer meta name as display title
-                    if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(metaName)) title = metaName;
-                    // First preference: resolve from meta DB by linked meta name
-                    if (string.IsNullOrWhiteSpace(formula) && !string.IsNullOrWhiteSpace(metaName))
-                    {
-                        if (metaMap.TryGetValue(metaName, out var mf) && !string.IsNullOrWhiteSpace(mf))
-                        {
-                            formula = mf;
-                        }
-                    }
-                    // Fallback: build formula from 'requirements' array used by default DB
-                    if (string.IsNullOrWhiteSpace(formula) && e.TryGetProperty("requirements", out var preq) && preq.ValueKind == System.Text.Json.JsonValueKind.Array)
-                    {
-                        var parts = new List<string>();
-                        foreach (var rEl in preq.EnumerateArray())
-                        {
-                            if (rEl.ValueKind != System.Text.Json.JsonValueKind.String) continue;
-                            var raw = rEl.GetString() ?? string.Empty;
-                            if (string.IsNullOrWhiteSpace(raw)) continue;
-                            var s = raw.Trim();
-                            // Strip optional leading "RAM" token
-                            if (s.StartsWith("RAM", StringComparison.OrdinalIgnoreCase))
-                            {
-                                s = s.Substring(3).TrimStart(':', ' ');
-                            }
-                            // Normalize address: ensure 0xH prefix for 8-bit RAM reads
-                            // Find first occurrence of 0x and inject 'H' after it if not already present
-                            int ox = s.IndexOf("0x", StringComparison.OrdinalIgnoreCase);
-                            if (ox >= 0)
-                            {
-                                // If already like 0xH.... skip; else inject 'H'
-                                if (!(ox + 2 < s.Length && (s[ox + 2] == 'H' || s[ox + 2] == 'h')))
-                                {
-                                    s = s.Substring(0, ox + 2) + "H" + s.Substring(ox + 2);
-                                }
-                            }
-                            // Collapse whitespace and map '==' to '='
-                            s = s.Replace(" ", string.Empty);
-                            s = s.Replace("==", "=");
-                            parts.Add(s);
-                        }
-                        if (parts.Count > 0)
-                        {
-                            formula = string.Join('_', parts);
-                        }
-                    }
-                    if (!string.IsNullOrWhiteSpace(formula)) _achDefs[id] = (title, formula);
-                }
-            }
-            if (_achDefs.Count == 0) return;
-            // Build engine on a swappable NES RAM domain so engine survives NES replacement
-            _achEngine = new AchievementsEngine(new NesRamDomainRef(()=>emu.Controller.nes));
-            // Load all definitions into engine
-            var loadList = new List<(string id, string formula)>();
-            foreach (var kv in _achDefs) loadList.Add((kv.Key, kv.Value.formula));
-            _achEngine.Load(loadList);
-            // Configure emulator to evaluate per frame and alert on unlock
-            var titles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kv in _achDefs) titles[kv.Key] = kv.Value.title;
-            emu.ConfigureAchievements(_achEngine, titles);
-            // Build initial dashboard snapshot
-            try { BuildAchRowsFromEngine(); await InvokeAsync(StateHasChanged); } catch { }
-        }
-        catch { }
-    }
-
     private static T? SafeGet<T>(Func<T> getter)
     {
         try { return getter(); } catch { return default; }
@@ -2157,50 +1724,69 @@
         try { return getter(); } catch { return null; }
     }
 
-    private async Task ReturnToContinue()
+    // ===== Corruption Slop: hands-off "load base, blast, repeat" loop (simplified port of the
+    // Windows CorruptionSlop webmodule - no intermission easter-egg, no separate knob UI, reuses
+    // the existing RTC intensity/domain/blast-type controls and Glitch Harvester's own base list).
+    private bool _slopRunning = false;
+    private int _slopToken = 0;
+
+    private async Task ToggleSlop()
     {
+        if (_slopRunning) { StopSlop(); return; }
+        if (emu == null || emu.Controller.nes == null) return;
         try
         {
-            if (emu != null)
+            // Auto-corrupt and Slop both drive Blast on a timer; running both together just fights
+            // over the same corruption, so turn Auto off when Slop takes over.
+            if (emu.AutoCorrupt) emu.ToggleAutoCorrupt();
+            // Reuse an existing "Slop Base" if one's already there, otherwise make one from the
+            // current live state - no separate savestate management needed from the user.
+            var existing = emu.Corruptor.GhBaseStates.FirstOrDefault(b => b.Name == "Slop Base");
+            if (existing != null)
             {
-                // Save state (this also stores the paired achievements snapshot when achievements are enabled)
-                try { await emu.SaveStateAsyncPublic(); } catch { }
-                // Mark trusted Continue in save using current ROM
-                try
-                {
-                    var romKey = emu.Controller.RomFileName ?? emu.Controller.CurrentRomName ?? string.Empty;
-                    var title = emu.Controller.CurrentRomName ?? romKey;
-                    if (!string.IsNullOrWhiteSpace(romKey))
-                    {
-                        await GameSaveService.SetPendingDeckContinueAsync(romKey, title);
-                    }
-                }
-                catch { }
-                // Optional: pause emulation before leaving
-                try { await emu.PauseAsync(); } catch { }
+                emu.Corruptor.GhSelectedBaseId = existing.Id;
+            }
+            else
+            {
+                emu.Corruptor.GhNewBaseName = "Slop Base";
+                await emu.GhAddBase();
             }
         }
-        catch { }
-        // Fade audio and navigate back to Continue
-        try { await JS.InvokeVoidAsync("eval", @"(function(){try{if(window.music&&typeof window.music.fadeOut==='function'){window.music.fadeOut(400,true);} }catch(e){}})();"); } catch { }
-        try { await Task.Delay(100); } catch { }
-    try { Nav.NavigateTo("continue?returned=1", false); } catch { }
+        catch { return; }
+        _slopRunning = true;
+        _slopToken++;
+        Status.Set("Corruption Slop started");
+        StateHasChanged();
+        _ = SlopLoopAsync(_slopToken);
     }
 
-    // Compute a stable gameKey matching emulator side for achievements snapshot lookup
-    private string BuildGameKeyForPage()
+    private void StopSlop()
     {
-        try
+        _slopRunning = false;
+        _slopToken++;
+        Status.Set("Corruption Slop stopped");
+        StateHasChanged();
+    }
+
+    private async Task SlopLoopAsync(int token)
+    {
+        var rng = new Random();
+        while (_slopRunning && token == _slopToken)
         {
-            string system = "nes";
-            string cpu = SafeGet(()=> emu!.Controller.nes!.GetCpuCoreId()) ?? string.Empty;
-            string ppu = SafeGet(()=> emu!.Controller.nes!.GetPpuCoreId()) ?? string.Empty;
-            string apu = SafeGet(()=> emu!.Controller.nes!.GetApuCoreId()) ?? string.Empty;
-            string coreId = string.Join('|', new[]{cpu,ppu,apu});
-            string romHash = SafeGet(()=> emu!.Controller.nes!.ComputeGameIdentity().GameId) ?? (emu?.Controller.CurrentRomName ?? string.Empty);
-            return $"{system}:{coreId}:{romHash}";
+            try
+            {
+                if (emu?.GhHasSelectedBase == true)
+                {
+                    emu.GhLoadSelected();
+                    await emu.BlastAsync();
+                }
+            }
+            catch { }
+            // Plain await Task.Delay, never Task.Run - see the Clock picker lesson: on
+            // single-threaded WASM, Task.Run has no real background thread to run on and can
+            // starve the browser; a direct await yields back to it correctly.
+            try { await Task.Delay(rng.Next(400, 2000)); } catch { }
         }
-        catch { return emu?.Controller.CurrentRomName ?? ""; }
     }
 
     private sealed class PickerItem

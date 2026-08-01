@@ -1212,11 +1212,6 @@ code {
 /* ===== Global animated pixel background host (persist across pages) ===== */
 .pixel-bg-host{position:fixed;inset:0;z-index:0;pointer-events:none;}
 .pixel-bg-host .hp-tile{position:absolute;will-change:opacity, left;}
-.pixel-vignette{position:fixed;inset:0;z-index:0;pointer-events:none;background:
-    radial-gradient(circle at center,rgba(0,0,0,0) 55%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0.85) 100%),
-    repeating-conic-gradient(from 45deg,rgba(0,0,0,0) 0deg,rgba(0,0,0,0) 15deg,rgba(30,0,0,0.35) 15deg,rgba(30,0,0,0.35) 30deg);
-    mix-blend-mode:normal;animation:vignetteSpin 180s linear infinite;}
-@keyframes vignetteSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 
 
 @media (max-width:768px){
