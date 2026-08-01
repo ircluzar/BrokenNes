@@ -178,7 +178,7 @@ namespace BrokenNes
         public Task GhCorruptAndStashAsync() => GhCorruptAndStash();
         public Task GhReplayEntryAsync(HarvestEntry e, bool fromStockpile) => GhReplayEntry(e, fromStockpile);
         public Task GhExportStockpileAsync() => GhExportStockpile();
-        public void GhAddBase() => GhAddBaseState();
+        public Task GhAddBase() => GhAddBaseState();
         public void GhOnBaseChangedPublic(ChangeEventArgs e) => GhOnBaseChanged(e);
         public void GhLoadSelected() => GhLoadSelectedBase();
         public void GhDeleteSelected() => GhDeleteSelectedBase();

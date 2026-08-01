@@ -13,12 +13,12 @@ namespace BrokenNes
     {
         // ================= Glitch Harvester / RTC UI bridge =================
 
-        private void GhAddBaseState()
+        private async Task GhAddBaseState()
         {
             if (nes == null) return;
             try
             {
-                corruptor.GhAddBaseState(nes);
+                await corruptor.GhAddBaseState(nes);
                 Status.Set("Added base state");
             }
             catch (Exception ex) { Status.Set("Add base failed: " + ex.Message); }

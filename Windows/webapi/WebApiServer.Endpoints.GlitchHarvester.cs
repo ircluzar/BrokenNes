@@ -60,7 +60,7 @@ namespace BrokenNes.Windows.WebApi
                     var name = form?.Name;
                     
                     var gh = corruptor.GlitchHarvester;
-                    var baseState = gh.AddBaseState(nes, name);
+                    var baseState = await gh.AddBaseStateAsync(nes, name);
                     
                     return Results.Ok(new
                     {

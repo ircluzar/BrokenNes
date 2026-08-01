@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using BrokenNes.CorruptorModels;
 using NesEmulator;
 
@@ -39,12 +40,16 @@ namespace BrokenNes
         /// <summary>
         /// Add a new base state from the current NES state
         /// </summary>
-        public HarvesterBaseState AddBaseState(NES nes, string? name = null)
+        public async Task<HarvesterBaseState> AddBaseStateAsync(NES nes, string? name = null)
         {
             if (nes == null)
                 throw new ArgumentNullException(nameof(nes));
-            
-            var stateJson = nes.CaptureAtomicSnapshot(2000);
+
+            // Must use the async capture path, not the blocking CaptureAtomicSnapshot wrapper: on
+            // single-threaded WASM, GetAwaiter().GetResult() blocks the only thread that could ever
+            // service the snapshot request (RunFrame runs on that same thread via the JS rAF loop),
+            // so the sync wrapper deadlocks and always times out.
+            var stateJson = await nes.CaptureAtomicSnapshotAsync(2000);
             if (string.IsNullOrEmpty(stateJson))
                 throw new InvalidOperationException("Failed to capture atomic NES state");
             

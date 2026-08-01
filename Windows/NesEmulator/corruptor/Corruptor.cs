@@ -167,10 +167,10 @@ namespace BrokenNes
         }
 
     // Glitch Harvester methods (legacy - delegate to engine)
-        public void GhAddBaseState(NES nes)
+        public async System.Threading.Tasks.Task GhAddBaseState(NES nes)
         {
             var name = string.IsNullOrWhiteSpace(GhNewBaseName) ? null : GhNewBaseName.Trim();
-            GlitchHarvester.AddBaseState(nes, name);
+            await GlitchHarvester.AddBaseStateAsync(nes, name);
             GhNewBaseName = string.Empty;
         }
         public void GhDeleteSelectedBase()
