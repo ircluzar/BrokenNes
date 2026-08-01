@@ -1061,47 +1061,49 @@ window.nesInterop = {
                 // Allow regular typing when focusing an input field (e.g., ROM search)
                 return;
             }
+            // Index order must match NesEmulator.Input.SetInput: 0:A,1:B,2:Select,3:Start,
+            // 4:Up,5:Down,6:Left,7:Right (real hardware shift-register order).
             let changed = false;
             switch (e.code) {
-                case 'ArrowUp': 
+                case 'ArrowUp':
                     e.preventDefault();
-                    window.nesInputState[0] = true; 
-                    changed = true; 
+                    window.nesInputState[4] = true;
+                    changed = true;
                     break;
-                case 'ArrowDown': 
+                case 'ArrowDown':
                     e.preventDefault();
-                    window.nesInputState[1] = true; 
-                    changed = true; 
+                    window.nesInputState[5] = true;
+                    changed = true;
                     break;
-                case 'ArrowLeft': 
+                case 'ArrowLeft':
                     e.preventDefault();
-                    window.nesInputState[2] = true; 
-                    changed = true; 
+                    window.nesInputState[6] = true;
+                    changed = true;
                     break;
-                case 'ArrowRight': 
+                case 'ArrowRight':
                     e.preventDefault();
-                    window.nesInputState[3] = true; 
-                    changed = true; 
+                    window.nesInputState[7] = true;
+                    changed = true;
                     break;
-                case 'KeyZ': 
+                case 'KeyZ':
                     e.preventDefault();
-                    window.nesInputState[5] = true; 
-                    changed = true; 
+                    window.nesInputState[1] = true;
+                    changed = true;
                     break; // B
-                case 'KeyX': 
+                case 'KeyX':
                     e.preventDefault();
-                    window.nesInputState[4] = true; 
-                    changed = true; 
+                    window.nesInputState[0] = true;
+                    changed = true;
                     break; // A
-                case 'Space': 
+                case 'Space':
                     e.preventDefault();
-                    window.nesInputState[6] = true; 
-                    changed = true; 
+                    window.nesInputState[2] = true;
+                    changed = true;
                     break; // Select
-                case 'Enter': 
+                case 'Enter':
                     e.preventDefault();
-                    window.nesInputState[7] = true; 
-                    changed = true; 
+                    window.nesInputState[3] = true;
+                    changed = true;
                     break; // Start
             }
             updateInput(changed);
@@ -1114,37 +1116,37 @@ window.nesInterop = {
             }
             let changed = false;
             switch (e.code) {
-                case 'ArrowUp': 
-                    window.nesInputState[0] = false; 
-                    changed = true; 
+                case 'ArrowUp':
+                    window.nesInputState[4] = false;
+                    changed = true;
                     break;
-                case 'ArrowDown': 
-                    window.nesInputState[1] = false; 
-                    changed = true; 
+                case 'ArrowDown':
+                    window.nesInputState[5] = false;
+                    changed = true;
                     break;
-                case 'ArrowLeft': 
-                    window.nesInputState[2] = false; 
-                    changed = true; 
+                case 'ArrowLeft':
+                    window.nesInputState[6] = false;
+                    changed = true;
                     break;
-                case 'ArrowRight': 
-                    window.nesInputState[3] = false; 
-                    changed = true; 
+                case 'ArrowRight':
+                    window.nesInputState[7] = false;
+                    changed = true;
                     break;
-                case 'KeyZ': 
-                    window.nesInputState[5] = false; 
-                    changed = true; 
+                case 'KeyZ':
+                    window.nesInputState[1] = false;
+                    changed = true;
                     break;
-                case 'KeyX': 
-                    window.nesInputState[4] = false; 
-                    changed = true; 
+                case 'KeyX':
+                    window.nesInputState[0] = false;
+                    changed = true;
                     break;
-                case 'Space': 
-                    window.nesInputState[6] = false; 
-                    changed = true; 
+                case 'Space':
+                    window.nesInputState[2] = false;
+                    changed = true;
                     break;
-                case 'Enter': 
-                    window.nesInputState[7] = false; 
-                    changed = true; 
+                case 'Enter':
+                    window.nesInputState[3] = false;
+                    changed = true;
                     break;
             }
             updateInput(changed);
@@ -1191,17 +1193,21 @@ window.nesInterop = {
                 p2: { device:(p2.device||'Touch'), kbd: mapKeyboard(p2.keyboard), gp: mapGamepad(p2.gamepad), gpIndex: (typeof p2.gamepadIndex==='number'?p2.gamepadIndex:null) }
             };
             // Build code->bindings for keyboard
+            // Index order must match NesEmulator.Input.SetInput: 0:A,1:B,2:Select,3:Start,
+            // 4:Up,5:Down,6:Left,7:Right (real hardware shift-register order).
             const buildKeyMap = (kbd, player)=>{
                 const dict = {};
                 const add = (code, idx)=>{ if(!code) return; (dict[code]||(dict[code]=[])).push({p:player,i:idx}); };
-                add(kbd.up,0); add(kbd.down,1); add(kbd.left,2); add(kbd.right,3);
-                add(kbd.a,4); add(kbd.b,5); add(kbd.select,6); add(kbd.start,7);
+                add(kbd.a,0); add(kbd.b,1); add(kbd.select,2); add(kbd.start,3);
+                add(kbd.up,4); add(kbd.down,5); add(kbd.left,6); add(kbd.right,7);
                 return dict;
             };
             const keyMap = {};
             const merge = (src)=>{ for(const k in src){ keyMap[k] = (keyMap[k]||[]).concat(src[k]); } };
-            if(window._nesInputCfg.p1.device==='Keyboard') merge(buildKeyMap(window._nesInputCfg.p1.kbd,1));
-            if(window._nesInputCfg.p2.device==='Keyboard') merge(buildKeyMap(window._nesInputCfg.p2.kbd,2));
+            // Both keyboard and touch always drive Player 1 for now, regardless of the configured
+            // Device - two-player wiring is deferred, so P1's keyboard bindings are unconditional
+            // and P2 is not bound to the keyboard at all here.
+            merge(buildKeyMap(window._nesInputCfg.p1.kbd,1));
             // install unified keyboard listeners once
             if(!this._kbdInstalled){
                 const onDown = (e)=>{
@@ -1244,7 +1250,7 @@ window.nesInterop = {
                 document.addEventListener('keydown', suppress, {capture:true});
                 this._arrowSuppressInstalled = true;
             }
-            // start/refresh gamepad polling
+            // start/refresh gamepad polling (Player 1 only for now - see keyboard/touch note above)
             const poll = ()=>{
                 try{
                     const pads = (navigator.getGamepads? Array.from(navigator.getGamepads()):[]).filter(Boolean);
@@ -1257,21 +1263,22 @@ window.nesInterop = {
                         for(let i=0;i<8;i++) arr[i]=false;
                         const btn = (i)=>!!(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed);
                         const ax = (i)=>{ const v=(gp.axes&&gp.axes[i])||0; return v; };
+                        // Index order must match NesEmulator.Input.SetInput: 0:A,1:B,2:Select,
+                        // 3:Start,4:Up,5:Down,6:Left,7:Right.
                         // D-pad buttons
-                        if(btn(g.dpadUp)) arr[0]=true; if(btn(g.dpadDown)) arr[1]=true; if(btn(g.dpadLeft)) arr[2]=true; if(btn(g.dpadRight)) arr[3]=true;
+                        if(btn(g.dpadUp)) arr[4]=true; if(btn(g.dpadDown)) arr[5]=true; if(btn(g.dpadLeft)) arr[6]=true; if(btn(g.dpadRight)) arr[7]=true;
                         // Left stick
                         const x = ax(g.axisX), y = ax(g.axisY), th = Math.max(0.01, g.axisThreshold||0.5);
-                        if(y <= -th) arr[0]=true; if(y >= th) arr[1]=true; if(x <= -th) arr[2]=true; if(x >= th) arr[3]=true;
+                        if(y <= -th) arr[4]=true; if(y >= th) arr[5]=true; if(x <= -th) arr[6]=true; if(x >= th) arr[7]=true;
                         // AB + Select/Start
-                        if(btn(g.a)) arr[4]=true; if(btn(g.b)) arr[5]=true; if(btn(g.select)) arr[6]=true; if(btn(g.start)) arr[7]=true;
+                        if(btn(g.a)) arr[0]=true; if(btn(g.b)) arr[1]=true; if(btn(g.select)) arr[2]=true; if(btn(g.start)) arr[3]=true;
                         // If changed, notify
                         let changed=false; for(let i=0;i<8;i++){ if(arr[i]!==prev[i]){ changed=true; break; } }
                         if(changed && this._mainRef){ try{ this._mainRef.invokeMethodAsync('UpdateInputForPlayer', player, arr); }catch{} }
                         return true;
                     };
                     const any1 = doPad(window._nesInputCfg.p1, window.nesInputState, 1);
-                    const any2 = doPad(window._nesInputCfg.p2, window.nesInputStateP2, 2);
-                    this._gpActive = any1 || any2;
+                    this._gpActive = any1;
                 }catch{}
                 this._gpRaf = requestAnimationFrame(poll);
             };
@@ -1800,7 +1807,11 @@ window.nesInterop = {
             // Avoid re-binding
             if(ctl._nesBound) return; ctl._nesBound = true;
             this._touchCtl = ctl;
-            const map = { up:0, down:1, left:2, right:3, a:4, b:5, select:6, start:7 };
+            // Must match NesEmulator.Input.SetInput's real hardware shift-register order
+            // (0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right), NOT UI reading order -
+            // this was previously up:0,down:1,... which silently fired the wrong button for every
+            // single input (e.g. Down landed on index 1, which the engine reads as B).
+            const map = { a:0, b:1, select:2, start:3, up:4, down:5, left:6, right:7 };
             const activeTouches = new Map();
             const updateBtnVisual = (btnEl, pressed)=>{ if(!btnEl) return; btnEl.classList.toggle('pressed', !!pressed); };
             const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(8).fill(false); window.nesInputState[idx]=val; if(this._mainRef) try{ this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState);}catch{} };

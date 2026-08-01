@@ -229,7 +229,12 @@
                                 </div>
                                 <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
                                 <hr class="my-2" />
-                                <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and blast it">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label mb-0 small">Slop Intensity</label>
+                                    <code class="small">@GetSlopTemperatureLabel(_slopKnobPercent)</code>
+                                </div>
+                                <input type="range" min="0" max="100" step="1" class="form-range" value="@_slopKnobPercent" @oninput="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) _slopKnobPercent = Math.Clamp(v,0,100);}" />
+                                <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and BITFLIP-blast every domain">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
                             </div>
                         </div>
                     </div>
@@ -466,7 +471,12 @@
                     </div>
                     <div class="mt-2 small text-muted fst-italic">Last: @emu!.Corruptor.LastBlastInfo</div>
                     <hr class="my-2" />
-                    <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and blast it">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0 small">Slop Intensity</label>
+                        <code class="small">@GetSlopTemperatureLabel(_slopKnobPercent)</code>
+                    </div>
+                    <input type="range" min="0" max="100" step="1" class="form-range" value="@_slopKnobPercent" @oninput="(e)=>{if(int.TryParse(e.Value?.ToString(),out var v)) _slopKnobPercent = Math.Clamp(v,0,100);}" />
+                    <button class="btn btn-sm @(_slopRunning ? "btn-danger" : "btn-outline-warning")" @onclick="ToggleSlop" disabled="@(emu!.Controller.nes==null)" title="Hands-off: repeatedly reload a base state and BITFLIP-blast every domain">@(_slopRunning ? "Stop Slop" : "Corruption Slop")</button>
                 </div>
             </div>
         </div>
@@ -1566,7 +1576,14 @@
             }).OrderBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
 
             var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
-            _apuMeta = apuDict.Select(kv => new PickerItem
+            _apuMeta = apuDict
+                // WF/MNES are real, compiled cores (NES.cs hard-references them, so they can't be
+                // trimmed out) but their actual sound comes from a SF2/MIDI synth JS backend
+                // (soundfont.js/mnesSf2.js) that Lite deliberately doesn't ship - see index.html's
+                // own "Lean asset set" comment. Selecting them here would be a silent dead end
+                // (no audio, no error), so they're hidden from Lite's picker specifically.
+                .Where(kv => kv.Key != "WF" && kv.Key != "MNES")
+                .Select(kv => new PickerItem
             {
                 Domain = "APU",
                 Id = kv.Key,
@@ -1725,20 +1742,45 @@
     }
 
     // ===== Corruption Slop: hands-off "load base, blast, repeat" loop (simplified port of the
-    // Windows CorruptionSlop webmodule - no intermission easter-egg, no separate knob UI, reuses
-    // the existing RTC intensity/domain/blast-type controls and Glitch Harvester's own base list).
+    // Windows CorruptionSlop webmodule - no intermission easter-egg, but otherwise matches the
+    // desktop version's own settings rather than reusing the RTC panel's current state: forces
+    // BITFLIP + all memory domains selected, and drives intensity from its own knob-equivalent
+    // slider using the exact same base-420 scaling formula as corruption-slop.js).
     private bool _slopRunning = false;
     private int _slopToken = 0;
+    private int _slopKnobPercent = 50;
+
+    private const int SlopBaseIntensity = 420;
+
+    private static int GetSlopScaledIntensity(int percent)
+    {
+        var p = Math.Clamp(percent, 0, 100);
+        double multiplier = p <= 50 ? 0.05 + (p / 50.0) * 0.95 : 1 + ((p - 50) / 50.0) * 2;
+        return Math.Max(1, (int)Math.Round(SlopBaseIntensity * multiplier));
+    }
+
+    private static string GetSlopTemperatureLabel(int percent)
+    {
+        var p = Math.Clamp(percent, 0, 100);
+        if (p >= 40 && p <= 60) return "Mild";
+        if (p < 40) return $"{Math.Round((40 - p) / 40.0 * 100)}% Cold";
+        return $"{Math.Round((p - 60) / 40.0 * 100)}% Hot";
+    }
 
     private async Task ToggleSlop()
     {
-        if (_slopRunning) { StopSlop(); return; }
+        if (_slopRunning) { await StopSlop(); return; }
         if (emu == null || emu.Controller.nes == null) return;
         try
         {
             // Auto-corrupt and Slop both drive Blast on a timer; running both together just fights
             // over the same corruption, so turn Auto off when Slop takes over.
             if (emu.AutoCorrupt) emu.ToggleAutoCorrupt();
+            // Match the desktop version's own configureRtc(): force BITFLIP and select every
+            // memory domain, rather than depending on whatever the RTC panel currently has set.
+            emu.SetBlastTypePublic("BITFLIP");
+            emu.Corruptor.DomainsChanged(emu.Corruptor.MemoryDomains.Select(d => d.Key));
+            emu.Corruptor.CorruptIntensity = GetSlopScaledIntensity(_slopKnobPercent);
             // Reuse an existing "Slop Base" if one's already there, otherwise make one from the
             // current live state - no separate savestate management needed from the user.
             var existing = emu.Corruptor.GhBaseStates.FirstOrDefault(b => b.Name == "Slop Base");
@@ -1760,10 +1802,14 @@
         _ = SlopLoopAsync(_slopToken);
     }
 
-    private void StopSlop()
+    private async Task StopSlop()
     {
         _slopRunning = false;
         _slopToken++;
+        // Restore the game to how it was before Slop started, matching the desktop version's
+        // stopAndExit() (which reloads the base state on the way out) - otherwise disabling Slop
+        // just leaves whatever the last blast produced instead of a clean stop.
+        try { if (emu?.GhHasSelectedBase == true) emu.GhLoadSelected(); } catch { }
         Status.Set("Corruption Slop stopped");
         StateHasChanged();
     }
@@ -1777,6 +1823,7 @@
             {
                 if (emu?.GhHasSelectedBase == true)
                 {
+                    emu.Corruptor.CorruptIntensity = GetSlopScaledIntensity(_slopKnobPercent);
                     emu.GhLoadSelected();
                     await emu.BlastAsync();
                 }
@@ -1785,7 +1832,7 @@
             // Plain await Task.Delay, never Task.Run - see the Clock picker lesson: on
             // single-threaded WASM, Task.Run has no real background thread to run on and can
             // starve the browser; a direct await yields back to it correctly.
-            try { await Task.Delay(rng.Next(400, 2000)); } catch { }
+            try { await Task.Delay(rng.Next(420, 4200)); } catch { }
         }
     }
 

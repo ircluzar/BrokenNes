@@ -898,6 +898,22 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
+    // CPU_FIX — accuracy-focused: baseline chip with a precision crosshair accent
+    public static string CPU_FIX =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_FIX'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <g stroke='" + AccentToken + "' stroke-width='2'>" +
+        "      <circle cx='106' cy='65' r='10' fill='none'/>" +
+        "      <line x1='106' y1='49' x2='106' y2='57'/>" +
+        "      <line x1='106' y1='73' x2='106' y2='81'/>" +
+        "      <line x1='90' y1='65' x2='98' y2='65'/>" +
+        "      <line x1='114' y1='65' x2='122' y2='65'/>" +
+        "    </g>" +
+        "  </g>" +
+        "</svg>";
+
     // CPU_LOW — reduced pins, outlined die and a subtle notch accent
     public static string CPU_LOW =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_LOW'>" +
@@ -1021,6 +1037,19 @@ public static class SvgFactory
         "    <g stroke='" + Stroke + "' stroke-width='1' opacity='0.6'>" +
         "      <path d='M92 38 V92 M120 38 V92 M64 56 H148 M64 74 H148'/>" +
         "    </g>" +
+        "  </g>" +
+        "</svg>";
+
+    // PPU_FIX — accuracy-focused: clean tile grid with a precision crosshair accent
+    public static string PPU_FIX =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_FIX'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <g stroke='" + Stroke + "' stroke-width='1' opacity='0.5'>" +
+        "      <path d='M92 38 V92 M120 38 V92 M64 56 H148 M64 74 H148'/>" +
+        "    </g>" +
+        "    <circle cx='106' cy='65' r='8' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
         "  </g>" +
         "</svg>";
 
@@ -1208,6 +1237,20 @@ public static class SvgFactory
         "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
     "    <path d='M70 70 C78 50, 86 90, 94 70 S110 50, 118 70' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
         "    <path d='M128 78 H138 V62 H148' fill='none' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "  </g>" +
+        "</svg>";
+
+    // APU_FIX — accuracy-focused: clean waveform with precision tick marks
+    public static string APU_FIX =>
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='APU_FIX'>" +
+        "  <g>" +
+        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + Stroke + "' stroke-width='2'/>" +
+        "    <path d='M70 65 H80 M80 65 Q86 50 92 65 T104 65 T116 65 M116 65 H128' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
+        "    <g stroke='" + Stroke + "' stroke-width='1' opacity='0.6'>" +
+        "      <line x1='86' y1='58' x2='86' y2='72'/>" +
+        "      <line x1='110' y1='58' x2='110' y2='72'/>" +
+        "    </g>" +
         "  </g>" +
         "</svg>";
 
