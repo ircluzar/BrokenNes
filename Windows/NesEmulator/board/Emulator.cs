@@ -926,7 +926,10 @@ namespace BrokenNes
                 }
                 else if (string.Equals(nesController.ApuCoreSel, "MNES", StringComparison.OrdinalIgnoreCase))
                 {
-                    soundFontMode = nes.EnableSoundFontMode(true, null);
+                    // Unlike desktop's native MeltySynth backend, the web-tailored APU_MNES has no
+                    // internal renderer - it only emits NoteEvent, so the JS FluidSynth bridge
+                    // (mnesSf2.js) needs the same callback wiring WF gets above.
+                    soundFontMode = nes.EnableSoundFontMode(true, (ch, prog, midi, vel, on, _) => { try { JS.InvokeVoidAsync("nesInterop.noteEvent", ch, prog, midi, vel, on); } catch { } });
                     if (!soundFontMode)
                     {
                         var msg = "MNES failed to enable native SF2 backend. Fallback is disabled.";

@@ -59,12 +59,16 @@
         })();
     </script>
 
-    <!-- Lean asset set. Deliberately dropped vs. the original: soundfont.js + mnesSf2.js (the
-         SF2/MIDI synth stack behind APU_WF/APU_MNES, which Lite does not ship - see
-         LinkerConfig.xml), music.js (menu music for the campaign UI that Lite drops), and
-         continue-db.js (RetroAchievements/Continue lookup DB - Lite ships no campaign or
-         achievements, and this script fired an unconditional 404 fetch on every page load). -->
+    <!-- Lean asset set. Deliberately dropped vs. the original: music.js (menu music for the
+         campaign UI that Lite drops) and continue-db.js (RetroAchievements/Continue lookup DB -
+         Lite ships no campaign or achievements, and this script fired an unconditional 404 fetch
+         on every page load). soundfont.js + mnesSf2.js ARE shipped: they're the JS SoundFont/
+         FluidSynth bridges behind APU_WF/APU_MNES (nesInterop.noteEvent -> here), both lazy-load
+         their own heavier dependencies (js-synthesizer/libfluidsynth under sf2player/, ~750KB)
+         only when one of those cores is actually selected, so they cost nothing until used. -->
     <script src="lib/nesInterop.js"></script>
+    <script src="lib/soundfont.js"></script>
+    <script src="lib/mnesSf2.js"></script>
     <script src="lib/nesInput.js"></script>
     <script src="lib/imagine.js"></script>
     <script src="lib/imagineTarget.js"></script>

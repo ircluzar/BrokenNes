@@ -1577,12 +1577,6 @@
 
             var apuDict = CoreRegistry.CreateInstances<IAPU>(bus, "APU_");
             _apuMeta = apuDict
-                // WF/MNES are real, compiled cores (NES.cs hard-references them, so they can't be
-                // trimmed out) but their actual sound comes from a SF2/MIDI synth JS backend
-                // (soundfont.js/mnesSf2.js) that Lite deliberately doesn't ship - see index.html's
-                // own "Lean asset set" comment. Selecting them here would be a silent dead end
-                // (no audio, no error), so they're hidden from Lite's picker specifically.
-                .Where(kv => kv.Key != "WF" && kv.Key != "MNES")
                 .Select(kv => new PickerItem
             {
                 Domain = "APU",

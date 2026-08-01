@@ -38,6 +38,10 @@
     <Compile Remove="NesEmulator\corruptor\GlitchHarvester.cs" />
     <Compile Remove="NesEmulator\StatusService.cs" />
     <Compile Remove="NesEmulator\clocks\**" />
+    <!-- Web/WebLite-exclusive APU_WF/APU_MNES builds (pure emulation, no NAudio/MeltySynth -
+         see the header comment in each file). Desktop keeps the native-backend versions below. -->
+    <Compile Remove="NesEmulator\apus\APU_WF.Web.cs" />
+    <Compile Remove="NesEmulator\apus\APU_MNES.Web.cs" />
   </ItemGroup>
 
   <ItemGroup>

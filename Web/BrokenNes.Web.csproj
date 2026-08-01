@@ -66,11 +66,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" PrivateAssets="all" />
-    <!-- Forced by NES.cs: it hard-references NesEmulator.APU_WF (NAudio.Midi) and
-         NesEmulator.APU_MNES (MeltySynth) by type name on 27 lines. Excluding either
-         core would mean editing the shared NES.cs. -->
-    <PackageReference Include="NAudio.Midi" Version="2.2.1" />
-    <PackageReference Include="MeltySynth" Version="2.4.0" />
   </ItemGroup>
 
   <!-- ==========================================================================
@@ -101,10 +96,12 @@
     <Compile Include="$(NesRoot)board\InstructionTracer.cs" Link="NesEmulator\board\InstructionTracer.cs" />
 
     <!-- Whole-folder globs. ppus/ must include PPU_IMG.cs (it declares ImagineTargetConfig
-         and ImagineCaptureData, consumed by NES.cs). apus/ must include APU_WF + APU_MNES. -->
+         and ImagineCaptureData, consumed by NES.cs). apus/ must include APU_WF + APU_MNES, but
+         the desktop native-backend builds (NAudio.Midi / MeltySynth, unusable in WASM) are
+         excluded in favor of the pure-emulation *.Web.cs siblings - see their header comments. -->
     <Compile Include="$(NesRoot)cpus\**\*.cs"      LinkBase="NesEmulator\cpus" />
     <Compile Include="$(NesRoot)ppus\**\*.cs"      LinkBase="NesEmulator\ppus" />
-    <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus" />
+    <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs" LinkBase="NesEmulator\apus" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
 
