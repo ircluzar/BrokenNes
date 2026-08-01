@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#10171f" />
+    <title>BrokenNes Lite</title>
+    <base href="./" />
+
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link href="BrokenNesLite.styles.css" rel="stylesheet" />
+
+    <!-- Deliberately NO Google Fonts. The original build pulled Orbitron + Press Start 2P from
+         fonts.googleapis.com, which is a render-blocking third-party request - a real cost on the
+         slow/flaky connections this build targets, and it breaks the offline story entirely.
+         css/app.css falls back to system stacks. -->
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="loading-center">
+            <div class="loader-ring">
+                <svg class="loading-progress" viewBox="0 0 100 100" role="img" aria-label="Loading">
+                    <circle class="lp-fill" r="48" cx="50" cy="50" />
+                </svg>
+                <div class="loading-progress-text" aria-live="polite">0%</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script src="./_framework/blazor.webassembly.js"></script>
+    <script>
+        // Mirror Blazor's CSS variable (--blazor-load-percentage-text) into visible text.
+        (function () {
+            const el = document.querySelector('.loading-progress-text');
+            if (!el) return;
+            let last = '';
+            function readVar() {
+                const raw = getComputedStyle(document.documentElement).getPropertyValue('--blazor-load-percentage-text');
+                if (raw) {
+                    const cleaned = raw.replace(/["']/g, '').trim();
+                    if (cleaned && cleaned !== last) { el.textContent = cleaned; last = cleaned; }
+                }
+                if (!document.body.classList.contains('loaded')) requestAnimationFrame(readVar);
+            }
+            requestAnimationFrame(readVar);
+        })();
+    </script>
+
+    <!-- Lean asset set. Deliberately dropped vs. the original: soundfont.js + mnesSf2.js (the
+         SF2/MIDI synth stack behind APU_WF/APU_MNES, which Lite does not ship - see
+         LinkerConfig.xml) and music.js (menu music for the campaign UI that Lite drops). -->
+    <script src="lib/continue-db.js"></script>
+    <script src="lib/nesInterop.js"></script>
+    <script src="lib/nesInput.js"></script>
+    <script src="lib/imagine.js"></script>
+</body>
+
+</html>

@@ -6,6 +6,18 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "Web/BrokenNes.Web.csproj", "--urls", "http://localhost:5011"],
       "port": 5011
+    },
+    {
+      "name": "brokennes-web-release",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Web/BrokenNes.Web.csproj", "-c", "Release", "--urls", "http://localhost:5012"],
+      "port": 5012
+    },
+    {
+      "name": "brokennes-lite",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "WebLite/BrokenNes.Lite.csproj", "--urls", "http://localhost:5013"],
+      "port": 5013
     }
   ]
 }

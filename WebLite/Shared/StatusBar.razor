@@ -1,0 +1,35 @@
+@using System
+@using BrokenNes
+@inject StatusService Status
+@implements IDisposable
+
+@if (!string.IsNullOrEmpty(Status?.LastMessage))
+{
+    <div class="status-bar slim" role="status">
+        <span class="label">STATUS:</span>
+        <span class="message">@Status.LastMessage</span>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (Status != null)
+        {
+            Status.StatusChanged += OnStatusChanged;
+        }
+    }
+
+    private void OnStatusChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (Status != null)
+        {
+            Status.StatusChanged -= OnStatusChanged;
+        }
+    }
+}

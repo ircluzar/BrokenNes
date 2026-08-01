@@ -1,0 +1,54 @@
+<linker>
+  <!-- BrokenNes Lite trim roots.
+
+       Only takes effect when PublishTrimmed is true (i.e. -p:EnableWasmAot=true).
+
+       This is the PRIMARY leanness lever. Every core is discovered reflectively by
+       CoreRegistry/ClockRegistry via Assembly.GetTypes() + a name prefix, which the trimmer
+       cannot see through - so a core survives trimming ONLY if it is rooted here, and a core
+       that is trimmed simply never appears in the picker.
+
+       Web/ and the old webonly build rooted `NesEmulator.APU_*` etc. wholesale (all 37 cores).
+       Lite deliberately does NOT: it ships a curated set so the WASM payload stays small enough
+       for old mobile devices. Add a line here to ship another core; delete one to drop it.
+
+       Deliberately NOT rooted: the 18-core APU zoo (949KB of source, the single largest chunk),
+       the gimmick PPUs (CUBE/CUBEX/EXE/BFR/IMG), and CPU_Z80. APU_WF/APU_MNES in particular pull
+       NAudio.Midi + MeltySynth; NES.cs still type-checks them with `is`, so the bare types
+       survive, but nothing reachable from them does. -->
+  <assembly fullname="BrokenNesLite">
+    <!-- Routable pages + layout: found by the router via reflection. -->
+    <type fullname="BrokenNes.Layout.MainLayout" preserve="all" />
+    <type fullname="BrokenNes.Pages.*" preserve="all" />
+    <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
+
+    <!-- CPU: FIX is the accuracy target; SPD/LOW are the fast paths that matter on weak devices. -->
+    <type fullname="NesEmulator.CPU_FIX" preserve="all" />
+    <type fullname="NesEmulator.CPU_SPD" preserve="all" />
+    <type fullname="NesEmulator.CPU_LOW" preserve="all" />
+    <type fullname="NesEmulator.CPU_FMC" preserve="all" />
+
+    <!-- PPU: same three tiers. The gimmick renderers (CUBE/CUBEX/EXE/BFR) are the most expensive
+         per frame and are exactly what a low-end device should not be paying for. -->
+    <type fullname="NesEmulator.PPU_FIX" preserve="all" />
+    <type fullname="NesEmulator.PPU_SPD" preserve="all" />
+    <type fullname="NesEmulator.PPU_LOW" preserve="all" />
+    <type fullname="NesEmulator.PPU_FMC" preserve="all" />
+
+    <!-- APU: FIX for accuracy, SPD/LOW/LQ as the cheap options. Notably absent: WF, MNES, HI,
+         HI2, HI2X, QN*, EIL, SPD2, ULQ, LQ2. -->
+    <type fullname="NesEmulator.APU_FIX" preserve="all" />
+    <type fullname="NesEmulator.APU_SPD" preserve="all" />
+    <type fullname="NesEmulator.APU_LOW" preserve="all" />
+    <type fullname="NesEmulator.APU_LQ" preserve="all" />
+    <type fullname="NesEmulator.APU_FMC" preserve="all" />
+
+    <!-- Clocks are small and drive frame pacing; keep all of them. -->
+    <type fullname="NesEmulator.CLOCK_*" preserve="all" />
+
+    <!-- NullProviderRegistry throws if discovery yields nothing, and NES.GetFrameBuffer() calls
+         it, so at least one concrete provider must survive. -->
+    <type fullname="NesEmulator.NullProviders.*" preserve="all" />
+    <type fullname="BrokenNes.NullProviders.*" preserve="all" />
+  </assembly>
+</linker>

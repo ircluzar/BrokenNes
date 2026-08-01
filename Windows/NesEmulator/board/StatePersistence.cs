@@ -176,7 +176,7 @@ namespace BrokenNes
                         }
                     }
                     catch { }
-                    try { var savedName = nes?.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName) && nes!=null) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } catch {}
+                    try { var savedName = NesEmulator.NES.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName) && nes!=null) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } catch {}
                     nesController.AutoStaticSuppressed = true;
                     // Re-apply the selected crash behavior after state load
                     try { ApplySelectedCrashBehavior(); } catch {}
