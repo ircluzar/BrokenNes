@@ -259,6 +259,13 @@
   .mobile-fs-active .mobile-fs-extra-views .mobile-view input,
   .mobile-fs-active .mobile-fs-extra-views .mobile-view button { font-size:0.65rem; }
   .mobile-fs-active .mobile-fs-extra-views .gh-list { max-height:160px; overflow:auto; }
+  /* gh-name/gh-meta had no layout rules anywhere, so they rendered flush against each other
+     with no separating space whenever the combined text didn't happen to wrap onto two lines
+     (e.g. after renaming a stockpile entry to a longer name). */
+  .gh-item { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; }
+  .gh-item-main { display:flex; align-items:baseline; gap:0.4rem; flex-wrap:wrap; min-width:0; }
+  .gh-name { font-weight:600; }
+  .gh-meta { opacity:0.7; }
   /* === Touch Controller Layout (NES style) === */
   #touch-controller { width:100%; flex:0 0 auto; padding:0.6rem 0.65rem 0.35rem; display:flex; flex-direction:column; gap:0.55rem; max-width:100%; box-sizing:border-box; z-index:10000; }
   #touch-controller .controller-grid { display:flex; flex-direction:column; width:100%; gap:0.55rem; }

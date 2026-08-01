@@ -140,7 +140,16 @@
     <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
-    <Compile Include="$(NesRoot)clocks\**\*.cs"    LinkBase="NesEmulator\clocks" />
+    <!-- CLOCK_CLR and CLOCK_TRB excluded: both drive their frame loop via Task.Run(LoopAsync),
+         which assumes a genuine background OS thread. Single-threaded WASM has none - Task.Run
+         just queues the loop onto the same thread the browser needs for everything else. Reproduced
+         live for BOTH cores (not just TRB's self-described "Unstable"/uncapped variant - CLR's own
+         "browser-safe delays" comment does not hold up in practice either): selecting either one in
+         the Clock picker permanently hangs the tab, unrecoverable short of closing it. CLOCK_FMC
+         (JS Driver) is the only clock actually native to a browser - it delegates cadence entirely
+         to the JS requestAnimationFrame loop instead of trying to run its own thread - so it's the
+         only one that belongs in a WASM build. -->
+    <Compile Include="$(NesRoot)clocks\**\*.cs"    Exclude="$(NesRoot)clocks\CLOCK_CLR.cs;$(NesRoot)clocks\CLOCK_TRB.cs" LinkBase="NesEmulator\clocks" />
     <Compile Include="$(NesRoot)RetroAchievements\**\*.cs" LinkBase="NesEmulator\RetroAchievements" />
     <Compile Include="$(NesRoot)Shaders\**\*.cs"           LinkBase="NesEmulator\Shaders" />
 
