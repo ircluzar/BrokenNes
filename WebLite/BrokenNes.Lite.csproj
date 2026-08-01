@@ -40,7 +40,23 @@
     <!-- AOT is the entire reason this project is viable again - see the header comment.
          Requires the wasm-tools workload (install from an ELEVATED terminal):
              dotnet workload install wasm-tools
-         then publish with -p:EnableWasmAot=true. -->
+         then publish with -p:EnableWasmAot=true.
+
+         MEASURED, both published from this project (brotli, i.e. what a browser actually
+         downloads when the server is configured correctly):
+
+             AOT + trimmed  4.6 MB   46 assemblies
+             non-AOT        5.6 MB  202 assemblies
+
+         AOT is SMALLER as well as ~8.4x faster, so there is no size/speed tradeoff to weigh
+         here - always publish with EnableWasmAot=true. The reason is that PublishTrimmed is
+         tied to EnableWasmAot above: without AOT nothing is trimmed, so all 37 cores and their
+         transitive dependencies ship. AOT inflates the runtime itself (dotnet.native.wasm goes
+         0.87 MB -> 3.35 MB) but trimming more than pays that back.
+
+         Uncompressed the AOT output is 22.3 MB, so serving without brotli/gzip costs ~5x.
+         Whatever hosts this MUST have compression on. -->
+
     <EnableWasmAot Condition="'$(EnableWasmAot)'==''">false</EnableWasmAot>
     <RunAOTCompilation Condition="'$(Configuration)'=='Release'">$(EnableWasmAot)</RunAOTCompilation>
     <RunAOTCompilation Condition="'$(Configuration)'!='Release'">false</RunAOTCompilation>
