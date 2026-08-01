@@ -72,7 +72,7 @@
   </div>
   <div class="opt-footer">
     <button class="opt-link" @onclick="Save">Save</button>
-    <a href="./options" class="opt-link">Cancel</a>
+    <a href="./nes" class="opt-link">Cancel</a>
   </div>
 </div>
 
@@ -139,6 +139,6 @@
       draft.Player2.GamepadId = gp?.Id;
     }
     await Settings.SaveAsync(draft);
-    await JS.InvokeVoidAsync("eval", "location.href='./options'");
+    await JS.InvokeVoidAsync("eval", "location.href='./nes'");
   }
 }
