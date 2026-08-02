@@ -978,14 +978,35 @@ window.nesInterop = {
         this._loopActive = true;
         this._lastRafTs = 0;
         this._skipsThisBurst = 0;
+        this._frameAccumMs = 0;
         const token = this._loopToken;
         const step = async (ts) => {
             // Abort if loop stopped or a newer loop superseded this one
             if (!this._loopActive || token !== this._loopToken) return;
             const targetMs = 1000 / (this._targetFps || 60);
-            const dt = this._lastRafTs ? (ts - this._lastRafTs) : targetMs;
-            const behind = dt > targetMs * 1.5;
-            this._lastRafTs = ts || performance.now();
+            const now = ts || performance.now();
+            const dt = this._lastRafTs ? (now - this._lastRafTs) : targetMs;
+            this._lastRafTs = now;
+
+            // Pace emulation to _targetFps regardless of display refresh rate. rAF fires at
+            // the display's own rate (90/120/144Hz on plenty of Android tablets), and without
+            // this gate every callback ran a full emulated frame - harmless at 60Hz, but on a
+            // faster display (or once a device is finally fast enough to keep up every tick)
+            // the game ran proportionally too fast and audio desynced from being produced
+            // faster than real time. Accumulate elapsed time and only emulate once a full
+            // frame interval has passed; cap the accumulator so a long stall (backgrounded
+            // tab, debugger pause) can't trigger a burst of catch-up frames on return. Ported
+            // from the identical, already-verified fix in Web/wwwroot/lib/nesInterop.js
+            // (commit 895ff3b) - WebLite keeps its own separate copy of this file and never
+            // got it.
+            this._frameAccumMs = Math.min(this._frameAccumMs + dt, targetMs * 4);
+            if (this._frameAccumMs < targetMs) {
+                this._rafId = requestAnimationFrame(step);
+                return;
+            }
+            this._frameAccumMs -= targetMs;
+            const behind = this._frameAccumMs > targetMs * 0.5;
+
             if (this._dotNetRef) {
                 try {
                     // Single-crossing per frame: get payload from .NET and present locally
