@@ -1775,18 +1775,20 @@
             emu.SetBlastTypePublic("BITFLIP");
             emu.Corruptor.DomainsChanged(emu.Corruptor.MemoryDomains.Select(d => d.Key));
             emu.Corruptor.CorruptIntensity = GetSlopScaledIntensity(_slopKnobPercent);
-            // Reuse an existing "Slop Base" if one's already there, otherwise make one from the
-            // current live state - no separate savestate management needed from the user.
+            // Always capture a fresh base from the CURRENT live state, never reuse an old one by
+            // name - reusing meant that starting Slop again after a Reset (or after loading a
+            // different point in the game) silently jumped back to whatever the game looked like
+            // the very first time Slop was ever started that session, instead of the state the
+            // user is actually looking at now. Delete any stale "Slop Base" first so they don't
+            // pile up in the Glitch Harvester base list.
             var existing = emu.Corruptor.GhBaseStates.FirstOrDefault(b => b.Name == "Slop Base");
             if (existing != null)
             {
                 emu.Corruptor.GhSelectedBaseId = existing.Id;
+                emu.GhDeleteSelected();
             }
-            else
-            {
-                emu.Corruptor.GhNewBaseName = "Slop Base";
-                await emu.GhAddBase();
-            }
+            emu.Corruptor.GhNewBaseName = "Slop Base";
+            await emu.GhAddBase();
         }
         catch { return; }
         _slopRunning = true;
