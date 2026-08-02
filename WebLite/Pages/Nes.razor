@@ -47,6 +47,9 @@
                 <button class="btn btn-danger ctrl-btn" @onclick="(()=>emu!.ResetAsyncFacade())" disabled="@(emu!.Controller.nes == null)" title="Reset" aria-label="Reset">
                     <svg viewBox="0 0 100 100" class="ctrl-ico reset" role="img" focusable="false"><path d="M50 18a32 32 0 1 1-22.63 9.37" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 13 30 40 5 34" fill="currentColor" /></svg>
                 </button>
+                <button class="btn @(emu!.Controller.FastForward ? "btn-info" : "btn-outline-info") ctrl-btn" @onclick="ToggleFastForward" disabled="@(emu!.Controller.nes == null)" title="Fast Forward (3x speed) - skip through cutscenes" aria-label="Fast Forward">
+                    <svg viewBox="0 0 100 100" class="ctrl-ico ff" role="img" focusable="false"><polygon points="8,18 46,50 8,82" /><polygon points="46,18 84,50 46,82" /></svg>
+                </button>
             </div>
             @if (!HideCoreSelectors)
             {
@@ -605,8 +608,8 @@
         <div class="panel-content small">
             <div class="d-flex align-items-end gap-2 flex-wrap mb-2">
                 <div>
-                    <label class="form-label mb-1 small" for="imagine-epoch">Model epoch</label>
-                    <input id="imagine-epoch" type="number" min="1" max="40" class="form-control form-control-sm" style="width:90px" @bind="emu!.ImagineEpoch" />
+                    <label class="form-label mb-1 small" for="imagine-epoch" title="Desktop ships all 40 training checkpoints (515MB); Lite only bundles epoch 30 to stay lean, so this isn't editable here.">Model epoch (30 only)</label>
+                    <input id="imagine-epoch" type="number" class="form-control form-control-sm" style="width:90px" value="30" readonly disabled />
                 </div>
                 <button class="btn btn-sm btn-primary mt-3" @onclick="(()=>emu!.ImagineLoadModelAsyncPublic())">Load model</button>
             </div>
@@ -1751,6 +1754,18 @@
         var p = Math.Clamp(percent, 0, 100);
         double multiplier = p <= 50 ? 0.05 + (p / 50.0) * 0.95 : 1 + ((p - 50) / 50.0) * 2;
         return Math.Max(1, (int)Math.Round(SlopBaseIntensity * multiplier));
+    }
+
+    // Runs 3 emulated NES frames per real tick instead of 1 (NesController.FastForward, read by
+    // RunFrameAndBuildPayload) - a dormant field that already existed in the shared engine but had
+    // no UI anywhere. Deliberately NOT a new clock core: it rides the same JS-driven rAF tick that
+    // already works safely in a browser, just does more emulated work per tick, so there's no
+    // WASM-threading risk the way CLOCK_CLR/CLOCK_TRB's background-Task loops have.
+    private void ToggleFastForward()
+    {
+        if (emu == null) return;
+        emu.Controller.FastForward = !emu.Controller.FastForward;
+        StateHasChanged();
     }
 
     private static string GetSlopTemperatureLabel(int percent)
