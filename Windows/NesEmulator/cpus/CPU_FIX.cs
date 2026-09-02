@@ -327,6 +327,73 @@ public class CPU_FIX : ICPU {
 			case 0x38: return FSC(FLAG_C, true, Implied, 2);
 			case 0xF8: return FSC(FLAG_D, true, Implied, 2);
 			case 0x78: return FSC(FLAG_I, true, Implied, 2);
+
+			// === Unofficial "combined" opcodes (stable, well-documented, seen in real compiled
+			// and hand-written code - e.g. cc65-generated NESmaker games use LAX). The genuinely
+			// unstable ones (ANE/XAA, LXA, SHA/SHX/SHY/TAS, LAS) vary between real 2A03 revisions
+			// and are deliberately NOT implemented here - real games don't rely on those.
+			case 0xA7: return LAX(ZeroPage, 3);
+			case 0xB7: return LAX(ZeroPageY, 4);
+			case 0xAF: return LAX(Absolute, 4);
+			case 0xBF: return LAX(AbsoluteY, 4);
+			case 0xA3: return LAX(IndirectX, 6);
+			case 0xB3: return LAX(IndirectY, 5);
+			case 0x87: return SAX(ZeroPage, 3);
+			case 0x97: return SAX(ZeroPageY, 4);
+			case 0x8F: return SAX(Absolute, 4);
+			case 0x83: return SAX(IndirectX, 6);
+			case 0xC7: return DCP(ZeroPage, 5);
+			case 0xD7: return DCP(ZeroPageX, 6);
+			case 0xCF: return DCP(Absolute, 6);
+			case 0xDF: return DCP(AbsoluteX, 7);
+			case 0xDB: return DCP(AbsoluteY, 7);
+			case 0xC3: return DCP(IndirectX, 8);
+			case 0xD3: return DCP(IndirectY, 8);
+			case 0xE7: return ISC(ZeroPage, 5);
+			case 0xF7: return ISC(ZeroPageX, 6);
+			case 0xEF: return ISC(Absolute, 6);
+			case 0xFF: return ISC(AbsoluteX, 7);
+			case 0xFB: return ISC(AbsoluteY, 7);
+			case 0xE3: return ISC(IndirectX, 8);
+			case 0xF3: return ISC(IndirectY, 8);
+			case 0x07: return SLO(ZeroPage, 5);
+			case 0x17: return SLO(ZeroPageX, 6);
+			case 0x0F: return SLO(Absolute, 6);
+			case 0x1F: return SLO(AbsoluteX, 7);
+			case 0x1B: return SLO(AbsoluteY, 7);
+			case 0x03: return SLO(IndirectX, 8);
+			case 0x13: return SLO(IndirectY, 8);
+			case 0x27: return RLA(ZeroPage, 5);
+			case 0x37: return RLA(ZeroPageX, 6);
+			case 0x2F: return RLA(Absolute, 6);
+			case 0x3F: return RLA(AbsoluteX, 7);
+			case 0x3B: return RLA(AbsoluteY, 7);
+			case 0x23: return RLA(IndirectX, 8);
+			case 0x33: return RLA(IndirectY, 8);
+			case 0x47: return SRE(ZeroPage, 5);
+			case 0x57: return SRE(ZeroPageX, 6);
+			case 0x4F: return SRE(Absolute, 6);
+			case 0x5F: return SRE(AbsoluteX, 7);
+			case 0x5B: return SRE(AbsoluteY, 7);
+			case 0x43: return SRE(IndirectX, 8);
+			case 0x53: return SRE(IndirectY, 8);
+			case 0x67: return RRA(ZeroPage, 5);
+			case 0x77: return RRA(ZeroPageX, 6);
+			case 0x6F: return RRA(Absolute, 6);
+			case 0x7F: return RRA(AbsoluteX, 7);
+			case 0x7B: return RRA(AbsoluteY, 7);
+			case 0x63: return RRA(IndirectX, 8);
+			case 0x73: return RRA(IndirectY, 8);
+			// ANC (AAC): AND immediate, then copy the result's bit 7 into carry (as if followed by an implicit ASL/ROL). Stable, seen in real code.
+			case 0x0B: case 0x2B: return ANC(Immediate, 2);
+			// LXA (ATX/OAL): genuinely unstable on real silicon (depends on bus capacitance decay,
+			// varies per chip) - unlike ANE/XAA this one IS occasionally emitted by real compiled
+			// code, so rather than crash we approximate with the "magic=0xFF" behavior most NES
+			// 2A03 units and most accurate emulators (Mesen included) settle on: the OR-with-A term
+			// becomes a no-op, so it reduces to A=X=value.
+			case 0xAB: return LXA(Immediate, 2);
+			// SBX (AXS): X = (A&X) - immediate, no borrow-in (unlike SBC), carry set on no-borrow. Stable, seen in real code.
+			case 0xCB: return SBX(Immediate, 2);
 			default:
 				if (IgnoreInvalidOpcodes)
 				{
@@ -594,6 +661,143 @@ public class CPU_FIX : ICPU {
 
 		SetZN(result);
 
+		return baseCycles;
+	}
+
+	// === Unofficial "combined" opcodes ===
+	// LAX: load into both A and X (a real, pure load - conditional page-cross cycle like LDA/LDX).
+	private int LAX(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		A = bus.Read(addr.address);
+		X = A;
+		SetZN(A);
+		return baseCycles + addr.extraCycles;
+	}
+
+	// SAX (AAX): store A&X with no flags affected. Store-only - no indexed-absolute or (zp),Y forms exist on real hardware.
+	private int SAX(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		bus.Write(addr.address, (byte)(A & X));
+		return baseCycles;
+	}
+
+	// DCP (DCM): DEC then CMP against A. Fixed cycle cost, matching this file's existing INC/DEC/ASL-family convention for indexed RMW addressing.
+	private int DCP(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte original = bus.Read(addr.address);
+		byte result = (byte)(original - 1);
+		bus.Write(addr.address, original); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		ushort temp = (ushort)(A - result);
+		SetFlag(FLAG_C, A >= result);
+		SetFlag(FLAG_Z, (temp & 0xFF) == 0);
+		SetFlag(FLAG_N, (temp & 0x80) != 0);
+		return baseCycles;
+	}
+
+	// ISC (ISB/INS): INC then SBC.
+	private int ISC(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte original = bus.Read(addr.address);
+		byte result = (byte)(original + 1);
+		bus.Write(addr.address, original); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		ushort value = (ushort)(result ^ 0xFF);
+		ushort sum = (ushort)(A + value + (GetFlag(FLAG_C) ? 1 : 0));
+		SetFlag(FLAG_C, sum > 0xFF);
+		SetFlag(FLAG_Z, (sum & 0xFF) == 0);
+		SetFlag(FLAG_N, (sum & 0x80) != 0);
+		SetFlag(FLAG_V, ((A ^ sum) & (value ^ sum) & 0x80) != 0);
+		A = (byte)sum;
+		return baseCycles;
+	}
+
+	// SLO (ASO): ASL then ORA.
+	private int SLO(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		SetFlag(FLAG_C, (value & 0x80) != 0);
+		byte result = (byte)(value << 1);
+		bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		A = (byte)(A | result);
+		SetZN(A);
+		return baseCycles;
+	}
+
+	// RLA: ROL then AND.
+	private int RLA(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		bool oldCarry = GetFlag(FLAG_C);
+		SetFlag(FLAG_C, (value & 0x80) != 0);
+		byte result = (byte)((value << 1) | (oldCarry ? 1 : 0));
+		bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		A = (byte)(A & result);
+		SetZN(A);
+		return baseCycles;
+	}
+
+	// SRE (LSE): LSR then EOR.
+	private int SRE(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		SetFlag(FLAG_C, (value & 0x01) != 0);
+		byte result = (byte)(value >> 1);
+		bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		A = (byte)(A ^ result);
+		SetZN(A);
+		return baseCycles;
+	}
+
+	// RRA: ROR then ADC (the ADC's carry-in is the carry ROR just produced, matching real hardware).
+	private int RRA(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		bool oldCarry = GetFlag(FLAG_C);
+		SetFlag(FLAG_C, (value & 0x01) != 0);
+		byte result = (byte)((value >> 1) | (oldCarry ? 0x80 : 0));
+		bus.Write(addr.address, value); // dummy write-back of the unmodified value (real RMW hardware behavior)
+		bus.Write(addr.address, result);
+		ushort sum = (ushort)(A + result + (GetFlag(FLAG_C) ? 1 : 0));
+		SetFlag(FLAG_C, sum > 0xFF);
+		SetFlag(FLAG_Z, (sum & 0xFF) == 0);
+		SetFlag(FLAG_N, (sum & 0x80) != 0);
+		SetFlag(FLAG_V, (~(A ^ result) & (A ^ sum) & 0x80) != 0);
+		A = (byte)sum;
+		return baseCycles;
+	}
+
+	// ANC (AAC): AND immediate, then copy bit 7 of the result into carry.
+	private int ANC(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		A = (byte)(A & bus.Read(addr.address));
+		SetZN(A);
+		SetFlag(FLAG_C, (A & 0x80) != 0);
+		return baseCycles;
+	}
+
+	// LXA (ATX/OAL): see call-site comment - approximated as A=X=value ("magic=0xFF").
+	private int LXA(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		A = value;
+		X = value;
+		SetZN(A);
+		return baseCycles;
+	}
+
+	// SBX (AXS): X = (A&X) - immediate, unsigned subtraction with no borrow-in (unlike SBC).
+	private int SBX(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte value = bus.Read(addr.address);
+		int anded = A & X;
+		int result = anded - value;
+		SetFlag(FLAG_C, anded >= value);
+		X = (byte)result;
+		SetZN(X);
 		return baseCycles;
 	}
 

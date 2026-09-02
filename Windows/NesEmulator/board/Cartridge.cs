@@ -35,6 +35,7 @@ public class Cartridge
 		9 => "MMC2",
 			90 => "Mapper90",
 			228 => "Action52 (Mapper228)",
+			30 => "UNROM-512 (Mapper30)",
 		_ => "Unknown"
 	};
 
@@ -104,7 +105,11 @@ public class Cartridge
 			chrROM = new byte[0]; // No CHR-ROM
 		}
 		prgRAM = new byte[8 * 1024];
-		chrRAM = new byte[8 * 1024];
+		// Mapper 30 (UNROM-512) always uses CHR-RAM banked in 8KB windows, up to 32KB (4 banks) -
+		// give it the extra room so the generic CHR-RAM path (save states, the RTC "CHR" corruption
+		// domain, PeekChr/PokeChr) sees the same memory the mapper actually renders from, instead of
+		// only ever touching a phantom, unbanked first 8KB.
+		chrRAM = new byte[mapperID == 30 ? 32 * 1024 : 8 * 1024];
 
 		// If trainer present, load it into PRG RAM at $7000-$71FF per iNES spec (offset 0x1000 into 8KB $6000-$7FFF range)
 		if (hasTrainer)
@@ -156,6 +161,9 @@ public class Cartridge
 				break;
 			case 228:
 				mapper = new Mapper228(this);
+				break;
+			case 30:
+				mapper = new Mapper30(this); // UNROM-512
 				break;
 			default:
 				#if DIAG_LOG
