@@ -58,9 +58,31 @@ namespace BrokenNes.Windows
                 ("CPU Bus", 65536, "Full CPU address space"),
                 ("PRG ROM", nes.GetPrgRomSize(), "PRG ROM data"),
                 ("PRG RAM", 8192, "PRG RAM/Save RAM"),
-                ("CHR", 8192, "CHR ROM/RAM data")
+                ("CHR", nes.GetChrDomainSize(), "CHR ROM/RAM data")
             };
             return domains;
+        }
+
+        /// <summary>
+        /// CHR domain size, derived from the loaded cartridge (CHR ROM if present, otherwise the
+        /// CHR-RAM allocation) rather than assumed to be a flat 8KB. Cartridges are not all 8KB:
+        /// CHR-ROM carts can be far larger, and mapper 30 (UNROM-512) allocates 32KB of CHR-RAM.
+        /// Hardcoding 8192 here made everything that trusts the reported domain size - the RTC /
+        /// Glitch Harvester "CHR" domain, the hex editor, the /api/memory endpoints - blind to
+        /// everything past the first 8KB even though PeekChr/PokeChr address it fine.
+        /// This mirrors NesMemoryExtensions.GetActualChrSize (the shared copy), which was already
+        /// correct; keep the two in step.
+        /// </summary>
+        private static int GetChrDomainSize(this NES nes)
+        {
+            try
+            {
+                return nes.GetChrSize();
+            }
+            catch
+            {
+                return 0; // No cartridge / unavailable - report 0 rather than a phantom 8KB.
+            }
         }
 
         /// <summary>
@@ -74,7 +96,7 @@ namespace BrokenNes.Windows
                 "CPU Bus" => 65536,
                 "PRG ROM" => nes.GetPrgRomSize(),
                 "PRG RAM" => 8192,
-                "CHR" => 8192,
+                "CHR" => nes.GetChrDomainSize(),
                 _ => throw new ArgumentException($"Unknown domain: {domainName}")
             };
         }

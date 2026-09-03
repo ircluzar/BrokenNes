@@ -38,6 +38,9 @@ public sealed partial class Emulator : IAsyncDisposable
 
     private const string CanvasId = "nes-canvas";
     private const string ClockPrefKey = "web_pref_clockCore";
+    private const string CpuPrefKey = "web_pref_cpuCore";
+    private const string PpuPrefKey = "web_pref_ppuCore";
+    private const string ApuPrefKey = "web_pref_apuCore";
 
     private readonly IJSRuntime JS;
     private DotNetObjectReference<Emulator>? _selfRef;
@@ -65,12 +68,24 @@ public sealed partial class Emulator : IAsyncDisposable
     public List<string> PpuCoreOptions { get; private set; } = new();
     public List<string> ApuCoreOptions { get; private set; } = new();
 
+    // The user's chosen cores, held independently of any live NES. A NES is rebuilt from scratch
+    // on every ROM load - and Reset goes through LoadRomAsync too - and a fresh NES always comes
+    // up on its own compiled-in defaults (CPU_SPD et al). Without a copy of the selection here
+    // there is nothing left to re-apply, so every load/Reset silently dropped the chosen core.
+    private string _cpuSel = string.Empty;
+    private string _ppuSel = string.Empty;
+    private string _apuSel = string.Empty;
+
     // NES.Get*CoreId() returns the raw CLR type name ("CPU_SPD"), but Set*Core() and
     // CoreRegistry.*Ids both use the bare suffix ("SPD"). Normalise so the <select>
     // values actually match the roster.
-    public string CpuCoreSel => StripCorePrefix(_nes?.GetCpuCoreId(), "CPU_");
-    public string PpuCoreSel => StripCorePrefix(_nes?.GetPpuCoreId(), "PPU_");
-    public string ApuCoreSel => StripCorePrefix(_nes?.GetApuCoreId(), "APU_");
+    //
+    // These report what the emulator is *actually* running, not merely what was asked for, so the
+    // dropdown doubles as a readback. Before a ROM exists there is no NES to interrogate, so fall
+    // back to the pending selection - that is what the next load will apply.
+    public string CpuCoreSel => _nes != null ? StripCorePrefix(_nes.GetCpuCoreId(), "CPU_") : _cpuSel;
+    public string PpuCoreSel => _nes != null ? StripCorePrefix(_nes.GetPpuCoreId(), "PPU_") : _ppuSel;
+    public string ApuCoreSel => _nes != null ? StripCorePrefix(_nes.GetApuCoreId(), "APU_") : _apuSel;
 
     private static string StripCorePrefix(string? typeName, string prefix)
         => string.IsNullOrEmpty(typeName) ? string.Empty
@@ -107,16 +122,29 @@ public sealed partial class Emulator : IAsyncDisposable
         try { ApuCoreOptions = CoreRegistry.ApuIds.ToList(); } catch { }
     }
 
-    /// <summary>Restores the persisted clock choice. Separate from Initialize because it needs JS.</summary>
+    /// <summary>
+    /// Restores the persisted clock/CPU/PPU/APU choices. Separate from Initialize because it needs
+    /// JS. Callers must await this before the first LoadRomAsync, otherwise the restored cores miss
+    /// the NES they were meant to be applied to.
+    /// </summary>
     public async Task RestorePreferencesAsync()
+    {
+        ClockCoreSel = await RestorePrefAsync(ClockPrefKey, ClockCoreOptions) ?? ClockCoreSel;
+        _cpuSel = await RestorePrefAsync(CpuPrefKey, CpuCoreOptions) ?? _cpuSel;
+        _ppuSel = await RestorePrefAsync(PpuPrefKey, PpuCoreOptions) ?? _ppuSel;
+        _apuSel = await RestorePrefAsync(ApuPrefKey, ApuCoreOptions) ?? _apuSel;
+    }
+
+    /// <summary>Reads one persisted id, ignoring anything not in the current roster.</summary>
+    private async Task<string?> RestorePrefAsync(string key, List<string> roster)
     {
         try
         {
-            var saved = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", ClockPrefKey);
-            if (!string.IsNullOrWhiteSpace(saved) && ClockCoreOptions.Contains(saved))
-                ClockCoreSel = saved;
+            var saved = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", key);
+            if (!string.IsNullOrWhiteSpace(saved) && roster.Contains(saved)) return saved;
         }
         catch { }
+        return null;
     }
 
     public static bool IsDesktopOnlyApu(string id) =>
@@ -152,6 +180,10 @@ public sealed partial class Emulator : IAsyncDisposable
                 _romBytes = rom;
                 RomName = name;
                 FrameCount = 0;
+                // The Bus (and with it the core roster) only exists once the ROM is in, and it
+                // starts on the compiled-in defaults - so the user's picks have to be re-applied
+                // here, before the first frame runs on the wrong core.
+                ApplySelectedCores();
                 // Run one frame so the canvas shows something before the clock starts.
                 _nes.RunFrame();
                 await JS.InvokeVoidAsync("nesInterop.drawFrame", CanvasId, _nes.GetFrameBuffer());
@@ -219,9 +251,57 @@ public sealed partial class Emulator : IAsyncDisposable
         OnStateChanged?.Invoke();
     }
 
-    public void SetCpuCore(string id) { try { _nes?.SetCpuCore(id); } catch { } OnStateChanged?.Invoke(); }
-    public void SetPpuCore(string id) { try { _nes?.SetPpuCore(id); } catch { } OnStateChanged?.Invoke(); }
-    public void SetApuCore(string id) { try { _nes?.SetApuCore(id); } catch { } OnStateChanged?.Invoke(); }
+    public Task SetCpuCoreAsync(string id) =>
+        SetCoreAsync(id, "CPU", CpuCoreOptions, CpuPrefKey, v => _cpuSel = v, () => _cpuSel, ApplyCpuCore);
+
+    public Task SetPpuCoreAsync(string id) =>
+        SetCoreAsync(id, "PPU", PpuCoreOptions, PpuPrefKey, v => _ppuSel = v, () => _ppuSel, ApplyPpuCore);
+
+    public Task SetApuCoreAsync(string id) =>
+        SetCoreAsync(id, "APU", ApuCoreOptions, ApuPrefKey, v => _apuSel = v, () => _apuSel, ApplyApuCore);
+
+    /// <summary>
+    /// Records a core choice, hot-swaps it into the running NES, and persists it. The choice is
+    /// kept even when there is no NES yet (no ROM loaded): LoadRomAsync re-applies it.
+    /// </summary>
+    private async Task SetCoreAsync(string id, string kind, List<string> roster, string prefKey,
+                                    Action<string> store, Func<string> read, Func<bool> apply)
+    {
+        if (string.IsNullOrWhiteSpace(id) || !roster.Contains(id)) return;
+        var previous = read();
+        store(id);
+        if (_nes != null && !apply())
+        {
+            // Leave the emulator on whatever it is actually running rather than pretending.
+            store(previous);
+            ErrorMessage = $"{kind} core '{id}' could not be activated.";
+            OnStateChanged?.Invoke();
+            return;
+        }
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", prefKey, id); } catch { }
+        OnStateChanged?.Invoke();
+    }
+
+    /// <summary>Pushes the current selections into a freshly built NES. No-op for unset choices.</summary>
+    private void ApplySelectedCores()
+    {
+        var failed = new List<string>();
+        if (!ApplyCpuCore()) failed.Add($"CPU {_cpuSel}");
+        if (!ApplyPpuCore()) failed.Add($"PPU {_ppuSel}");
+        if (!ApplyApuCore()) failed.Add($"APU {_apuSel}");
+        // Never fail silently here: a dropped core choice is exactly the bug this guards against.
+        if (failed.Count > 0) ErrorMessage = "Could not apply " + string.Join(", ", failed) + ".";
+    }
+
+    private bool ApplyCpuCore() => ApplyCore(_cpuSel, s => _nes!.SetCpuCore(s));
+    private bool ApplyPpuCore() => ApplyCore(_ppuSel, s => _nes!.SetPpuCore(s));
+    private bool ApplyApuCore() => ApplyCore(_apuSel, s => _nes!.SetApuCore(s));
+
+    private bool ApplyCore(string id, Func<string, bool> set)
+    {
+        if (_nes == null || string.IsNullOrEmpty(id)) return true;
+        try { return set(id); } catch { return false; }
+    }
 
     // ---- Clock plumbing (mirrors the old Emulator.cs Start/StopClockAsync) ---
 

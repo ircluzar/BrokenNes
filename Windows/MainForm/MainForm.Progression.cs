@@ -70,20 +70,43 @@ namespace BrokenNes.Windows
             return ownedIds?.Any(value => value.Equals(coreId, StringComparison.OrdinalIgnoreCase)) == true;
         }
 
+        // --- FIX family exemption -------------------------------------------------
+        // CPU_FIX/PPU_FIX/APU_FIX are the project's designated accuracy cores: every accuracy fix
+        // lands there and the other cores are frozen. They are baseline engineering equipment, not
+        // collectibles, and no unlock card was ever authored for them - so without this exemption
+        // they never appear in the native core menus and ApplySavedCoreSelections force-downgrades
+        // a saved "FIX" selection back to FMC on every ROM load.
+        // To go back to pure ownership gating (e.g. after authoring real FIX unlock cards), clear
+        // AlwaysAvailableCoreIds below - nothing else needs to change.
+        private static readonly string[] AlwaysAvailableCoreIds = { "FIX" };
+
+        private static bool IsAlwaysAvailableCore(string coreId)
+        {
+            return AlwaysAvailableCoreIds.Any(id => id.Equals(coreId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<string> WithAlwaysAvailableCores(IEnumerable<string>? ownedCoreIds)
+        {
+            return (ownedCoreIds ?? Array.Empty<string>()).Concat(AlwaysAvailableCoreIds);
+        }
+
         private bool IsCpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedCpuIds, coreId);
         }
 
         private bool IsPpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedPpuIds, coreId);
         }
 
         private bool IsApuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedApuIds, coreId);
         }
@@ -94,7 +117,14 @@ namespace BrokenNes.Windows
             return IsOwnedCore(save.OwnedShaderIds, shaderId);
         }
 
+        // Cores go through WithAlwaysAvailableCores so the FIX family is treated as owned (see above);
+        // shaders deliberately do not, so shader gating is unchanged.
         private static string ResolveUnlockedCoreSelection(string? selectedCoreId, IEnumerable<string> availableCoreIds, IEnumerable<string>? ownedCoreIds, string fallbackCoreId)
+        {
+            return ResolveUnlockedSelection(selectedCoreId, availableCoreIds, WithAlwaysAvailableCores(ownedCoreIds), fallbackCoreId);
+        }
+
+        private static string ResolveUnlockedSelection(string? selectedCoreId, IEnumerable<string> availableCoreIds, IEnumerable<string>? ownedCoreIds, string fallbackCoreId)
         {
             var available = availableCoreIds
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -124,7 +154,7 @@ namespace BrokenNes.Windows
 
         private static string ResolveUnlockedShaderSelection(string? selectedShaderId, IEnumerable<string> availableShaderIds, IEnumerable<string>? ownedShaderIds, string fallbackShaderId)
         {
-            return ResolveUnlockedCoreSelection(selectedShaderId, availableShaderIds, ownedShaderIds, fallbackShaderId);
+            return ResolveUnlockedSelection(selectedShaderId, availableShaderIds, ownedShaderIds, fallbackShaderId);
         }
 
         private bool IsRtcStackUnlocked(GameSave? save = null)

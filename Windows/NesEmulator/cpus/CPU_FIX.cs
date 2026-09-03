@@ -330,8 +330,10 @@ public class CPU_FIX : ICPU {
 
 			// === Unofficial "combined" opcodes (stable, well-documented, seen in real compiled
 			// and hand-written code - e.g. cc65-generated NESmaker games use LAX). The genuinely
-			// unstable ones (ANE/XAA, LXA, SHA/SHX/SHY/TAS, LAS) vary between real 2A03 revisions
-			// and are deliberately NOT implemented here - real games don't rely on those.
+			// unstable ones (ANE/XAA, SHA/SHX/SHY/TAS, LAS) vary between real 2A03 revisions and
+			// are deliberately NOT implemented here - real games don't rely on those. LXA (0xAB)
+			// is the one exception: it is unstable too, but real compiled code does emit it, so it
+			// is approximated below rather than left to crash.
 			case 0xA7: return LAX(ZeroPage, 3);
 			case 0xB7: return LAX(ZeroPageY, 4);
 			case 0xAF: return LAX(Absolute, 4);
@@ -394,6 +396,17 @@ public class CPU_FIX : ICPU {
 			case 0xAB: return LXA(Immediate, 2);
 			// SBX (AXS): X = (A&X) - immediate, no borrow-in (unlike SBC), carry set on no-borrow. Stable, seen in real code.
 			case 0xCB: return SBX(Immediate, 2);
+			// ALR (ASR): AND immediate then LSR A. Carry comes from bit 0 of the AND result *before* the
+			// shift (i.e. the bit the LSR shifts out), not from the shifted value. Stable, seen in real code.
+			case 0x4B: return ALR(Immediate, 2);
+			// ARR: AND immediate then ROR A, but with its own famously odd flag behavior - the ALU's adder
+			// is involved, so carry comes from bit 6 of the result and overflow from bit 6 XOR bit 5,
+			// instead of the usual ROR "shifted-out bit 0" carry. Stable, seen in real code.
+			// (ARR's decimal-mode fixup quirk is moot here: the 2A03 has decimal mode disabled.)
+			case 0x6B: return ARR(Immediate, 2);
+			// USBC (SBC immediate, unofficial encoding): an exact alias of the official 0xE9 - same
+			// operation, same flags, same 2 cycles. Compilers/assemblers do emit it. Stable.
+			case 0xEB: return SBC(Immediate, 2);
 			default:
 				if (IgnoreInvalidOpcodes)
 				{
@@ -798,6 +811,33 @@ public class CPU_FIX : ICPU {
 		SetFlag(FLAG_C, anded >= value);
 		X = (byte)result;
 		SetZN(X);
+		return baseCycles;
+	}
+
+	// ALR (ASR): AND immediate then LSR A. Carry is bit 0 of the AND result *before* the shift
+	// (the bit LSR shifts out), so it must be captured before A is overwritten; Z/N come from the
+	// shifted result, which always has bit 7 clear - so N is always cleared here.
+	private int ALR(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte anded = (byte)(A & bus.Read(addr.address));
+		SetFlag(FLAG_C, (anded & 0x01) != 0);
+		A = (byte)(anded >> 1);
+		SetZN(A);
+		return baseCycles;
+	}
+
+	// ARR: AND immediate then ROR A (the old carry still rotates into bit 7, as a real ROR would),
+	// but the flags do NOT follow ROR. On real silicon the AND result also passes through the adder,
+	// so carry is bit 6 of the *result* and overflow is bit 6 XOR bit 5 of the result - the classic
+	// ARR trap. Z/N are normal, taken from the result.
+	private int ARR(Func<AddrResult> mode, int baseCycles) {
+		var addr = mode();
+		byte anded = (byte)(A & bus.Read(addr.address));
+		byte result = (byte)((anded >> 1) | (GetFlag(FLAG_C) ? 0x80 : 0));
+		A = result;
+		SetFlag(FLAG_C, (result & 0x40) != 0);
+		SetFlag(FLAG_V, (((result >> 6) ^ (result >> 5)) & 0x01) != 0);
+		SetZN(A);
 		return baseCycles;
 	}
 

@@ -51,7 +51,7 @@
 
     <label>
         CPU
-        <select value="@emu?.CpuCoreSel" @onchange="e => emu!.SetCpuCore(e.Value?.ToString() ?? string.Empty)">
+        <select value="@emu?.CpuCoreSel" @onchange="e => emu!.SetCpuCoreAsync(e.Value?.ToString() ?? string.Empty)">
             @foreach (var id in emu?.CpuCoreOptions ?? new List<string>())
             {
                 <option value="@id">@id</option>
@@ -61,7 +61,7 @@
 
     <label>
         PPU
-        <select value="@emu?.PpuCoreSel" @onchange="e => emu!.SetPpuCore(e.Value?.ToString() ?? string.Empty)">
+        <select value="@emu?.PpuCoreSel" @onchange="e => emu!.SetPpuCoreAsync(e.Value?.ToString() ?? string.Empty)">
             @foreach (var id in emu?.PpuCoreOptions ?? new List<string>())
             {
                 <option value="@id">@id</option>
@@ -71,7 +71,7 @@
 
     <label>
         APU
-        <select value="@emu?.ApuCoreSel" @onchange="e => emu!.SetApuCore(e.Value?.ToString() ?? string.Empty)">
+        <select value="@emu?.ApuCoreSel" @onchange="e => emu!.SetApuCoreAsync(e.Value?.ToString() ?? string.Empty)">
             @foreach (var id in emu?.ApuCoreOptions ?? new List<string>())
             {
                 <option value="@id">@id@(Emulator.IsDesktopOnlyApu(id) ? "  (desktop only)" : "")</option>
