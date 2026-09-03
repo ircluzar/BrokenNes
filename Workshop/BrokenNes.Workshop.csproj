@@ -62,7 +62,15 @@
          APU_WF + APU_MNES (see the PackageReference comment above). -->
     <Compile Include="$(NesRoot)cpus\**\*.cs"      LinkBase="NesEmulator\cpus" />
     <Compile Include="$(NesRoot)ppus\**\*.cs"      LinkBase="NesEmulator\ppus" />
-    <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus" />
+    <!-- APU_WF.Web.cs / APU_MNES.Web.cs are not additive partials: they are pure-emulation
+         SIBLINGS that REPLACE the native-backend APU_WF.cs / APU_MNES.cs in web-style builds.
+         Compiling both halves defines every member twice (~75 x CS0111/CS8863). Workshop is a
+         desktop dev tool, so it keeps the native versions and drops the .Web ones - exactly what
+         Windows/BrokenNes.Windows.csproj does with its two <Compile Remove> lines. (Web/ does the
+         mirror image: it drops the two base files instead.) Expressed as Exclude rather than a
+         later Remove because these items come in via a linked glob rooted outside this project. -->
+    <Compile Include="$(NesRoot)apus\**\*.cs"      LinkBase="NesEmulator\apus"
+             Exclude="$(NesRoot)apus\APU_WF.Web.cs;$(NesRoot)apus\APU_MNES.Web.cs" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
 

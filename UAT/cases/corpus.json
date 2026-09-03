@@ -1,0 +1,380 @@
+{
+  "schema": 1,
+  "suite": "corpus",
+  "description": "Mapper-coverage breadth, sampled from the 758 .nes files under SubProjects/65-o-borked/bin/Debug/net8.0/roms (the 2847-file count in that folder includes the .chr/.prg/.ines side files). One representative title per mapper. The corpus is NOT in the repo and is NOT redistributable, so these cases SKIP on a machine that does not have it.",
+  "howChosen": "Every .nes file's iNES header was read and grouped by mapper id. 25 distinct mappers are present: 0,1,2,3,4,5,7,9,11,13,34,41,47,64,66,67,68,69,71,79,113,118,119,228,232. Windows/NesEmulator/board/Cartridge.cs implements 0,1,2,3,4,5,7,9,30,33,90,228 - so 9 of the corpus's mappers are runnable and 16 are not. All 16 are listed below as explicit skip entries with the reason, so they are visible rather than silently dropped; mappers 30, 33 and 90 are implemented but have no representative in this corpus (30 is covered by cases/mapper30.json).",
+  "roots": {
+    "corpus": "SubProjects/65-o-borked/bin/Debug/net8.0/roms"
+  },
+  "cases": [
+    {
+      "id": "corpus-m000-nrom-smb",
+      "description": "Mapper 0 (NROM). Super Mario Bros. - the most-exercised NES program there is.",
+      "kind": "romtest",
+      "rom": "{corpus}/Super Mario Bros. (JU) (PRG0) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper0"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C0B7C0CE40EC1C95",
+        "framesRun": 600,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m001-mmc1-zelda",
+      "description": "Mapper 1 (MMC1). The Legend of Zelda - battery-backed WRAM plus MMC1 serial register writes.",
+      "kind": "romtest",
+      "rom": "{corpus}/Legend of Zelda, The (U) (PRG1).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper1"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "A8FE80064FE4E9C7",
+        "framesRun": 600,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m002-unrom-megaman",
+      "description": "Mapper 2 (UNROM). Mega Man - CHR-RAM, bus-conflict-free PRG banking.",
+      "kind": "romtest",
+      "rom": "{corpus}/Mega Man (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper2"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D65A6C59FAE64BF1",
+        "framesRun": 600,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m003-cnrom-arkanoid",
+      "description": "Mapper 3 (CNROM). Arkanoid - CHR-ROM bank switching only.",
+      "kind": "romtest",
+      "rom": "{corpus}/Arkanoid (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper3"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D0E1DB9192D917B3",
+        "framesRun": 600,
+        "distinctColors": 3,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m004-mmc3-smb3",
+      "description": "Mapper 4 (MMC3). Super Mario Bros. 3 - the scanline-IRQ workhorse, and the ROM the SMB3 red-clouds APU/PRG-bank bug was found and fixed on. The single most valuable non-FIX-specific case here.",
+      "kind": "romtest",
+      "rom": "{corpus}/Super Mario Bros. 3 (U) (PRG1) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper4",
+        "irq"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "7D276D78C8C0DB07",
+        "framesRun": 600,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m005-mmc5-cv3",
+      "description": "Mapper 5 (MMC5, partial in this emulator). Castlevania III. Only 3 distinct colours at frame 600, so this case is weaker evidence than the others - it mostly proves MMC5 still loads and does not crash.",
+      "kind": "romtest",
+      "rom": "{corpus}/Castlevania III - Dracula's Curse (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper5"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "CE9785A21CB94A95",
+        "framesRun": 600,
+        "distinctColors": 9,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m007-axrom-battletoads",
+      "description": "Mapper 7 (AxROM). Battletoads - single-screen mirroring and famously timing-sensitive code.",
+      "kind": "romtest",
+      "rom": "{corpus}/Battletoads (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper7",
+        "timing"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C93EE2D95C9EC4AB",
+        "framesRun": 600,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m009-mmc2-punchout",
+      "description": "Mapper 9 (MMC2). Punch-Out!! - CHR latch tile-fetch trickery, driven by PPU reads rather than CPU writes, so it is a PPU-timing case as much as a mapper case.",
+      "kind": "romtest",
+      "rom": "{corpus}/Punch-Out!! (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper9",
+        "ppu"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "EC9EED818F4949A7",
+        "framesRun": 600,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m228-action52",
+      "description": "Mapper 228. Action 52 - a multicart mapper, and the only >100 mapper id this emulator implements that the corpus has a sample of.",
+      "kind": "romtest",
+      "rom": "{corpus}/Action 52 (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper228"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "A910295EBF039FF7",
+        "framesRun": 600,
+        "distinctColors": 4,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m004-mmc3-smb3-fmc",
+      "description": "SMB3 on the FMC stack, as a cross-check that mapper-4 behaviour is being compared across two core families rather than only one.",
+      "kind": "romtest",
+      "rom": "{corpus}/Super Mario Bros. 3 (U) (PRG1) [!].nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "corpus",
+        "mapper4",
+        "fmc"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C28187FF96F5246F",
+        "framesRun": 600,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "corpus-m011-colordreams",
+      "rom": "{corpus}/Adventures of Captain Comic, The (U).nes",
+      "skip": "Mapper 11 (Color Dreams) is not implemented - Cartridge.cs throws UnsupportedMapperException. Verified: --romtest reports 'Mapper 11 (Unknown) is not supported'. 30 corpus ROMs use it.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m013-cprom",
+      "rom": "{corpus}/Videomation (U).nes",
+      "skip": "Mapper 13 (CPROM) is not implemented. Verified: 'Mapper 13 (Unknown) is not supported'. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m034-bnrom",
+      "rom": "{corpus}/Deadly Towers (U).nes",
+      "skip": "Mapper 34 (BNROM/NINA-001) is not implemented. Verified: 'Mapper 34 (Unknown) is not supported'. 2 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m041-caltron",
+      "rom": "{corpus}/Caltron 6-in-1 (U).nes",
+      "skip": "Mapper 41 (Caltron 6-in-1) is not implemented. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m047-mmc3-multicart",
+      "rom": "{corpus}/Super Spike V'Ball + Nintendo World Cup (U) [!].nes",
+      "skip": "Mapper 47 (MMC3 multicart) is not implemented, even though plain mapper 4 is. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m064-rambo1",
+      "rom": "{corpus}/Klax (U).nes",
+      "skip": "Mapper 64 (Tengen RAMBO-1) is not implemented. Verified: 'Mapper 64 (Unknown) is not supported'. 3 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m066-gxrom",
+      "rom": "{corpus}/Super Mario Bros. + Duck Hunt (U).nes",
+      "skip": "Mapper 66 (GxROM) is not implemented. 4 corpus ROMs. Worth noting: GxROM is one of the simplest mappers left unimplemented, so it is the cheapest coverage win available here.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m067-sunsoft3",
+      "rom": "{corpus}/Transformers.nes",
+      "skip": "Mapper 67 (Sunsoft-3) is not implemented. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m068-sunsoft4",
+      "rom": "{corpus}/After Burner (U).nes",
+      "skip": "Mapper 68 (Sunsoft-4) is not implemented. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m069-fme7",
+      "rom": "{corpus}/Batman - Return of the Joker (U).nes",
+      "skip": "Mapper 69 (Sunsoft FME-7) is not implemented. 1 corpus ROM.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m071-camerica",
+      "rom": "{corpus}/Bee 52 (U).nes",
+      "skip": "Mapper 71 (Camerica/Codemasters) is not implemented. Verified: 'Mapper 71 (Unknown) is not supported'. 11 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m079-nina003",
+      "rom": "{corpus}/Blackjack (U).nes",
+      "skip": "Mapper 79 (NINA-003/006, American Video Entertainment) is not implemented. 11 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m113-nina003-alt",
+      "rom": "{corpus}/Deathbots (U).nes",
+      "skip": "Mapper 113 (NINA-003 variant with mirroring control) is not implemented. 2 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m118-txsrom",
+      "rom": "{corpus}/Alien Syndrome (U).nes",
+      "skip": "Mapper 118 (TxSROM / MMC3 with per-bank mirroring) is not implemented, despite plain mapper 4 being implemented. 4 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m119-tqrom",
+      "rom": "{corpus}/High Speed (U).nes",
+      "skip": "Mapper 119 (TQROM / MMC3 with CHR-RAM) is not implemented, despite plain mapper 4 being implemented. 2 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    },
+    {
+      "id": "corpus-m232-camerica-quattro",
+      "rom": "{corpus}/Quattro Adventure (U).nes",
+      "skip": "Mapper 232 (Camerica Quattro) is not implemented. Verified: 'Mapper 232 (Unknown) is not supported'. 3 corpus ROMs.",
+      "tags": [
+        "corpus",
+        "unsupported"
+      ]
+    }
+  ],
+  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+}

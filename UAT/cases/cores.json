@@ -1,0 +1,294 @@
+{
+  "schema": 1,
+  "suite": "cores",
+  "description": "One ROM, many core stacks. This is the manifest that makes a CORE regression visible rather than a ROM regression: every case below runs the identical ROM for the identical number of frames, so any hash that moves points straight at the core that differs. Measured relationships on the day these goldens were recorded (2026-09-03) - if one of these stops holding, that IS the finding: (a) FIX/FIX/FIX differs from FMC/FMC/FMC; (b) on this ROM the difference is entirely the PPU - swapping only CPU_FMC->CPU_FIX or only APU_FMC->APU_FIX leaves the framebuffer byte-identical, while swapping only PPU_FMC->PPU_FIX reproduces the full FIX/FIX/FIX hash; (c) each gimmick PPU (LQ, ULQ, BFR) produces its own distinct hash, which is what locks its 'personality' in place.",
+  "roots": {
+    "story": "Windows/bin/Release/net10.0-windows/win-x64/Data/story"
+  },
+  "cases": [
+    {
+      "id": "cores-binty-fix-fix-fix",
+      "description": "Accuracy-target stack. Baseline for every comparison in this file.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "480B5D67BD5BF30D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-fmc-fmc-fmc",
+      "description": "The FMC family the FIX family was forked from. MUST differ from cores-binty-fix-fix-fix; if these two ever produce the same hash, either a FIX core silently reverted to FMC behaviour or the core switch stopped taking effect.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "fmc"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ECFF007C2A73C32D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-cpufix-only",
+      "description": "CPU_FIX with FMC PPU/APU. Isolates the CPU: on this ROM its hash matches cores-binty-fmc-fmc-fmc, i.e. CPU_FIX and CPU_FMC are pixel-equivalent here.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "isolate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ECFF007C2A73C32D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-ppufix-only",
+      "description": "PPU_FIX with FMC CPU/APU. Isolates the PPU: on this ROM its hash matches cores-binty-fix-fix-fix, i.e. the PPU is the entire source of the FIX-vs-FMC difference.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FMC",
+      "ppu": "FIX",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "isolate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "480B5D67BD5BF30D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-apufix-only",
+      "description": "APU_FIX with FMC CPU/PPU. Isolates the APU. A framebuffer hash cannot see audio directly - what it can see is APU-driven timing (frame counter, IRQ, DMC stalls) leaking into what the CPU renders, which is exactly how the SMB3 red-clouds bug showed up.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "isolate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ECFF007C2A73C32D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-defaults",
+      "description": "No --cpu/--ppu/--apu at all: whatever NES.LoadROM() picks by default. Guards the default core selection, which nothing else in the suite exercises.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "default"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ECFF007C2A73C32D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-ppu-lq",
+      "description": "PPU_LQ - an intentional gimmick core, not an accuracy target. Its golden exists to keep its personality stable, not to assert it is right.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "LQ",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "gimmick"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "31FD909387AE7E51",
+        "framesRun": 600,
+        "distinctColors": 8,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-ppu-ulq",
+      "description": "PPU_ULQ - intentional gimmick core. Golden locks its personality only.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "ULQ",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "gimmick"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "0CC211F6A46F5325",
+        "framesRun": 600,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-ppu-bfr",
+      "description": "PPU_BFR. Golden locks its output only.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "BFR",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "gimmick"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "65A7BB59A86E1DC9",
+        "framesRun": 600,
+        "distinctColors": 17,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-spd-all",
+      "description": "The speed-oriented SPD family across all three sockets. Covers the fast paths (batching, scanline shortcuts) that the FIX family deliberately does not take.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "SPD",
+      "ppu": "SPD",
+      "apu": "SPD",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "speed"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D2C55BAD6E91B745",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-binty-low-all",
+      "description": "The LOW family across all three sockets.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "LOW",
+      "ppu": "LOW",
+      "apu": "LOW",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "gimmick"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "ECFF007C2A73C32D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-jimmy3-fix",
+      "description": "A second ROM in the FIX-vs-FMC pair, so the relationship in this file is not a property of one ROM alone.",
+      "kind": "romtest",
+      "rom": "{story}/page3_jimmy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D6BBDD1FC093C67B",
+        "framesRun": 600,
+        "distinctColors": 16,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "cores-jimmy3-fmc",
+      "description": "FMC counterpart of cores-jimmy3-fix. Must differ from it.",
+      "kind": "romtest",
+      "rom": "{story}/page3_jimmy.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "cores",
+        "fmc"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E549357C38A73AAF",
+        "framesRun": 600,
+        "distinctColors": 16,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+}

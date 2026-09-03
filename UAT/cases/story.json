@@ -1,0 +1,210 @@
+{
+  "schema": 1,
+  "suite": "story",
+  "description": "The story-mode ROMs the game ships with. They are guaranteed present in a Release build of BrokenNes.Windows, they render real content (not a black screen), and they are the only ROMs in this suite that live inside the repo - so this manifest is the part of the suite that can run on any machine that has built the project.",
+  "roots": {
+    "story": "Windows/bin/Release/net10.0-windows/win-x64/Data/story"
+  },
+  "cases": [
+    {
+      "id": "story-page1-binty-fix",
+      "description": "Binty page 1, the accuracy-target core stack. The canonical smoke case.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "480B5D67BD5BF30D",
+        "framesRun": 600,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page1-jimmy-fix",
+      "description": "Jimmy page 1 on FIX/FIX/FIX.",
+      "kind": "romtest",
+      "rom": "{story}/page1_jimmy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "548AC7B8BBEB584B",
+        "framesRun": 600,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page1-skully-fix",
+      "description": "Skully page 1 on FIX/FIX/FIX. Lowest colour count of the page-1 set (5) - a good canary for a palette or background regression.",
+      "kind": "romtest",
+      "rom": "{story}/page1_skully.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "452E6CBF964AB87D",
+        "framesRun": 600,
+        "distinctColors": 5,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page1-sloppy-fix",
+      "description": "Sloppy page 1 on FIX/FIX/FIX.",
+      "kind": "romtest",
+      "rom": "{story}/page1_sloppy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "417CF2F1DB9E48FD",
+        "framesRun": 600,
+        "distinctColors": 13,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page2-jimmy-fix",
+      "description": "Jimmy page 2 on FIX/FIX/FIX. Richest palette in the story set (15 distinct colours).",
+      "kind": "romtest",
+      "rom": "{story}/page2_jimmy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "A569361287B1BE41",
+        "framesRun": 600,
+        "distinctColors": 15,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page3-jimmy-fix",
+      "description": "Jimmy page 3 on FIX/FIX/FIX.",
+      "kind": "romtest",
+      "rom": "{story}/page3_jimmy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D6BBDD1FC093C67B",
+        "framesRun": 600,
+        "distinctColors": 16,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page4-binty-fix",
+      "description": "Binty page 4 on FIX/FIX/FIX.",
+      "kind": "romtest",
+      "rom": "{story}/page4_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "2DFA874555E7973D",
+        "framesRun": 600,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page5-fix",
+      "description": "The shared page-5 finale ROM on FIX/FIX/FIX.",
+      "kind": "romtest",
+      "rom": "{story}/page5.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "story",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "03C565523A8544FB",
+        "framesRun": 600,
+        "distinctColors": 7,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "story-page1-binty-short",
+      "description": "Same ROM as story-page1-binty-fix but only 120 frames - catches an early-boot regression that a later frame might have washed out, and is the fastest case in the suite.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 120,
+      "tags": [
+        "story",
+        "fix",
+        "quick"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1FD8772BA34B9385",
+        "framesRun": 120,
+        "distinctColors": 12,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+}

@@ -11,6 +11,65 @@ Workshop is also the intended vehicle for benchmarking BrokenNes's accuracy agai
 [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) — see the headless mode below, which
 shares the exact same linked cores as the interactive UI.
 
+## CLI modes at a glance — what you can actually run right now
+
+`Program.cs` dispatches on `argv[0]`. Twelve modes exist. One is blocked on a missing asset; five
+draw their inputs from **a separate project that is not in this repo** (and a sixth,
+`--verify-selfplay-movie`, consumes one of those five's output). See the notes under the table.
+
+| Mode (`argv[0]`) | What it does | Needs, beyond the built `.exe` | Runnable on this machine? |
+| --- | --- | --- | --- |
+| `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
+| `--headless` | One-shot run → SHA-256 frame hash, CPU regs, optional PNG | any `.nes` | **Yes** |
+| `--benchmark` | `NES.RunBenchmarks()` speed numbers (the FIX accuracy-vs-speed gate) | any `.nes` | **Yes** |
+| `--diag-savestate-roundtrip` | Is `SaveState`/`LoadState` itself lossy? Frame-by-frame | any `.nes` | **Yes** |
+| `--irqtrace` | Instruction ring-buffer trace / raw memory dump around a boot hang | any `.nes` | **Yes** |
+| `--playmovie` | Replay an FCEUX `.fm2`; optional re-record + `nesreflex-raw-v2` dump | a `.fm2` + its ROM → **external** | **Yes** (external tree present) |
+| `--index-tas-library` | MD5-pair movies ↔ ROMs into a manifest (name matching is not safe) | ROM dir + movie dir → **external** | **Yes** (external tree present) |
+| `--tas-baseline-batch` | Replay every manifest pair, dump a trace each, classify OK/CRASHED/INCOMPLETE | manifest + **external** | **Yes** (external tree present) |
+| `--compare-dumps` | Diff a BrokenNes trace against an FCEUX-fork trace, field by field | one FCEUX-produced `.raw` → **external** | **Yes** (external tree present) |
+| `--selfplay` | Live SMB1 self-play against the NESReflex Python inference server | Python venv + model checkpoint + metadata + SMB1 ROM → **external** | **Yes** (external tree present) |
+| `--verify-selfplay-movie` | Replay a self-play `.fm2` against its `.witness.json`, frame for frame | output of a `--selfplay` run | **Yes** |
+| `--accuracycoin` | The 141-test [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) harness, single combo or full matrix | **`AccuracyCoin.nes`** | **No — asset absent** |
+
+**`AccuracyCoin.nes` is not on this machine.** It is MIT-licensed third-party (~40KB) and
+deliberately not committed here. A whole-of-`C:` search on 2026-09-03 found only this repo's own
+`AccuracyCoinCli.cs` / `AccuracyCoinRunner.cs` / `AccuracyCoinTests.cs` — zero `.nes`. Without it
+`--accuracycoin` exits 2 (`Failed to read ROM`). To use it, build or download the ROM from
+[100thCoin/AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) and pass its path to `--rom`.
+Everything else in that section below is real, working code waiting on that one file.
+
+**"external" above means the `ML_NesPlayer` side project — present, but not part of this repo.**
+It lives at `C:\Users\philt\OneDrive\Documents\PROJECTS\!!! Experiments\ML_NesPlayer` (note the
+`!!! Experiments` folder — it is *not* directly under `PROJECTS\`, which is an easy way to
+wrongly conclude it is missing). It is not version-controlled with BrokenNes, so treat it as a
+machine-local dependency that can disappear. What the **external**-marked modes consume from it:
+
+| Asset | Path under `…\!!! Experiments\ML_NesPlayer\` | Verified 2026-09-03 |
+| --- | --- | --- |
+| ROM library (758 `.nes`) | `TAS\Nintendo Entertainment System\` | present |
+| `.fm2` movie library (348 in `tas\`, 407 total) | `TAS\tas\` | present |
+| Custom FCEUX fork (source + built `fceux64.exe`) | `TAS\fceux_custom\` | present |
+| FCEUX-produced `nesreflex-raw-v2` dumps (210 `.raw`) | `data\raw_dumps_ppu_v2\batch\` | present |
+| Python venv (3.10.6, torch 2.11.0+cu128, CUDA available) | `.venv\Scripts\python.exe` | present |
+| Inference server (protocol v2, unmodified) | `scripts\nesreflex_inference_server.py` | present |
+| Model checkpoint (19,802,413 params, 227MB) | `data\checkpoints\overnight_ppu_v2\epoch_0001.pt` | present |
+| Metadata parquet (277MB) | `data\metadata_ppu_v2\samples.parquet` | present |
+
+That path is also hardcoded in two places: `WorkshopForm.cs:39` (the interactive "Self-Play
+(SMB1)" checkbox's ROM auto-load) and `RunSmb1SelfPlay.bat` (`ML_ROOT`). If the folder moves,
+those two need editing, not just your command line.
+
+**How the table was checked (2026-09-03):** every "Yes" row was *run*, not assumed — `--romtest`
+/`--headless`/`--benchmark`/`--irqtrace`/`--diag-savestate-roundtrip` on
+`Windows/Data/story/page1_jimmy.nes`; `--playmovie` on `meshuggah-ghostbusters.fm2` +
+`Ghostbusters (U).nes` (300 frames, dump written); `--index-tas-library` over the real library
+(348 movies → 192 checksum-matched pairs); `--tas-baseline-batch` on a 2-pair manifest (both
+`OK`, full movies, 19,677 and 48,401 frames); `--compare-dumps` against a real FCEUX-fork
+`pair_0002.raw`; `--selfplay` for 600 frames against the live server with the real checkpoint;
+`--verify-selfplay-movie` on that run's export (`Pass: true`, 600/600 frames, 0 mismatches).
+`--accuracycoin` is the only mode that could not be run.
+
 ## Relationship to the other two variants
 
 `Windows/NesEmulator/` remains the single source of truth for every core. Workshop links those
@@ -85,7 +144,38 @@ Verified: deterministic (identical ROM + cores + frame count → identical hash 
 runs), core selection genuinely changes core IDs and (on ROMs with real content) the resulting
 hash, and `--strict` measurably changes output on a real ROM.
 
+## Run (the other four ROM-only modes)
+
+**Requires: nothing but a `.nes` file.** All four run today; each has a fuller doc comment at the
+top of its own `*Cli.cs`.
+
+```bash
+# Pass/fail gate. Exit 0 clean | 1 crashed | 2 usage/IO | 3 core not applied | 4 unsupported mapper | 5 unexpected.
+BrokenNes.Workshop.exe --romtest --rom path.nes [--cpu ID --ppu ID --apu ID] [--frames N] \
+    [--input "60:Start,90:Right+A,120:"] [--json] [--out result.json]
+
+# Speed numbers - the FIX-core accuracy-vs-speed gate (RomTestCli/BenchmarkCli share exit codes).
+BrokenNes.Workshop.exe --benchmark --rom path.nes [--cpu ID --ppu ID --apu ID] [--weight N] [--out result.json]
+
+# Is SaveState/LoadState itself lossy? Compares every frame after a zero-elapsed round trip.
+BrokenNes.Workshop.exe --diag-savestate-roundtrip --rom path.nes [--cpu ID --ppu ID --apu ID] \
+    [--warmup-frames N] [--continue-frames N] [--strict]
+
+# Instruction ring-buffer trace into a boot hang/crash; or raw bytes at a CPU address.
+BrokenNes.Workshop.exe --irqtrace --rom path.nes --cpu ID --ppu ID --apu ID [--frames-before N] \
+    [--ring N] [--max-instr N] [--dump-addr XXXX --dump-len N] [--watch XXXX,YYYY,...]
+```
+
+`--romtest` and `--diag-savestate-roundtrip` are also the two gated case kinds behind
+`UAT/run-suite.ps1`, which adds the expected-value/diff/exit-non-zero layer these print-only
+tools lack. `--benchmark` is wired in there too, informationally.
+
 ## Run (AccuracyCoin benchmark)
+
+> **Requires `AccuracyCoin.nes`, which is NOT on this machine** (verified 2026-09-03 by a
+> whole-`C:` search — see the table at the top). Obtain it from
+> [100thCoin/AccuracyCoin](https://github.com/100thCoin/AccuracyCoin). Everything below is
+> implemented and waiting on that one file; do not rewrite it.
 
 Drives [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) (100thCoin/AccuracyCoin, a
 141-test NES accuracy ROM) to completion and reads its results directly out of RAM. The whole
@@ -138,10 +228,17 @@ checkpoint to `--out` every 50 completions so a long run doesn't lose everything
 The first three of a four-phase TAS/self-play port (a separate side project, `ML_NesPlayer`, has a
 custom FCEUX fork this mirrors — see the architecture research doc for the full source system).
 
+> **Requires a `.fm2` movie and the exact ROM it was recorded against.** There are **zero `.fm2`
+> files in this repo** — they come from the external `ML_NesPlayer` tree
+> (`…\!!! Experiments\ML_NesPlayer\TAS\tas\`, 348 movies, present as of 2026-09-03; full asset
+> table at the top of this file). Nothing here reads that path automatically: you always pass
+> `--movie` and `--rom` explicitly, so any `.fm2` + ROM pair works.
+
 ```bash
 BrokenNes.Workshop.exe --playmovie --movie path.fm2 --rom path.nes \
-    [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--out result.json] [--screenshot out.png] \
-    [--record-out copy.fm2] [--dump-out trace.raw]
+    [--cpu ID --ppu ID --apu ID] [--max-frames N] [--strict] [--ntsc-frame-rate] \
+    [--out result.json] [--screenshot out.png] [--record-out copy.fm2] [--dump-out trace.raw] \
+    [--trace-out t.log --trace-start-frame N --trace-end-frame N]
 ```
 
 **Phase 1 — playback** (`Tas/Fm2Movie.cs`) parses FCEUX's FM2 format and drives it through the
@@ -177,7 +274,50 @@ equivalent across BrokenNes's 7 CPU cores, written as 0) and `screen_hash` (CRC3
 framebuffer here vs. FCEUX's 8bpp indexed buffer there — same algorithm, different input, so only
 useful as an internal dedup signal, not a cross-emulator comparison).
 
+## Run (TAS library indexing, bulk baselines, cross-emulator diff, movie verification)
+
+Four more modes the sections above don't cover. The first three exist to run BrokenNes against the
+**FCEUX fork** at scale; the fourth checks BrokenNes against itself.
+
+> **The first three require the external `ML_NesPlayer` tree** (ROM library, `.fm2` library, and
+> for `--compare-dumps` a `.raw` produced by that project's FCEUX fork). All present as of
+> 2026-09-03 — see the asset table at the top. `--verify-selfplay-movie` needs only the output of
+> a `--selfplay` run, so it is self-contained once you have one.
+
+```bash
+# Pair movies to ROMs by the movie header's PRG+CHR MD5, never by filename (a same-named ROM can be
+# the wrong revision - confirmed on Abadox). 348 movies -> 192 matched pairs on the real library.
+BrokenNes.Workshop.exe --index-tas-library --roms-dir <dir> --movies-dir <dir> --out manifest.json
+
+# Replay every matched pair through the FIX cores, dump a nesreflex-raw-v2 trace each, classify
+# OK / CRASHED / INCOMPLETE into a CSV. One process for all games (the FCEUX side needs one per game).
+BrokenNes.Workshop.exe --tas-baseline-batch --manifest manifest.json --movies-dir <dir> \
+    --dump-dir <dir> --out results.csv [--cpu FIX --ppu FIX --apu FIX]
+
+# The actual cross-emulator check: diff an FCEUX-fork trace against a BrokenNes trace of the same
+# movie, field by field (IRQlow and screen_hash are excluded by design - see NesReflexDumpWriter).
+BrokenNes.Workshop.exe --compare-dumps --a fceux.raw --b brokennes.raw [--out result.json] [--max-mismatches N]
+
+# Replay an exported self-play .fm2 and compare each frame against the live session's recorded
+# witness hashes. Catches dropped/duplicated frames and truncation off-by-ones, not just "it replays".
+BrokenNes.Workshop.exe --verify-selfplay-movie --movie path.fm2 --rom path.nes \
+    [--witness path.fm2.witness.json] [--out result.json]
+```
+
+**`--compare-dumps` runs, but do not read a green tool as a green result.** A 2026-09-03 run of
+BrokenNes (FIX/FIX/FIX) vs. the FCEUX fork's `pair_0002.raw` on the same movie reported a 1-frame
+count difference (7,394 vs 7,393) and mismatches on essentially every compared frame, starting at
+frame 0. That is an **open, uninvestigated question about cross-emulator parity**, not a broken
+CLI and not a known regression — it is recorded here only so the next person doesn't assume this
+harness currently demonstrates agreement with FCEUX.
+
 ## Run (SMB1 self-play)
+
+> **Requires the external `ML_NesPlayer` tree**: the Python venv, the inference server script, the
+> 227MB model checkpoint, the 277MB metadata parquet, and an SMB1 ROM. All present and working as
+> of 2026-09-03 (a 600-frame headless run connected, served every frame from the real 19.8M-param
+> checkpoint, and its exported movie verified `Pass: true`). Full asset table at the top of this
+> file. Nothing here is a mock — if that tree is gone, this mode has no server to talk to.
 
 Phase 4 — live self-play against the source project's Python inference server
 (`scripts/nesreflex_inference_server.py`, protocol v2, **unmodified** — this is a client for the
@@ -192,7 +332,8 @@ see `Tas/SelfPlay/`'s per-file doc comments for exact line references into the s
 `RunSmb1SelfPlay.bat` (starts the inference server, waits for the model to load, opens the
 Workshop window), or start the server yourself and launch `BrokenNes.Workshop.exe` with no
 arguments. Either way, check the **"Self-Play (SMB1)"** box — it auto-loads the SMB1 ROM (from
-the sibling `ML_NesPlayer` project) if a different one is loaded, connects to the pipe, and starts
+the external `ML_NesPlayer` tree, path hardcoded at `WorkshopForm.cs:39`) if a different one is
+loaded, connects to the pipe, and starts
 playback. The model can never press Start itself (matching the source's default profile), so click
 the game screen and press **Enter** once to begin a fresh run, the same role a person clicking
 "Start Autoplay" then pressing Start plays in the source project's UI. The status bar shows live
@@ -238,6 +379,13 @@ frame where neither controller port was polled at all).
 
 ## Gotchas worth knowing
 
+- **This is a `WinExe`, so PowerShell will not wait for it unless you pipe.** Measured
+  2026-09-03: `& $exe --romtest ... --json` returned in **0.01s** with no output and no
+  `$LASTEXITCODE` — the process detached and the script sailed on past it. The same command as
+  `& $exe ... 2>&1 | Out-String -Stream` blocked for the real 1.18s, printed the JSON, and set
+  `$LASTEXITCODE` correctly (spot-checked 0 / 2 / 3 against `--romtest`'s documented codes). Drain
+  the whole pipeline — an early `Select-Object -First N` kills the process and leaves
+  `$LASTEXITCODE` empty. Every headless mode here is affected, not just `--romtest`.
 - **The boot ROM needs an explicit copy-to-output step.** Unlike `Web/`'s `wwwroot` (copied to
   the publish output automatically by the Blazor SDK), a plain WinForms project needs one — both
   `WorkshopForm.LoadBootRom()` and `HeadlessRunner` read relative to

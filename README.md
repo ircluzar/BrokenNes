@@ -88,14 +88,33 @@ That design choice is part of the appeal. BrokenNes is willing to let an emulato
 - `Windows/NesEmulator/`: emulator core, cores, mappers, shaders, RetroAchievements support, and corruption systems.
 - `Workshop/`: **experimental** minimal WinForms tool for developing/debugging the shared cores
   directly - frame/instruction stepping, register and memory viewers, core switching, save
-  states, plus a headless CLI mode for scripted accuracy runs (see
-  [Workshop/README.md](Workshop/README.md)). Links the same cores in `Windows/NesEmulator/`. Part
-  of `BrokenNes.sln` - it's a plain WinForms app with none of `Web/`'s AOT/trimming complexity.
+  states, plus twelve headless CLI modes for scripted accuracy, benchmark, TAS-replay and
+  self-play runs (see [Workshop/README.md](Workshop/README.md) and the Tooling map below). Links
+  the same cores in `Windows/NesEmulator/`. Part of `BrokenNes.sln` - it's a plain WinForms app
+  with none of `Web/`'s AOT/trimming complexity.
 - `Web/`: **experimental** minimal Blazor WebAssembly build of just the emulator (no shaders, no
   progression/corruption features), linking the same cores in `Windows/NesEmulator/`. See
   [Web/README.md](Web/README.md). Not part of `BrokenNes.sln` by design - build/run it by path.
+- `UAT/`: regression suite and automation harness (`run-suite.ps1`, HTTP/UIA client libraries,
+  recorded findings). Not shipped; see the Tooling map below.
 - `docs/`: project notes, progression specs, RetroAchievements references, shader docs, and design workpads.
 - `SubProjects/`: related experiments and auxiliary work.
+
+## Tooling map
+
+These exist, work, and are easy to miss — this section is here so nobody rebuilds one of them by
+accident. All paths are repo-relative.
+
+| Tool | What it is | Start here |
+| --- | --- | --- |
+| **Workshop headless CLIs** | Twelve `argv[0]` modes on `Workshop/bin/Release/net10.0-windows/BrokenNes.Workshop.exe`, sharing the exact linked cores as the app: `--romtest`, `--headless`, `--benchmark`, `--diag-savestate-roundtrip`, `--irqtrace`, `--playmovie`, `--index-tas-library`, `--tas-baseline-batch`, `--compare-dumps`, `--selfplay`, `--verify-selfplay-movie`, `--accuracycoin`. The fastest way to test an emulation change — no UI, no audio device. | [Workshop/README.md](Workshop/README.md) — its "CLI modes at a glance" table says which need an external asset and whether that asset is on this machine |
+| **`UAT/run-suite.ps1`** | The verdict layer the CLIs lack: `UAT/cases/*.json` holds expected values, the runner produces actuals, diffs them, and exits non-zero on disagreement. `-Filter`, `-UpdateGolden`, `-Repeat`, `-Json`. A green run proves determinism, not correctness. | `.\UAT\run-suite.ps1 -Filter 'diag*'` |
+| **`UAT/lib/ApiClient.ps1`** | PowerShell client for the desktop app's loopback HTTP control API — load ROMs, swap cores/shaders, peek/poke, read registers and the framebuffer, fire RTC blasts, save/load state. **The preferred way to drive `BrokenNes.Windows.exe` in tests.** | [Windows/webapi/README.md](Windows/webapi/README.md) documents all ~148 endpoints |
+| **`UAT/lib/UiaHelpers.ps1`** | UI Automation fallback, for the few things HTTP cannot reach: native MenuStrip item states, WebView2 DOM, message boxes, screenshots. Its header documents the modal-dialog `Invoke()` hang that has burned multiple sessions — read it before automating any menu item that opens a dialog. | Reach for it only after checking no endpoint covers the need |
+| **`Windows/webapi/README.md`** | Endpoint reference for the control API above, grouped by route file. | — |
+
+Nothing under `UAT/` is part of a shipped product; it is a test harness and no shipped project
+references it.
 
 ## Building
 

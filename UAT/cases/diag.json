@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "suite": "diag",
+  "description": "The non-framebuffer gates. Two kinds live here. 'savestate' runs --diag-savestate-roundtrip and IS gated: it compares a continuously-played NES against an identical one that did a SaveState+LoadState round trip mid-play, frame by frame, and fails if any state the savestate is responsible for came back different. (A framebuffer-only immediate difference is expected and benign - the framebuffer is a render target, not machine state - and that is why the verdict string below says so; the false failure that used to come from treating it as a fault was fixed on 2026-09-02.) 'benchmark' runs --benchmark and is INFORMATIONAL ONLY: timing is machine-dependent, so it is printed and never affects the exit code.",
+  "roots": {
+    "story": "Windows/bin/Release/net10.0-windows/win-x64/Data/story",
+    "corpus": "SubProjects/65-o-borked/bin/Debug/net8.0/roms"
+  },
+  "cases": [
+    {
+      "id": "diag-savestate-binty-fix",
+      "description": "Savestate round trip on a bundled story ROM with the accuracy-target cores.",
+      "kind": "savestate",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 180,
+      "continueFrames": 120,
+      "tags": [
+        "diag",
+        "savestate",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-binty-fmc",
+      "description": "Same round trip on the FMC family, so a serialisation regression in one family cannot hide behind the other.",
+      "kind": "savestate",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "warmupFrames": 180,
+      "continueFrames": 120,
+      "tags": [
+        "diag",
+        "savestate",
+        "fmc"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-jimmy3-fix",
+      "description": "A second story ROM, so the savestate gate is not a property of one ROM.",
+      "kind": "savestate",
+      "rom": "{story}/page3_jimmy.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 180,
+      "continueFrames": 120,
+      "tags": [
+        "diag",
+        "savestate",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-smb3-fix",
+      "description": "Savestate round trip on MMC3/SMB3 - mapper bank state and scanline-IRQ counters are the parts of a savestate most likely to be forgotten. SKIPs when the 65-o-borked corpus is not on the machine.",
+      "kind": "savestate",
+      "rom": "{corpus}/Super Mario Bros. 3 (U) (PRG1) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 180,
+      "continueFrames": 120,
+      "tags": [
+        "diag",
+        "savestate",
+        "mapper4"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "bench-binty-fix",
+      "description": "INFORMATIONAL. Speed of the accuracy-target stack. Never gates. Its point is the FIX-vs-FMC delta on the line below: the project policy is that an accuracy fix which meaningfully regresses speed for marginal gain should be rejected, and this row is how you notice.",
+      "kind": "benchmark",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "weight": 1,
+      "informational": true,
+      "tags": [
+        "diag",
+        "benchmark",
+        "fix"
+      ]
+    },
+    {
+      "id": "bench-binty-fmc",
+      "description": "INFORMATIONAL. Same ROM on FMC, as the speed reference point FIX is judged against.",
+      "kind": "benchmark",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "weight": 1,
+      "informational": true,
+      "tags": [
+        "diag",
+        "benchmark",
+        "fmc"
+      ]
+    },
+    {
+      "id": "bench-binty-spd",
+      "description": "INFORMATIONAL. The speed-oriented SPD family, as the upper bound of what these cores can do on this machine.",
+      "kind": "benchmark",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "SPD",
+      "ppu": "SPD",
+      "apu": "SPD",
+      "weight": 1,
+      "informational": true,
+      "tags": [
+        "diag",
+        "benchmark",
+        "speed"
+      ]
+    }
+  ],
+  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+}
