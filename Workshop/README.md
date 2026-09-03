@@ -176,7 +176,8 @@ BrokenNes.Workshop.exe --irqtrace --rom path.nes --cpu ID --ppu ID --apu ID [--f
 
 ```bash
 BrokenNes.Workshop.exe --trace --rom path.nes --out trace.txt [--cpu ID --ppu ID --apu ID] \
-    [--frames N] [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off]
+    [--frames N] [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off] \
+    [--power-on-ram fceux|zeros|ones]
 ```
 
 Exit codes are `--romtest`'s. `--out -` writes to stdout. The input-script parser is literally
@@ -205,8 +206,14 @@ always one of these disagreeing rather than a real emulation defect:
   Check this first on any frame-0 disagreement. BrokenNes fills power-on RAM with the repeating
   8 bytes `00 00 00 00 FF FF FF FF` (`Bus.InitializeRamPowerOnPattern`,
   `Windows/NesEmulator/board/Bus.cs:222`, called from the ctor at `Bus.cs:198`) — FCEUX's default
-  `RAMInitOption=0`. Hash: `9230156049936eb0`. Mesen randomizes power-on RAM by default and must be
-  forced to a matching static fill, or frame 0 differs for a reason that is not an emulation bug.
+  `RAMInitOption=0`. Hash: `9230156049936eb0`. **Mesen cannot produce this pattern.** It randomizes
+  power-on RAM by default and its `ramPowerOnState` offers only all-zeros / all-ones / random — so
+  on that pairing the two sides genuinely cannot agree at frame 0 unless one bends. `--power-on-ram`
+  is where BrokenNes bends: `zeros` (hash `e5a00aa9991ac8a5`) pairs with Mesen's `AllZeros`, `ones`
+  (`d0ff1b294b5288d1`) with `AllOnes`. It changes no default and the choice is recorded in the
+  header. Note this is not free: FCEUX's pattern is load-bearing for `.fm2` portability, and games
+  that read uninitialized RAM at boot (RNG seeding, high-score tables) will take a different path
+  under a flat fill on *both* emulators — a shared, deliberate deviation rather than a silent one.
 - `ntsc-frame-timing` — **defaults to `on` here, unlike everywhere else in Workshop.** BrokenNes'
   ordinary frame budget is `CpuFrequency/60` = 29829.55 CPU cycles, but real NTSC is 89341.5 PPU
   dots = 29780.5. That ~49-cycle surplus per frame drifts the frame boundary away from any

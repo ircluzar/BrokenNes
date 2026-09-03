@@ -30,7 +30,8 @@ namespace BrokenNes.Workshop;
 ///
 /// Usage:
 ///   --trace --rom &lt;path.nes&gt; [--cpu FIX] [--ppu FMC] [--apu FMC] [--frames N]
-///           [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off] --out trace.txt
+///           [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off]
+///           [--power-on-ram fceux|zeros|ones] --out trace.txt
 ///
 /// Exit codes match RomTestCli so scripts can treat every Workshop CLI uniformly:
 ///   0 ran clean | 1 emulator crashed | 2 usage/IO error | 3 a requested core did not apply
@@ -47,7 +48,10 @@ internal static class TraceCli
         "                  list releases everything. Held set applies to player 1 from that frame\n" +
         "                  INCLUSIVE until the next step. Buttons: A,B,Select,Start,Up,Down,Left,Right.\n" +
         "                  Example: \"60:Start,66:,120:Right+A,180:\"\n" +
-        "  --ntsc-frame-timing  default 'on'. See the determinism notes in TraceCli.cs.";
+        "  --ntsc-frame-timing  default 'on'. See the determinism notes in TraceCli.cs.\n" +
+        "  --power-on-ram  fceux (default, the emulator's own fill) | zeros | ones. Only bend this\n" +
+        "                  when the emulator on the other side of the diff cannot produce FCEUX's\n" +
+        "                  pattern; whichever is used is recorded in the header.";
 
     private const int WorkRamSize = 2048; // $0000-$07FF, the NES's 2KB of internal work RAM
 
@@ -58,6 +62,7 @@ internal static class TraceCli
         string? romPath = null, cpu = null, ppu = null, apu = null, outPath = null, inputScript = null;
         int frames = 1800;
         bool ntscFrameTiming = true;
+        PowerOnRam powerOnRam = PowerOnRam.Fceux;
 
         try
         {
@@ -73,6 +78,7 @@ internal static class TraceCli
                     case "--input": inputScript = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
+                    case "--power-on-ram": powerOnRam = ParsePowerOnRam(args[++i]); break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}");
                         return 2;
@@ -164,6 +170,18 @@ internal static class TraceCli
             Span<byte> digest = stackalloc byte[32];
             var line = new StringBuilder(64);
 
+            // Power-on RAM override. BrokenNes fills work RAM with FCEUX's default pattern, which is
+            // deliberate and load-bearing for .fm2 portability (see Bus.cs:206-221) - so it stays the
+            // default here. But Mesen's ramPowerOnState offers all-zeros / all-ones / random and has
+            // no FCEUX-pattern option, so on that pairing the two sides genuinely cannot agree at
+            // frame 0 unless one of them bends. This flag is the cheap place to bend: it changes no
+            // default, it is recorded in the header, and it beats leaving the whole trace unusable.
+            if (powerOnRam != PowerOnRam.Fceux)
+            {
+                byte fill = powerOnRam == PowerOnRam.Ones ? (byte)0xFF : (byte)0x00;
+                for (int i = 0; i < WorkRamSize; i++) nes.PokeSystemRam(i, fill);
+            }
+
             // Power-on RAM, sampled before a single frame runs and hashed the same way the per-frame
             // ramhash is. This is the single most valuable header field: if the two sides' frame-0
             // records disagree, this line says immediately whether the cause is a different power-on
@@ -175,7 +193,7 @@ internal static class TraceCli
             AppendHashPrefix(powerOn, digest);
 
             WriteHeader(writer, romFullPath, romBytes.Length, romSha, frames, inputScript, script,
-                        cpuApply, ppuApply, apuApply, ntscFrameTiming, powerOn.ToString());
+                        cpuApply, ppuApply, apuApply, ntscFrameTiming, powerOnRam, powerOn.ToString());
 
             if (!cpuApply.Applied || !ppuApply.Applied || !apuApply.Applied)
             {
@@ -278,7 +296,7 @@ internal static class TraceCli
         TextWriter w, string romFullPath, int romLength, string romSha, int frames,
         string? rawScript, List<RomTestCli.InputStep> script,
         RomTestCli.CoreApplyReport cpu, RomTestCli.CoreApplyReport ppu, RomTestCli.CoreApplyReport apu,
-        bool ntscFrameTiming, string powerOnRamHash)
+        bool ntscFrameTiming, PowerOnRam powerOnRam, string powerOnRamHash)
     {
         string version = typeof(TraceCli).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
 
@@ -297,10 +315,23 @@ internal static class TraceCli
         // unexplained frame-0 mismatch is almost always one of these lines disagreeing.
         w.WriteLine("# determinism: region=ntsc (BrokenNes has no PAL mode at the NES level; the only");
         w.WriteLine("#   palMode flags live inside unused APU cores and default to NTSC)");
-        w.WriteLine("# determinism: power-on-ram=fceux-default-pattern");
-        w.WriteLine("#   repeating 8 bytes 00 00 00 00 ff ff ff ff over all 2048 bytes");
-        w.WriteLine("#   (Bus.InitializeRamPowerOnPattern, Windows/NesEmulator/board/Bus.cs:222,");
-        w.WriteLine("#   called from the Bus ctor at Bus.cs:198 - matches FCEUX RAMInitOption=0)");
+        switch (powerOnRam)
+        {
+            case PowerOnRam.Zeros:
+                w.WriteLine("# determinism: power-on-ram=zeros (OVERRIDE - all 2048 bytes forced to 00");
+                w.WriteLine("#   after construction; matches Mesen ramPowerOnState=AllZeros)");
+                break;
+            case PowerOnRam.Ones:
+                w.WriteLine("# determinism: power-on-ram=ones (OVERRIDE - all 2048 bytes forced to ff");
+                w.WriteLine("#   after construction; matches Mesen ramPowerOnState=AllOnes)");
+                break;
+            default:
+                w.WriteLine("# determinism: power-on-ram=fceux-default-pattern");
+                w.WriteLine("#   repeating 8 bytes 00 00 00 00 ff ff ff ff over all 2048 bytes");
+                w.WriteLine("#   (Bus.InitializeRamPowerOnPattern, Windows/NesEmulator/board/Bus.cs:222,");
+                w.WriteLine("#   called from the Bus ctor at Bus.cs:198 - matches FCEUX RAMInitOption=0)");
+                break;
+        }
         w.WriteLine($"# power-on-ramhash: {powerOnRamHash}");
         w.WriteLine("#   same hash function as the ramhash column, taken before frame 0 runs. If the");
         w.WriteLine("#   two emulators' frame-0 records disagree, compare THIS first: a mismatch here");
@@ -332,6 +363,16 @@ internal static class TraceCli
             sb.Append(Hex[digest[i] & 0x0F]);
         }
     }
+
+    private enum PowerOnRam { Fceux, Zeros, Ones }
+
+    private static PowerOnRam ParsePowerOnRam(string v) => v.ToLowerInvariant() switch
+    {
+        "fceux" or "pattern" or "default" => PowerOnRam.Fceux,
+        "zeros" or "zero" or "00" => PowerOnRam.Zeros,
+        "ones" or "one" or "ff" => PowerOnRam.Ones,
+        _ => throw new FormatException($"expected fceux|zeros|ones, got '{v}'"),
+    };
 
     private static bool ParseOnOff(string v) => v.ToLowerInvariant() switch
     {
