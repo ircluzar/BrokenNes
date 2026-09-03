@@ -172,7 +172,9 @@ internal static class RomTestCli
 
     // ---- core application ----------------------------------------------------
 
-    private static CoreApplyReport ApplyCore(string kind, string? requested, Func<string, bool> set, Func<string> get)
+    // internal, not private: TraceCli reuses this verbatim so --trace and --romtest agree on what
+    // "the requested core actually applied" means. A second copy would be free to drift.
+    internal static CoreApplyReport ApplyCore(string kind, string? requested, Func<string, bool> set, Func<string> get)
     {
         if (requested == null)
             return new CoreApplyReport { Kind = kind, Requested = null, Accepted = true, Effective = get(), Applied = true };
@@ -191,7 +193,7 @@ internal static class RomTestCli
 
     // ---- input script --------------------------------------------------------
 
-    private readonly struct InputStep
+    internal readonly struct InputStep
     {
         public InputStep(int frame, bool[] held, List<string> names) { Frame = frame; Held = held; Names = names; }
         public int Frame { get; }
@@ -208,7 +210,10 @@ internal static class RomTestCli
         ["Up"] = 4, ["Down"] = 5, ["Left"] = 6, ["Right"] = 7,
     };
 
-    private static List<InputStep> ParseInputScript(string? script)
+    // internal, not private: --trace must apply an input script with byte-identical semantics to
+    // --romtest, so there is exactly one parser and exactly one definition of "held from this frame
+    // inclusive". Writing a second one is the classic way a differential test silently lies.
+    internal static List<InputStep> ParseInputScript(string? script)
     {
         var steps = new List<InputStep>();
         if (string.IsNullOrWhiteSpace(script)) return steps;
@@ -292,7 +297,7 @@ internal static class RomTestCli
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int dwProcessId);
 
-    private static void EnsureConsole()
+    internal static void EnsureConsole()
     {
         try
         {
@@ -353,7 +358,7 @@ internal static class RomTestCli
         public string? CrashInfo { get; set; }
     }
 
-    private sealed class CoreApplyReport
+    internal sealed class CoreApplyReport
     {
         public string Kind { get; set; } = "";
         public string? Requested { get; set; }

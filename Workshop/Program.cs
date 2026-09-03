@@ -45,6 +45,10 @@ internal static class Program
         {
             return RomTestCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--trace", StringComparison.OrdinalIgnoreCase))
+        {
+            return TraceCli.Run(args);
+        }
         if (args.Length > 0 && args[0].Equals("--irqtrace", StringComparison.OrdinalIgnoreCase))
         {
             return IrqTraceCli.Run(args);

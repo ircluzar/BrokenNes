@@ -20,6 +20,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | Mode (`argv[0]`) | What it does | Needs, beyond the built `.exe` | Runnable on this machine? |
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
+| `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |
 | `--headless` | One-shot run → SHA-256 frame hash, CPU regs, optional PNG | any `.nes` | **Yes** |
 | `--benchmark` | `NES.RunBenchmarks()` speed numbers (the FIX accuracy-vs-speed gate) | any `.nes` | **Yes** |
 | `--diag-savestate-roundtrip` | Is `SaveState`/`LoadState` itself lossy? Frame-by-frame | any `.nes` | **Yes** |
@@ -31,6 +32,8 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | `--selfplay` | Live SMB1 self-play against the NESReflex Python inference server | Python venv + model checkpoint + metadata + SMB1 ROM → **external** | **Yes** (external tree present) |
 | `--verify-selfplay-movie` | Replay a self-play `.fm2` against its `.witness.json`, frame for frame | output of a `--selfplay` run | **Yes** |
 | `--accuracycoin` | The 141-test [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) harness, single combo or full matrix | **`AccuracyCoin.nes`** | **No — asset absent** |
+
+Thirteen, counting `--trace` (added after that count was written).
 
 **`AccuracyCoin.nes` is not on this machine.** It is MIT-licensed third-party (~40KB) and
 deliberately not committed here. A whole-of-`C:` search on 2026-09-03 found only this repo's own
@@ -165,6 +168,58 @@ BrokenNes.Workshop.exe --diag-savestate-roundtrip --rom path.nes [--cpu ID --ppu
 BrokenNes.Workshop.exe --irqtrace --rom path.nes --cpu ID --ppu ID --apu ID [--frames-before N] \
     [--ring N] [--max-instr N] [--dump-addr XXXX --dump-len N] [--watch XXXX,YYYY,...]
 ```
+
+## Run (`--trace` — the cross-emulator differential tracer)
+
+**Requires: nothing but a `.nes` file.** Emits one record per frame in a format a second emulator
+(Mesen) can be made to emit too, so a differ can name the exact frame where the two stop agreeing.
+
+```bash
+BrokenNes.Workshop.exe --trace --rom path.nes --out trace.txt [--cpu ID --ppu ID --apu ID] \
+    [--frames N] [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off]
+```
+
+Exit codes are `--romtest`'s. `--out -` writes to stdout. The input-script parser is literally
+`RomTestCli.ParseInputScript` — one parser, so the two sides of a diff cannot drift on what
+"held from frame N inclusive" means.
+
+**Format** (UTF-8, LF, lower-case hex, no `0x`), sampled at the END of each frame — immediately
+after the `RunFrame()` that advanced it returns — starting at frame 0:
+
+```
+<frame>|<pc>|<a>|<x>|<y>|<sp>|<p>|<ramhash>
+```
+
+`frame` decimal 0-based; `pc` 4 hex digits; `a x y sp p` 2 each; `ramhash` = the first 16 hex chars
+of SHA-256 over the 2048 bytes of work RAM (`$0000-$07FF`) in address order. Lines starting with
+`#` are header and must be ignored by the differ.
+
+**The framebuffer is deliberately not compared.** NES palettes are not standardized, so two
+*correct* emulators legitimately produce different RGB. RAM + CPU state is the only oracle both
+sides can agree on.
+
+**What the header pins**, and why each line is there — an unexplained frame-0 mismatch is nearly
+always one of these disagreeing rather than a real emulation defect:
+
+- `power-on-ramhash` — the RAM hash taken *before* frame 0 runs, same hash function as the column.
+  Check this first on any frame-0 disagreement. BrokenNes fills power-on RAM with the repeating
+  8 bytes `00 00 00 00 FF FF FF FF` (`Bus.InitializeRamPowerOnPattern`,
+  `Windows/NesEmulator/board/Bus.cs:222`, called from the ctor at `Bus.cs:198`) — FCEUX's default
+  `RAMInitOption=0`. Hash: `9230156049936eb0`. Mesen randomizes power-on RAM by default and must be
+  forced to a matching static fill, or frame 0 differs for a reason that is not an emulation bug.
+- `ntsc-frame-timing` — **defaults to `on` here, unlike everywhere else in Workshop.** BrokenNes'
+  ordinary frame budget is `CpuFrequency/60` = 29829.55 CPU cycles, but real NTSC is 89341.5 PPU
+  dots = 29780.5. That ~49-cycle surplus per frame drifts the frame boundary away from any
+  cycle-accurate reference within a handful of frames, which shows up in a diff looking like an
+  emulation defect. `--ntsc-frame-timing off` restores the default budget (and does visibly change
+  the trace from frame 1 onward, which is the point).
+- `event-scheduler=off`, `crash-behavior=redscreen` — both are the emulator's defaults, pinned so a
+  changed default cannot silently alter a trace. `ImagineFix` is specifically excluded: it mutates
+  CPU state on a freeze heuristic and picks among candidate fixes with a clock-seeded `Random`.
+- Region is NTSC unconditionally — BrokenNes has no PAL mode at the NES level. The only `palMode`
+  flags live inside APU cores that are not on this path and default to NTSC.
+- Rewind, cheats and overclock do not exist in this emulator; `RunFrame` always calls
+  `UpdateFrameBuffer`, so "no frameskip" is unconditional rather than a setting.
 
 `--romtest` and `--diag-savestate-roundtrip` are also the two gated case kinds behind
 `UAT/run-suite.ps1`, which adds the expected-value/diff/exit-non-zero layer these print-only
