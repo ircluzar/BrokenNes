@@ -2,25 +2,65 @@
 (function () {
   'use strict';
 
+  // Historical fixed endpoint. Still the fallback so anything hosted outside the
+  // desktop shell (or an older shell that does not inject the global) keeps working.
+  const LEGACY_BASE_URL = 'http://127.0.0.1:42067';
+
+  // The in-process proxy exposed by the desktop shell. Requests to it are resolved to THIS
+  // process's API server-side, per request, so it is always instance-safe.
+  function getProxyBaseUrl() {
+    return window.location?.protocol === 'https:' && window.location?.hostname === 'app.brokennes'
+      ? `${window.location.origin}/api`
+      : '';
+  }
+
   function resolveDefaultBaseUrl() {
-    const configuredBaseUrl = window.WEBAPI_BASE || window.__WEBAPI_BASE;
+    // A module that set its own base always wins.
+    const explicitlyConfigured = window.WEBAPI_BASE || window.__WEBAPI_BASE;
+    if (explicitlyConfigured) {
+      return explicitlyConfigured.toString().trim();
+    }
+
+    // window.BROKENNES_API_BASE is injected by the desktop shell (before any page script
+    // runs) and points at THIS process's API server, which may be on an ephemeral port
+    // when several instances are running at once. BROKENNES_API_BASE_READY === false is the
+    // shell explicitly saying "my server has not bound yet".
+    if (window.BROKENNES_API_BASE_READY === false) {
+      // Deliberately NOT falling back to LEGACY_BASE_URL: on an instance that ends up on a
+      // fallback port, port 42067 belongs to a DIFFERENT BrokenNes process, and talking to it
+      // would corrupt the wrong emulator. Prefer the shell's own proxy (which resolves
+      // server-side and 503s until ready); otherwise report "not ready" by returning nothing.
+      return getProxyBaseUrl();
+    }
+
+    const configuredBaseUrl = window.BROKENNES_API_BASE;
     if (configuredBaseUrl) {
       return configuredBaseUrl.toString().trim();
     }
 
-    return 'http://127.0.0.1:42067';
+    // No shell injection at all - hosted outside the desktop app, or an older shell.
+    return LEGACY_BASE_URL;
   }
 
-  const DEFAULT_BASE_URL = resolveDefaultBaseUrl();
-  let baseUrl = DEFAULT_BASE_URL.replace(/\/$/, '');
+  // True when the desktop shell has told us its API endpoint is not known yet.
+  function isEndpointUnresolved() {
+    if (explicitBaseUrl !== null) return false;
+    return window.BROKENNES_API_BASE_READY === false && !getProxyBaseUrl();
+  }
+
+  // Resolved lazily on every call rather than frozen at load time: the desktop shell may
+  // learn its real (ephemeral) port slightly after a page has already started loading, and
+  // re-injects window.BROKENNES_API_BASE when it does.
+  let explicitBaseUrl = null; // non-null once a module calls setBaseUrl()
   let defaultTimeoutMs = 15000;
 
   function setBaseUrl(url) {
-    baseUrl = (url || '').toString().trim().replace(/\/$/, '');
+    explicitBaseUrl = (url || '').toString().trim().replace(/\/$/, '');
   }
 
   function getBaseUrl() {
-    return baseUrl;
+    if (explicitBaseUrl !== null) return explicitBaseUrl;
+    return resolveDefaultBaseUrl().replace(/\/$/, '');
   }
 
   function setDefaultTimeoutMs(timeoutMs) {
@@ -30,10 +70,11 @@
   }
 
   function buildUrl(path) {
-    if (!path) return baseUrl || '';
+    const currentBaseUrl = getBaseUrl();
+    if (!path) return currentBaseUrl || '';
     if (/^https?:\/\//i.test(path)) return path;
-    if (!baseUrl) return path;
-    const trimmedBase = baseUrl.replace(/\/$/, '');
+    if (!currentBaseUrl) return path;
+    const trimmedBase = currentBaseUrl.replace(/\/$/, '');
     let normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
     if (trimmedBase.endsWith('/api') && normalizedPath.startsWith('/api')) {
@@ -47,11 +88,9 @@
   }
 
   function getAlternateBaseUrl() {
-    const normalizedBaseUrl = (baseUrl || '').replace(/\/$/, '');
-    const proxyBaseUrl = window.location?.protocol === 'https:' && window.location?.hostname === 'app.brokennes'
-      ? `${window.location.origin}/api`
-      : '';
-    const directBaseUrl = 'http://127.0.0.1:42067';
+    const normalizedBaseUrl = getBaseUrl();
+    const proxyBaseUrl = getProxyBaseUrl();
+    const directBaseUrl = resolveDefaultBaseUrl().replace(/\/$/, '');
 
     if (normalizedBaseUrl === directBaseUrl && proxyBaseUrl) {
       return proxyBaseUrl;
@@ -78,6 +117,16 @@
       noCache,
       ...rest
     } = options;
+
+    // Fail fast and honestly rather than guessing an endpoint that may belong to another
+    // BrokenNes instance. Callers can retry; the shell re-injects the real base once it binds.
+    if (isEndpointUnresolved() && !/^https?:\/\//i.test(path || '')) {
+      return {
+        success: false,
+        notReady: true,
+        error: 'BrokenNes API endpoint is not resolved yet (server has not bound a port)'
+      };
+    }
 
     let url = buildUrl(path);
     const urlObj = new URL(url, window.location.href);
@@ -122,7 +171,7 @@
           throw error;
         }
 
-        const alternateUrl = new URL(buildUrl(path).replace(baseUrl.replace(/\/$/, ''), alternateBaseUrl.replace(/\/$/, '')), window.location.href);
+        const alternateUrl = new URL(buildUrl(path).replace(getBaseUrl(), alternateBaseUrl.replace(/\/$/, '')), window.location.href);
         if (cacheBust) {
           alternateUrl.searchParams.set('_t', Date.now().toString());
         }
@@ -404,7 +453,19 @@
     },
     
     input: {
-      pollButtonEvent: () => request('/api/input/button-event')
+      pollButtonEvent: () => request('/api/input/button-event'),
+
+      // NES controller injection. The button set is a LATCH that the emulation loop ORs into
+      // real keyboard/gamepad input every frame - it never masks what a human is holding.
+      //   setButtons(['Right', 'A'])  -> hold Right+A
+      //   setButtons([])              -> release
+      //   setButtons(['B'], { holdMs: 150 }) -> hold B, auto-release after 150ms
+      setButtons: (buttons, { player = 1, holdMs = null } = {}) => request('/api/input/set-buttons', {
+        method: 'POST',
+        json: { player, buttons: Array.isArray(buttons) ? buttons : [], holdMs }
+      }),
+      clear: () => request('/api/input/clear', { method: 'POST' }),
+      getState: () => request('/api/input/state')
     }
   };
   

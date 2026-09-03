@@ -32,7 +32,9 @@ High-level audio playback engine for BrokenNes Windows using NAudio.
 
 ## WebAPI Endpoints
 
-All endpoints are available via the WebAPI server on `http://127.0.0.1:42067`:
+All endpoints are available via the WebAPI server on `window.BROKENNES_API_BASE`
+(`http://127.0.0.1:42067` for a lone instance; see `webapi/README.md` for how additional
+instances get their own ports):
 
 ### GET Endpoints
 

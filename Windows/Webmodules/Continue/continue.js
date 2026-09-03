@@ -1892,10 +1892,12 @@
       return '';
     }
 
+    // Prefer the shell-injected per-instance API base; fall back to the historical fixed URL.
+    const fallbackBaseUrl = window.BROKENNES_API_BASE || 'http://127.0.0.1:42067';
     const baseUrl = typeof window.webapi?.getBaseUrl === 'function'
       ? window.webapi.getBaseUrl()
-      : 'http://127.0.0.1:42067';
-    const requestUrl = new URL('/api/save/continue-preview', `${String(baseUrl || 'http://127.0.0.1:42067').replace(/\/$/, '')}/`);
+      : fallbackBaseUrl;
+    const requestUrl = new URL('/api/save/continue-preview', `${String(baseUrl || fallbackBaseUrl).replace(/\/$/, '')}/`);
     requestUrl.searchParams.set('romKey', romKey);
     requestUrl.searchParams.set('_t', cacheKey || String(Date.now()));
     return requestUrl.toString();

@@ -313,8 +313,18 @@ namespace BrokenNes.Windows
                                     }
                                 }
                                 
+                                // Merge in any buttons the Web API is holding on behalf of an
+                                // automated test. This is additive (OR), never a replacement, so
+                                // real keyboard/gamepad input is untouched and an empty injection
+                                // is a no-op for normal play.
+                                BrokenNes.Windows.WebApi.ApiInputInjector.Apply(p1Inputs, p2Inputs);
+
                                 nes.SetInputs(p1Inputs, p2Inputs);
-                                
+
+                                // Publish the state the NES actually received so GET /api/input/state
+                                // reports reality rather than only what was requested.
+                                BrokenNes.Windows.WebApi.ApiInputInjector.PublishObserved(p1Inputs, p2Inputs);
+
                                 // Poll webmodule input (X/Y buttons) - separate from NES input
                                 webModuleInputManager?.Poll();
                             }
@@ -493,6 +503,10 @@ namespace BrokenNes.Windows
                             currentInputs[i] = inputManager.GetButton(i);
                         }
                     }
+
+                    // Show API-injected buttons on the on-screen controller display too, so what
+                    // the user sees matches what the NES is being fed.
+                    BrokenNes.Windows.WebApi.ApiInputInjector.Apply(currentInputs, null);
                     
                     // Render using DirectX
                     using (PerformanceProfiler.Time("DirectX.DrawFrame"))
