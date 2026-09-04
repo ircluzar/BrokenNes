@@ -7,7 +7,7 @@ namespace NesEmulator
     // control component" baseline - every other named core is either a speed/perf tradeoff or an
     // intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
     // frozen going forward. Accuracy fixes land here, not on APU_FMC or any other named core.
-    public class APU_FIX : IAPU, IDmcDmaSchedulable
+    public class APU_FIX : IAPU, IDmcDmaSchedulable, IApuStateProbe
     {
     // Core metadata
     public string CoreName => "Fix";
@@ -616,5 +616,62 @@ namespace NesEmulator
         {
             ClearAudioBuffers();
         }
+
+        // ===== IApuStateProbe =====
+        //
+        // A read-only view of the sound hardware in hardware units, so a differential tracer can
+        // compare it digit-for-digit against Mesen's emu.getState(). Mutates nothing: in particular
+        // it does NOT go through ReadAPURegister(0x4015), which would clear frameIRQFlag and change
+        // the behaviour of the very run being traced. See IApuStateProbe.cs for the unit contract
+        // and for why the sub-instruction phase fields are deliberately absent.
+        public ApuStateSnapshot ProbeApuState()
+        {
+            return new ApuStateSnapshot(
+                p1Period: pulse1_timer,
+                p2Period: pulse2_timer,
+                // "Volume in force" rather than the raw register, because the two emulators keep
+                // the constant-volume parameter and the envelope decay level in different places.
+                p1Vol: (byte)(pulse1_constantVolume ? pulse1_volumeParam : pulse1_envDecay),
+                p2Vol: (byte)(pulse2_constantVolume ? pulse2_volumeParam : pulse2_envDecay),
+                p1Len: ClampByte(pulse1_lengthCounter),
+                p2Len: ClampByte(pulse2_lengthCounter),
+                p1Duty: (byte)(pulse1_duty & 3),
+                p2Duty: (byte)(pulse2_duty & 3),
+                // The sweep ENABLE bit is only kept in the raw $4001/$4005 latch here - the decoded
+                // fields below never captured it, which is itself worth knowing (see Sweep()).
+                p1SwEn: (pulse1_sweepRaw & 0x80) != 0,
+                p2SwEn: (pulse2_sweepRaw & 0x80) != 0,
+                p1SwNeg: pulse1_sweepNegate,
+                p2SwNeg: pulse2_sweepNegate,
+                p1SwShift: (byte)(pulse1_sweepShift & 7),
+                p2SwShift: (byte)(pulse2_sweepShift & 7),
+                triPeriod: triangle_timer,
+                triLen: ClampByte(triangle_lengthCounter),
+                triLinear: (byte)(triangle_linearCounter & 0x7F),
+                // Hardware CPU-cycle period from the NTSC table, not the 4-bit register index -
+                // that is the unit both sides can agree on. See IApuStateProbe.NoisePeriod.
+                noisePeriod: (ushort)NoisePeriods[noise_periodReg & 0x0F],
+                noiseVol: (byte)(noise_constantVolume ? noise_volumeParam : noise_envDecay),
+                noiseLen: ClampByte(noise_lengthCounter),
+                noiseMode: (noise_periodReg & 0x80) != 0,
+                dmcOutput: (byte)(dmc_deltaCounter & 0x7F),
+                dmcCurrentAddr: (ushort)(dmc_sampleAddress & 0xFFFF),
+                dmcBytesRemaining: (ushort)(dmc_sampleLengthRemaining & 0xFFFF),
+                dmcIrqEnabled: dmc_irqEnable,
+                dmcIrqFlag: dmc_irqFlag,
+                dmcLoop: dmc_loop,
+                frameMode5: frameMode5,
+                frameStep: (byte)(frameStep & 0x07),
+                frameIrqInhibit: frameIRQInhibit,
+                frameIrqFlag: frameIRQFlag,
+                p1En: pulse1_enabled, p2En: pulse2_enabled,
+                triEn: triangle_enabled, noiseEn: noise_enabled,
+                p1Halt: pulse1_lengthHalt, p2Halt: pulse2_lengthHalt,
+                triHalt: triangle_lengthHalt, noiseHalt: noise_lengthHalt,
+                p1Const: pulse1_constantVolume, p2Const: pulse2_constantVolume,
+                noiseConst: noise_constantVolume);
+        }
+
+        private static byte ClampByte(int v) => v < 0 ? (byte)0 : (v > 255 ? (byte)255 : (byte)v);
     }
 }

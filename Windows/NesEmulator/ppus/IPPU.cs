@@ -21,3 +21,42 @@ public interface IPPU
 	// allocation occurs on next use. This helps reduce memory after resets/state loads.
 	void ClearBuffers();
 }
+
+/// <summary>
+/// OPTIONAL capability a PPU core may advertise on top of <see cref="IPPU"/>: side-effect-free
+/// access to the PPU's own timing counters and its own 16KB address space.
+///
+/// Deliberately a SEPARATE interface rather than new members on IPPU. Twelve cores implement
+/// IPPU, most of them gimmick/novelty renderers (PPU_LQ, PPU_CUBE, PPU_EXE, ...) that do not model
+/// a dot-accurate scanline counter at all; forcing them to implement one would either bloat every
+/// core or - worse - have them return a plausible-looking number that is not the counter anything
+/// actually renders from. A consumer tests for this interface and says so honestly when it is
+/// absent, instead of silently reading a fiction.
+///
+/// Everything here must be a pure observation: no latch is toggled, no buffer refilled, no flag
+/// cleared. That is what separates it from ReadPPURegister/WritePPURegister, which are the CPU's
+/// side-effect-bearing view of the same hardware.
+/// </summary>
+public interface IPpuProbe
+{
+	/// <summary>Scanline the PPU counter currently sits on: 0-239 visible, 240 post-render,
+	/// 241-260 vblank, 261 pre-render. Never -1 - this codebase numbers pre-render as 261.</summary>
+	int ProbeScanline { get; }
+
+	/// <summary>Dot (a.k.a. cycle) within <see cref="ProbeScanline"/>, 0-340.</summary>
+	int ProbeDot { get; }
+
+	/// <summary>Live PPUMASK ($2001). Bit 3 = background enabled, bit 4 = sprites enabled;
+	/// "the PPU is rendering" is those two OR'd together.</summary>
+	byte ProbeMask { get; }
+
+	/// <summary>Read one byte of the PPU's own address space ($0000-$3FFF, mirrored the same way
+	/// the renderer sees it: pattern tables through the mapper, nametables through the current
+	/// mirroring, palette at $3F00 with its four write-mirrors folded). Side-effect free: unlike a
+	/// $2007 read it does not touch the read buffer or advance the VRAM address.</summary>
+	byte ProbePpuBusRead(ushort address);
+
+	/// <summary>Write one byte of that same address space, again without touching any latch or
+	/// address register. For tooling (hex editors, corruption injection) only.</summary>
+	void ProbePpuBusWrite(ushort address, byte value);
+}

@@ -21,6 +21,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
 | `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |
+| `--corrupt` | The VRUN corruption oracle: late-PPU-write / CHR-scatter / nametable-floor checks, with fault injection to prove each one fires | VRUN `game.nes` (VRUN-specific) | **Yes** |
 | `--headless` | One-shot run → SHA-256 frame hash, CPU regs, optional PNG | any `.nes` | **Yes** |
 | `--benchmark` | `NES.RunBenchmarks()` speed numbers (the FIX accuracy-vs-speed gate) | any `.nes` | **Yes** |
 | `--diag-savestate-roundtrip` | Is `SaveState`/`LoadState` itself lossy? Frame-by-frame | any `.nes` | **Yes** |
@@ -33,7 +34,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | `--verify-selfplay-movie` | Replay a self-play `.fm2` against its `.witness.json`, frame for frame | output of a `--selfplay` run | **Yes** |
 | `--accuracycoin` | The 141-test [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin) harness, single combo or full matrix | **`AccuracyCoin.nes`** | **No — asset absent** |
 
-Thirteen, counting `--trace` (added after that count was written).
+Fourteen, counting `--trace` and `--corrupt` (both added after that count was written).
 
 **`AccuracyCoin.nes` is not on this machine.** It is MIT-licensed third-party (~40KB) and
 deliberately not committed here. A whole-of-`C:` search on 2026-09-03 found only this repo's own
@@ -254,6 +255,49 @@ always one of these disagreeing rather than a real emulation defect:
 `--romtest` and `--diag-savestate-roundtrip` are also the two gated case kinds behind
 `UAT/run-suite.ps1`, which adds the expected-value/diff/exit-non-zero layer these print-only
 tools lack. `--benchmark` is wired in there too, informationally.
+
+## Run (`--corrupt` — the VRUN corruption oracle)
+
+A port of the VRUN project's own `tools/corruption_detector.lua` — the test that game's author
+actually trusts, because every bug it looks for is one a human had to spot on screen and report.
+Two of its three checks could not run in BrokenNes at all before the `Bus.PpuRegisterWriteObserver`
+hook and the `Nametable` memory domain existed.
+
+```bash
+BrokenNes.Workshop.exe --corrupt --rom game.nes --cpu FIX --ppu FIX --apu FIX \
+    [--frames 1800] [--input combat|idle|roam|script:"0:Left+B,90:Left"] \
+    [--inject none|chr|nt|scroll] [--allowed-tiles CSV] [--floor-tiles CSV] [--learn] [--out r.txt]
+```
+
+| Check | What it asks | How it can fail |
+| --- | --- | --- |
+| late PPU write | did a `$2005` write land on a visible or pre-render scanline while rendering? | the frame overran vblank; a `$2007` write there scatters into CHR-RAM |
+| CHR scatter | did any CHR tile outside the animated set change? | a write landed where it was never addressed |
+| floor writes | did a non-floor tile get painted onto a cell `collision_map` calls non-solid? | the `cell_plain_terrain()` gate regressed, or a write went astray |
+
+**`--ppu FIX` is required** — the scanline and nametable both come from `IPpuProbe`, which only
+PPU_FIX implements. Any other PPU core exits 3 with an explanation rather than emitting a green
+report from unavailable data. **`--cpu FIX` is required in practice too:** VRUN uses unofficial
+6502 opcodes (`A7`/LAX) that only CPU_FIX implements, and the default core dies at frame 1 with
+`Bad opcode A7 at C176`.
+
+**`--inject` is the point.** A checker nobody has seen fail proves nothing, so each mode introduces
+exactly one defect and exactly one check must catch it — `chr` pokes a byte into CHR tile 16,
+`nt` paints a wall tile onto an empty floor cell, and `scroll` (which the Lua documents but never
+implemented) issues a real `$2005` write pair down `Bus.WriteSlow`'s own PPU register path at the
+instant `RunFrame` returns, when the PPU counter sits at the top of the frame instead of in vblank.
+That last one exercises the whole observer chain, not just the verdict arithmetic.
+
+**Measured on `game.nes` (2026-09-04, CPU_FIX/PPU_FIX/APU_FIX, 1800 observed frames):** CLEAN in all
+three drive modes. All `$2005` writes landed on scanlines 253–260, none outside vblank; only the 12
+allowlisted CHR tiles changed; all 3806 writes onto non-solid cells were floor art. Each injection
+failed exactly its own check and no other. Exit 0 clean / 1 corruption detected.
+
+**Coverage caveat the report prints on every run:** `combat` and `idle` never leave the spawn room
+on this ROM, so they observe zero room transitions — and a room transition is where the Lua's own
+author found the one real bug that detector has ever caught. `--input roam` buys 22 of them per
+1800 frames by poking `player_x`/`player_y` onto a passable edge cell (the same trick
+`UAT/vrun-shophunt.ps1` uses, for the same reason), at the cost of a perturbed run.
 
 ## Run (AccuracyCoin benchmark)
 

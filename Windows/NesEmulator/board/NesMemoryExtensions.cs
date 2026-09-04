@@ -41,6 +41,7 @@ namespace NesEmulator
             int prgRomSize = nes.GetActualPrgRomSize();
             int prgRamSize = nes.GetActualPrgRamSize();
             int chrSize = nes.GetActualChrSize();
+            int nametableSize = nes.GetActualNametableSize();
             
             var domains = new List<MemoryDomainInfo>
             {
@@ -73,6 +74,12 @@ namespace NesEmulator
                     Name = "CHR",
                     Size = chrSize,
                     Description = "Cartridge CHR ROM/RAM"
+                },
+                new MemoryDomainInfo
+                {
+                    Name = "Nametable",
+                    Size = nametableSize,
+                    Description = "PPU nametables, the $2000-$2FFF view with mirroring applied (0 = active PPU core exposes no probe)"
                 }
             };
 
@@ -91,6 +98,7 @@ namespace NesEmulator
                 "PRG ROM" => nes.GetActualPrgRomSize(),
                 "PRG RAM" => nes.GetActualPrgRamSize(),
                 "CHR" => nes.GetActualChrSize(),
+                "Nametable" => nes.GetActualNametableSize(),
                 _ => throw new ArgumentException($"Unknown memory domain: {domainName}")
             };
         }
@@ -107,6 +115,7 @@ namespace NesEmulator
                 "PRG ROM" => nes.PeekPrg(address),
                 "PRG RAM" => nes.PeekPrgRam(address),
                 "CHR" => nes.PeekChr(address),
+                "Nametable" => nes.PeekNametable(address),
                 _ => throw new ArgumentException($"Unknown memory domain: {domainName}")
             };
         }
@@ -132,6 +141,9 @@ namespace NesEmulator
                     break;
                 case "CHR":
                     nes.PokeChr(address, value);
+                    break;
+                case "Nametable":
+                    nes.PokeNametable(address, value);
                     break;
                 default:
                     throw new ArgumentException($"Unknown memory domain: {domainName}");
@@ -196,6 +208,22 @@ namespace NesEmulator
             catch
             {
                 return 0; // Fallback - better to show 0 than fake size
+            }
+        }
+
+        // 4096 ($2000-$2FFF) on a PPU core that implements IPpuProbe, 0 on one that does not.
+        // Reporting 0 rather than a phantom 4096 is the same honesty rule the CHR size above
+        // follows: a domain that reads back as all-zeros because nothing can service it must not
+        // look like a domain that genuinely contains zeros.
+        private static int GetActualNametableSize(this NES nes)
+        {
+            try
+            {
+                return nes.GetNametableSize();
+            }
+            catch
+            {
+                return 0;
             }
         }
 

@@ -1473,6 +1473,14 @@ namespace NesEmulator
 			return (r.PC, r.A, r.X, r.Y, r.P, r.SP);
 		}
 
+		/// <summary>
+		/// The active APU core's cross-emulator state probe, or null if that core does not implement
+		/// one. Used by the differential tracer (Workshop --trace --apu-trace) to compare the sound
+		/// hardware against Mesen; returning null rather than a zero-filled snapshot is deliberate,
+		/// so a core with no coverage is reported as uncovered instead of looking silently correct.
+		/// </summary>
+		public IApuStateProbe? GetApuStateProbe() => bus?.ActiveAPU as IApuStateProbe;
+
 		// New helpers: expose active core identifiers for UI (suffixes FMC/FIX etc.)
 		public string GetCpuCoreId() => bus?.cpu?.GetType().Name ?? string.Empty;
 		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
@@ -1576,6 +1584,50 @@ namespace NesEmulator
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;
 		public void PokeChr(int index, byte val) { cartridge?.PokeChr(index, val); }
+
+		// === Nametable (CIRAM) domain ===
+		//
+		// The $2000-$2FFF view of the PPU bus, i.e. the four logical nametables AS THE RENDERER SEES
+		// THEM - mirroring already applied - rather than the raw 2KB of CIRAM. Both views have a
+		// use and they are NOT interchangeable: PpuSharedState.vram (what the trace's ntbhash
+		// hashes) is the physical 2KB, but a tool asking "what tile is drawn at screen cell (3,7)"
+		// wants $2000 + 7*32 + 3, and which half of CIRAM that lands in depends on the cartridge's
+		// current mirroring - which mapper 30 can change at runtime. Exposing only the raw 2KB
+		// would push that mapping onto every caller and get it wrong the first time the game
+		// switched mirroring. This matches Mesen's nesPpuMemory addressing, which is what the
+		// VRUN project's own corruption_detector.lua reads.
+		//
+		// Returns 0 when the active PPU core does not implement IPpuProbe; GetNametableSize()
+		// reports 0 in that case so a caller can tell "unsupported" from "reads as zero".
+		public int GetNametableSize() => (bus?.ppu is IPpuProbe) ? 0x1000 : 0;
+		public byte PeekNametable(int index)
+		{
+			if (index < 0 || index >= 0x1000) return 0;
+			return bus?.ppu is IPpuProbe p ? p.ProbePpuBusRead((ushort)(0x2000 + index)) : (byte)0;
+		}
+		public void PokeNametable(int index, byte val)
+		{
+			if (index < 0 || index >= 0x1000) return;
+			if (bus?.ppu is IPpuProbe p) p.ProbePpuBusWrite((ushort)(0x2000 + index), val);
+		}
+		/// <summary>Side-effect-free read of the whole PPU address space ($0000-$3FFF): pattern
+		/// tables through the mapper, nametables through the current mirroring, palette at $3F00.
+		/// Unlike a $2007 read this touches no latch, buffer or flag.</summary>
+		public byte PeekPpuBus(ushort address) => bus?.ppu is IPpuProbe p ? p.ProbePpuBusRead(address) : (byte)0;
+		public void PokePpuBus(ushort address, byte val) { if (bus?.ppu is IPpuProbe p) p.ProbePpuBusWrite(address, val); }
+		/// <summary>Live PPU scanline/dot/mask, or (-1,-1,0) if the active core has no dot-accurate
+		/// counter to report. Same caveats as IPpuProbe - read its doc comment before gating on it.</summary>
+		public (int Scanline, int Dot, byte Mask) GetPpuTiming()
+			=> bus?.ppu is IPpuProbe p ? (p.ProbeScanline, p.ProbeDot, p.ProbeMask) : (-1, -1, (byte)0);
+
+		/// <summary>Attach (or detach, with null) an observer called on every CPU write that reaches
+		/// a PPU register. See Bus.PpuRegisterWriteObserver for the full contract - in particular
+		/// that scanline/dot are -1 on PPU cores without IPpuProbe, and that they lag the true dot
+		/// by up to one CPU instruction.</summary>
+		public void SetPpuRegisterWriteObserver(Bus.PpuRegisterWriteHandler? observer)
+		{
+			if (bus != null) bus.PpuRegisterWriteObserver = observer;
+		}
 
 		// Audio system not yet implemented - would require APU (Audio Processing Unit)
 		// The APU generates square waves, triangle waves, noise, and DMC audio channels

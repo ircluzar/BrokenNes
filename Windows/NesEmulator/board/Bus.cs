@@ -531,7 +531,14 @@ public class Bus : IBus
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
-			ppu.WritePPURegister(reg, value); return;
+			ppu.WritePPURegister(reg, value);
+			// Zero cost when nobody is watching: one null test on a reference field, on a path that
+			// is already the SLOW path (the page table sends every RAM write straight to pages[],
+			// so WriteSlow is only reached for $2000-$3FFF, $4000-$401F and cartridge space). The
+			// dispatch itself lives in a separate non-inlined method so the JIT keeps this branch a
+			// predictable, never-taken test instead of inlining an observer's body into WriteSlow.
+			if (PpuRegisterWriteObserver != null) NotifyPpuRegisterWrite(reg, value);
+			return;
 		}
 		// Writing bit0 to 0x4016 controls controller strobe; apply to both ports
 		if (address == 0x4016) { input.Write4016(value); input2.Write4016(value); return; }
@@ -614,6 +621,42 @@ public class Bus : IBus
 	}
 
 	// === Debug Peek/Poke (raw CPU address space) ===
+	// === PPU register write observer ===================================================
+	//
+	// Fires once for every CPU write that reaches a PPU register ($2000-$2007, and therefore every
+	// mirror of them up to $3FFF), carrying the register, the byte, and WHERE IN THE FRAME the
+	// write landed. That last part is the whole point: a $2005/$2007 write is only safe inside
+	// vblank, and "did this write land on a visible scanline" is a question no amount of
+	// after-the-fact memory comparison can answer - the evidence is gone by the end of the frame.
+	// See Workshop/VrunCorruptCli.cs (the late-PPU-write check) for the consumer this was added for.
+	//
+	// Contract:
+	//   * called AFTER ppu.WritePPURegister has applied the write, so an observer that wants to
+	//     read back the effect (e.g. the new PPUMASK) sees the post-write state.
+	//   * `mask` is PPUMASK sampled at that same instant. It is passed rather than left for the
+	//     observer to fetch because "was the PPU rendering when this happened" has to be answered
+	//     at the write's instant; asking a frame later is a different question with a different
+	//     answer.
+	//   * `scanline`/`dot` are -1/-1 when the active PPU core does not implement IPpuProbe (most
+	//     of the gimmick cores do not). An observer must treat -1 as "unknown", never as a line
+	//     number. Mask is 0 in that case for the same reason - see IPpuProbe's doc comment.
+	//   * `scanline`/`dot` carry the batching lag documented on PPU_FIX's IPpuProbe members: the
+	//     PPU is caught up between CPU instructions, not between CPU cycles.
+	//
+	// Instance state, not static: two NES instances in one process (the desktop app supports it)
+	// must not see each other's writes.
+	public delegate void PpuRegisterWriteHandler(ushort reg, byte value, int scanline, int dot, byte mask);
+	public PpuRegisterWriteHandler? PpuRegisterWriteObserver;
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void NotifyPpuRegisterWrite(ushort reg, byte value)
+	{
+		var obs = PpuRegisterWriteObserver;
+		if (obs == null) return;
+		if (ppu is IPpuProbe probe) obs(reg, value, probe.ProbeScanline, probe.ProbeDot, probe.ProbeMask);
+		else obs(reg, value, -1, -1, 0);
+	}
+
 	public byte PeekByte(ushort address) => Read(address);
 	public void PokeByte(ushort address, byte value) => Write(address, value);
 	public byte PeekRam(int index) => (index >=0 && index < ram.Length) ? ram[index] : (byte)0;

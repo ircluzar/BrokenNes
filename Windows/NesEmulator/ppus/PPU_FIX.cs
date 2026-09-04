@@ -5,7 +5,7 @@ namespace NesEmulator
 // control component" baseline - every other named core is either a speed/perf tradeoff or an
 // intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
 // frozen going forward. Accuracy fixes land here, not on PPU_FMC or any other named core.
-public class PPU_FIX : IPPU
+public class PPU_FIX : IPPU, IPpuProbe
 {
 	// Core metadata (new IPPU contract)
 	public string CoreName => "Fix";
@@ -1030,5 +1030,29 @@ public class PPU_FIX : IPPU
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
 		}
 	}
+
+	// === IPpuProbe: side-effect-free observation of this core's own counters and address space ===
+	//
+	// These exist so external tooling (the VRUN corruption detector's late-PPU-write check, the
+	// Nametable memory domain, a hex editor) can see WHERE IN THE FRAME something happened and WHAT
+	// the nametables hold, without going through ReadPPURegister - which would clear $2002's vblank
+	// flag, reset the address latch and shift the $2007 read buffer, i.e. change the very run being
+	// measured. Nothing below mutates a single field of this core except ProbePpuBusWrite, which is
+	// an explicit tooling write.
+	//
+	// TIMING CAVEAT, stated here rather than left for a caller to discover: NES.RunFrame executes
+	// CPU instructions and only then catches the PPU up (FlushBatch), so at the instant of a CPU
+	// write these counters are BEHIND the true dot by however many CPU cycles have accumulated
+	// since the last flush - at most the batch threshold plus one instruction's cycles, times 3
+	// dots per CPU cycle. With SpeedConfig.NtscAccurateFrameRate on (the --trace and --corrupt
+	// default) that threshold is 1, so the lag is bounded by a single instruction, ~18 dots - about
+	// 5% of one 341-dot scanline. Small against the 6820-dot vblank window a scanline check cares
+	// about, but not zero: a write landing within ~18 dots of a scanline boundary can be attributed
+	// to the previous line.
+	public int ProbeScanline => scanline;
+	public int ProbeDot => scanlineCycle;
+	public byte ProbeMask => PPUMASK;
+	public byte ProbePpuBusRead(ushort address) => Read(address);
+	public void ProbePpuBusWrite(ushort address, byte value) => Write(address, value);
 }
 }

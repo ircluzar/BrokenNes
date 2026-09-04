@@ -58,9 +58,35 @@ namespace BrokenNes.Windows
                 ("CPU Bus", 65536, "Full CPU address space"),
                 ("PRG ROM", nes.GetPrgRomSize(), "PRG ROM data"),
                 ("PRG RAM", 8192, "PRG RAM/Save RAM"),
-                ("CHR", nes.GetChrDomainSize(), "CHR ROM/RAM data")
+                ("CHR", nes.GetChrDomainSize(), "CHR ROM/RAM data"),
+                ("Nametable", nes.GetNametableDomainSize(), "PPU nametables, the $2000-$2FFF view with mirroring applied")
             };
             return domains;
+        }
+
+        /// <summary>
+        /// Nametable domain size: 4096 for the $2000-$2FFF view, or 0 when the active PPU core does
+        /// not implement IPpuProbe and therefore cannot service the domain at all. Reporting 0
+        /// rather than a flat 4096 is the same rule GetChrDomainSize follows below - a domain that
+        /// reads back all-zeros because nothing can answer must not be indistinguishable from one
+        /// that genuinely holds zeros.
+        ///
+        /// The $2000 view rather than the raw 2KB of CIRAM on purpose: a caller asking what tile is
+        /// drawn at screen cell (x,y) wants $2000 + y*32 + x, and which half of CIRAM that resolves
+        /// to depends on the cartridge's current mirroring - which mapper 30 changes at runtime.
+        /// This is also the addressing Mesen's nesPpuMemory uses, so a script written against one
+        /// emulator reads the same bytes on the other.
+        /// </summary>
+        private static int GetNametableDomainSize(this NES nes)
+        {
+            try
+            {
+                return nes.GetNametableSize();
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>
@@ -97,6 +123,7 @@ namespace BrokenNes.Windows
                 "PRG ROM" => nes.GetPrgRomSize(),
                 "PRG RAM" => 8192,
                 "CHR" => nes.GetChrDomainSize(),
+                "Nametable" => nes.GetNametableDomainSize(),
                 _ => throw new ArgumentException($"Unknown domain: {domainName}")
             };
         }
@@ -113,6 +140,7 @@ namespace BrokenNes.Windows
                 "PRG ROM" => nes.PeekPrg(address),
                 "PRG RAM" => nes.PeekPrgRam(address),
                 "CHR" => nes.PeekChr(address),
+                "Nametable" => nes.PeekNametable(address),
                 _ => throw new ArgumentException($"Unknown domain: {domainName}")
             };
         }
@@ -138,6 +166,9 @@ namespace BrokenNes.Windows
                     break;
                 case "CHR":
                     nes.PokeChr(address, value);
+                    break;
+                case "Nametable":
+                    nes.PokeNametable(address, value);
                     break;
                 default:
                     throw new ArgumentException($"Unknown domain: {domainName}");
