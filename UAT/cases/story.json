@@ -21,7 +21,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "480B5D67BD5BF30D",
+        "frameBufferHash": "EE03EB2F82AD849D",
         "framesRun": 600,
         "distinctColors": 12,
         "result": "ok",
@@ -43,7 +43,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "548AC7B8BBEB584B",
+        "frameBufferHash": "045B70F3AFEA645B",
         "framesRun": 600,
         "distinctColors": 10,
         "result": "ok",
@@ -65,7 +65,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "452E6CBF964AB87D",
+        "frameBufferHash": "547CE999C3D37109",
         "framesRun": 600,
         "distinctColors": 5,
         "result": "ok",
@@ -87,7 +87,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "417CF2F1DB9E48FD",
+        "frameBufferHash": "29C73C264EEFB7A5",
         "framesRun": 600,
         "distinctColors": 13,
         "result": "ok",
@@ -109,7 +109,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "A569361287B1BE41",
+        "frameBufferHash": "AF039216C7949A49",
         "framesRun": 600,
         "distinctColors": 15,
         "result": "ok",
@@ -131,7 +131,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "D6BBDD1FC093C67B",
+        "frameBufferHash": "E358F4941B966FA5",
         "framesRun": 600,
         "distinctColors": 16,
         "result": "ok",
@@ -153,7 +153,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "2DFA874555E7973D",
+        "frameBufferHash": "710F23BD071D8665",
         "framesRun": 600,
         "distinctColors": 10,
         "result": "ok",
@@ -175,7 +175,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "03C565523A8544FB",
+        "frameBufferHash": "A6C13A546B87987B",
         "framesRun": 600,
         "distinctColors": 7,
         "result": "ok",
@@ -198,7 +198,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "1FD8772BA34B9385",
+        "frameBufferHash": "264576462851E9DD",
         "framesRun": 120,
         "distinctColors": 12,
         "result": "ok",

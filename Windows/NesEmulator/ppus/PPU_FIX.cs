@@ -119,9 +119,29 @@ public class PPU_FIX : IPPU
 		ppuDotCounter += elapsedCycles;
 		for (int c = 0; c < elapsedCycles; c++)
 		{
-			if (scanline == 0 && scanlineCycle == 0)
+			// Hardware clears VBlank (bit 7), sprite-0 hit (bit 6) and sprite overflow (bit 5) at
+			// PRE-RENDER scanline 261, dot 1 - not at scanline 0 dot 0, and not only bits 7/6.
+			// Clearing a full scanline late shifted the entire vblank window against rendering:
+			// measured against Mesen as a constant ~326-dot phase offset, stable across 3000 frames
+			// (see project_vrun_accuracy memory). Latent for a game that only waits on NMI, but it
+			// is the classic cause of a corrupt top scanline for one that busy-waits on $2002 and
+			// then races VRAM writes against the end of vblank, and it mis-times any raster effect
+			// that counts cycles from the NMI.
+			if (scanline == 261 && scanlineCycle == 1)
 			{
-				PPUSTATUS &= 0x3F;
+				PPUSTATUS &= 0x1F;
+			}
+
+			// Hardware raises VBlank at scanline 241 dot 1, asserting /NMI there when enabled. This
+			// used to live in the end-of-scanline block below, which fired it at the END of 241 -
+			// i.e. scanline 242 dot 0, 340 dots late.
+			if (scanline == 241 && scanlineCycle == 1)
+			{
+				PPUSTATUS |= 0x80;
+				if ((PPUCTRL & 0x80) != 0)
+				{
+					bus.cpu.RequestNMI();
+				}
 			}
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
@@ -162,14 +182,8 @@ public class PPU_FIX : IPPU
 					IncrementY();
 				}
 
-				if (scanline == 241)
-				{
-					PPUSTATUS |= 0x80;
-					if ((PPUCTRL & 0x80) != 0)
-					{
-						bus.cpu.RequestNMI();
-					}
-				}
+				// (VBlank set / NMI assert moved to scanline 241 dot 1 in the per-dot section above -
+				// firing it here meant the end of scanline 241, i.e. 340 dots late.)
 
 				if (scanline == 261)
 				{

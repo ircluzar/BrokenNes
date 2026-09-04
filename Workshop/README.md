@@ -177,8 +177,20 @@ BrokenNes.Workshop.exe --irqtrace --rom path.nes --cpu ID --ppu ID --apu ID [--f
 ```bash
 BrokenNes.Workshop.exe --trace --rom path.nes --out trace.txt [--cpu ID --ppu ID --apu ID] \
     [--frames N] [--input "60:Start,66:,120:Right+A,180:"] [--ntsc-frame-timing on|off] \
-    [--power-on-ram fceux|zeros|ones]
+    [--power-on-ram fceux|zeros|ones] [--ram-dump-at N,N,... --ram-dump-dir DIR]
 ```
+
+**`--ram-dump-at` is what turns a failed diff into a diagnosis.** It writes the raw 2048 bytes of
+work RAM at the end of each named frame — the same instant the `ramhash` column is taken — as
+`<dir>/ram_f<N>.bin`. The hash column can only say *that* two frames differ; on a ROM that touches
+RAM every frame it says that on nearly every frame even when the two emulators are in the same
+state, because the hash is an all-or-nothing comparison of 2048 bytes sampled at an instant two
+different emulators cannot align to better than a few CPU cycles. The **count** of differing bytes
+is the oracle that survives that: two or three, parked in the stack page below SP or in unallocated
+zero page, means "sampled a few cycles apart"; tens or hundreds and growing means the game state
+has actually forked. `UAT/diff-trace.ps1 -RamDumpA/-RamDumpB/-RamMap` consumes these directly and
+names the differing addresses. Mesen's side of the same pairing is
+`VRUN_TRACE_RAMDUMP=N,N,... VRUN_TRACE_RAMDUMP_DIR=dir`.
 
 Exit codes are `--romtest`'s. `--out -` writes to stdout. The input-script parser is literally
 `RomTestCli.ParseInputScript` — one parser, so the two sides of a diff cannot drift on what
@@ -220,6 +232,17 @@ always one of these disagreeing rather than a real emulation defect:
   cycle-accurate reference within a handful of frames, which shows up in a diff looking like an
   emulation defect. `--ntsc-frame-timing off` restores the default budget (and does visibly change
   the trace from frame 1 onward, which is the point).
+- **Sample point** — the record is taken when `RunFrame()` returns, i.e. after a whole frame's worth
+  of PPU dots (rendering *and* vblank *and* the pre-render line), not after rendering alone. Mesen's
+  `emu.eventType.endFrame` fires at PPU scanline 240 cycle 0, ~2500 CPU cycles earlier, with the
+  entire vblank and NMI handler in between; sampling there against this makes every frame from 1
+  onward look divergent for a pure harness reason (measured on a real ROM: 1 of 600 RAM hashes
+  agreed). The Mesen-side tracer therefore has `VRUN_TRACE_SAMPLE` — use `prerender` or
+  `dot`/`VRUN_TRACE_SAMPLE_DOT` for anything compared against this tool, not the default `endFrame`.
+- **`p` bit 5** — this column has the 6502's unused/always-set flag SET, as hardware does on any
+  `PHP`/interrupt push. Mesen's `emu.getState()` `cpu.ps` reports it clear, so an unpatched Mesen
+  trace differs in `p` on 100% of frames for a representation reason. `diff-trace.ps1` detects a
+  whole-run constant xor on a register column and says so rather than letting it read as a bug.
 - `event-scheduler=off`, `crash-behavior=redscreen` — both are the emulator's defaults, pinned so a
   changed default cannot silently alter a trace. `ImagineFix` is specifically excluded: it mutates
   CPU state on a freeze heuristic and picks among candidate fixes with a clock-seeded `Random`.

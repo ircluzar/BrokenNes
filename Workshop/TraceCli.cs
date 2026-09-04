@@ -51,7 +51,12 @@ internal static class TraceCli
         "  --ntsc-frame-timing  default 'on'. See the determinism notes in TraceCli.cs.\n" +
         "  --power-on-ram  fceux (default, the emulator's own fill) | zeros | ones. Only bend this\n" +
         "                  when the emulator on the other side of the diff cannot produce FCEUX's\n" +
-        "                  pattern; whichever is used is recorded in the header.";
+        "                  pattern; whichever is used is recorded in the header.\n" +
+        "  --ram-dump-at   comma-separated frame numbers. Writes the raw 2048 bytes of work RAM at\n" +
+        "                  the END of each named frame - the same instant the ramhash column is\n" +
+        "                  taken - as <dir>/ram_f<N>.bin. A hash tells you THAT two frames differ;\n" +
+        "                  this is how you find out WHICH bytes, which is what names the variable.\n" +
+        "  --ram-dump-dir  where those go (default: alongside --out).";
 
     private const int WorkRamSize = 2048; // $0000-$07FF, the NES's 2KB of internal work RAM
 
@@ -63,6 +68,8 @@ internal static class TraceCli
         int frames = 1800;
         bool ntscFrameTiming = true;
         PowerOnRam powerOnRam = PowerOnRam.Fceux;
+        var ramDumpFrames = new HashSet<int>();
+        string? ramDumpDir = null;
 
         try
         {
@@ -79,6 +86,11 @@ internal static class TraceCli
                     case "--out": outPath = args[++i]; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
                     case "--power-on-ram": powerOnRam = ParsePowerOnRam(args[++i]); break;
+                    case "--ram-dump-at":
+                        foreach (var t in args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                            ramDumpFrames.Add(int.Parse(t));
+                        break;
+                    case "--ram-dump-dir": ramDumpDir = args[++i]; break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}");
                         return 2;
@@ -93,6 +105,14 @@ internal static class TraceCli
 
         if (romPath == null || outPath == null) { Console.Error.WriteLine(Usage); return 2; }
         if (frames < 0) { Console.Error.WriteLine("--frames must be >= 0"); return 2; }
+
+        if (ramDumpFrames.Count > 0)
+        {
+            // Default next to --out, which is where the trace being investigated already lives.
+            ramDumpDir ??= (outPath == "-" ? "." : (Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? "."));
+            try { Directory.CreateDirectory(ramDumpDir); }
+            catch (Exception ex) { Console.Error.WriteLine($"Failed to create --ram-dump-dir: {ex.Message}"); return 2; }
+        }
 
         List<RomTestCli.InputStep> script;
         try { script = RomTestCli.ParseInputScript(inputScript); }
@@ -250,6 +270,13 @@ internal static class TraceCli
                 AppendHashPrefix(line, digest);
                 writer.WriteLine(line.ToString());
                 emitted++;
+
+                if (ramDumpFrames.Contains(f))
+                {
+                    var path = Path.Combine(ramDumpDir!, $"ram_f{f}.bin");
+                    File.WriteAllBytes(path, ramSnapshot);
+                    Console.Error.WriteLine($"ram-dump: frame {f} -> {path}");
+                }
 
                 if (nes.IsCrashed()) { crashFrame = f; break; }
             }
