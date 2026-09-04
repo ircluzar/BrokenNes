@@ -151,7 +151,18 @@ namespace BrokenNes
             return "?";
         }
     
-    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation)
+    // onRomLoaded runs after NES.LoadROM and BEFORE emulation restarts, with the ROM bytes.
+    //
+    // It is not optional decoration - without it this method silently changes the CPU core.
+    // NES.LoadROM constructs a fresh Bus, and Bus's constructor defaults activeCpu to CPU_SPD;
+    // nothing here put the player's selection back, so every ROM switch (row click, upload,
+    // drag-drop, ?rom=) quietly dropped to SPD while the picker went on displaying the core the
+    // player chose. Only the boot/Reload/Reset paths escaped it, because those go through
+    // LoadRomFromServer, which re-applies cores itself - which is exactly why this stayed invisible.
+    //
+    // The callback fires before startEmulation() on purpose: applying cores after this method
+    // returns would let the first frames run on the wrong one.
+    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation, Action<byte[]>? onRomLoaded = null)
         {
             try
             {
@@ -169,6 +180,7 @@ namespace BrokenNes
                     LastLoadedRomSize = data.Length;
                     setStatus($"ROM '{RomFileName}' loaded from upload.");
                     ErrorMessage = "";
+                    onRomLoaded?.Invoke(data);
                     // UI: Collapse ROM Manager and expand Corruptor panel if not test.nes
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
@@ -191,6 +203,7 @@ namespace BrokenNes
                     LastLoadedRomSize = romData.Length;
                     setStatus($"ROM '{RomFileName}' loaded successfully!");
                     ErrorMessage = "";
+                    onRomLoaded?.Invoke(romData);
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
                 }
@@ -288,6 +301,27 @@ namespace BrokenNes
     public bool FamicloneOn = true;
     public string ApuCoreSel = "";
     public string CpuCoreSel = "";
+
+    // A CPU core forced for the CURRENTLY LOADED ROM, overriding the player's pick without
+    // replacing it. Some cartridges cannot run on the core that happens to be selected - a NESFab
+    // mapper-30 homebrew leans on the undocumented 6502 opcodes, which only CPU_FIX implements, and
+    // the shipped crash behaviour is IgnoreErrors, so a lesser core executes them as NOPs and runs
+    // a different program with nothing reported anywhere.
+    //
+    // Deliberately session state, not a preference: writing the player's chosen core away (which is
+    // what SetCpuCorePublic would do - it persists pref_cpuCore to IndexedDB) would silently change
+    // every OTHER ROM they load afterwards. Null means "no override, use CpuCoreSel".
+    public string? RuntimeCpuCoreOverride;
+
+    // The core actually in force, for display. The picker must not claim FMC while FIX is running.
+    public string EffectiveCpuCoreSel => string.IsNullOrEmpty(RuntimeCpuCoreOverride) ? CpuCoreSel : RuntimeCpuCoreOverride!;
+
+    // iNES/NES 2.0 mapper number straight out of a ROM image's 16-byte header, or -1 if the buffer
+    // is too short to have one. Same expression as Cartridge.cs, deliberately duplicated rather
+    // than shared: this has to run BEFORE NES.LoadROM builds a Cartridge, to decide which CPU core
+    // that load should use.
+    public static int PeekMapperId(byte[] rom)
+        => (rom == null || rom.Length < 16) ? -1 : ((rom[6] >> 4) | ((rom[7] >> 4) << 4));
     public string PpuCoreSel = "FMC";
     // Clock Core selection (new pluggable loop ownership)
     public List<string> ClockCoreOptions { get; set; } = new();

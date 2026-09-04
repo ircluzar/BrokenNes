@@ -114,6 +114,22 @@ namespace BrokenNes
         }
 
         // Helper to apply the currently selected crash behavior to the active NES
+        // Cartridges that cannot run on an arbitrary CPU core, keyed off the ROM header.
+        //
+        // Mapper 30 (UNROM-512) is the self-flashing homebrew board, and in practice that means
+        // NESFab output, which emits the undocumented 6502 opcodes as a matter of course. Only
+        // CPU_FIX implements them. Every other core either throws "Bad opcode" or - under the
+        // shipped IgnoreErrors behaviour - executes them as 2-cycle NOPs, so the game runs a
+        // different program than the one on the cartridge, looks alive, and reports nothing.
+        //
+        // A header field, not a scan of PRG: a static scan cannot tell code from data and would
+        // demand FIX for nearly every commercial ROM. Deliberately not the desktop build's
+        // run-the-ROM probe either - that spends up to 90 frames on the browser's single thread on
+        // every ROM load, which is the wrong trade for a build whose whole point is old phones.
+        // Returns null when no core is required, meaning "honour the player's pick".
+        private static string? RequiredCpuCoreFor(byte[] romBytes)
+            => NesController.PeekMapperId(romBytes) == 30 ? "FIX" : null;
+
         private void ApplySelectedCrashBehavior()
         {
             try
@@ -304,7 +320,16 @@ namespace BrokenNes
                 async _ => await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", Controller.framebuffer),
                 async () => { BuildMemoryDomains(); await Task.CompletedTask; },
                 () => PauseAsync(),
-                () => StartAsync()
+                () => StartAsync(),
+                romBytes =>
+                {
+                    // NES.LoadROM built a new Bus, which defaults the CPU to SPD. Decide whether
+                    // this cartridge needs a specific core, then put the selection back - both
+                    // before the first frame runs.
+                    Controller.RuntimeCpuCoreOverride = RequiredCpuCoreFor(romBytes);
+                    ApplySelectedCores();
+                    ApplySelectedCrashBehavior();
+                }
             );
             // After successful ROM load, ensure a corresponding Game entry exists in continue-db
             try { await EnsureGameInContinueDbAsync(Controller.CurrentRomName); } catch { }

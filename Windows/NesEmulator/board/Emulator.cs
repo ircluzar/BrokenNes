@@ -226,7 +226,16 @@ namespace BrokenNes
         public void Initialize()
         {
             // Content from OnInitialized
-            nesController.RomOptions = new() { new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true} };
+            // test.nes MUST stay first: GetDefaultBuiltInRomKey() returns the first built-in and is
+            // the fallback target when an uploaded ROM is deleted. Display order is unaffected -
+            // FilteredRomOptions sorts built-ins first, then by label.
+            nesController.RomOptions = new()
+            {
+                new RomOption{ Key="test.nes", Label="Test ROM (test.nes)", BuiltIn=true},
+                // Bundled homebrew demo, shipped with the emulator by its author. Mapper 30, so it
+                // is also the one built-in that exercises the required-CPU-core path.
+                new RomOption{ Key="vrun.nes", Label="VRUN: Corrupt the World", BuiltIn=true},
+            };
             // Provide hooks for corruptor -> imagine bridge
             try { corruptor.EmulatorHooks = new CorruptorImagineHooks(this); } catch {}
             try { Nav.LocationChanged += OnLocationChanged; } catch {}
@@ -834,10 +843,13 @@ namespace BrokenNes
             if (nes == null) return;
             try
             {
-                if (!string.IsNullOrEmpty(nesController.CpuCoreSel))
+                // EffectiveCpuCoreSel, not CpuCoreSel: a cartridge that cannot run on the selected
+                // core pins one for its own session without overwriting the player's preference.
+                var cpuSel = nesController.EffectiveCpuCoreSel;
+                if (!string.IsNullOrEmpty(cpuSel))
                 {
-                    if (!nes.SetCpuCore(nesController.CpuCoreSel))
-                        nes.SetCpuCore(nesController.CpuCoreSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
+                    if (!nes.SetCpuCore(cpuSel))
+                        nes.SetCpuCore(cpuSel == "FIX" ? NesEmulator.Bus.CpuCore.FIX : NesEmulator.Bus.CpuCore.FMC);
                 }
                 if (!nes.SetPpuCore(nesController.PpuCoreSel))
                 {
@@ -1005,6 +1017,9 @@ namespace BrokenNes
                     };
                 } catch { }
                 nes.RomName = nesController.RomFileName; var prevApuSuffix = nesController.ApuCoreSel; nes.LoadROM(romData); if (!string.IsNullOrEmpty(prevApuSuffix)) { try { nes.SetApuCore(prevApuSuffix); } catch {} }
+                // Same rule as the ROM-switch path: decide the cartridge's required CPU core before
+                // ApplySelectedCores below, so boot and Reload pin it too, not just a row click.
+                nesController.RuntimeCpuCoreOverride = RequiredCpuCoreFor(romData);
                 // Apply currently selected crash behavior (preserve user choice)
                 try { ApplySelectedCrashBehavior(); } catch {}
                 SetApuCoreSelFromEmu(); ApplySelectedCores();
