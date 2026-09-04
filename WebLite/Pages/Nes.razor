@@ -34,6 +34,20 @@
 
 <div class="nes-grid @(DisplayOnlyMode ? "display-only" : (StageMode ? "stage-mode" : string.Empty))">
     <section class="play-area">
+        @* Bundled-demo call to action. Sits above the toolbar so it escapes the toolbar's <=420px
+           shrink rules, and dismisses itself once VRUN is the loaded ROM so it costs vertical
+           space only on the first screen. The ROM Manager row is the way back to it afterwards. *@
+        @if (!DisplayOnlyMode && !StageMode && !string.Equals(emu!.Controller.CurrentRomName, VrunRomKey, StringComparison.OrdinalIgnoreCase))
+        {
+        <div class="vrun-cta" role="region" aria-labelledby="vrun-cta-title">
+            <div class="vrun-cta-copy">
+                <div class="vrun-cta-kicker">Bundled demo</div>
+                <div class="vrun-cta-title" id="vrun-cta-title">VRUN: Corrupt the World</div>
+                <div class="vrun-cta-sub">Homebrew built for real NES hardware &mdash; 512K self-flashing cartridge. No download, no setup.</div>
+            </div>
+            <button type="button" class="boot-btn vrun-cta-btn" @onclick="PlayVrunAsync" disabled="@_vrunLoading" aria-label="Play VRUN: Corrupt the World">@(_vrunLoading ? "Loading…" : "Play VRUN")</button>
+        </div>
+        }
         @if (!DisplayOnlyMode)
         {
         <div class="quick-controls btn-toolbar gap-2 flex-wrap justify-content-center mb-3" role="toolbar">
@@ -76,8 +90,15 @@
                     {
                         <div class="qc-select-stack">
                             <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                            <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select" title="CPU core" aria-label="CPU Core" @onclick="OpenCpuPicker">
-                                @emu!.Controller.CpuCoreSel
+                            @* Shows the core actually running, which is not always the one picked:
+                               a cartridge that cannot run on the selected core pins its own for the
+                               session. Rendering CpuCoreSel here would report FMC while FIX runs. *@
+                            <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select"
+                                    title="@(string.IsNullOrEmpty(emu!.Controller.RuntimeCpuCoreOverride)
+                                              ? "CPU core"
+                                              : $"This ROM requires CPU_{emu!.Controller.RuntimeCpuCoreOverride} and is using it for this session; your saved choice ({emu!.Controller.CpuCoreSel}) is unchanged.")"
+                                    aria-label="CPU Core" @onclick="OpenCpuPicker">
+                                @emu!.Controller.EffectiveCpuCoreSel@(string.IsNullOrEmpty(emu!.Controller.RuntimeCpuCoreOverride) ? "" : "*")
                             </button>
                         </div>
                     }
@@ -1195,6 +1216,29 @@
     private bool DisplayOnlyMode = false;
     private bool HideRtcGhImagine => StageMode || DisplayOnlyMode;
     private bool HideCoreSelectors => StageMode || DisplayOnlyMode;
+    // The bundled homebrew demo. Registered as a built-in RomOption in Emulator.Initialize, so it
+    // is also reachable from the ROM Manager list after the hero strip dismisses itself.
+    private const string VrunRomKey = "vrun.nes";
+    private bool _vrunLoading;
+
+    // Deliberately does NOT touch the CPU picker. VRUN is mapper 30 and needs CPU_FIX, but that is
+    // decided from the ROM header inside the load path (Emulator.RequiredCpuCoreFor) and applied as
+    // a session override, so it also covers a mapper-30 ROM the player uploads themselves. Calling
+    // SetCpuCorePublic("FIX") here would persist pref_cpuCore to IndexedDB and silently change the
+    // core for every other game they load afterwards.
+    private async Task PlayVrunAsync()
+    {
+        if (emu == null || _vrunLoading) return;
+        _vrunLoading = true; StateHasChanged();
+        try
+        {
+            emu.Controller.RomFileName = VrunRomKey;
+            await emu.LoadSelectedRomPublic();
+            await emu.StartAsync();
+        }
+        finally { _vrunLoading = false; StateHasChanged(); }
+    }
+
     private bool? SavestatesAllowedOverride = null; // null = no override
     private bool ShowSavestates => emu != null && emu.SavestatesUnlocked && (SavestatesAllowedOverride ?? true);
     private string? QRom;

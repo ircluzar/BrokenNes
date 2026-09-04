@@ -1048,3 +1048,21 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
 }
 
 
+
+/* ===== Bundled-demo call to action (VRUN) =====
+   Every colour here is a literal on purpose. The :root block at the top of this file is dead
+   under Blazor CSS isolation - it compiles to :root[b-<hash>], which matches nothing - so
+   var(--nes-accent) resolves to app.css's crimson rather than the blue this file intends.
+   The gradient, border and max-width are copied from .screen-shell so the strip reads as the
+   same slab of hardware sitting above the screen; the 3px left spine is the only thing that
+   marks it out as a call to action. */
+.vrun-cta { width:100%; max-width:720px; box-sizing:border-box; margin:0 0 0.75rem; display:flex; align-items:center; gap:clamp(.6rem,2vw,1.25rem); padding:clamp(.7rem,2.5vw,1rem) clamp(.8rem,3vw,1.15rem); background:linear-gradient(145deg,#111822,#0b0f15); border:1px solid #1f2730; border-left:3px solid #4fa3ff; border-radius:14px; box-shadow:0 4px 12px -2px rgba(0,0,0,.4),0 2px 4px -1px rgba(0,0,0,.3); }
+.vrun-cta-copy { flex:1 1 auto; min-width:0; }
+.vrun-cta-kicker { font-size:.5rem; line-height:1; letter-spacing:1px; text-transform:uppercase; font-weight:600; color:#8fa3b8; margin-bottom:.3rem; }
+.vrun-cta-title { font-size:clamp(.85rem,2.6vw,1.05rem); font-weight:700; letter-spacing:.3px; color:#e6edf3; }
+.vrun-cta-sub { margin-top:.25rem; font-size:.7rem; line-height:1.35; color:#b8c4cf; }
+/* .vrun-cta .boot-btn beats bare .boot-btn on specificity under isolation, so these land. */
+.vrun-cta .boot-btn { flex:0 0 auto; white-space:nowrap; }
+.vrun-cta .boot-btn:disabled { opacity:.55; cursor:progress; }
+@media (max-width:640px){ .vrun-cta { flex-direction:column; align-items:stretch; text-align:center; gap:.75rem; } .vrun-cta .boot-btn { width:100%; font-size:.95rem; padding:.85rem 1rem; } .vrun-cta-sub { font-size:.65rem; } }
+@media (max-width:420px){ .vrun-cta { padding:.7rem .75rem; border-radius:12px; } .vrun-cta-title { font-size:.85rem; } .vrun-cta .boot-btn { letter-spacing:1.2px; } }
