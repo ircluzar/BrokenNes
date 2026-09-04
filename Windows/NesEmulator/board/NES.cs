@@ -600,6 +600,10 @@ namespace NesEmulator
 			bus.PendingCpuStallCycles = st.pendingCpuStallCycles;
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
 			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
+			// A savestate load has just (possibly) rolled the cartridge's flash back to an older
+			// state. Block battery autosaves until the game writes flash again, so the rollback
+			// cannot be committed over a newer real save. See SuppressBatteryAutosave above.
+			SuppressBatteryAutosaveUntilNextFlashWrite();
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);
 			if (st.chrRAM.Length == cartridge.chrRAM.Length) Array.Copy(st.chrRAM, cartridge.chrRAM, st.chrRAM.Length);
 			// Finally restore CPU/PPU/APU internal state
@@ -1600,12 +1604,59 @@ namespace NesEmulator
 		public byte[]? ExportMapperBatteryMemory()
 			=> HasMapperBatteryMemory ? cartridge!.mapper.ExportNonVolatileMemory() : null;
 
-		public void ImportMapperBatteryMemory(byte[] data)
+		// Returns what actually happened, because "did not load" must not be mistaken for "loaded and
+		// empty": the caller's next autosave would otherwise write this cartridge's blank flash over
+		// the very file it just failed to read. A non-Applied result therefore also arms
+		// SuppressBatteryAutosave here, so even a caller that ignores the return value cannot destroy
+		// the file - it has to opt back in by clearing the flag, or wait for the game to save again.
+		public NonVolatileImportResult ImportMapperBatteryMemory(byte[] data)
 		{
-			if (data == null || data.Length == 0) return;
-			if (!HasMapperBatteryMemory) return;
-			cartridge!.mapper.ImportNonVolatileMemory(data);
+			if (data == null || data.Length == 0) return NonVolatileImportResult.Rejected;
+			if (!HasMapperBatteryMemory) return NonVolatileImportResult.Rejected;
+			var result = cartridge!.mapper.ImportNonVolatileMemory(data);
+			if (result != NonVolatileImportResult.Applied) SuppressBatteryAutosaveUntilNextFlashWrite();
+			else ClearBatteryAutosaveSuppression();
+			return result;
 		}
+
+		// === Battery autosave suppression ===
+		//
+		// WHY THIS EXISTS: the mapper's flash contents are part of the savestate (deliberately - see
+		// the comment on Mapper30.GetMapperState), so loading an older savestate ROLLS THE FLASH BACK
+		// to whatever it held when that state was taken. That is right for emulation and ruinous for
+		// persistence, because the battery layer's next autosave would commit the rollback to disk,
+		// discarding every in-game save the player made after the savestate. Observed in practice: an
+		// 8232-byte .flash.sav becoming 4128 bytes.
+		//
+		// The fix is not to drop the flash from savestates - the differential-trace tooling depends on
+		// sectorWriteCount surviving a save/load - but to let the persistence layer know that memory
+		// and disk have deliberately diverged. While SuppressBatteryAutosave is true, the in-memory
+		// flash does NOT represent the player's on-disk save and must not be written out.
+		//
+		// It clears itself the moment the running game performs a genuine flash write, because from
+		// then on the flash is the game's own current intent and a save the player just made in-game
+		// has to reach the disk. That is polled off IMapper.NonVolatileWriteGeneration rather than
+		// pushed, so nothing in the per-cycle write path has to know about the persistence layer.
+		private ulong _batteryAutosaveSuppressGeneration;
+		private bool _batteryAutosaveSuppressed;
+
+		public bool SuppressBatteryAutosave
+			=> _batteryAutosaveSuppressed
+			   && cartridge?.mapper != null
+			   && cartridge.mapper.NonVolatileWriteGeneration == _batteryAutosaveSuppressGeneration;
+
+		// Arms the flag against the mapper's CURRENT write generation. No-op for a cartridge with no
+		// mapper-side save medium, where there is nothing to protect.
+		public void SuppressBatteryAutosaveUntilNextFlashWrite()
+		{
+			if (!HasMapperBatteryMemory) { _batteryAutosaveSuppressed = false; return; }
+			_batteryAutosaveSuppressGeneration = cartridge!.mapper.NonVolatileWriteGeneration;
+			_batteryAutosaveSuppressed = true;
+		}
+
+		// For the deliberate override: the user asking to write the save out anyway, or a fresh ROM
+		// load that has re-synced memory with disk.
+		public void ClearBatteryAutosaveSuppression() { _batteryAutosaveSuppressed = false; }
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;
 		public void PokeChr(int index, byte val) { cartridge?.PokeChr(index, val); }
 

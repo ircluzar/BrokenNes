@@ -25,6 +25,12 @@ public class Mapper30 : IMapper
     private FlashMode flashMode;
     private byte[] flashOverlay;      // shadow copy of prgROM once a sector has been programmed (useFlash only)
     private int[] sectorWriteCount;   // per-4KB-sector "programmed since last erase" counter (useFlash only)
+    private readonly byte[] romFingerprint; // identifies the ROM this flash belongs to; see the blob layout below
+
+    // Bumped by every path that changes flash contents. NOT emulated state and NOT serialised into
+    // a savestate - it exists so the host can tell whether the game has written flash SINCE some
+    // earlier moment, which a value that rolled back with the savestate could not answer.
+    private ulong flashWriteGeneration;
 
     // SST39SF0x0 unlock sequence: AA@bank1:$1555, 55@bank0:$2AAA, then a command byte at bank1:$1555.
     private static readonly int[] UnlockAddr = { 0x1555, 0x2AAA, 0x1555, 0x1555, 0x2AAA };
@@ -41,7 +47,26 @@ public class Mapper30 : IMapper
         {
             flashOverlay = new byte[cart.prgROM.Length];
             sectorWriteCount = new int[Math.Max(1, cart.prgROM.Length / 0x1000)];
+            // Computed once here rather than per-import: hashing 512KB is cheap at load time and
+            // free thereafter, and it must be the PRISTINE ROM image - not the flash overlay, which
+            // the game will start mutating the moment it saves.
+            romFingerprint = ComputeRomFingerprint(cart.prgROM);
         }
+        else
+        {
+            romFingerprint = Array.Empty<byte>();
+        }
+    }
+
+    // First 8 bytes of SHA-1 over the PRG image. 64 bits is not cryptographic strength and does not
+    // need to be: the threat is a stale or mismatched .sav file quietly loading over the wrong ROM,
+    // not an adversary crafting a collision, and a wrong-build save is exactly what this catches.
+    private static byte[] ComputeRomFingerprint(byte[] prg)
+    {
+        var full = System.Security.Cryptography.SHA1.HashData(prg ?? Array.Empty<byte>());
+        var fp = new byte[RomFingerprintSize];
+        Array.Copy(full, fp, RomFingerprintSize);
+        return fp;
     }
 
     public void Reset()
@@ -133,6 +158,7 @@ public class Mapper30 : IMapper
                     // Whole-chip erase ("you probably don't want to do this").
                     for (int i = 0; i < sectorWriteCount.Length; i++) IncrementWriteCount(i);
                     Array.Fill(flashOverlay, (byte)0xFF);
+                    flashWriteGeneration++;
                 }
                 else if (value == 0x30)
                 {
@@ -143,6 +169,7 @@ public class Mapper30 : IMapper
                         int di = sectorStart + i;
                         if (di >= 0 && di < flashOverlay.Length) flashOverlay[di] = 0xFF;
                     }
+                    flashWriteGeneration++;
                 }
                 flashState = 0;
                 flashMode = FlashMode.Default;
@@ -163,6 +190,9 @@ public class Mapper30 : IMapper
                     int byteIdx = prg * 0x4000 + (rel & 0x3FFF);
                     // Flash programming can only clear bits (AND), never set them, until the next erase.
                     if (byteIdx >= 0 && byteIdx < flashOverlay.Length) flashOverlay[byteIdx] &= value;
+                    // Counted even when the AND happens to change nothing: the GAME issued a program
+                    // command, and that intent - "I am saving now" - is what the host cares about.
+                    flashWriteGeneration++;
                     flashState = 0;
                     flashMode = FlashMode.Default;
                     break;
@@ -264,19 +294,35 @@ public class Mapper30 : IMapper
     // observable through the bus, but preserving the exact value keeps a savestate taken after a
     // reload identical to one taken before it, which the differential-trace tooling compares.
     //
-    // Layout (little-endian, header 24 bytes):
+    // WHY VERSION 2 CARRIES A ROM FINGERPRINT: a chip length alone does not identify a cartridge.
+    // Every 512KB mapper-30 build has the same length, so a v1 blob from a DIFFERENT game - or,
+    // far more likely here, a different revision of the same homebrew - passed validation and got
+    // mapped over the flash, producing a cart whose PRG is half one build and half another. The
+    // fingerprint makes "is this save mine?" answerable, and the answer is reported to the caller
+    // (NonVolatileImportResult.NotForThisRom) so the foreign file can be left on disk instead of
+    // being overwritten by the next autosave.
+    //
+    // No v1 read path exists: the format shipped with no .flash.sav ever written to disk, so there
+    // is nothing in the field to be compatible with, and a silent "v1 has no fingerprint, trust it"
+    // fallback would reopen exactly the hole this closes.
+    //
+    // Layout (little-endian, header 32 bytes):
     //   0  : 8  magic "BNMAP30F"
-    //   8  : 1  format version (1)
+    //   8  : 1  format version (2)
     //   9  : 3  reserved, zero
     //   12 : 4  total overlay length in bytes - a blob whose length disagrees with the loaded ROM
     //           is from a different build and is refused wholesale rather than half-applied
     //   16 : 4  sector size in bytes (0x1000)
-    //   20 : 4  number of live sector records that follow
+    //   20 : 4  number of live sector records that follow (never 0; see ImportNonVolatileMemory)
+    //   24 : 8  ROM fingerprint: first 8 bytes of SHA-1 over the pristine prgROM image
     //   then, per record: 4 sector index, 4 write count, <sector size> bytes of data
     private static readonly byte[] FlashBlobMagic = { (byte)'B', (byte)'N', (byte)'M', (byte)'A', (byte)'P', (byte)'3', (byte)'0', (byte)'F' };
     private const int FlashSectorSize = 0x1000;
-    private const int FlashBlobHeaderSize = 24;
-    private const byte FlashBlobVersion = 1;
+    private const int RomFingerprintSize = 8;
+    private const int FlashBlobFingerprintOffset = 24;
+    private const int FlashBlobHeaderSize = 32;
+    private const byte FlashBlobVersion = 2;
+    private const int FlashBlobRecordSize = 8 + FlashSectorSize;
 
     public bool HasNonVolatileMemory => useFlash;
 
@@ -290,12 +336,13 @@ public class Mapper30 : IMapper
         // behind for a cartridge the player has never saved on.
         if (liveCount == 0) return null;
 
-        var blob = new byte[FlashBlobHeaderSize + liveCount * (8 + FlashSectorSize)];
+        var blob = new byte[FlashBlobHeaderSize + liveCount * FlashBlobRecordSize];
         Array.Copy(FlashBlobMagic, 0, blob, 0, FlashBlobMagic.Length);
         blob[8] = FlashBlobVersion;
         WriteU32(blob, 12, (uint)flashOverlay.Length);
         WriteU32(blob, 16, FlashSectorSize);
         WriteU32(blob, 20, (uint)liveCount);
+        Array.Copy(romFingerprint, 0, blob, FlashBlobFingerprintOffset, RomFingerprintSize);
 
         int at = FlashBlobHeaderSize;
         for (int s = 0; s < sectorWriteCount.Length; s++)
@@ -313,42 +360,78 @@ public class Mapper30 : IMapper
         return blob;
     }
 
-    public void ImportNonVolatileMemory(byte[] data)
+    // Loads a blob produced by ExportNonVolatileMemory. STRICTLY all-or-nothing: on any non-Applied
+    // result the flash is byte-for-byte what it was on entry, so a bad file can never damage a save
+    // that is already loaded.
+    public NonVolatileImportResult ImportNonVolatileMemory(byte[] data)
     {
-        if (!useFlash || flashOverlay == null || sectorWriteCount == null) return;
-        if (data == null || data.Length < FlashBlobHeaderSize) return;
-        for (int i = 0; i < FlashBlobMagic.Length; i++) if (data[i] != FlashBlobMagic[i]) return;
-        if (data[8] != FlashBlobVersion) return;
-        // Refuse a blob recorded against a differently sized PRG chip outright. Partially applying
-        // it would leave the flash a chimera of two builds, which is far harder to diagnose than a
-        // save that simply did not load.
-        if (ReadU32(data, 12) != (uint)flashOverlay.Length) return;
-        if (ReadU32(data, 16) != FlashSectorSize) return;
+        if (!useFlash || flashOverlay == null || sectorWriteCount == null) return NonVolatileImportResult.Rejected;
+        if (data == null || data.Length < FlashBlobHeaderSize) return NonVolatileImportResult.Rejected;
+        for (int i = 0; i < FlashBlobMagic.Length; i++) if (data[i] != FlashBlobMagic[i]) return NonVolatileImportResult.Rejected;
+        if (data[8] != FlashBlobVersion) return NonVolatileImportResult.Rejected;
+        if (ReadU32(data, 16) != FlashSectorSize) return NonVolatileImportResult.Rejected;
+
+        // Identity before structure, so a save belonging to another build is reported as somebody's
+        // real data (NotForThisRom - keep the file) rather than as corruption (which invites the
+        // caller to overwrite it).
+        if (ReadU32(data, 12) != (uint)flashOverlay.Length) return NonVolatileImportResult.NotForThisRom;
+        for (int i = 0; i < RomFingerprintSize; i++)
+            if (data[FlashBlobFingerprintOffset + i] != romFingerprint[i]) return NonVolatileImportResult.NotForThisRom;
 
         uint records = ReadU32(data, 20);
-        long needed = (long)FlashBlobHeaderSize + (long)records * (8 + FlashSectorSize);
-        if (needed > data.Length) return; // truncated file (interrupted write, bad copy) - ignore it
+        // Export NEVER emits a record-less blob - it returns null when nothing is programmed - so a
+        // header claiming zero records is a damaged file, not "an empty save". Treating it as empty
+        // would blank a flash that may hold the player's only copy of their progress.
+        if (records == 0) return NonVolatileImportResult.Rejected;
+        long needed = (long)FlashBlobHeaderSize + (long)records * FlashBlobRecordSize;
+        if (needed > data.Length) return NonVolatileImportResult.Rejected; // truncated (interrupted write, bad copy)
 
-        // Only commit once the whole blob has been validated, so a rejected file cannot leave the
-        // flash half-overwritten.
+        // PASS 1 - validate every record before touching a single byte of live state.
+        //
+        // The clear below used to run BEFORE this loop, so a blob that went bad at record 5 of 20
+        // left the flash erased and 4 sectors deep into a foreign save: the worst of both outcomes,
+        // and the exact opposite of what the comment beside it promised. Validation must complete
+        // first, which means walking the records twice - trivial next to the file I/O around it.
+        var seen = new bool[sectorWriteCount.Length];
+        int at = FlashBlobHeaderSize;
+        for (uint r = 0; r < records; r++)
+        {
+            uint sector = ReadU32(data, at);
+            uint count = ReadU32(data, at + 4);
+            at += FlashBlobRecordSize;
+
+            if (sector >= (uint)sectorWriteCount.Length) return NonVolatileImportResult.Rejected;
+            // A record with count 0 would install overlay bytes into a sector the bus reports as
+            // never-programmed, breaking the invariant the whole sparse format rests on (see above)
+            // and making the very next Export lossy. Export cannot produce one.
+            if (count == 0) return NonVolatileImportResult.Rejected;
+            // Duplicate indices are likewise impossible from Export (it walks sectors in order) and
+            // mean the file is scrambled; last-write-wins would silently pick one at random.
+            if (seen[sector]) return NonVolatileImportResult.Rejected;
+            seen[sector] = true;
+        }
+
+        // PASS 2 - commit. Everything below is guaranteed in-range by pass 1.
         Array.Clear(flashOverlay, 0, flashOverlay.Length);
         Array.Clear(sectorWriteCount, 0, sectorWriteCount.Length);
 
-        int at = FlashBlobHeaderSize;
+        at = FlashBlobHeaderSize;
         for (uint r = 0; r < records; r++)
         {
             uint sector = ReadU32(data, at); at += 4;
             uint count = ReadU32(data, at); at += 4;
-            if (sector < (uint)sectorWriteCount.Length)
-            {
-                sectorWriteCount[sector] = count > int.MaxValue ? int.MaxValue : (int)count;
-                int dst = (int)sector * FlashSectorSize;
-                int n = Math.Max(0, Math.Min(FlashSectorSize, flashOverlay.Length - dst));
-                if (n > 0) Buffer.BlockCopy(data, at, flashOverlay, dst, n);
-            }
+            sectorWriteCount[sector] = count > int.MaxValue ? int.MaxValue : (int)count;
+            int dst = (int)sector * FlashSectorSize;
+            int n = Math.Max(0, Math.Min(FlashSectorSize, flashOverlay.Length - dst));
+            if (n > 0) Buffer.BlockCopy(data, at, flashOverlay, dst, n);
             at += FlashSectorSize;
         }
+        return NonVolatileImportResult.Applied;
     }
+
+    // See IMapper.NonVolatileWriteGeneration. Bumped by chip erase, sector erase and byte program;
+    // never restored by SetMapperState, so it only ever moves forward within a session.
+    public ulong NonVolatileWriteGeneration => flashWriteGeneration;
 
     private static void WriteU32(byte[] buf, int offset, uint value)
     {
@@ -367,30 +450,60 @@ public class Mapper30 : IMapper
         public int chr;
         public int flashState;
         public int flashMode;
-        public byte[] flashOverlay;
-        public int[] sectorWriteCount;
+        // Nullable: a non-battery mapper-30 cart has no flash arrays to capture at all.
+        public byte[]? flashOverlay;
+        public int[]? sectorWriteCount;
     }
 
+    // === Savestates vs. the battery file ===
+    //
+    // The flash arrays ARE part of the savestate, on purpose: the differential-trace tooling
+    // compares sectorWriteCount across a save/load pair, and a savestate that silently dropped the
+    // flash would restore a machine whose PRG bus reads differently from the one that was saved.
+    //
+    // The consequence has to be handled rather than avoided: loading an older savestate rolls the
+    // flash BACK, and the battery layer must not then commit that rollback to disk over a newer
+    // real save. NES exposes NES.SuppressBatteryAutosave for exactly that, driven by
+    // NonVolatileWriteGeneration above - which is why that counter is NOT restored here.
     public object GetMapperState() => new Mapper30State
     {
         prg = prg,
         chr = chr,
         flashState = flashState,
         flashMode = (int)flashMode,
-        flashOverlay = useFlash ? flashOverlay : null,
-        sectorWriteCount = useFlash ? sectorWriteCount : null
+        // CLONE, never hand out the live arrays. An in-memory savestate that aliased them would go
+        // on seeing every subsequent flash write, so "load state" would restore the flash to its
+        // present contents instead of its captured ones - a rewind that silently does nothing.
+        flashOverlay = (useFlash && flashOverlay != null) ? (byte[])flashOverlay.Clone() : null,
+        sectorWriteCount = (useFlash && sectorWriteCount != null) ? (int[])sectorWriteCount.Clone() : null
     };
+
+    // Restore the two flash arrays together or not at all.
+    //
+    // They are one datum in two pieces: sectorWriteCount says which sectors of flashOverlay are
+    // live. Applying a partial or mismatched pair (the JSON path used to copy however many elements
+    // happened to be present) leaves sectors whose counts came from the savestate sitting on top of
+    // overlay bytes from the previous run - a save file that looks valid and contains two different
+    // games. Refusing outright keeps the mapper's own coherent state, which is the safer of the two
+    // wrong answers when a savestate does not match the cartridge in the machine.
+    private bool ApplyFlashArrays(byte[]? overlay, int[]? counts)
+    {
+        if (!useFlash || flashOverlay == null || sectorWriteCount == null) return false;
+        if (overlay == null || counts == null) return false;
+        if (overlay.Length != flashOverlay.Length || counts.Length != sectorWriteCount.Length) return false;
+        Array.Clear(flashOverlay, 0, flashOverlay.Length);
+        Array.Clear(sectorWriteCount, 0, sectorWriteCount.Length);
+        Array.Copy(overlay, flashOverlay, flashOverlay.Length);
+        Array.Copy(counts, sectorWriteCount, sectorWriteCount.Length);
+        return true;
+    }
 
     public void SetMapperState(object state)
     {
         if (state is Mapper30State s)
         {
             prg = s.prg; chr = s.chr; flashState = s.flashState; flashMode = (FlashMode)s.flashMode;
-            if (useFlash)
-            {
-                if (s.flashOverlay != null && s.flashOverlay.Length == flashOverlay.Length) Array.Copy(s.flashOverlay, flashOverlay, flashOverlay.Length);
-                if (s.sectorWriteCount != null && s.sectorWriteCount.Length == sectorWriteCount.Length) Array.Copy(s.sectorWriteCount, sectorWriteCount, sectorWriteCount.Length);
-            }
+            ApplyFlashArrays(s.flashOverlay, s.sectorWriteCount);
             return;
         }
         if (state is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Object)
@@ -403,15 +516,30 @@ public class Mapper30 : IMapper
                 if (je.TryGetProperty("flashMode", out var fm)) flashMode = (FlashMode)fm.GetInt32();
                 if (useFlash)
                 {
+                    // Decode into scratch arrays first; ApplyFlashArrays decides whether they are
+                    // usable. NES.PlainSerialize emits the overlay as base64 (it is far larger than
+                    // its 64-byte threshold) and the counts as a JSON array, but accept either shape
+                    // for both so a hand-edited or older savestate still parses.
+                    byte[]? overlay = null;
+                    int[]? counts = null;
                     if (je.TryGetProperty("flashOverlay", out var fo))
                     {
-                        if (fo.ValueKind == System.Text.Json.JsonValueKind.Array) { int i = 0; foreach (var el in fo.EnumerateArray()) { if (i < flashOverlay.Length) flashOverlay[i++] = (byte)el.GetInt32(); else break; } }
-                        else if (fo.ValueKind == System.Text.Json.JsonValueKind.String) { try { var b = fo.GetBytesFromBase64(); Array.Copy(b, flashOverlay, Math.Min(b.Length, flashOverlay.Length)); } catch { } }
+                        if (fo.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            overlay = new byte[fo.GetArrayLength()];
+                            int i = 0; foreach (var el in fo.EnumerateArray()) overlay[i++] = (byte)el.GetInt32();
+                        }
+                        else if (fo.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            try { overlay = fo.GetBytesFromBase64(); } catch { overlay = null; }
+                        }
                     }
                     if (je.TryGetProperty("sectorWriteCount", out var sw) && sw.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        int i = 0; foreach (var el in sw.EnumerateArray()) { if (i < sectorWriteCount.Length) sectorWriteCount[i++] = el.GetInt32(); else break; }
+                        counts = new int[sw.GetArrayLength()];
+                        int i = 0; foreach (var el in sw.EnumerateArray()) counts[i++] = el.GetInt32();
                     }
+                    ApplyFlashArrays(overlay, counts);
                 }
             }
             catch { }
