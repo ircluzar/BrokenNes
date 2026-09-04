@@ -601,12 +601,51 @@ if ($firstDiv -lt 0) {
     exit 0
 }
 
-Write-Host "=== VERDICT: DIVERGENCE ===" -ForegroundColor Red
+# Not every column is worth the same as evidence, and reporting one number over all of them
+# produces a headline that contradicts the truth underneath it. Two emulators cannot be aligned
+# below a single instruction boundary, so at the sample instant the CPU registers legitimately
+# sit mid-instruction apart - and `ramhash` is all-or-nothing across 2048 bytes taken at that
+# same unalignable instant, which is exactly why the methodology says to gate on differing BYTE
+# COUNT from the RAM dumps and never on the hash. A run whose settled state matches everywhere
+# still scores ~100% "divergent" if those columns are counted, which is how a report came to
+# carry "DIVERGENCE - 99.78% of frames" directly above a byte-narrowing that read 0 of 2048.
+#
+# So the headline leads with the settled-state columns - PPU memories, register state, APU state,
+# the rendered frame - which ARE meaningful frame-to-frame, and reports the skew-prone columns
+# separately instead of letting them set the verdict.
+$SKEW_PRONE = @('pc','a','x','y','sp','p','ramhash')
+$settledFields = @($FIELDS | Where-Object { $SKEW_PRONE -notcontains $_ -and $neverComparable -notcontains $_ })
+$settledDivFrames = 0
+$settledFirst = -1
+for ($f = 0; $f -lt $common; $f++) {
+    # Compare-Record deliberately returns ", $d" so a single-field difference stays an array;
+    # enumerate it explicitly rather than piping, which would hand Where-Object the array itself.
+    $diffs = Compare-Record $ta.Records[$f] $tb.Records[$f]
+    $hit = $false
+    foreach ($dn in $diffs) { if ($settledFields -contains $dn) { $hit = $true; break } }
+    if ($hit) { $settledDivFrames++; if ($settledFirst -lt 0) { $settledFirst = $f } }
+}
+
+if ($settledDivFrames -eq 0) {
+    Write-Host "=== VERDICT: SETTLED STATE IDENTICAL ===" -ForegroundColor Green
+    Write-Host ("  Every settled-state column agrees on all {0} compared frame(s)." -f $common) -ForegroundColor Green
+    Write-Host  "  PPU memories, PPU/APU register state and the rendered frame never differed."
+}
+else {
+    Write-Host "=== VERDICT: DIVERGENCE ===" -ForegroundColor Red
+    Write-Host ("  settled-state divergence : {0} of {1} frame(s) ({2}%)" -f $settledDivFrames, $common, ([Math]::Round(100.0 * $settledDivFrames / $common, 2))) -ForegroundColor Red
+    Write-Host ("  first such frame         : {0}" -f $settledFirst)
+}
+Write-Host ""
+Write-Host "  --- all columns, including the skew-prone ones -----------------------------" -ForegroundColor DarkGray
 Write-Host ("  first divergent frame : {0}" -f $firstDiv)
 Write-Host ("  field(s) that broke   : {0}" -f ($firstFields -join ', '))
 Write-Host ("  frames matched before : {0} (frames 0..{1})" -f $firstDiv, ($firstDiv - 1))
 Write-Host ("  frames compared       : {0}" -f $common)
 Write-Host ("  divergent frames      : {0} of {1} ({2}%)" -f $divFrames, $common, ([Math]::Round(100.0 * $divFrames / $common, 2)))
+Write-Host ("  NOTE: that figure counts {0}, which differ from sample skew alone." -f ($SKEW_PRONE -join ', ')) -ForegroundColor Yellow
+Write-Host  "        Do not quote it as a divergence rate. For work RAM, dump both sides and" -ForegroundColor Yellow
+Write-Host  "        compare BYTE COUNTS (-RamDumpA/-RamDumpB); the hash cannot settle it." -ForegroundColor Yellow
 Write-Host ""
 
 # Persistent vs blip: look at the run immediately after the first divergence.
