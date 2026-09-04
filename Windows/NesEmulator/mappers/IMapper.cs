@@ -42,6 +42,26 @@ public interface IMapper {
     // Values: 0=CIRAM A, 1=CIRAM B, 2=ExRAM, 3=Fill. Return -1 when the mapper doesn’t define this.
     int GetMmc5NtModeForAddress(ushort address) { return -1; }
 
+    // Optional: cartridge-side storage that must outlive the process, for boards whose save medium
+    // is NOT the generic $6000-$7FFF PRG-RAM the battery path already handles. UNROM-512's
+    // self-flashing variant is the motivating case: the game "saves" by reprogramming its own PRG
+    // flash chip, so its save data lives in the mapper's flash shadow and is invisible to
+    // Cartridge.prgRAM. Without this hook such a cartridge cannot save at all - the writes survive
+    // a savestate and die with the process.
+    //
+    // The blob is deliberately OPAQUE to callers. Only the mapper knows the granularity its own
+    // silicon works at (for UNROM-512, 4KB flash sectors plus their programmed/erased status), so
+    // letting each mapper own its encoding keeps that hardware knowledge next to the emulation of
+    // it, instead of smeared across the persistence layer. Callers just move bytes.
+    //
+    // Contract: ExportNonVolatileMemory() returns null when there is nothing worth persisting (no
+    // battery, or nothing programmed yet) so the caller can skip writing a file at all;
+    // ImportNonVolatileMemory() must tolerate and ignore a blob it does not recognise or that does
+    // not fit the currently loaded ROM, because .sav files outlive the ROM revisions beside them.
+    bool HasNonVolatileMemory { get { return false; } }
+    byte[]? ExportNonVolatileMemory() { return null; }
+    void ImportNonVolatileMemory(byte[] data) { }
+
     // Optional: report that this mapper does not decode/drive the CPU data bus for the given
     // address (e.g. NROM's unmapped $4020-$5FFF expansion area), so Bus.cs can fall back to the
     // open-bus value instead of treating the mapper's own "not mine" sentinel as real data.
