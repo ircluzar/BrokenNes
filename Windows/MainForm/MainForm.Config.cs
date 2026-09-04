@@ -142,6 +142,8 @@ namespace BrokenNes.Windows
                 {
                     if (item.Text.Contains("No Speed Limit"))
                         item.Checked = config.NoSpeedLimit;
+                    else if (item.Text.Contains("NTSC-Accurate Frame Timing"))
+                        item.Checked = config.NtscAccurateFrameRate;
                 }
             }
             

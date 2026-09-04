@@ -23,6 +23,34 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
+        // Real NTSC runs 89341.5 PPU dots per frame (29780.5 CPU cycles); BrokenNes' default frame
+        // budget is the round 60.000fps figure, 29829.55, handing the ROM ~49 cycles a frame that
+        // hardware never gives it. Harmless for most games, but it quietly widens the frame budget
+        // for anything written to fit inside a real one - which means a frame that overruns on a
+        // real NES can fit comfortably here, masking exactly the class of bug such a game guards
+        // against. This exposes the correction that the trace and TAS tooling already opt into, so
+        // the accurate configuration is reachable from the app and not only from the command line.
+        // It lives on the NES instance's SpeedConfig, so it takes effect without a reload.
+        private void ToggleNtscAccurateFrameRate_Click(object? sender, EventArgs e)
+        {
+            if (sender is ToolStripMenuItem menuItem)
+            {
+                Helpers.ConfigHelper.Update(config, c => c.NtscAccurateFrameRate = menuItem.Checked);
+                ApplyNtscAccurateFrameRate();
+                UpdateConfigMenus();
+                audioManager?.ClearBuffer(); // frame length changed - drop queued samples
+            }
+        }
+
+        private void ApplyNtscAccurateFrameRate()
+        {
+            lock (emulationLock)
+            {
+                var speed = nes?.GetSpeedConfig();
+                if (speed != null) speed.NtscAccurateFrameRate = config.NtscAccurateFrameRate;
+            }
+        }
+
         private void ToggleNoSpeedLimit_Click(object? sender, EventArgs e)
         {
             if (sender is ToolStripMenuItem menuItem)

@@ -27,6 +27,10 @@ internal static class RomTestCli
     private const string Usage =
         "Usage: --romtest --rom <path.nes> [--cpu ID] [--ppu ID] [--apu ID] [--frames N]\n" +
         "                 [--input \"frame:Buttons,frame:Buttons,...\"] [--json] [--out result.json]\n" +
+        "                 [--ntsc-frame-timing on|off]\n" +
+        "  --ntsc-frame-timing: emulate NTSC's true 29780.5 CPU cycles/frame instead of the\n" +
+        "                  exact-60fps 29829.55 default. Off unless asked for, so golden hashes\n" +
+        "                  stay comparable with the baseline they were captured against.\n" +
         "  --input script: comma-separated frame:buttons steps, buttons joined by '+'.\n" +
         "                  Empty button list releases everything. Held set applies to player 1\n" +
         "                  from that frame until the next step. Buttons: A,B,Select,Start,Up,Down,Left,Right.\n" +
@@ -39,6 +43,7 @@ internal static class RomTestCli
         string? romPath = null, cpu = null, ppu = null, apu = null, outPath = null, inputScript = null;
         int frames = 600;
         bool json = false;
+        bool ntscFrameTiming = false;
 
         try
         {
@@ -54,6 +59,7 @@ internal static class RomTestCli
                     case "--input": inputScript = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
+                    case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}");
                         return 2;
@@ -81,6 +87,14 @@ internal static class RomTestCli
         {
             var nes = new NES { RomName = Path.GetFileName(romPath) };
             nes.LoadROM(romBytes);
+
+            // Applied to THIS instance's SpeedConfig only - no global default moves, so a suite run
+            // that does not ask for it stays bit-comparable with the captured goldens.
+            if (ntscFrameTiming)
+            {
+                var speed = nes.GetSpeedConfig();
+                if (speed != null) speed.NtscAccurateFrameRate = true;
+            }
 
             // "Applied" is deliberately two questions, not one: SetXCore() returning true only says
             // the id resolved, so we also read the live core back. A silently-ignored core swap is
@@ -213,6 +227,13 @@ internal static class RomTestCli
     // internal, not private: --trace must apply an input script with byte-identical semantics to
     // --romtest, so there is exactly one parser and exactly one definition of "held from this frame
     // inclusive". Writing a second one is the classic way a differential test silently lies.
+    private static bool ParseOnOff(string v) => v.ToLowerInvariant() switch
+    {
+        "on" or "true" or "1" or "yes" => true,
+        "off" or "false" or "0" or "no" => false,
+        _ => throw new FormatException($"expected on|off, got '{v}'"),
+    };
+
     internal static List<InputStep> ParseInputScript(string? script)
     {
         var steps = new List<InputStep>();

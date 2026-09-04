@@ -117,6 +117,17 @@ namespace BrokenNes.Windows
         public bool NoSpeedLimit { get; set; } = false;
         
         /// <summary>
+        /// Emulate NTSC's true frame length (89341.5 PPU dots = 29780.5 CPU cycles) instead of the
+        /// exact-60fps simplification (29829.55). The ~49-cycle-per-frame surplus is invisible in
+        /// ordinary play but it hands a frame-budget-critical game cycles real hardware would not,
+        /// which can mask the very overruns such a game is written to avoid. Off by default because
+        /// AccuracyCoin, the benchmarks and the existing savestate tooling are all tuned against the
+        /// exact-60 baseline - see Bus.SpeedConfig.NtscAccurateFrameRate for the full reasoning.
+        /// </summary>
+        [JsonPropertyName("ntscAccurateFrameRate")]
+        public bool NtscAccurateFrameRate { get; set; } = false;
+
+        /// <summary>
         /// Display FPS counter on screen
         /// </summary>
         [JsonPropertyName("showFps")]

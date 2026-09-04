@@ -309,6 +309,14 @@ namespace BrokenNes.Windows
             
             var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
             emulationSpeedMenu.DropDownItems.Add(speedControlItem);
+
+            emulationSpeedMenu.DropDownItems.Add(new ToolStripSeparator());
+            var ntscAccurateItem = new ToolStripMenuItem("NTSC-Accurate Frame Timing", null, ToggleNtscAccurateFrameRate_Click);
+            ntscAccurateItem.CheckOnClick = true;
+            ntscAccurateItem.ToolTipText = "Emulate NTSC's true 60.0988fps frame length (29780.5 CPU cycles) "
+                + "instead of an exact 60.000fps (29829.55). More accurate; off by default because the "
+                + "benchmarks and AccuracyCoin are calibrated against the exact-60 baseline.";
+            emulationSpeedMenu.DropDownItems.Add(ntscAccurateItem);
             
             configMenu.DropDownItems.Add(emulationSpeedMenu);
             
