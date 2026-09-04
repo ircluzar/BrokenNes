@@ -39,6 +39,11 @@ namespace BrokenNes.Windows
         [STAThread]
         static void Main()
         {
+            // Forensics first, before anything else can die. See ShutdownDiagnostics for why this
+            // has to write to a flushed file rather than the console: the bug being hunted is a
+            // *clean* exit, which leaves no dump, no WER report and no event-log entry behind.
+            BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Install();
+
             // Allocate a console for debug output
             AllocConsole();
             Console.WriteLine("BrokenNes Windows Starting...");
@@ -56,6 +61,7 @@ namespace BrokenNes.Windows
                 // Add global exception handler
                 Application.ThreadException += (sender, e) =>
                 {
+                    BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Log($"Program.ThreadException: {e.Exception}");
                     Console.WriteLine($"Thread Exception: {e.Exception}");
                     MessageBox.Show($"Application Error:\n\n{e.Exception.Message}\n\nStack Trace:\n{e.Exception.StackTrace}",
                         "Fatal Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -71,6 +77,7 @@ namespace BrokenNes.Windows
                 
                 Console.WriteLine("Creating MainForm...");
                 Application.Run(new MainForm());
+                BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Log("Application.Run returned - message loop ended, Main is about to exit normally.");
             }
             catch (Exception ex)
             {

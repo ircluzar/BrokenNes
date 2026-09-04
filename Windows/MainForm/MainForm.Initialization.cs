@@ -140,7 +140,15 @@ namespace BrokenNes.Windows
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
-            var exitItem = new ToolStripMenuItem("E&xit", null, (s, e) => Application.Exit());
+            var exitItem = new ToolStripMenuItem("E&xit", null, (s, e) =>
+            {
+                // This is the ONLY clean-exit path in the whole app (nothing else calls
+                // Application.Exit / Environment.Exit / Form.Close), so if the process ever ends
+                // with exit code 0 and no exception, it came through here. Record the stack before
+                // the message loop is torn down.
+                Diagnostics.ShutdownDiagnostics.LogWithStack("Emulator > Exit menu item invoked -> Application.Exit()");
+                Application.Exit();
+            });
             exitItem.ShortcutKeys = Keys.Alt | Keys.F4;
             emulatorMenu.DropDownItems.Add(exitItem);
             
@@ -424,7 +432,34 @@ namespace BrokenNes.Windows
             
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
-            
+
+            // Diagnostics: the silent-process-death investigation needs to know exactly when the
+            // MenuStrip takes the keyboard, because a keystroke that reaches an open dropdown is
+            // interpreted as a mnemonic (and "E&xit" answers to a bare "x") instead of as gameplay
+            // input. Cheap to leave in - these events fire only on real menu interaction.
+            menuStrip.MenuActivate += (_, _) =>
+                Diagnostics.ShutdownDiagnostics.Log("MenuStrip.MenuActivate - the menu bar now owns the keyboard");
+            menuStrip.MenuDeactivate += (_, _) =>
+                Diagnostics.ShutdownDiagnostics.Log("MenuStrip.MenuDeactivate - keyboard released back to the app");
+            foreach (ToolStripItem topLevel in menuStrip.Items)
+            {
+                if (topLevel is ToolStripMenuItem tsmi)
+                {
+                    var name = tsmi.Text;
+                    tsmi.DropDownOpened += (_, _) =>
+                        Diagnostics.ShutdownDiagnostics.Log($"Menu dropdown OPENED: '{name}'");
+                    tsmi.DropDownClosed += (_, _) =>
+                        Diagnostics.ShutdownDiagnostics.Log($"Menu dropdown closed: '{name}'");
+                }
+            }
+
+            if (Diagnostics.ShutdownDiagnostics.VerboseInput)
+            {
+                Application.AddMessageFilter(new Diagnostics.InputTraceFilter(this));
+                Diagnostics.ShutdownDiagnostics.Log("InputTraceFilter installed (BROKENNES_DIAG set)");
+            }
+
+
             // Create display panel - positioned below menu bar
             displayPanel = new Panel
             {

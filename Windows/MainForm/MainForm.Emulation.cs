@@ -378,7 +378,14 @@ namespace BrokenNes.Windows
                             {
                                 autoCorruptFrameCounter = 0;
                             }
-                            
+
+                            // Persist battery-backed save RAM periodically, so an abrupt end to the
+                            // process (crash, power loss, Task Manager, an external taskkill) costs
+                            // at most a few seconds of progress instead of the whole session. Cheap:
+                            // it no-ops on all but every 600th frame, and skips the disk write when
+                            // the save RAM has not changed.
+                            MaybeAutoSaveBatteryRam();
+
                             // Track FPS for display and audio speed adjustment
                             fpsFrameCount++;
                             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
