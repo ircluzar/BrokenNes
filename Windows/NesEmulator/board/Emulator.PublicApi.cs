@@ -313,6 +313,10 @@ namespace BrokenNes
         // Load the currently selected ROM (uploaded or built-in) using controller plumbing and present a warm-up frame.
         public async Task LoadSelectedRomPublic()
         {
+            // Commit the OUTGOING cartridge's save before its NES is thrown away. The periodic
+            // autosave only runs every ~10s, so without this, saving and then immediately picking
+            // another ROM loses the save that was just made.
+            await SaveBatteryNowAsync();
             await Controller.LoadSelectedRom(
                 async fn => await Controller.LoadRomFromWwwroot(fn, f => Http.GetByteArrayAsync(f), s => Logger.LogInformation(s), s => Logger.LogError(new Exception(s), s)),
                 s => Status.Set(s),
@@ -329,6 +333,13 @@ namespace BrokenNes
                     Controller.RuntimeCpuCoreOverride = RequiredCpuCoreFor(romBytes);
                     ApplySelectedCores();
                     ApplySelectedCrashBehavior();
+                },
+                // Restore the incoming cartridge's battery/flash from IndexedDB. Awaited inside
+                // LoadSelectedRom while the clock is stopped, so no frame runs against a blank save.
+                async () =>
+                {
+                    var notice = await LoadBatteryForCurrentRomAsync();
+                    if (notice != null) Status.Set(notice);
                 }
             );
             // After successful ROM load, ensure a corresponding Game entry exists in continue-db
@@ -506,11 +517,103 @@ namespace BrokenNes
     // Expose memory domain rebuild for UI triggers (avoids duplicated logic in Razor)
     public void RebuildMemoryDomainsPublic() => BuildMemoryDomains();
 
-        // === Visibility forwarding for CLR clock throttling ===
+        // === Visibility forwarding for CLR clock throttling, plus the mobile save flush ===
+        //
+        // On mobile this is the ONLY lifecycle hook that fires reliably before the browser discards
+        // a backgrounded tab, so it doubles as the "the player is leaving, commit the save" signal.
+        // The clock notification stays first and synchronous - it runs before the first await, so
+        // frame pacing is throttled at exactly the same instant it always was; only the battery
+        // flush is deferred.
         [JSInvokable]
-        public void JsVisibilityChanged(bool visible)
+        public async Task JsVisibilityChanged(bool visible)
         {
             try { _activeClock?.OnVisibilityChanged(visible); } catch {}
+            if (!visible)
+            {
+                // Best-effort: IndexedDB writes are async and the page can be frozen before the
+                // transaction commits. The periodic in-frame autosave below is what actually
+                // protects progress; this just narrows the window.
+                await SaveBatteryNowAsync();
+            }
+        }
+
+        // ================= Cartridge battery / flash persistence =================
+        //
+        // Two entry points into BatterySaveService, kept here rather than in the service so the
+        // "which ROM is loaded, and is it the placeholder?" policy lives with the emulator that
+        // knows it. See BatterySaveService for why IndexedDB, why two media, and why the key is
+        // content-addressed and shared with the desktop build.
+
+        /// <summary>How many emulated frames between autosave checks (~10s at 60fps, matching the desktop).</summary>
+        private const int BatteryAutoSaveFrameInterval = 600;
+        private int batteryAutoSaveFrameCounter;
+
+        /// <summary>
+        /// Called once per emulated frame from RunFrameAndBuildPayload. Cost is near zero: it does
+        /// nothing at all on 599 frames out of 600, and on the 600th it still writes nothing unless
+        /// the cartridge actually has non-volatile memory whose contents changed.
+        ///
+        /// This periodic write - not the lifecycle hooks - is what genuinely protects progress. A
+        /// browser tab can be discarded with no usable notice at all, and the IndexedDB write that
+        /// visibilitychange kicks off may never commit; a save that is already ten seconds old on
+        /// disk survives that.
+        /// </summary>
+        private void MaybeAutoSaveBattery()
+        {
+            if (++batteryAutoSaveFrameCounter < BatteryAutoSaveFrameInterval) return;
+            batteryAutoSaveFrameCounter = 0;
+
+            var target = nes;
+            if (target == null) return;
+            // The embedded placeholder is not a game and has no progress worth keeping.
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return;
+
+            try { _batterySaveService.QueueAutosave(target); } catch (Exception ex) { Logger.LogWarning(ex, "Battery autosave failed"); }
+        }
+
+        /// <summary>Force a battery/flash write and wait for it. Safe to call when nothing changed.</summary>
+        private async Task SaveBatteryNowAsync()
+        {
+            var target = nes;
+            if (target == null) return;
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return;
+            try { await _batterySaveService.SaveNowAsync(target); }
+            catch (Exception ex) { Logger.LogWarning(ex, "Battery save failed"); }
+        }
+
+        /// <summary>
+        /// Restore this cartridge's battery/flash contents from IndexedDB.
+        ///
+        /// MUST be awaited after NES.LoadROM and BEFORE the first frame runs on every load path.
+        /// A frame that executes against a blank save is not merely cosmetic: VRUN reads
+        /// save_exists at boot, and a game that concludes there is no save is one keypress away
+        /// from writing a fresh one over the real thing.
+        /// </summary>
+        /// <returns>
+        /// A line worth showing the player, or null. Returned rather than pushed straight into
+        /// Status because every caller sets its own "ROM loaded" message immediately afterwards,
+        /// which would clobber it.
+        /// </returns>
+        private async Task<string?> LoadBatteryForCurrentRomAsync()
+        {
+            var target = nes;
+            if (target == null) return null;
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return null;
+            try
+            {
+                var report = await _batterySaveService.LoadForAsync(target);
+                // A fresh cartridge starts its own autosave clock; otherwise a ROM switch could
+                // inherit a nearly-elapsed counter and write before the game has done anything.
+                batteryAutoSaveFrameCounter = 0;
+                if (report.Flash == BrokenNes.Services.BatterySaveService.FlashLoadOutcome.Applied)
+                    Logger.LogInformation("Cartridge flash save restored");
+                return report.Notice;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Battery load failed");
+                return null;
+            }
         }
 
     // ===== Achievements modal public accessors (for Razor) =====

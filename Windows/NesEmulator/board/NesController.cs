@@ -162,7 +162,15 @@ namespace BrokenNes
     //
     // The callback fires before startEmulation() on purpose: applying cores after this method
     // returns would let the first frames run on the wrong one.
-    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation, Action<byte[]>? onRomLoaded = null)
+    //
+    // onRomLoadedAsync runs immediately after onRomLoaded and still before emulation restarts, for
+    // load-time work that has to await - specifically pulling this cartridge's battery/flash save
+    // out of IndexedDB. It is a second parameter rather than making onRomLoaded async because the
+    // synchronous core-selection fix above must already have happened, and because this one has to
+    // be AWAITED: the "Play VRUN" button switches ROMs while another game is emulating, so an
+    // un-awaited read would let frames run against a blank save. That is safe here only because
+    // this method has already stopped the clock (pauseEmulation, at the top).
+    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation, Action<byte[]>? onRomLoaded = null, Func<Task>? onRomLoadedAsync = null)
         {
             try
             {
@@ -181,6 +189,7 @@ namespace BrokenNes
                     setStatus($"ROM '{RomFileName}' loaded from upload.");
                     ErrorMessage = "";
                     onRomLoaded?.Invoke(data);
+                    if (onRomLoadedAsync != null) await onRomLoadedAsync();
                     // UI: Collapse ROM Manager and expand Corruptor panel if not test.nes
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
@@ -204,6 +213,7 @@ namespace BrokenNes
                     setStatus($"ROM '{RomFileName}' loaded successfully!");
                     ErrorMessage = "";
                     onRomLoaded?.Invoke(romData);
+                    if (onRomLoadedAsync != null) await onRomLoadedAsync();
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
                 }

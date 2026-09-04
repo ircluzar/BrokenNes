@@ -45,6 +45,7 @@ namespace BrokenNes
     private readonly BrokenNes.Services.InputSettingsService _inputSettingsService;
     private readonly NesEmulator.Shaders.IShaderProvider ShaderProvider;
     private readonly BrokenNes.Services.GameSaveService _gameSaveService;
+    private readonly BrokenNes.Services.BatterySaveService _batterySaveService;
         private readonly NavigationManager Nav;
 
         // --- Controller instances (migrated) ---
@@ -61,7 +62,8 @@ namespace BrokenNes
                         NesEmulator.Shaders.IShaderProvider shaderProvider,
                         NavigationManager nav,
                         BrokenNes.Services.InputSettingsService inputSettingsService,
-                        BrokenNes.Services.GameSaveService gameSaveService)
+                        BrokenNes.Services.GameSaveService gameSaveService,
+                        BrokenNes.Services.BatterySaveService batterySaveService)
         {
             Logger = logger;
             JS = js;
@@ -71,6 +73,7 @@ namespace BrokenNes
             Nav = nav;
             _inputSettingsService = inputSettingsService;
             _gameSaveService = gameSaveService;
+            _batterySaveService = batterySaveService;
             _clockHost = new ClockHostFacade(this);
         }
 
@@ -506,6 +509,7 @@ namespace BrokenNes
                 {
                     autoCorruptFrameCounter = 0;
                 }
+                MaybeAutoSaveBattery();
                 // Evaluate achievements after the frame
                 try
                 {
@@ -1024,8 +1028,13 @@ namespace BrokenNes
                 try { ApplySelectedCrashBehavior(); } catch {}
                 SetApuCoreSelFromEmu(); ApplySelectedCores();
                 nesController.CurrentRomName = nesController.RomFileName; nesController.LastLoadedRomSize = romData.Length; if (!nesController.UploadedRoms.ContainsKey(nesController.RomFileName)) nesController.BuiltInRomSizes[nesController.RomFileName] = romData.Length;
+                // Restore the cartridge's battery/flash contents before ANY frame runs - including
+                // the warm-up frame on the next line. Emulation is stopped here (we paused above),
+                // so awaiting an IndexedDB read is safe.
+                var batteryNotice = await LoadBatteryForCurrentRomAsync();
                 try { nes.RunFrame(); nesController.framebuffer = nes.GetFrameBuffer(); await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", nesController.framebuffer); } catch {}
                 Status.Set($"ROM '{nesController.RomFileName}' loaded successfully!"); nesController.ErrorMessage = "";
+                if (batteryNotice != null) Status.Set(batteryNotice);
                 if (!string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) { try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {} }
                 if (nesController.HasBooted && wasRunning) { await StartEmulation(); }
                 StateHasChanged();

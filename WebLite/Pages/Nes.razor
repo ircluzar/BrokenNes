@@ -21,6 +21,7 @@
 @inject NavigationManager Nav
 @inject BrokenNes.Services.InputSettingsService InputSettingsService
 @inject BrokenNes.Services.GameSaveService GameSaveService
+@inject BrokenNes.Services.BatterySaveService BatterySaveService
 
 
 @if (!string.IsNullOrEmpty(emu!.Controller.ErrorMessage))
@@ -1272,7 +1273,7 @@
     {
         if (emu == null)
         {
-            emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav, InputSettingsService, GameSaveService)
+            emu = new Emulator(Logger, JS, Http, Status, ShaderProvider, Nav, InputSettingsService, GameSaveService, BatterySaveService)
             {
                 OnStateChanged = () => InvokeAsync(StateHasChanged)
             };

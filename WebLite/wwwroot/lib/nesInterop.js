@@ -178,6 +178,55 @@ window.nesInterop = {
             await new Promise((res, rej) => { const r = store.delete(key); r.onsuccess = () => res(); r.onerror = () => rej(r.error); });
         } catch {}
     },
+    // ---- Binary siblings of idbSetItem/idbGetItem, for save data that is genuinely bytes ----
+    //
+    // WHY NOT just base64 through idbSetItem: a mapper-30 (UNROM-512) flash blob is up to 525,336
+    // bytes once the game has erased the whole chip, and base64 inflates that by a third before it
+    // is ever stored. IndexedDB persists values with the structured clone algorithm, which takes a
+    // Uint8Array natively - no encode on write, no decode on read, and no ~700KB string sitting in
+    // memory during either. (Same reasoning that already moved ROM blobs off localStorage into the
+    // 'roms' store; these live in the same DB, no version bump needed.)
+    //
+    // WHY THESE REPORT FAILURE and idbSetItem does not: idbSetItem backs preferences, where a lost
+    // write is a shrug. This backs the player's save game. A battery write that silently fails is
+    // indistinguishable from one that worked right up until they come back and find their progress
+    // gone, so the caller has to be able to tell - quota-exceeded and private-mode IDB refusals are
+    // both real on mobile. The C# side uses the false to keep its "what's already stored" tracker
+    // honest, so the next autosave retries instead of assuming the bytes landed.
+    async idbSetBytes(key, bytes) {
+        try {
+            if (!bytes) return false;
+            // Copy into a plain Uint8Array. The array handed over by Blazor interop is not
+            // guaranteed to outlive this call, and structured clone must see an ordinary
+            // (non-shared, non-detached) buffer.
+            const value = new Uint8Array(bytes);
+            const store = await this._tx('kv', 'readwrite');
+            await new Promise((res, rej) => {
+                const r = store.put({ key, value });
+                r.onsuccess = () => res();
+                r.onerror = () => rej(r.error);
+            });
+            return true;
+        } catch (e) { console.warn('idbSetBytes failed', key, e); return false; }
+    },
+    async idbGetBytes(key) {
+        try {
+            const store = await this._tx('kv', 'readonly');
+            const v = await new Promise((res, rej) => {
+                const r = store.get(key);
+                r.onsuccess = () => res(r.result ? r.result.value : null);
+                r.onerror = () => rej(r.error);
+            });
+            if (v === null || v === undefined) return null;
+            if (v instanceof Uint8Array) return v;
+            if (v instanceof ArrayBuffer) return new Uint8Array(v);
+            if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+            // Anything else under this key was not written by idbSetBytes. Refuse rather than hand
+            // back something the caller would misread as save data.
+            console.warn('idbGetBytes: unexpected value type for', key);
+            return null;
+        } catch (e) { console.warn('idbGetBytes failed', key, e); return null; }
+    },
     async idbKeys(prefix) {
         try {
             const store = await this._tx('kv', 'readonly');
@@ -1452,6 +1501,22 @@ window.nesInterop = {
             }
             this._visHandler = handler;
             document.addEventListener('visibilitychange', this._visHandler);
+
+            // pagehide is the second chance at flushing the cartridge battery save (JsVisibilityChanged
+            // with visible=false forces one). It is deliberately NOT beforeunload: beforeunload does
+            // not fire when a mobile browser kills a backgrounded tab - the case that actually loses
+            // progress - and registering it disables the bfcache, making every back-navigation slower.
+            // pagehide fires on both the freeze and the real unload, and keeps the bfcache.
+            //
+            // Treat this as best-effort only. IndexedDB writes are async and the page may be frozen
+            // before the transaction commits; the periodic in-frame autosave is what actually
+            // protects progress.
+            if(this._pagehideHandler){ try { window.removeEventListener('pagehide', this._pagehideHandler); } catch {} }
+            this._pagehideHandler = () => {
+                try { dotNetRef.invokeMethodAsync('JsVisibilityChanged', false); } catch {}
+            };
+            window.addEventListener('pagehide', this._pagehideHandler);
+
             // Fire initial state
             handler();
             return true;

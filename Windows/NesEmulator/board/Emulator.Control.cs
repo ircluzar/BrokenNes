@@ -39,6 +39,14 @@ namespace BrokenNes
                             else if (nesController.ApuCoreSel == "FIX") nes.SetApuCore(NesEmulator.NES.ApuCore.Modern);
                             else if (nesController.ApuCoreSel == "QN") nes.SetApuCore(NesEmulator.NES.ApuCore.QuickNes);
                         } catch {}
+                        // This branch rebuilds the cartridge from scratch (NES.LoadROM constructs a
+                        // fresh mapper), so unlike a real console reset - which Mapper30 models
+                        // correctly by KEEPING flashOverlay - the flash contents are gone. Restore
+                        // them, before the first frame, exactly as the built-in branch below gets
+                        // for free via LoadRomFromServer. Without this, resetting an uploaded
+                        // mapper-30 cart would silently look like the save had vanished.
+                        var batteryNotice = await LoadBatteryForCurrentRomAsync();
+                        if (batteryNotice != null) Status.Set(batteryNotice);
                         BuildMemoryDomains();
                     }
                     else
