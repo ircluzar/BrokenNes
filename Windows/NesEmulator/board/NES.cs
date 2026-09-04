@@ -1582,6 +1582,30 @@ namespace NesEmulator
 		}
 		public byte PeekPrgRam(int index) => cartridge != null ? cartridge.PeekPrgRam(index) : (byte)0;
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
+
+		// === Mapper-side battery-backed storage (see IMapper.ExportNonVolatileMemory) ===
+		//
+		// A second, independent save medium alongside PRG-RAM, for boards that keep their save data
+		// somewhere the $6000-$7FFF window cannot see. Today that means UNROM-512's self-flashing
+		// variant, where "saving" means the game reprograms its own PRG flash chip.
+		//
+		// Gated on the iNES battery flag as well as the mapper's own answer, so that a board which
+		// merely CAN be built with flash does not start persisting on a cartridge that was pressed
+		// without a battery - matching hardware, where an unbatteried cart forgets on power-off.
+		public bool HasMapperBatteryMemory
+			=> cartridge != null && cartridge.hasBattery && cartridge.mapper != null && cartridge.mapper.HasNonVolatileMemory;
+
+		// Returns null when there is nothing to persist, so callers can skip writing a file entirely
+		// rather than leaving a stub behind for a game that has never saved.
+		public byte[]? ExportMapperBatteryMemory()
+			=> HasMapperBatteryMemory ? cartridge!.mapper.ExportNonVolatileMemory() : null;
+
+		public void ImportMapperBatteryMemory(byte[] data)
+		{
+			if (data == null || data.Length == 0) return;
+			if (!HasMapperBatteryMemory) return;
+			cartridge!.mapper.ImportNonVolatileMemory(data);
+		}
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;
 		public void PokeChr(int index, byte val) { cartridge?.PokeChr(index, val); }
 

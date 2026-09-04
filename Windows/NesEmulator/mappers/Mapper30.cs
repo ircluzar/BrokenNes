@@ -242,6 +242,125 @@ public class Mapper30 : IMapper
 
     public uint GetChrBankSignature() => (uint)chr;
 
+    // === Non-volatile flash contents (see IMapper.ExportNonVolatileMemory) ===
+    //
+    // WHY A SPARSE, PER-SECTOR FORMAT rather than dumping all 512KB of flashOverlay:
+    //
+    // The overlay is a shadow of the whole PRG chip, but only sectors the game has actually erased
+    // or programmed carry meaning. That is not a heuristic, it is an invariant of the code above:
+    // every path that writes a byte into flashOverlay (chip erase, sector erase, and the
+    // seed-from-ROM step of a program) bumps that sector's write count FIRST, and CPURead consults
+    // the overlay only where the count is non-zero. So overlay[i] can only be non-zero inside a
+    // live sector, and dropping dead sectors is lossless rather than merely "good enough" - a
+    // freshly constructed mapper and a mapper restored from this blob are byte-identical in both
+    // arrays. A game that has touched two sectors writes an 8KB file instead of a 512KB one; a game
+    // that issued the whole-chip erase legitimately writes all 128.
+    //
+    // A byte-level delta against prgROM would be smaller still, but it would make the save file
+    // meaningless without the exact ROM that produced it - a bad trade for a homebrew flash cart
+    // whose ROM is expected to be rebuilt often. Sector records are self-describing.
+    //
+    // The write COUNT is stored, not just a live/dead bit. Only its zero/non-zero-ness is
+    // observable through the bus, but preserving the exact value keeps a savestate taken after a
+    // reload identical to one taken before it, which the differential-trace tooling compares.
+    //
+    // Layout (little-endian, header 24 bytes):
+    //   0  : 8  magic "BNMAP30F"
+    //   8  : 1  format version (1)
+    //   9  : 3  reserved, zero
+    //   12 : 4  total overlay length in bytes - a blob whose length disagrees with the loaded ROM
+    //           is from a different build and is refused wholesale rather than half-applied
+    //   16 : 4  sector size in bytes (0x1000)
+    //   20 : 4  number of live sector records that follow
+    //   then, per record: 4 sector index, 4 write count, <sector size> bytes of data
+    private static readonly byte[] FlashBlobMagic = { (byte)'B', (byte)'N', (byte)'M', (byte)'A', (byte)'P', (byte)'3', (byte)'0', (byte)'F' };
+    private const int FlashSectorSize = 0x1000;
+    private const int FlashBlobHeaderSize = 24;
+    private const byte FlashBlobVersion = 1;
+
+    public bool HasNonVolatileMemory => useFlash;
+
+    public byte[]? ExportNonVolatileMemory()
+    {
+        if (!useFlash || flashOverlay == null || sectorWriteCount == null) return null;
+
+        int liveCount = 0;
+        for (int i = 0; i < sectorWriteCount.Length; i++) if (sectorWriteCount[i] > 0) liveCount++;
+        // Nothing programmed yet: report "no save data" so the caller does not leave an empty file
+        // behind for a cartridge the player has never saved on.
+        if (liveCount == 0) return null;
+
+        var blob = new byte[FlashBlobHeaderSize + liveCount * (8 + FlashSectorSize)];
+        Array.Copy(FlashBlobMagic, 0, blob, 0, FlashBlobMagic.Length);
+        blob[8] = FlashBlobVersion;
+        WriteU32(blob, 12, (uint)flashOverlay.Length);
+        WriteU32(blob, 16, FlashSectorSize);
+        WriteU32(blob, 20, (uint)liveCount);
+
+        int at = FlashBlobHeaderSize;
+        for (int s = 0; s < sectorWriteCount.Length; s++)
+        {
+            if (sectorWriteCount[s] <= 0) continue;
+            WriteU32(blob, at, (uint)s); at += 4;
+            WriteU32(blob, at, (uint)sectorWriteCount[s]); at += 4;
+            int src = s * FlashSectorSize;
+            // A PRG size that is not a whole number of sectors would leave the tail short; copy what
+            // exists and leave the rest of the record zeroed rather than reading out of bounds.
+            int n = Math.Max(0, Math.Min(FlashSectorSize, flashOverlay.Length - src));
+            if (n > 0) Buffer.BlockCopy(flashOverlay, src, blob, at, n);
+            at += FlashSectorSize;
+        }
+        return blob;
+    }
+
+    public void ImportNonVolatileMemory(byte[] data)
+    {
+        if (!useFlash || flashOverlay == null || sectorWriteCount == null) return;
+        if (data == null || data.Length < FlashBlobHeaderSize) return;
+        for (int i = 0; i < FlashBlobMagic.Length; i++) if (data[i] != FlashBlobMagic[i]) return;
+        if (data[8] != FlashBlobVersion) return;
+        // Refuse a blob recorded against a differently sized PRG chip outright. Partially applying
+        // it would leave the flash a chimera of two builds, which is far harder to diagnose than a
+        // save that simply did not load.
+        if (ReadU32(data, 12) != (uint)flashOverlay.Length) return;
+        if (ReadU32(data, 16) != FlashSectorSize) return;
+
+        uint records = ReadU32(data, 20);
+        long needed = (long)FlashBlobHeaderSize + (long)records * (8 + FlashSectorSize);
+        if (needed > data.Length) return; // truncated file (interrupted write, bad copy) - ignore it
+
+        // Only commit once the whole blob has been validated, so a rejected file cannot leave the
+        // flash half-overwritten.
+        Array.Clear(flashOverlay, 0, flashOverlay.Length);
+        Array.Clear(sectorWriteCount, 0, sectorWriteCount.Length);
+
+        int at = FlashBlobHeaderSize;
+        for (uint r = 0; r < records; r++)
+        {
+            uint sector = ReadU32(data, at); at += 4;
+            uint count = ReadU32(data, at); at += 4;
+            if (sector < (uint)sectorWriteCount.Length)
+            {
+                sectorWriteCount[sector] = count > int.MaxValue ? int.MaxValue : (int)count;
+                int dst = (int)sector * FlashSectorSize;
+                int n = Math.Max(0, Math.Min(FlashSectorSize, flashOverlay.Length - dst));
+                if (n > 0) Buffer.BlockCopy(data, at, flashOverlay, dst, n);
+            }
+            at += FlashSectorSize;
+        }
+    }
+
+    private static void WriteU32(byte[] buf, int offset, uint value)
+    {
+        buf[offset] = (byte)value;
+        buf[offset + 1] = (byte)(value >> 8);
+        buf[offset + 2] = (byte)(value >> 16);
+        buf[offset + 3] = (byte)(value >> 24);
+    }
+
+    private static uint ReadU32(byte[] buf, int offset)
+        => (uint)(buf[offset] | (buf[offset + 1] << 8) | (buf[offset + 2] << 16) | (buf[offset + 3] << 24));
+
     private class Mapper30State
     {
         public int prg;
