@@ -16,6 +16,33 @@
 # and checked?), the WebView2 front end's rendered DOM, message boxes, and screenshots. Reach for
 # UIA only after checking that no endpoint covers what you need.
 #
+# *** WARNING - NEVER kill BrokenNes by PROCESS NAME. This machine runs several at once. ***
+# The single most expensive false bug this harness has produced was "rapid keyboard input silently
+# kills BrokenNes.Windows.exe" (UAT/findings/direct-play-r2.md, reproduced 3/3, chased across
+# multiple sessions). It was not a product bug at all. It was this line, in some agent's
+# clean-slate preamble:
+#
+#     Get-Process -Name BrokenNes.Windows -ErrorAction SilentlyContinue | Stop-Process -Force
+#
+# On a machine where several agents each run their own instance, that kills EVERY agent's
+# emulator, not just leftovers from your own run. The victim sees a perfect silent death: no
+# dialog, no WerFault, no event-log entry, and ExitCode -1 (which is simply what TerminateProcess
+# reports). It looks exactly like a mysterious in-process crash and it is not one.
+# This was proved on 2026-09-04 by watching two live instances - one under test, one belonging to
+# another agent - vanish in the SAME 474ms sampling window, and by confirming the app's own
+# instrumentation records nothing at all on that path (see Windows/Diagnostics/ShutdownDiagnostics.cs;
+# a graceful close logs WM_CLOSE -> OnFormClosing -> ApplicationExit -> ProcessExit and exits 0).
+#
+# So: kill by PID, never by name.
+#     Stop-BrokenNesInstance -ProcessId $inst.ProcessId -Force      # correct - yours only
+# and before assuming exclusivity, look first:
+#     Assert-BrokenNesNoForeignInstances -MineProcessId $inst.ProcessId
+#
+# If a test dies unexplained, check for a foreign instance BEFORE filing a product bug. Set
+# BROKENNES_DIAG=1 on the app under test and read its shutdown log
+# (%LOCALAPPDATA%\BrokenNes\diagnostics\shutdown-<pid>-*.log): a log that simply stops, with no
+# lifecycle lines, means the process was terminated from outside.
+#
 # *** WARNING - the modal-dialog Invoke() hang. Do NOT re-walk into this. ***
 # Driving the native menu with UI Automation's InvokePattern.Invoke() on an item that opens a
 # MODAL dialog (most notoriously "Emulator > Load Rom...", which opens an OpenFileDialog) BLOCKS
@@ -156,6 +183,42 @@ function Get-BrokenNesInstances {
     }
 
     return @($result | Sort-Object StartedUtc)
+}
+
+# Reports every LIVE BrokenNes instance that is NOT one of yours. Use this instead of the
+# "Get-Process -Name BrokenNes.Windows | Stop-Process -Force" clean-slate reflex: it gives you the
+# same information (am I alone on this machine?) without destroying another agent's run.
+#
+# Returns the foreign instances. With -Strict it throws instead, for a test that genuinely cannot
+# share the machine - so the run fails loudly up front rather than dying halfway with a symptom
+# that looks like a product crash.
+function Assert-BrokenNesNoForeignInstances {
+    [CmdletBinding()]
+    param(
+        [int[]]$MineProcessId = @(),
+        [switch]$Strict
+    )
+
+    $foreign = @(Get-BrokenNesInstances | Where-Object { $MineProcessId -notcontains $_.ProcessId })
+
+    # Instances that never published a discovery file (still starting, or blocked on a startup
+    # dialog) would be invisible above, so also look at the raw process list.
+    $knownPids = @($foreign | ForEach-Object { $_.ProcessId }) + $MineProcessId
+    $bare = @(Get-Process -Name 'BrokenNes.Windows' -ErrorAction SilentlyContinue |
+              Where-Object { $knownPids -notcontains $_.Id } |
+              ForEach-Object { [PSCustomObject]@{ ProcessId = $_.Id; HttpPort = $null; BaseUrl = '<not published yet>' } })
+    $foreign += $bare
+
+    if ($foreign.Count -gt 0) {
+        $ids = ($foreign | ForEach-Object { $_.ProcessId }) -join ', '
+        $msg = "$($foreign.Count) foreign BrokenNes instance(s) are running (PIDs: $ids). " +
+               "Do NOT kill them - they belong to another agent. Scope every call to your own PID, " +
+               "and expect port 42067 to already be taken."
+        if ($Strict) { throw $msg }
+        Write-Warning $msg
+    }
+
+    return $foreign
 }
 
 # Resolves the base URL for one instance. This is what every other function calls, so a PID that
@@ -488,6 +551,11 @@ function Start-BrokenNesInstance {
 
 # Closes an instance. Tries the window-close path first so the app can run its normal shutdown
 # (which deletes the discovery file); escalates to a kill if it will not go.
+#
+# ALWAYS PID-scoped, and deliberately so - see the process-name warning in this file's header.
+# Prefer letting it use CloseMainWindow (i.e. do not reach for -Force by default): the graceful
+# path is what runs OnFormClosing, which flushes battery RAM and the continue checkpoint. -Force
+# is TerminateProcess and skips all of that.
 function Stop-BrokenNesInstance {
     [CmdletBinding()]
     param(

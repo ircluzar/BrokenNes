@@ -33,6 +33,14 @@ Read this first, then jump to the relevant section for detail.
   the natural choice) into N disjoint groups, run N OS processes concurrently, each with
   its own `--out`, merge the JSON arrays afterward. See Section 4 for the exact command
   pattern that was verified to work.
+- **Never terminate a process by NAME.** `Get-Process -Name BrokenNes.Windows | Stop-Process
+  -Force` in one agent's "clean slate" preamble kills every other agent's instance too. The
+  victim's symptoms are indistinguishable from a mysterious in-process crash — no dialog, no
+  WerFault, no event-log entry, `ExitCode -1` — and one such kill was mis-filed as a
+  high-priority product bug (`UAT/findings/direct-play-r2.md`) that survived several
+  investigation passes before being traced in 2026-09-04. Kill by PID only, and use
+  `Assert-BrokenNesNoForeignInstances` when you need to know whether you have the machine to
+  yourself. Same rule for `BrokenNes.Workshop.exe` and any `dotnet` build host.
 - **This repo lives under OneDrive.** Aggressive cleanup (`rm -rf` on `bin`/`obj`) can hit
   a transient `Device or resource busy` because OneDrive's sync client holds file handles
   briefly. Retry once; it's not corruption.

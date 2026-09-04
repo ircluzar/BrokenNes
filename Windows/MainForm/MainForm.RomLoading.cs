@@ -111,6 +111,9 @@ namespace BrokenNes.Windows
             ApplySoundSettings();
             UpdateCoresMenus();
             LoadBatteryRamForCurrentRom();
+            // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+            // clear it or the first autosave here would compare against the wrong bytes.
+            ResetBatteryRamAutoSaveTracking();
 
             var fileMenu = this.MainMenuStrip?.Items.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text == "&Emulator");
             if (fileMenu != null)
@@ -419,6 +422,9 @@ namespace BrokenNes.Windows
                     // Apply image settings (will force Pixel Perfect for Test ROM)
                     ApplyImageSettings();
                     LoadBatteryRamForCurrentRom();
+                    // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+                    // clear it or the first autosave here would compare against the wrong bytes.
+                    ResetBatteryRamAutoSaveTracking();
                     
                     // Update cores menus
                     UpdateCoresMenus();
@@ -562,6 +568,9 @@ namespace BrokenNes.Windows
                         nes.LoadROM(romData);
                         currentRomPath = romPath;
                         LoadBatteryRamForCurrentRom();
+                        // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+                        // clear it or the first autosave here would compare against the wrong bytes.
+                        ResetBatteryRamAutoSaveTracking();
                         
                         // Apply core selections
                         ApplySavedCoreSelections();

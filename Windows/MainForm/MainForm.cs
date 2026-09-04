@@ -162,6 +162,11 @@ namespace BrokenNes.Windows
         /// </summary>
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Diagnostics: CloseReason distinguishes a user clicking the X (UserClosing) from
+            // Application.Exit tearing the form down (ApplicationExitCall) from a shell/session
+            // shutdown - and the stack names whoever asked.
+            Diagnostics.ShutdownDiagnostics.LogWithStack($"MainForm.OnFormClosing reason={e.CloseReason} cancel={e.Cancel}");
+
             // Check if we're on the test ROM
             bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
             

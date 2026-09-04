@@ -1,3 +1,31 @@
+> ## RESOLVED 2026-09-04 — the "silent process death" below is a HARNESS artifact, not a product bug.
+>
+> The rapid-input crash reported in this file could not be reproduced against an instrumented
+> build under any keyboard pattern (thousands of keystrokes: the documented 7-key burst at 150ms,
+> the same burst at 80/30/0ms, held/overlapping keys, randomised mashing, Alt- and F10-primed menu
+> states). What was reproduced is the *signature*, and it turned out to be another agent's
+> clean-slate preamble — `Get-Process -Name BrokenNes.Windows | Stop-Process -Force` — killing
+> every instance on this shared machine, including the one under test.
+>
+> Proof: two live instances (one under test, one belonging to another agent) disappeared inside the
+> same 474ms sampling window; the victim's exit code was **-1**, which is what `TerminateProcess`
+> reports, and its in-process shutdown log simply stopped mid-keystroke with no lifecycle events at
+> all. A graceful close, by contrast, logs `WM_CLOSE → OnFormClosing → ApplicationExit →
+> ProcessExit` and exits 0. Running the identical soak under a renamed apphost — invisible to
+> `Get-Process -Name BrokenNes.Windows` — survived 8 full loops with zero deaths.
+>
+> The "no dialog, no WerFault, no event-log entry" observations were all correct; they are simply
+> what an external kill looks like, not evidence of an exotic in-process exit.
+>
+> **What changed as a result**
+> - `Windows/Diagnostics/ShutdownDiagnostics.cs` + `InputTraceFilter.cs` — permanent in-process
+>   forensics (set `BROKENNES_DIAG=1`). A log that just stops = killed from outside.
+> - `UAT/lib/ApiClient.ps1` — header warning against name-wide kills, plus
+>   `Assert-BrokenNesNoForeignInstances`, the safe replacement for the clean-slate reflex.
+> - `MainForm.BatteryRam.cs` — periodic, atomic battery-RAM autosave. Progress used to be written
+>   **only** on graceful shutdown, so any abrupt end really did destroy the session. That part of
+>   the report's severity assessment was right, and it is now fixed independently of the cause.
+
 # UAT Findings: Direct-Play ROM Loading and Basic Gameplay (Round 2)
 
 **Area:** direct-play ROM loading and basic gameplay

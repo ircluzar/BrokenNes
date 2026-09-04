@@ -18,6 +18,36 @@ findings.
 
 ---
 
+## Rule zero: never kill BrokenNes by process name
+
+```powershell
+# NEVER. This kills every agent's instance on the machine, not just your leftovers.
+Get-Process -Name BrokenNes.Windows | Stop-Process -Force
+
+# Do this instead.
+Stop-BrokenNesInstance -ProcessId $inst.ProcessId          # yours, by PID, graceful
+Assert-BrokenNesNoForeignInstances -MineProcessId $inst.ProcessId   # look, don't kill
+```
+
+Several agents run their own `BrokenNes.Windows.exe` here at the same time (past runs have had ten
+live at once). A name-wide `Stop-Process` in one agent's clean-slate preamble kills the instance
+another agent is mid-test on, and the victim sees a flawless silent death: no dialog, no WerFault,
+no event-log entry, `ExitCode -1`. That produced `findings/direct-play-r2.md`'s "rapid keyboard
+input silently kills the process" report, which cost several sessions before being traced, on
+2026-09-04, to exactly this. See that file's resolution banner.
+
+**Before filing a "the process vanished" bug**, run the app with `BROKENNES_DIAG=1` and read
+`%LOCALAPPDATA%\BrokenNes\diagnostics\shutdown-<pid>-*.log`:
+
+| What the log shows | What it means |
+|---|---|
+| stops mid-stream, no lifecycle lines, exit code -1 | terminated from **outside** the process |
+| `WM_CLOSE` → `OnFormClosing` → `ApplicationExit` → `ProcessExit`, exit 0 | normal shutdown |
+| `Exit menu item invoked` | something reached `Emulator > Exit` |
+| `*** NATIVE EXCEPTION ***` / `UnhandledException` | a real in-process crash |
+
+---
+
 # The regression suite
 
 Every other tool in this repo prints a report and leaves a human to decide whether the numbers are
