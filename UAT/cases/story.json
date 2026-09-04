@@ -21,7 +21,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "EE03EB2F82AD849D",
+        "frameBufferHash": "9A9C83BB27ADB175",
         "framesRun": 600,
         "distinctColors": 12,
         "result": "ok",
@@ -43,7 +43,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "045B70F3AFEA645B",
+        "frameBufferHash": "C5DBF59A09E82DA3",
         "framesRun": 600,
         "distinctColors": 10,
         "result": "ok",
@@ -65,7 +65,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "547CE999C3D37109",
+        "frameBufferHash": "DCA3517E7E1F7919",
         "framesRun": 600,
         "distinctColors": 5,
         "result": "ok",
@@ -87,7 +87,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "29C73C264EEFB7A5",
+        "frameBufferHash": "D914AA91D401BCC5",
         "framesRun": 600,
         "distinctColors": 13,
         "result": "ok",
@@ -109,7 +109,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "AF039216C7949A49",
+        "frameBufferHash": "10B5A088600CDAC3",
         "framesRun": 600,
         "distinctColors": 15,
         "result": "ok",
@@ -131,7 +131,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "E358F4941B966FA5",
+        "frameBufferHash": "B28747A4BDBB966F",
         "framesRun": 600,
         "distinctColors": 16,
         "result": "ok",
@@ -153,7 +153,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "710F23BD071D8665",
+        "frameBufferHash": "283FF3B8AE773DDD",
         "framesRun": 600,
         "distinctColors": 10,
         "result": "ok",
@@ -198,7 +198,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "264576462851E9DD",
+        "frameBufferHash": "AA6ABF8B9FE3AB85",
         "framesRun": 120,
         "distinctColors": 12,
         "result": "ok",
@@ -206,5 +206,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+  "goldenGeneratedUtc": "2026-09-04T08:45:31Z"
 }

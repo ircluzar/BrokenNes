@@ -33,7 +33,14 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private ushort PPUADDR; //$2006
 	private byte PPUDATA; //$2007
 
-	private bool addrLatch = false;
+	// Hardware has exactly ONE write toggle ("w") shared by $2005 and $2006 - the second write to
+	// EITHER register is signalled by the same flip-flop, and a $2002 READ clears it. PPU_FIX used
+	// to keep two independent latches (addrLatch for $2006, scrollLatch for $2005) with only the
+	// $2006 one cleared by a $2002 read, which lets the pair reach states hardware cannot be in
+	// (one half-set while the other is clear) - measured against Mesen as w=1 vs w=0 on 25 frames
+	// of a 10879-frame replay. The two fields survive only in PpuSharedState (shared with the
+	// frozen cores); GetState writes this single bit into both of them.
+	private bool w = false;
 	private byte ppuDataBuffer;
 
 	// The PPU has its own 8-bit dynamic latch on the CPU<->PPU data pins ("PPU I/O bus", commonly
@@ -62,12 +69,78 @@ public class PPU_FIX : IPPU, IPpuProbe
 	}
 
 	private byte fineX; //x
-	private bool scrollLatch; //w
 	private ushort v; //current VRAM address
 	private ushort t; //temp VRAM address
 
+	// The address this core's scanline-batch background renderer walks from, latched out of the
+	// live v at dot 256 - the last dot of the visible fetch window, i.e. before the dot-256 vertical
+	// increment moves v on to the next line. It exists because v is now the REAL loopy-v: by the
+	// time the batch renderer runs at the end of the scanline, v has already been vertically
+	// incremented (dot 256), had its horizontal bits reloaded from t (dot 257) and been advanced by
+	// the two prefetch tile fetches (dots 328/336). The latch is exactly the value the old code
+	// produced by doing CopyXFromTToV() immediately before rendering, so what gets drawn is
+	// unchanged - see the pipeline block in Step().
+	private ushort renderAddr;
+
 	private int scanlineCycle;
 	private int scanline;
+
+	// KNOWN GAP, deliberately not implemented here - see the note above the scanline-wrap test in
+	// Step(). Hardware drops the last dot of the pre-render scanline every other frame (89342 dots
+	// then 89341), and this core does not.
+
+	// === The loopy-v render pipeline's per-dot schedule, precomputed ===
+	//
+	// vPipelineOn answers "is this scanline one where the PPU drives v, and is rendering on"; it is
+	// recomputed only when the scanline advances or PPUMASK changes. DotAction then answers "does
+	// this dot do anything" in one indexed load. Together they keep the 89342-iteration Step loop
+	// paying a bool test and an array read for the ~93% of dots that do nothing.
+	private const byte ActNone = 0, ActIncX = 1, ActEndOfLine = 2, ActCopyHori = 3, ActCopyVert = 4;
+
+	// 512 entries, not 341, and indexed with `& 511`: that lets the JIT drop the bounds check on
+	// what is otherwise the single hottest array read in the emulator. Entries 341-511 are never
+	// reached (scanlineCycle is 0-340) and stay ActNone.
+	private const int DotActionMask = 511;
+
+	private static readonly byte[] DotAction = BuildDotAction();
+
+	private static byte[] BuildDotAction()
+	{
+		var a = new byte[DotActionMask + 1];
+		// One coarse-X increment per background tile fetched: dots 8, 16, ... 256, then the two
+		// tiles prefetched for the next scanline at 328 and 336.
+		for (int d = 8; d <= 256; d += 8) a[d] = ActIncX;
+		a[328] = ActIncX;
+		a[336] = ActIncX;
+		a[256] = ActEndOfLine;                       // that increment PLUS the vertical one
+		a[257] = ActCopyHori;                        // hori(v) := hori(t)
+		for (int d = 280; d <= 304; d++) a[d] = ActCopyVert;  // vert(v) := vert(t), pre-render only
+		return a;
+	}
+
+	private bool vPipelineOn;
+
+	private void UpdateVPipelineFlag()
+	{
+		// Visible scanlines and the pre-render line are the ones that fetch; with rendering off the
+		// PPU stops driving v entirely and it stays wherever the CPU left it.
+		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
+	}
+
+	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
+	// scanline. Both are pure output-stage effects - they never touch what is stored in palette RAM.
+	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
+	//               palette RAM, collapsing all four colour columns onto the grey one.
+	//   emphBase  - byte offset into EmphasisPaletteBytes selected by PPUMASK bits 5/6/7.
+	private int emphBase;
+	private int greyMask = 0x3F;
+
+	private void RefreshColorMask()
+	{
+		emphBase = ((PPUMASK >> 5) & 0x07) * 192;
+		greyMask = (PPUMASK & 0x01) != 0 ? 0x30 : 0x3F;
+		UpdateVPipelineFlag(); // PPUMASK bits 3/4 also gate the loopy-v pipeline
+	}
 
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
 	private byte[]? frameBuffer = null;
@@ -169,32 +242,102 @@ public class PPU_FIX : IPPU, IPpuProbe
 				}
 			}
 
+			// === The rendering pipeline's own updates to v (the "loopy-v") ===
+			//
+			// v is the PPU's live VRAM address register, not a shadow of the last CPU write. On a
+			// scanline where rendering is enabled the PPU drives it itself, and the CPU only sees
+			// that value through $2007 or by a debugger looking at it. This block is that driver,
+			// at the dots hardware uses:
+			//   dots 8,16..256  coarse X += 1 (bit 10, the nametable-X select, flips when it
+			//                   wraps past 31) - one increment per background tile fetched
+			//   dot 256         fine Y += 1, carrying into coarse Y, which wraps at 29 with a
+			//                   nametable-Y flip (and at 31 without one, for out-of-range scrolls)
+			//   dot 257         hori(v) := hori(t) - reloads coarse X + nametable X for the line
+			//   dots 280-304    (pre-render only) vert(v) := vert(t), repeated every dot so a CPU
+			//                   write landing inside the window is overwritten, as on hardware
+			//   dots 328,336    coarse X += 1 twice more - the two tiles prefetched for the NEXT
+			//                   scanline, which is why v reads t+2 coarse X at the start of a line
+			//
+			// It runs ONLY while rendering is enabled, which is what makes $2007 usable: with
+			// rendering off (forced blank or vblank) hardware leaves v exactly where the CPU put
+			// it. The old code ran CopyXFromTToV()/IncrementY() unconditionally on every visible
+			// scanline and assigned v = t at the end of pre-render, so v was clobbered even during
+			// forced blank - which is why $2007 needed a private PPUADDR shadow to work at all.
+			//
+			// Cost matters here: this is inside a loop that runs 89342 times per frame, so the
+			// question "does this dot do anything" is answered by one cached bool (vPipelineOn,
+			// recomputed only when the scanline advances or $2001 is written) plus one lookup in a
+			// 341-entry table, instead of the five or six comparisons the dot numbers would need.
+			// Measured on page1_binty: spelling the tests out cost 13% of frame time, this costs 3%.
+			byte dotAct;
+			if (vPipelineOn && (dotAct = DotAction[scanlineCycle & DotActionMask]) != ActNone)
+			{
+				switch (dotAct)
+				{
+					case ActIncX:
+						IncrementX(ref v);
+						break;
+					case ActEndOfLine:
+						IncrementX(ref v);
+						// Latch before the vertical increment: this is the address the
+						// scanline-batch renderer needs (see renderAddr's declaration).
+						renderAddr = (ushort)((v & 0xFBE0) | (t & 0x041F));
+						IncrementY();
+						break;
+					case ActCopyHori:
+						CopyXFromTToV();
+						break;
+					case ActCopyVert:
+						if (scanline == 261) CopyYFromTToV();
+						break;
+				}
+			}
+
 			scanlineCycle++;
 
+			// 341 dots on every scanline, including the pre-render one.
+			//
+			// Hardware does NOT do that: every other frame it drops the last dot of the pre-render
+			// scanline, making the frame 89341 dots instead of 89342 (the half-dot average is where
+			// NTSC's 60.0988fps comes from). NES.RunFrame's NtscAccurateFrameRate budget already
+			// alternates 89342/89341 (NES.cs ntscFrameParityToggle), so a PPU that always runs 89342
+			// slides one dot backwards through its own frame every other frame.
+			//
+			// That was implemented here and then removed, on measurement. Against Mesen over 900
+			// frames of game.nes it made every column WORSE, not better: v 835 -> 888 divergent, pc
+			// 841 -> 891, ramhash 620 -> 769. The reason is a second, larger error it can only add
+			// to: NES.RunFrame trues the PPU up with `Step(ntscDotBudget - globalCpuCycle*3)`
+			// without folding those dots back into globalCpuCycle, so the next frame's target
+			// re-issues them and the PPU is over-stepped. Measured drift of the frame boundary
+			// through the PPU frame: about -0.145 dots/frame with no dot skip, about +0.29 with it,
+			// i.e. the missing skip's -0.5 is currently the thing holding the over-step in check.
+			// Adding the skip is only correct once the frame driver stops over-stepping, and that
+			// is a change to NES.cs - shared by four projects, and it would move the goldens of
+			// every core, not just this one.
 			if (scanlineCycle >= 341)
 			{
 				scanlineCycle = 0;
 
+				// Still rendered a whole scanline at a time, at the scanline's end, from the
+				// address latched at dot 256 - byte for byte what the old CopyXFromTToV() + render
+				// pair produced. Only the bookkeeping around it moved into the dot-accurate block.
 				if (scanline >= 0 && scanline < 240)
 				{
-					CopyXFromTToV();
 					RenderScanline(scanline);
-					IncrementY();
 				}
 
 				// (VBlank set / NMI assert moved to scanline 241 dot 1 in the per-dot section above -
 				// firing it here meant the end of scanline 241, i.e. 340 dots late.)
-
-				if (scanline == 261)
-				{
-					v = t;
-				}
+				// (v = t at the end of pre-render replaced by the dot 280-304 vert(v) := vert(t)
+				// copy above, which is both the right dots and the right BITS: hardware reloads only
+				// fine Y, coarse Y and nametable Y there, never the horizontal half.)
 
 				scanline++;
 				if (scanline == TotalScanlines)
 				{
 					scanline = 0;
 				}
+				UpdateVPipelineFlag();
 			}
 		}
 	}
@@ -210,6 +353,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 			return;
 		}
 
+		// Greyscale + colour emphasis are output-stage effects applied to EVERY pixel this
+		// scanline produces, backdrop included, so resolve them once here rather than per pixel.
+		RefreshColorMask();
+
 		// If both background & sprites are disabled this scanline, proactively clear it
 		// so the power-on test pattern from initialization doesn't visually linger and
 		// confuse debugging (otherwise the old pixels remain untouched).
@@ -218,10 +365,11 @@ public class PPU_FIX : IPPU, IPpuProbe
 		if (!bgEnabled && !sprEnabled)
 		{
 			EnsureFrameBuffer();
-			// Universal background color
+			// Universal background color. Emphasis and greyscale still apply with rendering off -
+			// they are video-output stage effects, downstream of everything the renderer does.
 			byte ubIdx = paletteRAM[0];
-			int p = (ubIdx & 0x3F) * 3;
-			byte r = PaletteBytes[p]; byte g = PaletteBytes[p+1]; byte b = PaletteBytes[p+2];
+			int p = emphBase + (ubIdx & greyMask) * 3;
+			byte r = EmphasisPaletteBytes[p]; byte g = EmphasisPaletteBytes[p+1]; byte b = EmphasisPaletteBytes[p+2];
 			int baseIndex = scanline * ScreenWidth * 4;
 			for (int x = 0; x < ScreenWidth; x++)
 			{
@@ -329,12 +477,17 @@ public class PPU_FIX : IPPU, IPpuProbe
 
 	// Cache universal background color once per scanline
 	byte ubIdx = paletteRAM[0];
-	int ubp = (ubIdx & 0x3F) * 3;
-	byte ubR = PaletteBytes[ubp];
-	byte ubG = PaletteBytes[ubp+1];
-	byte ubB = PaletteBytes[ubp+2];
+	// Hoisted out of the per-pixel loop below: these are fixed for the whole scanline.
+	int emph = emphBase, grey = greyMask;
+	var pal = EmphasisPaletteBytes;
+	int ubp = emph + (ubIdx & grey) * 3;
+	byte ubR = pal[ubp];
+	byte ubG = pal[ubp+1];
+	byte ubB = pal[ubp+2];
 
-		ushort renderV = v;
+		// Latched at dot 256 out of the live loopy-v; see renderAddr and the pipeline block in
+		// Step(). Equal to what the old `CopyXFromTToV(); RenderScanline();` pair walked from.
+		ushort renderV = renderAddr;
 
 		// Render 33 tiles (32 visible + 1 for scrolling)
 		for (int tile = 0; tile < 33; tile++)
@@ -415,10 +568,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 					bgMask[pixel] = true;
 					int paletteBase = 1 + (paletteIndex << 2);
 					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = (idx & 0x3F) * 3;
-				fb![frameIndex + 0] = PaletteBytes[p];
-				fb![frameIndex + 1] = PaletteBytes[p+1];
-				fb![frameIndex + 2] = PaletteBytes[p+2];
+					int p = emph + (idx & grey) * 3;
+				fb![frameIndex + 0] = pal[p];
+				fb![frameIndex + 1] = pal[p+1];
+				fb![frameIndex + 2] = pal[p+2];
 				fb![frameIndex + 3] = 255;
 				}
 			}
@@ -562,8 +715,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 	{
 		int paletteBase = 0x11 + (paletteIndex << 2);
 		byte idx = paletteRAM[paletteBase + (colorIndex - 1)];
-		int p = (idx & 0x3F) * 3;
-		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
+		int p = emphBase + (idx & greyMask) * 3;
+		return (EmphasisPaletteBytes[p], EmphasisPaletteBytes[p+1], EmphasisPaletteBytes[p+2]);
 	}
 
 	private (byte r, byte g, byte b) GetColorFromPalette(int colorIndex, int paletteIndex)
@@ -578,8 +731,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 			int paletteBase = 1 + (paletteIndex << 2);
 			idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
 		}
-		int p = (idx & 0x3F) * 3;
-		return (PaletteBytes[p], PaletteBytes[p+1], PaletteBytes[p+2]);
+		int p = emphBase + (idx & greyMask) * 3;
+		return (EmphasisPaletteBytes[p], EmphasisPaletteBytes[p+1], EmphasisPaletteBytes[p+2]);
 	}
 
 	// Add some animated elements to make the test pattern more interesting
@@ -665,7 +818,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 					result = (byte)((status & 0xE0) | (ReadPpuOpenBus() & 0x1F));
 					RefreshPpuOpenBus(status, 0xE0); // the read itself redrives bits 7-5 onto the latch
 					PPUSTATUS &= 0x3F; // Clear VBlank flag on read
-					addrLatch = false; // Reset address latch
+					w = false; // the ONE shared $2005/$2006 write toggle - both halves, not just $2006
 					return result;
 				}
 			case 0x0004: // OAM Data
@@ -673,27 +826,32 @@ public class PPU_FIX : IPPU, IPpuProbe
 				RefreshPpuOpenBus(result);
 				return result;
 			case 0x0007: // PPU Data
-				if (PPUADDR >= 0x3F00)
+				// Addressed by the live v, not by a private shadow: hardware has one address
+				// register and $2007 uses it. (Which is also why a $2007 access while rendering is
+				// on lands wherever the fetch pipeline has driven v to - see Step().)
+				if ((v & 0x3FFF) >= 0x3F00)
 				{
 					// Palette reads are immediate, but the internal read buffer still gets
 					// refilled with the underlying nametable byte "under" the palette mirror -
-					// a real hardware quirk (a bare Read(PPUADDR) here would refill the buffer
+					// a real hardware quirk (a bare Read(v) here would refill the buffer
 					// with the palette byte itself, corrupting the next non-palette $2007 read).
-					byte pal = Read(PPUADDR);
+					byte pal = Read(v);
 					// Greyscale (PPUMASK bit 0) masks the value on the way OUT of palette RAM -
 					// it never affects what gets written. Palette RAM itself only drives 6 bits;
 					// the top 2 come from the PPU I/O bus, same as $2002's low bits above.
 					if ((PPUMASK & 0x01) != 0) pal &= 0x30;
 					result = (byte)((ReadPpuOpenBus() & 0xC0) | (pal & 0x3F));
-					ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000));
+					ppuDataBuffer = Read((ushort)(v - 0x1000));
 				}
 				else
 				{
 					result = ppuDataBuffer;
-					ppuDataBuffer = Read(PPUADDR);
+					ppuDataBuffer = Read(v);
 				}
 				RefreshPpuOpenBus(result);
-				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
+				// v is 15 bits on hardware; the increment wraps within it.
+				v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
+				PPUADDR = v;
 				return result;
 			default:
 				// Write-only registers ($2000/$2001/$2003/$2005/$2006): the PPU drives nothing
@@ -729,12 +887,17 @@ public class PPU_FIX : IPPU, IPpuProbe
 				break;
 			case 0x0001: // PPU Mask
 				PPUMASK = value;
+				// Greyscale / emphasis take effect from the very next pixel drawn, so resolve the
+				// output-stage lookup here as well as per scanline - a mid-frame $2001 write is
+				// exactly how the whole-screen flash effects this implements are done.
+				RefreshColorMask();
 				break;
 			case 0x0002: // PPU Status
-				// $2002 is read-only: a write only resets the address/scroll latch (below) and
-				// drives open bus - it must NOT clear VBlank. Only a READ clears bit 7 (see the
-				// corresponding case in ReadPPURegister).
-				scrollLatch = false;
+				// $2002 is read-only. A write drives the PPU I/O bus (above) and does nothing else:
+				// it must NOT clear VBlank, and it must NOT touch the write toggle either - only a
+				// READ of $2002 clears w (see the corresponding case in ReadPPURegister). This used
+				// to clear the $2005 half of the old split latch, which no hardware behaviour
+				// justifies and which would now clear the $2006 half with it.
 				break;
 			case 0x0003: // OAM Address
 				OAMADDR = value;
@@ -744,7 +907,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 				oam[OAMADDR++] = OAMDATA;
 				break;
 			case 0x0005: // PPU Scroll
-				if (!scrollLatch)
+				if (!w)
 				{
 					PPUSCROLLX = value;
 					fineX = (byte)(value & 0x07);
@@ -756,27 +919,28 @@ public class PPU_FIX : IPPU, IPpuProbe
 					t = (ushort)((t & 0x8FFF) | ((value & 0x07) << 12));
 					t = (ushort)((t & 0xFC1F) | ((value & 0xF8) << 2));
 				}
-				scrollLatch = !scrollLatch;
+				w = !w; // the shared toggle, not a $2005-private one
 				break;
 			case 0x0006: // PPU Address
-				if (!addrLatch)
+				if (!w)
 				{
-					t = (ushort)((value << 8) | (t & 0x00FF));
-					PPUADDR = t;
+					// Hardware latches only the low SIX bits of the high byte into t and clears
+					// bit 14: t is 15 bits wide and $2006 cannot set the top one.
+					t = (ushort)((t & 0x00FF) | ((value & 0x3F) << 8));
 				}
 				else
 				{
 					t = (ushort)((t & 0xFF00) | value);
-					PPUADDR = t;
-					v = t;
+					v = t; // the second write copies t into the live address register
+					PPUADDR = v;
 				}
-				addrLatch = !addrLatch;
+				w = !w; // same shared toggle as $2005
 				break;
 			case 0x0007: // PPU Data
 				PPUDATA = value;
-				Write(PPUADDR, PPUDATA);
-				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
-				v = PPUADDR;
+				Write(v, PPUDATA);
+				v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
+				PPUADDR = v;
 				break;
 		}
 	}
@@ -922,9 +1086,19 @@ public class PPU_FIX : IPPU, IPpuProbe
 		}
 	}
 
+	// hori(v) := hori(t) - coarse X (bits 0-4) and the nametable-X select (bit 10).
 	private void CopyXFromTToV()
 	{
 		v = (ushort)((v & 0xFBE0) | (t & 0x041F));
+	}
+
+	// vert(v) := vert(t) - fine Y (bits 12-14), coarse Y (bits 5-9) and the nametable-Y select
+	// (bit 11). The complement of CopyXFromTToV; hardware performs it on every dot of 280-304 of
+	// the pre-render scanline. The old code approximated the whole thing with `v = t`, which also
+	// overwrote the horizontal half a scanline's worth of prefetching had already advanced.
+	private void CopyYFromTToV()
+	{
+		v = (ushort)((v & 0x041F) | (t & 0x7BE0));
 	}
 
 	// Removed eager test pattern generation; rendering occurs only when needed
@@ -1001,6 +1175,47 @@ public class PPU_FIX : IPPU, IPpuProbe
 		160,214,228, 160,162,160, 0,0,0, 0,0,0
 	};
 
+	// === PPUMASK colour emphasis (bits 5/6/7) ===
+	//
+	// The 64-colour table above, expanded to the 8 emphasis combinations the PPU's video output can
+	// be in. Layout: 8 blocks of 64 rgb triples, block = ((PPUMASK >> 5) & 7), so the byte offset of
+	// a colour is block*192 + index*3 - which is exactly the emphBase/greyMask pair the renderers
+	// carry. Built once at type-init, so the hot loops pay one add over the old flat lookup and no
+	// branch at all; the alternative, testing three mask bits and multiplying per pixel, would put
+	// float work in the innermost loop of every scanline for an effect that is off almost always.
+	//
+	// The rule: a SET emphasis bit attenuates the OTHER two channels (bit 5 "red" darkens green and
+	// blue, bit 6 "green" darkens red and blue, bit 7 "blue" darkens red and green), each affected
+	// channel once, to ~74.6% - the NTSC figure from the nesdev wiki. Setting all three therefore
+	// attenuates every channel and simply darkens the whole picture, which is what the game under
+	// test relies on: it writes PPUMASK=$ff for its damage flash, i.e. greyscale AND all three
+	// emphasis bits, and expects a desaturated, dimmed screen.
+	//
+	// Note this deliberately leaves PaletteBytes itself untouched and 192 bytes long: the trace
+	// tooling reflects on it to invert rendered RGB back to NES palette indices.
+	private static readonly byte[] EmphasisPaletteBytes = BuildEmphasisPalette();
+
+	private static byte[] BuildEmphasisPalette()
+	{
+		var table = new byte[8 * 64 * 3];
+		for (int e = 0; e < 8; e++)
+		{
+			bool emphR = (e & 1) != 0, emphG = (e & 2) != 0, emphB = (e & 4) != 0;
+			bool attenR = emphG || emphB, attenG = emphR || emphB, attenB = emphR || emphG;
+			for (int i = 0; i < 64; i++)
+			{
+				int s = i * 3, d = e * 192 + i * 3;
+				table[d + 0] = Attenuate(PaletteBytes[s + 0], attenR);
+				table[d + 1] = Attenuate(PaletteBytes[s + 1], attenG);
+				table[d + 2] = Attenuate(PaletteBytes[s + 2], attenB);
+			}
+		}
+		return table;
+	}
+
+	// x0.746, rounded to nearest, in integer arithmetic so the table is bit-reproducible.
+	private static byte Attenuate(byte c, bool on) => on ? (byte)((c * 746 + 500) / 1000) : c;
+
 	public object GetState() {
 		// Do NOT serialize the large framebuffer; it can be regenerated. This keeps saves small and fast.
 		return new PpuSharedState {
@@ -1010,7 +1225,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 			// frame omitted intentionally
 			PPUCTRL=PPUCTRL,PPUMASK=PPUMASK,PPUSTATUS=PPUSTATUS,OAMADDR=OAMADDR,
 			PPUSCROLLX=PPUSCROLLX,PPUSCROLLY=PPUSCROLLY,PPUDATA=PPUDATA,PPUADDR=PPUADDR,
-			fineX=fineX,scrollLatch=scrollLatch,addrLatch=addrLatch,v=v,t=t,
+			// PpuSharedState is shared with the frozen cores and still carries two latch fields.
+			// This core has one; write it into both so a reader sees a state hardware can be in
+			// (the trace tooling reports them as bit0/bit1 of a single 'w' column and expects 0 or 3).
+			fineX=fineX,scrollLatch=w,addrLatch=w,v=v,t=t,
 			scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer,
 			staticFrameCounter=staticFrameCounter
 		};
@@ -1020,14 +1238,17 @@ public class PPU_FIX : IPPU, IPpuProbe
 			vram = (byte[])s.vram.Clone(); paletteRAM=(byte[])s.palette.Clone(); oam=(byte[])s.oam.Clone();
 			// Legacy compatibility: if a frame is present and matches expected length, copy it; otherwise leave empty
 			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
-			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;scrollLatch=s.scrollLatch;addrLatch=s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; return; }
+			// Either stored latch being set means the shared toggle was set - covers a state saved
+			// by this core (which writes both) and one carried across from a core that keeps them apart.
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram)) { if (pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } } else if (pVram.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pVram.GetBytesFromBase64(); Array.Copy(b,vram,Math.Min(b.Length, vram.Length)); } catch {} } }
 			if (je.TryGetProperty("palette", out var pPal)) { if (pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } } else if (pPal.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pPal.GetBytesFromBase64(); Array.Copy(b,paletteRAM,Math.Min(b.Length, paletteRAM.Length)); } catch {} } }
 			if (je.TryGetProperty("oam", out var pOam)) { if (pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } } else if (pOam.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pOam.GetBytesFromBase64(); Array.Copy(b,oam,Math.Min(b.Length, oam.Length)); } catch {} } }
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
-			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");scrollLatch=je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean();addrLatch=je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean();v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
+			RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F));
 		}
 	}
 
