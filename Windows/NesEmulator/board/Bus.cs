@@ -157,6 +157,14 @@ public class Bus : IBus
 		public IAPU apuJank; // famiclone
 		public IAPU apuQN; // QuickNes
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
+		// Which of those latches the ROM has actually written, as a bitmask over the 24 registers.
+		// Without this, a core hot-swap replays the whole array - including registers the ROM never
+		// touched, whose latch still reads 0 - and a write of 0 to an APU register is NOT a no-op:
+		// $4000/$4004/$400C set the envelope start flag (loading the decay counter to 15), $4015
+		// silences every channel, $4017 resets the frame sequencer. Those phantom writes gave the
+		// incoming core state the cartridge never asked for, which showed up as pulse/noise
+		// envelope volumes disagreeing with Mesen on the first frames after a swap.
+		private uint apuRegLatchWritten;
 		// MMC5 expansion audio
 		private MMC5Audio mmc5Audio;
 	public Cartridge cartridge;
@@ -311,6 +319,7 @@ public class Bus : IBus
 		{
 			ushort addr = (ushort)(0x4000 + i);
 			if (addr == 0x4014) continue;
+			if ((apuRegLatchWritten & (1u << i)) == 0) continue; // never written - replaying 0 is a real write
 			try { activeApu.WriteAPURegister(addr, apuRegLatch[i]); } catch { }
 		}
 		return true;
@@ -407,6 +416,7 @@ public class Bus : IBus
 		{
 			ushort addr = (ushort)(0x4000 + i);
 			if (addr == 0x4014) continue; // skip OAMDMA
+			if ((apuRegLatchWritten & (1u << i)) == 0) continue; // never written - replaying 0 is a real write
 			activeApu.WriteAPURegister(addr, apuRegLatch[i]);
 		}
 	}
@@ -443,6 +453,7 @@ public class Bus : IBus
 		   SetApuCore(prev);
 		   // Clear latches to avoid carrying writes between games
 		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
+		   apuRegLatchWritten = 0;
 		}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -554,7 +565,7 @@ public class Bus : IBus
 		if (address <= 0x4017 && address >= 0x4000)
 		{
 			int idx = address - 0x4000;
-			if (idx >=0 && idx < apuRegLatch.Length) apuRegLatch[idx] = value;
+			if (idx >=0 && idx < apuRegLatch.Length) { apuRegLatch[idx] = value; apuRegLatchWritten |= 1u << idx; }
 			activeApu.WriteAPURegister(address, value); return;
 		}
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)

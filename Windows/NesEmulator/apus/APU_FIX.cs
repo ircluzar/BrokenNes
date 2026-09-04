@@ -103,7 +103,13 @@ namespace NesEmulator
         private int pulse1_output, pulse2_output, triangle_output, noise_output, dmc_output;
 
         // DMC runtime
-        private int dmc_timer; private int dmc_timerPeriod; private int dmc_sampleAddress; private int dmc_sampleLengthRemaining; private bool dmc_irqEnable, dmc_loop; private int dmc_shiftReg; private int dmc_bitsRemaining; private int dmc_deltaCounter = 64; private bool dmc_silence; private int dmc_sampleBuffer; private bool dmc_sampleBufferFilled; private bool dmc_irqFlag;
+        private int dmc_timer; private int dmc_timerPeriod; private int dmc_sampleAddress; private int dmc_sampleLengthRemaining; private bool dmc_irqEnable, dmc_loop; private int dmc_shiftReg; private int dmc_bitsRemaining;
+        // Powers on at 0, not mid-scale. Hardware clears the DMC's 7-bit output level at power-up
+        // (a RESET leaves it alone, which is why $4011 is the only way back to a specific value),
+        // and Mesen matches that. Starting at 64 put a DC step on the mix that a ROM never asked
+        // for and left dmc_output disagreeing with the reference until the game's first $4011 write.
+        private int dmc_deltaCounter = 0;
+        private bool dmc_silence; private int dmc_sampleBuffer; private bool dmc_sampleBufferFilled; private bool dmc_irqFlag;
 
         // Frame sequencer
         private int frameCycle; // counts CPU cycles since last frame sequence reset
