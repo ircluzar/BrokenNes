@@ -143,6 +143,12 @@ internal static class TraceCli
         "                  (256), pal_f<N>.bin (32, canonicalized) and, when enabled, chr_f<N>.bin\n" +
         "                  and fb_f<N>.bin (61440 palette indices). Same names on the Mesen side.\n" +
         "  --ram-dump-dir  where those go (default: alongside --out).\n" +
+        "  --ppu-write-log <file>  log every CPU write to $2000-$2007 as\n" +
+        "                  frame|scanline|dot|reg|value|maskAfter. A per-frame hash cannot see a\n" +
+        "                  mid-frame $2001/$2005 write - the register is back to its old value by the\n" +
+        "                  end of the frame - so this is the only way to compare raster-timed writes\n" +
+        "                  against another emulator.\n" +
+        "  --ppu-write-frames a-b  restrict that log to a frame range (default: all frames).\n" +
         "  --power-on-palette  zeros (default) | keep. Palette RAM powers on indeterminate on real\n" +
         "                  hardware, so no emulator's fill is 'right' - but they must MATCH or every\n" +
         "                  frame before the game writes its own palette differs, and with it every\n" +
@@ -244,6 +250,12 @@ internal static class TraceCli
         PowerOnRam powerOnRam = PowerOnRam.Fceux;
         var ramDumpFrames = new HashSet<int>();
         string? ramDumpDir = null;
+        // --ppu-write-log: a raw log of every CPU write that reaches $2000-$2007, stamped with the
+        // scanline and dot it landed on. Per-frame hashes cannot answer "did the game turn rendering
+        // off halfway down the screen" - the register is back to its old value by the time the frame
+        // ends, so the evidence is gone. See Bus.PpuRegisterWriteObserver.
+        string? ppuWriteLogPath = null;
+        int ppuWriteFrom = 0, ppuWriteTo = int.MaxValue;
 
         try
         {
@@ -265,6 +277,14 @@ internal static class TraceCli
                             ramDumpFrames.Add(int.Parse(t));
                         break;
                     case "--ram-dump-dir": ramDumpDir = args[++i]; break;
+                    case "--ppu-write-log": ppuWriteLogPath = args[++i]; break;
+                    case "--ppu-write-frames":
+                    {
+                        var parts = args[++i].Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        ppuWriteFrom = int.Parse(parts[0]);
+                        ppuWriteTo = parts.Length > 1 ? int.Parse(parts[1]) : ppuWriteFrom;
+                        break;
+                    }
                     case "--strict": strict = true; break;
                     case "--speed-set": speedOverrides.Add(args[++i]); break;
                     case "--power-on-palette": powerOnPaletteZeros = ParseZerosKeep(args[++i]); break;
@@ -530,8 +550,25 @@ internal static class TraceCli
             int emitted = 0;
             int crashFrame = -1;
 
+            // --ppu-write-log plumbing. The observer is attached only when asked for, so a normal
+            // trace pays nothing but the one null test Bus.WriteSlow already does.
+            StreamWriter? ppuWriteLog = null;
+            int curFrame = 0;
+            if (ppuWriteLogPath != null)
+            {
+                ppuWriteLog = new StreamWriter(ppuWriteLogPath, false, new UTF8Encoding(false)) { NewLine = "\n" };
+                ppuWriteLog.WriteLine("# frame|scanline|dot|reg|value|maskAfter");
+                var log = ppuWriteLog;
+                nes.SetPpuRegisterWriteObserver((reg, value, sl, dot, mask) =>
+                {
+                    if (curFrame < ppuWriteFrom || curFrame > ppuWriteTo) return;
+                    log.WriteLine($"{curFrame}|{sl}|{dot}|{reg:x4}|{value:x2}|{mask:x2}");
+                });
+            }
+
             for (int f = 0; f < frames; f++)
             {
+                curFrame = f;
                 // Identical to RomTestCli's loop: a while (not if) so multiple steps on the same
                 // frame all resolve, and the step's held set is in effect for the frame it names.
                 while (nextStep < script.Count && script[nextStep].Frame <= f)
@@ -579,6 +616,14 @@ internal static class TraceCli
                 }
 
                 if (nes.IsCrashed()) { crashFrame = f; break; }
+            }
+
+            if (ppuWriteLog != null)
+            {
+                nes.SetPpuRegisterWriteObserver(null);
+                ppuWriteLog.Flush();
+                ppuWriteLog.Dispose();
+                Console.Error.WriteLine($"ppu-write-log: frames {ppuWriteFrom}..{ppuWriteTo} -> {ppuWriteLogPath}");
             }
 
             if (crashFrame >= 0)

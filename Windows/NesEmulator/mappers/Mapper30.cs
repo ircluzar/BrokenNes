@@ -6,7 +6,15 @@ namespace NesEmulator
 //  - PRG: 16KB swappable bank at $8000-$BFFF, fixed last bank at $C000-$FFFF (UxROM-style), up to
 //    512KB (32 x 16KB banks).
 //  - CHR: always CHR-RAM (no CHR-ROM), 8KB banks selected by the same register, up to 32KB (4 banks).
-//  - Mirroring: dynamic one-screen A/B, selected by bit 7 of the same register.
+//  - Mirroring: NOT unconditionally software-controlled. UNROM-512 boards ship with the mirroring
+//    jumper in one of two configurations, and the iNES four-screen flag (header byte 6 bit 3) is
+//    what tells the emulator which one this cartridge is:
+//      four-screen SET   -> one-screen mirroring, page selected by bit 7 (M) of the bank register
+//      four-screen CLEAR -> mirroring is HARDWIRED to the header's H/V bit and bit 7 does nothing
+//    Treating every mapper-30 cart as the one-screen variant is not a harmless default: on a
+//    hardwired-horizontal cart it collapses $2400 onto $2000, so the moment a vertically scrolling
+//    game crosses the coarse-Y wrap into the second nametable it re-reads the first one. See the
+//    mirroring block in CPUWrite.
 //  - Battery variant (iNES battery flag set): PRG "ROM" is actually an SST39SF0x0 flash chip the
 //    game can self-reprogram (used by homebrew with in-game level editors or save data baked into
 //    PRG space) - $8000-$BFFF carries the flash command protocol instead of bus-conflicted bank
@@ -19,6 +27,11 @@ public class Mapper30 : IMapper
     private int chr;                  // currently selected 8KB CHR-RAM bank (0-3)
     private readonly int prgBankMask; // (16KB bank count - 1)
     private readonly bool useFlash;   // true for the battery-backed, self-flashing variant
+
+    // Which mirroring variant of the board this cartridge is - decided once from the header and
+    // never again, because it is a solder jumper, not state. See the header comment above.
+    private readonly bool softMirroring;      // four-screen flag set: bit 7 of the register picks A/B
+    private readonly Mirroring fixedMirroring; // otherwise: hardwired to the header's H/V bit
 
     private enum FlashMode { Default, Erase, Write, Id }
     private int flashState;
@@ -43,6 +56,15 @@ public class Mapper30 : IMapper
         int banks16k = Math.Max(1, cart.prgROM.Length / 0x4000);
         prgBankMask = banks16k - 1;
         useFlash = cart.hasBattery;
+
+        // Read straight out of the retained raw image rather than from a Cartridge field: Cartridge
+        // parses the four-screen bit and then discards it ("Four-screen mirroring not implemented"),
+        // leaving mirroringMode at whatever it defaulted to. cart.rom is the whole file including
+        // the 16-byte header (Cartridge.rom = romData) and RefreshRomDomainsFromRom already reads it
+        // the same way, so this needs no change to the shared cartridge code.
+        byte flags6 = (cart.rom != null && cart.rom.Length >= 7) ? cart.rom[6] : (byte)0;
+        softMirroring = (flags6 & 0x08) != 0;
+        fixedMirroring = (flags6 & 0x01) != 0 ? Mirroring.Vertical : Mirroring.Horizontal;
         if (useFlash)
         {
             flashOverlay = new byte[cart.prgROM.Length];
@@ -75,7 +97,9 @@ public class Mapper30 : IMapper
         chr = 0;
         flashState = 0;
         flashMode = FlashMode.Default;
-        cart.SetMirroring(Mirroring.SingleScreenA);
+        // Power-on state of the register is 0, so on a one-screen board that is page A. On a
+        // hardwired board the jumper decides and the register cannot move it.
+        cart.SetMirroring(softMirroring ? Mirroring.SingleScreenA : fixedMirroring);
     }
 
     public byte CPURead(ushort address)
@@ -123,7 +147,12 @@ public class Mapper30 : IMapper
             byte value2 = useFlash ? value : HandleBusConflict(rel, value);
             chr = (value2 >> 5) & 3;
             prg = value2 & prgBankMask;
-            cart.SetMirroring((value2 & 0x80) != 0 ? Mirroring.SingleScreenB : Mirroring.SingleScreenA);
+            // Bit 7 (M) is only wired to the mirroring on the one-screen variant of the board. On a
+            // hardwired cart the bit is a don't-care that games freely leave set or clear as a side
+            // effect of the bank number they wanted, so acting on it there corrupts the nametable
+            // layout on a ROM that never asked for one-screen mirroring.
+            if (softMirroring)
+                cart.SetMirroring((value2 & 0x80) != 0 ? Mirroring.SingleScreenB : Mirroring.SingleScreenA);
             return;
         }
 
