@@ -103,6 +103,12 @@ namespace BrokenNes.Windows
             }
 
             ApplySavedCoreSelections();
+            // Must run after the saved selection is applied and before emulation starts: it can
+            // override the CPU core for this ROM when the selected one cannot execute it.
+            EnsureCpuCoreCanRunRom(romData, romName);
+            // Each NES gets a fresh SpeedConfig, so the frame-timing preference has to be reapplied
+            // to the new instance rather than surviving from the previous ROM.
+            ApplyNtscAccurateFrameRate();
             ApplyCrashBehavior();
             EnsureUnlockedProgressionSelections();
             nes.SetNullProvider(config.SelectedNullProvider);
