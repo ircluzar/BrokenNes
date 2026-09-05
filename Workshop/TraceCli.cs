@@ -143,6 +143,20 @@ internal static class TraceCli
         "                  (256), pal_f<N>.bin (32, canonicalized) and, when enabled, chr_f<N>.bin\n" +
         "                  and fb_f<N>.bin (61440 palette indices). Same names on the Mesen side.\n" +
         "  --ram-dump-dir  where those go (default: alongside --out).\n" +
+        "  --prg-state     off (default) | on | full. 'on' adds |prgbank|chrbank - which 16KB PRG\n" +
+        "                  bank the CPU sees at $8000 and the byte offset PPU $0000 resolves to.\n" +
+        "                  These are the ONLY columns that can see a bank-selection divergence:\n" +
+        "                  chrhash covers all of CHR RAM and is identical whichever bank is mapped.\n" +
+        "                  'full' also adds |prgwin|, an fnv-1a-64 over the 32KB visible at\n" +
+        "                  $8000-$ffff, which is the only way to catch a mapper-30 flash write.\n" +
+        "                  Mirror on the Mesen side with VRUN_TRACE_PRG=on|full.\n" +
+        "  --poke-at       \"frame:addr=value,...\" (frame decimal, addr and value HEX) forced writes\n" +
+        "                  to work RAM $000-$7ff, applied just before RunFrame() for that frame.\n" +
+        "                  For reaching states no button sequence has reached - the shop, death,\n" +
+        "                  the ending. A poked run IS perturbed and says so in its header; the\n" +
+        "                  cross-emulator comparison stays valid only if the Mesen side was given\n" +
+        "                  the identical spec via VRUN_TRACE_POKE. Repeatable.\n" +
+        "                  Example: --poke-at \"600:3ad=3,600:3d2=1\"\n" +
         "  --ppu-write-log <file>  log every CPU write to $2000-$2007 as\n" +
         "                  frame|scanline|dot|reg|value|maskAfter. A per-frame hash cannot see a\n" +
         "                  mid-frame $2001/$2005 write - the register is back to its old value by the\n" +
@@ -256,6 +270,9 @@ internal static class TraceCli
         // ends, so the evidence is gone. See Bus.PpuRegisterWriteObserver.
         string? ppuWriteLogPath = null;
         int ppuWriteFrom = 0, ppuWriteTo = int.MaxValue;
+        // --prg-state / --poke-at: see PrgSampler and the poke block below.
+        string prgMode = "off";
+        string? pokeSpec = null;
 
         try
         {
@@ -285,6 +302,8 @@ internal static class TraceCli
                         ppuWriteTo = parts.Length > 1 ? int.Parse(parts[1]) : ppuWriteFrom;
                         break;
                     }
+                    case "--prg-state": prgMode = args[++i].ToLowerInvariant(); break;
+                    case "--poke-at": pokeSpec = pokeSpec == null ? args[++i] : pokeSpec + "," + args[++i]; break;
                     case "--strict": strict = true; break;
                     case "--speed-set": speedOverrides.Add(args[++i]); break;
                     case "--power-on-palette": powerOnPaletteZeros = ParseZerosKeep(args[++i]); break;
@@ -314,6 +333,68 @@ internal static class TraceCli
             ramDumpDir ??= (outPath == "-" ? "." : (Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? "."));
             try { Directory.CreateDirectory(ramDumpDir); }
             catch (Exception ex) { Console.Error.WriteLine($"Failed to create --ram-dump-dir: {ex.Message}"); return 2; }
+        }
+
+        if (prgMode is not ("off" or "on" or "full"))
+        {
+            Console.Error.WriteLine($"--prg-state must be off|on|full, got '{prgMode}'\n{Usage}");
+            return 2;
+        }
+
+        // --poke-at "frame:addr=value,..." - forced work-RAM writes.
+        //
+        // WHY A TRACER GETS A POKE FACILITY AT ALL. Whole regions of this game - the shop,
+        // death, the ending, the options screen - have never been compared against the
+        // reference emulator, because no scripted button sequence has reached them. A poke
+        // puts both emulators into that state directly. The run IS perturbed and the trace
+        // is NOT a recording of natural play; but if BOTH emulators are perturbed
+        // identically, at the same instant, with the same bytes, the COMPARISON between
+        // them remains valid - and that is the only thing the diff ever claimed.
+        //
+        // The instant is load-bearing and mirrored exactly by VRUN_TRACE_POKE on the Mesen
+        // side: a poke for frame f lands immediately before this loop's RunFrame(f), which
+        // is the same instant the other tracer takes its record for frame f-1. Putting them
+        // anywhere else - at input-poll time, say - would place the two emulators' writes on
+        // opposite sides of the game's own NMI handler, and a perturbation difference would
+        // then masquerade as an emulation difference.
+        var pokes = new Dictionary<int, List<(int Addr, byte Value)>>();
+        int pokeCount = 0;
+        if (!string.IsNullOrWhiteSpace(pokeSpec))
+        {
+            foreach (var tok in pokeSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int colon = tok.IndexOf(':');
+                int eq = tok.IndexOf('=');
+                if (colon <= 0 || eq <= colon + 1 || eq == tok.Length - 1)
+                {
+                    Console.Error.WriteLine($"Bad --poke-at step '{tok}': expected frame:addr=value (addr and value in hex)\n{Usage}");
+                    return 2;
+                }
+                if (!int.TryParse(tok.AsSpan(0, colon), out int pf) || pf < 0
+                    || !int.TryParse(tok.AsSpan(colon + 1, eq - colon - 1), System.Globalization.NumberStyles.HexNumber, null, out int pa)
+                    || !int.TryParse(tok.AsSpan(eq + 1), System.Globalization.NumberStyles.HexNumber, null, out int pv))
+                {
+                    Console.Error.WriteLine($"Bad --poke-at step '{tok}': frame must be decimal, addr and value hex\n{Usage}");
+                    return 2;
+                }
+                // Work RAM only. $0800+ is mirrors, PPU/APU registers and cartridge space; a
+                // "poke" there would mean something entirely different on the two emulators
+                // (the Mesen mirror writes to nesInternalRam, which is 2048 bytes flat), so
+                // the two sides would silently stop matching. Refuse instead.
+                if (pa is < 0 or > 0x7FF)
+                {
+                    Console.Error.WriteLine($"--poke-at addr {pa:x} is outside work RAM $000-$7ff\n{Usage}");
+                    return 2;
+                }
+                if (pv is < 0 or > 0xFF)
+                {
+                    Console.Error.WriteLine($"--poke-at value {pv:x} does not fit in a byte\n{Usage}");
+                    return 2;
+                }
+                if (!pokes.TryGetValue(pf, out var list)) pokes[pf] = list = new List<(int, byte)>();
+                list.Add((pa, (byte)pv));
+                pokeCount++;
+            }
         }
 
         List<RomTestCli.InputStep> script;
@@ -516,9 +597,28 @@ internal static class TraceCli
                 ? new ApuSampler(nes, apuState, audioTrace, apuApply.Effective, apuSwapped)
                 : null;
 
+            var prgSampler = prgMode != "off" ? new PrgSampler(nes, prgMode == "full") : null;
+
             WriteHeader(writer, romFullPath, romBytes.Length, romSha, frames, inputScript, script,
                         cpuApply, ppuApply, apuApply, ntscFrameTiming, powerOnRam, powerOn.ToString(),
-                        strict, speed, overridden, ppuSampler, apuSampler);
+                        strict, speed, overridden, ppuSampler, apuSampler, prgSampler);
+
+            // A poked run is a PERTURBED run. Announce it loudly and in full, so nobody reads this
+            // trace as a recording of natural play, and so the Mesen side's VRUN_TRACE_POKE can be
+            // checked against it step for step - the differ cannot detect a mismatched spec.
+            if (pokeCount > 0)
+            {
+                writer.WriteLine($"# PERTURBED: this run was POKED. {pokeCount} forced work-RAM write(s). NOT natural play.");
+                writer.WriteLine($"# PERTURBED:   spec = {pokeSpec}");
+                writer.WriteLine("# PERTURBED:   Each poke is applied immediately before RunFrame() for the named frame,");
+                writer.WriteLine("# PERTURBED:   which is the same instant VRUN_TRACE_POKE writes on the Mesen side (just");
+                writer.WriteLine("# PERTURBED:   after the previous frame's record). The cross-emulator comparison stays");
+                writer.WriteLine("# PERTURBED:   valid ONLY if both sides were given the same spec - check this line.");
+            }
+            else
+            {
+                writer.WriteLine("# determinism: poke schedule = none (unperturbed run)");
+            }
 
             // Written from here rather than threaded through WriteHeader's already long parameter
             // list. The differ regex-scans the whole '#' block, so position does not matter.
@@ -578,6 +678,14 @@ internal static class TraceCli
                 }
                 nes.SetInputs(held, null);
 
+                // Pokes land here - after the input for this frame is latched in, before the frame
+                // is emulated. See the --poke-at block for why this exact instant is the one the
+                // Mesen side mirrors.
+                if (pokeCount > 0 && pokes.TryGetValue(f, out var framePokes))
+                {
+                    foreach (var (addr, value) in framePokes) nes.PokeSystemRam(addr, value);
+                }
+
                 nes.RunFrame();
 
                 // END of frame: sampled immediately after the call that advanced this frame
@@ -600,6 +708,9 @@ internal static class TraceCli
                 // Same instant, same RunFrame() return: the PPU columns are not sampled a frame
                 // later or earlier than the CPU/RAM ones they sit beside.
                 ppuSampler?.AppendColumns(line);
+                // Same instant again, and positioned between the PPU and APU blocks to match the
+                // Mesen side's column order exactly.
+                prgSampler?.AppendColumns(line);
                 // Same instant again. The APU columns must be drained/read on EVERY frame, not only
                 // when something is being investigated, or the audio fingerprint would be measuring
                 // a ring buffer of unknown age instead of this frame's output.
@@ -683,7 +794,7 @@ internal static class TraceCli
         RomTestCli.CoreApplyReport cpu, RomTestCli.CoreApplyReport ppu, RomTestCli.CoreApplyReport apu,
         bool ntscFrameTiming, PowerOnRam powerOnRam, string powerOnRamHash,
         bool strict, SpeedConfig? speed, HashSet<string> speedOverridden, PpuSampler? ppuSampler,
-        ApuSampler? apuSampler)
+        ApuSampler? apuSampler, PrgSampler? prgSampler)
     {
         string version = typeof(TraceCli).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
 
@@ -742,9 +853,13 @@ internal static class TraceCli
         w.WriteLine("#   the sample ring, which no other component reads.)");
         w.WriteLine("# sample-point: end of frame, immediately after RunFrame() returns");
         string apuCols = apuSampler?.ColumnSuffix ?? string.Empty;
+        // PRG sits between the PPU block and the APU block, matching the Mesen side's order
+        // exactly - the differ aligns columns by position, so this ordering is a hard contract.
+        string prgCols = prgSampler?.ColumnSuffix ?? string.Empty;
         if (ppuSampler == null)
         {
-            w.WriteLine($"# columns: frame|pc|a|x|y|sp|p|ramhash{apuCols}");
+            w.WriteLine($"# columns: frame|pc|a|x|y|sp|p|ramhash{prgCols}{apuCols}");
+            prgSampler?.WriteHeaderBlock(w);
             w.WriteLine("#   ramhash = first 16 hex chars of sha256 over $0000-$07FF in address order");
             w.WriteLine("# not-compared: PPU state (--ppu-state off). Any defect that never reaches work RAM -");
             w.WriteLine("#   i.e. the entire visual half of 'does it play the same' - is invisible in this trace.");
@@ -753,7 +868,7 @@ internal static class TraceCli
             return;
         }
 
-        w.WriteLine($"# columns: frame|pc|a|x|y|sp|p|ramhash|ntbhash|oamhash|palhash|ctrl|mask|stat|v|t|fx|w|chrhash|fbhash{apuCols}");
+        w.WriteLine($"# columns: frame|pc|a|x|y|sp|p|ramhash|ntbhash|oamhash|palhash|ctrl|mask|stat|v|t|fx|w|chrhash|fbhash{prgCols}{apuCols}");
         w.WriteLine("#   ramhash = first 16 hex chars of sha256 over $0000-$07FF in address order");
         w.WriteLine("#   ntbhash|oamhash|palhash|chrhash|fbhash = fnv-1a-64 (h=cbf29ce484222325, per byte");
         w.WriteLine("#     h=(h^b)*100000001b3 mod 2^64, 16 hex) over, respectively: 2048 bytes of CIRAM in");
@@ -804,6 +919,16 @@ internal static class TraceCli
         w.WriteLine("#   (indices that share an RGB and so cannot be told apart; lowest wins. This is only");
         w.WriteLine("#   safe because the Mesen side's table collides IDENTICALLY - compare the two headers.)");
         w.WriteLine($"# chr: {(ppuSampler.ChrSize > 0 ? ppuSampler.ChrSize + " bytes" : "not hashed (--ppu-chr off or no CHR)")}");
+        if (prgSampler != null)
+        {
+            prgSampler.WriteHeaderBlock(w);
+        }
+        else
+        {
+            w.WriteLine("# prg-columns: (none - --prg-state off). PRG banking, CHR BANK SELECTION and");
+            w.WriteLine("#   mapper-30 flash writes are NOT checked by this trace. chrhash hashes ALL of CHR");
+            w.WriteLine("#   and cannot see which bank is mapped; do not read a clean diff as 'banking matches'.");
+        }
         apuSampler?.WriteHeaderBlock(w);
     }
 
@@ -1142,6 +1267,148 @@ internal static class TraceCli
     /// is drawn from those 90. Including the other 15 would be comparing two different instants and
     /// would show a divergence on nearly every frame for a pure harness reason.
     /// </summary>
+    /// <summary>
+    /// PRG / bank columns: |prgbank|chrbank| and, in "full" mode, |prgwin|.
+    ///
+    /// WHY THIS EXISTS. Before these columns the trace hashed CIRAM, OAM, palette, CHR and the
+    /// framebuffer, but nothing that names which BANK is selected. That is a blind spot on a
+    /// mapper-30 cart, and it is worse than it sounds for CHR: chrhash covers ALL 32 KB of CHR
+    /// RAM, so it produces the same value no matter which 8 KB window the mapper currently points
+    /// the PPU at. A pure bank-selection divergence is therefore invisible to every column that
+    /// existed before this one, and would be caught only indirectly, if and when it happened to
+    /// change the picture. PRG had no column at all.
+    ///
+    /// Units are chosen to match what the Mesen side can read straight out of emu.getState(), so
+    /// the two sides compare digit for digit:
+    ///   prgbank  mapper 30's 16 KB PRG bank register        == Mesen "mapper.prgBank"
+    ///   chrbank  BYTE offset in CHR that PPU $0000 resolves
+    ///            to, i.e. selected 8 KB bank * 8192          == Mesen "mapper.chrMemoryOffset0"
+    ///   prgwin   fnv-1a-64 over the 32768 bytes the CPU sees at $8000-$ffff
+    ///
+    /// prgwin is the only column that can catch a mapper-30 FLASH write. This board self-programs
+    /// its own PRG, and a flashed byte changes content without changing any bank number, so no
+    /// amount of bank comparison would see it. It is off by default because it costs 32 KB of
+    /// reads per frame.
+    ///
+    /// SIDE EFFECTS - the reason this does not simply call nes.PeekCpu(). PeekCpu is
+    /// Bus.PeekByte, which is Bus.Read, which is the LIVE read path: it bumps instr.Reads and,
+    /// far worse, assigns lastBusValue - the emulated open-bus latch. Hashing 32 KB through it
+    /// every frame would leave open bus holding the byte at $ffff and change what a subsequent
+    /// open-bus read returns, i.e. the tracer would perturb the run it is measuring. So the reads
+    /// go straight to Cartridge.CPURead, which bypasses the bus entirely; for mapper 30 that
+    /// method is pure (it only indexes prgROM / flashOverlay) and it consults the flash overlay,
+    /// which is exactly what makes flash writes visible. The Mesen side takes the equivalent
+    /// care, reading through emu.memType.nesDebug rather than the side-effecting nesMemory.
+    ///
+    /// Everything is reached by REFLECTION rather than by widening any core's public surface:
+    /// NES.cartridge is private, and the two bank accessors live on Mapper30 rather than on
+    /// IMapper. A missing member disables the columns with a stated reason instead of throwing or,
+    /// worse, silently emitting a plausible zero.
+    /// </summary>
+    private sealed class PrgSampler
+    {
+        private readonly NES nes;
+        private readonly object? cartridge;
+        private readonly object? mapper;
+        private readonly MethodInfo? cpuRead;       // Cartridge.CPURead(ushort) -> byte
+        private readonly MethodInfo? tryCpuToPrg;   // Mapper30.TryCpuToPrgIndex(ushort, out int)
+        private readonly MethodInfo? chrBankSig;    // Mapper30.GetChrBankSignature() -> uint
+        private readonly bool full;
+        private readonly object?[] tryArgs = new object?[2];
+
+        public string? DisabledReason { get; }
+        public bool BanksEnabled => tryCpuToPrg != null && chrBankSig != null;
+        public bool WindowEnabled => full && cpuRead != null;
+        public int PrgRomSize { get; }
+
+        public const int WinBase = 0x8000, WinSize = 0x8000;
+
+        public PrgSampler(NES nes, bool full)
+        {
+            this.nes = nes;
+            this.full = full;
+            PrgRomSize = nes.GetPrgRomSize();
+
+            var cartField = typeof(NES).GetField("cartridge", BindingFlags.Instance | BindingFlags.NonPublic);
+            cartridge = cartField?.GetValue(nes);
+            if (cartridge == null) { DisabledReason = "NES.cartridge not reachable by reflection"; return; }
+
+            cpuRead = cartridge.GetType().GetMethod("CPURead", new[] { typeof(ushort) });
+            var mapperField = cartridge.GetType().GetField("mapper");
+            mapper = mapperField?.GetValue(cartridge);
+            if (mapper == null) { DisabledReason = "Cartridge.mapper not reachable by reflection"; return; }
+
+            tryCpuToPrg = mapper.GetType().GetMethod("TryCpuToPrgIndex");
+            chrBankSig = mapper.GetType().GetMethod("GetChrBankSignature");
+            if (tryCpuToPrg == null || chrBankSig == null)
+            {
+                DisabledReason =
+                    $"mapper {mapper.GetType().Name} exposes no TryCpuToPrgIndex/GetChrBankSignature; " +
+                    "bank columns emit '-'";
+            }
+        }
+
+        public string ColumnSuffix => full ? "|prgbank|chrbank|prgwin" : "|prgbank|chrbank";
+
+        public void AppendColumns(StringBuilder line)
+        {
+            // '-' rather than 0 whenever a value is genuinely unavailable: 0 is a legal bank, and
+            // emitting it for "unknown" would make a missing value look like agreement on bank 0.
+            if (BanksEnabled)
+            {
+                tryArgs[0] = (ushort)WinBase;
+                tryArgs[1] = 0;
+                bool ok = (bool)tryCpuToPrg!.Invoke(mapper, tryArgs)!;
+                int prgIndex = ok ? (int)tryArgs[1]! : -1;
+                if (ok) line.Append('|').Append((prgIndex / 0x4000).ToString("x2"));
+                else line.Append("|-");
+                uint chr = (uint)chrBankSig!.Invoke(mapper, null)!;
+                line.Append('|').Append((chr * 8192u).ToString("x5"));
+            }
+            else
+            {
+                line.Append("|-|-");
+            }
+
+            if (!full) return;
+            if (!WindowEnabled) { line.Append("|-"); return; }
+
+            ulong h = 0xcbf29ce484222325UL;
+            var args = new object?[1];
+            for (int a = WinBase; a < WinBase + WinSize; a++)
+            {
+                args[0] = (ushort)a;
+                byte b = (byte)cpuRead!.Invoke(cartridge, args)!;
+                h = (h ^ b) * 0x100000001b3UL;
+            }
+            line.Append('|').Append(h.ToString("x16"));
+        }
+
+        public void WriteHeaderBlock(TextWriter w)
+        {
+            w.WriteLine($"# prg-columns: {ColumnSuffix}");
+            w.WriteLine("# prg-columns: prgbank = the 16KB PRG bank the CPU sees at $8000, as a bank index");
+            w.WriteLine("#   (Mapper30.TryCpuToPrgIndex($8000) / 0x4000). Compares digit-for-digit with the");
+            w.WriteLine("#   Mesen side's emu.getState()['mapper.prgBank'].");
+            w.WriteLine("# prg-columns: chrbank = BYTE offset in CHR that PPU $0000 resolves to, i.e. the");
+            w.WriteLine("#   selected 8KB CHR bank * 8192 (Mapper30.GetChrBankSignature() * 8192). Compares");
+            w.WriteLine("#   with emu.getState()['mapper.chrMemoryOffset0'].");
+            if (full)
+            {
+                w.WriteLine("# prg-columns: prgwin = fnv-1a-64 over the 32768 bytes the CPU sees at $8000-$ffff,");
+                w.WriteLine("#   read through Cartridge.CPURead - NOT nes.PeekCpu, which is the live bus path and");
+                w.WriteLine("#   would clobber the emulated open-bus latch (Bus.Read assigns lastBusValue).");
+                w.WriteLine("#   It is the only column that can see a mapper-30 FLASH write, which changes PRG");
+                w.WriteLine("#   content without changing any bank number.");
+            }
+            w.WriteLine("# prg-columns: WHY: chrhash covers ALL of CHR RAM, so it is IDENTICAL whichever 8KB");
+            w.WriteLine("#   bank is selected - a pure bank-selection divergence is invisible to it, and PRG");
+            w.WriteLine("#   had no column at all before these.");
+            w.WriteLine($"# prg-rom-size: {PrgRomSize} bytes ({PrgRomSize / 0x4000} x 16KB banks)");
+            if (DisabledReason != null) w.WriteLine($"# prg-columns: DEGRADED - {DisabledReason}");
+        }
+    }
+
     private sealed class ApuSampler
     {
         private readonly NES nes;
