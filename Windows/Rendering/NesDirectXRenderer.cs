@@ -850,6 +850,24 @@ namespace BrokenNes.Windows.Rendering
             context.Rasterizer.SetViewport(viewport);
             context.OutputMerger.SetRenderTargets(renderTargetView);
 
+            // Clear the whole back buffer before drawing, NOT just the viewport.
+            //
+            // The swap chain is BufferCount = 1 with SwapEffect.Discard, which means the back
+            // buffer's contents are UNDEFINED after every Present - the driver is free to hand back
+            // anything. Two regions of the window are then never written by the draw below:
+            //   * the letterbox outside destRect, and
+            //   * whatever the active shader discards. That is not a corner case: the TV/CRT
+            //     shader's barrel distortion bows the picture inward and discards ~13.9% of the
+            //     viewport on a 744x697 window, concentrated at the corners.
+            // Those pixels were being presented straight from undefined memory. It happens to read
+            // black on this machine, which is exactly why it went unnoticed - but nothing
+            // guarantees that on another driver, after a resize, or under GPU memory pressure, and
+            // the failure mode is stale garbage framing the picture.
+            //
+            // ClearRenderTargetView ignores the viewport and covers the entire target, which is
+            // what makes it the right call here rather than a viewport-sized quad.
+            context.ClearRenderTargetView(renderTargetView, new SharpDX.Color4(0f, 0f, 0f, 1f));
+
             // Apply shader and draw
             shaderManager.ApplyShader(context, shaderTextureView, constants, hasPreviousFrame ? previousShaderTextureView : shaderTextureView);
             context.Draw(4, 0);
