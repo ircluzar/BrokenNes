@@ -830,6 +830,10 @@
                 <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(emu!.Controller.nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="(()=>emu!.OpenComparison())" disabled="@(emu!.BenchHistory.Count()<2)">Compare Results</button>
                 <div class="form-check form-switch mt-2 small">
+                    <input class="form-check-input" type="checkbox" id="ntscAccToggle" @bind="emu!.NtscAccurateFrameRateOn" disabled="@(emu!.Controller.nes==null)" />
+                    <label class="form-check-label" for="ntscAccToggle" title="Emulate NTSC's true 60.0988fps frame (29780.5 CPU cycles) instead of an exact 60.000fps (29829.55). On by default: measured against Mesen over 6000 frames of VRUN, the exact-60 budget runs 0.165% fast and drifts about ten frames of game time, while this matches on all but the first frame. Turning it off is slightly faster.">NTSC-Accurate Timing</label>
+                </div>
+                <div class="form-check form-switch mt-2 small">
                     <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(emu!.Controller.nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
                 </div>

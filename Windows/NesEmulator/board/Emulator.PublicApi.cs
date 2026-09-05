@@ -288,6 +288,39 @@ namespace BrokenNes
     // Event scheduler toggle
     public bool EventSchedulerOn { get => eventSchedulerOn; set { eventSchedulerOn = value; if(nes!=null) nes.EnableEventScheduler = value; try { JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_eventScheduler", value?"1":"0"); } catch {} StateHasChanged(); } }
 
+    // Real NTSC is 89341.5 PPU dots per frame = 29780.5 CPU cycles; the emulator's default frame
+    // budget is the round 60.000fps figure, 29829.55, which hands the ROM ~49 cycles a frame that
+    // hardware never gives it. That is 0.165% fast - imperceptible moment to moment, but it
+    // accumulates: measured against Mesen 2.1.1 over 6000 frames of VRUN, the exact-60 budget drifts
+    // roughly ten frames of game time and the per-frame picture stops lining up (framebuffer hash
+    // differing on 3633 of 6000 frames, rising steadily with elapsed time), while the NTSC-accurate
+    // budget matches on all but frame 0. The frames themselves are not WRONG in either mode - the
+    // game plays correctly - but only this one replays in step with hardware.
+    //
+    // Defaults ON here, unlike the desktop build. Lite exists to showcase the bundled homebrew and
+    // carries none of the exact-60 calibration the desktop does (no AccuracyCoin, no recorded
+    // benchmarks, no golden suite), so there is nothing here to trade away for it. The cost is a
+    // lower PPU/APU catch-up batch threshold, i.e. some speed - which is why it stays a toggle.
+    private bool ntscAccurateOn = true;
+    public bool NtscAccurateFrameRateOn
+    {
+        get => ntscAccurateOn;
+        set
+        {
+            ntscAccurateOn = value;
+            ApplyNtscAccurateFrameRate();
+            try { JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ntscAccurate", value?"1":"0"); } catch {}
+            StateHasChanged();
+        }
+    }
+
+    // Every NES instance gets a fresh SpeedConfig, so this has to be reapplied after each ROM load
+    // rather than surviving from the previous cartridge.
+    internal void ApplyNtscAccurateFrameRate()
+    {
+        try { var sc = nes?.GetSpeedConfig(); if (sc != null) sc.NtscAccurateFrameRate = ntscAccurateOn; } catch {}
+    }
+
     // SoundFont public projections
     public bool SoundFontMode => soundFontMode;
     public bool SampleFont => sampleFont;
@@ -333,6 +366,7 @@ namespace BrokenNes
                     Controller.RuntimeCpuCoreOverride = RequiredCpuCoreFor(romBytes);
                     ApplySelectedCores();
                     ApplySelectedCrashBehavior();
+                    ApplyNtscAccurateFrameRate(); // fresh NES => fresh SpeedConfig, so reapply
                 },
                 // Restore the incoming cartridge's battery/flash from IndexedDB. Awaited inside
                 // LoadSelectedRom while the clock is stopped, so no frame runs against a blank save.

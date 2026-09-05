@@ -314,6 +314,9 @@ namespace BrokenNes
                         var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) nesController.PpuCoreSel = pPpu;
                         var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) nesController.ApuCoreSel = pApu;
                         var pClk = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_clockCore"); if(!string.IsNullOrWhiteSpace(pClk) && nesController.ClockCoreOptions.Contains(pClk)) nesController.ClockCoreSel = pClk;
+                        // Absent key means "never set", which must keep the ON default - so only a
+                        // stored value overrides it.
+                        var pNtsc = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ntscAccurate"); if(!string.IsNullOrWhiteSpace(pNtsc)) ntscAccurateOn = pNtsc == "1" || pNtsc.Equals("true", StringComparison.OrdinalIgnoreCase);
                         await LoadBenchHistory();
                     } catch {}
                     // Load DeckBuilder save and filter core options to owned items
@@ -1027,6 +1030,7 @@ namespace BrokenNes
                 // Apply currently selected crash behavior (preserve user choice)
                 try { ApplySelectedCrashBehavior(); } catch {}
                 SetApuCoreSelFromEmu(); ApplySelectedCores();
+                ApplyNtscAccurateFrameRate(); // fresh NES => fresh SpeedConfig, so reapply
                 nesController.CurrentRomName = nesController.RomFileName; nesController.LastLoadedRomSize = romData.Length; if (!nesController.UploadedRoms.ContainsKey(nesController.RomFileName)) nesController.BuiltInRomSizes[nesController.RomFileName] = romData.Length;
                 // Restore the cartridge's battery/flash contents before ANY frame runs - including
                 // the warm-up frame on the next line. Emulation is stopped here (we paused above),
