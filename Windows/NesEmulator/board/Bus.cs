@@ -554,7 +554,17 @@ public class Bus : IBus
 		// Writing bit0 to 0x4016 controls controller strobe; apply to both ports
 		if (address == 0x4016) { input.Write4016(value); input2.Write4016(value); return; }
 		if (address == 0x4014) {
-			ppu.WriteOAMDMA(value); instr.OamDmaWrites++;
+			// The copy itself must not tick the precise window. FastOamDma normally BlockCopies out
+			// of RAM and touches no bus at all, but its fallback for mapper-controlled source pages
+			// issues 256 Read()s - inside a precise window each of those would advance PPU/APU by a
+			// CPU cycle, on top of the flat 513-cycle stall applied just below, and the DMA would
+			// cost the PPU roughly 770 cycles instead of 513. The stall is the accounting for this
+			// transfer; the reads are not. (`insidePreciseTick` is PreciseTick's own re-entrancy
+			// guard, and reusing it here is exactly the same statement: these bus accesses belong to
+			// a cycle that has already been charged.)
+			bool wasInside = insidePreciseTick; insidePreciseTick = true;
+			try { ppu.WriteOAMDMA(value); } finally { insidePreciseTick = wasInside; }
+			instr.OamDmaWrites++;
 			// The CPU stall is real hardware behavior (513 or 514 cycles depending on
 			// alignment, approximated here as a flat 513), not a speed/accuracy trade-off -
 			// CpuFastOamDmaStall previously gated this off entirely, meaning "strict" mode

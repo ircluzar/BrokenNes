@@ -120,11 +120,33 @@ public class PPU_FIX : IPPU, IPpuProbe
 
 	private bool vPipelineOn;
 
+	// The horizontal half of v (coarse X + nametable-X, bits 0-4 and 10) as hardware last loaded it
+	// at a dot-257 hori(v) := hori(t) copy - i.e. the scroll the NEXT scanline actually starts from.
+	//
+	// This exists because renderAddr took that half straight out of the LIVE t, at dot 256 of the
+	// scanline being drawn. For a game that only touches $2005/$2006 in vblank the two are the same
+	// value and nothing changes. For one whose vblank flush overruns onto the pre-render line they
+	// are not: hardware freezes scanline 0's horizontal scroll at pre-render dot 257 and a $2005
+	// arriving at dot 262 misses that frame entirely (Mesen draws the resulting one-frame tear on
+	// VRUN's pause screen), while reading t at scanline 0 dot 256 picks the write up 340 dots later
+	// and quietly draws the settled row instead. Gated by SpeedConfig.PpuScanlineHoriFromLatch
+	// because it changes rendering for every ROM, not only for the late-write case.
+	private ushort horiLatch;
+	private bool horiFromLatch; // cached SpeedConfig.PpuScanlineHoriFromLatch, refreshed per scanline
+
 	private void UpdateVPipelineFlag()
 	{
 		// Visible scanlines and the pre-render line are the ones that fetch; with rendering off the
 		// PPU stops driving v entirely and it stays wherever the CPU left it.
+		bool wasOn = vPipelineOn;
 		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
+		// Read once per scanline (and per $2001 write) rather than per dot; bus can be null during
+		// construction and core hot-swap, which is why this is not done in the constructor.
+		horiFromLatch = bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false;
+		// Turning rendering ON mid-frame: no dot-257 copy has run since, so the line that follows
+		// starts from wherever the CPU left v, not from t. Seeding the latch from v here is the
+		// same statement hardware makes by simply not having reloaded anything.
+		if (vPipelineOn && !wasOn) horiLatch = (ushort)(v & 0x041F);
 	}
 
 	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
@@ -280,12 +302,18 @@ public class PPU_FIX : IPPU, IPpuProbe
 					case ActEndOfLine:
 						IncrementX(ref v);
 						// Latch before the vertical increment: this is the address the
-						// scanline-batch renderer needs (see renderAddr's declaration).
-						renderAddr = (ushort)((v & 0xFBE0) | (t & 0x041F));
+						// scanline-batch renderer needs (see renderAddr's declaration). The
+						// horizontal half comes from the dot-257 latch when that is enabled, which
+						// is where hardware froze it - see horiLatch.
+						renderAddr = (ushort)((v & 0xFBE0) | (horiFromLatch ? horiLatch : (ushort)(t & 0x041F)));
 						IncrementY();
 						break;
 					case ActCopyHori:
 						CopyXFromTToV();
+						// What hardware just loaded into v's horizontal half IS the next scanline's
+						// starting scroll, frozen at this dot. Taken from v rather than t so a
+						// later CPU write to t cannot retroactively change it.
+						horiLatch = (ushort)(v & 0x041F);
 						break;
 					case ActCopyVert:
 						if (scanline == 261) CopyYFromTToV();
@@ -1240,7 +1268,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
 			// Either stored latch being set means the shared toggle was set - covers a state saved
 			// by this core (which writes both) and one carried across from a core that keeps them apart.
-			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); return; }
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram)) { if (pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } } else if (pVram.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pVram.GetBytesFromBase64(); Array.Copy(b,vram,Math.Min(b.Length, vram.Length)); } catch {} } }
 			if (je.TryGetProperty("palette", out var pPal)) { if (pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } } else if (pPal.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pPal.GetBytesFromBase64(); Array.Copy(b,paletteRAM,Math.Min(b.Length, paletteRAM.Length)); } catch {} } }
@@ -1248,7 +1276,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
-			RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F));
+			RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); // reconstruct the dot-257 latch from t, matching what renderAddr is rebuilt from
 		}
 	}
 

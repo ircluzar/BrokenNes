@@ -54,6 +54,14 @@ namespace NesEmulator
 		private long ntscDotBudget = 0;
 		private bool ntscFrameParityToggle = false;
 
+		// === Opt-in cycle-accurate CPU->PPU interleave - see SpeedConfig.CpuCyclePrecisePpu ===
+		// Cycles the precise window has already given the PPU/APU beyond what the CPU actually
+		// executed, carried across instructions so an instruction whose modelled bus accounted for
+		// MORE accesses than its cycle count cannot leave the PPU permanently running ahead. Lives
+		// on the frame driver rather than in RunFrame because a frame boundary must not reset it:
+		// the debt is against the master clock, not against a frame.
+		private int precisePpuDebt = 0;
+
 		public NES() { }
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
 		public string RomPath { get; set; } = string.Empty; // optional full path to ROM file
@@ -850,10 +858,57 @@ namespace NesEmulator
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
 					// which is what keeps every other core on the untouched batched path.
 					var dmcSchedulable = bus!.GetDmcSchedulable();
+					// Opt-in cycle-accurate CPU->PPU interleave; see SpeedConfig.CpuCyclePrecisePpu.
+					// Hoisted out of the loop because it cannot change mid-frame and this is the
+					// hot loop: with it off the only cost is this one local read.
+					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu;
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
 						{
+							if (precisePpu)
+							{
+								// Every instruction runs inside the precise window, so PPU and APU
+								// advance one CPU cycle per bus access DURING the instruction rather
+								// than in one lump after it. This is the same machinery the DMC
+								// predictive split below uses; the difference is only that it is
+								// armed unconditionally, which makes the DMC prediction redundant.
+								bus!.BeginPreciseWindow();
+								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
+								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
+								globalCpuCycle += accessCycles + stallCycles;
+								// Cycles the instruction spent that no bus access accounted for.
+								// CPU_FIX does not touch the bus on literally every cycle (an
+								// implied 2-cycle op fetches once where hardware fetches twice), so
+								// this is normally positive and gets flushed to keep the aggregate
+								// budget exact. It can also go NEGATIVE - a modelled dummy access
+								// can outnumber the opcode's cycle count - and simply dropping that
+								// case would let the PPU run permanently ahead of the CPU, one or
+								// two cycles per occurrence, which is the very error this mode
+								// exists to remove. So an overshoot is carried as a debt and paid
+								// out of the next instructions' flushes instead.
+								int owed = preciseInstrCycles - accessCycles;
+								if (owed > 0 && precisePpuDebt > 0)
+								{
+									int pay = owed < precisePpuDebt ? owed : precisePpuDebt;
+									precisePpuDebt -= pay; owed -= pay;
+								}
+								else if (owed < 0) { precisePpuDebt += -owed; owed = 0; }
+								// Called even for owed == 0: FlushBatch is also what drains a
+								// pending OAM DMA stall, and deferring that to the next instruction
+								// that happens to owe a cycle would put the 513-cycle stall in the
+								// wrong place.
+								FlushBatch(owed);
+								// Deliberately the instruction's own cycle count, exactly as the
+								// batched path below does - NOT the globalCpuCycle delta, which also
+								// contains DMA stall cycles. `executed` feeds overshootCarry, which
+								// shortens the next frame; counting stalls here made every frame
+								// with an OAM DMA end a few cycles early and walked the RunFrame
+								// boundary out of the pre-render line and into scanline 0, which
+								// silently re-indexes every frame the trace harness samples.
+								executed += preciseInstrCycles;
+								continue;
+							}
 							// Predictive DMA split: the APU is `batchCpu` cycles behind the CPU, so a
 							// fetch reported as `untilDma` cycles away is already in the CPU's past once
 							// untilDma <= batchCpu. Catch the APU up to exactly that point and run the

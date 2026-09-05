@@ -103,6 +103,39 @@ namespace NesEmulator
     // already hit before (see project_fceux_movie_parity / project_dmc_dma_stall_gap memories).
     // Only movie replay/export paths (TasCli et al.) opt in. See NES.RunFrame for the mechanism.
     public bool NtscAccurateFrameRate = false;
+
+    // Also an ACCURACY correction rather than a speed hack. NES.RunFrame() runs a whole CPU
+    // instruction and only THEN advances the PPU/APU by that instruction's cycles, so a write on
+    // an instruction's last cycle reaches the PPU at the dot the PPU held BEFORE the instruction
+    // started - up to 7 CPU cycles / 21 dots early. Hardware locks the two rigidly at 3:1 off one
+    // master clock. With this on, every instruction runs inside Bus's precise window (the same
+    // machinery the DMC-DMA predictive split already uses) so each CPU bus access advances PPU and
+    // APU by exactly one CPU cycle FIRST - the 6502 makes one bus access per cycle, so access
+    // count is cycle position. Measured on VRUN: it moves the game's pre-render scroll-reset
+    // writes from dots 220/244/256 onto Mesen's 240/258/270.
+    //
+    // Off by default because it is not free (PPU/APU get stepped per bus access instead of per
+    // instruction) and because every golden, benchmark and AccuracyCoin baseline in the repo was
+    // recorded against the batched path. Opt in per session; see NES.RunFrame for the mechanism
+    // and Bus.BeginPreciseWindow for what a "precise" cycle actually does.
+    public bool CpuCyclePrecisePpu = false;
+
+    // Third ACCURACY correction, and the other half of the same defect. PPU_FIX renders a whole
+    // scanline at once from `renderAddr`, whose horizontal half (coarse X + nametable X) it took
+    // from the LIVE t at dot 256 of the scanline being drawn. Hardware freezes that half one whole
+    // scanline earlier, at the dot-257 hori(v) := hori(t) copy of the PREVIOUS line, so a CPU write
+    // to $2005/$2006 arriving in between changes the picture on this core and does not on hardware.
+    // With this on, renderAddr takes it from a latch captured at that dot instead.
+    //
+    // Measured consequence on VRUN: the game's pause-menu vblank flush overruns onto the pre-render
+    // line and its scroll-reset $2005 lands at dot 262, past the dot-257 copy. Mesen therefore draws
+    // one frame with the pre-reset scroll - a real 48-pixel tear on row 0 - and BrokenNes drew the
+    // settled row. Only the two fixes TOGETHER reproduce it: CpuCyclePrecisePpu alone puts the write
+    // on the right dot but this core still reads t a scanline later and never notices.
+    //
+    // Off by default: it changes rendering for every ROM, not just the late-write case, so it would
+    // move the recorded PPU_FIX goldens.
+    public bool PpuScanlineHoriFromLatch = false;
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }
