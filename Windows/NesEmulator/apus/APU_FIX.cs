@@ -191,9 +191,24 @@ namespace NesEmulator
             noise_output = ((noiseShiftRegister & 1) == 0) ? vol : 0;
         }
 
+        /// <summary>
+        /// Optional observer fired on every APU register write, for cross-emulator audio tracing.
+        ///
+        /// The register-write STREAM is the one part of the audio path that is exactly comparable
+        /// between two emulators: it is what the game asked for, in hardware units, at an
+        /// instruction boundary - no lazy-update lag, no resampler, no mixer. If the streams match,
+        /// any remaining audio difference is this core's fault; if they do not, the difference
+        /// entered before the APU and chasing it inside the APU is wasted effort. Nothing else in
+        /// this emulator could answer that question, hence the hook.
+        ///
+        /// Null in normal operation, so the cost is one null check per register write.
+        /// </summary>
+        public Action<ushort, byte>? RegisterWriteObserver;
+
         // ===== Writes =====
         public void WriteAPURegister(ushort address, byte value)
         {
+            RegisterWriteObserver?.Invoke(address, value);
             switch(address)
             {
                 case 0x4000: // Pulse1 envelope/duty
@@ -291,27 +306,62 @@ namespace NesEmulator
         // ===== Internal helpers =====
         private void LoadLength(ref int counter, byte idx){ if(idx < LengthTable.Length) counter = LengthTable[idx]; }
 
+        // MUTING GATES THE MIXER, NOT THE DIVIDER.
+        //
+        // Every Clock* method below used to bail out BEFORE touching its timer whenever the channel
+        // was silent, so a muted channel's divider, duty sequencer and noise LFSR all stopped dead
+        // and resumed from wherever they had been parked. On hardware none of those stop: the timer
+        // is free-running and the length counter / sweep-mute / period-too-low conditions only force
+        // the value handed to the MIXER to zero. The distinction is inaudible for one channel in
+        // isolation and very audible across a mute, because it decides the PHASE the channel
+        // restarts at - and for the noise channel it decides WHICH pseudo-random sequence is played,
+        // since the LFSR is the generator's entire state.
+        //
+        // Measured against Mesen on game.nes, 2400 frames of gameplay, before this change: Mesen's
+        // noise LFSR never held a value across a whole frame (0 of 2400) while APU_FIX's did 12
+        // times; APU_FIX froze the pulse-2 duty position across 118 more whole frames than Mesen,
+        // its triangle divider across 1414 more, and its noise divider across 403 more. A divider
+        // cannot legitimately hold across a 29780-cycle frame - the slowest NTSC noise period is
+        // 4068 cycles, so it must tick at least seven times - which is what makes those counts a
+        // defect rather than a sampling artifact of Mesen's lazily-updated APU state.
         private void ClockPulse(ref ushort timer, ref int timerCounter, ref int seqIndex, ref int output, bool enabled, int lengthCounter, bool timerMute, bool sweepMute, byte duty, bool constantVol, int volumeParam, int envDecay, bool isFirst)
         {
-            if(!enabled || lengthCounter==0 || timerMute || sweepMute){ output = 0; return; }
+            // Divider and duty sequencer first, unconditionally.
             if(--timerCounter <= 0){ timerCounter = (timer+1)*2; seqIndex = (seqIndex+1)&7; }
+            if(!enabled || lengthCounter==0 || timerMute || sweepMute){ output = 0; return; }
             var pattern = PulseDutyTable[duty & 3]; int bit = pattern[seqIndex]; int vol = constantVol ? volumeParam : envDecay; output = bit==1 ? vol : 0;
         }
 
         private void ClockTriangle()
         {
-            if(!triangle_enabled || triangle_lengthCounter==0 || triangle_linearCounter==0 || triangle_timer < 2) { triangle_output=0; return; }
-            if(--triangle_timerCounter <= 0){ triangle_timerCounter = triangle_timer + 1; triangle_seqIndex = (triangle_seqIndex+1) & 31; }
+            // The triangle is the one channel where hardware really does gate the SEQUENCER and not
+            // just the mixer: the sequence position advances only while both the linear counter and
+            // the length counter are non-zero. The TIMER still free-runs, which is what the old code
+            // got wrong. Keeping those two facts apart is the whole point of this shape.
+            bool seqRuns = triangle_enabled && triangle_lengthCounter != 0 && triangle_linearCounter != 0;
+            if(--triangle_timerCounter <= 0)
+            {
+                triangle_timerCounter = triangle_timer + 1;
+                if(seqRuns) triangle_seqIndex = (triangle_seqIndex+1) & 31;
+            }
+            // The `timer < 2` term is NOT a hardware rule - it is the conventional emulator guard
+            // against emitting an ultrasonic tone that no speaker reproduces and that aliases into
+            // audible hash. Left in place deliberately, and applied to the OUTPUT only, so it no
+            // longer also stops the sequencer.
+            if(!seqRuns || triangle_timer < 2) { triangle_output=0; return; }
             triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
         }
 
         private void ClockNoise()
         {
-            if(!noise_enabled || noise_lengthCounter==0){ noise_output=0; return; }
+            // The LFSR is clocked by the timer unconditionally. It is the channel's entire state, so
+            // freezing it while muted means the next noise burst plays a different random sequence
+            // than hardware would - the single most audible item in this change.
             if(--noise_timerCounter <= 0){
                 int period = NoisePeriods[noise_periodReg & 0x0F]; noise_timerCounter = period;
                 int bit0 = noiseShiftRegister & 1; int tap = ((noise_periodReg & 0x80)!=0) ? ((noiseShiftRegister >> 6)&1) : ((noiseShiftRegister >> 1)&1); int fb = bit0 ^ tap; noiseShiftRegister = (ushort)((noiseShiftRegister >> 1) | (fb<<14));
             }
+            if(!noise_enabled || noise_lengthCounter==0){ noise_output=0; return; }
             int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay; noise_output = ((noiseShiftRegister & 1)==0) ? vol : 0;
         }
 
@@ -462,6 +512,81 @@ namespace NesEmulator
             lpLast += (mixed - lpLast) * LowPassCoeff; float lp = lpLast; float hp = lp - dcLastIn + DC_HPF_R * dcLastOut; dcLastIn = lp; dcLastOut = hp;
             StoreSample(hp * 1.05f);
         }
+
+        // ===== Waveform-phase probe (audio differential tracing) ===========================
+        //
+        // ApuStateSnapshot / IApuStateProbe deliberately exclude every field below, and for a good
+        // reason: Mesen runs NesApu lazily, so at an arbitrary instant its copies of these lag the
+        // CPU by up to ~2500 cycles, and comparing them for EQUALITY would report a divergence on
+        // nearly every frame for a harness reason rather than an emulation one.
+        //
+        // That argument bounds how far apart two CORRECT emulators can look. It says nothing about
+        // a defect whose signature is unbounded - "this core stops clocking the noise LFSR while
+        // the channel is muted" desynchronises the two shift registers permanently, and no lag of
+        // 2500 cycles can explain a 15-bit register that never resynchronises. Signal far above the
+        // noise floor is still a measurement, so these are exposed separately, under their own name,
+        // for a differ that classifies per field instead of testing equality.
+        //
+        // Kept out of ApuStateSnapshot on purpose: that struct's contract is "lag-immune", and
+        // quietly adding lag-sensitive fields to it would break every existing comparison built on
+        // that promise.
+        public readonly struct ApuPhaseSnapshot
+        {
+            public readonly byte Pulse1Duty, Pulse2Duty;             // $4000/$4004 bits 7-6
+            public readonly byte Pulse1SeqIndex, Pulse2SeqIndex;     // duty step 0..7
+            public readonly int Pulse1TimerCounter, Pulse2TimerCounter;
+            public readonly ushort Pulse1Period, Pulse2Period;       // 11-bit period register
+            public readonly byte Pulse1Output, Pulse2Output;         // 0..15, this cycle's sample
+            public readonly byte TriangleSeqIndex;                   // 0..31
+            public readonly int TriangleTimerCounter;
+            public readonly ushort TrianglePeriod;
+            public readonly byte TriangleOutput;                     // 0..15
+            public readonly ushort NoiseShift;                       // the 15-bit LFSR
+            public readonly int NoiseTimerCounter;
+            public readonly ushort NoisePeriod;                      // CPU cycles, NTSC table
+            public readonly byte NoiseOutput;                        // 0..15
+            public readonly bool NoiseMode;
+            public readonly byte DmcOutput;                          // 0..127 delta counter
+            public readonly int DmcShiftReg, DmcBitsRemaining, DmcTimer;
+            public readonly bool DmcSilence;
+            public readonly byte FrameStep;
+
+            public ApuPhaseSnapshot(
+                byte p1Duty, byte p2Duty, byte p1Seq, byte p2Seq,
+                int p1TC, int p2TC, ushort p1Per, ushort p2Per, byte p1Out, byte p2Out,
+                byte tSeq, int tTC, ushort tPer, byte tOut,
+                ushort nShift, int nTC, ushort nPer, byte nOut, bool nMode,
+                byte dOut, int dShift, int dBits, int dTimer, bool dSilence, byte frameStep)
+            {
+                Pulse1Duty = p1Duty; Pulse2Duty = p2Duty;
+                Pulse1SeqIndex = p1Seq; Pulse2SeqIndex = p2Seq;
+                Pulse1TimerCounter = p1TC; Pulse2TimerCounter = p2TC;
+                Pulse1Period = p1Per; Pulse2Period = p2Per;
+                Pulse1Output = p1Out; Pulse2Output = p2Out;
+                TriangleSeqIndex = tSeq; TriangleTimerCounter = tTC;
+                TrianglePeriod = tPer; TriangleOutput = tOut;
+                NoiseShift = nShift; NoiseTimerCounter = nTC; NoisePeriod = nPer;
+                NoiseOutput = nOut; NoiseMode = nMode;
+                DmcOutput = dOut; DmcShiftReg = dShift; DmcBitsRemaining = dBits;
+                DmcTimer = dTimer; DmcSilence = dSilence; FrameStep = frameStep;
+            }
+        }
+
+        /// <summary>
+        /// Live waveform phase. Unlike ProbeApuState() this is NOT lag-immune - see the block
+        /// comment above ApuPhaseSnapshot for what it may and may not be used to conclude.
+        /// </summary>
+        public ApuPhaseSnapshot ProbeApuPhase() => new ApuPhaseSnapshot(
+            pulse1_duty, pulse2_duty,
+            (byte)pulse1_seqIndex, (byte)pulse2_seqIndex,
+            pulse1_timerCounter, pulse2_timerCounter,
+            pulse1_timer, pulse2_timer,
+            (byte)pulse1_output, (byte)pulse2_output,
+            (byte)triangle_seqIndex, triangle_timerCounter, triangle_timer, (byte)triangle_output,
+            noiseShiftRegister, noise_timerCounter,
+            (ushort)NoisePeriods[noise_periodReg & 0x0F], (byte)noise_output, (noise_periodReg & 0x80) != 0,
+            (byte)dmc_output, dmc_shiftReg, dmc_bitsRemaining, dmc_timer, dmc_silence,
+            (byte)frameStep);
 
         private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 

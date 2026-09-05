@@ -49,6 +49,10 @@ internal static class Program
         {
             return TraceCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--apu-audio", StringComparison.OrdinalIgnoreCase))
+        {
+            return ApuAudioCli.Run(args);
+        }
         if (args.Length > 0 && args[0].Equals("--corrupt", StringComparison.OrdinalIgnoreCase))
         {
             return VrunCorruptCli.Run(args);
