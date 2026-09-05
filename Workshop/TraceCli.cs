@@ -163,6 +163,15 @@ internal static class TraceCli
         "                  end of the frame - so this is the only way to compare raster-timed writes\n" +
         "                  against another emulator.\n" +
         "  --ppu-write-frames a-b  restrict that log to a frame range (default: all frames).\n" +
+        "  --mapper-write-log <file>  log every CPU write to $8000-$ffff as\n" +
+        "                  frame|scanline|dot|addr|value|eff|latched|prgbank|chrbank|mir|status.\n" +
+        "                  The mapper twin of --ppu-write-log, and needed for the same reason: the\n" +
+        "                  |chrbank| column of --prg-state is a FRAME-BOUNDARY sample, and mapper 30\n" +
+        "                  games bank CHR mid-frame and restore before the frame ends. A 60000-frame\n" +
+        "                  VRUN run sampled bank 0 on 59997 frames - a '0 divergences' result there\n" +
+        "                  says almost nothing. This records the write itself instead of the state\n" +
+        "                  left behind. Mirror on the Mesen side with mapper_write_probe.lua.\n" +
+        "  --mapper-write-frames a-b  restrict that log to a frame range (default: all frames).\n" +
         "  --power-on-palette  zeros (default) | keep. Palette RAM powers on indeterminate on real\n" +
         "                  hardware, so no emulator's fill is 'right' - but they must MATCH or every\n" +
         "                  frame before the game writes its own palette differs, and with it every\n" +
@@ -270,6 +279,10 @@ internal static class TraceCli
         // ends, so the evidence is gone. See Bus.PpuRegisterWriteObserver.
         string? ppuWriteLogPath = null;
         int ppuWriteFrom = 0, ppuWriteTo = int.MaxValue;
+        // --mapper-write-log: the same idea one chip over. See Bus.MapperRegisterWriteObserver for
+        // why a frame-boundary bank sample is nearly blind to mid-frame CHR banking.
+        string? mapperWriteLogPath = null;
+        int mapperWriteFrom = 0, mapperWriteTo = int.MaxValue;
         // --prg-state / --poke-at: see PrgSampler and the poke block below.
         string prgMode = "off";
         string? pokeSpec = null;
@@ -300,6 +313,14 @@ internal static class TraceCli
                         var parts = args[++i].Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                         ppuWriteFrom = int.Parse(parts[0]);
                         ppuWriteTo = parts.Length > 1 ? int.Parse(parts[1]) : ppuWriteFrom;
+                        break;
+                    }
+                    case "--mapper-write-log": mapperWriteLogPath = args[++i]; break;
+                    case "--mapper-write-frames":
+                    {
+                        var parts = args[++i].Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        mapperWriteFrom = int.Parse(parts[0]);
+                        mapperWriteTo = parts.Length > 1 ? int.Parse(parts[1]) : mapperWriteFrom;
                         break;
                     }
                     case "--prg-state": prgMode = args[++i].ToLowerInvariant(); break;
@@ -682,6 +703,47 @@ internal static class TraceCli
                 });
             }
 
+            // --mapper-write-log plumbing. Attached through reflection on NES.bus rather than a
+            // NES-level setter: the PPU observer got one (NES.SetPpuRegisterWriteObserver) but this
+            // harness has no business growing the emulator's public surface for a diagnostic, and
+            // PrgSampler above already reaches NES.cartridge exactly this way. Costs the emulator
+            // one never-taken null test per cartridge-space write when NOT attached.
+            StreamWriter? mapperWriteLog = null;
+            Bus? observedBus = null;
+            if (mapperWriteLogPath != null)
+            {
+                var busField = typeof(NES).GetField("bus", BindingFlags.Instance | BindingFlags.NonPublic);
+                observedBus = busField?.GetValue(nes) as Bus;
+                if (observedBus == null)
+                {
+                    Console.Error.WriteLine("mapper-write-log: NES.bus not reachable by reflection; no log written.");
+                    writer.WriteLine("# mapper-write-log: DISABLED - NES.bus not reachable by reflection");
+                }
+                else
+                {
+                    mapperWriteLog = new StreamWriter(mapperWriteLogPath, false, new UTF8Encoding(false)) { NewLine = "\n" };
+                    WriteMapperLogHeader(mapperWriteLog);
+                    var log = mapperWriteLog;
+                    // Baseline 0 because Mapper30.Reset() zeroes the latch counter at power-on, so
+                    // the very first bank write correctly reads as "latched".
+                    long prevLatch = 0;
+                    observedBus.MapperRegisterWriteObserver = (in Bus.MapperRegisterWrite w) =>
+                    {
+                        // The latch delta has to be tracked on EVERY write, including ones outside
+                        // the frame window, or the first line after the window opens would compare
+                        // against a stale count and mis-report "latched".
+                        bool latched = w.LatchCount < 0 || w.LatchCount != prevLatch;
+                        if (w.LatchCount >= 0) prevLatch = w.LatchCount;
+                        if (curFrame < mapperWriteFrom || curFrame > mapperWriteTo) return;
+                        log.WriteLine(
+                            $"{curFrame}|{w.Scanline}|{w.Dot}|{w.Address:x4}|{w.Value:x2}|{w.EffectiveValue:x2}|" +
+                            $"{(w.LatchCount < 0 ? "-" : latched ? "1" : "0")}|" +
+                            $"{(w.PrgBank < 0 ? "-" : w.PrgBank.ToString("x2"))}|{w.ChrBank:x}|" +
+                            $"{MirrorToken(w.Mirroring)}|{w.MapperStatus:x4}");
+                    };
+                }
+            }
+
             for (int f = 0; f < frames; f++)
             {
                 curFrame = f;
@@ -751,6 +813,15 @@ internal static class TraceCli
                 ppuWriteLog.Flush();
                 ppuWriteLog.Dispose();
                 Console.Error.WriteLine($"ppu-write-log: frames {ppuWriteFrom}..{ppuWriteTo} -> {ppuWriteLogPath}");
+            }
+
+            if (mapperWriteLog != null)
+            {
+                if (observedBus != null) observedBus.MapperRegisterWriteObserver = null;
+                mapperWriteLog.WriteLine("# done");
+                mapperWriteLog.Flush();
+                mapperWriteLog.Dispose();
+                Console.Error.WriteLine($"mapper-write-log: frames {mapperWriteFrom}..{mapperWriteTo} -> {mapperWriteLogPath}");
             }
 
             if (crashFrame >= 0)
@@ -1694,4 +1765,35 @@ internal static class TraceCli
         "keep" or "native" or "as-is" => false,
         _ => throw new FormatException($"expected zeros|keep, got '{v}'"),
     };
+
+    /// <summary>Mirroring as one character, so the column compares against a Mesen side that has no
+    /// mirroring enum at all and has to infer the layout from its nametable page offsets.</summary>
+    private static string MirrorToken(int mirroring) => mirroring switch
+    {
+        0 => "h",   // Mirroring.Horizontal
+        1 => "v",   // Mirroring.Vertical
+        2 => "a",   // Mirroring.SingleScreenA
+        3 => "b",   // Mirroring.SingleScreenB
+        _ => "?",
+    };
+
+    private static void WriteMapperLogHeader(TextWriter w)
+    {
+        w.WriteLine("# mapper-write-log (BrokenNes). One line per CPU write to $8000-$ffff, in write order.");
+        w.WriteLine("# frame|scanline|dot|addr|value|eff|latched|prgbank|chrbank|mir|status");
+        w.WriteLine("#   scanline/dot  where in the frame the write landed. 261 = pre-render (Mesen numbers it -1).");
+        w.WriteLine("#                 Both carry the PPU's up-to-one-instruction catch-up lag; see IPpuProbe.");
+        w.WriteLine("#   addr          full CPU address, NOT masked - mapper 30's flash protocol is address-sensitive.");
+        w.WriteLine("#   value         byte the CPU drove onto the bus.");
+        w.WriteLine("#   eff           byte the bank register last LATCHED. Equal to value on a flash cart (no bus");
+        w.WriteLine("#                 conflict); on the plain-ROM variant it is value AND the ROM byte at addr.");
+        w.WriteLine("#   latched       1 when THIS write reprogrammed the bank register, 0 when the mapper ignored");
+        w.WriteLine("#                 it (a flash command byte). Without this column a rewrite of the same value");
+        w.WriteLine("#                 is indistinguishable from a write the mapper threw away.");
+        w.WriteLine("#   prgbank       16KB bank index visible at $8000 AFTER the write.");
+        w.WriteLine("#   chrbank       8KB CHR-RAM bank selected AFTER the write (mapper 30: 0-3).");
+        w.WriteLine("#   mir           h|v|a|b = horizontal, vertical, one-screen A, one-screen B.");
+        w.WriteLine("#   status        mapper-private. Mapper 30: (flashMode << 8) | unlockStep; 0 on non-flash boards.");
+        w.WriteLine("#                 Informational - two emulators may encode the same flash chip differently.");
+    }
 }

@@ -586,7 +586,22 @@ public class Bus : IBus
 		if (address <= 0x5015) mmc5Audio?.WriteExp(address, value);
 		return;
 	}
-		if (address >= 0x6000) { cartridge.CPUWrite(address, value); return; }
+		if (address >= 0x6000)
+		{
+			cartridge.CPUWrite(address, value);
+			// Same zero-cost-when-unattached shape as the PPU observer above: one null test on a
+			// reference field, on a path that is ALREADY the slow path (the page table routes every
+			// RAM write straight to pages[], so WriteSlow only ever sees $2000-$3FFF, $4000-$401F
+			// and cartridge space). The $8000 test is second so the common unattached case costs a
+			// single predictable never-taken branch. The dispatch lives in a separate non-inlined
+			// method so the JIT cannot pull an observer body into WriteSlow.
+			//
+			// Restricted to $8000-$FFFF because that is where every mapper's control registers live
+			// (and, on mapper 30's flash variant, the flash command protocol); $6000-$7FFF is cart
+			// WRAM, whose traffic is ordinary data and would bury the register writes.
+			if (MapperRegisterWriteObserver != null && address >= 0x8000) NotifyMapperRegisterWrite(address, value);
+			return;
+		}
 	}
 
 	// === OAM DMA Fast Path ===
@@ -676,6 +691,115 @@ public class Bus : IBus
 		if (obs == null) return;
 		if (ppu is IPpuProbe probe) obs(reg, value, probe.ProbeScanline, probe.ProbeDot, probe.ProbeMask);
 		else obs(reg, value, -1, -1, 0);
+	}
+
+	// === Mapper register write observer ==============================================
+	//
+	// The mapper-side twin of PpuRegisterWriteObserver, and it exists for the same reason: a
+	// per-frame sample cannot see a register that is written and restored INSIDE one frame.
+	//
+	// Concretely, and this is the measurement that motivated it: a frame-boundary sample of
+	// mapper 30's CHR bank on a 60,000-frame VRUN run reported bank 0 on 59,997 frames and bank 1
+	// on 3. Not because the game barely banks CHR - it banks mid-frame, several times per frame,
+	// and restores bank 0 before the frame ends. "Zero divergences" from such a sample is not
+	// evidence of anything. A per-WRITE stream is, because it records the event itself rather
+	// than the state left behind afterwards.
+	//
+	// Contract:
+	//   * fires AFTER cartridge.CPUWrite has applied the write, so PrgBank/ChrBank/Mirroring are
+	//     the values the write PRODUCED, not the ones it replaced.
+	//   * only $8000-$FFFF; see the call site for why $6000-$7FFF is excluded.
+	//   * fires on EVERY write in that range, whether or not the mapper did anything with it -
+	//     including the flash command bytes of a mapper-30 battery cart, which change no bank at
+	//     all. A comparison against another emulator has to see the writes it ignored too, or a
+	//     one-sided extra write shifts the whole stream and every later line "diverges".
+	//   * Scanline/Dot are -1/-1 when the PPU core does not implement IPpuProbe, and carry the
+	//     same up-to-one-instruction batching lag documented there. Never read -1 as a line.
+	//   * EffectiveValue is the byte the BANK REGISTER most recently latched, which is this write's
+	//     byte exactly when LatchCount advanced on this write. It differs from Value only on boards
+	//     with BUS CONFLICTS, where the latched byte is the CPU's byte ANDed with the ROM byte at
+	//     the same address. Mapper 30's flash variant has no conflict (the write is decoded by the
+	//     flash chip, not driven against a ROM output), so the two are equal there - but a harness
+	//     must not assume that, because the plain-ROM variant of the same mapper does conflict.
+	//     When LatchCount did NOT advance the mapper ignored this write (a flash command byte, say)
+	//     and EffectiveValue still shows the previous latch; that is a fact about the write, not a
+	//     bug, and the consumer should print it as "no latch" rather than as this write's value.
+	//   * Instance state, not static: two NES instances in one process must not see each other's
+	//     writes.
+	public readonly struct MapperRegisterWrite
+	{
+		public readonly ushort Address;
+		public readonly byte Value;           // byte the CPU drove onto the bus
+		public readonly byte EffectiveValue;  // after any bus conflict; == Value when there is none
+		// Bank-register latches since power-on. The consumer diffs it across consecutive writes to
+		// tell "this write reprogrammed the register" from "the mapper ignored this write" - a
+		// question the bank numbers alone cannot answer, since rewriting the same value changes
+		// nothing observable. -1 when the mapper exposes no IMapperRegisterProbe.
+		public readonly long LatchCount;
+		public readonly int PrgBank;          // 16KB bank index visible at $8000, -1 if unresolvable
+		public readonly int ChrBank;          // mapper's CHR bank signature (mapper 30: 0-3)
+		public readonly int Mirroring;        // (int)Cartridge.mirroringMode after the write
+		// Mapper-private, mapper-defined: for mapper 30 it packs the flash command state machine.
+		// Compared only for interest, never as a divergence criterion - two emulators can model the
+		// same flash chip with different internal encodings and still behave identically.
+		public readonly int MapperStatus;
+		public readonly int Scanline;
+		public readonly int Dot;
+
+		public MapperRegisterWrite(ushort address, byte value, byte effectiveValue, long latchCount,
+			int prgBank, int chrBank, int mirroring, int mapperStatus, int scanline, int dot)
+		{
+			Address = address; Value = value; EffectiveValue = effectiveValue; LatchCount = latchCount;
+			PrgBank = prgBank; ChrBank = chrBank; Mirroring = mirroring; MapperStatus = mapperStatus;
+			Scanline = scanline; Dot = dot;
+		}
+	}
+
+	/// <summary>Optional mapper-side detail for MapperRegisterWriteObserver. Declared here rather
+	/// than on IMapper so that adding it costs nothing to the two dozen mappers that would only
+	/// ever return defaults - a mapper opts in by implementing it, and the observer degrades to
+	/// EffectiveValue == Value / LatchCount == -1 for every mapper that does not.</summary>
+	public interface IMapperRegisterProbe
+	{
+		byte ProbeLastRegisterValue { get; }
+		long ProbeRegisterLatchCount { get; }
+		int ProbeMapperStatus { get; }
+	}
+
+	public delegate void MapperRegisterWriteHandler(in MapperRegisterWrite write);
+	public MapperRegisterWriteHandler? MapperRegisterWriteObserver;
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void NotifyMapperRegisterWrite(ushort address, byte value)
+	{
+		var obs = MapperRegisterWriteObserver;
+		if (obs == null) return;
+		var mapper = cartridge?.mapper;
+		if (mapper == null) return;
+
+		// $8000 rather than the written address on purpose: the question the log answers is "which
+		// bank is the CPU looking at now", and on a UxROM-style board only the LOW window moves.
+		// Resolving the written address instead would report the fixed bank for any write above
+		// $BFFF, which is exactly where mapper 30's flash carts put their bank-select writes.
+		int prgBank = mapper.TryCpuToPrgIndex(0x8000, out int prgIndex) ? prgIndex / 0x4000 : -1;
+		int chrBank = (int)mapper.GetChrBankSignature();
+		int mirroring = (int)cartridge.mirroringMode;
+
+		byte effective = value;
+		long latchCount = -1;
+		int status = 0;
+		if (mapper is IMapperRegisterProbe mp)
+		{
+			effective = mp.ProbeLastRegisterValue;
+			latchCount = mp.ProbeRegisterLatchCount;
+			status = mp.ProbeMapperStatus;
+		}
+
+		int sl = -1, dot = -1;
+		if (ppu is IPpuProbe probe) { sl = probe.ProbeScanline; dot = probe.ProbeDot; }
+
+		var w = new MapperRegisterWrite(address, value, effective, latchCount, prgBank, chrBank, mirroring, status, sl, dot);
+		obs(in w);
 	}
 
 	public byte PeekByte(ushort address) => Read(address);

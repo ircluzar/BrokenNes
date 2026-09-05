@@ -20,7 +20,7 @@ namespace NesEmulator
 //    PRG space) - $8000-$BFFF carries the flash command protocol instead of bus-conflicted bank
 //    writes, while $C000-$FFFF always writes the bank-select register regardless of flash state.
 //  Ported from BizHawk's Mapper030.cs (MIT licensed, BizHawk.Emulation.Cores.Nintendo.NES).
-public class Mapper30 : IMapper
+public class Mapper30 : IMapper, Bus.IMapperRegisterProbe
 {
     private readonly Cartridge cart;
     private int prg;                  // currently selected swappable 16KB PRG bank
@@ -44,6 +44,18 @@ public class Mapper30 : IMapper
     // a savestate - it exists so the host can tell whether the game has written flash SINCE some
     // earlier moment, which a value that rolled back with the savestate could not answer.
     private ulong flashWriteGeneration;
+
+    // === Bus.IMapperRegisterProbe backing (diagnostic only) =================================
+    //
+    // NOT emulated state and deliberately NOT serialised into a savestate, for the same reason as
+    // flashWriteGeneration above: these exist so a differential tracer can describe what a write
+    // DID, and a counter that rolled back with a savestate could not answer that. Nothing in the
+    // emulation reads them, so a savestate round-trip that drops them is still byte-exact.
+    //
+    // The cost on the write path is two stores on the bank-register branch only - a branch taken a
+    // few thousand times per second at most, and never at all on a $8000-$BFFF flash command.
+    private byte lastRegisterValue;    // effective byte the bank register last latched (post bus-conflict)
+    private long registerLatchCount;   // how many times it has latched since power-on
 
     // SST39SF0x0 unlock sequence: AA@bank1:$1555, 55@bank0:$2AAA, then a command byte at bank1:$1555.
     private static readonly int[] UnlockAddr = { 0x1555, 0x2AAA, 0x1555, 0x1555, 0x2AAA };
@@ -97,6 +109,10 @@ public class Mapper30 : IMapper
         chr = 0;
         flashState = 0;
         flashMode = FlashMode.Default;
+        // Diagnostic probe counters follow the register they describe: the register powers on at 0,
+        // so a "last latched value" of anything else would be a lie about the current hardware.
+        lastRegisterValue = 0;
+        registerLatchCount = 0;
         // Power-on state of the register is 0, so on a one-screen board that is page A. On a
         // hardwired board the jumper decides and the register cannot move it.
         cart.SetMirroring(softMirroring ? Mirroring.SingleScreenA : fixedMirroring);
@@ -147,6 +163,10 @@ public class Mapper30 : IMapper
             byte value2 = useFlash ? value : HandleBusConflict(rel, value);
             chr = (value2 >> 5) & 3;
             prg = value2 & prgBankMask;
+            // Recorded before the mirroring decision so the probe reflects the byte the register
+            // actually latched even on the hardwired-mirroring variant, where bit 7 is a no-op.
+            lastRegisterValue = value2;
+            registerLatchCount++;
             // Bit 7 (M) is only wired to the mirroring on the one-screen variant of the board. On a
             // hardwired cart the bit is a don't-care that games freely leave set or clear as a side
             // effect of the bank number they wanted, so acting on it there corrupts the nametable
@@ -300,6 +320,19 @@ public class Mapper30 : IMapper
     public bool IsCpuReadOpenBus(ushort address) => address < 0x8000;
 
     public uint GetChrBankSignature() => (uint)chr;
+
+    // === Bus.IMapperRegisterProbe ==========================================================
+    // See the field declarations above and Bus.MapperRegisterWrite for the contract. Read-only
+    // views of diagnostic counters; nothing here participates in emulation.
+    public byte ProbeLastRegisterValue => lastRegisterValue;
+    public long ProbeRegisterLatchCount => registerLatchCount;
+
+    /// <summary>Flash command-state-machine snapshot, packed as (mode &lt;&lt; 8) | unlockStep, or 0
+    /// on the non-flash variant of the board where there is no state machine at all. Packed rather
+    /// than split because the observer carries one mapper-private int and this is the only mapper
+    /// state a write can change WITHOUT changing a bank - which is exactly the case a bank-number
+    /// comparison would miss.</summary>
+    public int ProbeMapperStatus => useFlash ? (((int)flashMode) << 8) | (flashState & 0xFF) : 0;
 
     // === Non-volatile flash contents (see IMapper.ExportNonVolatileMemory) ===
     //
