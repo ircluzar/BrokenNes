@@ -53,6 +53,11 @@ namespace NesEmulator
 		// one deliberate place in this emulator where the PPU is stepped independently of a CPU cycle.
 		private long ntscDotBudget = 0;
 		private bool ntscFrameParityToggle = false;
+		// Whether the NTSC correction was on last frame, so RunFrame can spot it being switched ON
+		// mid-session and re-anchor ntscDotBudget instead of inheriting an unpayable deficit.
+		// Starts false: a machine that runs with the correction on from frame 0 re-baselines to
+		// globalCpuCycle * 3 == 0, which is exactly the initial budget, so nothing changes for it.
+		private bool ntscWasEnabled = false;
 
 		// === Opt-in cycle-accurate CPU->PPU interleave - see SpeedConfig.CpuCyclePrecisePpu ===
 		// Cycles the precise window has already given the PPU/APU beyond what the CPU actually
@@ -775,12 +780,33 @@ namespace NesEmulator
 			int targetCycles;
 			if (bus!.SpeedConfig.NtscAccurateFrameRate)
 			{
+				// Re-baseline the budget whenever the correction is switched ON mid-session.
+				//
+				// ntscDotBudget only advances inside this branch, but globalCpuCycle advances on
+				// every frame regardless, and nothing ever reconciled the two. Run with the
+				// correction off for a while and globalCpuCycle races ahead of a budget that has
+				// been standing still; switch it back on and
+				//     targetCycles = ntscDotBudget / 3 - globalCpuCycle
+				// comes out NEGATIVE, so no CPU cycles execute at all. The machine then appears
+				// frozen - the framebuffer is bit-identical frame after frame - until the debt
+				// drains at one frame per frame. Measured: ~120 frames with it off bought 119
+				// frozen frames afterwards, so ten minutes off would mean a ten-minute freeze.
+				//
+				// Anchoring the budget to where the machine actually is makes the correction safe
+				// to toggle in both directions at any time. This is a no-op for anything that has
+				// the flag on from frame 0 - globalCpuCycle is 0 there, which is already the
+				// field's initial value - so traces, TAS replay and the golden suite are untouched.
+				if (!ntscWasEnabled) ntscDotBudget = globalCpuCycle * 3;
+				ntscWasEnabled = true;
 				ntscDotBudget += ntscFrameParityToggle ? 89341 : 89342;
 				ntscFrameParityToggle = !ntscFrameParityToggle;
 				targetCycles = (int)(ntscDotBudget / 3 - globalCpuCycle);
 			}
 			else
 			{
+				// Falling edge. The budget stops advancing here while globalCpuCycle does not, so
+				// the next rising edge MUST re-anchor - see the re-baseline above.
+				ntscWasEnabled = false;
 				targetCycles = BaseCyclesPerFrame;
 				extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
 				if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
