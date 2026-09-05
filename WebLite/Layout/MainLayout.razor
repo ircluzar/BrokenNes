@@ -20,8 +20,14 @@
     </main>
 </div>
 
-<!-- Persistent title music element (moved from Home.razor so early navigation during fade-in doesn't kill audio) -->
-<audio id="titleMusic" src="music/TitleScreen.mp3" preload="auto" loop style="display:none"></audio>
+@* The persistent <audio id="titleMusic" src="music/TitleScreen.mp3" preload="auto"> that used to
+   live here is gone. It came across from the original build's Home.razor, but Lite ships no
+   wwwroot/music/ (see index.html's "lean asset set" note - music.js was deliberately dropped) and
+   no page here ever calls nesInterop.playTitleMusic/ensureTitleMusic, since Home.razor was not
+   ported and Nes.razor owns "/". All the element did was make every single page load fire a
+   404 for a file that does not exist - preload="auto" meant the browser fetched it eagerly - and
+   leave a red error in the console of a first-time player's devtools. Verified in the network log
+   of the AOT publish: "GET /music/TitleScreen.mp3 -> 404" on each load, and gone after this. *@
 
 @inject NavigationManager Nav
 @inject IJSRuntime JS

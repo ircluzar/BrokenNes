@@ -40,7 +40,31 @@
         <span class="dismiss">🗙</span>
     </div>
 
-    <script src="./_framework/blazor.webassembly.js"></script>
+    <!-- BOTH details of this line are load-bearing: the #[.{fingerprint}] placeholder, and the
+         ABSENCE of a "./" prefix. Get either wrong and the published app never boots - it sits on
+         the loading spinner at "0%" forever with nothing in the console but a bare 404.
+
+         Publish emits this script under a content-hashed name (blazor.webassembly.<hash>.js) and
+         writes no unhashed copy. It also emits an <script type="importmap"> above mapping the plain
+         name to the hashed one - but an importmap resolves ES module specifiers only, and this is a
+         CLASSIC script tag, so that map never applies here. The placeholder is what makes the
+         publish-time rewrite (OverrideHtmlAssetPlaceholders, set in the csproj) substitute the real
+         hash into this tag.
+
+         The "./" is the subtle half. With it, the rewrite fails to match the asset's route and
+         silently STRIPS the placeholder to the plain "blazor.webassembly.js" instead of expanding
+         it - which is exactly the 404 above. Reproduced on a stock `dotnet new blazorwasm` project:
+         published as shipped it emits blazor.webassembly.<hash>.js, and after adding nothing but a
+         "./" to the same line it emits blazor.webassembly.js. <base href="./"> already resolves the
+         relative path, so dropping the prefix changes nothing else.
+
+         This stayed invisible during development because `dotnet run` uses the Blazor DevServer, an
+         ASP.NET Core host that resolves fingerprinted assets via
+         BrokenNesLite.staticwebassets.endpoints.json. An ordinary static host - which is what the
+         generated web.config configures, and what this build ships on - has no such mapping.
+         Verify any change here by serving bin/Release-Publish/wwwroot over plain HTTP, never by
+         `dotnet run`. -->
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
     <script>
         // Mirror Blazor's CSS variable (--blazor-load-percentage-text) into visible text.
         (function () {

@@ -314,11 +314,96 @@ namespace BrokenNes
         }
     }
 
+    /// <summary>
+    /// True when <see cref="NtscAccurateFrameRateOn"/> is the player's stored preference but the
+    /// RUNNING machine is still on the other setting because switching it live would break the
+    /// picture. The Performance panel surfaces this and offers
+    /// <see cref="RestartForTimingAsync"/>. See <see cref="_ntscTaintedMachine"/> for why.
+    /// </summary>
+    public bool NtscAccurateNeedsRestart { get; private set; }
+
+    /// <summary>
+    /// The NES instance that has executed frames with NTSC-accurate timing OFF. Turning the
+    /// correction back ON for THAT SAME instance freezes the game, so it is refused.
+    ///
+    /// WHY: NES.RunFrame derives the accurate frame length from a running total -
+    /// `targetCycles = ntscDotBudget / 3 - globalCpuCycle`. `ntscDotBudget` only advances on frames
+    /// that ran with the correction on, while `globalCpuCycle` advances on every frame either way,
+    /// and NOTHING resets either of them - not LoadROM, not the Reset button; they live for the
+    /// lifetime of the NES object. So every frame spent with the correction off leaves
+    /// `globalCpuCycle` ~29829 cycles ahead of the budget, and the moment it is switched back on
+    /// `targetCycles` comes out hugely negative. RunFrame then executes no CPU at all and banks the
+    /// shortfall in `overshootCarry`, which drains at one frame per frame - so the game freezes for
+    /// as long as it previously ran with the setting off. MEASURED in Lite (VRUN, RIGHT held so the
+    /// picture changes every frame): with the correction on throughout, 11 of 59 consecutive frames
+    /// differ; after ~120 frames off and then back on, the framebuffer is bit-identical for the
+    /// next 119 frames and only then resumes. A player who played ten minutes with it off would
+    /// freeze for ten minutes.
+    ///
+    /// The real fix is to re-baseline `ntscDotBudget` to `globalCpuCycle * 3` when the flag rises,
+    /// which has to happen inside NES.cs. Until then this class simply never puts a machine into
+    /// that state: a fresh NES is the only thing that clears the debt, hence "restart to apply".
+    /// Reference identity is the test because ROM loads and resets REUSE the instance.
+    ///
+    /// The other direction (on -> off) is safe and applies live - it is also the direction that
+    /// matters when someone's phone is struggling, which is the whole point of exposing the toggle.
+    /// </summary>
+    private NesEmulator.NES? _ntscTaintedMachine;
+
     // Every NES instance gets a fresh SpeedConfig, so this has to be reapplied after each ROM load
-    // rather than surviving from the previous cartridge.
+    // rather than surviving from the previous cartridge. It is also the single place that decides
+    // whether the stored preference may reach the machine at all - see _ntscTaintedMachine.
     internal void ApplyNtscAccurateFrameRate()
     {
-        try { var sc = nes?.GetSpeedConfig(); if (sc != null) sc.NtscAccurateFrameRate = ntscAccurateOn; } catch {}
+        try
+        {
+            var sc = nes?.GetSpeedConfig();
+            if (sc == null) return;
+            if (ntscAccurateOn && ReferenceEquals(_ntscTaintedMachine, nes))
+            {
+                // Preference says on, this machine cannot honour it. Leave the hardware off and
+                // let the UI ask for a restart rather than silently freezing the picture.
+                sc.NtscAccurateFrameRate = false;
+                NtscAccurateNeedsRestart = true;
+                return;
+            }
+            sc.NtscAccurateFrameRate = ntscAccurateOn;
+            NtscAccurateNeedsRestart = false;
+            // Null on the "on" path so a discarded NES (with its ROM) is not held alive by this.
+            _ntscTaintedMachine = ntscAccurateOn ? null : nes;
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Power-cycle the cartridge so a pending NTSC-accurate timing change can take effect.
+    ///
+    /// Nulling <c>nes</c> first is the entire point and is not incidental: every other path here -
+    /// LoadSelectedRom, LoadRomFromServer, ResetAsync - reuses the existing NES
+    /// (`if (nes == null) nes = new NES()`), and reusing it keeps the stale cycle counters that made
+    /// the change unsafe in the first place. Only a genuinely new instance starts both counters at
+    /// zero.
+    ///
+    /// The battery/flash commit has to happen BEFORE the machine is dropped, because
+    /// LoadSelectedRomPublic's own commit sees a null NES and no-ops - without this, up to ten
+    /// seconds of play (the autosave interval) would be thrown away by a menu toggle.
+    /// </summary>
+    public async Task RestartForTimingAsync()
+    {
+        bool wasRunning = Controller.IsRunning;
+        if (wasRunning) await PauseAsync();
+        await SaveBatteryNowAsync();
+        nes = null;
+        Controller.FrameCount = 0; Controller.LastFrameCount = 0; Controller.Fps = 0;
+        if (!string.IsNullOrEmpty(Controller.CurrentRomName)) Controller.RomFileName = Controller.CurrentRomName;
+        // Rebuilds the machine, restores this cartridge's flash/battery save and re-applies the
+        // core selection; its onRomLoaded callback calls ApplyNtscAccurateFrameRate, which now sees
+        // an untainted instance and lets the preference through.
+        await LoadSelectedRomPublic();
+        try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+        if (wasRunning) await StartAsync();
+        Status.Set(ntscAccurateOn ? "Restarted with NTSC-accurate timing." : "Restarted.");
+        StateHasChanged();
     }
 
     // SoundFont public projections

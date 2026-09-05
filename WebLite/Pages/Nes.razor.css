@@ -1066,3 +1066,66 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
 .vrun-cta .boot-btn:disabled { opacity:.55; cursor:progress; }
 @media (max-width:640px){ .vrun-cta { flex-direction:column; align-items:stretch; text-align:center; gap:.75rem; } .vrun-cta .boot-btn { width:100%; font-size:.95rem; padding:.85rem 1rem; } .vrun-cta-sub { font-size:.65rem; } }
 @media (max-width:420px){ .vrun-cta { padding:.7rem .75rem; border-radius:12px; } .vrun-cta-title { font-size:.85rem; } .vrun-cta .boot-btn { letter-spacing:1.2px; } }
+
+/* ==========================================================================================
+   Performance panel (side panels, always visible - see the comment on it in Nes.razor).
+
+   Every colour here is a literal, for the same reason the VRUN strip above uses literals: the
+   :root block at the top of this file is DEAD under Blazor CSS isolation (it compiles to
+   :root[b-<hash>], which matches nothing), so var(--nes-accent) would silently resolve to
+   app.css's crimson rather than the blue this file means.
+
+   Nothing here is a .btn or a .form-control, so the <=420px panel-content overrides further up
+   (which shrink those to .6rem and clamp their min-width) leave it alone; the row is plain flex
+   and survives that block's `* { min-width:0 !important }` unchanged.
+   ========================================================================================== */
+.side-panels #performance-panel .perf-row {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:.6rem; flex-wrap:wrap;
+}
+.side-panels #performance-panel .perf-row .form-check { padding-left:2.5em; }
+/* Bootstrap's switch knob is a light-grey SVG on a light track - near-invisible on this panel's
+   near-black background until it is checked, so the unchecked track gets an explicit border. */
+.side-panels #performance-panel .form-check-input {
+  width:2.1em; height:1.1em; margin-left:-2.5em; margin-top:.15em;
+  background-color:#1a2230; border-color:#3a4a5e; cursor:pointer;
+}
+.side-panels #performance-panel .form-check-input:checked {
+  background-color:#4fa3ff; border-color:#4fa3ff;
+}
+.side-panels #performance-panel .form-check-input:focus-visible {
+  box-shadow:0 0 0 3px rgba(79,163,255,.35);
+}
+.side-panels #performance-panel .form-check-label {
+  font-size:.82rem; font-weight:600; color:#e6edf3; cursor:pointer; line-height:1.2;
+}
+.side-panels #performance-panel .perf-state {
+  flex:0 0 auto; font-size:.6rem; font-weight:700; letter-spacing:1px;
+  padding:.15rem .45rem; border-radius:999px; border:1px solid currentColor;
+}
+.side-panels #performance-panel .perf-state.on  { color:#4fa3ff; }
+.side-panels #performance-panel .perf-state.off { color:#8fa3b8; }
+.side-panels #performance-panel .perf-note {
+  margin:.55rem 0 0; font-size:.7rem; line-height:1.45; color:#b8c4cf;
+}
+.side-panels #performance-panel .perf-note strong { color:#e6edf3; }
+.side-panels #performance-panel .perf-state.pending { color:#ffd84d; }
+/* Pending-restart callout. Amber rather than the panel's blue so it reads as "needs an action"
+   without shouting; literal colours for the same isolation reason as the block above. */
+.side-panels #performance-panel .perf-pending {
+  margin-top:.6rem; padding:.55rem .65rem; border-radius:8px;
+  background:rgba(255,216,77,.07); border:1px solid rgba(255,216,77,.35);
+  font-size:.7rem; line-height:1.45; color:#e6d9b0;
+}
+.side-panels #performance-panel .perf-restart-btn {
+  display:block; width:100%; margin:.5rem 0 .35rem;
+  padding:.5rem .75rem; border-radius:8px; cursor:pointer;
+  font-size:.75rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+  background:#2a2313; color:#ffd84d; border:2px solid #ffd84d;
+  transition:.15s background,.15s color;
+}
+.side-panels #performance-panel .perf-restart-btn:hover,
+.side-panels #performance-panel .perf-restart-btn:focus-visible {
+  background:#ffd84d; color:#211800; outline:none;
+}
+.side-panels #performance-panel .perf-pending-note { font-size:.62rem; color:#b9ad8a; }

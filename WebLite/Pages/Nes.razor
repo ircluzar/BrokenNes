@@ -818,6 +818,62 @@
         </div>
     </details>
 
+    @* ---------------------------------------------------------------------------------------
+       Performance panel. Deliberately NOT inside the DebugUnlocked block below.
+
+       NtscAccurateFrameRateOn defaults to TRUE in Lite (see Emulator.PublicApi.cs) and it is not
+       free: NES.RunFrame drops its PPU/APU catch-up batch threshold from ConfigBatchCycleThreshold
+       to 1 under it, so both chips get advanced after every single CPU instruction instead of once
+       per batch. Its only home used to be the Debug panel, which renders when emu.DebugUnlocked is
+       true - and that is false in a fresh save (GameSaveService.CreateDefaultSave) with NO caller
+       anywhere in Lite for GameSaveService.UnlockDebugAsync(). So on exactly the low-end phones
+       this build exists for, the one control that buys the frame time back was unreachable, and
+       permanently so, not just until some unlock. It lives here now; the Debug panel below no
+       longer carries a copy (two would also collide on the ntscAccToggle element id).
+
+       Kept in the side panel rather than the .quick-controls toolbar on purpose - that toolbar's
+       <=420px rules (font-size:.55rem, transparent background, min-width:40px) crush anything
+       wordier than an icon, and this control needs its explanation visible on a phone because a
+       title= tooltip never appears on touch.
+       --------------------------------------------------------------------------------------- *@
+    <details id="performance-panel" class="panel-block">
+        <summary>Performance</summary>
+        <div class="panel-content">
+            <div class="perf-row">
+                @* No disabled= guard on purpose. The setter is safe with no cartridge loaded (it
+                   persists pref_ntscAccurate and no-ops on the SpeedConfig), and Emulator reapplies
+                   the stored value to every fresh NES on load - so leaving it live means a player
+                   whose ROM failed to load can still fix their setting before retrying. *@
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="ntscAccToggle" @bind="emu!.NtscAccurateFrameRateOn" />
+                    <label class="form-check-label" for="ntscAccToggle">NTSC-accurate timing</label>
+                </div>
+                <span class="perf-state @(emu!.NtscAccurateNeedsRestart ? "pending" : (emu!.NtscAccurateFrameRateOn ? "on" : "off"))">@(emu!.NtscAccurateNeedsRestart ? "PENDING" : (emu!.NtscAccurateFrameRateOn ? "ON" : "OFF"))</span>
+            </div>
+            <p class="perf-note">
+                Runs the real NTSC frame (60.0988 fps) instead of a round 60.000. Leave it on for the
+                most faithful picture and speed. <strong>Turn it off if the game runs slowly</strong>
+                &mdash; accurate timing costs about @NtscAccurateCostPercentText more work per frame,
+                which is the difference between choppy and smooth on a slower phone.
+            </p>
+            @* Turning the correction back on cannot be done to a machine that has already run
+               without it - Emulator.PublicApi's _ntscTaintedMachine explains the cycle-budget
+               reason, and the visible symptom is a frozen picture for as long as it ran without it.
+               So the preference is stored, the hardware is left alone, and the player gets an
+               explicit way to make it real. *@
+            @if (emu!.NtscAccurateNeedsRestart)
+            {
+                <div class="perf-pending" role="status">
+                    <div>Saved &mdash; but the running game keeps its current timing. Restart the
+                    cartridge to switch it over.</div>
+                    <button type="button" class="perf-restart-btn" @onclick="(()=>emu!.RestartForTimingAsync())">Restart game</button>
+                    <div class="perf-pending-note">Your in-game save is kept; anything since your
+                    last save is not.</div>
+                </div>
+            }
+        </div>
+    </details>
+
     @if (emu!.DebugUnlocked)
     {
         <details class="panel-block">
@@ -829,10 +885,9 @@
             <div class="mt-2">
                 <button class="btn btn-sm btn-outline-primary" @onclick="(()=>emu!.OpenBenchmarks())" disabled="@(emu!.Controller.nes==null)">@(emu!.BenchRunning?"Running...":"Run Benchmarks")</button>
                 <button class="btn btn-sm btn-outline-info ms-1" @onclick="(()=>emu!.OpenComparison())" disabled="@(emu!.BenchHistory.Count()<2)">Compare Results</button>
-                <div class="form-check form-switch mt-2 small">
-                    <input class="form-check-input" type="checkbox" id="ntscAccToggle" @bind="emu!.NtscAccurateFrameRateOn" disabled="@(emu!.Controller.nes==null)" />
-                    <label class="form-check-label" for="ntscAccToggle" title="Emulate NTSC's true 60.0988fps frame (29780.5 CPU cycles) instead of an exact 60.000fps (29829.55). On by default: measured against Mesen over 6000 frames of VRUN, the exact-60 budget runs 0.165% fast and drifts about ten frames of game time, while this matches on all but the first frame. Turning it off is slightly faster.">NTSC-Accurate Timing</label>
-                </div>
+                @* NTSC-Accurate Timing moved out to the always-visible Performance panel above -
+                   it is a player-facing performance control, not a debug tool, and it was
+                   unreachable here. Do not re-add it: the id would collide. *@
                 <div class="form-check form-switch mt-2 small">
                     <input class="form-check-input" type="checkbox" id="evtSchedToggle" @bind="emu!.EventSchedulerOn" disabled="@(emu!.Controller.nes==null)" />
                     <label class="form-check-label" for="evtSchedToggle" title="Experimental: event-driven CPU->PPU/APU scheduling (scanline prototype)">Event Scheduler</label>
@@ -1225,6 +1280,22 @@
     // is also reachable from the ROM Manager list after the hero strip dismisses itself.
     private const string VrunRomKey = "vrun.nes";
     private bool _vrunLoading;
+
+    // What the Performance panel quotes for the cost of NTSC-accurate timing. A measured number,
+    // not an assumption: A/B'd in THIS build (Release + WASM AOT publish, Chrome, VRUN in gameplay
+    // driven by an identical scripted input sequence) by timing FrameTick over 5 x 300 frames per
+    // arm. Each arm ran on its OWN page load with the preference already set, because toggling it
+    // mid-session poisons the measurement for the same reason it freezes the picture - see
+    // Emulator.PublicApi._ntscTaintedMachine.
+    //
+    //   ON  5.252 5.223 5.298 5.307 5.232  ms/frame  (median 5.252)
+    //   OFF 4.364 4.380 4.480 4.330 4.349  ms/frame  (median 4.364)
+    //   repeat ON, fresh load: median 5.196
+    //
+    // 5.25 / 4.36 = 1.203, i.e. accurate timing costs ~20% more frame time and turning it off gives
+    // back ~17% of it. (The desktop-side estimate this UI was asked to justify was "roughly 25%".)
+    // Re-measure and update if NES.RunFrame's batching changes.
+    private const string NtscAccurateCostPercentText = "20%";
 
     // Deliberately does NOT touch the CPU picker. VRUN is mapper 30 and needs CPU_FIX, but that is
     // decided from the ROM header inside the load path (Emulator.RequiredCpuCoreFor) and applied as
