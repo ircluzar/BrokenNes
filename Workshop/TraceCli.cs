@@ -468,6 +468,22 @@ internal static class TraceCli
             // as an emulation defect when it is really a pacing choice. So --trace defaults this ON.
             var speed = nes.GetSpeedConfig();
             if (speed != null) speed.NtscAccurateFrameRate = ntscFrameTiming;
+            // The two write-phase accuracy flags travel with NtscAccurateFrameRate here for the same
+            // reason it defaults on for --trace: this tool exists to compare against a cycle-accurate
+            // reference, so it should measure the most accurate machine this emulator can be, not its
+            // fast path. Both are default-OFF globally and cost ~25% frame time when enabled, which
+            // is why they stay opt-in everywhere a human is watching the framerate.
+            //   CpuCyclePrecisePpu        - catch the PPU up WITHIN an instruction rather than after
+            //                               it returns; without it a write lands up to 21 dots early.
+            //   PpuScanlineHoriFromLatch  - take a scanline's horizontal scroll from the dot-257
+            //                               hori(v):=hori(t) latch, as hardware freezes it, instead
+            //                               of the live t at dot 256 of the row being drawn.
+            // Both are needed to reproduce VRUN's pause-frame tear; neither alone does it.
+            if (speed != null && ntscFrameTiming)
+            {
+                speed.CpuCyclePrecisePpu = true;
+                speed.PpuScanlineHoriFromLatch = true;
+            }
             // --strict: pin every accuracy-for-speed opt-out to its most accurate setting, so the
             // diff measures what this emulator can do rather than what its fast path does. Applied
             // to THIS NES instance's SpeedConfig only - no default moves, and no other consumer
