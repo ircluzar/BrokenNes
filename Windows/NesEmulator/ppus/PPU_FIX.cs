@@ -134,6 +134,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private ushort horiLatch;
 	private bool horiFromLatch; // cached SpeedConfig.PpuScanlineHoriFromLatch, refreshed per scanline
 
+	// Cached SpeedConfig.CpuCyclePrecisePpu, refreshed alongside horiFromLatch. Gates the $2007
+	// rendering-collision model in WritePPURegister/ReadPPURegister - see CollideDataAccessWithRender.
+	private bool dataPortCollision;
+
 	private void UpdateVPipelineFlag()
 	{
 		// Visible scanlines and the pre-render line are the ones that fetch; with rendering off the
@@ -143,6 +147,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		// Read once per scanline (and per $2001 write) rather than per dot; bus can be null during
 		// construction and core hot-swap, which is why this is not done in the constructor.
 		horiFromLatch = bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false;
+		dataPortCollision = bus?.SpeedConfig?.CpuCyclePrecisePpu ?? false;
 		// Turning rendering ON mid-frame: no dot-257 copy has run since, so the line that follows
 		// starts from wherever the CPU left v, not from t. Seeding the latch from v here is the
 		// same statement hardware makes by simply not having reloaded anything.
@@ -877,8 +882,11 @@ public class PPU_FIX : IPPU, IPpuProbe
 					ppuDataBuffer = Read(v);
 				}
 				RefreshPpuOpenBus(result);
-				// v is 15 bits on hardware; the increment wraps within it.
-				v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
+				// v is 15 bits on hardware; the increment wraps within it. While the PPU is fetching, a read
+				// collides with the render pipeline exactly as a write does (the data is not corrupted,
+				// only the address bookkeeping) - see CollideDataAccessWithRender.
+				if (dataPortCollision && vPipelineOn) CollideDataAccessWithRender();
+				else v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
 				PPUADDR = v;
 				return result;
 			default:
@@ -966,8 +974,18 @@ public class PPU_FIX : IPPU, IPpuProbe
 				break;
 			case 0x0007: // PPU Data
 				PPUDATA = value;
-				Write(v, PPUDATA);
-				v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
+				if (dataPortCollision && vPipelineOn)
+				{
+					// Rendering owns the VRAM address bus. The byte that lands is the address's own
+					// low byte, not the CPU's data - see CollideDataAccessWithRender for the model.
+					Write(v, (byte)(v & 0xFF));
+					CollideDataAccessWithRender();
+				}
+				else
+				{
+					Write(v, PPUDATA);
+					v = (ushort)((v + ((PPUCTRL & 0x04) != 0 ? 32 : 1)) & 0x7FFF);
+				}
 				PPUADDR = v;
 				break;
 		}
@@ -1072,6 +1090,29 @@ public class PPU_FIX : IPPU, IPpuProbe
 	public void WriteOAMDMA(byte page)
 	{
 		bus.FastOamDma(page, oam, ref OAMADDR);
+	}
+
+	// A $2007 access while the PPU is fetching (rendering on, on a visible or pre-render line).
+	//
+	// The CPU and the fetch pipeline are then both driving the VRAM address bus. Hardware resolves
+	// it by bumping v with a coarse-X increment AND a Y increment together, instead of PPUCTRL
+	// bit 2's +1/+32 - and on a write, what reaches memory is the address's low byte rather than the
+	// CPU's data. Measured against Mesen 2.1.1 on VRUN, whose screen-clear lands 32 writes on
+	// scanlines 3-4 when the ending is entered from live gameplay: Mesen's v walks
+	// 3000,4001,5002,6003,7004,0025,1027,... (fine Y and coarse X both advancing per write, the fine-Y
+	// carry rolling into coarse Y), and the attribute bytes at 23C0-23C8 end up C0..C8, their own
+	// address low bytes. Modelling it as the rendering-off path wrote the data byte into 20
+	// consecutive nametable cells instead.
+	//
+	// Gated on SpeedConfig.CpuCyclePrecisePpu, and deliberately so. Whether an access collides
+	// depends on the exact dot it lands on, and on the batched path the PPU is only caught up
+	// after each instruction returns - up to 21 dots off. An earlier unconditional version of this
+	// changed SMB3's golden frame on exactly that basis, so the model only runs where the PPU's
+	// position at the access is trustworthy.
+	private void CollideDataAccessWithRender()
+	{
+		IncrementX(ref v);
+		IncrementY();
 	}
 
 	private void IncrementY()
