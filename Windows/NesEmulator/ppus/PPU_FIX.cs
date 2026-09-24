@@ -255,7 +255,11 @@ public class PPU_FIX : IPPU, IPpuProbe
 				}
 			}
 
-			if (scanline >= 0 && scanline < 240 && scanlineCycle == 260)
+			// MMC3 counts A12 rises from the sprite fetches, which happen on the pre-render line too.
+			// Leaving 261 out skipped one clock per frame, so the counter reloaded on line 0
+			// instead of 261 and every MMC3 IRQ landed one scanline late (SMB3's status-bar split
+			// ran on 194 where Mesen runs it on 193, drawing the bar one row low).
+			if ((scanline < 240 || scanline == 261) && scanlineCycle == 260)
 			{
 				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
 				{

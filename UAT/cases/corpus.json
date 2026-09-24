@@ -111,7 +111,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "7D276D78C8C0DB07",
+        "frameBufferHash": "DC424016AE20DB07",
         "framesRun": 600,
         "distinctColors": 11,
         "result": "ok",
