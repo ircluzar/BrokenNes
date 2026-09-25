@@ -12,4 +12,5 @@ public class CpuSharedState
     public bool irqRequested { get; set; }
     public bool nmiRequested { get; set; }
     public bool irqDeferOne { get; set; } // CPU_FIX: an IRQ that arrived in the last cycle waits one instruction
+        public bool nmiDeferOne { get; set; } // CPU_FIX: likewise for an NMI that arrived too late in the instruction
 }

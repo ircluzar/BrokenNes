@@ -91,16 +91,21 @@ public class CPU_FIX : ICPU {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public ushort Fetch16Bits() { byte low = Fetch(); byte high = Fetch(); return (ushort)((high << 8) | low); }
 
+	private const int InterruptDotSlack = 1;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-	// The 6502 polls for an interrupt at the end of an instruction's SECOND-TO-LAST cycle, so an IRQ
-	// asserted during the last cycle is only taken after one more instruction. Modelled wherever the
-	// bus knows which cycle of the instruction the PPU/APU are on (precise stepping - always, for
-	// PPU_FIX; see Bus.PreciseInterruptPhase), otherwise IRQs are taken at the next instruction as
-	// before. Measured on Mega Man 3's MMC3-timed stage-select split: with the counter clocked at dot
-	// 261 (the A12 rise of the first sprite-pattern fetch) this puts all five mid-line writes on Mesen
-	// 2.1.1's exact dots; without it they land 6 dots (2 CPU cycles) early. Deliberately NOT applied
-	// to NMI: tried and measured, it took Lifeforce's NMI landing points from 40/57 matching Mesen to
-	// 2/57 - the NMI edge is sampled differently.
+	// The 6502 polls for an interrupt at the end of an instruction's SECOND-TO-LAST cycle, so an
+	// interrupt asserted later is only taken after one more instruction. Two ways of placing the
+	// assertion inside the instruction:
+	//  - Raised by the PPU at a known dot (VBlank NMI, MMC3's A12 IRQ): judged by exact dot distance
+	//    from the instruction's first dot - taken when it rises no later than dot 3*(C-1)+1 of a
+	//    C-cycle instruction. Fitted to Mesen 2.1.1 by lockstep walks from power-on with the PPU
+	//    dot logged per instruction: with it (plus the 8-cycle reset sequence and OAM DMA parity)
+	//    Mega Man 3 runs 60,000+ instructions in lockstep with Mesen, every NMI and IRQ on the same
+	//    instruction. The old rule (NMI never deferred, IRQ by bus access) kept PPU_FIX a whole CPU
+	//    cycle out of phase, which the earlier sub-cycle and MMC3-dot fits had been compensating.
+	//  - Anything else (APU frame/DMC IRQ): by bus access - raised during the last access, or after
+	//    it (Bus.PreciseInterruptPhase == MaxValue), waits one instruction.
 	public void RequestIRQ(bool line)
 	{
 		if (line && !irqRequested)
@@ -111,16 +116,47 @@ public class CPU_FIX : ICPU {
 		irqRequested = line;
 	}
 	private int irqRaisedAtAccess = -1;
+	private long irqRaisedRel = -1; // dot offset into the running instruction of a dot-stamped IRQ; -1 none
+	private int irqPollCycles; // the finished instruction's length as the IRQ poll sees it
+	// A taken branch that stays on its page ignores an IRQ that became pending during its operand
+	// fetch, so for the IRQ poll it behaves like a 2-cycle instruction (Mesen: branch_delays_irq).
+	// Not applied to NMI, as in Mesen.
+	private static int IrqPollLength(byte opcode, int cycles) => ((opcode & 0x1F) == 0x10 && cycles == 3) ? 2 : cycles;
+	/// <summary>An IRQ the PPU raised at dot <paramref name="dot"/> (its dot counter) - see above.</summary>
+	public void RequestIRQAtDot(long dot)
+	{
+		if (!irqRequested && bus.InstructionStartDot >= 0)
+		{
+			long rel = dot - bus.InstructionStartDot;
+			// Raised while the bus settles the finished instruction's last dots: judge it now.
+			if (dispatchedCycles > 0) { if (rel > 3L * (irqPollCycles - 1) + InterruptDotSlack) irqDeferOne = true; }
+			else irqRaisedRel = rel;
+			irqRequested = true;
+			return;
+		}
+		RequestIRQ(true);
+	}
 	private bool irqDeferOne;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void RequestNMI()
 	{
+		if (!nmiRequested && bus.ppu is PPU_FIX fixPpu && bus.InstructionStartDot >= 0)
+		{
+			long rel = fixPpu.LastInterruptDot - bus.InstructionStartDot;
+			if (dispatchedCycles > 0) { if (rel > 3L * (dispatchedCycles - 1) + InterruptDotSlack) nmiDeferOne = true; }
+			else nmiRaisedRel = rel;
+		}
 		nmiRequested = true;
 	}
+	private long nmiRaisedRel = -1;
+	private bool nmiDeferOne;
+	private int dispatchedCycles; // the running instruction's length once its accesses are done; 0 before
 
 	public int ExecuteInstruction() {
-		if (nmiRequested) {
+		dispatchedCycles = 0;
+		bool nmiDeferred = nmiDeferOne; nmiDeferOne = false;
+		if (nmiRequested && !nmiDeferred) {
 			nmiRequested = false;
 			int nmiCycles = NMI();
 			// NMI's own flag-set (like IRQ's) is immediately visible to the poll checkpoint -
@@ -141,14 +177,18 @@ public class CPU_FIX : ICPU {
 			return irqCycles;
 		}
 
-		irqRaisedAtAccess = -1;
+		irqRaisedAtAccess = -1; irqRaisedRel = -1; nmiRaisedRel = -1;
 		byte opcode = Fetch();
 		ushort instructionPC = (ushort)(PC - 1);
 		byte preA = A, preX = X, preY = Y, preSP = (byte)SP, preStatus = status;
 		bool iBefore = GetFlag(FLAG_I);
 
 		int cycles = Dispatch(opcode);
+		irqPollCycles = IrqPollLength(opcode, cycles);
 		if (irqRequested && irqRaisedAtAccess >= 0 && irqRaisedAtAccess >= cycles - 1) irqDeferOne = true;
+		if (irqRequested && irqRaisedRel >= 0 && irqRaisedRel > 3L * (irqPollCycles - 1) + InterruptDotSlack) irqDeferOne = true;
+		if (nmiRequested && nmiRaisedRel >= 0 && nmiRaisedRel > 3L * (cycles - 1) + InterruptDotSlack) nmiDeferOne = true;
+		dispatchedCycles = cycles;
 
 		InstructionTracer.OnInstruction(instructionPC, opcode, preA, preX, preY, preSP, preStatus, (byte)cycles);
 
@@ -1166,9 +1206,9 @@ public class CPU_FIX : ICPU {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private bool HasPageCrossPenalty(ushort baseAddr, ushort effectiveAddr) => (baseAddr & 0xFF00) != (effectiveAddr & 0xFF00);
 
-	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,irqDeferOne=irqDeferOne };
+	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,irqDeferOne=irqDeferOne,nmiDeferOne=nmiDeferOne };
 	public void SetState(object state) {
-		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested;irqDeferOne=s.irqDeferOne; pollFlagI = GetFlag(FLAG_I); return; }
+		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested;irqDeferOne=s.irqDeferOne;nmiDeferOne=s.nmiDeferOne; pollFlagI = GetFlag(FLAG_I); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("A", out var pA)) A = (byte)pA.GetInt32();
 			if (je.TryGetProperty("X", out var pX)) X = (byte)pX.GetInt32();
@@ -1178,6 +1218,7 @@ public class CPU_FIX : ICPU {
 			if (je.TryGetProperty("SP", out var pSP)) SP = (ushort)pSP.GetInt32();
 			if (je.TryGetProperty("irqRequested", out var pi)) irqRequested = pi.GetBoolean();
 			irqDeferOne = je.TryGetProperty("irqDeferOne", out var pdo) && pdo.GetBoolean();
+			nmiDeferOne = je.TryGetProperty("nmiDeferOne", out var pdn) && pdn.GetBoolean();
 			if (je.TryGetProperty("nmiRequested", out var pn)) nmiRequested = pn.GetBoolean();
 			// pollFlagI has no cross-core representation in shared state; resync to the live I
 			// flag on load/hot-swap. This loses a mid-flight one-instruction delay across a

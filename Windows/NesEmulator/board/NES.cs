@@ -542,6 +542,7 @@ namespace NesEmulator
 			// Keep showing the last good picture (rather than a half-drawn one) until the loaded machine
 			// has drawn a whole frame - see NotePpuProgress.
 			lastClockScanline = -1; awaitingFrameStart = true;
+			resetSequencePending = false; // the state carries its own timing
 			NesState? st = null;
 			bool loadedFixedPointTiming = false;
 			try {
@@ -752,6 +753,7 @@ namespace NesEmulator
 				}
 				try { bus.ppu?.ClearBuffers(); } catch { }
 				bus.cpu.Reset();
+				resetSequencePending = true;
 				// Apply current crash behavior to fresh CPU instance
 				bus.cpu.IgnoreInvalidOpcodes = crashBehavior == CrashBehavior.IgnoreErrors;
 				crashed = false; crashInfo = string.Empty; crashKind = CrashKind.Generic;
@@ -947,6 +949,15 @@ namespace NesEmulator
 					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is PPU_FIX;
 					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 					bus!.PreciseSteppingActive = precisePpu;
+					// The 6502 spends 8 cycles on its reset sequence before the first opcode fetch, and the
+					// PPU and APU run through them. Skipping them left PPU_FIX a whole cycle (3 dots) out of
+					// phase with Mesen 2.1.1 for the rest of the run - after games re-sync on vblank the
+					// remainder shifted every raster split and interrupt landing. FIX cores only.
+					if (resetSequencePending)
+					{
+						resetSequencePending = false;
+						if (bus!.cpu is CPU_FIX && bus!.ppu is PPU_FIX) FlushBatch(ResetSequenceCycles);
+					}
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
@@ -959,6 +970,7 @@ namespace NesEmulator
 								// predictive split below uses; the difference is only that it is
 								// armed unconditionally, which makes the DMC prediction redundant.
 								bus!.MarkInstructionStart(globalCpuCycle);
+								if (InstructionTracer.Enabled && bus!.ppu is PPU_FIX tracedPpu) InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot);
 								bus!.BeginPreciseWindow();
 								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
 								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
@@ -1507,7 +1519,9 @@ namespace NesEmulator
 
 		// Soft reset (CPU reset vector, not a full ROM reload) - needed to honor a TAS movie's
 		// in-band reset command (the FM2 input log's per-frame "c" bitfield, bit 0).
-		public void Reset() => bus?.cpu?.Reset();
+		public void Reset() { bus?.cpu?.Reset(); resetSequencePending = true; }
+		private const int ResetSequenceCycles = 8;
+		private bool resetSequencePending; // set by power-on/reset, consumed by the first frame (cleared by a savestate load)
 
 		// === Bulk-dump support (TAS/self-play extraction, mirroring the source project's
 		// per-frame RAM+register+PPU-state trace format) ===

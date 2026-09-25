@@ -112,16 +112,22 @@ public class Bus : IBus
 		// instruction without adding work to Read/Write, which already count accesses.
 		private long instructionStartCycle = -1;
 		private long accessCountAtInstructionStart;
+		/// <summary>PPU_FIX's dot counter as the current instruction started (-1 = unknown).</summary>
+		public long InstructionStartDot = -1;
 		/// <summary>Called by NES.RunFrame before each instruction with the absolute CPU cycle it starts on.</summary>
 		public void MarkInstructionStart(long cpuCycle)
 		{
 			instructionStartCycle = cpuCycle;
 			accessCountAtInstructionStart = instr.Reads + instr.Writes;
+			InstructionStartDot = ppu is PPU_FIX fixPpu ? fixPpu.DotCounter : -1;
 		}
 		// The access being performed now: it has already been counted, hence the -1.
 		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);
 		// Parity alignment between NES.globalCpuCycle's origin and the hardware get/put phase.
-		public static int OamDmaParityOffset = 0;
+		// 1: Mesen 2.1.1 numbers the first opcode fetch cycle 7 where globalCpuCycle (with the 8-cycle
+		// reset sequence) has 8, so its 'odd' is our even. At 0 every DMA whose parity mattered took the
+		// other length and slipped the whole machine a cycle against the PPU from the first frame on.
+		public static int OamDmaParityOffset = 1;
 
 		/// <summary>
 		/// Set by NES.RunFrame for the frame: true when the PPU is caught up after every instruction
@@ -144,12 +150,16 @@ public class Bus : IBus
 		// Where in a CPU cycle the bus access falls, in PPU dots. The 3 dots of each cycle used to be
 		// stepped entirely BEFORE the access, which left register writes landing a whole CPU cycle
 		// (3 dots) later than Mesen 2.1.1 on every one of Bayou Billy's 270 per-line $2005 writes.
-		// Now a read sees the PPU 2 dots into its cycle and a write 0; the rest of each cycle's dots
-		// carry to the next access (settled at the end of the instruction, so per-instruction totals
-		// are unchanged). Fitted to two independent Mesen measurements and exact on both: Bayou's
-		// write dots (270/270) and Zelda II's sprite-0-polled title split ($2000/$2006 at 143:154,
-		// 184, 196 - a read-timing test). game.nes 6000-frame parity is unchanged.
-		private const int PreDotsRead = 2, PreDotsWrite = 0;
+		// Each access now sees a set number of its cycle's dots (below); the rest carry to the next
+		// access (settled at the end of the instruction, so per-instruction totals are unchanged).
+		// A first fit (reads 2, writes 0) matched Bayou's write dots and Zelda II's sprite-0-polled
+		// title split, but was made while the phase was wrong. Refitted once the CPU/PPU phase itself was made exact (8-cycle reset sequence, OAM DMA
+		// parity, dot-exact interrupt landing): the old 2/0 had been compensating for PPU_FIX running
+		// a whole CPU cycle out of phase. Reads see 1 dot, as in Mesen's master-clock model; writes
+		// take effect after all 3 of their cycle's dots, which scored best against Mesen across the
+		// certified roster (Kirby 44 -> 51 exact samples, Bayou Billy's split rows 183 px -> 25 px, no
+		// certified game moved). A residual +/-1 dot on some splits is PPU-register-specific latency.
+		private const int PreDotsRead = 1, PreDotsWrite = 3;
 		private int preciseCarryDots;
 		/// <summary>For CPU_FIX's interrupt-poll timing: the bus access of the running instruction the PPU/APU is
 		/// being stepped for (0-based); int.MaxValue in precise mode outside the window (the instruction's tail);

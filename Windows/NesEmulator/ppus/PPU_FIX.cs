@@ -53,6 +53,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private byte ppuOpenBus;
 	private readonly long[] ppuOpenBusDecayAt = new long[8]; // absolute dot count at which each bit decays to 0
 	private long ppuDotCounter;
+	/// <summary>Dots stepped since power-on, and the index of the dot that last raised an interrupt -
+	/// CPU_FIX judges interrupt landing by exact dot distance from the instruction's start.</summary>
+	public long DotCounter => ppuDotCounter;
+	public long LastInterruptDot;
 	private const long PpuOpenBusDecayDots = 3_200_000; // ~600ms of PPU dots (real hardware decay)
 
 	private void RefreshPpuOpenBus(byte value, byte mask = 0xFF)
@@ -217,6 +221,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 				PPUSTATUS |= 0x80;
 				if ((PPUCTRL & 0x80) != 0)
 				{
+					LastInterruptDot = ppuDotCounter - elapsedCycles + c;
 					bus.cpu.RequestNMI();
 				}
 			}
@@ -248,10 +253,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 				if ((PPUMASK & 0x18) != 0 && bus.cartridge.mapper is Mapper4)
 				{
 					Mapper4 mmc3 = (Mapper4)bus.cartridge.mapper;
-					mmc3.RunScanlineIRQ();
+					mmc3.ClockScanlineCounterHardware();
 					if (mmc3.IRQPending())
 					{
-						bus.cpu.RequestIRQ(true);
+						if (bus.cpu is CPU_FIX fixCpu) fixCpu.RequestIRQAtDot(ppuDotCounter - elapsedCycles + c); else bus.cpu.RequestIRQ(true);
 						mmc3.ClearIRQ();
 					}
 				}
@@ -819,6 +824,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 					// "NMI Control" tests 3/5/6/7).
 					if (!oldNmiEnable && newNmiEnable && (PPUSTATUS & 0x80) != 0)
 					{
+						LastInterruptDot = ppuDotCounter;
 						bus.cpu.RequestNMI();
 					}
 				}

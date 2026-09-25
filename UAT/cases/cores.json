@@ -52,7 +52,7 @@
     },
     {
       "id": "cores-binty-cpufix-only",
-      "description": "CPU_FIX with FMC PPU/APU. Isolates the CPU: on this ROM its hash matches cores-binty-fmc-fmc-fmc, i.e. CPU_FIX and CPU_FMC are pixel-equivalent here.",
+      "description": "CPU_FIX with FMC PPU/APU. Isolates the CPU: on this ROM its hash matches cores-binty-fmc-fmc-fmc, i.e. CPU_FIX and CPU_FMC were pixel-equivalent here - no longer: CPU_FIX now pays the exact 513/514-cycle OAM DMA where CPU_FMC keeps a flat 513. Re-baselined 2026-09-25: CPU_FIX's OAM DMA now uses Mesen 2.1.1's odd/even cycle parity (Bus.OamDmaParityOffset 0 -> 1, verified by a lockstep instruction walk against Mesen from power-on), so a DMA that took 513 cycles can take 514 and vice versa - a real one-cycle timing change on CPU_FIX, visible through this frozen PPU.",
       "kind": "romtest",
       "rom": "{story}/page1_binty.nes",
       "cpu": "FIX",
@@ -65,7 +65,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "5B1080E4B3C291A5",
+        "frameBufferHash": "ECFF007C2A73C32D",
         "framesRun": 600,
         "distinctColors": 12,
         "result": "ok",
@@ -137,7 +137,7 @@
     },
     {
       "id": "cores-binty-ppu-lq",
-      "description": "PPU_LQ - an intentional gimmick core, not an accuracy target. Its golden exists to keep its personality stable, not to assert it is right.",
+      "description": "PPU_LQ - an intentional gimmick core, not an accuracy target. Its golden exists to keep its personality stable, not to assert it is right. Re-baselined 2026-09-25: CPU_FIX's OAM DMA now uses Mesen 2.1.1's odd/even cycle parity (Bus.OamDmaParityOffset 0 -> 1, verified by a lockstep instruction walk against Mesen from power-on), so a DMA that took 513 cycles can take 514 and vice versa - a real one-cycle timing change on CPU_FIX, visible through this frozen PPU.",
       "kind": "romtest",
       "rom": "{story}/page1_binty.nes",
       "cpu": "FIX",
@@ -150,7 +150,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "01E4B6B3279B7D09",
+        "frameBufferHash": "31FD909387AE7E51",
         "framesRun": 600,
         "distinctColors": 8,
         "result": "ok",
@@ -159,7 +159,7 @@
     },
     {
       "id": "cores-binty-ppu-ulq",
-      "description": "PPU_ULQ - intentional gimmick core. Golden locks its personality only.",
+      "description": "PPU_ULQ - intentional gimmick core. Golden locks its personality only. Re-baselined 2026-09-25: CPU_FIX's OAM DMA now uses Mesen 2.1.1's odd/even cycle parity (Bus.OamDmaParityOffset 0 -> 1, verified by a lockstep instruction walk against Mesen from power-on), so a DMA that took 513 cycles can take 514 and vice versa - a real one-cycle timing change on CPU_FIX, visible through this frozen PPU.",
       "kind": "romtest",
       "rom": "{story}/page1_binty.nes",
       "cpu": "FIX",
@@ -172,7 +172,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "D5B0067094619325",
+        "frameBufferHash": "3E1CD11016492725",
         "framesRun": 600,
         "distinctColors": 10,
         "result": "ok",
@@ -181,7 +181,7 @@
     },
     {
       "id": "cores-binty-ppu-bfr",
-      "description": "PPU_BFR. Golden locks its output only.",
+      "description": "PPU_BFR. Golden locks its output only. Re-baselined 2026-09-25: CPU_FIX's OAM DMA now uses Mesen 2.1.1's odd/even cycle parity (Bus.OamDmaParityOffset 0 -> 1, verified by a lockstep instruction walk against Mesen from power-on), so a DMA that took 513 cycles can take 514 and vice versa - a real one-cycle timing change on CPU_FIX, visible through this frozen PPU.",
       "kind": "romtest",
       "rom": "{story}/page1_binty.nes",
       "cpu": "FIX",
@@ -194,9 +194,9 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "BF3772694ED9DE81",
+        "frameBufferHash": "8CAB1370B601E129",
         "framesRun": 600,
-        "distinctColors": 16,
+        "distinctColors": 17,
         "result": "ok",
         "crashInfo": ""
       }
@@ -290,5 +290,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-09-04T08:44:57Z"
+  "goldenGeneratedUtc": "2026-09-25T21:34:07Z"
 }
