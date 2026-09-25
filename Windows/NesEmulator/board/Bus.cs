@@ -108,6 +108,13 @@ public class Bus : IBus
 		public void BeginPreciseWindow() { preciseWindow = true; preciseAccessCycles = 0; preciseStallCycles = 0; }
 
 		/// <summary>
+		/// Set by NES.RunFrame for the frame: true when the PPU is caught up after every instruction
+		/// (or within it, in precise mode), so at any CPU access it is at most one instruction
+		/// behind. PPU_FIX gates timing-sensitive models on it - see its CollideDataAccessWithRender.
+		/// </summary>
+		public bool PpuCaughtUpPerInstruction;
+
+		/// <summary>
 		/// Closes the window. accessCycles = CPU cycles advanced by bus accesses (one per access);
 		/// stallCycles = extra cycles PPU/APU advanced while the CPU sat halted for a DMA.
 		/// </summary>

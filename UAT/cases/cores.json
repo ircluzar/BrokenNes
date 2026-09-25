@@ -21,7 +21,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "9A9C83BB27ADB175",
+        "frameBufferHash": "E7F415D3CFA22A2D",
         "framesRun": 600,
         "distinctColors": 12,
         "result": "ok",
@@ -87,7 +87,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "9A9C83BB27ADB175",
+        "frameBufferHash": "E7F415D3CFA22A2D",
         "framesRun": 600,
         "distinctColors": 12,
         "result": "ok",
@@ -260,7 +260,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "B28747A4BDBB966F",
+        "frameBufferHash": "DD97E592917AC233",
         "framesRun": 600,
         "distinctColors": 16,
         "result": "ok",

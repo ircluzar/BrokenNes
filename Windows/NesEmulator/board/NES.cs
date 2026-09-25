@@ -823,6 +823,7 @@ namespace NesEmulator
 			int executed = 0; // cycles executed this frame (relative)
 			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
+			bus!.PpuCaughtUpPerInstruction = false; // set below by the paths that guarantee it
 			if (EnableEventScheduler)
 			{
 				// --- Event-driven path (Feature flag gated) ---
@@ -879,7 +880,17 @@ namespace NesEmulator
 					// hits an illegal JAM opcode at frame 326 under default batching and completes all
 					// 23471 frames clean with this on. ~415fps throughput measured (Joe & Mac, full
 					// movie) - comfortably above real-time, opt-in only for movie replay/export.
-					int dynamicThreshold = bus!.SpeedConfig.NtscAccurateFrameRate ? 1 : ConfigBatchCycleThreshold;
+					//
+					// PPU_FIX gets the same per-instruction flush unconditionally. It is the accuracy
+					// core, and batching up to ~24 cycles leaves both halves of a raster effect late:
+					// the PPU raises an IRQ or sprite-0 hit up to 72 dots after hardware, and the
+					// handler's register writes then land that much late too. Zelda II's title split
+					// ended up past the dot-256 Y increment (lower half 3 rows low), and catching up
+					// only on register access is not enough on its own - SMB3's MMC3 IRQ is still
+					// noticed a batch late, which put its status-bar split on the wrong line. Every
+					// other PPU core keeps the batched timing its goldens were recorded against.
+					bool perInstruction = bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is PPU_FIX;
+					int dynamicThreshold = perInstruction ? 1 : ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
 					// which is what keeps every other core on the untouched batched path.
@@ -888,6 +899,7 @@ namespace NesEmulator
 					// Hoisted out of the loop because it cannot change mid-frame and this is the
 					// hot loop: with it off the only cost is this one local read.
 					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu;
+					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
@@ -972,7 +984,7 @@ namespace NesEmulator
 							{
 								FlushBatch(batchCpu);
 								batchCpu = 0;
-								if (bus.SpeedConfig.CpuAdaptiveBatching && !bus.SpeedConfig.NtscAccurateFrameRate)
+								if (bus.SpeedConfig.CpuAdaptiveBatching && !perInstruction)
 								{
 									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
 									int target = bus!.SpeedConfig.CpuAdaptiveBatchTargetCycles;

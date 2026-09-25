@@ -129,13 +129,13 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// are not: hardware freezes scanline 0's horizontal scroll at pre-render dot 257 and a $2005
 	// arriving at dot 262 misses that frame entirely (Mesen draws the resulting one-frame tear on
 	// VRUN's pause screen), while reading t at scanline 0 dot 256 picks the write up 340 dots later
-	// and quietly draws the settled row instead. Gated by SpeedConfig.PpuScanlineHoriFromLatch
-	// because it changes rendering for every ROM, not only for the late-write case.
+	// and quietly draws the settled row instead. On whenever the PPU is caught up at least once per
+	// instruction (PPU_FIX's normal paths), or when SpeedConfig.PpuScanlineHoriFromLatch asks for it.
 	private ushort horiLatch;
-	private bool horiFromLatch; // cached SpeedConfig.PpuScanlineHoriFromLatch, refreshed per scanline
+	private bool horiFromLatch; // refreshed per scanline in UpdateVPipelineFlag
 
-	// Cached SpeedConfig.CpuCyclePrecisePpu, refreshed alongside horiFromLatch. Gates the $2007
-	// rendering-collision model in WritePPURegister/ReadPPURegister - see CollideDataAccessWithRender.
+	// Cached "the PPU's position at a CPU access is trustworthy", refreshed alongside horiFromLatch.
+	// Gates the $2007 rendering-collision model - see CollideDataAccessWithRender.
 	private bool dataPortCollision;
 
 	private void UpdateVPipelineFlag()
@@ -146,8 +146,11 @@ public class PPU_FIX : IPPU, IPpuProbe
 		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
 		// Read once per scanline (and per $2001 write) rather than per dot; bus can be null during
 		// construction and core hot-swap, which is why this is not done in the constructor.
-		horiFromLatch = bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false;
-		dataPortCollision = bus?.SpeedConfig?.CpuCyclePrecisePpu ?? false;
+		// Always on when the PPU is caught up per instruction (PPU_FIX's normal case - see
+		// Bus.PpuCaughtUpPerInstruction): the story pages flip nametable-X with a $2000 write at dot
+		// ~250 of every 8th line, which on hardware only reaches the NEXT line through the dot-257 copy.
+		horiFromLatch = (bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false) || (bus?.PpuCaughtUpPerInstruction ?? false);
+		dataPortCollision = bus?.PpuCaughtUpPerInstruction ?? false;
 		// Turning rendering ON mid-frame: no dot-257 copy has run since, so the line that follows
 		// starts from wherever the CPU left v, not from t. Seeding the latch from v here is the
 		// same statement hardware makes by simply not having reloaded anything.
@@ -242,6 +245,14 @@ public class PPU_FIX : IPPU, IPpuProbe
 				{
 					bus.cpu.RequestNMI();
 				}
+			}
+
+			// Sprite-0 hit at the dot of the colliding pixel, not at the end of the line where the
+			// batch renderer runs. See PredictSprite0HitDot.
+			if (scanline < 240)
+			{
+				if (scanlineCycle == 1) sprite0HitDot = PredictSprite0HitDot(scanline);
+				if (scanlineCycle == sprite0HitDot) PPUSTATUS |= 0x40;
 			}
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
@@ -616,6 +627,88 @@ public class PPU_FIX : IPPU, IPpuProbe
 			// Increment to next tile
 			IncrementX(ref renderV);
 		}
+	}
+
+	// Dot on the current scanline at which sprite-0 hit is raised, or -1 for none this line.
+	private int sprite0HitDot = -1;
+
+	// Where sprite 0 first overlaps an opaque background pixel on this scanline, as a PPU dot
+	// (pixel x is output at dot x+1, which is where Mesen raises the flag), or -1.
+	//
+	// WHY: the renderer draws a whole scanline at dot 341, and used to raise the hit flag from
+	// there - up to ~340 dots after hardware does. A game polling $2002 for the hit then starts
+	// its raster split late. Zelda II's title does exactly that on line 143: Mesen performs the
+	// split's $2006 writes at dots 184/196, before the dot-256 Y increment, where BrokenNes did
+	// them at 272/284 - after it - so everything below the split was drawn 1-3 rows low.
+	//
+	// Run at dot 1, from the same state RenderScanline will use at dot 341: the vertical half of
+	// v (only the CPU can change it before dot 256) and the horizontal half that renderAddr will
+	// take (the dot-257 latch or the live t). Same evaluation, clipping and x=255 rules as
+	// RenderSprites. A CPU write between dot 1 and the hit that changes the outcome is not seen -
+	// the end-of-line check in RenderSprites still stands as the fallback for that.
+	//
+	// Only for mappers whose CHR reads are pure. MMC2 (9) and mapper 90 change state when read,
+	// and MMC5 (5) answers differently depending on the fetch phase, so predicting there would
+	// either corrupt the mapper or predict from the wrong data. Those keep the end-of-line flag.
+	private int PredictSprite0HitDot(int scanline)
+	{
+		if ((PPUMASK & 0x18) != 0x18 || (PPUSTATUS & 0x40) != 0) return -1;
+		if (oam == null || vram == null || bus?.cartridge == null) return -1;
+		switch (bus.cartridge.mapper)
+		{
+			case Mapper0: case Mapper1: case Mapper2: case Mapper3: case Mapper4:
+			case Mapper7: case Mapper30: case Mapper33: case Mapper228:
+				break;
+			default:
+				return -1;
+		}
+
+		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
+		int sh = isSprite8x16 ? 16 : 8;
+		// Sprite 0 is always evaluated first, so it is on this line iff it is in range - the
+		// 8-sprite limit can never exclude it.
+		int spriteTop = oam[0] + 1;
+		if (scanline < spriteTop || scanline >= spriteTop + sh) return -1;
+
+		byte tileIndex = oam[1];
+		byte attributes = oam[2];
+		int spriteX = oam[3];
+		bool flipX = (attributes & 0x40) != 0;
+		int subY = scanline - spriteTop;
+		if ((attributes & 0x80) != 0) subY = sh - 1 - subY;
+		int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
+		int sprTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
+		int sprAddr = sprTable + subTileIndex * 16 + (subY % 8);
+		byte sp0 = Read((ushort)sprAddr);
+		byte sp1 = Read((ushort)(sprAddr + 8));
+		if ((sp0 | sp1) == 0) return -1;
+
+		bool showBgLeft = (PPUMASK & 0x02) != 0;
+		bool showSprLeft = (PPUMASK & 0x04) != 0;
+		ushort renderV = (ushort)((v & 0xFBE0) | (horiFromLatch ? horiLatch : (ushort)(t & 0x041F)));
+		int bgTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
+		int fineY = (renderV >> 12) & 0x7;
+
+		for (int x = 0; x < 8; x++)
+		{
+			int bit = flipX ? x : 7 - x;
+			if ((((sp0 >> bit) & 1) | ((sp1 >> bit) & 1)) == 0) continue;
+			int px = spriteX + x;
+			if (px >= 255) break; // x=255 never hits, and nothing further right exists
+			if (px < 8 && (!showSprLeft || !showBgLeft)) continue;
+
+			// Background pixel at px: tile (px + fineX) / 8 of the 33 the renderer walks.
+			int col = px + fineX;
+			ushort tv = renderV;
+			for (int k = col >> 3; k > 0; k--) IncrementX(ref tv);
+			int ntAddr = 0x2000 + (((tv >> 10) & 3) * 0x400) + (((tv >> 5) & 0x1F) * 32) + (tv & 0x1F);
+			int bgAddr = bgTable + Read((ushort)ntAddr) * 16 + fineY;
+			int bb = 7 - (col & 7);
+			if ((((Read((ushort)bgAddr) >> bb) & 1) | ((Read((ushort)(bgAddr + 8)) >> bb) & 1)) == 0) continue;
+
+			return px + 1;
+		}
+		return -1;
 	}
 
 	private void RenderSprites(int scanline, bool[] bgMask)
@@ -1108,11 +1201,13 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// address low bytes. Modelling it as the rendering-off path wrote the data byte into 20
 	// consecutive nametable cells instead.
 	//
-	// Gated on SpeedConfig.CpuCyclePrecisePpu, and deliberately so. Whether an access collides
-	// depends on the exact dot it lands on, and on the batched path the PPU is only caught up
-	// after each instruction returns - up to 21 dots off. An earlier unconditional version of this
-	// changed SMB3's golden frame on exactly that basis, so the model only runs where the PPU's
-	// position at the access is trustworthy.
+	// Gated, deliberately, on Bus.PpuCaughtUpPerInstruction. Whether an access collides depends on
+	// the exact dot it lands on, and a scheduler that batches ~24 CPU cycles between PPU catch-ups is
+	// up to 72 dots off - an earlier unconditional version of this changed SMB3's golden on exactly
+	// that basis. NES.RunFrame now flushes PPU_FIX after every instruction, so on its normal paths
+	// the flag is set; it stays off on the experimental event scheduler, which still batches. Zelda
+	// II's title needs this: its split reads $2007 twice mid-line, and without the Y increments the
+	// lower section sits 2 rows low.
 	private void CollideDataAccessWithRender()
 	{
 		IncrementX(ref v);
