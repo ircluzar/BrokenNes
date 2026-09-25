@@ -193,16 +193,16 @@
         "createdAt": "2025-08-25T22:47:50.5390000Z"
       },
       {
-        "id": "nes_4718252f0407896288a3e558a5cb6399527ba6df",
+        "id": "nes_d87510dee0a7ebbbfa331b3f09631e56be640362",
         "title": "test",
         "commonName": "Test Rom",
-        "status": "Nothing",
-        "note": "",
+        "status": "Works",
+        "note": "Rebuilt 2026-09-25 (Resources/test-rom/build_test_rom.py): valid NROM, matches Mesen frame-for-frame",
         "system": "nes",
         "romKey": "test.nes",
         "headerSignature": "ines_97254cf87c26ffc6aa2147f3666ea72ba51e2e7e",
         "builtIn": true,
-        "size": 24656,
+        "size": 24592,
         "createdAt": "2025-08-26T02:20:22.3130000Z"
       },
       {
