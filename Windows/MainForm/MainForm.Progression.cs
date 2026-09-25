@@ -294,19 +294,19 @@ namespace BrokenNes.Windows
             save ??= LoadProgressionSnapshot();
             EnsureUnlockedProgressionCapabilities(save);
 
-            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, save.OwnedCpuIds, "FMC");
+            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, save.OwnedCpuIds, "FIX");
             if (!string.Equals(config.SelectedCpuCore, safeCpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = safeCpuCore);
             }
 
-            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, save.OwnedPpuIds, "FMC");
+            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, save.OwnedPpuIds, "FIX");
             if (!string.Equals(config.SelectedPpuCore, safePpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = safePpuCore);
             }
 
-            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, save.OwnedApuIds, "FMC");
+            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, save.OwnedApuIds, "FIX");
             if (!string.Equals(config.SelectedApuCore, safeApuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = safeApuCore);

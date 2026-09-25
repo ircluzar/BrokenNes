@@ -428,13 +428,13 @@ namespace BrokenNes.Windows
             apuMenu.DropDownItems.Clear();
             string currentApuCore = config.SelectedApuCore;
             var orderedApuCores = new List<string>();
-            if (CoreRegistry.ApuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
+            if (CoreRegistry.ApuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
             {
-                orderedApuCores.Add(CoreRegistry.ApuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+                orderedApuCores.Add(CoreRegistry.ApuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
             }
 
             var remainingApuCores = CoreRegistry.ApuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -492,13 +492,13 @@ namespace BrokenNes.Windows
             cpuMenu.DropDownItems.Clear();
             string currentCpuCore = config.SelectedCpuCore;
             var orderedCpuCores = new List<string>();
-            if (CoreRegistry.CpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
+            if (CoreRegistry.CpuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
             {
-                orderedCpuCores.Add(CoreRegistry.CpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+                orderedCpuCores.Add(CoreRegistry.CpuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
             }
 
             var remainingCpuCores = CoreRegistry.CpuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -556,13 +556,13 @@ namespace BrokenNes.Windows
             ppuMenu.DropDownItems.Clear();
             string currentPpuCore = config.SelectedPpuCore;
             var orderedPpuCores = new List<string>();
-            if (CoreRegistry.PpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
+            if (CoreRegistry.PpuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
             {
-                orderedPpuCores.Add(CoreRegistry.PpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
+                orderedPpuCores.Add(CoreRegistry.PpuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
             }
 
             var remainingPpuCores = CoreRegistry.PpuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
+                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -623,7 +623,7 @@ namespace BrokenNes.Windows
             var progressionSave = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(progressionSave);
             
-            // Apply CPU core (default to FMC if not valid)
+            // Apply CPU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedCpuCore)
                 && CoreRegistry.CpuIds.Contains(config.SelectedCpuCore)
                 && IsCpuCoreUnlocked(config.SelectedCpuCore, progressionSave))
@@ -632,11 +632,11 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = "FMC");
-                nes.SetCpuCore("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = "FIX");
+                nes.SetCpuCore("FIX");
             }
             
-            // Apply PPU core (default to FMC if not valid)
+            // Apply PPU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedPpuCore)
                 && CoreRegistry.PpuIds.Contains(config.SelectedPpuCore)
                 && IsPpuCoreUnlocked(config.SelectedPpuCore, progressionSave))
@@ -645,11 +645,11 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = "FMC");
-                nes.SetPpuCore("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = "FIX");
+                nes.SetPpuCore("FIX");
             }
             
-            // Apply APU core (default to FMC if not valid)
+            // Apply APU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedApuCore)
                 && CoreRegistry.ApuIds.Contains(config.SelectedApuCore)
                 && IsApuCoreUnlocked(config.SelectedApuCore, progressionSave))
@@ -658,8 +658,8 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FMC");
-                ApplyApuCoreSelection("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FIX");
+                ApplyApuCoreSelection("FIX");
             }
             
             // Apply shader settings

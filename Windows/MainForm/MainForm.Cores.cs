@@ -86,7 +86,7 @@ namespace BrokenNes.Windows
             if (!bypassProgression && !IsCpuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] CPU core locked: {coreId}");
-                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LoadProgressionSnapshot().OwnedCpuIds, "FMC");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LoadProgressionSnapshot().OwnedCpuIds, "FIX");
                 if (!string.Equals(config.SelectedCpuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
                 {
                     Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = fallbackCore);
@@ -116,7 +116,7 @@ namespace BrokenNes.Windows
             if (!bypassProgression && !IsPpuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] PPU core locked: {coreId}");
-                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LoadProgressionSnapshot().OwnedPpuIds, "FMC");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LoadProgressionSnapshot().OwnedPpuIds, "FIX");
                 if (!string.Equals(config.SelectedPpuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
                 {
                     Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = fallbackCore);
@@ -146,7 +146,7 @@ namespace BrokenNes.Windows
             if (!bypassProgression && !IsApuCoreUnlocked(coreId))
             {
                 Console.WriteLine($"[Progression] APU core locked: {coreId}");
-                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LoadProgressionSnapshot().OwnedApuIds, "FMC");
+                var fallbackCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LoadProgressionSnapshot().OwnedApuIds, "FIX");
                 if (!string.Equals(config.SelectedApuCore, fallbackCore, StringComparison.OrdinalIgnoreCase))
                 {
                     Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = fallbackCore);

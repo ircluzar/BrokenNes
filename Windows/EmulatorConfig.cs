@@ -49,22 +49,22 @@ namespace BrokenNes.Windows
         public float ShaderStrength { get; set; } = 1.0f;
         
         /// <summary>
-        /// Selected CPU core (defaults to FMC)
+        /// Selected CPU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedCpuCore")]
-        public string SelectedCpuCore { get; set; } = "FMC";
+        public string SelectedCpuCore { get; set; } = "FIX";
         
         /// <summary>
-        /// Selected PPU core (defaults to FMC)
+        /// Selected PPU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedPpuCore")]
-        public string SelectedPpuCore { get; set; } = "FMC";
+        public string SelectedPpuCore { get; set; } = "FIX";
         
         /// <summary>
-        /// Selected APU core (defaults to FMC)
+        /// Selected APU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedApuCore")]
-        public string SelectedApuCore { get; set; } = "FMC";
+        public string SelectedApuCore { get; set; } = "FIX";
         
         // Image configuration
         /// <summary>
@@ -352,6 +352,30 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("hideMenuBarInFullscreen")]
         public bool HideMenuBarInFullscreen { get; set; } = true;
+
+        /// <summary>
+        /// Which core-default migration this config has been through. Absent (null) in configs written
+        /// before FIX became the default; those still on the old FMC/FMC/FMC default move to FIX once.
+        /// </summary>
+        [JsonPropertyName("coreDefaultsVersion")]
+        public int? CoreDefaultsVersion { get; set; }
+        public const int CurrentCoreDefaultsVersion = 1;
+
+        /// <summary>
+        /// One-time move off the old FMC default: FIX is the family the game certification campaign
+        /// fixes and verifies against Mesen (FMC still hangs Zelda II's pause menu, for one). Only an
+        /// untouched FMC/FMC/FMC selection is moved - any other combination was a deliberate choice.
+        /// </summary>
+        private bool MigrateCoreDefaults()
+        {
+            if (CoreDefaultsVersion >= CurrentCoreDefaultsVersion) return false;
+            if (SelectedCpuCore == "FMC" && SelectedPpuCore == "FMC" && SelectedApuCore == "FMC")
+            {
+                SelectedCpuCore = SelectedPpuCore = SelectedApuCore = "FIX";
+            }
+            CoreDefaultsVersion = CurrentCoreDefaultsVersion;
+            return true;
+        }
         
         private static readonly string ConfigDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
@@ -374,6 +398,7 @@ namespace BrokenNes.Windows
                         // Migrate legacy bindings if needed
                         config.MigrateLegacyBindings();
                         var bindingsChanged = config.NormalizePlayer1DefaultKeyboardBindings();
+                        var coreDefaultsChanged = config.MigrateCoreDefaults();
                         var shaderConfigChanged = false;
 
                         // Shaders are always-on; keep persisted configs aligned.
@@ -395,7 +420,7 @@ namespace BrokenNes.Windows
                             .Take(config.MaxRecentRoms)
                             .ToList();
 
-                        if (bindingsChanged || shaderConfigChanged)
+                        if (bindingsChanged || shaderConfigChanged || coreDefaultsChanged)
                         {
                             config.Save();
                         }
@@ -409,7 +434,7 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"Error loading config: {ex.Message}");
             }
             
-            return new EmulatorConfig();
+            return new EmulatorConfig { CoreDefaultsVersion = CurrentCoreDefaultsVersion };
         }
         
         /// <summary>
