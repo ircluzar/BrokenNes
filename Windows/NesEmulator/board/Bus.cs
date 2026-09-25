@@ -151,6 +151,11 @@ public class Bus : IBus
 		// 184, 196 - a read-timing test). game.nes 6000-frame parity is unchanged.
 		private const int PreDotsRead = 2, PreDotsWrite = 0;
 		private int preciseCarryDots;
+		/// <summary>For CPU_FIX's interrupt-poll timing: the bus access of the running instruction the PPU/APU is
+		/// being stepped for (0-based); int.MaxValue in precise mode outside the window (the instruction's tail);
+		/// -1 when not in precise stepping at all.</summary>
+		public int PreciseInterruptPhase => preciseWindow ? preciseAccessCycles : (PreciseSteppingActive ? int.MaxValue : -1);
+		public bool PreciseSteppingActive;
 		private void PreciseTick(bool isWrite)
 		{
 			if (insidePreciseTick) return;

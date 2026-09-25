@@ -863,6 +863,7 @@ namespace NesEmulator
 			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
 			bus!.PpuCaughtUpPerInstruction = false; // set below by the paths that guarantee it
+			bus!.PreciseSteppingActive = false;
 			bus!.MarkInstructionStart(-1); // unknown until a path below marks each instruction (the event scheduler never does)
 			if (EnableEventScheduler)
 			{
@@ -945,6 +946,7 @@ namespace NesEmulator
 					// hot loop: with it off the only cost is this one local read.
 					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is PPU_FIX;
 					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
+					bus!.PreciseSteppingActive = precisePpu;
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)

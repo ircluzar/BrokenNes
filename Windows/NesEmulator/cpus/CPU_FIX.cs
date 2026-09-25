@@ -92,10 +92,32 @@ public class CPU_FIX : ICPU {
 	public ushort Fetch16Bits() { byte low = Fetch(); byte high = Fetch(); return (ushort)((high << 8) | low); }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void RequestIRQ(bool line) { irqRequested = line; }
+	// The 6502 polls for an interrupt at the end of an instruction's SECOND-TO-LAST cycle, so an IRQ
+	// asserted during the last cycle is only taken after one more instruction. Modelled wherever the
+	// bus knows which cycle of the instruction the PPU/APU are on (precise stepping - always, for
+	// PPU_FIX; see Bus.PreciseInterruptPhase), otherwise IRQs are taken at the next instruction as
+	// before. Measured on Mega Man 3's MMC3-timed stage-select split: with the counter clocked at dot
+	// 261 (the A12 rise of the first sprite-pattern fetch) this puts all five mid-line writes on Mesen
+	// 2.1.1's exact dots; without it they land 6 dots (2 CPU cycles) early. Deliberately NOT applied
+	// to NMI: tried and measured, it took Lifeforce's NMI landing points from 40/57 matching Mesen to
+	// 2/57 - the NMI edge is sampled differently.
+	public void RequestIRQ(bool line)
+	{
+		if (line && !irqRequested)
+		{
+			int ph = bus.PreciseInterruptPhase; // -1: not precise; MaxValue: raised after the instruction's last access
+			if (ph == int.MaxValue) irqDeferOne = true; else irqRaisedAtAccess = ph;
+		}
+		irqRequested = line;
+	}
+	private int irqRaisedAtAccess = -1;
+	private bool irqDeferOne;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void RequestNMI() { nmiRequested = true; }
+	public void RequestNMI()
+	{
+		nmiRequested = true;
+	}
 
 	public int ExecuteInstruction() {
 		if (nmiRequested) {
@@ -108,7 +130,10 @@ public class CPU_FIX : ICPU {
 			return nmiCycles;
 		}
 
-		if (!pollFlagI && irqRequested) {
+		// A deferral covers exactly one instruction boundary - this one - whether or not the IRQ is
+		// unmasked here, so a masked IRQ cannot leave it armed against a later one.
+		bool irqDeferred = irqDeferOne; irqDeferOne = false;
+		if (!pollFlagI && irqRequested && !irqDeferred) {
 			irqRequested = false;
 			int irqCycles = IRQ();
 			pollFlagI = GetFlag(FLAG_I);
@@ -116,12 +141,14 @@ public class CPU_FIX : ICPU {
 			return irqCycles;
 		}
 
+		irqRaisedAtAccess = -1;
 		byte opcode = Fetch();
 		ushort instructionPC = (ushort)(PC - 1);
 		byte preA = A, preX = X, preY = Y, preSP = (byte)SP, preStatus = status;
 		bool iBefore = GetFlag(FLAG_I);
 
 		int cycles = Dispatch(opcode);
+		if (irqRequested && irqRaisedAtAccess >= 0 && irqRaisedAtAccess >= cycles - 1) irqDeferOne = true;
 
 		InstructionTracer.OnInstruction(instructionPC, opcode, preA, preX, preY, preSP, preStatus, (byte)cycles);
 
@@ -1139,9 +1166,9 @@ public class CPU_FIX : ICPU {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private bool HasPageCrossPenalty(ushort baseAddr, ushort effectiveAddr) => (baseAddr & 0xFF00) != (effectiveAddr & 0xFF00);
 
-	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested };
+	public object GetState() => new CpuSharedState { A=A,X=X,Y=Y,status=status,PC=PC,SP=SP,irqRequested=irqRequested,nmiRequested=nmiRequested,irqDeferOne=irqDeferOne };
 	public void SetState(object state) {
-		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested; pollFlagI = GetFlag(FLAG_I); return; }
+		if (state is CpuSharedState s) { A=s.A;X=s.X;Y=s.Y;status=s.status;PC=s.PC;SP=s.SP;irqRequested=s.irqRequested;nmiRequested=s.nmiRequested;irqDeferOne=s.irqDeferOne; pollFlagI = GetFlag(FLAG_I); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("A", out var pA)) A = (byte)pA.GetInt32();
 			if (je.TryGetProperty("X", out var pX)) X = (byte)pX.GetInt32();
@@ -1150,6 +1177,7 @@ public class CPU_FIX : ICPU {
 			if (je.TryGetProperty("PC", out var pPC)) PC = (ushort)pPC.GetInt32();
 			if (je.TryGetProperty("SP", out var pSP)) SP = (ushort)pSP.GetInt32();
 			if (je.TryGetProperty("irqRequested", out var pi)) irqRequested = pi.GetBoolean();
+			irqDeferOne = je.TryGetProperty("irqDeferOne", out var pdo) && pdo.GetBoolean();
 			if (je.TryGetProperty("nmiRequested", out var pn)) nmiRequested = pn.GetBoolean();
 			// pollFlagI has no cross-core representation in shared state; resync to the live I
 			// flag on load/hot-swap. This loses a mid-flight one-instruction delay across a
