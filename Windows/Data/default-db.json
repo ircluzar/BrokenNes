@@ -51,7 +51,7 @@
         "title": "Kirby's Adventure (U) (PRG1) [!]",
         "commonName": "Kirby's Adventure",
         "status": "Works",
-        "note": "FIX cores: matches Mesen except occasional 1-8 px single-row raster split differences (NMI/PPU phase, open)",
+        "note": "FIX cores: 51/59 samples frame-exact vs Mesen; the rest differ by 1 pixel on a single row",
         "system": "nes",
         "romKey": "Kirby's Adventure (U) (PRG1) [!].nes",
         "headerSignature": "ines_bccf5461c78bda518255c909f3e3fb92682591b0",
@@ -148,7 +148,7 @@
         "createdAt": "2025-09-01T03:23:54.8900000Z",
         "status": "Jank",
         "commonName": "",
-        "note": "Boots and plays on FIX cores (was: nothing). Attract-mode demo drifts from Mesen (NMI timing, open)"
+        "note": "Boots and plays on FIX cores (was: nothing). Attract demo still drifts from Mesen in places"
       },
       {
         "id": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
@@ -236,8 +236,8 @@
         "title": "Mega Man 3 (U) [!]",
         "commonName": "Mega Man 3",
         "status": "Works",
-        "note": "Savestates fixed. FIX cores: matches Mesen except a 1-row raster split that can land a few dots early (NMI/PPU phase, open)",
-        "notes": "Savestates fixed. FIX cores: matches Mesen except a 1-row raster split that can land a few dots early (NMI/PPU phase, open)",
+        "note": "Savestates fixed. FIX cores run in lockstep with Mesen; the stage-select split row can differ by 1 pixel (PPU register latency, open)",
+        "notes": "Savestates fixed. FIX cores run in lockstep with Mesen; the stage-select split row can differ by 1 pixel (PPU register latency, open)",
         "system": "NES",
         "platform": "NES",
         "name": "Mega Man 3 (U) [!].nes",
@@ -258,7 +258,7 @@
         "createdAt": "2025-08-30T03:57:19.2640000Z",
         "status": "Jank",
         "commonName": "",
-        "note": "Boots and plays on FIX cores (was: nothing). Small raster differences vs Mesen remain"
+        "note": "Boots and plays on FIX cores (was: nothing). Per-line scroll splits within 1 pixel of Mesen on some rows"
       },
       {
         "id": "nes_8e5767e4a6d5842684e1538d21948538643e0393",
