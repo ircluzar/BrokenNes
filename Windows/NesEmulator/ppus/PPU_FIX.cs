@@ -749,7 +749,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 					byte status = PPUSTATUS;
 					result = (byte)((status & 0xE0) | (ReadPpuOpenBus() & 0x1F));
 					RefreshPpuOpenBus(status, 0xE0); // the read itself redrives bits 7-5 onto the latch
-					PPUSTATUS &= 0x3F; // Clear VBlank flag on read
+					// A read clears VBlank only. Sprite-0 hit and overflow hold until the pre-render
+					// line: Zelda II polls sprite 0 twice in the frame after its pause menu closes,
+					// and clearing bit 6 here left the second poll spinning forever.
+					PPUSTATUS &= 0x7F;
 					w = false; // the ONE shared $2005/$2006 write toggle - both halves, not just $2006
 					return result;
 				}

@@ -163,6 +163,29 @@
       }
     },
     {
+      "id": "diag-zelda2-pause-menu-fix",
+      "description": "New game (register a name, start file 1), open the pause menu in the North Palace at 830, close it at 960, walk right. The frame after the menu closes polls sprite 0 twice; a $2002 read used to clear the sprite-0 flag with VBlank, so the second poll spun forever - HUD blanked, sprites gone, game hung. Matches Mesen 2.1.1 on every sample of this route in both timing modes. The pre-fix build hashes C62AD0E3979D8D9B (9 colours).",
+      "kind": "romtest",
+      "rom": "{corpus}/Zelda II - The Adventure of Link (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 1110,
+      "input": "120:Start,126:,200:Select,206:,240:Start,246:,340:A,344:,360:Select,364:,380:Select,384:,400:Select,404:,420:Start,424:,500:Start,506:,830:Start,836:,960:Start,966:,1020:Right,1100:",
+      "tags": [
+        "diag",
+        "gameplay"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "4CB97F4B83D8ABE5",
+        "framesRun": 1110,
+        "distinctColors": 14,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
       "id": "diag-savestate-smb3-fix-precise-fresh",
       "description": "Precise mode: frame clock plus PPU_FIX's mid-line latches (dot-257 horizontal latch, render address, pending sprite-0 dot, odd-frame parity). LoadState never read back the fractional-cycle accumulator, so a savestate only round-tripped at frames where it was already 0 (every 60th in default mode - warmups 180/300/900 all hid it). This point is deliberately off that grid, and loads into a fresh machine.",
       "kind": "savestate",
