@@ -935,10 +935,15 @@ namespace NesEmulator
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
 					// which is what keeps every other core on the untouched batched path.
 					var dmcSchedulable = bus!.GetDmcSchedulable();
-					// Opt-in cycle-accurate CPU->PPU interleave; see SpeedConfig.CpuCyclePrecisePpu.
+					// Cycle-accurate CPU->PPU interleave; see SpeedConfig.CpuCyclePrecisePpu. Opt-in for
+					// every other PPU core; always on for PPU_FIX, the accuracy core, whose per-dot
+					// renderer only pays off if a register write lands on the right dot. Catching the
+					// PPU up once per instruction instead put writes at the instruction's START - up
+					// to ~20 dots early - and certification against Mesen showed it: Kirby and Metroid
+					// matched in precise timing but not in default. Costs 15-21% over per-instruction.
 					// Hoisted out of the loop because it cannot change mid-frame and this is the
 					// hot loop: with it off the only cost is this one local read.
-					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu;
+					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is PPU_FIX;
 					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 					while (globalCpuCycle < frameEndCycle)
 					{

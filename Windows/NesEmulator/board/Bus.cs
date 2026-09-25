@@ -137,14 +137,28 @@ public class Bus : IBus
 		public (int accessCycles, int stallCycles) EndPreciseWindow()
 		{
 			preciseWindow = false;
+			if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; }
 			return (preciseAccessCycles, preciseStallCycles);
 		}
 
-		private void PreciseTick()
+		// Where in a CPU cycle the bus access falls, in PPU dots. The 3 dots of each cycle used to be
+		// stepped entirely BEFORE the access, which left register writes landing a whole CPU cycle
+		// (3 dots) later than Mesen 2.1.1 on every one of Bayou Billy's 270 per-line $2005 writes.
+		// Now a read sees the PPU 2 dots into its cycle and a write 0; the rest of each cycle's dots
+		// carry to the next access (settled at the end of the instruction, so per-instruction totals
+		// are unchanged). Fitted to two independent Mesen measurements and exact on both: Bayou's
+		// write dots (270/270) and Zelda II's sprite-0-polled title split ($2000/$2006 at 143:154,
+		// 184, 196 - a read-timing test). game.nes 6000-frame parity is unchanged.
+		private const int PreDotsRead = 2, PreDotsWrite = 0;
+		private int preciseCarryDots;
+		private void PreciseTick(bool isWrite)
 		{
 			if (insidePreciseTick) return;
 			insidePreciseTick = true;
-			ppu!.Step(3); StepAPU(1); preciseAccessCycles++;
+			int pre = isWrite ? PreDotsWrite : PreDotsRead;
+			int now = preciseCarryDots + pre; preciseCarryDots = 3 - pre;
+			if (now > 0) ppu!.Step(now);
+			StepAPU(1); preciseAccessCycles++;
 			// If that cycle triggered a DMA, the CPU is halted for its duration right here - so
 			// advance PPU/APU across the stall while the CPU stands still, which is exactly what
 			// the DMA does on hardware. Outside this window the same cycles get consumed at the
@@ -153,6 +167,7 @@ public class Bus : IBus
 			if (stall > 0)
 			{
 				PendingDmcStallCycles = 0;
+				if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; }
 				ppu!.Step(stall * 3);
 				StepAPU(stall);
 				preciseStallCycles += stall;
@@ -482,7 +497,7 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
-		if (preciseWindow) PreciseTick(); // see BeginPreciseWindow - normally false, branch is free
+		if (preciseWindow) PreciseTick(false); // see BeginPreciseWindow - normally false, branch is free
 		instr.Reads++;
 		// Page table fast path: internal RAM and any future linear mapped regions
 		var page = pages[address >> 8];
@@ -545,7 +560,7 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public void Write(ushort address, byte value)
 	{
-		if (preciseWindow) PreciseTick(); // see BeginPreciseWindow - normally false, branch is free
+		if (preciseWindow) PreciseTick(true); // see BeginPreciseWindow - normally false, branch is free
 		instr.Writes++;
 		// A write always drives its value onto the data bus, whether or not any device at this
 		// address latches it - so it always updates the open-bus value (see lastBusValue).
