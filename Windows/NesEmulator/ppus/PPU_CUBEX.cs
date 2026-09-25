@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // PPU_CUBEX: Enhanced version of PPU_CUBE with outlines around structures, bigger shadows, and stronger gradient
-public class PPU_CUBEX : IPPU
+public class PPU_CUBEX : IPPU, IPpuFrameClock
 {
 	// Core metadata
 	public string CoreName => "Enhanced PPU X";
@@ -343,6 +343,8 @@ public class PPU_CUBEX : IPPU
 		}
 		gradientCacheValid = true;
 	}
+
+	public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
 
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 

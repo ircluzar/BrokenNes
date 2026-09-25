@@ -23,6 +23,21 @@ public interface IPPU
 }
 
 /// <summary>
+/// The line counter a core renders from, for presentation only: NES.GetFrameBuffer hands out the
+/// last COMPLETED frame (copied when this crosses into 240) instead of whatever the framebuffer
+/// holds when RunFrame returns, which in default timing is two frames stitched at a drifting seam.
+/// Frame-phase accuracy is all that is asked - unlike <see cref="IPpuProbe"/>, which promises a
+/// dot-accurate counter - and every core, gimmick ones included, does run a real 0-261 line counter
+/// to know which row it is drawing.
+/// </summary>
+public interface IPpuFrameClock
+{
+	/// <summary>Scanline the PPU counter currently sits on: 0-239 visible, 240 post-render,
+	/// 241-260 vblank, 261 pre-render. Never -1 - this codebase numbers pre-render as 261.</summary>
+	int ProbeScanline { get; }
+}
+
+/// <summary>
 /// OPTIONAL capability a PPU core may advertise on top of <see cref="IPPU"/>: side-effect-free
 /// access to the PPU's own timing counters and its own 16KB address space.
 ///
@@ -37,11 +52,8 @@ public interface IPPU
 /// cleared. That is what separates it from ReadPPURegister/WritePPURegister, which are the CPU's
 /// side-effect-bearing view of the same hardware.
 /// </summary>
-public interface IPpuProbe
+public interface IPpuProbe : IPpuFrameClock
 {
-	/// <summary>Scanline the PPU counter currently sits on: 0-239 visible, 240 post-render,
-	/// 241-260 vblank, 261 pre-render. Never -1 - this codebase numbers pre-render as 261.</summary>
-	int ProbeScanline { get; }
 
 	/// <summary>Dot (a.k.a. cycle) within <see cref="ProbeScanline"/>, 0-340.</summary>
 	int ProbeDot { get; }

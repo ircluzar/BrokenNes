@@ -18,7 +18,7 @@ internal static class FrameWitness
     public static uint Compute(NES nes)
     {
         var ram = nes.PeekMemoryRange("System RAM", 0, 0x800);
-        var fb = nes.GetFrameBuffer();
+        var fb = nes.GetRenderTargetFrameBuffer(); // machine state, not the presented copy
         using var ms = new MemoryStream(ram.Length + 7 + 4 + 256 + 32 + 2048 + fb.Length);
 
         ms.Write(ram, 0, ram.Length);
@@ -68,7 +68,7 @@ internal static class FrameWitness
             palette = ppu.palette ?? new byte[32];
             nametables = ppu.vram ?? new byte[2048];
         }
-        var fb = nes.GetFrameBuffer();
+        var fb = nes.GetRenderTargetFrameBuffer(); // machine state, not the presented copy
 
         return new FrameWitnessBreakdown(
             Crc32.Compute(ram), Crc32.Compute(regBytes), Crc32.Compute(ppuRegs),

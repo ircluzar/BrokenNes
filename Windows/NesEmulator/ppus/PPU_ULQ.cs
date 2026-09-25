@@ -8,7 +8,7 @@ namespace NesEmulator
 //  * Fewer sprites per scanline.
 //  * Increased DRAM refresh stall probability.
 //  * Post-process downsample (blocky horizontal/vertical) and 1-1-1 color crush.
-public class PPU_ULQ : IPPU
+public class PPU_ULQ : IPPU, IPpuFrameClock
 {
     // Core metadata
     public string CoreName => "Ultra Low Quality";
@@ -206,6 +206,8 @@ public class PPU_ULQ : IPPU
         b = (byte)((b >> 7) * 0xA0);
         r = (byte)(r * 4 / 5); g = (byte)(g * 4 / 5); b = (byte)(b * 4 / 5);
     }
+
+    public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
 
     public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 

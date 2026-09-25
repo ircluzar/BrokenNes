@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_CUBE : IPPU
+public class PPU_CUBE : IPPU, IPpuFrameClock
 {
 	// Core metadata
 	public string CoreName => "Enhanced PPU";
@@ -255,6 +255,8 @@ public class PPU_CUBE : IPPU
 		}
 		gradientCacheValid = true;
 	}
+
+	public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
 
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 

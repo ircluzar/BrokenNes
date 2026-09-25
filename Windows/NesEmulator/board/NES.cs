@@ -539,6 +539,7 @@ namespace NesEmulator
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
+			InvalidatePresentedFrame();
 			NesState? st = null;
 			bool loadedFixedPointTiming = false;
 			try {
@@ -723,6 +724,7 @@ namespace NesEmulator
 
 		public void LoadROM(byte[] romData)
 		{
+			InvalidatePresentedFrame();
 			try {
 				// Preserve the APU core suffix so we don't
 				// collapse custom selections (e.g., SPD, WF, MNES) back to FMC when a new game loads.
@@ -1063,8 +1065,12 @@ namespace NesEmulator
 				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
 				if (dotDelta > 0) bus!.ppu!.Step((int)dotDelta);
 			}
-			// Always update frame buffer (no frameskip) for smoother perceived motion
-			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
+			// The true-up above can itself carry the PPU over the end of the picture.
+			NotePpuProgress();
+			// Always update frame buffer (no frameskip) for smoother perceived motion - unless a
+			// completed frame was already finished and presented during this run (see NotePpuProgress).
+			if (!crashed && !presentedThisRun) bus!.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
 			InstructionTracer.OnFrameComplete();
 
 			// === Targeted Imagine: apply captures if any were collected ===
@@ -1154,6 +1160,51 @@ namespace NesEmulator
 			nextApuEventCycle = target;
 		}
 		// Consolidated flush helper so later event-based stepping can reuse it
+		// === Presenting only completed frames ===
+		// RunFrame spends a CPU-cycle budget, not a PPU frame: in default timing it is 29829.55
+		// cycles against hardware's 29780.5, so where it stops drifts ~147 dots (~0.43 lines) a frame
+		// through the picture. The PPU writes its framebuffer a row at a time, so the buffer at that
+		// moment was the top of the new frame on the bottom of the previous one - a tear that walks
+		// down the screen whenever anything scrolls (measured on Zelda II and SMB3). So the frame is
+		// copied out when the PPU finishes its last visible row (the line counter crossing into 240)
+		// and that copy is what GetFrameBuffer hands every consumer. Presentation only: no emulation
+		// timing changes. In NTSC-accurate timing RunFrame already stops at line 0, dot 0 plus at
+		// most one instruction - before row 0 is redrawn at dot 341 - so the copy equals the live
+		// buffer there and traces are byte-identical.
+		private byte[]? presentedFrame;
+		private bool presentedValid;
+		private bool presentedThisRun;
+		private int lastClockScanline = -1;
+		private IPPU? presentClockOwner;
+
+		// Called after every PPU catch-up. The check only has to land somewhere between the end of
+		// row 239 and the start of row 0's redraw - about 7500 dots - so once per flush is plenty.
+		private void NotePpuProgress()
+		{
+			var ppu = bus?.ppu;
+			if (ppu is not IPpuFrameClock clock) return;
+			if (!ReferenceEquals(ppu, presentClockOwner)) { presentClockOwner = ppu; lastClockScanline = -1; }
+			int sl = clock.ProbeScanline;
+			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240) PresentCompletedFrame(ppu);
+			lastClockScanline = sl;
+		}
+
+		private void PresentCompletedFrame(IPPU ppu)
+		{
+			// UpdateFrameBuffer is where a core finishes a frame's image (PPU_EXE's echo, the no-ROM
+			// test pattern), so it belongs to the frame being presented, not to RunFrame's return.
+			ppu.UpdateFrameBuffer();
+			presentedThisRun = true;
+			var live = ppu.GetFrameBuffer();
+			if (presentedFrame == null || presentedFrame.Length != live.Length) presentedFrame = new byte[live.Length];
+			Buffer.BlockCopy(live, 0, presentedFrame, 0, live.Length);
+			presentedValid = true;
+		}
+
+		// After a ROM load or savestate load the PPU's position jumps; until it next completes a
+		// frame, fall back to the live buffer exactly as before.
+		private void InvalidatePresentedFrame() { presentedValid = false; lastClockScanline = -1; }
+
 		private void FlushBatch(int cpuCycles)
 		{
 			// Advance subsystems for accumulated cycles; incorporate any pending stall cycles (e.g., fast OAM DMA) as pure CPU delay.
@@ -1162,6 +1213,7 @@ namespace NesEmulator
 			bus!.ppu!.Step(total * 3);
 			bus!.StepAPU(total);
 			bus!.CountBatchFlush();
+			NotePpuProgress();
 			globalCpuCycle += total;
 			// Enhanced freeze detector sampling (ImagineFix only): record PC at batch boundaries
 			if (crashBehavior == CrashBehavior.ImagineFix)
@@ -1307,8 +1359,21 @@ namespace NesEmulator
 				staticFrameCounter++;
 				return frameBuffer;
 			}
-			if (bus?.ppu != null) return bus.ppu!.GetFrameBuffer();
+			if (bus?.ppu != null) return presentedValid && presentedFrame != null ? presentedFrame : bus.ppu!.GetFrameBuffer();
 			return new byte[256 * 240 * 4];
+		}
+
+		/// <summary>
+		/// The PPU's live render target - what GetFrameBuffer returned before completed-frame
+		/// presentation. Machine-state fingerprints (FrameWitness, savestate round trips, self-play
+		/// verification) want this: the presented copy is derived presentation, and it is not part
+		/// of a savestate, so a reloaded machine would disagree with a continuous one for a frame
+		/// for reasons that have nothing to do with emulation.
+		/// </summary>
+		public byte[] GetRenderTargetFrameBuffer()
+		{
+			if (crashed) return crashFrameBuffer;
+			return bus?.ppu?.GetFrameBuffer() ?? new byte[256 * 240 * 4];
 		}
 
 		// --- Zero-copy framebuffer support (HotPot: Zero/Low-Copy Framebuffer Transfer) ---

@@ -14,7 +14,7 @@ namespace NesEmulator
 //  * NO vertical odd-line duplication; every scanline rendered distinctly.
 // These changes address the "screen buffer space" complaints while preserving a stylistic
 // lower-spec feel.
-public class PPU_LQ : IPPU
+public class PPU_LQ : IPPU, IPpuFrameClock
 {
     // Core metadata
     public string CoreName => "Low Quality";
@@ -179,6 +179,8 @@ public class PPU_LQ : IPPU
         // Light global attenuation to mimic weaker DAC (consistent, not dynamic)
         r = (byte)(r * 5 / 6); g = (byte)(g * 5 / 6); b = (byte)(b * 5 / 6);
     }
+
+    public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
 
     public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 

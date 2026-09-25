@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_SPD : IPPU
+public class PPU_SPD : IPPU, IPpuFrameClock
 {
 	// Core metadata (new IPPU contract)
 	public string CoreName => "Speedhacks";
@@ -262,6 +262,8 @@ public class PPU_SPD : IPPU
 		// Then render sprites on top (if enabled)
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
+
+	public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
 
 	public byte[] GetFrameBuffer() 
 	{ 
