@@ -25,6 +25,7 @@ public class PpuSharedState
     // these cannot be rebuilt from t on load (the game may have written $2005/$2006 since dot 257).
     // hasLineLatches = false marks a state written before they existed; the loader then reconstructs.
     public bool hasLineLatches; public ushort renderAddr, horiLatch; public int sprite0HitDot = -1;
+    public byte[] fixPipeline = System.Array.Empty<byte>(); // PPU_FIX per-dot pipeline: shifters, latches, sprite units (see PackPipeline)
     // Background fade (PPU_BFR specific, harmless for others if left default)
     public float backgroundFadeAlpha; // current alpha applied
     public bool enableAutoFade; // auto sine oscillation flag

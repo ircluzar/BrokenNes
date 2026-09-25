@@ -539,7 +539,9 @@ namespace NesEmulator
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
-			InvalidatePresentedFrame();
+			// Keep showing the last good picture (rather than a half-drawn one) until the loaded machine
+			// has drawn a whole frame - see NotePpuProgress.
+			lastClockScanline = -1; awaitingFrameStart = true;
 			NesState? st = null;
 			bool loadedFixedPointTiming = false;
 			try {
@@ -1185,9 +1187,14 @@ namespace NesEmulator
 			if (ppu is not IPpuFrameClock clock) return;
 			if (!ReferenceEquals(ppu, presentClockOwner)) { presentClockOwner = ppu; lastClockScanline = -1; }
 			int sl = clock.ProbeScanline;
-			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240) PresentCompletedFrame(ppu);
+			// After a savestate load the frame in progress is missing every row drawn before the
+			// load point (the render target is not in a savestate), so the first frame is only
+			// presented once the PPU has started one from its top row.
+			if (awaitingFrameStart && lastClockScanline >= 240 && sl < 240) awaitingFrameStart = false;
+			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240 && !awaitingFrameStart) PresentCompletedFrame(ppu);
 			lastClockScanline = sl;
 		}
+		private bool awaitingFrameStart;
 
 		private void PresentCompletedFrame(IPPU ppu)
 		{
@@ -1203,7 +1210,7 @@ namespace NesEmulator
 
 		// After a ROM load or savestate load the PPU's position jumps; until it next completes a
 		// frame, fall back to the live buffer exactly as before.
-		private void InvalidatePresentedFrame() { presentedValid = false; lastClockScanline = -1; }
+		private void InvalidatePresentedFrame() { presentedValid = false; lastClockScanline = -1; awaitingFrameStart = false; }
 
 		private void FlushBatch(int cpuCycles)
 		{

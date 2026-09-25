@@ -72,16 +72,6 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private ushort v; //current VRAM address
 	private ushort t; //temp VRAM address
 
-	// The address this core's scanline-batch background renderer walks from, latched out of the
-	// live v at dot 256 - the last dot of the visible fetch window, i.e. before the dot-256 vertical
-	// increment moves v on to the next line. It exists because v is now the REAL loopy-v: by the
-	// time the batch renderer runs at the end of the scanline, v has already been vertically
-	// incremented (dot 256), had its horizontal bits reloaded from t (dot 257) and been advanced by
-	// the two prefetch tile fetches (dots 328/336). The latch is exactly the value the old code
-	// produced by doing CopyXFromTToV() immediately before rendering, so what gets drawn is
-	// unchanged - see the pipeline block in Step().
-	private ushort renderAddr;
-
 	private int scanlineCycle;
 	private int scanline;
 
@@ -120,54 +110,29 @@ public class PPU_FIX : IPPU, IPpuProbe
 
 	private bool vPipelineOn;
 
-	// The horizontal half of v (coarse X + nametable-X, bits 0-4 and 10) as hardware last loaded it
-	// at a dot-257 hori(v) := hori(t) copy - i.e. the scroll the NEXT scanline actually starts from.
-	//
-	// This exists because renderAddr took that half straight out of the LIVE t, at dot 256 of the
-	// scanline being drawn. For a game that only touches $2005/$2006 in vblank the two are the same
-	// value and nothing changes. For one whose vblank flush overruns onto the pre-render line they
-	// are not: hardware freezes scanline 0's horizontal scroll at pre-render dot 257 and a $2005
-	// arriving at dot 262 misses that frame entirely (Mesen draws the resulting one-frame tear on
-	// VRUN's pause screen), while reading t at scanline 0 dot 256 picks the write up 340 dots later
-	// and quietly draws the settled row instead. On whenever the PPU is caught up at least once per
-	// instruction (PPU_FIX's normal paths), or when SpeedConfig.PpuScanlineHoriFromLatch asks for it.
-	private ushort horiLatch;
-	private bool horiFromLatch; // refreshed per scanline in UpdateVPipelineFlag
-
-	// Cached "the PPU's position at a CPU access is trustworthy", refreshed alongside horiFromLatch.
-	// Gates the $2007 rendering-collision model - see CollideDataAccessWithRender.
+	// Cached "the PPU's position at a CPU access is trustworthy", refreshed per scanline and per
+	// $2001 write. Gates the $2007 rendering-collision model - see CollideDataAccessWithRender.
 	private bool dataPortCollision;
 
-	// After a savestate load: recompute the per-line cached flags for the line the state was taken on,
-	// WITHOUT UpdateVPipelineFlag's "rendering just switched on" seeding of horiLatch - the latch was
-	// just restored and is authoritative. A freshly constructed core would otherwise finish the
-	// current scanline with vPipelineOn false (no coarse-X/Y increments, no dot-257 copy).
-	private void RefreshLineFlagsAfterLoad()
-	{
-		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
-		horiFromLatch = (bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false) || (bus?.PpuCaughtUpPerInstruction ?? false);
-		dataPortCollision = bus?.PpuCaughtUpPerInstruction ?? false;
-	}
+	// After a savestate load: recompute the per-line cached flags for the line the state was taken on.
+	// A freshly constructed core would otherwise finish the current scanline with vPipelineOn false
+	// (no fetches, no coarse-X/Y increments, no dot-257 copy).
+	private void RefreshLineFlagsAfterLoad() => UpdateVPipelineFlag();
 
 	private void UpdateVPipelineFlag()
 	{
 		// Visible scanlines and the pre-render line are the ones that fetch; with rendering off the
-		// PPU stops driving v entirely and it stays wherever the CPU left it.
-		bool wasOn = vPipelineOn;
+		// PPU stops driving v entirely and it stays wherever the CPU left it. Read once per scanline
+		// (and per $2001 write) rather than per dot; bus can be null during construction and core
+		// hot-swap, which is why this is not done in the constructor.
 		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
-		// Read once per scanline (and per $2001 write) rather than per dot; bus can be null during
-		// construction and core hot-swap, which is why this is not done in the constructor.
-		// Always on when the PPU is caught up per instruction (PPU_FIX's normal case - see
-		// Bus.PpuCaughtUpPerInstruction): the story pages flip nametable-X with a $2000 write at dot
-		// ~250 of every 8th line, which on hardware only reaches the NEXT line through the dot-257 copy.
-		horiFromLatch = (bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false) || (bus?.PpuCaughtUpPerInstruction ?? false);
 		dataPortCollision = bus?.PpuCaughtUpPerInstruction ?? false;
-		// Turning rendering ON mid-frame: no dot-257 copy has run since, so the line that follows
-		// starts from wherever the CPU left v, not from t. Seeding the latch from v here is the
-		// same statement hardware makes by simply not having reloaded anything.
-		if (vPipelineOn && !wasOn) horiLatch = (ushort)(v & 0x041F);
+		// Per-line caches for the pixel pipeline: only MMC5 listens to per-tile fetch hooks, and with no
+		// cartridge the power-on test pattern is left on screen.
+		mmc5TileHooks = bus?.cartridge?.mapper is Mapper5;
+		hasCartridge = bus?.cartridge != null;
 	}
-
+	private bool mmc5TileHooks, hasCartridge;
 	// PPUMASK-derived colour-output state, refreshed whenever $2001 changes and at the top of every
 	// scanline. Both are pure output-stage effects - they never touch what is stored in palette RAM.
 	//   greyMask  - PPUMASK bit 0 (greyscale) ANDs the palette INDEX with $30 on its way out of
@@ -185,8 +150,6 @@ public class PPU_FIX : IPPU, IPpuProbe
 
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
 	private byte[]? frameBuffer = null;
-	// Reusable arrays to avoid per-scanline allocations
-	private readonly bool[] spritePixelDrawnReuse = new bool[ScreenWidth];
 	private int staticFrameCounter = 0;
 
 	public PPU_FIX(Bus bus)
@@ -258,13 +221,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 				}
 			}
 
-			// Sprite-0 hit at the dot of the colliding pixel, not at the end of the line where the
-			// batch renderer runs. See PredictSprite0HitDot.
-			if (scanline < 240)
-			{
-				if (scanlineCycle == 1) sprite0HitDot = PredictSprite0HitDot(scanline);
-				if (scanlineCycle == sprite0HitDot) PPUSTATUS |= 0x40;
-			}
+			// Background/sprite fetches, shifters and one pixel out per dot - see RenderDot. Runs
+			// before the loopy-v actions below so a fetch at dot 8k reads v before that dot's
+			// coarse-X increment, as on hardware.
+			if (scanline < 240 || scanline == 261) RenderDot();
 
 			// MMC5 IRQ tick at early cycle 3 when rendering enabled
 			if (scanline >= 0 && scanline < 240 && scanlineCycle == 3)
@@ -332,19 +292,10 @@ public class PPU_FIX : IPPU, IPpuProbe
 						break;
 					case ActEndOfLine:
 						IncrementX(ref v);
-						// Latch before the vertical increment: this is the address the
-						// scanline-batch renderer needs (see renderAddr's declaration). The
-						// horizontal half comes from the dot-257 latch when that is enabled, which
-						// is where hardware froze it - see horiLatch.
-						renderAddr = (ushort)((v & 0xFBE0) | (horiFromLatch ? horiLatch : (ushort)(t & 0x041F)));
 						IncrementY();
 						break;
 					case ActCopyHori:
 						CopyXFromTToV();
-						// What hardware just loaded into v's horizontal half IS the next scanline's
-						// starting scroll, frozen at this dot. Taken from v rather than t so a
-						// later CPU write to t cannot retroactively change it.
-						horiLatch = (ushort)(v & 0x041F);
 						break;
 					case ActCopyVert:
 						if (scanline == 261) CopyYFromTToV();
@@ -371,13 +322,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 			{
 				scanlineCycle = 0;
 
-				// Still rendered a whole scanline at a time, at the scanline's end, from the
-				// address latched at dot 256 - byte for byte what the old CopyXFromTToV() + render
-				// pair produced. Only the bookkeeping around it moved into the dot-accurate block.
-				if (scanline >= 0 && scanline < 240)
-				{
-					RenderScanline(scanline);
-				}
+				// The sprites fetched during this line's hblank are the ones the next line shows.
+				CommitNextLineSprites();
 
 				// (VBlank set / NMI assert moved to scanline 241 dot 1 in the per-dot section above -
 				// firing it here meant the end of scanline 241, i.e. 340 dots late.)
@@ -396,60 +342,6 @@ public class PPU_FIX : IPPU, IPpuProbe
 		}
 	}
 
-	private readonly bool[] bgMask = new bool[ScreenWidth];
-	private void RenderScanline(int scanline)
-	{
-		// Ensure a framebuffer exists before writing pixels
-		EnsureFrameBuffer();
-		// If no ROM is loaded, keep the test pattern
-		if (bus?.cartridge == null)
-		{
-			return;
-		}
-
-		// Greyscale + colour emphasis are output-stage effects applied to EVERY pixel this
-		// scanline produces, backdrop included, so resolve them once here rather than per pixel.
-		RefreshColorMask();
-
-		// If both background & sprites are disabled this scanline, proactively clear it
-		// so the power-on test pattern from initialization doesn't visually linger and
-		// confuse debugging (otherwise the old pixels remain untouched).
-		bool bgEnabled = (PPUMASK & 0x08) != 0; // bit 3
-		bool sprEnabled = (PPUMASK & 0x10) != 0; // bit 4
-		if (!bgEnabled && !sprEnabled)
-		{
-			EnsureFrameBuffer();
-			// Universal background color. Emphasis and greyscale still apply with rendering off -
-			// they are video-output stage effects, downstream of everything the renderer does.
-			byte ubIdx = paletteRAM[0];
-			int p = emphBase + (ubIdx & greyMask) * 3;
-			byte r = EmphasisPaletteBytes[p]; byte g = EmphasisPaletteBytes[p+1]; byte b = EmphasisPaletteBytes[p+2];
-			int baseIndex = scanline * ScreenWidth * 4;
-			for (int x = 0; x < ScreenWidth; x++)
-			{
-				int fi = baseIndex + x * 4;
-				frameBuffer![fi+0] = r;
-				frameBuffer![fi+1] = g;
-				frameBuffer![fi+2] = b;
-				frameBuffer![fi+3] = 255;
-			}
-			return; // nothing else to draw
-		}
-
-		// Ensure framebuffer exists before rendering (needed after ClearBuffers during hotswap)
-		EnsureFrameBuffer();
-		
-		// Clear scanline buffers
-		Array.Clear(bgMask, 0, ScreenWidth);
-		
-		// Render background first (if enabled)
-		if (bgEnabled) RenderBackground(scanline, bgMask);
-		// Sprite evaluation (and possible overflow-flag set) runs whenever EITHER
-		// background or sprite rendering is on, independent of whether sprite pixels
-		// actually get drawn - RenderSprites internally gates the pixel-drawing loop
-		// on sprEnabled while always running evaluation.
-		if (bgEnabled || sprEnabled) RenderSprites(scanline, bgMask);
-	}
 
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 
@@ -503,7 +395,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 	public void UpdateFrameBuffer()
 	{
 		// This method is called after rendering a frame
-		// The frame buffer is already updated in RenderScanline
+		// The frame buffer is already written pixel by pixel in RenderDot
 		// Add some animated elements for testing
 		EnsureFrameBuffer();
 		if (bus?.cartridge == null)
@@ -512,343 +404,242 @@ public class PPU_FIX : IPPU, IPpuProbe
 		}
 	}
 
-	private void RenderBackground(int scanline, bool[] bgMask)
-	{
-		// Check if background rendering is enabled
-		if ((PPUMASK & 0x08) == 0) return;
-		// PPUMASK bit 1: show background in the leftmost 8 screen columns (left-edge clipping).
-		bool showBgLeft = (PPUMASK & 0x02) != 0;
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || vram == null) return;
-
-		EnsureFrameBuffer();
-		// Cache frameBuffer reference locally to prevent race condition if ClearBuffers is called during render
-		var fb = frameBuffer;
-
-		// Inform mapper we're about to do background pattern fetches (MMC5 A/B CHR banking)
-		if (bus?.cartridge?.mapper is IMapper mBg)
-			mBg.PpuPhaseHint(false, (PPUCTRL & 0x20) != 0, (PPUMASK & 0x18) != 0);
-
-	// Cache universal background color once per scanline
-	byte ubIdx = paletteRAM[0];
-	// Hoisted out of the per-pixel loop below: these are fixed for the whole scanline.
-	int emph = emphBase, grey = greyMask;
-	var pal = EmphasisPaletteBytes;
-	int ubp = emph + (ubIdx & grey) * 3;
-	byte ubR = pal[ubp];
-	byte ubG = pal[ubp+1];
-	byte ubB = pal[ubp+2];
-
-		// Latched at dot 256 out of the live loopy-v; see renderAddr and the pipeline block in
-		// Step(). Equal to what the old `CopyXFromTToV(); RenderScanline();` pair walked from.
-		ushort renderV = renderAddr;
-
-		// Render 33 tiles (32 visible + 1 for scrolling)
-		for (int tile = 0; tile < 33; tile++)
-		{
-			// Extract nametable coordinates from current VRAM address
-			int coarseX = renderV & 0x001F;
-			int coarseY = (renderV >> 5) & 0x001F;
-			int nameTable = (renderV >> 10) & 0x0003;
-
-			// Calculate nametable address
-			int baseNTAddr = 0x2000 + (nameTable * 0x400);
-			int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-			// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
-			if (bus?.cartridge?.mapper is IMapper mapperNt) mapperNt.PpuNtFetch((ushort)tileAddr);
-			byte tileIndex = Read((ushort)tileAddr);
-
-			// Get fine Y scroll (which row within the 8x8 tile)
-			int fineY = (renderV >> 12) & 0x7;
-			
-			// Determine pattern table (background uses PPUCTRL bit 4)
-			int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-			int patternAddr = patternTable + (tileIndex * 16) + fineY;
-			
-			// Read the two bit planes for this row of the tile
-			byte plane0 = Read((ushort)patternAddr);
-			byte plane1 = Read((ushort)(patternAddr + 8));
-
-			// Determine palette index: try MMC5 Mode 1 override first, else use attribute table
-			int paletteIndex;
-			int mmc5Pal = (bus?.cartridge?.mapper is IMapper mapperPal) ? mapperPal.GetMmc5Mode1BgPaletteIndex() : -1;
-			if (mmc5Pal >= 0) paletteIndex = mmc5Pal;
-			else {
-				int attributeX = coarseX / 4;
-				int attributeY = coarseY / 4;
-				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = Read((ushort)attrAddr);
-				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
-				paletteIndex = (attrByte >> attrShift) & 0x03;
-			}
-
-			// Pre-calculate frame buffer base for this scanline
-			int scanlineBase = scanline * ScreenWidth * 4;
-
-			// Render the 8 pixels of this tile
-			for (int i = 0; i < 8; i++)
-			{
-				int pixel = tile * 8 + i - fineX;
-				if (pixel < 0 || pixel >= ScreenWidth) continue;
-
-				// Left-edge clipping: force the universal backdrop color (and leave
-				// bgMask unset, i.e. transparent) in the leftmost 8 columns when disabled.
-				if (pixel < 8 && !showBgLeft)
-				{
-					int clipFrameIndex = scanlineBase + pixel * 4;
-					fb![clipFrameIndex + 0] = ubR;
-					fb![clipFrameIndex + 1] = ubG;
-					fb![clipFrameIndex + 2] = ubB;
-					fb![clipFrameIndex + 3] = 255;
-					continue;
-				}
-
-				int bitIndex = 7 - i;
-				int bit0 = (plane0 >> bitIndex) & 1;
-				int bit1 = (plane1 >> bitIndex) & 1;
-				int colorIndex = bit0 | (bit1 << 1);
-
-				int frameIndex = scanlineBase + pixel * 4;
-				if (colorIndex == 0)
-				{
-					// Universal background color
-				fb![frameIndex + 0] = ubR;
-				fb![frameIndex + 1] = ubG;
-				fb![frameIndex + 2] = ubB;
-				fb![frameIndex + 3] = 255;
-				}
-				else
-				{
-					bgMask[pixel] = true;
-					int paletteBase = 1 + (paletteIndex << 2);
-					byte idx = paletteRAM[(paletteBase + colorIndex - 1) & 0x1F];
-					int p = emph + (idx & grey) * 3;
-				fb![frameIndex + 0] = pal[p];
-				fb![frameIndex + 1] = pal[p+1];
-				fb![frameIndex + 2] = pal[p+2];
-				fb![frameIndex + 3] = 255;
-				}
-			}
-
-			// Increment to next tile
-			IncrementX(ref renderV);
-		}
-	}
 
 	// Frame parity for the odd-frame pre-render dot skip; toggles every frame, rendering or not.
 	private bool oddFrame; // BrokenNes powers on at scanline 0, so its first pre-render line is Mesen's (even) frame 2
 
-	// Dot on the current scanline at which sprite-0 hit is raised, or -1 for none this line.
-	private int sprite0HitDot = -1;
+	// =====================================================================================
+	// Per-dot rendering pipeline
+	// =====================================================================================
+	//
+	// WHY: this core used to draw each scanline whole at dot 341, from state as it stood at the end
+	// of the line. Anything a game changes partway along a line - fine-X scroll (applies from the
+	// very next pixel), a CHR bank switch, a palette write, a $2001 mask change - then took effect
+	// for the whole line, or for none of it. Measured against Mesen 2.1.1 that was the single largest
+	// remaining source of wrong pictures: Bayou Billy's title rewrites $2005 at dot ~58 of every
+	// line of its waving logo (every line drew with the next line's offset), and the split row of
+	// every raster effect (Mega Man 3, Kirby, Zelda II, Lifeforce, SMB3) came out one row wrong.
+	//
+	// Now the background is fetched and shifted the way the 2C02 does it - nametable, attribute and
+	// the two pattern bytes every 8 dots from the live v, into 16-bit shift registers reloaded every
+	// 8 dots - and a pixel leaves the mux on every dot 1-256 using the live fine X, PPUMASK and
+	// palette. Sprites for line N+1 are evaluated at dot 257 of line N and their patterns fetched
+	// across dots 257-320 with the CHR banks in force at that moment; sprite-0 hit is raised at the
+	// pixel where it happens. The loopy-v increments and copies are the existing DotAction schedule,
+	// which this runs just ahead of on each dot.
+	private ushort bgShiftLo, bgShiftHi, atShiftLo, atShiftHi;
+	private byte bgNextNt, bgNextAt, bgNextLo, bgNextHi;
 
-	// Where sprite 0 first overlaps an opaque background pixel on this scanline, as a PPU dot
-	// (pixel x is output at dot x+1, which is where Mesen raises the flag), or -1.
-	//
-	// WHY: the renderer draws a whole scanline at dot 341, and used to raise the hit flag from
-	// there - up to ~340 dots after hardware does. A game polling $2002 for the hit then starts
-	// its raster split late. Zelda II's title does exactly that on line 143: Mesen performs the
-	// split's $2006 writes at dots 184/196, before the dot-256 Y increment, where BrokenNes did
-	// them at 272/284 - after it - so everything below the split was drawn 1-3 rows low.
-	//
-	// Run at dot 1, from the same state RenderScanline will use at dot 341: the vertical half of
-	// v (only the CPU can change it before dot 256) and the horizontal half that renderAddr will
-	// take (the dot-257 latch or the live t). Same evaluation, clipping and x=255 rules as
-	// RenderSprites. A CPU write between dot 1 and the hit that changes the outcome is not seen -
-	// the end-of-line check in RenderSprites still stands as the fallback for that.
-	//
-	// Only for mappers whose CHR reads are pure. MMC2 (9) and mapper 90 change state when read,
-	// and MMC5 (5) answers differently depending on the fetch phase, so predicting there would
-	// either corrupt the mapper or predict from the wrong data. Those keep the end-of-line flag.
-	private int PredictSprite0HitDot(int scanline)
+	// Sprites the current line shows (fetched during the previous line's hblank) ...
+	private readonly byte[] sprX = new byte[8], sprLo = new byte[8], sprHi = new byte[8], sprAttr = new byte[8];
+	private int sprCount;
+	private bool sprZeroOnLine;
+	// ... and the ones being evaluated/fetched for the next line.
+	private readonly byte[] nSprX = new byte[8], nSprLo = new byte[8], nSprHi = new byte[8], nSprAttr = new byte[8], nSprTile = new byte[8], nSprRow = new byte[8];
+	private int nSprCount;
+	private bool nSprZeroOnLine;
+
+	private void RenderDot()
 	{
-		if ((PPUMASK & 0x18) != 0x18 || (PPUSTATUS & 0x40) != 0) return -1;
-		if (oam == null || vram == null || bus?.cartridge == null) return -1;
-		switch (bus.cartridge.mapper)
+		int dot = scanlineCycle;
+		if (vPipelineOn)
 		{
-			case Mapper0: case Mapper1: case Mapper2: case Mapper3: case Mapper4:
-			case Mapper7: case Mapper30: case Mapper33: case Mapper228:
-				break;
-			default:
-				return -1;
-		}
-
-		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
-		int sh = isSprite8x16 ? 16 : 8;
-		// Sprite 0 is always evaluated first, so it is on this line iff it is in range - the
-		// 8-sprite limit can never exclude it.
-		int spriteTop = oam[0] + 1;
-		if (scanline < spriteTop || scanline >= spriteTop + sh) return -1;
-
-		byte tileIndex = oam[1];
-		byte attributes = oam[2];
-		int spriteX = oam[3];
-		bool flipX = (attributes & 0x40) != 0;
-		int subY = scanline - spriteTop;
-		if ((attributes & 0x80) != 0) subY = sh - 1 - subY;
-		int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
-		int sprTable = isSprite8x16 ? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000) : ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
-		int sprAddr = sprTable + subTileIndex * 16 + (subY % 8);
-		byte sp0 = Read((ushort)sprAddr);
-		byte sp1 = Read((ushort)(sprAddr + 8));
-		if ((sp0 | sp1) == 0) return -1;
-
-		bool showBgLeft = (PPUMASK & 0x02) != 0;
-		bool showSprLeft = (PPUMASK & 0x04) != 0;
-		ushort renderV = (ushort)((v & 0xFBE0) | (horiFromLatch ? horiLatch : (ushort)(t & 0x041F)));
-		int bgTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
-		int fineY = (renderV >> 12) & 0x7;
-
-		for (int x = 0; x < 8; x++)
-		{
-			int bit = flipX ? x : 7 - x;
-			if ((((sp0 >> bit) & 1) | ((sp1 >> bit) & 1)) == 0) continue;
-			int px = spriteX + x;
-			if (px >= 255) break; // x=255 never hits, and nothing further right exists
-			if (px < 8 && (!showSprLeft || !showBgLeft)) continue;
-
-			// Background pixel at px: tile (px + fineX) / 8 of the 33 the renderer walks.
-			int col = px + fineX;
-			ushort tv = renderV;
-			for (int k = col >> 3; k > 0; k--) IncrementX(ref tv);
-			int ntAddr = 0x2000 + (((tv >> 10) & 3) * 0x400) + (((tv >> 5) & 0x1F) * 32) + (tv & 0x1F);
-			int bgAddr = bgTable + Read((ushort)ntAddr) * 16 + fineY;
-			int bb = 7 - (col & 7);
-			if ((((Read((ushort)bgAddr) >> bb) & 1) | ((Read((ushort)(bgAddr + 8)) >> bb) & 1)) == 0) continue;
-
-			return px + 1;
-		}
-		return -1;
-	}
-
-	private void RenderSprites(int scanline, bool[] bgMask)
-	{
-		// Check if sprite rendering is enabled. This flag only gates the per-sprite
-		// pixel-drawing/hit-test loop further down - evaluation below (which can set the
-		// overflow flag) always runs, since real hardware evaluates sprites whenever either
-		// background or sprite rendering is on (see RenderScanline call site).
-		bool showSprites = (PPUMASK & 0x10) != 0;
-		// PPUMASK bit 2: show sprites in the leftmost 8 screen columns (left-edge clipping).
-		bool showSprLeft = (PPUMASK & 0x04) != 0;
-		// Guard against null during hot-swap
-		if (bgMask == null || frameBuffer == null || paletteRAM == null || oam == null || vram == null) return;
-
-		EnsureFrameBuffer();
-		// Cache frameBuffer reference locally to prevent race condition if ClearBuffers is called during render
-		var fb = frameBuffer;
-
-		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
-		// Inform mapper we're about to do sprite pattern fetches (MMC5 A/B CHR banking) -
-		// only relevant when sprites are actually drawn below.
-		if (showSprites && bus?.cartridge?.mapper is IMapper mSpr)
-			mSpr.PpuPhaseHint(true, isSprite8x16, (PPUMASK & 0x18) != 0);
-		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
-
-		// Real hardware evaluates at most 8 sprites per scanline and sets the overflow flag
-		// (PPUSTATUS bit 5) when a 9th in-range sprite exists - this also gates sprite-0-hit,
-		// since sprite 0 can only be hit on a line if it falls within the first 8 evaluated.
-		// This loop runs unconditionally (see showSprites comment above).
-		int spriteEvalCount = 0;
-		Span<int> spriteLineIdx = stackalloc int[8];
-		for (int si = 0; si < 64; si++)
-		{
-			byte sy = oam[si * 4];
-			int sh = isSprite8x16 ? 16 : 8;
-			// OAM byte 0 is the sprite's Y coordinate minus 1: sprite data is delayed by
-			// one scanline on real hardware, so the first displayed row is sy + 1.
-			int spriteTop = sy + 1;
-			if (scanline < spriteTop || scanline >= spriteTop + sh) continue;
-			if (spriteEvalCount < 8) spriteLineIdx[spriteEvalCount++] = si;
-			else { PPUSTATUS |= 0x20; break; }
-		}
-
-		// Sprite pixel drawing (and sprite-0-hit testing) only happens when sprites are
-		// actually enabled for display on screen - matches hardware, where the hit flag
-		// cannot be set unless both background and sprite rendering are on.
-		if (!showSprites) return;
-
-		// Process only the (up to 8) sprites selected above
-		for (int li = 0; li < spriteEvalCount; li++)
-		{
-			int i = spriteLineIdx[li];
-			int offset = i * 4;
-			byte spriteY = oam[offset];
-			byte tileIndex = oam[offset + 1];
-			byte attributes = oam[offset + 2];
-			byte spriteX = oam[offset + 3];
-
-			// Extract sprite attributes
-			int paletteIndex = attributes & 0b11;
-			bool flipX = (attributes & 0x40) != 0;
-			bool flipY = (attributes & 0x80) != 0;
-			bool priority = (attributes & 0x20) == 0; // 0 = in front of background
-
-			int tileHeight = isSprite8x16 ? 16 : 8;
-
-			// Calculate which row of the sprite we're rendering (Y delayed by one scanline,
-			// same as the evaluation loop above)
-			int subY = scanline - (spriteY + 1);
-			if (flipY) subY = tileHeight - 1 - subY;
-
-			// For 8x16 sprites, determine which tile and pattern table
-			int subTileIndex = isSprite8x16 ? (tileIndex & 0xFE) + (subY / 8) : tileIndex;
-			int patternTable = isSprite8x16
-				? ((tileIndex & 1) != 0 ? 0x1000 : 0x0000)
-				: ((PPUCTRL & 0x08) != 0 ? 0x1000 : 0x0000);
-			int baseAddr = patternTable + subTileIndex * 16;
-
-			// Read pattern data for this row
-			byte plane0 = Read((ushort)(baseAddr + (subY % 8)));
-			byte plane1 = Read((ushort)(baseAddr + (subY % 8) + 8));
-
-			// Render 8 pixels of the sprite
-			for (int x = 0; x < 8; x++)
+			if ((dot >= 2 && dot <= 257) || (dot >= 321 && dot <= 337))
 			{
-				int bit = flipX ? x : 7 - x;
-				int bit0 = (plane0 >> bit) & 1;
-				int bit1 = (plane1 >> bit) & 1;
-				int color = bit0 | (bit1 << 1);
-				if (color == 0) continue; // Transparent pixel
-
-				int px = spriteX + x;
-				if (px < 0 || px >= ScreenWidth) continue;
-				// Left-edge clipping: PPUMASK bit 2 (0x04) disables sprites in the leftmost
-				// 8 screen columns. When clipped, the pixel is treated as fully transparent
-				// for both drawing and sprite-0-hit purposes.
-				if (px < 8 && !showSprLeft) continue;
-
-				// Sprite 0 hit detection. Real hardware never sets the hit flag when the
-				// colliding pixel is at x=255 (documented PPU quirk).
-				if (i == 0 && px != 255 && bgMask[px] && color != 0)
+				bgShiftLo <<= 1; bgShiftHi <<= 1; atShiftLo <<= 1; atShiftHi <<= 1;
+				switch ((dot - 1) & 7)
 				{
-					PPUSTATUS |= 0x40;
-				}
-
-				// Skip if another sprite already drew here
-				if (spritePixelDrawnReuse[px]) continue;
-
-				// Check sprite priority
-				bool shouldDraw = true;
-				if (!priority && bgMask[px])
-				{
-					shouldDraw = false;
-				}
-
-				if (shouldDraw)
-				{
-					var spriteColor = GetSpriteColor(color, paletteIndex);
-					int frameIndex = (scanline * ScreenWidth + px) * 4;
-					if (frameIndex + 3 < fb!.Length)
-					{
-						fb![frameIndex + 0] = spriteColor.r;
-						fb![frameIndex + 1] = spriteColor.g;
-						fb![frameIndex + 2] = spriteColor.b;
-						fb![frameIndex + 3] = 255;
-					}
-						spritePixelDrawnReuse[px] = true;
+					case 0: // dots 9..257, 321, 329, 337: last tile into the shifters, next nametable byte
+						LoadBgShifters();
+						FetchBgNametable();
+						break;
+					case 2: FetchBgAttribute(); break;
+					case 4: bgNextLo = Read(BgPatternAddress()); break;
+					case 6: bgNextHi = Read((ushort)(BgPatternAddress() + 8)); break;
 				}
 			}
+			if (dot == 257)
+			{
+				bus.cartridge?.mapper?.PpuPhaseHint(true, (PPUCTRL & 0x20) != 0, true);
+				EvaluateNextLineSprites();
+			}
+			else if (dot > 257 && dot <= 320)
+			{
+				int slot = (dot - 257) >> 3, phase = (dot - 257) & 7;
+				if (slot < nSprCount && (phase == 5 || phase == 7)) FetchSpritePattern(slot, phase == 7);
+			}
+			else if (dot == 321)
+			{
+				bus.cartridge?.mapper?.PpuPhaseHint(false, (PPUCTRL & 0x20) != 0, true);
+			}
+		}
+		else if (dot == 257)
+		{
+			nSprCount = 0; nSprZeroOnLine = false; // rendering off: nothing is evaluated for the next line
+		}
+
+		if (scanline < 240 && dot >= 1 && dot <= 256) OutputPixel(dot - 1);
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+	private void LoadBgShifters()
+	{
+		bgShiftLo = (ushort)((bgShiftLo & 0xFF00) | bgNextLo);
+		bgShiftHi = (ushort)((bgShiftHi & 0xFF00) | bgNextHi);
+		atShiftLo = (ushort)((atShiftLo & 0xFF00) | ((bgNextAt & 1) != 0 ? 0xFF : 0x00));
+		atShiftHi = (ushort)((atShiftHi & 0xFF00) | ((bgNextAt & 2) != 0 ? 0xFF : 0x00));
+	}
+
+	private void FetchBgNametable()
+	{
+		ushort ntAddr = (ushort)(0x2000 | (v & 0x0FFF));
+		if (mmc5TileHooks) bus.cartridge!.mapper.PpuNtFetch(ntAddr); // MMC5 ExRAM mode 1 tracks which tile is being fetched
+		bgNextNt = Read(ntAddr);
+	}
+
+	private void FetchBgAttribute()
+	{
+		if (mmc5TileHooks)
+		{
+			int mmc5Pal = bus.cartridge!.mapper.GetMmc5Mode1BgPaletteIndex();
+			if (mmc5Pal >= 0) { bgNextAt = (byte)mmc5Pal; return; }
+		}
+		byte a = Read((ushort)(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)));
+		if ((v & 0x40) != 0) a >>= 4; // bottom half of the 32x32 attribute block
+		if ((v & 0x02) != 0) a >>= 2; // right half
+		bgNextAt = (byte)(a & 0x03);
+	}
+
+	private ushort BgPatternAddress() => (ushort)(((PPUCTRL & 0x10) << 8) + bgNextNt * 16 + ((v >> 12) & 0x07));
+
+	// Line N's sprites are chosen during line N-1 (OAM Y is the row ABOVE the sprite's first row, so a
+	// sprite is on line N when N - (y + 1) is inside its height). The pre-render line evaluates
+	// nothing, which is why no sprite ever shows on line 0. Eight per line; a ninth sets overflow.
+	private void EvaluateNextLineSprites()
+	{
+		nSprCount = 0; nSprZeroOnLine = false;
+		if (scanline >= 239) return; // pre-render (261) and the last visible line have no next visible line
+		int h = (PPUCTRL & 0x20) != 0 ? 16 : 8;
+		for (int i = 0; i < 64; i++)
+		{
+			int row = scanline - oam[i * 4];
+			if ((uint)row >= (uint)h) continue;
+			if (nSprCount == 8) { PPUSTATUS |= 0x20; break; }
+			if (i == 0) nSprZeroOnLine = true;
+			nSprTile[nSprCount] = oam[i * 4 + 1];
+			nSprAttr[nSprCount] = oam[i * 4 + 2];
+			nSprX[nSprCount] = oam[i * 4 + 3];
+			nSprRow[nSprCount] = (byte)row;
+			nSprLo[nSprCount] = 0; nSprHi[nSprCount] = 0;
+			nSprCount++;
 		}
 	}
+
+	private void FetchSpritePattern(int slot, bool high)
+	{
+		bool tall = (PPUCTRL & 0x20) != 0;
+		int h = tall ? 16 : 8;
+		int row = nSprRow[slot];
+		if ((nSprAttr[slot] & 0x80) != 0) row = h - 1 - row;
+		int tile = nSprTile[slot];
+		int addr = tall
+			? ((tile & 1) << 12) + ((tile & 0xFE) + (row >> 3)) * 16 + (row & 7)
+			: ((PPUCTRL & 0x08) << 9) + tile * 16 + row;
+		if (high) nSprHi[slot] = Read((ushort)(addr + 8));
+		else nSprLo[slot] = Read((ushort)addr);
+	}
+
+	private void CommitNextLineSprites()
+	{
+		sprCount = nSprCount; sprZeroOnLine = nSprZeroOnLine;
+		for (int i = 0; i < nSprCount; i++) { sprX[i] = nSprX[i]; sprLo[i] = nSprLo[i]; sprHi[i] = nSprHi[i]; sprAttr[i] = nSprAttr[i]; }
+		nSprCount = 0; nSprZeroOnLine = false;
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+	private void OutputPixel(int x)
+	{
+		if (x == 0) EnsureFrameBuffer();
+		var fb = frameBuffer;
+		if (fb == null || !hasCartridge) return; // no ROM: leave the test pattern alone
+
+		int mask = PPUMASK;
+		int colour;
+		if ((mask & 0x18) == 0)
+		{
+			colour = paletteRAM[0]; // rendering off: the backdrop
+		}
+		else
+		{
+			int bgPix = 0, bgPal = 0;
+			if ((mask & 0x08) != 0 && (x >= 8 || (mask & 0x02) != 0))
+			{
+				int m = 0x8000 >> fineX;
+				bgPix = ((bgShiftLo & m) != 0 ? 1 : 0) | ((bgShiftHi & m) != 0 ? 2 : 0);
+				bgPal = ((atShiftLo & m) != 0 ? 1 : 0) | ((atShiftHi & m) != 0 ? 2 : 0);
+			}
+			int spPix = 0, spPal = 0; bool spFront = false;
+			if ((mask & 0x10) != 0 && (x >= 8 || (mask & 0x04) != 0))
+			{
+				for (int i = 0; i < sprCount; i++)
+				{
+					int dx = x - sprX[i];
+					if ((uint)dx >= 8) continue;
+					int bit = (sprAttr[i] & 0x40) != 0 ? dx : 7 - dx;
+					int p = ((sprLo[i] >> bit) & 1) | (((sprHi[i] >> bit) & 1) << 1);
+					if (p == 0) continue;
+					// Sprite 0 hit: its opaque pixel over an opaque background pixel, never at x=255.
+					// Both clip tests above already apply, as they do on hardware.
+					if (i == 0 && sprZeroOnLine && bgPix != 0 && x != 255) PPUSTATUS |= 0x40;
+					spPix = p; spPal = sprAttr[i] & 0x03; spFront = (sprAttr[i] & 0x20) == 0;
+					break;
+				}
+			}
+			if (spPix != 0 && (bgPix == 0 || spFront)) colour = paletteRAM[0x10 | (spPal << 2) | spPix];
+			else if (bgPix != 0) colour = paletteRAM[(bgPal << 2) | bgPix];
+			else colour = paletteRAM[0];
+		}
+		int pi = emphBase + (colour & greyMask) * 3;
+		int fi = (scanline * ScreenWidth + x) * 4;
+		fb[fi] = EmphasisPaletteBytes[pi]; fb[fi + 1] = EmphasisPaletteBytes[pi + 1]; fb[fi + 2] = EmphasisPaletteBytes[pi + 2]; fb[fi + 3] = 255;
+	}
+
+	// Pipeline state for savestates: a state is taken wherever RunFrame stopped, usually mid-line,
+	// and the shifters/latches/sprite units are what the rest of that line (and the next) draw from.
+	private byte[] PackPipeline()
+	{
+		var b = new byte[8 + 4 + 2 + 32 + 2 + 48];
+		int o = 0;
+		void U16(ushort x) { b[o++] = (byte)x; b[o++] = (byte)(x >> 8); }
+		U16(bgShiftLo); U16(bgShiftHi); U16(atShiftLo); U16(atShiftHi);
+		b[o++] = bgNextNt; b[o++] = bgNextAt; b[o++] = bgNextLo; b[o++] = bgNextHi;
+		b[o++] = (byte)sprCount; b[o++] = (byte)(sprZeroOnLine ? 1 : 0);
+		for (int i = 0; i < 8; i++) { b[o++] = sprX[i]; b[o++] = sprLo[i]; b[o++] = sprHi[i]; b[o++] = sprAttr[i]; }
+		b[o++] = (byte)nSprCount; b[o++] = (byte)(nSprZeroOnLine ? 1 : 0);
+		for (int i = 0; i < 8; i++) { b[o++] = nSprX[i]; b[o++] = nSprLo[i]; b[o++] = nSprHi[i]; b[o++] = nSprAttr[i]; b[o++] = nSprTile[i]; b[o++] = nSprRow[i]; }
+		return b;
+	}
+
+	private void UnpackPipeline(byte[]? b)
+	{
+		if (b == null || b.Length < 96)
+		{
+			// Older state: nothing to restore; the pipeline refills within one scanline.
+			bgShiftLo = bgShiftHi = atShiftLo = atShiftHi = 0; sprCount = nSprCount = 0; sprZeroOnLine = nSprZeroOnLine = false;
+			return;
+		}
+		int o = 0;
+		ushort U16() { ushort x = (ushort)(b[o] | (b[o + 1] << 8)); o += 2; return x; }
+		bgShiftLo = U16(); bgShiftHi = U16(); atShiftLo = U16(); atShiftHi = U16();
+		bgNextNt = b[o++]; bgNextAt = b[o++]; bgNextLo = b[o++]; bgNextHi = b[o++];
+		sprCount = b[o++]; sprZeroOnLine = b[o++] != 0;
+		for (int i = 0; i < 8; i++) { sprX[i] = b[o++]; sprLo[i] = b[o++]; sprHi[i] = b[o++]; sprAttr[i] = b[o++]; }
+		nSprCount = b[o++]; nSprZeroOnLine = b[o++] != 0;
+		for (int i = 0; i < 8; i++) { nSprX[i] = b[o++]; nSprLo[i] = b[o++]; nSprHi[i] = b[o++]; nSprAttr[i] = b[o++]; nSprTile[i] = b[o++]; nSprRow[i] = b[o++]; }
+	}
+
+
+
 
 	private (byte r, byte g, byte b) GetSpriteColor(int colorIndex, int paletteIndex)
 	{
@@ -1408,7 +1199,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 			fineX=fineX,scrollLatch=w,addrLatch=w,v=v,t=t,
 			scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer,
 			staticFrameCounter=staticFrameCounter, oddFrame=oddFrame,
-			hasLineLatches=true, renderAddr=renderAddr, horiLatch=horiLatch, sprite0HitDot=sprite0HitDot
+			fixPipeline=PackPipeline()
 		};
 	}
 	public void SetState(object state) {
@@ -1419,8 +1210,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 			// Either stored latch being set means the shared toggle was set - covers a state saved
 			// by this core (which writes both) and one carried across from a core that keeps them apart.
 			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; oddFrame=s.oddFrame; RefreshColorMask();
-			if (s.hasLineLatches) { renderAddr=s.renderAddr; horiLatch=s.horiLatch; sprite0HitDot=s.sprite0HitDot; }
-			else { renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); }
+			UnpackPipeline(s.fixPipeline);
+
 			RefreshLineFlagsAfterLoad(); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram)) { if (pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } } else if (pVram.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pVram.GetBytesFromBase64(); Array.Copy(b,vram,Math.Min(b.Length, vram.Length)); } catch {} } }
@@ -1430,8 +1221,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
 			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32(); if(je.TryGetProperty("oddFrame", out var pof)) oddFrame=pof.GetBoolean();
 			RefreshColorMask();
-			if (je.TryGetProperty("hasLineLatches", out var phl) && phl.GetBoolean()) { renderAddr=GetU16("renderAddr"); horiLatch=GetU16("horiLatch"); sprite0HitDot = je.TryGetProperty("sprite0HitDot", out var ps0) ? ps0.GetInt32() : -1; }
-			else { renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); } // older state: reconstruct the dot-257 latch from t
+			byte[]? pipe = null; if (je.TryGetProperty("fixPipeline", out var pfp)) { if (pfp.ValueKind==System.Text.Json.JsonValueKind.String) { try { pipe = pfp.GetBytesFromBase64(); } catch {} } else if (pfp.ValueKind==System.Text.Json.JsonValueKind.Array) { pipe = new byte[pfp.GetArrayLength()]; int k=0; foreach (var el in pfp.EnumerateArray()) pipe[k++] = (byte)el.GetInt32(); } }
+			UnpackPipeline(pipe);
 			RefreshLineFlagsAfterLoad();
 		}
 	}

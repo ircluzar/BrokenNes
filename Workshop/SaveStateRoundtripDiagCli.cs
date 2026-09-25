@@ -109,12 +109,14 @@ internal static class SaveStateRoundtripDiagCli
         var breakdownAAtWarmup = FrameWitness.ComputeBreakdown(nesA);
         var aPerFrame = new List<FrameWitnessBreakdown>(continueFrames);
         var aRamPerFrame = new List<byte[]>(continueFrames);
+        byte[]? aFb0 = null; string firstFrameFbDiff = ""; bool firstFrameFramebufferOnly = false;
         for (int i = 0; i < continueFrames; i++)
         {
             nesA.SetInputs(InputForFrame(warmupFrames + i), null);
             nesA.RunFrame();
             aPerFrame.Add(FrameWitness.ComputeBreakdown(nesA));
             aRamPerFrame.Add(nesA.PeekMemoryRange("System RAM", 0, 0x800));
+            if (i == 0) aFb0 = (byte[])nesA.GetRenderTargetFrameBuffer().Clone();
         }
 
         // Path B: identical warmup, then an in-place SaveState+LoadState round trip (zero frames
@@ -137,7 +139,17 @@ internal static class SaveStateRoundtripDiagCli
             nesB.SetInputs(InputForFrame(warmupFrames + i), null);
             nesB.RunFrame();
             var actual = FrameWitness.ComputeBreakdown(nesB);
+            if (i == 0 && aFb0 != null) { var bFb = nesB.GetRenderTargetFrameBuffer(); var rows = new SortedDictionary<int, (int first, int last, int n)>(); for (int px = 0; px < Math.Min(aFb0.Length, bFb.Length) / 4; px++) { int q = px * 4; if (aFb0[q] != bFb[q] || aFb0[q + 1] != bFb[q + 1] || aFb0[q + 2] != bFb[q + 2]) { int r = px / 256, c = px % 256; rows[r] = rows.TryGetValue(r, out var e) ? (e.first, c, e.n + 1) : (c, c, 1); } } firstFrameFbDiff = string.Join(" ", rows.Select(kv => $"row{kv.Key}:x{kv.Value.first}-{kv.Value.last}({kv.Value.n})")); }
             var expected = aPerFrame[i];
+            // A picture-only difference on the first frame after the load is expected: the render
+            // target is not part of a savestate, and whatever the PPU had already drawn of the frame
+            // in progress before the save point is not redrawn until the next frame reaches those
+            // pixels. In NTSC timing a frame ends at exactly the dot it started on, so with a per-dot
+            // renderer those few pixels of row 0 survive into frame 0. Anything else - CPU, RAM, PPU
+            // state, or a picture difference that outlasts frame 0 - is still a real failure.
+            bool framebufferOnly = actual.Ram == expected.Ram && actual.CpuRegs == expected.CpuRegs && actual.PpuRegs == expected.PpuRegs
+                && actual.Oam == expected.Oam && actual.Palette == expected.Palette && actual.Nametables == expected.Nametables;
+            if (i == 0 && framebufferOnly) { firstFrameFramebufferOnly = actual.Framebuffer != expected.Framebuffer; continue; }
             if (actual != expected)
             {
                 mismatchedFrameCount++;
@@ -223,6 +235,8 @@ internal static class SaveStateRoundtripDiagCli
             FirstMismatchFrameDuringContinuation = firstMismatchFrame,
             FirstMismatchComponents = firstMismatchComponents,
             FirstMismatchRamBytes = firstMismatchRamBytes,
+            FirstContinuationFrameFramebufferOnly = firstFrameFramebufferOnly,
+            FirstContinuationFrameFbDiff = firstFrameFbDiff,
             LastMismatchFrameDuringContinuation = lastMismatchFrame,
             MismatchedFrameCount = mismatchedFrameCount,
             ConvergesBeforeEnd = mismatchedFrameCount > 0 && lastMismatchFrame < continueFrames - 1,
