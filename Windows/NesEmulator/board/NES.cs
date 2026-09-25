@@ -263,6 +263,11 @@ namespace NesEmulator
 			public double cycleRemainder; // retained for backward compatibility.
 			public int extraCycleAcc; // new: accumulator for fractional cycles (0..ExtraCyclesDenominator-1)
 			public int overshootCarry; // new: instruction overshoot carry to next frame
+			// The frame driver's master clock. Without it a loaded machine restarts its cycle count, its
+			// NTSC dot budget and the half-dot parity toggle from wherever it happens to be, and every
+			// frame after the load is a cycle or so different from the one that was saved.
+			public bool hasFrameClock;
+			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt;
 			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
@@ -423,6 +428,9 @@ namespace NesEmulator
 					cycleRemainder = overshootCarry, // store overshoot for older loaders
 					extraCycleAcc = extraCycleAccumulator,
 					overshootCarry = overshootCarry,
+					hasFrameClock = true,
+					globalCpuCycle = globalCpuCycle, ntscDotBudget = ntscDotBudget, ntscFrameParityToggle = ntscFrameParityToggle,
+					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt,
 					ram = ramClone,
 					cpu = cpuJson,
 					ppu = ppuJson,
@@ -532,11 +540,29 @@ namespace NesEmulator
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
 			NesState? st = null;
+			bool loadedFixedPointTiming = false;
 			try {
 				using var doc = System.Text.Json.JsonDocument.Parse(json);
 				var root = doc.RootElement;
 				st = new NesState();
 				if (root.TryGetProperty("cycleRemainder", out var cr)) st.cycleRemainder = cr.GetDouble();
+				// These two were always written by SaveState but never read back, so every load reset the
+				// fractional-cycle accumulator to 0: frames after a load ran up to a cycle long or short,
+				// and a savestate only round-tripped cleanly on frames where it happened to be 0 already
+				// (every 60th frame in default mode).
+				bool hasFixedPointTiming = root.TryGetProperty("extraCycleAcc", out var eca);
+				if (hasFixedPointTiming) st.extraCycleAcc = eca.GetInt32();
+				if (root.TryGetProperty("overshootCarry", out var osc)) { st.overshootCarry = osc.GetInt32(); hasFixedPointTiming = true; }
+				if (root.TryGetProperty("hasFrameClock", out var hfc) && hfc.GetBoolean())
+				{
+					st.hasFrameClock = true;
+					if (root.TryGetProperty("globalCpuCycle", out var gcc)) st.globalCpuCycle = gcc.GetInt64();
+					if (root.TryGetProperty("ntscDotBudget", out var ndb)) st.ntscDotBudget = ndb.GetInt64();
+					if (root.TryGetProperty("ntscFrameParityToggle", out var nfp)) st.ntscFrameParityToggle = nfp.GetBoolean();
+					if (root.TryGetProperty("ntscWasEnabled", out var nwe)) st.ntscWasEnabled = nwe.GetBoolean();
+					if (root.TryGetProperty("precisePpuDebt", out var ppd)) st.precisePpuDebt = ppd.GetInt32();
+				}
+				loadedFixedPointTiming = hasFixedPointTiming;
 				if (root.TryGetProperty("ram", out var ramEl)) {
 					if (ramEl.ValueKind==System.Text.Json.JsonValueKind.Array) { var arr=ramEl; int len=arr.GetArrayLength(); st.ram=new byte[len]; int idx=0; foreach(var v in arr.EnumerateArray()){ if(idx>=len) break; st.ram[idx++]=(byte)v.GetByte(); } }
 					else if (ramEl.ValueKind==System.Text.Json.JsonValueKind.String) { try { st.ram = ramEl.GetBytesFromBase64(); } catch { st.ram=Array.Empty<byte>(); } }
@@ -597,7 +623,7 @@ namespace NesEmulator
 			// Always refresh ROM-backed domains from the ROM image to ensure clean PRG/CHR at load
 			try { cartridge.RefreshRomDomainsFromRom(); } catch { }
 			// Restore fixed-point timing accumulators (fallback to double if new ints absent)
-			if (st.extraCycleAcc != 0 || st.overshootCarry != 0)
+			if (loadedFixedPointTiming || st.extraCycleAcc != 0 || st.overshootCarry != 0)
 			{
 				extraCycleAccumulator = st.extraCycleAcc;
 				overshootCarry = st.overshootCarry;
@@ -607,6 +633,15 @@ namespace NesEmulator
 				// State: interpret positive cycleRemainder as overshoot carry
 				overshootCarry = st.cycleRemainder > 0 ? (int)st.cycleRemainder : 0;
 				extraCycleAccumulator = 0;
+			}
+			if (st.hasFrameClock)
+			{
+				globalCpuCycle = st.globalCpuCycle;
+				ntscDotBudget = st.ntscDotBudget; ntscFrameParityToggle = st.ntscFrameParityToggle; ntscWasEnabled = st.ntscWasEnabled;
+				precisePpuDebt = st.precisePpuDebt;
+				// The event scheduler's next-event cycles are relative to the old clock; restoring an
+				// earlier cycle count must not leave them stranded in the future.
+				nextPpuEventCycle = nextApuEventCycle = nextFrameBoundaryCycle = globalCpuCycle;
 			}
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
 			bus.SetOpenBus(st.openBus);
@@ -824,6 +859,7 @@ namespace NesEmulator
 			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
 			bus!.PpuCaughtUpPerInstruction = false; // set below by the paths that guarantee it
+			bus!.MarkInstructionStart(-1); // unknown until a path below marks each instruction (the event scheduler never does)
 			if (EnableEventScheduler)
 			{
 				// --- Event-driven path (Feature flag gated) ---
@@ -911,6 +947,7 @@ namespace NesEmulator
 								// than in one lump after it. This is the same machinery the DMC
 								// predictive split below uses; the difference is only that it is
 								// armed unconditionally, which makes the DMC prediction redundant.
+								bus!.MarkInstructionStart(globalCpuCycle);
 								bus!.BeginPreciseWindow();
 								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
 								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
@@ -959,6 +996,7 @@ namespace NesEmulator
 								if (untilDma <= batchCpu + MaxInstructionCycles)
 								{
 									if (batchCpu > 0) { FlushBatch(batchCpu); batchCpu = 0; adaptiveAccumulator = 0; }
+									bus!.MarkInstructionStart(globalCpuCycle);
 									bus!.BeginPreciseWindow();
 									int preciseCycles = bus!.cpu!.ExecuteInstruction();
 									var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
@@ -976,6 +1014,7 @@ namespace NesEmulator
 									continue;
 								}
 							}
+							bus!.MarkInstructionStart(globalCpuCycle + batchCpu); // batchCpu = cycles already run but not yet flushed
 							int cpuCycles = bus!.cpu!.ExecuteInstruction();
 							executed += cpuCycles;
 							batchCpu += cpuCycles;
@@ -1014,7 +1053,12 @@ namespace NesEmulator
 			// stepping alone. A negative delta (CPU overshoot pushed globalCpuCycle*3 past budget)
 			// needs no action - it isn't undoable, and the next frame's strictly-increasing budget
 			// naturally reconciles against the also-strictly-increasing globalCpuCycle*3.
-			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed)
+			// Not for PPU_FIX: it drops the odd-frame pre-render dot itself, so it gets its frame
+			// length right at exactly 3 dots per CPU cycle. Stepping it here as well would push it
+			// ahead of the CPU by the remainder every frame, never to be credited back, and vblank
+			// would land at a wandering CPU cycle (measured against Mesen as NMI-to-NMI periods
+			// jittering +/-2 cycles, which reshuffles any RNG stirred in an idle loop - Lifeforce).
+			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed && bus!.ppu is not PPU_FIX)
 			{
 				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
 				if (dotDelta > 0) bus!.ppu!.Step((int)dotDelta);

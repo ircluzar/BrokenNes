@@ -138,6 +138,17 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// Gates the $2007 rendering-collision model - see CollideDataAccessWithRender.
 	private bool dataPortCollision;
 
+	// After a savestate load: recompute the per-line cached flags for the line the state was taken on,
+	// WITHOUT UpdateVPipelineFlag's "rendering just switched on" seeding of horiLatch - the latch was
+	// just restored and is authoritative. A freshly constructed core would otherwise finish the
+	// current scanline with vPipelineOn false (no coarse-X/Y increments, no dot-257 copy).
+	private void RefreshLineFlagsAfterLoad()
+	{
+		vPipelineOn = (scanline < 240 || scanline == 261) && (PPUMASK & 0x18) != 0;
+		horiFromLatch = (bus?.SpeedConfig?.PpuScanlineHoriFromLatch ?? false) || (bus?.PpuCaughtUpPerInstruction ?? false);
+		dataPortCollision = bus?.PpuCaughtUpPerInstruction ?? false;
+	}
+
 	private void UpdateVPipelineFlag()
 	{
 		// Visible scanlines and the pre-render line are the ones that fetch; with rendering off the
@@ -343,25 +354,19 @@ public class PPU_FIX : IPPU, IPpuProbe
 
 			scanlineCycle++;
 
-			// 341 dots on every scanline, including the pre-render one.
+			// Odd frames with rendering on drop the pre-render line's last dot, making the frame
+			// 89341 dots instead of 89342 - the half-dot average is where NTSC's 60.0988fps comes
+			// from, and Mesen does exactly this (pre-render dot 339 -> end of line).
 			//
-			// Hardware does NOT do that: every other frame it drops the last dot of the pre-render
-			// scanline, making the frame 89341 dots instead of 89342 (the half-dot average is where
-			// NTSC's 60.0988fps comes from). NES.RunFrame's NtscAccurateFrameRate budget already
-			// alternates 89342/89341 (NES.cs ntscFrameParityToggle), so a PPU that always runs 89342
-			// slides one dot backwards through its own frame every other frame.
-			//
-			// That was implemented here and then removed, on measurement. Against Mesen over 900
-			// frames of game.nes it made every column WORSE, not better: v 835 -> 888 divergent, pc
-			// 841 -> 891, ramhash 620 -> 769. The reason is a second, larger error it can only add
-			// to: NES.RunFrame trues the PPU up with `Step(ntscDotBudget - globalCpuCycle*3)`
-			// without folding those dots back into globalCpuCycle, so the next frame's target
-			// re-issues them and the PPU is over-stepped. Measured drift of the frame boundary
-			// through the PPU frame: about -0.145 dots/frame with no dot skip, about +0.29 with it,
-			// i.e. the missing skip's -0.5 is currently the thing holding the over-step in check.
-			// Adding the skip is only correct once the frame driver stops over-stepping, and that
-			// is a change to NES.cs - shared by four projects, and it would move the goldens of
-			// every core, not just this one.
+			// This was tried once before and made things worse, because NES.RunFrame was also
+			// trueing the PPU up by the 0-2 dots its NTSC budget cannot express in CPU cycles
+			// (`Step(ntscDotBudget - globalCpuCycle*3)`) without ever crediting them back - so the
+			// PPU crept ahead of 3 x CPU every frame, and vblank (hence the NMI) landed at a slowly
+			// wandering CPU cycle. RunFrame now skips that true-up for PPU_FIX (it exists to stand
+			// in for this skip on PPUs that do not model it), so the PPU runs at exactly 3 dots per
+			// CPU cycle, as on hardware, and the frame length comes from here alone.
+			if (scanline == 261 && scanlineCycle == 340 && oddFrame && (PPUMASK & 0x18) != 0)
+				scanlineCycle = 341;
 			if (scanlineCycle >= 341)
 			{
 				scanlineCycle = 0;
@@ -384,6 +389,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 				if (scanline == TotalScanlines)
 				{
 					scanline = 0;
+					oddFrame = !oddFrame;
 				}
 				UpdateVPipelineFlag();
 			}
@@ -628,6 +634,9 @@ public class PPU_FIX : IPPU, IPpuProbe
 			IncrementX(ref renderV);
 		}
 	}
+
+	// Frame parity for the odd-frame pre-render dot skip; toggles every frame, rendering or not.
+	private bool oddFrame; // BrokenNes powers on at scanline 0, so its first pre-render line is Mesen's (even) frame 2
 
 	// Dot on the current scanline at which sprite-0 hit is raised, or -1 for none this line.
 	private int sprite0HitDot = -1;
@@ -1398,7 +1407,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 			// (the trace tooling reports them as bit0/bit1 of a single 'w' column and expects 0 or 3).
 			fineX=fineX,scrollLatch=w,addrLatch=w,v=v,t=t,
 			scanline=scanline,scanlineCycle=scanlineCycle, ppuDataBuffer=ppuDataBuffer,
-			staticFrameCounter=staticFrameCounter
+			staticFrameCounter=staticFrameCounter, oddFrame=oddFrame,
+			hasLineLatches=true, renderAddr=renderAddr, horiLatch=horiLatch, sprite0HitDot=sprite0HitDot
 		};
 	}
 	public void SetState(object state) {
@@ -1408,15 +1418,21 @@ public class PPU_FIX : IPPU, IPpuProbe
 			if (s.frame != null && s.frame.Length == ScreenWidth * ScreenHeight * 4) { EnsureFrameBuffer(); frameBuffer = (byte[])s.frame.Clone(); }
 			// Either stored latch being set means the shared toggle was set - covers a state saved
 			// by this core (which writes both) and one carried across from a core that keeps them apart.
-			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); return; }
+			PPUCTRL=s.PPUCTRL;PPUMASK=s.PPUMASK;PPUSTATUS=s.PPUSTATUS;OAMADDR=s.OAMADDR;PPUSCROLLX=s.PPUSCROLLX;PPUSCROLLY=s.PPUSCROLLY;PPUDATA=s.PPUDATA;PPUADDR=s.PPUADDR;fineX=s.fineX;w=s.scrollLatch||s.addrLatch;v=s.v; t=s.t; scanline=s.scanline; scanlineCycle=s.scanlineCycle; ppuDataBuffer=s.ppuDataBuffer; staticFrameCounter=s.staticFrameCounter; oddFrame=s.oddFrame; RefreshColorMask();
+			if (s.hasLineLatches) { renderAddr=s.renderAddr; horiLatch=s.horiLatch; sprite0HitDot=s.sprite0HitDot; }
+			else { renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); }
+			RefreshLineFlagsAfterLoad(); return; }
 		if (state is System.Text.Json.JsonElement je) {
 			if (je.TryGetProperty("vram", out var pVram)) { if (pVram.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pVram.EnumerateArray()){ if(i>=vram.Length) break; vram[i++]=(byte)el.GetInt32(); } } else if (pVram.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pVram.GetBytesFromBase64(); Array.Copy(b,vram,Math.Min(b.Length, vram.Length)); } catch {} } }
 			if (je.TryGetProperty("palette", out var pPal)) { if (pPal.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pPal.EnumerateArray()){ if(i>=paletteRAM.Length) break; paletteRAM[i++]=(byte)el.GetInt32(); } } else if (pPal.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pPal.GetBytesFromBase64(); Array.Copy(b,paletteRAM,Math.Min(b.Length, paletteRAM.Length)); } catch {} } }
 			if (je.TryGetProperty("oam", out var pOam)) { if (pOam.ValueKind==System.Text.Json.JsonValueKind.Array) { int i=0; foreach(var el in pOam.EnumerateArray()){ if(i>=oam.Length) break; oam[i++]=(byte)el.GetInt32(); } } else if (pOam.ValueKind==System.Text.Json.JsonValueKind.String) { try { var b=pOam.GetBytesFromBase64(); Array.Copy(b,oam,Math.Min(b.Length, oam.Length)); } catch {} } }
 			if (je.TryGetProperty("frame", out var pFrame) && pFrame.ValueKind==System.Text.Json.JsonValueKind.Array) { EnsureFrameBuffer(); int i=0; foreach(var el in pFrame.EnumerateArray()){ if(i>=frameBuffer!.Length) break; frameBuffer![i++]=(byte)el.GetInt32(); } }
 			byte GetB(string name){return je.TryGetProperty(name,out var p)?(byte)p.GetInt32():(byte)0;} ushort GetU16(string name){return je.TryGetProperty(name,out var p)?(ushort)p.GetInt32():(ushort)0;}
-			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32();
-			RefreshColorMask(); renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); // reconstruct the dot-257 latch from t, matching what renderAddr is rebuilt from
+			PPUCTRL=GetB("PPUCTRL");PPUMASK=GetB("PPUMASK");PPUSTATUS=GetB("PPUSTATUS");OAMADDR=GetB("OAMADDR");PPUSCROLLX=GetB("PPUSCROLLX");PPUSCROLLY=GetB("PPUSCROLLY");PPUDATA=GetB("PPUDATA");PPUADDR=GetU16("PPUADDR");fineX=GetB("fineX");w=(je.TryGetProperty("scrollLatch", out var psl)&&psl.GetBoolean())||(je.TryGetProperty("addrLatch", out var pal)&&pal.GetBoolean());v=GetU16("v");t=GetU16("t");if(je.TryGetProperty("scanline",out var psl2)) scanline=psl2.GetInt32(); if(je.TryGetProperty("scanlineCycle",out var psc)) scanlineCycle=psc.GetInt32(); if(je.TryGetProperty("ppuDataBuffer", out var pdb)) ppuDataBuffer=(byte)pdb.GetInt32(); if(je.TryGetProperty("oddFrame", out var pof)) oddFrame=pof.GetBoolean();
+			RefreshColorMask();
+			if (je.TryGetProperty("hasLineLatches", out var phl) && phl.GetBoolean()) { renderAddr=GetU16("renderAddr"); horiLatch=GetU16("horiLatch"); sprite0HitDot = je.TryGetProperty("sprite0HitDot", out var ps0) ? ps0.GetInt32() : -1; }
+			else { renderAddr=(ushort)((v & 0xFBE0) | (t & 0x041F)); horiLatch=(ushort)(t & 0x041F); } // older state: reconstruct the dot-257 latch from t
+			RefreshLineFlagsAfterLoad();
 		}
 	}
 

@@ -20,6 +20,11 @@ public class PpuSharedState
     public int scanlineCycle, scanline;
     public byte ppuDataBuffer;
     public int staticFrameCounter; // include to avoid visual jumps when switching cores mid-static effect
+    public bool oddFrame; // PPU_FIX: parity for the odd-frame pre-render dot skip (other cores ignore it)
+    // PPU_FIX mid-line latches. A savestate is taken wherever RunFrame stopped, usually mid-scanline, so
+    // these cannot be rebuilt from t on load (the game may have written $2005/$2006 since dot 257).
+    // hasLineLatches = false marks a state written before they existed; the loader then reconstructs.
+    public bool hasLineLatches; public ushort renderAddr, horiLatch; public int sprite0HitDot = -1;
     // Background fade (PPU_BFR specific, harmless for others if left default)
     public float backgroundFadeAlpha; // current alpha applied
     public bool enableAutoFade; // auto sine oscillation flag

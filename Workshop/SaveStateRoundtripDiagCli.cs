@@ -27,6 +27,10 @@ internal static class SaveStateRoundtripDiagCli
         string? romPath = null, cpu = null, ppu = null, apu = null;
         int warmupFrames = 300, continueFrames = 300;
         bool strict = false;
+        bool freshInstance = false;
+        // --ntsc: NtscAccurateFrameRate (the app's timing toggle); --precise: that plus CpuCyclePrecisePpu.
+        // Each mode keeps its own frame-clock state, so each needs its own round trip.
+        bool ntsc = false, precise = false;
         for (int i = 1; i < args.Length; i++)
         {
             switch (args[i])
@@ -38,11 +42,14 @@ internal static class SaveStateRoundtripDiagCli
                 case "--warmup-frames": warmupFrames = int.Parse(args[++i]); break;
                 case "--continue-frames": continueFrames = int.Parse(args[++i]); break;
                 case "--strict": strict = true; break;
+                case "--fresh-instance": freshInstance = true; break;
+                case "--ntsc": ntsc = true; break;
+                case "--precise": ntsc = true; precise = true; break;
             }
         }
         if (romPath == null)
         {
-            Console.Error.WriteLine("Usage: --diag-savestate-roundtrip --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--warmup-frames N] [--continue-frames N] [--strict]");
+            Console.Error.WriteLine("Usage: --diag-savestate-roundtrip --rom <path.nes> [--cpu ID --ppu ID --apu ID] [--warmup-frames N] [--continue-frames N] [--strict] [--fresh-instance] [--ntsc | --precise]");
             return 2;
         }
 
@@ -72,6 +79,11 @@ internal static class SaveStateRoundtripDiagCli
             if (cpu != null) nes.SetCpuCore(cpu);
             if (ppu != null) nes.SetPpuCore(ppu);
             if (apu != null) nes.SetApuCore(apu);
+            if (ntsc || precise)
+            {
+                var sc = nes.GetSpeedConfig();
+                if (sc != null) { sc.NtscAccurateFrameRate = ntsc; sc.CpuCyclePrecisePpu = precise; sc.PpuScanlineHoriFromLatch = precise; }
+            }
             if (strict)
             {
                 var cfg = nes.GetSpeedConfig();
@@ -110,6 +122,11 @@ internal static class SaveStateRoundtripDiagCli
         var nesB = MakeNes();
         for (int i = 0; i < warmupFrames; i++) { nesB.SetInputs(InputForFrame(i), null); nesB.RunFrame(); }
         string json = nesB.SaveState();
+        // --fresh-instance: load into a brand-new machine (ROM loaded, zero frames run) instead of the
+        // one that saved. An in-place round trip cannot see a field the savestate forgets to carry -
+        // the old value is still sitting in the object - but a player loading a slot after a restart
+        // gets exactly this fresh machine, so this is the version of the test that matches real use.
+        if (freshInstance) nesB = MakeNes();
         nesB.LoadState(json);
         var breakdownBAfterRoundtrip = FrameWitness.ComputeBreakdown(nesB);
         int firstMismatchFrame = -1, lastMismatchFrame = -1, mismatchedFrameCount = 0;

@@ -96,6 +96,96 @@
       }
     },
     {
+      "id": "diag-savestate-mm3-fix-fresh",
+      "description": "Mega Man 3 (the db's 'savestates don''t work' title). LoadState never read back the fractional-cycle accumulator, so a savestate only round-tripped at frames where it was already 0 (every 60th in default mode - warmups 180/300/900 all hid it). This point is deliberately off that grid, and loads into a fresh machine.",
+      "kind": "savestate",
+      "rom": "{corpus}/Mega Man 3 (U) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 777,
+      "continueFrames": 240,
+      "freshInstance": true,
+      "tags": [
+        "diag",
+        "savestate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-mm3-fmc-fresh",
+      "description": "The same on the default FMC cores - the defect was board-level, so it hit every core players use. LoadState never read back the fractional-cycle accumulator, so a savestate only round-tripped at frames where it was already 0 (every 60th in default mode - warmups 180/300/900 all hid it). This point is deliberately off that grid, and loads into a fresh machine.",
+      "kind": "savestate",
+      "rom": "{corpus}/Mega Man 3 (U) [!].nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "warmupFrames": 777,
+      "continueFrames": 240,
+      "freshInstance": true,
+      "tags": [
+        "diag",
+        "savestate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-zelda2-fix-ntsc-fresh",
+      "description": "NTSC timing keeps its own dot budget and parity toggle, now part of the savestate. LoadState never read back the fractional-cycle accumulator, so a savestate only round-tripped at frames where it was already 0 (every 60th in default mode - warmups 180/300/900 all hid it). This point is deliberately off that grid, and loads into a fresh machine.",
+      "kind": "savestate",
+      "rom": "{corpus}/Zelda II - The Adventure of Link (U).nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 451,
+      "continueFrames": 240,
+      "freshInstance": true,
+      "timing": "ntsc",
+      "tags": [
+        "diag",
+        "savestate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+    {
+      "id": "diag-savestate-smb3-fix-precise-fresh",
+      "description": "Precise mode: frame clock plus PPU_FIX's mid-line latches (dot-257 horizontal latch, render address, pending sprite-0 dot, odd-frame parity). LoadState never read back the fractional-cycle accumulator, so a savestate only round-tripped at frames where it was already 0 (every 60th in default mode - warmups 180/300/900 all hid it). This point is deliberately off that grid, and loads into a fresh machine.",
+      "kind": "savestate",
+      "rom": "{corpus}/Super Mario Bros. 3 (U) (PRG1) [!].nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 301,
+      "continueFrames": 240,
+      "freshInstance": true,
+      "timing": "precise",
+      "tags": [
+        "diag",
+        "savestate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    },
+{
       "id": "bench-binty-fix",
       "description": "INFORMATIONAL. Speed of the accuracy-target stack. Never gates. Its point is the FIX-vs-FMC delta on the line below: the project policy is that an accuracy fix which meaningfully regresses speed for marginal gain should be rejected, and this row is how you notice.",
       "kind": "benchmark",

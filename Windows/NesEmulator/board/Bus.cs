@@ -107,6 +107,22 @@ public class Bus : IBus
 
 		public void BeginPreciseWindow() { preciseWindow = true; preciseAccessCycles = 0; preciseStallCycles = 0; }
 
+		// Absolute CPU cycle at which the current instruction started (-1 = unknown), and the bus
+		// access count at that moment; together they give the cycle of any access inside the
+		// instruction without adding work to Read/Write, which already count accesses.
+		private long instructionStartCycle = -1;
+		private long accessCountAtInstructionStart;
+		/// <summary>Called by NES.RunFrame before each instruction with the absolute CPU cycle it starts on.</summary>
+		public void MarkInstructionStart(long cpuCycle)
+		{
+			instructionStartCycle = cpuCycle;
+			accessCountAtInstructionStart = instr.Reads + instr.Writes;
+		}
+		// The access being performed now: it has already been counted, hence the -1.
+		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);
+		// Parity alignment between NES.globalCpuCycle's origin and the hardware get/put phase.
+		public static int OamDmaParityOffset = 0;
+
 		/// <summary>
 		/// Set by NES.RunFrame for the frame: true when the PPU is caught up after every instruction
 		/// (or within it, in precise mode), so at any CPU access it is at most one instruction
@@ -572,12 +588,19 @@ public class Bus : IBus
 			bool wasInside = insidePreciseTick; insidePreciseTick = true;
 			try { ppu.WriteOAMDMA(value); } finally { insidePreciseTick = wasInside; }
 			instr.OamDmaWrites++;
-			// The CPU stall is real hardware behavior (513 or 514 cycles depending on
-			// alignment, approximated here as a flat 513), not a speed/accuracy trade-off -
+			// The CPU stall is real hardware behavior, not a speed/accuracy trade-off -
 			// CpuFastOamDmaStall previously gated this off entirely, meaning "strict" mode
 			// (which disables SpeedConfig toggles) made OAM DMA cost zero CPU cycles instead
 			// of restoring accuracy. Always apply it.
-			PendingCpuStallCycles += 513;
+			//
+			// 513 or 514: the DMA must start on an even ("get") CPU cycle, so a write landing on an
+			// odd cycle costs one extra alignment cycle. CPU_FIX gets the exact figure; the other
+			// CPU cores keep the flat 513 their goldens were recorded with. It matters beyond the
+			// cycle itself: a flat 513 drifts the NMI's landing point in the game's idle loop by
+			// half a cycle a frame, and Lifeforce stirs its RNG in exactly that loop - measured
+			// against Mesen 2.1.1, whose log shows a write on an odd cycle costing 514, even 513.
+			PendingCpuStallCycles += (cpu is CPU_FIX && instructionStartCycle >= 0
+				&& ((CurrentAccessCycle() + OamDmaParityOffset) & 1) == 1) ? 514 : 513;
 			return; }
 		if (address <= 0x4017 && address >= 0x4000)
 		{

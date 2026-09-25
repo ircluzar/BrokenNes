@@ -294,6 +294,11 @@ function Invoke-SaveStateCase {
     $a += @('--warmup-frames', "$([int](Get-Prop $Case 'warmupFrames' 180))")
     $a += @('--continue-frames', "$([int](Get-Prop $Case 'continueFrames' 120))")
     if (Get-Prop $Case 'strict' $false) { $a += '--strict' }
+    # freshInstance: load into a new machine, as a player loading a slot after a restart does.
+    # timing: 'ntsc' or 'precise' - each timing mode keeps its own frame-clock state to round-trip.
+    if (Get-Prop $Case 'freshInstance' $false) { $a += '--fresh-instance' }
+    $timing = [string](Get-Prop $Case 'timing' '')
+    if ($timing -eq 'ntsc') { $a += '--ntsc' } elseif ($timing -eq 'precise') { $a += '--precise' }
 
     $r = Invoke-Workshop -Arguments $a -TimeoutMs ($TimeoutSeconds * 1000)
     $j = ConvertFrom-CliJson $r.StdOut

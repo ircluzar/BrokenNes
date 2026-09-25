@@ -172,6 +172,9 @@ internal static class TraceCli
         "                  says almost nothing. This records the write itself instead of the state\n" +
         "                  left behind. Mirror on the Mesen side with mapper_write_probe.lua.\n" +
         "  --mapper-write-frames a-b  restrict that log to a frame range (default: all frames).\n" +
+        "  --instr-trace   path. CPU_FIX per-instruction binary trace (InstructionTracer's 24-byte\n" +
+        "                  records: frame, cycle-in-frame, PC, opcode, cost, regs, NMI/IRQ flags).\n" +
+        "  --instr-trace-frames a-b  frame window for it (default: all frames - large).\n" +
         "  --power-on-palette  zeros (default) | keep. Palette RAM powers on indeterminate on real\n" +
         "                  hardware, so no emulator's fill is 'right' - but they must MATCH or every\n" +
         "                  frame before the game writes its own palette differs, and with it every\n" +
@@ -283,6 +286,8 @@ internal static class TraceCli
         // why a frame-boundary bank sample is nearly blind to mid-frame CHR banking.
         string? mapperWriteLogPath = null;
         int mapperWriteFrom = 0, mapperWriteTo = int.MaxValue;
+        string? instrTracePath = null;
+        int instrTraceFrom = 0, instrTraceTo = -1;
         // --prg-state / --poke-at: see PrgSampler and the poke block below.
         string prgMode = "off";
         string? pokeSpec = null;
@@ -321,6 +326,14 @@ internal static class TraceCli
                         var parts = args[++i].Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                         mapperWriteFrom = int.Parse(parts[0]);
                         mapperWriteTo = parts.Length > 1 ? int.Parse(parts[1]) : mapperWriteFrom;
+                        break;
+                    }
+                    case "--instr-trace": instrTracePath = args[++i]; break;
+                    case "--instr-trace-frames":
+                    {
+                        var parts = args[++i].Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                        instrTraceFrom = int.Parse(parts[0]);
+                        instrTraceTo = parts.Length > 1 ? int.Parse(parts[1]) : instrTraceFrom;
                         break;
                     }
                     case "--prg-state": prgMode = args[++i].ToLowerInvariant(); break;
@@ -463,6 +476,7 @@ internal static class TraceCli
         {
             var nes = new NES { RomName = Path.GetFileName(romFullPath), RomPath = romFullPath };
             nes.LoadROM(romBytes);
+            if (instrTracePath != null) InstructionTracer.Configure(instrTracePath, instrTraceFrom, instrTraceTo);
 
             var cpuApply = RomTestCli.ApplyCore("CPU", cpu, nes.SetCpuCore, nes.GetCpuCoreId);
             var ppuApply = RomTestCli.ApplyCore("PPU", ppu, nes.SetPpuCore, nes.GetPpuCoreId);
@@ -870,6 +884,7 @@ internal static class TraceCli
         finally
         {
             fileWriter?.Dispose();
+            if (instrTracePath != null) InstructionTracer.Configure(null, 0, -1); // flushes and closes
         }
     }
 
