@@ -1,0 +1,19 @@
+{
+  "Rom": "Legend of Zelda, The - A Link to the Past (U) [!].sfc",
+  "Apu": "SFC",
+  "Frames": 2400,
+  "Script": "1300:Start,1308:,1500:Start,1508:",
+  "Video": "f4f3d0f86e64acac",
+  "Audio": "eda6bc403e5fa895",
+  "Checkpoints": [
+    "250:f19e69b045a8e860:e48694b492870a55",
+    "500:10b262cc497c8730:c4d1246913e77078",
+    "750:f1dd232475920100:704904006f8789f6",
+    "1000:2d3ea2f52bdc8559:7f406fbdf0d8db7c",
+    "1250:27195c961970ba25:f71d55afcac9889c",
+    "1500:42522acd618a7124:263266afd7086bff",
+    "1750:2900f36d09965bec:0a50da4604c26003",
+    "2000:4ead3293046a72ac:ac2c5f8a7b2fc6d9",
+    "2250:2b47330b81bb8a6c:65abad946d86ea68"
+  ]
+}

@@ -135,7 +135,12 @@ public sealed class BOARD_SFC : ISnesBus
             Apu.RunTo(MasterClock);   // keep audio flowing even when the game leaves the ports alone
             frameReady = true;
         }
-        else if (Scanline < vblankLine) Ppu.RenderLine(Scanline);
+        else if (Scanline < vblankLine)
+        {
+            long t = SnesProfiler.Begin();
+            Ppu.RenderLine(Scanline);
+            if (t != 0) SnesProfiler.PpuTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t;
+        }
         // V-IRQ alone fires at the start of the matching line.
         if ((nmitimen & 0x30) == 0x20 && Scanline == vtime) RaiseIrq();
     }

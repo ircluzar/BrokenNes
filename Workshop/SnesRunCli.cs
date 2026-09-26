@@ -168,7 +168,7 @@ internal static class SnesRunCli
         }
     }
 
-    private static SortedDictionary<int, ushort> ParseInput(string? script)
+    internal static SortedDictionary<int, ushort> ParseInput(string? script)
     {
         var map = new SortedDictionary<int, ushort>();
         if (string.IsNullOrWhiteSpace(script)) return map;

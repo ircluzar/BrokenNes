@@ -75,14 +75,23 @@ public sealed class APU_SFC : ISnesApu
     public void RunTo(long masterClock)
     {
         long target = masterClock * 1_024_000 / 21_477_272;
+        if (smpCycles >= target) return;
+        long t0 = SnesProfiler.Begin();
         while (smpCycles < target)
         {
             int c = Smp.Step();
             smpCycles += c;
             ClockTimers(c);
             dspCycles += c;
-            while (dspCycles >= 32) { dspCycles -= 32; Dsp.RunSample(); }
+            while (dspCycles >= 32)
+            {
+                dspCycles -= 32;
+                long t1 = SnesProfiler.Begin();
+                Dsp.RunSample();
+                if (t1 != 0) SnesProfiler.DspTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t1;
+            }
         }
+        if (t0 != 0) SnesProfiler.ApuTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
     }
 
     public int ReadSamples(Span<short> dest)
