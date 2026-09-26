@@ -53,11 +53,12 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private byte ppuOpenBus;
 	private readonly long[] ppuOpenBusDecayAt = new long[8]; // absolute dot count at which each bit decays to 0
 	private long ppuDotCounter;
-	private int vUpdateDelay; private ushort vUpdatePending; // $2006's delayed copy of t into v
+	private int vUpdateDelay; private ushort vUpdatePending;
+	private ushort bgPatternAddr; // latched by the low-byte background fetch, reused by the high-byte fetch // $2006's delayed copy of t into v
 	// The second $2006 write reaches v this many dots after the write takes effect (Bus.PreDotsWrite).
 	// Mesen 2.1.1 models a 3-dot delay; 4 here is the same instant against PPU_FIX's first-dot fetches,
-	// and measured frame by frame on Mega Man 3's mid-line $2006 split: 47/61 frames exact at 4, 24 at 3,
-	// 37 at 5 (the misses at 4 are a single pixel on frames whose write lands 2 dots earlier - still open).
+	// and measured frame by frame on Mega Man 3's mid-line $2006 split: best at 4 (60/61 frames exact with the
+	// latched pattern address below; 3 and 5 both lose whole-tile rows).
 	private const int VramAddrUpdateDelay = 4;
 	/// <summary>Dots stepped since power-on, and the index of the dot that last raised an interrupt -
 	/// CPU_FIX judges interrupt landing by exact dot distance from the instruction's start.</summary>
@@ -468,8 +469,12 @@ public class PPU_FIX : IPPU, IPpuProbe
 						FetchBgNametable();
 						break;
 					case 2: FetchBgAttribute(); break;
-					case 4: bgNextLo = Read(BgPatternAddress()); break;
-					case 6: bgNextHi = Read((ushort)(BgPatternAddress() + 8)); break;
+					// The pattern address (tile, fine Y from v, table from $2000) is formed once, for the low
+					// byte, and reused for the high byte - as on hardware and in Mesen 2.1.1 - so a mid-line
+					// $2006/$2000 write landing between the two fetches cannot give one tile two rows or two
+					// tables. Mega Man 3's stage-select split: 47 -> 60 of 61 frames exact.
+					case 4: bgPatternAddr = BgPatternAddress(); bgNextLo = Read(bgPatternAddr); break;
+					case 6: bgNextHi = Read((ushort)(bgPatternAddr + 8)); break;
 				}
 			}
 			if (dot == 257)
@@ -622,7 +627,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// and the shifters/latches/sprite units are what the rest of that line (and the next) draw from.
 	private byte[] PackPipeline()
 	{
-		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3];
+		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3 + 2];
 		int o = 0;
 		void U16(ushort x) { b[o++] = (byte)x; b[o++] = (byte)(x >> 8); }
 		U16(bgShiftLo); U16(bgShiftHi); U16(atShiftLo); U16(atShiftHi);
@@ -632,6 +637,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		b[o++] = (byte)nSprCount; b[o++] = (byte)(nSprZeroOnLine ? 1 : 0);
 		for (int i = 0; i < 8; i++) { b[o++] = nSprX[i]; b[o++] = nSprLo[i]; b[o++] = nSprHi[i]; b[o++] = nSprAttr[i]; b[o++] = nSprTile[i]; b[o++] = nSprRow[i]; }
 		b[o++] = (byte)vUpdateDelay; U16(vUpdatePending); // a $2006 copy still in flight
+		U16(bgPatternAddr);
 		return b;
 	}
 
@@ -652,6 +658,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		nSprCount = b[o++]; nSprZeroOnLine = b[o++] != 0;
 		for (int i = 0; i < 8; i++) { nSprX[i] = b[o++]; nSprLo[i] = b[o++]; nSprHi[i] = b[o++]; nSprAttr[i] = b[o++]; nSprTile[i] = b[o++]; nSprRow[i] = b[o++]; }
 		if (b.Length >= 99) { vUpdateDelay = b[o++]; vUpdatePending = U16(); } else vUpdateDelay = 0;
+		if (b.Length >= 101) bgPatternAddr = U16();
 	}
 
 
