@@ -178,6 +178,14 @@ public class Bus : IBus
 		// from the next access (preciseCarryDots goes negative), so each instruction still totals
 		// exactly 3 dots a cycle.
 		private const int PreDotsRead = 1, PreDotsWrite = 4;
+		// $2002 reads see 3 dots more than that: Mesen 2.1.1's own read log stamps a PPUSTATUS read 3 dots
+		// later in its cycle than PreDotsRead places it. That decides whether a sprite-0 hit or VBlank
+		// raised in those dots is seen. Lifeforce polls for a sprite-0 hit at x=0 that rises on dot 1 of
+		// the line. Mesen's read catches it and BrokenNes's didn't, so it left its loop 14 cycles late
+		// and the sprite-disabling write missed the next row. Measured 0/1/2/3: every-frame Lifeforce
+		// 57/57/58/61 of 61 with Kirby, Bayou and Mega Man 3 unchanged, and all 15 certified games 59/59
+		// in both timing modes at 3.
+		private const int StatusReadExtraDots = 3;
 		private int preciseCarryDots;
 		/// <summary>For CPU_FIX's interrupt-poll timing: the bus access of the running instruction the PPU/APU is
 		/// being stepped for (0-based); int.MaxValue in precise mode outside the window (the instruction's tail);
@@ -611,7 +619,13 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
-		if (preciseWindow) { preciseReadAddress = address; PreciseTick(false); } // see BeginPreciseWindow - normally false, branch is free
+		if (preciseWindow) // see BeginPreciseWindow - normally false, branch is free
+		{
+			preciseReadAddress = address; PreciseTick(false);
+			// PPUSTATUS reads see the PPU StatusReadExtraDots further into their cycle than other reads do,
+			// borrowing them from the next access like a late write (the cycle still totals 3 dots).
+			if (PreciseSteppingActive && (address & 0xE007) == 0x2002) { ppu!.Step(StatusReadExtraDots); preciseCarryDots -= StatusReadExtraDots; }
+		}
 		instr.Reads++;
 		// Page table fast path: internal RAM and any future linear mapped regions
 		var page = pages[address >> 8];
@@ -730,7 +744,7 @@ public class Bus : IBus
 			// against Mesen 2.1.1, whose log shows a write on an odd cycle costing 514, even 513.
 			// Under precise stepping the DMA instead runs cycle by cycle after the instruction (see
 			// RunPendingOamDma), so a DMC fetch falling inside it shares its cycles as on hardware.
-			if (preciseWindow && cpu is CPU_FIX) { oamDmaPending = true; oamDmaWriteCycle = instructionStartCycle + preciseAccessCycles - 1 + preciseStallCycles; return; }
+			if (preciseWindow && PreciseSteppingActive && cpu is CPU_FIX) { oamDmaPending = true; oamDmaWriteCycle = instructionStartCycle + preciseAccessCycles - 1 + preciseStallCycles; return; }
 			PendingCpuStallCycles += (cpu is CPU_FIX && instructionStartCycle >= 0
 				&& ((CurrentAccessCycle() + OamDmaParityOffset) & 1) == 1) ? 514 : 513;
 			return; }
