@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -504,23 +505,31 @@ public sealed class PPU_SFC
             bool black = blackMode == 3;
             if (mathMode == 3) { for (int x = 0; x < Width; x++) dst[x] = lut[black ? (ushort)0 : cm[x]]; return; }
             bool halve0 = halfOn && !black;
+            // Unchecked refs: x < 256 on arrays of >= 256; colors are 15-bit, lut has 32768 entries.
+            ref byte lmR = ref MemoryMarshal.GetArrayDataReference(lm);
+            ref ushort cmR = ref MemoryMarshal.GetArrayDataReference(cm);
+            ref byte lsR = ref MemoryMarshal.GetArrayDataReference(ls);
+            ref ushort csR = ref MemoryMarshal.GetArrayDataReference(cs);
+            ref bool omR = ref MemoryMarshal.GetArrayDataReference(om);
+            ref uint lutR = ref MemoryMarshal.GetArrayDataReference(lut);
+            ref uint dstR = ref MemoryMarshal.GetReference(dst);
             for (int x = 0; x < Width; x++)
             {
-                int layer = lm[x];
-                ushort color = black ? (ushort)0 : cm[x];
-                bool layerMath = layer == ObjLayer ? (adsub & 0x10) != 0 && om[x] : (adsub & (1 << layer)) != 0;
+                int layer = Unsafe.Add(ref lmR, x);
+                ushort color = black ? (ushort)0 : Unsafe.Add(ref cmR, x);
+                bool layerMath = layer == ObjLayer ? (adsub & 0x10) != 0 && Unsafe.Add(ref omR, x) : (adsub & (1 << layer)) != 0;
                 if (layerMath)
                 {
                     ushort addend = fixedColor;
                     bool halve = halve0;
                     if (subNeeded)
                     {
-                        if (ls[x] == Backdrop) halve = false;
-                        else addend = cs[x];
+                        if (Unsafe.Add(ref lsR, x) == Backdrop) halve = false;
+                        else addend = Unsafe.Add(ref csR, x);
                     }
                     color = BlendPacked(color, addend, subtract, halve);
                 }
-                dst[x] = lut[color];
+                Unsafe.Add(ref dstR, x) = Unsafe.Add(ref lutR, color);
             }
             return;
         }
@@ -784,11 +793,17 @@ public sealed class PPU_SFC
             byte r = (entry & 0x2000) != 0 ? r1 : r0;
             if (pixels == 0 || r == 0xFF) { sx += count; continue; }
 
-            for (int k = 0; k < count; k++)
+            // Visit only the opaque pixels inside [start, start+count): mask the lanes, then walk the
+            // non-zero ones by trailing-zero count. Order doesn't matter: each pixel is independent.
+            ulong laneMask = count == 8 ? ulong.MaxValue : ((1UL << (count << 3)) - 1) << (start << 3);
+            ulong opaque = pixels & laneMask;
+            int xBase = sx - start;   // x of lane 0
+            while (opaque != 0)
             {
-                int c = (int)(pixels >> ((start + k) << 3)) & 0xFF;
-                if (c == 0) continue;
-                int x = sx + k;
+                int lane = BitOperations.TrailingZeroCount(opaque) >> 3;
+                int c = (int)(opaque >> (lane << 3)) & 0xFF;
+                opaque &= ~(0xFFUL << (lane << 3));
+                int x = xBase + lane;
                 ushort v = direct ? DirectColor(c, pal) : Unsafe.Add(ref cgram, (palOffset + c) & 0xFF);
                 if (onMain && r < Unsafe.Add(ref rankM, x) && !(winMain && Unsafe.Add(ref win, x)))
                 {
