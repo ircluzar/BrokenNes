@@ -35,6 +35,8 @@ internal static class SnesRunCli
         int chipTrace = 0;
         string? dumpWram = null, gsuDis = null;
         string? gsuWatch = null, regLog = null;
+        bool spcHot = false;
+        var spcHits = new Dictionary<ushort, int>();
         bool lineRegs = false;
         var pngAt = new HashSet<int>();
         try
@@ -56,7 +58,8 @@ internal static class SnesRunCli
                     case "--line-regs": lineRegs = true; break;                                     // per-line PPU registers, last frame
                     case "--chip-trace": chipTrace = int.Parse(args[++i]); break;                        // last N Super FX instructions
                     case "--no-dram-refresh": BOARD_SFC.DramRefresh = false; break;                    // A/B timing
-                    case "--reg-log": regLog = args[++i]; break;                                       // hexaddrs:file - timing fingerprint
+                    case "--spc-hot": spcHot = true; break;                                            // SPC700 PC histogram, last 30 frames
+                    case "--reg-log": regLog = args[++i]; break;                                      // hexaddrs:file - timing fingerprint
                     case "--gsu-dis": gsuDis = args[++i]; break;                                      // hexaddr:count
                     case "--gsu-watch": gsuWatch = args[++i]; break;                                   // pbr:pc hex list[@fromInstruction]
                     case "--dump-wram": dumpWram = args[++i]; break;                                  // hexaddr:len, e.g. 4F30:32
@@ -138,6 +141,8 @@ internal static class SnesRunCli
             {
                 if (script.TryGetValue(frame, out var b)) held = b;
                 board.Pads[0] = held;
+                if (spcHot && frame == sampleFrom + 1 && board.Apu is APU_SFC spcApu)
+                    spcApu.SmpHook = pc => spcHits[pc] = spcHits.GetValueOrDefault(pc) + 1;
                 board.InstructionHook = frame > sampleFrom
                     ? cpu => { uint pc = (uint)cpu.PBR << 16 | cpu.PC; pcHits[pc] = pcHits.GetValueOrDefault(pc) + 1; }
                     : null;
@@ -213,6 +218,13 @@ internal static class SnesRunCli
             sb.AppendLine($"hottest PCs over the last {frames - sampleFrom} frames ({total:N0} instructions):");
             foreach (var kv in pcHits.OrderByDescending(k => k.Value).Take(8))
                 sb.AppendLine($"  ${kv.Key >> 16:X2}:{kv.Key & 0xFFFF:X4}  {100.0 * kv.Value / Math.Max(1, total),5:F1}%");
+            if (spcHot && board.Apu is APU_SFC spcDump)
+            {
+                int spcTotal = spcHits.Values.Sum();
+                sb.AppendLine($"hottest SPC700 PCs ({spcTotal:N0} instructions):");
+                foreach (var kv in spcHits.OrderByDescending(k => k.Value).Take(16))
+                    sb.AppendLine($"  spc ${kv.Key:X4} {100.0 * kv.Value / Math.Max(1, spcTotal),5:F1}%  op={spcDump.Aram[kv.Key]:X2} {spcDump.Aram[(ushort)(kv.Key + 1)]:X2} {spcDump.Aram[(ushort)(kv.Key + 2)]:X2}");
+            }
             foreach (var p in saved) sb.AppendLine($"png: {p}");
             Console.WriteLine(sb.ToString().TrimEnd());
             return exit;

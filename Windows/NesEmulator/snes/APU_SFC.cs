@@ -72,6 +72,9 @@ public sealed class APU_SFC : ISnesApu
     public byte ReadPort(int port) => apuToCpu[port & 3];
     public void WritePort(int port, byte value) => cpuToApu[port & 3] = value;
 
+    /// <summary>Debug: called with the SPC700's PC before every instruction.</summary>
+    public Action<ushort>? SmpHook;
+
     public void RunTo(long masterClock)
     {
         long target = masterClock * 1_024_000 / 21_477_272;
@@ -79,6 +82,7 @@ public sealed class APU_SFC : ISnesApu
         long t0 = SnesProfiler.Begin();
         while (smpCycles < target)
         {
+            SmpHook?.Invoke(Smp.PC);
             int c = Smp.Step();
             smpCycles += c;
             ClockTimers(c);
@@ -214,33 +218,35 @@ public sealed class APU_SFC : ISnesApu
     //  transfer:
     //  FFE3  8D 00     mov  y,#$00
     //  FFE5  7E F4     cmp  y,$F4         ; first byte is index 0
-    //  FFE7  D0 FC     bne  $FFE5
-    //  byte:
-    //  FFE9  E4 F5     mov  a,$F5         ; data (written by the CPU before the index)
-    //  FFEB  CB F4     mov  $F4,y         ; acknowledge at once, so the CPU can send the next byte
-    //  FFED  D7 02     mov  [$02]+y,a
-    //  FFEF  FC        inc  y
-    //  FFF0  F0 08     beq  page          ; wrapped: next 256-byte page
+    //  FFE7  D0 FC     bne  $FFE5         ; (then falls into poll, which sees it too)
     //  poll:
-    //  FFF2  7E F4     cmp  y,$F4
-    //  FFF4  F0 F3     beq  byte          ; next index arrived
-    //  FFF6  10 FA     bpl  poll          ; port 0 still behind: keep waiting
-    //  FFF8  2F DB     bra  command       ; jumped ahead by >= 2: new command
-    //  page:
-    //  FFFA  AB 03     inc  $03
-    //  FFFC  2F F4     bra  poll
+    //  FFE9  7E F4     cmp  y,$F4
+    //  FFEB  D0 0D     bne  notready
+    //  byte:
+    //  FFED  E4 F5     mov  a,$F5         ; data (written by the CPU before the index)
+    //  FFEF  CB F4     mov  $F4,y         ; acknowledge at once, so the CPU can send the next byte
+    //  FFF1  D7 02     mov  [$02]+y,a
+    //  FFF3  FC        inc  y
+    //  FFF4  D0 F3     bne  poll
+    //  FFF6  AB 03     inc  $03           ; wrapped: next 256-byte page
+    //  FFF8  2F EF     bra  poll
+    //  notready:
+    //  FFFA  10 ED     bpl  poll          ; port 0 still behind: keep waiting
+    //  FFFC  2F D7     bra  command       ; jumped ahead by >= 2: new command
     //  FFFE  C0 FF     reset vector
     //
-    //  Timing is part of the protocol: games pace their uploads on the acknowledgement, so the
-    //  steady-state byte loop (byte..beq byte) is 25 SPC cycles with the ack 7 cycles in, the
-    //  same as the console's loader. The first version stored before acknowledging (27 cycles,
-    //  ack 14 cycles in) and made every boot and song load ~24% slower than hardware (measured
-    //  against Mesen 2: SMW reached its first screen 11 frames late).
+    //  Timing is part of the protocol: games pace their uploads on the acknowledgement, and some
+    //  (Contra III) run the handshake so tight that both sides wait on each other, where the
+    //  loop's PHASE matters as much as its length. So the loop keeps the console loader's timing:
+    //  25 SPC cycles per byte, the ack 12 cycles after the poll's read, the next poll 13 cycles
+    //  after the ack, and 11 cycles per spin while waiting. History: v1 stored before acknowledging
+    //  (27 cycles, late ack) and made boots ~24% slow vs Mesen 2; v2 had the right length but a
+    //  9-cycle spin and shifted ack, which ran Contra III's 36KB upload ~5% fast.
     private static readonly byte[] Ipl =
     {
         0x20, 0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5,
         0x78, 0xCC, 0xF4, 0xD0, 0xFB, 0xBA, 0xF6, 0xDA, 0x02, 0xFA, 0xF4, 0xF4, 0xF8, 0xF5, 0xD0, 0x03,
-        0x1F, 0x02, 0x00, 0x8D, 0x00, 0x7E, 0xF4, 0xD0, 0xFC, 0xE4, 0xF5, 0xCB, 0xF4, 0xD7, 0x02, 0xFC,
-        0xF0, 0x08, 0x7E, 0xF4, 0xF0, 0xF3, 0x10, 0xFA, 0x2F, 0xDB, 0xAB, 0x03, 0x2F, 0xF4, 0xC0, 0xFF,
+        0x1F, 0x02, 0x00, 0x8D, 0x00, 0x7E, 0xF4, 0xD0, 0xFC, 0x7E, 0xF4, 0xD0, 0x0D, 0xE4, 0xF5, 0xCB,
+        0xF4, 0xD7, 0x02, 0xFC, 0xD0, 0xF3, 0xAB, 0x03, 0x2F, 0xEF, 0x10, 0xED, 0x2F, 0xD7, 0xC0, 0xFF,
     };
 }
