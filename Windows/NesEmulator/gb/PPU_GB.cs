@@ -178,7 +178,7 @@ public sealed class PPU_GB
                 break;
             case PhHblankIrq:         // drawing just finished
                 src0 = true; UpdateStatLine();
-                phase = PhHblank; nextEvent = dot + 4;
+                phase = PhHblank; nextEvent = dot + 3;
                 break;
             case PhHblank:
                 visMode = 0;
@@ -283,7 +283,8 @@ public sealed class PPU_GB
     private int objHead;
     // Object fetch.
     private int spriteFetchDots;      // >0 while fetching an object
-    private bool spriteWait;          // an object is due and waits for the background fetch
+    private int spriteWait = -1;      // dots an object that is due still waits for the background fetch (-1: not due)
+    private bool leftTileSeen;        // an object hanging off the left edge has already paid for its tile
 
     private void StartDrawing()
     {
@@ -295,7 +296,7 @@ public sealed class PPU_GB
         fetchDots = 0; dummyFetch = true; fetchX = 0; fetchWindow = false; windowActive = false; winFetchX = 0;
         bgCount = 0;
         Array.Clear(objColor); objHead = 0;
-        spriteFetchDots = 0; spriteWait = false;
+        spriteFetchDots = 0; spriteWait = -1; leftTileSeen = false;
     }
 
     private void SelectSprites()
@@ -343,15 +344,26 @@ public sealed class PPU_GB
         }
 
         // An object at the output position: wait for the background fetch to get far enough, then fetch it.
-        if (bgCount > 0 && discard == 0 && nextSprite < lineSpriteCount && spriteX[nextSprite] <= lcdX + 8)
+        // The wait is 5 dots minus how far the fetch of the tile under the object's left edge has got; objects
+        // hanging off the left edge (X < 8) count against a virtual tile before the first one (the real fetcher
+        // does not move meanwhile).
+        while (bgCount > 0 && discard == 0 && nextSprite < lineSpriteCount && spriteX[nextSprite] <= lcdX + 8)
         {
-            if ((Lcdc & 0x02) == 0 && !Cgb) { nextSprite++; }
-            else if (fetchDots >= 5)
+            if ((Lcdc & 0x02) == 0 && !Cgb) { nextSprite++; continue; }
+            if (spriteWait < 0)
             {
-                spriteFetchDots = 1;
-                return;
+                int x = spriteX[nextSprite];
+                if (x >= 8) spriteWait = Math.Max(0, 5 - fetchDots);
+                else
+                {
+                    spriteWait = leftTileSeen ? 0 : x == 0 ? 5 : Math.Max(0, 5 - ((x + Scx) & 7));
+                    leftTileSeen = true;
+                }
             }
-            else { BgFetchStep(); return; }
+            if (spriteWait > 0) { spriteWait--; if (spriteX[nextSprite] >= 8) BgFetchStep(); return; }
+            spriteWait = -1;
+            spriteFetchDots = 1;
+            return;
         }
 
         BgFetchStep();
@@ -520,7 +532,7 @@ public sealed class PPU_GB
         {
             case 0x40: return Lcdc;
             case 0x41:
-                return (byte)(0x80 | statEnable | (LcdOn && lycEqual ? 4 : 0) | (LcdOn ? visMode : 0));
+                return (byte)(0x80 | statEnable | (lycEqual ? 4 : 0) | (LcdOn ? visMode : 0));
             case 0x42: return Scy;
             case 0x43: return Scx;
             case 0x44: return (byte)(!LcdOn ? 0 : lyReadsZero ? 0 : ly);
@@ -551,9 +563,9 @@ public sealed class PPU_GB
                 if (wasOn && !LcdOn)
                 {
                     ly = 0; dot = 0; visMode = 0; drawing = false; lyReadsZero = false; offDots = 0;
-                    src0 = src1 = src2 = false; lyCmpVis = lyCmpIrq = 0;
+                    // The LY=LYC flag and the interrupt line keep their last state while the LCD is off.
+                    src0 = src1 = src2 = false;
                     Array.Fill(FrameBuffer, Cgb ? 0xFFFFFFFF : DmgColors[0]);
-                    UpdateLyc(); statLine = false;
                 }
                 else if (!wasOn && LcdOn)
                 {
@@ -628,7 +640,7 @@ public sealed class PPU_GB
         w.Write(m); w.Write(lcdX); w.Write(discard); w.Write(scxLatched); w.Write(fetchDots); w.Write(dummyFetch); w.Write(fetchX);
         w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
         w.Write(bgCount); w.Write(bgLo); w.Write(bgHi); w.Write(bgAttr);
-        w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait);
+        w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait); w.Write(leftTileSeen);
     }
 
     public void LoadState(BinaryReader r)
@@ -646,6 +658,6 @@ public sealed class PPU_GB
         fetchWindow = r.ReadBoolean(); windowActive = r.ReadBoolean(); winFetchX = r.ReadInt32(); tileIdx = r.ReadByte(); tileAttr = r.ReadByte(); tileLo = r.ReadByte(); tileHi = r.ReadByte();
         bgCount = r.ReadInt32(); bgLo = r.ReadByte(); bgHi = r.ReadByte(); bgAttr = r.ReadByte();
         r.ReadBytes(8).CopyTo(objColor, 0); r.ReadBytes(8).CopyTo(objAttr, 0); r.ReadBytes(8).CopyTo(objIndex, 0);
-        objHead = r.ReadInt32(); spriteFetchDots = r.ReadInt32(); spriteWait = r.ReadBoolean();
+        objHead = r.ReadInt32(); spriteFetchDots = r.ReadInt32(); spriteWait = r.ReadInt32(); leftTileSeen = r.ReadBoolean();
     }
 }
