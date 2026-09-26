@@ -20,6 +20,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | Mode (`argv[0]`) | What it does | Needs, beyond the built `.exe` | Runnable on this machine? |
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
+| `--snestest` | SFC (SNES) core-family spec verifier: runs gilyon/snes-tests and lists every failing test with its inputs and expected output | a `.sfc` from `Windows/Resources/snes-test-roms` | **Yes** |
 | `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |
 | `--corrupt` | The VRUN corruption oracle: late-PPU-write / CHR-scatter / nametable-floor checks, with fault injection to prove each one fires | VRUN `game.nes` (VRUN-specific) | **Yes** |
 | `--headless` | One-shot run → SHA-256 frame hash, CPU regs, optional PNG | any `.nes` | **Yes** |
@@ -169,6 +170,21 @@ BrokenNes.Workshop.exe --diag-savestate-roundtrip --rom path.nes [--cpu ID --ppu
 BrokenNes.Workshop.exe --irqtrace --rom path.nes --cpu ID --ppu ID --apu ID [--frames-before N] \
     [--ring N] [--max-instr N] [--dump-addr XXXX --dump-len N] [--watch XXXX,YYYY,...]
 ```
+
+## Run (`--snestest` — the SFC core-family spec verifier)
+```
+BrokenNes.Workshop.exe --snestest --rom Windows\Resources\snes-test-roms\cputest\cputest-full.sfc \
+    [--max-frames N] [--tests tests-full.txt] [--png screen.png] [--json] [--out result.json]
+```
+Runs the SNES board (`Windows/NesEmulator/snes/`: CPU_SFC, PPU_SFC, BOARD_SFC, SnesCartridge)
+against gilyon/snes-tests v1.4. The ROM prints its verdict as tilemap text, so the verdict is read
+straight from VRAM and never depends on the renderer. When a test fails the ROM waits for button A;
+the runner presses it and carries on, so one run lists **every** failing test, each annotated from
+the ROM's `tests-*.txt` (found next to the ROM automatically). Exit 0 all pass | 1 finished with
+failures | 2 usage/IO | 3 timed out | 4 aborted (invalid test order / CPU hit STP) | 5 unexpected.
+Status 2026-09-25: cputest-basic 1107/1107 and cputest-full 1610/1610. The verifier has been
+proven able to fail: a deliberately broken `(d,X)` emulation-mode wrap produced 22 annotated
+failures. `spctest.sfc` needs APU_SFC (not written yet).
 
 ## Run (`--trace` — the cross-emulator differential tracer)
 
@@ -515,6 +531,11 @@ frame where neither controller port was polled at all).
   `$LASTEXITCODE` correctly (spot-checked 0 / 2 / 3 against `--romtest`'s documented codes). Drain
   the whole pipeline — an early `Select-Object -First N` kills the process and leaves
   `$LASTEXITCODE` empty. Every headless mode here is affected, not just `--romtest`.
+- **The same truncation trap applies to `dotnet build`, and there it is silent.** 2026-09-25:
+  `dotnet build ... | Select-String ... | Select-Object -First 5` ended the command after five
+  warnings while the compiler server went on writing the DLL in the background. The test run that
+  came next used the *previous* binary and reported 22 failures from a bug that had already been
+  reverted. Drain the build output (`| Out-String`, then filter) before running anything.
 - **The boot ROM needs an explicit copy-to-output step.** Unlike `Web/`'s `wwwroot` (copied to
   the publish output automatically by the Blazor SDK), a plain WinForms project needs one — both
   `WorkshopForm.LoadBootRom()` and `HeadlessRunner` read relative to

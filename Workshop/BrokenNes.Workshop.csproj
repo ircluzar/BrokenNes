@@ -73,6 +73,8 @@
              Exclude="$(NesRoot)apus\APU_WF.Web.cs;$(NesRoot)apus\APU_MNES.Web.cs" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
+    <!-- SFC (SNES) core family: self-contained, no dependency on the NES board. -->
+    <Compile Include="$(NesRoot)snes\**\*.cs"      LinkBase="NesEmulator\snes" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is
