@@ -83,16 +83,7 @@ internal sealed class SnesPlayerForm : Form
         emuThread.Start();
     }
 
-    /// <summary>APU_SFC is looked up by name so this form doesn't hard-depend on it existing yet.</summary>
-    private static ISnesApu CreateApu(string choice)
-    {
-        if (!choice.Equals("HLE", StringComparison.OrdinalIgnoreCase))
-        {
-            var t = typeof(BOARD_SFC).Assembly.GetType("NesEmulator.Snes.APU_SFC");
-            if (t != null && Activator.CreateInstance(t) is ISnesApu real) return real;
-        }
-        return new APU_HLE();
-    }
+    private static ISnesApu CreateApu(string choice) => SnesApuChoice.Create(choice);
 
     // =====================================================================================
     //  Emulation thread
@@ -326,7 +317,7 @@ internal sealed class SnesPlayerForm : Form
     /// <summary>Entry point for `--snes`.</summary>
     public static int Run(string[] args)
     {
-        string? rom = null; string apu = "SFC";
+        string? rom = null; string apu = SnesApuChoice.Default;
         for (int i = 1; i < args.Length; i++)
         {
             if (args[i] == "--apu" && i + 1 < args.Length) apu = args[++i];

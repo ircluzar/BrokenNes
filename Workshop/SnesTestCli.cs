@@ -34,7 +34,7 @@ namespace BrokenNes.Workshop;
 internal static class SnesTestCli
 {
     private const string Usage =
-        "Usage: --snestest --rom <path.sfc> [--max-frames N] [--tests tests.txt] [--png out.png] [--json] [--out result.json]";
+        "Usage: --snestest --rom <path.sfc> [--apu SFC|HLE] [--max-frames N] [--tests tests.txt] [--png out.png] [--json] [--out result.json]";
 
     private sealed class Failure
     {
@@ -59,7 +59,7 @@ internal static class SnesTestCli
     public static int Run(string[] args)
     {
         RomTestCli.EnsureConsole();
-        string? romPath = null, testsPath = null, pngPath = null, outPath = null;
+        string? romPath = null, testsPath = null, pngPath = null, outPath = null, apuChoice = null;
         int maxFrames = 60 * 60 * 10;
         bool json = false;
         try
@@ -74,6 +74,7 @@ internal static class SnesTestCli
                     case "--png": pngPath = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
+                    case "--apu": apuChoice = args[++i]; SnesApuChoice.Create(apuChoice); break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -94,8 +95,10 @@ internal static class SnesTestCli
             testsPath ??= GuessTestsFile(romPath);
             var descriptions = testsPath != null && File.Exists(testsPath) ? LoadDescriptions(testsPath) : new Dictionary<int, string>();
 
-            var board = new BOARD_SFC(SnesCartridge.Load(file));
+            var board = new BOARD_SFC(SnesCartridge.Load(file), SnesApuChoice.Create(apuChoice));
             var report = new Report { Rom = Path.GetFileName(romPath), Title = board.Cart.Title };
+            // spctest stops at its first failure and prints 8-bit registers with no key prompt.
+            bool spcTest = board.Cart.Title.StartsWith("SPC-700 TEST");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int exit = 3;
             report.Verdict = "timeout";
@@ -120,6 +123,17 @@ internal static class SnesTestCli
                 if (test == lastRecorded) continue;
                 report.LastTest = test;
                 if (ReadText(board.Ppu, 0xA1, 18) == "Invalid test order") { report.Verdict = $"aborted: invalid test order at test {test:x4}"; exit = 4; break; }
+
+                if (spcTest)
+                {
+                    // The Y value is the last thing written; once it's there the dump is complete.
+                    if (ReadText(board.Ppu, 0xE5, 2).Trim().Length < 2) continue;
+                    string dump = string.Join(" ", new[] { 0xA1, 0xC1, 0xE1, 0x101 }.Select(a => ReadText(board.Ppu, a, 6).Replace(" = ", "=")));
+                    report.FailureList.Add(new Failure { Test = test, Got = dump, Description = descriptions.GetValueOrDefault(test) });
+                    report.Verdict = "stopped at first failure (spctest does not continue)";
+                    exit = 1;
+                    break;
+                }
 
                 // The register dump is written after "Failed"; wait until the ROM reaches the key prompt.
                 if (!ReadText(board.Ppu, 0x341, 5).StartsWith("Press")) continue;

@@ -186,17 +186,24 @@ the ROM's `tests-*.txt` (found next to the ROM automatically). Exit 0 all pass |
 failures | 2 usage/IO | 3 timed out | 4 aborted (invalid test order / CPU hit STP) | 5 unexpected.
 Status 2026-09-25: cputest-basic 1107/1107 and cputest-full 1610/1610. The verifier has been
 proven able to fail: a deliberately broken `(d,X)` emulation-mode wrap produced 22 annotated
-failures. `spctest.sfc` needs APU_SFC (not written yet).
+failures. `spctest.sfc` (run with `--apu SFC`) passes 1368/1368 on the SPC700. Because it
+stops at its first failure, the runner reports that one failure and exits 1. Proven able to fail:
+a deliberately wrong XCN was caught as test 053d with the exact expected/actual values.
+
+All SNES modes take `--apu SFC|HLE`. SFC (the default) is the real audio unit: SPC700, S-DSP, timers
+and a clean-room boot loader. HLE is the silent loader stand-in; if a game boots on HLE but not on
+SFC, the bug is in the audio unit.
 
 ```
 BrokenNes.Workshop.exe --snesrun --rom game.sfc [--frames N] [--png-at 300,900] [--out-dir dir] \
     [--input "500:Start,508:,700:A,708:"]
 ```
-The game-level probe. Ends with the top PCs over the last 30 frames (a hang shows up as two or
-three addresses) and the HLE sound-CPU state: bytes uploaded and the driver's entry point.
-2026-09-25, Super Mario World: title → file select → Yoshi's House → walks out onto the overworld.
-Missing so far: sprites, priorities, color math and windows. Its sound handshake relies on one
-heuristic in BOARD_SFC (`$FF` on port 1 = driver returns to the IPL) until a real SPC700 exists.
+The game-level probe. It ends with the top PCs over the last 30 frames (a hang shows up as two or
+three addresses), the audio unit's state, and, with `--apu SFC`, audio statistics: RMS, peak, DC,
+audible seconds, and clipping. `--wav` also saves the audio.
+2026-09-25, Super Mario World with `--apu SFC`: title → file select → Yoshi's House → overworld.
+Rendering is correct, the game's own sound driver runs, and 65 of 71 s are audible with no
+clipping.
 
 ### Playing: `--snes`
 ```

@@ -22,12 +22,13 @@ namespace BrokenNes.Workshop;
 internal static class SnesRunCli
 {
     private const string Usage =
-        "Usage: --snesrun --rom <game.sfc> [--frames N] [--png-at f1,f2,...] [--out-dir dir] [--input \"frame:Buttons,...\"]";
+        "Usage: --snesrun --rom <game.sfc> [--apu SFC|HLE] [--frames N] [--png-at f1,f2,...] [--out-dir dir]\n" +
+        "                 [--input \"frame:Buttons,...\"] [--wav out.wav]";
 
     public static int Run(string[] args)
     {
         RomTestCli.EnsureConsole();
-        string? romPath = null, outDir = null, input = null;
+        string? romPath = null, outDir = null, input = null, apuChoice = null, wavPath = null;
         int frames = 600;
         var pngAt = new HashSet<int>();
         try
@@ -41,6 +42,8 @@ internal static class SnesRunCli
                     case "--png-at": foreach (var f in args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries)) pngAt.Add(int.Parse(f)); break;
                     case "--out-dir": outDir = args[++i]; break;
                     case "--input": input = args[++i]; break;
+                    case "--apu": apuChoice = args[++i]; SnesApuChoice.Create(apuChoice); break;
+                    case "--wav": wavPath = args[++i]; break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -64,7 +67,10 @@ internal static class SnesRunCli
             catch (Exception ex) { Console.Error.WriteLine($"Cannot read ROM: {ex.Message}"); return 2; }
 
             var cart = SnesCartridge.Load(file);
-            var board = new BOARD_SFC(cart);
+            var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice));
+            using var wav = wavPath != null ? new WavWriter(wavPath, board.Apu.SampleRate) : null;
+            var audioBuf = new short[8192];
+            var audio = new AudioStats(board.Apu.SampleRate);
             Directory.CreateDirectory(outDir);
             string stem = Path.GetFileNameWithoutExtension(romPath);
 
@@ -84,6 +90,12 @@ internal static class SnesRunCli
                     ? cpu => { uint pc = (uint)cpu.PBR << 16 | cpu.PC; pcHits[pc] = pcHits.GetValueOrDefault(pc) + 1; }
                     : null;
                 board.RunFrame();
+                int got;
+                while ((got = board.Apu.ReadSamples(audioBuf)) > 0)
+                {
+                    wav?.Write(audioBuf.AsSpan(0, got));
+                    audio.Add(audioBuf.AsSpan(0, got));
+                }
                 if (pngAt.Contains(frame))
                 {
                     string p = Path.Combine(outDir, $"{stem}_f{frame:D5}.png");
@@ -99,6 +111,7 @@ internal static class SnesRunCli
             sb.AppendLine($"frames={board.FrameCount} instructions={c.InstructionCount:N0} nmis={board.NmiCount} nmitimen=${board.NmiTimen:X2} forcedBlank={board.Ppu.ForcedBlank} {sw.Elapsed.TotalSeconds:F2}s");
             sb.AppendLine($"cpu PC=${c.PBR:X2}:{c.PC:X4} A=${c.A:X4} X=${c.X:X4} Y=${c.Y:X4} S=${c.S:X4} D=${c.D:X4} DBR=${c.DBR:X2} P=${c.P:X2} E={(c.E ? 1 : 0)} wai={c.Waiting}");
             sb.AppendLine($"apu: {board.Apu.Describe()}");
+            if (audio.Frames > 0) sb.AppendLine($"audio: {audio}{(wavPath != null ? $"  wav: {wavPath}" : "")}");
             int total = pcHits.Values.Sum();
             sb.AppendLine($"hottest PCs over the last {frames - sampleFrom} frames ({total:N0} instructions):");
             foreach (var kv in pcHits.OrderByDescending(k => k.Value).Take(8))
@@ -111,6 +124,47 @@ internal static class SnesRunCli
         {
             Console.Error.WriteLine($"Unexpected: {ex}");
             return 5;
+        }
+    }
+
+    /// <summary>
+    /// Enough statistics to tell real audio from silence, DC or noise without listening: overall
+    /// RMS/peak, how many one-second windows are audible, and the DC offset. Real game music has a
+    /// small DC offset, many audible seconds, and peaks well above the RMS.
+    /// </summary>
+    private sealed class AudioStats
+    {
+        private readonly int rate;
+        private double sumSq, sum, windowSumSq;
+        private int peak, windowFrames, audibleSeconds, seconds;
+        public long Frames { get; private set; }
+        private long clipped;
+
+        public AudioStats(int rate) { this.rate = rate; }
+
+        public void Add(ReadOnlySpan<short> interleaved)
+        {
+            for (int i = 0; i + 1 < interleaved.Length; i += 2)
+            {
+                int m = (interleaved[i] + interleaved[i + 1]) / 2;
+                sumSq += (double)m * m; sum += m; windowSumSq += (double)m * m;
+                int a = Math.Max(Math.Abs((int)interleaved[i]), Math.Abs((int)interleaved[i + 1]));
+                if (a > peak) peak = a;
+                if (a >= 32767) clipped++;
+                Frames++;
+                if (++windowFrames == rate)
+                {
+                    seconds++;
+                    if (Math.Sqrt(windowSumSq / rate) > 100) audibleSeconds++;
+                    windowSumSq = 0; windowFrames = 0;
+                }
+            }
+        }
+
+        public override string ToString()
+        {
+            double rms = Math.Sqrt(sumSq / Math.Max(1, Frames)), dc = sum / Math.Max(1, Frames);
+            return $"{Frames / (double)rate:F1}s rms={rms:F0} peak={peak} dc={dc:F1} audible={audibleSeconds}/{seconds}s clipped={clipped}";
         }
     }
 
