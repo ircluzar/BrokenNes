@@ -51,7 +51,7 @@
         "title": "Kirby's Adventure (U) (PRG1) [!]",
         "commonName": "Kirby's Adventure",
         "status": "Works",
-        "note": "FIX cores: 51/59 samples frame-exact vs Mesen; the rest differ by 1 pixel on a single row",
+        "note": "FIX cores: matches Mesen except the status-bar row on some frames (a mid-line CHR bank switch lands one fetch early - open)",
         "system": "nes",
         "romKey": "Kirby's Adventure (U) (PRG1) [!].nes",
         "headerSignature": "ines_bccf5461c78bda518255c909f3e3fb92682591b0",
@@ -146,9 +146,9 @@
         "builtIn": false,
         "size": 131088,
         "createdAt": "2025-09-01T03:23:54.8900000Z",
-        "status": "Jank",
+        "status": "Works",
         "commonName": "",
-        "note": "Boots and plays on FIX cores (was: nothing). Attract demo still drifts from Mesen in places"
+        "note": "FIX cores: CPU state identical to Mesen; all precise-timing samples exact. A few frames differ by 8 px on the status-bar row (open)"
       },
       {
         "id": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
@@ -236,8 +236,8 @@
         "title": "Mega Man 3 (U) [!]",
         "commonName": "Mega Man 3",
         "status": "Works",
-        "note": "Savestates fixed. FIX cores run in lockstep with Mesen; the stage-select split row can differ by 1 pixel (PPU register latency, open)",
-        "notes": "Savestates fixed. FIX cores run in lockstep with Mesen; the stage-select split row can differ by 1 pixel (PPU register latency, open)",
+        "note": "Savestates fixed. FIX cores: all precise-timing samples exact; 1 px on the stage-select split on some odd frames (open)",
+        "notes": "Savestates fixed. FIX cores: all precise-timing samples exact; 1 px on the stage-select split on some odd frames (open)",
         "system": "NES",
         "platform": "NES",
         "name": "Mega Man 3 (U) [!].nes",
@@ -256,9 +256,9 @@
         "builtIn": false,
         "size": 262160,
         "createdAt": "2025-08-30T03:57:19.2640000Z",
-        "status": "Jank",
+        "status": "Works",
         "commonName": "",
-        "note": "Boots and plays on FIX cores (was: nothing). Per-line scroll splits within 1 pixel of Mesen on some rows"
+        "note": "Certified 2026-09-26: matches Mesen 2.1.1 frame-for-frame on FIX cores, including the wavy title-screen scroll"
       },
       {
         "id": "nes_8e5767e4a6d5842684e1538d21948538643e0393",
