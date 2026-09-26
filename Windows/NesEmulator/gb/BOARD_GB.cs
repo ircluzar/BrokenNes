@@ -439,16 +439,3 @@ public sealed class BOARD_GB : IGbCpuBus
         DoubleSpeed = r.ReadBoolean(); CycleCount = r.ReadInt64();
     }
 }
-
-/// <summary>
-/// Colours for a DMG game on Game Boy Color hardware. The real CGB boot ROM picks from a table keyed on the
-/// title checksum; without a boot ROM we apply its default greyscale-green set. (The per-game table is a TODO.)
-/// </summary>
-public static class GbCompatPalettes
-{
-    public static void Apply(PPU_GB ppu, GbCartridge cart)
-    {
-        ushort[] bg = { 0x7FFF, 0x5294, 0x294A, 0x0000 };
-        ppu.SetCompatPalettes(bg, bg, bg);
-    }
-}
