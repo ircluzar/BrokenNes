@@ -73,6 +73,8 @@ public sealed class GSU_SFC : ISnesCoprocessor
         Array.Clear(r);
         sfr = 0; pbr = rombr = rambr = bramr = cfgr = scbr = clsr = scmr = colr = por = 0;
         cbr = 0; pipeline = 0x01; r15Modified = false; sreg = dreg = 0; ramAddr = 0; romBuffer = 0;
+        romPending = ramPending = 0;
+        romPending = ramPending = 0;
         FlushCache();
         pc0 = pc1 = default;
         setSnesIrq?.Invoke(false);
@@ -239,19 +241,47 @@ public sealed class GSU_SFC : ISnesCoprocessor
         return ram[(int)(address & 0x1FFFF) & ramMask];
     }
 
+    // ---- Memory timing: the ROM and RAM buffers work in the background ----
+    // Writing R14 starts a ROM fetch that completes MemCycle clocks later; GETB & co. wait only if
+    // it is still in flight. A RAM write goes into a one-entry buffer and completes MemCycle clocks
+    // later; the next RAM access waits for it. RAM reads themselves are immediate. (The first
+    // version charged every access up front: Yoshi's Island's intro ran ~40% slow vs Mesen 2.)
+    private int romPending, ramPending;       // clocks until the buffered ROM fetch / RAM write lands
+    private ushort ramPendingAddr;
+    private byte ramPendingData;
+
+    private void Tick(int clocks)
+    {
+        clock += clocks;
+        if (romPending > 0 && (romPending -= clocks) <= 0)
+        {
+            romPending = 0;
+            romBuffer = GsuRead((uint)rombr << 16 | r[14]);   // the address at completion, as on hardware
+            sfr &= unchecked((ushort)~FR);
+        }
+        if (ramPending > 0 && (ramPending -= clocks) <= 0)
+        {
+            ramPending = 0;
+            ram[RamIndex(ramPendingAddr)] = ramPendingData;
+        }
+    }
+
+    private void SyncRom() { if (romPending > 0) Tick(romPending); }
+    private void SyncRam() { if (ramPending > 0) Tick(ramPending); }
+
     private int RamIndex(ushort addr) => (rambr << 16 | addr) & ramMask;
-    private byte RamRead(ushort addr) { clock += MemCycle; return ram[RamIndex(addr)]; }
-    private void RamWrite(ushort addr, byte v) { clock += MemCycle; ram[RamIndex(addr)] = v; }
+    private byte RamRead(ushort addr) { SyncRam(); return ram[RamIndex(addr)]; }
+    private void RamWrite(ushort addr, byte v) { SyncRam(); ramPendingAddr = addr; ramPendingData = v; ramPending = MemCycle; }
     private ushort RamReadWord(ushort addr) => (ushort)(RamRead(addr) | RamRead((ushort)(addr ^ 1)) << 8);
     private void RamWriteWord(ushort addr, int v) { RamWrite(addr, (byte)v); RamWrite((ushort)(addr ^ 1), (byte)(v >> 8)); }
 
-    private void LoadRomBuffer()
-    {
-        // Real hardware fetches in the background and GETB waits for it; charging the access at
-        // request time keeps the total cost without modeling the overlap.
-        romBuffer = GsuRead((uint)rombr << 16 | r[14]);
-        clock += MemCycle;
-    }
+    /// <summary>R14 was written by the GSU: start a background ROM fetch.</summary>
+    private void StartRomBuffer() { romPending = MemCycle; sfr |= FR; }
+
+    /// <summary>R14 was written by the SNES (the GSU is stopped): fetch at once.</summary>
+    private void LoadRomBuffer() { romPending = 0; romBuffer = GsuRead((uint)rombr << 16 | r[14]); }
+
+    private byte RomBuffer() { SyncRom(); return romBuffer; }
 
     private void FlushCache() => Array.Clear(cacheValid);
 
@@ -265,14 +295,15 @@ public sealed class GSU_SFC : ISnesCoprocessor
             {
                 int dp = offset & 0x1F0;
                 uint sp = (uint)pbr << 16 | (uint)((cbr + dp) & 0xFFF0);
-                for (int n = 0; n < 16; n++) cache[dp + n] = GsuRead(sp + (uint)n);
-                clock += 16 * MemCycle;
+                for (int n = 0; n < 16; n++) { Tick(MemCycle); cache[dp + n] = GsuRead(sp + (uint)n); }
                 cacheValid[line] = true;
             }
-            else clock += Cycle;
+            else Tick(Cycle);
             return cache[offset];
         }
-        clock += MemCycle;
+        // Outside the cache the fetch shares the bus with the buffers.
+        if (pbr < 0x60) SyncRom(); else SyncRam();
+        Tick(MemCycle);
         return GsuRead((uint)pbr << 16 | addr);
     }
 
@@ -283,7 +314,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
     private void W(int n, int value)
     {
         r[n] = (ushort)value;
-        if (n == 14) LoadRomBuffer();
+        if (n == 14) StartRomBuffer();
         else if (n == 15) r15Modified = true;
     }
 
@@ -311,18 +342,24 @@ public sealed class GSU_SFC : ISnesCoprocessor
     public System.Collections.Generic.HashSet<int>? WatchPcs;
     public long WatchFrom;
     public int WatchRamFrom, WatchRamLength;
+    /// <summary>Debug: start logging only after the opcode at WatchArmPc has run WatchArmCount times.</summary>
+    public int WatchArmPc = -1, WatchArmCount = 1, WatchMax = 600;
+    private int watchArmHits;
+    private bool watchArmed;
     public readonly System.Collections.Generic.List<string> WatchLog = new();
 
     private void Step()
     {
         byte op = pipeline;
         if (Trace != null) Trace[tracePos++ % Trace.Length] = ((long)pbr << 16 | (ushort)(r[15] - 1)) << 8 | op | (long)sfr << 32;
-        if (WatchPcs != null && Instructions >= WatchFrom && WatchLog.Count < 600 && (WatchPcs.Contains(-1) || WatchPcs.Contains(pbr << 16 | (ushort)(r[15] - 1))))
+        if (WatchArmPc >= 0 && !watchArmed && (pbr << 16 | (ushort)(r[15] - 1)) == WatchArmPc && ++watchArmHits >= WatchArmCount) watchArmed = true;
+        if (WatchPcs != null && Instructions >= WatchFrom && (WatchArmPc < 0 || watchArmed) && WatchLog.Count < WatchMax
+            && (WatchPcs.Contains(-1) || WatchPcs.Contains(pbr << 16 | (ushort)(r[15] - 1))))
         {
             string ramText = "";
             if (WatchRamLength > 0)
                 ramText = " ram " + string.Join(" ", System.Linq.Enumerable.Range(WatchRamFrom, WatchRamLength).Select(a => ram[a & ramMask].ToString("X2")));
-            WatchLog.Add($"{pbr:X2}:{(ushort)(r[15] - 1):X4} #{Instructions} op={op:X2} cbr={cbr:X4} {DescribeRegs()} sfr=${sfr:X4}{ramText}");
+            WatchLog.Add($"{pbr:X2}:{(ushort)(r[15] - 1):X4} #{Instructions} op={op:X2} clk={clock} cbr={cbr:X4} {DescribeRegs()} sfr=${sfr:X4}{ramText}");
         }
         pipeline = FetchOpcode(r[15]);
         r15Modified = false;
@@ -350,6 +387,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
                 switch (n)
                 {
                     case 0x0:   // STOP
+                        SyncRam(); SyncRom();   // let buffered accesses land before the SNES looks
                         Stops++;
                         if ((cfgr & 0x80) == 0) { sfr |= FIRQ; setSnesIrq?.Invoke(true); }
                         sfr &= unchecked((ushort)~FG);
@@ -479,7 +517,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
                 int b = alt >= 2 ? n : r[n];
                 int v = (alt & 1) != 0 ? (byte)s * (byte)b : (sbyte)s * (sbyte)b;
                 W(dreg, v); SZ(v);
-                if ((cfgr & 0x20) == 0) clock += Cycle;
+                if ((cfgr & 0x20) == 0) Tick(Cycle);
                 ResetPrefix();
                 return;
             }
@@ -512,7 +550,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
                         if (alt == 1) W(4, prod);   // LMULT: low word to R4 (after the high word, as on hardware)
                         SetFlag(FCY, (prod & 0x8000) != 0);
                         SZ(v);
-                        clock += ((cfgr & 0x20) != 0 ? 3 : 7) * Cycle;
+                        Tick(((cfgr & 0x20) != 0 ? 3 : 7) * Cycle);
                         break;
                     }
                     default:                                                                     // JMP / LJMP R8-R13
@@ -556,9 +594,9 @@ public sealed class GSU_SFC : ISnesCoprocessor
                 return;
             case 0xD:
                 if (n < 15) { int v = r[n] + 1; W(n, v); SZ(v); }                 // INC
-                else if (alt == 2) rambr = (byte)(s & 1);                           // RAMB
-                else if (alt == 3) rombr = (byte)(s & 0x7F);                        // ROMB
-                else colr = Color(romBuffer);                                       // GETC
+                else if (alt == 2) { SyncRam(); rambr = (byte)(s & 1); }                           // RAMB
+                else if (alt == 3) { SyncRom(); rombr = (byte)(s & 0x7F); }                        // ROMB
+                else colr = Color(RomBuffer());                                       // GETC
                 ResetPrefix();
                 return;
             case 0xE:
@@ -567,10 +605,10 @@ public sealed class GSU_SFC : ISnesCoprocessor
                 {
                     int v = alt switch
                     {
-                        1 => romBuffer << 8 | (s & 0xFF),      // GETBH
-                        2 => (s & 0xFF00) | romBuffer,         // GETBL
-                        3 => (sbyte)romBuffer,                 // GETBS
-                        _ => romBuffer,                        // GETB
+                        1 => RomBuffer() << 8 | (s & 0xFF),      // GETBH
+                        2 => (s & 0xFF00) | RomBuffer(),         // GETBL
+                        3 => (sbyte)RomBuffer(),                 // GETBS
+                        _ => RomBuffer(),                      // GETB
                     };
                     W(dreg, v);
                 }
@@ -677,10 +715,10 @@ public sealed class GSU_SFC : ISnesCoprocessor
             int i = (addr + byteOff) & ramMask;
             if (c.BitPend != 0xFF)
             {
-                clock += MemCycle;
+                Tick(MemCycle);
                 data = (data & c.BitPend) | (ram[i] & ~c.BitPend);
             }
-            clock += MemCycle;
+            Tick(MemCycle);
             ram[i] = (byte)data;
         }
         c.BitPend = 0;
@@ -696,7 +734,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
         for (int plane = 0; plane < Bpp; plane++)
         {
             int byteOff = ((plane >> 1) << 4) + (plane & 1);
-            clock += MemCycle;
+            Tick(MemCycle);
             v |= ((ram[(addr + byteOff) & ramMask] >> slot) & 1) << plane;
         }
         return v;

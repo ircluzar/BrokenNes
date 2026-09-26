@@ -115,7 +115,15 @@ internal static class SnesRunCli
             {
                 var at = gsuWatch.Split('@');
                 gsuWatched.WatchPcs = at[0].Split(',').Select(p => p == "all" ? -1 : Convert.ToInt32(p, 16)).ToHashSet();
-                if (at.Length > 1) gsuWatched.WatchFrom = long.Parse(at[1]);
+                // "all@arm:018D14:7" = log everything from the 7th execution of 01:8D14; "all@123456" = from instruction #.
+                if (at.Length > 1 && at[1].StartsWith("arm:"))
+                {
+                    var arm = at[1].Split(':');
+                    gsuWatched.WatchArmPc = Convert.ToInt32(arm[1], 16);
+                    gsuWatched.WatchArmCount = arm.Length > 2 ? int.Parse(arm[2]) : 1;
+                }
+                else if (at.Length > 1) gsuWatched.WatchFrom = long.Parse(at[1]);
+                if (Environment.GetEnvironmentVariable("GSU_MAX") is { Length: > 0 } gmax) gsuWatched.WatchMax = int.Parse(gmax);
                 if (Environment.GetEnvironmentVariable("GSU_RAM") is { Length: > 0 } ramFrom)
                 {
                     gsuWatched.WatchRamFrom = Convert.ToInt32(ramFrom, 16);
