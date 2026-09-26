@@ -34,7 +34,7 @@ internal static class SnesRunCli
         int layerMask = 0x1F;
         int chipTrace = 0;
         string? dumpWram = null, gsuDis = null;
-        string? gsuWatch = null;
+        string? gsuWatch = null, regLog = null;
         bool lineRegs = false;
         var pngAt = new HashSet<int>();
         try
@@ -55,7 +55,9 @@ internal static class SnesRunCli
                     case "--layers": layerMask = Convert.ToInt32(args[++i], 16); break;          // hex: 1/2/4/8 = BG1-4, 10 = OBJ
                     case "--line-regs": lineRegs = true; break;                                     // per-line PPU registers, last frame
                     case "--chip-trace": chipTrace = int.Parse(args[++i]); break;                        // last N Super FX instructions
-                    case "--gsu-dis": gsuDis = args[++i]; break;                                       // hexaddr:count
+                    case "--no-dram-refresh": BOARD_SFC.DramRefresh = false; break;                    // A/B timing
+                    case "--reg-log": regLog = args[++i]; break;                                       // hexaddrs:file - timing fingerprint
+                    case "--gsu-dis": gsuDis = args[++i]; break;                                      // hexaddr:count
                     case "--gsu-watch": gsuWatch = args[++i]; break;                                   // pbr:pc hex list[@fromInstruction]
                     case "--dump-wram": dumpWram = args[++i]; break;                                  // hexaddr:len, e.g. 4F30:32
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
@@ -91,6 +93,20 @@ internal static class SnesRunCli
             var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice), chip);
             if (keepDisplayVramWrites) board.Ppu.DropVramWritesDuringDisplay = false;
             if (chipTrace > 0 && chip is GSU_SFC gsuTrace) gsuTrace.Trace = new long[chipTrace];
+            // --reg-log 2100,4200:out.txt -> "vblankCount scanline lineClock addr value" per write,
+            // the same columns mesen\regwrites.lua writes, for timing comparisons.
+            System.IO.StreamWriter? regLogWriter = null;
+            if (regLog != null)
+            {
+                int colon = regLog.IndexOf(':');   // addresses first; the path may contain a drive colon
+                var watched = regLog[..colon].Split(',').Select(a => Convert.ToUInt32(a, 16)).ToHashSet();
+                regLogWriter = new System.IO.StreamWriter(regLog[(colon + 1)..]);
+                board.WriteWatch = (bank, offset, value) =>
+                {
+                    if ((bank & 0x40) == 0 && watched.Contains(offset))
+                        regLogWriter.WriteLine($"{board.VBlankCount} {board.Scanline} {board.LineClock} {offset:X4} {value:X2}");
+                };
+            }
             if (gsuWatch != null && chip is GSU_SFC gsuWatched)
             {
                 var at = gsuWatch.Split('@');
@@ -141,6 +157,7 @@ internal static class SnesRunCli
                 if (board.Cpu.Stopped) { Console.WriteLine($"CPU stopped (STP) at frame {frame}"); exit = 4; break; }
             }
 
+            regLogWriter?.Dispose();
             if (sramPath != null && cart.Sram.Length > 0) File.WriteAllBytes(sramPath, cart.Sram);
             var c = board.Cpu;
             var sb = new StringBuilder();

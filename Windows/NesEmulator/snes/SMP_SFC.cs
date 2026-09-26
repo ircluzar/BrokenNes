@@ -6,7 +6,7 @@ namespace NesEmulator.Snes;
 /// Sony SPC700 (the S-SMP inside the SNES audio unit) - SFC family.
 ///
 /// Instruction-level core: each <see cref="Step"/> runs one instruction and returns its cycle
-/// count at 1.024 MHz (table below; +2 for every taken branch). Memory and the $F0-$FF I/O block
+/// count at 1.024 MHz (table below; branches give 2 back when not taken). Memory and the $F0-$FF I/O block
 /// belong to <see cref="APU_SFC"/>.
 ///
 /// Spec verifier: Windows/Resources/snes-test-roms/spctest (Workshop --snestest --apu SFC).
@@ -24,7 +24,7 @@ public sealed class SMP_SFC
 
     private const byte FN = 0x80, FV = 0x40, FP = 0x20, FB = 0x10, FH = 0x08, FI = 0x04, FZ = 0x02, FC = 0x01;
 
-    // Base cycle counts per opcode; taken branches add 2. Copied verbatim from snes9x's
+    // Cycle counts per opcode (branches: the taken cost; see Branch). Copied verbatim from snes9x's
     // apu/bapu/smp/core.cpp (bsnes-derived); see THIRD_PARTY_NOTICES.md. DIV, ADDW/SUBW and DAA/DAS
     // below follow bsnes's approach from memory.
     private static readonly byte[] Cycles =
@@ -84,12 +84,14 @@ public sealed class SMP_SFC
     private bool Flag(byte f) => (PSW & f) != 0;
     private byte NZ(int v) { SetFlag(FZ, (v & 0xFF) == 0); SetFlag(FN, (v & 0x80) != 0); return (byte)v; }
 
+    // The table holds the TAKEN cost of every branch (BPL 4, BBS 7, CBNE 7, DBNZ 6, BRA 4), so a
+    // branch that falls through gives 2 back. (The first version added 2 on taken instead: every
+    // SPC branch ran 2 cycles long, and sound-program uploads ran ~16% slow against Mesen 2.)
     private void Branch(bool cond)
     {
         sbyte rel = (sbyte)Fetch();
-        if (!cond) return;
+        if (!cond) { extraCycles -= 2; return; }
         PC = (ushort)(PC + rel);
-        extraCycles += 2;
     }
 
     // =====================================================================================

@@ -89,6 +89,14 @@ public sealed class BOARD_SFC : ISnesBus
     public byte NmiTimen => nmitimen;
     public long NmiCount { get; private set; }
 
+    /// <summary>Frames completed, counted at vblank start (the same point Mesen's endFrame fires).</summary>
+    public long VBlankCount { get; private set; }
+
+    /// <summary>Debug: sees every CPU write that takes the decoding path (all I/O registers), before it lands.</summary>
+    public Action<uint, uint, byte>? WriteWatch;
+
+    public int LineClock => lineClock;
+
     /// <summary>Run until the next vblank start (one video frame).</summary>
     public void RunFrame()
     {
@@ -110,6 +118,13 @@ public sealed class BOARD_SFC : ISnesBus
     private const int HdmaClock = 276 * 4;
     private int vblankLine = VBlankLine;   // 225, or 240 with overscan; latched at frame start
     private int stall;                     // master clocks HDMA stole from the CPU, charged on the next tick
+
+    /// <summary>
+    /// DRAM refresh: the CPU is paused for 40 master clocks at H~538 on every scanline (~2.9% of its
+    /// time). Games that compute across frames or poll hardware drift without it.
+    /// </summary>
+    public static bool DramRefresh = true;
+    private const int RefreshClock = 538, RefreshClocks = 40;
 
     /// <summary>false = reference paths only (per-access event checks, bank/offset decoding).</summary>
     public static bool FastPaths = true;
@@ -134,6 +149,7 @@ public sealed class BOARD_SFC : ISnesBus
     private void UpdateNextEvent()
     {
         int next = lineClock < HdmaClock ? HdmaClock : ClocksPerLine;
+        if (DramRefresh && lineClock < RefreshClock) next = RefreshClock;
         int mode = nmitimen & 0x30;
         if (mode == 0x10 || (mode == 0x30 && Scanline == vtime))
         {
@@ -151,6 +167,7 @@ public sealed class BOARD_SFC : ISnesBus
         lineClock += clocks;
         int to = Math.Min(lineClock, ClocksPerLine);
         CheckHIrq(before, to);
+        if (DramRefresh && before < RefreshClock && RefreshClock <= to) stall += RefreshClocks;
         if (before < HdmaClock && HdmaClock <= to) RunHdmaLine();
         while (lineClock >= ClocksPerLine)
         {
@@ -158,6 +175,7 @@ public sealed class BOARD_SFC : ISnesBus
             NextLine();
             to = Math.Min(lineClock, ClocksPerLine);
             CheckHIrq(-1, to);
+            if (DramRefresh && RefreshClock <= to) stall += RefreshClocks;
             if (HdmaClock <= to) RunHdmaLine();
         }
     }
@@ -176,6 +194,7 @@ public sealed class BOARD_SFC : ISnesBus
             Ppu.OnVBlankStart();
             Apu.RunTo(MasterClock);   // keep audio flowing even when the game leaves the ports alone
             frameReady = true;
+            VBlankCount++;
         }
         else if (Scanline < vblankLine)
         {
@@ -259,6 +278,7 @@ public sealed class BOARD_SFC : ISnesBus
         uint bank = address >> 16, offset = address & 0xFFFF;
         Tick(AccessClocks(bank, offset));
         mdr = value;
+        WriteWatch?.Invoke(bank, offset, value);
         WriteNoTick(bank, offset, value);
     }
 

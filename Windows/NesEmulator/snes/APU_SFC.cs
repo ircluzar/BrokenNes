@@ -207,34 +207,40 @@ public sealed class APU_SFC : ISnesApu
     //  command:
     //  FFD5  BA F6     movw ya,$F6        ; destination address from ports 2/3 ...
     //  FFD7  DA 02     movw $02,ya        ; ... kept at $02/$03
-    //  FFD9  E4 F4     mov  a,$F4
-    //  FFDB  C4 F4     mov  $F4,a         ; acknowledge by echoing port 0
-    //  FFDD  F8 F5     mov  x,$F5         ; port 1: 0 = execute, else transfer
-    //  FFDF  D0 03     bne  transfer
-    //  FFE1  1F 02 00  jmp  [$0002+x]     ; x = 0: jump to the address
+    //  FFD9  FA F4 F4  mov  $F4,$F4       ; acknowledge by echoing port 0
+    //  FFDC  F8 F5     mov  x,$F5         ; port 1: 0 = execute, else transfer
+    //  FFDE  D0 03     bne  transfer
+    //  FFE0  1F 02 00  jmp  [$0002+x]     ; x = 0: jump to the address
     //  transfer:
-    //  FFE4  8D 00     mov  y,#$00
-    //  FFE6  7E F4     cmp  y,$F4         ; first byte is index 0
-    //  FFE8  D0 FC     bne  $FFE6
+    //  FFE3  8D 00     mov  y,#$00
+    //  FFE5  7E F4     cmp  y,$F4         ; first byte is index 0
+    //  FFE7  D0 FC     bne  $FFE5
     //  byte:
-    //  FFEA  E4 F5     mov  a,$F5         ; data (written by the CPU before the index)
-    //  FFEC  D7 02     mov  [$02]+y,a
-    //  FFEE  CB F4     mov  $F4,y         ; acknowledge the index
-    //  FFF0  FC        inc  y
-    //  FFF1  D0 02     bne  poll
-    //  FFF3  AB 03     inc  $03           ; next 256-byte page
+    //  FFE9  E4 F5     mov  a,$F5         ; data (written by the CPU before the index)
+    //  FFEB  CB F4     mov  $F4,y         ; acknowledge at once, so the CPU can send the next byte
+    //  FFED  D7 02     mov  [$02]+y,a
+    //  FFEF  FC        inc  y
+    //  FFF0  F0 08     beq  page          ; wrapped: next 256-byte page
     //  poll:
-    //  FFF5  7E F4     cmp  y,$F4
-    //  FFF7  F0 F1     beq  byte          ; next index arrived
-    //  FFF9  10 FA     bpl  poll          ; port 0 still behind: keep waiting
-    //  FFFB  2F D8     bra  command       ; jumped ahead by >= 2: new command
-    //  FFFD  00
+    //  FFF2  7E F4     cmp  y,$F4
+    //  FFF4  F0 F3     beq  byte          ; next index arrived
+    //  FFF6  10 FA     bpl  poll          ; port 0 still behind: keep waiting
+    //  FFF8  2F DB     bra  command       ; jumped ahead by >= 2: new command
+    //  page:
+    //  FFFA  AB 03     inc  $03
+    //  FFFC  2F F4     bra  poll
     //  FFFE  C0 FF     reset vector
+    //
+    //  Timing is part of the protocol: games pace their uploads on the acknowledgement, so the
+    //  steady-state byte loop (byte..beq byte) is 25 SPC cycles with the ack 7 cycles in, the
+    //  same as the console's loader. The first version stored before acknowledging (27 cycles,
+    //  ack 14 cycles in) and made every boot and song load ~24% slower than hardware (measured
+    //  against Mesen 2: SMW reached its first screen 11 frames late).
     private static readonly byte[] Ipl =
     {
         0x20, 0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5,
-        0x78, 0xCC, 0xF4, 0xD0, 0xFB, 0xBA, 0xF6, 0xDA, 0x02, 0xE4, 0xF4, 0xC4, 0xF4, 0xF8, 0xF5, 0xD0,
-        0x03, 0x1F, 0x02, 0x00, 0x8D, 0x00, 0x7E, 0xF4, 0xD0, 0xFC, 0xE4, 0xF5, 0xD7, 0x02, 0xCB, 0xF4,
-        0xFC, 0xD0, 0x02, 0xAB, 0x03, 0x7E, 0xF4, 0xF0, 0xF1, 0x10, 0xFA, 0x2F, 0xD8, 0x00, 0xC0, 0xFF,
+        0x78, 0xCC, 0xF4, 0xD0, 0xFB, 0xBA, 0xF6, 0xDA, 0x02, 0xFA, 0xF4, 0xF4, 0xF8, 0xF5, 0xD0, 0x03,
+        0x1F, 0x02, 0x00, 0x8D, 0x00, 0x7E, 0xF4, 0xD0, 0xFC, 0xE4, 0xF5, 0xCB, 0xF4, 0xD7, 0x02, 0xFC,
+        0xF0, 0x08, 0x7E, 0xF4, 0xF0, 0xF3, 0x10, 0xFA, 0x2F, 0xDB, 0xAB, 0x03, 0x2F, 0xF4, 0xC0, 0xFF,
     };
 }

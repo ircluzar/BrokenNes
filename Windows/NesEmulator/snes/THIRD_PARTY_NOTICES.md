@@ -45,7 +45,10 @@ the cputest README. Sources for these are public documentation (fullsnes, anomie
 - **The boot loader** (`APU_SFC.cs` `Ipl`) is not Nintendo's IPL ROM. It was written from the
   protocol. Its wait-for-index-0 loop and "cmp y,port / bpl" poll are forced by the protocol and
   resemble the original, which the author has seen. Layout, pointer location and command dispatch
-  are different.
+  are different. On 2026-09-27 its byte loop was reordered to acknowledge before storing, so the
+  steady-state loop costs 25 SPC cycles like the console's. Games pace uploads on that ack, and
+  timing against Mesen 2 required it. This brings the loop closer to the original's shape; the code
+  was still written from the protocol and the cycle target, not copied.
 - **No Mesen source** has been read. Mesen 2.1.1 has been used only as a black-box reference
   (Lua `--testRunner` logging Super FX registers at chosen addresses, compared event by event).
 - **Coprocessor firmware** (DSP-1/DSP-1B program ROMs, NEC/Nintendo copyright) is never bundled or
