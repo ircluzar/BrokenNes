@@ -45,6 +45,9 @@ public sealed class GbCartridge
         int ramSize = rom[0x149] switch { 1 => 0x800, 2 => 0x2000, 3 => 0x8000, 4 => 0x20000, 5 => 0x10000, _ => 0 };
         switch (TypeCode)
         {
+            case 0x00 when rom.Length > 0x8000:
+                // Unlicensed Wisdom Tree boards say "ROM only" but carry up to 1 MiB, switched 32 KiB at a time.
+                mapper = new WisdomTree(this); MapperName = "WISDOM TREE"; break;
             case 0x00: case 0x08: case 0x09: mapper = new RomOnly(this); MapperName = "ROM"; HasBattery = TypeCode == 0x09; break;
             case 0x01: case 0x02: case 0x03:
                 bool multi = Mbc1.LooksLikeMulticart(Rom);
@@ -108,6 +111,19 @@ public sealed class GbCartridge
         public override void WriteRom(ushort a, byte v) { }
         public override byte ReadRam(ushort a) => RamAt(0, a);
         public override void WriteRam(ushort a, byte v) => RamSet(0, a, v);
+    }
+
+    private sealed class WisdomTree : GbMapper
+    {
+        private int bank;
+        public WisdomTree(GbCartridge c) : base(c) { }
+        // A write to $0000-$3FFF selects the 32 KiB bank named by the low byte of the address.
+        public override byte ReadRom(ushort a) => Cart.Rom[((bank << 15) | (a & 0x7FFF)) & (Cart.Rom.Length - 1)];
+        public override void WriteRom(ushort a, byte v) { if (a < 0x4000) bank = a & 0xFF; }
+        public override byte ReadRam(ushort a) => 0xFF;
+        public override void WriteRam(ushort a, byte v) { }
+        public override void SaveState(BinaryWriter w) => w.Write(bank);
+        public override void LoadState(BinaryReader r) => bank = r.ReadInt32();
     }
 
     private sealed class Mbc1 : GbMapper
