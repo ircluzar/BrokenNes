@@ -255,7 +255,7 @@ public sealed class PPU_GB
         if (ly < Height && windowRendered) windowLine++;
         windowRendered = false;
         firstLine = false;
-        bgpWriteDot = obp0WriteDot = obp1WriteDot = -1;
+        bgpWriteDot = obp0WriteDot = obp1WriteDot = lcdcWriteDot = -1;
         ly++;
         lyReadsZero = false;
         if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
@@ -449,6 +449,7 @@ public sealed class PPU_GB
     private int pendHead, pendCount;
     private byte bgpOld, obp0Old, obp1Old;
     private int bgpWriteDot = -1, obp0WriteDot = -1, obp1WriteDot = -1;
+    private byte lcdcOld; private int lcdcWriteDot = -1;
 
     private void ResolveDue()
     {
@@ -566,8 +567,10 @@ public sealed class PPU_GB
         }
         else
         {
-            if ((Lcdc & 0x01) == 0) bc = 0;
-            bool objWins = oc != 0 && (Lcdc & 0x02) != 0 && ((oa & 0x80) == 0 || bc == 0);
+            // The enable bits are sampled a dot before the colour lookup.
+            byte lcdc = dot == lcdcWriteDot ? lcdcOld : Lcdc;
+            if ((lcdc & 0x01) == 0) bc = 0;
+            bool objWins = oc != 0 && (lcdc & 0x02) != 0 && ((oa & 0x80) == 0 || bc == 0);
             if (objWins)
             {
                 byte pal = (oa & 0x10) != 0
@@ -646,6 +649,7 @@ public sealed class PPU_GB
             case 0x40:
             {
                 bool wasOn = LcdOn;
+                lcdcOld = Lcdc; lcdcWriteDot = dot;
                 Lcdc = v;
                 if (wasOn && !LcdOn)
                 {
