@@ -188,7 +188,6 @@ public sealed class PPU_GB
             case PhPreLine:
             {
                 int next = ly == 153 ? 0 : ly + 1;
-                if (next != 0) lyCmpIrq = -1;
                 if (next <= Height && next != 0)
                 {
                     // The OAM-scan source rises for the next visible line (and also, as a quirk, for line 144).
