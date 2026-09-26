@@ -307,6 +307,7 @@ public sealed class PPU_GB
     private int fetchX;               // background tile column counter
     private bool fetchWindow, windowActive;
     private int winFetchX;
+    private static readonly int WinHead = int.Parse(Environment.GetEnvironmentVariable("GB_WH") ?? "1");
     private int winSkip;              // window pixels left of the screen edge (WX < 7), dropped at the first push
     private byte tileIdx, tileAttr, tileLo, tileHi;
     // Background FIFO: it only ever holds one tile's pixels (a tile is pushed when it is empty).
@@ -421,6 +422,7 @@ public sealed class PPU_GB
         if (!windowActive && (Lcdc & 0x20) != 0 && windowYTriggered && lcdX + 7 == Wx)
         {
             StartWindow();
+            fetchDots = WinHead;
             return;
         }
 
