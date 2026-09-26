@@ -46,6 +46,7 @@ internal static class SnesBenchCli
         // Settled experiments are removed once decided; add new toggles here while measuring.
         ["fast-paths"] = SetFastPaths,   // every optimized path vs its reference twin
         ["bus"] = on => BOARD_SFC.FastPaths = on,   // page table + event-driven clock only
+        ["direct-bus"] = on => CPU_SFC.DirectBus = on,   // CPU calls BOARD_SFC directly vs via ISnesBus
     };
 
     /// <summary>All cores' optimized-vs-reference switches together.</summary>

@@ -30,6 +30,12 @@ public sealed class CPU_SFC
     public string Category => "Accuracy";
 
     private readonly ISnesBus bus;
+    // The same object as `bus` when it is the SNES board: calls through it are direct (no interface
+    // dispatch), which matters most under WASM where there is no guarded devirtualization.
+    private readonly BOARD_SFC? board;
+
+    /// <summary>Read at construction: false keeps every access on the ISnesBus interface (reference/A-B).</summary>
+    public static bool DirectBus = true;
 
     // ---- Registers (public so tracers, probes and save states can see them directly) ----
     public ushort A, X, Y, S, D, PC;
@@ -52,7 +58,7 @@ public sealed class CPU_SFC
     private uint ea;
     private bool eaWrap;
 
-    public CPU_SFC(ISnesBus bus) { this.bus = bus; }
+    public CPU_SFC(ISnesBus bus) { this.bus = bus; board = DirectBus ? bus as BOARD_SFC : null; }
 
     // =====================================================================================
     //  Control
@@ -121,9 +127,9 @@ public sealed class CPU_SFC
     //  Bus helpers
     // =====================================================================================
 
-    private byte Rd(uint a) => bus.Read(a & 0xFFFFFF);
-    private void Wr(uint a, byte v) => bus.Write(a & 0xFFFFFF, v);
-    private void Io() => bus.Idle();
+    private byte Rd(uint a) => board != null ? board.Read(a & 0xFFFFFF) : bus.Read(a & 0xFFFFFF);
+    private void Wr(uint a, byte v) { if (board != null) board.Write(a & 0xFFFFFF, v); else bus.Write(a & 0xFFFFFF, v); }
+    private void Io() { if (board != null) board.Idle(); else bus.Idle(); }
 
     private byte Fetch() { byte v = Rd((uint)PBR << 16 | PC); PC++; return v; }
     private ushort Fetch16() { uint lo = Fetch(); return (ushort)(lo | (uint)Fetch() << 8); }

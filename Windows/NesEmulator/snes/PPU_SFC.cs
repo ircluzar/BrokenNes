@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace NesEmulator.Snes;
 
@@ -726,14 +728,21 @@ public sealed class PPU_SFC
         int paletteBase = mode == 0 ? bg * 32 : 0;
         int palShift = bpp;
         bool direct = bpp == 8 && (cgwsel & 0x01) != 0;
-        var win = window[bg];
         bool winMain = onMain && (tmw & (1 << bg)) != 0, winSub = onSub && (tsw & (1 << bg)) != 0;
-        // Locals, not fields: stores into these arrays would otherwise force the JIT to reload the
-        // field references on every iteration.
-        var vram = Vram; var cgram = Cgram;
-        var rankM = rankMain; var colorM = colorMain; var layerM = layerMain;
-        var rankS = rankSub; var colorS = colorSub; var layerS = layerSub;
-        var expandN = PlaneExpand; var expandF = PlaneExpandFlipped;
+        // Bounds-check-free base refs. Every index below is provably in range: VRAM indices are
+        // masked with 0x7FFF (32K words), palette indices with 0xFF (256 entries), expansion-table
+        // indices are bytes, and pixel x < 256 on arrays of 256 (window) or 512 (screens).
+        ref ushort vram = ref MemoryMarshal.GetArrayDataReference(Vram);
+        ref ushort cgram = ref MemoryMarshal.GetArrayDataReference(Cgram);
+        ref bool win = ref MemoryMarshal.GetArrayDataReference(window[bg]);
+        ref byte rankM = ref MemoryMarshal.GetArrayDataReference(rankMain);
+        ref ushort colorM = ref MemoryMarshal.GetArrayDataReference(colorMain);
+        ref byte layerM = ref MemoryMarshal.GetArrayDataReference(layerMain);
+        ref byte rankS = ref MemoryMarshal.GetArrayDataReference(rankSub);
+        ref ushort colorS = ref MemoryMarshal.GetArrayDataReference(colorSub);
+        ref byte layerS = ref MemoryMarshal.GetArrayDataReference(layerSub);
+        ref ulong expandN = ref MemoryMarshal.GetArrayDataReference(PlaneExpand);
+        ref ulong expandF = ref MemoryMarshal.GetArrayDataReference(PlaneExpandFlipped);
 
         int hs = hofs[bg];
         int by = (line + vofs[bg]) & mapHMask;
@@ -754,17 +763,18 @@ public sealed class PPU_SFC
             int addr = charBase + tile * wordsPerTile + (py & 7);
 
             // All 8 pixels of the row at once: byte lane i of `pixels` = color index of pixel i.
-            var expand = hflip ? expandF : expandN;
-            int p0 = vram[addr & 0x7FFF];
-            ulong pixels = expand[p0 & 0xFF] | expand[p0 >> 8] << 1;
+            ref ulong expand = ref hflip ? ref expandF : ref expandN;
+            int p0 = Unsafe.Add(ref vram, addr & 0x7FFF);
+            ulong pixels = Unsafe.Add(ref expand, p0 & 0xFF) | Unsafe.Add(ref expand, p0 >> 8) << 1;
             if (bpp >= 4)
             {
-                int p1 = vram[(addr + 8) & 0x7FFF];
-                pixels |= expand[p1 & 0xFF] << 2 | expand[p1 >> 8] << 3;
+                int p1 = Unsafe.Add(ref vram, (addr + 8) & 0x7FFF);
+                pixels |= Unsafe.Add(ref expand, p1 & 0xFF) << 2 | Unsafe.Add(ref expand, p1 >> 8) << 3;
                 if (bpp == 8)
                 {
-                    int p2 = vram[(addr + 16) & 0x7FFF], p3 = vram[(addr + 24) & 0x7FFF];
-                    pixels |= expand[p2 & 0xFF] << 4 | expand[p2 >> 8] << 5 | expand[p3 & 0xFF] << 6 | expand[p3 >> 8] << 7;
+                    int p2 = Unsafe.Add(ref vram, (addr + 16) & 0x7FFF), p3 = Unsafe.Add(ref vram, (addr + 24) & 0x7FFF);
+                    pixels |= Unsafe.Add(ref expand, p2 & 0xFF) << 4 | Unsafe.Add(ref expand, p2 >> 8) << 5
+                            | Unsafe.Add(ref expand, p3 & 0xFF) << 6 | Unsafe.Add(ref expand, p3 >> 8) << 7;
                 }
             }
 
@@ -779,9 +789,15 @@ public sealed class PPU_SFC
                 int c = (int)(pixels >> ((start + k) << 3)) & 0xFF;
                 if (c == 0) continue;
                 int x = sx + k;
-                ushort v = direct ? DirectColor(c, pal) : cgram[(palOffset + c) & 0xFF];
-                if (onMain && r < rankM[x] && !(winMain && win[x])) { rankM[x] = r; colorM[x] = v; layerM[x] = (byte)bg; }
-                if (onSub && r < rankS[x] && !(winSub && win[x])) { rankS[x] = r; colorS[x] = v; layerS[x] = (byte)bg; }
+                ushort v = direct ? DirectColor(c, pal) : Unsafe.Add(ref cgram, (palOffset + c) & 0xFF);
+                if (onMain && r < Unsafe.Add(ref rankM, x) && !(winMain && Unsafe.Add(ref win, x)))
+                {
+                    Unsafe.Add(ref rankM, x) = r; Unsafe.Add(ref colorM, x) = v; Unsafe.Add(ref layerM, x) = (byte)bg;
+                }
+                if (onSub && r < Unsafe.Add(ref rankS, x) && !(winSub && Unsafe.Add(ref win, x)))
+                {
+                    Unsafe.Add(ref rankS, x) = r; Unsafe.Add(ref colorS, x) = v; Unsafe.Add(ref layerS, x) = (byte)bg;
+                }
             }
             sx += count;
         }
