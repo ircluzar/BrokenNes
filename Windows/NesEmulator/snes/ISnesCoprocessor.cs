@@ -19,6 +19,9 @@ public interface ISnesCoprocessor
     /// </summary>
     void Attach(Action<bool> setIrq, Action remapPages) { }
 
+    /// <summary>Called once by the board: the SNES CPU's current bus address, for bus-conflict timing (SA-1).</summary>
+    void AttachBusProbe(Func<uint> snesBusAddress) { }
+
     /// <summary>True when this chip answers at bank:offset (read or write).</summary>
     bool Owns(uint bank, uint offset);
 

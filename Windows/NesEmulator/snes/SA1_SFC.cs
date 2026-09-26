@@ -207,6 +207,20 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
 
     public void Idle() => clock += 2;
 
+    // Bus conflicts: when the SNES CPU is on the same bus (ROM, BW-RAM or I-RAM) the SA-1 waits.
+    // The SNES address is sampled when the SA-1 catches up, so this is statistical, not cycle-exact.
+    public static bool BusConflicts = true;
+    private Func<uint>? snesBus;
+    public void AttachBusProbe(Func<uint> snesBusAddress) => snesBus = snesBusAddress;
+
+    private static bool SnesOnRom(uint a) => (a & 0x408000) == 0x008000 || (a & 0xC00000) == 0xC00000;
+    private static bool SnesOnBwram(uint a) => (a & 0x40E000) == 0x006000 || (a & 0xF00000) == 0x400000;
+    private static bool SnesOnIram(uint a) => (a & 0x40F800) == 0x003000;
+
+    private void RomAccess() { clock += 2; if (BusConflicts && snesBus != null && SnesOnRom(snesBus())) clock += 2; }
+    private void BwAccess() { clock += 4; if (BusConflicts && snesBus != null && SnesOnBwram(snesBus())) clock += 4; }
+    private void IramAccess() { clock += 2; if (BusConflicts && snesBus != null && SnesOnIram(snesBus())) clock += 4; }
+
     byte ISnesBus.Read(uint address)
     {
         uint bank = address >> 16, offset = address & 0xFFFF;
@@ -214,7 +228,7 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
         {
             if (offset >= 0x8000)
             {
-                clock += 2;
+                RomAccess();
                 if (bank == 0 && offset >= 0xFFE0)
                 {
                     switch (offset)
@@ -229,20 +243,20 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
                 }
                 return mdr = rom[RomIndex(bank, offset)];
             }
-            if (offset < 0x0800 || (offset >= 0x3000 && offset < 0x3800)) { clock += 2; return mdr = iram[offset & 0x7FF]; }
+            if (offset < 0x0800 || (offset >= 0x3000 && offset < 0x3800)) { IramAccess(); return mdr = iram[offset & 0x7FF]; }
             if (offset >= 0x2200 && offset < 0x2400) { clock += 2; return mdr = ReadIo(offset); }
             if (offset >= 0x6000)
             {
-                clock += 4;
+                BwAccess();
                 uint w = (uint)(bmap & 0x7F) * 0x2000 + (offset & 0x1FFF);
                 return mdr = (bmap & 0x80) != 0 ? BitmapRead(w) : bwram[Bw(w)];
             }
             clock += 2;
             return mdr;
         }
-        if (bank >= 0xC0) { clock += 2; return mdr = rom[RomIndex(bank, offset)]; }
-        if ((bank & 0xF0) == 0x40) { clock += 4; return mdr = bwram[Bw((bank & 0x0F) << 16 | offset)]; }
-        if ((bank & 0xF0) == 0x60) { clock += 4; return mdr = BitmapRead((bank & 0x0F) << 16 | offset); }
+        if (bank >= 0xC0) { RomAccess(); return mdr = rom[RomIndex(bank, offset)]; }
+        if ((bank & 0xF0) == 0x40) { BwAccess(); return mdr = bwram[Bw((bank & 0x0F) << 16 | offset)]; }
+        if ((bank & 0xF0) == 0x60) { BwAccess(); return mdr = BitmapRead((bank & 0x0F) << 16 | offset); }
         clock += 2;
         return mdr;
     }
@@ -253,17 +267,17 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
         uint bank = address >> 16, offset = address & 0xFFFF;
         if ((bank & 0x40) == 0)
         {
-            if (offset >= 0x8000) { clock += 2; return; }
+            if (offset >= 0x8000) { RomAccess(); return; }
             if (offset < 0x0800 || (offset >= 0x3000 && offset < 0x3800))
             {
-                clock += 2;
+                IramAccess();
                 if ((ciwp >> (int)((offset >> 8) & 7) & 1) != 0) iram[offset & 0x7FF] = value;
                 return;
             }
             if (offset >= 0x2200 && offset < 0x2400) { clock += 2; WriteIo(offset, value); return; }
             if (offset >= 0x6000)
             {
-                clock += 4;
+                BwAccess();
                 uint w = (uint)(bmap & 0x7F) * 0x2000 + (offset & 0x1FFF);
                 if ((bmap & 0x80) != 0) BitmapWrite(w, value);
                 else if (BwWritable(w, cbwe)) bwram[Bw(w)] = value;
@@ -272,8 +286,8 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
             clock += 2;
             return;
         }
-        if ((bank & 0xF0) == 0x40) { clock += 4; uint a = (bank & 0x0F) << 16 | offset; if (BwWritable(a, cbwe)) bwram[Bw(a)] = value; return; }
-        if ((bank & 0xF0) == 0x60) { clock += 4; BitmapWrite((bank & 0x0F) << 16 | offset, value); return; }
+        if ((bank & 0xF0) == 0x40) { BwAccess(); uint a = (bank & 0x0F) << 16 | offset; if (BwWritable(a, cbwe)) bwram[Bw(a)] = value; return; }
+        if ((bank & 0xF0) == 0x60) { BwAccess(); BitmapWrite((bank & 0x0F) << 16 | offset, value); return; }
         clock += 2;
     }
 

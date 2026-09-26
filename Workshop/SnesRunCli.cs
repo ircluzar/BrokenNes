@@ -59,6 +59,7 @@ internal static class SnesRunCli
                     case "--chip-trace": chipTrace = int.Parse(args[++i]); break;                        // last N Super FX instructions
                     case "--no-dram-refresh": BOARD_SFC.DramRefresh = false; break;                    // A/B timing
                     case "--spc-start-aligned": APU_SFC.EndAligned = false; break;                     // A/B timing
+                    case "--no-sa1-conflicts": SA1_SFC.BusConflicts = false; break;                    // A/B timing
                     case "--spc-hot": spcHot = true; break;                                            // SPC700 PC histogram, last 30 frames
                     case "--reg-log": regLog = args[++i]; break;                                      // hexaddrs:file - timing fingerprint
                     case "--gsu-dis": gsuDis = args[++i]; break;                                      // hexaddr:count

@@ -67,6 +67,7 @@ public sealed class BOARD_SFC : ISnesBus
         Ppu = new PPU_SFC { CounterSource = () => (lineClock >> 2, Scanline) };
         Cpu = new CPU_SFC(this);
         Coprocessor?.Attach(level => { chipIrq = level; Cpu.SetIrq(irqFlag || chipIrq); }, BuildPageTable);
+        Coprocessor?.AttachBusProbe(() => busAddress);
         for (int i = 0; i < 0x80; i++) dmaRegs[i] = 0xFF;
         Reset();
     }
@@ -241,8 +242,12 @@ public sealed class BOARD_SFC : ISnesBus
 
     public void Idle() => Tick(6);
 
+    // The SNES CPU's current bus address, for the SA-1's bus-conflict timing.
+    private uint busAddress;
+
     public byte Read(uint address)
     {
+        busAddress = address;
         if (FastPaths)
         {
             ref Page page = ref pages[address >> 12];
@@ -262,6 +267,7 @@ public sealed class BOARD_SFC : ISnesBus
 
     public void Write(uint address, byte value)
     {
+        busAddress = address;
         if (FastPaths)
         {
             ref Page page = ref pages[address >> 12];
