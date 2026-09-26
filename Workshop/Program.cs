@@ -49,6 +49,10 @@ internal static class Program
         {
             return SnesTestCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--snesrun", StringComparison.OrdinalIgnoreCase))
+        {
+            return SnesRunCli.Run(args);
+        }
         if (args.Length > 0 && args[0].Equals("--trace", StringComparison.OrdinalIgnoreCase))
         {
             return TraceCli.Run(args);

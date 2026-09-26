@@ -204,7 +204,7 @@ internal static class SnesTestCli
         return sb.ToString().TrimEnd();
     }
 
-    private static void SavePng(PPU_SFC ppu, string path)
+    internal static void SavePng(PPU_SFC ppu, string path)
     {
         using var bmp = new Bitmap(PPU_SFC.Width, PPU_SFC.Height, PixelFormat.Format32bppArgb);
         var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.WriteOnly, bmp.PixelFormat);

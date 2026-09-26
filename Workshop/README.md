@@ -21,6 +21,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
 | `--snestest` | SFC (SNES) core-family spec verifier: runs gilyon/snes-tests and lists every failing test with its inputs and expected output | a `.sfc` from `Windows/Resources/snes-test-roms` | **Yes** |
+| `--snesrun` | SFC "how far does this game get?" probe: N frames, scripted input, PNGs at chosen frames, hottest PCs (hang loops), sound-CPU upload state | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |
 | `--corrupt` | The VRUN corruption oracle: late-PPU-write / CHR-scatter / nametable-floor checks, with fault injection to prove each one fires | VRUN `game.nes` (VRUN-specific) | **Yes** |
 | `--headless` | One-shot run → SHA-256 frame hash, CPU regs, optional PNG | any `.nes` | **Yes** |
@@ -185,6 +186,16 @@ failures | 2 usage/IO | 3 timed out | 4 aborted (invalid test order / CPU hit ST
 Status 2026-09-25: cputest-basic 1107/1107 and cputest-full 1610/1610. The verifier has been
 proven able to fail: a deliberately broken `(d,X)` emulation-mode wrap produced 22 annotated
 failures. `spctest.sfc` needs APU_SFC (not written yet).
+
+```
+BrokenNes.Workshop.exe --snesrun --rom game.sfc [--frames N] [--png-at 300,900] [--out-dir dir] \
+    [--input "500:Start,508:,700:A,708:"]
+```
+The game-level probe. Ends with the top PCs over the last 30 frames (a hang shows up as two or
+three addresses) and the HLE sound-CPU state: bytes uploaded and the driver's entry point.
+2026-09-25, Super Mario World: title → file select → Yoshi's House → walks out onto the overworld.
+Missing so far: sprites, priorities, color math and windows. Its sound handshake relies on one
+heuristic in BOARD_SFC (`$FF` on port 1 = driver returns to the IPL) until a real SPC700 exists.
 
 ## Run (`--trace` — the cross-emulator differential tracer)
 
