@@ -148,7 +148,7 @@
         "createdAt": "2025-09-01T03:23:54.8900000Z",
         "status": "Works",
         "commonName": "",
-        "note": "FIX cores: CPU state identical to Mesen; all precise-timing samples exact. A few frames differ by 8 px on the status-bar row (open)"
+        "note": "FIX cores: frame-exact against Mesen in both timing modes (sprite-0 hit poll now caught on the right read)"
       },
       {
         "id": "nes_36842491bb513c80beb9f2fb2aa30edaa1121ca4",
