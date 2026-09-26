@@ -68,16 +68,25 @@ public class Bus : IBus
 		// budget correct (the CPU no longer gets free work during every DMA) without being able to
 		// place the stolen cycle exactly; tests that check which specific cycle a DMA steals still
 		// need genuine mid-instruction interleaving.
-		public void AddDmcDmaStallCycles()
+		public void AddDmcDmaStallCycles(int cycles = 4)
 		{
 			// Inside a precise window the DMC's stall is applied on the spot by PreciseTick, so it
 			// goes to its own counter. Critically this keeps it separate from OAM DMA's 513-cycle
 			// stall, which shares PendingCpuStallCycles but must keep landing exactly where it
 			// always has (see CpuFastOamDmaStall) - letting PreciseTick swallow that one instead
 			// measurably breaks NMI timing.
-			if (preciseWindow) PendingDmcStallCycles += 4; else PendingCpuStallCycles += 4;
+			if (preciseWindow) PendingDmcStallCycles += cycles; else PendingCpuStallCycles += cycles;
 		}
 		private int PendingDmcStallCycles;
+		// A DMC sample fetch requested under PPU_FIX's precise stepping: serviced at the CPU's next READ,
+		// as on hardware - see PreciseTick.
+		private bool dmcDmaPending;
+		private ushort preciseReadAddress; // the address of the read PreciseTick is stepping for
+		/// <summary>A requested DMC fetch not yet serviced - savestated, as it can span a frame boundary.</summary>
+		public bool DmcDmaPending { get => dmcDmaPending; set => dmcDmaPending = value; }
+		/// <summary>APU_FIX's DMC asks for its sample byte. Under precise stepping the CPU is halted at its next
+		/// read cycle (see PreciseTick); otherwise the flat 4-cycle stall is added as before.</summary>
+		public void RequestDmcDma() { if (PreciseSteppingActive) dmcDmaPending = true; else AddDmcDmaStallCycles(); }
 
 		// === Precise-DMA window ===
 		// The batched CPU->PPU/APU model above runs a whole instruction (in fact up to ~24 cycles
@@ -141,6 +150,8 @@ public class Bus : IBus
 		/// Closes the window. accessCycles = CPU cycles advanced by bus accesses (one per access);
 		/// stallCycles = extra cycles PPU/APU advanced while the CPU sat halted for a DMA.
 		/// </summary>
+		/// <summary>DMA cycles the CPU has spent halted so far in the running precise instruction (0 outside precise stepping).</summary>
+		public int InstructionStallCycles => preciseWindow ? preciseStallCycles : 0;
 		public (int accessCycles, int stallCycles) EndPreciseWindow()
 		{
 			preciseWindow = false;
@@ -176,10 +187,88 @@ public class Bus : IBus
 		/// <summary>Dots already run ahead for the next access (a write landing past its cycle leaves this negative
 		/// across an instruction boundary) - part of the machine's timing, so savestated.</summary>
 		public int PreciseCarryDots { get => preciseCarryDots; set => preciseCarryDots = value; }
+		// Halt, dummy, then the sample read on the next get cycle: 3 cycles when that is the one right
+		// after the dummy, 4 when an alignment cycle is needed.
+		private int DmcDmaLength(long haltCycle) => ((haltCycle + 2 + OamDmaParityOffset) & 1) == 0 ? 3 : 4;
+		/// <summary>The cycles a precise instruction spent that CPU_FIX made no bus access for - dummy reads it
+		/// doesn't model (PLA's, RTS's, an implied op's second fetch) - run one at a time after its window closes,
+		/// as the reads they are: a DMC DMA pending at one halts the CPU there, as it would on the dummy read.
+		/// Flushing them as one lump let a fetch requested during them wait for the next instruction's opcode
+		/// fetch - a cycle late, with the other stall length. Returns cycles run: cycles plus any DMA stall.</summary>
+		/// <remarks>Not when the instruction's last access was a write (PHA, STA abs,X, RMW...): its unmodelled cycles
+		/// came BEFORE that write on hardware, and a write ends the instruction, so the halt waits for the next opcode fetch.</remarks>
+		public int RunInstructionTail(int cycles)
+		{
+			long c = instructionStartCycle + preciseAccessCycles + preciseStallCycles; int run = 0;
+			for (int i = 0; i < cycles; i++)
+			{
+				if (dmcDmaPending && !lastPreciseAccessWrite)
+				{
+					dmcDmaPending = false;
+					int dma = DmcDmaLength(c);
+					for (int k = 0; k < dma; k++) TickHaltedCycle();
+					c += dma; run += dma;
+				}
+				TickHaltedCycle(); c++; run++;
+			}
+			return run;
+		}
+		private bool oamDmaPending; private long oamDmaWriteCycle; private bool lastPreciseAccessWrite;
+		// One DMA cycle with the CPU halted: the PPU/APU advance a cycle (settling any dots a write borrowed).
+		private void TickHaltedCycle() { int dots = 3 + preciseCarryDots; preciseCarryDots = 0; if (dots > 0) ppu!.Step(dots); else preciseCarryDots = dots; StepAPU(1); }
+		/// <summary>Runs an OAM DMA started by the instruction that just finished, cycle by cycle, following
+		/// Mesen 2.1.1's DMA loop: a halt cycle, then 256 get/put read-write pairs, aligned to get cycles. A DMC
+		/// fetch requested meanwhile uses the DMA's cycles as its own halt and dummy cycles and then takes a get
+		/// cycle from it (usually costing 2 cycles, not a separate 3-4 cycle stall) - one landing inside Kirby's
+		/// per-frame sprite DMA was stalled again after it, putting the rest of the frame a cycle off Mesen's.
+		/// Returns the cycles run. The sprite copy itself already happened at the $4014 write.</summary>
+		public int RunPendingOamDma()
+		{
+			if (!oamDmaPending) return 0;
+			oamDmaPending = false;
+			long c = oamDmaWriteCycle + 1;
+			bool dmcRunning = dmcDmaPending, needHalt = false, needDummy = dmcDmaPending; dmcDmaPending = false;
+			TickHaltedCycle(); c++; int cycles = 1; // halt (also the DMC's, if one was already waiting)
+			if (dmcDmaPending) { dmcDmaPending = false; dmcRunning = true; needHalt = true; needDummy = true; }
+			int spriteCounter = 0; bool spriteActive = true;
+			while (dmcRunning || spriteActive)
+			{
+				bool get = ((c + OamDmaParityOffset) & 1) == 0, dmcRead = false;
+				if (get) { if (dmcRunning && !needHalt && !needDummy) dmcRead = true; else if (spriteActive) spriteCounter++; }
+				else if (spriteActive && (spriteCounter & 1) == 1) { if (++spriteCounter == 512) spriteActive = false; }
+				if (needHalt) needHalt = false; else if (needDummy) needDummy = false;
+				TickHaltedCycle(); c++; cycles++;
+				if (dmcRead) dmcRunning = false;
+				if (dmcDmaPending) { dmcDmaPending = false; dmcRunning = true; needHalt = true; needDummy = true; }
+			}
+			return cycles;
+		}
 		private void PreciseTick(bool isWrite)
 		{
 			if (insidePreciseTick) return;
 			insidePreciseTick = true;
+			// A pending DMC DMA halts the CPU on this read: halt cycle, dummy cycle, then the sample
+			// read on the next "get" cycle (1 alignment cycle if needed) - 3 or 4 cycles, all BEFORE the
+			// CPU's own read happens. Get cycles are Mesen's even cycles (OamDmaParityOffset maps ours).
+			// Stalling right after whichever access triggered it, read or write, for a flat 4 cycles put
+			// Kirby's DMC stalls a cycle or an instruction off Mesen's and moved its status-bar split.
+			if (!isWrite && dmcDmaPending)
+			{
+				dmcDmaPending = false;
+				int dma = DmcDmaLength(instructionStartCycle + preciseAccessCycles + preciseStallCycles);
+				int dots = dma * 3 + preciseCarryDots; preciseCarryDots = 0;
+				if (dots > 0) ppu!.Step(dots);
+				StepAPU(dma);
+				preciseStallCycles += dma;
+				// The halt and dummy cycles re-read the address the CPU was about to read. For a controller
+				// port that is one extra shift-register clock (the reads before the DMC's own fetch run
+				// back to back, so they clock it once), which deletes a bit: NTSC's DPCM controller glitch,
+				// as Mesen 2.1.1 models it. Kirby reads the pad twice to catch exactly this; without it the
+				// two reads agreed where Mesen's disagreed, and its input handling took another path.
+				if (preciseReadAddress == 0x4016) input.Read4016(lastBusValue);
+				else if (preciseReadAddress == 0x4017) input2.Read4016(lastBusValue);
+			}
+			lastPreciseAccessWrite = isWrite;
 			int pre = isWrite ? PreDotsWrite : PreDotsRead;
 			int now = preciseCarryDots + pre; preciseCarryDots = 3 - pre;
 			if (now > 0) ppu!.Step(now); else preciseCarryDots += now; // a write landing past its own cycle borrows from the next
@@ -522,7 +611,7 @@ public class Bus : IBus
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
-		if (preciseWindow) PreciseTick(false); // see BeginPreciseWindow - normally false, branch is free
+		if (preciseWindow) { preciseReadAddress = address; PreciseTick(false); } // see BeginPreciseWindow - normally false, branch is free
 		instr.Reads++;
 		// Page table fast path: internal RAM and any future linear mapped regions
 		var page = pages[address >> 8];
@@ -639,6 +728,9 @@ public class Bus : IBus
 			// cycle itself: a flat 513 drifts the NMI's landing point in the game's idle loop by
 			// half a cycle a frame, and Lifeforce stirs its RNG in exactly that loop - measured
 			// against Mesen 2.1.1, whose log shows a write on an odd cycle costing 514, even 513.
+			// Under precise stepping the DMA instead runs cycle by cycle after the instruction (see
+			// RunPendingOamDma), so a DMC fetch falling inside it shares its cycles as on hardware.
+			if (preciseWindow && cpu is CPU_FIX) { oamDmaPending = true; oamDmaWriteCycle = instructionStartCycle + preciseAccessCycles - 1 + preciseStallCycles; return; }
 			PendingCpuStallCycles += (cpu is CPU_FIX && instructionStartCycle >= 0
 				&& ((CurrentAccessCycle() + OamDmaParityOffset) & 1) == 1) ? 514 : 513;
 			return; }

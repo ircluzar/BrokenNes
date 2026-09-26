@@ -267,7 +267,7 @@ namespace NesEmulator
 			// NTSC dot budget and the half-dot parity toggle from wherever it happens to be, and every
 			// frame after the load is a cycle or so different from the one that was saved.
 			public bool hasFrameClock;
-			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt; public int preciseCarryDots;
+			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt; public int preciseCarryDots; public bool dmcDmaPending;
 			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
@@ -430,7 +430,7 @@ namespace NesEmulator
 					overshootCarry = overshootCarry,
 					hasFrameClock = true,
 					globalCpuCycle = globalCpuCycle, ntscDotBudget = ntscDotBudget, ntscFrameParityToggle = ntscFrameParityToggle,
-					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt, preciseCarryDots = bus?.PreciseCarryDots ?? 0,
+					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt, preciseCarryDots = bus?.PreciseCarryDots ?? 0, dmcDmaPending = bus?.DmcDmaPending ?? false,
 					ram = ramClone,
 					cpu = cpuJson,
 					ppu = ppuJson,
@@ -566,6 +566,7 @@ namespace NesEmulator
 					if (root.TryGetProperty("ntscWasEnabled", out var nwe)) st.ntscWasEnabled = nwe.GetBoolean();
 					if (root.TryGetProperty("precisePpuDebt", out var ppd)) st.precisePpuDebt = ppd.GetInt32();
 				if (root.TryGetProperty("preciseCarryDots", out var pcd)) st.preciseCarryDots = pcd.GetInt32();
+				if (root.TryGetProperty("dmcDmaPending", out var ddp)) st.dmcDmaPending = ddp.GetBoolean();
 				}
 				loadedFixedPointTiming = hasFixedPointTiming;
 				if (root.TryGetProperty("ram", out var ramEl)) {
@@ -645,6 +646,7 @@ namespace NesEmulator
 				ntscDotBudget = st.ntscDotBudget; ntscFrameParityToggle = st.ntscFrameParityToggle; ntscWasEnabled = st.ntscWasEnabled;
 				precisePpuDebt = st.precisePpuDebt;
 				if (bus != null) bus.PreciseCarryDots = st.preciseCarryDots; // dots a late write already ran for the next access
+				if (bus != null) bus.DmcDmaPending = st.dmcDmaPending; // a DMC fetch requested at a frame's last access halts at the next read
 				// The event scheduler's next-event cycles are relative to the old clock; restoring an
 				// earlier cycle count must not leave them stranded in the future.
 				nextPpuEventCycle = nextApuEventCycle = nextFrameBoundaryCycle = globalCpuCycle;
@@ -994,11 +996,15 @@ namespace NesEmulator
 									precisePpuDebt -= pay; owed -= pay;
 								}
 								else if (owed < 0) { precisePpuDebt += -owed; owed = 0; }
+								// Run those cycles one by one as the dummy reads they are (a pending DMC DMA
+								// halts on one - see Bus.RunInstructionTail), then flush only pending stalls.
+								if (owed > 0) { globalCpuCycle += bus!.RunInstructionTail(owed); owed = 0; }
 								// Called even for owed == 0: FlushBatch is also what drains a
 								// pending OAM DMA stall, and deferring that to the next instruction
 								// that happens to owe a cycle would put the 513-cycle stall in the
 								// wrong place.
 								FlushBatch(owed);
+								globalCpuCycle += bus!.RunPendingOamDma();
 								// Deliberately the instruction's own cycle count, exactly as the
 								// batched path below does - NOT the globalCpuCycle delta, which also
 								// contains DMA stall cycles. `executed` feeds overshootCarry, which

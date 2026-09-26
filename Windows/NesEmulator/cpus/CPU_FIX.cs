@@ -179,16 +179,26 @@ public class CPU_FIX : ICPU {
 
 		irqRaisedAtAccess = -1; irqRaisedRel = -1; nmiRaisedRel = -1;
 		byte opcode = Fetch();
+		// Every 1-byte instruction (all $x8/$xA opcodes, plus BRK/RTI/RTS) reads the byte after the opcode on
+		// its second cycle and discards it. Modelled as a real read so the cycle is a bus access: a DMC DMA
+		// halts the CPU on reads, and without it PHA/PLA/RTS/implied ops had one cycle the precise window
+		// never saw, run after the instruction instead - which put Kirby's DMC stalls a cycle or an
+		// instruction off Mesen 2.1.1's. (BRK's own PC++ skips the same byte.)
+		if ((opcode & 0x0D) == 0x08 || opcode == 0x00 || opcode == 0x40 || opcode == 0x60) bus.Read(PC);
 		ushort instructionPC = (ushort)(PC - 1);
 		byte preA = A, preX = X, preY = Y, preSP = (byte)SP, preStatus = status;
 		bool iBefore = GetFlag(FLAG_I);
 
 		int cycles = Dispatch(opcode);
-		irqPollCycles = IrqPollLength(opcode, cycles);
+		// A DMA that halted the CPU inside the instruction lengthens it for the interrupt poll: Mesen 2.1.1 polls
+		// on every cycle, DMA cycles included, so a VBlank NMI rising during a DMC stall in the instruction's last
+		// read is taken right after it (Kirby's idle loop), not one instruction later.
+		int dmaStall = bus.InstructionStallCycles;
+		irqPollCycles = IrqPollLength(opcode, cycles) + dmaStall;
 		if (irqRequested && irqRaisedAtAccess >= 0 && irqRaisedAtAccess >= cycles - 1) irqDeferOne = true;
 		if (irqRequested && irqRaisedRel >= 0 && irqRaisedRel > 3L * (irqPollCycles - 1) + InterruptDotSlack) irqDeferOne = true;
-		if (nmiRequested && nmiRaisedRel >= 0 && nmiRaisedRel > 3L * (cycles - 1) + InterruptDotSlack) nmiDeferOne = true;
-		dispatchedCycles = cycles;
+		if (nmiRequested && nmiRaisedRel >= 0 && nmiRaisedRel > 3L * (cycles + dmaStall - 1) + InterruptDotSlack) nmiDeferOne = true;
+		dispatchedCycles = cycles + dmaStall;
 
 		InstructionTracer.OnInstruction(instructionPC, opcode, preA, preX, preY, preSP, preStatus, (byte)cycles);
 
@@ -338,13 +348,13 @@ public class CPU_FIX : ICPU {
 			case 0xE6: return INC(ZeroPage, 5);
 			case 0xF6: return INC(ZeroPageX, 6);
 			case 0xEE: return INC(Absolute, 6);
-			case 0xFE: return INC(AbsoluteX, 7);
+			case 0xFE: return INC(AbsoluteXStore, 7);
 			case 0xE8: return INR(ref X, Implied, 2);
 			case 0xC8: return INR(ref Y, Implied, 2);
 			case 0xC6: return DEC(ZeroPage, 5);
 			case 0xD6: return DEC(ZeroPageX, 6);
 			case 0xCE: return DEC(Absolute, 6);
-			case 0xDE: return DEC(AbsoluteX, 7);
+			case 0xDE: return DEC(AbsoluteXStore, 7);
 			case 0xCA: return DER(ref X, Implied, 2);
 			case 0x88: return DER(ref Y, Implied, 2);
 
@@ -353,22 +363,22 @@ public class CPU_FIX : ICPU {
 			case 0x06: return ASL(ZeroPage, 5);
 			case 0x16: return ASL(ZeroPageX, 6);
 			case 0x0E: return ASL(Absolute, 6);
-			case 0x1E: return ASL(AbsoluteX, 7);
+			case 0x1E: return ASL(AbsoluteXStore, 7);
 			case 0x4A: return LSR(Accumulator, 2);
 			case 0x46: return LSR(ZeroPage, 5);
 			case 0x56: return LSR(ZeroPageX, 6);
 			case 0x4E: return LSR(Absolute, 6);
-			case 0x5E: return LSR(AbsoluteX, 7);
+			case 0x5E: return LSR(AbsoluteXStore, 7);
 			case 0x2A: return ROL(Accumulator, 2);
 			case 0x26: return ROL(ZeroPage, 5);
 			case 0x36: return ROL(ZeroPageX, 6);
 			case 0x2E: return ROL(Absolute, 6);
-			case 0x3E: return ROL(AbsoluteX, 7);
+			case 0x3E: return ROL(AbsoluteXStore, 7);
 			case 0x6A: return ROR(Accumulator, 2);
 			case 0x66: return ROR(ZeroPage, 5);
 			case 0x76: return ROR(ZeroPageX, 6);
 			case 0x6E: return ROR(Absolute, 6);
-			case 0x7E: return ROR(AbsoluteX, 7);
+			case 0x7E: return ROR(AbsoluteXStore, 7);
 
 			//JMP, JSR, RTS
 			case 0x4C: return JMP(Absolute, 3);
@@ -414,45 +424,45 @@ public class CPU_FIX : ICPU {
 			case 0xC7: return DCP(ZeroPage, 5);
 			case 0xD7: return DCP(ZeroPageX, 6);
 			case 0xCF: return DCP(Absolute, 6);
-			case 0xDF: return DCP(AbsoluteX, 7);
-			case 0xDB: return DCP(AbsoluteY, 7);
+			case 0xDF: return DCP(AbsoluteXStore, 7);
+			case 0xDB: return DCP(AbsoluteYStore, 7);
 			case 0xC3: return DCP(IndirectX, 8);
-			case 0xD3: return DCP(IndirectY, 8);
+			case 0xD3: return DCP(IndirectYStore, 8);
 			case 0xE7: return ISC(ZeroPage, 5);
 			case 0xF7: return ISC(ZeroPageX, 6);
 			case 0xEF: return ISC(Absolute, 6);
-			case 0xFF: return ISC(AbsoluteX, 7);
-			case 0xFB: return ISC(AbsoluteY, 7);
+			case 0xFF: return ISC(AbsoluteXStore, 7);
+			case 0xFB: return ISC(AbsoluteYStore, 7);
 			case 0xE3: return ISC(IndirectX, 8);
-			case 0xF3: return ISC(IndirectY, 8);
+			case 0xF3: return ISC(IndirectYStore, 8);
 			case 0x07: return SLO(ZeroPage, 5);
 			case 0x17: return SLO(ZeroPageX, 6);
 			case 0x0F: return SLO(Absolute, 6);
-			case 0x1F: return SLO(AbsoluteX, 7);
-			case 0x1B: return SLO(AbsoluteY, 7);
+			case 0x1F: return SLO(AbsoluteXStore, 7);
+			case 0x1B: return SLO(AbsoluteYStore, 7);
 			case 0x03: return SLO(IndirectX, 8);
-			case 0x13: return SLO(IndirectY, 8);
+			case 0x13: return SLO(IndirectYStore, 8);
 			case 0x27: return RLA(ZeroPage, 5);
 			case 0x37: return RLA(ZeroPageX, 6);
 			case 0x2F: return RLA(Absolute, 6);
-			case 0x3F: return RLA(AbsoluteX, 7);
-			case 0x3B: return RLA(AbsoluteY, 7);
+			case 0x3F: return RLA(AbsoluteXStore, 7);
+			case 0x3B: return RLA(AbsoluteYStore, 7);
 			case 0x23: return RLA(IndirectX, 8);
-			case 0x33: return RLA(IndirectY, 8);
+			case 0x33: return RLA(IndirectYStore, 8);
 			case 0x47: return SRE(ZeroPage, 5);
 			case 0x57: return SRE(ZeroPageX, 6);
 			case 0x4F: return SRE(Absolute, 6);
-			case 0x5F: return SRE(AbsoluteX, 7);
-			case 0x5B: return SRE(AbsoluteY, 7);
+			case 0x5F: return SRE(AbsoluteXStore, 7);
+			case 0x5B: return SRE(AbsoluteYStore, 7);
 			case 0x43: return SRE(IndirectX, 8);
-			case 0x53: return SRE(IndirectY, 8);
+			case 0x53: return SRE(IndirectYStore, 8);
 			case 0x67: return RRA(ZeroPage, 5);
 			case 0x77: return RRA(ZeroPageX, 6);
 			case 0x6F: return RRA(Absolute, 6);
-			case 0x7F: return RRA(AbsoluteX, 7);
-			case 0x7B: return RRA(AbsoluteY, 7);
+			case 0x7F: return RRA(AbsoluteXStore, 7);
+			case 0x7B: return RRA(AbsoluteYStore, 7);
 			case 0x63: return RRA(IndirectX, 8);
-			case 0x73: return RRA(IndirectY, 8);
+			case 0x73: return RRA(IndirectYStore, 8);
 			// ANC (AAC): AND immediate, then copy the result's bit 7 into carry (as if followed by an implicit ASL/ROL). Stable, seen in real code.
 			case 0x0B: case 0x2B: return ANC(Immediate, 2);
 			// LXA (ATX/OAL): genuinely unstable on real silicon (depends on bus capacitance decay,
@@ -547,12 +557,14 @@ public class CPU_FIX : ICPU {
 	}
 
 	private int PLA(Func<AddrResult> mode, int baseCycles) {
+		bus.Read((ushort)(0x0100 + SP)); // cycle 3: dummy read of the stack before SP increments
 		A = StackPop();
 		SetZN(A);
 		return baseCycles;
 	}
 
 	private int PLP(Func<AddrResult> mode, int baseCycles) {
+		bus.Read((ushort)(0x0100 + SP)); // cycle 3: dummy read of the stack before SP increments
 		status = StackPop();
 		SetFlag(FLAG_UNUSED, true);
 		SetFlag(FLAG_B, false);
@@ -934,9 +946,12 @@ public class CPU_FIX : ICPU {
 	}
 
 	private int RTS() {
+		bus.Read((ushort)(0x0100 + SP)); // cycle 3: dummy stack read
 		byte low = StackPop();
 		byte high = StackPop();
-		PC = (ushort)(((high << 8) | low) + 1);
+		ushort ret = (ushort)((high << 8) | low);
+		bus.Read(ret); // cycle 6: read at the pulled address, then PC increments past it
+		PC = (ushort)(ret + 1);
 		return 6;
 	}
 
@@ -998,6 +1013,7 @@ public class CPU_FIX : ICPU {
 	}
 
 	private int RTI() {
+		bus.Read((ushort)(0x0100 + SP)); // cycle 3: dummy stack read
 		status = StackPop();
 		SetFlag(FLAG_UNUSED, true);
 		SetFlag(FLAG_B, false);
@@ -1019,6 +1035,7 @@ public class CPU_FIX : ICPU {
 	// second gate - once polling latches the decision, the interrupt proceeds. NMI() below never
 	// had this guard, which is the correct model.
 	public int IRQ() {
+		bus.Read(PC); bus.Read(PC); // the two cycles before the pushes: dummy reads at PC, as for BRK
 		StackPush((byte)((PC >> 8) & 0xFF));
 		StackPush((byte)(PC & 0xFF));
 
@@ -1036,6 +1053,7 @@ public class CPU_FIX : ICPU {
 	}
 
 	public int NMI() {
+		bus.Read(PC); bus.Read(PC); // the two cycles before the pushes: dummy reads at PC, as for BRK
 		StackPush((byte)((PC >> 8) & 0xFF));
 		StackPush((byte)(PC & 0xFF));
 
@@ -1135,9 +1153,13 @@ public class CPU_FIX : ICPU {
 
 	// Indexed absolute STORES always take the fixed max cycle count (5), unlike loads: the
 	// dummy read at the not-yet-fixed-up address always happens, cross or not (when there's no
-	// cross it just happens to read the same address the write will target next). Used only by
-	// STR for STA abs,X/Y - LDR/AND/EOR/ORA/ADC/SBC/CPR keep using the conditional AbsoluteX/Y
-	// above, since only STORES are fixed-cycle here.
+	// cross it just happens to read the same address the write will target next). Used by STR
+	// for STA abs,X/Y and by every read-modify-write (INC/DEC/shifts and the unofficial RMWs),
+	// which are fixed-cycle for the same reason - LDR/AND/EOR/ORA/ADC/SBC/CPR keep using the
+	// conditional AbsoluteX/Y above. The RMWs used those too, so their non-crossing dummy read
+	// was flushed as an unaccounted cycle after the final write; the real read then came a cycle
+	// early, and a DMC DMA requested there halted after the instruction instead of on its read
+	// (Kirby: a DEC abs,X in vblank, 4 cycles off Mesen 2.1.1 for the rest of the frame).
 	private AddrResult AbsoluteXStore() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + X);
