@@ -23,12 +23,12 @@ internal static class SnesRunCli
 {
     private const string Usage =
         "Usage: --snesrun --rom <game.sfc> [--apu SFC|HLE] [--frames N] [--png-at f1,f2,...] [--out-dir dir]\n" +
-        "                 [--input \"frame:Buttons,...\"] [--wav out.wav]";
+        "                 [--input \"frame:Buttons,...\"] [--wav out.wav] [--sram file.srm]";
 
     public static int Run(string[] args)
     {
         RomTestCli.EnsureConsole();
-        string? romPath = null, outDir = null, input = null, apuChoice = null, wavPath = null;
+        string? romPath = null, outDir = null, input = null, apuChoice = null, wavPath = null, sramPath = null;
         int frames = 600;
         var pngAt = new HashSet<int>();
         try
@@ -44,6 +44,7 @@ internal static class SnesRunCli
                     case "--input": input = args[++i]; break;
                     case "--apu": apuChoice = args[++i]; SnesApuChoice.Create(apuChoice); break;
                     case "--wav": wavPath = args[++i]; break;
+                    case "--sram": sramPath = args[++i]; break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -67,6 +68,12 @@ internal static class SnesRunCli
             catch (Exception ex) { Console.Error.WriteLine($"Cannot read ROM: {ex.Message}"); return 2; }
 
             var cart = SnesCartridge.Load(file);
+            // --sram: battery RAM survives between runs, like the player's .srm file.
+            if (sramPath != null && File.Exists(sramPath) && cart.Sram.Length > 0)
+            {
+                byte[] sramImage = File.ReadAllBytes(sramPath);
+                Array.Copy(sramImage, cart.Sram, Math.Min(sramImage.Length, cart.Sram.Length));
+            }
             var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice));
             using var wav = wavPath != null ? new WavWriter(wavPath, board.Apu.SampleRate) : null;
             var audioBuf = new short[8192];
@@ -105,6 +112,7 @@ internal static class SnesRunCli
                 if (board.Cpu.Stopped) { Console.WriteLine($"CPU stopped (STP) at frame {frame}"); exit = 4; break; }
             }
 
+            if (sramPath != null && cart.Sram.Length > 0) File.WriteAllBytes(sramPath, cart.Sram);
             var c = board.Cpu;
             var sb = new StringBuilder();
             sb.AppendLine($"{Path.GetFileName(romPath)}: \"{cart.Title}\" {(cart.HiRom ? "HiROM" : "LoROM")} map=${cart.MapMode:X2} rom={cart.Rom.Length / 1024}KB sram={cart.Sram.Length / 1024}KB");
