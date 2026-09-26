@@ -209,7 +209,7 @@ clipping.
 ```
 BrokenNes.Workshop.exe --snes game.sfc [--apu SFC|HLE]      # no ROM argument = file picker
 ```
-Keys: arrows = D-pad, Z = B, X = A, A = Y, S = X, Q = L, W = R, Enter = Start, Shift = Select;
+Keys: arrows = D-pad, Z = Y, X = B, A = X, S = A, Q = L, W = R, Enter = Start, Space = Select;
 P pause, F2 reset, Tab (hold) fast-forward, F12 screenshot (saved next to the ROM), Esc quit.
 An XInput pad is mapped positionally (Xbox A = SNES B, and so on). With a sound-producing audio unit
 the audio device's clock paces emulation; with the silent APU_HLE a stopwatch holds NTSC 60.1 fps.

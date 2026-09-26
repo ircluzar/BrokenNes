@@ -21,7 +21,7 @@ namespace BrokenNes.Workshop;
 /// clock paces the emulator (keep ~70ms queued), which gives exact speed and no crackle. With a
 /// silent unit (APU_HLE) it falls back to a stopwatch at the NTSC frame rate.
 ///
-/// Keys: arrows = D-pad, Z = B, X = A, A = Y, S = X, Q = L, W = R, Enter = Start, RShift = Select.
+/// Keys: arrows = D-pad, Z = Y, X = B, A = X, S = A, Q = L, W = R, Enter = Start, Space = Select.
 ///       P pause, F2 reset, Tab (hold) fast-forward, F12 screenshot, Esc quit. An XInput pad also works.
 /// Battery SRAM persists to %APPDATA%\BrokenNes\BatterySaves\sfc&lt;sha1&gt;.srm.
 /// </summary>
@@ -262,9 +262,9 @@ internal sealed class SnesPlayerForm : Form
     private static SnesButtons MapKey(Keys k) => k switch
     {
         Keys.Up => SnesButtons.Up, Keys.Down => SnesButtons.Down, Keys.Left => SnesButtons.Left, Keys.Right => SnesButtons.Right,
-        Keys.Z => SnesButtons.B, Keys.X => SnesButtons.A, Keys.A => SnesButtons.Y, Keys.S => SnesButtons.X,
+        Keys.Z => SnesButtons.Y, Keys.X => SnesButtons.B, Keys.A => SnesButtons.X, Keys.S => SnesButtons.A,
         Keys.Q => SnesButtons.L, Keys.W => SnesButtons.R, Keys.Enter => SnesButtons.Start,
-        Keys.ShiftKey or Keys.RShiftKey => SnesButtons.Select,
+        Keys.Space => SnesButtons.Select,
         _ => SnesButtons.None,
     };
 
