@@ -378,7 +378,10 @@ public sealed class PPU_SFC
             int bit = 1 << bg;
             if ((used & bit) == 0 || mode == 7 || ModeBpp[mode][bg] == 0) continue;
             bool onMain = (tm & bit) != 0, onSub = subNeeded && (ts & bit) != 0;
-            bool fusable = FastPaths && !hires && (mosaic & bit) == 0 && mode is not (2 or 4 or 6);
+            // Mosaic only matters when a layer's enable bit is set AND the size is above 1 (games such
+            // as SMW leave the enable bits on with size 0 all the time).
+            bool mosaicActive = (mosaic & bit) != 0 && (mosaic >> 4) != 0;
+            bool fusable = FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6);
             if (fusable) { RenderBgFused(bg, ModeBpp[mode][bg], mode, line, onMain, onSub); continue; }
             RenderBg(bg, ModeBpp[mode][bg], mode, line);
             ComposeLayer(bg, onMain, onSub, width, shift);
