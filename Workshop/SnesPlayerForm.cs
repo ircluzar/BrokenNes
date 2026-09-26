@@ -31,8 +31,10 @@ internal sealed class SnesPlayerForm : Form
 
     private readonly BOARD_SFC board;
     private readonly string romPath, savePath;
-    private readonly Bitmap bitmap = new(PPU_SFC.Width, PPU_SFC.MaxHeight, PixelFormat.Format32bppRgb);
-    private readonly uint[] shown = new uint[PPU_SFC.Width * PPU_SFC.MaxHeight];
+    // Sized for hi-res (512 wide); normal frames use the left 256 columns.
+    private readonly Bitmap bitmap = new(PPU_SFC.HiResWidth, PPU_SFC.MaxHeight, PixelFormat.Format32bppRgb);
+    private readonly uint[] shown = new uint[PPU_SFC.HiResWidth * PPU_SFC.MaxHeight];
+    private int shownWidth = PPU_SFC.Width;
     private readonly object frameLock = new();
     private int shownHeight = PPU_SFC.Height;
     private int paintPending;
@@ -162,7 +164,9 @@ internal sealed class SnesPlayerForm : Form
         lock (frameLock)
         {
             shownHeight = board.Ppu.VisibleHeight;
-            Array.Copy(board.Ppu.FrameBuffer, shown, PPU_SFC.Width * shownHeight);
+            bool hires = board.Ppu.FrameHasHiRes;   // modes 5/6: show all 512 pixels (sharp hi-res text)
+            shownWidth = hires ? PPU_SFC.HiResWidth : PPU_SFC.Width;
+            Array.Copy(hires ? board.Ppu.GetHiResFrame() : board.Ppu.FrameBuffer, shown, shownWidth * shownHeight);
         }
         if (screenshotRequested) { screenshotRequested = false; SaveScreenshot(); }
         if (Interlocked.Exchange(ref paintPending, 1) == 0)
@@ -222,10 +226,10 @@ internal sealed class SnesPlayerForm : Form
 
     private Bitmap CopyToBitmap()
     {
-        var b = new Bitmap(PPU_SFC.Width, shownHeight, PixelFormat.Format32bppRgb);
+        var b = new Bitmap(shownWidth, shownHeight, PixelFormat.Format32bppRgb);
         var data = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.WriteOnly, b.PixelFormat);
         for (int y = 0; y < shownHeight; y++)
-            Marshal.Copy((int[])(object)shown, y * PPU_SFC.Width, data.Scan0 + y * data.Stride, PPU_SFC.Width);
+            Marshal.Copy((int[])(object)shown, y * shownWidth, data.Scan0 + y * data.Stride, shownWidth);
         b.UnlockBits(data);
         return b;
     }
@@ -238,13 +242,13 @@ internal sealed class SnesPlayerForm : Form
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        int h;
+        int h, sw;
         lock (frameLock)
         {
-            h = shownHeight;
-            var data = bitmap.LockBits(new Rectangle(0, 0, PPU_SFC.Width, h), ImageLockMode.WriteOnly, bitmap.PixelFormat);
+            h = shownHeight; sw = shownWidth;
+            var data = bitmap.LockBits(new Rectangle(0, 0, sw, h), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             for (int y = 0; y < h; y++)
-                Marshal.Copy((int[])(object)shown, y * PPU_SFC.Width, data.Scan0 + y * data.Stride, PPU_SFC.Width);
+                Marshal.Copy((int[])(object)shown, y * sw, data.Scan0 + y * data.Stride, sw);
             bitmap.UnlockBits(data);
         }
         var g = e.Graphics;
@@ -253,7 +257,7 @@ internal sealed class SnesPlayerForm : Form
         float scale = Math.Min(ClientSize.Width / (float)PPU_SFC.Width, ClientSize.Height / (float)h);
         int w = (int)(PPU_SFC.Width * scale), hh = (int)(h * scale);
         g.DrawImage(bitmap, new Rectangle((ClientSize.Width - w) / 2, (ClientSize.Height - hh) / 2, w, hh),
-            new Rectangle(0, 0, PPU_SFC.Width, h), GraphicsUnit.Pixel);
+            new Rectangle(0, 0, sw, h), GraphicsUnit.Pixel);
     }
 
     protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(Color.Black);

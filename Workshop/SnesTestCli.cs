@@ -220,10 +220,13 @@ internal static class SnesTestCli
 
     internal static void SavePng(PPU_SFC ppu, string path)
     {
-        using var bmp = new Bitmap(PPU_SFC.Width, PPU_SFC.Height, PixelFormat.Format32bppArgb);
+        // Hi-res frames (modes 5/6) are saved at their true 512-pixel width.
+        uint[] frame = ppu.FrameHasHiRes ? ppu.GetHiResFrame() : ppu.FrameBuffer;
+        int width = ppu.FrameHasHiRes ? PPU_SFC.HiResWidth : PPU_SFC.Width;
+        using var bmp = new Bitmap(width, PPU_SFC.Height, PixelFormat.Format32bppArgb);
         var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.WriteOnly, bmp.PixelFormat);
-        var pixels = new int[ppu.FrameBuffer.Length];
-        Buffer.BlockCopy(ppu.FrameBuffer, 0, pixels, 0, pixels.Length * 4);
+        var pixels = new int[frame.Length];
+        Buffer.BlockCopy(frame, 0, pixels, 0, pixels.Length * 4);
         for (int y = 0; y < bmp.Height; y++)
             Marshal.Copy(pixels, y * bmp.Width, data.Scan0 + y * data.Stride, bmp.Width);
         bmp.UnlockBits(data);

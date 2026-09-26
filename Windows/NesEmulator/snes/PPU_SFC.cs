@@ -16,7 +16,7 @@ namespace NesEmulator.Snes;
 /// their logic ops, main/sub screens, color math (add/sub, half, fixed color, clip-to-black),
 /// mosaic, direct color, brightness and overscan.
 ///
-/// Known approximations: interlace is rendered progressive, hi-res is averaged, mid-line register
+/// Known approximations: interlace is rendered progressive, hi-res is averaged into FrameBuffer (the true 512-wide lines are in HiResBuffer, see GetHiResFrame), mid-line register
 /// changes land on the next line, and sprite evaluation happens all at once per line.
 ///
 /// VRAM is stored as 32K 16-bit words because that is how the chip addresses it.
@@ -305,8 +305,33 @@ public sealed class PPU_SFC
     // =====================================================================================
 
     /// <summary>Line 0: the pre-render line. Latches overscan and clears the sprite overflow flags.</summary>
+    // ---- Full-resolution output for hi-res frames (modes 5/6) ----
+    // FrameBuffer always holds the 256-wide picture (hi-res pairs averaged), which keeps every
+    // existing consumer and the golden hashes unchanged. When a frame has hi-res lines, those lines
+    // are also kept at their true 512-pixel width here; GetHiResFrame() fills in the other lines by
+    // doubling pixels, so a front end can show sharp hi-res text.
+    public const int HiResWidth = 512;
+    public readonly uint[] HiResBuffer = new uint[HiResWidth * MaxHeight];
+    private readonly bool[] rowHiRes = new bool[MaxHeight];
+
+    /// <summary>True when at least one line of the last frame was drawn in a hi-res mode.</summary>
+    public bool FrameHasHiRes { get; private set; }
+
+    /// <summary>The last frame at 512 pixels per line (only meaningful when <see cref="FrameHasHiRes"/>).</summary>
+    public uint[] GetHiResFrame()
+    {
+        for (int row = 0; row < VisibleHeight; row++)
+        {
+            if (rowHiRes[row]) continue;
+            int src = row * Width, dst = row * HiResWidth;
+            for (int x = 0; x < Width; x++) { uint c = FrameBuffer[src + x]; HiResBuffer[dst + 2 * x] = c; HiResBuffer[dst + 2 * x + 1] = c; }
+        }
+        return HiResBuffer;
+    }
+
     public void BeginFrame()
     {
+        if (FrameHasHiRes) { Array.Clear(rowHiRes); FrameHasHiRes = false; }
         VisibleHeight = (setini & 0x04) != 0 ? MaxHeight : Height;
         if (!ForcedBlank) { rangeOver = false; timeOver = false; }
         inDisplay = true;
@@ -453,6 +478,8 @@ public sealed class PPU_SFC
             return;
         }
         if (FastPaths && !hires) { FinalLine(dst, lut, subNeeded, colorWindowUsed); return; }
+        int hiRow = row * HiResWidth;
+        if (hires) { rowHiRes[row] = true; FrameHasHiRes = true; }
         for (int x = 0; x < Width; x++)
         {
             ushort c;
@@ -460,6 +487,8 @@ public sealed class PPU_SFC
             else
             {
                 ushort a = FinalPixel(x * 2, x, subNeeded, colorWindowUsed), b = FinalPixel(x * 2 + 1, x, subNeeded, colorWindowUsed);
+                HiResBuffer[hiRow + 2 * x] = lut[a];
+                HiResBuffer[hiRow + 2 * x + 1] = lut[b];
                 c = (ushort)((((a & 0x7BDE) + (b & 0x7BDE)) >> 1) + (a & b & 0x0421));   // per-channel average
             }
             dst[x] = lut[c];
