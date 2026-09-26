@@ -75,6 +75,17 @@ public sealed class APU_SFC : ISnesApu
     /// <summary>Debug: called with the SPC700's PC before every instruction.</summary>
     public Action<ushort>? SmpHook;
 
+    /// <summary>
+    /// true: only run an SPC instruction if it ENDS by the target time, so the SPC trails the CPU by
+    /// less than one instruction. An instruction runs all at once, so this puts its port writes at
+    /// its end (where hardware does them) and lets its port reads see CPU writes made before then.
+    /// false: run instructions that START before the target (the SPC may be up to one instruction
+    /// ahead, so its writes appear early and its reads sample early).
+    /// </summary>
+    public static bool EndAligned = true;
+
+    internal byte PeekCode(ushort a) => a >= 0xFFC0 && iplEnabled ? Ipl[a - 0xFFC0] : Aram[a];
+
     public void RunTo(long masterClock)
     {
         long target = masterClock * 1_024_000 / 21_477_272;
@@ -82,6 +93,7 @@ public sealed class APU_SFC : ISnesApu
         long t0 = SnesProfiler.Begin();
         while (smpCycles < target)
         {
+            if (EndAligned && smpCycles + Smp.NextCost > target) break;
             SmpHook?.Invoke(Smp.PC);
             int c = Smp.Step();
             smpCycles += c;

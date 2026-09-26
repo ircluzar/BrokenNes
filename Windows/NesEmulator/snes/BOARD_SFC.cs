@@ -377,6 +377,9 @@ public sealed class BOARD_SFC : ISnesBus
         return mdr;
     }
 
+    // DMA and HDMA writes to the B-bus, visible to WriteWatch like CPU writes (timing fingerprints).
+    private void DmaWriteBBus(byte reg, byte value) { WriteWatch?.Invoke(0, 0x2100u | reg, value); WriteBBus(reg, value); }
+
     private void WriteBBus(byte reg, byte value)
     {
         if (reg < 0x40) { Ppu.WriteRegister(reg, value); return; }
@@ -499,7 +502,7 @@ public sealed class BOARD_SFC : ISnesBus
             {
                 byte bReg = (byte)(bbad + pattern[n % pattern.Length]);
                 if (toA) WriteNoTick(aBank, aAddr, ReadBBus(bReg));
-                else WriteBBus(bReg, ReadNoTick(aBank, aAddr));
+                else DmaWriteBBus(bReg, ReadNoTick(aBank, aAddr));
                 aAddr = (ushort)(aAddr + step);
                 Tick(8);
             }
@@ -597,7 +600,7 @@ public sealed class BOARD_SFC : ISnesBus
                     ushort addr = (ushort)(dmaRegs[lo] | dmaRegs[lo + 1] << 8);
                     byte bReg = (byte)(bbad + offset);
                     if (toA) WriteNoTick(bank, addr, ReadBBus(bReg));
-                    else WriteBBus(bReg, ReadNoTick(bank, addr));
+                    else DmaWriteBBus(bReg, ReadNoTick(bank, addr));
                     addr++;
                     dmaRegs[lo] = (byte)addr; dmaRegs[lo + 1] = (byte)(addr >> 8);
                     stall += 8;

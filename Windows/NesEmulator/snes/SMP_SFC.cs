@@ -56,6 +56,9 @@ public sealed class SMP_SFC
         PC = (ushort)(Rd(0xFFFE) | Rd(0xFFFF) << 8);
     }
 
+    /// <summary>Table cost of the instruction at PC (the taken cost for branches), without executing it.</summary>
+    public int NextCost => Halted ? 2 : Cycles[apu.PeekCode(PC)];
+
     public int Step()
     {
         if (Halted) return 2;
