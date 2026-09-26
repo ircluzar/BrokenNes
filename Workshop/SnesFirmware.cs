@@ -6,8 +6,8 @@ using NesEmulator.Snes;
 namespace BrokenNes.Workshop;
 
 /// <summary>
-/// Finds user-supplied coprocessor firmware (never bundled - these are Nintendo/NEC program ROMs)
-/// and builds the cartridge chip for a game. Searched, in order: $BROKENNES_SNES_FIRMWARE, the
+/// Finds optional user-supplied coprocessor firmware (never bundled - these are Nintendo/NEC program
+/// ROMs) and builds the cartridge chip for a game; without firmware the homemade DSP-1 is used. Searched, in order: $BROKENNES_SNES_FIRMWARE, the
 /// ROM's folder, a "firmware" folder beside the ROM, %APPDATA%\BrokenNes\Firmware, and a
 /// "firmware" folder beside the executable.
 /// </summary>
@@ -34,39 +34,13 @@ internal static class SnesFirmware
         return null;
     }
 
+    /// <summary>Set by --dsp1-homemade: use the bundled DSP-1 even when real firmware is found.</summary>
+    public static bool PreferHomemade;
+
     /// <summary>
     /// The chip this cartridge needs, or null when it needs none. <paramref name="note"/> says what
     /// was loaded or what is missing, for the window title / probe report.
     /// </summary>
-    public static ISnesCoprocessor? CreateCoprocessor(SnesCartridge cart, string romPath, out string note)
-    {
-        note = "";
-        switch (cart.Chip)
-        {
-            case SnesChip.None: return null;
-            case SnesChip.Dsp:
-            {
-                // DSP-1B fixed bugs in DSP-1, but Pilotwings was mastered against the original.
-                bool pilotwings = cart.Title.StartsWith("PILOTWINGS", StringComparison.OrdinalIgnoreCase);
-                string[] names = pilotwings ? new[] { "dsp1.rom", "dsp1b.rom" } : new[] { "dsp1b.rom", "dsp1.rom" };
-                string? path = Find(romPath, names);
-                if (path == null) { note = "DSP-1 firmware missing (dsp1b.rom)"; return null; }
-                byte[] image = File.ReadAllBytes(path);
-                if (image.Length != 8192) { note = $"{Path.GetFileName(path)} is {image.Length} bytes, expected 8192"; return null; }
-                string name = Path.GetFileNameWithoutExtension(path).ToUpperInvariant().Replace("DSP", "DSP-");
-                note = $"{name} from {path}";
-                return new NECDSP_SFC(image, NECDSP_SFC.MappingFor(cart), name);
-            }
-            case SnesChip.SuperFx:
-                var gsu = new GSU_SFC(cart);
-                note = gsu.Name;
-                return gsu;
-            case SnesChip.Sa1:
-                note = "SA-1";
-                return new SA1_SFC(cart);
-            default:
-                note = $"coprocessor {cart.Chip} (chipset ${cart.ChipsetByte:X2}) not emulated yet";
-                return null;
-        }
-    }
+    public static ISnesCoprocessor? CreateCoprocessor(SnesCartridge cart, string romPath, out string note) =>
+        SnesChips.Create(cart, names => Find(romPath, names) is { } p ? (p, File.ReadAllBytes(p)) : null, PreferHomemade, out note);
 }

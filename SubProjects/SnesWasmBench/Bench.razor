@@ -38,7 +38,9 @@
         try
         {
             byte[] rom = await Http.GetByteArrayAsync(romUrl);
-            var board = new BOARD_SFC(SnesCartridge.Load(rom), new APU_SFC());
+            var cart = SnesCartridge.Load(rom);
+            // No firmware in the browser: DSP-1 games get the homemade chip.
+            var board = new BOARD_SFC(cart, new APU_SFC(), SnesChips.Create(cart, null, false, out _));
             var script = ParseScript(SmwScript());
             ulong video = 14695981039346656037UL, audio = 14695981039346656037UL;
             var samples = new short[8192];

@@ -34,7 +34,7 @@ internal static class SnesRunCli
         int layerMask = 0x1F;
         int chipTrace = 0;
         string? dumpWram = null, gsuDis = null;
-        string? gsuWatch = null, regLog = null;
+        string? gsuWatch = null, regLog = null, dspLog = null;
         bool spcHot = false;
         var spcHits = new Dictionary<ushort, int>();
         bool lineRegs = false;
@@ -60,7 +60,9 @@ internal static class SnesRunCli
                     case "--no-dram-refresh": BOARD_SFC.DramRefresh = false; break;                    // A/B timing
                     case "--spc-start-aligned": APU_SFC.EndAligned = false; break;                     // A/B timing
                     case "--no-sa1-conflicts": SA1_SFC.BusConflicts = false; break;                    // A/B timing
-                    case "--spc-hot": spcHot = true; break;                                            // SPC700 PC histogram, last 30 frames
+                    case "--dsp1-homemade": SnesFirmware.PreferHomemade = true; break;                 // ignore real DSP firmware
+                    case "--dsp-log": dspLog = args[++i]; break;                                      // DSP-1 port conversation -> file
+                    case "--spc-hot": spcHot = true; break;                                           // SPC700 PC histogram, last 30 frames
                     case "--reg-log": regLog = args[++i]; break;                                      // hexaddrs:file - timing fingerprint
                     case "--gsu-dis": gsuDis = args[++i]; break;                                      // hexaddr:count
                     case "--gsu-watch": gsuWatch = args[++i]; break;                                   // pbr:pc hex list[@fromInstruction]
@@ -100,7 +102,12 @@ internal static class SnesRunCli
             if (chipTrace > 0 && chip is GSU_SFC gsuTrace) gsuTrace.Trace = new long[chipTrace];
             // --reg-log 2100,4200:out.txt -> "vblankCount scanline lineClock addr value" per write,
             // the same columns mesen\regwrites.lua writes, for timing comparisons.
-            System.IO.StreamWriter? regLogWriter = null;
+            System.IO.StreamWriter? regLogWriter = null, dspLogWriter = null;
+            if (dspLog != null && chip is NECDSP_SFC necDsp)
+            {
+                dspLogWriter = new System.IO.StreamWriter(dspLog);
+                necDsp.PortLog = (kind, v) => dspLogWriter.WriteLine($"{kind} {v:X4}");
+            }
             if (regLog != null)
             {
                 int colon = regLog.IndexOf(':');   // addresses first; the path may contain a drive colon
@@ -173,6 +180,7 @@ internal static class SnesRunCli
             }
 
             regLogWriter?.Dispose();
+            dspLogWriter?.Dispose();
             if (sramPath != null && cart.Sram.Length > 0) File.WriteAllBytes(sramPath, cart.Sram);
             var c = board.Cpu;
             var sb = new StringBuilder();

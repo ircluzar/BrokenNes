@@ -53,6 +53,10 @@ internal static class Program
         {
             return SnesRunCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--dsp1-lab", StringComparison.OrdinalIgnoreCase))
+        {
+            return Dsp1LabCli.Run(args);
+        }
         if (args.Length > 0 && args[0].Equals("--snesbench", StringComparison.OrdinalIgnoreCase))
         {
             return SnesBenchCli.Run(args);

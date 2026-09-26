@@ -113,20 +113,29 @@ public sealed class NECDSP_SFC : ISnesCoprocessor
         if (!IsStatus(offset)) WriteDr(value);   // SR is read-only from the SNES side
     }
 
+    /// <summary>
+    /// Debug: the SNES side of the conversation. 'c' = 8-bit write (a command byte), 'r' = 8-bit read,
+    /// 'W' / 'R' = completed 16-bit word written / read. Used to record reference traces for the
+    /// homemade DSP-1 (<see cref="DSP1_SFC"/>).
+    /// </summary>
+    public Action<char, ushort>? PortLog;
+
     private byte ReadDr()
     {
-        if ((sr & Drc) != 0) { sr &= unchecked((ushort)~Rqm); return (byte)dr; }   // 8-bit transfers
+        if ((sr & Drc) != 0) { sr &= unchecked((ushort)~Rqm); PortLog?.Invoke('r', (byte)dr); return (byte)dr; }   // 8-bit transfers
         if ((sr & Drs) == 0) { sr |= Drs; return (byte)dr; }
         sr &= unchecked((ushort)~(Rqm | Drs));
+        PortLog?.Invoke('R', dr);
         return (byte)(dr >> 8);
     }
 
     private void WriteDr(byte value)
     {
-        if ((sr & Drc) != 0) { sr &= unchecked((ushort)~Rqm); dr = (ushort)((dr & 0xFF00) | value); return; }
+        if ((sr & Drc) != 0) { sr &= unchecked((ushort)~Rqm); dr = (ushort)((dr & 0xFF00) | value); PortLog?.Invoke('c', value); return; }
         if ((sr & Drs) == 0) { sr |= Drs; dr = (ushort)((dr & 0xFF00) | value); return; }
         sr &= unchecked((ushort)~(Rqm | Drs));
         dr = (ushort)((dr & 0x00FF) | value << 8);
+        PortLog?.Invoke('W', dr);
     }
 
     private void CatchUp(long masterClock)

@@ -53,9 +53,32 @@ the cputest README. Sources for these are public documentation (fullsnes, anomie
 - **No Mesen source** has been read. Mesen 2.1.1 has been used only as a black-box reference
   (Lua `--testRunner` logging Super FX registers at chosen addresses, compared event by event).
 - **Coprocessor firmware** (DSP-1/DSP-1B program ROMs, NEC/Nintendo copyright) is never bundled or
-  committed. The user supplies it (`dsp1b.rom`, 8192 bytes); `Workshop/SnesFirmware.cs` searches
-  `$BROKENNES_SNES_FIRMWARE`, the ROM's folder, `firmware\` beside it, `%APPDATA%\BrokenNes\Firmware`
-  and `firmware\` beside the executable.
+  committed. Real firmware is optional: when the user supplies it (`dsp1b.rom`, 8192 bytes),
+  `Workshop/SnesFirmware.cs` finds it in `$BROKENNES_SNES_FIRMWARE`, the ROM's folder, `firmware\`
+  beside it, `%APPDATA%\BrokenNes\Firmware` or `firmware\` beside the executable, and it runs on the
+  µPD77C25 core. Without it, the homemade DSP-1 below is used (`SnesChips.Create`).
+- **Homemade DSP-1** (`DSP1_SFC.cs`, added 2026-09-26): a high-level reimplementation that contains no
+  Nintendo code or data tables. Its sine, square root and reciprocal are plain `Math` calls. The
+  sources are:
+  - the published description of each command (what goes in and what comes out);
+  - the camera geometry, derived from first principles;
+  - black-box fitting against transactions recorded from the real firmware running on our own
+    µPD77C25 core: a Mario Kart session plus random probes (`Workshop/Dsp1LabCli.cs`).
+
+  The rounding rules came from that fitting, for example:
+  - Rotate floors each Q15 product;
+  - the raster denominator floors `line*sin` and `Les*cos` separately;
+  - the eye height is a whole number;
+  - the square root is scaled by `1 - 2^-14`;
+  - the horizon hold is at Azs 14533.
+
+  One hint came from memory: HLE emulators of the snes9x lineage form the raster scale as the
+  reciprocal of `Vs*sin Azs + VOffset`. That was recalled, not opened, and the formula in the file
+  was fitted to the recorded data. Accuracy against the chip on Mario Kart's own traffic:
+  - exact on the majority of results, and almost always within 1;
+  - Parameter's Vof and Vva are 100% exact;
+  - Rotate, Triangle and Distance are about 98% exact;
+  - Raster values are within 2.
 
 ## 5. Test data
 
