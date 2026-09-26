@@ -112,7 +112,7 @@ public sealed class PPU_SFC
         switch (reg)
         {
             case 0x00: inidisp = v; break;
-            case 0x01: obsel = v; break;
+            case 0x01: obsel = v; oamVersion++; break;
             case 0x02: oamadd = (ushort)((oamadd & 0x100) | v); oamInternal = (ushort)((oamadd & 0x1FF) << 1); break;
             case 0x03: oamadd = (ushort)((oamadd & 0xFF) | (v & 1) << 8 | (v & 0x80) << 8); oamInternal = (ushort)((oamadd & 0x1FF) << 1); break;
             case 0x04: WriteOam(v); break;
@@ -262,6 +262,7 @@ public sealed class PPU_SFC
 
     private void WriteOam(byte v)
     {
+        oamVersion++;
         if (oamInternal < 0x200)
         {
             if ((oamInternal & 1) == 0) oamLatch = v;
@@ -799,6 +800,31 @@ public sealed class PPU_SFC
 
     // ---- Sprites ----
 
+    // Decoded per-sprite attributes for the fast evaluation loop. oamVersion bumps on every OAM or
+    // OBSEL write; external writers to Oam (save states, debug tools) must call InvalidateCaches().
+    private int oamVersion, spriteCacheVersion = -1;
+    private readonly byte[] spriteY = new byte[128], spriteH = new byte[128];
+    private readonly bool[] spriteXVisible = new bool[128];
+
+    /// <summary>Call after modifying Oam/Vram/registers directly (not through WriteRegister).</summary>
+    public void InvalidateCaches() { oamVersion++; Array.Fill(windowSignature, -1); }
+
+    private void RefreshSpriteCache()
+    {
+        int sizeSel = obsel >> 5;
+        for (int n = 0; n < 128; n++)
+        {
+            int hi = (Oam[0x200 + (n >> 2)] >> ((n & 3) * 2)) & 3;
+            var (w, h) = (hi & 2) != 0 ? ObjLarge[sizeSel] : ObjSmall[sizeSel];
+            int x = Oam[n * 4] | (hi & 1) << 8;
+            if (x >= 256) x -= 512;
+            spriteXVisible[n] = !(x <= -w && x != -256);
+            spriteY[n] = Oam[n * 4 + 1];
+            spriteH[n] = (byte)h;
+        }
+        spriteCacheVersion = oamVersion;
+    }
+
     private void RenderSprites(int line)
     {
         objColor.AsSpan().Fill(Transparent);
@@ -810,17 +836,33 @@ public sealed class PPU_SFC
 
         Span<int> list = stackalloc int[32];
         int count = 0;
-        for (int i = 0; i < 128; i++)
+        if (FastPaths)
         {
-            int n = (first + i) & 127;
-            int hi = (Oam[0x200 + (n >> 2)] >> ((n & 3) * 2)) & 3;
-            var (w, h) = (hi & 2) != 0 ? ObjLarge[sizeSel] : ObjSmall[sizeSel];
-            int x = Oam[n * 4] | (hi & 1) << 8;
-            if (x >= 256) x -= 512;
-            if (x <= -w && x != -256) continue;
-            if (((evalY - Oam[n * 4 + 1]) & 0xFF) >= h) continue;
-            if (count == 32) { rangeOver = true; break; }
-            list[count++] = n;
+            // Same test as the reference loop below, on attributes decoded once per OAM/OBSEL change.
+            if (spriteCacheVersion != oamVersion) RefreshSpriteCache();
+            var sy = spriteY; var sh = spriteH; var sxv = spriteXVisible;
+            for (int i = 0; i < 128; i++)
+            {
+                int n = (first + i) & 127;
+                if (((evalY - sy[n]) & 0xFF) >= sh[n] || !sxv[n]) continue;
+                if (count == 32) { rangeOver = true; break; }
+                list[count++] = n;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < 128; i++)
+            {
+                int n = (first + i) & 127;
+                int hi = (Oam[0x200 + (n >> 2)] >> ((n & 3) * 2)) & 3;
+                var (w, h) = (hi & 2) != 0 ? ObjLarge[sizeSel] : ObjSmall[sizeSel];
+                int x = Oam[n * 4] | (hi & 1) << 8;
+                if (x >= 256) x -= 512;
+                if (x <= -w && x != -256) continue;
+                if (((evalY - Oam[n * 4 + 1]) & 0xFF) >= h) continue;
+                if (count == 32) { rangeOver = true; break; }
+                list[count++] = n;
+            }
         }
 
         // Tiles are fetched last-sprite-first, 34 per line at most, so on overflow it is the
@@ -851,6 +893,22 @@ public sealed class PPU_SFC
                 int chr = (((tileLo >> 4) + ty) & 0x0F) << 4 | ((tileLo + ctx) & 0x0F);
                 int addr = (table + chr * 16 + fy) & 0x7FFF;
                 ushort p01 = Vram[addr], p23 = Vram[(addr + 8) & 0x7FFF];
+                if (FastPaths)
+                {
+                    var expand = hflip ? PlaneExpandFlipped : PlaneExpand;
+                    ulong pixels = expand[p01 & 0xFF] | expand[p01 >> 8] << 1 | expand[p23 & 0xFF] << 2 | expand[p23 >> 8] << 3;
+                    if (pixels == 0) continue;
+                    int start = sx < 0 ? -sx : 0, end = sx > 248 ? 256 - sx : 8;
+                    for (int i = start; i < end; i++)
+                    {
+                        int c = (int)(pixels >> (i << 3)) & 0xFF;
+                        if (c == 0) continue;
+                        objColor[sx + i] = Cgram[128 + (pal << 4) + c];
+                        objPrio[sx + i] = (byte)prio;
+                        objMath[sx + i] = pal >= 4;
+                    }
+                    continue;
+                }
                 for (int i = 0; i < 8; i++)
                 {
                     int px = sx + i;
