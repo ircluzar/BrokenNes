@@ -10,7 +10,7 @@ namespace BrokenNes.Workshop.Gb;
 /// <summary>
 /// Headless Game Boy runs for the compatibility climb.
 ///   --gbrun --rom game.gb|game.zip [--model dmg|cgb] [--frames N] [--png-at f1,f2,...] [--out dir] [--tag name]
-///           [--input "f:Btn+Btn,f:,..."] [--wav out.wav] [--sav file] [--hash]
+///           [--input "f:Btn+Btn,f:,..."] [--wav out.wav] [--sav file] [--sav-out file] [--blank-sram 00] [--hash]
 /// Buttons: Right Left Up Down A B Select Start. "--input 120:Start,126:" holds Start on frames 120-125.
 /// </summary>
 internal static class GbRunCli
@@ -44,6 +44,9 @@ internal static class GbRunCli
         }
 
         var board = new BOARD_GB(GbCartridge.Load(LoadRom(rom)), model);
+        // --blank-sram XX: start from cartridge RAM filled with XX (hardware powers up with garbage; Mesen uses 00)
+        string blank = Opt("blank-sram", "");
+        if (blank != "") System.Array.Fill(board.Cart.Ram, (byte)(Convert.ToByte(blank, 16) | (board.Cart.MapperName == "MBC2" ? 0xF0 : 0)));
         if (sav != "" && File.Exists(sav)) board.ImportSave(File.ReadAllBytes(sav));
         var samples = new List<short>();
         var buf = new short[16384];
@@ -60,7 +63,8 @@ internal static class GbRunCli
             if (board.Cpu.Locked) { Console.WriteLine($"CPU LOCKED at frame {f + 1}, PC=${board.Cpu.PC:X4}"); break; }
         }
         if (wav != "") MixLabWav.Write(wav, samples.ToArray(), board.Apu.SampleRate);
-        if (sav != "" && board.HasBattery) File.WriteAllBytes(sav, board.ExportSave());
+        string savOut = Opt("sav-out", sav);
+        if (savOut != "" && board.HasBattery) File.WriteAllBytes(savOut, board.ExportSave());
         var c = board.Cpu;
         Console.WriteLine($"{board.Cart.Title} [{board.Cart.MapperName}] model={model}{(board.CgbMode ? " (colour)" : board.Ppu.CompatMode ? " (compat)" : "")} frames={board.FrameCount} " +
             $"PC=${c.PC:X4} instr={c.Instructions:N0} {sw.Elapsed.TotalMilliseconds / Math.Max(1, frames):F2} ms/frame" + (hash ? $" hash={h:X16}" : ""));
