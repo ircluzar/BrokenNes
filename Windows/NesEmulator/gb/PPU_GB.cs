@@ -268,6 +268,7 @@ public sealed class PPU_GB
     private int lcdX;                 // next screen pixel to output
     private int discard;              // fine-scroll pixels still to drop
     private bool scxLatched;
+    private int fineScroll;           // SCX & 7 as latched when the first tile was pushed
     // Background/window fetcher.
     private int fetchDots;            // dots spent on the current tile, 6 = fetched and waiting to push
     private bool dummyFetch;          // the first fetch of a line is thrown away
@@ -292,7 +293,7 @@ public sealed class PPU_GB
         if (firstLine) lineSpriteCount = 0; else SelectSprites();
         nextSprite = 0;
         drawing = true;
-        m = 0; lcdX = 0; discard = 0; scxLatched = false;
+        m = 0; lcdX = 0; discard = 0; scxLatched = false; fineScroll = 0;
         fetchDots = 0; dummyFetch = true; fetchX = 0; fetchWindow = false; windowActive = false; winFetchX = 0;
         bgCount = 0;
         Array.Clear(objColor); objHead = 0;
@@ -339,7 +340,7 @@ public sealed class PPU_GB
             {
                 bgLo = tileLo; bgHi = tileHi; bgAttr = tileAttr; bgCount = 8;
                 if (fetchWindow) winFetchX++; else fetchX++;
-                if (!scxLatched) { scxLatched = true; discard = Scx & 7; }
+                if (!scxLatched) { scxLatched = true; fineScroll = Scx & 7; discard = fineScroll; }
             }
         }
 
@@ -347,20 +348,22 @@ public sealed class PPU_GB
         // The wait is 5 dots minus how far the fetch of the tile under the object's left edge has got; objects
         // hanging off the left edge (X < 8) count against a virtual tile before the first one (the real fetcher
         // does not move meanwhile).
-        while (bgCount > 0 && discard == 0 && nextSprite < lineSpriteCount && spriteX[nextSprite] <= lcdX + 8)
+        // Objects are matched against the position of the pixel about to leave the FIFO, fine-scroll pixels included.
+        while (bgCount > 0 && nextSprite < lineSpriteCount && spriteX[nextSprite] <= lcdX - discard + 8)
         {
             if ((Lcdc & 0x02) == 0 && !Cgb) { nextSprite++; continue; }
+            int x = spriteX[nextSprite];
+            bool virtualTile = x - 8 + fineScroll < 0;
             if (spriteWait < 0)
             {
-                int x = spriteX[nextSprite];
-                if (x >= 8) spriteWait = Math.Max(0, 5 - fetchDots);
+                if (!virtualTile) spriteWait = Math.Max(0, 5 - fetchDots);
                 else
                 {
-                    spriteWait = leftTileSeen ? 0 : x == 0 ? 5 : Math.Max(0, 5 - ((x + Scx) & 7));
+                    spriteWait = leftTileSeen ? 0 : x == 0 ? 5 : Math.Max(0, 5 - ((x - 8 + fineScroll) & 7));
                     leftTileSeen = true;
                 }
             }
-            if (spriteWait > 0) { spriteWait--; if (spriteX[nextSprite] >= 8) BgFetchStep(); return; }
+            if (spriteWait > 0) { spriteWait--; if (!virtualTile) BgFetchStep(); return; }
             spriteWait = -1;
             spriteFetchDots = 1;
             return;
@@ -637,7 +640,7 @@ public sealed class PPU_GB
         w.Write(offDots); w.Write(windowLine); w.Write(windowYTriggered); w.Write(windowRendered);
         w.Write(lineSpriteCount); w.Write(nextSprite);
         for (int i = 0; i < 10; i++) { w.Write(lineSprites[i]); w.Write(spriteX[i]); }
-        w.Write(m); w.Write(lcdX); w.Write(discard); w.Write(scxLatched); w.Write(fetchDots); w.Write(dummyFetch); w.Write(fetchX);
+        w.Write(m); w.Write(lcdX); w.Write(discard); w.Write(scxLatched); w.Write(fineScroll); w.Write(fetchDots); w.Write(dummyFetch); w.Write(fetchX);
         w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
         w.Write(bgCount); w.Write(bgLo); w.Write(bgHi); w.Write(bgAttr);
         w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait); w.Write(leftTileSeen);
@@ -654,7 +657,7 @@ public sealed class PPU_GB
         offDots = r.ReadInt32(); windowLine = r.ReadInt32(); windowYTriggered = r.ReadBoolean(); windowRendered = r.ReadBoolean();
         lineSpriteCount = r.ReadInt32(); nextSprite = r.ReadInt32();
         for (int i = 0; i < 10; i++) { lineSprites[i] = r.ReadInt32(); spriteX[i] = r.ReadByte(); }
-        m = r.ReadInt32(); lcdX = r.ReadInt32(); discard = r.ReadInt32(); scxLatched = r.ReadBoolean(); fetchDots = r.ReadInt32(); dummyFetch = r.ReadBoolean(); fetchX = r.ReadInt32();
+        m = r.ReadInt32(); lcdX = r.ReadInt32(); discard = r.ReadInt32(); scxLatched = r.ReadBoolean(); fineScroll = r.ReadInt32(); fetchDots = r.ReadInt32(); dummyFetch = r.ReadBoolean(); fetchX = r.ReadInt32();
         fetchWindow = r.ReadBoolean(); windowActive = r.ReadBoolean(); winFetchX = r.ReadInt32(); tileIdx = r.ReadByte(); tileAttr = r.ReadByte(); tileLo = r.ReadByte(); tileHi = r.ReadByte();
         bgCount = r.ReadInt32(); bgLo = r.ReadByte(); bgHi = r.ReadByte(); bgAttr = r.ReadByte();
         r.ReadBytes(8).CopyTo(objColor, 0); r.ReadBytes(8).CopyTo(objAttr, 0); r.ReadBytes(8).CopyTo(objIndex, 0);
