@@ -12,9 +12,12 @@ namespace NesEmulator.Gb;
 ///
 /// Timing frame: <c>dot</c> counts dots since LY last changed. The board ticks a whole M-cycle and then lets
 /// the CPU access the bus, so an access sees the state after that M-cycle's dots. In that frame, per line:
-/// dot 0 LY changes (the mode-2 interrupt fires, STAT still reads mode 0), dot 4 STAT reads mode 2 (or 1 on
-/// line 144, with the VBlank interrupt), dot 80 drawing starts internally, dot 84 STAT reads mode 3, drawing
-/// ends at 252 + penalties (mode-0 interrupt) and STAT reads mode 0 four dots later.
+/// dot 0 LY changes (STAT still reads mode 0), dot 4 STAT reads mode 2 (or 1 on line 144), drawing starts at
+/// dot 78 (VRAM reads lock), STAT reads mode 3 from dot 84, the last pixel leaves the FIFO at 250 + SCX&amp;7 +
+/// window/object penalties (HBlank interrupt) and STAT reads mode 0 three dots later. Colours are looked up
+/// in a palette stage 5 dots behind the FIFO. The interrupt side leads STAT: the OAM-scan interrupt comes
+/// at dot 452 of the line before, LY=LYC and VBlank at 454. Calibrated against gbmicrotest, Mooneye and the
+/// Mealybug Tearoom mid-scanline tests.
 /// </summary>
 public sealed class PPU_GB
 {
@@ -307,7 +310,7 @@ public sealed class PPU_GB
     private int fetchX;               // background tile column counter
     private bool fetchWindow, windowActive;
     private int winFetchX;
-    private static readonly int WinHead = int.Parse(Environment.GetEnvironmentVariable("GB_WH") ?? "1");
+    private const int WinHead = 1;       // a window started mid-line stalls the output 5 dots, not 6
     private int winSkip;              // window pixels left of the screen edge (WX < 7), dropped at the first push
     private byte tileIdx, tileAttr, tileLo, tileHi;
     // Background FIFO: it only ever holds one tile's pixels (a tile is pushed when it is empty).
@@ -457,9 +460,9 @@ public sealed class PPU_GB
         }
     }
 
-    private static readonly int IdxAt = int.Parse(Environment.GetEnvironmentVariable("GB_IDX") ?? "6");
-    private static readonly int LoAt = int.Parse(Environment.GetEnvironmentVariable("GB_LOW") ?? "8");
-    private static readonly int HiAt = int.Parse(Environment.GetEnvironmentVariable("GB_HI") ?? "8");
+    // The fetcher's reads happen late in its 8-dot tile slot: the tile index 5 dots in, both data bytes just
+    // before the push (or at the push when the fetch has no slack, as for the first tile of a line).
+    private const int IdxAt = 6, LoAt = 8, HiAt = 8;
     private int fetchStage;           // reads done for the current tile: 0 none, 1 index, 2 low, 3 high
 
     private void StartWindow()
@@ -722,7 +725,7 @@ public sealed class PPU_GB
         w.Write(lineSpriteCount); w.Write(nextSprite);
         for (int i = 0; i < 10; i++) { w.Write(lineSprites[i]); w.Write(spriteX[i]); }
         w.Write(m); w.Write(lcdX); w.Write(discard); w.Write(scxLatched); w.Write(fineScroll); w.Write(fetchDots); w.Write(dummyFetch); w.Write(fetchX);
-        w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
+        w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(fetchStage); w.Write(winSkip); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
         w.Write(bgCount); w.Write(bgLo); w.Write(bgHi); w.Write(bgAttr);
         w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait); w.Write(leftTileSeen);
         w.Write(pendBc); w.Write(pendOc); w.Write(pendOa); w.Write(pendAttr); w.Write(pendX); for (int i = 0; i < 8; i++) w.Write(pendDue[i]);
@@ -741,7 +744,7 @@ public sealed class PPU_GB
         lineSpriteCount = r.ReadInt32(); nextSprite = r.ReadInt32();
         for (int i = 0; i < 10; i++) { lineSprites[i] = r.ReadInt32(); spriteX[i] = r.ReadByte(); }
         m = r.ReadInt32(); lcdX = r.ReadInt32(); discard = r.ReadInt32(); scxLatched = r.ReadBoolean(); fineScroll = r.ReadInt32(); fetchDots = r.ReadInt32(); dummyFetch = r.ReadBoolean(); fetchX = r.ReadInt32();
-        fetchWindow = r.ReadBoolean(); windowActive = r.ReadBoolean(); winFetchX = r.ReadInt32(); tileIdx = r.ReadByte(); tileAttr = r.ReadByte(); tileLo = r.ReadByte(); tileHi = r.ReadByte();
+        fetchWindow = r.ReadBoolean(); windowActive = r.ReadBoolean(); winFetchX = r.ReadInt32(); fetchStage = r.ReadInt32(); winSkip = r.ReadInt32(); tileIdx = r.ReadByte(); tileAttr = r.ReadByte(); tileLo = r.ReadByte(); tileHi = r.ReadByte();
         bgCount = r.ReadInt32(); bgLo = r.ReadByte(); bgHi = r.ReadByte(); bgAttr = r.ReadByte();
         r.ReadBytes(8).CopyTo(objColor, 0); r.ReadBytes(8).CopyTo(objAttr, 0); r.ReadBytes(8).CopyTo(objIndex, 0);
         objHead = r.ReadInt32(); spriteFetchDots = r.ReadInt32(); spriteWait = r.ReadInt32(); leftTileSeen = r.ReadBoolean();
