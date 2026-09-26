@@ -39,6 +39,7 @@ public sealed class PPU_GB
     private byte statEnable;          // STAT bits 3-6
     private byte vbk, bcps, ocps, opri;
     public long FrameCount { get; private set; }
+    public static int DebugLine = -1;
 
     /// <summary>Raised with the IF bit to set: 0 = VBlank, 1 = STAT.</summary>
     public Action<int>? RequestInterrupt;
@@ -326,7 +327,7 @@ public sealed class PPU_GB
         nextSprite = 0;
         drawing = true;
         m = 0; lcdX = 0; discard = 0; scxLatched = false; fineScroll = 0;
-        fetchDots = 0; dummyFetch = true; fetchX = 0; fetchWindow = false; windowActive = false; winFetchX = 0;
+        fetchDots = 0; fetchStage = 0; dummyFetch = true; fetchX = 0; fetchWindow = false; windowActive = false; winFetchX = 0;
         bgCount = 0;
         Array.Clear(objColor); objHead = 0;
         spriteFetchDots = 0; spriteWait = -1; leftTileSeen = false;
@@ -366,6 +367,7 @@ public sealed class PPU_GB
         // Push a fetched tile into an empty background FIFO.
         if (fetchDots >= 6 && bgCount == 0)
         {
+            FinishFetch();
             fetchDots = 0;
             if (dummyFetch) dummyFetch = false;
             else
@@ -411,7 +413,7 @@ public sealed class PPU_GB
         if (!windowActive && (Lcdc & 0x20) != 0 && windowYTriggered && (lcdX + 7 == Wx || (Wx < 7 && lcdX == 0)))
         {
             windowActive = true; windowRendered = true; fetchWindow = true; winFetchX = 0;
-            fetchDots = 0; bgCount = 0;
+            fetchDots = 0; fetchStage = 0; bgCount = 0;
             if (Wx < 7) discard = 7 - Wx;
             return;
         }
@@ -447,16 +449,26 @@ public sealed class PPU_GB
         }
     }
 
+    private static readonly int IdxAt = int.Parse(Environment.GetEnvironmentVariable("GB_IDX") ?? "6");
+    private static readonly int LoAt = int.Parse(Environment.GetEnvironmentVariable("GB_LOW") ?? "8");
+    private static readonly int HiAt = int.Parse(Environment.GetEnvironmentVariable("GB_HI") ?? "8");
+    private int fetchStage;           // reads done for the current tile: 0 none, 1 index, 2 low, 3 high
+
     private void BgFetchStep()
     {
-        if (fetchDots >= 6) return;
+        if (fetchDots >= 8) return;
         fetchDots++;
-        switch (fetchDots)
-        {
-            case 2: FetchTileIndex(); break;
-            case 4: tileLo = FetchTileData(0); break;
-            case 6: tileHi = FetchTileData(1); break;
-        }
+        if (fetchStage == 0 && fetchDots >= IdxAt) { FetchTileIndex(); fetchStage = 1; }
+        if (fetchStage == 1 && fetchDots >= LoAt) { tileLo = FetchTileData(0); fetchStage = 2; }
+        if (fetchStage == 2 && fetchDots >= HiAt) { tileHi = FetchTileData(1); fetchStage = 3; }
+    }
+
+    private void FinishFetch()
+    {
+        if (fetchStage == 0) FetchTileIndex();
+        if (fetchStage <= 1) tileLo = FetchTileData(0);
+        if (fetchStage <= 2) tileHi = FetchTileData(1);
+        fetchStage = 0;
     }
 
     private void FetchTileIndex()
@@ -473,6 +485,7 @@ public sealed class PPU_GB
             addr = map + (((ly + Scy) & 0xFF) >> 3) * 32 + (((Scx >> 3) + fetchX) & 31);
         }
         tileIdx = Vram[addr];
+        if (DebugLine == ly) Console.WriteLine($"  fetch idx dot={dot} fetchX={fetchX} win={fetchWindow} scx={Scx} lcdc={Lcdc:X2}");
         tileAttr = Cgb ? Vram[0x2000 + addr] : (byte)0;
     }
 
