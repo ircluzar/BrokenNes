@@ -21,6 +21,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
 | `--snestest` | SFC (SNES) core-family spec verifier: runs gilyon/snes-tests and lists every failing test with its inputs and expected output | a `.sfc` from `Windows/Resources/snes-test-roms` | **Yes** |
+| `--snes` | Interactive SNES player window (SFC cores): keyboard + XInput, audio-paced, battery saves | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--snesrun` | SFC "how far does this game get?" probe: N frames, scripted input, PNGs at chosen frames, hottest PCs (hang loops), sound-CPU upload state | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |
 | `--corrupt` | The VRUN corruption oracle: late-PPU-write / CHR-scatter / nametable-floor checks, with fault injection to prove each one fires | VRUN `game.nes` (VRUN-specific) | **Yes** |
@@ -196,6 +197,17 @@ three addresses) and the HLE sound-CPU state: bytes uploaded and the driver's en
 2026-09-25, Super Mario World: title → file select → Yoshi's House → walks out onto the overworld.
 Missing so far: sprites, priorities, color math and windows. Its sound handshake relies on one
 heuristic in BOARD_SFC (`$FF` on port 1 = driver returns to the IPL) until a real SPC700 exists.
+
+### Playing: `--snes`
+```
+BrokenNes.Workshop.exe --snes game.sfc [--apu SFC|HLE]      # no ROM argument = file picker
+```
+Keys: arrows = D-pad, Z = B, X = A, A = Y, S = X, Q = L, W = R, Enter = Start, Shift = Select;
+P pause, F2 reset, Tab (hold) fast-forward, F12 screenshot (saved next to the ROM), Esc quit.
+An XInput pad is mapped positionally (Xbox A = SNES B, and so on). With a sound-producing audio unit
+the audio device's clock paces emulation; with the silent APU_HLE a stopwatch holds NTSC 60.1 fps.
+Battery SRAM goes to `%APPDATA%\BrokenNes\BatterySaves\sfc<sha1-of-rom>.srm`, next to the NES
+saves. It's written every 10 s when changed and on close.
 
 ## Run (`--trace` — the cross-emulator differential tracer)
 

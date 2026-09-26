@@ -24,6 +24,9 @@
          silent in v1); these packages exist purely so the apus/** glob compiles. -->
     <PackageReference Include="NAudio.Midi" Version="2.2.1" />
     <PackageReference Include="MeltySynth" Version="2.4.0" />
+    <!-- The SNES player (snes mode): audio out (WaveOutEvent) and XInput pads. Same versions the desktop app uses. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
   </ItemGroup>
 
   <!-- ==========================================================================
