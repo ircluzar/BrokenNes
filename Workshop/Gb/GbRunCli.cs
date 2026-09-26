@@ -30,6 +30,18 @@ internal static class GbRunCli
         var script = ParseInput(Opt("input", ""));
         string wav = Opt("wav", ""), sav = Opt("sav", "");
         bool hash = args.Contains("--hash");
+        // --reglog FF47,C000:C0FF@1200-1500 : print those addresses (Peek) after every frame in the range
+        var reglog = Opt("reglog", "");
+        ushort[] logAddrs = Array.Empty<ushort>(); int logFrom = 0, logTo = -1;
+        if (reglog != "")
+        {
+            var parts = reglog.Split("@");
+            logAddrs = parts[0].Split(",").SelectMany(a => a.Contains(":")
+                ? Enumerable.Range(Convert.ToUInt16(a.Split(":")[0], 16), Convert.ToUInt16(a.Split(":")[1], 16) - Convert.ToUInt16(a.Split(":")[0], 16) + 1).Select(v => (ushort)v)
+                : new[] { Convert.ToUInt16(a, 16) }).ToArray();
+            var range = parts.Length > 1 ? parts[1].Split("-") : new[] { "0", "999999" };
+            logFrom = int.Parse(range[0]); logTo = int.Parse(range[1]);
+        }
 
         var board = new BOARD_GB(GbCartridge.Load(LoadRom(rom)), model);
         if (sav != "" && File.Exists(sav)) board.ImportSave(File.ReadAllBytes(sav));
@@ -42,6 +54,7 @@ internal static class GbRunCli
             if (script.TryGetValue(f, out var held)) { board.Buttons = held; board.UpdateJoypadIrq(); }
             board.RunFrame();
             int n; while ((n = board.Apu.ReadSamples(buf)) > 0) if (wav != "") for (int i = 0; i + 1 < n; i += 2) samples.Add((short)((buf[i] + buf[i + 1]) / 2));
+            if (f + 1 >= logFrom && f + 1 <= logTo) Console.WriteLine($"{f + 1} " + string.Join(" ", logAddrs.Select(a => board.Peek(a).ToString("X2"))));
             if (hash) foreach (var p in board.Ppu.FrameBuffer) { h ^= p; h *= 1099511628211; }
             if (shots.Contains(f + 1)) GbTestCli.SaveFrame(board, Path.Combine(outDir, $"{tag}_f{f + 1}.png"));
             if (board.Cpu.Locked) { Console.WriteLine($"CPU LOCKED at frame {f + 1}, PC=${board.Cpu.PC:X4}"); break; }
@@ -51,6 +64,7 @@ internal static class GbRunCli
         var c = board.Cpu;
         Console.WriteLine($"{board.Cart.Title} [{board.Cart.MapperName}] model={model}{(board.CgbMode ? " (colour)" : board.Ppu.CompatMode ? " (compat)" : "")} frames={board.FrameCount} " +
             $"PC=${c.PC:X4} instr={c.Instructions:N0} {sw.Elapsed.TotalMilliseconds / Math.Max(1, frames):F2} ms/frame" + (hash ? $" hash={h:X16}" : ""));
+        var pp = board.Ppu; Console.WriteLine($"LCDC={pp.Lcdc:X2} BGP={pp.Bgp:X2} OBP0={pp.Obp0:X2} OBP1={pp.Obp1:X2} SCX={pp.Scx} SCY={pp.Scy} WX={pp.Wx} WY={pp.Wy} LY={pp.LY}");
         if (board.SerialOut.Length > 0) Console.WriteLine("serial: " + board.SerialOut.ToString().Replace("\n", " | "));
         return 0;
     }
