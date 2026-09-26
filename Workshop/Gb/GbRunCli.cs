@@ -48,6 +48,32 @@ internal static class GbRunCli
         string blank = Opt("blank-sram", "");
         if (blank != "") System.Array.Fill(board.Cart.Ram, (byte)(Convert.ToByte(blank, 16) | (board.Cart.MapperName == "MBC2" ? 0xF0 : 0)));
         if (sav != "" && File.Exists(sav)) board.ImportSave(File.ReadAllBytes(sav));
+        // --trace-last N: keep the last N instructions (PC, opcode, A F B C D E H L SP) and print them at the end
+        int traceN = int.Parse(Opt("trace-last", "0"));
+        var trace = new Queue<string>();
+        if (traceN > 0) board.InstructionHook = pc =>
+        {
+            var c = board.Cpu; if (c.Locked) return;
+            trace.Enqueue($"{pc:X4} {board.Peek(pc):X2} {board.Peek((ushort)(pc + 1)):X2} {board.Peek((ushort)(pc + 2)):X2}  A={c.A:X2} F={c.F:X2} BC={c.BC:X4} DE={c.DE:X4} HL={c.HL:X4} SP={c.SP:X4} LY={board.Ppu.LY} IME={(c.Ime ? 1 : 0)}");
+            if (trace.Count > traceN) trace.Dequeue();
+        };
+        // --trace-regions N: print the first N jumps between memory regions (ROM0 / ROMX / RAM / HRAM)
+        int regionN = int.Parse(Opt("trace-regions", "0"));
+        if (regionN > 0)
+        {
+            int lastRegion = -1, printed = 0; ushort lastPc = 0;
+            static int Region(ushort a) => a < 0x4000 ? 0 : a < 0x8000 ? 1 : a >= 0xFF80 ? 3 : 2;
+            board.InstructionHook = pc =>
+            {
+                int r = Region(pc);
+                if (r != lastRegion && lastRegion >= 0 && printed < regionN)
+                {
+                    printed++;
+                    Console.WriteLine($"frame {board.FrameCount} ly={board.Ppu.LY}: ${lastPc:X4} ({board.Peek(lastPc):X2} {board.Peek((ushort)(lastPc + 1)):X2} {board.Peek((ushort)(lastPc + 2)):X2}) -> ${pc:X4}  SP={board.Cpu.SP:X4} A={board.Cpu.A:X2}");
+                }
+                lastRegion = r; lastPc = pc;
+            };
+        }
         var samples = new List<short>();
         var buf = new short[16384];
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -62,6 +88,7 @@ internal static class GbRunCli
             if (shots.Contains(f + 1)) GbTestCli.SaveFrame(board, Path.Combine(outDir, $"{tag}_f{f + 1}.png"));
             if (board.Cpu.Locked) { Console.WriteLine($"CPU LOCKED at frame {f + 1}, PC=${board.Cpu.PC:X4}"); break; }
         }
+        foreach (var t in trace) Console.WriteLine(t);
         if (wav != "") MixLabWav.Write(wav, samples.ToArray(), board.Apu.SampleRate);
         string savOut = Opt("sav-out", sav);
         if (savOut != "" && board.HasBattery) File.WriteAllBytes(savOut, board.ExportSave());

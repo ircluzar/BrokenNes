@@ -81,6 +81,10 @@ internal static class Program
         {
             return Gb.GbRunCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--gbsweep", StringComparison.OrdinalIgnoreCase))
+        {
+            return Gb.GbSweepCli.Run(args);
+        }
         if (args.Length > 0 && args[0].Equals("--gb", StringComparison.OrdinalIgnoreCase))
         {
             return Gb.GbPlayerForm.Run(args);

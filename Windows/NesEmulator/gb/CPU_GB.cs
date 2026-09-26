@@ -42,6 +42,7 @@ public sealed class CPU_GB
     private readonly IGbCpuBus bus;
     private bool imePending;      // EI: IME becomes 1 after the next instruction
     private bool haltBug;         // HALT with IME=0 and an interrupt pending: next opcode byte is read twice
+    private bool eiBeforeThis;    // the instruction being executed directly follows EI
 
     public CPU_GB(IGbCpuBus bus) { this.bus = bus; }
 
@@ -203,6 +204,7 @@ public sealed class CPU_GB
             return;
         }
 
+        eiBeforeThis = enableAfter;
         byte op = Fetch();
         Execute(op);
         Instructions++;
@@ -334,6 +336,9 @@ public sealed class CPU_GB
     private void Halt()
     {
         if (Ime || bus.PendingInterrupts == 0) { Halted = true; return; }
+        // EI; HALT with an interrupt already pending: the interrupt is taken right away and returns to the HALT,
+        // which then halts normally (Tail Gator and Quarth do this; treating it as the HALT bug crashes them).
+        if (eiBeforeThis) { PC--; return; }
         // IME=0 with an interrupt already pending: HALT exits at once and the next opcode byte is read twice.
         haltBug = true;
     }
