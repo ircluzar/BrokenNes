@@ -119,7 +119,8 @@ public class Bus : IBus
 		{
 			instructionStartCycle = cpuCycle;
 			accessCountAtInstructionStart = instr.Reads + instr.Writes;
-			InstructionStartDot = ppu is PPU_FIX fixPpu ? fixPpu.DotCounter : -1;
+			// A write that landed past its own cycle already ran this instruction's first dot(s) - count from the true start.
+			InstructionStartDot = ppu is PPU_FIX fixPpu ? fixPpu.DotCounter + (preciseCarryDots < 0 ? preciseCarryDots : 0) : -1;
 		}
 		// The access being performed now: it has already been counted, hence the -1.
 		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);
@@ -143,7 +144,7 @@ public class Bus : IBus
 		public (int accessCycles, int stallCycles) EndPreciseWindow()
 		{
 			preciseWindow = false;
-			if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; }
+			if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; } // a negative carry (dots already run ahead) is repaid by the next access
 			return (preciseAccessCycles, preciseStallCycles);
 		}
 
@@ -153,26 +154,35 @@ public class Bus : IBus
 		// Each access now sees a set number of its cycle's dots (below); the rest carry to the next
 		// access (settled at the end of the instruction, so per-instruction totals are unchanged).
 		// A first fit (reads 2, writes 0) matched Bayou's write dots and Zelda II's sprite-0-polled
-		// title split, but was made while the phase was wrong. Refitted once the CPU/PPU phase itself was made exact (8-cycle reset sequence, OAM DMA
-		// parity, dot-exact interrupt landing): the old 2/0 had been compensating for PPU_FIX running
-		// a whole CPU cycle out of phase. Reads see 1 dot, as in Mesen's master-clock model; writes
-		// take effect after all 3 of their cycle's dots, which scored best against Mesen across the
-		// certified roster (Kirby 44 -> 51 exact samples, Bayou Billy's split rows 183 px -> 25 px, no
-		// certified game moved). A residual +/-1 dot on some splits is PPU-register-specific latency.
-		private const int PreDotsRead = 1, PreDotsWrite = 3;
+		// title split, but was made while the CPU/PPU phase was a whole cycle out (fixed since: 8-cycle
+		// reset sequence, OAM DMA parity, dot-exact interrupt landing). Refitted with the phase right,
+		// input fed on Mesen's schedule, and EVERY frame compared rather than one in 30: reads see 1 dot
+		// of their cycle, as in Mesen's master-clock model, and every write - PPU and mapper registers
+		// alike - takes effect 4 dots in, one dot into the following cycle. That extra dot is what
+		// PPU_FIX's background fetches need (they latch on the first dot of each 2-dot fetch where the
+		// hardware latches on the second) to see a mid-line write where Mesen 2.1.1 does. One uniform
+		// rule replaced per-register fits: frame by frame on the four games with mid-line raster
+		// effects, Bayou Billy 0 -> 61/61 exact, Lifeforce 38 -> 57/61, Kirby 23 -> 32/61, Mega Man 3
+		// unchanged; no certified game moved. A write landing past its own cycle borrows those dots
+		// from the next access (preciseCarryDots goes negative), so each instruction still totals
+		// exactly 3 dots a cycle.
+		private const int PreDotsRead = 1, PreDotsWrite = 4;
 		private int preciseCarryDots;
 		/// <summary>For CPU_FIX's interrupt-poll timing: the bus access of the running instruction the PPU/APU is
 		/// being stepped for (0-based); int.MaxValue in precise mode outside the window (the instruction's tail);
 		/// -1 when not in precise stepping at all.</summary>
 		public int PreciseInterruptPhase => preciseWindow ? preciseAccessCycles : (PreciseSteppingActive ? int.MaxValue : -1);
 		public bool PreciseSteppingActive;
+		/// <summary>Dots already run ahead for the next access (a write landing past its cycle leaves this negative
+		/// across an instruction boundary) - part of the machine's timing, so savestated.</summary>
+		public int PreciseCarryDots { get => preciseCarryDots; set => preciseCarryDots = value; }
 		private void PreciseTick(bool isWrite)
 		{
 			if (insidePreciseTick) return;
 			insidePreciseTick = true;
 			int pre = isWrite ? PreDotsWrite : PreDotsRead;
 			int now = preciseCarryDots + pre; preciseCarryDots = 3 - pre;
-			if (now > 0) ppu!.Step(now);
+			if (now > 0) ppu!.Step(now); else preciseCarryDots += now; // a write landing past its own cycle borrows from the next
 			StepAPU(1); preciseAccessCycles++;
 			// If that cycle triggered a DMA, the CPU is halted for its duration right here - so
 			// advance PPU/APU across the stall while the CPU stands still, which is exactly what

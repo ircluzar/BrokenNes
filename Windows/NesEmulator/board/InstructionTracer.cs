@@ -21,7 +21,7 @@ namespace NesEmulator
 	///   12    A   13 X   14 Y   15 S   16 P    (all pre-instruction)
 	///   17    eventFlags   u8   (bit0 = NMI dispatched just before this instruction, bit1 = IRQ)
 	///   18-19 PPU scanline u16, 20-21 PPU dot u16 at the instruction's start (0xFFFF = unknown)
-	///   22-23 reserved
+	///   22-23 PPU v (loopy-v) at the instruction's start; eventFlags bits 2-4 carry fine X, bit 5 = v/fineX valid
 	///
 	/// cycleInFrame is accumulated here rather than read from NES.globalCpuCycle, so the exact
 	/// same accounting rule applies on both emulators (FCEUX has no equivalent to expose) - it
@@ -42,13 +42,14 @@ namespace NesEmulator
 		private static byte pendingEventFlags;
 		private static FileStream? stream;
 		private static readonly byte[] recordBuf = new byte[RecordSize];
-		private static int ppuScanlineAtStart = -1, ppuDotAtStart = -1;
+		private static int ppuScanlineAtStart = -1, ppuDotAtStart = -1, ppuVAtStart = -1, ppuFineXAtStart;
 
 		public static bool Enabled => enabled;
 
 		/// <summary>Where the PPU stands as the next instruction starts - the CPU/PPU phase, which the cycle
 		/// counter alone cannot show (two emulators can agree on every cycle and still be dots apart).</summary>
 		public static void NotePpuPosition(int scanline, int dot) { ppuScanlineAtStart = scanline; ppuDotAtStart = dot; }
+		public static void NotePpuScroll(int v, int fineX) { ppuVAtStart = v; ppuFineXAtStart = fineX; }
 
 		public static void Configure(string? tracePath, int startFrame, int endFrame)
 		{
@@ -119,7 +120,8 @@ namespace NesEmulator
 			buf[17] = flags;
 			ushort sl = ppuScanlineAtStart < 0 ? (ushort)0xFFFF : (ushort)ppuScanlineAtStart, dt = ppuDotAtStart < 0 ? (ushort)0xFFFF : (ushort)ppuDotAtStart;
 			buf[18] = (byte)sl; buf[19] = (byte)(sl >> 8); buf[20] = (byte)dt; buf[21] = (byte)(dt >> 8);
-			ppuScanlineAtStart = ppuDotAtStart = -1;
+			if (ppuVAtStart >= 0) { buf[22] = (byte)ppuVAtStart; buf[23] = (byte)(ppuVAtStart >> 8); buf[17] |= (byte)(((ppuFineXAtStart & 7) << 2) | 0x20); }
+			ppuScanlineAtStart = ppuDotAtStart = ppuVAtStart = -1;
 			stream.Write(buf, 0, RecordSize);
 		}
 

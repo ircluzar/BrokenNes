@@ -53,6 +53,12 @@ public class PPU_FIX : IPPU, IPpuProbe
 	private byte ppuOpenBus;
 	private readonly long[] ppuOpenBusDecayAt = new long[8]; // absolute dot count at which each bit decays to 0
 	private long ppuDotCounter;
+	private int vUpdateDelay; private ushort vUpdatePending; // $2006's delayed copy of t into v
+	// The second $2006 write reaches v this many dots after the write takes effect (Bus.PreDotsWrite).
+	// Mesen 2.1.1 models a 3-dot delay; 4 here is the same instant against PPU_FIX's first-dot fetches,
+	// and measured frame by frame on Mega Man 3's mid-line $2006 split: 47/61 frames exact at 4, 24 at 3,
+	// 37 at 5 (the misses at 4 are a single pixel on frames whose write lands 2 dots earlier - still open).
+	private const int VramAddrUpdateDelay = 4;
 	/// <summary>Dots stepped since power-on, and the index of the dot that last raised an interrupt -
 	/// CPU_FIX judges interrupt landing by exact dot distance from the instruction's start.</summary>
 	public long DotCounter => ppuDotCounter;
@@ -200,6 +206,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		ppuDotCounter += elapsedCycles;
 		for (int c = 0; c < elapsedCycles; c++)
 		{
+			if (vUpdateDelay > 0 && --vUpdateDelay == 0) v = vUpdatePending;
 			// Hardware clears VBlank (bit 7), sprite-0 hit (bit 6) and sprite overflow (bit 5) at
 			// PRE-RENDER scanline 261, dot 1 - not at scanline 0 dot 0, and not only bits 7/6.
 			// Clearing a full scanline late shifted the entire vblank window against rendering:
@@ -615,7 +622,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// and the shifters/latches/sprite units are what the rest of that line (and the next) draw from.
 	private byte[] PackPipeline()
 	{
-		var b = new byte[8 + 4 + 2 + 32 + 2 + 48];
+		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3];
 		int o = 0;
 		void U16(ushort x) { b[o++] = (byte)x; b[o++] = (byte)(x >> 8); }
 		U16(bgShiftLo); U16(bgShiftHi); U16(atShiftLo); U16(atShiftHi);
@@ -624,6 +631,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		for (int i = 0; i < 8; i++) { b[o++] = sprX[i]; b[o++] = sprLo[i]; b[o++] = sprHi[i]; b[o++] = sprAttr[i]; }
 		b[o++] = (byte)nSprCount; b[o++] = (byte)(nSprZeroOnLine ? 1 : 0);
 		for (int i = 0; i < 8; i++) { b[o++] = nSprX[i]; b[o++] = nSprLo[i]; b[o++] = nSprHi[i]; b[o++] = nSprAttr[i]; b[o++] = nSprTile[i]; b[o++] = nSprRow[i]; }
+		b[o++] = (byte)vUpdateDelay; U16(vUpdatePending); // a $2006 copy still in flight
 		return b;
 	}
 
@@ -632,7 +640,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		if (b == null || b.Length < 96)
 		{
 			// Older state: nothing to restore; the pipeline refills within one scanline.
-			bgShiftLo = bgShiftHi = atShiftLo = atShiftHi = 0; sprCount = nSprCount = 0; sprZeroOnLine = nSprZeroOnLine = false;
+			bgShiftLo = bgShiftHi = atShiftLo = atShiftHi = 0; sprCount = nSprCount = 0; sprZeroOnLine = nSprZeroOnLine = false; vUpdateDelay = 0;
 			return;
 		}
 		int o = 0;
@@ -643,6 +651,7 @@ public class PPU_FIX : IPPU, IPpuProbe
 		for (int i = 0; i < 8; i++) { sprX[i] = b[o++]; sprLo[i] = b[o++]; sprHi[i] = b[o++]; sprAttr[i] = b[o++]; }
 		nSprCount = b[o++]; nSprZeroOnLine = b[o++] != 0;
 		for (int i = 0; i < 8; i++) { nSprX[i] = b[o++]; nSprLo[i] = b[o++]; nSprHi[i] = b[o++]; nSprAttr[i] = b[o++]; nSprTile[i] = b[o++]; nSprRow[i] = b[o++]; }
+		if (b.Length >= 99) { vUpdateDelay = b[o++]; vUpdatePending = U16(); } else vUpdateDelay = 0;
 	}
 
 
@@ -875,8 +884,9 @@ public class PPU_FIX : IPPU, IPpuProbe
 				else
 				{
 					t = (ushort)((t & 0xFF00) | value);
-					v = t; // the second write copies t into the live address register
-					PPUADDR = v;
+					// The second write copies t into the live address register - a few dots later.
+					vUpdatePending = t; vUpdateDelay = VramAddrUpdateDelay;
+					PPUADDR = t;
 				}
 				w = !w; // same shared toggle as $2005
 				break;
@@ -1258,6 +1268,8 @@ public class PPU_FIX : IPPU, IPpuProbe
 	// to the previous line.
 	public int ProbeScanline => scanline;
 	public int ProbeDot => scanlineCycle;
+	public ushort ProbeV => v;
+	public byte ProbeFineX => fineX;
 	public byte ProbeMask => PPUMASK;
 	public byte ProbePpuBusRead(ushort address) => Read(address);
 	public void ProbePpuBusWrite(ushort address, byte value) => Write(address, value);

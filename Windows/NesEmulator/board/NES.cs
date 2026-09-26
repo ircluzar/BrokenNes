@@ -267,7 +267,7 @@ namespace NesEmulator
 			// NTSC dot budget and the half-dot parity toggle from wherever it happens to be, and every
 			// frame after the load is a cycle or so different from the one that was saved.
 			public bool hasFrameClock;
-			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt;
+			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt; public int preciseCarryDots;
 			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
@@ -430,7 +430,7 @@ namespace NesEmulator
 					overshootCarry = overshootCarry,
 					hasFrameClock = true,
 					globalCpuCycle = globalCpuCycle, ntscDotBudget = ntscDotBudget, ntscFrameParityToggle = ntscFrameParityToggle,
-					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt,
+					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt, preciseCarryDots = bus?.PreciseCarryDots ?? 0,
 					ram = ramClone,
 					cpu = cpuJson,
 					ppu = ppuJson,
@@ -565,6 +565,7 @@ namespace NesEmulator
 					if (root.TryGetProperty("ntscFrameParityToggle", out var nfp)) st.ntscFrameParityToggle = nfp.GetBoolean();
 					if (root.TryGetProperty("ntscWasEnabled", out var nwe)) st.ntscWasEnabled = nwe.GetBoolean();
 					if (root.TryGetProperty("precisePpuDebt", out var ppd)) st.precisePpuDebt = ppd.GetInt32();
+				if (root.TryGetProperty("preciseCarryDots", out var pcd)) st.preciseCarryDots = pcd.GetInt32();
 				}
 				loadedFixedPointTiming = hasFixedPointTiming;
 				if (root.TryGetProperty("ram", out var ramEl)) {
@@ -643,6 +644,7 @@ namespace NesEmulator
 				globalCpuCycle = st.globalCpuCycle;
 				ntscDotBudget = st.ntscDotBudget; ntscFrameParityToggle = st.ntscFrameParityToggle; ntscWasEnabled = st.ntscWasEnabled;
 				precisePpuDebt = st.precisePpuDebt;
+				if (bus != null) bus.PreciseCarryDots = st.preciseCarryDots; // dots a late write already ran for the next access
 				// The event scheduler's next-event cycles are relative to the old clock; restoring an
 				// earlier cycle count must not leave them stranded in the future.
 				nextPpuEventCycle = nextApuEventCycle = nextFrameBoundaryCycle = globalCpuCycle;
@@ -970,7 +972,7 @@ namespace NesEmulator
 								// predictive split below uses; the difference is only that it is
 								// armed unconditionally, which makes the DMC prediction redundant.
 								bus!.MarkInstructionStart(globalCpuCycle);
-								if (InstructionTracer.Enabled && bus!.ppu is PPU_FIX tracedPpu) InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot);
+								if (InstructionTracer.Enabled && bus!.ppu is PPU_FIX tracedPpu) { InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot); InstructionTracer.NotePpuScroll(tracedPpu.ProbeV, tracedPpu.ProbeFineX); }
 								bus!.BeginPreciseWindow();
 								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
 								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
@@ -1210,9 +1212,16 @@ namespace NesEmulator
 			// load point (the render target is not in a savestate), so the first frame is only
 			// presented once the PPU has started one from its top row.
 			if (awaitingFrameStart && lastClockScanline >= 240 && sl < 240) awaitingFrameStart = false;
-			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240 && !awaitingFrameStart) PresentCompletedFrame(ppu);
+			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240)
+			{
+				if (!awaitingFrameStart) PresentCompletedFrame(ppu);
+				PpuEnteredPostRender?.Invoke();
+			}
 			lastClockScanline = sl;
 		}
+		/// <summary>Raised when the PPU crosses from the visible lines into line 240 - where Mesen 2.1.1 ends a
+		/// frame. Test harnesses latch scripted input here to switch it at the same point Mesen does.</summary>
+		public event Action? PpuEnteredPostRender;
 		private bool awaitingFrameStart;
 
 		private void PresentCompletedFrame(IPPU ppu)

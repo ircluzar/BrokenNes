@@ -132,6 +132,11 @@ internal static class TraceCli
         "                  INCLUSIVE until the next step. Buttons: A,B,Select,Start,Up,Down,Left,Right.\n" +
         "                  Example: \"60:Start,66:,120:Right+A,180:\"\n" +
         "  --ntsc-frame-timing  default 'on'. See the determinism notes in TraceCli.cs.\n" +
+        "  --input-latch   frame (default): each step applies from the start of the frame it names.\n" +
+        "                  line240: frame F's step takes effect when the PPU enters line 240 of\n" +
+        "                  frame F (counted from power-on) - exactly where Mesen 2.1.1's script sets\n" +
+        "                  the controller, so each press lands on the same poll in both emulators.\n" +
+        "                  Use it for any cross-emulator comparison.\n" +
         "  --power-on-ram  fceux (default, the emulator's own fill) | zeros | ones. Only bend this\n" +
         "                  when the emulator on the other side of the diff cannot produce FCEUX's\n" +
         "                  pattern; whichever is used is recorded in the header.\n" +
@@ -291,6 +296,7 @@ internal static class TraceCli
         // --prg-state / --poke-at: see PrgSampler and the poke block below.
         string prgMode = "off";
         string? pokeSpec = null;
+        bool inputLatchLine240 = false;
 
         try
         {
@@ -306,6 +312,13 @@ internal static class TraceCli
                     case "--input": inputScript = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
+                case "--input-latch":
+                    {
+                        string mode = args[++i].ToLowerInvariant();
+                        if (mode == "line240") inputLatchLine240 = true;
+                        else if (mode != "frame") { Console.Error.WriteLine("--input-latch must be frame or line240"); return 2; }
+                        break;
+                    }
                     case "--power-on-ram": powerOnRam = ParsePowerOnRam(args[++i]); break;
                     case "--ram-dump-at":
                         foreach (var t in args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -758,17 +771,36 @@ internal static class TraceCli
                 }
             }
 
+            // --input-latch line240: frame F's input takes effect when the PPU enters line 240 of frame F
+            // (crossings counted from power-on), not at RunFrame's start. This is what Mesen 2.1.1's
+            // script does - it sets the controller in its inputPolled callback, which Mesen raises at the
+            // end of the frame's visible rendering - and it is measurably the rule: Lifeforce, Mega Man,
+            // Zelda 1 and Metroid (both timings) go from input-skew misses to frame-exact under it, where
+            // shifting a frame-latched script earlier or later only ever fixed some of them.
+            int ppuFramesSeen = 0;
+            if (inputLatchLine240)
+            {
+                nes.SetInputs(held, null);
+                nes.PpuEnteredPostRender += () =>
+                {
+                    int frameEnding = ppuFramesSeen++; // the crossing in frame F is the (F+1)th
+                    bool changed = false;
+                    while (nextStep < script.Count && script[nextStep].Frame <= frameEnding) { held = (bool[])script[nextStep].Held.Clone(); nextStep++; changed = true; }
+                    if (changed) nes.SetInputs(held, null);
+                };
+            }
+
             for (int f = 0; f < frames; f++)
             {
                 curFrame = f;
                 // Identical to RomTestCli's loop: a while (not if) so multiple steps on the same
                 // frame all resolve, and the step's held set is in effect for the frame it names.
-                while (nextStep < script.Count && script[nextStep].Frame <= f)
+                while (!inputLatchLine240 && nextStep < script.Count && script[nextStep].Frame <= f)
                 {
                     held = (bool[])script[nextStep].Held.Clone();
                     nextStep++;
                 }
-                nes.SetInputs(held, null);
+                if (!inputLatchLine240) nes.SetInputs(held, null);
 
                 // Pokes land here - after the input for this frame is latched in, before the frame
                 // is emulated. See the --poke-at block for why this exact instant is the one the
