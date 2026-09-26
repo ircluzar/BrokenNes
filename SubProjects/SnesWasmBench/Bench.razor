@@ -1,0 +1,105 @@
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<h3>SFC WASM bench</h3>
+<p>@runtimeInfo</p>
+<p>
+    ROM URL <input @bind="romUrl" size="30" />
+    frames <input @bind="frames" size="6" />
+    <button id="run" @onclick="RunAsync" disabled="@running">Run</button>
+</p>
+<pre id="result">@output</pre>
+
+@code {
+    // Same workload and hashing as Workshop --snesbench, so results compare 1:1 with the desktop goldens
+    // (checkpoint "frame:video:audio" every 250 frames).
+    private string romUrl = "roms/smw.smc";
+    private int frames = 1000;
+    private bool running;
+    private string output = "";
+    private string runtimeInfo = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        runtimeInfo = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}, " +
+                      $"{(System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled ? "JIT/interp" : "AOT")}";
+        var q = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
+        if (q["rom"] is { } r) romUrl = r;
+        if (int.TryParse(q["frames"], out int f)) frames = f;
+        if (q["auto"] == "1") await RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        running = true;
+        output = "loading ROM...";
+        StateHasChanged();
+        await Task.Yield();
+        try
+        {
+            byte[] rom = await Http.GetByteArrayAsync(romUrl);
+            var board = new BOARD_SFC(SnesCartridge.Load(rom), new APU_SFC());
+            var script = ParseScript(SmwScript());
+            ulong video = 14695981039346656037UL, audio = 14695981039346656037UL;
+            var samples = new short[8192];
+            var log = new System.Text.StringBuilder();
+            long emuTicks = 0, windowTicks = 0;
+            ushort held = 0;
+            var wall = Stopwatch.StartNew();
+
+            for (int frame = 1; frame <= frames; frame++)
+            {
+                if (script.TryGetValue(frame, out var b)) held = b;
+                board.Pads[0] = held;
+                long t = Stopwatch.GetTimestamp();
+                board.RunFrame();
+                long d = Stopwatch.GetTimestamp() - t;
+                emuTicks += d; windowTicks += d;
+
+                foreach (uint v in board.Ppu.FrameBuffer.AsSpan(0, PPU_SFC.Width * board.Ppu.VisibleHeight)) video = (video ^ v) * 1099511628211UL;
+                int n;
+                while ((n = board.Apu.ReadSamples(samples)) > 0)
+                    foreach (short s in samples.AsSpan(0, n)) audio = (audio ^ (ushort)s) * 1099511628211UL;
+
+                if (frame % 250 == 0)
+                {
+                    double winFps = 250 / (windowTicks / (double)Stopwatch.Frequency);
+                    log.AppendLine($"checkpoint {frame}:{video:x16}:{audio:x16}   last 250 frames {winFps:F1} fps");
+                    windowTicks = 0;
+                    output = log.ToString() + "running...";
+                    StateHasChanged();
+                    await Task.Delay(1);   // let the page repaint between chunks
+                }
+            }
+            double secs = emuTicks / (double)Stopwatch.Frequency;
+            log.AppendLine($"DONE {frames} frames: {frames / secs:F1} fps ({1000 * secs / frames:F2} ms/frame emulation), wall {wall.Elapsed.TotalSeconds:F1}s");
+            log.AppendLine($"final video {video:x16} audio {audio:x16}");
+            output = log.ToString();
+        }
+        catch (Exception ex) { output = "ERROR " + ex; }
+        running = false;
+        StateHasChanged();
+    }
+
+    private static string SmwScript()
+    {
+        var steps = new List<string> { "500:Start", "508:", "700:A", "708:", "900:A", "908:", "1100:A", "1108:", "1300:A", "1308:" };
+        for (int f = 1600; f <= 2600; f += 100) { steps.Add($"{f}:B"); steps.Add($"{f + 10}:"); steps.Add($"{f + 50}:A"); steps.Add($"{f + 60}:"); }
+        steps.AddRange(new[] { "2800:Right", "3200:Right+B", "3240:Right", "3900:" });
+        return string.Join(",", steps);
+    }
+
+    private static Dictionary<int, ushort> ParseScript(string script)
+    {
+        var map = new Dictionary<int, ushort>();
+        foreach (var step in script.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int colon = step.IndexOf(':');
+            ushort bits = 0;
+            foreach (var name in step[(colon + 1)..].Split('+', StringSplitOptions.RemoveEmptyEntries))
+                bits |= (ushort)Enum.Parse<SnesButtons>(name, ignoreCase: true);
+            map[int.Parse(step[..colon])] = bits;
+        }
+        return map;
+    }
+}
