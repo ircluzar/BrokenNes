@@ -39,7 +39,6 @@ public sealed class PPU_GB
     private byte statEnable;          // STAT bits 3-6
     private byte vbk, bcps, ocps, opri;
     public long FrameCount { get; private set; }
-    public static int DebugLine = -1;
 
     /// <summary>Raised with the IF bit to set: 0 = VBlank, 1 = STAT.</summary>
     public Action<int>? RequestInterrupt;
@@ -308,6 +307,7 @@ public sealed class PPU_GB
     private int fetchX;               // background tile column counter
     private bool fetchWindow, windowActive;
     private int winFetchX;
+    private int winSkip;              // window pixels left of the screen edge (WX < 7), dropped at the first push
     private byte tileIdx, tileAttr, tileLo, tileHi;
     // Background FIFO: it only ever holds one tile's pixels (a tile is pushed when it is empty).
     private int bgCount;
@@ -357,6 +357,14 @@ public sealed class PPU_GB
         m++;
         if (dot == 83) visMode = 3;     // STAT reads mode 3 from dot 84
 
+        // WX 0-6: the window starts before the first pixel, while the first tile is being fetched; its pixels
+        // left of the screen edge are then dropped along with the fine-scroll ones.
+        if (!scxLatched && !windowActive && Wx < 7 && m == 6 + Wx && (Lcdc & 0x20) != 0 && windowYTriggered)
+        {
+            StartWindow();
+            dummyFetch = false; winSkip = 7 - Wx;
+        }
+
         // Object fetch in progress: the background fetcher and the output are stalled.
         if (spriteFetchDots > 0)
         {
@@ -374,7 +382,7 @@ public sealed class PPU_GB
             {
                 bgLo = tileLo; bgHi = tileHi; bgAttr = tileAttr; bgCount = 8;
                 if (fetchWindow) winFetchX++; else fetchX++;
-                if (!scxLatched) { scxLatched = true; fineScroll = Scx & 7; discard = fineScroll; }
+                if (!scxLatched) { scxLatched = true; fineScroll = Scx & 7; discard = fineScroll + winSkip; winSkip = 0; }
             }
         }
 
@@ -410,11 +418,9 @@ public sealed class PPU_GB
         if (discard > 0) { bgHi <<= 1; bgLo <<= 1; bgCount--; discard--; return; }
 
         // Window start: throw away the background and fetch the window instead.
-        if (!windowActive && (Lcdc & 0x20) != 0 && windowYTriggered && (lcdX + 7 == Wx || (Wx < 7 && lcdX == 0)))
+        if (!windowActive && (Lcdc & 0x20) != 0 && windowYTriggered && lcdX + 7 == Wx)
         {
-            windowActive = true; windowRendered = true; fetchWindow = true; winFetchX = 0;
-            fetchDots = 0; fetchStage = 0; bgCount = 0;
-            if (Wx < 7) discard = 7 - Wx;
+            StartWindow();
             return;
         }
 
@@ -454,6 +460,12 @@ public sealed class PPU_GB
     private static readonly int HiAt = int.Parse(Environment.GetEnvironmentVariable("GB_HI") ?? "8");
     private int fetchStage;           // reads done for the current tile: 0 none, 1 index, 2 low, 3 high
 
+    private void StartWindow()
+    {
+        windowActive = true; windowRendered = true; fetchWindow = true; winFetchX = 0;
+        fetchDots = 0; fetchStage = 0; bgCount = 0;
+    }
+
     private void BgFetchStep()
     {
         if (fetchDots >= 8) return;
@@ -485,7 +497,6 @@ public sealed class PPU_GB
             addr = map + (((ly + Scy) & 0xFF) >> 3) * 32 + (((Scx >> 3) + fetchX) & 31);
         }
         tileIdx = Vram[addr];
-        if (DebugLine == ly) Console.WriteLine($"  fetch idx dot={dot} fetchX={fetchX} win={fetchWindow} scx={Scx} lcdc={Lcdc:X2}");
         tileAttr = Cgb ? Vram[0x2000 + addr] : (byte)0;
     }
 
