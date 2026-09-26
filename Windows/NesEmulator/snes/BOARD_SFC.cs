@@ -51,22 +51,14 @@ public sealed class BOARD_SFC : ISnesBus
     // ---- DMA ($43x0-$43xA) ----
     private readonly byte[] dmaRegs = new byte[0x80];
 
-    // ---- HLE SMP (until APU_SFC): the IPL boot loader's upload protocol, done in C# ----
-    private readonly byte[] apuToCpu = { 0xAA, 0xBB, 0x00, 0x00 };   // SPC -> CPU latches ($2140-3 reads)
-    private readonly byte[] cpuToApu = new byte[4];                    // CPU -> SPC latches ($2140-3 writes)
-    /// <summary>The sound CPU's 64KB RAM, filled by the uploads so a real SPC700 can take over later.</summary>
-    public readonly byte[] Aram = new byte[0x10000];
-    private enum IplState { WaitKick, Transfer, Running }
-    private IplState iplState = IplState.WaitKick;
-    private byte iplIndex;
-    private ushort iplAddress;
-    /// <summary>Where the last upload told the sound CPU to start executing (diagnostics).</summary>
-    public int ApuEntryPoint { get; private set; } = -1;
-    public int ApuBytesUploaded { get; private set; }
+    // ---- Audio unit ($2140-$217F) ----
+    public ISnesApu Apu { get; }
 
-    public BOARD_SFC(SnesCartridge cart)
+    /// <param name="apu">Audio unit; defaults to the silent <see cref="APU_HLE"/> loader stand-in.</param>
+    public BOARD_SFC(SnesCartridge cart, ISnesApu? apu = null)
     {
         Cart = cart;
+        Apu = apu ?? new APU_HLE();
         Ppu = new PPU_SFC { CounterSource = () => (lineClock >> 2, Scanline) };
         Cpu = new CPU_SFC(this);
         for (int i = 0; i < 0x80; i++) dmaRegs[i] = 0xFF;
@@ -76,6 +68,7 @@ public sealed class BOARD_SFC : ISnesBus
     public void Reset()
     {
         nmitimen = 0; memsel = 0; hdmaen = 0; nmiFlag = irqFlag = false;
+        Apu.Reset();
         Ppu.Reset();
         Cpu.Reset();
     }
@@ -83,8 +76,6 @@ public sealed class BOARD_SFC : ISnesBus
     /// <summary>Optional per-instruction observer for debug tooling (PC sampling, tracing).</summary>
     public Action<CPU_SFC>? InstructionHook;
 
-    /// <summary>What the fake SMP currently shows the CPU on $2140-$2143 (diagnostics).</summary>
-    public ReadOnlySpan<byte> ApuPorts => apuToCpu;
     public byte NmiTimen => nmitimen;
     public long NmiCount { get; private set; }
 
@@ -129,6 +120,7 @@ public sealed class BOARD_SFC : ISnesBus
             if ((nmitimen & 0x80) != 0) { Cpu.RaiseNmi(); NmiCount++; }
             if ((nmitimen & 0x01) != 0) RunAutoJoypad();
             Ppu.OnVBlankStart();
+            Apu.RunTo(MasterClock);   // keep audio flowing even when the game leaves the ports alone
             frameReady = true;
         }
         else if (Scanline == LinesPerFrame)
@@ -227,7 +219,7 @@ public sealed class BOARD_SFC : ISnesBus
     private byte ReadBBus(byte reg)
     {
         if (reg < 0x40) { int v = Ppu.ReadRegister(reg); return v < 0 ? mdr : (byte)v; }
-        if (reg < 0x80) return apuToCpu[reg & 3];
+        if (reg < 0x80) { Apu.RunTo(MasterClock); return Apu.ReadPort(reg & 3); }
         if (reg == 0x80) { byte v = Wram[wramPortAddress]; wramPortAddress = (wramPortAddress + 1) & 0x1FFFF; return v; }
         return mdr;
     }
@@ -235,7 +227,7 @@ public sealed class BOARD_SFC : ISnesBus
     private void WriteBBus(byte reg, byte value)
     {
         if (reg < 0x40) { Ppu.WriteRegister(reg, value); return; }
-        if (reg < 0x80) { FakeSmpWrite(reg & 3, value); return; }
+        if (reg < 0x80) { Apu.RunTo(MasterClock); Apu.WritePort(reg & 3, value); return; }
         switch (reg)
         {
             case 0x80: Wram[wramPortAddress] = value; wramPortAddress = (wramPortAddress + 1) & 0x1FFFF; break;
@@ -243,60 +235,6 @@ public sealed class BOARD_SFC : ISnesBus
             case 0x82: wramPortAddress = (wramPortAddress & 0x100FF) | (uint)value << 8; break;
             case 0x83: wramPortAddress = (wramPortAddress & 0x0FFFF) | (uint)(value & 1) << 16; break;
         }
-    }
-
-    /// <summary>
-    /// Stand-in for the SPC700 until APU_SFC exists. The two port directions are separate latches
-    /// (a CPU write never changes what the CPU reads back), so this emulates the IPL boot loader's
-    /// protocol at a high level instead of echoing:
-    ///   ports read $AA,$BB -> CPU puts address in ports 2/3, a command in port 1, $CC in port 0;
-    ///   the IPL echoes port 0. Command != 0: transfer, where each byte arrives in port 1 with its
-    ///   index (0,1,2..) in port 0, and the IPL echoes the index. A jump of the index by >= 2 starts
-    ///   the next command. Command 0: execute the uploaded program at the address.
-    /// Once "running" there is no sound program to answer, so ports simply echo - enough for games
-    /// that fire-and-forget sound commands, not for ones that wait on driver-specific replies.
-    /// </summary>
-    private void FakeSmpWrite(int port, byte value)
-    {
-        cpuToApu[port] = value;
-        if (iplState == IplState.Running)
-        {
-            // HEURISTIC (no driver to run): Nintendo's own sound driver - Super Mario World's - jumps
-            // back into the IPL when the CPU writes $FF to port 1, so it can take another upload.
-            // A real SPC700 running the uploaded driver replaces this guess.
-            if (port == 1 && value == 0xFF)
-            {
-                iplState = IplState.WaitKick;
-                apuToCpu[0] = 0xAA; apuToCpu[1] = 0xBB;
-                return;
-            }
-            apuToCpu[port] = value;
-            return;
-        }
-        if (port != 0) return;   // the IPL only reacts to port 0; ports 1-3 are read when it does
-
-        if (iplState == IplState.WaitKick)
-        {
-            if (value == 0xCC) IplCommand(value);
-            return;
-        }
-        if (value == iplIndex)
-        {
-            Aram[(ushort)(iplAddress + iplIndex)] = cpuToApu[1];
-            ApuBytesUploaded++;
-            apuToCpu[0] = value;
-            iplIndex++;
-            if (iplIndex == 0) iplAddress += 0x100;
-        }
-        else if ((sbyte)(iplIndex - value) < 0) IplCommand(value);
-    }
-
-    private void IplCommand(byte port0)
-    {
-        iplAddress = (ushort)(cpuToApu[2] | cpuToApu[3] << 8);
-        apuToCpu[0] = port0;
-        if (cpuToApu[1] != 0) { iplState = IplState.Transfer; iplIndex = 0; }
-        else { iplState = IplState.Running; ApuEntryPoint = iplAddress; }
     }
 
     // ---- CPU I/O ----

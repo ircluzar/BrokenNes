@@ -98,7 +98,7 @@ internal static class SnesRunCli
             sb.AppendLine($"{Path.GetFileName(romPath)}: \"{cart.Title}\" {(cart.HiRom ? "HiROM" : "LoROM")} map=${cart.MapMode:X2} rom={cart.Rom.Length / 1024}KB sram={cart.Sram.Length / 1024}KB");
             sb.AppendLine($"frames={board.FrameCount} instructions={c.InstructionCount:N0} nmis={board.NmiCount} nmitimen=${board.NmiTimen:X2} forcedBlank={board.Ppu.ForcedBlank} {sw.Elapsed.TotalSeconds:F2}s");
             sb.AppendLine($"cpu PC=${c.PBR:X2}:{c.PC:X4} A=${c.A:X4} X=${c.X:X4} Y=${c.Y:X4} S=${c.S:X4} D=${c.D:X4} DBR=${c.DBR:X2} P=${c.P:X2} E={(c.E ? 1 : 0)} wai={c.Waiting}");
-            sb.AppendLine($"apu ports (HLE SMP -> CPU) = {string.Join(" ", board.ApuPorts.ToArray().Select(v => v.ToString("X2")))}  uploaded={board.ApuBytesUploaded:N0} bytes  entry={(board.ApuEntryPoint < 0 ? "none" : "$" + board.ApuEntryPoint.ToString("X4"))}");
+            sb.AppendLine($"apu: {board.Apu.Describe()}");
             int total = pcHits.Values.Sum();
             sb.AppendLine($"hottest PCs over the last {frames - sampleFrom} frames ({total:N0} instructions):");
             foreach (var kv in pcHits.OrderByDescending(k => k.Value).Take(8))
