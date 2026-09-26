@@ -366,6 +366,7 @@ public sealed class BOARD_SFC : ISnesBus
     }
 
     // ---- HDMA: per-line register streams (gradients, wavy scroll, windows...) ----
+    // The reload/advance sequence follows bsnes/higan's approach (from memory); see THIRD_PARTY_NOTICES.md.
     // Channel registers reused from DMA: $43x8/9 = table address (A2A), $43xA = line counter,
     // $43x5/6 + $43x7 = indirect data address.
 

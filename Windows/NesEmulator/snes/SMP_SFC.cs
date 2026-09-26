@@ -24,7 +24,9 @@ public sealed class SMP_SFC
 
     private const byte FN = 0x80, FV = 0x40, FP = 0x20, FB = 0x10, FH = 0x08, FI = 0x04, FZ = 0x02, FC = 0x01;
 
-    // Base cycle counts per opcode; taken branches add 2.
+    // Base cycle counts per opcode; taken branches add 2. Copied verbatim from snes9x's
+    // apu/bapu/smp/core.cpp (bsnes-derived); see THIRD_PARTY_NOTICES.md. DIV, ADDW/SUBW and DAA/DAS
+    // below follow bsnes's approach from memory.
     private static readonly byte[] Cycles =
     {
         2,8,4,7, 3,4,3,6, 2,6,5,4, 5,4,6,8,   // 0

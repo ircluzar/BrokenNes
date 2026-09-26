@@ -17,6 +17,9 @@ namespace NesEmulator.Snes;
 /// changes land on the next line, and sprite evaluation happens all at once per line.
 ///
 /// VRAM is stored as 32K 16-bit words because that is how the chip addresses it.
+///
+/// PROVENANCE: written from memory and hardware documentation. The Mode 7 pre-rounding/clip formula
+/// and the color-window region semantics follow bsnes/higan's approach. See THIRD_PARTY_NOTICES.md.
 /// </summary>
 public sealed class PPU_SFC
 {

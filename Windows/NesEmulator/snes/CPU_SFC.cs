@@ -19,6 +19,9 @@ namespace NesEmulator.Snes;
 ///  - (d,X) with E=1 reads the pointer's high byte with a page-wrapped +1 even when DL!=0;
 ///  - the 65816-only stack ops (PEA, PEI, PER, PHD, PLD, PLB, JSL, RTL, JSR (a,X)) run off page 1
 ///    and only snap S back into page 1 afterwards.
+///
+/// PROVENANCE: written from memory, not copied, but the decimal-mode ADC/SBC, the emulation-mode
+/// stack model and MVN/MVP follow bsnes/higan's approach. See THIRD_PARTY_NOTICES.md.
 /// </summary>
 public sealed class CPU_SFC
 {

@@ -12,6 +12,11 @@ namespace NesEmulator.Snes;
 /// interpolation, BRR filters, the envelope rate counter, and the echo FIR's intermediate
 /// truncations. The sub-sample timing of register reads is not. A game that rewrites DSP
 /// registers mid-sample hears the change up to one sample later than on hardware.
+///
+/// PROVENANCE: a C# port of the logic in blargg's snes_spc 0.9.0 SPC_DSP.cpp (Copyright (C) 2007
+/// Shay Green, LGPL 2.1 or later), restructured into a whole-sample loop. The Gauss, RatePeriod and
+/// RateOffset tables are copied from it verbatim. This is the SFC family's REFERENCE DSP; see
+/// THIRD_PARTY_NOTICES.md in this folder.
 /// </summary>
 public sealed class DSP_SFC
 {
