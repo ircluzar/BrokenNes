@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.Gb;
 
 /// <summary>
 /// Game Boy test-ROM verifier.
-///   --gbtest [--suite id[,id]] [--out results-dir] [--verbose]      run the manifest (Workshop/Gb/gb-test-manifest.json)
+///   --gbtest [--suite id[,id]] [--out results-dir] [--verbose] [--roms test-rom-root]      run the manifest (Workshop/Gb/gb-test-manifest.json)
 ///   --gbtest --rom file.gb [--kind blargg|mooneye|image] [--model dmg|cgb] [--seconds n] [--png out.png] [--expect ref.png]
 /// Pass rules: Blargg = "Passed" on the serial port or the $A000 text protocol; Mooneye = LD B,B with
 /// B,C,D,E,H,L = 3,5,8,13,21,34 (fail = all $42); image = the frame matches the reference screenshot.
@@ -41,7 +41,7 @@ internal static class GbTestCli
         string repo = FindRepoRoot();
         string manifestPath = Path.Combine(repo, "Workshop", "Gb", "gb-test-manifest.json");
         var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
-        string root = Path.Combine(repo, manifest["root"]!.GetValue<string>());
+        string root = Opt("roms", "") is { Length: > 0 } rr ? rr : Path.Combine(repo, manifest["root"]!.GetValue<string>());
         var only = Opt("suite", "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string outDir = Opt("out", "");
         if (outDir != "") Directory.CreateDirectory(outDir);

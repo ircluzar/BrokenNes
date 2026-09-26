@@ -67,8 +67,8 @@ public sealed class BOARD_GB : IGbCpuBus
         if (Ppu.CompatMode) GbCompatPalettes.Apply(Ppu, Cart);
         Apu.ResetPostBoot();
         Array.Clear(wram); Array.Clear(hram);
-        ie = 0; iflag = 0xE1; wramBank = 1; joypSelect = 0x30;
-        divCounter = Model == GbModel.Cgb ? (ushort)0x1EA0 : (ushort)0xABCC;
+        ie = 0; iflag = 0xE1; wramBank = 1; joypSelect = 0x00;
+        divCounter = Model == GbModel.Cgb ? (ushort)0x1EA0 : (ushort)0xABC8;
         tima = 0; tma = 0; tac = 0xF8; timaState = 0;
         sb = 0; sc = 0x7E; serialBits = 0; serialCounter = 0;
         dmaActive = false; dmaPendingCycles = 0; dmaIndex = 0; dmaSource = 0; dmaReg = 0xFF;
