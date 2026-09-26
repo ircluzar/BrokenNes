@@ -48,6 +48,9 @@ public sealed class SnesCartridge
         HasBattery = sramSize > 0 && (chipset & 0x0F) is 0x02 or 0x05 or 0x06 or 0x0A;
     }
 
+    /// <summary>Debug: CPU writes that landed in battery RAM (plain carts; chips keep their own).</summary>
+    public long SramWrites { get; private set; }
+
     public byte ChipsetByte { get; }
     public SnesChip Chip { get; }
 
@@ -101,7 +104,7 @@ public sealed class SnesCartridge
     public void Write(uint bank, uint offset, byte value)
     {
         int i = Decode(bank, offset, out bool sram);
-        if (i >= 0 && sram) Sram[i] = value;
+        if (i >= 0 && sram) { Sram[i] = value; SramWrites++; }
     }
 
     private int Decode(uint bank, uint offset, out bool sram)

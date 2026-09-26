@@ -191,6 +191,7 @@ internal static class SnesRunCli
                 for (int row = 0; row < len; row += 16)
                     sb.AppendLine($"wram {start + row:X5}: " + string.Join(" ", Enumerable.Range(start + row, Math.Min(16, len - row)).Select(a => board.Wram[a & 0x1FFFF].ToString("X2"))));
             }
+            if (cart.Sram.Length > 0) sb.AppendLine($"sram writes: {cart.SramWrites}");
             sb.AppendLine($"apu: {board.Apu.Describe()}");
             if (chipNote != "") sb.AppendLine($"chip: {chipNote}");
             if (chip != null) sb.AppendLine($"chip state: {chip.Describe()}");
