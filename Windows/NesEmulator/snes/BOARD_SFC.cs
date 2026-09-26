@@ -68,6 +68,8 @@ public sealed class BOARD_SFC : ISnesBus
     public void Reset()
     {
         nmitimen = 0; memsel = 0; hdmaen = 0; nmiFlag = irqFlag = false;
+        BuildPageTable();
+        UpdateNextEvent();
         Apu.Reset();
         Ppu.Reset();
         Ppu.BeginFrame();
@@ -102,7 +104,39 @@ public sealed class BOARD_SFC : ISnesBus
     private int vblankLine = VBlankLine;   // 225, or 240 with overscan; latched at frame start
     private int stall;                     // master clocks HDMA stole from the CPU, charged on the next tick
 
+    /// <summary>false = reference paths only (per-access event checks, bank/offset decoding).</summary>
+    public static bool FastPaths = true;
+
+    // lineClock value at which the next thing can happen on this line (H-IRQ, HDMA, line end).
+    // Accesses that stay below it only advance the clocks.
+    private int nextEvent;
+
     private void Tick(int clocks)
+    {
+        if (FastPaths && stall == 0 && lineClock + clocks < nextEvent)
+        {
+            MasterClock += clocks;
+            lineClock += clocks;
+            return;
+        }
+        TickReference(clocks);
+        UpdateNextEvent();
+    }
+
+    /// <summary>Earliest lineClock at which TickReference has work to do. Conservative is fine.</summary>
+    private void UpdateNextEvent()
+    {
+        int next = lineClock < HdmaClock ? HdmaClock : ClocksPerLine;
+        int mode = nmitimen & 0x30;
+        if (mode == 0x10 || (mode == 0x30 && Scanline == vtime))
+        {
+            int target = htime * 4;
+            if (target > lineClock && target < next) next = target;
+        }
+        nextEvent = next;
+    }
+
+    private void TickReference(int clocks)
     {
         if (stall != 0) { clocks += stall; stall = 0; }
         MasterClock += clocks;
@@ -181,6 +215,15 @@ public sealed class BOARD_SFC : ISnesBus
 
     public byte Read(uint address)
     {
+        if (FastPaths)
+        {
+            ref Page page = ref pages[address >> 12];
+            if (page.Data != null)
+            {
+                Tick(page.Speed);
+                return mdr = page.Data[page.Offset + (int)(address & 0xFFF)];
+            }
+        }
         uint bank = address >> 16, offset = address & 0xFFFF;
         Tick(AccessClocks(bank, offset));
         return mdr = ReadNoTick(bank, offset);
@@ -188,10 +231,56 @@ public sealed class BOARD_SFC : ISnesBus
 
     public void Write(uint address, byte value)
     {
+        if (FastPaths)
+        {
+            ref Page page = ref pages[address >> 12];
+            if (page.Writable)
+            {
+                Tick(page.Speed);
+                mdr = value;
+                page.Data![page.Offset + (int)(address & 0xFFF)] = value;
+                return;
+            }
+        }
         uint bank = address >> 16, offset = address & 0xFFFF;
         Tick(AccessClocks(bank, offset));
         mdr = value;
         WriteNoTick(bank, offset, value);
+    }
+
+    // ---- Page table: 4KB pages over the 24-bit bus that map straight to WRAM or ROM ----
+    // Everything else (I/O, SRAM, open bus) has no Data and goes through the decoding path.
+
+    private struct Page
+    {
+        public byte[]? Data;
+        public int Offset;
+        public int Speed;
+        public bool Writable;
+    }
+
+    private readonly Page[] pages = new Page[4096];
+
+    private void BuildPageTable()
+    {
+        for (int p = 0; p < pages.Length; p++)
+        {
+            uint bank = (uint)p >> 4, offset = (uint)(p & 15) << 12;
+            ref Page page = ref pages[p];
+            page = default;
+            if (bank is 0x7E or 0x7F)
+            {
+                page = new Page { Data = Wram, Offset = (int)((bank - 0x7E) << 16 | offset), Speed = AccessClocks(bank, offset), Writable = true };
+            }
+            else if (IsSystemBank(bank) && offset < 0x8000)
+            {
+                if (offset < 0x2000) page = new Page { Data = Wram, Offset = (int)offset, Speed = AccessClocks(bank, offset), Writable = true };
+            }
+            else if (Cart.TryMapRomLinear(bank, offset, 0x1000, out int romIndex))
+            {
+                page = new Page { Data = Cart.Rom, Offset = romIndex, Speed = AccessClocks(bank, offset) };
+            }
+        }
     }
 
     private int AccessClocks(uint bank, uint offset)
@@ -293,6 +382,7 @@ public sealed class BOARD_SFC : ISnesBus
                 nmitimen = value;
                 if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmi();   // enabling mid-vblank fires at once
                 if ((value & 0x30) == 0) { irqFlag = false; Cpu.SetIrq(false); }
+                UpdateNextEvent();
                 break;
             }
             case 0x4201: wrio = value; break;
@@ -304,13 +394,16 @@ public sealed class BOARD_SFC : ISnesBus
                 if (value == 0) { rddiv = 0xFFFF; rdmpy = wrdiv; }
                 else { rddiv = (ushort)(wrdiv / value); rdmpy = (ushort)(wrdiv % value); }
                 break;
-            case 0x4207: htime = (ushort)((htime & 0x100) | value); break;
-            case 0x4208: htime = (ushort)((htime & 0x0FF) | (value & 1) << 8); break;
-            case 0x4209: vtime = (ushort)((vtime & 0x100) | value); break;
-            case 0x420A: vtime = (ushort)((vtime & 0x0FF) | (value & 1) << 8); break;
+            case 0x4207: htime = (ushort)((htime & 0x100) | value); UpdateNextEvent(); break;
+            case 0x4208: htime = (ushort)((htime & 0x0FF) | (value & 1) << 8); UpdateNextEvent(); break;
+            case 0x4209: vtime = (ushort)((vtime & 0x100) | value); UpdateNextEvent(); break;
+            case 0x420A: vtime = (ushort)((vtime & 0x0FF) | (value & 1) << 8); UpdateNextEvent(); break;
             case 0x420B: RunDma(value); break;
             case 0x420C: hdmaen = value; break;
-            case 0x420D: memsel = value; break;
+            case 0x420D:
+                if (((memsel ^ value) & 1) != 0) { memsel = value; BuildPageTable(); }   // FastROM changes page speeds
+                memsel = value;
+                break;
         }
     }
 

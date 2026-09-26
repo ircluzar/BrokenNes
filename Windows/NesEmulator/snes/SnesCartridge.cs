@@ -66,6 +66,18 @@ public sealed class SnesCartridge
         return true;
     }
 
+    /// <summary>
+    /// True when [offset, offset+length) in this bank maps to ROM (not SRAM, not unmapped) as one
+    /// contiguous run, e.g. so the board can serve a whole 4KB page straight from the ROM array.
+    /// </summary>
+    public bool TryMapRomLinear(uint bank, uint offset, int length, out int romIndex)
+    {
+        romIndex = Decode(bank, offset, out bool sram);
+        if (romIndex < 0 || sram) return false;
+        int last = Decode(bank, offset + (uint)length - 1, out bool sramLast);
+        return !sramLast && last == romIndex + length - 1;
+    }
+
     public void Write(uint bank, uint offset, byte value)
     {
         int i = Decode(bank, offset, out bool sram);
