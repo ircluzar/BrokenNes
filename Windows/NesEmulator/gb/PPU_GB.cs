@@ -141,10 +141,12 @@ public sealed class PPU_GB
         {
             case PhLineStart:
                 NextLine();
+                if (ly == 0) { src1 = false; src2 = true; UpdateStatLine(); }   // line 0's OAM-scan source comes with the line change
                 if (ly == 153) { phase = PhL153Dot2; nextEvent = 2; }
                 else { phase = PhDot4; nextEvent = 4; }
                 break;
             case PhDot4:
+                src0 = false; src2 = false;   // the OAM-scan source is only a short pulse at the line change
                 if (ly < Height) { if (!firstLine) visMode = 2; }
                 else if (ly == Height) visMode = 1;
                 lyCmpVis = ly;
@@ -187,10 +189,10 @@ public sealed class PPU_GB
             {
                 int next = ly == 153 ? 0 : ly + 1;
                 if (next != 0) lyCmpIrq = -1;
-                if (next <= Height)
+                if (next <= Height && next != 0)
                 {
                     // The OAM-scan source rises for the next visible line (and also, as a quirk, for line 144).
-                    src0 = false; src1 = false; src2 = true;
+                    src1 = false; src2 = true;
                 }
                 UpdateLyc(); UpdateStatLine();
                 phase = PhIrqLine; nextEvent = 454;
@@ -495,15 +497,22 @@ public sealed class PPU_GB
     }
 
     // =================================================================================== CPU access
+    // The CPU loses VRAM reads as soon as drawing has started (a few dots before STAT says mode 3) and writes
+    // from mode 3; OAM reads from the line change (the scan starts before STAT says mode 2), OAM writes during
+    // modes 2 and 3 except for the M-cycle in which drawing starts.
+    /// <summary>VRAM (and CGB palette RAM) writes are ignored.</summary>
     public bool VramBlocked => LcdOn && visMode == 3;
-    public bool OamBlocked => LcdOn && (visMode == 2 || visMode == 3);
+    private bool VramReadBlocked => LcdOn && (visMode == 3 || (drawing && m > 0));
+    /// <summary>OAM reads return .</summary>
+    public bool OamBlocked => LcdOn && (visMode >= 2 || (ly < Height && phase == PhDot4 && !firstLine));
+    private bool OamWriteBlocked => LcdOn && (visMode == 3 || (visMode == 2 && !drawing));
 
-    public byte ReadVram(ushort a) => VramBlocked ? (byte)0xFF : Vram[(a & 0x1FFF) | (Cgb || Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)];
+    public byte ReadVram(ushort a) => VramReadBlocked ? (byte)0xFF : Vram[(a & 0x1FFF) | (Cgb || Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)];
     public void WriteVram(ushort a, byte v) { if (!VramBlocked) Vram[(a & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v; }
     /// <summary>Direct VRAM write for CGB HDMA (the transfer happens in HBlank, so blocking does not apply).</summary>
     public void DmaWriteVram(int offset, byte v) => Vram[(offset & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v;
     public byte ReadOam(ushort a) => OamBlocked ? (byte)0xFF : a < 0xFEA0 ? Oam[a - 0xFE00] : (byte)0x00;
-    public void WriteOam(ushort a, byte v) { if (!OamBlocked && a < 0xFEA0) Oam[a - 0xFE00] = v; }
+    public void WriteOam(ushort a, byte v) { if (!OamWriteBlocked && a < 0xFEA0) Oam[a - 0xFE00] = v; }
 
     public byte ReadRegister(int reg)
     {
@@ -558,6 +567,13 @@ public sealed class PPU_GB
                 break;
             }
             case 0x41:
+                // DMG quirk: for an instant the write enables every source, so HBlank, VBlank or LY=LYC being
+                // active at that moment raises a STAT interrupt whatever value is written.
+                if (Model == GbModel.Dmg && LcdOn && !statLine && ((visMode == 0 && !(firstLine && phase == PhDraw)) || visMode == 1 || lycEqual))
+                {
+                    statLine = true;
+                    RequestInterrupt?.Invoke(1);
+                }
                 statEnable = (byte)(v & 0x78);
                 if (LcdOn) UpdateStatLine();
                 break;
