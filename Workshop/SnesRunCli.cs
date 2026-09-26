@@ -32,6 +32,9 @@ internal static class SnesRunCli
         int frames = 600;
         bool keepDisplayVramWrites = false;
         int layerMask = 0x1F;
+        int chipTrace = 0;
+        string? dumpWram = null, gsuDis = null;
+        string? gsuWatch = null;
         bool lineRegs = false;
         var pngAt = new HashSet<int>();
         try
@@ -51,6 +54,10 @@ internal static class SnesRunCli
                     case "--keep-display-vram-writes": keepDisplayVramWrites = true; break;   // diagnosis only
                     case "--layers": layerMask = Convert.ToInt32(args[++i], 16); break;          // hex: 1/2/4/8 = BG1-4, 10 = OBJ
                     case "--line-regs": lineRegs = true; break;                                     // per-line PPU registers, last frame
+                    case "--chip-trace": chipTrace = int.Parse(args[++i]); break;                        // last N Super FX instructions
+                    case "--gsu-dis": gsuDis = args[++i]; break;                                       // hexaddr:count
+                    case "--gsu-watch": gsuWatch = args[++i]; break;                                   // pbr:pc hex list[@fromInstruction]
+                    case "--dump-wram": dumpWram = args[++i]; break;                                  // hexaddr:len, e.g. 4F30:32
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -83,6 +90,18 @@ internal static class SnesRunCli
             var chip = SnesFirmware.CreateCoprocessor(cart, romPath, out string chipNote);
             var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice), chip);
             if (keepDisplayVramWrites) board.Ppu.DropVramWritesDuringDisplay = false;
+            if (chipTrace > 0 && chip is GSU_SFC gsuTrace) gsuTrace.Trace = new long[chipTrace];
+            if (gsuWatch != null && chip is GSU_SFC gsuWatched)
+            {
+                var at = gsuWatch.Split('@');
+                gsuWatched.WatchPcs = at[0].Split(',').Select(p => p == "all" ? -1 : Convert.ToInt32(p, 16)).ToHashSet();
+                if (at.Length > 1) gsuWatched.WatchFrom = long.Parse(at[1]);
+                if (Environment.GetEnvironmentVariable("GSU_RAM") is { Length: > 0 } ramFrom)
+                {
+                    gsuWatched.WatchRamFrom = Convert.ToInt32(ramFrom, 16);
+                    gsuWatched.WatchRamLength = int.Parse(Environment.GetEnvironmentVariable("GSU_RAM_LEN") ?? "16");
+                }
+            }
             board.Ppu.DebugLayerMask = layerMask;
             if (lineRegs) board.Ppu.DebugLineRegisters = new PPU_SFC.RegisterSnapshot[PPU_SFC.MaxHeight + 1];
             using var wav = wavPath != null ? new WavWriter(wavPath, board.Apu.SampleRate) : null;
@@ -141,9 +160,36 @@ internal static class SnesRunCli
                     start = ln;
                 }
             }
+            if (chip is GSU_SFC gw && gw.WatchPcs != null)
+                foreach (var line in gw.WatchLog) sb.AppendLine($"watch {line}");
+            if (gsuDis != null && chip is GSU_SFC gd)
+            {
+                var dis = gsuDis.Split(':');
+                sb.Append(gd.Disassemble(Convert.ToUInt32(dis[0], 16), int.Parse(dis[1])));
+            }
+            if (dumpWram != null)
+            {
+                var parts = dumpWram.Split(':');
+                int start = Convert.ToInt32(parts[0], 16), len = int.Parse(parts[1]);
+                for (int row = 0; row < len; row += 16)
+                    sb.AppendLine($"wram {start + row:X5}: " + string.Join(" ", Enumerable.Range(start + row, Math.Min(16, len - row)).Select(a => board.Wram[a & 0x1FFFF].ToString("X2"))));
+            }
             sb.AppendLine($"apu: {board.Apu.Describe()}");
             if (chipNote != "") sb.AppendLine($"chip: {chipNote}");
             if (chip != null) sb.AppendLine($"chip state: {chip.Describe()}");
+            if (chip is GSU_SFC g && g.Trace is { } ring)
+            {
+                sb.AppendLine($"gsu regs: {g.DescribeRegs()}");
+                var hist = new Dictionary<long, int>();
+                int count = Math.Min(ring.Length, g.TracePos);
+                for (int k = 0; k < count; k++) { long pcKey = (ring[k] >> 8) & 0xFFFFFF; hist[pcKey] = hist.GetValueOrDefault(pcKey) + 1; }
+                sb.AppendLine($"gsu hot pcs: " + string.Join(" ", hist.OrderByDescending(h => h.Value).Take(12).Select(h => $"{h.Key >> 16:X2}:{h.Key & 0xFFFF:X4}x{h.Value}")));
+                for (int k = Math.Max(0, g.TracePos - 48); k < g.TracePos; k++)
+                {
+                    long e = ring[k % ring.Length];
+                    sb.AppendLine($"  gsu {(e >> 24) & 0xFF:X2}:{(e >> 8) & 0xFFFF:X4}  op={e & 0xFF:X2}  sfr={(e >> 32) & 0xFFFF:X4}");
+                }
+            }
             if (audio.Frames > 0) sb.AppendLine($"audio: {audio}{(wavPath != null ? $"  wav: {wavPath}" : "")}");
             int total = pcHits.Values.Sum();
             sb.AppendLine($"hottest PCs over the last {frames - sampleFrom} frames ({total:N0} instructions):");

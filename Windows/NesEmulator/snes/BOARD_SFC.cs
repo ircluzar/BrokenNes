@@ -227,10 +227,13 @@ public sealed class BOARD_SFC : ISnesBus
         if (FastPaths)
         {
             ref Page page = ref pages[address >> 12];
-            if (page.Data != null)
+            byte[]? data = page.Data;
+            if (data != null)
             {
+                // Copy before Tick: a chip running inside Tick (SA-1, Super FX) may rebuild the table.
+                int index = page.Offset + (int)(address & 0xFFF);
                 Tick(page.Speed);
-                return mdr = page.Data[page.Offset + (int)(address & 0xFFF)];
+                return mdr = data[index];
             }
         }
         uint bank = address >> 16, offset = address & 0xFFFF;
@@ -245,9 +248,11 @@ public sealed class BOARD_SFC : ISnesBus
             ref Page page = ref pages[address >> 12];
             if (page.Writable)
             {
+                byte[] data = page.Data!;
+                int index = page.Offset + (int)(address & 0xFFF);
                 Tick(page.Speed);
                 mdr = value;
-                page.Data![page.Offset + (int)(address & 0xFFF)] = value;
+                data[index] = value;
                 return;
             }
         }

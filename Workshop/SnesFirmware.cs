@@ -57,6 +57,10 @@ internal static class SnesFirmware
                 note = $"{name} from {path}";
                 return new NECDSP_SFC(image, NECDSP_SFC.MappingFor(cart), name);
             }
+            case SnesChip.SuperFx:
+                var gsu = new GSU_SFC(cart);
+                note = gsu.Name;
+                return gsu;
             case SnesChip.Sa1:
                 note = "SA-1";
                 return new SA1_SFC(cart);
