@@ -406,6 +406,7 @@ public sealed class PPU_SFC
             for (int x = 0; x < Width; x++) dst[x] = lut[colorMain[x]];
             return;
         }
+        if (FastPaths && !hires) { FinalLine(dst, lut, subNeeded, colorWindowUsed); return; }
         for (int x = 0; x < Width; x++)
         {
             ushort c;
@@ -477,6 +478,42 @@ public sealed class PPU_SFC
             if (v == Transparent || (windowed && win[x])) continue;
             byte r = rankTable[16 + objPrio[x]];
             if (r < rank[bx]) { rank[bx] = r; color[bx] = v; layerOut[bx] = ObjLayer; }
+        }
+    }
+
+    /// <summary>
+    /// FinalPixel for a whole non-hi-res line with every register decision hoisted out of the loop.
+    /// Identical results (the reference path still calls FinalPixel per pixel).
+    /// </summary>
+    private void FinalLine(Span<uint> dst, uint[] lut, bool subNeeded, bool colorWindowUsed)
+    {
+        var lm = layerMain; var cm = colorMain; var ls = layerSub; var cs = colorSub;
+        var om = objMath; var cw = window[5];
+        int blackMode = (cgwsel >> 6) & 3, mathMode = (cgwsel >> 4) & 3;
+        int adsub = cgadsub;
+        bool subtract = (adsub & 0x80) != 0, halfOn = (adsub & 0x40) != 0;
+        ushort fixedColor = coldata;
+        for (int x = 0; x < Width; x++)
+        {
+            int layer = lm[x];
+            ushort color = cm[x];
+            bool w = colorWindowUsed && cw[x];
+            bool black = blackMode == 3 || (blackMode == 1 && !w) || (blackMode == 2 && w);
+            if (black) color = 0;
+            bool region = mathMode == 0 || (mathMode == 1 && w) || (mathMode == 2 && !w);
+            bool layerMath = layer == ObjLayer ? (adsub & 0x10) != 0 && om[x] : (adsub & (1 << layer)) != 0;
+            if (region && layerMath)
+            {
+                ushort addend = fixedColor;
+                bool halve = halfOn && !black;
+                if (subNeeded)
+                {
+                    if (ls[x] == Backdrop) halve = false;
+                    else addend = cs[x];
+                }
+                color = Blend(color, addend, subtract, halve);
+            }
+            dst[x] = lut[color];
         }
     }
 

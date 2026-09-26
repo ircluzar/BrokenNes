@@ -67,6 +67,7 @@ public sealed class DSP_SFC
         }
         newKon = kon = koff = 0;
         everyOther = false; counter = 0; noise = 0x4000;
+        ResetRatePhases();
         echoOffset = echoLength = echoHistPos = 0;
         Array.Clear(echoHist);
         echoOutL = echoOutR = 0;
@@ -135,7 +136,27 @@ public sealed class DSP_SFC
         0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 0, 0,
     };
 
-    private bool RateFires(int rate) => (counter + RateOffset[rate]) % RatePeriod[rate] == 0;
+    /// <summary>false = reference paths only (e.g. the modulo rate test). Must stay sample-identical.</summary>
+    public static bool FastPaths = true;
+
+    // Fast rate test: every period except rate 0's divides CounterRange, so "(counter + offset) % period"
+    // simply counts down by one per sample, wrapping at the period. Rate 0 can never fire (it would
+    // need counter == 30720). ratePhase[r] tracks that value without a division.
+    private readonly int[] ratePhase = new int[32];
+
+    private void ResetRatePhases()
+    {
+        for (int r = 0; r < 32; r++) ratePhase[r] = (counter + RateOffset[r]) % RatePeriod[r];
+    }
+
+    private void StepRatePhases()
+    {
+        var phase = ratePhase;
+        for (int r = 1; r < 32; r++) if (--phase[r] < 0) phase[r] = RatePeriod[r] - 1;
+    }
+
+    private bool RateFires(int rate) =>
+        FastPaths ? rate != 0 && ratePhase[rate] == 0 : (counter + RateOffset[rate]) % RatePeriod[rate] == 0;
 
     private static int Clamp16(int v) => v < -32768 ? -32768 : v > 32767 ? 32767 : v;
 
@@ -154,6 +175,7 @@ public sealed class DSP_SFC
             koff = Regs[KOFF];
         }
         if (--counter < 0) counter = CounterRange - 1;
+        StepRatePhases();
         if (RateFires(Regs[FLG] & 0x1F))
         {
             int feedback = (noise << 13) ^ (noise << 14);

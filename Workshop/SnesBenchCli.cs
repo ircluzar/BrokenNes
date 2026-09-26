@@ -44,8 +44,11 @@ internal static class SnesBenchCli
     private static readonly Dictionary<string, Action<bool>> AbSwitches = new()
     {
         // Settled experiments are removed once decided; add new toggles here while measuring.
-        ["fast-paths"] = on => PPU_SFC.FastPaths = on,   // optimized vs reference PPU paths
+        ["fast-paths"] = SetFastPaths,   // every optimized path vs its reference twin
     };
+
+    /// <summary>All cores' optimized-vs-reference switches together.</summary>
+    private static void SetFastPaths(bool on) { PPU_SFC.FastPaths = on; DSP_SFC.FastPaths = on; }
 
     private sealed class Golden
     {
@@ -78,7 +81,7 @@ internal static class SnesBenchCli
                     case "--repeat": repeat = Math.Max(1, int.Parse(args[++i])); break;
                     case "--breakdown": breakdown = true; break;
                     case "--golden": goldenPath = args[++i]; break;
-                    case "--reference-paths": PPU_SFC.FastPaths = false; break;
+                    case "--reference-paths": SetFastPaths(false); break;
                     case "--ab": abSwitch = args[++i]; if (!AbSwitches.ContainsKey(abSwitch)) throw new FormatException($"unknown --ab switch '{abSwitch}' ({string.Join(", ", AbSwitches.Keys)})"); break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
