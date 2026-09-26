@@ -4,10 +4,17 @@ using System.IO;
 namespace NesEmulator.Gb;
 
 /// <summary>
-/// Game Boy / Game Boy Color picture processor. Dot-timed mode sequence (OAM scan, drawing with a variable
-/// length, HBlank, VBlank) with STAT interrupts, CPU access blocking and the LY=153 quirk; pixels are produced
-/// one line at a time when drawing starts (the scroll, window and sprite state the hardware latches then).
-/// Written from Pan Docs "Rendering", "LCD Status Registers" and "Palettes".
+/// Game Boy / Game Boy Color picture processor, dot accurate. Each line runs OAM scan, then a pixel-FIFO
+/// drawing phase (background/window fetcher feeding an 8-pixel FIFO, objects fetched into their own FIFO and
+/// stalling the output as they are met), then HBlank; STAT, LY/LYC, interrupts and CPU access blocking follow
+/// the documented per-dot timeline. Written from Pan Docs ("Rendering", "Pixel FIFO", "STAT", "Palettes"),
+/// the GBEDG PPU notes and The Cycle-Accurate Game Boy Docs.
+///
+/// Timing frame: <c>dot</c> counts dots since LY last changed. The board ticks a whole M-cycle and then lets
+/// the CPU access the bus, so an access sees the state after that M-cycle's dots. In that frame, per line:
+/// dot 0 LY changes (the mode-2 interrupt fires, STAT still reads mode 0), dot 4 STAT reads mode 2 (or 1 on
+/// line 144, with the VBlank interrupt), dot 80 drawing starts internally, dot 84 STAT reads mode 3, drawing
+/// ends at 252 + penalties (mode-0 interrupt) and STAT reads mode 0 four dots later.
 /// </summary>
 public sealed class PPU_GB
 {
@@ -21,7 +28,7 @@ public sealed class PPU_GB
     public readonly byte[] Vram = new byte[0x4000];      // 2 banks on CGB
     public readonly byte[] Oam = new byte[0xA0];
     public readonly byte[] BgPalRam = new byte[64], ObjPalRam = new byte[64];
-    /// <summary>0xFFRRGGBB, 160x144. Written line by line; complete at VBlank.</summary>
+    /// <summary>0xFFRRGGBB, 160x144. Written pixel by pixel; complete at VBlank.</summary>
     public readonly uint[] FrameBuffer = new uint[Width * Height];
     /// <summary>Per pixel: DMG shade 0-3 after palette mapping (DMG), or the colour index 0-3 (CGB). Handy for bridges.</summary>
     public readonly byte[] ShadeBuffer = new byte[Width * Height];
@@ -30,23 +37,14 @@ public sealed class PPU_GB
 
     public byte Lcdc = 0x91, Scy, Scx, Lyc, Bgp = 0xFC, Obp0 = 0xFF, Obp1 = 0xFF, Wy, Wx;
     private byte statEnable;          // STAT bits 3-6
-    private byte ly;                  // internal line counter 0-153
-    private int dot;                  // dot within the line
-    private int mode;                 // 0 HBlank, 1 VBlank, 2 OAM scan, 3 drawing
-    private int mode3End;             // dot where this line's drawing ends
-    private bool statLine;            // OR of the enabled STAT conditions (IRQ on the rising edge)
-    private bool lycEqual;
-    private bool lyReadsZero;         // line 153 after its first dots reads LY=0
-    private int windowLine;           // internal window line counter
-    private bool windowYTriggered;    // WY matched LY at some point this frame
-    private bool firstLineAfterOn;    // no OAM scan on the first line after the LCD is switched on
-    private bool skipFrame;           // the first frame after switching on is not shown
-    private int offDots;              // LCD off: keep delivering blank frames at the normal rate
     private byte vbk, bcps, ocps, opri;
     public long FrameCount { get; private set; }
 
     /// <summary>Raised with the IF bit to set: 0 = VBlank, 1 = STAT.</summary>
     public Action<int>? RequestInterrupt;
+    /// <summary>True while <see cref="RequestInterrupt"/> runs for an interrupt that arrives late in its M-cycle:
+    /// after the point where a halted CPU samples IF, so it wakes the CPU one M-cycle later.</summary>
+    public bool InterruptLate { get; private set; }
     /// <summary>Raised when HBlank starts on a visible line (CGB HBlank DMA).</summary>
     public Action? HBlankStarted;
 
@@ -57,20 +55,51 @@ public sealed class PPU_GB
     }
 
     public bool LcdOn => (Lcdc & 0x80) != 0;
-    public int Mode => mode;
+    public int Mode => visMode;
     public int LY => ly;
     public int Dot => dot;
 
-    /// <summary>State right after the boot ROM: LCD on, in VBlank of line 0's frame, as Pan Docs lists.</summary>
+    // =================================================================================== line state
+    private int ly;                   // internal line 0-153
+    private int dot;                  // dots since LY changed, 0-455
+    private int visMode;              // mode as STAT reports it (and as CPU access blocking sees it)
+    private int nextEvent;            // dot of the next scheduled line event (when not drawing)
+    private int phase;                // which event nextEvent is
+    private bool drawing;             // mode 3 pixel pipeline running
+    // The interrupt side of the PPU runs a few dots ahead of what the CPU reads back from STAT: the LY=LYC
+    // comparison and the mode sources change for the interrupt line one M-cycle before STAT shows them.
+    private int lyCmpVis, lyCmpIrq;   // values the two LYC comparisons see, -1 while LY is changing
+    private bool lycEqual, lycIrq;
+    private bool lyReadsZero;         // line 153 after its first dots reads LY=0
+    private bool src0, src1, src2;    // STAT interrupt sources: HBlank, VBlank, OAM scan
+    private bool statLine;            // OR of the enabled sources (the interrupt fires on its rising edge)
+    private bool firstLine;           // the line the LCD was switched on in: no OAM scan
+    private bool skipFrame;           // the first frame after switching on is not shown
+    private int offDots;              // LCD off: keep delivering blank frames at the normal rate
+    private int windowLine;           // internal window line counter
+    private bool windowYTriggered;    // WY matched LY at some point this frame
+
+    // Line events (phase values).
+    private const int PhLineStart = 0, PhDot4 = 1, PhDraw = 2, PhHblankIrq = 3, PhHblank = 4, PhPreLine = 5, PhIrqLine = 6,
+        PhL153Dot2 = 7, PhL153Dot6 = 8, PhL153Dot8 = 9, PhL153Dot12 = 10;
+    /// <summary>Dot at which the pixel pipeline starts (the first pixel leaves it 12 dots later).</summary>
+    private const int DrawStart = 78;
+
+    /// <summary>State right after the boot ROM hands over: line 153 of the last boot frame, 60 dots before line 0.</summary>
     public void ResetPostBoot()
     {
         Lcdc = 0x91; Bgp = 0xFC; Obp0 = 0xFF; Obp1 = 0xFF; Scx = Scy = Wy = Wx = Lyc = 0; statEnable = 0;
-        ly = 0; dot = 0; mode = 2; windowLine = 0; windowYTriggered = false; firstLineAfterOn = false; skipFrame = false;
+        ly = 153; dot = 396; visMode = 1; drawing = false; lyReadsZero = true; lyCmpVis = 0; lyCmpIrq = 0;
+        src0 = false; src1 = true; src2 = false; statLine = false;
+        windowLine = 0; windowYTriggered = false; firstLine = false; skipFrame = false; offDots = 0;
+        phase = PhPreLine; nextEvent = 452;
         Array.Fill(FrameBuffer, DmgColors[0]);
         UpdateLyc(); UpdateStatLine();
     }
 
     // =================================================================================== timing
+    private int tickEnd, tickHalf;    // the M-cycle being run: its last dot, and half its length
+
     /// <summary>Advance by <paramref name="dots"/> dots (4 per M-cycle at single speed, 2 at double speed).</summary>
     public void Tick(int dots)
     {
@@ -80,221 +109,381 @@ public sealed class PPU_GB
             if (offDots >= DotsPerLine * Lines) { offDots -= DotsPerLine * Lines; FrameCount++; }
             return;
         }
-        dot += dots;
+        int target = dot + dots;
+        tickEnd = target; tickHalf = dots >> 1;
         while (true)
         {
-            if (ly < Height)
+            if (drawing)
             {
-                if (mode == 2 && dot >= 80) StartDrawing();
-                else if (mode == 3 && dot >= mode3End) SetMode(0, hblank: true);
-                else if (mode == 0 && firstLineAfterOn && dot >= 80 && mode3End == 0) StartDrawing();
-                else if (dot >= DotsPerLine) NextLine();
-                else break;
+                while (dot < target)
+                {
+                    StepDraw();
+                    dot++;
+                    if (!drawing) break;
+                }
+                if (drawing) return;
+                phase = PhHblankIrq; nextEvent = dot;
             }
-            else
+            if (nextEvent > target) { dot = target; return; }
+            int ev = nextEvent;
+            if (ev >= DotsPerLine) { target -= DotsPerLine; tickEnd = target; ev -= DotsPerLine; }
+            dot = ev;
+            RunEvent();
+        }
+    }
+
+    // Per line: LY changes at dot 0 (STAT still reads mode 0), STAT shows the new mode and LY=LYC at dot 4, drawing
+    // runs from DrawStart, HBlank follows. The interrupt side leads: the OAM-scan source rises at dot 452 of the
+    // line before, the LYC comparison and the VBlank interrupt move to the next line at dot 454.
+    private void RunEvent()
+    {
+        switch (phase)
+        {
+            case PhLineStart:
+                NextLine();
+                if (ly == 153) { phase = PhL153Dot2; nextEvent = 2; }
+                else { phase = PhDot4; nextEvent = 4; }
+                break;
+            case PhDot4:
+                if (ly < Height) { if (!firstLine) visMode = 2; }
+                else if (ly == Height) visMode = 1;
+                lyCmpVis = ly;
+                if (ly == 153) { lyReadsZero = true; phase = PhL153Dot6; nextEvent = 6; }
+                else if (ly < Height) { phase = PhDraw; nextEvent = DrawStart; }
+                else { phase = PhPreLine; nextEvent = 452; }
+                UpdateLyc(); UpdateStatLine();
+                break;
+            // Line 153: LY reads 0 from dot 4, and both comparisons pass through "no value" on the way from 153 to 0.
+            case PhL153Dot2:
+                lyCmpIrq = -1; UpdateLyc(); UpdateStatLine();
+                phase = PhDot4; nextEvent = 4;
+                break;
+            case PhL153Dot6:
+                lyCmpIrq = 0; UpdateLyc(); UpdateStatLine();
+                phase = PhL153Dot8; nextEvent = 8;
+                break;
+            case PhL153Dot8:
+                lyCmpVis = -1; UpdateLyc(); UpdateStatLine();
+                phase = PhL153Dot12; nextEvent = 12;
+                break;
+            case PhL153Dot12:
+                lyCmpVis = 0; UpdateLyc(); UpdateStatLine();
+                phase = PhPreLine; nextEvent = 452;
+                break;
+            case PhDraw:              // OAM scan done, drawing starts
+                src2 = false; UpdateStatLine();
+                StartDrawing();
+                break;
+            case PhHblankIrq:         // drawing just finished
+                src0 = true; UpdateStatLine();
+                phase = PhHblank; nextEvent = dot + 4;
+                break;
+            case PhHblank:
+                visMode = 0;
+                HBlankStarted?.Invoke();
+                phase = PhPreLine; nextEvent = 452;
+                break;
+            case PhPreLine:
             {
-                if (ly == 153 && !lyReadsZero && dot >= 4) { lyReadsZero = true; UpdateLyc(); UpdateStatLine(); }
-                if (dot >= DotsPerLine) NextLine();
-                else break;
+                int next = ly == 153 ? 0 : ly + 1;
+                if (next != 0) lyCmpIrq = -1;
+                if (next <= Height)
+                {
+                    // The OAM-scan source rises for the next visible line (and also, as a quirk, for line 144).
+                    src0 = false; src1 = false; src2 = true;
+                }
+                UpdateLyc(); UpdateStatLine();
+                phase = PhIrqLine; nextEvent = 454;
+                break;
+            }
+            case PhIrqLine:
+            {
+                int next = ly == 153 ? 0 : ly + 1;
+                lyCmpIrq = next;
+                if (next == Height)
+                {
+                    src2 = false; src1 = true;
+                    InterruptLate = tickEnd - dot < tickHalf;
+                    RequestInterrupt?.Invoke(0);
+                    InterruptLate = false;
+                }
+                UpdateLyc(); UpdateStatLine();
+                phase = PhLineStart; nextEvent = DotsPerLine;
+                break;
             }
         }
     }
 
     private void NextLine()
     {
-        dot -= DotsPerLine;
-        firstLineAfterOn = false;
         if (ly < Height && windowRendered) windowLine++;
         windowRendered = false;
+        firstLine = false;
         ly++;
         lyReadsZero = false;
-        if (ly == 154) { ly = 0; windowLine = 0; windowYTriggered = false; }
-        UpdateLyc();
+        if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
+        if (ly != 0) lyCmpVis = -1;   // LY has read 0 since early line 153: line 0 keeps matching
+        if (ly <= Height) visMode = 0;
         if (ly == Height)
         {
-            SetMode(1);
-            RequestInterrupt?.Invoke(0);
-            // DMG quirk: the mode-2 STAT source also fires at the start of line 144.
-            if ((statEnable & 0x20) != 0 && !statLine) { statLine = true; RequestInterrupt?.Invoke(1); }
             if (skipFrame) { skipFrame = false; Array.Fill(FrameBuffer, Cgb ? 0xFFFFFFFF : DmgColors[0]); }
             FrameCount++;
         }
-        else if (ly < Height) { mode3End = 0; SetMode(2); }
-        else UpdateStatLine();
-    }
-
-    private void SetMode(int m, bool hblank = false)
-    {
-        mode = m;
-        UpdateStatLine();
-        if (hblank) HBlankStarted?.Invoke();
+        UpdateLyc();
     }
 
     private void UpdateLyc()
     {
-        int reported = ly == 153 && lyReadsZero ? 0 : ly;
-        lycEqual = reported == Lyc;
+        lycEqual = lyCmpVis == Lyc;
+        lycIrq = lyCmpIrq == Lyc;
     }
 
+    /// <summary>Re-evaluate the STAT interrupt line; a rising edge requests the interrupt. An interrupt raised in the
+    /// last half of the M-cycle being run is flagged late (a halted CPU only notices it one M-cycle later).</summary>
     private void UpdateStatLine()
     {
-        bool line = (lycEqual && (statEnable & 0x40) != 0)
-            || (mode == 0 && (statEnable & 0x08) != 0)
-            || (mode == 1 && (statEnable & 0x10) != 0)
-            || (mode == 2 && (statEnable & 0x20) != 0);
-        if (line && !statLine) RequestInterrupt?.Invoke(1);
+        bool line = (lycIrq && (statEnable & 0x40) != 0)
+            || (src0 && (statEnable & 0x08) != 0)
+            || (src1 && (statEnable & 0x10) != 0)
+            || (src2 && (statEnable & 0x20) != 0);
+        if (line && !statLine)
+        {
+            InterruptLate = tickEnd - dot < tickHalf;
+            RequestInterrupt?.Invoke(1);
+            InterruptLate = false;
+        }
         statLine = line;
     }
 
-    // =================================================================================== rendering
+    // =================================================================================== drawing (mode 3)
+    // Objects found by the OAM scan, sorted by X (OAM order breaks ties): the order they are fetched in.
     private readonly int[] lineSprites = new int[10];
-    private int lineSpriteCount;
+    private readonly byte[] spriteX = new byte[10];
+    private int lineSpriteCount, nextSprite;
     private bool windowRendered;
+
+    private int m;                    // dots since drawing started
+    private int lcdX;                 // next screen pixel to output
+    private int discard;              // fine-scroll pixels still to drop
+    private bool scxLatched;
+    // Background/window fetcher.
+    private int fetchDots;            // dots spent on the current tile, 6 = fetched and waiting to push
+    private bool dummyFetch;          // the first fetch of a line is thrown away
+    private int fetchX;               // background tile column counter
+    private bool fetchWindow, windowActive;
+    private int winFetchX;
+    private byte tileIdx, tileAttr, tileLo, tileHi;
+    // Background FIFO: it only ever holds one tile's pixels (a tile is pushed when it is empty).
+    private int bgCount;
+    private byte bgLo, bgHi, bgAttr;
+    // Object FIFO: 8 slots relative to the output position. Colour 0 = transparent / empty.
+    private readonly byte[] objColor = new byte[8], objAttr = new byte[8], objIndex = new byte[8];
+    private int objHead;
+    // Object fetch.
+    private int spriteFetchDots;      // >0 while fetching an object
+    private bool spriteWait;          // an object is due and waits for the background fetch
 
     private void StartDrawing()
     {
         if (ly == Wy) windowYTriggered = true;
-        SelectSprites();
-        bool window = (Lcdc & 0x20) != 0 && windowYTriggered && Wx <= 166 && (Cgb || (Lcdc & 0x01) != 0 || true);
-        // Drawing length: 172 dots, plus the fine-scroll discard, plus 6 when the window starts, plus per-object fetches.
-        int len = 172 + (Scx & 7);
-        if (window && Wx <= 166) len += 6;
-        for (int i = 0; i < lineSpriteCount; i++)
-        {
-            int x = Oam[lineSprites[i] * 4 + 1];
-            len += 11 - Math.Min(5, (x + Scx) & 7);
-        }
-        mode3End = 80 + Math.Min(len, 289);
-        mode = 3; UpdateStatLine();
-        if (!skipFrame) RenderLine(window);
+        if (firstLine) lineSpriteCount = 0; else SelectSprites();
+        nextSprite = 0;
+        drawing = true;
+        m = 0; lcdX = 0; discard = 0; scxLatched = false;
+        fetchDots = 0; dummyFetch = true; fetchX = 0; fetchWindow = false; windowActive = false; winFetchX = 0;
+        bgCount = 0;
+        Array.Clear(objColor); objHead = 0;
+        spriteFetchDots = 0; spriteWait = false;
     }
 
     private void SelectSprites()
     {
         lineSpriteCount = 0;
-        if ((Lcdc & 0x02) == 0 && !Cgb) { }
         int h = (Lcdc & 0x04) != 0 ? 16 : 8;
         for (int i = 0; i < 40 && lineSpriteCount < 10; i++)
         {
             int y = Oam[i * 4] - 16;
-            if (ly >= y && ly < y + h) lineSprites[lineSpriteCount++] = i;
+            if (ly >= y && ly < y + h) { lineSprites[lineSpriteCount] = i; spriteX[lineSpriteCount] = Oam[i * 4 + 1]; lineSpriteCount++; }
         }
-        if (!Cgb || opri != 0)
+        // Fetch order: by X, OAM order breaking ties (stable insertion sort).
+        for (int i = 1; i < lineSpriteCount; i++)
         {
-            // DMG priority: smaller X first, OAM order breaks ties (stable insertion sort).
-            for (int i = 1; i < lineSpriteCount; i++)
-            {
-                int s = lineSprites[i], x = Oam[s * 4 + 1], j = i - 1;
-                while (j >= 0 && Oam[lineSprites[j] * 4 + 1] > x) { lineSprites[j + 1] = lineSprites[j]; j--; }
-                lineSprites[j + 1] = s;
-            }
+            int s = lineSprites[i]; byte x = spriteX[i]; int j = i - 1;
+            while (j >= 0 && spriteX[j] > x) { lineSprites[j + 1] = lineSprites[j]; spriteX[j + 1] = spriteX[j]; j--; }
+            lineSprites[j + 1] = s; spriteX[j + 1] = x;
         }
     }
 
-    private readonly byte[] bgColor = new byte[Width];     // colour index 0-3
-    private readonly byte[] bgAttr = new byte[Width];      // CGB attributes (palette, priority)
-
-    private void RenderLine(bool windowActive)
+    /// <summary>One dot of mode 3. <see cref="dot"/> is the dot being processed.</summary>
+    private void StepDraw()
     {
-        int row = ly * Width;
-        bool bgEnable = (Lcdc & 0x01) != 0;
-        bool tileData8000 = (Lcdc & 0x10) != 0;
-        int bgMap = (Lcdc & 0x08) != 0 ? 0x1C00 : 0x1800;
-        int winMap = (Lcdc & 0x40) != 0 ? 0x1C00 : 0x1800;
-        int winStart = windowActive ? Wx - 7 : Width;
+        m++;
+        if (dot == 83) visMode = 3;     // STAT reads mode 3 from dot 84
 
-        for (int x = 0; x < Width; x++)
+        // Object fetch in progress: the background fetcher and the output are stalled.
+        if (spriteFetchDots > 0)
         {
-            if (!bgEnable && !Cgb) { bgColor[x] = 0; bgAttr[x] = 0; continue; }
-            int map, tx, ty;
-            if (x >= winStart)
-            {
-                windowRendered = true;
-                map = winMap; tx = x - winStart; ty = windowLine;
-            }
+            if (++spriteFetchDots > 6) { FetchSprite(); spriteFetchDots = 0; }
+            else return;
+        }
+
+        // Push a fetched tile into an empty background FIFO.
+        if (fetchDots >= 6 && bgCount == 0)
+        {
+            fetchDots = 0;
+            if (dummyFetch) dummyFetch = false;
             else
             {
-                map = bgMap; tx = (x + Scx) & 0xFF; ty = (ly + Scy) & 0xFF;
-            }
-            int mapAddr = map + (ty >> 3) * 32 + (tx >> 3);
-            int tile = Vram[mapAddr];
-            byte attr = Cgb ? Vram[0x2000 + mapAddr] : (byte)0;
-            int fy = ty & 7, fx = tx & 7;
-            if ((attr & 0x40) != 0) fy = 7 - fy;
-            if ((attr & 0x20) != 0) fx = 7 - fx;
-            int addr = tileData8000 ? tile * 16 : 0x1000 + (sbyte)tile * 16;
-            if ((attr & 0x08) != 0) addr += 0x2000;
-            addr += fy * 2;
-            int bit = 7 - fx;
-            bgColor[x] = (byte)((Vram[addr] >> bit & 1) | (Vram[addr + 1] >> bit & 1) << 1);
-            bgAttr[x] = attr;
-        }
-        if (windowActive && winStart < Width) windowRendered = true;
-
-        // Objects: highest-priority object with an opaque pixel wins that pixel.
-        Span<sbyte> objAt = stackalloc sbyte[Width];
-        objAt.Fill(-1);
-        Span<byte> objCol = stackalloc byte[Width];
-        if ((Lcdc & 0x02) != 0)
-        {
-            int h = (Lcdc & 0x04) != 0 ? 16 : 8;
-            for (int k = 0; k < lineSpriteCount; k++)
-            {
-                int s = lineSprites[k], o = s * 4;
-                int sy = Oam[o] - 16, sx = Oam[o + 1] - 8, tile = Oam[o + 2]; byte flags = Oam[o + 3];
-                int line = ly - sy;
-                if ((flags & 0x40) != 0) line = h - 1 - line;
-                if (h == 16) tile &= 0xFE;
-                int addr = tile * 16 + line * 2;
-                if (Cgb && (flags & 0x08) != 0) addr += 0x2000;
-                byte lo = Vram[addr], hi = Vram[addr + 1];
-                for (int px = 0; px < 8; px++)
-                {
-                    int x = sx + px;
-                    if (x < 0 || x >= Width || objAt[x] >= 0) continue;
-                    int bit = (flags & 0x20) != 0 ? px : 7 - px;
-                    int c = (lo >> bit & 1) | (hi >> bit & 1) << 1;
-                    if (c == 0) continue;
-                    objAt[x] = (sbyte)k; objCol[x] = (byte)c;
-                }
+                bgLo = tileLo; bgHi = tileHi; bgAttr = tileAttr; bgCount = 8;
+                if (fetchWindow) winFetchX++; else fetchX++;
+                if (!scxLatched) { scxLatched = true; discard = Scx & 7; }
             }
         }
 
-        for (int x = 0; x < Width; x++)
+        // An object at the output position: wait for the background fetch to get far enough, then fetch it.
+        if (bgCount > 0 && discard == 0 && nextSprite < lineSpriteCount && spriteX[nextSprite] <= lcdX + 8)
         {
-            int bc = bgColor[x];
-            uint color; byte shade;
-            int k = objAt[x];
-            bool objWins = false;
-            byte flags = 0;
-            if (k >= 0)
+            if ((Lcdc & 0x02) == 0 && !Cgb) { nextSprite++; }
+            else if (fetchDots >= 5)
             {
-                flags = Oam[lineSprites[k] * 4 + 3];
-                if (Cgb)
-                    objWins = !bgEnable || bc == 0 || ((flags & 0x80) == 0 && (bgAttr[x] & 0x80) == 0);
-                else
-                    objWins = (flags & 0x80) == 0 || bc == 0;
+                spriteFetchDots = 1;
+                return;
             }
+            else { BgFetchStep(); return; }
+        }
+
+        BgFetchStep();
+
+        if (bgCount == 0) return;
+
+        if (discard > 0) { bgHi <<= 1; bgLo <<= 1; bgCount--; discard--; return; }
+
+        // Window start: throw away the background and fetch the window instead.
+        if (!windowActive && (Lcdc & 0x20) != 0 && windowYTriggered && (lcdX + 7 == Wx || (Wx < 7 && lcdX == 0)))
+        {
+            windowActive = true; windowRendered = true; fetchWindow = true; winFetchX = 0;
+            fetchDots = 0; bgCount = 0;
+            if (Wx < 7) discard = 7 - Wx;
+            return;
+        }
+
+        // Shift one pixel out.
+        int bc = (bgHi >> 6 & 2) | (bgLo >> 7 & 1);
+        bgHi <<= 1; bgLo <<= 1; bgCount--;
+        int oh = objHead;
+        int oc = objColor[oh]; byte oa = objAttr[oh];
+        objColor[oh] = 0; objHead = (oh + 1) & 7;
+        OutputPixel(bc, oc, oa);
+    }
+
+    private void BgFetchStep()
+    {
+        if (fetchDots >= 6) return;
+        fetchDots++;
+        switch (fetchDots)
+        {
+            case 2: FetchTileIndex(); break;
+            case 4: tileLo = FetchTileData(0); break;
+            case 6: tileHi = FetchTileData(1); break;
+        }
+    }
+
+    private void FetchTileIndex()
+    {
+        int addr;
+        if (fetchWindow)
+        {
+            int map = (Lcdc & 0x40) != 0 ? 0x1C00 : 0x1800;
+            addr = map + (windowLine >> 3) * 32 + (winFetchX & 31);
+        }
+        else
+        {
+            int map = (Lcdc & 0x08) != 0 ? 0x1C00 : 0x1800;
+            addr = map + (((ly + Scy) & 0xFF) >> 3) * 32 + (((Scx >> 3) + fetchX) & 31);
+        }
+        tileIdx = Vram[addr];
+        tileAttr = Cgb ? Vram[0x2000 + addr] : (byte)0;
+    }
+
+    private byte FetchTileData(int plane)
+    {
+        int row = fetchWindow ? windowLine & 7 : (ly + Scy) & 7;
+        if ((tileAttr & 0x40) != 0) row = 7 - row;
+        int addr = (Lcdc & 0x10) != 0 ? tileIdx * 16 : 0x1000 + (sbyte)tileIdx * 16;
+        if ((tileAttr & 0x08) != 0) addr += 0x2000;
+        byte b = Vram[addr + row * 2 + plane];
+        if ((tileAttr & 0x20) != 0) b = Reverse(b);
+        return b;
+    }
+
+    private static byte Reverse(byte b)
+    {
+        b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
+        b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2);
+        return (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1);
+    }
+
+    private void FetchSprite()
+    {
+        int k = nextSprite++;
+        int s = lineSprites[k], o = s * 4;
+        int h = (Lcdc & 0x04) != 0 ? 16 : 8;
+        int sy = Oam[o] - 16, tile = Oam[o + 2]; byte flags = Oam[o + 3];
+        int line = (ly - sy) & 15;
+        if ((flags & 0x40) != 0) line = h - 1 - line;
+        if (h == 16) tile &= 0xFE;
+        line &= h - 1;
+        int addr = tile * 16 + line * 2;
+        if (Cgb && (flags & 0x08) != 0) addr += 0x2000;
+        byte lo = Vram[addr], hi = Vram[addr + 1];
+        if ((flags & 0x20) != 0) { lo = Reverse(lo); hi = Reverse(hi); }
+        int x = spriteX[k];
+        int skip = x < 8 ? 8 - x : 0;
+        bool cgbPri = Cgb && opri == 0;
+        for (int px = skip; px < 8; px++)
+        {
+            int c = (hi >> (7 - px) << 1 & 2) | (lo >> (7 - px) & 1);
+            if (c == 0) continue;
+            int slot = (objHead + px - skip) & 7;
+            if (objColor[slot] != 0)
+            {
+                if (!cgbPri || objIndex[slot] < s) continue;
+            }
+            objColor[slot] = (byte)c; objAttr[slot] = flags; objIndex[slot] = (byte)s;
+        }
+    }
+
+    private void OutputPixel(int bc, int oc, byte oa)
+    {
+        int i = ly * Width + lcdX;
+        uint color; byte shade;
+        if (Cgb)
+        {
+            byte attr = bgAttr;
+            bool objWins = oc != 0 && (Lcdc & 0x02) != 0
+                && ((Lcdc & 0x01) == 0 || bc == 0 || ((oa & 0x80) == 0 && (attr & 0x80) == 0));
+            if (objWins) { color = CgbColor(ObjPalRam, oa & 7, oc); shade = (byte)oc; }
+            else { color = CgbColor(BgPalRam, attr & 7, bc); shade = (byte)bc; }
+        }
+        else
+        {
+            if ((Lcdc & 0x01) == 0) bc = 0;
+            bool objWins = oc != 0 && (Lcdc & 0x02) != 0 && ((oa & 0x80) == 0 || bc == 0);
             if (objWins)
             {
-                int c = objCol[x];
-                if (Cgb) { color = CgbColor(ObjPalRam, flags & 7, c); shade = (byte)c; }
-                else
-                {
-                    byte pal = (flags & 0x10) != 0 ? Obp1 : Obp0;
-                    shade = (byte)(pal >> (c * 2) & 3);
-                    color = CompatMode ? CgbColor(ObjPalRam, (flags & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
-                }
+                byte pal = (oa & 0x10) != 0 ? Obp1 : Obp0;
+                shade = (byte)(pal >> (oc * 2) & 3);
+                color = CompatMode ? CgbColor(ObjPalRam, (oa & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
             }
-            else if (Cgb) { color = CgbColor(BgPalRam, bgAttr[x] & 7, bc); shade = (byte)bc; }
             else
             {
                 shade = (byte)(Bgp >> (bc * 2) & 3);
                 color = CompatMode ? CgbColor(BgPalRam, 0, shade) : DmgColors[shade];
             }
-            FrameBuffer[row + x] = color;
-            ShadeBuffer[row + x] = shade;
         }
+        FrameBuffer[i] = color;
+        ShadeBuffer[i] = shade;
+        if (++lcdX == Width) drawing = false;
     }
 
     private static uint CgbColor(byte[] pal, int palette, int index)
@@ -306,9 +495,8 @@ public sealed class PPU_GB
     }
 
     // =================================================================================== CPU access
-    public bool VramBlocked => LcdOn && mode == 3;
-    public bool OamBlocked => LcdOn && (mode == 2 || mode == 3) && !firstLineAfterOnOamFree;
-    private bool firstLineAfterOnOamFree => firstLineAfterOn && mode == 0;
+    public bool VramBlocked => LcdOn && visMode == 3;
+    public bool OamBlocked => LcdOn && (visMode == 2 || visMode == 3);
 
     public byte ReadVram(ushort a) => VramBlocked ? (byte)0xFF : Vram[(a & 0x1FFF) | (Cgb || Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)];
     public void WriteVram(ushort a, byte v) { if (!VramBlocked) Vram[(a & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v; }
@@ -323,10 +511,10 @@ public sealed class PPU_GB
         {
             case 0x40: return Lcdc;
             case 0x41:
-                return (byte)(0x80 | statEnable | (lycEqual ? 4 : 0) | (LcdOn ? mode : 0));
+                return (byte)(0x80 | statEnable | (LcdOn && lycEqual ? 4 : 0) | (LcdOn ? visMode : 0));
             case 0x42: return Scy;
             case 0x43: return Scx;
-            case 0x44: return (byte)(!LcdOn ? 0 : ly == 153 && lyReadsZero ? 0 : ly);
+            case 0x44: return (byte)(!LcdOn ? 0 : lyReadsZero ? 0 : ly);
             case 0x45: return Lyc;
             case 0x47: return Bgp;
             case 0x48: return Obp0;
@@ -353,19 +541,26 @@ public sealed class PPU_GB
                 Lcdc = v;
                 if (wasOn && !LcdOn)
                 {
-                    ly = 0; dot = 0; mode = 0; lyReadsZero = false; offDots = 0;
+                    ly = 0; dot = 0; visMode = 0; drawing = false; lyReadsZero = false; offDots = 0;
+                    src0 = src1 = src2 = false; lyCmpVis = lyCmpIrq = 0;
                     Array.Fill(FrameBuffer, Cgb ? 0xFFFFFFFF : DmgColors[0]);
                     UpdateLyc(); statLine = false;
                 }
                 else if (!wasOn && LcdOn)
                 {
-                    ly = 0; dot = 4 * 0; mode = 0; mode3End = 0; firstLineAfterOn = true; skipFrame = true;
+                    // The first line starts 4 dots in, without an OAM scan (STAT reads mode 0 until drawing).
+                    ly = 0; dot = 4; visMode = 0; drawing = false; firstLine = true; skipFrame = true; lyReadsZero = false;
                     windowLine = 0; windowYTriggered = false; windowRendered = false;
+                    src0 = src1 = src2 = false; lyCmpVis = lyCmpIrq = 0;
+                    phase = PhDraw; nextEvent = DrawStart + 2;   // drawing starts 2 dots later on this line
                     UpdateLyc(); UpdateStatLine();
                 }
                 break;
             }
-            case 0x41: statEnable = (byte)(v & 0x78); UpdateStatLine(); break;
+            case 0x41:
+                statEnable = (byte)(v & 0x78);
+                if (LcdOn) UpdateStatLine();
+                break;
             case 0x42: Scy = v; break;
             case 0x43: Scx = v; break;
             case 0x44: break;   // read-only
@@ -408,17 +603,33 @@ public sealed class PPU_GB
     {
         w.Write(Vram); w.Write(Oam); w.Write(BgPalRam); w.Write(ObjPalRam);
         w.Write(Lcdc); w.Write(Scy); w.Write(Scx); w.Write(Lyc); w.Write(Bgp); w.Write(Obp0); w.Write(Obp1); w.Write(Wy); w.Write(Wx);
-        w.Write(statEnable); w.Write(ly); w.Write(dot); w.Write(mode); w.Write(mode3End); w.Write(statLine); w.Write(lycEqual); w.Write(lyReadsZero);
-        w.Write(windowLine); w.Write(windowYTriggered); w.Write(firstLineAfterOn); w.Write(skipFrame); w.Write(offDots);
-        w.Write(vbk); w.Write(bcps); w.Write(ocps); w.Write(opri); w.Write(CompatMode); w.Write(FrameCount);
+        w.Write(statEnable); w.Write(vbk); w.Write(bcps); w.Write(ocps); w.Write(opri); w.Write(CompatMode); w.Write(FrameCount);
+        w.Write(ly); w.Write(dot); w.Write(visMode); w.Write(nextEvent); w.Write(phase); w.Write(drawing); w.Write(lyCmpVis); w.Write(lyCmpIrq); w.Write(lycEqual); w.Write(lycIrq);
+        w.Write(lyReadsZero); w.Write(src0); w.Write(src1); w.Write(src2); w.Write(statLine); w.Write(firstLine); w.Write(skipFrame);
+        w.Write(offDots); w.Write(windowLine); w.Write(windowYTriggered); w.Write(windowRendered);
+        w.Write(lineSpriteCount); w.Write(nextSprite);
+        for (int i = 0; i < 10; i++) { w.Write(lineSprites[i]); w.Write(spriteX[i]); }
+        w.Write(m); w.Write(lcdX); w.Write(discard); w.Write(scxLatched); w.Write(fetchDots); w.Write(dummyFetch); w.Write(fetchX);
+        w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
+        w.Write(bgCount); w.Write(bgLo); w.Write(bgHi); w.Write(bgAttr);
+        w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait);
     }
+
     public void LoadState(BinaryReader r)
     {
         r.ReadBytes(Vram.Length).CopyTo(Vram, 0); r.ReadBytes(Oam.Length).CopyTo(Oam, 0);
         r.ReadBytes(64).CopyTo(BgPalRam, 0); r.ReadBytes(64).CopyTo(ObjPalRam, 0);
         Lcdc = r.ReadByte(); Scy = r.ReadByte(); Scx = r.ReadByte(); Lyc = r.ReadByte(); Bgp = r.ReadByte(); Obp0 = r.ReadByte(); Obp1 = r.ReadByte(); Wy = r.ReadByte(); Wx = r.ReadByte();
-        statEnable = r.ReadByte(); ly = r.ReadByte(); dot = r.ReadInt32(); mode = r.ReadInt32(); mode3End = r.ReadInt32(); statLine = r.ReadBoolean(); lycEqual = r.ReadBoolean(); lyReadsZero = r.ReadBoolean();
-        windowLine = r.ReadInt32(); windowYTriggered = r.ReadBoolean(); firstLineAfterOn = r.ReadBoolean(); skipFrame = r.ReadBoolean(); offDots = r.ReadInt32();
-        vbk = r.ReadByte(); bcps = r.ReadByte(); ocps = r.ReadByte(); opri = r.ReadByte(); CompatMode = r.ReadBoolean(); FrameCount = r.ReadInt64();
+        statEnable = r.ReadByte(); vbk = r.ReadByte(); bcps = r.ReadByte(); ocps = r.ReadByte(); opri = r.ReadByte(); CompatMode = r.ReadBoolean(); FrameCount = r.ReadInt64();
+        ly = r.ReadInt32(); dot = r.ReadInt32(); visMode = r.ReadInt32(); nextEvent = r.ReadInt32(); phase = r.ReadInt32(); drawing = r.ReadBoolean(); lyCmpVis = r.ReadInt32(); lyCmpIrq = r.ReadInt32(); lycEqual = r.ReadBoolean(); lycIrq = r.ReadBoolean();
+        lyReadsZero = r.ReadBoolean(); src0 = r.ReadBoolean(); src1 = r.ReadBoolean(); src2 = r.ReadBoolean(); statLine = r.ReadBoolean(); firstLine = r.ReadBoolean(); skipFrame = r.ReadBoolean();
+        offDots = r.ReadInt32(); windowLine = r.ReadInt32(); windowYTriggered = r.ReadBoolean(); windowRendered = r.ReadBoolean();
+        lineSpriteCount = r.ReadInt32(); nextSprite = r.ReadInt32();
+        for (int i = 0; i < 10; i++) { lineSprites[i] = r.ReadInt32(); spriteX[i] = r.ReadByte(); }
+        m = r.ReadInt32(); lcdX = r.ReadInt32(); discard = r.ReadInt32(); scxLatched = r.ReadBoolean(); fetchDots = r.ReadInt32(); dummyFetch = r.ReadBoolean(); fetchX = r.ReadInt32();
+        fetchWindow = r.ReadBoolean(); windowActive = r.ReadBoolean(); winFetchX = r.ReadInt32(); tileIdx = r.ReadByte(); tileAttr = r.ReadByte(); tileLo = r.ReadByte(); tileHi = r.ReadByte();
+        bgCount = r.ReadInt32(); bgLo = r.ReadByte(); bgHi = r.ReadByte(); bgAttr = r.ReadByte();
+        r.ReadBytes(8).CopyTo(objColor, 0); r.ReadBytes(8).CopyTo(objAttr, 0); r.ReadBytes(8).CopyTo(objIndex, 0);
+        objHead = r.ReadInt32(); spriteFetchDots = r.ReadInt32(); spriteWait = r.ReadBoolean();
     }
 }

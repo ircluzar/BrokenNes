@@ -53,7 +53,12 @@ public sealed class BOARD_GB : IGbCpuBus
         Cpu = new CPU_GB(this);
         Ppu = new PPU_GB(model);
         Apu = new APU_GB(model);
-        Ppu.RequestInterrupt = bit => iflag |= (byte)(1 << bit);
+        Ppu.RequestInterrupt = bit =>
+        {
+            byte mask = (byte)(1 << bit);
+            iflag |= mask; irqNew |= mask;
+            if (Ppu.InterruptLate) irqLate |= mask;
+        };
         Ppu.HBlankStarted = () => { if (hdmaActive) hdmaRequest = true; };
         Reset();
     }
@@ -104,10 +109,15 @@ public sealed class BOARD_GB : IGbCpuBus
 
     // =================================================================================== one M-cycle
     private int clockAccumulator;
+    // PPU interrupts raised during the current M-cycle land after the CPU's bus access in that cycle (a read of
+    // IF does not see them yet, a write to IF does not clear them); the "late" ones also land after the point
+    // where a halted CPU samples IF, so they wake it one M-cycle later. Dispatch after the cycle sees all of them.
+    private byte irqNew, irqLate;
 
     private void Cycle()
     {
         CycleCount++;
+        irqNew = 0; irqLate = 0;
         int dots = DoubleSpeed ? 2 : 4;
         clockAccumulator += dots;
 
@@ -139,7 +149,7 @@ public sealed class BOARD_GB : IGbCpuBus
         Cycle();
     }
 
-    public byte PendingInterrupts => (byte)(ie & iflag & 0x1F);
+    public byte PendingInterrupts => (byte)(ie & iflag & ~(Cpu.Halted ? irqLate : 0) & 0x1F);
     public void AcknowledgeInterrupt(int bit) => iflag &= (byte)~(1 << bit);
 
     public bool Stop()
@@ -211,7 +221,7 @@ public sealed class BOARD_GB : IGbCpuBus
             case 0x05: return tima;
             case 0x06: return tma;
             case 0x07: return (byte)(tac | 0xF8);
-            case 0x0F: return (byte)(iflag | 0xE0);
+            case 0x0F: return (byte)(iflag & ~irqNew | 0xE0);
             case 0x46: return dmaReg;
             case 0x4D: return Model == GbModel.Cgb ? (byte)(0x7E | (DoubleSpeed ? 0x80 : 0) | (key1 & 1)) : (byte)0xFF;
             case 0x55: return Model == GbModel.Cgb ? (byte)((hdmaActive ? 0 : 0x80) | ((hdmaBlocks - 1) & 0x7F)) : (byte)0xFF;
@@ -242,7 +252,7 @@ public sealed class BOARD_GB : IGbCpuBus
                 if (before && !TimerInput()) IncrementTima();
                 return;
             }
-            case 0x0F: iflag = (byte)(v & 0x1F); return;
+            case 0x0F: iflag = (byte)(v & 0x1F | irqNew); return;
             case 0x46: dmaReg = v; dmaSource = (ushort)(v << 8); dmaPendingCycles = 2; return;
             case 0x4D: if (Model == GbModel.Cgb) key1 = (byte)(v & 1); return;
             case 0x51: hdmaSrc = (ushort)((hdmaSrc & 0x00F0) | v << 8); return;
