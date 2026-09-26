@@ -117,18 +117,26 @@ public sealed class PPU_GB
             {
                 while (dot < target)
                 {
+                    if (pendCount != 0) ResolveDue();
                     StepDraw();
                     dot++;
-                    if (!drawing) break;
+                    if (!drawing) { phase = PhHblankIrq; nextEvent = dot; break; }
                 }
                 if (drawing) return;
-                phase = PhHblankIrq; nextEvent = dot;
+            }
+            if (nextEvent <= dot) { RunEvent(); continue; }
+            if (pendCount != 0)
+            {
+                // Pixels are still in the palette stage after drawing ended: finish them dot by dot.
+                int stop = Math.Min(target, nextEvent);
+                while (dot < stop && pendCount != 0) { ResolveDue(); dot++; }
+                if (dot >= target && nextEvent > dot) return;
+                continue;
             }
             if (nextEvent > target) { dot = target; return; }
             int ev = nextEvent;
-            if (ev >= DotsPerLine) { target -= DotsPerLine; tickEnd = target; ev -= DotsPerLine; }
+            if (ev >= DotsPerLine) { target -= DotsPerLine; tickEnd = target; ev -= DotsPerLine; nextEvent = ev; }
             dot = ev;
-            RunEvent();
         }
     }
 
@@ -220,6 +228,7 @@ public sealed class PPU_GB
         if (ly < Height && windowRendered) windowLine++;
         windowRendered = false;
         firstLine = false;
+        bgpWriteDot = obp0WriteDot = obp1WriteDot = -1;
         ly++;
         lyReadsZero = false;
         if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
@@ -387,9 +396,31 @@ public sealed class PPU_GB
         int bc = (bgHi >> 6 & 2) | (bgLo >> 7 & 1);
         bgHi <<= 1; bgLo <<= 1; bgCount--;
         int oh = objHead;
-        int oc = objColor[oh]; byte oa = objAttr[oh];
+        int t = (pendHead + pendCount) & 7;
+        pendBc[t] = (byte)bc; pendOc[t] = objColor[oh]; pendOa[t] = objAttr[oh]; pendAttr[t] = bgAttr;
+        pendX[t] = (byte)lcdX; pendDue[t] = dot + PaletteDelay; pendCount++;
         objColor[oh] = 0; objHead = (oh + 1) & 7;
-        OutputPixel(bc, oc, oa);
+        if (++lcdX == Width) drawing = false;
+    }
+
+    // ----------------------------------------------------------------------------- palette stage
+    // A pixel's colour is looked up a few dots after it leaves the FIFO; a palette written in that very dot is
+    // seen OR-ed with its old value (DMG).
+    private const int PaletteDelay = 5;
+    private readonly byte[] pendBc = new byte[8], pendOc = new byte[8], pendOa = new byte[8], pendAttr = new byte[8], pendX = new byte[8];
+    private readonly int[] pendDue = new int[8];
+    private int pendHead, pendCount;
+    private byte bgpOld, obp0Old, obp1Old;
+    private int bgpWriteDot = -1, obp0WriteDot = -1, obp1WriteDot = -1;
+
+    private void ResolveDue()
+    {
+        while (pendCount != 0 && pendDue[pendHead] <= dot)
+        {
+            int h = pendHead;
+            OutputPixel(pendX[h], pendBc[h], pendOc[h], pendOa[h], pendAttr[h]);
+            pendHead = (h + 1) & 7; pendCount--;
+        }
     }
 
     private void BgFetchStep()
@@ -469,13 +500,12 @@ public sealed class PPU_GB
         }
     }
 
-    private void OutputPixel(int bc, int oc, byte oa)
+    private void OutputPixel(int x, int bc, int oc, byte oa, byte attr)
     {
-        int i = ly * Width + lcdX;
+        int i = ly * Width + x;
         uint color; byte shade;
         if (Cgb)
         {
-            byte attr = bgAttr;
             bool objWins = oc != 0 && (Lcdc & 0x02) != 0
                 && ((Lcdc & 0x01) == 0 || bc == 0 || ((oa & 0x80) == 0 && (attr & 0x80) == 0));
             if (objWins) { color = CgbColor(ObjPalRam, oa & 7, oc); shade = (byte)oc; }
@@ -487,19 +517,21 @@ public sealed class PPU_GB
             bool objWins = oc != 0 && (Lcdc & 0x02) != 0 && ((oa & 0x80) == 0 || bc == 0);
             if (objWins)
             {
-                byte pal = (oa & 0x10) != 0 ? Obp1 : Obp0;
+                byte pal = (oa & 0x10) != 0
+                    ? (dot == obp1WriteDot ? (byte)(Obp1 | obp1Old) : Obp1)
+                    : (dot == obp0WriteDot ? (byte)(Obp0 | obp0Old) : Obp0);
                 shade = (byte)(pal >> (oc * 2) & 3);
                 color = CompatMode ? CgbColor(ObjPalRam, (oa & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
             }
             else
             {
-                shade = (byte)(Bgp >> (bc * 2) & 3);
+                byte pal = dot == bgpWriteDot ? (byte)(Bgp | bgpOld) : Bgp;
+                shade = (byte)(pal >> (bc * 2) & 3);
                 color = CompatMode ? CgbColor(BgPalRam, 0, shade) : DmgColors[shade];
             }
         }
         FrameBuffer[i] = color;
         ShadeBuffer[i] = shade;
-        if (++lcdX == Width) drawing = false;
     }
 
     private static uint CgbColor(byte[] pal, int palette, int index)
@@ -595,9 +627,9 @@ public sealed class PPU_GB
             case 0x43: Scx = v; break;
             case 0x44: break;   // read-only
             case 0x45: Lyc = v; if (LcdOn) { UpdateLyc(); UpdateStatLine(); } break;
-            case 0x47: Bgp = v; break;
-            case 0x48: Obp0 = v; break;
-            case 0x49: Obp1 = v; break;
+            case 0x47: bgpOld = Bgp; Bgp = v; if (Model == GbModel.Dmg) bgpWriteDot = dot; break;
+            case 0x48: obp0Old = Obp0; Obp0 = v; if (Model == GbModel.Dmg) obp0WriteDot = dot; break;
+            case 0x49: obp1Old = Obp1; Obp1 = v; if (Model == GbModel.Dmg) obp1WriteDot = dot; break;
             case 0x4A: Wy = v; break;
             case 0x4B: Wx = v; break;
             case 0x4F: if (Model == GbModel.Cgb) vbk = (byte)(v & 1); break;
@@ -643,6 +675,8 @@ public sealed class PPU_GB
         w.Write(fetchWindow); w.Write(windowActive); w.Write(winFetchX); w.Write(tileIdx); w.Write(tileAttr); w.Write(tileLo); w.Write(tileHi);
         w.Write(bgCount); w.Write(bgLo); w.Write(bgHi); w.Write(bgAttr);
         w.Write(objColor); w.Write(objAttr); w.Write(objIndex); w.Write(objHead); w.Write(spriteFetchDots); w.Write(spriteWait); w.Write(leftTileSeen);
+        w.Write(pendBc); w.Write(pendOc); w.Write(pendOa); w.Write(pendAttr); w.Write(pendX); for (int i = 0; i < 8; i++) w.Write(pendDue[i]);
+        w.Write(pendHead); w.Write(pendCount); w.Write(bgpOld); w.Write(obp0Old); w.Write(obp1Old); w.Write(bgpWriteDot); w.Write(obp0WriteDot); w.Write(obp1WriteDot);
     }
 
     public void LoadState(BinaryReader r)
@@ -661,5 +695,8 @@ public sealed class PPU_GB
         bgCount = r.ReadInt32(); bgLo = r.ReadByte(); bgHi = r.ReadByte(); bgAttr = r.ReadByte();
         r.ReadBytes(8).CopyTo(objColor, 0); r.ReadBytes(8).CopyTo(objAttr, 0); r.ReadBytes(8).CopyTo(objIndex, 0);
         objHead = r.ReadInt32(); spriteFetchDots = r.ReadInt32(); spriteWait = r.ReadInt32(); leftTileSeen = r.ReadBoolean();
+        r.ReadBytes(8).CopyTo(pendBc, 0); r.ReadBytes(8).CopyTo(pendOc, 0); r.ReadBytes(8).CopyTo(pendOa, 0); r.ReadBytes(8).CopyTo(pendAttr, 0); r.ReadBytes(8).CopyTo(pendX, 0);
+        for (int i = 0; i < 8; i++) pendDue[i] = r.ReadInt32();
+        pendHead = r.ReadInt32(); pendCount = r.ReadInt32(); bgpOld = r.ReadByte(); obp0Old = r.ReadByte(); obp1Old = r.ReadByte(); bgpWriteDot = r.ReadInt32(); obp0WriteDot = r.ReadInt32(); obp1WriteDot = r.ReadInt32();
     }
 }
