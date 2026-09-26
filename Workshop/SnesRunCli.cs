@@ -80,7 +80,8 @@ internal static class SnesRunCli
                 byte[] sramImage = File.ReadAllBytes(sramPath);
                 Array.Copy(sramImage, cart.Sram, Math.Min(sramImage.Length, cart.Sram.Length));
             }
-            var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice));
+            var chip = SnesFirmware.CreateCoprocessor(cart, romPath, out string chipNote);
+            var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice), chip);
             if (keepDisplayVramWrites) board.Ppu.DropVramWritesDuringDisplay = false;
             board.Ppu.DebugLayerMask = layerMask;
             if (lineRegs) board.Ppu.DebugLineRegisters = new PPU_SFC.RegisterSnapshot[PPU_SFC.MaxHeight + 1];
@@ -141,6 +142,8 @@ internal static class SnesRunCli
                 }
             }
             sb.AppendLine($"apu: {board.Apu.Describe()}");
+            if (chipNote != "") sb.AppendLine($"chip: {chipNote}");
+            if (chip != null) sb.AppendLine($"chip state: {chip.Describe()}");
             if (audio.Frames > 0) sb.AppendLine($"audio: {audio}{(wavPath != null ? $"  wav: {wavPath}" : "")}");
             int total = pcHits.Values.Sum();
             sb.AppendLine($"hottest PCs over the last {frames - sampleFrom} frames ({total:N0} instructions):");

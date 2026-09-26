@@ -54,10 +54,15 @@ public sealed class BOARD_SFC : ISnesBus
     // ---- Audio unit ($2140-$217F) ----
     public ISnesApu Apu { get; }
 
+    /// <summary>Cartridge chip (DSP-1, ...) consulted before ROM/SRAM decoding, or null.</summary>
+    public ISnesCoprocessor? Coprocessor { get; }
+
     /// <param name="apu">Audio unit; defaults to the silent <see cref="APU_HLE"/> loader stand-in.</param>
-    public BOARD_SFC(SnesCartridge cart, ISnesApu? apu = null)
+    /// <param name="coprocessor">Cartridge chip, when the game has one and its firmware was found.</param>
+    public BOARD_SFC(SnesCartridge cart, ISnesApu? apu = null, ISnesCoprocessor? coprocessor = null)
     {
         Cart = cart;
+        Coprocessor = coprocessor;
         Apu = apu ?? new APU_HLE();
         Ppu = new PPU_SFC { CounterSource = () => (lineClock >> 2, Scanline) };
         Cpu = new CPU_SFC(this);
@@ -71,6 +76,7 @@ public sealed class BOARD_SFC : ISnesBus
         BuildPageTable();
         UpdateNextEvent();
         Apu.Reset();
+        Coprocessor?.Reset();
         Ppu.Reset();
         Ppu.BeginFrame();
         Cpu.Reset();
@@ -276,6 +282,7 @@ public sealed class BOARD_SFC : ISnesBus
             {
                 if (offset < 0x2000) page = new Page { Data = Wram, Offset = (int)offset, Speed = AccessClocks(bank, offset), Writable = true };
             }
+            else if (Coprocessor != null && Coprocessor.Owns(bank, offset)) { }   // chip ports stay on the slow path
             else if (Cart.TryMapRomLinear(bank, offset, 0x1000, out int romIndex))
             {
                 page = new Page { Data = Cart.Rom, Offset = romIndex, Speed = AccessClocks(bank, offset) };
@@ -308,6 +315,7 @@ public sealed class BOARD_SFC : ISnesBus
             if (offset >= 0x4200 && offset < 0x4220) return ReadCpuIo(offset);
             if (offset >= 0x4300 && offset < 0x4380) return dmaRegs[offset & 0x7F];
         }
+        if (Coprocessor != null && Coprocessor.Owns(bank, offset)) return Coprocessor.Read(bank, offset, MasterClock);
         return Cart.TryRead(bank, offset, out byte v) ? v : mdr;
     }
 
@@ -322,6 +330,7 @@ public sealed class BOARD_SFC : ISnesBus
             if (offset >= 0x4200 && offset < 0x4220) { WriteCpuIo(offset, value); return; }
             if (offset >= 0x4300 && offset < 0x4380) { dmaRegs[offset & 0x7F] = value; return; }
         }
+        if (Coprocessor != null && Coprocessor.Owns(bank, offset)) { Coprocessor.Write(bank, offset, value, MasterClock); return; }
         Cart.Write(bank, offset, value);
     }
 

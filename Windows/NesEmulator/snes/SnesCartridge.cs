@@ -4,9 +4,10 @@ using System.Text;
 namespace NesEmulator.Snes;
 
 /// <summary>
-/// First-gen SNES cartridge: LoROM or HiROM, optional battery SRAM, no coprocessors (scope agreed
-/// for the SFC family). Plays the role the NES IMapper plays: it owns the ROM/SRAM address decoding
-/// for every region the board does not claim for itself.
+/// SNES cartridge: LoROM or HiROM, optional battery SRAM. Plays the role the NES IMapper plays: it
+/// owns the ROM/SRAM address decoding for every region the board does not claim for itself.
+/// Coprocessors are separate <see cref="ISnesCoprocessor"/> objects the board consults first;
+/// <see cref="Chip"/> only reports what the header asks for.
 /// </summary>
 public sealed class SnesCartridge
 {
@@ -29,7 +30,19 @@ public sealed class SnesCartridge
         int sramSize = sramShift is > 0 and <= 8 ? 1024 << sramShift : 0;
         Sram = new byte[sramSize];
         HasBattery = sramSize > 0 && chipset is 0x02 or 0x05 or 0x06;
+        ChipsetByte = chipset;
+        // Low nibble 3-6 means "ROM + coprocessor (+RAM, +battery)"; the high nibble names the chip.
+        Chip = (chipset & 0x0F) < 3 ? SnesChip.None : (chipset >> 4) switch
+        {
+            0 => SnesChip.Dsp,
+            1 => SnesChip.SuperFx,
+            3 => SnesChip.Sa1,
+            _ => SnesChip.Other,
+        };
     }
+
+    public byte ChipsetByte { get; }
+    public SnesChip Chip { get; }
 
     public static SnesCartridge Load(byte[] file)
     {

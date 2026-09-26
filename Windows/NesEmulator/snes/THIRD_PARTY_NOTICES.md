@@ -27,6 +27,7 @@ These were written without looking at any source, but the structure or formula m
 | Color-window "above/below" region semantics for clip-to-black / math-enable | `PPU_SFC.cs` `ComposePixel` |
 | HDMA line-counter reload/advance sequence | `BOARD_SFC.cs` `HdmaReload`, `RunHdmaLine` |
 | SPC700 DIV overflow formula, ADDW/SUBW as two chained 8-bit ADC/SBCs, DAA/DAS conditions | `SMP_SFC.cs` `Div`, opcodes 7A/9A/BE/DF |
+| µPD77C25 (DSP-1) core, added 2026-09-26: OP/RT/JP/LD decode order, ALU carry taken from the *other* accumulator, SHL2/SHL4 shifting ones in, the OV1/S1 update `s1 = ov1 ^ !sign; ov1 = !ov1`, SGN = `0x8000 - S1(A)`, KLR/KLM (`k = RAM[dp \| 0x40]`), the SR write mask `0x907C`, DR 8/16-bit handshake, DP/RP modifiers skipped when the move targets DP/RP, product M/N computed after every instruction. Structure follows bsnes/higan's `upd96050` from memory. **Unverified:** the SGN/S1 semantics (used by 2 of 2048 DSP-1B instructions). | `NECDSP_SFC.cs` |
 
 ## 3. Hardware facts (documented behavior; any correct emulator shares them)
 
@@ -44,6 +45,10 @@ the cputest README. Sources for these are public documentation (fullsnes, anomie
   resemble the original, which the author has seen. Layout, pointer location and command dispatch
   are different.
 - **Nothing from Mesen** has been used so far.
+- **Coprocessor firmware** (DSP-1/DSP-1B program ROMs, NEC/Nintendo copyright) is never bundled or
+  committed. The user supplies it (`dsp1b.rom`, 8192 bytes); `Workshop/SnesFirmware.cs` searches
+  `$BROKENNES_SNES_FIRMWARE`, the ROM's folder, `firmware\` beside it, `%APPDATA%\BrokenNes\Firmware`
+  and `firmware\` beside the executable.
 
 ## 5. Test data
 

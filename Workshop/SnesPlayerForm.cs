@@ -52,7 +52,7 @@ internal sealed class SnesPlayerForm : Form
         this.romPath = romPath;
         byte[] file = File.ReadAllBytes(romPath);
         var cart = SnesCartridge.Load(file);
-        board = new BOARD_SFC(cart, CreateApu(apuChoice));
+        board = new BOARD_SFC(cart, CreateApu(apuChoice), SnesFirmware.CreateCoprocessor(cart, romPath, out string chipNote));
 
         string saveDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes", "BatterySaves");
         savePath = Path.Combine(saveDir, "sfc" + Convert.ToHexString(SHA1.HashData(file)).ToLowerInvariant() + ".srm");
@@ -63,7 +63,7 @@ internal sealed class SnesPlayerForm : Form
         }
         lastSavedSram = (byte[])cart.Sram.Clone();
 
-        Text = $"BrokenNes SFC - {cart.Title} [{board.Apu.CoreName}]";
+        Text = $"BrokenNes SFC - {cart.Title} [{board.Apu.CoreName}]" + (board.Coprocessor != null ? $" [{board.Coprocessor.Name}]" : chipNote != "" ? $" ({chipNote})" : "");
         ClientSize = new Size(PPU_SFC.Width * 3, PPU_SFC.Height * 3);
         DoubleBuffered = true;
         BackColor = Color.Black;
