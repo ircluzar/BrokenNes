@@ -73,6 +73,18 @@ internal static class Program
         {
             return TasBaselineBatchCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--gbtest", StringComparison.OrdinalIgnoreCase))
+        {
+            return Gb.GbTestCli.Run(args);
+        }
+        if (args.Length > 0 && args[0].Equals("--gbrun", StringComparison.OrdinalIgnoreCase))
+        {
+            return Gb.GbRunCli.Run(args);
+        }
+        if (args.Length > 0 && args[0].Equals("--gb", StringComparison.OrdinalIgnoreCase))
+        {
+            return Gb.GbPlayerForm.Run(args);
+        }
 
         ApplicationConfiguration.Initialize();
 

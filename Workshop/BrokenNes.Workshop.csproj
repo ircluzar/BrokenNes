@@ -24,6 +24,9 @@
          silent in v1); these packages exist purely so the apus/** glob compiles. -->
     <PackageReference Include="NAudio.Midi" Version="2.2.1" />
     <PackageReference Include="MeltySynth" Version="2.4.0" />
+    <!-- The Game Boy player (gb mode): audio out (WaveOutEvent) and XInput pads. Same versions the desktop app uses. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
   </ItemGroup>
 
   <!-- ==========================================================================
@@ -73,6 +76,8 @@
              Exclude="$(NesRoot)apus\APU_WF.Web.cs;$(NesRoot)apus\APU_MNES.Web.cs" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
+    <!-- GB (Game Boy / Game Boy Color) core family: self-contained, no dependency on the NES board. -->
+    <Compile Include="$(NesRoot)gb\**\*.cs"        LinkBase="NesEmulator\gb" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is
