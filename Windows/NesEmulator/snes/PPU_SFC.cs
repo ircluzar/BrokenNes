@@ -74,6 +74,31 @@ public sealed class PPU_SFC
     public Func<(int dot, int line)>? CounterSource;
 
     public bool ForcedBlank => (inidisp & 0x80) != 0;
+
+    /// <summary>Debug: layers allowed on screen (bit 0-3 = BG1-4, bit 4 = OBJ). Masks TM and TS.</summary>
+    public int DebugLayerMask { get; set; } = 0x1F;
+
+    /// <summary>
+    /// Read-only copy of the rendering registers, for tools and cross-family bridges (register values
+    /// as written, not derived state). Taking it has no side effects.
+    /// </summary>
+    public readonly record struct RegisterSnapshot(
+        byte Inidisp, byte Bgmode, byte Mosaic, byte Obsel, byte Bg1sc, byte Bg2sc, byte Bg3sc, byte Bg4sc,
+        byte Bg12nba, byte Bg34nba, ushort Bg1hofs, ushort Bg1vofs, ushort Bg2hofs, ushort Bg2vofs,
+        ushort Bg3hofs, ushort Bg3vofs, ushort Bg4hofs, ushort Bg4vofs, byte Tm, byte Ts, byte Tmw, byte Tsw,
+        byte Cgwsel, byte Cgadsub, byte Setini, byte M7sel)
+    {
+        public override string ToString() =>
+            $"INIDISP={Inidisp:X2} BGMODE={Bgmode:X2} MOSAIC={Mosaic:X2} OBSEL={Obsel:X2} " +
+            $"BGnSC={Bg1sc:X2},{Bg2sc:X2},{Bg3sc:X2},{Bg4sc:X2} NBA={Bg12nba:X2},{Bg34nba:X2} " +
+            $"SCROLL={Bg1hofs},{Bg1vofs} {Bg2hofs},{Bg2vofs} {Bg3hofs},{Bg3vofs} {Bg4hofs},{Bg4vofs} " +
+            $"TM={Tm:X2} TS={Ts:X2} TMW={Tmw:X2} TSW={Tsw:X2} CGWSEL={Cgwsel:X2} CGADSUB={Cgadsub:X2} SETINI={Setini:X2} M7SEL={M7sel:X2}";
+    }
+
+    public RegisterSnapshot GetRegisterSnapshot() => new(
+        inidisp, bgmode, mosaic, obsel, bgsc[0], bgsc[1], bgsc[2], bgsc[3], bg12nba, bg34nba,
+        hofs[0], vofs[0], hofs[1], vofs[1], hofs[2], vofs[2], hofs[3], vofs[3], tm, ts, tmw, tsw,
+        cgwsel, cgadsub, setini, m7sel);
     private bool VramWritable => !DropVramWritesDuringDisplay || !inDisplay || ForcedBlank;
 
     public void Reset()
@@ -347,7 +372,24 @@ public sealed class PPU_SFC
     private readonly uint[]?[] brightnessLut = new uint[16][];
 
     /// <summary>Render one visible line (1 = first visible line) into FrameBuffer row line-1.</summary>
+    /// <summary>Debug: when non-null, RenderLine records the register snapshot it saw for each line.</summary>
+    public RegisterSnapshot[]? DebugLineRegisters { get; set; }
+
     public void RenderLine(int line)
+    {
+        if (DebugLineRegisters != null && line >= 0 && line < DebugLineRegisters.Length) DebugLineRegisters[line] = GetRegisterSnapshot();
+        if (DebugLayerMask != 0x1F)
+        {
+            // Diagnostic only: render with TM/TS masked, then restore the game's values.
+            byte savedTm = tm, savedTs = ts;
+            tm &= (byte)DebugLayerMask; ts &= (byte)DebugLayerMask;
+            try { RenderLineCore(line); } finally { tm = savedTm; ts = savedTs; }
+            return;
+        }
+        RenderLineCore(line);
+    }
+
+    private void RenderLineCore(int line)
     {
         int row = line - 1;
         if (row < 0 || row >= VisibleHeight) return;

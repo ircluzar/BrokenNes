@@ -399,7 +399,10 @@ public sealed class BOARD_SFC : ISnesBus
             case 0x4209: vtime = (ushort)((vtime & 0x100) | value); UpdateNextEvent(); break;
             case 0x420A: vtime = (ushort)((vtime & 0x0FF) | (value & 1) << 8); UpdateNextEvent(); break;
             case 0x420B: RunDma(value); break;
-            case 0x420C: hdmaen = value; break;
+            case 0x420C:
+                hdmaen = value;
+                hdmaenLog[hdmaenLogPos++ & 7] = (FrameCount, Scanline, lineClock, value);   // diagnostics
+                break;
             case 0x420D:
                 if (((memsel ^ value) & 1) != 0) { memsel = value; BuildPageTable(); }   // FastROM changes page speeds
                 memsel = value;
@@ -469,12 +472,41 @@ public sealed class BOARD_SFC : ISnesBus
     // $43x5/6 + $43x7 = indirect data address.
 
     private readonly bool[] hdmaDone = new bool[8], hdmaDoTransfer = new bool[8];
+    private readonly int[] hdmaBytes = new int[8], hdmaBytesLastFrame = new int[8];   // diagnostics
+    private readonly (long frame, int line, int clock, byte value)[] hdmaenLog = new (long, int, int, byte)[8];
+    private int hdmaenLogPos;
+
+    /// <summary>Diagnostics: the enabled HDMA channels and what each one writes.</summary>
+    public string DescribeHdma()
+    {
+        var sb = new System.Text.StringBuilder($"HDMAEN={hdmaen:X2}");
+        sb.Append(" recent $420C writes:");
+        for (int k = 0; k < 8; k++)
+        {
+            var e = hdmaenLog[(hdmaenLogPos + k) & 7];
+            if (e.frame != 0 || e.value != 0) sb.Append($" [f{e.frame} L{e.line} c{e.clock} ={e.value:X2}]");
+        }
+        for (int ch = 0; ch < 8; ch++)
+        {
+            if ((hdmaen & (1 << ch)) == 0) continue;
+            int r = ch << 4;
+            sb.Append($" | ch{ch}: DMAP={dmaRegs[r]:X2} -> $21{dmaRegs[r + 1]:X2} table=${dmaRegs[r + 4]:X2}:{dmaRegs[r + 3]:X2}{dmaRegs[r + 2]:X2}");
+            if ((dmaRegs[r] & 0x40) != 0) sb.Append($" indirect bank ${dmaRegs[r + 7]:X2}");
+            sb.Append($" [done={hdmaDone[ch]} nltr={dmaRegs[r + 0xA]:X2} a2a={dmaRegs[r + 9]:X2}{dmaRegs[r + 8]:X2} bytesLastFrame={hdmaBytesLastFrame[ch]}]");
+        }
+        return sb.ToString();
+    }
 
     private void HdmaInit()
     {
+        Array.Copy(hdmaBytes, hdmaBytesLastFrame, 8);
+        Array.Clear(hdmaBytes);
         for (int ch = 0; ch < 8; ch++)
         {
-            hdmaDone[ch] = true; hdmaDoTransfer[ch] = false;
+            // Every channel is re-armed at line 0, enabled or not. A channel the game enables later in
+            // the frame then runs from whatever table address and line counter it holds; games write
+            // those directly for a mid-frame start (Super Ghouls 'n Ghosts does at line 38).
+            hdmaDone[ch] = false; hdmaDoTransfer[ch] = false;
             if ((hdmaen & (1 << ch)) == 0) continue;
             int r = ch << 4;
             dmaRegs[r + 8] = dmaRegs[r + 2]; dmaRegs[r + 9] = dmaRegs[r + 3];
@@ -527,6 +559,7 @@ public sealed class BOARD_SFC : ISnesBus
                     addr++;
                     dmaRegs[lo] = (byte)addr; dmaRegs[lo + 1] = (byte)(addr >> 8);
                     stall += 8;
+                    hdmaBytes[ch]++;
                 }
             }
             dmaRegs[r + 0xA]--;

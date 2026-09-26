@@ -30,6 +30,9 @@ internal static class SnesRunCli
         RomTestCli.EnsureConsole();
         string? romPath = null, outDir = null, input = null, apuChoice = null, wavPath = null, sramPath = null;
         int frames = 600;
+        bool keepDisplayVramWrites = false;
+        int layerMask = 0x1F;
+        bool lineRegs = false;
         var pngAt = new HashSet<int>();
         try
         {
@@ -45,6 +48,9 @@ internal static class SnesRunCli
                     case "--apu": apuChoice = args[++i]; SnesApuChoice.Create(apuChoice); break;
                     case "--wav": wavPath = args[++i]; break;
                     case "--sram": sramPath = args[++i]; break;
+                    case "--keep-display-vram-writes": keepDisplayVramWrites = true; break;   // diagnosis only
+                    case "--layers": layerMask = Convert.ToInt32(args[++i], 16); break;          // hex: 1/2/4/8 = BG1-4, 10 = OBJ
+                    case "--line-regs": lineRegs = true; break;                                     // per-line PPU registers, last frame
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -75,6 +81,9 @@ internal static class SnesRunCli
                 Array.Copy(sramImage, cart.Sram, Math.Min(sramImage.Length, cart.Sram.Length));
             }
             var board = new BOARD_SFC(cart, SnesApuChoice.Create(apuChoice));
+            if (keepDisplayVramWrites) board.Ppu.DropVramWritesDuringDisplay = false;
+            board.Ppu.DebugLayerMask = layerMask;
+            if (lineRegs) board.Ppu.DebugLineRegisters = new PPU_SFC.RegisterSnapshot[PPU_SFC.MaxHeight + 1];
             using var wav = wavPath != null ? new WavWriter(wavPath, board.Apu.SampleRate) : null;
             var audioBuf = new short[8192];
             var audio = new AudioStats(board.Apu.SampleRate);
@@ -118,6 +127,19 @@ internal static class SnesRunCli
             sb.AppendLine($"{Path.GetFileName(romPath)}: \"{cart.Title}\" {(cart.HiRom ? "HiROM" : "LoROM")} map=${cart.MapMode:X2} rom={cart.Rom.Length / 1024}KB sram={cart.Sram.Length / 1024}KB");
             sb.AppendLine($"frames={board.FrameCount} instructions={c.InstructionCount:N0} nmis={board.NmiCount} nmitimen=${board.NmiTimen:X2} forcedBlank={board.Ppu.ForcedBlank} {sw.Elapsed.TotalSeconds:F2}s");
             sb.AppendLine($"cpu PC=${c.PBR:X2}:{c.PC:X4} A=${c.A:X4} X=${c.X:X4} Y=${c.Y:X4} S=${c.S:X4} D=${c.D:X4} DBR=${c.DBR:X2} P=${c.P:X2} E={(c.E ? 1 : 0)} wai={c.Waiting}");
+            sb.AppendLine($"ppu: {board.Ppu.GetRegisterSnapshot()}");
+            sb.AppendLine($"hdma: {board.DescribeHdma()}");
+            if (board.Ppu.DebugLineRegisters is { } regs)
+            {
+                // Runs of identical lines, so a 224-line frame collapses to a handful of bands.
+                int start = 1;
+                for (int ln = 2; ln <= board.Ppu.VisibleHeight + 1; ln++)
+                {
+                    if (ln <= board.Ppu.VisibleHeight && regs[ln] == regs[start]) continue;
+                    sb.AppendLine($"  lines {start,3}-{ln - 1,3}: {regs[start]}");
+                    start = ln;
+                }
+            }
             sb.AppendLine($"apu: {board.Apu.Describe()}");
             if (audio.Frames > 0) sb.AppendLine($"audio: {audio}{(wavPath != null ? $"  wav: {wavPath}" : "")}");
             int total = pcHits.Values.Sum();
