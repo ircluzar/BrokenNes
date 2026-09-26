@@ -38,7 +38,7 @@ public sealed class BOARD_SFC : ISnesBus
     // ---- CPU I/O ($4200-$421F) ----
     private byte nmitimen, wrio = 0xFF, wrmpya = 0xFF, wrmpyb, memsel, hdmaen;
     private ushort wrdiv = 0xFFFF, rddiv, rdmpy, htime = 0x1FF, vtime = 0x1FF;
-    private bool nmiFlag, irqFlag;
+    private bool nmiFlag, irqFlag, chipIrq;   // chipIrq: the cartridge chip's line (SA-1), ORed into the CPU's IRQ input
     private byte mdr;   // CPU open bus: the last value on the data bus
 
     // ---- Controllers ----
@@ -66,6 +66,7 @@ public sealed class BOARD_SFC : ISnesBus
         Apu = apu ?? new APU_HLE();
         Ppu = new PPU_SFC { CounterSource = () => (lineClock >> 2, Scanline) };
         Cpu = new CPU_SFC(this);
+        Coprocessor?.Attach(level => { chipIrq = level; Cpu.SetIrq(irqFlag || chipIrq); }, BuildPageTable);
         for (int i = 0; i < 0x80; i++) dmaRegs[i] = 0xFF;
         Reset();
     }
@@ -164,6 +165,7 @@ public sealed class BOARD_SFC : ISnesBus
     private void NextLine()
     {
         Scanline++;
+        Coprocessor?.RunTo(MasterClock);
         if (Scanline == LinesPerFrame) StartFrame();
         else if (Scanline == vblankLine)
         {
@@ -206,6 +208,7 @@ public sealed class BOARD_SFC : ISnesBus
     }
 
     private void RaiseIrq() { irqFlag = true; Cpu.SetIrq(true); }
+    private void ClearIrq() { irqFlag = false; Cpu.SetIrq(chipIrq); }
 
     private void RunAutoJoypad()
     {
@@ -282,7 +285,12 @@ public sealed class BOARD_SFC : ISnesBus
             {
                 if (offset < 0x2000) page = new Page { Data = Wram, Offset = (int)offset, Speed = AccessClocks(bank, offset), Writable = true };
             }
-            else if (Coprocessor != null && Coprocessor.Owns(bank, offset)) { }   // chip ports stay on the slow path
+            else if (Coprocessor != null && Coprocessor.Owns(bank, offset))
+            {
+                // Chip ports stay on the slow path; chip-mapped ROM (SA-1 banks) may still be direct.
+                if (Coprocessor.TryMapPage(bank, offset, out var data, out int index))
+                    page = new Page { Data = data, Offset = index, Speed = AccessClocks(bank, offset) };
+            }
             else if (Cart.TryMapRomLinear(bank, offset, 0x1000, out int romIndex))
             {
                 page = new Page { Data = Cart.Rom, Offset = romIndex, Speed = AccessClocks(bank, offset) };
@@ -364,7 +372,7 @@ public sealed class BOARD_SFC : ISnesBus
         switch (offset)
         {
             case 0x4210: { byte v = (byte)((nmiFlag ? 0x80 : 0) | (mdr & 0x70) | 0x02); nmiFlag = false; return v; }
-            case 0x4211: { byte v = (byte)((irqFlag ? 0x80 : 0) | (mdr & 0x7F)); irqFlag = false; Cpu.SetIrq(false); return v; }
+            case 0x4211: { byte v = (byte)((irqFlag ? 0x80 : 0) | (mdr & 0x7F)); ClearIrq(); return v; }
             case 0x4212:
             {
                 bool hblank = lineClock < 4 || lineClock >= 274 * 4;
@@ -390,7 +398,7 @@ public sealed class BOARD_SFC : ISnesBus
                 bool nmiWasOff = (nmitimen & 0x80) == 0;
                 nmitimen = value;
                 if (nmiWasOff && (value & 0x80) != 0 && nmiFlag) Cpu.RaiseNmi();   // enabling mid-vblank fires at once
-                if ((value & 0x30) == 0) { irqFlag = false; Cpu.SetIrq(false); }
+                if ((value & 0x30) == 0) { ClearIrq(); }
                 UpdateNextEvent();
                 break;
             }

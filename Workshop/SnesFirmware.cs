@@ -57,6 +57,9 @@ internal static class SnesFirmware
                 note = $"{name} from {path}";
                 return new NECDSP_SFC(image, NECDSP_SFC.MappingFor(cart), name);
             }
+            case SnesChip.Sa1:
+                note = "SA-1";
+                return new SA1_SFC(cart);
             default:
                 note = $"coprocessor {cart.Chip} (chipset ${cart.ChipsetByte:X2}) not emulated yet";
                 return null;

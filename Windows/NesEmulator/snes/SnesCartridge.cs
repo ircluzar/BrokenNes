@@ -29,7 +29,7 @@ public sealed class SnesCartridge
         int sramShift = rom[h + 0x18];
         int sramSize = sramShift is > 0 and <= 8 ? 1024 << sramShift : 0;
         Sram = new byte[sramSize];
-        HasBattery = sramSize > 0 && chipset is 0x02 or 0x05 or 0x06;
+        HasBattery = sramSize > 0 && (chipset & 0x0F) is 0x02 or 0x05 or 0x06 or 0x0A;
         ChipsetByte = chipset;
         // Low nibble 3-6 means "ROM + coprocessor (+RAM, +battery)"; the high nibble names the chip.
         Chip = (chipset & 0x0F) < 3 ? SnesChip.None : (chipset >> 4) switch
