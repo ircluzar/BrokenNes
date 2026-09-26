@@ -36,6 +36,17 @@ internal static class SnesBenchCli
         return string.Join(",", steps);
     }
 
+    /// <summary>
+    /// Performance experiments that exist as a toggle in the cores: --ab NAME alternates the switch
+    /// on (even runs) and off (odd runs) so both variants see the same machine conditions, which
+    /// matters when other work shares the CPU. Output must be identical either way (checked).
+    /// </summary>
+    private static readonly Dictionary<string, Action<bool>> AbSwitches = new()
+    {
+        // Settled experiments are removed once decided; add new toggles here while measuring.
+        ["fast-paths"] = on => PPU_SFC.FastPaths = on,   // optimized vs reference PPU paths
+    };
+
     private sealed class Golden
     {
         public string Rom { get; set; } = "";
@@ -50,7 +61,7 @@ internal static class SnesBenchCli
     public static int Run(string[] args)
     {
         RomTestCli.EnsureConsole();
-        string? romPath = null, input = null, apuChoice = null, goldenPath = null, preset = null;
+        string? romPath = null, input = null, apuChoice = null, goldenPath = null, preset = null, abSwitch = null;
         int frames = 4300, repeat = 3;
         bool breakdown = false;
         try
@@ -68,6 +79,7 @@ internal static class SnesBenchCli
                     case "--breakdown": breakdown = true; break;
                     case "--golden": goldenPath = args[++i]; break;
                     case "--reference-paths": PPU_SFC.FastPaths = false; break;
+                    case "--ab": abSwitch = args[++i]; if (!AbSwitches.ContainsKey(abSwitch)) throw new FormatException($"unknown --ab switch '{abSwitch}' ({string.Join(", ", AbSwitches.Keys)})"); break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
             }
@@ -96,8 +108,12 @@ internal static class SnesBenchCli
             Golden? result = null;
             var fpsRuns = new List<double>();
 
+            var abFps = new Dictionary<bool, List<double>> { [true] = new(), [false] = new() };
             for (int run = 0; run < repeat; run++)
             {
+                bool abOn = run % 2 == 0;
+                if (abSwitch != null) AbSwitches[abSwitch](abOn);
+                var cpuBefore = Process.GetCurrentProcess().TotalProcessorTime;
                 SnesProfiler.Enabled = breakdown;
                 SnesProfiler.Reset();
                 var board = new BOARD_SFC(SnesCartridge.Load(file), SnesApuChoice.Create(apuChoice));
@@ -126,7 +142,11 @@ internal static class SnesBenchCli
                 double secs = emuTicks / (double)Stopwatch.Frequency;
                 double fps = frames / secs;
                 fpsRuns.Add(fps);
-                Console.WriteLine($"run {run + 1}: {fps,7:F1} fps  {1000 * secs / frames:F3} ms/frame  ({secs:F2}s emulated-time cost)");
+                double cpuSecs = (Process.GetCurrentProcess().TotalProcessorTime - cpuBefore).TotalSeconds;
+                double cpuFps = frames / cpuSecs;   // CPU time is less disturbed by other processes than wall time
+                if (abSwitch != null) abFps[abOn].Add(cpuFps);
+                string tag = abSwitch != null ? $"[{abSwitch}={(abOn ? "on " : "off")}] " : "";
+                Console.WriteLine($"run {run + 1}: {tag}{fps,7:F1} fps wall  {cpuFps,7:F1} fps cpu  {1000 * secs / frames:F3} ms/frame");
                 if (breakdown)
                 {
                     double f = Stopwatch.Frequency;
@@ -142,6 +162,13 @@ internal static class SnesBenchCli
                 result ??= g;
             }
             SnesProfiler.Enabled = false;
+            if (abSwitch != null)
+            {
+                AbSwitches[abSwitch](true);
+                static double Median(List<double> v) => v.Count == 0 ? 0 : v.OrderBy(x => x).ElementAt(v.Count / 2);
+                double on = Median(abFps[true]), off = Median(abFps[false]);
+                Console.WriteLine($"A/B {abSwitch}: on {on:F1} fps cpu (n={abFps[true].Count}) vs off {off:F1} (n={abFps[false].Count}) -> {(on / off - 1) * 100:+0.0;-0.0}% for on");
+            }
 
             Console.WriteLine($"best {fpsRuns.Max():F1} fps, median {fpsRuns.OrderBy(x => x).ElementAt(fpsRuns.Count / 2):F1} fps over {repeat} run(s); video {result!.Video} audio {result.Audio}");
 

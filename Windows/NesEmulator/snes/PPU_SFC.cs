@@ -358,16 +358,7 @@ public sealed class PPU_SFC
         bool subNeeded = (cgwsel & 0x02) != 0 && (cgadsub & 0x3F) != 0;
         bool colorWindowUsed = ((cgwsel >> 4) & 3) is 1 or 2 || ((cgwsel >> 6) & 3) is 1 or 2;
         byte used = (byte)(tm | (subNeeded ? ts : 0));
-        for (int bg = 0; bg < 4; bg++)
-        {
-            if ((used & (1 << bg)) == 0) continue;
-            if (mode == 7) { if (bg == 0 || (bg == 1 && (setini & 0x40) != 0)) continue; }
-            if (mode == 7 || ModeBpp[mode][bg] == 0) { bgColor[bg].AsSpan().Fill(Transparent); continue; }
-            RenderBg(bg, ModeBpp[mode][bg], mode, line);
-        }
-        if (mode == 7 && (used & 3) != 0) RenderMode7(line);
-        if ((used & 0x10) != 0) RenderSprites(line); else objColor.AsSpan().Fill(Transparent);
-        ComputeWindows((byte)((tmw & tm) | (subNeeded ? tsw & ts : 0)), colorWindowUsed);
+        int width = hires ? 512 : 256, shift = hires ? 1 : 0;
 
         BuildRankTable(mode switch
         {
@@ -377,11 +368,41 @@ public sealed class PPU_SFC
             7 => Order7,
             _ => Order2To5,
         });
-        int width = hires ? 512 : 256, shift = hires ? 1 : 0;
-        ComposeScreen(tm, tmw, width, shift, rankMain, colorMain, layerMain);
-        if (subNeeded) ComposeScreen(ts, tsw, width, shift, rankSub, colorSub, layerSub);
+        ComputeWindows((byte)((tmw & tm) | (subNeeded ? tsw & ts : 0)), colorWindowUsed);
+        ClearScreen(rankMain, colorMain, layerMain, width);
+        if (subNeeded) ClearScreen(rankSub, colorSub, layerSub, width);
+
+        // Layers compose in any order: the lowest rank wins, and ranks are unique per (layer, priority).
+        for (int bg = 0; bg < 4; bg++)
+        {
+            int bit = 1 << bg;
+            if ((used & bit) == 0 || mode == 7 || ModeBpp[mode][bg] == 0) continue;
+            bool onMain = (tm & bit) != 0, onSub = subNeeded && (ts & bit) != 0;
+            bool fusable = FastPaths && !hires && (mosaic & bit) == 0 && mode is not (2 or 4 or 6);
+            if (fusable) { RenderBgFused(bg, ModeBpp[mode][bg], mode, line, onMain, onSub); continue; }
+            RenderBg(bg, ModeBpp[mode][bg], mode, line);
+            ComposeLayer(bg, onMain, onSub, width, shift);
+        }
+        if (mode == 7 && (used & 3) != 0)
+        {
+            RenderMode7(line);
+            ComposeLayer(0, (tm & 1) != 0, subNeeded && (ts & 1) != 0, width, shift);
+            if ((setini & 0x40) != 0) ComposeLayer(1, (tm & 2) != 0, subNeeded && (ts & 2) != 0, width, shift);
+        }
+        if ((used & 0x10) != 0)
+        {
+            RenderSprites(line);
+            if ((tm & 0x10) != 0) ComposeObj(tmw, width, shift, rankMain, colorMain, layerMain);
+            if (subNeeded && (ts & 0x10) != 0) ComposeObj(tsw, width, shift, rankSub, colorSub, layerSub);
+        }
 
         var lut = brightnessLut[brightness] ??= BuildBrightnessLut(brightness);
+        if (FastPaths && !hires && (cgadsub & 0x3F) == 0 && (cgwsel & 0xC0) == 0)
+        {
+            // No color math and no clip-to-black on this line: the main screen is the output.
+            for (int x = 0; x < Width; x++) dst[x] = lut[colorMain[x]];
+            return;
+        }
         for (int x = 0; x < Width; x++)
         {
             ushort c;
@@ -409,46 +430,50 @@ public sealed class PPU_SFC
         rankTableOrder = order;
     }
 
-    /// <summary>
-    /// Resolve one screen (main or sub) for the whole line: every layer writes its opaque, unwindowed
-    /// pixels wherever its (layer, priority) rank beats what is already there. Equivalent to walking
-    /// the priority list per pixel and taking the first hit, at a fraction of the cost.
-    /// </summary>
-    private void ComposeScreen(byte enable, byte windowEnable, int width, int shift, byte[] rank, ushort[] color, byte[] layerOut)
+    private void ClearScreen(byte[] rank, ushort[] color, byte[] layerOut, int width)
     {
         rank.AsSpan(0, width).Fill(0xFF);
         color.AsSpan(0, width).Fill(Cgram[0]);
         layerOut.AsSpan(0, width).Fill(Backdrop);
+    }
 
-        for (int layer = 0; layer < 4; layer++)
+    /// <summary>
+    /// Merge one rendered BG layer (bgColor/bgPrio) into the main and/or sub screen: its opaque,
+    /// unwindowed pixels win wherever their (layer, priority) rank beats what is already there.
+    /// Equivalent to walking the priority list per pixel and taking the first hit.
+    /// </summary>
+    private void ComposeLayer(int layer, bool onMain, bool onSub, int width, int shift)
+    {
+        if (onMain) ComposeBg(layer, (tmw & (1 << layer)) != 0, width, shift, rankMain, colorMain, layerMain);
+        if (onSub) ComposeBg(layer, (tsw & (1 << layer)) != 0, width, shift, rankSub, colorSub, layerSub);
+    }
+
+    private void ComposeBg(int layer, bool windowed, int width, int shift, byte[] rank, ushort[] color, byte[] layerOut)
+    {
+        byte r0 = rankTable[layer * 4], r1 = rankTable[layer * 4 + 1];
+        if (r0 == 0xFF && r1 == 0xFF) return;
+        var src = bgColor[layer]; var prio = bgPrio[layer];
+        var win = window[layer];
+        for (int bx = 0; bx < width; bx++)
         {
-            if ((enable & (1 << layer)) == 0) continue;
-            byte r0 = rankTable[layer * 4], r1 = rankTable[layer * 4 + 1];
-            if (r0 == 0xFF && r1 == 0xFF) continue;
-            var src = bgColor[layer]; var prio = bgPrio[layer];
-            bool windowed = (windowEnable & (1 << layer)) != 0;
-            var win = window[layer];
-            for (int bx = 0; bx < width; bx++)
-            {
-                ushort v = src[bx];
-                if (v == Transparent || (windowed && win[bx >> shift])) continue;
-                byte r = prio[bx] != 0 ? r1 : r0;
-                if (r < rank[bx]) { rank[bx] = r; color[bx] = v; layerOut[bx] = (byte)layer; }
-            }
+            ushort v = src[bx];
+            if (v == Transparent || (windowed && win[bx >> shift])) continue;
+            byte r = prio[bx] != 0 ? r1 : r0;
+            if (r < rank[bx]) { rank[bx] = r; color[bx] = v; layerOut[bx] = (byte)layer; }
         }
+    }
 
-        if ((enable & 0x10) != 0)
+    private void ComposeObj(byte windowEnable, int width, int shift, byte[] rank, ushort[] color, byte[] layerOut)
+    {
+        bool windowed = (windowEnable & 0x10) != 0;
+        var win = window[ObjLayer];
+        for (int bx = 0; bx < width; bx++)
         {
-            bool windowed = (windowEnable & 0x10) != 0;
-            var win = window[ObjLayer];
-            for (int bx = 0; bx < width; bx++)
-            {
-                int x = bx >> shift;
-                ushort v = objColor[x];
-                if (v == Transparent || (windowed && win[x])) continue;
-                byte r = rankTable[16 + objPrio[x]];
-                if (r < rank[bx]) { rank[bx] = r; color[bx] = v; layerOut[bx] = ObjLayer; }
-            }
+            int x = bx >> shift;
+            ushort v = objColor[x];
+            if (v == Transparent || (windowed && win[x])) continue;
+            byte r = rankTable[16 + objPrio[x]];
+            if (r < rank[bx]) { rank[bx] = r; color[bx] = v; layerOut[bx] = ObjLayer; }
         }
     }
 
@@ -536,14 +561,8 @@ public sealed class PPU_SFC
         int y = mosaicSize > 1 ? line - (line - 1) % mosaicSize : line;
         int width = hires ? 512 : 256;
 
-        if (FastPaths && mosaicSize == 1 && !opt && !hires)
-        {
-            RenderBgSlivers(colors, prios, bg, bpp, line, mapBase, wide, tall, tileWShift, tileHShift,
-                mapWMask, mapHMask, charBase, wordsPerTile, paletteBase, palShift, direct);
-            return;
-        }
-
-        // General path (mosaic, offset-per-tile, hi-res): one pixel at a time.
+        // Reference path, one pixel at a time. Also the only path for mosaic, offset-per-tile and
+        // hi-res; everything else normally takes RenderBgFused.
         int lastKey = -1; ushort entry = 0;
         for (int sx = 0; sx < width; sx++)
         {
@@ -577,20 +596,54 @@ public sealed class PPU_SFC
         }
     }
 
+    // Bitplane byte -> 8 byte lanes (lane i = pixel i, left to right) holding that plane's bit.
+    // Shifting lanes by the plane number and OR-ing planes together yields 8 color indices at once.
+    private static readonly ulong[] PlaneExpand = BuildPlaneExpand(flipped: false);
+    private static readonly ulong[] PlaneExpandFlipped = BuildPlaneExpand(flipped: true);
+
+    private static ulong[] BuildPlaneExpand(bool flipped)
+    {
+        var t = new ulong[256];
+        for (int b = 0; b < 256; b++)
+            for (int i = 0; i < 8; i++)
+                if ((b >> (flipped ? i : 7 - i) & 1) != 0) t[b] |= 1UL << (i * 8);
+        return t;
+    }
+
     /// <summary>
     /// Fast path for the common case (no mosaic, no offset-per-tile, not hi-res): fetch the tilemap
-    /// entry and the tile row's bitplanes once per 8-pixel sliver instead of once per pixel.
-    /// Pixel-for-pixel identical to the general path.
+    /// entry and the tile row's bitplanes once per 8-pixel sliver, and compose straight into the
+    /// main/sub rank buffers instead of going through bgColor + ComposeBg. Fully transparent slivers
+    /// cost one test. Pixel-for-pixel identical to RenderBg + ComposeLayer (--reference-paths checks).
     /// </summary>
-    private void RenderBgSlivers(ushort[] colors, byte[] prios, int bg, int bpp, int line, int mapBase, bool wide, bool tall,
-        int tileWShift, int tileHShift, int mapWMask, int mapHMask, int charBase, int wordsPerTile,
-        int paletteBase, int palShift, bool direct)
+    private void RenderBgFused(int bg, int bpp, int mode, int line, bool onMain, bool onSub)
     {
+        byte r0 = rankTable[bg * 4], r1 = rankTable[bg * 4 + 1];
+        if (r0 == 0xFF && r1 == 0xFF) return;
+        int sc = bgsc[bg];
+        int mapBase = (sc & 0xFC) << 8;
+        bool wide = (sc & 1) != 0, tall = (sc & 2) != 0;
+        bool big = (bgmode & (0x10 << bg)) != 0;
+        int tileWShift = big ? 4 : 3, tileHShift = big ? 4 : 3;
+        int mapWMask = ((wide ? 64 : 32) << tileWShift) - 1, mapHMask = ((tall ? 64 : 32) << tileHShift) - 1;
+        int charBase = ((bg < 2 ? bg12nba >> (bg * 4) : bg34nba >> ((bg - 2) * 4)) & 0x0F) << 12;
+        int wordsPerTile = bpp * 4;
+        int paletteBase = mode == 0 ? bg * 32 : 0;
+        int palShift = bpp;
+        bool direct = bpp == 8 && (cgwsel & 0x01) != 0;
+        var win = window[bg];
+        bool winMain = onMain && (tmw & (1 << bg)) != 0, winSub = onSub && (tsw & (1 << bg)) != 0;
+        // Locals, not fields: stores into these arrays would otherwise force the JIT to reload the
+        // field references on every iteration.
+        var vram = Vram; var cgram = Cgram;
+        var rankM = rankMain; var colorM = colorMain; var layerM = layerMain;
+        var rankS = rankSub; var colorS = colorSub; var layerS = layerSub;
+        var expandN = PlaneExpand; var expandF = PlaneExpandFlipped;
+
         int hs = hofs[bg];
         int by = (line + vofs[bg]) & mapHMask;
         int rowT = by >> tileHShift, pyRaw = by & ((1 << tileHShift) - 1);
         int tileWMask = (1 << tileWShift) - 1;
-        Span<int> sliver = stackalloc int[8];
 
         int sx = 0;
         while (sx < 256)
@@ -605,28 +658,35 @@ public sealed class PPU_SFC
             int tile = ((entry & 0x3FF) + half + (py >= 8 ? 16 : 0)) & 0x3FF;
             int addr = charBase + tile * wordsPerTile + (py & 7);
 
-            int p0 = Vram[addr & 0x7FFF];
-            int p1 = bpp >= 4 ? Vram[(addr + 8) & 0x7FFF] : 0;
-            int p2 = bpp == 8 ? Vram[(addr + 16) & 0x7FFF] : 0;
-            int p3 = bpp == 8 ? Vram[(addr + 24) & 0x7FFF] : 0;
-            for (int i = 0; i < 8; i++)
+            // All 8 pixels of the row at once: byte lane i of `pixels` = color index of pixel i.
+            var expand = hflip ? expandF : expandN;
+            int p0 = vram[addr & 0x7FFF];
+            ulong pixels = expand[p0 & 0xFF] | expand[p0 >> 8] << 1;
+            if (bpp >= 4)
             {
-                int bit = hflip ? i : 7 - i;
-                sliver[i] = (p0 >> bit & 1) | (p0 >> (8 + bit) & 1) << 1
-                          | (p1 >> bit & 1) << 2 | (p1 >> (8 + bit) & 1) << 3
-                          | (p2 >> bit & 1) << 4 | (p2 >> (8 + bit) & 1) << 5
-                          | (p3 >> bit & 1) << 6 | (p3 >> (8 + bit) & 1) << 7;
+                int p1 = vram[(addr + 8) & 0x7FFF];
+                pixels |= expand[p1 & 0xFF] << 2 | expand[p1 >> 8] << 3;
+                if (bpp == 8)
+                {
+                    int p2 = vram[(addr + 16) & 0x7FFF], p3 = vram[(addr + 24) & 0x7FFF];
+                    pixels |= expand[p2 & 0xFF] << 4 | expand[p2 >> 8] << 5 | expand[p3 & 0xFF] << 6 | expand[p3 >> 8] << 7;
+                }
             }
 
+            int start = pxRaw & 7, count = Math.Min(8 - start, 256 - sx);
             int pal = (entry >> 10) & 7;
             int palOffset = paletteBase + (bpp == 8 ? 0 : pal << palShift);
-            byte prio = (byte)((entry >> 13) & 1);
-            int start = pxRaw & 7, count = Math.Min(8 - start, 256 - sx);
+            byte r = (entry & 0x2000) != 0 ? r1 : r0;
+            if (pixels == 0 || r == 0xFF) { sx += count; continue; }
+
             for (int k = 0; k < count; k++)
             {
-                int c = sliver[start + k];
-                colors[sx + k] = c == 0 ? Transparent : direct ? DirectColor(c, pal) : Cgram[(palOffset + c) & 0xFF];
-                prios[sx + k] = prio;
+                int c = (int)(pixels >> ((start + k) << 3)) & 0xFF;
+                if (c == 0) continue;
+                int x = sx + k;
+                ushort v = direct ? DirectColor(c, pal) : cgram[(palOffset + c) & 0xFF];
+                if (onMain && r < rankM[x] && !(winMain && win[x])) { rankM[x] = r; colorM[x] = v; layerM[x] = (byte)bg; }
+                if (onSub && r < rankS[x] && !(winSub && win[x])) { rankS[x] = r; colorS[x] = v; layerS[x] = (byte)bg; }
             }
             sx += count;
         }
@@ -768,6 +828,8 @@ public sealed class PPU_SFC
 
     // ---- Windows ----
 
+    private readonly long[] windowSignature = { -1, -1, -1, -1, -1, -1 };
+
     /// <summary>Window masks, only for the layers something will actually read this line.</summary>
     private void ComputeWindows(byte layersNeeded, bool colorWindowNeeded)
     {
@@ -780,6 +842,10 @@ public sealed class PPU_SFC
                 4 => wobjsel & 0x0F, _ => wobjsel >> 4,
             };
             int logic = layer < 4 ? (wbglog >> (layer * 2)) & 3 : (wobjlog >> ((layer - 4) * 2)) & 3;
+            // Window settings rarely change between lines; rebuild a mask only when its inputs did.
+            long signature = sel | logic << 4 | wh0 << 8 | wh1 << 16 | (long)wh2 << 24 | (long)wh3 << 32;
+            if (FastPaths && windowSignature[layer] == signature) continue;
+            windowSignature[layer] = signature;
             var mask = window[layer];
             bool en1 = (sel & 0x02) != 0, en2 = (sel & 0x08) != 0;
             if (!en1 && !en2) { mask.AsSpan().Clear(); continue; }
