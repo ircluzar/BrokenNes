@@ -70,6 +70,7 @@ public sealed class BOARD_SFC : ISnesBus
         nmitimen = 0; memsel = 0; hdmaen = 0; nmiFlag = irqFlag = false;
         Apu.Reset();
         Ppu.Reset();
+        Ppu.BeginFrame();
         Cpu.Reset();
     }
 
@@ -96,24 +97,35 @@ public sealed class BOARD_SFC : ISnesBus
     //  Clock
     // =====================================================================================
 
+    /// <summary>HDMA transfers happen once per line at the start of hblank (dot ~276).</summary>
+    private const int HdmaClock = 276 * 4;
+    private int vblankLine = VBlankLine;   // 225, or 240 with overscan; latched at frame start
+    private int stall;                     // master clocks HDMA stole from the CPU, charged on the next tick
+
     private void Tick(int clocks)
     {
+        if (stall != 0) { clocks += stall; stall = 0; }
         MasterClock += clocks;
         int before = lineClock;
         lineClock += clocks;
-        CheckHIrq(before, Math.Min(lineClock, ClocksPerLine));
+        int to = Math.Min(lineClock, ClocksPerLine);
+        CheckHIrq(before, to);
+        if (before < HdmaClock && HdmaClock <= to) RunHdmaLine();
         while (lineClock >= ClocksPerLine)
         {
             lineClock -= ClocksPerLine;
             NextLine();
-            CheckHIrq(-1, lineClock);
+            to = Math.Min(lineClock, ClocksPerLine);
+            CheckHIrq(-1, to);
+            if (HdmaClock <= to) RunHdmaLine();
         }
     }
 
     private void NextLine()
     {
         Scanline++;
-        if (Scanline == VBlankLine)
+        if (Scanline == LinesPerFrame) StartFrame();
+        else if (Scanline == vblankLine)
         {
             inVBlank = true;
             nmiFlag = true;
@@ -123,15 +135,20 @@ public sealed class BOARD_SFC : ISnesBus
             Apu.RunTo(MasterClock);   // keep audio flowing even when the game leaves the ports alone
             frameReady = true;
         }
-        else if (Scanline == LinesPerFrame)
-        {
-            Scanline = 0;
-            inVBlank = false;
-            nmiFlag = false;
-            FrameCount++;
-        }
+        else if (Scanline < vblankLine) Ppu.RenderLine(Scanline);
         // V-IRQ alone fires at the start of the matching line.
         if ((nmitimen & 0x30) == 0x20 && Scanline == vtime) RaiseIrq();
+    }
+
+    private void StartFrame()
+    {
+        Scanline = 0;
+        inVBlank = false;
+        nmiFlag = false;
+        FrameCount++;
+        Ppu.BeginFrame();
+        vblankLine = Ppu.VisibleHeight + 1;
+        HdmaInit();
     }
 
     private void CheckHIrq(int fromClock, int toClock)
@@ -345,6 +362,77 @@ public sealed class BOARD_SFC : ISnesBus
             }
             dmaRegs[r + 2] = (byte)aAddr; dmaRegs[r + 3] = (byte)(aAddr >> 8);
             dmaRegs[r + 5] = 0; dmaRegs[r + 6] = 0;
+        }
+    }
+
+    // ---- HDMA: per-line register streams (gradients, wavy scroll, windows...) ----
+    // Channel registers reused from DMA: $43x8/9 = table address (A2A), $43xA = line counter,
+    // $43x5/6 + $43x7 = indirect data address.
+
+    private readonly bool[] hdmaDone = new bool[8], hdmaDoTransfer = new bool[8];
+
+    private void HdmaInit()
+    {
+        for (int ch = 0; ch < 8; ch++)
+        {
+            hdmaDone[ch] = true; hdmaDoTransfer[ch] = false;
+            if ((hdmaen & (1 << ch)) == 0) continue;
+            int r = ch << 4;
+            dmaRegs[r + 8] = dmaRegs[r + 2]; dmaRegs[r + 9] = dmaRegs[r + 3];
+            dmaRegs[r + 0xA] = 0;
+            HdmaReload(ch);
+        }
+    }
+
+    /// <summary>When the line counter's low 7 bits run out, fetch the next table entry.</summary>
+    private void HdmaReload(int ch)
+    {
+        int r = ch << 4;
+        if ((dmaRegs[r + 0xA] & 0x7F) != 0) return;
+        byte bank = dmaRegs[r + 4];
+        ushort a2a = (ushort)(dmaRegs[r + 8] | dmaRegs[r + 9] << 8);
+        byte count = ReadNoTick(bank, a2a++);
+        dmaRegs[r + 0xA] = count;
+        hdmaDone[ch] = count == 0;
+        hdmaDoTransfer[ch] = !hdmaDone[ch];
+        stall += 8;
+        if ((dmaRegs[r] & 0x40) != 0 && !hdmaDone[ch])
+        {
+            dmaRegs[r + 5] = ReadNoTick(bank, a2a++);
+            dmaRegs[r + 6] = ReadNoTick(bank, a2a++);
+            stall += 16;
+        }
+        dmaRegs[r + 8] = (byte)a2a; dmaRegs[r + 9] = (byte)(a2a >> 8);
+    }
+
+    private void RunHdmaLine()
+    {
+        if (hdmaen == 0 || Scanline >= vblankLine) return;
+        stall += 18;
+        for (int ch = 0; ch < 8; ch++)
+        {
+            if ((hdmaen & (1 << ch)) == 0 || hdmaDone[ch]) continue;
+            int r = ch << 4;
+            byte dmap = dmaRegs[r], bbad = dmaRegs[r + 1];
+            if (hdmaDoTransfer[ch])
+            {
+                bool indirect = (dmap & 0x40) != 0, toA = (dmap & 0x80) != 0;
+                int lo = indirect ? r + 5 : r + 8;   // address register that advances
+                byte bank = indirect ? dmaRegs[r + 7] : dmaRegs[r + 4];
+                foreach (int offset in DmaPatterns[dmap & 7])
+                {
+                    ushort addr = (ushort)(dmaRegs[lo] | dmaRegs[lo + 1] << 8);
+                    byte bReg = (byte)(bbad + offset);
+                    if (toA) WriteNoTick(bank, addr, ReadBBus(bReg));
+                    else WriteBBus(bReg, ReadNoTick(bank, addr));
+                    addr++;
+                    dmaRegs[lo] = (byte)addr; dmaRegs[lo + 1] = (byte)(addr >> 8);
+                    stall += 8;
+                }
+            }
+            dmaRegs[r + 0xA]--;
+            hdmaDoTransfer[ch] = (dmaRegs[r + 0xA] & 0x80) != 0;   // repeat mode transfers every line
+            HdmaReload(ch);
         }
     }
 }

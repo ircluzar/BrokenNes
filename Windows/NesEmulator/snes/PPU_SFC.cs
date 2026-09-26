@@ -5,26 +5,40 @@ namespace NesEmulator.Snes;
 /// <summary>
 /// SNES PPU (S-PPU1 + S-PPU2) - SFC family.
 ///
-/// PHASE 1: the complete CPU-facing register file (VRAM/CGRAM/OAM ports with their latches, address
-/// remapping and read prefetch, scroll write-twice latches, the Mode 7 multiplier, H/V counter
-/// latching) plus a deliberately small whole-frame renderer: backgrounds in modes 0 and 1, 8x8
-/// tiles, no sprites, no priority bits, no windows or color math. That is enough to show a test
-/// ROM's text screen; everything the renderer skips is a known gap, not a bug.
+/// Scanline renderer: the board calls <see cref="RenderLine"/> at the start of each visible line,
+/// so anything HDMA or a raster IRQ changed during the previous line's hblank shows up on this one.
+/// Covers BG modes 0-7 (8x8/16x16 tiles, offset-per-tile in 2/4/6, Mode 7 with EXTBG, hi-res 5/6
+/// averaged down to 256 wide), 128 sprites with the 32-per-line / 34-tile limits and OAM priority
+/// rotation, the per-mode priority tables (including mode 1's BG3-on-top bit), both windows with
+/// their logic ops, main/sub screens, color math (add/sub, half, fixed color, clip-to-black),
+/// mosaic, direct color, brightness and overscan.
+///
+/// Known approximations: interlace is rendered progressive, hi-res is averaged, mid-line register
+/// changes land on the next line, and sprite evaluation happens all at once per line.
 ///
 /// VRAM is stored as 32K 16-bit words because that is how the chip addresses it.
 /// </summary>
 public sealed class PPU_SFC
 {
     public string CoreName => "SFC";
-    public string Description => "SNES PPU - phase 1 (full register ports, basic BG renderer)";
+    public string Description => "SNES PPU - scanline renderer, all modes, sprites, windows, color math";
     public string Category => "Accuracy";
 
-    public const int Width = 256, Height = 224;
+    public const int Width = 256, Height = 224, MaxHeight = 239;
 
     public readonly ushort[] Vram = new ushort[0x8000];
     public readonly ushort[] Cgram = new ushort[256];
     public readonly byte[] Oam = new byte[544];
-    public readonly uint[] FrameBuffer = new uint[Width * Height];   // 0xAARRGGBB
+    /// <summary>0xAARRGGBB, 256 wide; rows beyond <see cref="VisibleHeight"/> are stale.</summary>
+    public readonly uint[] FrameBuffer = new uint[Width * MaxHeight];
+
+    /// <summary>224, or 239 when the game enabled overscan ($2133 bit 2). Latched at frame start.</summary>
+    public int VisibleHeight { get; private set; } = Height;
+
+    /// <summary>Hardware ignores VRAM writes outside vblank/forced blank. Kept switchable for diagnosis.</summary>
+    public bool DropVramWritesDuringDisplay { get; set; } = true;
+    private bool inDisplay;         // between BeginFrame (line 0) and OnVBlankStart
+    private bool rangeOver, timeOver;
 
     private byte inidisp = 0x80, obsel, bgmode, mosaic, bg12nba, bg34nba;
     private readonly byte[] bgsc = new byte[4];
@@ -54,6 +68,7 @@ public sealed class PPU_SFC
     public Func<(int dot, int line)>? CounterSource;
 
     public bool ForcedBlank => (inidisp & 0x80) != 0;
+    private bool VramWritable => !DropVramWritesDuringDisplay || !inDisplay || ForcedBlank;
 
     public void Reset()
     {
@@ -128,16 +143,14 @@ public sealed class PPU_SFC
             case 0x17: vmadd = (ushort)((vmadd & 0x00FF) | v << 8); vramPrefetch = Vram[VramAddress()]; break;
             case 0x18:
             {
-                // Hardware drops VRAM writes during active display; phase 1 accepts them always.
-                int a = VramAddress();
-                Vram[a] = (ushort)((Vram[a] & 0xFF00) | v);
+                // Outside vblank/forced blank the write is lost, but the address still increments.
+                if (VramWritable) { int a = VramAddress(); Vram[a] = (ushort)((Vram[a] & 0xFF00) | v); }
                 if ((vmain & 0x80) == 0) VramIncrement();
                 break;
             }
             case 0x19:
             {
-                int a = VramAddress();
-                Vram[a] = (ushort)((Vram[a] & 0x00FF) | v << 8);
+                if (VramWritable) { int a = VramAddress(); Vram[a] = (ushort)((Vram[a] & 0x00FF) | v << 8); }
                 if ((vmain & 0x80) != 0) VramIncrement();
                 break;
             }
@@ -233,7 +246,7 @@ public sealed class PPU_SFC
                 opvctHigh = !opvctHigh;
                 return ppu2Mdr = v;
             }
-            case 0x3E: return ppu1Mdr = (byte)(0x01 | (ppu1Mdr & 0x10));
+            case 0x3E: return ppu1Mdr = (byte)((timeOver ? 0x80 : 0) | (rangeOver ? 0x40 : 0) | (ppu1Mdr & 0x10) | 0x01);
             case 0x3F:
             {
                 byte v = (byte)(0x03 | (counterLatched ? 0x40 : 0) | (ppu2Mdr & 0x20));
@@ -255,82 +268,402 @@ public sealed class PPU_SFC
         oamInternal = (ushort)((oamInternal + 1) & 0x3FF);
     }
 
-    /// <summary>Called by the board at the start of vblank, after the SNES frame's active lines.</summary>
+    // =====================================================================================
+    //  Frame / line hooks (called by the board)
+    // =====================================================================================
+
+    /// <summary>Line 0: the pre-render line. Latches overscan and clears the sprite overflow flags.</summary>
+    public void BeginFrame()
+    {
+        VisibleHeight = (setini & 0x04) != 0 ? MaxHeight : Height;
+        if (!ForcedBlank) { rangeOver = false; timeOver = false; }
+        inDisplay = true;
+    }
+
+    /// <summary>Start of vblank: OAM address reload, VRAM opens up.</summary>
     public void OnVBlankStart()
     {
-        // OAM address reloads at vblank start when rendering is on.
         if (!ForcedBlank) oamInternal = (ushort)((oamadd & 0x1FF) << 1);
-        RenderFrame();
+        inDisplay = false;
     }
 
     // =====================================================================================
-    //  Phase-1 renderer: BGs in modes 0/1, back-to-front, no priority bits, no sprites.
+    //  Scanline renderer
     // =====================================================================================
+
+    private const ushort Transparent = 0x8000;      // a real BGR555 color never sets bit 15
+    private const int Backdrop = 5, ObjLayer = 4, AnyPriority = 2;
+
+    // BG line buffers are 512 wide so hi-res modes can render at full resolution before averaging.
+    private readonly ushort[][] bgColor = { new ushort[512], new ushort[512], new ushort[512], new ushort[512] };
+    private readonly byte[][] bgPrio = { new byte[512], new byte[512], new byte[512], new byte[512] };
+    private readonly ushort[] objColor = new ushort[256];
+    private readonly byte[] objPrio = new byte[256];
+    private readonly bool[] objMath = new bool[256];
+    private readonly bool[][] window = { new bool[256], new bool[256], new bool[256], new bool[256], new bool[256], new bool[256] };
+
+    // Front-to-back draw order per mode, as (layer, priority). Layers 0-3 = BG1-4, 4 = OBJ.
+    private static readonly (byte layer, byte prio)[] Order0 =
+        { (4, 3), (0, 1), (1, 1), (4, 2), (0, 0), (1, 0), (4, 1), (2, 1), (3, 1), (4, 0), (2, 0), (3, 0) };
+    private static readonly (byte layer, byte prio)[] Order1 =
+        { (4, 3), (0, 1), (1, 1), (4, 2), (0, 0), (1, 0), (4, 1), (2, 1), (4, 0), (2, 0) };
+    private static readonly (byte layer, byte prio)[] Order1Bg3Top =
+        { (2, 1), (4, 3), (0, 1), (1, 1), (4, 2), (0, 0), (1, 0), (4, 1), (4, 0), (2, 0) };
+    private static readonly (byte layer, byte prio)[] Order2To5 =
+        { (4, 3), (0, 1), (4, 2), (1, 1), (4, 1), (0, 0), (4, 0), (1, 0) };
+    private static readonly (byte layer, byte prio)[] Order6 =
+        { (4, 3), (0, 1), (4, 2), (4, 1), (0, 0), (4, 0) };
+    private static readonly (byte layer, byte prio)[] Order7 =
+        { (4, 3), (4, 2), (1, 1), (4, 1), (0, AnyPriority), (4, 0), (1, 0) };
 
     private static readonly int[][] ModeBpp =
     {
-        new[] { 2, 2, 2, 2 },  // mode 0
-        new[] { 4, 4, 2, 0 },  // mode 1
+        new[] { 2, 2, 2, 2 }, new[] { 4, 4, 2, 0 }, new[] { 4, 4, 0, 0 }, new[] { 8, 4, 0, 0 },
+        new[] { 8, 2, 0, 0 }, new[] { 4, 2, 0, 0 }, new[] { 4, 0, 0, 0 }, new[] { 8, 0, 0, 0 },
     };
 
-    private void RenderFrame()
+    private static readonly (int w, int h)[] ObjSmall = { (8, 8), (8, 8), (8, 8), (16, 16), (16, 16), (32, 32), (16, 32), (16, 32) };
+    private static readonly (int w, int h)[] ObjLarge = { (16, 16), (32, 32), (64, 64), (32, 32), (64, 64), (64, 64), (32, 64), (32, 32) };
+
+    /// <summary>Render one visible line (1 = first visible line) into FrameBuffer row line-1.</summary>
+    public void RenderLine(int line)
     {
+        int row = line - 1;
+        if (row < 0 || row >= VisibleHeight) return;
+        var dst = FrameBuffer.AsSpan(row * Width, Width);
         int brightness = inidisp & 0x0F;
-        if (ForcedBlank || brightness == 0) { Array.Fill(FrameBuffer, 0xFF000000u); return; }
+        if (ForcedBlank || brightness == 0) { dst.Fill(0xFF000000u); return; }
 
         int mode = bgmode & 7;
-        var bpps = mode < ModeBpp.Length ? ModeBpp[mode] : ModeBpp[1];
-        uint backdrop = ToArgb(Cgram[0], brightness);
-        Span<ushort> line = stackalloc ushort[Width];
-
-        for (int y = 0; y < Height; y++)
+        bool hires = mode is 5 or 6;
+        byte used = (byte)(tm | ts);
+        for (int bg = 0; bg < 4; bg++)
         {
-            line.Fill(0xFFFF);  // 0xFFFF = transparent (a real color never sets bit 15)
-            for (int bg = 3; bg >= 0; bg--)
-            {
-                if ((tm & (1 << bg)) == 0 || bpps[bg] == 0) continue;
-                DrawBgLine(bg, bpps[bg], mode == 0 ? bg * 32 : 0, y, line);
-            }
-            int row = y * Width;
-            for (int x = 0; x < Width; x++)
-                FrameBuffer[row + x] = line[x] == 0xFFFF ? backdrop : ToArgb(line[x], brightness);
+            if ((used & (1 << bg)) == 0) continue;
+            if (mode == 7) { if (bg == 0 || (bg == 1 && (setini & 0x40) != 0)) continue; }
+            if (mode == 7 || ModeBpp[mode][bg] == 0) { bgColor[bg].AsSpan().Fill(Transparent); continue; }
+            RenderBg(bg, ModeBpp[mode][bg], mode, line);
         }
-    }
+        if (mode == 7 && (used & 3) != 0) RenderMode7(line);
+        if ((used & 0x10) != 0) RenderSprites(line); else objColor.AsSpan().Fill(Transparent);
+        ComputeWindows();
 
-    private void DrawBgLine(int bg, int bpp, int paletteBase, int screenY, Span<ushort> line)
-    {
-        int sc = bgsc[bg];
-        int mapBase = (sc & 0xFC) << 8;
-        bool wide = (sc & 1) != 0, tall = (sc & 2) != 0;
-        int charBase = (bg < 2 ? (bg12nba >> (bg * 4)) : (bg34nba >> ((bg - 2) * 4))) & 0x0F;
-        charBase <<= 12;
-
-        int bgY = (screenY + 1 + vofs[bg]) & (tall ? 0x1FF : 0xFF);   // line 1 is the first visible line
-        int tileRow = bgY >> 3, fineY = bgY & 7;
-        int wordsPerTile = bpp * 4;
+        var order = mode switch
+        {
+            0 => Order0,
+            1 => (bgmode & 0x08) != 0 ? Order1Bg3Top : Order1,
+            6 => Order6,
+            7 => Order7,
+            _ => Order2To5,
+        };
 
         for (int x = 0; x < Width; x++)
         {
-            int bgX = (x + hofs[bg]) & (wide ? 0x1FF : 0xFF);
-            int tileCol = bgX >> 3;
-            int screenOffset = ((tileCol & 32) != 0 ? 0x400 : 0) + ((tileRow & 32) != 0 ? (wide ? 0x800 : 0x400) : 0);
-            ushort entry = Vram[(mapBase + screenOffset + ((tileRow & 31) << 5) + (tileCol & 31)) & 0x7FFF];
+            ushort c;
+            if (!hires) c = ComposePixel(order, x, x);
+            else
+            {
+                ushort a = ComposePixel(order, x * 2, x), b = ComposePixel(order, x * 2 + 1, x);
+                c = (ushort)((((a & 0x7BDE) + (b & 0x7BDE)) >> 1) + (a & b & 0x0421));   // per-channel average
+            }
+            dst[x] = ToArgb(c, brightness);
+        }
+    }
 
-            int tile = entry & 0x3FF, pal = (entry >> 10) & 7;
-            int px = bgX & 7, py = fineY;
-            if ((entry & 0x4000) != 0) px = 7 - px;
-            if ((entry & 0x8000) != 0) py = 7 - py;
+    /// <summary>Main screen + sub screen + color math for one output pixel. bx indexes the (possibly
+    /// 512-wide) BG buffers; x indexes sprites and windows, which are always 256 wide.</summary>
+    private ushort ComposePixel((byte layer, byte prio)[] order, int bx, int x)
+    {
+        int mainLayer = Pick(order, tm, tmw, bx, x, out ushort color);
+        bool colorWindow = window[5][x];
 
-            int tileAddr = charBase + tile * wordsPerTile + py;
-            int bit = 7 - px, color = 0;
+        int blackMode = (cgwsel >> 6) & 3;
+        bool black = blackMode == 3 || (blackMode == 1 && !colorWindow) || (blackMode == 2 && colorWindow);
+        if (black) color = 0;
+
+        int mathMode = (cgwsel >> 4) & 3;
+        bool mathRegion = mathMode == 0 || (mathMode == 1 && colorWindow) || (mathMode == 2 && !colorWindow);
+        bool layerMath = mainLayer == ObjLayer
+            ? (cgadsub & 0x10) != 0 && objMath[x]
+            : (cgadsub & (1 << mainLayer)) != 0;   // bit 5 = backdrop
+        if (!mathRegion || !layerMath) return color;
+
+        ushort addend = coldata;
+        bool halve = (cgadsub & 0x40) != 0 && !black;
+        if ((cgwsel & 0x02) != 0)
+        {
+            int subLayer = Pick(order, ts, tsw, bx, x, out ushort sub);
+            if (subLayer == Backdrop) halve = false;   // transparent sub screen: fixed color, no halving
+            else addend = sub;
+        }
+        return Blend(color, addend, (cgadsub & 0x80) != 0, halve);
+    }
+
+    private int Pick((byte layer, byte prio)[] order, byte enable, byte windowEnable, int bx, int x, out ushort color)
+    {
+        foreach (var (layer, prio) in order)
+        {
+            int bit = 1 << layer;
+            if ((enable & bit) == 0) continue;
+            if ((windowEnable & bit) != 0 && window[layer][x]) continue;
+            if (layer == ObjLayer)
+            {
+                if (objColor[x] != Transparent && objPrio[x] == prio) { color = objColor[x]; return ObjLayer; }
+            }
+            else
+            {
+                ushort c = bgColor[layer][bx];
+                if (c != Transparent && (prio == AnyPriority || bgPrio[layer][bx] == prio)) { color = c; return layer; }
+            }
+        }
+        color = Cgram[0];
+        return Backdrop;
+    }
+
+    private static ushort Blend(ushort a, ushort b, bool subtract, bool halve)
+    {
+        int r, g, bl;
+        if (!subtract)
+        {
+            r = (a & 0x1F) + (b & 0x1F); g = ((a >> 5) & 0x1F) + ((b >> 5) & 0x1F); bl = ((a >> 10) & 0x1F) + ((b >> 10) & 0x1F);
+            if (halve) { r >>= 1; g >>= 1; bl >>= 1; }
+            r = Math.Min(r, 31); g = Math.Min(g, 31); bl = Math.Min(bl, 31);
+        }
+        else
+        {
+            r = Math.Max((a & 0x1F) - (b & 0x1F), 0); g = Math.Max(((a >> 5) & 0x1F) - ((b >> 5) & 0x1F), 0); bl = Math.Max(((a >> 10) & 0x1F) - ((b >> 10) & 0x1F), 0);
+            if (halve) { r >>= 1; g >>= 1; bl >>= 1; }
+        }
+        return (ushort)(r | g << 5 | bl << 10);
+    }
+
+    // ---- Backgrounds ----
+
+    private ushort MapEntry(int mapBase, bool wide, bool tall, int col, int row)
+    {
+        int addr = mapBase + ((row & 31) << 5) + (col & 31);
+        if (wide && (col & 32) != 0) addr += 0x400;
+        if (tall && (row & 32) != 0) addr += wide ? 0x800 : 0x400;
+        return Vram[addr & 0x7FFF];
+    }
+
+    private void RenderBg(int bg, int bpp, int mode, int line)
+    {
+        var colors = bgColor[bg];
+        var prios = bgPrio[bg];
+        int sc = bgsc[bg];
+        int mapBase = (sc & 0xFC) << 8;
+        bool wide = (sc & 1) != 0, tall = (sc & 2) != 0;
+        bool hires = mode is 5 or 6;
+        bool big = (bgmode & (0x10 << bg)) != 0;
+        int tileWShift = big || hires ? 4 : 3, tileHShift = big ? 4 : 3;
+        int mapWMask = ((wide ? 64 : 32) << tileWShift) - 1, mapHMask = ((tall ? 64 : 32) << tileHShift) - 1;
+        int charBase = ((bg < 2 ? bg12nba >> (bg * 4) : bg34nba >> ((bg - 2) * 4)) & 0x0F) << 12;
+        int wordsPerTile = bpp * 4;
+        int paletteBase = mode == 0 ? bg * 32 : 0;
+        int palShift = bpp;   // palette stride = 1 << bpp colors
+        bool direct = bpp == 8 && (cgwsel & 0x01) != 0;
+        bool opt = mode is 2 or 4 or 6;
+
+        int mosaicSize = (mosaic & (1 << bg)) != 0 ? (mosaic >> 4) + 1 : 1;
+        int y = mosaicSize > 1 ? line - (line - 1) % mosaicSize : line;
+        int width = hires ? 512 : 256;
+
+        int lastKey = -1; ushort entry = 0;
+        for (int sx = 0; sx < width; sx++)
+        {
+            int x = mosaicSize > 1 ? sx - sx % (hires ? mosaicSize * 2 : mosaicSize) : sx;
+            int hs = hofs[bg], vs = vofs[bg];
+            if (opt && bg < 2) ApplyOffsetPerTile(bg, mode, hires ? x >> 1 : x, ref hs, ref vs);
+            int bx = (hires ? x + (hs << 1) : x + hs) & mapWMask;
+            int by = (y + vs) & mapHMask;
+
+            int col = bx >> tileWShift, rowT = by >> tileHShift;
+            int key = rowT << 8 | col;
+            if (key != lastKey) { entry = MapEntry(mapBase, wide, tall, col, rowT); lastKey = key; }
+
+            int px = bx & ((1 << tileWShift) - 1), py = by & ((1 << tileHShift) - 1);
+            if ((entry & 0x4000) != 0) px = (1 << tileWShift) - 1 - px;
+            if ((entry & 0x8000) != 0) py = (1 << tileHShift) - 1 - py;
+            int tile = entry & 0x3FF;
+            if (px >= 8) tile += 1;
+            if (py >= 8) tile += 16;
+            int addr = charBase + (tile & 0x3FF) * wordsPerTile + (py & 7);
+            int bit = 7 - (px & 7), c = 0;
             for (int plane = 0; plane < bpp; plane += 2)
             {
-                ushort w = Vram[(tileAddr + plane * 4) & 0x7FFF];
-                color |= ((w >> bit) & 1) << plane;
-                color |= ((w >> (8 + bit)) & 1) << (plane + 1);
+                ushort w = Vram[(addr + plane * 4) & 0x7FFF];
+                c |= ((w >> bit) & 1) << plane | ((w >> (8 + bit)) & 1) << (plane + 1);
             }
-            if (color == 0) continue;
-            line[x] = Cgram[(paletteBase + pal * (1 << bpp) + color) & 0xFF];
+            if (c == 0) { colors[sx] = Transparent; continue; }
+            int pal = (entry >> 10) & 7;
+            colors[sx] = direct ? DirectColor(c, pal) : Cgram[(paletteBase + (bpp == 8 ? 0 : pal << palShift) + c) & 0xFF];
+            prios[sx] = (byte)((entry >> 13) & 1);
+        }
+    }
+
+    /// <summary>Modes 2/4/6: BG3's tilemap supplies per-column scroll overrides for BG1/BG2.</summary>
+    private void ApplyOffsetPerTile(int bg, int mode, int screenX, ref int hs, ref int vs)
+    {
+        int column = (screenX + (hofs[bg] & 7)) >> 3;
+        if (column == 0) return;   // the leftmost column is never affected
+        int sc = bgsc[2];
+        int mapBase = (sc & 0xFC) << 8;
+        bool wide = (sc & 1) != 0, tall = (sc & 2) != 0;
+        int col = ((hofs[2] >> 3) + column - 1) & (wide ? 63 : 31);
+        int rowT = (vofs[2] >> 3) & (tall ? 63 : 31);
+        ushort enableBit = (ushort)(0x2000 << bg);
+        ushort h = MapEntry(mapBase, wide, tall, col, rowT);
+        if (mode == 4)
+        {
+            if ((h & enableBit) == 0) return;
+            if ((h & 0x8000) != 0) vs = h & 0x3FF; else hs = (h & 0x3F8) | (hs & 7);
+            return;
+        }
+        ushort v = MapEntry(mapBase, wide, tall, col, rowT + 1);
+        if ((h & enableBit) != 0) hs = (h & 0x3F8) | (hs & 7);
+        if ((v & enableBit) != 0) vs = v & 0x3FF;
+    }
+
+    private static ushort DirectColor(int c, int pal) =>
+        (ushort)(((c & 7) << 2 | (pal & 1) << 1) | (((c >> 3) & 7) << 2 | (pal & 2)) << 5 | (((c >> 6) & 3) << 3 | (pal & 4)) << 10);
+
+    private static int Clip13(int n) => (n & 0x2000) != 0 ? (n | ~0x3FF) : (n & 0x3FF);
+
+    private void RenderMode7(int line)
+    {
+        var c1 = bgColor[0]; var c2 = bgColor[1]; var p2 = bgPrio[1];
+        bool extbg = (setini & 0x40) != 0;
+        int a = m7a, b = m7b, c = m7c, d = m7d, x0 = m7x, y0 = m7y;
+        int mosaicSize = (mosaic & 1) != 0 ? (mosaic >> 4) + 1 : 1;
+        int y = mosaicSize > 1 ? line - (line - 1) % mosaicSize : line;
+        if ((m7sel & 0x02) != 0) y = 255 - y;
+        int hc = Clip13(m7hofs - x0), vc = Clip13(m7vofs - y0);
+        int psx = ((a * hc) & ~63) + ((b * vc) & ~63) + ((b * y) & ~63) + (x0 << 8);
+        int psy = ((c * hc) & ~63) + ((d * vc) & ~63) + ((d * y) & ~63) + (y0 << 8);
+        int outside = m7sel >> 6;
+        bool direct = (cgwsel & 0x01) != 0;
+
+        for (int sx = 0; sx < 256; sx++)
+        {
+            int x = mosaicSize > 1 ? sx - sx % mosaicSize : sx;
+            int xx = (m7sel & 0x01) != 0 ? 255 - x : x;
+            int px = (psx + a * xx) >> 8, py = (psy + c * xx) >> 8;
+            int tile;
+            if (((px | py) & ~0x3FF) != 0 && outside >= 2)
+            {
+                if (outside == 2) { c1[sx] = Transparent; c2[sx] = Transparent; continue; }
+                tile = 0;
+            }
+            else tile = Vram[(((py >> 3) & 127) << 7) | ((px >> 3) & 127)] & 0xFF;
+            int color = Vram[(tile << 6 | (py & 7) << 3 | (px & 7)) & 0x7FFF] >> 8;
+            c1[sx] = color == 0 ? Transparent : direct ? DirectColor(color, 0) : Cgram[color];
+            if (extbg)
+            {
+                int c7 = color & 0x7F;
+                c2[sx] = c7 == 0 ? Transparent : Cgram[c7];
+                p2[sx] = (byte)(color >> 7);
+            }
+        }
+    }
+
+    // ---- Sprites ----
+
+    private void RenderSprites(int line)
+    {
+        objColor.AsSpan().Fill(Transparent);
+        int sizeSel = obsel >> 5;
+        int nameBase = (obsel & 7) << 13;
+        int nameGap = (((obsel >> 3) & 3) + 1) << 12;
+        int first = (oamadd & 0x8000) != 0 ? (oamadd >> 1) & 0x7F : 0;   // OAM priority rotation
+        int evalY = line - 1;   // sprites are evaluated one line ahead: OAM Y=0 shows on line 1
+
+        Span<int> list = stackalloc int[32];
+        int count = 0;
+        for (int i = 0; i < 128; i++)
+        {
+            int n = (first + i) & 127;
+            int hi = (Oam[0x200 + (n >> 2)] >> ((n & 3) * 2)) & 3;
+            var (w, h) = (hi & 2) != 0 ? ObjLarge[sizeSel] : ObjSmall[sizeSel];
+            int x = Oam[n * 4] | (hi & 1) << 8;
+            if (x >= 256) x -= 512;
+            if (x <= -w && x != -256) continue;
+            if (((evalY - Oam[n * 4 + 1]) & 0xFF) >= h) continue;
+            if (count == 32) { rangeOver = true; break; }
+            list[count++] = n;
+        }
+
+        // Tiles are fetched last-sprite-first, 34 per line at most, so on overflow it is the
+        // highest-priority sprites that lose slivers. Drawing in that order also lets earlier
+        // sprites overwrite later ones, which is the SNES rule (OAM order beats priority bits).
+        int slivers = 0;
+        for (int k = count - 1; k >= 0; k--)
+        {
+            int n = list[k];
+            int hi = (Oam[0x200 + (n >> 2)] >> ((n & 3) * 2)) & 3;
+            var (w, h) = (hi & 2) != 0 ? ObjLarge[sizeSel] : ObjSmall[sizeSel];
+            int x = Oam[n * 4] | (hi & 1) << 8;
+            if (x >= 256) x -= 512;
+            int tileLo = Oam[n * 4 + 2], attr = Oam[n * 4 + 3];
+            bool hflip = (attr & 0x40) != 0, vflip = (attr & 0x80) != 0;
+            int pal = (attr >> 1) & 7, prio = (attr >> 4) & 3;
+            int r = (evalY - Oam[n * 4 + 1]) & 0xFF;
+            if (vflip) r = h - 1 - r;
+            int ty = r >> 3, fy = r & 7;
+            int table = (attr & 1) != 0 ? nameBase + nameGap : nameBase;
+            int tilesWide = w >> 3;
+            for (int tx = 0; tx < tilesWide; tx++)
+            {
+                int sx = x + tx * 8;
+                if (sx <= -8 || sx >= 256) continue;
+                if (++slivers > 34) { timeOver = true; return; }
+                int ctx = hflip ? tilesWide - 1 - tx : tx;
+                int chr = (((tileLo >> 4) + ty) & 0x0F) << 4 | ((tileLo + ctx) & 0x0F);
+                int addr = (table + chr * 16 + fy) & 0x7FFF;
+                ushort p01 = Vram[addr], p23 = Vram[(addr + 8) & 0x7FFF];
+                for (int i = 0; i < 8; i++)
+                {
+                    int px = sx + i;
+                    if ((uint)px >= 256) continue;
+                    int bit = hflip ? i : 7 - i;
+                    int c = (p01 >> bit & 1) | (p01 >> (8 + bit) & 1) << 1 | (p23 >> bit & 1) << 2 | (p23 >> (8 + bit) & 1) << 3;
+                    if (c == 0) continue;
+                    objColor[px] = Cgram[128 + (pal << 4) + c];
+                    objPrio[px] = (byte)prio;
+                    objMath[px] = pal >= 4;   // only palettes 4-7 take part in color math
+                }
+            }
+        }
+    }
+
+    // ---- Windows ----
+
+    private void ComputeWindows()
+    {
+        for (int layer = 0; layer < 6; layer++)
+        {
+            int sel = layer switch
+            {
+                0 => w12sel & 0x0F, 1 => w12sel >> 4, 2 => w34sel & 0x0F, 3 => w34sel >> 4,
+                4 => wobjsel & 0x0F, _ => wobjsel >> 4,
+            };
+            int logic = layer < 4 ? (wbglog >> (layer * 2)) & 3 : (wobjlog >> ((layer - 4) * 2)) & 3;
+            var mask = window[layer];
+            bool en1 = (sel & 0x02) != 0, en2 = (sel & 0x08) != 0;
+            if (!en1 && !en2) { mask.AsSpan().Clear(); continue; }
+            bool inv1 = (sel & 0x01) != 0, inv2 = (sel & 0x04) != 0;
+            for (int x = 0; x < 256; x++)
+            {
+                bool w1 = (x >= wh0 && x <= wh1) ^ inv1;
+                bool w2 = (x >= wh2 && x <= wh3) ^ inv2;
+                mask[x] = !en2 ? w1 : !en1 ? w2 : logic switch
+                {
+                    0 => w1 | w2,
+                    1 => w1 & w2,
+                    2 => w1 ^ w2,
+                    _ => !(w1 ^ w2),
+                };
+            }
         }
     }
 
