@@ -494,6 +494,35 @@ public sealed class PPU_SFC
         int adsub = cgadsub;
         bool subtract = (adsub & 0x80) != 0, halfOn = (adsub & 0x40) != 0;
         ushort fixedColor = coldata;
+
+        if (!colorWindowUsed)
+        {
+            // Without the color window, clip-to-black and the math region are all-or-nothing for
+            // the line (blackMode/mathMode can only be 0 or 3 here).
+            bool black = blackMode == 3;
+            if (mathMode == 3) { for (int x = 0; x < Width; x++) dst[x] = lut[black ? (ushort)0 : cm[x]]; return; }
+            bool halve0 = halfOn && !black;
+            for (int x = 0; x < Width; x++)
+            {
+                int layer = lm[x];
+                ushort color = black ? (ushort)0 : cm[x];
+                bool layerMath = layer == ObjLayer ? (adsub & 0x10) != 0 && om[x] : (adsub & (1 << layer)) != 0;
+                if (layerMath)
+                {
+                    ushort addend = fixedColor;
+                    bool halve = halve0;
+                    if (subNeeded)
+                    {
+                        if (ls[x] == Backdrop) halve = false;
+                        else addend = cs[x];
+                    }
+                    color = BlendPacked(color, addend, subtract, halve);
+                }
+                dst[x] = lut[color];
+            }
+            return;
+        }
+
         for (int x = 0; x < Width; x++)
         {
             int layer = lm[x];
@@ -512,10 +541,35 @@ public sealed class PPU_SFC
                     if (ls[x] == Backdrop) halve = false;
                     else addend = cs[x];
                 }
-                color = Blend(color, addend, subtract, halve);
+                color = BlendPacked(color, addend, subtract, halve);
             }
             dst[x] = lut[color];
         }
+    }
+
+    /// <summary>
+    /// Blend() on all three channels at once. Red and blue share one int (bits 0-4 and 10-14, each
+    /// with a free bit above it for the carry or borrow); green gets its own. Same results as Blend:
+    /// add = halve then clamp to 31, subtract = clamp to 0 then halve.
+    /// </summary>
+    internal static ushort BlendPacked(ushort a, ushort b, bool subtract, bool halve)
+    {
+        int rb, g;
+        if (!subtract)
+        {
+            rb = (a & 0x7C1F) + (b & 0x7C1F);   // R sum in bits 0-5, B sum in bits 10-15
+            g = (a & 0x03E0) + (b & 0x03E0);    // G sum in bits 5-10
+            if (halve) return (ushort)(((rb >> 1) & 0x7C1F) | ((g >> 1) & 0x03E0));
+            rb |= ((rb >> 5) & 1) * 0x1F | ((rb >> 15) & 1) * 0x7C00;   // saturate overflowed channels
+            g |= ((g >> 10) & 1) * 0x3E0;
+            return (ushort)((rb & 0x7C1F) | (g & 0x03E0));
+        }
+        rb = ((a & 0x7C1F) | 0x8020) - (b & 0x7C1F);   // guard bits 5 and 15 survive unless a channel borrowed
+        g = ((a & 0x03E0) | 0x0400) - (b & 0x03E0);
+        rb &= ((rb >> 5) & 1) * 0x1F | ((rb >> 15) & 1) * 0x7C00;
+        g &= ((g >> 10) & 1) * 0x3E0;
+        if (halve) { rb = (rb >> 1) & 0x7C1F; g = (g >> 1) & 0x03E0; }
+        return (ushort)(rb | g);
     }
 
     /// <summary>Clip-to-black and color math for one pixel, from the already-composed screens.</summary>
@@ -553,7 +607,7 @@ public sealed class PPU_SFC
         return lut;
     }
 
-    private static ushort Blend(ushort a, ushort b, bool subtract, bool halve)
+    internal static ushort Blend(ushort a, ushort b, bool subtract, bool halve)
     {
         int r, g, bl;
         if (!subtract)

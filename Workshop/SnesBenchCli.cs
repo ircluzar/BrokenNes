@@ -62,9 +62,43 @@ internal static class SnesBenchCli
         public List<string> Checkpoints { get; set; } = new();
     }
 
+    /// <summary>Exhaustive-where-feasible equivalence checks between fast helpers and their references.</summary>
+    private static int SelfCheck()
+    {
+        long checks = 0, bad = 0;
+        void Check(ushort a, ushort b, bool sub, bool half)
+        {
+            checks++;
+            ushort want = PPU_SFC.Blend(a, b, sub, half), got = PPU_SFC.BlendPacked(a, b, sub, half);
+            if (want != got && bad++ < 10) Console.WriteLine($"BlendPacked MISMATCH a={a:X4} b={b:X4} sub={sub} half={half}: {got:X4} != {want:X4}");
+        }
+        var rng = new Random(12345);
+        for (int i = 0; i < 20_000_000; i++)
+        {
+            ushort a = (ushort)rng.Next(0x8000), b = (ushort)rng.Next(0x8000);
+            for (int m = 0; m < 4; m++) Check(a, b, (m & 1) != 0, (m & 2) != 0);
+        }
+        // Every channel pair at every position, with the other channels at their extremes.
+        int[] others = { 0, 1, 15, 16, 30, 31 };
+        for (int ch = 0; ch < 3; ch++)
+            for (int x = 0; x < 32; x++)
+                for (int y = 0; y < 32; y++)
+                    foreach (int o1 in others)
+                        foreach (int o2 in others)
+                        {
+                            int[] ca = { o1, o2, o1 }, cb = { o2, o1, o2 };
+                            ca[ch] = x; cb[ch] = y;
+                            ushort a = (ushort)(ca[0] | ca[1] << 5 | ca[2] << 10), b = (ushort)(cb[0] | cb[1] << 5 | cb[2] << 10);
+                            for (int m = 0; m < 4; m++) Check(a, b, (m & 1) != 0, (m & 2) != 0);
+                        }
+        Console.WriteLine($"selfcheck: BlendPacked vs Blend {checks:N0} cases, {bad} mismatches");
+        return bad == 0 ? 0 : 1;
+    }
+
     public static int Run(string[] args)
     {
         RomTestCli.EnsureConsole();
+        if (args.Length > 1 && args[1] == "--selfcheck") return SelfCheck();
         string? romPath = null, input = null, apuChoice = null, goldenPath = null, preset = null, abSwitch = null;
         int frames = 4300, repeat = 3;
         bool breakdown = false;

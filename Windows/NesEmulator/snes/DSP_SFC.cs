@@ -215,8 +215,13 @@ public sealed class DSP_SFC
                 pitch = 0;
             }
 
-            int output = (non & bit) != 0 ? (short)(noise * 2) : Interpolate(v);
-            output = ((output * v.Env) >> 11) & ~1;
+            int output;
+            if (FastPaths && v.Env == 0) output = 0;   // (anything * 0) >> 11 == 0: skip the interpolation
+            else
+            {
+                output = (non & bit) != 0 ? (short)(noise * 2) : Interpolate(v);
+                output = ((output * v.Env) >> 11) & ~1;
+            }
             Regs[r + 8] = (byte)(v.Env >> 4);   // ENVX
 
             if ((Regs[FLG] & 0x80) != 0 || (header & 3) == 1) { v.Mode = EnvMode.Release; v.Env = 0; }
