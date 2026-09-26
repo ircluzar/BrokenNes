@@ -359,10 +359,10 @@ public sealed class PPU_GB
 
         // WX 0-6: the window starts before the first pixel, while the first tile is being fetched; its pixels
         // left of the screen edge are then dropped along with the fine-scroll ones.
-        if (!scxLatched && !windowActive && Wx < 7 && m == 6 + Wx && (Lcdc & 0x20) != 0 && windowYTriggered)
+        if (!scxLatched && !windowActive && Wx < 7 && m >= 6 + Wx && (Lcdc & 0x20) != 0 && windowYTriggered)
         {
             StartWindow();
-            dummyFetch = false; winSkip = 7 - Wx;
+            dummyFetch = false; winSkip = Math.Max(0, 13 - m);
         }
 
         // Object fetch in progress: the background fetcher and the output are stalled.
@@ -382,7 +382,7 @@ public sealed class PPU_GB
             {
                 bgLo = tileLo; bgHi = tileHi; bgAttr = tileAttr; bgCount = 8;
                 if (fetchWindow) winFetchX++; else fetchX++;
-                if (!scxLatched) { scxLatched = true; fineScroll = Scx & 7; discard = fineScroll + winSkip; winSkip = 0; }
+                if (!scxLatched) { scxLatched = true; fineScroll = Scx & 7; discard = fineScroll + winSkip + (winSkip > 0 && fineScroll > 0 ? 1 : 0); winSkip = 0; }
             }
         }
 
