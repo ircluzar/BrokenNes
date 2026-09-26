@@ -69,6 +69,7 @@ public sealed class BOARD_GB : IGbCpuBus
         Cpu.ResetPostBoot(Model, cgbGame);
         Ppu.CompatMode = Model == GbModel.Cgb && !cgbGame;
         Ppu.ResetPostBoot();
+        if (Model == GbModel.Dmg && Cart.Rom.Length >= 0x134) Ppu.LoadBootLogo(Cart.Rom.AsSpan(0x104, 48));
         if (Ppu.CompatMode) GbCompatPalettes.Apply(Ppu, Cart);
         Apu.ResetPostBoot();
         Array.Clear(wram); Array.Clear(hram);

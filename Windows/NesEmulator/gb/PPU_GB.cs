@@ -97,6 +97,30 @@ public sealed class PPU_GB
         UpdateLyc(); UpdateStatLine();
     }
 
+    /// <summary>
+    /// VRAM as the DMG boot ROM leaves it: the cartridge header logo (48 bytes from $0104) expanded into tiles
+    /// 1-24 (each bit doubled across, each row doubled down, low bitplane only), the (R) mark as tile 25, and the
+    /// logo placed in the tile map at rows 8-9. Some software (and some test ROMs) draw with these tiles.
+    /// </summary>
+    public void LoadBootLogo(ReadOnlySpan<byte> headerLogo)
+    {
+        Array.Clear(Vram);
+        int a = 0x0010;
+        for (int i = 0; i < 48 && i < headerLogo.Length; i++)
+        {
+            for (int half = 0; half < 2; half++)
+            {
+                int nibble = half == 0 ? headerLogo[i] >> 4 : headerLogo[i] & 0x0F, v = 0;
+                for (int b = 3; b >= 0; b--) v = v << 2 | ((nibble >> b & 1) != 0 ? 3 : 0);
+                Vram[a] = (byte)v; Vram[a + 2] = (byte)v; a += 4;
+            }
+        }
+        ReadOnlySpan<byte> registered = stackalloc byte[] { 0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C };
+        for (int i = 0; i < 8; i++) Vram[0x0190 + i * 2] = registered[i];
+        for (int i = 0; i < 12; i++) { Vram[0x1904 + i] = (byte)(1 + i); Vram[0x1924 + i] = (byte)(13 + i); }
+        Vram[0x1910] = 0x19;
+    }
+
     // =================================================================================== timing
     private int tickEnd, tickHalf;    // the M-cycle being run: its last dot, and half its length
 
