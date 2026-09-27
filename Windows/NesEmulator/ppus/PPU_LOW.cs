@@ -692,6 +692,7 @@ public class PPU_LOW : IPPU, IPpuFrameClock
 					if (mode == 1) return vram[(ushort)(0x400 + inner)]; // CIRAM B
 				}
 			}
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt is not Mapper5 && mNt.TryPpuNametableRead(address, out byte ntv)) return ntv; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			return vram[mirrored];
 		}
@@ -728,6 +729,7 @@ public class PPU_LOW : IPPU, IPpuFrameClock
 					if (mode == 1) { vram[(ushort)(0x400 + inner)] = value; return; }
 				}
 			}
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt is not Mapper5 && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			vram[mirrored] = value;
 		}

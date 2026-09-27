@@ -410,7 +410,11 @@ public class PPU_ULQ : IPPU, IPpuFrameClock
             if (bus?.cartridge == null) return 0;
             return bus.cartridge.PPURead(address);
         }
-        else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); return vram[mirrored]; }
+        else if (address <= 0x3EFF)
+        {
+            if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte ntv)) return ntv; // cartridge-supplied nametables (as PPU_FIX)
+            ushort mirrored = MirrorVRAMAddress(address); return vram[mirrored];
+        }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; return paletteRAM[mirrored]; }
         return 0;
     }
@@ -424,7 +428,11 @@ public class PPU_ULQ : IPPU, IPpuFrameClock
             if (bus?.cartridge == null) return;
             bus.cartridge.PPUWrite(address, value);
         }
-        else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); vram[mirrored] = value; }
+        else if (address <= 0x3EFF)
+        {
+            if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
+            ushort mirrored = MirrorVRAMAddress(address); vram[mirrored] = value;
+        }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; paletteRAM[mirrored] = value; }
     }
 

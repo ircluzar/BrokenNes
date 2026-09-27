@@ -936,7 +936,7 @@ namespace NesEmulator
 					// only on register access is not enough on its own - SMB3's MMC3 IRQ is still
 					// noticed a batch late, which put its status-bar split on the wrong line. Every
 					// other PPU core keeps the batched timing its goldens were recorded against.
-					bool perInstruction = bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is PPU_FIX;
+					bool perInstruction = bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is IPpuFixTiming;
 					int dynamicThreshold = perInstruction ? 1 : ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
@@ -950,7 +950,7 @@ namespace NesEmulator
 					// matched in precise timing but not in default. Costs 15-21% over per-instruction.
 					// Hoisted out of the loop because it cannot change mid-frame and this is the
 					// hot loop: with it off the only cost is this one local read.
-					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is PPU_FIX;
+					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is IPpuFixTiming;
 					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 					bus!.PreciseSteppingActive = precisePpu;
 					// The 6502 spends 8 cycles on its reset sequence before the first opcode fetch, and the
@@ -960,7 +960,7 @@ namespace NesEmulator
 					if (resetSequencePending)
 					{
 						resetSequencePending = false;
-						if (bus!.cpu is CPU_FIX && bus!.ppu is PPU_FIX) FlushBatch(ResetSequenceCycles);
+						if (bus!.cpu is CPU_FIX && bus!.ppu is IPpuFixTiming) FlushBatch(ResetSequenceCycles);
 					}
 					while (globalCpuCycle < frameEndCycle)
 					{
@@ -974,7 +974,7 @@ namespace NesEmulator
 								// predictive split below uses; the difference is only that it is
 								// armed unconditionally, which makes the DMC prediction redundant.
 								bus!.MarkInstructionStart(globalCpuCycle);
-								if (InstructionTracer.Enabled && bus!.ppu is PPU_FIX tracedPpu) { InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot); InstructionTracer.NotePpuScroll(tracedPpu.ProbeV, tracedPpu.ProbeFineX); }
+								if (InstructionTracer.Enabled && bus!.ppu is IPpuFixTiming tracedPpu) { InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot); InstructionTracer.NotePpuScroll(tracedPpu.ProbeV, tracedPpu.ProbeFineX); }
 								bus!.BeginPreciseWindow();
 								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
 								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
@@ -1089,7 +1089,7 @@ namespace NesEmulator
 			// ahead of the CPU by the remainder every frame, never to be credited back, and vblank
 			// would land at a wandering CPU cycle (measured against Mesen as NMI-to-NMI periods
 			// jittering +/-2 cycles, which reshuffles any RNG stirred in an idle loop - Lifeforce).
-			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed && bus!.ppu is not PPU_FIX)
+			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed && bus!.ppu is not IPpuFixTiming)
 			{
 				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
 				if (dotDelta > 0) bus!.ppu!.Step((int)dotDelta);

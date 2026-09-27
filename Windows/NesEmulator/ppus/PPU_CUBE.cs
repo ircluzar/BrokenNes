@@ -795,6 +795,7 @@ public class PPU_CUBE : IPPU, IPpuFrameClock
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte ntv)) return ntv; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			return vram[mirrored];
 		}
@@ -819,6 +820,7 @@ public class PPU_CUBE : IPPU, IPpuFrameClock
 		}
 		else if (address >= 0x2000 && address <= 0x3EFF)
 		{
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			vram[mirrored] = value;
 		}

@@ -1,18 +1,25 @@
 namespace NesEmulator
 {
-// FIX family: the exclusive target for ongoing hardware-accuracy work (see
-// project_fix_core_family memory). Started as an exact duplicate of PPU_FMC, the "standard
-// control component" baseline - every other named core is either a speed/perf tradeoff or an
-// intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
-// frozen going forward. Accuracy fixes land here, not on PPU_FMC or any other named core.
-public class PPU_FIX : IPPU, IPpuFixTiming
+// FIXS: a variant chip forked from PPU_FIX (2026-09-27) - the same dot-accurate NES PPU, plus an off-spec "SNES
+// support" extension so a SNES picture can be translated onto it with its layers kept apart instead of flattened:
+//   * up to 4 extra background layers (SNES BG1-BG4), each with its own 256-tile 2-bit pattern table, a 64x64-tile
+//     map (the SNES's biggest) with a palette and a priority bit per tile, and its own scroll;
+//   * an extended sprite list of 8x8 pieces (flips, 4 priorities) with configurable limits - by default enough for
+//     everything a SNES frame can show (1024 pieces, 34 per line: the SNES's own per-line limit);
+//   * a priority ladder: every layer tile and sprite pixel gets a z from its priority bit(s), highest opaque z wins,
+//     colour 0 is see-through. The bridge loads the ladder of the SNES mode being translated.
+// What stays NES: 2-bit tiles, the 2C02's colours, the 4 background + 4 sprite palettes of 3 colours sharing one
+// backdrop, emphasis and greyscale. With the extension empty the chip IS PPU_FIX (byte-identical output), and it
+// has the FIX-family timing contract, so the board runs it cycle-precise exactly like its parent.
+// PPU_FIX itself stays the untouched checkpoint.
+public class PPU_FIXS : IPPU, IPpuFixTiming
 {
 	// Core metadata (new IPPU contract)
-	public string CoreName => "Fix";
-	public string Description => "Hardware-accuracy target core, forked from the Famiclone (FMC) baseline. All ongoing PPU accuracy work lands here; the other named cores are frozen.";
+	public string CoreName => "FixS";
+	public string Description => "PPU_FIX plus an off-spec SNES-support extension: up to 4 extra background layers, an extended sprite list and a SNES-style priority ladder, all within NES tiles and palettes. Draws exactly like PPU_FIX until the extension is used.";
 	public int Performance => 0;
 	public int Rating => 3;
-	public string Category => "Accuracy";
+	public string Category => "Experimental";
 	private Bus bus;
 
 	private byte[] vram; //2KB VRAM
@@ -164,7 +171,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming
 	private byte[]? frameBuffer = null;
 	private int staticFrameCounter = 0;
 
-	public PPU_FIX(Bus bus)
+	public PPU_FIXS(Bus bus)
 	{
 		this.bus = bus;
 
@@ -585,9 +592,10 @@ public class PPU_FIX : IPPU, IPpuFixTiming
 
 		int mask = PPUMASK;
 		int colour;
+		if (x == 0) BuildExtLine();
 		if ((mask & 0x18) == 0)
 		{
-			colour = paletteRAM[0]; // rendering off: the backdrop
+			colour = extLineActive && extZ[x] != 0 ? extColour[x] : paletteRAM[0]; // rendering off: the backdrop (or the extension)
 		}
 		else
 		{
@@ -615,13 +623,122 @@ public class PPU_FIX : IPPU, IPpuFixTiming
 					break;
 				}
 			}
-			if (spPix != 0 && (bgPix == 0 || spFront)) colour = paletteRAM[0x10 | (spPal << 2) | spPix];
-			else if (bgPix != 0) colour = paletteRAM[(bgPal << 2) | bgPix];
-			else colour = paletteRAM[0];
+			if (!extLineActive)
+			{
+				if (spPix != 0 && (bgPix == 0 || spFront)) colour = paletteRAM[0x10 | (spPal << 2) | spPix];
+				else if (bgPix != 0) colour = paletteRAM[(bgPal << 2) | bgPix];
+				else colour = paletteRAM[0];
+			}
+			else
+			{
+				// The extension is in use: the native background and sprites join the ladder too.
+				int z = 0; colour = paletteRAM[0];
+				if (bgPix != 0) { z = NativeBgZ; colour = paletteRAM[(bgPal << 2) | bgPix]; }
+				if (spPix != 0) { int sz = spFront ? NativeSpriteFrontZ : NativeSpriteBehindZ; if (sz > z) { z = sz; colour = paletteRAM[0x10 | (spPal << 2) | spPix]; } }
+				if (extZ[x] > z) colour = extColour[x];
+			}
 		}
 		int pi = emphBase + (colour & greyMask) * 3;
 		int fi = (scanline * ScreenWidth + x) * 4;
 		fb[fi] = EmphasisPaletteBytes[pi]; fb[fi + 1] = EmphasisPaletteBytes[pi + 1]; fb[fi + 2] = EmphasisPaletteBytes[pi + 2]; fb[fi + 3] = 255;
+	}
+
+	// =========================================================================== SNES-support extension
+	/// <summary>One extra background layer: 256 tiles of NES 2-bit pattern data, a 64x64-tile map, and per-tile attributes
+	/// (bits 0-1 background palette 0-3, bit 2 priority). Scrolls through the 512x512 map with wrap-around.</summary>
+	public sealed class ExtLayer
+	{
+		public bool Enabled;
+		public readonly byte[] Chr = new byte[256 * 16];
+		public readonly byte[] Map = new byte[64 * 64];
+		public readonly byte[] Attr = new byte[64 * 64];
+		public int ScrollX, ScrollY;
+		/// <summary>Ladder positions of this layer's priority-0 and priority-1 tiles.</summary>
+		public byte ZLow = 1, ZHigh = 1;
+	}
+	/// <summary>One 8x8 sprite piece of the extended list. Tile indexes <see cref="ExtSpriteChr"/> (512 tiles); Palette is a
+	/// NES sprite palette 0-3; Priority 0-3 picks <see cref="SpriteZ"/>. Earlier entries are in front of later ones.</summary>
+	public struct ExtSprite { public short X, Y; public ushort Tile; public byte Palette, Priority; public bool HFlip, VFlip; }
+
+	public const int ExtLayerCount = 4, ExtSpriteTiles = 512;
+	public readonly ExtLayer[] Layers = { new ExtLayer(), new ExtLayer(), new ExtLayer(), new ExtLayer() };
+	public readonly byte[] ExtSpriteChr = new byte[ExtSpriteTiles * 16];
+	public ExtSprite[] ExtSprites = new ExtSprite[1024];
+	public int ExtSpriteCount;
+	/// <summary>Sprite limits: pieces in the list that are drawn at all, and pieces per line (later ones drop out).</summary>
+	public int ExtSpriteLimit = 1024, ExtSpritesPerLine = 34;
+	/// <summary>Lines the extension draws on (a 224-line SNES picture centred on the NES screen: 8-231); outside, only the native picture.</summary>
+	public int ExtFirstLine = 0, ExtLastLine = 239;
+	/// <summary>Ladder positions (higher = in front) of sprite priorities 0-3, and of the native NES picture when the
+	/// extension is active.</summary>
+	public readonly byte[] SpriteZ = { 3, 6, 9, 12 };
+	public byte NativeBgZ = 5, NativeSpriteFrontZ = 10, NativeSpriteBehindZ = 4;
+	/// <summary>Pieces the per-line limit dropped in the last frame (a line's worth of one piece counts once per line).</summary>
+	public int ExtSpriteLineDrops { get; private set; }
+
+	private bool extLineActive;
+	private readonly byte[] extColour = new byte[256], extZ = new byte[256];
+	private readonly bool[] extSprTaken = new bool[256];
+
+	/// <summary>At the start of each visible line: the extension's layers and sprites for this line, best z per pixel.</summary>
+	private void BuildExtLine()
+	{
+		if (scanline == 0) ExtSpriteLineDrops = 0;
+		bool any = ExtSpriteCount > 0;
+		for (int k = 0; k < ExtLayerCount && !any; k++) any = Layers[k].Enabled;
+		extLineActive = any;
+		if (!any) return;
+		System.Array.Clear(extZ);
+		int line = scanline;
+		if (line < ExtFirstLine || line > ExtLastLine) return;
+		for (int k = 0; k < ExtLayerCount; k++)
+		{
+			var L = Layers[k];
+			if (!L.Enabled) continue;
+			int my = (L.ScrollY + line) & 511, row = my & 7, mapRow = (my >> 3) * 64;
+			for (int x = 0; x < 256; x++)
+			{
+				int mx = (L.ScrollX + x) & 511, cell = mapRow + (mx >> 3);
+				int t = L.Map[cell] * 16 + row, bit = 7 - (mx & 7);
+				int p = ((L.Chr[t] >> bit) & 1) | (((L.Chr[t + 8] >> bit) & 1) << 1);
+				if (p == 0) continue;
+				int a = L.Attr[cell];
+				byte z = (a & 4) != 0 ? L.ZHigh : L.ZLow;
+				if (z <= extZ[x]) continue;   // an earlier layer at the same z stays in front
+				extZ[x] = z; extColour[x] = paletteRAM[((a & 3) << 2) | p];
+			}
+		}
+		if (ExtSpriteCount == 0) return;
+		System.Array.Clear(extSprTaken);
+		int onLine = 0, n = System.Math.Min(ExtSpriteCount, ExtSpriteLimit);
+		for (int i = 0; i < n; i++)
+		{
+			ref var sp = ref ExtSprites[i];
+			int r = line - sp.Y;
+			if ((uint)r >= 8 || sp.X <= -8 || sp.X >= 256) continue;
+			if (++onLine > ExtSpritesPerLine) { ExtSpriteLineDrops++; continue; }
+			if (sp.VFlip) r = 7 - r;
+			int t = (sp.Tile % ExtSpriteTiles) * 16 + r;
+			byte lo = ExtSpriteChr[t], hi = ExtSpriteChr[t + 8];
+			byte z = SpriteZ[sp.Priority & 3];
+			for (int c = 0; c < 8; c++)
+			{
+				int x = sp.X + c;
+				if ((uint)x >= 256 || extSprTaken[x]) continue;
+				int bit = sp.HFlip ? c : 7 - c;
+				int p = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+				if (p == 0) continue;
+				extSprTaken[x] = true;   // the first sprite with a pixel here owns it, in front of or behind the layers
+				if (z > extZ[x]) { extZ[x] = z; extColour[x] = paletteRAM[0x10 | ((sp.Palette & 3) << 2) | p]; }
+			}
+		}
+	}
+
+	/// <summary>Switch the extension off: the chip draws exactly as PPU_FIX again.</summary>
+	public void ClearExtension()
+	{
+		foreach (var L in Layers) L.Enabled = false;
+		ExtSpriteCount = 0; ExtFirstLine = 0; ExtLastLine = 239;
 	}
 
 	// Pipeline state for savestates: a state is taken wherever RunFrame stopped, usually mid-line,

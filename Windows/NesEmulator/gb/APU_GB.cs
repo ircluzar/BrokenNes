@@ -33,8 +33,9 @@ public readonly struct GbApuChannelView
 /// Output is box-filtered to 48 kHz stereo and high-passed like the real output capacitor.
 /// Written from Pan Docs "Audio", "Audio Registers", "Audio details" and blargg's dmg_sound / cgb_sound notes.
 /// </summary>
-public sealed class APU_GB
+public sealed class APU_GB : IGbApu
 {
+    public string CoreName => "GB";
     private const int BaseClock = 4194304;
     public int SampleRate => 48000;
 

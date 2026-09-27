@@ -26,8 +26,10 @@ public interface IGbCpuBus
 /// and internal cycle issued to the bus in hardware order, so the timer, PPU and DMA see the CPU's accesses at
 /// the right M-cycle. Written from Pan Docs and the gbdev opcode tables.
 /// </summary>
-public sealed class CPU_GB
+public sealed class CPU_GB : IGbCpu
 {
+    public string Id => "SM83";
+    ushort IGbCpu.PC => PC;
     public const byte FZ = 0x80, FN = 0x40, FH = 0x20, FC = 0x10;
 
     public byte A, F, B, C, D, E, H, L;
@@ -357,6 +359,8 @@ public sealed class CPU_GB
 
     /// <summary>Leave STOP (a joypad press does this on hardware).</summary>
     public void Wake() { Stopped = false; Halted = false; }
+    /// <summary>Leave the lock-up state (never called by the Game Boy board; a real SM83 stays locked until power-off).</summary>
+    public void Unlock() => Locked = false;
 
     // ------------------------------------------------------------------ savestate
     public void SaveState(System.IO.BinaryWriter w)

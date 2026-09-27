@@ -129,7 +129,7 @@ public class Bus : IBus
 			instructionStartCycle = cpuCycle;
 			accessCountAtInstructionStart = instr.Reads + instr.Writes;
 			// A write that landed past its own cycle already ran this instruction's first dot(s) - count from the true start.
-			InstructionStartDot = ppu is PPU_FIX fixPpu ? fixPpu.DotCounter + (preciseCarryDots < 0 ? preciseCarryDots : 0) : -1;
+			InstructionStartDot = ppu is IPpuFixTiming fixPpu ? fixPpu.DotCounter + (preciseCarryDots < 0 ? preciseCarryDots : 0) : -1;
 		}
 		// The access being performed now: it has already been counted, hence the -1.
 		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);

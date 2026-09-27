@@ -4,6 +4,17 @@ using System.IO;
 namespace NesEmulator.Gb;
 
 /// <summary>
+/// OFF-SPEC VARIANT of <see cref="PPU_GB"/>: the same Game Boy / Game Boy Color picture processor with a bigger screen,
+/// for showing other consoles' games through a Game Boy picture chip without cropping them to 160x144 (the mix lab's
+/// NES PPU id "DMGX" drives it at 256x240). Everything else stays Game Boy: 2-bit tiles from the same 384-tile VRAM
+/// (768 on CGB), the one 32x32-tile (256x256 pixel) background map that wraps, the window, 4 shades or 8 CGB palettes,
+/// 40 objects with 10 per line, OAM coordinates in bytes (no object right of X 247 or below Y 239) and the dot-level
+/// pipeline below. Only the frame is stretched: a line gets Width - 160 extra dots (the same HBlank budget after the
+/// longer mode 3) and the frame Height + 10 lines (the same 10-line VBlank), so LY runs to Height + 9 and the frame
+/// takes longer - a Game Boy game driven by it runs its logic at the same rate per frame but sees more CPU time.
+///
+/// The stock timeline below (dots 452/454, line 153, ...) maps to DotsPerLine - 4 / - 2 and the last line.
+///
 /// Game Boy / Game Boy Color picture processor, dot accurate. Each line runs OAM scan, then a pixel-FIFO
 /// drawing phase (background/window fetcher feeding an 8-pixel FIFO, objects fetched into their own FIFO and
 /// stalling the output as they are met), then HBlank; STAT, LY/LYC, interrupts and CPU access blocking follow
@@ -19,9 +30,11 @@ namespace NesEmulator.Gb;
 /// at dot 452 of the line before, LY=LYC and VBlank at 454. Calibrated against gbmicrotest, Mooneye and the
 /// Mealybug Tearoom mid-scanline tests.
 /// </summary>
-public sealed class PPU_GB
+public sealed class PPU_GBX
 {
-    public const int Width = 160, Height = 144, DotsPerLine = 456, Lines = 154;
+    public readonly int Width, Height, DotsPerLine, Lines;
+    /// <summary>The last line of the frame (153 on a real Game Boy), and the two interrupt-side events of each line.</summary>
+    private readonly int LastLine, PreLineDot, IrqLineDot;
 
     public readonly GbModel Model;
     /// <summary>CGB hardware running a DMG game: DMG registers, colour from the compatibility palettes.</summary>
@@ -31,10 +44,10 @@ public sealed class PPU_GB
     public readonly byte[] Vram = new byte[0x4000];      // 2 banks on CGB
     public readonly byte[] Oam = new byte[0xA0];
     public readonly byte[] BgPalRam = new byte[64], ObjPalRam = new byte[64];
-    /// <summary>0xFFRRGGBB, 160x144. Written pixel by pixel; complete at VBlank.</summary>
-    public readonly uint[] FrameBuffer = new uint[Width * Height];
+    /// <summary>0xFFRRGGBB, Width x Height. Written pixel by pixel; complete at VBlank.</summary>
+    public readonly uint[] FrameBuffer;
     /// <summary>Per pixel: DMG shade 0-3 after palette mapping (DMG), or the colour index 0-3 (CGB). Handy for bridges.</summary>
-    public readonly byte[] ShadeBuffer = new byte[Width * Height];
+    public readonly byte[] ShadeBuffer;
     /// <summary>The four DMG shades as 0xFFRRGGBB (lightest first). Frontends can recolour.</summary>
     public uint[] DmgColors = { 0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000 };
 
@@ -42,7 +55,7 @@ public sealed class PPU_GB
     private byte statEnable;          // STAT bits 3-6
     private byte vbk, bcps, ocps, opri;
     public long FrameCount { get; private set; }
-    /// <summary>Raised as each visible line (0-143) begins, before it is drawn. For tools and cross-console bridges
+    /// <summary>Raised as each visible line (0 to Height - 1) begins, before it is drawn. For tools and cross-console bridges
     /// that need the scroll/palette registers each line was drawn with.</summary>
     public Action<int>? LineStarted;
 
@@ -54,8 +67,16 @@ public sealed class PPU_GB
     /// <summary>Raised when HBlank starts on a visible line (CGB HBlank DMA).</summary>
     public Action? HBlankStarted;
 
-    public PPU_GB(GbModel model)
+    /// <param name="width">Screen width, 160-256 in steps of 8 (the background map is 256 pixels wide).</param>
+    /// <param name="height">Screen height, 144-240 (LY is a byte and the frame keeps its 10 VBlank lines).</param>
+    public PPU_GBX(GbModel model, int width = 256, int height = 240)
     {
+        if (width < 160 || width > 256 || (width & 7) != 0) throw new ArgumentOutOfRangeException(nameof(width), "160-256, a multiple of 8");
+        if (height < 144 || height > 240) throw new ArgumentOutOfRangeException(nameof(height), "144-240");
+        Width = width; Height = height;
+        DotsPerLine = 456 + (width - 160); Lines = height + 10;
+        LastLine = Lines - 1; PreLineDot = DotsPerLine - 4; IrqLineDot = DotsPerLine - 2;
+        FrameBuffer = new uint[width * height]; ShadeBuffer = new byte[width * height];
         Model = model;
         for (int i = 0; i < 64; i += 2) { BgPalRam[i] = 0xFF; BgPalRam[i + 1] = 0x7F; ObjPalRam[i] = 0xFF; ObjPalRam[i + 1] = 0x7F; }
     }
@@ -95,10 +116,10 @@ public sealed class PPU_GB
     public void ResetPostBoot()
     {
         Lcdc = 0x91; Bgp = 0xFC; Obp0 = 0xFF; Obp1 = 0xFF; Scx = Scy = Wy = Wx = Lyc = 0; statEnable = 0;
-        ly = 153; dot = 396; visMode = 1; drawing = false; lyReadsZero = true; lyCmpVis = 0; lyCmpIrq = 0;
+        ly = LastLine; dot = DotsPerLine - 60; visMode = 1; drawing = false; lyReadsZero = true; lyCmpVis = 0; lyCmpIrq = 0;
         src0 = false; src1 = true; src2 = false; statLine = false;
         windowLine = 0; windowYTriggered = false; firstLine = false; skipFrame = false; offDots = 0;
-        phase = PhPreLine; nextEvent = 452;
+        phase = PhPreLine; nextEvent = PreLineDot;
         Array.Fill(FrameBuffer, DmgColors[0]);
         UpdateLyc(); UpdateStatLine();
     }
@@ -180,7 +201,7 @@ public sealed class PPU_GB
             case PhLineStart:
                 NextLine();
                 if (ly == 0) { src1 = false; src2 = true; UpdateStatLine(); }   // line 0's OAM-scan source comes with the line change
-                if (ly == 153) { phase = PhL153Dot2; nextEvent = 2; }
+                if (ly == LastLine) { phase = PhL153Dot2; nextEvent = 2; }
                 else { phase = PhDot4; nextEvent = 4; }
                 break;
             case PhDot4:
@@ -188,9 +209,9 @@ public sealed class PPU_GB
                 if (ly < Height) { if (!firstLine) visMode = 2; }
                 else if (ly == Height) visMode = 1;
                 lyCmpVis = ly;
-                if (ly == 153) { lyReadsZero = true; phase = PhL153Dot6; nextEvent = 6; }
+                if (ly == LastLine) { lyReadsZero = true; phase = PhL153Dot6; nextEvent = 6; }
                 else if (ly < Height) { phase = PhDraw; nextEvent = DrawStart; }
-                else { phase = PhPreLine; nextEvent = 452; }
+                else { phase = PhPreLine; nextEvent = PreLineDot; }
                 UpdateLyc(); UpdateStatLine();
                 break;
             // Line 153: LY reads 0 from dot 4, and both comparisons pass through "no value" on the way from 153 to 0.
@@ -208,7 +229,7 @@ public sealed class PPU_GB
                 break;
             case PhL153Dot12:
                 lyCmpVis = 0; UpdateLyc(); UpdateStatLine();
-                phase = PhPreLine; nextEvent = 452;
+                phase = PhPreLine; nextEvent = PreLineDot;
                 break;
             case PhDraw:              // OAM scan done, drawing starts
                 src2 = false; UpdateStatLine();
@@ -221,23 +242,23 @@ public sealed class PPU_GB
             case PhHblank:
                 visMode = 0;
                 HBlankStarted?.Invoke();
-                phase = PhPreLine; nextEvent = 452;
+                phase = PhPreLine; nextEvent = PreLineDot;
                 break;
             case PhPreLine:
             {
-                int next = ly == 153 ? 0 : ly + 1;
+                int next = ly == LastLine ? 0 : ly + 1;
                 if (next <= Height && next != 0)
                 {
                     // The OAM-scan source rises for the next visible line (and also, as a quirk, for line 144).
                     src1 = false; src2 = true;
                 }
                 UpdateLyc(); UpdateStatLine();
-                phase = PhIrqLine; nextEvent = 454;
+                phase = PhIrqLine; nextEvent = IrqLineDot;
                 break;
             }
             case PhIrqLine:
             {
-                int next = ly == 153 ? 0 : ly + 1;
+                int next = ly == LastLine ? 0 : ly + 1;
                 lyCmpIrq = next;
                 if (next == Height)
                 {

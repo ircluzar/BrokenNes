@@ -44,6 +44,13 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 
 	// Cached nametable mirroring map (0x1000 bytes covering $2000-$2FFF)
 	private readonly ushort[] ntMirror = new ushort[0x1000];
+	/// <summary>A background nametable fetch: the cartridge may supply the byte (IMapper.TryPpuNametableRead, as PPU_FIX
+	/// honours it - MMC5 ExRAM/fill, cartridges that stream their own nametables); otherwise CIRAM through the mirroring map.</summary>
+	private byte NtFetch(int address)
+	{
+		if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead((ushort)(0x2000 | (address & 0x0FFF)), out byte v)) return v;
+		return vram[ntMirror[address & 0x0FFF]];
+	}
 	private Mirroring lastMirroringMode; // track last mode to rebuild map only when changed
 
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
@@ -402,7 +409,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 				// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
 				if (bus!.cartridge!.mapper is IMapper mapperNt1) mapperNt1.PpuNtFetch((ushort)tileAddr);
 				// Fast path: pattern index fetch (nametable region) - avoid full Read overhead
-				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]];
+				byte tileIndex = NtFetch(tileAddr);
 				int fineY = (renderV >> 12) & 0x7;
 				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				ulong rowBits;
@@ -436,7 +443,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 					int attributeX = coarseX / 4;
 					int attributeY = coarseY / 4;
 					int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-					byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
+					byte attrByte = NtFetch(attrAddr); // fast nametable attribute read
 					int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 					paletteIndex = (attrByte >> attrShift) & 0x03;
 				}
@@ -496,7 +503,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 					int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 					// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
 					if (bus!.cartridge!.mapper is IMapper mapperNt2) mapperNt2.PpuNtFetch((ushort)tileAddr);
-					byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
+					byte tileIndex = NtFetch(tileAddr); // fast nametable fetch
 					int fineY = (rv2 >> 12) & 0x7;
 					int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
@@ -531,7 +538,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 							int attributeX = coarseX / 4;
 							int attributeY = coarseY / 4;
 							int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-							byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+							byte attrByte = NtFetch(attrAddr);
 							int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 							paletteIndex = (attrByte >> attrShift) & 0x03;
 						}
