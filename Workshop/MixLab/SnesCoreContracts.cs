@@ -115,5 +115,9 @@ public static class MixConfig
     public static string GbApu = "GB";
     /// <summary>NES APU that makes the sound for the Game Boy APU id "NES" (may be "SNES": Game Boy -> NES regs -> S-DSP).</summary>
     public static string GbBackNesApu = "FIX";
+    /// <summary>Game Boy model the NES PPU id "DMG" draws with: "dmg" (4 greens) or "cgb" (colour).</summary>
+    public static string GbPpuModel = "dmg";
+    /// <summary>Which 160x144 part of the 256x240 NES screen the Game Boy PPU shows (PPU_DMG).</summary>
+    public static int GbCropX = 48, GbCropY = 48;
     public static bool RescueFront = System.Environment.GetEnvironmentVariable("MIX_RESCUE_FRONT") == "1";
 }

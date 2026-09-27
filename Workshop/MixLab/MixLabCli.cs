@@ -64,7 +64,7 @@ internal static class MixLabCli
     private static int RunNes(Func<string, string, string> opt)
     {
         string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", "mix");
-        MixConfig.SnesCpu = opt("snes-cpu", "SFC"); MixConfig.SnesPpu = opt("snes-ppu", "SFC"); MixConfig.NesFrontPpu = opt("nes-front", "FIX"); MixConfig.SnesApu = opt("snes-apu", "SFC"); MixConfig.NesFrontApu = opt("nes-front-apu", "FIX");
+        MixConfig.SnesCpu = opt("snes-cpu", "SFC"); MixConfig.SnesPpu = opt("snes-ppu", "SFC"); MixConfig.NesFrontPpu = opt("nes-front", "FIX"); MixConfig.SnesApu = opt("snes-apu", "SFC"); MixConfig.NesFrontApu = opt("nes-front-apu", "FIX"); MixConfig.GbPpuModel = opt("gb-model", "dmg"); { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); } MixConfig.GbApu = opt("gb-apu", "GB");
         int frames = int.Parse(opt("frames", "600"));
         if (opt("snes-fastpaths", "1") == "0") NesEmulator.Snes.PPU_SFC.FastPaths = false;
         var pngAt = Frames(opt("png-at", frames.ToString()));
@@ -80,6 +80,10 @@ internal static class MixLabCli
             if (!get().EndsWith("_" + id, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"{kind} core {id} not applied (got {get()})"); return 3; }
         }
         var bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
+        // Bridge PPUs wrap PPU_FIX, and the board only runs PPU_FIX timing precisely when the PPU *is* PPU_FIX: the wrapped
+        // game then corrupts (CHR-RAM, MMC3 splits). SpeedConfig has an opt-in for other PPU cores - turn it on for them.
+        if (opt("precise", "auto") is var pr && (pr == "1" || (pr == "auto" && bus.ppu is PPU_SNES or PPU_DMG)))
+        { bus.SpeedConfig.CpuCyclePrecisePpu = true; bus.SpeedConfig.NtscAccurateFrameRate = true; }
         var held = new bool[8]; int crashFrame = -1;
         string wavPath = opt("wav", ""); var pcm = new List<short>();
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -120,6 +124,7 @@ internal static class MixLabCli
     // ------------------------------------------------------------------ SNES game, downgraded onto NES PPUs
     private static int RunSnes2Nes(Func<string, string, string> opt)
     {
+        MixConfig.GbPpuModel = opt("gb-model", "dmg"); { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); }
         string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", Path.GetFileNameWithoutExtension(rom));
         int frames = int.Parse(opt("frames", "600"));
         if (opt("snes-fastpaths", "1") == "0") NesEmulator.Snes.PPU_SFC.FastPaths = false;
