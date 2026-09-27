@@ -60,12 +60,24 @@ public sealed class BOARD_SFC : ISnesBus
     /// <param name="apu">Audio unit; defaults to the silent <see cref="APU_HLE"/> loader stand-in.</param>
     /// <param name="coprocessor">Cartridge chip, when the game has one and its firmware was found.</param>
     public BOARD_SFC(SnesCartridge cart, ISnesApu? apu = null, ISnesCoprocessor? coprocessor = null)
+        : this(cart, apu, coprocessor, cpuFactory: null, ppuFactory: null) { }
+
+    /// <summary>
+    /// Same board, with the CPU and/or PPU built by the caller (cross-console bridges). Null factories
+    /// build the stock parts. <paramref name="cpuFactory"/> receives this board as the CPU's bus; a
+    /// factory that hands the CPU a wrapper instead of the board itself gets the interface bus path
+    /// (<see cref="CPU_SFC.DirectBus"/> only applies when the bus is the board). Whatever PPU is
+    /// supplied, the board installs its own <see cref="PPU_SFC.CounterSource"/> (H/V counter latch).
+    /// </summary>
+    public BOARD_SFC(SnesCartridge cart, ISnesApu? apu, ISnesCoprocessor? coprocessor,
+                     Func<ISnesBus, CPU_SFC>? cpuFactory, Func<PPU_SFC>? ppuFactory)
     {
         Cart = cart;
         Coprocessor = coprocessor;
         Apu = apu ?? new APU_HLE();
-        Ppu = new PPU_SFC { CounterSource = () => (lineClock >> 2, Scanline) };
-        Cpu = new CPU_SFC(this);
+        Ppu = ppuFactory?.Invoke() ?? new PPU_SFC();
+        Ppu.CounterSource = () => (lineClock >> 2, Scanline);
+        Cpu = cpuFactory?.Invoke(this) ?? new CPU_SFC(this);
         Coprocessor?.Attach(level => { chipIrq = level; Cpu.SetIrq(irqFlag || chipIrq); }, BuildPageTable);
         Coprocessor?.AttachBusProbe(() => busAddress);
         for (int i = 0; i < 0x80; i++) dmaRegs[i] = 0xFF;

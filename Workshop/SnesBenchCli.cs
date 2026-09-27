@@ -25,7 +25,7 @@ internal static class SnesBenchCli
 {
     private const string Usage =
         "Usage: --snesbench --rom <game.sfc> [--preset smw] [--input \"frame:Buttons,...\"] [--frames N]\n" +
-        "                   [--apu SFC|HLE] [--repeat N] [--breakdown] [--golden file.json] [--reference-paths]";
+        "                   [--apu SFC|HLE] [--repeat N] [--breakdown] [--golden file.json] [--reference-paths] [--injected]";
 
     /// <summary>Title -> file select -> Yoshi's House -> overworld (reached ~frame 4000 with APU_SFC).</summary>
     private static string SmwScript()
@@ -64,6 +64,13 @@ internal static class SnesBenchCli
     }
 
     /// <summary>Exhaustive-where-feasible equivalence checks between fast helpers and their references.</summary>
+    private sealed class PassThroughBus(ISnesBus inner) : ISnesBus
+    {
+        public byte Read(uint address) => inner.Read(address);
+        public void Write(uint address, byte value) => inner.Write(address, value);
+        public void Idle() => inner.Idle();
+    }
+
     private static int SelfCheck()
     {
         long checks = 0, bad = 0;
@@ -102,7 +109,7 @@ internal static class SnesBenchCli
         if (args.Length > 1 && args[1] == "--selfcheck") return SelfCheck();
         string? romPath = null, input = null, apuChoice = null, goldenPath = null, preset = null, abSwitch = null;
         int frames = 4300, repeat = 3;
-        bool breakdown = false;
+        bool breakdown = false, injected = false;
         try
         {
             for (int i = 1; i < args.Length; i++)
@@ -118,6 +125,7 @@ internal static class SnesBenchCli
                     case "--breakdown": breakdown = true; break;
                     case "--golden": goldenPath = args[++i]; break;
                     case "--reference-paths": SetFastPaths(false); break;
+                    case "--injected": injected = true; break;                 // CPU/PPU via the factory constructor, CPU on a wrapped bus
                     case "--ab": abSwitch = args[++i]; if (!AbSwitches.ContainsKey(abSwitch)) throw new FormatException($"unknown --ab switch '{abSwitch}' ({string.Join(", ", AbSwitches.Keys)})"); break;
                     default: Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}"); return 2;
                 }
@@ -155,7 +163,12 @@ internal static class SnesBenchCli
                 var cpuBefore = Process.GetCurrentProcess().TotalProcessorTime;
                 SnesProfiler.Enabled = breakdown;
                 SnesProfiler.Reset();
-                var board = new BOARD_SFC(SnesCartridge.Load(file), SnesApuChoice.Create(apuChoice));
+                // --injected builds the board the way a cross-console bridge does: caller-made PPU and a CPU
+                // whose bus is a pass-through wrapper (so the interface path, not DirectBus). Must hash identically.
+                var board = injected
+                    ? new BOARD_SFC(SnesCartridge.Load(file), SnesApuChoice.Create(apuChoice), null,
+                                    bus => new CPU_SFC(new PassThroughBus(bus)), () => new PPU_SFC())
+                    : new BOARD_SFC(SnesCartridge.Load(file), SnesApuChoice.Create(apuChoice));
                 var g = new Golden { Rom = Path.GetFileName(romPath), Apu = board.Apu.CoreName, Frames = frames, Script = input ?? "" };
                 ulong video = 14695981039346656037UL, audio = 14695981039346656037UL;
                 var samples = new short[8192];
