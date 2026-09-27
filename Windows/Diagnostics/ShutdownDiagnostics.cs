@@ -140,7 +140,7 @@ namespace BrokenNes.Windows.Diagnostics
 
                 Application.ThreadExit += (_, _) => Log("Application.ThreadExit. Stack:\n" + SafeStack());
 
-                InstallVectoredHandler();
+                InstallHardwareFaultLog();
 
                 if (VerboseExceptions)
                 {
@@ -201,88 +201,42 @@ namespace BrokenNes.Windows.Diagnostics
         }
 
         // -----------------------------------------------------------------------------------
-        // Native / structured exception capture.
+        // Hardware-origin managed exceptions.
         //
-        // Managed handlers (UnhandledException, ThreadException) never see a hardware fault or a
-        // stack overflow - the runtime tears the process down without running them, which is
-        // exactly the "no dialog, no log, just gone" signature this class exists to explain. A
-        // vectored exception handler runs before ANY frame-based handler, managed or native, so
-        // it is the only in-process place that can name a 0xC0000005 or a 0xC00000FD.
+        // This used to be a vectored exception handler (AddVectoredExceptionHandler with a managed
+        // delegate), meant to name native faults. It was the crash it was meant to explain: the
+        // runtime implements NullReferenceException and DivideByZeroException as hardware exceptions
+        // (0xC0000005 / 0xC0000094) raised INSIDE managed code, and a first-in-line vectored handler
+        // is called for them before the runtime's own - a reverse P/Invoke into a thread that is
+        // still in cooperative mode, which the runtime answers with a fail-fast: "Invalid Program:
+        // attempted to call a UnmanagedCallersOnly method from managed code", .NET Runtime event
+        // 1023, exit code 0x80131506. So any caught NRE anywhere killed the process (BrokenNes 2
+        // desktop, 2026-09-27; reproduced in isolation). A managed delegate can never safely be a
+        // vectored handler, so it is gone; true native crashes are still recorded by Windows Error
+        // Reporting (Application event log 1000/1001, .NET Runtime 1023).
+        //
+        // What it was really catching - managed code faulting on null, a zero divisor or an
+        // overflow, even when something catches it - is logged here instead, from the managed
+        // FirstChanceException event (safe: it is raised by the runtime, not by the OS). Rate-limited
+        // per exception type so a hot loop cannot flood the log.
         // -----------------------------------------------------------------------------------
 
-        private delegate int VectoredHandler(IntPtr exceptionPointers);
+        private const int HardwareFaultLogLimit = 20;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> hardwareFaultCounts = new();
 
-        // Held in a static field on purpose: if this delegate is collected, the native callback
-        // pointer dangles and the "diagnostics" become the crash.
-        private static VectoredHandler? vectoredHandler;
-
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr AddVectoredExceptionHandler(uint first, VectoredHandler handler);
-
-        private const int EXCEPTION_CONTINUE_SEARCH = 0;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct EXCEPTION_RECORD
+        private static void InstallHardwareFaultLog()
         {
-            public uint ExceptionCode;
-            public uint ExceptionFlags;
-            public IntPtr ExceptionRecord;
-            public IntPtr ExceptionAddress;
-            public uint NumberParameters;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct EXCEPTION_POINTERS
-        {
-            public IntPtr ExceptionRecord;
-            public IntPtr ContextRecord;
-        }
-
-        private static void InstallVectoredHandler()
-        {
-            try
+            AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
             {
-                vectoredHandler = ptrs =>
-                {
-                    try
-                    {
-                        var ep = Marshal.PtrToStructure<EXCEPTION_POINTERS>(ptrs);
-                        var er = Marshal.PtrToStructure<EXCEPTION_RECORD>(ep.ExceptionRecord);
-
-                        // 0xE0434352 is every managed throw ("CCR" for CLR) and 0x40010006 is
-                        // OutputDebugString - both far too common to log. Everything listed here
-                        // is fatal or near enough that one line per occurrence is fine.
-                        switch (er.ExceptionCode)
-                        {
-                            case 0xC0000005: // ACCESS_VIOLATION
-                            case 0xC00000FD: // STACK_OVERFLOW
-                            case 0xC0000374: // HEAP_CORRUPTION
-                            case 0xC000041D: // FATAL_USER_CALLBACK_EXCEPTION
-                            case 0x80000003: // BREAKPOINT
-                            case 0xC0000409: // STACK_BUFFER_OVERRUN / FailFast
-                            case 0xC0000006: // IN_PAGE_ERROR
-                            case 0xC000001D: // ILLEGAL_INSTRUCTION
-                            case 0xC0000094: // INTEGER_DIVIDE_BY_ZERO
-                            case 0xC0000095: // INTEGER_OVERFLOW
-                                Log($"*** NATIVE EXCEPTION code=0x{er.ExceptionCode:X8} at 0x{(long)er.ExceptionAddress:X} "
-                                  + $"flags=0x{er.ExceptionFlags:X} (0x1 = non-continuable) ***\n" + SafeStack());
-                                break;
-                        }
-                    }
-                    catch
-                    {
-                        // Never let the diagnostic handler itself fault.
-                    }
-                    return EXCEPTION_CONTINUE_SEARCH; // observe only; change nothing
-                };
-
-                AddVectoredExceptionHandler(1, vectoredHandler);
-                Log("Vectored exception handler installed");
-            }
-            catch (Exception ex)
-            {
-                Log("Could not install vectored exception handler: " + ex.Message);
-            }
+                var ex = e.Exception;
+                if (ex is not (NullReferenceException or DivideByZeroException or OverflowException or AccessViolationException)) return;
+                string key = ex.GetType().Name;
+                int n = hardwareFaultCounts.AddOrUpdate(key, 1, (_, c) => c + 1);
+                if (n > HardwareFaultLogLimit) return;
+                Log($"FirstChance {key} #{n}{(n == HardwareFaultLogLimit ? " (further ones not logged)" : "")} " +
+                    $"[thread {Thread.CurrentThread.ManagedThreadId}]: {ex.Message}\n{SafeStack()}");
+            };
+            Log("Hardware-fault first-chance log installed");
         }
     }
 }

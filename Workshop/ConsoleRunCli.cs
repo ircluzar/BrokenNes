@@ -52,6 +52,13 @@ internal static class ConsoleRunCli
         if (ceiling != "") NesEmulator.Mix.PitchGuard.CeilingHz = float.Parse(ceiling, System.Globalization.CultureInfo.InvariantCulture);
         NesEmulator.Mix.PitchGuard.BlockedNotes = 0;
         NesEmulator.Mix.PitchGuard.Census = args.Contains("--pitch-census") ? new long[128] : null;
+        // --first-chance: report hardware-origin exceptions (null, divide by zero, overflow) even when caught.
+        if (args.Contains("--first-chance"))
+            AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
+            {
+                if (e.Exception is NullReferenceException or DivideByZeroException or OverflowException or IndexOutOfRangeException)
+                    Console.Error.WriteLine($"FIRST-CHANCE {e.Exception.GetType().Name}: {e.Exception.Message}\n{new System.Diagnostics.StackTrace(1, false)}");
+            };
         var pcm = new List<short>();
         var buf = new short[32768]; long samples = 0; var held = PadButtons.None;
         var sw = System.Diagnostics.Stopwatch.StartNew();
