@@ -26,6 +26,10 @@ public sealed class GbCartridge
     public bool SupportsCgb => (CgbFlag & 0x80) != 0;
     public bool RumbleOn => mapper is Mbc5 m && m.Rumble;
     public GbRtc? Rtc => (mapper as Mbc3)?.Clock;
+    /// <summary>MBC7 carts (Kirby Tilt 'n Tumble) carry an accelerometer.</summary>
+    public bool HasTilt => mapper is Mbc7;
+    /// <summary>Accelerometer input for MBC7 carts, in g: +X = tilted right, +Y = tilted towards the player.</summary>
+    public void SetTilt(float x, float y) { if (mapper is Mbc7 m) { m.TiltX = x; m.TiltY = y; } }
 
     private GbCartridge(byte[] rom)
     {
@@ -59,6 +63,9 @@ public sealed class GbCartridge
             case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E:
                 HasRumble = TypeCode >= 0x1C; HasBattery = TypeCode is 0x1B or 0x1E;
                 mapper = new Mbc5(this, HasRumble); MapperName = HasRumble ? "MBC5+RUMBLE" : "MBC5"; break;
+            case 0x22: mapper = new Mbc7(this); MapperName = "MBC7 (tilt)"; HasBattery = true; ramSize = 256; break;
+            case 0xFE: mapper = new Huc3(this); MapperName = "HuC-3"; HasBattery = true; HasRtc = true; break;
+            case 0xFF: mapper = new Huc1(this); MapperName = "HuC-1"; HasBattery = true; break;
             default:
                 throw new NotSupportedException($"Cartridge type ${TypeCode:X2} is not supported yet.");
         }
@@ -73,7 +80,7 @@ public sealed class GbCartridge
     public byte ReadRam(ushort a) => mapper.ReadRam(a);
     public void WriteRam(ushort a, byte v) => mapper.WriteRam(a, v);
     /// <summary>Advance the cartridge's own clock (MBC3 RTC) by T-cycles at the 4.194304 MHz base rate.</summary>
-    public void AdvanceClock(int tCycles) => (mapper as Mbc3)?.Clock?.Advance(tCycles);
+    public void AdvanceClock(int tCycles) { (mapper as Mbc3)?.Clock?.Advance(tCycles); (mapper as Huc3)?.Advance(tCycles); }
 
     public void SaveState(BinaryWriter w) { w.Write(Ram.Length); w.Write(Ram); mapper.SaveState(w); }
     public void LoadState(BinaryReader r) { int n = r.ReadInt32(); r.ReadBytes(n).CopyTo(Ram, 0); mapper.LoadState(r); }
@@ -124,6 +131,201 @@ public sealed class GbCartridge
         public override void WriteRam(ushort a, byte v) { }
         public override void SaveState(BinaryWriter w) => w.Write(bank);
         public override void LoadState(BinaryReader r) => bank = r.ReadInt32();
+    }
+
+    /// <summary>Hudson HuC-1: MBC1-like banking plus an infrared port (no partner, so it never sees light).</summary>
+    private sealed class Huc1 : GbMapper
+    {
+        private bool ir; private int romBank = 1, ramBank;
+        public Huc1(GbCartridge c) : base(c) { }
+        public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(romBank, a);
+        public override void WriteRom(ushort a, byte v)
+        {
+            switch (a >> 13)
+            {
+                case 0: ir = (v & 0x0F) == 0x0E; break;
+                case 1: romBank = v & 0x3F; if (romBank == 0) romBank = 1; break;
+                case 2: ramBank = v & 3; break;
+            }
+        }
+        public override byte ReadRam(ushort a) => ir ? (byte)0xC0 : RamAt(ramBank, a);
+        public override void WriteRam(ushort a, byte v) { if (!ir) RamSet(ramBank, a, v); }
+        public override void SaveState(BinaryWriter w) { w.Write(ir); w.Write(romBank); w.Write(ramBank); }
+        public override void LoadState(BinaryReader r) { ir = r.ReadBoolean(); romBank = r.ReadInt32(); ramBank = r.ReadInt32(); }
+    }
+
+    /// <summary>
+    /// Hudson HuC-3: banking, RAM, infrared and a clock reached through a nibble-wide command port
+    /// ($0B = command, $0C = response, $0D = status). The clock keeps minutes-of-day and a day count.
+    /// </summary>
+    private sealed class Huc3 : GbMapper
+    {
+        private int mode, romBank = 1, ramBank, value, address;
+        private readonly byte[] mem = new byte[256];   // clock nibble memory; $00-$02 minutes, $03-$05 days
+        private long sub;
+        public Huc3(GbCartridge c) : base(c) { }
+        public void Advance(int t)
+        {
+            sub += t;
+            while (sub >= 4194304L * 60)
+            {
+                sub -= 4194304L * 60;
+                int min = mem[0] | mem[1] << 4 | mem[2] << 8, day = mem[3] | mem[4] << 4 | mem[5] << 8;
+                if (++min >= 1440) { min = 0; day = (day + 1) & 0xFFF; }
+                mem[0] = (byte)(min & 15); mem[1] = (byte)(min >> 4 & 15); mem[2] = (byte)(min >> 8 & 15);
+                mem[3] = (byte)(day & 15); mem[4] = (byte)(day >> 4 & 15); mem[5] = (byte)(day >> 8 & 15);
+            }
+        }
+        public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(romBank, a);
+        public override void WriteRom(ushort a, byte v)
+        {
+            switch (a >> 13)
+            {
+                case 0: mode = v & 0x0F; break;
+                case 1: romBank = v & 0x7F; if (romBank == 0) romBank = 1; break;
+                case 2: ramBank = v & 3; break;
+            }
+        }
+        public override byte ReadRam(ushort a) => mode switch
+        {
+            0x0 or 0xA => RamAt(ramBank, a),
+            0xC => (byte)(0x80 | value),
+            0xD => 0x01,                    // the clock is always ready
+            0xE => 0xC0,                    // infrared: dark
+            _ => 0xFF,
+        };
+        public override void WriteRam(ushort a, byte v)
+        {
+            if (mode == 0xA) { RamSet(ramBank, a, v); return; }
+            if (mode != 0xB) return;
+            int arg = v & 0x0F;
+            switch (v >> 4 & 7)
+            {
+                case 1: value = mem[address] & 15; address = (address + 1) & 0xFF; break;   // read and advance
+                case 3: mem[address] = (byte)arg; address = (address + 1) & 0xFF; break;   // write and advance
+                case 4: address = (address & 0xF0) | arg; break;
+                case 5: address = (address & 0x0F) | arg << 4; break;
+                case 6: value = 1; break;                                                  // extended commands: acknowledge
+            }
+        }
+        public override void SaveState(BinaryWriter w) { w.Write(mode); w.Write(romBank); w.Write(ramBank); w.Write(value); w.Write(address); w.Write(mem); w.Write(sub); }
+        public override void LoadState(BinaryReader r) { mode = r.ReadInt32(); romBank = r.ReadInt32(); ramBank = r.ReadInt32(); value = r.ReadInt32(); address = r.ReadInt32(); r.ReadBytes(256).CopyTo(mem, 0); sub = r.ReadInt64(); }
+    }
+
+    /// <summary>
+    /// MBC7: banking, a two-axis accelerometer and a 93LC56 serial EEPROM (128 x 16-bit words, kept in
+    /// <see cref="Ram"/> so battery saves work as usual). Both enable latches must be set to reach $A000.
+    /// </summary>
+    private sealed class Mbc7 : GbMapper
+    {
+        public float TiltX, TiltY;
+        private bool en1, en2; private int romBank = 1;
+        private int latchedX = 0x8000, latchedY = 0x8000;
+        // EEPROM serial state
+        private bool cs, clk, di, doBit = true, writeEnable;
+        private int shift, bits, readWord = -1, readBits, command = -1;
+        public Mbc7(GbCartridge c) : base(c) { }
+        private static readonly bool Log = Environment.GetEnvironmentVariable("GB_MBC7_LOG") == "1";
+        public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(romBank, a);
+        public override void WriteRom(ushort a, byte v)
+        {
+            if (a < 0x2000) en1 = v == 0x0A;
+            else if (a < 0x4000) romBank = v & 0x7F;
+            else if (a < 0x6000) en2 = v == 0x40;
+        }
+        public override byte ReadRam(ushort a)
+        {
+            if (!en1 || !en2 || a >= 0xB000) return 0xFF;
+            return ((a >> 4) & 0x0F) switch
+            {
+                2 => (byte)latchedX, 3 => (byte)(latchedX >> 8), 4 => (byte)latchedY, 5 => (byte)(latchedY >> 8),
+                6 => 0x00,
+                8 => (byte)((cs ? 0x80 : 0) | (clk ? 0x40 : 0) | (di ? 0x02 : 0) | (doBit ? 1 : 0)),
+                _ => 0xFF,
+            };
+        }
+        public override void WriteRam(ushort a, byte v)
+        {
+            if (!en1 || !en2 || a >= 0xB000) return;
+            switch ((a >> 4) & 0x0F)
+            {
+                case 0: if (v == 0x55) { latchedX = latchedY = 0x8000; } break;
+                case 1:
+                    if (v == 0xAA && latchedX == 0x8000)
+                    {
+                        // 1 g is about 0x70 counts either side of the 0x81D0 centre.
+                        latchedX = Math.Clamp(0x81D0 + (int)(TiltX * 0x70), 0, 0xFFFF);
+                        latchedY = Math.Clamp(0x81D0 + (int)(TiltY * 0x70), 0, 0xFFFF);
+                    }
+                    break;
+                case 8: EepromPins((v & 0x80) != 0, (v & 0x40) != 0, (v & 0x02) != 0); break;
+            }
+        }
+
+        private int Word(int i) => Cart.Ram[i * 2] << 8 | Cart.Ram[i * 2 + 1];
+        private void SetWord(int i, int w) { Cart.Ram[i * 2] = (byte)(w >> 8); Cart.Ram[i * 2 + 1] = (byte)w; }
+
+        private void EepromPins(bool newCs, bool newClk, bool newDi)
+        {
+            if (!newCs) { cs = false; clk = newClk; di = newDi; shift = 0; bits = 0; readWord = -1; command = -1; return; }
+            bool rising = newCs && cs && !clk && newClk;
+            cs = true; clk = newClk; di = newDi;
+            if (!rising) return;
+
+            if (readWord >= 0)
+            {
+                // Streaming a READ: the dummy 0 is already on DO; each clock then shifts out one data bit, MSB first,
+                // and sequential reads continue into the next word.
+                doBit = (Word(readWord) >> (16 - readBits) & 1) != 0;
+                if (++readBits > 16) { readBits = 1; readWord = (readWord + 1) & 0x7F; }
+                return;
+            }
+            if (command < 0 && bits == 0 && !di) return;   // wait for the start bit (data words may begin with 0)
+            shift = shift << 1 | (di ? 1 : 0); bits++;
+            if (command < 0 && bits == 11)
+            {
+                int op = shift >> 8 & 3, addr = shift & 0x7F;
+                if (Log) Console.Error.WriteLine($"EEPROM cmd op={op} addr={addr:X2} raw={shift:X3} we={writeEnable}");
+                switch (op)
+                {
+                    case 2: readWord = addr; readBits = 1; doBit = false; shift = 0; bits = 0; return;           // READ
+                    case 3: if (writeEnable) SetWord(addr, 0xFFFF); Done(); return;                            // ERASE
+                    case 1: command = 1 << 8 | addr; shift = 0; bits = 0; return;                               // WRITE: 16 data bits follow
+                    default:
+                        switch (shift >> 6 & 3)
+                        {
+                            case 3: writeEnable = true; Done(); return;                                          // EWEN
+                            case 0: writeEnable = false; Done(); return;                                         // EWDS
+                            case 2: if (writeEnable) for (int i = 0; i < 128; i++) SetWord(i, 0xFFFF); Done(); return;   // ERAL
+                            default: command = 2 << 8; shift = 0; bits = 0; return;                               // WRAL: 16 data bits
+                        }
+                }
+            }
+            if (command >= 0 && bits == 16)
+            {
+                if (Log) Console.Error.WriteLine($"EEPROM data {(command >> 8 == 1 ? "WRITE" : "WRAL")} addr={command & 0x7F:X2} value={shift & 0xFFFF:X4}");
+                if (writeEnable)
+                {
+                    if (command >> 8 == 1) SetWord(command & 0x7F, shift & 0xFFFF);
+                    else for (int i = 0; i < 128; i++) SetWord(i, shift & 0xFFFF);
+                }
+                Done();
+            }
+        }
+
+        private void Done() { shift = 0; bits = 0; command = -1; doBit = true; }   // ready
+
+        public override void SaveState(BinaryWriter w)
+        {
+            w.Write(en1); w.Write(en2); w.Write(romBank); w.Write(latchedX); w.Write(latchedY);
+            w.Write(cs); w.Write(clk); w.Write(di); w.Write(doBit); w.Write(writeEnable); w.Write(shift); w.Write(bits); w.Write(readWord); w.Write(readBits); w.Write(command);
+        }
+        public override void LoadState(BinaryReader r)
+        {
+            en1 = r.ReadBoolean(); en2 = r.ReadBoolean(); romBank = r.ReadInt32(); latchedX = r.ReadInt32(); latchedY = r.ReadInt32();
+            cs = r.ReadBoolean(); clk = r.ReadBoolean(); di = r.ReadBoolean(); doBit = r.ReadBoolean(); writeEnable = r.ReadBoolean();
+            shift = r.ReadInt32(); bits = r.ReadInt32(); readWord = r.ReadInt32(); readBits = r.ReadInt32(); command = r.ReadInt32();
+        }
     }
 
     private sealed class Mbc1 : GbMapper

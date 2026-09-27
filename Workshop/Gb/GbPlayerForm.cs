@@ -19,7 +19,7 @@ namespace BrokenNes.Workshop.Gb;
 /// Default model: Game Boy Color for colour games, original Game Boy otherwise.
 ///
 /// Emulation runs on its own thread, paced by the audio device (keep ~70 ms queued).
-/// Keys: arrows = D-pad, X = A, Z = B, Enter = Start, Space/Backspace = Select.
+/// Keys: arrows = D-pad, X = A, Z = B, Enter = Start, Space/Backspace = Select; I/J/K/L tilt MBC7 carts (right stick on a pad).
 ///       P pause, F2 reset, Tab (hold) fast-forward, F12 screenshot, Esc quit. An XInput pad also works.
 /// Battery saves persist to %APPDATA%\BrokenNes\GbSaves\&lt;sha1&gt;.sav (BGB/VBA-compatible, RTC trailer included).
 /// </summary>
@@ -35,6 +35,7 @@ internal sealed class GbPlayerForm : Form
     private readonly Thread emuThread;
     private volatile bool running = true, paused, fastForward, resetRequested, screenshotRequested;
     private volatile byte keyboardPad;
+    private volatile int tiltKeys;   // bit 0 up, 1 left, 2 down, 3 right
     private readonly Controller pad = new(UserIndex.One);
 
     private WaveOutEvent? waveOut;
@@ -102,6 +103,7 @@ internal sealed class GbPlayerForm : Form
 
                 var buttons = (GbButtons)(keyboardPad | PollGamepad());
                 if (buttons != board.Buttons) { board.Buttons = buttons; board.UpdateJoypadIrq(); }
+                if (board.Cart.HasTilt) UpdateTilt();
                 board.RunFrame();
                 PublishFrame();
 
@@ -252,6 +254,26 @@ internal sealed class GbPlayerForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
+    private static int TiltBit(Keys k) => k switch { Keys.I => 1, Keys.J => 2, Keys.K => 4, Keys.L => 8, _ => 0 };
+
+    /// <summary>Accelerometer for MBC7 carts: keys give a half-g tilt, the right stick is analogue.</summary>
+    private void UpdateTilt()
+    {
+        int t = tiltKeys;
+        float x = ((t & 8) != 0 ? 0.5f : 0) - ((t & 2) != 0 ? 0.5f : 0), y = ((t & 4) != 0 ? 0.5f : 0) - ((t & 1) != 0 ? 0.5f : 0);
+        if (pad.IsConnected)
+        {
+            try
+            {
+                var g = pad.GetState().Gamepad;
+                if (Math.Abs((int)g.RightThumbX) > 6000) x = g.RightThumbX / 32768f;
+                if (Math.Abs((int)g.RightThumbY) > 6000) y = -g.RightThumbY / 32768f;
+            }
+            catch { }
+        }
+        board.Cart.SetTilt(x, y);
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         switch (e.KeyCode)
@@ -263,6 +285,7 @@ internal sealed class GbPlayerForm : Form
             case Keys.Tab: fastForward = true; return;
         }
         keyboardPad |= (byte)MapKey(e.KeyCode);
+        tiltKeys |= TiltBit(e.KeyCode);
         e.Handled = true;
     }
 
@@ -270,6 +293,7 @@ internal sealed class GbPlayerForm : Form
     {
         if (e.KeyCode == Keys.Tab) { fastForward = false; return; }
         keyboardPad &= (byte)~(byte)MapKey(e.KeyCode);
+        tiltKeys &= ~TiltBit(e.KeyCode);
     }
 
     protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); keyboardPad = 0; fastForward = false; }

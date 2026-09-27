@@ -111,8 +111,12 @@ internal static class GbTestCli
         return "";
     }
 
-    internal static string FindRepoRoot()
+    internal static string FindRepoRoot([System.Runtime.CompilerServices.CallerFilePath] string thisFile = "")
     {
+        // The checkout this exe was built from (Workshop/Gb/GbTestCli.cs -> repo root), so a build in a scratch
+        // folder still finds its manifest and test ROMs whatever the current directory is.
+        var src = new DirectoryInfo(Path.GetDirectoryName(thisFile) ?? ".").Parent?.Parent;
+        if (src != null && File.Exists(Path.Combine(src.FullName, "Workshop", "Gb", "gb-test-manifest.json"))) return src.FullName;
         var d = new DirectoryInfo(AppContext.BaseDirectory);
         while (d != null && !File.Exists(Path.Combine(d.FullName, "BrokenNes.sln"))) d = d.Parent;
         return d?.FullName ?? Directory.GetCurrentDirectory();
