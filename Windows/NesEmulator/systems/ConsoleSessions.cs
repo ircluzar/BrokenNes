@@ -137,6 +137,7 @@ public sealed class GbSession : IConsoleSession
         var model = console == ConsoleKind.GameBoyColor ? GbModel.Cgb : GbModel.Dmg;
         Func<GbModel, IGbApu>? apuFactory = null;
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; apuFactory = m => new GbApuOnNes(m); }
+        else if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) apuFactory = m => new APU_GBS(m);
         Func<IGbCpuBus, IGbCpu>? cpuFactory = cpu.Equals("65816", StringComparison.OrdinalIgnoreCase) ? bus => new Cpu65816OnGb(bus) : null;
         board = new BOARD_GB(cart, model, apuFactory, cpuFactory);
         board.CpuClockFactor = cpu.ToUpperInvariant() switch

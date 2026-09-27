@@ -140,7 +140,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["DMGXI"] = "Game Boy", ["DMGSI"] = "Game Boy" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -148,7 +148,7 @@ public static class CoreCatalog
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
         ["PPU:DMGXI"] = "Game Boy picture chip, big screen, inverted sprites", ["PPU:DMGSI"] = "Game Boy picture chip, big screen + layers, inverted sprites",
-        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip",
+        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
     };
 
     /// <summary>The family a NES-board core id belongs to ("NES" unless it is a bridge).</summary>
@@ -191,8 +191,9 @@ public static class CoreCatalog
                     default:
                         list.Add(new("SFC", "SFC (S-SMP + S-DSP)", "SNES"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "SNES"));
-                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, $"{id} - NES sound", NesFamilyOf(CoreSlot.Apu, id)));
+                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
+                        if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip, 8 channels (through NES registers)", "Game Boy"));
                         break;
                 }
                 break;
@@ -214,7 +215,8 @@ public static class CoreCatalog
                         break;
                     default:
                         list.Add(new("GB", "GB (Game Boy sound chip)", "Game Boy"));
-                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, $"{id} - NES sound", "NES"));
+                        list.Add(new("GBS", "GBS (Game Boy sound chip + 4 channels for the bridges)", "Game Boy"));
+                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
                         break;
                 }
@@ -253,7 +255,14 @@ public static class CoreCatalog
 
     private static IEnumerable<string> NesSoundChips() =>
         CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) == "NES")
-            .OrderBy(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
+
+    private static string NesSoundLabel(string id) => id.ToUpperInvariant() switch
+    {
+        "FIXS" => "FIXS - NES sound, 8 channels (4 pulses, 2 triangles, 2 noises)",
+        _ => $"{id} - NES sound",
+    };
 }
 
 /// <summary>

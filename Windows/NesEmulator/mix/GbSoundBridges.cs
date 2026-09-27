@@ -17,6 +17,7 @@ namespace NesEmulator.Mix
         {
             ["GB"] = m => new APU_GB(m),
             ["NES"] = m => new GbApuOnNes(m),
+            ["GBS"] = m => new APU_GBS(m),
         };
         public static IEnumerable<string> ApuIds => apus.Keys;
         public static IGbApu CreateApu(string id, GbModel model) =>
@@ -152,40 +153,139 @@ namespace NesEmulator
     /// exact), noise -> noise (nearest clock, short mode -> 7-bit mode). DMC samples have nowhere to go and are dropped.
     /// Discovered by CoreRegistry as APU id "DMG".
     /// </summary>
-    public sealed class APU_DMG : IAPU
+    public class APU_DMG : IAPU
     {
         private readonly IAPU front;
         private readonly IGbApu gb;
-        private readonly NesChannelModel model = new();
+        /// <summary>Bank 0: the NES chip's own channels replayed on the Game Boy chip's own four.</summary>
+        private readonly Lane lane0;
+        /// <summary>Bank 1 (APU_DMGS): a second set of NES channels replayed on APU_GBS's second four.</summary>
+        private readonly Lane? lane1;
         private readonly Queue<float> queue = new();
         private readonly short[] pull = new short[8192];
-        private readonly int[] cache = new int[0x40];
-        private readonly bool[] noteOn = new bool[4];
-        private readonly int[] lastVol = { -1, -1, -1, -1 }, lastDuty = { -1, -1, -1, -1 };
-        private bool triOn;
         private double gbAcc; private int fsAcc, sinceSync, channelMask = 0x1F;
 
-        public APU_DMG(Bus bus)
+        public APU_DMG(Bus bus) : this(bus, MixConfig.GbApu, extBank: false) { }
+
+        protected APU_DMG(Bus bus, string gbApuId, bool extBank)
         {
             var t = CoreRegistry.ApuTypes.TryGetValue(MixConfig.NesFrontApu, out var ft) ? ft : throw new ArgumentException($"No NES APU '{MixConfig.NesFrontApu}'");
             front = CoreRegistry.CreateInstance<IAPU>(t, bus) ?? throw new InvalidOperationException("front APU");
-            gb = GbCores.CreateApu(MixConfig.GbApu, GbModel.Dmg);
-            Array.Fill(cache, -1);
-            G(0x26, 0x80); G(0x24, 0x77); G(0x25, 0xFF); G(0x10, 0x00);
-            // Wave RAM = the NES triangle sequence 15..0, 0..15.
-            byte[] tri = { 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
-            for (int i = 0; i < 16; i++) gb.WriteRegister(0x30 + i, tri[i]);
+            gb = GbCores.CreateApu(gbApuId, GbModel.Dmg);
+            lane0 = new Lane((r, v) => gb.WriteRegister(r, v));
+            if (extBank)
+            {
+                var x = gb as IApuExtChannels ?? throw new NotSupportedException($"Game Boy APU '{gbApuId}' has no extra channel bank");
+                lane1 = new Lane((r, v) => x.WriteExtRegister(1, (ushort)r, v));
+            }
         }
 
-        public string CoreName => $"DMG:{gb.CoreName}+{front.CoreName}";
-        public string Description => "MIX LAB: NES channels played on a Game Boy sound chip";
+        public virtual string CoreName => $"DMG:{gb.CoreName}+{front.CoreName}";
+        public virtual string Description => "MIX LAB: NES channels played on a Game Boy sound chip";
         public int Performance => 0; public int Rating => 1; public string Category => "Experimental";
 
-        /// <summary>Write a Game Boy sound register (cached, except trigger writes which are strobes).</summary>
-        private void G(int reg, byte v, bool force = false)
+        /// <summary>The second bank, for the subclass that exposes it.</summary>
+        private protected Lane? ExtLane => lane1;
+
+        /// <summary>
+        /// One set of NES channels (a <see cref="NesChannelModel"/> fed by register writes) replayed on one bank of Game
+        /// Boy sound registers: pulse 1/2, wave (a 32-step triangle from wave RAM) and noise.
+        /// </summary>
+        private protected sealed class Lane
         {
-            if (!force && cache[reg - 0x10] == v) return;
-            cache[reg - 0x10] = v; gb.WriteRegister(reg, v);
+            public readonly NesChannelModel Model = new();
+            private readonly Action<int, byte> write;
+            private readonly int[] cache = new int[0x40];
+            private readonly bool[] noteOn = new bool[4];
+            private readonly int[] lastVol = { -1, -1, -1, -1 }, lastDuty = { -1, -1, -1, -1 };
+            private bool triOn;
+
+            public Lane(Action<int, byte> write)
+            {
+                this.write = write;
+                Array.Fill(cache, -1);
+                G(0x26, 0x80); G(0x24, 0x77); G(0x25, 0xFF); G(0x10, 0x00);
+                // Wave RAM = the NES triangle sequence 15..0, 0..15.
+                byte[] tri = { 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+                for (int i = 0; i < 16; i++) write(0x30 + i, tri[i]);
+            }
+
+            /// <summary>A NES register write for this bank: the channel model, and the key-on strobes.</summary>
+            public void Write(ushort address, byte value)
+            {
+                Model.Write(address, value);
+                if (address == 0x4003) noteOn[0] = true;
+                else if (address == 0x4007) noteOn[1] = true;
+                else if (address == 0x400F) noteOn[3] = true;
+            }
+
+            /// <summary>Write a Game Boy sound register (cached, except trigger writes which are strobes).</summary>
+            private void G(int reg, byte v, bool force = false)
+            {
+                if (!force && cache[reg - 0x10] == v) return;
+                cache[reg - 0x10] = v; write(reg, v);
+            }
+
+            public void Sync(int channelMask)
+            {
+                var model = Model;
+                for (int i = 0; i < 2; i++)
+                {
+                    var p = model.P[i]; int b = 0x10 + i * 5;   // NR10/NR11... and NR21 (NR20 does not exist, so pulse 2 starts at $16)
+                    if (i == 1) b = 0x15;
+                    bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0 && !PitchGuard.Blocks(1789773.0 / (16 * (p.Timer + 1)));
+                    int x = GbPulsePeriod(p.Timer);
+                    if (!on) { if (lastVol[i] != 0) { G(b + 2, 0x00); lastVol[i] = 0; } noteOn[i] = false; continue; }
+                    int vol = p.Volume;
+                    bool retrigger = noteOn[i] || lastVol[i] <= 0 || lastDuty[i] != p.Duty || (p.Const && vol != lastVol[i]);
+                    G(b + 1, (byte)(p.Duty << 6));
+                    G(b + 3, (byte)x);
+                    if (retrigger)
+                    {
+                        // Constant volume: fixed envelope. Decay: start at 15 and step down like the NES envelope.
+                        byte env = p.Const ? (byte)(vol << 4 | 0x08) : (byte)(0xF0 | Pace(p.Vol));
+                        G(b + 2, env, force: true);
+                        G(b + 4, (byte)(0x80 | (x >> 8) & 7), force: true);
+                        cache[b + 4 - 0x10] = (x >> 8) & 7;
+                        lastVol[i] = vol; lastDuty[i] = p.Duty; noteOn[i] = false;
+                    }
+                    else G(b + 4, (byte)((x >> 8) & 7));
+                }
+                {
+                    double hz = 1789773.0 / (32 * (model.TriTimer + 1));
+                    bool on = model.TriAudible && (channelMask & 4) != 0 && !PitchGuard.Blocks(hz);
+                    int x = Math.Clamp((int)Math.Round(2048 - 65536 / hz), 0, 2047);
+                    if (!on) { if (triOn) { G(0x1A, 0x00); triOn = false; } }
+                    else
+                    {
+                        G(0x1D, (byte)x);
+                        if (!triOn) { G(0x1A, 0x80); G(0x1C, 0x20); G(0x1E, (byte)(0x80 | (x >> 8) & 7), force: true); cache[0x1E - 0x10] = (x >> 8) & 7; triOn = true; }
+                        else G(0x1E, (byte)((x >> 8) & 7));
+                    }
+                }
+                {
+                    bool on = model.NoiseAudible && (channelMask & 8) != 0;
+                    if (!on) { if (lastVol[3] != 0) { G(0x21, 0x00); lastVol[3] = 0; } noteOn[3] = false; }
+                    else
+                    {
+                        double f = 1789773.0 / NesChannelModel.NoisePeriods[model.NoisePeriodIdx];
+                        int best = 0; double bd = double.MaxValue;
+                        for (int s = 0; s < 14; s++) for (int r = 0; r < 8; r++)
+                        {
+                            double gf = 262144.0 / ((r == 0 ? 0.5 : r) * (1 << s));
+                            double d = Math.Abs(Math.Log(gf / f)); if (d < bd) { bd = d; best = s << 4 | r; }
+                        }
+                        G(0x22, (byte)(best | (model.NoiseShort ? 0x08 : 0)));
+                        int vol = model.NoiseVolume;
+                        if (noteOn[3] || lastVol[3] <= 0 || (model.NoiseConst && vol != lastVol[3]))
+                        {
+                            G(0x21, model.NoiseConst ? (byte)(vol << 4 | 0x08) : (byte)(0xF0 | Pace(model.NoiseVol)), force: true);
+                            G(0x23, 0x80, force: true);
+                            lastVol[3] = vol; noteOn[3] = false;
+                        }
+                    }
+                }
+            }
         }
 
         private static int GbPulsePeriod(int nesTimer) { double hz = 1789773.0 / (16 * (nesTimer + 1)); return Math.Clamp((int)Math.Round(2048 - 131072 / hz), 0, 2047); }
@@ -193,70 +293,11 @@ namespace NesEmulator
         /// <summary>NES decay envelope period (quarter frames) -> Game Boy envelope pace (1/64 s units).</summary>
         private static int Pace(int nesPeriod) => Math.Clamp((int)Math.Round(64.0 * (nesPeriod + 1) / 240.0), 1, 7);
 
-        private void Sync()
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                var p = model.P[i]; int b = 0x10 + i * 5;   // NR10/NR11... and NR21 (NR20 does not exist, so pulse 2 starts at $16)
-                if (i == 1) b = 0x15;
-                bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0 && !PitchGuard.Blocks(1789773.0 / (16 * (p.Timer + 1)));
-                int x = GbPulsePeriod(p.Timer);
-                if (!on) { if (lastVol[i] != 0) { G(b + 2, 0x00); lastVol[i] = 0; } noteOn[i] = false; continue; }
-                int vol = p.Volume;
-                bool retrigger = noteOn[i] || lastVol[i] <= 0 || lastDuty[i] != p.Duty || (p.Const && vol != lastVol[i]);
-                G(b + 1, (byte)(p.Duty << 6));
-                G(b + 3, (byte)x);
-                if (retrigger)
-                {
-                    // Constant volume: fixed envelope. Decay: start at 15 and step down like the NES envelope.
-                    byte env = p.Const ? (byte)(vol << 4 | 0x08) : (byte)(0xF0 | Pace(p.Vol));
-                    G(b + 2, env, force: true);
-                    G(b + 4, (byte)(0x80 | (x >> 8) & 7), force: true);
-                    cache[b + 4 - 0x10] = (x >> 8) & 7;
-                    lastVol[i] = vol; lastDuty[i] = p.Duty; noteOn[i] = false;
-                }
-                else G(b + 4, (byte)((x >> 8) & 7));
-            }
-            {
-                double hz = 1789773.0 / (32 * (model.TriTimer + 1));
-                bool on = model.TriAudible && (channelMask & 4) != 0 && !PitchGuard.Blocks(hz);
-                int x = Math.Clamp((int)Math.Round(2048 - 65536 / hz), 0, 2047);
-                if (!on) { if (triOn) { G(0x1A, 0x00); triOn = false; } }
-                else
-                {
-                    G(0x1D, (byte)x);
-                    if (!triOn) { G(0x1A, 0x80); G(0x1C, 0x20); G(0x1E, (byte)(0x80 | (x >> 8) & 7), force: true); cache[0x1E - 0x10] = (x >> 8) & 7; triOn = true; }
-                    else G(0x1E, (byte)((x >> 8) & 7));
-                }
-            }
-            {
-                bool on = model.NoiseAudible && (channelMask & 8) != 0;
-                if (!on) { if (lastVol[3] != 0) { G(0x21, 0x00); lastVol[3] = 0; } noteOn[3] = false; }
-                else
-                {
-                    double f = 1789773.0 / NesChannelModel.NoisePeriods[model.NoisePeriodIdx];
-                    int best = 0; double bd = double.MaxValue;
-                    for (int s = 0; s < 14; s++) for (int r = 0; r < 8; r++)
-                    {
-                        double gf = 262144.0 / ((r == 0 ? 0.5 : r) * (1 << s));
-                        double d = Math.Abs(Math.Log(gf / f)); if (d < bd) { bd = d; best = s << 4 | r; }
-                    }
-                    G(0x22, (byte)(best | (model.NoiseShort ? 0x08 : 0)));
-                    int vol = model.NoiseVolume;
-                    if (noteOn[3] || lastVol[3] <= 0 || (model.NoiseConst && vol != lastVol[3]))
-                    {
-                        G(0x21, model.NoiseConst ? (byte)(vol << 4 | 0x08) : (byte)(0xF0 | Pace(model.NoiseVol)), force: true);
-                        G(0x23, 0x80, force: true);
-                        lastVol[3] = vol; noteOn[3] = false;
-                    }
-                }
-            }
-        }
-
         public void Step(int cpuCycles)
         {
             front.Step(cpuCycles);
-            model.Clock(cpuCycles);
+            lane0.Model.Clock(cpuCycles);
+            lane1?.Model.Clock(cpuCycles);
             gbAcc += cpuCycles * (4194304.0 / 1789773.0);
             int t = (int)gbAcc;
             if (t > 0)
@@ -264,17 +305,14 @@ namespace NesEmulator
                 gbAcc -= t; gb.Tick(t);
                 for (fsAcc += t; fsAcc >= 8192; fsAcc -= 8192) gb.FrameSequencerStep();
             }
-            if ((sinceSync += cpuCycles) >= 1864) { sinceSync = 0; Sync(); }
+            if ((sinceSync += cpuCycles) >= 1864) { sinceSync = 0; lane0.Sync(channelMask); lane1?.Sync(channelMask); }
             if (front.GetQueuedSampleCount() > 8192) front.GetAudioSamples();
         }
 
         public void WriteAPURegister(ushort address, byte value)
         {
-            model.Write(address, value);
+            lane0.Write(address, value);
             front.WriteAPURegister(address, value);
-            if (address == 0x4003) noteOn[0] = true;
-            else if (address == 0x4007) noteOn[1] = true;
-            else if (address == 0x400F) noteOn[3] = true;
         }
         public byte ReadAPURegister(ushort address) => front.ReadAPURegister(address);
 
@@ -300,5 +338,27 @@ namespace NesEmulator
         public void SetState(object state) => front.SetState(state);
         public void ClearAudioBuffers() { Drain(); queue.Clear(); front.ClearAudioBuffers(); }
         public void Reset() { front.Reset(); }
+    }
+
+    /// <summary>
+    /// MIX LAB: <see cref="APU_DMG"/> on the 8-channel Game Boy chip <see cref="NesEmulator.Gb.APU_GBS"/>: the NES
+    /// chip's own channels on the Game Boy's first four as before, and a second bank of NES channels (written through
+    /// <see cref="IApuExtChannels"/>, like <see cref="APU_FIXS"/>'s) on the second four - 4 pulses, 2 waves, 2 noises.
+    /// For the SNES bridge (SNES sound "NES:DMGS"): a SNES game's voices reach the Game Boy eight at a time instead of
+    /// four. Discovered by CoreRegistry as APU id "DMGS".
+    /// </summary>
+    public sealed class APU_DMGS : APU_DMG, IApuExtChannels
+    {
+        public APU_DMGS(Bus bus) : base(bus, "GBS", extBank: true) { }
+
+        public override string Description => "MIX LAB: two banks of NES channels played on an 8-channel Game Boy sound chip";
+        public int ExtBanks => 1;
+
+        public void WriteExtRegister(int bank, ushort address, byte value)
+        {
+            if (bank != 1) throw new ArgumentOutOfRangeException(nameof(bank), "APU_DMGS has one extra bank (1)");
+            if (address is >= 0x4010 and <= 0x4013) return;   // no DMC: nowhere to play it on the Game Boy
+            ExtLane!.Write(address, value);
+        }
     }
 }

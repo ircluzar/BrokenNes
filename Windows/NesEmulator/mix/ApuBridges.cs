@@ -436,6 +436,8 @@ namespace NesEmulator.Mix
     /// discarded. 960 times a second the bridge reads the eight DSP voices and replays the loudest on the NES channels:
     /// tonal voices -> pulse 1, pulse 2, triangle (pitch = playback rate / the sample's own period, measured once per
     /// sample by autocorrelation of its loop); noise voices and one-shot (non-looping) samples -> the noise channel.
+    /// When the NES chip has a second channel bank (<see cref="IApuExtChannels"/>: APU_FIXS, APU_DMGS) all eight voices
+    /// fit: the four loudest tonal voices on the four pulses, the next two on the two triangles, two noises.
     /// </summary>
     internal sealed class NesApuOnSnes : ISnesApu
     {
@@ -448,7 +450,12 @@ namespace NesEmulator.Mix
         private readonly Queue<float> queue = new();
         private readonly Dictionary<int, double> periodCache = new();
         private readonly int[] nesCache = new int[0x18];
+        /// <summary>The NES chip's second channel bank, when it has one, and that bank's register cache.</summary>
+        private readonly IApuExtChannels? ext;
+        private readonly int[] extCache = new int[0x18];
         public long Syncs; public int VoicesMapped;
+        /// <summary>Over all syncs: voices mapped (sum, for the average), the most at once, and voices dropped for want of a channel.</summary>
+        public long VoicesMappedTotal, VoicesDroppedTotal; public int VoicesMappedMax;
 
         public NesApuOnSnes()
         {
@@ -459,6 +466,13 @@ namespace NesEmulator.Mix
             Array.Fill(nesCache, -1);
             N(0x4017, 0x40); N(0x4015, 0x0F);
             N(0x4001, 0x00); N(0x4005, 0x00); N(0x400F, 0x08);
+            ext = back as IApuExtChannels;
+            if (ext != null)
+            {
+                Array.Fill(extCache, -1);
+                E(0x4017, 0x40); E(0x4015, 0x0F);
+                E(0x4001, 0x00); E(0x4005, 0x00); E(0x400F, 0x08);
+            }
         }
 
         public string CoreName => $"NES:{back.CoreName}+{front.CoreName}";
@@ -466,9 +480,10 @@ namespace NesEmulator.Mix
         public byte ReadPort(int port) => front.ReadPort(port);
         public void WritePort(int port, byte value) => front.WritePort(port, value);
         public int SampleRate => back.GetSampleRate();
-        public string Describe() => $"{CoreName} syncs={Syncs} mapped={VoicesMapped} | {front.Describe()}";
+        public string Describe() => $"{CoreName} syncs={Syncs} mapped={VoicesMapped} avg={(Syncs > 0 ? (double)VoicesMappedTotal / Syncs : 0):F2} max={VoicesMappedMax} dropped-avg={(Syncs > 0 ? (double)VoicesDroppedTotal / Syncs : 0):F2} | {front.Describe()}";
 
         private void N(ushort a, byte v) { if (nesCache[a - 0x4000] == v) return; nesCache[a - 0x4000] = v; back.WriteAPURegister(a, v); }
+        private void E(ushort a, byte v) { if (extCache[a - 0x4000] == v) return; extCache[a - 0x4000] = v; ext!.WriteExtRegister(1, a, v); }
 
         public void RunTo(long masterClock)
         {
@@ -533,7 +548,7 @@ namespace NesEmulator.Mix
         {
             Syncs++;
             var r = probe.DspRegs;
-            var tonal = new List<(int v, double loud, double hz)>(); (int v, double loud) noise = (-1, 0);
+            var tonal = new List<(int v, double loud, double hz)>(); var noises = new List<(int v, double loud)>();
             for (int v = 0; v < 8; v++)
             {
                 int b = v * 16, envx = r[b + 8] & 0x7F;
@@ -542,40 +557,70 @@ namespace NesEmulator.Mix
                 bool isNoise = (r[0x3D] & (1 << v)) != 0;
                 int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;
                 double period = isNoise ? 0 : Period(r[b + 4]);
-                if (isNoise || period == 0) { if (loud > noise.loud) noise = (v, loud); continue; }
+                if (isNoise || period == 0) { noises.Add((v, loud)); continue; }
                 double hz = 32000.0 * pitch / 4096.0 / period;
                 if (PitchGuard.Blocks(hz)) continue;   // muted: the next loudest voice gets the channel
                 tonal.Add((v, loud, hz));
             }
             tonal.Sort((a, c) => c.loud.CompareTo(a.loud));
-            VoicesMapped = Math.Min(tonal.Count, 3) + (noise.v >= 0 ? 1 : 0);
-            int Vol(double loud) => Math.Clamp((int)Math.Round(15 * Math.Sqrt(loud / 16129.0) * 1.6), 1, 15);
+            noises.Sort((a, c) => c.loud != a.loud ? c.loud.CompareTo(a.loud) : a.v.CompareTo(c.v));   // ties: lowest voice first, as before
+            int banks = ext != null ? 2 : 1;
+            VoicesMapped = Math.Min(tonal.Count, 3 * banks) + Math.Min(noises.Count, banks);
+            VoicesMappedTotal += VoicesMapped; VoicesMappedMax = Math.Max(VoicesMappedMax, VoicesMapped);
+            VoicesDroppedTotal += tonal.Count + noises.Count - VoicesMapped;
+            Action<ushort, byte> bank0 = N, bank1 = E;
+            // Bank 0 alone: the two loudest on the pulses, the third on the triangle (as always). With bank 1: the four
+            // loudest on the four pulses, the fifth and sixth on the triangles.
+            for (int k = 0; k < banks; k++)
+            {
+                var w = k == 0 ? bank0 : bank1;
+                int p0 = banks == 1 ? 0 : k * 2, tri = banks == 1 ? 2 : 4 + k;
+                WritePulses(w, tonal, p0);
+                WriteTriangle(w, tonal, tri);
+                WriteNoise(w, r, noises, k);
+            }
+        }
+
+        private static int Vol(double loud) => Math.Clamp((int)Math.Round(15 * Math.Sqrt(loud / 16129.0) * 1.6), 1, 15);
+
+        private static void WritePulses(Action<ushort, byte> w, List<(int v, double loud, double hz)> tonal, int first)
+        {
             for (int ch = 0; ch < 2; ch++)
             {
                 ushort b = (ushort)(0x4000 + ch * 4);
-                if (ch < tonal.Count && tonal[ch].hz > 20)
+                int i = first + ch;
+                if (i < tonal.Count && tonal[i].hz > 20)
                 {
-                    int t = Math.Clamp((int)Math.Round(1789773.0 / (16 * tonal[ch].hz) - 1), 8, 2047);
-                    N(b, (byte)((ch == 0 ? 0x80 : 0x40) | 0x30 | Vol(tonal[ch].loud)));
-                    N((ushort)(b + 2), (byte)t);
-                    N((ushort)(b + 3), (byte)(0x08 | (t >> 8)));
+                    int t = Math.Clamp((int)Math.Round(1789773.0 / (16 * tonal[i].hz) - 1), 8, 2047);
+                    w(b, (byte)((ch == 0 ? 0x80 : 0x40) | 0x30 | Vol(tonal[i].loud)));
+                    w((ushort)(b + 2), (byte)t);
+                    w((ushort)(b + 3), (byte)(0x08 | (t >> 8)));
                 }
-                else N(b, (byte)((ch == 0 ? 0x80 : 0x40) | 0x30));
+                else w(b, (byte)((ch == 0 ? 0x80 : 0x40) | 0x30));
             }
-            if (tonal.Count > 2 && tonal[2].hz > 20)
+        }
+
+        private static void WriteTriangle(Action<ushort, byte> w, List<(int v, double loud, double hz)> tonal, int i)
+        {
+            if (i < tonal.Count && tonal[i].hz > 20)
             {
-                int t = Math.Clamp((int)Math.Round(1789773.0 / (32 * tonal[2].hz) - 1), 2, 2047);
-                N(0x4008, 0xFF); N(0x400A, (byte)t); N(0x400B, (byte)(0x08 | (t >> 8)));
+                int t = Math.Clamp((int)Math.Round(1789773.0 / (32 * tonal[i].hz) - 1), 2, 2047);
+                w(0x4008, 0xFF); w(0x400A, (byte)t); w(0x400B, (byte)(0x08 | (t >> 8)));
             }
-            else N(0x4008, 0x80);
-            if (noise.v >= 0)
+            else w(0x4008, 0x80);
+        }
+
+        private static void WriteNoise(Action<ushort, byte> w, byte[] r, List<(int v, double loud)> noises, int i)
+        {
+            if (i < noises.Count)
             {
+                var noise = noises[i];
                 double hz = (r[0x3D] & (1 << noise.v)) != 0 ? DspNoiseHz[r[0x6C] & 31] : 4000;
                 int best = 0; double bd = double.MaxValue;
-                for (int i = 0; i < 16; i++) { double d = Math.Abs(Math.Log(1789773.0 / NesChannelModel.NoisePeriods[i] / 16 / Math.Max(hz, 1))); if (d < bd) { bd = d; best = i; } }
-                N(0x400C, (byte)(0x30 | Vol(noise.loud))); N(0x400E, (byte)best);
+                for (int k = 0; k < 16; k++) { double d = Math.Abs(Math.Log(1789773.0 / NesChannelModel.NoisePeriods[k] / 16 / Math.Max(hz, 1))); if (d < bd) { bd = d; best = k; } }
+                w(0x400C, (byte)(0x30 | Vol(noise.loud))); w(0x400E, (byte)best);
             }
-            else N(0x400C, 0x30);
+            else w(0x400C, 0x30);
         }
     }
 }
