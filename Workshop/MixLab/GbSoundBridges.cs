@@ -39,6 +39,7 @@ namespace BrokenNes.Workshop.MixLab
         private double nesAcc; private int sinceSync;
         private readonly Queue<float> queue = new();
         public long Syncs;
+        public long MidiNotes;
 
         private readonly bool driveOnly;
 
@@ -52,6 +53,8 @@ namespace BrokenNes.Workshop.MixLab
             backId = hostApu != null ? "host" : MixConfig.GbBackNesApu;
             back = hostApu ?? new NesApuHost(backId).Apu;
             driveOnly = hostApu != null;
+            // APU_WF plays through the system MIDI synth, not samples: count its notes so a silent WAV is not read as silence.
+            if (back is NesEmulator.APU_WF wf) wf.NoteEvent += _ => MidiNotes++;
             Array.Fill(cache, -1);
             N(0x4017, 0x40); N(0x4015, 0x0F); N(0x4001, 0x00); N(0x4005, 0x00);
         }

@@ -55,7 +55,8 @@ public sealed class CPU_SNES : ICPU
             ushort pc = cpu.PC; byte op = view.Bus.cartridge.mapper.CPURead(pc);
             if (!Official[op] && pc >= 0x8000) { oplogged++; Console.Error.WriteLine($"OPLOG instr {Instructions:N0}: ${op:X2} at ${pc:X4} (unofficial on the 6502; a real 65816 instruction here)"); }
         }
-        // RESCUE (MIX_RESCUE_OPS=1): an opcode the 6502 treats as unofficial is a different, real instruction on the
+        // DIAGNOSIS ONLY (MIX_RESCUE_OPS=1; off by default - it substitutes CPU_FIX for the 65816, a fallback, not an
+        // adaptation): an opcode the 6502 treats as unofficial is a different, real instruction on the
         // 65816. Hand that one instruction to a 6502 core, carrying the register file across and back.
         if (RescueOps && cpu.E && !nmiLatched && !(irqLatched && (cpu.P & 0x04) == 0))
         {
@@ -86,7 +87,8 @@ public sealed class CPU_SNES : ICPU
 
     // NES cores treat RequestIRQ(true) as a request latched until the CPU takes it: MMC3/MMC5 raise it once and
     // clear their own flag, never calling RequestIRQ(false). A SNES CPU's IRQ input is a level. Raw (default),
-    // the line stays high after the first MMC3 IRQ; MIX_IRQ_LATCH=1 gives the bridge the NES semantics (diagnosis only).
+    // the line stays high after the first MMC3 IRQ (an IRQ storm). The bridge translates to the NES semantics by
+    // default; MIX_IRQ_LATCH=0 restores the raw level.
     public static bool RescueOps = Environment.GetEnvironmentVariable("MIX_RESCUE_OPS") == "1";
     private CPU_FIX? helper;
     public long Rescued { get; private set; }
@@ -105,7 +107,7 @@ public sealed class CPU_SNES : ICPU
             0xF0,0xF1,0xF5,0xF6,0xF8,0xF9,0xFD,0xFE }) ok[o] = true;
         return ok;
     }
-    public static bool LatchIrq = Environment.GetEnvironmentVariable("MIX_IRQ_LATCH") == "1";
+    public static bool LatchIrq = Environment.GetEnvironmentVariable("MIX_IRQ_LATCH") != "0";
     private bool irqLatched, nmiLatched;
     public long IrqsTaken { get; private set; }
     public void RequestIRQ(bool line) { irqLatched = line; cpu.SetIrq(line); }

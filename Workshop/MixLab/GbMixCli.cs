@@ -37,7 +37,7 @@ internal static class GbMixCli
             int n; while ((n = board.Apu.ReadSamples(buf)) > 0) for (int i = 0; i + 1 < n; i += 2) all.Add((short)((buf[i] + buf[i + 1]) / 2));
         }
         MixAudioCli.WriteWav(wav, all.ToArray(), board.Apu.SampleRate);
-        Console.WriteLine($"{board.Cart.Title} apu={board.Apu.CoreName} frames={frames} samples={all.Count:N0} rate={board.Apu.SampleRate}");
+        Console.WriteLine($"{board.Cart.Title} apu={board.Apu.CoreName} frames={frames} samples={all.Count:N0} rate={board.Apu.SampleRate}" + (board.Apu is GbApuOnNes gn && gn.MidiNotes > 0 ? $" midi-notes={gn.MidiNotes:N0}" : ""));
         return 0;
     }
 

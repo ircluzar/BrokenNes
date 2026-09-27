@@ -44,6 +44,13 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 
 	// Cached nametable mirroring map (0x1000 bytes covering $2000-$2FFF)
 	private readonly ushort[] ntMirror = new ushort[0x1000];
+	/// <summary>A background nametable fetch: the cartridge may supply the byte (IMapper.TryPpuNametableRead, as PPU_FIX
+	/// honours it - MMC5 ExRAM/fill, cartridges that stream their own nametables); otherwise CIRAM through the mirroring map.</summary>
+	private byte NtFetch(int address)
+	{
+		if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead((ushort)(0x2000 | (address & 0x0FFF)), out byte v)) return v;
+		return vram[ntMirror[address & 0x0FFF]];
+	}
 	private Mirroring lastMirroringMode; // track last mode to rebuild map only when changed
 
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
@@ -397,7 +404,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 				int baseNTAddr = 0x2000 + (nameTable * 0x400);
 				int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 				// Fast path: pattern index fetch (nametable region) - avoid full Read overhead
-				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]];
+				byte tileIndex = NtFetch(tileAddr);
 				int fineY = (renderV >> 12) & 0x7;
 				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				ulong rowBits;
@@ -425,7 +432,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 				int attributeX = coarseX / 4;
 				int attributeY = coarseY / 4;
 				int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-				byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
+				byte attrByte = NtFetch(attrAddr); // fast nametable attribute read
 				int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 				int paletteIndex = (attrByte >> attrShift) & 0x03;
 				batchRowBits[tile] = rowBits;
@@ -482,7 +489,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 					int nameTable = (rv2 >> 10) & 0x0003;
 					int baseNTAddr = 0x2000 + (nameTable * 0x400);
 					int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
-					byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
+					byte tileIndex = NtFetch(tileAddr); // fast nametable fetch
 					int fineY = (rv2 >> 12) & 0x7;
 					int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
@@ -512,7 +519,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 						int attributeX = coarseX / 4;
 						int attributeY = coarseY / 4;
 						int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-						byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+						byte attrByte = NtFetch(attrAddr);
 						int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 						paletteIndex = (attrByte >> attrShift) & 0x03;
 					}
@@ -826,7 +833,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 		if (address < 0x2000)
 			return bus!.cartridge!.PPURead(address);
 		if (address < 0x3F00)
-			return vram[ntMirror[address & 0x0FFF]]; // nametable & mirrors
+			return NtFetch(address); // nametable & mirrors (the cartridge may supply it)
 		ushort mirrored = (ushort)(address & 0x1F);
 		if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10;
 		return paletteRAM[mirrored];
@@ -843,6 +850,7 @@ public class PPU_EIL : IPPU, IPpuFrameClock
 		}
 		if (address < 0x3F00)
 		{
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
 			vram[ntMirror[address & 0x0FFF]] = value; return;
 		}
 		ushort mirrored = (ushort)(address & 0x1F);
