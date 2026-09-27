@@ -21,7 +21,14 @@ public sealed class BOARD_GB : IGbCpuBus
 
     public readonly GbModel Model;
     public readonly GbCartridge Cart;
-    public readonly CPU_GB Cpu;
+    /// <summary>The CPU running the game: CPU_GB unless a factory supplied another <see cref="IGbCpu"/>.</summary>
+    public readonly IGbCpu Core;
+    /// <summary>The SM83 (throws if a foreign CPU was plugged in - use <see cref="Core"/> then).</summary>
+    public CPU_GB Cpu => (CPU_GB)Core;
+    /// <summary>CPU clock relative to the Game Boy's (1 = stock). Above 1 the CPU and its on-die timer, serial port
+    /// and OAM DMA get more cycles per frame; the PPU, APU and cartridge clock keep Game Boy time.</summary>
+    public double CpuClockFactor { get; set; } = 1.0;
+    private double dotAcc;
     public readonly PPU_GB Ppu;
     /// <summary>The sound chip: APU_GB unless a factory supplied another <see cref="IGbApu"/> (cross-console bridges).</summary>
     public readonly IGbApu Apu;
@@ -48,13 +55,16 @@ public sealed class BOARD_GB : IGbCpuBus
 
     public BOARD_GB(GbCartridge cart, GbModel model) : this(cart, model, null) { }
 
+    public BOARD_GB(GbCartridge cart, GbModel model, Func<GbModel, IGbApu>? apuFactory) : this(cart, model, apuFactory, null) { }
+
     /// <summary><paramref name="apuFactory"/>: build the sound chip (null = the stock APU_GB).</summary>
-    public BOARD_GB(GbCartridge cart, GbModel model, Func<GbModel, IGbApu>? apuFactory)
+    /// <summary><paramref name="cpuFactory"/>: build the CPU on this board (null = the stock CPU_GB).</summary>
+    public BOARD_GB(GbCartridge cart, GbModel model, Func<GbModel, IGbApu>? apuFactory, Func<IGbCpuBus, IGbCpu>? cpuFactory)
     {
         Model = model;
         Cart = cart;
         wram = new byte[model == GbModel.Cgb ? 0x8000 : 0x2000];
-        Cpu = new CPU_GB(this);
+        Core = cpuFactory?.Invoke(this) ?? new CPU_GB(this);
         Ppu = new PPU_GB(model);
         Apu = apuFactory?.Invoke(model) ?? new APU_GB(model);
         Ppu.RequestInterrupt = bit =>
@@ -70,7 +80,7 @@ public sealed class BOARD_GB : IGbCpuBus
     public void Reset()
     {
         bool cgbGame = Cart.SupportsCgb;
-        Cpu.ResetPostBoot(Model, cgbGame);
+        Core.ResetPostBoot(Model, cgbGame);
         Ppu.CompatMode = Model == GbModel.Cgb && !cgbGame;
         Ppu.ResetPostBoot();
         if (Model == GbModel.Dmg && Cart.Rom.Length >= 0x134) Ppu.LoadBootLogo(Cart.Rom.AsSpan(0x104, 48));
@@ -102,14 +112,14 @@ public sealed class BOARD_GB : IGbCpuBus
 
     public void StepInstruction()
     {
-        if (Cpu.Stopped)
+        if (Core.Stopped)
         {
             // STOP: the system clock halts until a button is pressed. Keep the frame cadence going for the frontend.
-            if ((byte)Buttons != 0) Cpu.Wake();
+            if ((byte)Buttons != 0) Core.Wake();
             else { Idle(); return; }
         }
-        InstructionHook?.Invoke(Cpu.PC);
-        Cpu.Step();
+        InstructionHook?.Invoke(Core.PC);
+        Core.Step();
     }
 
     // =================================================================================== one M-cycle
@@ -124,6 +134,7 @@ public sealed class BOARD_GB : IGbCpuBus
         CycleCount++;
         irqNew = 0; irqLate = 0;
         int dots = DoubleSpeed ? 2 : 4;
+        if (CpuClockFactor != 1.0) { dotAcc += dots / CpuClockFactor; dots = (int)dotAcc; dotAcc -= dots; }
         clockAccumulator += dots;
 
         TickTimer();
@@ -154,7 +165,7 @@ public sealed class BOARD_GB : IGbCpuBus
         Cycle();
     }
 
-    public byte PendingInterrupts => (byte)(ie & iflag & ~(Cpu.Halted ? irqLate : 0) & 0x1F);
+    public byte PendingInterrupts => (byte)(ie & iflag & ~(Core.Halted ? irqLate : 0) & 0x1F);
     public void AcknowledgeInterrupt(int bit) => iflag &= (byte)~(1 << bit);
 
     public bool Stop()
@@ -385,7 +396,7 @@ public sealed class BOARD_GB : IGbCpuBus
     private void RunHdmaBlock()
     {
         hdmaRequest = false;
-        if (!hdmaActive || Cpu.Halted) return;
+        if (!hdmaActive || Core.Halted) return;
         CopyVramBlock();
         if (hdmaBlocks == 0) hdmaActive = false;
     }
@@ -429,7 +440,7 @@ public sealed class BOARD_GB : IGbCpuBus
         using (var w = new BinaryWriter(ms))
         {
             w.Write("GBST"u8); w.Write(1);
-            Cpu.SaveState(w); Ppu.SaveState(w); Apu.SaveState(w); Cart.SaveState(w);
+            Core.SaveState(w); Ppu.SaveState(w); Apu.SaveState(w); Cart.SaveState(w);
             w.Write(wram); w.Write(hram); w.Write(ie); w.Write(iflag); w.Write(wramBank); w.Write(joypSelect);
             w.Write(divCounter); w.Write(tima); w.Write(tma); w.Write(tac); w.Write(timaState);
             w.Write(sb); w.Write(sc); w.Write(serialBits); w.Write(serialCounter);
@@ -444,7 +455,7 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         using var r = new BinaryReader(new MemoryStream(state));
         if (r.ReadUInt32() != 0x54534247 || r.ReadInt32() != 1) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
-        Cpu.LoadState(r); Ppu.LoadState(r); Apu.LoadState(r); Cart.LoadState(r);
+        Core.LoadState(r); Ppu.LoadState(r); Apu.LoadState(r); Cart.LoadState(r);
         r.ReadBytes(wram.Length).CopyTo(wram, 0); r.ReadBytes(hram.Length).CopyTo(hram, 0);
         ie = r.ReadByte(); iflag = r.ReadByte(); wramBank = r.ReadInt32(); joypSelect = r.ReadByte();
         divCounter = r.ReadUInt16(); tima = r.ReadByte(); tma = r.ReadByte(); tac = r.ReadByte(); timaState = r.ReadInt32();

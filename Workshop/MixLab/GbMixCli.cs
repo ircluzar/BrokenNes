@@ -82,7 +82,56 @@ internal static class GbMixCli
     }
     public static int NesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("nes2gb comes next");
     public static int SnesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("snes2gb comes next");
-    public static int CpuSpeed(Func<string, string, string> opt) => throw new NotImplementedException("gbcpu comes next");
+    /// <summary>CPU clocks per preset, relative to the Game Boy's 1.048576 MHz M-cycle rate.</summary>
+    internal static readonly (string id, double factor, string what)[] Speeds =
+    {
+        ("gb", 1.0, "stock Game Boy (1.05 MHz)"),
+        ("half", 0.5, "half speed (0.52 MHz)"),
+        ("gbc2x", 2.0, "Game Boy Color double speed (2.10 MHz)"),
+        ("nes", 1789773.0 / 1048576.0, "NES 2A03 clock (1.79 MHz)"),
+        ("snes", 3579545.0 / 1048576.0, "SNES FastROM clock (3.58 MHz)"),
+    };
+
+    /// <summary>
+    /// A Game Boy game on other CPUs: --cpus gb,half,gbc2x,nes,snes (SM83 at another console's clock: the CPU, timer,
+    /// serial and OAM DMA speed up, the PPU/APU keep Game Boy time) and 65816 (the SNES CPU decoding SM83 code).
+    /// </summary>
+    public static int CpuSpeed(Func<string, string, string> opt)
+    {
+        string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", Path.GetFileNameWithoutExtension(rom));
+        var model = Model(opt("model", "dmg"));
+        int frames = int.Parse(opt("frames", "1200"));
+        var pngAt = opt("png-at", frames.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
+        var script = GbRunCli.ParseInput(opt("input", ""));
+        string wavDir = opt("wav-dir", "");
+        Directory.CreateDirectory(outDir);
+        var bytes = GbRunCli.LoadRom(rom);
+        foreach (var id in opt("cpus", "gb,nes,snes,half,65816").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            bool foreign = id.Equals("65816", StringComparison.OrdinalIgnoreCase);
+            var board = foreign
+                ? new BOARD_GB(GbCartridge.Load(bytes), model, null, bus => new Cpu65816OnGb(bus))
+                : new BOARD_GB(GbCartridge.Load(bytes), model);
+            if (!foreign) board.CpuClockFactor = Speeds.First(s => s.id.Equals(id, StringComparison.OrdinalIgnoreCase)).factor;
+            long halted = 0, steps = 0;
+            board.InstructionHook = _ => { steps++; if (board.Core.Halted) halted++; };
+            var buf = new short[16384]; var pcm = new List<short>();
+            int f;
+            for (f = 1; f <= frames; f++)
+            {
+                if (script.TryGetValue(f - 1, out var b)) { board.Buttons = b; board.UpdateJoypadIrq(); }
+                board.RunFrame();
+                int n; while ((n = board.Apu.ReadSamples(buf)) > 0) if (wavDir != "") for (int i = 0; i + 1 < n; i += 2) pcm.Add((short)((buf[i] + buf[i + 1]) / 2));
+                if (pngAt.Contains(f)) MixLabCli.SaveArgb(board.Ppu.FrameBuffer, 160, 144, Path.Combine(outDir, $"{tag}_{id}_f{f:D5}.png"));
+                if (board.Core.Locked) break;
+            }
+            if (wavDir != "") MixAudioCli.WriteWav(Path.Combine(wavDir, $"{tag}_{id}.wav"), pcm.ToArray(), board.Apu.SampleRate);
+            double busy = board.CycleCount == 0 ? 0 : 100.0 * (board.CycleCount - halted) / board.CycleCount;
+            Console.WriteLine($"{tag} cpu={id,-6} {(board.Core.Locked ? $"LOCKED at frame {f} PC=${board.Core.PC:X4}" : $"frames={frames}")} " +
+                $"instructions={board.Core.Instructions:N0} ({board.Core.Instructions / Math.Max(1, f - 1):N0}/frame) cpu-busy={busy:F0}%");
+        }
+        return 0;
+    }
     public static int GbOnNesCart(Func<string, string, string> opt) => throw new NotImplementedException("gbcart comes next");
 }
 
