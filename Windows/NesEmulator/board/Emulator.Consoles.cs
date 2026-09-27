@@ -128,7 +128,7 @@ namespace BrokenNes
             session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0;
             SelectedConsole = console;
             try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_console", Consoles.Key(console)); } catch { }
-            nesController.CurrentRomName = romName;
+            nesController.CurrentRomName = romName; nesController.LastLoadedRomSize = rom.Length;
             nesController.ErrorMessage = "";
             await LoadSessionBatteryAsync();
             try { await JS.InvokeVoidAsync("nesInterop.setTouchLayout", Consoles.Key(console)); } catch { }

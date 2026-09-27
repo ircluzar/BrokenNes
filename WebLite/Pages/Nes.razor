@@ -176,7 +176,7 @@
                     <span class="badge bg-dark-subtle text-dark me-1">@emu!.ActiveConsoleName</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@emu!.Controller.CurrentRomName</strong></span>
                     <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(emu!.Controller.LastLoadedRomSize)</span>
-                    <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu!.ActiveSfCoreDisplay</span>
+                    @if (emu!.ActiveConsole == ConsoleKind.Nes) { <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu!.ActiveSfCoreDisplay</span> }
                     @if (emu!.SoundFontLayering == true)
                     {
                         <span class="badge bg-warning text-dark ms-1" title="Layering enabled: both cores may receive note events">Layering</span>
