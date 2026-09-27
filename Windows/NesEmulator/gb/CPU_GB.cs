@@ -359,6 +359,8 @@ public sealed class CPU_GB : IGbCpu
 
     /// <summary>Leave STOP (a joypad press does this on hardware).</summary>
     public void Wake() { Stopped = false; Halted = false; }
+    /// <summary>Leave the lock-up state (never called by the Game Boy board; a real SM83 stays locked until power-off).</summary>
+    public void Unlock() => Locked = false;
 
     // ------------------------------------------------------------------ savestate
     public void SaveState(System.IO.BinaryWriter w)

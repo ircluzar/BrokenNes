@@ -100,6 +100,7 @@ internal static class MixLabCli
             (crashFrame >= 0 ? $" CRASHED at frame {crashFrame}: {nes.GetCrashInfo()}" : ""));
         if (wavPath != "") { MixAudioCli.WriteWav(wavPath, pcm.ToArray(), nes.GetAudioSampleRate()); Console.WriteLine($"  wav: {pcm.Count:N0} samples at {nes.GetAudioSampleRate()} Hz"); }
         if (bus.ActiveAPU is APU_SNES asn) Console.WriteLine($"  APU_SNES: {asn.Status} dsp-writes={asn.DspWrites}");
+        if (bus.cpu is CPU_SM83 sm) Console.WriteLine($"  SM83: instructions={sm.InstructionsRun:N0} interrupts-through-NES-vectors={sm.Interrupts:N0} lock-ups-as-NOP={sm.Unlocks:N0} PC=${sm.Inner.PC:X4}");
         if (bus.cpu is CPU_SNES cs)
         {
             var c = cs.Inner;
