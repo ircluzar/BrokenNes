@@ -1,7 +1,7 @@
 using System;
 using NesEmulator.Snes;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>CPU_SFC behind <see cref="ISnesCpuCore"/>.</summary>
 internal sealed class SfcCpuAdapter : ISnesCpuCore

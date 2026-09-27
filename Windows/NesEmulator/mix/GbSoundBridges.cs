@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 using NesEmulator.Gb;
 
-namespace BrokenNes.Workshop.MixLab
+namespace NesEmulator.Mix
 {
     /// <summary>
     /// The Game Boy family as the bridges see it: sound-chip ids -> factories. "GB" = the real APU_GB,

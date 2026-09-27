@@ -1,10 +1,10 @@
 using System;
 using System.IO;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 using NesEmulator.Gb;
 using NesEmulator.Snes;
 
-namespace BrokenNes.Workshop.MixLab
+namespace NesEmulator.Mix
 {
     /// <summary>
     /// MIX LAB: the SNES 65C816 (CPU_SFC, emulation mode = 6502 view) as the CPU of a Game Boy. It fetches the Game

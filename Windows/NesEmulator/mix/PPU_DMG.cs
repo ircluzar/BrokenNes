@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 using NesEmulator.Gb;
 
 namespace NesEmulator;

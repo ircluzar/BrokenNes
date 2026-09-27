@@ -1,7 +1,7 @@
 using System;
 using NesEmulator.Gb;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>
 /// The Game Boy picture chip as the NES-side bridges (PPU_DMG / PPU_DMGX) drive it: the stock 160x144 PPU_GB, or the

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using NesEmulator.Snes;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 // =====================================================================================================
 // MIX LAB (exploration only - not for main). The bridges between the NES and SNES core families talk to

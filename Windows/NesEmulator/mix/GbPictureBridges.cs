@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NesEmulator.Gb;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>The registers each visible Game Boy line was drawn with (captured through PPU_GB.LineStarted).</summary>
 internal sealed class GbLineCapture

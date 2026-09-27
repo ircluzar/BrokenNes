@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 using NesEmulator.Snes;
 
-namespace BrokenNes.Workshop.MixLab
+namespace NesEmulator.Mix
 {
     // =================================================================================================
     // MIX LAB audio bridges. Both directions talk to contracts only:
@@ -413,7 +413,7 @@ namespace NesEmulator
     }
 }
 
-namespace BrokenNes.Workshop.MixLab
+namespace NesEmulator.Mix
 {
     /// <summary>A NES APU core (any id) running on its own, driven through WriteAPURegister, for SNES->NES audio.</summary>
     internal sealed class NesApuHost

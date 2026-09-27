@@ -5,6 +5,8 @@ using System.Linq;
 using BrokenNes.Workshop.Gb;
 using NesEmulator.Gb;
 
+using NesEmulator.Mix;
+
 namespace BrokenNes.Workshop.MixLab;
 
 /// <summary>

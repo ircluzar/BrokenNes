@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using NesEmulator;
 using NesEmulator.Gb;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>
 /// MIX LAB: a Game Boy inside a NES cartridge - the RetroVision idea. The NES runs a tiny 6502 program (below) that

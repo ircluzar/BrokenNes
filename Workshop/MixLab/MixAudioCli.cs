@@ -7,6 +7,8 @@ using System.Linq;
 using NesEmulator;
 using NesEmulator.Snes;
 
+using NesEmulator.Mix;
+
 namespace BrokenNes.Workshop.MixLab;
 
 /// <summary>

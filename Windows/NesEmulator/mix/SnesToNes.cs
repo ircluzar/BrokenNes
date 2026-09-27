@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using NesEmulator;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>
 /// MIX LAB: the SNES -> NES downgrade. After each SNES frame, whatever an <see cref="ISnesPpuCore"/> was

@@ -1,6 +1,6 @@
 using System.Linq;
 using System;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 
 namespace NesEmulator;
 

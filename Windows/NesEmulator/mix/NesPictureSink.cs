@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using NesEmulator;
 
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>Everything a NES PPU can hold for one still picture: two pattern tables, two nametables (vertical
 /// mirroring, 512x240 of map), 32 palette bytes, 64 sprites, fine scroll and the blank flag.</summary>

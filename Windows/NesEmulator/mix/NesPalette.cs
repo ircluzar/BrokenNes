@@ -1,4 +1,4 @@
-namespace BrokenNes.Workshop.MixLab;
+namespace NesEmulator.Mix;
 
 /// <summary>A standard 2C02 master palette (RGB), used by the bridges to move colours between families.</summary>
 internal static class NesPalette

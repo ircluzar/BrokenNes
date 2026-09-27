@@ -1,5 +1,5 @@
 using System;
-using BrokenNes.Workshop.MixLab;
+using NesEmulator.Mix;
 using NesEmulator.Snes;
 
 namespace NesEmulator;

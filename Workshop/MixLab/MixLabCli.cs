@@ -8,6 +8,8 @@ using System.Reflection;
 using NesEmulator;
 using NesEmulator.Snes;
 
+using NesEmulator.Mix;
+
 namespace BrokenNes.Workshop.MixLab;
 
 /// <summary>
