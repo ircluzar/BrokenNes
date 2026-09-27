@@ -49,7 +49,7 @@ internal static class MixLabCli
                 case "nes2gb": return GbMixCli.NesOnGb(Opt);
                 case "snes2gb": return GbMixCli.SnesOnGb(Opt);
                 case "gbcpu": return GbMixCli.CpuSpeed(Opt);
-                case "gbcart": return GbMixCli.GbOnNesCart(Opt);
+                case "gbcart": return GbMixCli.NesCart(Opt);
                 case "gbsweep": return GbMixSweep.Run(Opt);
                 case "sheet": return Sheet(Opt("items", ""), Opt("out", "sheet.png"), int.Parse(Opt("scale", "2")));
                 default: Console.Error.WriteLine("unknown mode"); return 2;
@@ -108,7 +108,7 @@ internal static class MixLabCli
         return crashFrame >= 0 ? 1 : 0;
     }
 
-    private static Dictionary<int, bool[]> ParseNesInput(string s)
+    internal static Dictionary<int, bool[]> ParseNesInput(string s)
     {
         string[] names = { "A", "B", "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT" };
         var d = new Dictionary<int, bool[]>();

@@ -132,7 +132,50 @@ internal static class GbMixCli
         }
         return 0;
     }
-    public static int GbOnNesCart(Func<string, string, string> opt) => throw new NotImplementedException("gbcart comes next");
+    /// <summary>
+    /// A Game Boy cartridge plugged into a NES through <see cref="GbOnNesCart"/>: --nes-ppu FIX|LQ|... --audio 2a03|exp.
+    /// Input is the NES pad ("f:A+Start,..." NES button names).
+    /// </summary>
+    public static int NesCart(Func<string, string, string> opt)
+    {
+        string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", Path.GetFileNameWithoutExtension(rom)), wav = opt("wav", "");
+        string ppuId = opt("nes-ppu", "FIX"), audio = opt("audio", "2a03");
+        int frames = int.Parse(opt("frames", "1200"));
+        var pngAt = opt("png-at", frames.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
+        var script = MixLabCli.ParseNesInput(opt("input", ""));
+        Directory.CreateDirectory(outDir);
+
+        var nes = new NesEmulator.NES { RomName = "gb-on-nes.nes" };
+        nes.LoadROM(GbOnNesCart.Rom());
+        if (!nes.SetPpuCore(ppuId) || !nes.GetPpuCoreId().EndsWith("_" + ppuId, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"NES PPU {ppuId} not applied"); return 3; }
+        string apuId = opt("nes-apu", "FIX");
+        if (!nes.SetApuCore(apuId) || !nes.GetApuCoreId().EndsWith("_" + apuId, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"NES APU {apuId} not applied"); return 3; }
+        var bus = (NesEmulator.Bus)typeof(NesEmulator.NES).GetField("bus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(nes)!;
+        nes.Reset();   // before the cartridge is built: the sound bridge enables the NES channels, a reset would undo that
+        var gb = new BOARD_GB(GbCartridge.Load(GbRunCli.LoadRom(rom)), Model(opt("model", "dmg")),
+            audio == "2a03" ? m => new GbApuOnNes(m, bus.ActiveAPU) : null);
+        var cart = new GbOnNesCart(bus.cartridge, gb) { ExpansionAudio = audio != "2a03" };
+        bus.cartridge.mapper = cart;
+
+        var pcm = new List<short>(); var held = new bool[8];
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (int f = 0; f < frames; f++)
+        {
+            if (script.TryGetValue(f, out var h)) held = h;
+            nes.SetInputs(held, null);
+            nes.RunFrame();
+            var a = nes.GetAudioBuffer();
+            if (wav != "" && audio == "2a03") foreach (var x in a) pcm.Add((short)Math.Clamp(x * 32767f, -32768, 32767));
+            if (pngAt.Contains(f + 1)) MixLabCli.SaveRgba(nes.GetFrameBuffer(), 256, 240, Path.Combine(outDir, $"{tag}_nes-{ppuId}_f{f + 1:D5}.png"));
+        }
+        if (wav != "")
+        {
+            if (audio == "2a03") MixAudioCli.WriteWav(wav, pcm.ToArray(), nes.GetAudioSampleRate());
+            else MixAudioCli.WriteWav(wav, cart.Expansion.ToArray(), gb.Apu.SampleRate);
+        }
+        Console.WriteLine($"{gb.Cart.Title} in a NES cartridge: ppu={nes.GetPpuCoreId()} apu={gb.Apu.CoreName} audio={audio} NES frames={frames} GB frames={gb.FrameCount} {sw.Elapsed.TotalSeconds:F1}s");
+        return 0;
+    }
 }
 
 internal static class GbMixSweep

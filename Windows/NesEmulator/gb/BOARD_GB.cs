@@ -107,8 +107,12 @@ public sealed class BOARD_GB : IGbCpuBus
         long target = Ppu.FrameCount + 1;
         int guard = 0;
         while (Ppu.FrameCount < target && guard++ < 2_000_000) StepInstruction();
-        Cart.AdvanceClock(clockAccumulator); clockAccumulator = 0;
+        RunFrameEndHousekeeping();
     }
+
+    /// <summary>Per-frame bookkeeping RunFrame does after the frame (the cartridge clock); callers that step the board
+    /// themselves (StepInstruction) call it once per frame.</summary>
+    public void RunFrameEndHousekeeping() { Cart.AdvanceClock(clockAccumulator); clockAccumulator = 0; }
 
     public void StepInstruction()
     {

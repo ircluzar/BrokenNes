@@ -40,11 +40,18 @@ namespace BrokenNes.Workshop.MixLab
         private readonly Queue<float> queue = new();
         public long Syncs;
 
-        public GbApuOnNes(GbModel model)
+        private readonly bool driveOnly;
+
+        public GbApuOnNes(GbModel model) : this(model, null) { }
+
+        /// <summary><paramref name="hostApu"/>: drive a NES APU that a running NES already steps and plays (the Game Boy
+        /// cartridge on a NES) - only its registers are written. Null: a private NES APU core, stepped and drained here.</summary>
+        public GbApuOnNes(GbModel model, NesEmulator.IAPU? hostApu)
         {
             front = new APU_GB(model);
-            backId = MixConfig.GbBackNesApu;
-            back = new NesApuHost(backId).Apu;
+            backId = hostApu != null ? "host" : MixConfig.GbBackNesApu;
+            back = hostApu ?? new NesApuHost(backId).Apu;
+            driveOnly = hostApu != null;
             Array.Fill(cache, -1);
             N(0x4017, 0x40); N(0x4015, 0x0F); N(0x4001, 0x00); N(0x4005, 0x00);
         }
@@ -63,9 +70,12 @@ namespace BrokenNes.Workshop.MixLab
         public void Tick(int tCycles)
         {
             front.Tick(tCycles);
-            nesAcc += tCycles * (1789773.0 / 4194304.0);
-            int c = (int)nesAcc;
-            if (c > 0) { nesAcc -= c; back.Step(c); }
+            if (!driveOnly)
+            {
+                nesAcc += tCycles * (1789773.0 / 4194304.0);
+                int c = (int)nesAcc;
+                if (c > 0) { nesAcc -= c; back.Step(c); }
+            }
             if ((sinceSync += tCycles) >= 4369) { sinceSync = 0; Sync(); }
         }
 
@@ -114,6 +124,7 @@ namespace BrokenNes.Workshop.MixLab
         public int ReadSamples(short[] buffer)
         {
             var scratch = new short[4096]; while (front.ReadSamples(scratch) > 0) { }
+            if (driveOnly) return 0;   // the host NES plays and drains its own APU
             foreach (var x in back.GetAudioSamples()) queue.Enqueue(x);
             while (queue.Count > 96000) queue.Dequeue();
             int n = 0;
