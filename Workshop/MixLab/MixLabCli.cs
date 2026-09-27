@@ -50,7 +50,7 @@ internal static class MixLabCli
                 case "snes2gb": return GbMixCli.SnesOnGb(Opt);
                 case "gbcpu": return GbMixCli.CpuSpeed(Opt);
                 case "gbcart": return GbMixCli.NesCart(Opt);
-                case "gbsweep": return GbMixSweep.Run(Opt);
+                case "imgstat": return GbMixCli.ImgStat(Opt);
                 case "sheet": return Sheet(Opt("items", ""), Opt("out", "sheet.png"), int.Parse(Opt("scale", "2")));
                 default: Console.Error.WriteLine("unknown mode"); return 2;
             }

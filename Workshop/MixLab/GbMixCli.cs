@@ -82,6 +82,19 @@ internal static class GbMixCli
     }
     public static int NesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("nes2gb comes next");
     public static int SnesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("snes2gb comes next");
+    /// <summary>Distinct colours and non-background share inside a rectangle of a PNG (for sweep classification).</summary>
+    public static int ImgStat(Func<string, string, string> opt)
+    {
+        using var bmp = new System.Drawing.Bitmap(opt("png", ""));
+        var r = opt("rect", $"0,0,{bmp.Width},{bmp.Height}").Split(',').Select(int.Parse).ToArray();
+        var counts = new Dictionary<int, int>();
+        for (int y = r[1]; y < Math.Min(bmp.Height, r[1] + r[3]); y++)
+            for (int x = r[0]; x < Math.Min(bmp.Width, r[0] + r[2]); x++) { int c = bmp.GetPixel(x, y).ToArgb(); counts[c] = counts.GetValueOrDefault(c) + 1; }
+        int total = counts.Values.Sum(), bg = counts.Values.Max();
+        Console.WriteLine($"colors={counts.Count} nonbg={100.0 * (total - bg) / Math.Max(1, total):F1}%");
+        return 0;
+    }
+
     /// <summary>CPU clocks per preset, relative to the Game Boy's 1.048576 MHz M-cycle rate.</summary>
     internal static readonly (string id, double factor, string what)[] Speeds =
     {
@@ -178,7 +191,3 @@ internal static class GbMixCli
     }
 }
 
-internal static class GbMixSweep
-{
-    public static int Run(Func<string, string, string> opt) => throw new NotImplementedException("gbsweep comes last");
-}
