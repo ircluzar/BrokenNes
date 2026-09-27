@@ -21,8 +21,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // RuntimeFeature.IsDynamicCodeCompiled is false under WASM either way, so the build says.
         runtimeInfo = $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}, " +
-                      $"{(System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled ? "JIT/interp" : "AOT")}";
+#if WASM_AOT
+                      "AOT";
+#else
+                      "interpreter";
+#endif
         var q = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (q["rom"] is { } r) romUrl = r;
         if (int.TryParse(q["frames"], out int f)) frames = f;

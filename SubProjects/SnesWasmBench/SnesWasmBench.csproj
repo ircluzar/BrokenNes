@@ -17,6 +17,7 @@
     <EnableWasmAot Condition="'$(EnableWasmAot)'==''">false</EnableWasmAot>
     <RunAOTCompilation Condition="'$(Configuration)'=='Release'">$(EnableWasmAot)</RunAOTCompilation>
     <RunAOTCompilation Condition="'$(Configuration)'!='Release'">false</RunAOTCompilation>
+    <DefineConstants Condition="'$(RunAOTCompilation)'=='true'">$(DefineConstants);WASM_AOT</DefineConstants>
     <WasmEnableSIMD>true</WasmEnableSIMD>
     <InvariantGlobalization>true</InvariantGlobalization>
     <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
