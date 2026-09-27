@@ -43,23 +43,27 @@ public class PPU_DMG : IPPU, IPpuProbe
 
     public PPU_DMG(Bus bus) : this(bus, PPU_GB.Width, PPU_GB.Height) { }
 
-    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight)
+    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool layered = false)
     {
         this.bus = bus;
         W = gbWidth; H = gbHeight;
-        var t = CoreRegistry.PpuTypes.TryGetValue(MixConfig.NesFrontPpu, out var ft) ? ft : throw new ArgumentException($"No NES PPU '{MixConfig.NesFrontPpu}'");
+        frontId ??= MixConfig.NesFrontPpu;
+        var t = CoreRegistry.PpuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES PPU '{frontId}'");
         front = CoreRegistry.CreateInstance<IPPU>(t, bus) ?? throw new InvalidOperationException("front PPU");
         probe = front as IPpuProbe;
         clock = front as IPpuFrameClock;
         if (probe == null && (!MixConfig.RescueFront || clock == null))
-            throw new NotSupportedException($"NES PPU {MixConfig.NesFrontPpu} has no IPpuProbe - it cannot front a Game Boy PPU");
+            throw new NotSupportedException($"NES PPU {frontId} has no IPpuProbe - it cannot front a Game Boy PPU");
         busRead = probe != null ? probe.ProbePpuBusRead : StateRead;
         cx = Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
         cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase);
-        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H);
+        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H, layered);
         if (!cgb) for (int i = 0; i < 4; i++) { var (r, g, b) = GbShades.Green[i]; gb.DmgColors[i] = 0xFF000000u | (uint)(r << 16 | g << 8 | b); }
         gb.LineStarted += OnGbLine;
     }
+
+    /// <summary>The NES front chip when it is a PPU_FIXS, whose SNES-support layers a subclass can carry over.</summary>
+    public PPU_FIXS? LayerFront => front as PPU_FIXS;
 
     public string CoreName => $"DMG{(W != PPU_GB.Width || H != PPU_GB.Height ? $"X {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
     public string Description => "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
@@ -274,6 +278,7 @@ public class PPU_DMG : IPPU, IPpuProbe
                 }
         }
         gb.Bgp = 0xE4; gb.Obp0 = 0xE4; gb.Obp1 = 0xE4;
+        CarryLayers();
         // Draw one Game Boy frame (SCX/SCY are set per line in OnGbLine).
         long target = gb.FrameCount + 1; int guard = 0;
         int guardMax = gb.FrameDots / 2;   // two frames' worth of 4-dot ticks
@@ -287,6 +292,40 @@ public class PPU_DMG : IPPU, IPpuProbe
                 uint c = gx >= 0 && gx < W && gy >= 0 && gy < H ? src[gy * W + gx] : 0xFF1A1C1Eu;
                 frame[o] = (byte)(c >> 16); frame[o + 1] = (byte)(c >> 8); frame[o + 2] = (byte)c; frame[o + 3] = 255;
             }
+    }
+
+    /// <summary>
+    /// PPU_DMGS: the NES front chip's SNES-support layers and sprites (PPU_FIXS) onto the Game Boy chip's own (PPU_GBXS):
+    /// NES 2-bit tiles -> Game Boy tile format, NES palette slots -> CGB palettes 0-3 (loaded from the NES palettes above;
+    /// DMG: shades by colour index), the same maps, scrolls, priorities and ladder, shifted by the crop.
+    /// </summary>
+    private void CarryLayers()
+    {
+        var dst = gb.LayerChip; var src = LayerFront;
+        if (dst == null) return;
+        dst.ClearExtension();
+        if (src == null) return;
+        for (int k = 0; k < PPU_FIXS.ExtLayerCount; k++)
+        {
+            var a = src.Layers[k]; var b = dst.Layers[k];
+            if (!a.Enabled) continue;
+            for (int t = 0; t < 256; t++) for (int r = 0; r < 8; r++) { b.Chr[t * 16 + r * 2] = a.Chr[t * 16 + r]; b.Chr[t * 16 + r * 2 + 1] = a.Chr[t * 16 + 8 + r]; }
+            Array.Copy(a.Map, b.Map, a.Map.Length);
+            for (int i = 0; i < a.Attr.Length; i++) b.Attr[i] = (byte)((a.Attr[i] & 3) | ((a.Attr[i] & 4) != 0 ? 8 : 0));
+            b.ScrollX = a.ScrollX + cx; b.ScrollY = a.ScrollY + cy; b.ZLow = a.ZLow; b.ZHigh = a.ZHigh;
+            b.Enabled = true;
+        }
+        for (int t = 0; t < PPU_FIXS.ExtSpriteTiles; t++) for (int r = 0; r < 8; r++) { dst.ExtSpriteChr[t * 16 + r * 2] = src.ExtSpriteChr[t * 16 + r]; dst.ExtSpriteChr[t * 16 + r * 2 + 1] = src.ExtSpriteChr[t * 16 + 8 + r]; }
+        if (dst.ExtSprites.Length < src.ExtSpriteCount) dst.ExtSprites = new PPU_GBXS.ExtSprite[src.ExtSpriteCount];
+        for (int i = 0; i < src.ExtSpriteCount; i++)
+        {
+            var e = src.ExtSprites[i];
+            dst.ExtSprites[i] = new PPU_GBXS.ExtSprite { X = (short)(e.X - cx), Y = (short)(e.Y - cy), Tile = e.Tile, Palette = cgb ? e.Palette : (byte)0, Priority = e.Priority, HFlip = e.HFlip, VFlip = e.VFlip };
+        }
+        dst.ExtSpriteCount = src.ExtSpriteCount;
+        dst.ExtSpriteLimit = MixConfig.ExtSpriteLimit; dst.ExtSpritesPerLine = MixConfig.ExtSpritesPerLine;
+        Array.Copy(src.SpriteZ, dst.SpriteZ, 4);
+        dst.ExtFirstLine = src.ExtFirstLine - cy; dst.ExtLastLine = src.ExtLastLine - cy;
     }
 
     private void OnGbLine(int l)
@@ -307,4 +346,14 @@ public class PPU_DMG : IPPU, IPpuProbe
 public sealed class PPU_DMGX : PPU_DMG
 {
     public PPU_DMGX(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight) { }
+}
+
+/// <summary>
+/// MIX LAB: the Game Boy bridge with SNES support - PPU_DMGX's big screen on PPU_GBXS, fronted by the NES chip PPU_FIXS,
+/// so a SNES game translated through the NES keeps its layers and all its sprites on the Game Boy too (within Game Boy
+/// tiles and palettes). Discovered by CoreRegistry as PPU id "DMGS".
+/// </summary>
+public sealed class PPU_DMGS : PPU_DMG
+{
+    public PPU_DMGS(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", layered: true) { }
 }

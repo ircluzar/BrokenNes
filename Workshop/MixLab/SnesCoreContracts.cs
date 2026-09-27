@@ -38,7 +38,7 @@ public interface ISnesCpuCore
 /// <summary>The register-level SNES PPU state a downgrade needs (what the chip was programmed with).</summary>
 public sealed record SnesPpuSnapshot(
     byte Inidisp, byte BgMode, byte[] Bgsc, byte Bg12Nba, byte Bg34Nba,
-    ushort[] Hofs, ushort[] Vofs, byte Obsel, byte Tm);
+    ushort[] Hofs, ushort[] Vofs, byte Obsel, byte Tm, byte Ts = 0);
 
 /// <summary>A SNES PPU: register port, raw memories, a line renderer and an ARGB framebuffer.</summary>
 public interface ISnesPpuCore
@@ -121,5 +121,8 @@ public static class MixConfig
     public static int GbCropX = 48, GbCropY = 48;
     /// <summary>Screen size of the off-spec Game Boy picture chip behind NES PPU id "DMGX" (PPU_GBX; --gb-res WxH).</summary>
     public static int GbHiResWidth = 256, GbHiResHeight = 240;
+    /// <summary>Sprite limits of the SNES-support chips (PPU_FIXS, PPU_GBXS): 8x8 pieces drawn in all, and per line
+    /// (--ext-sprites N, --ext-sprites-per-line N). Defaults fit everything a SNES frame can show.</summary>
+    public static int ExtSpriteLimit = 1024, ExtSpritesPerLine = 34;
     public static bool RescueFront = System.Environment.GetEnvironmentVariable("MIX_RESCUE_FRONT") != "0";
 }

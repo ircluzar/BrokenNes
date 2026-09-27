@@ -45,6 +45,6 @@ internal sealed class SfcPpuAdapter : ISnesPpuCore
     {
         var r = p.GetRegisterSnapshot();
         return new(r.Inidisp, r.Bgmode, new[] { r.Bg1sc, r.Bg2sc, r.Bg3sc, r.Bg4sc }, r.Bg12nba, r.Bg34nba,
-            new[] { r.Bg1hofs, r.Bg2hofs, r.Bg3hofs, r.Bg4hofs }, new[] { r.Bg1vofs, r.Bg2vofs, r.Bg3vofs, r.Bg4vofs }, r.Obsel, r.Tm);
+            new[] { r.Bg1hofs, r.Bg2hofs, r.Bg3hofs, r.Bg4hofs }, new[] { r.Bg1vofs, r.Bg2vofs, r.Bg3vofs, r.Bg4vofs }, r.Obsel, r.Tm, r.Ts);
     }
 }

@@ -667,6 +667,8 @@ public class PPU_FIXS : IPPU, IPpuFixTiming
 	public int ExtSpriteCount;
 	/// <summary>Sprite limits: pieces in the list that are drawn at all, and pieces per line (later ones drop out).</summary>
 	public int ExtSpriteLimit = 1024, ExtSpritesPerLine = 34;
+	/// <summary>Lines the extension draws on (a 224-line SNES picture centred on the NES screen: 8-231); outside, only the native picture.</summary>
+	public int ExtFirstLine = 0, ExtLastLine = 239;
 	/// <summary>Ladder positions (higher = in front) of sprite priorities 0-3, and of the native NES picture when the
 	/// extension is active.</summary>
 	public readonly byte[] SpriteZ = { 3, 6, 9, 12 };
@@ -688,6 +690,7 @@ public class PPU_FIXS : IPPU, IPpuFixTiming
 		if (!any) return;
 		System.Array.Clear(extZ);
 		int line = scanline;
+		if (line < ExtFirstLine || line > ExtLastLine) return;
 		for (int k = 0; k < ExtLayerCount; k++)
 		{
 			var L = Layers[k];
@@ -735,7 +738,7 @@ public class PPU_FIXS : IPPU, IPpuFixTiming
 	public void ClearExtension()
 	{
 		foreach (var L in Layers) L.Enabled = false;
-		ExtSpriteCount = 0;
+		ExtSpriteCount = 0; ExtFirstLine = 0; ExtLastLine = 239;
 	}
 
 	// Pipeline state for savestates: a state is taken wherever RunFrame stopped, usually mid-line,

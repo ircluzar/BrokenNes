@@ -28,9 +28,12 @@ internal abstract class GbScreen
     public abstract long FrameCount { get; }
     public abstract void Tick(int dots);
     public abstract event Action<int>? LineStarted;
+    /// <summary>The SNES-support chip behind this screen, when it is one (PPU_GBXS).</summary>
+    public virtual PPU_GBXS? LayerChip => null;
 
-    public static GbScreen Create(GbModel model, int width, int height)
-        => width == PPU_GB.Width && height == PPU_GB.Height ? new Stock(model) : new Extended(model, width, height);
+    public static GbScreen Create(GbModel model, int width, int height, bool layered = false)
+        => layered ? new Layered(model, width, height)
+         : width == PPU_GB.Width && height == PPU_GB.Height ? new Stock(model) : new Extended(model, width, height);
 
     private sealed class Stock : GbScreen
     {
@@ -39,6 +42,31 @@ internal abstract class GbScreen
         public override int Width => PPU_GB.Width;
         public override int Height => PPU_GB.Height;
         public override int FrameDots => PPU_GB.DotsPerLine * PPU_GB.Lines;
+        public override byte[] Vram => p.Vram;
+        public override byte[] Oam => p.Oam;
+        public override byte[] BgPalRam => p.BgPalRam;
+        public override byte[] ObjPalRam => p.ObjPalRam;
+        public override uint[] DmgColors => p.DmgColors;
+        public override uint[] FrameBuffer => p.FrameBuffer;
+        public override byte Scx { set => p.Scx = value; }
+        public override byte Scy { set => p.Scy = value; }
+        public override byte Lcdc { set => p.Lcdc = value; }
+        public override byte Bgp { set => p.Bgp = value; }
+        public override byte Obp0 { set => p.Obp0 = value; }
+        public override byte Obp1 { set => p.Obp1 = value; }
+        public override long FrameCount => p.FrameCount;
+        public override void Tick(int dots) => p.Tick(dots);
+        public override event Action<int>? LineStarted { add => p.LineStarted += value; remove => p.LineStarted -= value; }
+    }
+
+    private sealed class Layered : GbScreen
+    {
+        private readonly PPU_GBXS p;
+        public Layered(GbModel model, int w, int h) { p = new PPU_GBXS(model, w, h) { CompatMode = false }; p.ResetPostBoot(); }
+        public override PPU_GBXS? LayerChip => p;
+        public override int Width => p.Width;
+        public override int Height => p.Height;
+        public override int FrameDots => p.DotsPerLine * p.Lines;
         public override byte[] Vram => p.Vram;
         public override byte[] Oam => p.Oam;
         public override byte[] BgPalRam => p.BgPalRam;

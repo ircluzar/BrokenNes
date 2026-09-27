@@ -35,6 +35,9 @@ internal sealed class NesPictureSink
         bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
     }
 
+    /// <summary>The NES PPU core drawing the picture (for chips with extensions, e.g. PPU_FIXS layers).</summary>
+    public IPPU Ppu => bus.ppu;
+
     private void W(ushort a, byte v) => bus.Write(a, v);
 
     /// <summary>Program the NES PPU (rendering off while uploading), run two frames, return RGBA 256x240.</summary>
