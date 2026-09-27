@@ -109,6 +109,18 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("soundBuffer")]
         public int SoundBuffer { get; set; } = 2048;
+
+        /// <summary>
+        /// Emulation output volume in percent (0-100), from the menu bar's volume button
+        /// </summary>
+        [JsonPropertyName("emulationVolume")]
+        public int EmulationVolume { get; set; } = 100;
+
+        /// <summary>
+        /// Emulation output muted (keeps <see cref="EmulationVolume"/> for when it is unmuted)
+        /// </summary>
+        [JsonPropertyName("emulationMuted")]
+        public bool EmulationMuted { get; set; }
         
         /// <summary>
         /// Run emulation as fast as possible (no speed limit)

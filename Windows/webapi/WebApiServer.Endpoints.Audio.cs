@@ -6,13 +6,44 @@ using Microsoft.AspNetCore.Http;
 
 namespace BrokenNes.Windows.WebApi
 {
+    public sealed class VolumeRequest
+    {
+        public int? Volume { get; set; }
+        public bool? Muted { get; set; }
+    }
+
     public partial class WebApiServer
     {
+        /// <summary>Emulation volume (percent) and mute, as the menu bar's volume button shows them.</summary>
+        public Func<(int volume, bool muted)>? GetEmulationVolume { get; set; }
+        /// <summary>Change the emulation volume (percent, clamped to 0-100) and/or mute; null leaves that part alone.</summary>
+        public Action<int?, bool?>? SetEmulationVolume { get; set; }
+
         /// <summary>
         /// Register Audio Engine API endpoints
         /// </summary>
         private void RegisterAudioEndpoints(WebApplication app)
         {
+            // GET /api/audio/emulation-volume - emulation output volume (0-100) and mute
+            app.MapGet("/api/audio/emulation-volume", () =>
+            {
+                if (GetEmulationVolume == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var (volume, muted) = GetEmulationVolume();
+                return Results.Ok(new { success = true, volume, muted });
+            });
+
+            // POST /api/audio/emulation-volume {"volume": 0-100, "muted": bool} - either field may be left out
+            app.MapPost("/api/audio/emulation-volume", async (HttpContext context) =>
+            {
+                if (GetEmulationVolume == null || SetEmulationVolume == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var body = await context.Request.ReadFromJsonAsync<VolumeRequest>();
+                if (body == null || (body.Volume == null && body.Muted == null))
+                    return Results.BadRequest(new { success = false, error = "volume and/or muted is required" });
+                SetEmulationVolume(body.Volume, body.Muted);
+                var (volume, muted) = GetEmulationVolume();
+                return Results.Ok(new { success = true, volume, muted });
+            });
+
             // GET /api/audio/music/current - Get currently playing music
             app.MapGet("/api/audio/music/current", () =>
             {

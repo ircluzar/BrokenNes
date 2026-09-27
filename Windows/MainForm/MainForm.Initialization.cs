@@ -435,7 +435,7 @@ namespace BrokenNes.Windows
             var legacyMenu = BuildLegacyMenu();
             var consoleMenuItem = BuildConsoleMenu();
             menuStrip.Items.Clear();
-            menuStrip.Items.AddRange(new ToolStripItem[] { emulatorMenu, consoleMenuItem, cpuMenu, ppuMenu, apuMenu, shaderMenu, configMenu, toolsMenu, webModulesMenu, legacyMenu, helpMenu });
+            menuStrip.Items.AddRange(new ToolStripItem[] { emulatorMenu, consoleMenuItem, cpuMenu, ppuMenu, apuMenu, shaderMenu, configMenu, toolsMenu, webModulesMenu, legacyMenu, helpMenu, BuildVolumeMenu(menuStrip) });
             
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
@@ -870,6 +870,7 @@ namespace BrokenNes.Windows
                 if (!webApiServer.IsRunning)
                 {
                     WireConsoleApi(webApiServer);
+                    WireVolumeApi(webApiServer);
                     await webApiServer.StartAsync();
 
                     if (webApiServer.IsRunning)

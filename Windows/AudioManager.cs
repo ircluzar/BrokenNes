@@ -28,6 +28,15 @@ namespace BrokenNes.Windows
         
         // Latency control
         private const int DesiredLatencyMs = 50;
+
+        /// <summary>
+        /// Emulation output volume, 0..1, set from the menu bar's volume button. App-wide rather than per
+        /// instance so it survives the audio device being rebuilt (sound quality changes, console switches).
+        /// </summary>
+        public static volatile float MasterVolume = 1f;
+
+        /// <summary>Silences emulation output without losing <see cref="MasterVolume"/>.</summary>
+        public static volatile bool Muted;
         
         public AudioManager(int sampleRate = 44100, int channels = 1)
         {
@@ -222,11 +231,12 @@ namespace BrokenNes.Windows
             // Convert float samples to 16-bit PCM
             byte[] audioData = new byte[safeBufferPosition * bytesPerSample * channels];
             int byteIndex = 0;
-            
+            float gain = Muted ? 0f : MasterVolume;
+
             for (int i = 0; i < safeBufferPosition; i++)
             {
                 // Clamp to [-1.0, 1.0] and convert to 16-bit signed integer
-                float sample = Math.Clamp(sampleBuffer[i], -1.0f, 1.0f);
+                float sample = Math.Clamp(sampleBuffer[i] * gain, -1.0f, 1.0f);
                 short pcmSample = (short)(sample * short.MaxValue);
                 
                 // Write as little-endian 16-bit
