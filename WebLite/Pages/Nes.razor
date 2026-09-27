@@ -12,6 +12,7 @@
 @using BrokenNes.CorruptorModels
 @using NesEmulator
 @using NesEmulator.Shaders
+@using NesEmulator.Systems
 @using BrokenNes.Shared
 @inject ILogger<Nes> Logger
 @inject IJSRuntime JS
@@ -69,6 +70,16 @@
             @if (!HideCoreSelectors)
             {
                 <div class="btn-group">
+                    <div class="qc-select-stack">
+                        <label for="consoleSelect" class="mini-label" title="The console the emulator runs">Console</label>
+                        <select id="consoleSelect" class="btn btn-rf btn-select console-select" aria-label="Console"
+                                value="@Consoles.Key(emu!.ActiveConsole)" @onchange="OnConsoleChanged">
+                            @foreach (var k in Consoles.All)
+                            {
+                                <option value="@Consoles.Key(k)">@Consoles.DisplayName(k)</option>
+                            }
+                        </select>
+                    </div>
                     @if (ShowShaderPicker)
                     {
                         <div class="qc-select-stack">
@@ -78,7 +89,30 @@
                             </button>
                         </div>
                     }
-                    @if (ShowApuPicker)
+                    @if (emu!.ActiveConsole != ConsoleKind.Nes)
+                    {
+                        @* SNES / Game Boy: the console's own parts first, then the other consoles' (a pick restarts the game). *@
+                        @foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
+                        {
+                            var current = emu!.ConsoleCore(emu!.ActiveConsole, slot);
+                            <div class="qc-select-stack">
+                                <label class="mini-label" title="@($"{slot.ToString().ToUpperInvariant()} of the {emu!.ActiveConsoleName} - picking one restarts the game")">@slot.ToString().ToUpperInvariant()</label>
+                                <select class="btn btn-rf btn-select console-core-select" aria-label="@($"{slot} core")" value="@current"
+                                        @onchange="(e => emu!.SetConsoleCoreAsync(slot, e.Value?.ToString() ?? current))">
+                                    @foreach (var fam in emu!.ConsoleCoreOptions(slot).GroupBy(o => o.Family))
+                                    {
+                                        <optgroup label="@(fam.Key == Consoles.Family(emu!.ActiveConsole) ? $"{fam.Key} family" : $"From the {fam.Key}")">
+                                            @foreach (var o in fam)
+                                            {
+                                                <option value="@o.Id" selected="@(o.Id == current)">@o.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    }
+                    @if (ShowApuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
                         <div class="qc-select-stack">
                             <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
@@ -87,7 +121,7 @@
                             </button>
                         </div>
                     }
-                    @if (ShowCpuPicker)
+                    @if (ShowCpuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
                         <div class="qc-select-stack">
                             <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
@@ -103,7 +137,7 @@
                             </button>
                         </div>
                     }
-                    @if (ShowPpuPicker)
+                    @if (ShowPpuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
                         <div class="qc-select-stack">
                             <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
@@ -139,6 +173,7 @@
                 <div class="badges d-flex flex-wrap">
                     <span class="badge bg-dark-subtle text-dark me-1">FPS: @emu!.Controller.Fps.ToString("F1")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">State: @(emu!.Controller.IsRunning ? "Running" : "Paused")</span>
+                    <span class="badge bg-dark-subtle text-dark me-1">@emu!.ActiveConsoleName</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@emu!.Controller.CurrentRomName</strong></span>
                     <span class="badge bg-dark-subtle text-dark">Size: @NesController.FormatSize(emu!.Controller.LastLoadedRomSize)</span>
                     <span class="badge bg-dark-subtle text-dark ms-1">SF Core: @emu!.ActiveSfCoreDisplay</span>
@@ -155,7 +190,7 @@
             </div>
             }
             <div class="screen-aspect">
-                <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas" tabindex="0" aria-label="NES Emulator"></canvas>
+                <canvas id="nes-canvas" width="512" height="480" class="pixel-perfect responsive-canvas" tabindex="0" aria-label="@($"{emu!.ActiveConsoleName} screen")"></canvas>
             </div>
             @if (!DisplayOnlyMode)
             {
@@ -173,8 +208,12 @@
             <div class="mobile-fs-extra-views">
                 @if (emu!.UI.MobileFullscreenView == "controller")
                 {
-                    <div class="mobile-view controller-view" id="touch-controller">
+                    <div class="mobile-view controller-view" id="touch-controller" data-layout="@Consoles.Key(emu!.ActiveConsole)">
                         <div class="controller-grid">
+                            <div class="shoulder-row">
+                                <div class="shoulder-btn" data-btn="l">L</div>
+                                <div class="shoulder-btn" data-btn="r">R</div>
+                            </div>
                             <div class="upper-row">
                                 <div class="dpad">
                                     <div class="pad-btn" data-btn="up">▲</div>
@@ -185,6 +224,8 @@
                                 </div>
                                 <div class="actions">
                                     <div class="ab-cluster">
+                                        <div class="btn-y" data-btn="y">Y</div>
+                                        <div class="btn-x" data-btn="x">X</div>
                                         <div class="btn-b" data-btn="b">B</div>
                                         <div class="btn-a" data-btn="a">A</div>
                                     </div>
@@ -424,7 +465,7 @@
                 <div>Uploaded: @emu!.Controller.UploadedRoms.Count</div>
                 <div>Selected: @emu!.Controller.CurrentRomName</div>
             </div>
-            <input @ref="fileInput" id="rom-upload" type="file" accept=".nes" class="d-none" @onchange="(()=>emu!.ImportRomsFromInputAsync(fileInput))" multiple />
+            <input @ref="fileInput" id="rom-upload" type="file" accept=".nes,.sfc,.smc,.gb,.gbc,.zip" class="d-none" @onchange="(()=>emu!.ImportRomsFromInputAsync(fileInput))" multiple />
         </div>
     </details>
 
@@ -1409,6 +1450,14 @@
         catch { }
     }
 
+    // BrokenNes 2: the Console dropdown.
+    private async Task OnConsoleChanged(ChangeEventArgs e)
+    {
+        var k = Consoles.FromKey(e.Value?.ToString());
+        await emu!.SelectConsoleAsync(k);
+        StateHasChanged();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -1443,6 +1492,8 @@
                                     };
                                 })();"); } catch { }
                 await emu.EnsureInitialRenderAsync(true);
+                // BrokenNes 2: the console and its core picks from last time; the touch layout follows it.
+                try { await emu.LoadConsolePrefsAsync(); await JS.InvokeVoidAsync("nesInterop.setTouchLayout", Consoles.Key(emu.ActiveConsole)); } catch { }
                 // Mark options as ready so pickers can render if eligible
                 _pickerOptionsReady = true;
                 try { await InvokeAsync(StateHasChanged); } catch { }

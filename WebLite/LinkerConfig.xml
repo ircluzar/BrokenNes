@@ -49,6 +49,20 @@
     <type fullname="NesEmulator.APU_WF" preserve="all" />
     <type fullname="NesEmulator.APU_MNES" preserve="all" />
 
+    <!-- BrokenNes 2: FIXS (SNES layers + all sprites) and the cross-console bridge cores, so the NES menus offer the
+         SNES / Game Boy parts and SNES / Game Boy games can be drawn on NES chips. NesPictureSink reads NES.bus by
+         reflection, so NES keeps its fields. -->
+    <type fullname="NesEmulator.PPU_FIXS" preserve="all" />
+    <type fullname="NesEmulator.PPU_SNES" preserve="all" />
+    <type fullname="NesEmulator.PPU_DMG" preserve="all" />
+    <type fullname="NesEmulator.PPU_DMGX" preserve="all" />
+    <type fullname="NesEmulator.PPU_DMGS" preserve="all" />
+    <type fullname="NesEmulator.CPU_SNES" preserve="all" />
+    <type fullname="NesEmulator.CPU_SM83" preserve="all" />
+    <type fullname="NesEmulator.APU_SNES" preserve="all" />
+    <type fullname="NesEmulator.APU_DMG" preserve="all" />
+    <type fullname="NesEmulator.NES" preserve="fields" />
+
     <!-- Clocks are small and drive frame pacing; keep all of them. -->
     <type fullname="NesEmulator.CLOCK_*" preserve="all" />
 

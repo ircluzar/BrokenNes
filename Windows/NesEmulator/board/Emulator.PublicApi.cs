@@ -435,6 +435,13 @@ namespace BrokenNes
             // autosave only runs every ~10s, so without this, saving and then immediately picking
             // another ROM loses the save that was just made.
             await SaveBatteryNowAsync();
+            await FlushSessionSaveAsync();
+            // BrokenNes 2: a SNES / Game Boy ROM starts a console session instead of loading into the NES.
+            if (Controller.UploadedRoms.TryGetValue(Controller.RomFileName, out var uploaded))
+            {
+                if (await TryStartSessionAsync(Controller.RomFileName, uploaded)) return;
+            }
+            else if (SessionActive) await StopSessionAsync();
             await Controller.LoadSelectedRom(
                 async fn => await Controller.LoadRomFromWwwroot(fn, f => Http.GetByteArrayAsync(f), s => Logger.LogInformation(s), s => Logger.LogError(new Exception(s), s)),
                 s => Status.Set(s),
@@ -653,6 +660,7 @@ namespace BrokenNes
                 // transaction commits. The periodic in-frame autosave below is what actually
                 // protects progress; this just narrows the window.
                 await SaveBatteryNowAsync();
+                await FlushSessionSaveAsync();
             }
         }
 

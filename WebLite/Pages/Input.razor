@@ -59,7 +59,7 @@
                     }
                   </select>
                 </div>
-                <div class="opt-row small-note">D-Pad and Left Stick both move. Buttons: A=South(0), B=East(1), Select=8, Start=9 by default.</div>
+                <div class="opt-row small-note">D-Pad and Left Stick both move. Buttons: A=South(0), B=East(1), X=West(2), Y=North(3), L=LB(4), R=RB(5), Select=8, Start=9 by default.</div>
               }
               else if (pc.Device == InputDeviceType.Touch)
               {
@@ -91,6 +91,10 @@
     new("B", k=>k.B, (k,v)=>k.B=v),
     new("Select", k=>k.Select, (k,v)=>k.Select=v),
     new("Start", k=>k.Start, (k,v)=>k.Start=v),
+    new("X (SNES)", k=>k.X, (k,v)=>k.X=v),
+    new("Y (SNES)", k=>k.Y, (k,v)=>k.Y=v),
+    new("L (SNES)", k=>k.L, (k,v)=>k.L=v),
+    new("R (SNES)", k=>k.R, (k,v)=>k.R=v),
   };
 
   protected override async Task OnInitializedAsync()

@@ -633,7 +633,7 @@ window.nesInterop = {
     // Unified presentFrame: canvas draw + optional audio buffer write
     // Policy: TRB uses modern rubberbanding pipeline (AudioWorklet ring if available; otherwise chunked+rate trim).
     //         FMC/CLR use legacy classic scheduling.
-    presentFrame: async function(canvasId, framebuffer, audioBuffer, sampleRate){
+    presentFrame: async function(canvasId, framebuffer, audioBuffer, sampleRate, w, h, aw){
         try {
             const clk = this._activeClockId || '';
             const useWorklet = (clk === 'TRB');
@@ -658,7 +658,7 @@ window.nesInterop = {
                     this.playAudioClassic(audioBuffer, sampleRate||44100);
                 }
             }
-            if(framebuffer){ this.drawFrame(canvasId, framebuffer); }
+            if(framebuffer){ this.drawFrame(canvasId, framebuffer, w, h, aw); }
         } catch(e){ console.warn('presentFrame failed', e); }
     },
 
@@ -671,23 +671,50 @@ window.nesInterop = {
             off.width = 256; off.height = 240;
             const offCtx = off.getContext('2d');
             const imageData = offCtx.createImageData(256, 240);
-            cache = { canvas: c, off, offCtx, imageData, ctx: null };
+            cache = { canvas: c, off, offCtx, imageData, ctx: null, w: 256, h: 240 };
             this._cache[canvasId] = cache;
         }
         return cache;
     },
 
-    drawFrame: function (canvasId, framebuffer) {
+    // BrokenNes 2: the picture's size (w x h) and the width it is shown at (aw: a 512-wide SNES hi-res frame shows at
+    // 256). NES callers pass nothing and get 256x240, as before.
+    _setFrameSize: function (canvasId, cache, W, H, AW) {
+        if (cache.w === W && cache.h === H && cache.aw === AW) return;
+        cache.w = W; cache.h = H; cache.aw = AW;
+        cache.off.width = W; cache.off.height = H;
+        cache.imageData = cache.offCtx.createImageData(W, H);
+        cache._cleared = false;
+        const c = cache.canvas;
+        c.width = AW * 2; c.height = H * 2;
+        try { c.style.aspectRatio = AW + ' / ' + H; } catch {}
+        try {
+            const rs = document.documentElement.style;
+            rs.setProperty('--screen-aspect', AW + ' / ' + H);
+            rs.setProperty('--screen-ratio', String(AW / H));
+        } catch {}
+        if (this._glObjects) {
+            this._glObjects.initialized = false;
+            if (this._gl && this._glObjects.prevFrameTexture) { try { this._gl.deleteTexture(this._glObjects.prevFrameTexture); } catch {} }
+            this._glObjects.prevFrameTexture = null;
+        }
+        this._vpW = -1; this._vpH = -1;
+        this._frameW = W; this._frameH = H;
+    },
+
+    drawFrame: function (canvasId, framebuffer, w, h, aw) {
         // Initialize fallback 2D cache (always keeps imageData for 2D blit)
         const cache = this._ensureCanvasCache(canvasId);
         if (!cache) return;
+        const W = w || 256, H = h || 240;
+        this._setFrameSize(canvasId, cache, W, H, aw || W);
         const { offCtx, off, imageData, canvas } = cache;
 
         // Initialize WebGL once; if unavailable we permanently fall back to 2D
         const webglAvailable = this._initWebGL(canvas);
         if (!webglAvailable) {
             // 2D path: mutate ImageData then blit (kept intact for non-WebGL contexts)
-            if (framebuffer && framebuffer.length >= 256 * 240 * 4) {
+            if (framebuffer && framebuffer.length >= W * H * 4) {
                 try { imageData.data.set(framebuffer); } catch {}
             } else if (!cache._cleared) {
                 for (let i = 0; i < imageData.data.length; i += 4) {
@@ -717,8 +744,8 @@ window.nesInterop = {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-            glRes.prevFrameFBO = gl.createFramebuffer();
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            if (!glRes.prevFrameFBO) glRes.prevFrameFBO = gl.createFramebuffer();
         }
 
         // Upload/refresh main NES texture (direct from framebuffer; no ImageData copy)
@@ -731,7 +758,7 @@ window.nesInterop = {
                     // pass-through (avoid allocate)
                 } else if (Array.isArray(src)) {
                     // reuse a scratch buffer to avoid per-frame allocation
-                    const need = 256*240*4;
+                    const need = W*H*4;
                     if (!this._fbScratch || this._fbScratch.length !== need) this._fbScratch = new Uint8Array(need);
                     this._fbScratch.set(src);
                     src = this._fbScratch;
@@ -739,16 +766,16 @@ window.nesInterop = {
             } catch {}
         }
         // Guard: if we still don't have a valid source, skip upload (keeps prior frame)
-        if (src && src.length >= 256*240*4) {
+        if (src && src.length >= W*H*4) {
             if (!glRes.initialized) {
                 gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
                 if (this._perfMarksEnabled) { try { performance.mark('glUploadInit-start'); } catch {} }
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, src);
                 if (this._perfMarksEnabled) { try { performance.mark('glUploadInit-end'); performance.measure('glUploadInit', 'glUploadInit-start', 'glUploadInit-end'); } catch {} }
                 glRes.initialized = true;
             } else {
                 if (this._perfMarksEnabled) { try { performance.mark('glUploadSub-start'); } catch {} }
-                gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 240, gl.RGBA, gl.UNSIGNED_BYTE, src);
+                gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, src);
                 if (this._perfMarksEnabled) { try { performance.mark('glUploadSub-end'); performance.measure('glUploadSub', 'glUploadSub-start', 'glUploadSub-end'); } catch {} }
             }
         }
@@ -778,7 +805,7 @@ window.nesInterop = {
         // --- Bind uniforms ---
         if (progInfo) {
             if (progInfo.uTime) gl.uniform1f(progInfo.uTime, performance.now()/1000.0);
-            if (progInfo.uTexSize) gl.uniform2f(progInfo.uTexSize, 256.0, 240.0);
+            if (progInfo.uTexSize) gl.uniform2f(progInfo.uTexSize, W, H);
             if (progInfo.uStrength) gl.uniform1f(progInfo.uStrength, this._rfStrength);
             if (progInfo.options && typeof progInfo.options.onBind === 'function') {
                 try { progInfo.options.onBind(gl, progInfo, this); } catch(e){ /* ignore */ }
@@ -807,7 +834,7 @@ window.nesInterop = {
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, glRes.prevFrameTexture, 0);
             // Copy the current NES texture to prevFrameTexture
             gl.bindTexture(gl.TEXTURE_2D, glRes.texture);
-            gl.viewport(0,0,256,240);
+            gl.viewport(0,0,W,H);
             // Use a simple passthrough shader to blit
             const pxInfo = this._shaderPrograms['PX'];
             const pxProg = pxInfo?.program || glRes.basicProgram;
@@ -1070,7 +1097,7 @@ window.nesInterop = {
                         const fbToPresent = canSkip ? null : fb;
                         if (fbToPresent || haveAudio) {
                             // Fire-and-forget to avoid chaining microtasks on the RAF critical path
-                            this.presentFrame('nes-canvas', fbToPresent, audio, sr);
+                            this.presentFrame('nes-canvas', fbToPresent, audio, sr, r.w, r.h, r.aw);
                         }
                         // Track skip burst window
                         if (canSkip) { this._skipsThisBurst++; } else { this._skipsThisBurst = 0; }
@@ -1109,9 +1136,9 @@ window.nesInterop = {
             this._ensureEmuFocusHooks && this._ensureEmuFocusHooks();
         } catch {}
         // Legacy single-player state (P1)
-        window.nesInputState = new Array(8).fill(false);
+        window.nesInputState = new Array(12).fill(false);
         // New P2 state
-        window.nesInputStateP2 = new Array(8).fill(false);
+        window.nesInputStateP2 = new Array(12).fill(false);
         
         const updateInput = (changed) => {
             if (changed) {
@@ -1227,6 +1254,12 @@ window.nesInterop = {
         }
     },
 
+    // BrokenNes 2: the touch controller's layout follows the running console ("nes", "snes", "gb", "gbc").
+    setTouchLayout: function(consoleKey){
+        this._touchLayout = consoleKey || 'nes';
+        try { const tc = document.getElementById('touch-controller'); if (tc) tc.setAttribute('data-layout', this._touchLayout); } catch {}
+    },
+
     // Configure input mapping for players and enable gamepad polling
     configureInput: function(dotNetRef, cfg){
         try{
@@ -1242,7 +1275,12 @@ window.nesInterop = {
                 a: (km?.A)||'KeyX',
                 b: (km?.B)||'KeyZ',
                 select: (km?.Select)||'Space',
-                start: (km?.Start)||'Enter'
+                start: (km?.Start)||'Enter',
+                // BrokenNes 2: the SNES face / shoulder buttons
+                x: (km?.X)||'KeyA',
+                y: (km?.Y)||'KeyS',
+                l: (km?.L)||'KeyQ',
+                r: (km?.R)||'KeyW'
             });
             const mapGamepad = (gm)=>({
                 dpadUp: (gm?.DpadUp)??12,
@@ -1255,7 +1293,11 @@ window.nesInterop = {
                 a: (gm?.A)??0,
                 b: (gm?.B)??1,
                 select: (gm?.Select)??8,
-                start: (gm?.Start)??9
+                start: (gm?.Start)??9,
+                x: (gm?.X)??2,
+                y: (gm?.Y)??3,
+                l: (gm?.L)??4,
+                r: (gm?.R)??5
             });
             const p1 = cfg?.player1||{}; const p2 = cfg?.player2||{};
             window._nesInputCfg = {
@@ -1270,6 +1312,7 @@ window.nesInterop = {
                 const add = (code, idx)=>{ if(!code) return; (dict[code]||(dict[code]=[])).push({p:player,i:idx}); };
                 add(kbd.a,0); add(kbd.b,1); add(kbd.select,2); add(kbd.start,3);
                 add(kbd.up,4); add(kbd.down,5); add(kbd.left,6); add(kbd.right,7);
+                add(kbd.x,8); add(kbd.y,9); add(kbd.l,10); add(kbd.r,11);
                 return dict;
             };
             const keyMap = {};
@@ -1330,7 +1373,7 @@ window.nesInterop = {
                         const prev = arr.slice();
                         const g = cfgP.gp;
                         // reset
-                        for(let i=0;i<8;i++) arr[i]=false;
+                        for(let i=0;i<12;i++) arr[i]=false;
                         const btn = (i)=>!!(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed);
                         const ax = (i)=>{ const v=(gp.axes&&gp.axes[i])||0; return v; };
                         // Index order must match NesEmulator.Input.SetInput: 0:A,1:B,2:Select,
@@ -1342,8 +1385,9 @@ window.nesInterop = {
                         if(y <= -th) arr[4]=true; if(y >= th) arr[5]=true; if(x <= -th) arr[6]=true; if(x >= th) arr[7]=true;
                         // AB + Select/Start
                         if(btn(g.a)) arr[0]=true; if(btn(g.b)) arr[1]=true; if(btn(g.select)) arr[2]=true; if(btn(g.start)) arr[3]=true;
+                        if(btn(g.x)) arr[8]=true; if(btn(g.y)) arr[9]=true; if(btn(g.l)) arr[10]=true; if(btn(g.r)) arr[11]=true;
                         // If changed, notify
-                        let changed=false; for(let i=0;i<8;i++){ if(arr[i]!==prev[i]){ changed=true; break; } }
+                        let changed=false; for(let i=0;i<12;i++){ if(arr[i]!==prev[i]){ changed=true; break; } }
                         if(changed && this._mainRef){ try{ this._mainRef.invokeMethodAsync('UpdateInputForPlayer', player, arr); }catch{} }
                         return true;
                     };
@@ -1744,10 +1788,10 @@ window.nesInterop = {
             const files = el && el.files ? Array.from(el.files) : [];
             const results = [];
             for (const f of files) {
-                if (!f.name.toLowerCase().endsWith('.nes')) continue;
+                if (!/\.(nes|sfc|smc|gb|gbc|zip)$/i.test(f.name)) continue;
                 const data = await f.arrayBuffer();
                 // size guard (4MB)
-                if (data.byteLength > 4 * 1024 * 1024) continue;
+                if (data.byteLength > 16 * 1024 * 1024) continue;
                 const bytes = new Uint8Array(data);
                 let binary = '';
                 for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -1798,12 +1842,12 @@ window.nesInterop = {
             highlight(false);
             const dt = e.dataTransfer;
             if (!dt || !dt.files) return;
-            const files = Array.from(dt.files).filter(f=>f.name.toLowerCase().endsWith('.nes'));
+            const files = Array.from(dt.files).filter(f=>/\.(nes|sfc|smc|gb|gbc|zip)$/i.test(f.name));
             const results=[];
             for (const f of files){
                 try {
                     const buf = await f.arrayBuffer();
-                    if (buf.byteLength>4*1024*1024) continue;
+                    if (buf.byteLength>16*1024*1024) continue;
                     const bytes = new Uint8Array(buf);
                     let binary='';
                     for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
@@ -1897,10 +1941,10 @@ window.nesInterop = {
             // (0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right), NOT UI reading order -
             // this was previously up:0,down:1,... which silently fired the wrong button for every
             // single input (e.g. Down landed on index 1, which the engine reads as B).
-            const map = { a:0, b:1, select:2, start:3, up:4, down:5, left:6, right:7 };
+            const map = { a:0, b:1, select:2, start:3, up:4, down:5, left:6, right:7, x:8, y:9, l:10, r:11 };
             const activeTouches = new Map();
             const updateBtnVisual = (btnEl, pressed)=>{ if(!btnEl) return; btnEl.classList.toggle('pressed', !!pressed); };
-            const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(8).fill(false); window.nesInputState[idx]=val; if(this._mainRef) try{ this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState);}catch{} };
+            const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(12).fill(false); window.nesInputState[idx]=val; if(this._mainRef) try{ this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState);}catch{} };
             const elementFromTouch = (touch)=>{ const el = document.elementFromPoint(touch.clientX, touch.clientY); if(!el) return null; return el.closest && el.closest('[data-btn]'); };
             const beginTouch = (touch)=>{ const target = elementFromTouch(touch); if(!target) return; const key = target.dataset.btn; if(!key) return; activeTouches.set(touch.identifier,key); setState(key,true); updateBtnVisual(target,true); };
             const moveTouch = (touch)=>{ const prevKey = activeTouches.get(touch.identifier); const currentEl = elementFromTouch(touch); const newKey = currentEl?.dataset.btn; if(prevKey && prevKey!==newKey){ setState(prevKey,false); const prevEl = ctl.querySelector(`[data-btn="${prevKey}"]`); updateBtnVisual(prevEl,false); activeTouches.delete(touch.identifier);} if(newKey && newKey!==prevKey){ activeTouches.set(touch.identifier,newKey); setState(newKey,true); updateBtnVisual(currentEl,true);} };

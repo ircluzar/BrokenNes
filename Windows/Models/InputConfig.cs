@@ -24,6 +24,9 @@ public class KeyboardMapping
     // Webmodule control buttons (not routed to NES)
     public string X { get; set; } = "KeyA"; // webmodule button 1
     public string Y { get; set; } = "KeyS"; // webmodule button 2
+    // BrokenNes 2: SNES shoulder buttons (X / Y above are also the SNES X / Y)
+    public string L { get; set; } = "KeyQ";
+    public string R { get; set; } = "KeyW";
 }
 
 public class GamepadMapping
@@ -45,6 +48,9 @@ public class GamepadMapping
     // Webmodule control buttons (not routed to NES)
     public int X { get; set; } = 2; // West (X on Xbox, Square on PS)
     public int Y { get; set; } = 3; // North (Y on Xbox, Triangle on PS)
+    // BrokenNes 2: SNES shoulder buttons
+    public int L { get; set; } = 4; // LB / L1
+    public int R { get; set; } = 5; // RB / R1
 }
 
 public class PlayerInputConfig

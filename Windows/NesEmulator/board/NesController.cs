@@ -7,6 +7,18 @@ namespace BrokenNes
     // Handles NES emulation lifecycle, ROM management, and core selection
     public class NesController
     {
+        /// <summary>BrokenNes 2: the console a ROM is for, as a short label for the ROM list.</summary>
+        public static string ConsoleTag(byte[] data, string name)
+        {
+            try
+            {
+                var rom = NesEmulator.Systems.RomDetect.Unwrap(data, name, out var inner);
+                var k = NesEmulator.Systems.RomDetect.Detect(rom, inner);
+                return k == null ? "uploaded" : NesEmulator.Systems.Consoles.DisplayName(k.Value);
+            }
+            catch { return "uploaded"; }
+        }
+
         public async Task LoadRomUpload(Func<Task<UploadedRom[]>> getUploadedRoms, Action<string> setStatus, Action stateHasChanged, Func<string, Task> loadSelectedRom)
         {
             try
@@ -23,26 +35,27 @@ namespace BrokenNes
                 foreach (var f in files)
                 {
                     if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
-                    if (!f.name.EndsWith(".nes", StringComparison.OrdinalIgnoreCase)) continue;
+                    // BrokenNes 2: NES, SNES, Game Boy / Color ROMs (and .zip holding one).
+                    if (!NesEmulator.Systems.Consoles.AllRomExtensions.Any(x => f.name.EndsWith(x, StringComparison.OrdinalIgnoreCase))) continue;
                     byte[] data;
                     try { data = Convert.FromBase64String(f.base64); } catch { continue; }
                     if (data.Length == 0) continue;
-                    if (data.Length > 4 * 1024 * 1024)
+                    if (data.Length > 16 * 1024 * 1024)
                     {
-                        setStatus($"File '{f.name}' too large (>4MB). Skipped.");
+                        setStatus($"File '{f.name}' too large (>16MB). Skipped.");
                         continue;
                     }
                     var key = f.name;
                     UploadedRoms[key] = data;
                     if (!RomOptions.Any(o => o.Key == key))
                     {
-                        RomOptions.Add(new RomOption { Key = key, Label = $"{f.name} (uploaded)", BuiltIn = false });
+                        RomOptions.Add(new RomOption { Key = key, Label = $"{f.name} ({ConsoleTag(data, f.name)})", BuiltIn = false });
                     }
                     added++;
                 }
                 if (added == 0)
                 {
-                    setStatus("No valid .nes files processed.");
+                    setStatus("No valid ROM files processed (.nes, .sfc, .smc, .gb, .gbc, .zip).");
                     return;
                 }
                 var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && UploadedRoms.ContainsKey(f.name));
@@ -290,6 +303,8 @@ namespace BrokenNes
     }
     private List<string> _ppuCoreOptions = new();
     
+    /// <summary>BrokenNes 2: the last SNES / Game Boy frame as RGBA (its own size).</summary>
+    public byte[]? sessionFrameBuffer;
     public byte[] framebuffer 
     {
         get => _framebuffer;

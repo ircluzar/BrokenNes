@@ -115,6 +115,8 @@
     <Compile Include="$(NesRoot)board\Emulator.PublicApi.cs"      Link="NesEmulator\board\Emulator.PublicApi.cs" />
     <Compile Include="$(NesRoot)board\Emulator.Imagine.cs"        Link="NesEmulator\board\Emulator.Imagine.cs" />
     <Compile Include="$(NesRoot)board\Emulator.ImagineInterop.cs" Link="NesEmulator\board\Emulator.ImagineInterop.cs" />
+    <!-- BrokenNes 2: console selector + SNES / Game Boy sessions in the Lite UI. -->
+    <Compile Include="$(NesRoot)board\Emulator.Consoles.cs"       Link="NesEmulator\board\Emulator.Consoles.cs" />
     <Compile Include="$(NesRoot)board\NesController.cs"           Link="NesEmulator\board\NesController.cs" />
     <Compile Include="$(NesRoot)board\NesControllerModels.cs"     Link="NesEmulator\board\NesControllerModels.cs" />
     <Compile Include="$(NesRoot)board\StatePersistence.cs"        Link="NesEmulator\board\StatePersistence.cs" />
@@ -149,6 +151,12 @@
          only one that belongs in a WASM build. -->
     <Compile Include="$(NesRoot)clocks\**\*.cs"    Exclude="$(NesRoot)clocks\CLOCK_CLR.cs;$(NesRoot)clocks\CLOCK_TRB.cs" LinkBase="NesEmulator\clocks" />
     <Compile Include="$(NesRoot)RetroAchievements\**\*.cs" LinkBase="NesEmulator\RetroAchievements" />
+    <!-- BrokenNes 2: the SNES (SFC) and Game Boy (GB/GBC) core families, the cross-console bridges and the console
+         sessions that tie them together. All pure C#; SNES speed needs the AOT publish (-p:EnableWasmAot=true). -->
+    <Compile Include="$(NesRoot)snes\**\*.cs"    LinkBase="NesEmulator\snes" />
+    <Compile Include="$(NesRoot)gb\**\*.cs"      LinkBase="NesEmulator\gb" />
+    <Compile Include="$(NesRoot)mix\**\*.cs"     LinkBase="NesEmulator\mix" />
+    <Compile Include="$(NesRoot)systems\**\*.cs" LinkBase="NesEmulator\systems" />
     <Compile Include="$(NesRoot)Shaders\**\*.cs"           LinkBase="NesEmulator\Shaders" />
 
     <!-- Models shared with the desktop build. -->

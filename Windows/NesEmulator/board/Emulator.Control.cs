@@ -8,6 +8,7 @@ namespace BrokenNes
     {
         private async Task ResetAsync()
         {
+            if (session != null) { session.Reset(); return; }   // BrokenNes 2: SNES / Game Boy
             try
             {
                 Logger.LogInformation("Resetting emulation (Emulator.ResetAsync)");

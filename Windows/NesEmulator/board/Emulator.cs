@@ -36,6 +36,10 @@ namespace BrokenNes
             [JsonPropertyName("fb"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public byte[]? Framebuffer { get; set; }
             [JsonPropertyName("audio"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public float[]? Audio { get; set; }
             [JsonPropertyName("sr")] public int SampleRate { get; set; }
+            // BrokenNes 2: the picture's size and display width (SNES / Game Boy sessions); omitted for the NES (256x240).
+            [JsonPropertyName("w"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? Width { get; set; }
+            [JsonPropertyName("h"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? Height { get; set; }
+            [JsonPropertyName("aw"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? DisplayWidth { get; set; }
         }
         // --- Injected dependencies (mirrors Nes.razor @inject list) ---
     private readonly ILogger Logger;
@@ -242,22 +246,21 @@ namespace BrokenNes
             // Provide hooks for corruptor -> imagine bridge
             try { corruptor.EmulatorHooks = new CorruptorImagineHooks(this); } catch {}
             try { Nav.LocationChanged += OnLocationChanged; } catch {}
-            nesController.CpuCoreOptions = NesEmulator.CoreRegistry.CpuIds.ToList();
+            // BrokenNes 2: the NES menus in catalog order - the NES family first (FIX leading), then the SNES and
+            // Game Boy parts that can stand in on a NES.
+            nesController.CpuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Cpu).Select(o => o.Id).ToList();
             if (string.IsNullOrEmpty(nesController.CpuCoreSel) || !nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
             {
                 if (nesController.CpuCoreOptions.Contains("FMC")) nesController.CpuCoreSel = "FMC";
                 else if (nesController.CpuCoreOptions.Contains("FIX")) nesController.CpuCoreSel = "FIX";
                 else if (nesController.CpuCoreOptions.Count>0) nesController.CpuCoreSel = nesController.CpuCoreOptions[0];
             }
-            nesController.PpuCoreOptions = NesEmulator.CoreRegistry.PpuIds.ToList();
-            var desiredOrder = new List<string>{"FMC","SPD","CUBE","EIL","BFR","LQ","ULQ","LOW"};
-            nesController.PpuCoreOptions = nesController.PpuCoreOptions.OrderBy(id => desiredOrder.IndexOf(id) >=0 ? desiredOrder.IndexOf(id) : 99).ToList();
+            nesController.PpuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Ppu).Select(o => o.Id).ToList();
             if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel) && nesController.PpuCoreOptions.Count>0)
             {
                 if (nesController.PpuCoreOptions.Contains("FMC")) nesController.PpuCoreSel = "FMC"; else if (nesController.PpuCoreOptions.Contains("NGTV")) nesController.PpuCoreSel = "NGTV"; else if (nesController.PpuCoreOptions.Contains("CUBE")) nesController.PpuCoreSel = "CUBE"; else nesController.PpuCoreSel = nesController.PpuCoreOptions[0];
             }
-            nesController.ApuCoreOptions = NesEmulator.CoreRegistry.ApuIds.ToList();
-            nesController.ApuCoreOptions = nesController.ApuCoreOptions.OrderBy(id => id switch { "FMC" => 0, "FIX" => 1, "QN" => 2, _ => 3 }).ThenBy(id=>id).ToList();
+            nesController.ApuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Apu).Select(o => o.Id).ToList();
             if (string.IsNullOrEmpty(nesController.ApuCoreSel) || !nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
             {
                 if (nesController.ApuCoreOptions.Contains("FMC")) nesController.ApuCoreSel = "FMC";
@@ -320,10 +323,11 @@ namespace BrokenNes
                         await LoadBenchHistory();
                     } catch {}
                     // Load DeckBuilder save and filter core options to owned items
-                    try { _gameSave = await _gameSaveService.LoadAsync(); FilterCoreOptionsBySave(_gameSave); } catch {}
+                    // BrokenNes 2: the emulator comes first - every core and shader is available (the BrokenNes 1 Deck
+                    // Builder ownership filter only applies with LegacyUnlockLocks on).
+                    try { _gameSave = await _gameSaveService.LoadAsync(); if (LegacyUnlockLocks) FilterCoreOptionsBySave(_gameSave); } catch {}
                     await RefreshShaderOptions();
-                    // Filter shader options to owned items
-                    try { if (_gameSave != null) FilterShaderOptionsBySave(_gameSave); } catch {}
+                    try { if (_gameSave != null && LegacyUnlockLocks) FilterShaderOptionsBySave(_gameSave); } catch {}
                     try { await JS.InvokeVoidAsync("nesInterop.migrateLocalStorageRoms"); } catch {}
                     var stored = await JS.InvokeAsync<UploadedRom[]>("nesInterop.getStoredRoms");
                     if (stored != null)
@@ -339,7 +343,7 @@ namespace BrokenNes
                                 nesController.UploadedRoms[r.name] = data;
                                 if (!nesController.RomOptions.Any(o => o.Key == r.name))
                                 {
-                                    nesController.RomOptions.Add(new RomOption { Key = r.name, Label = r.name + " (uploaded)", BuiltIn = false });
+                                    nesController.RomOptions.Add(new RomOption { Key = r.name, Label = $"{r.name} ({NesController.ConsoleTag(data, r.name)})", BuiltIn = false });
                                     restored++;
                                 }
                             }
@@ -485,6 +489,7 @@ namespace BrokenNes
             {
                 return Task.FromResult(new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 });
             }
+            if (session is { } s) return Task.FromResult(RunSessionFrame(s));   // BrokenNes 2: SNES / Game Boy
             var payload = RunFrameAndBuildPayload();
             return Task.FromResult(payload);
         }
@@ -1086,14 +1091,17 @@ namespace BrokenNes
 
         private Task Blast() { if (nes == null) return Task.CompletedTask; corruptor.Blast(nes); return Task.CompletedTask; }
 
-        [JSInvokable] public void UpdateInput(bool[] state) { try { if (state.Length == 8) for (int i=0;i<8;i++) inputState[i] = state[i]; } catch (Exception ex) { Logger.LogError(ex, "Error updating input"); } }
+        // 8 buttons in NES order, optionally followed by X, Y, L, R (BrokenNes 2: SNES).
+        [JSInvokable] public void UpdateInput(bool[] state) { try { if (state.Length >= 8) { for (int i=0;i<8;i++) inputState[i] = state[i]; for (int i=0;i<4;i++) extraP1[i] = state.Length >= 12 && state[8+i]; } } catch (Exception ex) { Logger.LogError(ex, "Error updating input"); } }
         [JSInvokable] public void UpdateInputForPlayer(int player, bool[] state)
         {
             try
             {
-                if (state == null || state.Length != 8) return;
+                if (state == null || state.Length < 8) return;
                 var dst = (player == 2) ? inputStateP2 : inputState;
                 for (int i = 0; i < 8; i++) dst[i] = state[i];
+                var extra = (player == 2) ? extraP2 : extraP1;
+                for (int i = 0; i < 4; i++) extra[i] = state.Length >= 12 && state[8 + i];
             }
             catch (Exception ex)
             {
