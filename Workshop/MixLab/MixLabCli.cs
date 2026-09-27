@@ -44,6 +44,13 @@ internal static class MixLabCli
                 case "snescpu": return RunSnesCpu(Opt);
                 case "snesaudio": return MixAudioCli.SnesAudio(Opt);
                 case "audiocmp": return MixAudioCli.AudioCmp(Opt);
+                case "gbaudio": return GbMixCli.Audio(Opt);
+                case "gbpic": return GbMixCli.Picture(Opt);
+                case "nes2gb": return GbMixCli.NesOnGb(Opt);
+                case "snes2gb": return GbMixCli.SnesOnGb(Opt);
+                case "gbcpu": return GbMixCli.CpuSpeed(Opt);
+                case "gbcart": return GbMixCli.GbOnNesCart(Opt);
+                case "gbsweep": return GbMixSweep.Run(Opt);
                 case "sheet": return Sheet(Opt("items", ""), Opt("out", "sheet.png"), int.Parse(Opt("scale", "2")));
                 default: Console.Error.WriteLine("unknown mode"); return 2;
             }

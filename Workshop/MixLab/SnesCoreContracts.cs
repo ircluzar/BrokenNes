@@ -111,5 +111,9 @@ public static class MixConfig
     public static string SnesFrontApu = "SFC";
     /// <summary>NES APU that makes the sound for the SNES APU id "NES".</summary>
     public static string NesBackApu = "FIX";
+    /// <summary>Game Boy sound chip that NES APU id "DMG" plays through (GbCores id).</summary>
+    public static string GbApu = "GB";
+    /// <summary>NES APU that makes the sound for the Game Boy APU id "NES" (may be "SNES": Game Boy -> NES regs -> S-DSP).</summary>
+    public static string GbBackNesApu = "FIX";
     public static bool RescueFront = System.Environment.GetEnvironmentVariable("MIX_RESCUE_FRONT") == "1";
 }
