@@ -90,7 +90,7 @@ namespace NesEmulator.Mix
                 var ch = front.Channel(i);
                 ushort b = (ushort)(0x4000 + i * 4);
                 int duty = ch.Duty & 3;
-                if (ch.Enabled && ch.DacOn && ch.Volume > 0 && ch.Period < 2048)
+                if (ch.Enabled && ch.DacOn && ch.Volume > 0 && ch.Period < 2048 && !PitchGuard.Blocks(131072.0 / (2048 - ch.Period)))
                 {
                     double hz = 131072.0 / (2048 - ch.Period);
                     int t = Math.Clamp((int)Math.Round(1789773.0 / (16 * hz) - 1), 8, 2047);
@@ -102,7 +102,7 @@ namespace NesEmulator.Mix
             }
             {
                 var ch = front.Channel(2);
-                if (ch.Enabled && ch.DacOn && ch.Volume > 0 && ch.Period < 2048)
+                if (ch.Enabled && ch.DacOn && ch.Volume > 0 && ch.Period < 2048 && !PitchGuard.Blocks(65536.0 / (2048 - ch.Period)))
                 {
                     double hz = 65536.0 / (2048 - ch.Period);
                     int t = Math.Clamp((int)Math.Round(1789773.0 / (32 * hz) - 1), 2, 2047);
@@ -199,7 +199,7 @@ namespace NesEmulator
             {
                 var p = model.P[i]; int b = 0x10 + i * 5;   // NR10/NR11... and NR21 (NR20 does not exist, so pulse 2 starts at $16)
                 if (i == 1) b = 0x15;
-                bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0;
+                bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0 && !PitchGuard.Blocks(1789773.0 / (16 * (p.Timer + 1)));
                 int x = GbPulsePeriod(p.Timer);
                 if (!on) { if (lastVol[i] != 0) { G(b + 2, 0x00); lastVol[i] = 0; } noteOn[i] = false; continue; }
                 int vol = p.Volume;
@@ -218,8 +218,8 @@ namespace NesEmulator
                 else G(b + 4, (byte)((x >> 8) & 7));
             }
             {
-                bool on = model.TriAudible && (channelMask & 4) != 0;
                 double hz = 1789773.0 / (32 * (model.TriTimer + 1));
+                bool on = model.TriAudible && (channelMask & 4) != 0 && !PitchGuard.Blocks(hz);
                 int x = Math.Clamp((int)Math.Round(2048 - 65536 / hz), 0, 2047);
                 if (!on) { if (triOn) { G(0x1A, 0x00); triOn = false; } }
                 else

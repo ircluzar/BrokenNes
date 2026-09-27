@@ -10,7 +10,9 @@ namespace BrokenNes.Windows
     /// BrokenNes 2: the volume button at the right end of the menu bar - a speaker (shell32's) drawn as a button in the
     /// bar, opening a floating panel to set the emulation volume on the fly. Scrolling the mouse wheel over the button
     /// nudges the volume. The level lives in <see cref="AudioManager.MasterVolume"/> / <see cref="AudioManager.Muted"/>
-    /// and is saved in config.json (emulationVolume, emulationMuted). An ear-protecting limiter will join the panel later.
+    /// and is saved in config.json (emulationVolume, emulationMuted). "Remove high-pitched" (off by default) mutes notes
+    /// above a chosen pitch in the cross-console sound bridges before they are mixed in - see <see cref="NesEmulator.Mix.PitchGuard"/>.
+    /// An ear-protecting limiter will join the panel later.
     /// </summary>
     public partial class MainForm
     {
@@ -18,13 +20,19 @@ namespace BrokenNes.Windows
         private TrackBar? volumeSlider;
         private Label? volumeValueLabel;
         private Button? volumeMuteButton;
+        private CheckBox? highPitchCheck;
+        private TrackBar? highPitchSlider;
+        private Label? highPitchValueLabel, highPitchCaption;
         private bool volumeDirty;
 
         private const int VolumeWheelStep = 5;
+        // The ceiling slider runs over whole notes: B4 (494 Hz) .. B9 (15.8 kHz).
+        private const int HighPitchMinNote = 71, HighPitchMaxNote = 131;
 
         private ToolStripMenuItem BuildVolumeMenu(MenuStrip menuStrip)
         {
             ApplyEmulationVolume();
+            ApplyPitchGuard();
 
             volumeButton = new VolumeMenuButton
             {
@@ -56,7 +64,7 @@ namespace BrokenNes.Windows
         private Panel BuildVolumePanel()
         {
             var font = SystemFonts.MenuFont ?? Control.DefaultFont;
-            var panel = new Panel { Size = new Size(280, 124), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
+            var panel = new Panel { Size = new Size(280, 226), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
 
             var title = new Label { Text = "Emulation volume", AutoSize = true, Font = new Font(font, FontStyle.Bold), Location = new Point(12, 12) };
             volumeValueLabel = new Label
@@ -106,7 +114,69 @@ namespace BrokenNes.Windows
                 b.Click += (_, _) => { SetEmulationVolume(level, false); SaveVolumeIfDirty(); };
                 panel.Controls.Add(b);
             }
+
+            // Remove high-pitched: mute notes above a ceiling in the cross-console sound bridges.
+            panel.Controls.Add(new Label { BorderStyle = BorderStyle.Fixed3D, AutoSize = false, Location = new Point(12, 124), Size = new Size(panel.Width - 24, 2) });
+            highPitchCheck = new CheckBox
+            {
+                Text = "Remove high-pitched", Font = font, AutoSize = true, Location = new Point(12, 134), TabStop = false,
+                BackColor = SystemColors.Window,
+            };
+            highPitchCheck.CheckedChanged += (_, _) =>
+            {
+                if (highPitchCheck.Checked != config.RemoveHighPitched) SetHighPitchGuard(highPitchCheck.Checked, null);
+            };
+            var tip = new ToolTip { AutoPopDelay = 15000 };
+            tip.SetToolTip(highPitchCheck,
+                "Mutes notes above the highest note below, before they are mixed in.\n" +
+                "For cross-console sound (a SNES game on a Game Boy sound chip, a NES game on the SNES chip...),\n" +
+                "where a misread pitch can come out as a painful screech. Normal music stays under C8.");
+
+            highPitchCaption = new Label { Text = "Highest note", Font = font, AutoSize = true, Location = new Point(12, 164) };
+            highPitchValueLabel = new Label
+            {
+                AutoSize = false, Size = new Size(140, highPitchCaption.PreferredHeight), TextAlign = ContentAlignment.MiddleRight,
+                Location = new Point(panel.Width - 12 - 140, 164), Font = font,
+            };
+            highPitchSlider = new TrackBar
+            {
+                Minimum = HighPitchMinNote, Maximum = HighPitchMaxNote, TickFrequency = 12, SmallChange = 1, LargeChange = 12,
+                Location = new Point(8, 186), Size = new Size(panel.Width - 16, 30), AutoSize = false, BackColor = SystemColors.Window,
+            };
+            highPitchSlider.ValueChanged += (_, _) =>
+            {
+                if (highPitchSlider.Value != config.HighPitchCeilingNote) SetHighPitchGuard(null, highPitchSlider.Value);
+            };
+            tip.SetToolTip(highPitchSlider, "Notes above this one are muted while Remove high-pitched is on (one tick per octave)");
+
+            panel.Controls.Add(highPitchCheck);
+            panel.Controls.Add(highPitchCaption);
+            panel.Controls.Add(highPitchValueLabel);
+            panel.Controls.Add(highPitchSlider);
             return panel;
+        }
+
+        /// <summary>Turn "Remove high-pitched" on/off and/or move its ceiling (MIDI note). Null leaves that part as it is.</summary>
+        private void SetHighPitchGuard(bool? enabled, int? ceilingNote)
+        {
+            if (enabled is bool e && e != config.RemoveHighPitched) { config.RemoveHighPitched = e; volumeDirty = true; }
+            if (ceilingNote is int n)
+            {
+                n = Math.Clamp(n, HighPitchMinNote, HighPitchMaxNote);
+                if (n != config.HighPitchCeilingNote) { config.HighPitchCeilingNote = n; volumeDirty = true; }
+            }
+            ApplyPitchGuard();
+            RefreshVolumeUi();
+        }
+
+        private static double NoteHz(int midiNote) => 440.0 * Math.Pow(2, (midiNote - 69) / 12.0);
+
+        private void ApplyPitchGuard()
+        {
+            int note = Math.Clamp(config.HighPitchCeilingNote, HighPitchMinNote, HighPitchMaxNote);
+            // A quarter tone above the chosen note, so the note itself (and a slightly sharp one) still plays.
+            NesEmulator.Mix.PitchGuard.CeilingHz = (float)(NoteHz(note) * Math.Pow(2, 1 / 24.0));
+            NesEmulator.Mix.PitchGuard.Enabled = config.RemoveHighPitched;
         }
 
         /// <summary>Change the volume (percent) and/or mute. Null leaves that part as it is. Saved on the next <see cref="SaveVolumeIfDirty"/>.</summary>
@@ -149,12 +219,34 @@ namespace BrokenNes.Windows
                 volumeMuteButton.Image = VolumeMenuButton.SpeakerBitmap(20, silent);
                 old?.Dispose();
             }
+            int note = Math.Clamp(config.HighPitchCeilingNote, HighPitchMinNote, HighPitchMaxNote);
+            bool guard = config.RemoveHighPitched;
+            if (highPitchCheck != null && highPitchCheck.Checked != guard) highPitchCheck.Checked = guard;
+            if (highPitchSlider != null) { if (highPitchSlider.Value != note) highPitchSlider.Value = note; highPitchSlider.Enabled = guard; }
+            if (highPitchValueLabel != null)
+            {
+                highPitchValueLabel.Text = $"{NesEmulator.Mix.PitchGuard.NoteName(NoteHz(note))}  ({NoteHz(note):F0} Hz)";
+                highPitchValueLabel.ForeColor = guard ? SystemColors.ControlText : SystemColors.GrayText;
+            }
+            if (highPitchCaption != null) highPitchCaption.ForeColor = guard ? SystemColors.ControlText : SystemColors.GrayText;
         }
 
         private void WireVolumeApi(WebApi.WebApiServer server)
         {
-            server.GetEmulationVolume = () => (config.EmulationVolume, config.EmulationMuted);
-            server.SetEmulationVolume = (volume, muted) => Invoke(() => { SetEmulationVolume(volume, muted); SaveVolumeIfDirty(); });
+            server.GetEmulationVolume = () => new
+            {
+                volume = config.EmulationVolume, muted = config.EmulationMuted,
+                removeHighPitched = config.RemoveHighPitched, highPitchCeilingNote = config.HighPitchCeilingNote,
+                highPitchCeiling = NesEmulator.Mix.PitchGuard.NoteName(NoteHz(config.HighPitchCeilingNote)),
+                highPitchCeilingHz = Math.Round(NesEmulator.Mix.PitchGuard.CeilingHz),
+                blockedNotes = System.Threading.Interlocked.Read(ref NesEmulator.Mix.PitchGuard.BlockedNotes),
+            };
+            server.SetEmulationVolume = r => Invoke(() =>
+            {
+                if (r.Volume != null || r.Muted != null) SetEmulationVolume(r.Volume, r.Muted);
+                if (r.RemoveHighPitched != null || r.HighPitchCeilingNote != null) SetHighPitchGuard(r.RemoveHighPitched, r.HighPitchCeilingNote);
+                SaveVolumeIfDirty();
+            });
         }
 
         /// <summary>

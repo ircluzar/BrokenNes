@@ -346,14 +346,14 @@ namespace NesEmulator
             if (!drv.Booted) return;
             for (int i = 0; i < 2; i++)
             {
-                var p = model.P[i]; bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0;
+                var p = model.P[i]; bool on = p.Audible(i == 0) && (channelMask & (1 << i)) != 0 && !PitchGuard.Blocks(1789773.0 / (16 * (p.Timer + 1)));
                 int pitch = Math.Clamp(229091 / (p.Timer + 1), 0, 0x3FFF);
                 W((byte)(i * 16 + 2), (byte)pitch); W((byte)(i * 16 + 3), (byte)(pitch >> 8));
                 W((byte)(i * 16 + 4), (byte)p.Duty);
                 byte vol = (byte)(on ? p.Volume * 2 : 0); W((byte)(i * 16 + 0), vol); W((byte)(i * 16 + 1), vol);   // full NES volume ~ -20 dBFS here too
             }
             {
-                bool on = model.TriAudible && (channelMask & 4) != 0;
+                bool on = model.TriAudible && (channelMask & 4) != 0 && !PitchGuard.Blocks(1789773.0 / (32 * (model.TriTimer + 1)));
                 int pitch = Math.Clamp(229091 / (model.TriTimer + 1), 0, 0x3FFF);
                 W(0x22, (byte)pitch); W(0x23, (byte)(pitch >> 8));
                 byte vol = (byte)(on ? 26 : 0); W(0x20, vol); W(0x21, vol);
@@ -543,7 +543,9 @@ namespace NesEmulator.Mix
                 int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;
                 double period = isNoise ? 0 : Period(r[b + 4]);
                 if (isNoise || period == 0) { if (loud > noise.loud) noise = (v, loud); continue; }
-                tonal.Add((v, loud, 32000.0 * pitch / 4096.0 / period));
+                double hz = 32000.0 * pitch / 4096.0 / period;
+                if (PitchGuard.Blocks(hz)) continue;   // muted: the next loudest voice gets the channel
+                tonal.Add((v, loud, hz));
             }
             tonal.Sort((a, c) => c.loud.CompareTo(a.loud));
             VoicesMapped = Math.Min(tonal.Count, 3) + (noise.v >= 0 ? 1 : 0);

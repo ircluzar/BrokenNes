@@ -121,6 +121,18 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("emulationMuted")]
         public bool EmulationMuted { get; set; }
+
+        /// <summary>
+        /// "Remove high-pitched": the cross-console sound bridges mute notes above <see cref="HighPitchCeilingNote"/>
+        /// </summary>
+        [JsonPropertyName("removeHighPitched")]
+        public bool RemoveHighPitched { get; set; }
+
+        /// <summary>
+        /// Highest note that still plays when <see cref="RemoveHighPitched"/> is on, as a MIDI note number (108 = C8, 4186 Hz)
+        /// </summary>
+        [JsonPropertyName("highPitchCeilingNote")]
+        public int HighPitchCeilingNote { get; set; } = 108;
         
         /// <summary>
         /// Run emulation as fast as possible (no speed limit)
