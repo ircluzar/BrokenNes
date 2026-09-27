@@ -441,6 +441,14 @@ namespace BrokenNes
             {
                 if (await TryStartSessionAsync(Controller.RomFileName, uploaded)) return;
             }
+            else if (!Controller.RomFileName.EndsWith(".nes", StringComparison.OrdinalIgnoreCase))
+            {
+                // A server ROM (?rom=testroms/smw.smc) - fetch it and route it the same way.
+                byte[] served = Array.Empty<byte>();
+                try { served = await Http.GetByteArrayAsync(Controller.RomFileName); } catch { }
+                if (served.Length > 0 && await TryStartSessionAsync(Controller.RomFileName, served)) return;
+                if (SessionActive) await StopSessionAsync();
+            }
             else if (SessionActive) await StopSessionAsync();
             await Controller.LoadSelectedRom(
                 async fn => await Controller.LoadRomFromWwwroot(fn, f => Http.GetByteArrayAsync(f), s => Logger.LogInformation(s), s => Logger.LogError(new Exception(s), s)),
