@@ -164,7 +164,7 @@ public class PPU_DMG : IPPU, IPpuProbe
         if (next == 0) Snapshot();
         if (next == cy + H / 2) SnapshotChr();   // sprite tiles as the middle of the Game Boy window is drawn
         if (next >= cy && next < cy + H && ((next - cy) & 7) == 0) SnapshotRow((next - cy) >> 3);
-        ushort v = front is PPU_FIX f ? f.ProbeV : (ushort)0; int fx = front is PPU_FIX f2 ? f2.ProbeFineX : 0;
+        ushort v = front is IPpuFixTiming f ? f.ProbeV : (ushort)0; int fx = front is IPpuFixTiming f2 ? f2.ProbeFineX : 0;
         lineX[next] = ((v >> 10) & 1) * 256 + (v & 31) * 8 + fx;
         lineY[next] = ((v >> 11) & 1) * 256 + ((v >> 5) & 31) * 8 + ((v >> 12) & 7);
         lineMask[next] = probe!.ProbeMask;

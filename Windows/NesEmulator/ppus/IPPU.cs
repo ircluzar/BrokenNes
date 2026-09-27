@@ -72,3 +72,20 @@ public interface IPpuProbe : IPpuFrameClock
 	/// address register. For tooling (hex editors, corruption injection) only.</summary>
 	void ProbePpuBusWrite(ushort address, byte value);
 }
+
+/// <summary>
+/// The FIX-family timing contract: what the board and CPU_FIX need from a dot-accurate PPU to run it cycle-precise
+/// (catch-up on every bus access, interrupt dots, the reset-sequence flush). PPU_FIX has it, and so do the variant
+/// chips forked from it, so a variant gets exactly the timing its parent gets instead of the batched path the
+/// other cores' goldens were recorded against.
+/// </summary>
+public interface IPpuFixTiming : IPpuProbe
+{
+	/// <summary>Dots run since power-on.</summary>
+	long DotCounter { get; }
+	/// <summary>The dot at which the PPU last raised NMI (CPU_FIX places the interrupt inside the instruction).</summary>
+	long LastInterruptDot { get; }
+	/// <summary>Live loopy v and fine X (tracing and bridges).</summary>
+	ushort ProbeV { get; }
+	byte ProbeFineX { get; }
+}

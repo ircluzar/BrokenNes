@@ -141,7 +141,7 @@ public class CPU_FIX : ICPU {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void RequestNMI()
 	{
-		if (!nmiRequested && bus.ppu is PPU_FIX fixPpu && bus.InstructionStartDot >= 0)
+		if (!nmiRequested && bus.ppu is IPpuFixTiming fixPpu && bus.InstructionStartDot >= 0)
 		{
 			long rel = fixPpu.LastInterruptDot - bus.InstructionStartDot;
 			if (dispatchedCycles > 0) { if (rel > 3L * (dispatchedCycles - 1) + InterruptDotSlack) nmiDeferOne = true; }
