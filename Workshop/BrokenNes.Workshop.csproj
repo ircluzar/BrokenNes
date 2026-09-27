@@ -82,6 +82,8 @@
     <Compile Include="$(NesRoot)gb\**\*.cs"        LinkBase="NesEmulator\gb" />
     <!-- Cross-console bridge cores (PPU_SNES, PPU_DMG/DMGX/DMGS, APU_SNES, APU_DMG, CPU_SNES, CPU_SM83, ...), driven by the mix lab CLIs. -->
     <Compile Include="$(NesRoot)mix\**\*.cs"       LinkBase="NesEmulator\mix" />
+    <!-- BrokenNes 2 console sessions: SNES / Game Boy behind one shape, the core catalog, ROM detection. -->
+    <Compile Include="$(NesRoot)systems\**\*.cs"   LinkBase="NesEmulator\systems" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is
