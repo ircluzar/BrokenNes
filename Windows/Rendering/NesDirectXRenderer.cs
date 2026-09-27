@@ -97,6 +97,11 @@ namespace BrokenNes.Windows.Rendering
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ForceNativeAspectRatio { get; set; } = false;
+
+        /// <summary>BrokenNes 2: the width the picture is shown at when it differs from its pixel width (a 512-wide SNES
+        /// hi-res frame shows as 256). 0 = the pixel width.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public int AspectWidth { get; set; }
         
         /// <summary>
         /// Gets or sets whether shader effects are enabled
@@ -595,8 +600,10 @@ namespace BrokenNes.Windows.Rendering
             float clientWidth = ClientSize.Width;
             float clientHeight = ClientSize.Height;
             
-            // Native NES aspect ratio is approximately 8:7 (256:224 visible, but 256:240 buffer)
-            float nesAspect = ForceNativeAspectRatio ? (8.0f / 7.0f) : ((float)nesWidth / nesHeight);
+            // Native NES aspect ratio is approximately 8:7 (256:224 visible, but 256:240 buffer). The 8:7 option only
+            // applies to 256-wide pictures (NES, SNES); a Game Boy screen keeps its own 10:9.
+            int logicalWidth = AspectWidth > 0 ? AspectWidth : nesWidth;
+            float nesAspect = ForceNativeAspectRatio && logicalWidth == 256 ? (8.0f / 7.0f) : ((float)logicalWidth / nesHeight);
             float clientAspect = clientWidth / clientHeight;
             
             float destWidth, destHeight;
@@ -604,11 +611,11 @@ namespace BrokenNes.Windows.Rendering
             if (PixelPerfect)
             {
                 // Calculate integer scale that fits in the window
-                int scaleX = (int)(clientWidth / nesWidth);
+                int scaleX = (int)(clientWidth / logicalWidth);
                 int scaleY = (int)(clientHeight / nesHeight);
                 int scale = Math.Max(1, Math.Min(scaleX, scaleY));
                 
-                destWidth = nesWidth * scale;
+                destWidth = logicalWidth * scale;
                 destHeight = nesHeight * scale;
             }
             else

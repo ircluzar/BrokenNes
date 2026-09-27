@@ -361,7 +361,7 @@ namespace BrokenNes.Windows
                     }
 
                     // Calculate NES optimal width for the panel positioning
-                    float nesAspectRatio = (float)NES_WIDTH / NES_HEIGHT;
+                    float nesAspectRatio = (float)displayWidth / displayHeight;
                     int nesWidth = (int)(availableHeight * nesAspectRatio);
                     int maxNesWidth = (int)(this.ClientSize.Width * 0.75f);
                     if (nesWidth > maxNesWidth)

@@ -25,7 +25,7 @@ namespace BrokenNes.Windows
     {
         private void StartEmulation()
         {
-            if (nes == null) return;
+            if (nes == null && session == null) return;
             
             // Ensure form has focus so keyboard input works immediately
             this.Activate(); 
@@ -443,6 +443,16 @@ namespace BrokenNes.Windows
                         {
                             Console.WriteLine($"Emulation error: {ex.Message}");
                             Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                            isEmulationRunning = false;
+                        }
+                    }
+                    else if (session != null)
+                    {
+                        // BrokenNes 2: a SNES / Game Boy game (see MainForm.Consoles.cs)
+                        try { RunSessionFrame(session); }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Console emulation error: {ex}");
                             isEmulationRunning = false;
                         }
                     }

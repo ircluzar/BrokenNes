@@ -33,8 +33,9 @@ namespace BrokenNes.Windows
         {
             using var openFileDialog = new OpenFileDialog
             {
-                Filter = "NES ROMs (*.nes)|*.nes|All files (*.*)|*.*",
-                Title = "Select a NES ROM"
+                Filter = "All ROMs (*.nes;*.sfc;*.smc;*.gb;*.gbc;*.zip)|*.nes;*.sfc;*.smc;*.gb;*.gbc;*.zip" +
+                         "|NES ROMs (*.nes)|*.nes|SNES ROMs (*.sfc;*.smc)|*.sfc;*.smc|Game Boy / Color ROMs (*.gb;*.gbc)|*.gb;*.gbc|Zip archives (*.zip)|*.zip|All files (*.*)|*.*",
+                Title = $"Load a ROM ({NesEmulator.Systems.Consoles.DisplayName(SelectedConsole)} selected; the console follows the ROM)"
             };
             
             if (openFileDialog.ShowDialog() == DialogResult.OK)
@@ -80,6 +81,11 @@ namespace BrokenNes.Windows
                 throw new InvalidOperationException("ROM data is empty.");
             }
 
+            // BrokenNes 2: unpack a .zip and find the console; a SNES / Game Boy game starts as a console session here.
+            var routed = RouteRom(ref romName, romData, romPath);
+            if (routed == null) return;
+            romData = routed;
+
             // Stop current emulation if running
             StopEmulation();
 
@@ -102,6 +108,7 @@ namespace BrokenNes.Windows
                 config.AddRecentRom(romPath);
             }
 
+            EnsureNesDisplaySize();
             ApplySavedCoreSelections();
             // Must run after the saved selection is applied and before emulation starts: it can
             // override the CPU core for this ROM when the selected one cannot execute it.
@@ -131,6 +138,8 @@ namespace BrokenNes.Windows
                 }
             }
 
+            RefreshConsoleMenu();
+            UpdateConsoleTitle();
             StartEmulation();
         }
 
@@ -141,6 +150,13 @@ namespace BrokenNes.Windows
         
         private void CloseRom_Click(object? sender, EventArgs e)
         {
+            if (session != null)
+            {
+                StopSession();
+                LoadEmbeddedRom(allowHomeWebModule: false);
+                UpdateConsoleTitle();
+                return;
+            }
             if (nes == null || string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase)) 
                 return;
             
@@ -366,6 +382,7 @@ namespace BrokenNes.Windows
         
         private void LoadEmbeddedRom(bool allowHomeWebModule = true)
         {
+            StopSession();
             try
             {
                 // Load the embedded test.nes ROM
@@ -433,7 +450,9 @@ namespace BrokenNes.Windows
                     ResetBatteryRamAutoSaveTracking();
                     
                     // Update cores menus
+                    EnsureNesDisplaySize();
                     UpdateCoresMenus();
+                    UpdateConsoleTitle();
                     
                     // Start emulation automatically
                     StartEmulation();
@@ -463,7 +482,7 @@ namespace BrokenNes.Windows
                 if (files != null && files.Length > 0)
                 {
                     string ext = Path.GetExtension(files[0]).ToLower();
-                    if (ext == ".nes" || ext == ".png")
+                    if (NesEmulator.Systems.Consoles.AllRomExtensions.Contains(ext) || ext == ".png")
                     {
                         e.Effect = DragDropEffects.Copy;
                         return;
@@ -483,7 +502,7 @@ namespace BrokenNes.Windows
                      string path = files[0];
                      string ext = Path.GetExtension(path).ToLower();
                      
-                     if (ext == ".nes")
+                     if (NesEmulator.Systems.Consoles.AllRomExtensions.Contains(ext))
                      {
                          LoadRomFile(path);
                      }

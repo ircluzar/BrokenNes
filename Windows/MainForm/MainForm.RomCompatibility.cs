@@ -50,9 +50,8 @@ namespace BrokenNes.Windows
             {
                 // Non-modal on purpose: a MessageBox here would block the headless UAT harness,
                 // which drives ROM loads over the HTTP API with no one to dismiss a dialog.
-                this.Text = coreCompatibilityNotice == null
-                    ? "BrokenNes"
-                    : $"BrokenNes - {coreCompatibilityNotice}";
+                UpdateConsoleTitle();
+                if (coreCompatibilityNotice != null) this.Text += $" - {coreCompatibilityNotice}";
             }
         }
 

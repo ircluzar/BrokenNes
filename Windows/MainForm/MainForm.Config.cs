@@ -318,7 +318,6 @@ namespace BrokenNes.Windows
         
         private void UpdateCoresMenus()
         {
-            if (nes == null) return;
             var progressionSave = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(progressionSave);
             
@@ -424,197 +423,11 @@ namespace BrokenNes.Windows
             shaderMenu.DropDownClosed -= EndOverlayPreviewForMenu;
             shaderMenu.DropDownClosed += EndOverlayPreviewForMenu;
 
-            // APU - single select with checkmarks
-            apuMenu.DropDownItems.Clear();
-            string currentApuCore = config.SelectedApuCore;
-            var orderedApuCores = new List<string>();
-            if (CoreRegistry.ApuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedApuCores.Add(CoreRegistry.ApuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingApuCores = CoreRegistry.ApuIds
-                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingApuCores.Count > 0 && orderedApuCores.Count > 0)
-            {
-                orderedApuCores.Add("---");
-            }
-
-            orderedApuCores.AddRange(remainingApuCores);
-
-            for (int i = 0; i < orderedApuCores.Count; i++)
-            {
-                var coreId = orderedApuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = apuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedApuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsApuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        apuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsApuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetApuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentApuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("apu", coreId);
-                
-                apuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while APU menu is open
-            apuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            apuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            apuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            apuMenu.DropDownClosed += EndOverlayPreviewForMenu;
-
-            // CPU - single select with checkmarks
-            cpuMenu.DropDownItems.Clear();
-            string currentCpuCore = config.SelectedCpuCore;
-            var orderedCpuCores = new List<string>();
-            if (CoreRegistry.CpuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedCpuCores.Add(CoreRegistry.CpuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingCpuCores = CoreRegistry.CpuIds
-                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingCpuCores.Count > 0 && orderedCpuCores.Count > 0)
-            {
-                orderedCpuCores.Add("---");
-            }
-
-            orderedCpuCores.AddRange(remainingCpuCores);
-
-            for (int i = 0; i < orderedCpuCores.Count; i++)
-            {
-                var coreId = orderedCpuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = cpuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedCpuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsCpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        cpuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsCpuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetCpuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentCpuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("cpu", coreId);
-                
-                cpuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while CPU menu is open
-            cpuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            cpuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            cpuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            cpuMenu.DropDownClosed += EndOverlayPreviewForMenu;
-
-            // PPU - single select with checkmarks
-            ppuMenu.DropDownItems.Clear();
-            string currentPpuCore = config.SelectedPpuCore;
-            var orderedPpuCores = new List<string>();
-            if (CoreRegistry.PpuIds.Any(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedPpuCores.Add(CoreRegistry.PpuIds.First(id => id.Equals("FIX", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingPpuCores = CoreRegistry.PpuIds
-                .Where(id => !id.Equals("FIX", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingPpuCores.Count > 0 && orderedPpuCores.Count > 0)
-            {
-                orderedPpuCores.Add("---");
-            }
-
-            orderedPpuCores.AddRange(remainingPpuCores);
-
-            for (int i = 0; i < orderedPpuCores.Count; i++)
-            {
-                var coreId = orderedPpuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = ppuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedPpuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsPpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        ppuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsPpuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetPpuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentPpuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("ppu", coreId);
-                
-                ppuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while PPU menu is open
-            ppuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            ppuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            ppuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            ppuMenu.DropDownClosed += EndOverlayPreviewForMenu;
+            // CPU / PPU / APU: the selected console's own family first, then the other consoles' parts (BrokenNes 2,
+            // see MainForm.Consoles.cs). The NES entries swap live; SNES / Game Boy entries restart the game.
+            BuildCoreMenu(cpuMenu, NesEmulator.Systems.CoreSlot.Cpu, progressionSave);
+            BuildCoreMenu(ppuMenu, NesEmulator.Systems.CoreSlot.Ppu, progressionSave);
+            BuildCoreMenu(apuMenu, NesEmulator.Systems.CoreSlot.Apu, progressionSave);
         }
         
         private void ApplySavedCoreSelections()
@@ -661,6 +474,7 @@ namespace BrokenNes.Windows
                 Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FIX");
                 ApplyApuCoreSelection("FIX");
             }
+            ApplyBridgeTiming();
             
             // Apply shader settings
             if (useDirectX && dxRenderer != null)

@@ -90,8 +90,12 @@ namespace BrokenNes.Windows
             return (ownedCoreIds ?? Array.Empty<string>()).Concat(AlwaysAvailableCoreIds);
         }
 
+        /// <summary>BrokenNes 2: nothing is locked unless the legacy (BrokenNes 1 campaign) locks are switched on.</summary>
+        private bool LegacyLocksOff => config == null || !config.LegacyProgressionLocks;
+
         private bool IsCpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
             if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedCpuIds, coreId);
@@ -99,6 +103,7 @@ namespace BrokenNes.Windows
 
         private bool IsPpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
             if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedPpuIds, coreId);
@@ -106,6 +111,7 @@ namespace BrokenNes.Windows
 
         private bool IsApuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
             if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedApuIds, coreId);
@@ -113,6 +119,7 @@ namespace BrokenNes.Windows
 
         private bool IsShaderUnlocked(string shaderId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedShaderIds, shaderId);
         }

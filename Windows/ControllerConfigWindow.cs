@@ -47,8 +47,8 @@ namespace BrokenNes.Windows
         private void InitializeComponent()
         {
             Text = $"Player {config.PlayerNumber} Controller Configuration";
-            Size = new Size(500, 620);
-            MinimumSize = new Size(500, 620);
+            Size = new Size(500, 700);
+            MinimumSize = new Size(500, 700);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -203,7 +203,7 @@ namespace BrokenNes.Windows
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
 
-            var buttonNames = new[] { "B", "A", "Y", "X", "Select", "Start", "Up", "Down", "Left", "Right" };
+            var buttonNames = new[] { "B", "A", "Y", "X", "L", "R", "Select", "Start", "Up", "Down", "Left", "Right" };
 
             foreach (var name in buttonNames)
             {
@@ -250,6 +250,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Right", config.Right.Key);
                 UpdateButtonText("X", config.X.Key);
                 UpdateButtonText("Y", config.Y.Key);
+                UpdateButtonText("L", config.L.Key);
+                UpdateButtonText("R", config.R.Key);
             }
             else
             {
@@ -263,6 +265,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Right", config.Right.GamepadButton?.ToString());
                 UpdateButtonText("X", config.X.GamepadButton?.ToString());
                 UpdateButtonText("Y", config.Y.GamepadButton?.ToString());
+                UpdateButtonText("L", config.L.GamepadButton?.ToString());
+                UpdateButtonText("R", config.R.GamepadButton?.ToString());
             }
         }
 
@@ -407,6 +411,8 @@ namespace BrokenNes.Windows
                 "Right" => config.Right,
                 "X" => config.X,
                 "Y" => config.Y,
+                "L" => config.L,
+                "R" => config.R,
                 _ => throw new ArgumentException($"Unknown button: {buttonName}")
             };
         }
@@ -456,7 +462,9 @@ namespace BrokenNes.Windows
                 Left = CloneBinding(source.Left),
                 Right = CloneBinding(source.Right),
                 X = CloneBinding(source.X),
-                Y = CloneBinding(source.Y)
+                Y = CloneBinding(source.Y),
+                L = CloneBinding(source.L),
+                R = CloneBinding(source.R)
             };
         }
 
@@ -476,6 +484,8 @@ namespace BrokenNes.Windows
             target.Right = CloneBinding(source.Right);
             target.X = CloneBinding(source.X);
             target.Y = CloneBinding(source.Y);
+            target.L = CloneBinding(source.L);
+            target.R = CloneBinding(source.R);
         }
 
         private void CancelButton_Click(object? sender, EventArgs e)
@@ -594,6 +604,8 @@ namespace BrokenNes.Windows
                 config.Right = defaults.Right;
                 config.X = defaults.X;
                 config.Y = defaults.Y;
+                config.L = defaults.L;
+                config.R = defaults.R;
                 config.DeviceType = InputDeviceType.Keyboard;
 
                 if (inputModeCombo.Items.Count > 0)

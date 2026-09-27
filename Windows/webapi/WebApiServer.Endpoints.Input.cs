@@ -25,13 +25,28 @@ namespace BrokenNes.Windows.WebApi
     /// </summary>
     public static class ApiInputInjector
     {
-        public const int ButtonCount = 8;
+        public const int ButtonCount = 12;
 
-        /// <summary>NES button order used everywhere in this codebase (index == bit order).</summary>
+        /// <summary>NES button order used everywhere in this codebase (index == bit order), then the SNES-only buttons
+        /// X, Y, L, R (BrokenNes 2). The NES reads the first 8; a SNES / Game Boy session reads all of them.</summary>
         private static readonly string[] ButtonNames =
         {
-            "A", "B", "Select", "Start", "Up", "Down", "Left", "Right"
+            "A", "B", "Select", "Start", "Up", "Down", "Left", "Right", "X", "Y", "L", "R"
         };
+
+        /// <summary>The injected X / Y / L / R of a player (0 or 1), for the SNES.</summary>
+        public static NesEmulator.Systems.PadButtons ExtraButtons(int playerIndex)
+        {
+            if (Volatile.Read(ref _anyInjected) == 0 || playerIndex is < 0 or > 1) return NesEmulator.Systems.PadButtons.None;
+            lock (Gate)
+            {
+                ExpireLocked();
+                var src = Injected[playerIndex]; var b = NesEmulator.Systems.PadButtons.None;
+                if (src[8]) b |= NesEmulator.Systems.PadButtons.X; if (src[9]) b |= NesEmulator.Systems.PadButtons.Y;
+                if (src[10]) b |= NesEmulator.Systems.PadButtons.L; if (src[11]) b |= NesEmulator.Systems.PadButtons.R;
+                return b;
+            }
+        }
 
         private const int PlayerCount = 2;
 

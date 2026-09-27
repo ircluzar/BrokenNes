@@ -199,6 +199,11 @@ namespace BrokenNes.Windows
 
         private void ResetEmulator_Click(object? sender, EventArgs e)
         {
+            if (session != null)
+            {
+                lock (emulationLock) session.Reset();
+                return;
+            }
             if (nes != null && !string.IsNullOrEmpty(currentRomPath))
             {
                 // Reload the ROM to reset the emulator
@@ -211,8 +216,8 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.WindowZoom = zoom);
             
             // Calculate new window size based on NES resolution and zoom
-            int newWidth = NES_WIDTH * zoom;
-            int newHeight = NES_HEIGHT * zoom;
+            int newWidth = displayWidth * zoom;
+            int newHeight = displayHeight * zoom;
             
             // Add space for menu bar (approximate)
             int menuHeight = this.MainMenuStrip?.Height ?? 24;

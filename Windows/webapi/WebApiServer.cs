@@ -307,6 +307,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterShaderEndpoints(app);
             RegisterTimeJumpEndpoints(app);
             RegisterInputEndpoints(app);
+            RegisterConsoleEndpoints(app);   // BrokenNes 2: SNES / Game Boy sessions, console + core selection
 
             return app;
         }

@@ -164,10 +164,28 @@ namespace BrokenNes.Windows
         public bool ShowConsole { get; set; } = false;
         
         /// <summary>
-        /// Boot directly to emulator mode instead of loading Home webmodule
+        /// Boot directly to emulator mode instead of loading the Home webmodule (the BrokenNes 1 campaign hub).
+        /// BrokenNes 2: the emulator is the default; the Deck Builder campaign is reached from the Legacy menu.
         /// </summary>
         [JsonPropertyName("bootToEmulator")]
-        public bool BootToEmulator { get; set; } = false;
+        public bool BootToEmulator { get; set; } = true;
+
+        /// <summary>BrokenNes 2: the console the emulator runs ("nes", "snes", "gb", "gbc").</summary>
+        [JsonPropertyName("selectedConsole")]
+        public string SelectedConsole { get; set; } = "nes";
+
+        /// <summary>BrokenNes 2: the CPU/PPU/APU picked for each non-NES console (the NES keeps SelectedCpuCore etc.).</summary>
+        [JsonPropertyName("consoleCores")]
+        public Dictionary<string, ConsoleCoreSelection> ConsoleCores { get; set; } = new();
+
+        /// <summary>BrokenNes 1 behaviour: cores, shaders and tools are locked until the Deck Builder campaign unlocks them.
+        /// Off in BrokenNes 2, where the emulator comes first and everything is available.</summary>
+        [JsonPropertyName("legacyProgressionLocks")]
+        public bool LegacyProgressionLocks { get; set; } = false;
+
+        /// <summary>Set once the BrokenNes 1 -> 2 settings migration has run (emulator-first boot).</summary>
+        [JsonPropertyName("brokenNes2Migrated")]
+        public bool BrokenNes2Migrated { get; set; } = true;
         
         /// <summary>
         /// Show the Webmodules menu in the menu bar
@@ -399,6 +417,14 @@ namespace BrokenNes.Windows
                         config.MigrateLegacyBindings();
                         var bindingsChanged = config.NormalizePlayer1DefaultKeyboardBindings();
                         var coreDefaultsChanged = config.MigrateCoreDefaults();
+                        // BrokenNes 1 -> 2: the emulator becomes the start screen (the campaign moves to the Legacy menu).
+                        // A config written by BrokenNes 1 has no brokenNes2Migrated field, which reads as false here.
+                        if (!json.Contains("\"brokenNes2Migrated\""))
+                        {
+                            config.BootToEmulator = true;
+                            config.BrokenNes2Migrated = true;
+                            coreDefaultsChanged = true;
+                        }
                         var shaderConfigChanged = false;
 
                         // Shaders are always-on; keep persisted configs aligned.
@@ -491,5 +517,13 @@ namespace BrokenNes.Windows
             RecentRoms.Clear();
             Save();
         }
+    }
+
+    /// <summary>BrokenNes 2: the cores picked for one console.</summary>
+    public class ConsoleCoreSelection
+    {
+        [JsonPropertyName("cpu")] public string? Cpu { get; set; }
+        [JsonPropertyName("ppu")] public string? Ppu { get; set; }
+        [JsonPropertyName("apu")] public string? Apu { get; set; }
     }
 }

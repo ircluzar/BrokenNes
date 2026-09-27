@@ -178,6 +178,7 @@ namespace BrokenNes.Windows
             }
 
             StopEmulation();
+            SaveSessionBattery(force: true);   // BrokenNes 2: a SNES / Game Boy game's battery save
             
             // Shut down Web API server
             if (webApiServer != null)

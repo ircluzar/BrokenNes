@@ -21,8 +21,10 @@ namespace BrokenNes.Windows
         private PlayerControllerConfig? playerConfig;
         
         // Separate states for keyboard and controller to allow simultaneous usage
-        private bool[] keyboardStates = new bool[8];
-        private bool[] controllerStates = new bool[8];
+        // 12 buttons: 0-7 in NES order (what the NES reads), then X, Y, L, R (SNES; see PlayerControllerConfig).
+        public const int ButtonCount = 12;
+        private bool[] keyboardStates = new bool[ButtonCount];
+        private bool[] controllerStates = new bool[ButtonCount];
 
         public byte LeftTrigger { get; private set; }
         public byte RightTrigger { get; private set; }
@@ -142,8 +144,8 @@ namespace BrokenNes.Windows
             // NEW: Use player config if available
             if (playerConfig != null)
             {
-                var bindings = playerConfig.GetAllBindings();
-                for (int i = 0; i < bindings.Length && i < 8; i++)
+                var bindings = playerConfig.GetExtendedBindings();
+                for (int i = 0; i < bindings.Length && i < ButtonCount; i++)
                 {
                     if (!string.IsNullOrEmpty(bindings[i].Key))
                     {
@@ -205,8 +207,8 @@ namespace BrokenNes.Windows
             // NEW: Use player config if available for custom button mappings
             if (playerConfig != null)
             {
-                var bindings = playerConfig.GetAllBindings();
-                for (int i = 0; i < bindings.Length && i < 8; i++)
+                var bindings = playerConfig.GetExtendedBindings();
+                for (int i = 0; i < bindings.Length && i < ButtonCount; i++)
                 {
                     if (bindings[i].GamepadButton.HasValue)
                     {
@@ -247,7 +249,7 @@ namespace BrokenNes.Windows
         /// </summary>
         public bool GetButton(int buttonIndex)
         {
-            if (buttonIndex < 0 || buttonIndex >= 8)
+            if (buttonIndex < 0 || buttonIndex >= ButtonCount)
                 return false;
             
             // Respect configured device type for exclusivity

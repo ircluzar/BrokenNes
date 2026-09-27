@@ -127,6 +127,7 @@ namespace BrokenNes.Windows
 
             if (nes == null) return;
             nes.SetPpuCore(coreId);
+            ApplyBridgeTiming();
 
             if (bypassProgression)
             {

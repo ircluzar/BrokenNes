@@ -48,6 +48,7 @@ namespace BrokenNes.Windows
             {
                 var speed = nes?.GetSpeedConfig();
                 if (speed != null) speed.NtscAccurateFrameRate = config.NtscAccurateFrameRate;
+                ApplyBridgeTiming();
             }
         }
 

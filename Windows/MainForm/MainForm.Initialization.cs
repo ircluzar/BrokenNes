@@ -67,8 +67,8 @@ namespace BrokenNes.Windows
 
         private void InitializeComponent()
         {
-            this.Text = "BrokenNes";
-            Console.WriteLine("BrokenNes - Windows");
+            this.Text = "BrokenNes 2";
+            Console.WriteLine("BrokenNes 2 - Windows");
             this.ClientSize = new Size(1280, 720);
             this.MinimumSize = new Size(1280, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -429,6 +429,13 @@ namespace BrokenNes.Windows
             helpMenu.DropDownItems.Add(aboutItem);
             
             menuStrip.Items.Add(helpMenu);
+
+            // BrokenNes 2: the emulator comes first. Console picks NES / SNES / Game Boy / Game Boy Color, and the core
+            // menus follow it; the BrokenNes 1 campaign (Deck Builder) moves to Legacy.
+            var legacyMenu = BuildLegacyMenu();
+            var consoleMenuItem = BuildConsoleMenu();
+            menuStrip.Items.Clear();
+            menuStrip.Items.AddRange(new ToolStripItem[] { emulatorMenu, consoleMenuItem, cpuMenu, ppuMenu, apuMenu, shaderMenu, configMenu, toolsMenu, webModulesMenu, legacyMenu, helpMenu });
             
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
@@ -862,6 +869,7 @@ namespace BrokenNes.Windows
 
                 if (!webApiServer.IsRunning)
                 {
+                    WireConsoleApi(webApiServer);
                     await webApiServer.StartAsync();
 
                     if (webApiServer.IsRunning)
