@@ -23,7 +23,8 @@ namespace BrokenNes.Workshop;
 ///
 /// Keys: arrows = D-pad, Z = Y, X = B, A = X, S = A, Q = L, W = R, Enter = Start, Space = Select.
 ///       P pause, F2 reset, Tab (hold) fast-forward, F12 screenshot, Esc quit. An XInput pad also works.
-/// Battery SRAM persists to %APPDATA%\BrokenNes\BatterySaves\sfc&lt;sha1&gt;.srm.
+/// Battery SRAM persists to %APPDATA%\BrokenNes\SnesSaves\sfc&lt;sha1&gt;.srm (an older save in
+/// BatterySaves\ is read once as a fallback, never written).
 /// </summary>
 internal sealed class SnesPlayerForm : Form
 {
@@ -56,11 +57,16 @@ internal sealed class SnesPlayerForm : Form
         var cart = SnesCartridge.Load(file);
         board = new BOARD_SFC(cart, CreateApu(apuChoice), SnesFirmware.CreateCoprocessor(cart, romPath, out string chipNote));
 
-        string saveDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes", "BatterySaves");
-        savePath = Path.Combine(saveDir, "sfc" + Convert.ToHexString(SHA1.HashData(file)).ToLowerInvariant() + ".srm");
-        if (cart.Sram.Length > 0 && File.Exists(savePath))
+        // SNES saves live in SnesSaves (the same place as the BrokenNes 2 apps). Older builds wrote to
+        // BatterySaves, which belongs to the NES side: such a file is only ever read, as a fallback.
+        string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes");
+        string saveName = "sfc" + Convert.ToHexString(SHA1.HashData(file)).ToLowerInvariant() + ".srm";
+        savePath = Path.Combine(appData, "SnesSaves", saveName);
+        string legacyPath = Path.Combine(appData, "BatterySaves", saveName);
+        string? loadFrom = File.Exists(savePath) ? savePath : File.Exists(legacyPath) ? legacyPath : null;
+        if (cart.Sram.Length > 0 && loadFrom != null)
         {
-            byte[] saved = File.ReadAllBytes(savePath);
+            byte[] saved = File.ReadAllBytes(loadFrom);
             Array.Copy(saved, cart.Sram, Math.Min(saved.Length, cart.Sram.Length));
         }
         lastSavedSram = (byte[])cart.Sram.Clone();
