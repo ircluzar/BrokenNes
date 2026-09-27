@@ -1152,5 +1152,5 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
 .side-panels #performance-panel .perf-pending-note { font-size:.62rem; color:#b9ad8a; }
 
 /* BrokenNes 2: the Console + per-console core pickers wrap inside the play column instead of spilling past it. */
-.quick-controls .btn-group { flex-wrap: wrap; justify-content: center; max-width: 100%; row-gap: .35rem; }
+.quick-controls .btn-group.picker-group { flex-wrap: wrap; justify-content: center; max-width: 100%; row-gap: .35rem; }
 .quick-controls .btn-group .console-core-select { max-width: 10.5rem; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
