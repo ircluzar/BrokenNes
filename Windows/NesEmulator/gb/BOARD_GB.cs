@@ -23,7 +23,8 @@ public sealed class BOARD_GB : IGbCpuBus
     public readonly GbCartridge Cart;
     public readonly CPU_GB Cpu;
     public readonly PPU_GB Ppu;
-    public readonly APU_GB Apu;
+    /// <summary>The sound chip: APU_GB unless a factory supplied another <see cref="IGbApu"/> (cross-console bridges).</summary>
+    public readonly IGbApu Apu;
     /// <summary>Game Boy Color hardware running a Game Boy Color game (full colour mode).</summary>
     public bool CgbMode => Model == GbModel.Cgb && Cart.SupportsCgb;
 
@@ -45,14 +46,17 @@ public sealed class BOARD_GB : IGbCpuBus
     public long CycleCount { get; private set; }      // M-cycles since power-on
     public bool DoubleSpeed { get; private set; }
 
-    public BOARD_GB(GbCartridge cart, GbModel model)
+    public BOARD_GB(GbCartridge cart, GbModel model) : this(cart, model, null) { }
+
+    /// <summary><paramref name="apuFactory"/>: build the sound chip (null = the stock APU_GB).</summary>
+    public BOARD_GB(GbCartridge cart, GbModel model, Func<GbModel, IGbApu>? apuFactory)
     {
         Model = model;
         Cart = cart;
         wram = new byte[model == GbModel.Cgb ? 0x8000 : 0x2000];
         Cpu = new CPU_GB(this);
         Ppu = new PPU_GB(model);
-        Apu = new APU_GB(model);
+        Apu = apuFactory?.Invoke(model) ?? new APU_GB(model);
         Ppu.RequestInterrupt = bit =>
         {
             byte mask = (byte)(1 << bit);

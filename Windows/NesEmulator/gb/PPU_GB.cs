@@ -42,6 +42,9 @@ public sealed class PPU_GB
     private byte statEnable;          // STAT bits 3-6
     private byte vbk, bcps, ocps, opri;
     public long FrameCount { get; private set; }
+    /// <summary>Raised as each visible line (0-143) begins, before it is drawn. For tools and cross-console bridges
+    /// that need the scroll/palette registers each line was drawn with.</summary>
+    public Action<int>? LineStarted;
 
     /// <summary>Raised with the IF bit to set: 0 = VBlank, 1 = STAT.</summary>
     public Action<int>? RequestInterrupt;
@@ -259,6 +262,7 @@ public sealed class PPU_GB
         ly++;
         lyReadsZero = false;
         if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
+        if (ly < Height) LineStarted?.Invoke(ly);
         if (ly != 0) lyCmpVis = -1;   // LY has read 0 since early line 153: line 0 keeps matching
         if (ly <= Height) visMode = 0;
         if (ly == Height)
