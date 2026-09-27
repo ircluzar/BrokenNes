@@ -1005,6 +1005,8 @@ namespace BrokenNes
                 Status.Set($"Loading {nesController.RomFileName}...");
                 var romData = await LoadRomFromWwwroot(nesController.RomFileName);
                 if (romData.Length == 0) throw new Exception($"ROM file '{nesController.RomFileName}' not found or empty");
+                // BrokenNes 2: a SNES / Game Boy ROM from the server (?rom=...) starts a console session.
+                if (await TryStartSessionAsync(nesController.RomFileName, romData)) return;
                 bool wasRunning = nesController.IsRunning; if (wasRunning) await PauseEmulation();
                 if (nes == null) nes = new NesEmulator.NES();
                 // Wire Imagine Fix callback: when NES requests an Imagine shot, run with current settings.
