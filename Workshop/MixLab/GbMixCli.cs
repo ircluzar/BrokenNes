@@ -41,7 +41,45 @@ internal static class GbMixCli
         return 0;
     }
 
-    public static int Picture(Func<string, string, string> opt) => throw new NotImplementedException("gbpic comes next");
+    /// <summary>A Game Boy game drawn by other consoles' PPUs: targets "GB" (native), "NES:&lt;id&gt;", "SNES:&lt;id&gt;".</summary>
+    public static int Picture(Func<string, string, string> opt)
+    {
+        string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", Path.GetFileNameWithoutExtension(rom));
+        var model = Model(opt("model", "dmg"));
+        int frames = int.Parse(opt("frames", "900"));
+        var pngAt = opt("png-at", frames.ToString()).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
+        var targets = opt("targets", "GB,NES:FIX,SNES:SFC").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        bool bleed = opt("bleed", "1") != "0";
+        var script = GbRunCli.ParseInput(opt("input", ""));
+        Directory.CreateDirectory(outDir);
+        var board = new BOARD_GB(GbCartridge.Load(GbRunCli.LoadRom(rom)), model);
+        var cap = new GbLineCapture(board.Ppu);
+        var nes = targets.Where(t => t.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)).Select(t => new GbToNes(t[4..]) { Bleed = bleed }).ToList();
+        var snes = targets.Where(t => t.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)).Select(t => new GbToSnes(t[5..]) { Bleed = bleed }).ToList();
+        var buf = new short[16384];
+        for (int f = 1; f <= frames; f++)
+        {
+            if (script.TryGetValue(f - 1, out var b)) { board.Buttons = b; board.UpdateJoypadIrq(); }
+            board.RunFrame();
+            while (board.Apu.ReadSamples(buf) > 0) { }
+            if (!pngAt.Contains(f)) continue;
+            string stem = Path.Combine(outDir, $"{tag}_f{f:D5}");
+            if (targets.Any(t => t.Equals("GB", StringComparison.OrdinalIgnoreCase))) MixLabCli.SaveArgb(board.Ppu.FrameBuffer, 160, 144, stem + "_gb.png");
+            foreach (var n in nes)
+            {
+                var rgba = n.Render(board, cap);
+                MixLabCli.SaveRgba(rgba, 256, 240, $"{stem}_nes-{n.PpuId}.png");
+                Console.WriteLine($"f{f} NES:{n.PpuId}: {n.Stats}");
+            }
+            foreach (var s in snes)
+            {
+                var argb = s.Render(board, cap);
+                MixLabCli.SaveArgb(argb, 256, 224, $"{stem}_snes-{s.PpuId}.png");
+            }
+        }
+        Console.WriteLine($"{board.Cart.Title} model={model} frames={frames} targets={string.Join(",", targets)}");
+        return 0;
+    }
     public static int NesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("nes2gb comes next");
     public static int SnesOnGb(Func<string, string, string> opt) => throw new NotImplementedException("snes2gb comes next");
     public static int CpuSpeed(Func<string, string, string> opt) => throw new NotImplementedException("gbcpu comes next");

@@ -20,8 +20,7 @@ namespace BrokenNes.Workshop.MixLab;
 /// </summary>
 internal sealed class SnesToNes
 {
-    private readonly NES nes;
-    private readonly Bus bus;
+    private readonly NesPictureSink sink;
     public readonly Stats Last = new();
 
     public sealed class Stats
@@ -33,14 +32,7 @@ internal sealed class SnesToNes
             $"snes bg palettes {SnesPalettesUsed}, sprites {SpritesKept}/{SpritesWanted} 8x8 pieces {Note}";
     }
 
-    public SnesToNes(string nesPpuId)
-    {
-        nes = new NES { RomName = "mixlab-idle.nes" };
-        nes.LoadROM(IdleRom());
-        if (!nes.SetPpuCore(nesPpuId) || !string.Equals(nes.GetPpuCoreId(), "PPU_" + nesPpuId, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException($"NES PPU '{nesPpuId}' not applied (got {nes.GetPpuCoreId()})");
-        bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
-    }
+    public SnesToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
 
     /// <summary>NROM, 16K PRG, CHR-RAM, vertical mirroring: JMP * forever, RTI for NMI/IRQ.</summary>
     internal static byte[] IdleRom()
@@ -55,7 +47,6 @@ internal sealed class SnesToNes
         return rom;
     }
 
-    private void W(ushort a, byte v) => bus.Write(a, v);
 
     /// <summary>Program the NES PPU from the SNES PPU's current state, run one NES frame, return RGBA 256x240.</summary>
     public byte[] Render(ISnesPpuCore sp, SnesPpuSnapshot? midFrame = null)
@@ -240,38 +231,9 @@ internal sealed class SnesToNes
         }
         st.SpritesKept = kept; st.UniqueObjTiles = objTiles.Count;
 
-        // --- program the NES PPU (rendering off while uploading), then run one frame
-        W(0x2001, 0x00); W(0x2000, 0x08);
-        _ = bus.Read(0x2002);
-        // Instant register writes are fine for cores without a $2006 -> v delay, but PPU_FIX models the real 4-dot
-        // delay: with no time passing between writes, every $2007 byte lands at the old address. Where the core has
-        // a PPU-bus backdoor (IPpuProbe) and MIX_BACKDOOR is not 0, upload through it instead.
-        if (bus.ppu is IPpuProbe pb && Environment.GetEnvironmentVariable("MIX_BACKDOOR") != "0")
-        {
-            for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)i, chrBg[i]);
-            for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)(0x1000 + i), chrObj[i]);
-            for (int i = 0; i < 1024; i++) { pb.ProbePpuBusWrite((ushort)(0x2000 + i), nt[0][i]); pb.ProbePpuBusWrite((ushort)(0x2400 + i), nt[1][i]); }
-            for (int i = 0; i < 32; i++) pb.ProbePpuBusWrite((ushort)(0x3F00 + i), pal[i]);
-        }
-        else
-        {
-        W(0x2006, 0x00); W(0x2006, 0x00);
-        foreach (var b in chrBg) W(0x2007, b);
-        foreach (var b in chrObj) W(0x2007, b);
-        W(0x2006, 0x20); W(0x2006, 0x00);
-        foreach (var b in nt[0]) W(0x2007, b);
-        foreach (var b in nt[1]) W(0x2007, b);
-        W(0x2006, 0x3F); W(0x2006, 0x00);
-        foreach (var b in pal) W(0x2007, b);
-        }
-        W(0x2003, 0x00);
-        foreach (var b in nesOam) W(0x2004, b);
-        _ = bus.Read(0x2002);
-        W(0x2000, 0x08); W(0x2005, (byte)fx); W(0x2005, (byte)fy);
-        W(0x2001, blank ? (byte)0x00 : (byte)0x1E);
-        nes.RunFrame(); nes.RunFrame();   // one frame to latch the new picture, one to present it
+        var frame = sink.Present(new NesPicture { ChrBg = chrBg, ChrObj = chrObj, Nt0 = nt[0], Nt1 = nt[1], Pal = pal, Oam = nesOam, FineX = fx, FineY = fy, Blank = blank });
         Last.UniqueBgTiles = st.UniqueBgTiles; Last.BgOverflow = st.BgOverflow; Last.UniqueObjTiles = st.UniqueObjTiles; Last.ObjOverflow = st.ObjOverflow;
         Last.SnesPalettesUsed = st.SnesPalettesUsed; Last.SpritesWanted = st.SpritesWanted; Last.SpritesKept = st.SpritesKept; Last.Note = st.Note;
-        return nes.GetFrameBuffer();
+        return frame;
     }
 }
