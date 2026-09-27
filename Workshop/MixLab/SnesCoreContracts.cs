@@ -119,5 +119,7 @@ public static class MixConfig
     public static string GbPpuModel = "dmg";
     /// <summary>Which 160x144 part of the 256x240 NES screen the Game Boy PPU shows (PPU_DMG).</summary>
     public static int GbCropX = 48, GbCropY = 48;
+    /// <summary>Screen size of the off-spec Game Boy picture chip behind NES PPU id "DMGX" (PPU_GBX; --gb-res WxH).</summary>
+    public static int GbHiResWidth = 256, GbHiResHeight = 240;
     public static bool RescueFront = System.Environment.GetEnvironmentVariable("MIX_RESCUE_FRONT") != "0";
 }

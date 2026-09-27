@@ -16,15 +16,17 @@ namespace NesEmulator;
 /// frame, setting SCX/SCY as each Game Boy line starts. The Game Boy sees the middle of the NES screen: 160x144 of it,
 /// from NES (48,48). DMG: one BGP for everything, so the four NES palettes collapse into 4 greens by colour index;
 /// Game Boy Color: NES palettes -> CGB palettes, attributes per tile. 40 sprites, 10 per line (NES: 64 and 8).
-/// Discovered by CoreRegistry as PPU id "DMG".
+/// Discovered by CoreRegistry as PPU id "DMG". <see cref="PPU_DMGX"/> is the same bridge on the off-spec PPU_GBX.
 /// </summary>
-public sealed class PPU_DMG : IPPU, IPpuProbe
+public class PPU_DMG : IPPU, IPpuProbe
 {
     private readonly Bus bus;
     private readonly IPPU front;
     private readonly IPpuProbe? probe;
     private readonly IPpuFrameClock? clock;
-    private readonly PPU_GB gb;
+    private readonly GbScreen gb;
+    /// <summary>The Game Boy screen size (160x144, or bigger on PPU_GBX).</summary>
+    private readonly int W, H;
     private readonly bool cgb;
     private readonly byte[] frame = new byte[256 * 240 * 4];
     private byte ctrl, oamAddr;
@@ -35,13 +37,16 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
     private byte frameCtrl;
     private int lastLine = -1;
     private readonly Func<ushort, byte> busRead;
-    /// <summary>Top-left of the 160x144 window the Game Boy sees of the 256x240 NES screen (MixConfig.GbCrop).</summary>
+    /// <summary>Top-left of the W x H window the Game Boy sees of the 256x240 NES screen (MixConfig.GbCrop).</summary>
     private readonly int cx, cy;
     private PpuSharedState? st;
 
-    public PPU_DMG(Bus bus)
+    public PPU_DMG(Bus bus) : this(bus, PPU_GB.Width, PPU_GB.Height) { }
+
+    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight)
     {
         this.bus = bus;
+        W = gbWidth; H = gbHeight;
         var t = CoreRegistry.PpuTypes.TryGetValue(MixConfig.NesFrontPpu, out var ft) ? ft : throw new ArgumentException($"No NES PPU '{MixConfig.NesFrontPpu}'");
         front = CoreRegistry.CreateInstance<IPPU>(t, bus) ?? throw new InvalidOperationException("front PPU");
         probe = front as IPpuProbe;
@@ -49,15 +54,14 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
         if (probe == null && (!MixConfig.RescueFront || clock == null))
             throw new NotSupportedException($"NES PPU {MixConfig.NesFrontPpu} has no IPpuProbe - it cannot front a Game Boy PPU");
         busRead = probe != null ? probe.ProbePpuBusRead : StateRead;
-        cx = Math.Clamp(MixConfig.GbCropX, 0, 96); cy = Math.Clamp(MixConfig.GbCropY, 0, 96);
+        cx = Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
         cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase);
-        gb = new PPU_GB(cgb ? GbModel.Cgb : GbModel.Dmg) { CompatMode = false };
-        gb.ResetPostBoot();
+        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H);
         if (!cgb) for (int i = 0; i < 4; i++) { var (r, g, b) = GbShades.Green[i]; gb.DmgColors[i] = 0xFF000000u | (uint)(r << 16 | g << 8 | b); }
         gb.LineStarted += OnGbLine;
     }
 
-    public string CoreName => $"DMG:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
+    public string CoreName => $"DMG{(W != PPU_GB.Width || H != PPU_GB.Height ? $"X {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
     public string Description => "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
     public int Performance => 0;
     public int Rating => 1;
@@ -116,8 +120,8 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
             st = front.GetState() as PpuSharedState;
             if (st == null) continue;
             if (line == 0) { ctrl = st.PPUCTRL; Array.Copy(st.oam, oam, 256); Snapshot(); }
-            if (line == cy + 72) SnapshotChr();
-            if (line >= cy && line < cy + 144 && ((line - cy) & 7) == 0) SnapshotRow((line - cy) >> 3);
+            if (line == cy + H / 2) SnapshotChr();
+            if (line >= cy && line < cy + H && ((line - cy) & 7) == 0) SnapshotRow((line - cy) >> 3);
             int v = st.v, t = st.t, fx = st.fineX;
             lineX[line] = ((t >> 10) & 1) * 256 + (t & 31) * 8 + fx;
             lineY[line] = ((v >> 11) & 1) * 256 + ((v >> 5) & 31) * 8 + ((v >> 12) & 7);
@@ -158,8 +162,8 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
         int next = line == 261 ? 0 : line + 1;
         if (line != 261 && line >= 239) return;
         if (next == 0) Snapshot();
-        if (next == cy + 72) SnapshotChr();   // sprite tiles as the middle of the Game Boy window is drawn
-        if (next >= cy && next < cy + 144 && ((next - cy) & 7) == 0) SnapshotRow((next - cy) >> 3);
+        if (next == cy + H / 2) SnapshotChr();   // sprite tiles as the middle of the Game Boy window is drawn
+        if (next >= cy && next < cy + H && ((next - cy) & 7) == 0) SnapshotRow((next - cy) >> 3);
         ushort v = front is PPU_FIX f ? f.ProbeV : (ushort)0; int fx = front is PPU_FIX f2 ? f2.ProbeFineX : 0;
         lineX[next] = ((v >> 10) & 1) * 256 + (v & 31) * 8 + fx;
         lineY[next] = ((v >> 11) & 1) * 256 + ((v >> 5) & 31) * 8 + ((v >> 12) & 7);
@@ -177,7 +181,8 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
     }
 
     private void SnapshotChr() { for (int i = 0; i < 0x2000; i++) chr[i] = busRead((ushort)i); }
-    private readonly byte[][] rowChr = Enumerable.Range(0, 18).Select(_ => new byte[0x2000]).ToArray();
+    private byte[][]? rowChrs;
+    private byte[][] rowChr => rowChrs ??= Enumerable.Range(0, H / 8).Select(_ => new byte[0x2000]).ToArray();
     /// <summary>Distinct background tile patterns the last frame needed (over 256 = some cells show wrong tiles).</summary>
     public int BgSlotsUsed;
     private void SnapshotRow(int group) { var dst = rowChr[group]; for (int i = 0; i < 0x2000; i++) dst[i] = busRead((ushort)i); }
@@ -210,13 +215,16 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
             for (int r = 0; r < 8; r++) { vram[gbAddr + r * 2] = src[at + r]; vram[gbAddr + r * 2 + 1] = src[at + 8 + r]; }
             return id;
         }
-        // Map: each Game Boy line's NES row lands in map row (Y >> 3) & 31, its 21 columns at (X >> 3) & 31.
-        for (int l = 0; l < 144; l++)
+        // Map: each Game Boy line's NES row lands in map row (Y >> 3) & 31, its columns at (X >> 3) & 31. A line spans
+        // (W + fine X) / 8 tiles; at W = 256 with a fine scroll that is 33, one more than the 32-column map holds - the
+        // last would land on the first, so it is left out (the Game Boy map's own limit: the right edge repeats the left).
+        for (int l = 0; l < H; l++)
         {
             int L = l + cy, X0 = (lineX[L] + cx) & 511, Y = lineY[L] & 511;
             int m = (Y >> 3) & 31;
-            var rc = rowChr[Math.Min(l >> 3, 17)];
-            for (int c = 0; c < 21; c++)
+            var rc = rowChr[Math.Min(l >> 3, H / 8 - 1)];
+            int cols = Math.Min(32, (W + (X0 & 7) + 7) >> 3);
+            for (int c = 0; c < cols; c++)
             {
                 int X = (X0 + c * 8) & 511, mc = (X >> 3) & 31;
                 int tile = NesTile(X, Y, out int p);
@@ -239,7 +247,8 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
         }
         void Put(int x, int y, int nesAddr, int at)
         {
-            if (n >= 40 || x <= -8 || x >= 160 || y <= -8 || y >= 144) return;
+            if (n >= 40 || x <= -8 || x >= W || y <= -8 || y >= H) return;
+            if (x + 8 > 255 || y + 16 > 255) return;   // OAM coordinates are bytes: no object past X 247 / Y 239
             int s = Slot(nesAddr); if (s < 0) return;
             int f = ((at & 0x20) != 0 ? 0x80 : 0) | ((at & 0x40) != 0 ? 0x20 : 0) | ((at & 0x80) != 0 ? 0x40 : 0) | (cgb ? at & 3 : 0);
             gb.Oam[n * 4] = (byte)(y + 16); gb.Oam[n * 4 + 1] = (byte)(x + 8); gb.Oam[n * 4 + 2] = (byte)s; gb.Oam[n * 4 + 3] = (byte)f; n++;
@@ -267,14 +276,15 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
         gb.Bgp = 0xE4; gb.Obp0 = 0xE4; gb.Obp1 = 0xE4;
         // Draw one Game Boy frame (SCX/SCY are set per line in OnGbLine).
         long target = gb.FrameCount + 1; int guard = 0;
-        while (gb.FrameCount < target && guard++ < 30000) gb.Tick(4);
+        int guardMax = gb.FrameDots / 2;   // two frames' worth of 4-dot ticks
+        while (gb.FrameCount < target && guard++ < guardMax) gb.Tick(4);
         // Present: the Game Boy screen centred where it came from, a dark bezel around it.
         var src = gb.FrameBuffer;
         for (int y = 0; y < 240; y++)
             for (int x = 0; x < 256; x++)
             {
                 int o = (y * 256 + x) * 4, gx = x - cx, gy = y - cy;
-                uint c = gx >= 0 && gx < 160 && gy >= 0 && gy < 144 ? src[gy * 160 + gx] : 0xFF1A1C1Eu;
+                uint c = gx >= 0 && gx < W && gy >= 0 && gy < H ? src[gy * W + gx] : 0xFF1A1C1Eu;
                 frame[o] = (byte)(c >> 16); frame[o + 1] = (byte)(c >> 8); frame[o + 2] = (byte)c; frame[o + 3] = 255;
             }
     }
@@ -286,4 +296,15 @@ public sealed class PPU_DMG : IPPU, IPpuProbe
         byte mask = lineMask[L];
         gb.Lcdc = (byte)(0x80 | ((mask & 0x08) != 0 || cgb ? 0x01 : 0) | ((mask & 0x10) != 0 ? 0x02 : 0));
     }
+}
+
+/// <summary>
+/// MIX LAB: <see cref="PPU_DMG"/> on the off-spec Game Boy picture chip PPU_GBX - a Game Boy with a 256x240 screen, so a
+/// NES (or, through the NES, SNES) game is shown whole instead of cropped to the Game Boy's 160x144. Everything else
+/// keeps the Game Boy's limits: 4 greens or CGB palettes, 256 background tiles, 40 objects with 10 per line, the one
+/// 32x32 background map. --gb-res WxH picks another size (160-256 x 144-240). Discovered by CoreRegistry as PPU id "DMGX".
+/// </summary>
+public sealed class PPU_DMGX : PPU_DMG
+{
+    public PPU_DMGX(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight) { }
 }
