@@ -7,8 +7,8 @@ using System.Windows.Forms;
 namespace BrokenNes.Windows
 {
     /// <summary>
-    /// BrokenNes 2: the volume button at the right end of the menu bar - a speaker (shell32's) drawn as a button in the
-    /// bar, opening a floating panel to set the emulation volume on the fly. Scrolling the mouse wheel over the button
+    /// BrokenNes 2: the volume button at the right end of the menu bar - "Volume : 50%" drawn as a button in the bar,
+    /// opening a floating panel to set the emulation volume on the fly. Scrolling the mouse wheel over the button
     /// nudges the volume. The level lives in <see cref="AudioManager.MasterVolume"/> / <see cref="AudioManager.Muted"/>
     /// and is saved in config.json (emulationVolume, emulationMuted). "Remove high-pitched" (off by default) mutes notes
     /// above a chosen pitch in the cross-console sound bridges before they are mixed in - see <see cref="NesEmulator.Mix.PitchGuard"/>.
@@ -251,7 +251,7 @@ namespace BrokenNes.Windows
 
         /// <summary>
         /// The menu bar's volume button: a ToolStripMenuItem (so it sits in the bar at the menus' height and opens like
-        /// them) painted as a rounded button with shell32's speaker and the level.
+        /// them) painted as a rounded button reading "Volume : 50%". The panel's mute button keeps shell32's speaker.
         /// </summary>
         private sealed class VolumeMenuButton : ToolStripMenuItem
         {
@@ -260,15 +260,16 @@ namespace BrokenNes.Windows
             [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
             public bool Muted { get; set; }
 
+            /// <summary>What the button says: "Volume : 50%" or "Volume : Muted".</summary>
+            public string Caption => "Volume : " + (Muted ? "Muted" : Level + "%");
+
             public override Size GetPreferredSize(Size constrainingSize)
             {
-                int icon = IconSize();
-                int text = TextRenderer.MeasureText("Muted", Font).Width;
+                // Sized for the widest caption so the button does not shift as the level changes.
+                int text = Math.Max(TextRenderer.MeasureText("Volume : 100%", Font).Width, TextRenderer.MeasureText("Volume : Muted", Font).Width);
                 var baseSize = base.GetPreferredSize(constrainingSize);
-                return new Size(8 + icon + 5 + text + 8, Math.Max(baseSize.Height, icon + 6));
+                return new Size(10 + text + 10, baseSize.Height);
             }
-
-            private int IconSize() => Math.Max(16, (Owner?.ImageScalingSize.Height ?? 16));
 
             protected override void OnPaint(PaintEventArgs e)
             {
@@ -288,14 +289,8 @@ namespace BrokenNes.Windows
                     g.DrawPath(p, path);
                 }
 
-                int icon = IconSize();
-                int iy = (Height - icon) / 2;
-                using (var bmp = SpeakerBitmap(icon, Muted || Level == 0))
-                    g.DrawImage(bmp, 8, iy, icon, icon);
-
-                var textRect = new Rectangle(8 + icon + 5, 0, Width - (8 + icon + 5) - 6, Height);
-                TextRenderer.DrawText(g, Muted ? "Muted" : Level + "%", Font, textRect,
-                    Muted ? Color.Firebrick : SystemColors.MenuText, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                TextRenderer.DrawText(g, Caption, Font, new Rectangle(0, 0, Width, Height),
+                    Muted ? Color.Firebrick : SystemColors.MenuText, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
             }
 
             private static GraphicsPath Rounded(Rectangle r, int radius)

@@ -39,7 +39,13 @@ namespace BrokenNes.Windows
                 
                 // Update Config menu checkmarks
                 UpdateConfigMenus();
-                
+
+                // The volume button was built (in InitializeComponent) before the config was loaded: apply the saved
+                // volume, mute and "Remove high-pitched" now, or they would sit at their defaults until touched.
+                ApplyEmulationVolume();
+                ApplyPitchGuard();
+                RefreshVolumeUi();
+
                 // Apply image settings
                 ApplyImageSettings();
             }
