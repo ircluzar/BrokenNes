@@ -40,6 +40,11 @@ internal static class ConsoleRunCli
         string outDir = Opt("out", "."), tag = Opt("tag", Path.GetFileNameWithoutExtension(inner));
         Directory.CreateDirectory(outDir);
         var script = ParseInput(Opt("input", ""));
+        // --gb-look green|grey|pocket|color, --gb-invert-bg, --gb-invert-obj: the Game Boy look (before the session is built:
+        // Color decides the Game Boy model).
+        NesEmulator.Mix.GbLook.Palette = NesEmulator.Mix.GbLook.FromKey(Opt("gb-look", "green"));
+        NesEmulator.Mix.GbLook.InvertBackground = args.Contains("--gb-invert-bg");
+        NesEmulator.Mix.GbLook.InvertSprites = args.Contains("--gb-invert-obj");
         using var s = ConsoleSessions.Create(console, rom, cpu, ppu, apu);
         Console.WriteLine($"detected {Consoles.DisplayName(detected)}, running {s.Description}");
         // --battery <file>: start from a copy of a battery save (read only). --wav <file> [--wav-from <frame>]: record the output as mono.

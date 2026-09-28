@@ -673,6 +673,9 @@ public sealed class PPU_GBXS
             if (Cgb)
             {
                 uint rgb = e.Rgb(k, src);
+                // The Game Boy look's lightness inversion (DMG gets it through BGP / OBP): the colour's complement.
+                bool inv = k >= ExtPicture.KindBg && ((k & 0x60) == ExtPicture.KindObj ? NesEmulator.Mix.GbLook.InvertSprites : NesEmulator.Mix.GbLook.InvertBackground);
+                if (inv) rgb ^= 0xFFFFFF;
                 extColor[x] = Cgb555(rgb);
                 extShade[x] = (byte)(k >= ExtPicture.KindBg ? k & 3 : 0);
                 continue;
@@ -682,7 +685,7 @@ public sealed class PPU_GBXS
                 ExtPicture.KeyBlack => 3,
                 ExtPicture.KeyBackdrop or ExtPicture.KeyBackdropAlt => ShadeOf(e.Rgb(k, src)),
                 // A colour's shade by its own brightness (bright 0 .. dark 3), through BGP / OBP like the Game Boy's own pixels -
-                // so an inverting palette (DMGSI's sprites) still inverts.
+                // so the Game Boy look's inversion (BGP / OBP = 1B) still inverts.
                 _ => (byte)(((k & 0x60) == ExtPicture.KindObj ? ((k >> 2 & 1) != 0 ? Obp1 : Obp0) : Bgp) >> (ShadeOf(e.Rgb(k, src)) * 2) & 3),
             };
             extShade[x] = shade;

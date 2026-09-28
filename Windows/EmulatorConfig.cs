@@ -133,6 +133,24 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("highPitchCeilingNote")]
         public int HighPitchCeilingNote { get; set; } = 108;
+
+        /// <summary>
+        /// The Game Boy look: green (original DMG), grey, pocket, or color (Game Boy pictures run as a GBC)
+        /// </summary>
+        [JsonPropertyName("gbLook")]
+        public string GbLook { get; set; } = "green";
+
+        /// <summary>
+        /// Cross-console pictures to / from the Game Boy: background lightness inverted
+        /// </summary>
+        [JsonPropertyName("gbInvertBackground")]
+        public bool GbInvertBackground { get; set; }
+
+        /// <summary>
+        /// Cross-console pictures to / from the Game Boy: sprite lightness inverted
+        /// </summary>
+        [JsonPropertyName("gbInvertSprites")]
+        public bool GbInvertSprites { get; set; }
         
         /// <summary>
         /// Run emulation as fast as possible (no speed limit)

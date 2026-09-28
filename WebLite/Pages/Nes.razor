@@ -13,6 +13,7 @@
 @using NesEmulator
 @using NesEmulator.Shaders
 @using NesEmulator.Systems
+@using NesEmulator.Mix
 @using BrokenNes.Shared
 @inject ILogger<Nes> Logger
 @inject IJSRuntime JS
@@ -87,6 +88,24 @@
                             <button id="shaderSelect" type="button" class="btn btn-rf btn-select" title="Video shader" aria-label="Video Shader" @onclick="OpenShaderPicker">
                                 @GetCurrentShaderLabel()
                             </button>
+                        </div>
+                    }
+                    @if (emu!.ShowsGameBoyPicture)
+                    {
+                        @* The Game Boy look: screen colours, and light/dark inversion for cross-console pictures. *@
+                        <div class="qc-select-stack">
+                            <label for="gbLookSelect" class="mini-label" title="Game Boy screen colours (Game Boy Color runs Game Boy pictures as a GBC - a running game restarts)">GB look</label>
+                            <select id="gbLookSelect" class="btn btn-rf btn-select console-core-select" aria-label="Game Boy look"
+                                    value="@GbLook.Key(emu!.GbLookChoice)" @onchange="(e => emu!.SetGbLookAsync(GbLook.FromKey(e.Value?.ToString()), null, null))">
+                                <option value="green">Original green</option>
+                                <option value="grey">Greyscale</option>
+                                <option value="pocket">Game Boy Pocket</option>
+                                <option value="color">Game Boy Color</option>
+                            </select>
+                            <label class="mini-label gb-invert" title="Cross-console pictures: swap light and dark">
+                                <input type="checkbox" checked="@emu!.GbInvertBackground" @onchange="(e => emu!.SetGbLookAsync(null, e.Value is true, null))" /> inv. BG
+                                <input type="checkbox" checked="@emu!.GbInvertSprites" @onchange="(e => emu!.SetGbLookAsync(null, null, e.Value is true))" /> inv. sprites
+                            </label>
                         </div>
                     }
                     @if (emu!.ActiveConsole != ConsoleKind.Nes)

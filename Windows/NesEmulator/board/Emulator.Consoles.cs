@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
+using NesEmulator.Mix;
 using NesEmulator.Systems;
 
 namespace BrokenNes
@@ -48,11 +49,49 @@ namespace BrokenNes
                         var v = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", CoreKey(k, slot));
                         if (!string.IsNullOrEmpty(v)) consoleCores[CoreKey(k, slot)] = v;
                     }
+                // The Game Boy look. Picks of the retired DMGXI / DMGSI picture chips become DMGX / DMGS + sprite inversion.
+                GbLook.Palette = GbLook.FromKey(await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gblook"));
+                GbLook.InvertBackground = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvbg") == "1";
+                GbLook.InvertSprites = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvobj") == "1";
+                bool retired = false;
+                foreach (var key in consoleCores.Keys.ToList())
+                {
+                    var v = consoleCores[key].ToUpperInvariant();
+                    if (v.EndsWith("DMGXI") || v.EndsWith("DMGSI")) { consoleCores[key] = consoleCores[key][..^1]; retired = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", key, consoleCores[key]); }
+                }
+                if (Controller.PpuCoreSel.ToUpperInvariant() is "DMGXI" or "DMGSI") { Controller.PpuCoreSel = Controller.PpuCoreSel[..^1]; retired = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", Controller.PpuCoreSel); }
+                if (retired) { GbLook.InvertSprites = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvobj", "1"); }
             }
             catch (Exception ex) { Logger.LogWarning(ex, "console prefs"); }
         }
 
         private static string CoreKey(ConsoleKind k, CoreSlot slot) => $"pref_core_{Consoles.Key(k)}_{slot.ToString().ToLowerInvariant()}";
+
+        // ---- the Game Boy look (the same setting as the desktop's Console > Game Boy look)
+        public GbPaletteChoice GbLookChoice => GbLook.Palette;
+        public bool GbInvertBackground => GbLook.InvertBackground;
+        public bool GbInvertSprites => GbLook.InvertSprites;
+
+        /// <summary>A Game Boy picture is in play: a Game Boy game, or a NES / SNES game through a Game Boy picture chip.</summary>
+        public bool ShowsGameBoyPicture => ActiveConsole is ConsoleKind.GameBoy or ConsoleKind.GameBoyColor
+            || (ActiveConsole == ConsoleKind.Snes && ConsoleCore(ConsoleKind.Snes, CoreSlot.Ppu).Contains("DMG", StringComparison.OrdinalIgnoreCase))
+            || (ActiveConsole == ConsoleKind.Nes && Controller.PpuCoreSel.StartsWith("DMG", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>Change the Game Boy look (null = unchanged). Going to or from Game Boy Color changes the Game Boy
+        /// model, so a game using a Game Boy picture restarts; the rest applies live.</summary>
+        public async Task SetGbLookAsync(GbPaletteChoice? look, bool? invertBackground, bool? invertSprites)
+        {
+            bool wasColor = GbLook.Color;
+            if (look is GbPaletteChoice l) { GbLook.Palette = l; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gblook", GbLook.Key(l)); } catch { } }
+            if (invertBackground is bool b) { GbLook.InvertBackground = b; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvbg", b ? "1" : "0"); } catch { } }
+            if (invertSprites is bool o) { GbLook.InvertSprites = o; try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvobj", o ? "1" : "0"); } catch { } }
+            if (wasColor != GbLook.Color && ShowsGameBoyPicture)
+            {
+                if (session != null && sessionRom != null) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
+                else if (nes != null) ApplySelectedCores();   // rebuilds the Game Boy picture chip as a DMG or a GBC
+            }
+            StateHasChanged();
+        }
 
         /// <summary>The SNES / Game Boy core picked for a slot (validated against the catalog).</summary>
         public string ConsoleCore(ConsoleKind console, CoreSlot slot) =>

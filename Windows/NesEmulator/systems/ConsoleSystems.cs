@@ -139,7 +139,7 @@ public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["DMGXI"] = "Game Boy", ["DMGSI"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
@@ -147,7 +147,6 @@ public static class CoreCatalog
         ["CPU:SNES"] = "65816 (SNES CPU)", ["CPU:SM83"] = "SM83 (Game Boy CPU)",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
-        ["PPU:DMGXI"] = "Game Boy picture chip, big screen, inverted sprites", ["PPU:DMGSI"] = "Game Boy picture chip, big screen + layers, inverted sprites",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
     };
 
@@ -248,8 +247,6 @@ public static class CoreCatalog
         "DMG" => "DMG - through a NES onto the Game Boy picture chip",
         "DMGX" => "DMGX - through a NES onto the big-screen Game Boy chip",
         "DMGS" => "DMGS - through a NES onto the Game Boy chip with SNES layers",
-        "DMGXI" => "DMGXI - DMGX with the sprites' light and dark flipped",
-        "DMGSI" => "DMGSI - DMGS with the sprites' light and dark flipped",
         _ => $"{id} - NES picture chip",
     };
 

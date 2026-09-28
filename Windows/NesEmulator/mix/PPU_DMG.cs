@@ -40,15 +40,12 @@ public class PPU_DMG : IPPU, IPpuProbe
     /// <summary>Top-left of the W x H window the Game Boy sees of the 256x240 NES screen (MixConfig.GbCrop).</summary>
     private readonly int cx, cy;
     private PpuSharedState? st;
-    /// <summary>Sprites with their luminosity flipped (dark shows light, light shows dark) - the *I variants.</summary>
-    private readonly bool invertSprites;
 
     public PPU_DMG(Bus bus) : this(bus, PPU_GB.Width, PPU_GB.Height) { }
 
-    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool layered = false, bool invertSprites = false)
+    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool layered = false)
     {
         this.bus = bus;
-        this.invertSprites = invertSprites;
         W = gbWidth; H = gbHeight;
         frontId ??= MixConfig.NesFrontPpu;
         var t = CoreRegistry.PpuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES PPU '{frontId}'");
@@ -59,16 +56,16 @@ public class PPU_DMG : IPPU, IPpuProbe
             throw new NotSupportedException($"NES PPU {frontId} has no IPpuProbe - it cannot front a Game Boy PPU");
         busRead = probe != null ? probe.ProbePpuBusRead : StateRead;
         cx = Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
-        cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase);
+        // Game Boy Color: asked for directly (MixConfig), or by the Game Boy look.
+        cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase) || GbLook.Color;
         gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H, layered);
-        if (!cgb) for (int i = 0; i < 4; i++) { var (r, g, b) = GbShades.Green[i]; gb.DmgColors[i] = 0xFF000000u | (uint)(r << 16 | g << 8 | b); }
         gb.LineStarted += OnGbLine;
     }
 
     /// <summary>The NES front chip when it is a PPU_FIXS, whose SNES-support layers a subclass can carry over.</summary>
     public PPU_FIXS? LayerFront => front as PPU_FIXS;
 
-    public string CoreName => $"DMG{(W != PPU_GB.Width || H != PPU_GB.Height ? $"X {W}x{H}" : "")}{(invertSprites ? " inverted sprites" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
+    public string CoreName => $"DMG{(W != PPU_GB.Width || H != PPU_GB.Height ? $"X {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
     public string Description => "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
     public int Performance => 0;
     public int Rating => 1;
@@ -276,15 +273,16 @@ public class PPU_DMG : IPPU, IPpuProbe
                 for (int c = 0; c < 4; c++)
                 {
                     ushort bg = NesPalette.ToBgr555(pal[c == 0 ? 0 : p * 4 + c]), ob = NesPalette.ToBgr555(pal[16 + p * 4 + c]);
-                    if (invertSprites) ob = (ushort)(ob ^ 0x7FFF);   // CGB: each object colour's complement
+                    bg = GbLook.Background(bg); ob = GbLook.Sprite(ob);   // lightness inverted when asked (the complement)
                     gb.BgPalRam[p * 8 + c * 2] = (byte)bg; gb.BgPalRam[p * 8 + c * 2 + 1] = (byte)(bg >> 8);
                     gb.ObjPalRam[p * 8 + c * 2] = (byte)ob; gb.ObjPalRam[p * 8 + c * 2 + 1] = (byte)(ob >> 8);
                 }
         }
-        // Object palettes: shade = colour index (E4), or the reverse (1B) for inverted sprites - the Game Boy's own
-        // OBP0/OBP1 do the flip, so PPU_GBXS's extra SNES sprites (drawn through the same palettes) flip with them.
-        byte obp = invertSprites ? (byte)0x1B : (byte)0xE4;
-        gb.Bgp = 0xE4; gb.Obp0 = obp; gb.Obp1 = obp;
+        // Palettes: shade = colour index (E4), or the reverse (1B) when the Game Boy look inverts that side - the Game Boy's
+        // own BGP / OBP do the flip, so PPU_GBXS's SNES extension (drawn through the same registers) flips with them.
+        byte bgpNow = GbLook.InvertBackground ? (byte)0x1B : (byte)0xE4, obp = GbLook.InvertSprites ? (byte)0x1B : (byte)0xE4;
+        gb.Bgp = bgpNow; gb.Obp0 = obp; gb.Obp1 = obp;
+        if (!cgb) for (int i = 0; i < 4; i++) gb.DmgColors[i] = GbLook.Argb(i);   // the chosen look, live
         CarryLayers();
         // Draw one Game Boy frame (SCX/SCY are set per line in OnGbLine).
         long target = gb.FrameCount + 1; int guard = 0;
@@ -336,16 +334,6 @@ public sealed class PPU_DMGX : PPU_DMG
 }
 
 /// <summary>
-/// MIX LAB: <see cref="PPU_DMGX"/> with the sprites' luminosity flipped - the Game Boy's object palettes map colour 1..3
-/// to shades 3..1 instead of 1..3 (CGB: each object colour's complement), for games whose sprites vanish into the
-/// background or read as negatives on the greens. Background untouched. Discovered by CoreRegistry as PPU id "DMGXI".
-/// </summary>
-public sealed class PPU_DMGXI : PPU_DMG
-{
-    public PPU_DMGXI(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, invertSprites: true) { }
-}
-
-/// <summary>
 /// MIX LAB: the Game Boy bridge with SNES support - PPU_DMGX's big screen on PPU_GBXS, fronted by the NES chip PPU_FIXS,
 /// so a SNES game translated through the NES keeps its layers and all its sprites on the Game Boy too (within Game Boy
 /// tiles and palettes). Discovered by CoreRegistry as PPU id "DMGS".
@@ -353,13 +341,4 @@ public sealed class PPU_DMGXI : PPU_DMG
 public sealed class PPU_DMGS : PPU_DMG
 {
     public PPU_DMGS(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", layered: true) { }
-}
-
-/// <summary>
-/// MIX LAB: <see cref="PPU_DMGS"/> with the sprites' luminosity flipped (see <see cref="PPU_DMGXI"/>) - native and SNES
-/// extension sprites alike. Discovered by CoreRegistry as PPU id "DMGSI".
-/// </summary>
-public sealed class PPU_DMGSI : PPU_DMG
-{
-    public PPU_DMGSI(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", layered: true, invertSprites: true) { }
 }

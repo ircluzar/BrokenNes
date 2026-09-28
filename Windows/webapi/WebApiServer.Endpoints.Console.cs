@@ -31,9 +31,33 @@ namespace BrokenNes.Windows.WebApi
         public Func<string, string, bool>? SelectConsoleCore { get; set; }
         /// <summary>The core menus of the selected console: family + id + label per slot.</summary>
         public Func<object>? GetConsoleCoreMenus { get; set; }
+        /// <summary>The Game Boy look: (look key, invert background, invert sprites).</summary>
+        public Func<(string look, bool invertBackground, bool invertSprites)>? GetGbLook { get; set; }
+        /// <summary>Change the Game Boy look; null leaves that part alone.</summary>
+        public Action<string?, bool?, bool?>? SetGbLook { get; set; }
+
+        public sealed class GbLookRequest { public string? Look { get; set; } public bool? InvertBackground { get; set; } public bool? InvertSprites { get; set; } }
 
         private void RegisterConsoleEndpoints(WebApplication app)
         {
+            // GET /api/console/gb-look - the Game Boy look (green / grey / pocket / color) and the cross-console inversions
+            app.MapGet("/api/console/gb-look", () =>
+            {
+                if (GetGbLook == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var (look, bg, obj) = GetGbLook();
+                return Results.Ok(new { success = true, look, invertBackground = bg, invertSprites = obj });
+            });
+            // POST /api/console/gb-look {"look": "pocket", "invertBackground": false, "invertSprites": true} - any field optional
+            app.MapPost("/api/console/gb-look", async (HttpContext context) =>
+            {
+                if (GetGbLook == null || SetGbLook == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var body = await context.Request.ReadFromJsonAsync<GbLookRequest>();
+                if (body == null) return Results.BadRequest(new { success = false, error = "look, invertBackground and/or invertSprites is required" });
+                SetGbLook(body.Look, body.InvertBackground, body.InvertSprites);
+                var (look, bg, obj) = GetGbLook();
+                return Results.Ok(new { success = true, look, invertBackground = bg, invertSprites = obj });
+            });
+
             // GET /api/console - the console, the game and the cores
             app.MapGet("/api/console", () =>
                 GetConsoleStatus == null ? Results.BadRequest(new { success = false, error = "not available" })

@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using BrokenNes.Models;
 using BrokenNes.Windows.Rendering;
 using NesEmulator;
+using NesEmulator.Mix;
 using NesEmulator.Systems;
 
 namespace BrokenNes.Windows
@@ -96,6 +97,8 @@ namespace BrokenNes.Windows
                 }
             };
             server.SelectConsole = key => Invoke(() => SwitchConsole(Consoles.FromKey(key)));
+            server.GetGbLook = () => (config.GbLook, config.GbInvertBackground, config.GbInvertSprites);
+            server.SetGbLook = (look, bg, obj) => Invoke(() => SetGbLook(look == null ? null : GbLook.FromKey(look), bg, obj));
             server.SelectConsoleCore = (slotName, id) =>
             {
                 var slot = slotName.ToLowerInvariant() switch { "cpu" => CoreSlot.Cpu, "ppu" => CoreSlot.Ppu, _ => CoreSlot.Apu };
@@ -160,9 +163,97 @@ namespace BrokenNes.Windows
                 var item = new ToolStripMenuItem(Consoles.DisplayName(kind), null, (s, e) => SwitchConsole(kind)) { Tag = kind };
                 consoleMenu.DropDownItems.Add(item);
             }
+            consoleMenu.DropDownItems.Add(new ToolStripSeparator());
+            consoleMenu.DropDownItems.Add(BuildGbLookMenu());
             consoleMenu.DropDownOpening += (s, e) => RefreshConsoleMenu();
             RefreshConsoleMenu();
             return consoleMenu;
+        }
+
+        // ------------------------------------------------------------------ the Game Boy look
+        private ToolStripMenuItem? gbLookMenu, gbInvertBgItem, gbInvertObjItem;
+
+        /// <summary>Console > Game Boy look: the screen colours wherever a Game Boy picture is shown, and the lightness
+        /// inversions for cross-console pictures (a game drawn for another console can have light and dark swapped).</summary>
+        private ToolStripMenuItem BuildGbLookMenu()
+        {
+            gbLookMenu = new ToolStripMenuItem("Game Boy look");
+            (GbPaletteChoice look, string label)[] looks =
+            {
+                (GbPaletteChoice.Green, "Original green (DMG)"), (GbPaletteChoice.Grey, "Greyscale"),
+                (GbPaletteChoice.Pocket, "Game Boy Pocket"), (GbPaletteChoice.Color, "Game Boy Color"),
+            };
+            foreach (var (look, label) in looks)
+            {
+                var l = look;
+                gbLookMenu.DropDownItems.Add(new ToolStripMenuItem(label, null, (s, e) => SetGbLook(l, null, null)) { Tag = l });
+            }
+            gbLookMenu.DropDownItems.Add(new ToolStripSeparator());
+            gbLookMenu.DropDownItems.Add(new ToolStripMenuItem("Cross-console pictures:") { Enabled = false });
+            gbInvertBgItem = new ToolStripMenuItem("Invert background lightness", null, (s, e) => SetGbLook(null, !config.GbInvertBackground, null))
+            { ToolTipText = "Game Boy pictures of NES / SNES games, and NES / SNES pictures of Game Boy games: background light and dark swapped" };
+            gbInvertObjItem = new ToolStripMenuItem("Invert sprite lightness", null, (s, e) => SetGbLook(null, null, !config.GbInvertSprites))
+            { ToolTipText = "Game Boy pictures of NES / SNES games, and NES / SNES pictures of Game Boy games: sprite light and dark swapped" };
+            gbLookMenu.DropDownItems.Add(gbInvertBgItem);
+            gbLookMenu.DropDownItems.Add(gbInvertObjItem);
+            gbLookMenu.DropDownOpening += (s, e) => RefreshGbLookMenu();
+            return gbLookMenu;
+        }
+
+        private void RefreshGbLookMenu()
+        {
+            if (gbLookMenu == null) return;
+            var look = GbLook.FromKey(config.GbLook);
+            foreach (var item in gbLookMenu.DropDownItems.OfType<ToolStripMenuItem>())
+                if (item.Tag is GbPaletteChoice p) item.Checked = p == look;
+            if (gbInvertBgItem != null) gbInvertBgItem.Checked = config.GbInvertBackground;
+            if (gbInvertObjItem != null) gbInvertObjItem.Checked = config.GbInvertSprites;
+        }
+
+        /// <summary>Apply the saved Game Boy look to the engine (at start-up, after the config loads). Also moves picks of the
+        /// retired DMGXI / DMGSI picture chips to DMGX / DMGS with sprite inversion on.</summary>
+        private void ApplyGbLook()
+        {
+            bool migrated = false;
+            string Retire(string? id)
+            {
+                if (id == null) return id!;
+                var up = id.ToUpperInvariant();
+                if (up.EndsWith("DMGXI") || up.EndsWith("DMGSI")) { migrated = true; return id[..^1]; }
+                return id;
+            }
+            config.SelectedPpuCore = Retire(config.SelectedPpuCore);
+            foreach (var sel in config.ConsoleCores.Values) if (sel.Ppu != null) sel.Ppu = Retire(sel.Ppu);
+            if (migrated) { config.GbInvertSprites = true; Helpers.ConfigHelper.Save(config); }
+            GbLook.Palette = GbLook.FromKey(config.GbLook);
+            GbLook.InvertBackground = config.GbInvertBackground;
+            GbLook.InvertSprites = config.GbInvertSprites;
+            RefreshGbLookMenu();
+        }
+
+        /// <summary>Change the Game Boy look (null = unchanged). Green / grey / pocket and the inversions apply live; going to
+        /// or from Game Boy Color changes the Game Boy model, so a game using a Game Boy picture restarts.</summary>
+        private void SetGbLook(GbPaletteChoice? look, bool? invertBackground, bool? invertSprites)
+        {
+            bool wasColor = GbLook.Color;
+            Helpers.ConfigHelper.Update(config, c =>
+            {
+                if (look is GbPaletteChoice l) c.GbLook = GbLook.Key(l);
+                if (invertBackground is bool b) c.GbInvertBackground = b;
+                if (invertSprites is bool o) c.GbInvertSprites = o;
+            });
+            GbLook.Palette = GbLook.FromKey(config.GbLook);
+            GbLook.InvertBackground = config.GbInvertBackground;
+            GbLook.InvertSprites = config.GbInvertSprites;
+            RefreshGbLookMenu();
+            if (wasColor == GbLook.Color) return;
+            if (session != null && sessionRom != null)
+            {
+                if (session.Console is ConsoleKind.GameBoy or ConsoleKind.GameBoyColor || SelectedCore(session.Console, CoreSlot.Ppu).Contains("DMG", StringComparison.OrdinalIgnoreCase))
+                    StartSession(session.Console, sessionRom, sessionRomName, currentRomPath);
+            }
+            else if (nes != null && config.SelectedPpuCore.StartsWith("DMG", StringComparison.OrdinalIgnoreCase))
+                SetPpuCore(config.SelectedPpuCore, bypassProgression: true);
         }
 
         private void RefreshConsoleMenu()

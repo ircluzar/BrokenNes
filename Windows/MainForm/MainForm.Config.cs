@@ -45,6 +45,7 @@ namespace BrokenNes.Windows
                 ApplyEmulationVolume();
                 ApplyPitchGuard();
                 RefreshVolumeUi();
+                ApplyGbLook();
 
                 // Apply image settings
                 ApplyImageSettings();

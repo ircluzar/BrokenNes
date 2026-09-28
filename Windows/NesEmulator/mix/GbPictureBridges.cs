@@ -34,13 +34,53 @@ internal static class GbShades
 {
     /// <summary>The DMG screen: #9BBC0F, #8BAC0F, #306230, #0F380F (lightest first).</summary>
     public static readonly (int r, int g, int b)[] Green = { (0x9B, 0xBC, 0x0F), (0x8B, 0xAC, 0x0F), (0x30, 0x62, 0x30), (0x0F, 0x38, 0x0F) };
-    private static readonly byte[] NesGreen = Green.Select(c => NesPalette.Nearest(c.r, c.g, c.b)).ToArray();
-    public static readonly byte[] NesGrey = { 0x30, 0x10, 0x00, 0x0F };
-    public static readonly ushort[] Bgr555Green = Green.Select(c => (ushort)(c.r >> 3 | (c.g >> 3) << 5 | (c.b >> 3) << 10)).ToArray();
     public static int Shade(byte palette, int index) => palette >> (index * 2) & 3;
-    public static bool UseGreen = Environment.GetEnvironmentVariable("MIX_GB_GREY") != "1";
-    public static byte Nes(int shade) => (UseGreen ? NesGreen : NesGrey)[shade];
-    public static ushort Bgr555(int shade) => UseGreen ? Bgr555Green[shade] : new ushort[] { 0x7FFF, 0x56B5, 0x294A, 0x0000 }[shade];
+    /// <summary>A shade (0 lightest .. 3 darkest) as the NES colour nearest the chosen Game Boy look's.</summary>
+    public static byte Nes(int shade) { var (r, g, b) = GbLook.Shades[shade]; return NesPalette.Nearest(r, g, b); }
+    /// <summary>A shade as a SNES / CGB BGR555 colour in the chosen Game Boy look.</summary>
+    public static ushort Bgr555(int shade) { var (r, g, b) = GbLook.Shades[shade]; return (ushort)(r >> 3 | (g >> 3) << 5 | (b >> 3) << 10); }
+    /// <summary>Colour <paramref name="c"/> of a CGB palette as BGR555.</summary>
+    public static ushort Cgb(byte[] palRam, int palette, int c) { int o = palette * 8 + c * 2; return (ushort)(palRam[o] | palRam[o + 1] << 8); }
+}
+
+/// <summary>Which Game Boy screen colours to show: the original DMG green, greyscale, the Game Boy Pocket's tamer
+/// greens, or Game Boy Color colours (a DMG game runs on a GBC in its compatibility mode, colourised by title).</summary>
+public enum GbPaletteChoice { Green, Grey, Pocket, Color }
+
+/// <summary>
+/// BrokenNes 2: the Game Boy look, app-wide. <see cref="Palette"/> applies wherever a Game Boy picture is shown: the
+/// Game Boy console, NES/SNES games through the Game Boy picture chip (DMG, DMGX, DMGS - Color runs that chip as a GBC)
+/// and Game Boy games through NES/SNES picture chips. The inversions apply to those cross-console translations only (a
+/// game drawn for another console can have its light and dark the other way round): background and sprites apart.
+/// </summary>
+public static class GbLook
+{
+    public static volatile GbPaletteChoice Palette = GbPaletteChoice.Green;
+    public static volatile bool InvertBackground, InvertSprites;
+
+    private static readonly (int r, int g, int b)[] Grey = { (0xFF, 0xFF, 0xFF), (0xAA, 0xAA, 0xAA), (0x55, 0x55, 0x55), (0x00, 0x00, 0x00) };
+    /// <summary>The Game Boy Pocket's screen: greys with a faint olive cast.</summary>
+    private static readonly (int r, int g, int b)[] Pocket = { (0xC4, 0xCF, 0xA1), (0x8B, 0x95, 0x6D), (0x4D, 0x53, 0x3C), (0x1F, 0x1F, 0x1F) };
+
+    /// <summary>The 4 DMG shades (lightest first) of the chosen look (Color: the original green, for places that need shades).</summary>
+    public static (int r, int g, int b)[] Shades => Palette switch { GbPaletteChoice.Grey => Grey, GbPaletteChoice.Pocket => Pocket, _ => GbShades.Green };
+    public static uint Argb(int shade) { var (r, g, b) = Shades[shade & 3]; return 0xFF000000u | (uint)(r << 16 | g << 8 | b); }
+    /// <summary>Game Boy Color colours wanted (Game Boy pictures run as a GBC).</summary>
+    public static bool Color => Palette == GbPaletteChoice.Color;
+    public static int Background(int shade) => InvertBackground ? 3 - shade : shade;
+    public static int Sprite(int shade) => InvertSprites ? 3 - shade : shade;
+    /// <summary>A BGR555 colour with its lightness inverted when asked (the complement).</summary>
+    public static ushort Background(ushort bgr) => InvertBackground ? (ushort)(bgr ^ 0x7FFF) : bgr;
+    public static ushort Sprite(ushort bgr) => InvertSprites ? (ushort)(bgr ^ 0x7FFF) : bgr;
+
+    public static string Key(GbPaletteChoice p) => p.ToString().ToLowerInvariant();
+    public static GbPaletteChoice FromKey(string? key) => key?.ToLowerInvariant() switch
+    {
+        "grey" or "gray" or "greyscale" or "grayscale" => GbPaletteChoice.Grey,
+        "pocket" => GbPaletteChoice.Pocket,
+        "color" or "colour" or "cgb" => GbPaletteChoice.Color,
+        _ => GbPaletteChoice.Green,
+    };
 }
 
 /// <summary>
@@ -100,12 +140,16 @@ internal sealed class GbToNes
         int Slot(List<int> slots, int p) { int i = slots.IndexOf(p); return i < 0 ? 0 : i; }
 
         // ---- palettes
-        byte Cgb(byte[] palRam, int p, int c) { int o = p * 8 + c * 2; var (r, g, b) = NesPalette.FromBgr555((ushort)(palRam[o] | palRam[o + 1] << 8)); return NesPalette.Nearest(r, g, b); }
+        byte Nes555(ushort c) { var (r, g, b) = NesPalette.FromBgr555(c); return NesPalette.Nearest(r, g, b); }
+        byte Cgb(byte[] palRam, int p, int c) => Nes555(GbLook.Background(GbShades.Cgb(palRam, p, c)));
+        // DMG games: BGP picks the shade (inverted when asked); the shade is a colour of the chosen look, or of the
+        // GBC's compatibility palette when the game runs on a GBC.
         byte bgp = cap.Bgp[Ref];
-        pic.Pal[0] = cgb ? Cgb(ppu.BgPalRam, bgSlots.Count > 0 ? bgSlots[0] : 0, 0) : GbShades.Nes(GbShades.Shade(bgp, 0));
+        byte BgShade(int c) { int sh = GbLook.Background(GbShades.Shade(bgp, c)); return ppu.CompatMode ? Nes555(GbShades.Cgb(ppu.BgPalRam, 0, sh)) : GbShades.Nes(sh); }
+        pic.Pal[0] = cgb ? Cgb(ppu.BgPalRam, bgSlots.Count > 0 ? bgSlots[0] : 0, 0) : BgShade(0);
         for (int k = 0; k < 4; k++)
             for (int c = 1; c < 4; c++)
-                pic.Pal[k * 4 + c] = cgb ? (k < bgSlots.Count ? Cgb(ppu.BgPalRam, bgSlots[k], c) : (byte)0x0F) : GbShades.Nes(GbShades.Shade(bgp, c));
+                pic.Pal[k * 4 + c] = cgb ? (k < bgSlots.Count ? Cgb(ppu.BgPalRam, bgSlots[k], c) : (byte)0x0F) : BgShade(c);
 
         // ---- background tiles, flips baked in (the NES can't flip background tiles)
         var bgTiles = new Dictionary<long, int>(); int nextBg = 1, overflow = 0;
@@ -164,10 +208,15 @@ internal sealed class GbToNes
             }
         if (!cgb) pieces = pieces.OrderBy(p => p.x).ToList();   // DMG: smaller X wins; the NES goes by OAM order
         var objSlots = cgb ? objPalUse.OrderByDescending(kv => kv.Value).Select(kv => kv.Key).Take(4).ToList() : new List<int> { 0, 1 };
+        byte ObjShade(int k, int c)
+        {
+            int sh = GbLook.Sprite(GbShades.Shade(k == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
+            return ppu.CompatMode ? Nes555(GbShades.Cgb(ppu.ObjPalRam, k == 1 ? 1 : 0, sh)) : GbShades.Nes(sh);
+        }
         for (int k = 0; k < 4; k++)
             for (int c = 1; c < 4; c++)
-                pic.Pal[16 + k * 4 + c] = cgb ? (k < objSlots.Count ? Cgb(ppu.ObjPalRam, objSlots[k], c) : (byte)0x0F)
-                                              : GbShades.Nes(GbShades.Shade(k == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
+                pic.Pal[16 + k * 4 + c] = cgb ? (k < objSlots.Count ? Nes555(GbLook.Sprite(GbShades.Cgb(ppu.ObjPalRam, objSlots[k], c))) : (byte)0x0F)
+                                              : ObjShade(k, c);
         var objTiles = new Dictionary<int, int>(); int nextObj = 0;
         Array.Fill(pic.Oam, (byte)0xFF);
         int kept = 0;
@@ -242,8 +291,9 @@ internal sealed class GbToSnes
         for (int p = 0; p < 8; p++)
             for (int c = 0; c < 4; c++)
             {
-                ushort bgc = cgb ? (ushort)(ppu.BgPalRam[p * 8 + c * 2] | ppu.BgPalRam[p * 8 + c * 2 + 1] << 8) : GbShades.Bgr555(GbShades.Shade(cap.Bgp[Ref], c));
-                ushort obc = cgb ? (ushort)(ppu.ObjPalRam[p * 8 + c * 2] | ppu.ObjPalRam[p * 8 + c * 2 + 1] << 8) : GbShades.Bgr555(GbShades.Shade(p == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
+                int bsh = GbLook.Background(GbShades.Shade(cap.Bgp[Ref], c)), osh = GbLook.Sprite(GbShades.Shade(p == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
+                ushort bgc = cgb ? GbLook.Background(GbShades.Cgb(ppu.BgPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.BgPalRam, 0, bsh) : GbShades.Bgr555(bsh);
+                ushort obc = cgb ? GbLook.Sprite(GbShades.Cgb(ppu.ObjPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.ObjPalRam, p == 1 ? 1 : 0, osh) : GbShades.Bgr555(osh);
                 cg[p * 4 + c] = bgc; cg[32 + p * 4 + c] = bgc; cg[128 + p * 16 + c] = obc;
             }
         // Sprites.

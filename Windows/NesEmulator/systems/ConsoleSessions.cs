@@ -138,7 +138,9 @@ public sealed class GbSession : IConsoleSession
     {
         GameId = ConsoleSessions.Sha1(rom);
         var cart = GbCartridge.Load(rom);
-        var model = console == ConsoleKind.GameBoyColor ? GbModel.Cgb : GbModel.Dmg;
+        // A Game Boy Color game - or any game when the Game Boy look is Color: a DMG game then runs on a GBC in its
+        // compatibility mode, colourised by title as a real GBC does.
+        var model = console == ConsoleKind.GameBoyColor || GbLook.Color ? GbModel.Cgb : GbModel.Dmg;
         Func<GbModel, IGbApu>? apuFactory = null;
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; apuFactory = m => new GbApuOnNes(m); }
         else if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) apuFactory = m => new APU_GBS(m);
@@ -181,6 +183,8 @@ public sealed class GbSession : IConsoleSession
 
     public void RunFrame()
     {
+        var shades = board.Ppu.DmgColors;   // the Game Boy look, live (DMG games on a DMG)
+        for (int i = 0; i < 4; i++) shades[i] = GbLook.Argb(i);
         board.RunFrame();
         if (toNes != null) { ConsoleSessions.RgbaToArgb(toNes.Render(board, cap!), frame); width = 256; height = 240; }
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }

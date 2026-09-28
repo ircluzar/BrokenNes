@@ -57,8 +57,6 @@
     <type fullname="NesEmulator.PPU_DMG" preserve="all" />
     <type fullname="NesEmulator.PPU_DMGX" preserve="all" />
     <type fullname="NesEmulator.PPU_DMGS" preserve="all" />
-    <type fullname="NesEmulator.PPU_DMGXI" preserve="all" />
-    <type fullname="NesEmulator.PPU_DMGSI" preserve="all" />
     <type fullname="NesEmulator.CPU_SNES" preserve="all" />
     <type fullname="NesEmulator.CPU_SM83" preserve="all" />
     <type fullname="NesEmulator.APU_SNES" preserve="all" />
