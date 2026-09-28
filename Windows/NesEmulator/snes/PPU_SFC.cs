@@ -400,9 +400,33 @@ public sealed class PPU_SFC
     /// <summary>Debug: when non-null, RenderLine records the register snapshot it saw for each line.</summary>
     public RegisterSnapshot[]? DebugLineRegisters { get; set; }
 
+    /// <summary>
+    /// What a cross-console picture bridge needs of one line beyond <see cref="RegisterSnapshot"/>: the windows, the fixed
+    /// colour, the Mode 7 matrix and the backdrop colour (CGRAM 0), all as this line was drawn with them.
+    /// </summary>
+    public readonly record struct BridgeLineState(
+        RegisterSnapshot Regs, byte W12sel, byte W34sel, byte Wobjsel, byte Wh0, byte Wh1, byte Wh2, byte Wh3,
+        byte Wbglog, byte Wobjlog, ushort Coldata, short M7a, short M7b, short M7c, short M7d, short M7x, short M7y,
+        short M7hofs, short M7vofs, ushort Backdrop, byte[]? Oam = null);
+
+    /// <summary>
+    /// Bridges (mix/): when non-null, RenderLine records every line's <see cref="BridgeLineState"/> (index = line, 1-based
+    /// like RenderLine). Read-only capture - rendering is unchanged.
+    /// </summary>
+    public BridgeLineState[]? BridgeLines { get; set; }
+    // OAM as the bridge lines saw it: copied only when OAM or OBSEL changed since the last captured line (games that
+    // rewrite OAM mid-frame, like Super Mario Kart's split screen, get one copy per part).
+    private byte[]? bridgeOam; private int bridgeOamVersion = -1;
+
     public void RenderLine(int line)
     {
         if (DebugLineRegisters != null && line >= 0 && line < DebugLineRegisters.Length) DebugLineRegisters[line] = GetRegisterSnapshot();
+        if (BridgeLines != null && line >= 0 && line < BridgeLines.Length)
+        {
+            if (bridgeOam == null || bridgeOamVersion != oamVersion) { bridgeOam = (byte[])Oam.Clone(); bridgeOamVersion = oamVersion; }
+            BridgeLines[line] = new(GetRegisterSnapshot(), w12sel, w34sel, wobjsel, wh0, wh1, wh2, wh3, wbglog, wobjlog, coldata,
+                m7a, m7b, m7c, m7d, m7x, m7y, m7hofs, m7vofs, Cgram[0], bridgeOam);
+        }
         if (DebugLayerMask != 0x1F)
         {
             // Diagnostic only: render with TM/TS masked, then restore the game's values.

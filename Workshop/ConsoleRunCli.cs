@@ -60,13 +60,36 @@ internal static class ConsoleRunCli
                     Console.Error.WriteLine($"FIRST-CHANCE {e.Exception.GetType().Name}: {e.Exception.Message}\n{new System.Diagnostics.StackTrace(1, false)}");
             };
         var pcm = new List<short>();
+        int dumpLines = int.Parse(Opt("dump-lines", "0"));
+        // --sfc-layers <mask>: the native SNES picture with only these layers (bit 0-3 BG1-4, bit 4 OBJ) - diagnosis.
+        if (Opt("sfc-layers", "") is { Length: > 0 } lm && s is SnesSession lms) lms.Ppu.DebugLayerMask = Convert.ToInt32(lm, 16);
         var buf = new short[32768]; long samples = 0; var held = PadButtons.None;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int f = 1; f <= frames; f++)
         {
             if (script.TryGetValue(f - 1, out var h)) held = h;
+            // --dump-lines <frame>: that frame's per-line SNES registers, printed wherever they change from the line above.
+            if (dumpLines == f && s is SnesSession dss) dss.Ppu.BridgeLines = new NesEmulator.Snes.PPU_SFC.BridgeLineState[240];
             s.SetPad(0, held);
             s.RunFrame();
+            if (dumpLines == f && s is SnesSession dumped && dumped.Ppu.BridgeLines is { } lines)
+            {
+                Console.WriteLine($"--- frame {f}: per-line SNES registers (printed where they change)");
+                string prev = "";
+                for (int ln = 1; ln <= 224; ln++)
+                {
+                    var b = lines[ln];
+                    string cur = $"{b.Regs} W12={b.W12sel:X2} W34={b.W34sel:X2} WOBJ={b.Wobjsel:X2} WH={b.Wh0},{b.Wh1},{b.Wh2},{b.Wh3} " +
+                                 $"WLOG={b.Wbglog:X2},{b.Wobjlog:X2} COLDATA={b.Coldata:X4} BACKDROP={b.Backdrop:X4} " +
+                                 $"M7=[{b.M7a},{b.M7b},{b.M7c},{b.M7d} c={b.M7x},{b.M7y} s={b.M7hofs},{b.M7vofs}]";
+                    if (cur != prev) Console.WriteLine($"  line {ln,3}: {cur}");
+                    prev = cur;
+                }
+                dumped.Ppu.BridgeLines = null;
+                // The picture translation's own report for this frame (when a NES/Game Boy picture chip is in use).
+                var down = typeof(SnesSession).GetField("down", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(dumped);
+                if (down?.GetType().GetField("Last")?.GetValue(down) is { } stats) Console.WriteLine($"  translation: {stats}");
+            }
             int n; while ((n = s.ReadSamples(buf)) > 0)
             {
                 samples += n;

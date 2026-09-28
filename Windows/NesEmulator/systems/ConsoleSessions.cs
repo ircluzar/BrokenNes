@@ -61,6 +61,8 @@ public sealed class SnesSession : IConsoleSession
         {
             down = new SnesToNes(ppu[4..]);
             snesPpu = SnesCores.Wrap(board.Ppu);
+            // The SNES-support chips translate line by line: capture every line's registers as the SNES draws it.
+            if (down.Layered) board.Ppu.BridgeLines = new PPU_SFC.BridgeLineState[240];
             // The picture is sampled mid-frame (games force-blank in their NMI), as the downgrade lab does.
             board.InstructionHook = _ => { if (mid == null && board.Scanline == 112) mid = snesPpu.Snapshot(); };
         }
@@ -70,6 +72,8 @@ public sealed class SnesSession : IConsoleSession
 
     public ConsoleKind Console => ConsoleKind.Snes;
     public string Title { get; }
+    /// <summary>The SNES picture chip (tools: per-line register capture).</summary>
+    public PPU_SFC Ppu => board.Ppu;
     public string Description { get; }
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }

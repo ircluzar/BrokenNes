@@ -623,120 +623,92 @@ public sealed class PPU_GBXS
                 if (bc != 0) nz = NativeBgZ;
             }
         }
-        if (extLineActive && extZ[x] != 0)
+        if (extLineActive && extZ![x] >= nz)
         {
-            // The extension is in use: the native picture takes its place on the ladder.
-            if (extZ[x] > nz) { color = extColor[x]; shade = extShade[x]; }
+            // The extension is in use: the native picture takes its place on the ladder, over the extension's backdrop.
+            color = extColor![x]; shade = extShade![x];
         }
         FrameBuffer[i] = color;
         ShadeBuffer[i] = shade;
     }
 
     // =================================================================================== SNES-support extension
-    /// <summary>One extra background layer: 256 Game Boy tiles (16 bytes each, as in VRAM), a 64x64-tile map, and per-tile
-    /// attributes (bits 0-2 CGB palette, bit 3 priority). Scrolls through the 512x512 map with wrap-around.</summary>
-    public sealed class ExtLayer
-    {
-        public bool Enabled;
-        public readonly byte[] Chr = new byte[256 * 16];
-        public readonly byte[] Map = new byte[64 * 64];
-        public readonly byte[] Attr = new byte[64 * 64];
-        public int ScrollX, ScrollY;
-        public byte ZLow = 1, ZHigh = 1;
-    }
-    /// <summary>One 8x8 sprite piece (Game Boy tile format, <see cref="ExtSpriteChr"/>). Palette: CGB 0-7, DMG bit 0 picks
-    /// OBP1. Earlier entries are in front of later ones.</summary>
-    public struct ExtSprite { public short X, Y; public ushort Tile; public byte Palette, Priority; public bool HFlip, VFlip; }
-
-    public const int ExtLayerCount = 4, ExtSpriteTiles = 512;
-    public readonly ExtLayer[] Layers = { new ExtLayer(), new ExtLayer(), new ExtLayer(), new ExtLayer() };
-    public readonly byte[] ExtSpriteChr = new byte[ExtSpriteTiles * 16];
-    public ExtSprite[] ExtSprites = new ExtSprite[1024];
-    public int ExtSpriteCount;
-    public int ExtSpriteLimit = 1024, ExtSpritesPerLine = 34;
-    public int ExtFirstLine = 0, ExtLastLine = int.MaxValue;
-    public readonly byte[] SpriteZ = { 3, 6, 9, 12 };
+    /// <summary>
+    /// The SNES-support picture (<see cref="ExtPicture"/>: per-line layers, Mode 7, sprites, windows, backdrop), shared with
+    /// the NES chip PPU_FIXS in front of the Game Boy bridge. Null or inactive: the chip draws exactly as PPU_GBX. The Game
+    /// Boy pixel (x, ly) shows the extension's source pixel (x + ExtOffsetX, ly + ExtOffsetY). DMG: levels go through
+    /// BGP / OBP0 (palette bit 0 picks OBP1), the backdrop by its brightness; CGB: the extension's own RGB.
+    /// </summary>
+    public ExtPicture? Ext;
+    public int ExtOffsetX, ExtOffsetY;
+    /// <summary>Ladder positions of the native Game Boy picture when the extension is active.</summary>
     public byte NativeBgZ = 5, NativeObjFrontZ = 10, NativeObjBehindZ = 4;
-    public int ExtSpriteLineDrops { get; private set; }
+    public int ExtSpriteLineDrops => Ext?.SpriteLineDrops ?? 0;
 
     private bool extLineActive;
-    private byte[]? extZ, extShade;
+    private byte[]? extZ, extShade, extKey;
+    private bool[]? extMath;
     private uint[]? extColor;
-    private bool[]? extTaken;
 
     private void BuildExtLine()
     {
-        if (ly == 0) ExtSpriteLineDrops = 0;
-        bool any = ExtSpriteCount > 0;
-        for (int k = 0; k < ExtLayerCount && !any; k++) any = Layers[k].Enabled;
-        extLineActive = any;
-        if (!any) return;
-        extZ ??= new byte[Width]; extShade ??= new byte[Width]; extColor ??= new uint[Width]; extTaken ??= new bool[Width];
-        Array.Clear(extZ);
-        int line = ly;
-        if (line < ExtFirstLine || line > ExtLastLine) return;
-        for (int k = 0; k < ExtLayerCount; k++)
+        var e = Ext;
+        extLineActive = false;
+        if (e == null || !e.Active) return;
+        extZ ??= new byte[Width]; extShade ??= new byte[Width]; extKey ??= new byte[Width]; extColor ??= new uint[Width]; extMath ??= new bool[Width];
+        int src = ly + ExtOffsetY;
+        if (!e.ComposeLine(src, ExtOffsetX, Width, extZ, extKey, extMath)) return;
+        extLineActive = true;
+        for (int x = 0; x < Width; x++)
         {
-            var L = Layers[k];
-            if (!L.Enabled) continue;
-            int my = (L.ScrollY + line) & 511, row = my & 7, mapRow = (my >> 3) * 64;
-            for (int x = 0; x < Width; x++)
+            byte k = extKey[x];
+            if (extMath[x])
             {
-                int mx = (L.ScrollX + x) & 511, cell = mapRow + (mx >> 3);
-                int t = L.Map[cell] * 16 + row * 2, bit = 7 - (mx & 7);
-                int p = ((L.Chr[t] >> bit) & 1) | (((L.Chr[t + 1] >> bit) & 1) << 1);
-                if (p == 0) continue;
-                int a = L.Attr[cell];
-                byte z = (a & 8) != 0 ? L.ZHigh : L.ZLow;
-                if (z <= extZ[x]) continue;
-                extZ[x] = z; ExtBgColor(a & 7, p, out extColor[x], out extShade[x]);
+                // Fixed-colour math: the blend's own colour (CGB) or shade (DMG, by brightness).
+                uint mixed = e.Blend(e.Rgb(k, src), src);
+                extShade[x] = Cgb ? (byte)(k & 3) : (byte)(((k & 0x60) == ExtPicture.KindObj ? ((k >> 2 & 1) != 0 ? Obp1 : Obp0) : Bgp) >> (ShadeOf(mixed) * 2) & 3);
+                extColor[x] = Cgb ? Cgb555(mixed) : CompatMode ? CgbColor(BgPalRam, 0, extShade[x]) : DmgColors[extShade[x]];
+                continue;
             }
-        }
-        if (ExtSpriteCount == 0) return;
-        Array.Clear(extTaken);
-        int onLine = 0, n = Math.Min(ExtSpriteCount, ExtSpriteLimit);
-        for (int i = 0; i < n; i++)
-        {
-            ref var sp = ref ExtSprites[i];
-            int r = line - sp.Y;
-            if ((uint)r >= 8 || sp.X <= -8 || sp.X >= Width) continue;
-            if (++onLine > ExtSpritesPerLine) { ExtSpriteLineDrops++; continue; }
-            if (sp.VFlip) r = 7 - r;
-            int t = (sp.Tile % ExtSpriteTiles) * 16 + r * 2;
-            byte lo = ExtSpriteChr[t], hi = ExtSpriteChr[t + 1];
-            byte z = SpriteZ[sp.Priority & 3];
-            for (int c = 0; c < 8; c++)
+            if (Cgb)
             {
-                int x = sp.X + c;
-                if ((uint)x >= (uint)Width || extTaken[x]) continue;
-                int bit = sp.HFlip ? c : 7 - c;
-                int p = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
-                if (p == 0) continue;
-                extTaken[x] = true;
-                if (z > extZ[x]) { extZ[x] = z; ExtObjColor(sp.Palette, p, out extColor[x], out extShade[x]); }
+                uint rgb = e.Rgb(k, src);
+                extColor[x] = Cgb555(rgb);
+                extShade[x] = (byte)(k >= ExtPicture.KindBg ? k & 3 : 0);
+                continue;
             }
+            byte shade = k switch
+            {
+                ExtPicture.KeyBlack => 3,
+                ExtPicture.KeyBackdrop or ExtPicture.KeyBackdropAlt => ShadeOf(e.Rgb(k, src)),
+                // A colour's shade by its own brightness (bright 0 .. dark 3), through BGP / OBP like the Game Boy's own pixels -
+                // so an inverting palette (DMGSI's sprites) still inverts.
+                _ => (byte)(((k & 0x60) == ExtPicture.KindObj ? ((k >> 2 & 1) != 0 ? Obp1 : Obp0) : Bgp) >> (ShadeOf(e.Rgb(k, src)) * 2) & 3),
+            };
+            extShade[x] = shade;
+            extColor[x] = CompatMode ? CgbColor((k & 0x60) == ExtPicture.KindObj ? ObjPalRam : BgPalRam, 0, shade) : DmgColors[shade];
         }
     }
 
-    private void ExtBgColor(int palette, int p, out uint color, out byte shade)
+    /// <summary>A backdrop colour's Game Boy shade: bright = 0 ... dark = 3.</summary>
+    private static byte ShadeOf(uint rgb)
     {
-        if (Cgb) { color = CgbColor(BgPalRam, palette, p); shade = (byte)p; return; }
-        shade = (byte)(Bgp >> (p * 2) & 3);
-        color = CompatMode ? CgbColor(BgPalRam, 0, shade) : DmgColors[shade];
+        int r = (int)(rgb >> 16) & 0xFF, g = (int)(rgb >> 8) & 0xFF, b = (int)rgb & 0xFF;
+        int y = (r * 3 + g * 6 + b) / 10;
+        return (byte)(y >= 192 ? 0 : y >= 128 ? 1 : y >= 64 ? 2 : 3);
     }
-    private void ExtObjColor(int palette, int p, out uint color, out byte shade)
+
+    /// <summary>An RGB colour as the CGB shows it (5 bits per channel).</summary>
+    private static uint Cgb555(uint rgb)
     {
-        if (Cgb) { color = CgbColor(ObjPalRam, palette & 7, p); shade = (byte)p; return; }
-        byte pal = (palette & 1) != 0 ? Obp1 : Obp0;
-        shade = (byte)(pal >> (p * 2) & 3);
-        color = CompatMode ? CgbColor(ObjPalRam, palette & 1, shade) : DmgColors[shade];
+        int r = (int)(rgb >> 19) & 0x1F, g = (int)(rgb >> 11) & 0x1F, b = (int)(rgb >> 3) & 0x1F;
+        return 0xFF000000u | (uint)((r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2));
     }
 
     /// <summary>Switch the extension off: the chip draws exactly as PPU_GBX again.</summary>
     public void ClearExtension()
     {
-        foreach (var L in Layers) L.Enabled = false;
-        ExtSpriteCount = 0; ExtFirstLine = 0; ExtLastLine = int.MaxValue;
+        if (Ext != null) Ext.Active = false;
     }
 
     private static uint CgbColor(byte[] pal, int palette, int index)

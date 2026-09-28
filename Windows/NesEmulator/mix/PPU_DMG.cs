@@ -302,37 +302,17 @@ public class PPU_DMG : IPPU, IPpuProbe
     }
 
     /// <summary>
-    /// PPU_DMGS: the NES front chip's SNES-support layers and sprites (PPU_FIXS) onto the Game Boy chip's own (PPU_GBXS):
-    /// NES 2-bit tiles -> Game Boy tile format, NES palette slots -> CGB palettes 0-3 (loaded from the NES palettes above;
-    /// DMG: shades by colour index), the same maps, scrolls, priorities and ladder, shifted by the crop.
+    /// PPU_DMGS: the NES front chip's SNES-support picture (PPU_FIXS.Ext) shown by the Game Boy chip (PPU_GBXS) too - the
+    /// same <see cref="ExtPicture"/>, seen through the crop window, each chip turning it into its own colours (Game Boy
+    /// shades through BGP/OBP, or CGB colours).
     /// </summary>
     private void CarryLayers()
     {
         var dst = gb.LayerChip; var src = LayerFront;
         if (dst == null) return;
-        dst.ClearExtension();
-        if (src == null) return;
-        for (int k = 0; k < PPU_FIXS.ExtLayerCount; k++)
-        {
-            var a = src.Layers[k]; var b = dst.Layers[k];
-            if (!a.Enabled) continue;
-            for (int t = 0; t < 256; t++) for (int r = 0; r < 8; r++) { b.Chr[t * 16 + r * 2] = a.Chr[t * 16 + r]; b.Chr[t * 16 + r * 2 + 1] = a.Chr[t * 16 + 8 + r]; }
-            Array.Copy(a.Map, b.Map, a.Map.Length);
-            for (int i = 0; i < a.Attr.Length; i++) b.Attr[i] = (byte)((a.Attr[i] & 3) | ((a.Attr[i] & 4) != 0 ? 8 : 0));
-            b.ScrollX = a.ScrollX + cx; b.ScrollY = a.ScrollY + cy; b.ZLow = a.ZLow; b.ZHigh = a.ZHigh;
-            b.Enabled = true;
-        }
-        for (int t = 0; t < PPU_FIXS.ExtSpriteTiles; t++) for (int r = 0; r < 8; r++) { dst.ExtSpriteChr[t * 16 + r * 2] = src.ExtSpriteChr[t * 16 + r]; dst.ExtSpriteChr[t * 16 + r * 2 + 1] = src.ExtSpriteChr[t * 16 + 8 + r]; }
-        if (dst.ExtSprites.Length < src.ExtSpriteCount) dst.ExtSprites = new PPU_GBXS.ExtSprite[src.ExtSpriteCount];
-        for (int i = 0; i < src.ExtSpriteCount; i++)
-        {
-            var e = src.ExtSprites[i];
-            dst.ExtSprites[i] = new PPU_GBXS.ExtSprite { X = (short)(e.X - cx), Y = (short)(e.Y - cy), Tile = e.Tile, Palette = cgb ? e.Palette : (byte)0, Priority = e.Priority, HFlip = e.HFlip, VFlip = e.VFlip };
-        }
-        dst.ExtSpriteCount = src.ExtSpriteCount;
-        dst.ExtSpriteLimit = MixConfig.ExtSpriteLimit; dst.ExtSpritesPerLine = MixConfig.ExtSpritesPerLine;
-        Array.Copy(src.SpriteZ, dst.SpriteZ, 4);
-        dst.ExtFirstLine = src.ExtFirstLine - cy; dst.ExtLastLine = src.ExtLastLine - cy;
+        if (src != null) src.ExtCompose = false;   // its NES picture is not shown: the Game Boy chip draws the extension
+        dst.Ext = src?.Ext;
+        dst.ExtOffsetX = cx; dst.ExtOffsetY = cy - (src?.ExtLineOffset ?? 8);
     }
 
     private void OnGbLine(int l)
