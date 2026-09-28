@@ -27,6 +27,7 @@ namespace NesEmulator.Mix
     {
         private readonly APU_SFC a;
         public SfcApuAdapter(APU_SFC apu) { a = apu; }
+        public APU_SFC Inner => a;
         public string CoreName => a.CoreName;
         public void Reset() => a.Reset();
         public byte ReadPort(int port) => a.ReadPort(port);
@@ -457,10 +458,17 @@ namespace NesEmulator.Mix
         /// <summary>Over all syncs: voices mapped (sum, for the average), the most at once, and voices dropped for want of a channel.</summary>
         public long VoicesMappedTotal, VoicesDroppedTotal; public int VoicesMappedMax;
 
-        public NesApuOnSnes()
+        public NesApuOnSnes() : this(null, 0) { }
+
+        /// <summary>
+        /// Around an audio unit already running a game (hot swap): the same SPC700 + DSP keeps playing the game's driver,
+        /// and this bridge starts listening at <paramref name="masterClock"/> (the board's time) instead of 0.
+        /// </summary>
+        public NesApuOnSnes(ISnesApu? runningFront, long masterClock)
         {
-            front = SnesCores.CreateApu(MixConfig.SnesFrontApu);
-            probe = front as ISnesApuProbe ?? throw new NotSupportedException($"SNES APU '{MixConfig.SnesFrontApu}' exposes no DSP state to listen to");
+            front = runningFront is NesEmulator.Snes.APU_SFC sfc ? new SfcApuAdapter(sfc) : runningFront ?? SnesCores.CreateApu(MixConfig.SnesFrontApu);
+            probe = front as ISnesApuProbe ?? throw new NotSupportedException($"SNES APU '{front.CoreName}' exposes no DSP state to listen to");
+            lastClock = masterClock; nextSync = masterClock;
             backId = MixConfig.NesBackApu;
             back = new NesApuHost(backId).Apu;
             Array.Fill(nesCache, -1);
@@ -476,6 +484,9 @@ namespace NesEmulator.Mix
         }
 
         public string CoreName => $"NES:{back.CoreName}+{front.CoreName}";
+
+        /// <summary>The real SNES audio unit inside (APU_SFC when it is one), for swapping it back in directly.</summary>
+        public ISnesApu Front => front is SfcApuAdapter ad ? ad.Inner : front;
         public void Reset() => front.Reset();
         public byte ReadPort(int port) => front.ReadPort(port);
         public void WritePort(int port, byte value) => front.WritePort(port, value);

@@ -52,7 +52,11 @@ public sealed class BOARD_SFC : ISnesBus
     private readonly byte[] dmaRegs = new byte[0x80];
 
     // ---- Audio unit ($2140-$217F) ----
-    public ISnesApu Apu { get; }
+    public ISnesApu Apu { get; private set; }
+
+    /// <summary>Hot-swap the audio unit mid-game (BrokenNes 2 core swapping): the next port access and RunTo go to the new
+    /// unit. The caller brings it to the board's time first (APU_SFC.SyncTo, or a bridge built at MasterClock).</summary>
+    public void SwapApu(ISnesApu apu) => Apu = apu;
 
     /// <summary>Cartridge chip (DSP-1, ...) consulted before ROM/SRAM decoding, or null.</summary>
     public ISnesCoprocessor? Coprocessor { get; }

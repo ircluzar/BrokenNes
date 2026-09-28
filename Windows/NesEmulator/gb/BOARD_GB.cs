@@ -22,7 +22,7 @@ public sealed class BOARD_GB : IGbCpuBus
     public readonly GbModel Model;
     public readonly GbCartridge Cart;
     /// <summary>The CPU running the game: CPU_GB unless a factory supplied another <see cref="IGbCpu"/>.</summary>
-    public readonly IGbCpu Core;
+    public IGbCpu Core { get; private set; }
     /// <summary>The SM83 (throws if a foreign CPU was plugged in - use <see cref="Core"/> then).</summary>
     public CPU_GB Cpu => (CPU_GB)Core;
     /// <summary>CPU clock relative to the Game Boy's (1 = stock). Above 1 the CPU and its on-die timer, serial port
@@ -31,7 +31,14 @@ public sealed class BOARD_GB : IGbCpuBus
     private double dotAcc;
     public readonly PPU_GB Ppu;
     /// <summary>The sound chip: APU_GB unless a factory supplied another <see cref="IGbApu"/> (cross-console bridges).</summary>
-    public readonly IGbApu Apu;
+    public IGbApu Apu { get; private set; }
+
+    /// <summary>Hot-swap the CPU mid-game (BrokenNes 2 core swapping): memory, video and sound carry on; the new CPU runs
+    /// from its own state (a CPU swapped out earlier resumes where it stopped).</summary>
+    public void SwapCpu(IGbCpu cpu) => Core = cpu;
+
+    /// <summary>Hot-swap the sound chip mid-game; the caller carries the channel state over (SaveState / LoadState).</summary>
+    public void SwapApu(IGbApu apu) => Apu = apu;
     /// <summary>Game Boy Color hardware running a Game Boy Color game (full colour mode).</summary>
     public bool CgbMode => Model == GbModel.Cgb && Cart.SupportsCgb;
 

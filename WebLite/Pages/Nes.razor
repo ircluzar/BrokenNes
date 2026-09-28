@@ -110,12 +110,12 @@
                     }
                     @if (emu!.ActiveConsole != ConsoleKind.Nes)
                     {
-                        @* SNES / Game Boy: the console's own parts first, then the other consoles' (a pick restarts the game). *@
+                        @* SNES / Game Boy: the console's own parts first, then the other consoles' (a pick swaps in while the game runs). *@
                         @foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
                         {
                             var current = emu!.ConsoleCore(emu!.ActiveConsole, slot);
                             <div class="qc-select-stack">
-                                <label class="mini-label" title="@($"{slot.ToString().ToUpperInvariant()} of the {emu!.ActiveConsoleName} - picking one restarts the game")">@slot.ToString().ToUpperInvariant()</label>
+                                <label class="mini-label" title="@($"{slot.ToString().ToUpperInvariant()} of the {emu!.ActiveConsoleName} - swaps in while the game runs")">@slot.ToString().ToUpperInvariant()</label>
                                 <select class="btn btn-rf btn-select console-core-select" aria-label="@($"{slot} core")" value="@current"
                                         @onchange="(e => emu!.SetConsoleCoreAsync(slot, e.Value?.ToString() ?? current))">
                                     @foreach (var fam in emu!.ConsoleCoreOptions(slot).GroupBy(o => o.Family))

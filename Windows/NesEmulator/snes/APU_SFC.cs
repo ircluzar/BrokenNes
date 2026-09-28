@@ -86,6 +86,14 @@ public sealed class APU_SFC : ISnesApu
 
     internal byte PeekCode(ushort a) => a >= 0xFFC0 && iplEnabled ? Ipl[a - 0xFFC0] : Aram[a];
 
+    /// <summary>Jump the unit's clock to the given SNES master clock without running it (a unit that sat parked while
+    /// another one played, being swapped back in: it resumes from where it stopped instead of catching up the gap).</summary>
+    public void SyncTo(long masterClock)
+    {
+        long target = masterClock * 1_024_000 / 21_477_272;
+        if (target > smpCycles) smpCycles = target;
+    }
+
     public void RunTo(long masterClock)
     {
         long target = masterClock * 1_024_000 / 21_477_272;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using NesEmulator.Gb;
 using NesEmulator.Mix;
@@ -39,12 +40,16 @@ public sealed class SnesSession : IConsoleSession
     public const double NtscFps = 21477272.0 / (1364 * 262);
 
     private readonly BOARD_SFC board;
-    private readonly SnesToNes? down;
-    private readonly ISnesPpuCore? snesPpu;
+    private SnesToNes? down;
+    private ISnesPpuCore? snesPpu;
     private SnesPpuSnapshot? mid;
     private readonly uint[] frame = new uint[PPU_SFC.HiResWidth * 240];
     private int width = PPU_SFC.Width, height = PPU_SFC.Height;
     private readonly byte[] romBytes;
+    private string cpuId, ppuId, apuId;
+    private readonly string chipLabel;
+    /// <summary>The game's real SPC700 + DSP while the silent HLE unit stands in (swapped back in, it resumes).</summary>
+    private APU_SFC? parkedSpc;
 
     public SnesSession(byte[] rom, string cpu, string ppu, string apu, Func<string[], (string name, byte[] data)?>? loadFirmware)
     {
@@ -57,24 +62,68 @@ public sealed class SnesSession : IConsoleSession
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
         board = new BOARD_SFC(cart, unit, chip);
+        cpuId = cpu; ppuId = ppu; apuId = apu;
+        chipLabel = chip != null ? $" | {chip.Name}" : chipNote != "" ? $" | {chipNote}" : "";
+        Title = cart.Title.Trim();
+        SetPicture(ppu);
+    }
+
+    /// <summary>The picture path: the SFC chip itself, or a NES / Game Boy chip through the SNES->NES translation (a view
+    /// of the SFC chip's state - the SFC chip keeps running either way, so this swaps freely).</summary>
+    private void SetPicture(string ppu)
+    {
         if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase))
         {
             down = new SnesToNes(ppu[4..]);
             snesPpu = SnesCores.Wrap(board.Ppu);
             // The SNES-support chips translate line by line: capture every line's registers as the SNES draws it.
-            if (down.Layered) board.Ppu.BridgeLines = new PPU_SFC.BridgeLineState[240];
+            board.Ppu.BridgeLines = down.Layered ? new PPU_SFC.BridgeLineState[240] : null;
             // The picture is sampled mid-frame (games force-blank in their NMI), as the downgrade lab does.
-            board.InstructionHook = _ => { if (mid == null && board.Scanline == 112) mid = snesPpu.Snapshot(); };
+            var sp = snesPpu;
+            board.InstructionHook = _ => { if (mid == null && board.Scanline == 112) mid = sp.Snapshot(); };
         }
-        Title = cart.Title.Trim();
-        Description = $"SNES {Title} | CPU {cpu} | PPU {ppu} | APU {apu}" + (chip != null ? $" | {chip.Name}" : chipNote != "" ? $" | {chipNote}" : "");
+        else
+        {
+            down = null; snesPpu = null; board.Ppu.BridgeLines = null; board.InstructionHook = null;
+        }
+    }
+
+    public bool TrySwapCore(CoreSlot slot, string id)
+    {
+        switch (slot)
+        {
+            case CoreSlot.Ppu:
+                SetPicture(id); ppuId = id; return true;
+            case CoreSlot.Apu:
+            {
+                // The game's own SPC700 + DSP, wherever it is now (native, inside a NES bridge, or parked behind HLE).
+                var current = board.Apu;
+                var real = current as APU_SFC ?? (current as NesApuOnSnes)?.Front as APU_SFC ?? parkedSpc;
+                if (id.Equals("HLE", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (real != null) parkedSpc = real;
+                    board.SwapApu(new APU_HLE());
+                }
+                else
+                {
+                    if (real == null) real = new APU_SFC();   // no running driver to keep (HLE from the start): a fresh unit
+                    real.SyncTo(board.MasterClock);           // a parked unit resumes from here, not from when it stopped
+                    parkedSpc = null;
+                    if (id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = id[4..]; board.SwapApu(new NesApuOnSnes(real, board.MasterClock)); }
+                    else board.SwapApu(real);
+                }
+                apuId = id; return true;
+            }
+            default:
+                cpuId = id; return true;   // one SNES CPU (SFC)
+        }
     }
 
     public ConsoleKind Console => ConsoleKind.Snes;
     public string Title { get; }
     /// <summary>The SNES picture chip (tools: per-line register capture).</summary>
     public PPU_SFC Ppu => board.Ppu;
-    public string Description { get; }
+    public string Description => $"SNES {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
 
@@ -128,11 +177,15 @@ public sealed class SnesSession : IConsoleSession
 public sealed class GbSession : IConsoleSession
 {
     private readonly BOARD_GB board;
-    private readonly GbLineCapture? cap;
-    private readonly GbToNes? toNes;
-    private readonly GbToSnes? toSnes;
+    private GbLineCapture? cap;
+    private GbToNes? toNes;
+    private GbToSnes? toSnes;
     private readonly uint[] frame = new uint[256 * 240];
     private int width = PPU_GB.Width, height = PPU_GB.Height;
+    private string cpuId, ppuId, apuId;
+    private readonly string mapperName;
+    /// <summary>CPUs swapped out mid-game, by kind: swapped back in, one resumes where it stopped.</summary>
+    private readonly Dictionary<string, IGbCpu> parkedCpus = new();
 
     public GbSession(byte[] rom, ConsoleKind console, string cpu, string ppu, string apu)
     {
@@ -141,29 +194,84 @@ public sealed class GbSession : IConsoleSession
         // A Game Boy Color game - or any game when the Game Boy look is Color: a DMG game then runs on a GBC in its
         // compatibility mode, colourised by title as a real GBC does.
         var model = console == ConsoleKind.GameBoyColor || GbLook.Color ? GbModel.Cgb : GbModel.Dmg;
-        Func<GbModel, IGbApu>? apuFactory = null;
-        if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; apuFactory = m => new GbApuOnNes(m); }
-        else if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) apuFactory = m => new APU_GBS(m);
         Func<IGbCpuBus, IGbCpu>? cpuFactory = cpu.Equals("65816", StringComparison.OrdinalIgnoreCase) ? bus => new Cpu65816OnGb(bus) : null;
-        board = new BOARD_GB(cart, model, apuFactory, cpuFactory);
-        board.CpuClockFactor = cpu.ToUpperInvariant() switch
-        {
-            "GB-HALF" => 0.5,
-            "GB-2X" => 2.0,
-            "GB-NESCLOCK" => 1789773.0 / 1048576.0,
-            "GB-SNESCLOCK" => 3579545.0 / 1048576.0,
-            _ => 1.0,
-        };
-        if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { cap = new GbLineCapture(board.Ppu); toNes = new GbToNes(ppu[4..]); }
-        else if (ppu.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)) { cap = new GbLineCapture(board.Ppu); toSnes = new GbToSnes(ppu[5..]); }
+        board = new BOARD_GB(cart, model, SoundFactory(apu), cpuFactory);
+        board.CpuClockFactor = ClockOf(cpu);
+        SetPicture(ppu);
+        cpuId = cpu; ppuId = ppu; apuId = apu;
         Console = console;
         Title = cart.Title.Trim();
-        Description = $"{Consoles.DisplayName(console)} {Title} ({cart.MapperName}) | CPU {cpu} | PPU {ppu} | APU {apu}";
+        mapperName = cart.MapperName;
+    }
+
+    private static Func<GbModel, IGbApu>? SoundFactory(string apu)
+    {
+        if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; return m => new GbApuOnNes(m); }
+        if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) return m => new APU_GBS(m);
+        return null;
+    }
+
+    private static double ClockOf(string cpu) => cpu.ToUpperInvariant() switch
+    {
+        "GB-HALF" => 0.5,
+        "GB-2X" => 2.0,
+        "GB-NESCLOCK" => 1789773.0 / 1048576.0,
+        "GB-SNESCLOCK" => 3579545.0 / 1048576.0,
+        _ => 1.0,
+    };
+
+    /// <summary>The picture path: the Game Boy chip itself, or a NES / SNES chip drawing its state (a view - the Game Boy
+    /// chip keeps running, so this swaps freely).</summary>
+    private void SetPicture(string ppu)
+    {
+        toNes = null; toSnes = null;
+        if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toNes = new GbToNes(ppu[4..]); }
+        else if (ppu.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toSnes = new GbToSnes(ppu[5..]); }
+    }
+
+    public bool TrySwapCore(CoreSlot slot, string id)
+    {
+        switch (slot)
+        {
+            case CoreSlot.Ppu:
+                SetPicture(id); ppuId = id; return true;
+            case CoreSlot.Apu:
+            {
+                // The new sound chip takes over the channels as they are (every Game Boy sound chip here carries APU_GB state).
+                var model = board.Model;
+                var next = SoundFactory(id)?.Invoke(model) ?? new APU_GB(model);
+                using (var ms = new System.IO.MemoryStream())
+                {
+                    using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Apu.SaveState(w);
+                    ms.Position = 0;
+                    using var r = new System.IO.BinaryReader(ms);
+                    next.LoadState(r);
+                }
+                board.SwapApu(next);
+                apuId = id; return true;
+            }
+            default:
+            {
+                // Same CPU kind at another clock: just the clock. Another kind (SM83 <-> 65816): the running one is parked
+                // and the other takes over (a parked one resumes where it stopped; a new one starts from its reset).
+                string Kind(string c) => c.Equals("65816", StringComparison.OrdinalIgnoreCase) ? "65816" : "SM83";
+                string from = Kind(cpuId), to = Kind(id);
+                if (from != to)
+                {
+                    parkedCpus[from] = board.Core;
+                    var next = parkedCpus.TryGetValue(to, out var parked) ? parked : to == "65816" ? new Cpu65816OnGb(board) : new CPU_GB(board);
+                    parkedCpus.Remove(to);
+                    board.SwapCpu(next);
+                }
+                board.CpuClockFactor = ClockOf(id);
+                cpuId = id; return true;
+            }
+        }
     }
 
     public ConsoleKind Console { get; }
     public string Title { get; }
-    public string Description { get; }
+    public string Description => $"{Consoles.DisplayName(Console)} {Title} ({mapperName}) | CPU {cpuId} | PPU {ppuId} | APU {apuId}";
     public double FramesPerSecond => BOARD_GB.DmgFps;
     public string GameId { get; }
     /// <summary>The cartridge's accelerometer (MBC7), for apps that feed tilt.</summary>

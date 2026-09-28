@@ -42,8 +42,8 @@ namespace BrokenNes.Windows
             return CoreCatalog.Resolve(console, slot, stored);
         }
 
-        /// <summary>A SNES / Game Boy core pick: stored for that console, and the game restarts on the new part (those
-        /// cores are wired when the console is built, unlike the NES's live-swappable ones).</summary>
+        /// <summary>A SNES / Game Boy core pick: stored for that console and hot-swapped into the running game, like the
+        /// NES's (the session carries memory, picture and sound state over).</summary>
         private void SetConsoleCore(ConsoleKind console, CoreSlot slot, string id)
         {
             Helpers.ConfigHelper.Update(config, c =>
@@ -52,7 +52,17 @@ namespace BrokenNes.Windows
                 if (!c.ConsoleCores.TryGetValue(key, out var sel)) c.ConsoleCores[key] = sel = new ConsoleCoreSelection();
                 switch (slot) { case CoreSlot.Cpu: sel.Cpu = id; break; case CoreSlot.Ppu: sel.Ppu = id; break; default: sel.Apu = id; break; }
             });
-            if (session != null && sessionRom != null && session.Console == console) StartSession(console, sessionRom, sessionRomName, currentRomPath);
+            if (session != null && sessionRom != null && session.Console == console)
+            {
+                // Hot swap: the game keeps running on the new part (memory, picture and sound state carry over). Only a
+                // swap the session cannot do in place restarts the game.
+                bool swapped;
+                lock (emulationLock) swapped = session.TrySwapCore(slot, id);
+                if (!swapped) { StartSession(console, sessionRom, sessionRomName, currentRomPath); return; }
+                Diagnostics.ShutdownDiagnostics.Log($"Core hot-swap: {console} {slot} -> {id} ({session.Description})");
+                UpdateCoresMenus();
+                UpdateConsoleTitle();
+            }
             else UpdateCoresMenus();
         }
 
@@ -600,11 +610,6 @@ namespace BrokenNes.Windows
                     }
                     menu.DropDownItems.Add(item);
                 }
-            }
-            if (console != ConsoleKind.Nes)
-            {
-                menu.DropDownItems.Add(new ToolStripSeparator());
-                menu.DropDownItems.Add(new ToolStripMenuItem("(a new pick restarts the game)") { Enabled = false });
             }
             menu.DropDownOpening -= BeginOverlayPreviewForMenu;
             menu.DropDownOpening += BeginOverlayPreviewForMenu;

@@ -99,14 +99,15 @@ namespace BrokenNes
 
         public IReadOnlyList<CoreOption> ConsoleCoreOptions(CoreSlot slot) => CoreCatalog.Options(ActiveConsole, slot);
 
-        /// <summary>Pick a SNES / Game Boy core; a running game restarts on it (those cores are wired at start).</summary>
+        /// <summary>Pick a SNES / Game Boy core: hot-swapped into the running game (only a swap the session cannot do in
+        /// place restarts it).</summary>
         public async Task SetConsoleCoreAsync(CoreSlot slot, string id)
         {
             var console = ActiveConsole;
             if (console == ConsoleKind.Nes) return;
             consoleCores[CoreKey(console, slot)] = id;
             try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", CoreKey(console, slot), id); } catch { }
-            if (session != null && sessionRom != null) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
+            if (session != null && sessionRom != null && !session.TrySwapCore(slot, id)) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
             StateHasChanged();
         }
 

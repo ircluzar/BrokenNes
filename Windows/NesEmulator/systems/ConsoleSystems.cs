@@ -291,4 +291,9 @@ public interface IConsoleSession : IDisposable
     void ImportSave(byte[] data);
     /// <summary>A stable id of the game (SHA-1 of the ROM, lower-case hex) for save files.</summary>
     string GameId { get; }
+    /// <summary>
+    /// Swap one core while the game keeps running (BrokenNes 2): memory, video and the rest carry on, the new part picks up
+    /// from the current state. False when this swap cannot be done in place (the app then restarts the game on it).
+    /// </summary>
+    bool TrySwapCore(CoreSlot slot, string id);
 }

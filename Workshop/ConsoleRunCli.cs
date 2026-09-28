@@ -66,6 +66,8 @@ internal static class ConsoleRunCli
             };
         var pcm = new List<short>();
         int dumpLines = int.Parse(Opt("dump-lines", "0"));
+        var swaps = Opt("swap", "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Split(':', 3))
+            .Select(x => (frame: int.Parse(x[0]), slot: Enum.Parse<CoreSlot>(x[1], true), id: x[2])).ToList();
         // --sfc-layers <mask>: the native SNES picture with only these layers (bit 0-3 BG1-4, bit 4 OBJ) - diagnosis.
         if (Opt("sfc-layers", "") is { Length: > 0 } lm && s is SnesSession lms) lms.Ppu.DebugLayerMask = Convert.ToInt32(lm, 16);
         var buf = new short[32768]; long samples = 0; var held = PadButtons.None;
@@ -73,6 +75,8 @@ internal static class ConsoleRunCli
         for (int f = 1; f <= frames; f++)
         {
             if (script.TryGetValue(f - 1, out var h)) held = h;
+            // --swap "frame:slot:id,...": hot-swap a core at that frame (slot cpu / ppu / apu), the game running on.
+            foreach (var sw2 in swaps) if (sw2.frame == f) Console.WriteLine($"frame {f}: swap {sw2.slot} -> {sw2.id}: {(s.TrySwapCore(sw2.slot, sw2.id) ? "in place" : "NOT in place")} | {s.Description}");
             // --dump-lines <frame>: that frame's per-line SNES registers, printed wherever they change from the line above.
             if (dumpLines == f && s is SnesSession dss) dss.Ppu.BridgeLines = new NesEmulator.Snes.PPU_SFC.BridgeLineState[240];
             s.SetPad(0, held);
