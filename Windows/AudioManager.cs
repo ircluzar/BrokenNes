@@ -61,7 +61,8 @@ namespace BrokenNes.Windows
                 NumberOfBuffers = 3
             };
             
-            waveOut.Init(waveProvider);
+            diag = new UnderrunMeter(waveProvider);
+            waveOut.Init(diag);
             waveOut.Play();
             
             // Initialize sample buffer
@@ -317,6 +318,44 @@ namespace BrokenNes.Windows
         /// </summary>
         public PlaybackState PlaybackState => waveOut?.PlaybackState ?? PlaybackState.Stopped;
         
+        private readonly UnderrunMeter diag;
+
+        /// <summary>Counts device reads that found the queue short (audible dropouts) and logs them once a second
+        /// to %LOCALAPPDATA%\BrokenNes\audio-diag.log when BROKENNES_AUDIO_DIAG=1.</summary>
+        private sealed class UnderrunMeter : IWaveProvider
+        {
+            private readonly BufferedWaveProvider inner;
+            private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            private readonly bool enabled = Environment.GetEnvironmentVariable("BROKENNES_AUDIO_DIAG") == "1";
+            private readonly string logPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrokenNes", "audio-diag.log");
+            private long lastLog, reads, underruns, minBuffered = long.MaxValue;
+            public long TotalUnderruns;
+            public WaveFormat WaveFormat => inner.WaveFormat;
+            public UnderrunMeter(BufferedWaveProvider p) { inner = p; }
+
+            public int Read(byte[] buffer, int offset, int count)
+            {
+                int buffered = inner.BufferedBytes;
+                reads++;
+                if (buffered < count) { underruns++; TotalUnderruns++; }
+                if (buffered < minBuffered) minBuffered = buffered;
+                int n = inner.Read(buffer, offset, count);
+                if (enabled && clock.ElapsedMilliseconds - lastLog >= 1000)
+                {
+                    lastLog = clock.ElapsedMilliseconds;
+                    try
+                    {
+                        System.IO.File.AppendAllText(logPath,
+                            $"{DateTime.Now:HH:mm:ss.fff} reads={reads} underruns={underruns} total={TotalUnderruns} minBufferedBytes={minBuffered} readBytes={count}\n");
+                    }
+                    catch { }
+                    reads = underruns = 0; minBuffered = long.MaxValue;
+                }
+                return n;
+            }
+        }
+
         public void Dispose()
         {
             if (disposed)

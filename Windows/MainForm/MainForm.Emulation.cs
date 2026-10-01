@@ -86,6 +86,7 @@ namespace BrokenNes.Windows
         
         private void EmulationThreadProc()
         {
+            TimerResolution.Enable();
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             const double targetFrameTime = 1.0 / 60.0; // 60 FPS
             double accumulator = 0;
@@ -98,9 +99,9 @@ namespace BrokenNes.Windows
             fpsFrameCount = 0;
             
             // Audio-driven timing: target buffer level in ms
-            const int TargetAudioBufferMs = 60;  // Sweet spot: not too laggy, not too tight
-            const int MinAudioBufferMs = 30;     // Run more frames if below this
-            const int MaxAudioBufferMs = 100;    // Skip frames if above this
+            const int TargetAudioBufferMs = 90;  // headroom of several device reads so a late wake-up cannot underrun
+            const int MinAudioBufferMs = 60;     // Run more frames if below this
+            const int MaxAudioBufferMs = 140;    // Skip frames if above this
             
             // High-resolution timer for more precise frame timing.
             // NTSC NES runs at 60.0988 fps (1789773 CPU Hz / 29780.5 cycles per frame), not a round
