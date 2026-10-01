@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ==========================================================================
+       BrokenNes2: FL Studio native instrument. Plugin mode of BrokenNes, as a Native AOT DLL.
+
+       FL looks for  <FL>\Plugins\Fruity\Generators\BrokenNes2\BrokenNes2_x64.dll  and calls its
+       single export, CreatePlugInstance. Publish with:  dotnet publish -c Release
+       (the Native AOT linker needs the MSVC tools; if "vswhere.exe is not recognized", add
+        %ProgramFiles(x86)%\Microsoft Visual Studio\Installer to PATH).
+       ========================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>BrokenNes2_x64</AssemblyName>
+    <RootNamespace>BrokenNes2</RootNamespace>
+    <!-- The linked emulator cores' existing warnings; the AOT/trim warnings in them are known (the
+         assembly is preserved whole, see Core/ILLink.Descriptors.xml). -->
+    <NoWarn>$(NoWarn);IL2026;IL2067;IL2070;IL2075;IL3050;IL3053</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BrokenNes.Fruity\BrokenNes.Fruity.csproj" />
+    <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>

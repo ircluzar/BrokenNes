@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ==========================================================================
+       BrokenNes.Fruity: what an FL Studio NATIVE ("Fruity") plugin written in C# needs.
+
+       FL Studio gives piano-roll slides and per-note pitch only to native plugins (a VST3 only
+       gets per-note velocity), so BrokenNes2 is a native plugin: a DLL that exports
+       CreatePlugInstance and hands FL a C++-vtable-shaped object. This library mirrors that
+       SDK (fp_plugclass.h, as used by Bendy) in C#, builds the vtable out of function pointers,
+       and gives plugins a base class with parameters, state and a generic editor.
+       Used by the plugin (BrokenNes2.Plugin) and by the test host (BrokenNes.FruityHost).
+       ========================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <RootNamespace>BrokenNes.Fruity</RootNamespace>
+  </PropertyGroup>
+
+</Project>

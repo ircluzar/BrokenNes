@@ -7,7 +7,11 @@ the only copy; every project links from it.
 |---|---|---|
 | Desktop | `Windows/BrokenNes.Windows.csproj` | WinForms, NAudio |
 | Web (Lite) | `WebLite/`, `Web/` | Blazor WebAssembly |
-| **Plugin** | `Core/BrokenNes.Core.csproj` | a `net10.0` class library that is AOT-compatible; the BrokenNes2 FL Studio plugin compiles it into a Native AOT DLL |
+| **Plugin** | `Core/BrokenNes.Core.csproj` | a `net10.0` class library that is AOT-compatible; the BrokenNes2 FL Studio plugin (`Plugin/`) compiles it into a Native AOT DLL |
+
+Plugin mode has two entrypoints of its own: the DLL **inside FL Studio**, and the same DLL inside the **test host**
+(`Plugin/BrokenNes.FruityHost`) that certifies it outside FL. `UAT/certify.ps1` runs all four entrypoints; see
+`Plugin/README.md`.
 
 Plugin mode adds nothing to the other two. The files in this folder are only compiled here. The
 shared-tree changes made for plugin mode are additive:
@@ -34,6 +38,10 @@ shared-tree changes made for plugin mode are additive:
     rate;
   - FIX cores and Workshop's `--strict` settings by default, with real NTSC frame timing;
   - RAM by `.mlb` symbol name, PRG pokes, and APU hot swap.
+- **`NesApuInstrument`:** a bare NES sound chip as an instrument: the host writes `$4000-$4017` and pulls audio at its
+  own sample rate, with no ROM or CPU program. Registers can change between any two blocks (BrokenNes2 does it every
+  64 samples), so pitch bends are smooth. Any APU core can sit behind it and be swapped while sounding. Steps the APU
+  32 cycles at a time (the speed-hack cores sample at the end of a step).
 - **`MlbSymbols`:** Mesen / NESFab label files.
 - **`StreamResampler`:** converts a core's native rate (NES 44.1 kHz, Game Boy bridge 48 kHz,
   S-DSP 32 kHz) to the host's.
