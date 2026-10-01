@@ -23,5 +23,15 @@ namespace NesEmulator
     // Implementations may choose a minimal reset (e.g., clear audio buffers and pacing) to avoid
     // large reallocations in AOT/WASM environments.
     void Reset();
+    // Drain up to dest.Length queued samples (mono, GetSampleRate() Hz) into dest; returns how many.
+    // For real-time hosts (plugin mode): cores that override it never allocate. This default keeps
+    // every other core working unchanged, through the allocating GetAudioSamples.
+    int ReadSamples(System.Span<float> dest)
+    {
+        if (dest.Length == 0) return 0;
+        var s = GetAudioSamples(dest.Length);
+        s.AsSpan().CopyTo(dest);
+        return s.Length;
+    }
     }
 }

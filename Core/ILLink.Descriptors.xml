@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Embedded in BrokenNes.Core: the trimmer / Native AOT compiler keeps the whole assembly.
+     CoreRegistry and NullProviderRegistry find cores by reflection (Assembly.GetTypes +
+     constructors), and NES.PlainSerialize walks fields and properties for savestates; with the
+     assembly preserved, all of that keeps working in a trimmed or AOT-compiled host. -->
+<linker>
+  <assembly fullname="BrokenNes.Core" preserve="all" />
+</linker>

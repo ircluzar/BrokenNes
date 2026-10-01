@@ -625,6 +625,8 @@ namespace NesEmulator
         }
         private void StoreSample(float sample){ if(ringCount >= AudioRingSize){ ringRead = (ringRead+1) & (AudioRingSize-1); ringCount--; } audioRing[ringWrite]=sample; ringWrite=(ringWrite+1)&(AudioRingSize-1); ringCount++; }
 
+        // IAPU.ReadSamples without the allocation of GetAudioSamples (plugin mode drains every block on the audio thread).
+        public int ReadSamples(Span<float> dest){ int toRead = Math.Min(dest.Length, ringCount); if(toRead==0) return 0; int first = Math.Min(toRead, AudioRingSize - ringRead); audioRing.AsSpan(ringRead, first).CopyTo(dest); int rem=toRead-first; if(rem>0) audioRing.AsSpan(0, rem).CopyTo(dest.Slice(first)); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return toRead; }
         public float[] GetAudioSamples(int maxSamples=0){ if(ringCount==0) return Array.Empty<float>(); int toRead = ringCount; if(maxSamples>0 && maxSamples<toRead) toRead=maxSamples; if(toRead>4096 && maxSamples==0) toRead=4096; float[] result=new float[toRead]; int first = Math.Min(toRead, AudioRingSize - ringRead); Array.Copy(audioRing, ringRead, result,0, first); int rem=toRead-first; if(rem>0) Array.Copy(audioRing,0,result,first,rem); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return result; }
         public float[] GetAudioBuffer()=>GetAudioSamples(); public int GetQueuedSampleCount()=>ringCount; public int GetSampleRate()=>audioSampleRate;
         public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }

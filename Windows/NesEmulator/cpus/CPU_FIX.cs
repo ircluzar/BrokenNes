@@ -43,7 +43,44 @@ public class CPU_FIX : ICPU {
 	// When true, unknown opcodes are treated as 2-cycle NOPs instead of throwing CpuCrashException
 	public bool IgnoreInvalidOpcodes { get; set; } = false;
 
+	// Addressing modes as cached delegates. Opcodes pass a mode to their handler (LDR(ref A, Immediate, 2));
+	// passing an instance method group allocates a new delegate on every call - one per executed
+	// instruction, ~330 KB per frame. Caching them once keeps the CPU allocation-free (plugin mode runs
+	// on a real-time audio thread) with every call site unchanged.
+	private readonly Func<AddrResult> Implied;
+	private readonly Func<AddrResult> Accumulator;
+	private readonly Func<AddrResult> Immediate;
+	private readonly Func<AddrResult> ZeroPage;
+	private readonly Func<AddrResult> ZeroPageX;
+	private readonly Func<AddrResult> ZeroPageY;
+	private readonly Func<AddrResult> Absolute;
+	private readonly Func<AddrResult> AbsoluteX;
+	private readonly Func<AddrResult> AbsoluteY;
+	private readonly Func<AddrResult> AbsoluteXStore;
+	private readonly Func<AddrResult> AbsoluteYStore;
+	private readonly Func<AddrResult> IndirectX;
+	private readonly Func<AddrResult> IndirectY;
+	private readonly Func<AddrResult> IndirectYStore;
+	private readonly Func<AddrResult> Indirect;
+	private readonly Func<AddrResult> Relative;
+
 	public CPU_FIX(Bus bus) {
+		Implied = ImpliedImpl;
+		Accumulator = AccumulatorImpl;
+		Immediate = ImmediateImpl;
+		ZeroPage = ZeroPageImpl;
+		ZeroPageX = ZeroPageXImpl;
+		ZeroPageY = ZeroPageYImpl;
+		Absolute = AbsoluteImpl;
+		AbsoluteX = AbsoluteXImpl;
+		AbsoluteY = AbsoluteYImpl;
+		AbsoluteXStore = AbsoluteXStoreImpl;
+		AbsoluteYStore = AbsoluteYStoreImpl;
+		IndirectX = IndirectXImpl;
+		IndirectY = IndirectYImpl;
+		IndirectYStore = IndirectYStoreImpl;
+		Indirect = IndirectImpl;
+		Relative = RelativeImpl;
 		A = X = Y = 0;
 		PC = 0x0000;
 		SP = 0x0000;
@@ -1080,19 +1117,19 @@ public class CPU_FIX : ICPU {
 		}
 	}
 
-	private AddrResult Implied() {
+	private AddrResult ImpliedImpl() {
 		return new AddrResult(0, 0);
 	}
 
-	private AddrResult Accumulator() {
+	private AddrResult AccumulatorImpl() {
 		return new AddrResult(0, 0);
 	}
 
-	private AddrResult Immediate() {
+	private AddrResult ImmediateImpl() {
 		return new AddrResult(PC++, 0);
 	}
 
-	private AddrResult ZeroPage() {
+	private AddrResult ZeroPageImpl() {
 		byte addr = Fetch();
 		return new AddrResult(addr, 0);
 	}
@@ -1103,21 +1140,21 @@ public class CPU_FIX : ICPU {
 	// regardless of whether the instruction using this mode is a load, a store, or a
 	// read-modify-write - so the dummy read lives here, unconditionally, rather than being
 	// gated per-caller.
-	private AddrResult ZeroPageX() {
+	private AddrResult ZeroPageXImpl() {
 		byte baseAddr = Fetch();
 		bus.Read(baseAddr); // dummy read of the un-indexed zero-page address
 		byte addr = (byte)(baseAddr + X);
 		return new AddrResult(addr, 0);
 	}
 
-	private AddrResult ZeroPageY() {
+	private AddrResult ZeroPageYImpl() {
 		byte baseAddr = Fetch();
 		bus.Read(baseAddr); // dummy read of the un-indexed zero-page address
 		byte addr = (byte)(baseAddr + Y);
 		return new AddrResult(addr, 0);
 	}
 
-	private AddrResult Absolute() {
+	private AddrResult AbsoluteImpl() {
 		ushort addr = Fetch16Bits();
 		return new AddrResult(addr, 0);
 	}
@@ -1129,7 +1166,7 @@ public class CPU_FIX : ICPU {
 	// observable and keeps the common (non-crossing) case to a single bus access, matching
 	// hardware's variable cycle count for loads. See AbsoluteXStore for the store-only
 	// unconditional variant.
-	private AddrResult AbsoluteX() {
+	private AddrResult AbsoluteXImpl() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + X);
 		bool crossed = HasPageCrossPenalty(baseAddr, effective);
@@ -1140,7 +1177,7 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(effective, crossed ? 1 : 0);
 	}
 
-	private AddrResult AbsoluteY() {
+	private AddrResult AbsoluteYImpl() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + Y);
 		bool crossed = HasPageCrossPenalty(baseAddr, effective);
@@ -1160,7 +1197,7 @@ public class CPU_FIX : ICPU {
 	// was flushed as an unaccounted cycle after the final write; the real read then came a cycle
 	// early, and a DMC DMA requested there halted after the instruction instead of on its read
 	// (Kirby: a DEC abs,X in vblank, 4 cycles off Mesen 2.1.1 for the rest of the frame).
-	private AddrResult AbsoluteXStore() {
+	private AddrResult AbsoluteXStoreImpl() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + X);
 		ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
@@ -1168,7 +1205,7 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(effective, 0);
 	}
 
-	private AddrResult AbsoluteYStore() {
+	private AddrResult AbsoluteYStoreImpl() {
 		ushort baseAddr = Fetch16Bits();
 		ushort effective = (ushort)(baseAddr + Y);
 		ushort uncorrected = (ushort)((baseAddr & 0xFF00) | (effective & 0x00FF));
@@ -1178,7 +1215,7 @@ public class CPU_FIX : ICPU {
 
 	// (zp,X): the zero-page pointer is always dummy-read before X is added to it (fixed 6-cycle
 	// timing regardless of load/store/RMW), same rationale as ZeroPageX/Y above.
-	private AddrResult IndirectX() {
+	private AddrResult IndirectXImpl() {
 		byte zp = Fetch();
 		bus.Read(zp); // dummy read of the pointer before X is added
 		byte ptr = (byte)(zp + X);
@@ -1187,7 +1224,7 @@ public class CPU_FIX : ICPU {
 	}
 
 	// Load-style (zp),Y: same conditional-on-cross dummy read as AbsoluteX/Y above.
-	private AddrResult IndirectY() {
+	private AddrResult IndirectYImpl() {
 		byte zp = Fetch();
 		ushort baseAddr = (ushort)(bus.Read(zp) | (bus.Read((byte)(zp + 1)) << 8));
 		ushort effective = (ushort)(baseAddr + Y);
@@ -1201,7 +1238,7 @@ public class CPU_FIX : ICPU {
 
 	// STA (zp),Y: always 6 cycles, unconditional dummy read (store semantics) - see
 	// AbsoluteXStore for the same rationale.
-	private AddrResult IndirectYStore() {
+	private AddrResult IndirectYStoreImpl() {
 		byte zp = Fetch();
 		ushort baseAddr = (ushort)(bus.Read(zp) | (bus.Read((byte)(zp + 1)) << 8));
 		ushort effective = (ushort)(baseAddr + Y);
@@ -1210,7 +1247,7 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(effective, 0);
 	}
 
-	private AddrResult Indirect() {
+	private AddrResult IndirectImpl() {
 		ushort ptr = Fetch16Bits();
 		byte lo = bus.Read(ptr);
 		byte hi = (ptr & 0x00FF) == 0x00FF ? bus.Read((ushort)(ptr & 0xFF00)) : bus.Read((ushort)(ptr + 1));
@@ -1218,7 +1255,7 @@ public class CPU_FIX : ICPU {
 		return new AddrResult(addr, 0);
 	}
 
-	private AddrResult Relative() {
+	private AddrResult RelativeImpl() {
 		sbyte offset = (sbyte)Fetch();
 		ushort target = (ushort)(PC + offset);
 		int penalty = HasPageCrossPenalty(PC, target) ? 1 : 0;

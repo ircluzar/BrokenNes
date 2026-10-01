@@ -81,6 +81,21 @@ namespace NesEmulator
             return samples;
         }
 
+        private float[] extScratch = Array.Empty<float>();
+
+        /// <summary>IAPU.ReadSamples with the extra bank mixed in, as GetAudioSamples does. Declared here because
+        /// this class re-implements IAPU: without it the interface would map to APU_FIX's version and skip the
+        /// extra bank. Allocates only when a block is larger than any before it.</summary>
+        public new int ReadSamples(Span<float> dest)
+        {
+            int n = base.ReadSamples(dest);
+            if (!extUsed || n == 0) return n;
+            if (extScratch.Length < n) extScratch = new float[n];
+            int m = ext!.ReadSamples(extScratch.AsSpan(0, n));
+            for (int i = 0; i < m; i++) dest[i] += extScratch[i];
+            return n;
+        }
+
         public new void SetEnabledChannels(int mask)
         {
             channelMask = mask;

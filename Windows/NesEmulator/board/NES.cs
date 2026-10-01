@@ -1791,15 +1791,15 @@ namespace NesEmulator
 		// APU channel enable/disable control
 		public void SetApuChannelEnableMask(int channelMask)
 		{
-			if (bus?.ActiveAPU == null) return;
-			// Call SetEnabledChannels on the active APU instance
-			var apu = bus.ActiveAPU;
-			var method = apu.GetType().GetMethod("SetEnabledChannels");
-			if (method != null)
-			{
-				method.Invoke(apu, new object[] { channelMask });
-			}
+			// SetEnabledChannels is part of IAPU: a direct call (it used to go through reflection,
+			// which trimming / Native AOT cannot follow).
+			bus?.ActiveAPU?.SetEnabledChannels(channelMask);
 		}
+
+		/// <summary>The APU core currently producing sound (null before a ROM is loaded). Plugin hosts
+		/// drain it directly with <see cref="IAPU.ReadSamples"/> instead of <see cref="GetAudioBuffer"/>,
+		/// which drops samples above a backlog and allocates.</summary>
+		public IAPU? ActiveApu => bus?.ActiveAPU;
 
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()
