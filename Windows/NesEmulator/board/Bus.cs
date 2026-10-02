@@ -325,6 +325,13 @@ public class Bus : IBus
 		// incoming core state the cartridge never asked for, which showed up as pulse/noise
 		// envelope volumes disagreeing with Mesen on the first frames after a swap.
 		private uint apuRegLatchWritten;
+		// Plugin hosts only (null otherwise: the cost is one null check per APU register write): called for every CPU
+		// write to $4000-$4017 with <see cref="ApuClock"/>, the APU cycles stepped so far, so a host can replay the
+		// writes on other chips at exactly the same moments. ApuClock follows what the active APU is stepped by.
+		public System.Action<ushort, byte, long> ApuWriteTap;
+		public long ApuClock;
+		/// <summary>Copies the last value written to each APU register ($4000-$4017) into <paramref name="regs"/> and returns the bitmask of those the ROM has written.</summary>
+		public uint CopyApuLatch(byte[] regs) { System.Array.Copy(apuRegLatch, regs, System.Math.Min(regs.Length, apuRegLatch.Length)); return apuRegLatchWritten; }
 		// MMC5 expansion audio
 		private MMC5Audio mmc5Audio;
 	public Cartridge cartridge;
@@ -752,6 +759,7 @@ public class Bus : IBus
 		{
 			int idx = address - 0x4000;
 			if (idx >=0 && idx < apuRegLatch.Length) { apuRegLatch[idx] = value; apuRegLatchWritten |= 1u << idx; }
+			ApuWriteTap?.Invoke(address, value, ApuClock);
 			activeApu.WriteAPURegister(address, value); return;
 		}
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
@@ -989,6 +997,7 @@ public class Bus : IBus
 		if (activeCpu is IApuCycleScaler scaler)
 			apuCycles = scaler.ScaleApuCycles(cpuCycles);
 		activeApu.Step(apuCycles);
+		ApuClock += apuCycles;
 		mmc5Audio?.Step(apuCycles);
 		instr.ApuSteps += apuCycles;
 	}

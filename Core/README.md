@@ -37,11 +37,20 @@ shared-tree changes made for plugin mode are additive:
   - a headless NES for an audio host: one ROM, one frame at a time, sound pulled at the host's
     rate;
   - FIX cores and Workshop's `--strict` settings by default, with real NTSC frame timing;
-  - RAM by `.mlb` symbol name, PRG pokes, and APU hot swap.
+  - RAM by `.mlb` symbol name, PRG pokes, and APU hot swap;
+  - with `CaptureApuWrites` on, the game's writes to `$4000-$4017` during each frame are logged with the APU clock
+    (`ApuLog`), through a tap in `Bus` that costs one null check per APU write when off. A host replays them on
+    `ApuStem`s.
 - **`NesApuInstrument`:** a bare NES sound chip as an instrument: the host writes `$4000-$4017` and pulls audio at its
   own sample rate, with no ROM or CPU program. Registers can change between any two blocks (BrokenNes2 does it every
   64 samples), so pitch bends are smooth. Any APU core can sit behind it and be swapped while sounding. Steps the APU
   32 cycles at a time (the speed-hack cores sample at the end of a step).
+  `Advance(cycles)` / `ReadAvailable` run it by CPU cycles instead of by output samples (for stems), and a constructor
+  `enableMask` gives it just one channel.
+- **`ApuStem`:** one channel of a running game on its own: a bare chip that receives only that channel's registers (plus
+  `$4015` masked to it and the shared `$4017`), replayed at the clock the game made them. Its sound is the channel as
+  the game plays it; summed, the four stems match the game's mix (correlation 0.998 on VRUN). BrokenNes2's ROM mode gives
+  each channel's stem to its own FL instance.
 - **`MlbSymbols`:** Mesen / NESFab label files.
 - **`StreamResampler`:** converts a core's native rate (NES 44.1 kHz, Game Boy bridge 48 kHz,
   S-DSP 32 kHz) to the host's.

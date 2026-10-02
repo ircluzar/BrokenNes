@@ -47,6 +47,19 @@ public sealed class NesAudioMachine
 
     /// <summary>Every NES APU core id the registry knows (FIX, QN, DMG = Game Boy chip, ...).</summary>
     public static IReadOnlyList<string> ApuCoreIds => CoreRegistry.ApuIds;
+    public static IReadOnlyList<string> CpuCoreIds => CoreRegistry.CpuIds;
+    public static IReadOnlyList<string> PpuCoreIds => CoreRegistry.PpuIds;
+
+    /// <summary>Called on the thread that runs the frame, right after each frame: a host that shows the picture copies
+    /// <see cref="FrameBuffer"/> here (it is the emulator's own array, valid until the next frame).</summary>
+    public Action? AfterFrame { get; set; }
+
+    /// <summary>The last frame as RGBA, 256 x 240 x 4 bytes.</summary>
+    public byte[] FrameBuffer => nes.GetFrameBuffer();
+    public long FramesRun { get; private set; }
+    public string CpuCoreId => nes.GetCpuCoreId();
+    public string PpuCoreId => nes.GetPpuCoreId();
+    public string? CrashInfo => nes.IsCrashed() ? nes.GetCrashInfo() : null;
 
     public const double FramesPerSecond = 1789773.0 / (262 * 341 / 3.0);
 
@@ -70,10 +83,58 @@ public sealed class NesAudioMachine
         resampler.SetRates(NativeSampleRate, hostRate);
     }
 
+    /// <summary>Switches the CPU core while the game runs (between frames).</summary>
+    public void SetCpuCore(string id)
+    {
+        if (!nes.SetCpuCore(id)) throw new ArgumentException($"unknown CPU core '{id}'");
+    }
+
+    /// <summary>Switches the picture core while the game runs (between frames).</summary>
+    public void SetPpuCore(string id)
+    {
+        if (!nes.SetPpuCore(id)) throw new ArgumentException($"unknown PPU core '{id}'");
+    }
+
+    /// <summary>One CPU write to an APU register during a frame: <c>Clock</c> is the APU clock at that moment.</summary>
+    public struct ApuWrite { public long Clock; public byte Reg, Value; }
+
+    private ApuWrite[] apuLog = new ApuWrite[1024];
+    private int apuLogCount;
+    private bool captureApu;
+
+    /// <summary>When on, <see cref="ApuLog"/> holds every write the game made to $4000-$4017 during the last frame (a host
+    /// replays them on one-channel chips to get each channel's own sound). Off by default; costs nothing then.</summary>
+    public bool CaptureApuWrites
+    {
+        get => captureApu;
+        set
+        {
+            captureApu = value;
+            nes.ApuWriteTap = value ? (addr, val, clock) =>
+            {
+                if (apuLogCount == apuLog.Length) Array.Resize(ref apuLog, apuLog.Length * 2);
+                apuLog[apuLogCount++] = new ApuWrite { Clock = clock, Reg = (byte)(addr - 0x4000), Value = val };
+            } : null;
+        }
+    }
+
+    public ReadOnlySpan<ApuWrite> ApuLog => apuLog.AsSpan(0, apuLogCount);
+    /// <summary>APU clock when the last frame started and ended.</summary>
+    public long FrameStartClock { get; private set; }
+    public long ApuClock => nes.ApuClock;
+    /// <summary>The last value the game wrote to each APU register, and the mask of those it has written.</summary>
+    public uint CopyApuLatch(byte[] regs) => nes.CopyApuLatch(regs);
+    /// <summary>Output samples the last frames made, without running another frame.</summary>
+    public int ReadAvailable(Span<float> dest) => resampler.Read(dest);
+
     /// <summary>Runs one NES frame and moves its sound into the resampler.</summary>
     public void RunFrame()
     {
+        apuLogCount = 0;
+        FrameStartClock = nes.ApuClock;
         nes.RunFrame();
+        FramesRun++;
+        AfterFrame?.Invoke();
         var apu = nes.ActiveApu;
         if (apu == null) return;
         int n;

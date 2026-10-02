@@ -121,6 +121,8 @@ public sealed class SnesSession : IConsoleSession
 
     public ConsoleKind Console => ConsoleKind.Snes;
     public string Title { get; }
+    /// <summary>The game's audio unit (plugin hosts read its sample RAM and DSP registers: APU_SFC when the sound is the SFC unit).</summary>
+    public ISnesApu Apu => board.Apu;
     /// <summary>The SNES picture chip (tools: per-line register capture).</summary>
     public PPU_SFC Ppu => board.Ppu;
     public string Description => $"SNES {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}";
@@ -177,6 +179,8 @@ public sealed class SnesSession : IConsoleSession
 public sealed class GbSession : IConsoleSession
 {
     private readonly BOARD_GB board;
+    /// <summary>The game's sound unit (plugin hosts read its registers and wave RAM: APU_GB when the sound is the Game Boy unit).</summary>
+    public IGbApu Apu => board.Apu;
     private GbLineCapture? cap;
     private GbToNes? toNes;
     private GbToSnes? toSnes;

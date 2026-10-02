@@ -1801,6 +1801,14 @@ namespace NesEmulator
 		/// which drops samples above a backlog and allocates.</summary>
 		public IAPU? ActiveApu => bus?.ActiveAPU;
 
+		/// <summary>Plugin hosts: called for every CPU write to the APU registers ($4000-$4017) with <see cref="ApuClock"/> at that moment
+		/// (set after the ROM is loaded).</summary>
+		public System.Action<ushort, byte, long>? ApuWriteTap { get => bus?.ApuWriteTap; set { if (bus != null) bus.ApuWriteTap = value!; } }
+		/// <summary>APU cycles stepped since the ROM loaded.</summary>
+		public long ApuClock => bus?.ApuClock ?? 0;
+		/// <summary>The last value the ROM wrote to each APU register ($4000-$4017); returns the mask of registers written.</summary>
+		public uint CopyApuLatch(byte[] regs) => bus?.CopyApuLatch(regs) ?? 0;
+
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()
 		{
