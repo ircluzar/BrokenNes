@@ -3,8 +3,9 @@
   Certifies BrokenNes2 inside the real FL Studio: renders a generated project with FL and checks the audio.
 .DESCRIPTION
   1. FruityHost writes the fixture (the notes to play) and the plugin's default state.
-  2. make_template.py derives an FL project from FL's own Vocoder template: channel 0 becomes BrokenNes2 and the
-     fixture's notes (with slides and note colours) are written into pattern 1.
+  2. make_template.py derives an FL project from FL's own Vocoder template: its first four channels become four BrokenNes2
+     instances (one per NES channel, sharing one emulator) and the fixture's notes (with slides) are written into pattern 1,
+     each note in its instance's row.
   3. FL renders it from the command line (FL64.exe /R /Ewav /F"<dir>"): a headless run that exits by itself.
   4. FruityHost `analyze` measures the WAV against the fixture: pitch of every note on the chip's own period grid,
      slide and chain accuracy (including FL's timing offset), loudness vs velocity, silence between notes.
@@ -49,9 +50,10 @@ Write-Host "FL Studio certification of BrokenNes2 (work dir $work)"
 # --- locate things
 $fl = Join-Path $FlRoot 'FL64.exe'
 Step 'FL Studio present' (Test-Path $fl) $fl
-if (-not $PluginDll) { $PluginDll = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll' }
+$dist = Join-Path $repo 'Plugin\dist'
+if (-not $PluginDll) { $PluginDll = if (Test-Path (Join-Path $dist 'BrokenNes2_x64.dll')) { Join-Path $dist 'BrokenNes2_x64.dll' } else { Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll' } }
 Step 'plugin DLL built' (Test-Path $PluginDll) $PluginDll
-if (-not $Host_) { $Host_ = Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe' }
+if (-not $Host_) { $Host_ = if (Test-Path (Join-Path $dist 'host\BrokenNes.FruityHost.exe')) { Join-Path $dist 'host\BrokenNes.FruityHost.exe' } else { Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe' } }
 Step 'test host built' (Test-Path $Host_) $Host_
 if (-not $Python) { $Python = (Get-Command python -ErrorAction SilentlyContinue).Source }
 Step 'python found' ([bool]$Python) "$Python"
@@ -59,13 +61,15 @@ Step 'python found' ([bool]$Python) "$Python"
 # --- the project
 & $Host_ fixture $Fixture (Join-Path $work 'fixture.json') | Out-Null
 Step 'fixture written' ($LASTEXITCODE -eq 0)
-& $Host_ state $PluginDll (Join-Path $work 'state.bin') | Out-Null
-Step 'plugin default state dumped' ($LASTEXITCODE -eq 0)
+# one instance = one channel: the plugin's saved state for pulse 1, pulse 2, triangle and noise
+$statesOk = $true
+foreach ($k in 0..3) { & $Host_ state $PluginDll (Join-Path $work "state$k.bin") --channel ($k + 1) | Out-Null; if ($LASTEXITCODE -ne 0) { $statesOk = $false } }
+Step 'plugin state dumped for the four channels' $statesOk
 $render = Join-Path $work 'render'
 Remove-Item $render -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $render | Out-Null
 $flp = Join-Path $render 'BrokenNes2_FLTest.flp'
-$out = & $Python (Join-Path $PSScriptRoot 'make_template.py') --fixture (Join-Path $work 'fixture.json') --state (Join-Path $work 'state.bin') --out $flp --base (Join-Path $FlRoot 'Data\Templates\Utility\Vocoder\Vocoder.flp') 2>&1
+$out = & $Python (Join-Path $PSScriptRoot 'make_template.py') --fixture (Join-Path $work 'fixture.json') --state-dir $work --out $flp --base (Join-Path $FlRoot 'Data\Templates\Utility\Vocoder\Vocoder.flp') 2>&1
 Step 'FL project derived from FL''s Vocoder template' ($LASTEXITCODE -eq 0 -and (Test-Path $flp)) ($out -join ' ')
 
 if (-not $NoRender) {

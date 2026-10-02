@@ -26,9 +26,11 @@ pwsh -File UAT\entrypoints\web-smoke.ps1 -Aot                # needs wasm-tools 
   (`/api/audio/*` is the game's music engine, `/api/apu/channels` is hard-coded), so audio is measured
   from the Windows Core Audio session meter for that PID (reported "unverified", not failed, if no
   session exists).
-- Desktop: `POST /api/cores/apply` persists to `%APPDATA%\BrokenNes\config.json` (shared by every build)
-  and, when used for PPU/APU, left the app unable to shut down on WM_CLOSE. The script therefore
-  only swaps cores that are not already FIX.
+- Desktop: `POST /api/cores/apply` persists to `%APPDATA%\BrokenNes\config.json` (shared by every build on this
+  machine), so the script always applies FIX/FIX/FIX. At the end it closes the window **while that request is being
+  POSTed in a loop**: closing with an API request in flight (one that marshals onto the UI thread) used to deadlock
+  `OnFormClosing`, because the host's shutdown waited for the request and the request waited for the UI thread (fixed
+  2026-10-01 by stopping the server off the UI thread; this check keeps it fixed).
 - Web: audio is not verified (headless browser, no sample tap). The picture check rejects both a blank
   canvas and the "no signal" static-noise screen (>200 colours). The bundled `WebLite\wwwroot\vrun.nes`
   is a different file from the VRUN build used by the desktop smoke.

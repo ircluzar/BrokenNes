@@ -20,7 +20,7 @@
     picture_changes     framebuffer hash differs across samples taken over the run window
                         (ROM is animating / reacting; a frozen frame fails)
     no_crash            process still alive and API still answering at the end
-    graceful_shutdown   CloseMainWindow by PID; exits within timeout (forced kill => FAIL)
+    graceful_shutdown   CloseMainWindow by PID with API requests in flight; exits within timeout (forced kill => FAIL)
     audio               see below
 
   AUDIO - what the API does and does not expose:
@@ -147,22 +147,14 @@ try {
     $foreign = @(Get-BrokenNesInstances | Where-Object { $_.ProcessId -ne $id }).Count
     if ($foreign) { $notes.Add("$foreign foreign BrokenNes instance(s) running (left untouched)") }
 
-    # FIX cores: mapper 30 crashes CPU_FMC on frame 0 (see UAT README). Normal (gated) setter - persists to config.json.
-    # Only swap what differs: in testing, calling /api/cores/apply with a PPU or APU id (even the one
-    # already active) left the process unable to shut down gracefully (WM_CLOSE -> OnFormClosing, then hang).
+    # FIX cores: mapper 30 crashes CPU_FMC on frame 0 (see UAT README). Always applied, even when they already are
+    # the active cores: that exercises POST /api/cores/apply (it marshals onto the UI thread) on every run, and the
+    # shutdown check at the end closes the window with such requests still in flight.
     # NOTE the selection is persisted to %APPDATA%\BrokenNes\config.json (shared by every build on this machine).
     Show-BrokenNesEmulator -ProcessId $id | Out-Null     # loop only runs in emulator view; core ids are empty until then
     Start-Sleep -Milliseconds 800
-    $want = @{ cpu = 'CPU_FIX'; ppu = 'PPU_FIX'; apu = 'APU_FIX' }
-    $swap = @{}
-    foreach ($k in 'cpu','ppu','apu') {
-        if ((Get-BrokenNesCore -ProcessId $id -Kind $k) -ne $want[$k]) { $swap[(Get-Culture).TextInfo.ToTitleCase($k) + 'Id'] = 'FIX' }
-    }
-    if ($swap.Count) {
-        $notes.Add("hot-swapped cores: $($swap.Keys -join ',') (may make graceful shutdown hang - known app issue)")
-        $c = Set-BrokenNesCores -ProcessId $id @swap
-        if (-not $c.success) { $notes.Add("set cores: $($c.error)") }
-    }
+    $c = Set-BrokenNesCores -ProcessId $id -CpuId FIX -PpuId FIX -ApuId FIX
+    if (-not $c.success) { $notes.Add("set cores: $($c.error)") }
     $l = Load-BrokenNesRom -ProcessId $id -Path $Rom
     Start-Sleep -Seconds 2
     $cur = Get-BrokenNesCurrentRom -ProcessId $id
@@ -215,8 +207,23 @@ catch {
 }
 finally {
     if ($inst) {
+        # Regression guard (found 2026-10-01): closing while an API request that marshals onto the UI thread is in
+        # flight used to deadlock OnFormClosing (the host's shutdown waited for the request, the request waited for
+        # the UI thread). A background job keeps POSTing /api/cores/apply while the window is closed.
+        $hammer = $null
+        try {
+            $hammer = Start-Job -ArgumentList $inst.BaseUrl -ScriptBlock {
+                param($b)
+                $end = (Get-Date).AddSeconds(20)
+                while ((Get-Date) -lt $end) {
+                    try { Invoke-RestMethod -Method Post -Uri "$b/api/cores/apply" -ContentType 'application/json' -Body '{"ApuId":"FIX","PpuId":"FIX"}' -TimeoutSec 5 | Out-Null } catch { }
+                }
+            }
+            Start-Sleep -Milliseconds 700
+        } catch { $notes.Add("could not start the request hammer: $($_.Exception.Message)") }
         $r = Stop-BrokenNesInstance -ProcessId $inst.ProcessId -TimeoutSeconds 25   # by PID only; graceful first
-        Check 'graceful_shutdown' ($r.Stopped -and $r.Method -in 'CloseMainWindow','already-exited') "method=$($r.Method) stopped=$($r.Stopped)"
+        if ($hammer) { Stop-Job $hammer -ErrorAction SilentlyContinue; Remove-Job $hammer -Force -ErrorAction SilentlyContinue }
+        Check 'graceful_shutdown' ($r.Stopped -and $r.Method -in 'CloseMainWindow','already-exited') "method=$($r.Method) stopped=$($r.Stopped), with /api/cores/apply requests in flight"
     }
     $result.checks = $checks
     $result.notes = $notes

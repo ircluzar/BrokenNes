@@ -9,7 +9,7 @@
     web-lite   WebLite\ (Blazor WASM)         UAT\entrypoints\web-smoke.ps1: publish, serve, headless browser boots a ROM
     plugin-host  Plugin\ BrokenNes2 DLL       FruityHost selftest: the Native AOT plugin DLL loaded by a faithful FL host
                                               stand-in; 21 checks of identity, parameters, pitch, slides, volume, pan, voices,
-                                              every sound chip, robustness, real-time and allocation
+                                              every sound chip, ROM mode (game, picture, live CPU/PPU/APU swaps), robustness, real-time and allocation
     plugin-fl    the same DLL inside FL 2026  UAT\plugin\fl\fl-certify.ps1: FL renders a generated project, the audio is
                                               measured against the fixture. Needs the plugin installed in FL (admin, once:
                                               UAT\plugin\fl\install-to-fl.ps1); otherwise reported as NOT RUN.
@@ -95,9 +95,16 @@ Run 'plugin-host' {
         if ($LASTEXITCODE -ne 0) { throw "test host build failed: $($o.Substring([Math]::Max(0, $o.Length - 600)))" }
     }
     $dll = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll'
+    # A copy in the repo (Plugin\dist, git-ignored): the build output under %LOCALAPPDATA% can be a per-app private
+    # store (packaged apps such as the Claude desktop app are redirected there), invisible to the user's own shell.
+    $dist = Join-Path $repo 'Plugin\dist'
+    New-Item -ItemType Directory -Force (Join-Path $dist 'host') | Out-Null
+    Copy-Item (Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll') $dist -Force
+    Copy-Item (Join-Path $art 'bin\BrokenNes.FruityHost\release\*') (Join-Path $dist 'host') -Recurse -Force
     $host_ = Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe'
     $json = Join-Path $outDir 'plugin-selftest.json'
-    & $host_ selftest $dll --json $json --md (Join-Path $outDir 'plugin-selftest.md') | Out-Host
+    $romArgs = if (Test-Path $Rom) { @('--rom', $Rom) } else { @() }   # enables the ROM-mode tests
+    & $host_ selftest $dll @romArgs --json $json --md (Join-Path $outDir 'plugin-selftest.md') | Out-Host
     $code = $LASTEXITCODE
     $r = Get-Content $json -Raw | ConvertFrom-Json
     $detail = "$($r.passed) passed, $($r.warnings) warnings, $($r.failed) failed (DLL $([int]((Get-Item $dll).Length/1MB)) MB)"

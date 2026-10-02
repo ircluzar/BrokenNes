@@ -1,4 +1,4 @@
-# Certifying BrokenNes2 inside FL Studio 2026
+# Certifying Bogue :: BrokenNes 2 inside FL Studio 2026
 
 `BrokenNes.FruityHost selftest` proves the plugin against a faithful *stand-in* for FL's host. This recipe proves it
 inside the real thing: FL renders a project that uses the plugin, and the audio is measured against what the
@@ -19,10 +19,12 @@ pwsh -File UAT\plugin\fl\fl-certify.ps1                                      # e
 2. **Project.** `make_template.py` derives an FL project from FL's own `Vocoder.flp` (shipped with FL, authored
    by the installed FL, so its format is exactly what that FL writes). It changes five things and leaves every other
    byte alone:
-   - the first generator channel becomes `BrokenNes2`, and its saved state is the plugin's default state;
-   - the channel is routed to the master, so no mixer effect colours the sound;
-   - pattern 1 gets the fixture's notes: ordinary notes (flags `0x4000`), a slide-flagged note (`0x4008`) for each
-     slide in a chain, the note colour in the colour byte;
+   - the first four generator channels become four `BrokenNes2` instances (one instance = one NES channel: pulse 1, pulse 2,
+     triangle, noise; they share one emulator), each with the plugin's saved state for its channel;
+   - the channels are routed to the master, and the template's mixer effects are removed (its Vocodex has its own synth);
+   - the template's selected pattern (2) is replaced by ours (1), since a render plays the selected pattern;
+   - pattern 1 gets the fixture's notes, each in the rack row of its instance. FL's own demo projects showed how it writes
+     slides: ordinary notes have flags `0x4000`, a slide note `0x4008` and release byte 0, and it lies *inside* its parent note;
    - the playlist is one clip of pattern 1 from bar 1, the tempo is the fixture's.
 3. **Render.** `FL64.exe /R /Ewav /F"<dir>"`: FL's command-line render. It loads the project (so loads the plugin),
    renders the song and exits by itself. The script refuses to start if FL is already open (the command would be
@@ -49,6 +51,12 @@ The report (`fl-certify.json`, `analysis.json`, the rendered `fl-render.wav`) go
   render shows it. If FL's slide shape or timing differs from the host stand-in's model, the analysis reports it
   (the best-fit timing offset is part of every slide row) and the model, not the plugin, is what changes.
 
+## The plugin's name in FL
+
+FL shows the plugin as **Bogue :: BrokenNes 2** (the name it reports), but the DLL and its folder stay `BrokenNes2`, and the generated project
+refers to the plugin as `BrokenNes2`: FL identifies a native plugin by its file name. The first render after a rename confirms it (a project that
+cannot find the plugin renders silence). `::` is not valid in a Windows file name, so if FL's preset menu ever misbehaves for this plugin, that name is the suspect.
+
 ## If it fails
 
 | Symptom | Likely cause |
@@ -56,6 +64,7 @@ The report (`fl-certify.json`, `analysis.json`, the rendered `fl-render.wav`) go
 | `plugin installed in FL ...` fails | run `install-to-fl.ps1` (administrator); close FL first |
 | `FL rendered and exited` fails (timeout) | FL is showing a dialog (a missing plugin: the DLL is not where FL scans, or FL was already running when it was installed) |
 | `FL wrote a WAV` fails | FL could not load the project; start FL by hand and open `render\BrokenNes2_FLTest.flp` |
+| everything sounds like something else (a synth that never stops) | the base project's own channels or mixer effects are still sounding: see the template notes above |
 | everything silent | FL did not load the plugin; set `BROKENNES_PLUGIN_LOG` to a file and run again: no `CreatePlugInstance` line means FL never created it |
 | pitch rows fail by a constant | FL's pitch convention differs (C5 = key 60 is assumed); the error column shows by how much |
 | slide rows fail | see the `best timing offset` in the row; a large offset or high error means FL's glide differs from the model |

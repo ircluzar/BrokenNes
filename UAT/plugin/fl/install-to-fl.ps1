@@ -8,10 +8,11 @@
   (a loaded DLL is locked, and FL would not see the new build until restarted anyway).
   Nothing else on the machine is touched.
 .EXAMPLE
-  pwsh -File install-to-fl.ps1 -Dll C:\...\publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll
+  install-to-fl.cmd        (double-click it; no arguments needed: installs the latest build)
+  powershell -ExecutionPolicy Bypass -File install-to-fl.ps1 [-Dll <path to BrokenNes2_x64.dll>]
 #>
 param(
-    [Parameter(Mandatory)][string]$Dll,
+    [string]$Dll = (Join-Path $PSScriptRoot '..\..\..\Plugin\dist\BrokenNes2_x64.dll'),
     [string]$FlRoot = "C:\Program Files\Image-Line\FL Studio 2026",
     [switch]$Elevated
 )

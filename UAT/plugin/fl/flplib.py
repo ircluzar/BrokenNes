@@ -114,7 +114,8 @@ FLAG_SLIDE = 0x4008
 
 
 def pack_note(pos: int, length: int, key: int, rack: int, colour: int, velocity: int, slide: bool = False, pan: int = 64) -> bytes:
-    return NOTE.pack(pos, FLAG_SLIDE if slide else FLAG_NOTE, rack, length, key, 0, 120, 0, 64, colour, pan, velocity, 128, 128)
+    # measured from FL's own demo projects: slide notes lie inside their parent note, group is 0, release byte is 0 (64 for normal notes)
+    return NOTE.pack(pos, FLAG_SLIDE if slide else FLAG_NOTE, rack, length, key, 0, 120, 0, 0 if slide else 64, colour, pan, velocity, 128, 128)
 
 
 PATTERN_BASE = 20480
