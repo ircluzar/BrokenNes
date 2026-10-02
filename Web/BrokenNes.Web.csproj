@@ -100,8 +100,11 @@
          the desktop native-backend builds (NAudio.Midi / MeltySynth, unusable in WASM) are
          excluded in favor of the pure-emulation *.Web.cs siblings - see their header comments. -->
     <Compile Include="$(NesRoot)cpus\**\*.cs"      LinkBase="NesEmulator\cpus" />
-    <Compile Include="$(NesRoot)ppus\**\*.cs"      LinkBase="NesEmulator\ppus" />
-    <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs" LinkBase="NesEmulator\apus" />
+    <!-- PPU_FIXS / APU_FIXS are the SNES-bridge cores (a second channel bank / extension picture for the mix lab). They build
+         on mix/ (NesApuHost, NesPalette), which this build deliberately does not compile (it has no snes/, gb/ or
+         mix/; WebLite does), so they are excluded here and simply absent from the web core lists. -->
+    <Compile Include="$(NesRoot)ppus\**\*.cs"      Exclude="$(NesRoot)ppus\PPU_FIXS.cs" LinkBase="NesEmulator\ppus" />
+    <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs;$(NesRoot)apus\APU_FIXS.cs" LinkBase="NesEmulator\apus" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
 

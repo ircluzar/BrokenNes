@@ -180,11 +180,21 @@ namespace BrokenNes.Windows
             StopEmulation();
             SaveSessionBattery(force: true);   // BrokenNes 2: a SNES / Game Boy game's battery save
             
-            // Shut down Web API server
+            // Shut down Web API server - OFF the UI thread. Stopping the host waits for in-flight requests
+            // (30 s by default), and many handlers marshal onto this thread with Control.Invoke (e.g.
+            // /api/cores/apply). Waiting for them here, on the UI thread that must run those invokes, is a
+            // deadlock: the window never finishes closing while a request is in flight. Done in the
+            // background, the UI thread keeps pumping, the blocked handlers complete (or fail once the
+            // window is gone) and the host stops normally. The instance file is also removed by the
+            // ProcessExit hook, so nothing is lost if the process exits first.
             if (webApiServer != null)
             {
-                _ = webApiServer.StopAsync();
-                webApiServer.Dispose();
+                var server = webApiServer;
+                _ = Task.Run(async () =>
+                {
+                    try { await server.StopAsync().ConfigureAwait(false); } catch { }
+                    try { server.Dispose(); } catch { }
+                });
             }
             
             audioManager?.Dispose();
