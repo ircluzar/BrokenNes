@@ -4,6 +4,16 @@ namespace BrokenNes.Fruity;
 /// automation arrives either in that range or as 0..FromMidiMax with REC_FromMIDI.</summary>
 public sealed record FruityParam(string Name, int Min, int Max, int Default, int InfoFlags, Func<int, string> Format);
 
+/// <summary>What the native glue needs of an editor window: its handle, and a way to close it.</summary>
+public interface IFruityEditor
+{
+    nint Hwnd { get; }
+    void Destroy();
+}
+
+/// <summary>A button in the editor; <see cref="Click"/> runs on the GUI thread.</summary>
+public sealed record EditorButton(string Text, Action Click);
+
 /// <summary>What the host reads from the plugin object (TFruityPlugInfo).</summary>
 public sealed record FruityPluginInfo(string LongName, string ShortName, int Flags = Fpf.TypeFullGen | Fpf.WantNewTick, int DefPoly = 0);
 
@@ -17,7 +27,6 @@ public sealed record FruityPluginInfo(string LongName, string ShortName, int Fla
 public abstract unsafe class FruityPluginBase
 {
     private const uint StateMagic = 0x504E4642; // "BFNP"
-    private const int StateVersion = 1;
 
     protected FruityPluginBase(FruityHost host, nint hostTag, FruityParam[] parameters)
     {
@@ -28,12 +37,18 @@ public abstract unsafe class FruityPluginBase
         for (int i = 0; i < parameters.Length; i++) Values[i] = parameters[i].Default;
     }
 
+    /// <summary>The version written into saved state; a state of another (older or newer) version is not read, so its numbers are never taken for another meaning.</summary>
+    protected virtual int StateVersion => 1;
+
     public FruityHost Host { get; }
     public nint HostTag { get; }
     public FruityParam[] Params { get; }
     /// <summary>Current parameter values. Use <see cref="Get"/> / <see cref="SetFromUi"/> from threads other than the mixer.</summary>
     public int[] Values { get; }
-    public FruityEditor? Editor { get; internal set; }
+    public IFruityEditor? Editor { get; internal set; }
+
+    /// <summary>Makes the editor window inside FL's frame <paramref name="parent"/>. The default is a generic one built from the parameter table.</summary>
+    public virtual IFruityEditor? CreateEditor(nint parent) => new FruityEditor(this, parent);
 
     public int Get(int index) => Volatile.Read(ref Values[index]);
 
@@ -52,6 +67,24 @@ public abstract unsafe class FruityPluginBase
 
     /// <summary>Text for the editor's live readout (GUI thread; keep it cheap and tolerant of torn reads).</summary>
     public virtual string GetReadout() => "";
+
+    /// <summary>Buttons the editor shows under the readout (read once, when the editor opens).</summary>
+    public virtual IReadOnlyList<EditorButton> EditorButtons => Array.Empty<EditorButton>();
+
+    /// <summary>Size of the picture the editor reserves room for, 0 for none (read once, when the editor opens).
+    /// The editor shows it at 2x.</summary>
+    public virtual int PictureWidth => 0;
+    public virtual int PictureHeight => 0;
+
+    /// <summary>Counts up whenever there is a new picture; the editor repaints when it changes (GUI thread).</summary>
+    public virtual long PictureVersion => 0;
+
+    /// <summary>Copies the current picture as RGBA (PictureWidth x PictureHeight x 4 bytes) into <paramref name="rgba"/>
+    /// and returns true, or returns false when there is none to show (GUI thread; the plugin must lock against its mixer thread).</summary>
+    public virtual bool CopyPicture(byte[] rgba) => false;
+
+    /// <summary>The editor window handle, for dialogs the plugin opens from a button (0 when closed).</summary>
+    public nint EditorHwnd => Editor?.Hwnd ?? 0;
 
     // ---- host -> plugin ----
 
@@ -111,10 +144,11 @@ public abstract unsafe class FruityPluginBase
         }
 
         // Anything else in the stream (another plugin's state, a damaged project) is ignored: defaults stay.
+        RestoredCleanly = false;
         uint readMagic = 0;
         int readVersion = 0, readCount = 0;
         if (!stream.Read(&readMagic, 4) || readMagic != StateMagic) return;
-        if (!stream.Read(&readVersion, 4) || readVersion > StateVersion) return;
+        if (!stream.Read(&readVersion, 4) || readVersion != StateVersion) return;
         if (!stream.Read(&readCount, 4) || readCount < 0 || readCount > 4096) return;
         for (int i = 0; i < readCount; i++)
         {
@@ -127,7 +161,12 @@ public abstract unsafe class FruityPluginBase
                 OnParamChanged(i, v);
             }
         }
+        RestoredCleanly = true;
     }
+
+    /// <summary>True when the last restore read a complete, valid parameter block: a plugin that appends its own data
+    /// after it can then read that data from the same stream.</summary>
+    protected bool RestoredCleanly { get; private set; }
 
     public abstract nint TriggerVoice(TVoiceParams* voice, nint setTag);
     public abstract void ReleaseVoice(nint handle);

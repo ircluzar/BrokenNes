@@ -111,7 +111,7 @@ public static class Audio
         double lo = double.MaxValue, hi = double.MinValue;
         for (int i = from; i < to; i++) { lo = Math.Min(lo, x[i]); hi = Math.Max(hi, x[i]); }
         double swing = hi - lo;
-        if (swing < 0.01) return double.NaN;
+        if (swing < 0.002) return double.NaN;
         double mid = (hi + lo) / 2, hyst = swing * 0.25;
         bool armed = false;
         double first = double.NaN, last = double.NaN;

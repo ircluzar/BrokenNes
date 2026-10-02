@@ -12,8 +12,9 @@ public sealed class SimNote
     public double LengthBeats { get; set; }
     /// <summary>MIDI key; FL's C5 = 60, so key 69 is 440 Hz.</summary>
     public double Key { get; set; } = 60;
-    /// <summary>Piano-roll note colour 0-15 (BrokenNes2 maps it to an NES channel).</summary>
-    public int Color { get; set; }
+    /// <summary>The NES channel the note is for (0 pulse 1, 1 pulse 2, 2 triangle, 3 noise). BrokenNes2 is one instance per channel, so in FL this is
+    /// which instance's channel rack the note sits in; the host mixer routes the note to the instance on that channel.</summary>
+    public int Channel { get; set; }
     public double Velocity { get; set; } = 0.78;
     public double Pan { get; set; }
     /// <summary>Slide notes chained onto this note, in order. In FL each is a slide-flagged note: the pitch glides
@@ -93,7 +94,7 @@ public static class Fixtures
         double t = 0;
         SimNote Add(double len, double key, int color, string label, Action<SimNote>? more = null)
         {
-            var n = new SimNote { StartBeat = t, LengthBeats = len, Key = key, Color = color, Label = label };
+            var n = new SimNote { StartBeat = t, LengthBeats = len, Key = key, Channel = color, Label = label };
             more?.Invoke(n);
             s.Notes.Add(n);
             t += len + 0.5;

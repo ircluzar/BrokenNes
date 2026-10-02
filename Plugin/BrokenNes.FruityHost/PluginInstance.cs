@@ -53,6 +53,12 @@ public sealed unsafe class PluginInstance : IDisposable
 
     public HostSim Host { get; }
     public bool OwnsHost { get; }
+    /// <summary>The NES channel this instance plays in a rack (the mixer routes a note to the instance with its channel); -1 when not in a rack.</summary>
+    public int RackChannel { get; set; } = -1;
+    /// <summary>The other instances of the rack this one leads; destroyed with it.</summary>
+    public List<PluginInstance> Companions { get; set; } = new();
+    public int TotalKilled => Host.VoiceKillCalls + Companions.Sum(c => c.Host.VoiceKillCalls);
+    public int TotalLive => Host.LiveVoices + Companions.Sum(c => c.Host.LiveVoices);
     public nint EditorHandle => p->EditorHandle;
     public nint HostTag => p->HostTag;
 
@@ -122,12 +128,13 @@ public sealed unsafe class PluginInstance : IDisposable
     public void HideEditor() => Dispatcher(Fpd.ShowEditor, 0, 0);
 
     // ---- test hooks answered by BrokenNes2 (Fpd.TestBase + n) ----
-    public long Test(int n, nint index = 0) => Dispatcher(Fpd.TestBase + n, index);
+    public long Test(int n, nint index = 0, nint value = 0) => Dispatcher(Fpd.TestBase + n, index, value);
 
     public void Destroy()
     {
         if (destroyed) return;
         destroyed = true;
+        foreach (var c in Companions) c.Destroy();
         ((delegate* unmanaged<NativePlug*, void>)vt[0])(p);
         Host.Plugin = null;
         if (OwnsHost) Host.Dispose();

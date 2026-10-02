@@ -19,11 +19,21 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <InvariantGlobalization>true</InvariantGlobalization>
     <AssemblyName>BrokenNes2_x64</AssemblyName>
+    <Version>0.2.0</Version>
+    <Product>Bogue :: BrokenNes 2</Product>
+    <Company>Bogue</Company>
     <RootNamespace>BrokenNes2</RootNamespace>
     <!-- The linked emulator cores' existing warnings; the AOT/trim warnings in them are known (the
          assembly is preserved whole, see Core/ILLink.Descriptors.xml). -->
     <NoWarn>$(NoWarn);IL2026;IL2067;IL2070;IL2075;IL3050;IL3053</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the game ROM mode runs until another is loaded (VRUN, frozen build) -->
+    <EmbeddedResource Include="Resources/default.nes" LogicalName="default.nes" />
+    <!-- the About window's text: plain text you can edit (see About.cs for the little markup) -->
+    <EmbeddedResource Include="Resources/about.txt" LogicalName="about.txt" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\BrokenNes.Fruity\BrokenNes.Fruity.csproj" />

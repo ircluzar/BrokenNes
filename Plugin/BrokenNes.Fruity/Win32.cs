@@ -32,6 +32,55 @@ public struct INITCOMMONCONTROLSEX
     public uint dwICC;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+public struct RECT
+{
+    public int Left, Top, Right, Bottom;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct PAINTSTRUCT
+{
+    public nint hdc;
+    public int fErase;
+    public RECT rcPaint;
+    public int fRestore, fIncUpdate;
+    public fixed byte rgbReserved[32];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct BITMAPINFOHEADER
+{
+    public uint biSize;
+    public int biWidth, biHeight;
+    public ushort biPlanes, biBitCount;
+    public uint biCompression, biSizeImage;
+    public int biXPelsPerMeter, biYPelsPerMeter;
+    public uint biClrUsed, biClrImportant;
+}
+
+/// <summary>The x64 layout of OPENFILENAMEW (comdlg32).</summary>
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct OPENFILENAMEW
+{
+    public uint lStructSize;
+    public nint hwndOwner, hInstance;
+    public char* lpstrFilter, lpstrCustomFilter;
+    public uint nMaxCustFilter, nFilterIndex;
+    public char* lpstrFile;
+    public uint nMaxFile;
+    public char* lpstrFileTitle;
+    public uint nMaxFileTitle;
+    public char* lpstrInitialDir, lpstrTitle;
+    public uint Flags;
+    public ushort nFileOffset, nFileExtension;
+    public char* lpstrDefExt;
+    public nint lCustData, lpfnHook;
+    public char* lpTemplateName;
+    public nint pvReserved;
+    public uint dwReserved, FlagsEx;
+}
+
 public static unsafe partial class Win32
 {
     public const uint WS_CHILD = 0x40000000;
@@ -60,6 +109,13 @@ public static unsafe partial class Win32
     public const uint TPM_RIGHTBUTTON = 0x2;
     public const uint TPM_RETURNCMD = 0x100;
 
+    public const uint WM_PAINT = 0x000F;
+    public const uint WM_COMMAND = 0x0111;
+    public const uint BS_PUSHBUTTON = 0x0;
+    public const uint OFN_FILEMUSTEXIST = 0x1000, OFN_PATHMUSTEXIST = 0x800, OFN_NOCHANGEDIR = 0x8;
+    public const uint SRCCOPY = 0x00CC0020;
+    public const int BLACK_BRUSH = 4;
+    public const int COLORONCOLOR = 3;
     public const int GWLP_USERDATA = -21;
     public const int COLOR_BTNFACE = 15;
     public const int DEFAULT_GUI_FONT = 17;
@@ -135,4 +191,47 @@ public static unsafe partial class Win32
     [LibraryImport("comctl32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool InitCommonControlsEx(INITCOMMONCONTROLSEX* icc);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint BeginPaint(nint hwnd, PAINTSTRUCT* ps);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool EndPaint(nint hwnd, PAINTSTRUCT* ps);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool InvalidateRect(nint hwnd, RECT* rect, [MarshalAs(UnmanagedType.Bool)] bool erase);
+
+    [LibraryImport("user32.dll")]
+    public static partial int FillRect(nint hdc, RECT* rect, nint brush);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial int SetStretchBltMode(nint hdc, int mode);
+
+    [LibraryImport("gdi32.dll")]
+    public static partial int StretchDIBits(nint hdc, int xDest, int yDest, int wDest, int hDest, int xSrc, int ySrc, int wSrc, int hSrc,
+        void* bits, BITMAPINFOHEADER* info, uint usage, uint rop);
+
+    [LibraryImport("comdlg32.dll", EntryPoint = "GetOpenFileNameW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetOpenFileName(OPENFILENAMEW* ofn);
+
+    /// <summary>Shows the standard Open dialog; <paramref name="filter"/> is pairs separated by '|' (e.g. "NES ROMs|*.nes|All files|*.*").</summary>
+    public static string? ChooseFile(nint owner, string title, string filter)
+    {
+        char* file = stackalloc char[1024];
+        file[0] = '\0';
+        string f = filter.Replace('|', '\0') + "\0\0";
+        fixed (char* pf = f)
+        fixed (char* pt = title)
+        {
+            var ofn = new OPENFILENAMEW
+            {
+                lStructSize = (uint)sizeof(OPENFILENAMEW), hwndOwner = owner, lpstrFilter = pf, nFilterIndex = 1,
+                lpstrFile = file, nMaxFile = 1024, lpstrTitle = pt, Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
+            };
+            return GetOpenFileName(&ofn) ? new string(file) : null;
+        }
+    }
 }

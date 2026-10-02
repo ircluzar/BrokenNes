@@ -66,7 +66,7 @@ public static class Certify
         {
             string label = n.Label ?? $"key{n.Key}";
             double startMs = Ms(n.StartBeat), lenMs = n.LengthBeats * s.MsPerBeat;
-            int ch = n.Color & 3;
+            int ch = n.Channel & 3;
             bool triangle = ch == 2, noise = ch == 3;
             int a = Sample(startMs + 150), b = Sample(startMs + lenMs - 100);
             double rms = Audio.Rms(mono, Sample(startMs + 100), Sample(startMs + lenMs - 60));

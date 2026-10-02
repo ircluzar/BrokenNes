@@ -142,8 +142,8 @@ public static unsafe class FruityNative
         }
         else if (plugin.Editor == null)
         {
-            plugin.Editor = new FruityEditor(plugin, parent);
-            self->EditorHandle = plugin.Editor.Hwnd;
+            plugin.Editor = plugin.CreateEditor(parent);
+            self->EditorHandle = plugin.Editor?.Hwnd ?? 0;
         }
         else
         {

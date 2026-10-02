@@ -6,10 +6,10 @@ using System.Runtime.InteropServices;
 
 namespace BrokenNes.Fruity;
 
-public sealed unsafe class FruityEditor
+public sealed unsafe class FruityEditor : IFruityEditor
 {
     private const string ClassName = "BrokenNesFruityEditor";
-    private const int Width = 520, RowHeight = 30, Margin = 10, ReadoutHeight = 190;
+    private const int LeftWidth = 520, RowHeight = 30, Margin = 10, ReadoutHeight = 190, ButtonHeight = 28, PictureScale = 2;
     private const nuint TimerId = 1;
 
     private static bool registered;
@@ -20,6 +20,13 @@ public sealed unsafe class FruityEditor
     private readonly int[] shown;
     private readonly nint readout;
     private readonly GCHandle self;
+    private readonly IReadOnlyList<EditorButton> buttons;
+    private readonly nint[] buttonHandles;
+    private readonly RECT pictureRect;
+    private readonly byte[]? rgba;
+    private readonly uint[]? bgra;
+    private long shownPictureVersion = -1;
+    private bool hasFrame;
     private string lastReadout = "";
 
     public nint Hwnd { get; }
@@ -33,9 +40,22 @@ public sealed unsafe class FruityEditor
         var module = OwnModule();
         EnsureClass(module);
 
-        int height = Margin * 2 + n * RowHeight + ReadoutHeight;
+        buttons = plugin.EditorButtons;
+        buttonHandles = new nint[buttons.Count];
+        bool picture = plugin.PictureWidth > 0 && plugin.PictureHeight > 0;
+        int picW = picture ? plugin.PictureWidth * PictureScale : 0, picH = picture ? plugin.PictureHeight * PictureScale : 0;
+        int leftHeight = Margin * 2 + n * RowHeight + ReadoutHeight + (buttons.Count > 0 ? ButtonHeight + Margin : 0);
+        int width = LeftWidth + (picture ? Margin + picW + Margin : 0);
+        int height = Math.Max(leftHeight, picture ? picH + Margin * 2 : 0);
+        if (picture)
+        {
+            pictureRect = new RECT { Left = LeftWidth + Margin, Top = Margin, Right = LeftWidth + Margin + picW, Bottom = Margin + picH };
+            rgba = new byte[plugin.PictureWidth * plugin.PictureHeight * 4];
+            bgra = new uint[plugin.PictureWidth * plugin.PictureHeight];
+        }
+
         Hwnd = Win32.CreateWindowEx(0, ClassName, "BrokenNes", Win32.WS_CHILD | Win32.WS_VISIBLE | Win32.WS_CLIPCHILDREN,
-            0, 0, Width, height, parent, 0, module, 0);
+            0, 0, width, height, parent, 0, module, 0);
         self = GCHandle.Alloc(this);
         Win32.SetWindowLongPtr(Hwnd, Win32.GWLP_USERDATA, GCHandle.ToIntPtr(self));
 
@@ -51,7 +71,16 @@ public sealed unsafe class FruityEditor
             valueLabels[i] = Child("STATIC", "", Win32.SS_LEFT, 385, y + 4, 125, 20, module, font);
             shown[i] = int.MinValue;
         }
-        readout = Child("STATIC", "", Win32.SS_LEFT, Margin, Margin + n * RowHeight + 6, Width - Margin * 2, ReadoutHeight - 10, module, font);
+        int readoutY = Margin + n * RowHeight + 6;
+        readout = Child("STATIC", "", Win32.SS_LEFT, Margin, readoutY, LeftWidth - Margin * 2, ReadoutHeight - 10, module, font);
+        int bx = Margin;
+        for (int i = 0; i < buttons.Count; i++)
+        {
+            int w = Math.Max(90, buttons[i].Text.Length * 8 + 24);
+            buttonHandles[i] = Child("BUTTON", buttons[i].Text, Win32.BS_PUSHBUTTON, bx, readoutY + ReadoutHeight, w, ButtonHeight, module, font);
+            Win32.SetWindowLongPtr(buttonHandles[i], -12 /* GWLP_ID */, 1000 + i);
+            bx += w + 8;
+        }
 
         Refresh();
         Win32.SetTimer(Hwnd, TimerId, 30, 0);
@@ -85,12 +114,58 @@ public sealed unsafe class FruityEditor
                 Win32.SendMessage(sliders[i], Win32.TBM_SETPOS, 1, v);
             Win32.SetWindowText(valueLabels[i], plugin.Params[i].Format(v));
         }
+        if (rgba != null)
+        {
+            long v = plugin.PictureVersion;
+            if (v != shownPictureVersion)
+            {
+                shownPictureVersion = v;
+                hasFrame = plugin.CopyPicture(rgba);
+                var r = pictureRect;
+                Win32.InvalidateRect(Hwnd, &r, false);
+            }
+        }
         var text = plugin.GetReadout().Replace("\n", "\r\n");
         if (text != lastReadout)
         {
             lastReadout = text;
             Win32.SetWindowText(readout, text);
         }
+    }
+
+    private void OnCommand(int id, int notification)
+    {
+        int i = id - 1000;
+        if (notification == 0 /* BN_CLICKED */ && i >= 0 && i < buttons.Count)
+            buttons[i].Click();
+    }
+
+    /// <summary>Draws the picture (RGBA converted to the BGRA a DIB wants) scaled into its panel.</summary>
+    private void Paint()
+    {
+        PAINTSTRUCT ps;
+        nint hdc = Win32.BeginPaint(Hwnd, &ps);
+        var r = pictureRect;
+        if (hasFrame)
+        {
+            int count = bgra!.Length;
+            for (int i = 0, o = 0; i < count; i++, o += 4)
+                bgra[i] = (uint)(rgba![o + 2] | (rgba[o + 1] << 8) | (rgba[o] << 16) | (0xFF << 24));
+            var bmi = new BITMAPINFOHEADER
+            {
+                biSize = (uint)sizeof(BITMAPINFOHEADER), biWidth = plugin.PictureWidth, biHeight = -plugin.PictureHeight,
+                biPlanes = 1, biBitCount = 32,
+            };
+            Win32.SetStretchBltMode(hdc, Win32.COLORONCOLOR);
+            fixed (uint* bits = bgra)
+                Win32.StretchDIBits(hdc, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, 0, 0, plugin.PictureWidth, plugin.PictureHeight,
+                    bits, &bmi, 0, Win32.SRCCOPY);
+        }
+        else
+        {
+            Win32.FillRect(hdc, &r, Win32.GetStockObject(Win32.BLACK_BRUSH));
+        }
+        Win32.EndPaint(Hwnd, &ps);
     }
 
     private void OnSlider(nint slider)
@@ -145,6 +220,12 @@ public sealed unsafe class FruityEditor
                         return 0;
                     case Win32.WM_CONTEXTMENU:
                         editor.OnContextMenu(wParam, lParam);
+                        return 0;
+                    case Win32.WM_COMMAND:
+                        editor.OnCommand((int)(wParam & 0xFFFF), (int)((wParam >> 16) & 0xFFFF));
+                        return 0;
+                    case Win32.WM_PAINT when editor.rgba != null:
+                        editor.Paint();
                         return 0;
                 }
             }
