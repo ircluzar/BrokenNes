@@ -999,35 +999,6 @@ public static class SvgFactory
         "  </g>" +
         "</svg>";
 
-    // CPU_Z80 — experimental chip with zigzag and warning elements
-    public static string CPU_Z80 =>
-        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='CPU_Z80'>" +
-        "  <g>" +
-        "    <rect x='10' y='18' width='192' height='94' rx='6' fill='" + ChipFillA + "' stroke='" + Stroke + "' stroke-width='2'/>" +
-        "    <g fill='" + Stroke + "'>" +
-        // irregular pins to suggest experimental nature
-        "      <rect x='20' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='44' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='72' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='96' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='124' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='148' y='14' width='8' height='4' rx='1'/>" +
-        "      <rect x='20' y='112' width='8' height='4' rx='1'/>" +
-        "      <rect x='44' y='112' width='8' height='4' rx='1'/>" +
-        "      <rect x='72' y='112' width='8' height='4' rx='1'/>" +
-        "      <rect x='96' y='112' width='8' height='4' rx='1'/>" +
-        "      <rect x='124' y='112' width='8' height='4' rx='1'/>" +
-        "      <rect x='148' y='112' width='8' height='4' rx='1'/>" +
-        "    </g>" +
-        "    <rect x='64' y='38' width='84' height='54' rx='3' fill='" + ChipFillB + "' stroke='" + AccentToken + "' stroke-width='2' stroke-dasharray='4 2'/>" +
-        // zigzag pattern for Z80
-        "    <path d='M75 50 L85 60 L95 50 L105 60 L115 50 L125 60 L135 50' fill='none' stroke='" + AccentToken + "' stroke-width='2'/>" +
-        "    <path d='M75 75 L85 85 L95 75 L105 85 L115 75 L125 85 L135 75' fill='none' stroke='" + Stroke + "' stroke-width='2' opacity='0.6'/>" +
-        // warning indicator
-        "    <circle cx='130' cy='48' r='4' fill='" + AccentToken + "' opacity='0.8'/>" +
-        "  </g>" +
-        "</svg>";
-
     // PPU_FMC — baseline with tiny tile grid on die
     public static string PPU_FMC =>
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 212 130' role='img' aria-label='PPU_FMC'>" +

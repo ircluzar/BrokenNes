@@ -181,8 +181,8 @@ internal static class AccuracyCoinTests
     /// illegal 6502 opcode as their subject under test. Verified empirically: every one of
     /// BrokenNes's 7 CPU cores throws a "Bad opcode" exception and crashes the whole automated
     /// run somewhere in this range (each at a different specific opcode/PC - CPU_ULQ fails
-    /// earliest at $80, CPU_Z80 fails on frame 1 before the auto-run even starts, matching its
-    /// known joke-core status). Real 6502 silicon never "crashes" on an undefined opcode - it
+    /// earliest at $80, the since-retired joke core CPU_Z80 failed on frame 1 before the auto-run
+    /// even started). Real 6502 silicon never "crashes" on an undefined opcode - it
     /// always does *something* (often NOP-like, sometimes genuinely useful, as this exact test
     /// suite checks for). Pre-skipping these (see AccuracyCoinRunner.RunSingleCombo's
     /// preSkipAddresses) is what makes it possible to reach the other 75 tests (PPU/APU/timing/

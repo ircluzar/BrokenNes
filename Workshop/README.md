@@ -372,8 +372,8 @@ Each result reports pass/fail/not-run/skipped counts per test (with the sub-chec
 fails), plus `RetryCount`/`AutoSkippedTests` — see the next two points for why those exist.
 
 **Every CPU core crashes on some illegal/unofficial 6502 opcode** — verified across all 7: each
-throws a different "Bad opcode" exception at a different point (`CPU_ULQ` earliest, `CPU_Z80`
-immediately, matching its known joke-core status). Real 6502 silicon never crashes on an
+throws a different "Bad opcode" exception at a different point (`CPU_ULQ` earliest; the joke core `CPU_Z80`, since retired,
+failed immediately). Real 6502 silicon never crashes on an
 undefined opcode. Left unhandled, this would truncate every single combination's run within the
 first ~20 of 141 tests, before almost all PPU/APU/timing tests get a chance to run at all. The
 harness pre-skips the 66 "Unofficial Instructions"/"Unofficial Immediates" tests by default via
@@ -393,8 +393,8 @@ frame budget every time — this is what makes the retry loop fast enough to run
 
 **Parallelism**: `--matrix` runs the cross-product concurrently (`Environment.ProcessorCount - 2`
 workers) within one process — each `NES` instance is fully independent, confirmed during
-Workshop's design research. Three known process-wide mutable statics (`APU_WF`'s MIDI singleton,
-`APU_SPD2`'s unsynchronized lazy LUT build, `CPU_Z80`'s shared `Random`) are pre-warmed
+Workshop's design research. Two known process-wide mutable statics (`APU_WF`'s MIDI singleton and
+`APU_SPD2`'s unsynchronized lazy LUT build; `CPU_Z80`'s shared `Random` was a third before that core was retired) are pre-warmed
 single-threaded before the parallel run starts, so their one-time lazy init can't race. Results
 checkpoint to `--out` every 50 completions so a long run doesn't lose everything if interrupted.
 

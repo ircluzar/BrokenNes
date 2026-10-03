@@ -13,7 +13,7 @@
        for old mobile devices. Add a line here to ship another core; delete one to drop it.
 
        Deliberately NOT rooted: the 16-core APU zoo (949KB of source, the single largest chunk),
-       the gimmick PPUs (CUBE/CUBEX/EXE/BFR/IMG), and CPU_Z80. APU_WF/APU_MNES ARE rooted despite
+       and the gimmick PPUs (CUBE/CUBEX/EXE/BFR/IMG). APU_WF/APU_MNES ARE rooted despite
        being "Enhanced" cores: they're genuinely web-native (JS SoundFont/FluidSynth bridge via
        nesInterop.noteEvent, no NAudio/MeltySynth - see the *.Web.cs sibling files under
        Windows/NesEmulator/apus/), not dead weight like the rest of the zoo. Without preserve="all"

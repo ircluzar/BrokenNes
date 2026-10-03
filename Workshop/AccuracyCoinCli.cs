@@ -135,9 +135,9 @@ internal static class AccuracyCoinCli
         int total = combos.Count;
 
         // Each combo is an independent NES instance (CoreRegistry builds a fresh type-map per
-        // Bus, verified during Workshop's design research) EXCEPT three known process-wide
-        // mutable statics: APU_WF's shared MidiOut/init-attempted flag, APU_SPD2's unsynchronized
-        // lazy mix-LUT build, and CPU_Z80's shared non-thread-safe Random. Pre-warm all three
+        // Bus, verified during Workshop's design research) EXCEPT two known process-wide
+        // mutable statics: APU_WF's shared MidiOut/init-attempted flag and APU_SPD2's unsynchronized
+        // lazy mix-LUT build (CPU_Z80's shared Random was a third, before that core was retired). Pre-warm both
         // single-threaded before going parallel, so their one-time lazy init can't race.
         PreWarmSharedStatics(romBytes);
 
