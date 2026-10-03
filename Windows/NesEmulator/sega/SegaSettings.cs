@@ -24,8 +24,8 @@ public static class SegaSettings
     /// which model; the lookup is here so the table is data, not code.</summary>
     public static readonly Dictionary<string, GenesisModel> GenesisModelByProductCode = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The model a game runs on when nothing is chosen: the later revisions behave the same for nearly everything, and YM3438 sound (Model 2/3) has no ladder artefact.</summary>
-    public const GenesisModel GenesisModelFallback = GenesisModel.Model2;
+    /// <summary>The model a game runs on when nothing is chosen: Model 1, the original board (plan decision B: start every game on Model 1 and add per-title overrides as tests show a game needs another).</summary>
+    public const GenesisModel GenesisModelFallback = GenesisModel.Model1;
 
     private static T FromEnvironment<T>(string name, T fallback) where T : struct, Enum
     {

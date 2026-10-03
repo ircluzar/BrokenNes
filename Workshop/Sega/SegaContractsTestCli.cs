@@ -115,13 +115,13 @@ internal static class SegaContractsTestCli
         try
         {
             SegaSettings.GenesisModelDefault = GenesisModelChoice.Auto;
-            Check("Genesis model: Auto falls back to Model 2", SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model2);
+            Check("Genesis model: Auto falls back to Model 1 (plan decision B)", SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model1);
             Check("Genesis model: a per-game choice wins", SegaSettings.ResolveGenesisModel(GenesisModelChoice.Model1, FakeGenesis("U")) == GenesisModel.Model1 && SegaSettings.ResolveGenesisModel(GenesisModelChoice.Model3, FakeGenesis("U")) == GenesisModel.Model3);
-            SegaSettings.GenesisModelDefault = GenesisModelChoice.Model1;
-            Check("Genesis model: the process default applies when the game has no choice, and a game's own Auto defers to it", SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model1 && SegaSettings.ResolveGenesisModel(GenesisModelChoice.Auto, FakeGenesis("U")) == GenesisModel.Model1);
+            SegaSettings.GenesisModelDefault = GenesisModelChoice.Model3;
+            Check("Genesis model: the process default applies when the game has no choice, and a game's own Auto defers to it", SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model3 && SegaSettings.ResolveGenesisModel(GenesisModelChoice.Auto, FakeGenesis("U")) == GenesisModel.Model3);
             SegaSettings.GenesisModelDefault = GenesisModelChoice.Auto;
-            SegaSettings.GenesisModelByProductCode["00001009-00"] = GenesisModel.Model1;
-            Check("Genesis model: the per-title table is consulted by product code", SegaSettings.GenesisProductCode(FakeGenesis("U")) == "00001009-00" && SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model1 && SegaSettings.ResolveGenesisModel(null, FakeGenesis("U", "GM 00004049-01")) == GenesisModel.Model2);
+            SegaSettings.GenesisModelByProductCode["00001009-00"] = GenesisModel.Model3;
+            Check("Genesis model: the per-title table is consulted by product code", SegaSettings.GenesisProductCode(FakeGenesis("U")) == "00001009-00" && SegaSettings.ResolveGenesisModel(null, FakeGenesis("U")) == GenesisModel.Model3 && SegaSettings.ResolveGenesisModel(null, FakeGenesis("U", "GM 00004049-01")) == GenesisModel.Model1);
         }
         finally { SegaSettings.GenesisModelDefault = saved; SegaSettings.GenesisModelByProductCode.Clear(); }
 
