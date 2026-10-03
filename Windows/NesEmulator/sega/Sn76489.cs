@@ -3,8 +3,9 @@ using System.IO;
 
 namespace NesEmulator.Sega;
 
-/// <summary>Which SN76489: the Sega part (Master System, Game Gear, Genesis; 16-bit noise register) or the discrete Texas Instruments one (SG-1000, SC-3000; 15-bit).</summary>
-public enum PsgVariant { Sega, Ti }
+/// <summary>Which SN76489: the Sega part built into the Master System and Game Gear VDPs (16-bit noise register, a tone period of 0 or 1 holds the output high), the Genesis VDP's
+/// (the same noise register, but a period of 0 is a period of 1 and the output flips every PSG clock), or the discrete Texas Instruments one (SG-1000, SC-3000; 15-bit noise).</summary>
+public enum PsgVariant { Sega, MegaDrive, Ti }
 
 /// <summary>
 /// The SN76489 programmable sound generator: three square-wave tone channels and a noise channel, each with a 4-bit attenuator. It sits behind port $7F (Master System,
@@ -78,6 +79,8 @@ public sealed class Sn76489 : IHubVoiceSource
     public int NoiseControl => noise;
     public int StereoMask => stereo;
     public int NoiseRegisterValue => shift;
+    /// <summary>The raw output level of each channel before attenuation, one bit each: bit 3 tone 1, bit 2 tone 2, bit 1 tone 3, bit 0 noise. This is what an oracle comparison reads.</summary>
+    public int RawState => (tone[0] ? 8 : 0) | (tone[1] ? 4 : 0) | (tone[2] ? 2 : 0) | ((shift & 1) != 0 ? 1 : 0);
     /// <summary>The level a channel is at right now (0 when low or silent), 0..1.</summary>
     public float ChannelLevel(int channel) => channel < 3 ? (tone[channel] ? Level[volume[channel]] : 0f) : ((shift & 1) != 0 ? Level[volume[3]] : 0f);
 
@@ -118,7 +121,7 @@ public sealed class Sn76489 : IHubVoiceSource
     /// <summary>The Game Gear stereo port ($06).</summary>
     public void WriteStereo(byte value) { stereo = value; SetOutput(); }
 
-    private void ReloadNoise() => shift = variant == PsgVariant.Sega ? 0x8000 : 0x4000;
+    private void ReloadNoise() => shift = variant == PsgVariant.Ti ? 0x4000 : 0x8000;
 
     private int NoiseRate() => (noise & 3) switch
     {
@@ -165,7 +168,7 @@ public sealed class Sn76489 : IHubVoiceSource
     private void ShiftNoise()
     {
         bool white = (noise & 4) != 0;
-        if (variant == PsgVariant.Sega)
+        if (variant != PsgVariant.Ti)
         {
             int feedback = white ? ((shift ^ (shift >> 3)) & 1) : (shift & 1);   // taps 0 and 3
             shift = (shift >> 1) | (feedback << 15);

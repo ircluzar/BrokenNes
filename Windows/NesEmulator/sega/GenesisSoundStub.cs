@@ -24,7 +24,7 @@ public sealed class GenesisSoundStub : IGenesisSound
     public GenesisSoundStub(SegaMachine machine)
     {
         this.machine = machine;
-        psg = new Sn76489(machine.Timeline.MasterHz / machine.Timeline.Psg.Divider, machine.SampleRate);
+        psg = new Sn76489(machine.Timeline.MasterHz / machine.Timeline.Psg.Divider, machine.SampleRate, PsgVariant.MegaDrive);
     }
 
     public string CoreName => "STUB";
