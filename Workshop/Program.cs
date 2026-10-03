@@ -55,6 +55,7 @@ internal static class Program
         }
         if (args.Length > 0 && args[0].Equals("--sega-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaFoundationTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-chips-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaChipsTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--z80test", StringComparison.OrdinalIgnoreCase)) return Sega.Z80TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--console-catalog", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Catalog();
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--snesrun", StringComparison.OrdinalIgnoreCase))
