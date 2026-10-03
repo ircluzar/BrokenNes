@@ -1782,13 +1782,20 @@ window.nesInterop = {
         try { if(this._sfDiagTimer){ clearInterval(this._sfDiagTimer); this._sfDiagTimer=null; } } catch{}
         if(this._sfDiagOverlay){ try { this._sfDiagOverlay.remove(); } catch{} this._sfDiagOverlay=null; }
     },
+    // Which file names the ROM manager takes. The page's own file input is the single source of truth: its accept list is built from the consoles that are on
+    // (the Sega extensions only appear when the Sega preview is), so a Sega file is neither cached nor offered while the preview is off.
+    romNameAllowed: function (name) {
+        const accept = (document.getElementById('rom-upload')?.accept || '.nes,.sfc,.smc,.gb,.gbc,.zip').toLowerCase();
+        const lower = String(name).toLowerCase();
+        return accept.split(',').some(x => { x = x.trim(); return x.startsWith('.') && lower.endsWith(x); });
+    },
     readSelectedRoms: async function (inputElement) {
         try {
             const el = inputElement instanceof Element ? inputElement : (inputElement && inputElement.id ? document.getElementById(inputElement.id) : null);
             const files = el && el.files ? Array.from(el.files) : [];
             const results = [];
             for (const f of files) {
-                if (!/\.(nes|sfc|smc|gb|gbc|zip)$/i.test(f.name)) continue;
+                if (!this.romNameAllowed(f.name)) continue;
                 const data = await f.arrayBuffer();
                 // size guard (4MB)
                 if (data.byteLength > 16 * 1024 * 1024) continue;
@@ -1842,7 +1849,7 @@ window.nesInterop = {
             highlight(false);
             const dt = e.dataTransfer;
             if (!dt || !dt.files) return;
-            const files = Array.from(dt.files).filter(f=>/\.(nes|sfc|smc|gb|gbc|zip)$/i.test(f.name));
+            const files = Array.from(dt.files).filter(f=>window.nesInterop.romNameAllowed(f.name));
             const results=[];
             for (const f of files){
                 try {
