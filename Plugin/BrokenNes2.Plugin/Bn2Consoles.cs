@@ -65,7 +65,13 @@ public static class Cx
 
     public static ConsoleKind Kind(int console) => console switch { GameBoy => ConsoleKind.GameBoy, Snes => ConsoleKind.Snes, _ => ConsoleKind.Nes };
 
-    public static int FromKind(ConsoleKind k) => k switch { ConsoleKind.Snes => Snes, ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => GameBoy, _ => Nes };
+    public static int FromKind(ConsoleKind k) => k switch
+    {
+        ConsoleKind.Snes => Snes,
+        ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => GameBoy,
+        ConsoleKind.Nes => Nes,
+        _ => throw new NotSupportedException($"the plugin has no {NesEmulator.Systems.Consoles.DisplayName(k)} console yet"),   // never quietly a NES
+    };
 
     /// <summary>The CPU and PPU a game of this console runs on: the best of its own family.</summary>
     public static string BestCpu(int console) => CoreCatalog.Default(Kind(console), CoreSlot.Cpu);

@@ -75,6 +75,8 @@ namespace BrokenNes
             Status = status;
             ShaderProvider = shaderProvider;
             Nav = nav;
+            // The Sega consoles are hidden until their cores exist; ?sega=1 shows them (each runs a labelled placeholder) so the plumbing can be exercised.
+            if (nav.Uri.Contains("sega=1", StringComparison.OrdinalIgnoreCase)) NesEmulator.Systems.Consoles.SegaPreview = true;
             _inputSettingsService = inputSettingsService;
             _gameSaveService = gameSaveService;
             _batterySaveService = batterySaveService;

@@ -157,6 +157,10 @@
     <Compile Include="$(NesRoot)gb\**\*.cs"      LinkBase="NesEmulator\gb" />
     <Compile Include="$(NesRoot)mix\**\*.cs"     LinkBase="NesEmulator\mix" />
     <Compile Include="$(NesRoot)systems\**\*.cs" LinkBase="NesEmulator\systems" />
+    <!-- Sega consoles (Master System / Game Gear / Genesis): shared chips (Z80, SN76489, ...), then one folder per board family. -->
+    <Compile Include="$(NesRoot)sega\**\*.cs"     LinkBase="NesEmulator\sega" />
+    <Compile Include="$(NesRoot)sms\**\*.cs"     LinkBase="NesEmulator\sms" />
+    <Compile Include="$(NesRoot)md\**\*.cs"      LinkBase="NesEmulator\md" />
     <Compile Include="$(NesRoot)Shaders\**\*.cs"           LinkBase="NesEmulator\Shaders" />
 
     <!-- Models shared with the desktop build. -->

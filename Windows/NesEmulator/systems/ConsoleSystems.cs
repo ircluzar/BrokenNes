@@ -6,10 +6,18 @@ using System.Linq;
 
 namespace NesEmulator.Systems;
 
-/// <summary>The consoles BrokenNes 2 runs. Game Boy and Game Boy Color share cartridges; the model differs.</summary>
-public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor }
+/// <summary>
+/// The consoles BrokenNes 2 runs. Game Boy and Game Boy Color share cartridges; the model differs. The Sega consoles (Master System, Game Gear,
+/// Genesis / Mega Drive) are appended: stored settings use <see cref="Consoles.Key"/>, never these numbers. They stay out of every menu, ROM
+/// detection and file filter until their cores exist (see <see cref="Consoles.IsAvailable"/>).
+/// </summary>
+public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor, MasterSystem, GameGear, Genesis }
 
 /// <summary>One controller, the union of every console's buttons. Each console reads the ones it has.</summary>
+/// <remarks>
+/// Sega: Master System / Game Gear buttons 1 and 2 are A and B; the SMS Pause button is Select; the Game Gear Start is Start. The Genesis pad is A, B, C,
+/// X, Y, Z, Mode and Start (C, Z and Mode are the three bits added for it). One bit (15) is still free.
+/// </remarks>
 [Flags]
 public enum PadButtons : ushort
 {
@@ -17,6 +25,7 @@ public enum PadButtons : ushort
     Up = 1 << 0, Down = 1 << 1, Left = 1 << 2, Right = 1 << 3,
     A = 1 << 4, B = 1 << 5, X = 1 << 6, Y = 1 << 7, L = 1 << 8, R = 1 << 9,
     Start = 1 << 10, Select = 1 << 11,
+    C = 1 << 12, Z = 1 << 13, Mode = 1 << 14,
 }
 
 /// <summary>The three swappable parts of a console.</summary>
@@ -24,20 +33,55 @@ public enum CoreSlot { Cpu, Ppu, Apu }
 
 public static class Consoles
 {
-    public static readonly ConsoleKind[] All = { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor };
+    // The Sega consoles are built behind a switch. Until a console's core is finished it is invisible: not in menus (All), not recognised by ROM
+    // detection, not in a file filter. A build with unfinished Sega work therefore behaves exactly like one without it. The foundation preview
+    // (BROKENNES_SEGA=1 on the desktop and Workshop, or SegaPreview = true from Lite's page) shows all three, each running a placeholder session so the
+    // plumbing can be exercised end to end. A track sets its console's Ready flag when its core is certified (and replaces the placeholder in
+    // ConsoleSessions.Create at the same time: Create refuses a Ready console that still has none).
+    public static readonly bool MasterSystemReady = false, GameGearReady = false, GenesisReady = false;
+
+    public static bool SegaPreview { get; set; } = Environment.GetEnvironmentVariable("BROKENNES_SEGA") == "1";
+
+    public static bool IsAvailable(ConsoleKind k) => k switch
+    {
+        ConsoleKind.MasterSystem => MasterSystemReady || SegaPreview,
+        ConsoleKind.GameGear => GameGearReady || SegaPreview,
+        ConsoleKind.Genesis => GenesisReady || SegaPreview,
+        _ => true,
+    };
+
+    /// <summary>True when a finished core (not just the preview) backs the console.</summary>
+    public static bool IsReady(ConsoleKind k) => k switch
+    {
+        ConsoleKind.MasterSystem => MasterSystemReady,
+        ConsoleKind.GameGear => GameGearReady,
+        ConsoleKind.Genesis => GenesisReady,
+        _ => true,
+    };
+
+    private static readonly ConsoleKind[] Every =
+        { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis };
+
+    /// <summary>The consoles the apps offer: the finished ones (plus the Sega ones while the preview is on).</summary>
+    public static ConsoleKind[] All => Every.Where(IsAvailable).ToArray();
 
     public static string DisplayName(ConsoleKind k) => k switch
     {
         ConsoleKind.Nes => "NES",
         ConsoleKind.Snes => "SNES",
         ConsoleKind.GameBoy => "Game Boy",
+        ConsoleKind.MasterSystem => "Master System",
+        ConsoleKind.GameGear => "Game Gear",
+        ConsoleKind.Genesis => "Genesis / Mega Drive",
         _ => "Game Boy Color",
     };
 
-    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc").</summary>
+    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc", "sms", "gg", "md").</summary>
     public static string Key(ConsoleKind k) => k switch
     {
-        ConsoleKind.Nes => "nes", ConsoleKind.Snes => "snes", ConsoleKind.GameBoy => "gb", _ => "gbc",
+        ConsoleKind.Nes => "nes", ConsoleKind.Snes => "snes", ConsoleKind.GameBoy => "gb",
+        ConsoleKind.MasterSystem => "sms", ConsoleKind.GameGear => "gg", ConsoleKind.Genesis => "md",
+        _ => "gbc",
     };
 
     public static ConsoleKind FromKey(string? key) => (key ?? "").ToLowerInvariant() switch
@@ -45,27 +89,42 @@ public static class Consoles
         "snes" or "sfc" => ConsoleKind.Snes,
         "gb" or "gameboy" => ConsoleKind.GameBoy,
         "gbc" or "gameboycolor" => ConsoleKind.GameBoyColor,
+        "sms" or "mastersystem" or "master system" => ConsoleKind.MasterSystem,
+        "gg" or "gamegear" or "game gear" => ConsoleKind.GameGear,
+        "md" or "genesis" or "megadrive" or "mega drive" or "gen" => ConsoleKind.Genesis,
         _ => ConsoleKind.Nes,
     };
 
-    /// <summary>The core family that is native to a console ("NES", "SNES", "Game Boy").</summary>
+    /// <summary>The core family that is native to a console ("NES", "SNES", "Game Boy", "Master System", "Genesis").</summary>
     public static string Family(ConsoleKind k) => k switch
     {
-        ConsoleKind.Nes => "NES", ConsoleKind.Snes => "SNES", _ => "Game Boy",
+        ConsoleKind.Nes => "NES", ConsoleKind.Snes => "SNES",
+        ConsoleKind.MasterSystem or ConsoleKind.GameGear => "Master System",
+        ConsoleKind.Genesis => "Genesis",
+        _ => "Game Boy",
     };
 
     public static bool IsGameBoy(ConsoleKind k) => k is ConsoleKind.GameBoy or ConsoleKind.GameBoyColor;
+    /// <summary>Master System or Game Gear (one family of chips: Z80, the SMS VDP, the SN76489).</summary>
+    public static bool IsMasterSystemFamily(ConsoleKind k) => k is ConsoleKind.MasterSystem or ConsoleKind.GameGear;
+    public static bool IsSega(ConsoleKind k) => k is ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis;
 
-    /// <summary>File extensions each console's ROMs use (lower case, with the dot).</summary>
+    /// <summary>File extensions each console's ROMs use (lower case, with the dot). Master System covers the SG-1000 (.sg), SC-3000 (.sc) and Mark III.</summary>
     public static string[] Extensions(ConsoleKind k) => k switch
     {
         ConsoleKind.Nes => new[] { ".nes" },
         ConsoleKind.Snes => new[] { ".sfc", ".smc" },
+        ConsoleKind.MasterSystem => new[] { ".sms", ".sg", ".sc" },
+        ConsoleKind.GameGear => new[] { ".gg" },
+        ConsoleKind.Genesis => new[] { ".md", ".gen", ".smd", ".bin" },
         _ => new[] { ".gb", ".gbc" },
     };
 
-    /// <summary>Every ROM extension BrokenNes 2 opens, plus .zip (a Game Boy or SNES ROM inside is unpacked).</summary>
-    public static readonly string[] AllRomExtensions = { ".nes", ".sfc", ".smc", ".gb", ".gbc", ".zip" };
+    /// <summary>Every ROM extension BrokenNes 2 opens (the Sega ones only once available), plus .zip (a ROM inside is unpacked).</summary>
+    public static string[] AllRomExtensions =>
+        new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc" }
+            .Concat(new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis }.Where(IsAvailable).SelectMany(Extensions))
+            .Append(".zip").ToArray();
 }
 
 /// <summary>Works out which console a ROM belongs to, from its contents first and its file name second.</summary>
@@ -96,6 +155,8 @@ public static class RomDetect
         if (rom.Length >= 16 && rom[0] == 'N' && rom[1] == 'E' && rom[2] == 'S' && rom[3] == 0x1A) return ConsoleKind.Nes;
         if (rom.Length >= 0x150 && rom.AsSpan(0x104, NintendoLogoStart.Length).SequenceEqual(NintendoLogoStart))
             return (rom[0x143] & 0x80) != 0 ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy;
+        // Sega: only while the console is available (a hidden console must not capture ROMs the other paths would have handled)
+        if (NesEmulator.Sega.SegaRomFormat.Detect(rom, fileName) is { } sega && Consoles.IsAvailable(sega)) return sega;
         string ext = Path.GetExtension(fileName).ToLowerInvariant();
         return ext switch
         {
@@ -179,6 +240,29 @@ public static class CoreCatalog
                 }
                 break;
             }
+            // Sega: own cores only for now (the bridges to and from the NES parts arrive with the bridge track). Ids follow the plan: the CPU slot names the
+            // chip (Z80, M68K), the picture and sound slots name the console (SMS / GG / MD).
+            case ConsoleKind.MasterSystem:
+            case ConsoleKind.GameGear:
+            {
+                bool gg = console == ConsoleKind.GameGear;
+                string fam = Consoles.Family(console);
+                switch (slot)
+                {
+                    case CoreSlot.Cpu: list.Add(new("Z80", "Z80 (stock clock)", fam)); break;
+                    case CoreSlot.Ppu: list.Add(gg ? new("GG", "GG (Game Gear picture chip)", fam) : new("SMS", "SMS (Master System picture chip)", fam)); break;
+                    default: list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam)); break;
+                }
+                break;
+            }
+            case ConsoleKind.Genesis:
+                switch (slot)
+                {
+                    case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
+                    case CoreSlot.Ppu: list.Add(new("MD", "MD (Genesis picture chip)", "Genesis")); break;
+                    default: list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis")); break;
+                }
+                break;
             case ConsoleKind.Snes:
                 switch (slot)
                 {

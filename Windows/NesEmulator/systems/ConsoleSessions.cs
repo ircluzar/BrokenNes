@@ -16,8 +16,23 @@ public static class ConsoleSessions
     {
         ConsoleKind.Snes => new SnesSession(rom, cpu, ppu, apu, loadFirmware),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
+        ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
+
+    /// <summary>
+    /// The Sega consoles. While a console has no core, only the foundation preview can start it, and what it starts is a clearly labelled placeholder. A
+    /// track replaces the placeholder with its session in the same change that sets the console's Ready flag; a Ready console that still has no session is a
+    /// bug, so it refuses rather than quietly running the placeholder.
+    /// </summary>
+    private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu)
+    {
+        if (Consoles.IsReady(console))
+            throw new InvalidOperationException($"{Consoles.DisplayName(console)} is marked ready but ConsoleSessions.CreateSega has no session for it");
+        if (!Consoles.IsAvailable(console))
+            throw new NotSupportedException($"{Consoles.DisplayName(console)} is not supported yet");
+        return new NesEmulator.Sega.SegaPlaceholderSession(console, rom, cpu, ppu, apu);
+    }
 
     internal static string Sha1(byte[] data) => Convert.ToHexString(SHA1.HashData(data)).ToLowerInvariant();
 

@@ -444,7 +444,7 @@
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
             </div>
-            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs, or a .zip holding one - the console follows the ROM.</div>
+            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs@(Consoles.SegaPreview ? " (Sega preview on: .sms .sg .sc .gg .md .gen .smd)" : ""), or a .zip holding one - the console follows the ROM.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
                 <table id="rom-table" class="table table-sm table-dark align-middle mb-0 rom-table">
                     <thead class="table-secondary text-dark" style="position:sticky;top:0;">
@@ -484,7 +484,7 @@
                 <div>Uploaded: @emu!.Controller.UploadedRoms.Count</div>
                 <div>Selected: @emu!.Controller.CurrentRomName</div>
             </div>
-            <input @ref="fileInput" id="rom-upload" type="file" accept=".nes,.sfc,.smc,.gb,.gbc,.zip" class="d-none" @onchange="(()=>emu!.ImportRomsFromInputAsync(fileInput))" multiple />
+            <input @ref="fileInput" id="rom-upload" type="file" accept="@(string.Join(",", Consoles.AllRomExtensions))" class="d-none" @onchange="(()=>emu!.ImportRomsFromInputAsync(fileInput))" multiple />
         </div>
     </details>
 

@@ -264,6 +264,8 @@ public sealed partial class Emulator : IDisposable
             var rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out string inner);
             var kind = RomDetect.Detect(rom, inner);
             if (kind == null) { RomStatus = "not a NES, Game Boy or SNES ROM: " + name; return RomStatus; }
+            // The Sega consoles join the plugin in a later wave; Cx.FromKind would quietly call such a ROM a NES game.
+            if (Consoles.IsSega(kind.Value)) { RomStatus = "Sega consoles are not supported in the plugin yet: " + name; return RomStatus; }
             console = Cx.FromKind(kind.Value);
         }
         catch (Exception e)

@@ -191,7 +191,14 @@ namespace BrokenNes
         }
 
         // ------------------------------------------------------------------ battery saves (IndexedDB kv)
-        private string SessionSaveKey(IConsoleSession s) => s.Console == ConsoleKind.Snes ? $"battery_v1:{s.GameId}.srm" : $"battery_v1:gb{s.GameId}.sav";
+        private string SessionSaveKey(IConsoleSession s) => s.Console switch
+        {
+            ConsoleKind.Snes => $"battery_v1:{s.GameId}.srm",
+            ConsoleKind.MasterSystem => $"battery_v1:sms{s.GameId}.sav",
+            ConsoleKind.GameGear => $"battery_v1:gg{s.GameId}.sav",
+            ConsoleKind.Genesis => $"battery_v1:md{s.GameId}.srm",
+            _ => $"battery_v1:gb{s.GameId}.sav",
+        };
 
         private async Task LoadSessionBatteryAsync()
         {

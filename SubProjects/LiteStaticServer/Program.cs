@@ -17,7 +17,7 @@ var app = builder.Build();
 
 var types = new FileExtensionContentTypeProvider();
 types.Mappings[".wasm"] = "application/wasm";
-foreach (var ext in new[] { ".dat", ".blat", ".dll", ".pdb", ".webcil", ".nes", ".sfc", ".smc", ".gb", ".gbc", ".zip", ".onnx", ".sf2" })
+foreach (var ext in new[] { ".dat", ".blat", ".dll", ".pdb", ".webcil", ".nes", ".sfc", ".smc", ".gb", ".gbc", ".sms", ".sg", ".sc", ".gg", ".md", ".gen", ".smd", ".bin", ".zip", ".onnx", ".sf2" })
     types.Mappings[ext] = "application/octet-stream";
 
 app.Run(async ctx =>

@@ -29,12 +29,30 @@ namespace BrokenNes.Windows
             public string? Base64 { get; set; }
         }
 
+        /// <summary>The Load ROM file filter: every console that is available (the Sega ones only once their cores exist), then the archives and everything.</summary>
+        private static string RomDialogFilter()
+        {
+            var all = NesEmulator.Systems.Consoles.AllRomExtensions;
+            string Pattern(IEnumerable<string> ext) => string.Join(";", ext.Select(x => "*" + x));
+            var parts = new List<string> { $"All ROMs ({Pattern(all)})|{Pattern(all)}" };
+            foreach (var k in NesEmulator.Systems.Consoles.All)
+            {
+                var ext = NesEmulator.Systems.Consoles.Extensions(k);
+                if (k == NesEmulator.Systems.ConsoleKind.GameBoyColor) continue;   // .gb and .gbc are one "Game Boy / Color" entry
+                string label = k == NesEmulator.Systems.ConsoleKind.GameBoy ? "Game Boy / Color ROMs" : NesEmulator.Systems.Consoles.DisplayName(k) + " ROMs";
+                if (k == NesEmulator.Systems.ConsoleKind.GameBoy) ext = ext.Concat(NesEmulator.Systems.Consoles.Extensions(NesEmulator.Systems.ConsoleKind.GameBoyColor)).Distinct().ToArray();
+                parts.Add($"{label} ({Pattern(ext)})|{Pattern(ext)}");
+            }
+            parts.Add("Zip archives (*.zip)|*.zip");
+            parts.Add("All files (*.*)|*.*");
+            return string.Join("|", parts);
+        }
+
         private void LoadRom_Click(object? sender, EventArgs e)
         {
             using var openFileDialog = new OpenFileDialog
             {
-                Filter = "All ROMs (*.nes;*.sfc;*.smc;*.gb;*.gbc;*.zip)|*.nes;*.sfc;*.smc;*.gb;*.gbc;*.zip" +
-                         "|NES ROMs (*.nes)|*.nes|SNES ROMs (*.sfc;*.smc)|*.sfc;*.smc|Game Boy / Color ROMs (*.gb;*.gbc)|*.gb;*.gbc|Zip archives (*.zip)|*.zip|All files (*.*)|*.*",
+                Filter = RomDialogFilter(),
                 Title = $"Load a ROM ({NesEmulator.Systems.Consoles.DisplayName(SelectedConsole)} selected; the console follows the ROM)"
             };
             

@@ -403,9 +403,15 @@ namespace BrokenNes.Windows
         // Game Boy: %APPDATA%\BrokenNes\GbSaves\<sha1>.sav (with the RTC trailer; BGB/VBA-compatible).
         private static string AppDataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes");
 
-        private string? SessionSavePath(IConsoleSession s) => s.Console == ConsoleKind.Snes
-            ? Path.Combine(AppDataDir, "SnesSaves", s.GameId + ".srm")
-            : Path.Combine(AppDataDir, "GbSaves", s.GameId + ".sav");
+        // Sega: SmsSaves\<sha1>.sav, GgSaves\<sha1>.sav (cartridge RAM / EEPROM), MdSaves\<sha1>.srm (SRAM / EEPROM, kept in the Genesis cartridge's own layout).
+        private string? SessionSavePath(IConsoleSession s) => s.Console switch
+        {
+            ConsoleKind.Snes => Path.Combine(AppDataDir, "SnesSaves", s.GameId + ".srm"),
+            ConsoleKind.MasterSystem => Path.Combine(AppDataDir, "SmsSaves", s.GameId + ".sav"),
+            ConsoleKind.GameGear => Path.Combine(AppDataDir, "GgSaves", s.GameId + ".sav"),
+            ConsoleKind.Genesis => Path.Combine(AppDataDir, "MdSaves", s.GameId + ".srm"),
+            _ => Path.Combine(AppDataDir, "GbSaves", s.GameId + ".sav"),
+        };
 
         private void LoadSessionSave()
         {
