@@ -6,7 +6,7 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 |---|---|---|
 | Desktop | `Windows/` | `UAT/entrypoints/desktop-smoke.ps1` |
 | Web (Lite) | `WebLite/` | `UAT/entrypoints/web-smoke.ps1` |
-| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (37 checks) |
+| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (40 checks) |
 | Plugin in FL Studio | the same DLL | `UAT/plugin/fl/fl-certify.ps1` |
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
@@ -36,17 +36,45 @@ plugin: a DLL that exports `CreatePlugInstance` and hands FL an object shaped li
 
 ## Consoles and sound chips
 
-An emulator is of one **console** (the *Console* parameter and the three buttons in the editor): **NES**, **Game Boy** or **SNES**. A console
+An emulator is of one **console** (the *Console* parameter and the four buttons in the editor): **NES**, **Game Boy**, **SNES** or **SMS** (the Master System). A console
 decides:
-- **the sound chips it lists:** the 17 NES cores (FIX first), the Game Boy chips (DMG, DMGS: 8 channels) and the SNES chip (S-DSP). Picking a
+- **the sound chips it lists:** the 17 NES cores (FIX first), the Game Boy chips (DMG, DMGS: 8 channels), the SNES chip (S-DSP) and the Master System chip (SMS: the SN76489 PSG, see below). Picking a
   chip of another console switches the console, and switching the console picks its first chip. The MNES and WF cores (MIDI-style, not chips) are not offered.
 - **the CPU and PPU of a running game:** not choices any more. Each console gets the best of its own family from BrokenNes's `CoreCatalog`
   (FIX for the NES; the real Game Boy and SNES cores otherwise).
 - **what ROM mode runs:** a NES, Game Boy (also Game Boy Color) or SNES game, through BrokenNes's console sessions. The picture is scaled by a whole
   number to fill the screen (Game Boy 3x, NES and SNES 2x). A Game Boy or SNES game plays through the **Mix** channel; per-channel stems exist for NES games only.
   The Game list takes a `.nes`, `.gb`, `.gbc`, `.sfc`, `.smc` or `.zip` and switches the emulator to the file's console by itself.
-- **Direct mode:** every console's chip takes the NES registers (the Game Boy and SNES chips are the register bridges DMG/DMGS/SNES), so the four
+- **Direct mode:** every console's chip takes the NES registers (the Game Boy, SNES and Master System chips are the register bridges DMG/DMGS/SNES/SMS), so the four
   tone channels exist on all of them.
+
+### The Master System console (the SMS chip)
+
+The chip is the Sega **SN76489 PSG** (three square-wave tones and a noise channel, 4-bit attenuators in 2 dB steps), reached the way the Game Boy and SNES chips are: through
+the bridge core `APU_SMS` (`Windows/NesEmulator/mix/SegaSoundBridges.cs`), which takes the NES registers the plugin writes and replays them on a real `Sn76489`. It is **Direct mode
+only**. The five channels map onto the PSG's four voices one to one, and the Mix channel exists only in ROM mode, which this console does not have yet:
+
+| Plugin channel | PSG voice | What is kept, what is not |
+|---|---|---|
+| Pulse 1, Pulse 2 | tone 1, tone 2 | Pitch exactly (the PSG runs from twice the NES clock, so a NES timer value t is PSG period t + 1: measured error 0.01 cent). The PSG has one waveform, a 50% square: **Pulse duty has no effect on the tone** (the slider is dimmed); a thinner duty is played quieter so the loudness matches what the NES would play. |
+| Triangle | tone 3 | Pitch exactly (period 2 (t + 1)). It is a square wave, not a triangle, at the loudness of a NES triangle. |
+| Noise | the noise voice | *Noise mode* long = white noise, short = periodic noise (the short mode keeps its buzz pitch). The NES's 16 noise rates become the PSG's three fixed rates, or exactly any rate while tone 3 is not playing the triangle (then the nearest fixed rate is used). |
+| Mix | (none) | ROM mode only. |
+
+Limits, all of them the chip's and none hidden: **notes below 109 Hz (A2) are silent** on every tone voice (the PSG's 10-bit period; a NES pulse reaches 54 Hz, a NES triangle 27 Hz), so
+a keyboard note is the pitch asked for or nothing, and the chip counts them (`APU_SMS.LowNotesDropped`; a NES *game* on this core moves such a note whole octaves up instead, see
+`LowNotePolicy`); the 15 NES volume steps become 9 or more PSG levels (2 dB steps; the loud ones merge); there is no DMC. No allocation on the audio thread, and the chip does not step
+its front NES core (nothing reads it back here), so four PSG instances run about 21x real time against about 7x for the NES chip.
+
+**Master System games in ROM mode: not supported, refused with a message.** Choosing the SMS console in ROM mode shows "Master System games are not supported in the plugin yet", and a
+`.sms`, `.gg`, `.md`, `.gen`, `.sg` or `.sc` file given to the Game list is refused the same way (it is recognised even while the Sega consoles are hidden elsewhere), leaving the running
+game alone. What ROM mode needs once the boards exist (written down so the next milestone starts from it):
+1. `Consoles.MasterSystemReady` (and `GameGearReady`) set by Track A and `ConsoleSessions.CreateSega` returning a real `SmsSession`; then `Cx.FromKind` maps `MasterSystem` and `GameGear` to
+   console 3, `Cx.RomSupported(3)` becomes true and `Cx.RomFilter` gains `.sms;.gg;.sg;.sc`. A Genesis console (4, chip `MD`) follows the same way with Track B.
+2. `Cx.RomApu` already answers `SMS` (the stock `SmsSound` unit through `SmsSoundFactories`); `SessionGame` then plays the game through Mix like a Game Boy or SNES game, with no further plugin code.
+3. Per-channel stems need a write tap on `ISmsSound.WritePsg` (the Game Gear's `$06` stereo port and the YM2413's `$F0-$F2` ports too) and four one-voice `Sn76489`s, then `Usable` and `AutoOrder` in
+   `Emulator.cs` stop being NES-only and the five channels map as in the table above (FM voices need the channel model to grow past five: new `Ch` values, append-only).
+4. Instrument Runaway needs a PSG snapshot sampler like `GbSampler` (the PSG registers are 11 numbers) and a new state trailer tag (`PSG1`) beside `SPC1` and `GBS1`.
 
 ## One instance = one channel of an emulator
 
@@ -93,7 +121,7 @@ then ROM mode plays whatever the ROM plays by itself (VRUN's title music, an Aud
 One dark, self-drawn window (no Win32 controls): the emulator's **screen** on the left, controls on the right.
 
 - **Screen:** the game's picture in ROM mode; in Direct mode the message *Direct Mode: Bypassing the ROM*. A status line under it.
-- **EMULATOR** (shared): *Emulator* (Auto / #1..#8, listing what each holds), *Console* (NES | Game Boy | SNES), *Mode* (Direct | ROM:
+- **EMULATOR** (shared): *Emulator* (Auto / #1..#8, listing what each holds), *Console* (NES | Game Boy | SNES | SMS), *Mode* (Direct | ROM:
   switching to ROM loads the game at once), *Sound chip* (only the chips of the console), *Game* (the built-in VRUN, the loaded file, or
   "Load a game file..."). A sound-chip change takes effect on the running game.
 - **Reset Console** (bottom right): starts this emulator over for every instance on it. Direct mode: held and jammed notes end (FL gets the voices back), each instance's chip is rebuilt. ROM mode: the game restarts from power-on (which also recovers a crashed one). Nothing else changes: instances keep their channels and settings.
@@ -188,6 +216,7 @@ the earlier test builds, which had CPU and PPU parameters, load with defaults in
 - **Mono output.** The chip is mono; the *Pan* parameter pans the instance. A note's own pan is ignored.
 - **ROM mode ignores FL's notes** until the VRUN live ROM exists. The DMC channel is only in the Mix (stems need the game's memory).
 - **Game Boy and SNES games play through Mix only** (no per-channel stems yet), and there is no built-in game for them. Their chips in Direct mode are register bridges, not native trackers.
+- **The SMS console has no ROM mode** (no Master System, Game Gear or Genesis games: refused with a message; see "The Master System console"), and its chip cannot play below 109 Hz. A NES game cannot be heard through the PSG here (the chip selects the console, as for DMG): that trip exists in the desktop app and Lite, where the NES APU menu lists `SMS`.
 - **16 volume steps** (the chip's), so velocity and volume automation are stepped.
 - **A late joiner in ROM mode** (an instance added while the game runs) starts within one frame (16.6 ms) of the others, not on the exact sample.
 - **QLQ** (a deliberately unstable QuickNES variant) plays an octave sharp; the self-test reports it as a warning.
@@ -267,10 +296,11 @@ BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audi
 | hub-explicit | an explicit emulator #2 with the Game Boy chip next to the NES one, both at the right pitch; Auto never fills an explicit emulator |
 | hub-conflict | a channel used by another instance is refused (silent, with a reason), Mix needs ROM mode, the waiting instance gets the channel when it frees up |
 | hub-state | saved projects give back each instance's emulator, channel, volume and the emulator's chip, in any restore order |
-| consoles | 20 chips, MNES/WF hidden; each console starts on its own chip; picking a chip or a console keeps both in step and reaches every instance; every console sounds in Direct mode; switching console under a held note keeps it sounding |
+| consoles | 21 chips, MNES/WF hidden; each console starts on its own chip; picking a chip or a console keeps both in step and reaches every instance; every console sounds in Direct mode; switching console under a held note keeps it sounding |
+| psg | the Master System PSG chip (SMS, console 3): appended as chip 20 with every earlier chip index unchanged, a saved project keeps it; pitch of pulse 1/2 and the triangle at 7 keys each (audio within 2.5 cents, worst measured 0.01; the PSG's tone period read back equals the NES timer + 1, or twice it for the triangle); level against the NES chip at the same notes within 2 dB (4 for a 12.5% pulse), velocity falls monotonically, zero is silent; four instances at once with each tone found in the mix and each PSG voice's registers read back; notes below 109 Hz silent and counted, ultrasonic and absurd bends harmless; a Master System, Game Gear or Genesis file refused in ROM mode and the SMS console holds no game; about 21x real time with four sliding voices (the floor is 5x) and **0 bytes allocated** |
 | mono | newest note wins and the older one resumes, back-to-back notes retrigger |
 | lifecycle | every voice is handed back with `Voice_Kill`; bad handles are harmless; 64 simultaneous voices |
-| cores | each of the 22 sound chips makes the note, accurate ones on pitch |
+| cores | each of the 21 sound chips makes the note, accurate ones on pitch |
 | swap | switching the chip mid-note keeps it sounding at pitch |
 | rates | 22.05-96 kHz and block sizes 1-4096 keep pitch and continuity |
 | standalone-rack | the standalone synth's engine (`SynthRack`): each tone channel at the pitch the chip can play (whole period steps: ~8 cents apart at 500 Hz), notes of one channel stay in it, bends (+1 = +2 st), note off and every voice handed back, 64 / 441 / 4096-frame callbacks, four channels at once, all notes off, ~7x real time with four channels, 0 bytes allocated by the plugin and ~40 B by the host while rendering, `Accepting` off drops events, saved settings round-trip and damaged state is survived |

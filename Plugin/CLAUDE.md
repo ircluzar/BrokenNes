@@ -15,9 +15,13 @@ and `UAT/plugin/synth-smoke.ps1` (12 checks, real window, keys, restart handoff;
 **Next waves (not done):** per-channel stems / the Mix channel and a game's pad in the synth, an uninstall item, more than the four tone voices, anything
 for DAWs other than FL (this is a native Fruity plugin, not a VST).
 
+## Sega track C (2026-10-03): the Master System PSG chip
+
+Console 3 (`SMS` on the buttons) holds one chip, `SMS` (chip index 20, appended; the 12 parameters are unchanged): the SN76489 PSG through the bridge core `APU_SMS` (`Windows/NesEmulator/mix/SegaSoundBridges.cs`), Direct mode only. Mapping, limits and **what ROM mode needs once the Sega boards exist** are in `Plugin/README.md` ("The Master System console"); Sega games are refused in ROM mode with a message (`Cx.RomSupported`). Rules this added: **a new APU core id must get a family in `CoreCatalog` (`NesApuFamily`) before the plugin sees it**, otherwise it joins the NES chips alphabetically and shifts every saved chip index; the plugin sets `APU_SMS.DefaultLowNotes = Drop` and `DefaultStepFront = false` before it makes a chip (notes below 109 Hz are silent and counted; the front NES core is not stepped, 3x faster). Test hooks 52-55 read the PSG registers and the dropped-note count of this instance's chip.
+
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **39 checks, all pass** (one expected warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **40 checks, all pass** (the 40th, `psg`, is Sega track C's) (one expected warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.
