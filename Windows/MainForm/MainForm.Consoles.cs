@@ -344,7 +344,7 @@ namespace BrokenNes.Windows
             try
             {
                 s = ConsoleSessions.Create(console, rom, SelectedCore(console, CoreSlot.Cpu), SelectedCore(console, CoreSlot.Ppu),
-                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names));
+                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names), romName);
             }
             catch (Exception ex)
             {

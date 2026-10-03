@@ -24,6 +24,7 @@ public static class SmsSoundFactories
     public static readonly Dictionary<string, Func<SmsSoundRequest, ISmsSound>> Factories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["SMS"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),
+        ["GG"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Game Gear menu's id for the same unit (its stereo port is part of it)
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
