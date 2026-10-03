@@ -266,6 +266,14 @@ internal static class SegaContractsTestCli
         var ms = new MemoryStream(); unit.SaveState(new BinaryWriter(ms)); string before = unit.Describe();
         unit.Reset(); ms.Position = 0; unit.LoadState(new BinaryReader(ms));
         Check("state round-trips", unit.Describe() == before, unit.Describe());
+
+        var machine = new SegaMachine(SegaTimeline.MasterSystem(SegaRegion.Pal), GenesisModel.Model1, rate);
+        var viaFactory = SmsSoundFactories.Create("sms", new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega));
+        Check("the sound factory builds the stock unit by id, at the machine's own Z80 clock (PAL here)", viaFactory.CoreName == "SN76489" && Near(new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega).CpuClockHz, 3_546_895.0, 1));
+        bool threw = false; try { SmsSoundFactories.Create("NOPE", new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega)); } catch (ArgumentException) { threw = true; }
+        Check("an unknown unit id is an error, never a quiet substitution", threw);
+        var md = GenesisSoundFactories.Create("MD", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model1, rate));
+        Check("the Genesis factory builds the stand-in unit under the id MD", md.CoreName == "STUB");
     }
 
     // ---------------------------------------------------------------------------------------------- NES hub

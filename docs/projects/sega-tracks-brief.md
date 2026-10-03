@@ -38,3 +38,12 @@ Phase 0 is done and on `main` (see section 12 of `sega-cores-plan.md`). Three tr
 ## What to put in your final report
 
 What was built and where (files); every verifier you ran with its numbers; proof that each verifier can fail; what is not tested; decisions you made and why; shared files and contracts you touched; open problems and risks; the exact next steps for the next milestone of your track; the branch name and last commit.
+## Seams the tracks share (decided here so nobody collides)
+
+- **Naming.** Classes named `CPU_*`, `PPU_*`, `APU_*` that implement `ICPU`/`IPPU`/`IAPU` are the *NES-facing bridge cores* that `CoreRegistry` discovers (Track C owns `APU_SMS`, `APU_MD`, `PPU_SMS`, `PPU_MD`, `CPU_Z80`, `CPU_M68K`).
+  The console-native chips and boards of Tracks A and B must **not** use those prefixes: use `BOARD_SMS` / `BOARD_MD`, and names like `SmsVdp`, `MdVdp`, `M68k`, `Ym2612`, `Ym2413`.
+- **Sound units** are looked up by id, never named by a board: `SmsSoundFactories.Create(id, new SmsSoundRequest(machine, console, variant))` returns an `ISmsSound` and `GenesisSoundFactories.Create(id, machine)` an `IGenesisSound`
+  (`sega/SegaSoundFactories.cs`; add a unit by adding one line to its `Factories` dictionary). A session asks for the unit the console's APU menu selected (`SelectedCore(console, CoreSlot.Apu)`; ids `SMS` and `MD` are the stock units).
+  Track A replaces what `SMS` builds with a unit that also has the YM2413; Track B replaces what `MD` builds with the real Z80 + YM2612 + PSG unit; Track C adds ids such as `NES` (a Sega game's sound replayed on NES chips).
+- **Timeline.** Boards run on `SegaTimeline` (`SegaTimeline.MasterSystem(region, console)`, `SegaTimeline.Genesis(region)`) and `SegaSettings` (region, Genesis model); never a hard-coded NTSC number.
+- **Console-native vs NES register hub.** Bridges to and from other consoles go through the NES register model (`SegaHub.cs`: `HubVoice`, `NesVoiceWriter`, `IHubVoiceSource`); a board exposes what it is playing through `DescribeVoices`.
