@@ -221,9 +221,9 @@ internal static class SegaBridgeTestCli
             Check($"triangle timer {t} ({want:F1} Hz): tone 3 period {2 * (t + 1)}, audio {got:F2} Hz = {err:+0.000;-0.000} cents", p.Psg.Period(2) == 2 * (t + 1) && Math.Abs(err) < 0.5, $"period {p.Psg.Period(2)}");
         }
         Info(string.Join("; ", rows));
-        Console.WriteLine($"        triangle pitch: worst error {worst:F3} cents over 6 notes (55 Hz to 1.7 kHz), tone 3 period = 2 (NES timer + 1) exactly");
+        Console.WriteLine($"        triangle pitch: worst error {worst:F3} cents over 6 notes (109 Hz to 1.7 kHz), tone 3 period = 2 (NES timer + 1) exactly");
 
-        // ---- notes the PSG cannot play (its 10-bit period stops at 1023 = 109 Hz; tone 3 as a triangle reaches 55 Hz): by policy silent or an octave up, always counted ----
+        // ---- notes the PSG cannot play (its 10-bit period stops at 1023 = 109 Hz; tone 3 as a triangle stops there too): by policy silent or an octave up, always counted ----
         Check("the default policy for a NES game is to keep a low note, an octave up; the plugin's is to drop it", APU_SMS.DefaultLowNotes == LowNotePolicy.OctaveUp && ((APU_SMS)new Rig("SMS").Apu).LowNotes == LowNotePolicy.OctaveUp);
         {
             var r = new Rig("SMS"); var p = (APU_SMS)r.Apu; p.LowNotes = LowNotePolicy.Drop;
@@ -362,6 +362,41 @@ internal static class SegaBridgeTestCli
             Check("the front core keeps what a game can read real: the frame IRQ flag rises ($4015 bit 6), a short DMC sample plays out (bit 4 set, then clear)", irq && on && off, $"irq {irq}, started {on}, finished {off}");
         }
 
+        // ---- the plugin's two switches: the PSG sound does not depend on the front core, and the frame sequencer jumps give the same state as counting every cycle ----
+        {
+            float[] Render(bool stepFront)
+            {
+                var r = new Rig("SMS"); ((APU_SMS)r.Apu).StepFront = stepFront;
+                r.Pulse(0, 253, 12); r.Pulse(1, 190, 9, 0); r.Triangle(126); r.Noise(8, 7, false);
+                return r.Capture(0.4);
+            }
+            var withFront = Render(true); var without = Render(false);
+            double maxDiff = 0; for (int i = 0; i < withFront.Length; i++) maxDiff = Math.Max(maxDiff, Math.Abs(withFront[i] - without[i]));
+            Check($"the PSG's sound is bit-identical whether the front NES core is stepped or not (largest difference {maxDiff:E1}; a host that never reads the chip back skips the front to save time)", withFront.Length == without.Length && maxDiff == 0);
+            var off = new Rig("SMS"); ((APU_SMS)off.Apu).StepFront = false; off.W(0x4017, 0x00); off.Run(0.02, false);
+            Check("... and with the front off, $4015 shows no frame IRQ (documented: the front's status is not real then)", (off.Apu.ReadAPURegister(0x4015) & 0x40) == 0);
+
+            var rng = new Random(20261003); bool same = true; int steps = 0; string where = "";
+            for (int script = 0; script < 40 && same; script++)
+            {
+                var a = new NesChannelModel(); var b = new NesChannelModel();
+                for (int k = 0; k < 400 && same; k++)
+                {
+                    if (rng.Next(3) == 0)
+                    {
+                        ushort reg = rng.Next(5) switch { 0 => (ushort)(0x4000 + rng.Next(8)), 1 => (ushort)(0x4008 + rng.Next(8)), 2 => (ushort)0x4015, 3 => (ushort)0x4017, _ => (ushort)(0x4000 + rng.Next(0x18)) };
+                        byte value = (byte)rng.Next(256);
+                        a.Write(reg, value); b.Write(reg, value);
+                    }
+                    int cycles = rng.Next(4) switch { 0 => rng.Next(1, 40), 1 => rng.Next(1, 2000), 2 => rng.Next(1, 9000), _ => rng.Next(1, 40000) };
+                    a.Clock(cycles); b.ClockBulk(cycles); steps++;
+                    string sa = ModelState(a), sb = ModelState(b);
+                    if (sa != sb) { same = false; where = $"script {script} step {k} after {cycles} cycles: {sa} vs {sb}"; }
+                }
+            }
+            Check($"the frame-sequencer jump (ClockBulk) matches counting every cycle over {steps} random register scripts and cycle counts (all four step lengths, both modes)", same, where);
+        }
+
         // ---- channel masks, reset, polyphony ----
         {
             var r = new Rig("SMS");
@@ -407,6 +442,17 @@ internal static class SegaBridgeTestCli
             long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
             Check($"stepping 640,000 NES cycles with notes changing and the audio drained allocates {bytes} bytes (limit 0)", bytes == 0);
         }
+    }
+
+    /// <summary>Every field the channel model computes, as text, for comparing two models.</summary>
+    private static string ModelState(NesChannelModel m)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var p in m.P) sb.Append($"[{p.Duty},{p.Vol},{p.Timer},{p.Len},{p.EnvDiv},{p.EnvDecay},{p.SweepDiv},{p.SweepPeriod},{p.SweepShift},{p.Halt},{p.Const},{p.EnvStart},{p.SweepOn},{p.SweepNeg},{p.SweepReload},{p.Enabled}]");
+        sb.Append($"T[{m.TriTimer},{m.TriLen},{m.TriLinear},{m.TriReload},{m.TriControl},{m.TriReloadFlag},{m.TriEnabled}]");
+        sb.Append($"N[{m.NoiseVol},{m.NoisePeriodIdx},{m.NoiseLen},{m.NoiseEnvDiv},{m.NoiseEnvDecay},{m.NoiseHalt},{m.NoiseConst},{m.NoiseEnvStart},{m.NoiseEnabled},{m.NoiseShort}]");
+        sb.Append($"D[{m.DmcEnabled},{m.DmcStarts}] F[{m.FrameCycle}]");
+        return sb.ToString();
     }
 
     // ---------------------------------------------------------------------------------------------- a NES game on APU_SMS

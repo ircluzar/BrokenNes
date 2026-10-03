@@ -5,7 +5,7 @@ using NesEmulator.Sega;
 
 namespace NesEmulator
 {
-    /// <summary>What <see cref="APU_SMS"/> does with a pulse or triangle note below the PSG's range (its 10-bit tone period reaches down to 109 Hz; the triangle on tone 3 to 55 Hz).</summary>
+    /// <summary>What <see cref="APU_SMS"/> does with a pulse or triangle note below the PSG's range (its 10-bit tone period reaches down to 109 Hz, whatever the NES channel).</summary>
     public enum LowNotePolicy
     {
         /// <summary>The note is silent. Nothing is invented: the PSG cannot play it. Counted in <see cref="APU_SMS.LowNotesDropped"/>. The plugin uses this (a keyboard note must be the pitch asked for, or nothing).</summary>
@@ -23,7 +23,7 @@ namespace NesEmulator
     /// <item>pulse 1 and 2 become tones 1 and 2. The PSG clock is exactly twice the NES CPU clock, so a pulse timer value t is PSG period t + 1 at the very same pitch
     /// (zero error); the PSG's 10-bit period reaches down to 109 Hz, so a pulse note below that cannot be played as it is: by <see cref="LowNotes"/> it is dropped (silent) or played whole octaves up, and counted either way.
     /// The PSG has one waveform, a 50% square: the four pulse duty cycles all sound the same here.</item>
-    /// <item>the triangle becomes tone 3, period 2 (t + 1) (pitch kept, down to 55 Hz; lower ones as for the pulses). The PSG has no triangle: it is a square wave, at the loudness the NES triangle has.</item>
+    /// <item>the triangle becomes tone 3, period 2 (t + 1) (pitch kept, down to 109 Hz; lower ones as for the pulses). The PSG has no triangle: it is a square wave, at the loudness the NES triangle has.</item>
     /// <item>noise becomes the PSG noise: the NES long mode is white noise, the short (93-step) mode is periodic noise. The PSG has three fixed shift rates and a fourth that
     /// follows tone 3: when the triangle is silent that fourth rate gives the NES rate exactly (and a short-mode buzz keeps its pitch); while the triangle sounds the nearest of
     /// the three fixed rates is used and the compromise is counted (<see cref="NoiseRateCompromises"/>).</item>
@@ -108,6 +108,13 @@ namespace NesEmulator
         public LowNotePolicy LowNotes { get; set; } = DefaultLowNotes;
         /// <summary>The policy a new core starts with: <see cref="LowNotePolicy.OctaveUp"/> (a game's bass line is kept an octave up); the plugin sets <see cref="LowNotePolicy.Drop"/> before it makes one.</summary>
         public static LowNotePolicy DefaultLowNotes = LowNotePolicy.OctaveUp;
+        /// <summary>
+        /// Whether the front NES core is stepped. It must be when a NES game runs on this core (its frame IRQ, its $4015 status, its DMC and the DMC's DMA timing are what the game sees). A host with
+        /// no CPU that never reads the chip back (the plugin's Direct mode, which only writes registers and listens) turns it off: the front's own sound is thrown away anyway, so stepping it only costs
+        /// time. Off, a read of $4015 shows nothing real. <see cref="DefaultStepFront"/> when the core is made.
+        /// </summary>
+        public bool StepFront { get; set; } = DefaultStepFront;
+        public static bool DefaultStepFront = true;
         /// <summary>Pulse or triangle notes too low for the PSG's 10-bit period that were silenced (policy <see cref="LowNotePolicy.Drop"/>; counted once per note, when it starts).</summary>
         public long LowNotesDropped { get; private set; }
         /// <summary>The same notes played whole octaves up instead (policy <see cref="LowNotePolicy.OctaveUp"/>).</summary>
@@ -266,8 +273,8 @@ namespace NesEmulator
         public void Step(int cpuCycles)
         {
             if (cpuCycles <= 0) return;
-            front.Step(cpuCycles);
-            model.Clock(cpuCycles);
+            if (StepFront) front.Step(cpuCycles);
+            model.ClockBulk(cpuCycles);
             psg.Run(cpuCycles * 2);
             if ((sinceSync += cpuCycles) >= SyncCycles) { sinceSync = 0; Sync(); }
             if (front.GetQueuedSampleCount() > 4096) { while (front.ReadSamples(drainScratch) > 0) { } }   // the front's own sound is discarded

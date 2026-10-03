@@ -415,6 +415,11 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         {
             try
             {
+                // The Master System chip cannot play below 109 Hz. A keyboard note must be the pitch asked for or nothing, so such notes are silent (and counted),
+                // not moved an octave up as they are for a NES game on that chip.
+                NesEmulator.APU_SMS.DefaultLowNotes = NesEmulator.LowNotePolicy.Drop;
+                // No CPU reads this chip back: it only takes registers and plays, so its front NES core (frame IRQ, $4015, DMC) is not stepped (it would only cost time).
+                NesEmulator.APU_SMS.DefaultStepFront = false;
                 if (chip == null) { chip = new NesApuInstrument(core, rate); gate = false; }
                 else
                 {
@@ -695,6 +700,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 49: return emu?.PadBits ?? 0;
             case 50: return emu?.GbSamplerMode == true ? 1 : 0;
             case 51: emu?.PokeSnesToneForTests(); return 0;
+            // the Master System chip's PSG as this instance's chip has it: 52 tone period of voice index (0-2), 53 volume register of voice index (0-3, 15 = off),
+            // 54 notes silenced for being below the PSG's range, 55 noise control register (-1 when this instance's chip is not the Master System one)
+            case 52: return chip?.Apu is NesEmulator.APU_SMS s52 && (uint)index < 3 ? s52.Psg.Period((int)index) : -1;
+            case 53: return chip?.Apu is NesEmulator.APU_SMS s53 && (uint)index < 4 ? s53.Psg.Volume((int)index) : -1;
+            case 54: return chip?.Apu is NesEmulator.APU_SMS s54 ? (nint)s54.LowNotesDropped : -1;
+            case 55: return chip?.Apu is NesEmulator.APU_SMS s55 ? s55.Psg.NoiseControl : -1;
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

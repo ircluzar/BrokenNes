@@ -199,6 +199,29 @@ namespace NesEmulator.Mix
             }
         }
 
+        /// <summary>
+        /// The same as <see cref="Clock"/> (the verifier compares them over random scripts), but jumps from one frame-sequencer event to the next instead of counting every cycle:
+        /// for a bridge that is stepped many times a second (the plugin's Master System chip). Added for APU_SMS; the older bridges keep calling <see cref="Clock"/>.
+        /// </summary>
+        public void ClockBulk(int cpuCycles)
+        {
+            while (cpuCycles > 0)
+            {
+                int limit = mode5 ? 18641 : 14915;
+                int next = frameCycle < 3729 ? 3729 : frameCycle < 7457 ? 7457 : frameCycle < 11186 ? 11186 : limit;
+                if (frameCycle >= next) next = frameCycle + 1;   // (cannot happen: a $4017 write resets the counter) never loop without moving
+                int step = Math.Min(cpuCycles, next - frameCycle);
+                frameCycle += step; cpuCycles -= step;
+                if (frameCycle != next) continue;
+                if (next == 3729 || next == 11186) Quarter();
+                else if (next == 7457) { Quarter(); Half(); }
+                else if (next >= limit) { Quarter(); Half(); frameCycle = 0; }
+            }
+        }
+
+        /// <summary>The frame sequencer's position (for the verifier's comparison of <see cref="Clock"/> and <see cref="ClockBulk"/>).</summary>
+        public int FrameCycle => frameCycle;
+
         private static void Env(ref bool start, ref int div, ref int decay, int period, bool loop)
         {
             if (start) { start = false; decay = 15; div = period; return; }

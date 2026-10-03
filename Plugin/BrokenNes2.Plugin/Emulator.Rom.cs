@@ -151,7 +151,8 @@ public sealed partial class Emulator
             Interlocked.Exchange(ref pendingGame, null);
             Volatile.Write(ref unloadRequested, 1);
             loading = false;
-            romStatus = $"No {Cx.Names[console]} game loaded: choose one in the Game list";
+            romStatus = Cx.RomSupported(console) ? $"No {Cx.Names[console]} game loaded: choose one in the Game list"
+                                                 : $"{Cx.RomNames[console]} games are not supported in the plugin yet: this console's sound chip plays in Direct mode only";
             return;
         }
         loading = true;

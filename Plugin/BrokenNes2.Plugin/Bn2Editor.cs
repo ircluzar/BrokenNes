@@ -368,7 +368,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
-        else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w);
+        else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
         else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
 
         // Inputs and Instrument Runaway, bottom left

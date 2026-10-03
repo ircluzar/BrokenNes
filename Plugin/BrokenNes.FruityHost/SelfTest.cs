@@ -143,6 +143,7 @@ public sealed unsafe class SelfTest
             ("hub-conflict", "A channel taken by another instance is refused, and handed over when it frees up", HubConflict),
             ("hub-state", "Saved projects keep each instance's emulator, channel and the emulator's chip", HubState),
             ("consoles", "Console selector: each console lists its own chips, picking either way keeps them in step, every console plays", Consoles),
+            ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode refuses Sega games", Psg),
             ("mono", "Each channel is monophonic: the newest note wins and the older one resumes", Mono_),
             ("lifecycle", "Voices: released voices are handed back (Voice_Kill), bad handles are harmless", Lifecycle),
             ("cores", "Every NES sound chip produces the note; accurate ones at the right pitch", Cores),
@@ -241,7 +242,7 @@ public sealed unsafe class SelfTest
         p.SetParamFromAutomation(6, 1.0); t.Expect(p.GetParam(6) == 5, $"automation 1.0 -> channel {p.GetParam(6)} (Mix)");
         t.Expect(p.GetName(Fpn.ParamValue, 6, 0) == "Auto" && p.GetName(Fpn.ParamValue, 6, 3) == "Triangle" && p.GetName(Fpn.ParamValue, 6, 5).StartsWith("Mix"), "channel names");
         t.Expect(p.GetName(Fpn.ParamValue, PEmulator, 0) == "Auto" && p.GetName(Fpn.ParamValue, PEmulator, 3) == "#3", "emulator names");
-        t.Expect(p.GetName(Fpn.ParamValue, PConsole, 0) == "NES" && p.GetName(Fpn.ParamValue, PConsole, 1) == "Game Boy" && p.GetName(Fpn.ParamValue, PConsole, 2) == "SNES", "console names");
+        t.Expect(p.GetName(Fpn.ParamValue, PConsole, 0) == "NES" && p.GetName(Fpn.ParamValue, PConsole, 1) == "Game Boy" && p.GetName(Fpn.ParamValue, PConsole, 2) == "SNES" && p.GetName(Fpn.ParamValue, PConsole, 3) == "SMS", "console names");
         t.Expect(!chips.Contains("MNES") && !chips.Contains("WF"), "the MNES and WF cores should not be offered");
         t.Expect(p.GetName(Fpn.ParamValue, 8, 1) == "ROM" && p.GetName(Fpn.ParamValue, 8, 0) == "Direct", "mode names");
     }
@@ -582,7 +583,7 @@ public sealed unsafe class SelfTest
 
     private void Swap(T t)
     {
-        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX") })
+        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX"), ("FIX", "SMS"), ("SMS", "FIX") })
         {
             var s = new Scenario { Name = "swap", Tempo = 60, LengthBeats = 3 };
             s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 2.4, Key = 69, Channel = 0 });
@@ -1289,7 +1290,7 @@ public sealed unsafe class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 3, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 3} NES chips (the Game Boy and SNES chips are under their own consoles)");
+            t.Expect(p.Test(32) == chips.Count - 4, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 4} NES chips (the Game Boy, SNES and Master System chips are under their own consoles)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1325,6 +1326,11 @@ public sealed unsafe class SelfTest
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 52, "SNES segment");
             t.Expect(p.GetParam(PConsole) == 2 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SNES", "SNES segment");
+            ClickControl(t, p, 53, "SMS segment");
+            t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
+            ClickControl(t, p, 4, "chip dropdown (SMS)");
+            t.Expect(p.Test(32) == 1, $"the Master System chip list has {p.Test(32)} items, expected SMS");
+            Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 50, "NES segment");
             t.Expect(p.GetParam(PConsole) == 0 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "FIX", "NES segment");
 
@@ -1461,9 +1467,9 @@ public sealed unsafe class SelfTest
         {
             var p = lib.Create(); all.Add(p);
             var chips = Chips(p);
-            t.Expect(chips.Count == 20 && chips[0] == "FIX", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES)");
+            t.Expect(chips.Count == 21 && chips[0] == "FIX", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS)");
             // each console starts with its own chip
-            foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (0, "FIX") })
+            foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (0, "FIX") })
             {
                 p.SetParam(PConsole, console);
                 t.Expect(p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == chip && p.Test(14) == console, $"console {console}: chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}, console {p.Test(14)}");
@@ -1471,6 +1477,8 @@ public sealed unsafe class SelfTest
             // picking a chip of another console switches the console
             p.SetParam(PCore, chips.IndexOf("DMGS"));
             t.Expect(p.GetParam(PConsole) == 1, $"picking DMGS left the console at {p.GetParam(PConsole)}");
+            p.SetParam(PCore, chips.IndexOf("SMS"));
+            t.Expect(p.GetParam(PConsole) == 3, $"picking SMS left the console at {p.GetParam(PConsole)}");
             p.SetParam(PCore, chips.IndexOf("QN"));
             t.Expect(p.GetParam(PConsole) == 0, $"picking QN left the console at {p.GetParam(PConsole)}");
             // the console is shared by every instance of the emulator
@@ -1484,7 +1492,7 @@ public sealed unsafe class SelfTest
 
         // every console plays in Direct mode, and a console switch under a held note keeps it sounding
         var table = new List<string>();
-        foreach (var (console, name) in new[] { (0, "NES"), (1, "Game Boy"), (2, "SNES") })
+        foreach (var (console, name) in new[] { (0, "NES"), (1, "Game Boy"), (2, "SNES"), (3, "SMS") })
         {
             var s = One(69, 0, 0.8);
             var (audio, mixer, plugin) = Play(s, setup: p => p.SetParam(PConsole, console));
@@ -1508,6 +1516,181 @@ public sealed unsafe class SelfTest
         {
             double after = Audio.Rms(Mono(a2), swapAt + 12000, swapAt + 60000);
             t.Expect(after > 0.01, $"silent after switching the console under a held note (rms {after:0.0000})");
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // The Master System PSG chip: Direct mode through APU_SMS (NES registers to the SN76489), console 3
+
+    /// <summary>Normalised amplitude of one frequency in a window (Goertzel).</summary>
+    private static double Goertzel(float[] x, int rate, double hz, int from, int to)
+    {
+        double w = 2 * Math.PI * hz / rate, coeff = 2 * Math.Cos(w), s1 = 0, s2 = 0;
+        for (int i = from; i < to; i++) { double s = x[i] + coeff * s1 - s2; s2 = s1; s1 = s; }
+        return Math.Sqrt(Math.Max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / (to - from);
+    }
+
+    private void Psg(T t)
+    {
+        const string Chip = "SMS";
+        // ---- the chip list: appended, so every saved project keeps its chip ----
+        List<string> chips;
+        using (var probe = lib.Create()) chips = Chips(probe);
+        t.Expect(chips.Count == 21 && chips.IndexOf(Chip) == 20, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 20)");
+        t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19, "an existing chip moved (the chip index is part of saved projects: append only)");
+        byte[] blob;
+        using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); blob = a.SaveState(); }
+        using (var b = lib.Create())
+        {
+            b.LoadState(blob);
+            t.Expect(b.GetParam(PCore) == 20 && b.GetParam(PConsole) == 3 && b.GetName(Fpn.ParamValue, PCore, b.GetParam(PCore)) == Chip, $"a project saved on the {Chip} chip came back as chip {b.GetParam(PCore)}, console {b.GetParam(PConsole)}");
+            t.Expect(b.SaveState().SequenceEqual(blob), "save -> load -> save is not stable on the SMS chip");
+        }
+
+        // ---- pitch: the PSG period is the NES timer + 1 (pulses) or 2 (timer + 1) (triangle), so the audio is as exact as on the NES chips ----
+        double worst = 0; var rows = new List<string>();
+        foreach (var (ch, color, triangle, name) in new[] { (0, 0, false, "pulse1"), (1, 1, false, "pulse2"), (2, 2, true, "triangle") })
+            foreach (int key in new[] { 45, 48, 57, 60, 69, 72, 84 })
+            {
+                int period = Nes.Period((key - 60) * 100.0, triangle);
+                int want = triangle ? 2 * (period + 1) : period + 1;
+                var (audio, mixer, plugin) = Play(One(key, color, 0.6), setup: p => SetChip(p, Chip));
+                using (plugin)
+                {
+                    double hz = SteadyHz(Mono(audio), 44100, mixer.Log[0]), wantHz = Nes.PeriodHz(period, triangle);
+                    t.NearCents($"SMS {name} key {key}", hz, wantHz, 2.5);
+                    if (!double.IsNaN(hz)) worst = Math.Max(worst, Math.Abs(Audio.Cents(hz, wantHz)));
+                    if (key == 69) rows.Add($"{name} {hz:0.00} Hz");
+                }
+                int mid = -1;
+                var (_, _, p2) = Play(One(key, color, 0.6), setup: p => SetChip(p, Chip), probe: (pl, sample) => { if (sample >= 22050 && mid < 0) mid = (int)pl.Test(52, ch); });
+                using (p2) t.Expect(mid == want, $"SMS {name} key {key}: PSG tone {ch + 1} period {mid}, expected {want}");
+            }
+        t.Note($"PSG pitch: worst audio error {worst:0.00} cents over 21 notes (110 Hz to 1 kHz); A4: {string.Join(", ", rows)}");
+
+        // ---- level: what the NES chip would play, in dB (the bridge matches AC RMS); velocity steps fall; zero is silent ----
+        double RmsOf(string chip, double vel, int ch, int duty = 1, int master = 1000)
+        {
+            var s = One(69, ch, 0.7, vel); s.Params[1] = master; s.Params[5] = duty;
+            var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, chip));
+            using (plugin) return Audio.Rms(Mono(audio), mixer.Log[0].StartSample + 8000, mixer.Log[0].EndSample - 2000);
+        }
+        double r1 = RmsOf(Chip, 1.0, 0), r2 = RmsOf(Chip, 0.66, 0), r3 = RmsOf(Chip, 0.33, 0), r4 = RmsOf(Chip, 0.1, 0), r0 = RmsOf(Chip, 0.0, 0);
+        t.Expect(r1 > r2 && r2 > r3 && r3 > r4 && r4 > 0, $"PSG level must fall with velocity: {r1:0.000} {r2:0.000} {r3:0.000} {r4:0.000}");
+        t.Expect(r0 < 1e-4, $"PSG velocity 0 is not silent: {r0:0.0000}");
+        double half = RmsOf(Chip, 1.0, 0, master: 500);
+        t.Expect(half < r1 * 0.85 && half > r1 * 0.3, $"PSG master volume 50% gives {half / r1:P0} of full level");
+        var dbRows = new List<string>();
+        foreach (var (ch, name, duty) in new[] { (0, "pulse 12.5%", 0), (0, "pulse 25%", 1), (0, "pulse 50%", 2), (1, "pulse 2 50%", 2), (2, "triangle", 1) })
+        {
+            double a = RmsOf(Chip, 1.0, ch, duty), b = RmsOf("FIX", 1.0, ch, duty);
+            double d = 20 * Math.Log10(a / b);
+            dbRows.Add($"{name} {d:+0.0;-0.0} dB");
+            // APU_SMS matches the NES channel's own AC RMS; FIX low-passes at about 1 kHz, which takes more out of a thin pulse (rich in harmonics) than out of a 50% one, so a 12.5% pulse at 440 Hz reads louder on the PSG
+            double limit = duty == 0 ? 4.0 : 2.0;
+            t.Expect(Math.Abs(d) <= limit, $"PSG {name} is {d:+0.0;-0.0} dB from the NES chip (limit {limit:0.0}): {a:0.0000} vs {b:0.0000}");
+        }
+        double noise = RmsOf(Chip, 0.8, 3);
+        t.Expect(noise > 0.003, $"the PSG noise channel is silent (rms {noise:0.0000})");
+        t.Note($"PSG level against FIX at the same notes: {string.Join(", ", dbRows)}; velocity 1.0/.66/.33/.1: {r1:0.000}/{r2:0.000}/{r3:0.000}/{r4:0.000}");
+
+        // ---- range: the PSG's tone period stops at 1023 (109 Hz). Below that a keyboard note is silent and counted, never moved ----
+        {
+            int dropped = -1;
+            var (audio, mixer, plugin) = Play(One(36, 0, 0.6), setup: p => SetChip(p, Chip), probe: (pl, sm) => { if (sm >= 22050 && dropped < 0) dropped = (int)pl.Test(54); });
+            using (plugin)
+            {
+                double rms = Audio.Rms(Mono(audio), mixer.Log[0].StartSample + 4000, mixer.Log[0].EndSample);
+                t.Expect(rms < 0.002 && audio.All(float.IsFinite), $"a pulse note at 65 Hz (below the PSG's range) should be silent, rms {rms:0.0000}");
+                t.Expect(dropped == 1, $"... and counted as one dropped low note (the chip says {dropped})");
+            }
+            var (audio2, mixer2, plugin2) = Play(One(36, 2, 0.6), setup: p => SetChip(p, Chip));
+            using (plugin2) t.Expect(Audio.Rms(Mono(audio2), mixer2.Log[0].StartSample + 4000, mixer2.Log[0].EndSample) < 0.002, "a triangle note at 65 Hz (tone 3 would need period 1710) should be silent");
+            var (audio3, mixer3, plugin3) = Play(One(140, 0, 0.5), setup: p => SetChip(p, Chip));
+            using (plugin3) t.Expect(Audio.Rms(Mono(audio3), mixer3.Log[0].StartSample + 4000, mixer3.Log[0].EndSample) < 0.002 && audio3.All(float.IsFinite), "an ultrasonic pulse should mute on the PSG too");
+            var s = One(60, 0, 0.5);
+            s.Notes[0].Bend = new() { new[] { 0.0, 100000 }, new[] { 0.25, -100000 }, new[] { 0.5, 0 } };
+            var (audio4, _, plugin4) = Play(s, setup: p => SetChip(p, Chip));
+            using (plugin4) t.Expect(audio4.All(float.IsFinite), "non-finite output after extreme bends on the PSG");
+        }
+
+        // ---- polyphony: pulse 1, pulse 2, the triangle and the noise at once, one instance each, every tone where it belongs in the mix ----
+        {
+            var sc = new Scenario { Name = "psg-poly", Tempo = 60, LengthBeats = 1.2 };
+            int[] keys = [57, 64, 69, 60];
+            for (int c = 0; c < 4; c++) sc.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 1.0, Key = keys[c], Channel = c, Velocity = c == 3 ? 0.25 : 0.8 });
+            var rack = MakeRack([0, 1, 2, 3]);
+            var first = rack[0];
+            SetChip(first, Chip);
+            var periods = new int[4]; var vols = new int[4]; bool taken = false;
+            var mixer = new Mixer { SampleRate = 44100, BlockSize = 256, AfterBlock = sm => { if (sm >= 22050 && !taken) { taken = true; for (int c = 0; c < 4; c++) { var inst = rack[c]; if (c < 3) periods[c] = (int)inst.Test(52, c); vols[c] = (int)inst.Test(53, c); } } } };
+            var audio = mixer.Run(rack, sc);
+            first.Dispose();
+            var mono = Mono(audio);
+            for (int c = 0; c < 3; c++)
+            {
+                bool tri = c == 2;
+                int period = Nes.Period((keys[c] - 60) * 100.0, tri);
+                t.Expect(periods[c] == (tri ? 2 * (period + 1) : period + 1) && vols[c] < 15, $"polyphony: instance {c + 1} has PSG tone {c + 1} at period {periods[c]} volume {vols[c]} (expected {(tri ? 2 * (period + 1) : period + 1)}, audible)");
+                double hz = Nes.PeriodHz(period, tri);
+                int from = 12000, to = 36000;
+                double at = Goertzel(mono, 44100, hz, from, to), off = Goertzel(mono, 44100, hz * 1.059, from, to);
+                t.Expect(at > off * 4 && at > 0.01, $"polyphony: the mix has {hz:0.0} Hz at {at:0.0000}, only {off:0.0000} a semitone above it");
+            }
+            t.Expect(vols[3] < 15, $"polyphony: the noise instance has PSG noise volume {vols[3]} (15 is off)");
+            double all = Audio.Rms(mono, 12000, 36000);
+            var one = Play(One(69, 0, 1.0), setup: p => SetChip(p, Chip));
+            double single;
+            using (one.Plugin) single = Audio.Rms(Mono(one.Audio), 12000, 36000);
+            t.Expect(all > single * 1.5, $"polyphony: four voices ({all:0.000}) are not louder than one ({single:0.000})");
+        }
+
+        // ---- a Sega game in ROM mode is refused with a message, never run as something else; the chip itself keeps working in Direct mode ----
+        {
+            string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
+            string sms = Path.Combine(dir, $"bn2_{tag}.sms"), gg = Path.Combine(dir, $"bn2_{tag}.gg"), md = Path.Combine(dir, $"bn2_{tag}.md");
+            var smsRom = new byte[0x8000]; "TMR SEGA"u8.CopyTo(smsRom.AsSpan(0x7FF0)); smsRom[0x7FFF] = 0x4C;
+            var mdRom = new byte[0x400]; "SEGA MEGA DRIVE "u8.CopyTo(mdRom.AsSpan(0x100));
+            File.WriteAllBytes(sms, smsRom); File.WriteAllBytes(gg, smsRom); File.WriteAllBytes(md, mdRom);
+            try
+            {
+                using var q = RomPlugin();
+                RenderBlocks(q, 0.3);
+                t.Expect(q.Test(15) == 0, "the built-in game should be a NES game");
+                foreach (var (name, path) in new[] { ("Master System", sms), ("Game Gear", gg), ("Genesis", md) })
+                {
+                    int status = LoadFileInto(q, path);
+                    RenderBlocks(q, 0.2);
+                    t.Expect(status != 0 && q.Test(15) == 0 && q.Test(12) == 0 && q.GetParam(PConsole) == 0, $"a {name} file should be refused and leave the NES game running (status {status}, console {q.GetParam(PConsole)})");
+                }
+                // choosing the Master System console in ROM mode: no game, no crash, no sound from a made-up one; its chip is there for Direct mode
+                q.SetParam(PConsole, 3);
+                var silent = RenderBlocks(q, 0.6);
+                t.Expect(q.Test(9) == 0 && q.Test(12) == 0 && silent.All(float.IsFinite) && Audio.Rms(silent, 8000, silent.Length) < 0.002, "ROM mode on the Master System console should hold no game and play nothing");
+                q.SetParam(PMode, 0);
+                t.Expect(q.GetName(Fpn.ParamValue, PCore, q.GetParam(PCore)) == Chip && q.GetParam(PConsole) == 3, "back in Direct mode the SMS chip should be there");
+            }
+            finally { foreach (var f in new[] { sms, gg, md }) File.Delete(f); }
+        }
+
+        // ---- real time and no allocation: four sliding voices on the PSG chip, like the Realtime test on the NES chip ----
+        {
+            var s = new Scenario { Name = "rt-psg", Tempo = 60, LengthBeats = 11 };
+            for (int c = 0; c < 4; c++) s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 9, Key = 57 + c * 5, Channel = c, Slides = new() { new SlideSeg { StartBeat = 1, LengthBeats = 8, ToKey = 69 + c } } });
+            var rack = MakeRack([0, 1, 2, 3]);
+            var plugin = rack[0];
+            SetChip(plugin, Chip);
+            long allocBefore = 0, allocAfter = 0;
+            var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
+            var sw = Stopwatch.StartNew();
+            var audio = mixer.Run(rack, s, 0);
+            sw.Stop();
+            plugin.Dispose();
+            double speed = audio.Length / 2 / 48000.0 / sw.Elapsed.TotalSeconds;
+            long alloc = allocAfter - allocBefore;
+            t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 PSG instances (needs 5x or better: the plugin's floor)");
+            t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding PSG voices for 7 s (must be 0: garbage collection is audible)");
+            t.Note($"PSG: {speed:0.0}x real time, 4 instances with a sliding voice each, 48 kHz / 512-sample blocks; steady-state allocation {alloc} B");
         }
     }
 

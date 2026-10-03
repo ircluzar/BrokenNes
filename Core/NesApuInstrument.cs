@@ -36,6 +36,8 @@ public sealed class NesApuInstrument
     }
 
     public static IReadOnlyList<string> ApuCoreIds => CoreRegistry.ApuIds;
+    /// <summary>The APU core playing right now (hosts read a bridge core's own state from it: the Master System chip's PSG registers). Not for writing.</summary>
+    public IAPU Apu => apu;
     public byte EnableMask { get; }
     public string CoreId { get; private set; }
     public int NativeSampleRate => apu.GetSampleRate();
