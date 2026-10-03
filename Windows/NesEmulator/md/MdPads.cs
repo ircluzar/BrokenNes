@@ -12,9 +12,10 @@ public enum MdPadKind { ThreeButton, SixButton }
 /// ones, shows X, Y, Z and Mode; it forgets the count when TH stays still for about 8192 68000 cycles (Mortal Kombat 3 and Decap Attack depend on both facts).
 /// </summary>
 /// <remarks>
-/// Reads, TH=1: bit 6 = TH, bit 5 = C, bit 4 = B, then right, left, down, up. TH=0: bit 5 = Start, bit 4 = A, bits 3 and 2 = 0, down, up. Buttons are active low. 6-button, after falling edge
-/// n (counted from 0 at the timeout): TH=1 and n=2 shows C, B, Mode, X, Y, Z; TH=0 and n=2 shows Start, A and four zero bits; TH=0 and n=3 shows Start, A and four one bits. Pins the console
-/// has set as outputs (control bit 1) read back what was written; TH, undriven, is pulled up.
+/// Reads, TH=1: bit 6 = TH, bit 5 = C, bit 4 = B, then right, left, down, up. TH=0: bit 5 = Start, bit 4 = A, bits 3 and 2 = 0, down, up. Buttons are active low. The 6-button pad goes through eight
+/// phases, TH high then low four times from the timeout: normal, normal, normal, normal, normal, Start, A and four zero bits (the 6-button ID), C, B, Mode, X, Y, Z, then Start, A and four one bits;
+/// counted in falling edges of TH (<c>Falls</c>, 0 at the timeout, 1 to 4 after): the ID is TH low with 3, the extra buttons TH high with 3, the ones TH low with 4, and the fifth edge starts the
+/// sequence over. Pins the console has set as outputs (control bit 1) read back what was written; TH, undriven, is pulled up.
 /// </remarks>
 public sealed class MdPads
 {
@@ -53,15 +54,15 @@ public sealed class MdPads
         int fall = p.Falls;
         if (th)
         {
-            if (p.Kind == MdPadKind.SixButton && fall == 2)
+            if (p.Kind == MdPadKind.SixButton && fall == 3)
                 return (byte)(0x40 | (Down(b, PadButtons.C) ? 0 : 0x20) | (Down(b, PadButtons.B) ? 0 : 0x10) | (Down(b, PadButtons.Mode) ? 0 : 8) | (Down(b, PadButtons.X) ? 0 : 4)
                                    | (Down(b, PadButtons.Y) ? 0 : 2) | (Down(b, PadButtons.Z) ? 0 : 1));
             return (byte)(0x40 | (Down(b, PadButtons.C) ? 0 : 0x20) | (Down(b, PadButtons.B) ? 0 : 0x10) | (Down(b, PadButtons.Right) ? 0 : 8) | (Down(b, PadButtons.Left) ? 0 : 4)
                                | (Down(b, PadButtons.Down) ? 0 : 2) | (Down(b, PadButtons.Up) ? 0 : 1));
         }
         int low;
-        if (p.Kind == MdPadKind.SixButton && fall == 2) low = 0x00;
-        else if (p.Kind == MdPadKind.SixButton && fall == 3) low = 0x0F;
+        if (p.Kind == MdPadKind.SixButton && fall == 3) low = 0x00;
+        else if (p.Kind == MdPadKind.SixButton && fall == 4) low = 0x0F;
         else low = (Down(b, PadButtons.Down) ? 0 : 2) | (Down(b, PadButtons.Up) ? 0 : 1);
         return (byte)((Down(b, PadButtons.Start) ? 0 : 0x20) | (Down(b, PadButtons.A) ? 0 : 0x10) | low);
     }
@@ -112,7 +113,7 @@ public sealed class MdPads
     private static void Edge(Port p, bool before, bool after, long now)
     {
         if (before == after) return;
-        if (before && !after) p.Falls = (p.Falls + 1) & 3;
+        if (before && !after) p.Falls = p.Falls >= 4 ? 1 : p.Falls + 1;
         p.Th = after;
         p.LastEdge = now;
     }
