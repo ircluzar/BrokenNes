@@ -14,10 +14,15 @@ licensing. Facts are tagged where the sources disagree. The "Verify before relyi
 | 4 | FL plugin | **"The works"** (Direct mode, ROM mode with stems, Instrument Runaway), with FM handled as a **patch picker first**; a full operator editor is a later wave. |
 | 5 | Sourcing | **Hybrid per chip:** port the commodity chips from permissive sources with notices; write both VDPs and all bus timing clean-room from docs and oracle diffs. |
 | 6 | Genesis accuracy | **Tier 2.5**, built on a master-clock timeline with VDP access slots in the data structures, so a slot-level (Tier 3) VDP is an upgrade, not a rewrite. |
-| 7 | Region | **NTSC only first, PAL later** (but see open decision A in section 9: timing tables should be region-parameterised from day one). |
-| 8 | Extras | In: **SG-1000 / SC-3000 / Mark III**, **Genesis 3-button and 6-button pads**. Out for now: Light Phaser / paddle / mouse / Menacer / multitaps, Sega CD, 32X, Power Base Converter. |
+| 7 | Region | **NTSC ships first, PAL later; every timing table is region-parameterised from day one** (decision A), and PAL runs headless as a certification gate so Overdrive 2 and the PAL-only SMS titles can be proven before any PAL setting reaches the UI. |
+| 8 | Extras | In: **SG-1000 / SC-3000 / Mark III**, **Genesis 3-button and 6-button pads**. Out: Light Phaser / paddle / mouse / Menacer / multitaps for now; **Sega CD, 32X and the Power Base Converter are dropped from the plan** (decision E: no design provisions for expansion hardware). |
 | 9 | Process | **Foundation first, then three parallel tracks** in separate worktrees/sessions (like the SNES and GB sessions). |
 | 10 | Where | **Desktop, Lite (WASM/AOT), FL plugin, and Workshop/headless first.** |
+| 11 | Genesis model (decision B) | **Selectable per game from the start:** Model 1 / Model 2 / Model 3 is a first-class setting (menus and plugin) with a per-game default; it carries YM2612 vs YM3438 behaviour (ladder effect, status/busy quirks), TAS write-back, VSRAM size and the other model differences. |
+| 12 | Ids (decision C) | **Chip names in the CPU slot, console-style in PPU and APU:** CPU `Z80` and `M68K`; PPU `SMS` / `GG` / `MD` (the VDPs); APU `SMS` / `MD` (the sound units). **The joke `CPU_Z80` is retired** once the real Z80 exists, which frees the id `Z80` (section 2.4a lists the work). |
+| 13 | Provenance housekeeping (decision D) | Root `THIRD_PARTY_NOTICES.md`, a `sega/THIRD_PARTY_NOTICES.md` ledger and a QuickNES entry are foundation tasks; the LGPL `DSP_SFC` stays as a **documented exception** for now (no SNES code change). |
+| 14 | Tracking (decision F) | **One live dashboard for all three tracks** (phases and exit gates, suite pass counts, the 20-game rosters with per-game checks, a gallery), kept current by whichever session is working. |
+| 15 | Oracle and test downloads | **You approve the Phase 0 download list once** (each file with source and size); the files then go into a tools folder outside the repo, and GPL/LGPL/non-commercial material stays external and oracle-only. |
 
 Standing project rules that apply (from memory and the code): no firmware or boot ROM is ever required (start from the documented post-boot state); new
 "variant" chips are forks, existing chips are never edited; no silent fallbacks (a cell only looks alive if the chosen core really does the work, an
@@ -70,7 +75,8 @@ holds the plugin to 5x real time with four voices.
 ### 2.4 Things that do not exist, and things that bite
 
 - **No Z80, PSG, FM, VDP or 68000 anywhere.** `CPU_Z80` is a **6502 wrapped in a costume** (a joke core with randomised "chaos", frozen on purpose and
-  hard-coded into the Deck Builder data). A real Z80 is a new core and **must not reuse the id**.
+  hard-coded into the Deck Builder data). **Decision C retires it** once the real Z80 exists; until then the real Z80 is a differently named class (section 6),
+  and the id `Z80` is freed for the real one afterwards (retirement work in 2.4a).
 - **No PAL anywhere** in the engine. `PadButtons` has 4 spare bits. Display sizes are special-cased per console.
 - Three **explicit directory lists** (Lite csproj, Workshop csproj, `Core/BrokenNes.Core.csproj`) plus `WebLite/LinkerConfig.xml` rooting must name every new
   folder and discoverable type, or Lite and the plugin silently miss them. The desktop csproj globs. `Web/` deliberately excludes GB/SNES/mix.
@@ -78,7 +84,19 @@ holds the plugin to 5x real time with four voices.
 - Provenance gaps: no root `THIRD_PARTY_NOTICES.md` although the plugin's About footer points at one; `APU_QN.cs` is a QuickNES port with no ledger entry;
   `DSP_SFC.cs` is an LGPL port (an exception to the permissive-only policy below).
 
-### 2.4a History as a pace reference
+### 2.4a Retiring the joke `CPU_Z80` (decision C): measured scope
+
+A repo-wide search finds it in only about 13 files, so this is a small, bounded foundation task (done by the Z80 work, after the real core exists):
+- `Windows/NesEmulator/cpus/CPU_Z80.cs` (15 KB): delete; the CPU menus then list 7 NES CPUs (EIL, FIX, FMC, LOW, LW2, SPD, ULQ) plus the bridge cores.
+- Deck Builder (Legacy, BrokenNes 1): `Windows/Webmodules/shared/gameSave.js` (`ownedCpuIds` includes `'Z80'`), `Windows/Webmodules/Continue/continue.js` (the CPU card list) and the
+  card art `CPU_Z80` in `Windows/ImageTools/SvgFactory.cs`. Existing saved games that own `'Z80'` need a load-time migration (drop or remap the id) so no campaign save breaks.
+- Saved user config: any `config.json` (or `consoleCores`) that selected CPU `Z80` must resolve to the default instead of throwing; `CoreCatalog.Resolve(stored)` already falls back
+  to the default, so this is a test, not new code.
+- `WebLite/LinkerConfig.xml` (a comment and the not-rooted note), `Workshop/AccuracyCoinTests.cs` and `AccuracyCoinCli.cs` (comments about its failure on frame 1 and the shared `Random`
+  pre-warm), `Workshop/README.md`, and docs/UAT findings that list "8 CPUs" (historical notes can stay; live checks that count cores need updating).
+- Memory/rules: the "gimmick cores are intentional" rule no longer lists `CPU_Z80`.
+
+### 2.4b History as a pace reference
 
 SNES: verifier suite to a playing Super Mario World with sound in one evening (2026-09-25), coprocessors and Mesen timing the next day. GB: core family, pixel-FIFO
 PPU and MBCs in about a day. Bridges plus the console layer: about two more days. So the **calendar unit for this project is days of agent work per track,
@@ -211,8 +229,8 @@ existing exception. BSD-3 notices must travel with every distributed binary: the
 **Identity.** `ConsoleKind` gains `MasterSystem` (SMS, plus SG-1000 / SC-3000 / Mark III as models), `GameGear` (separate kind, like GBC vs GB) and `Genesis` (display
 "Genesis / Mega Drive"). Families `SMS` and `MD`. Folders `Windows/NesEmulator/sega/` (shared chips), `sms/`, `md/`; namespace `NesEmulator.Sega`. Console-native
 cores follow the GB/SNES rule (not `ICPU`/`IPPU`/`IAPU`). Shared chip classes are named by chip (`Z80`, `Sn76489`, `Ym2612`, `Ym2413`, `M68k`) with no `CPU_`/`APU_`
-prefix, so `CoreRegistry` ignores them and the joke `CPU_Z80` id is never touched. NES-facing bridge ids get new names (a real Z80 on a NES slot needs an id other than `Z80`;
-open decision C).
+prefix, so `CoreRegistry` ignores them (and nothing collides with the joke `CPU_Z80` while it still exists). NES-facing bridge ids follow decision C: CPU slot by chip name
+(`Z80`, `M68K`), PPU and APU slots console-style (`SMS`, `GG`, `MD`). The Genesis model (Model 1 / 2 / 3) is a first-class per-game setting on `BOARD_MD`, not a compile-time choice.
 
 **Boards.** `BOARD_SMS` (Z80 bus with the I/O port decode, VDP, PSG, mappers; GG and SG-1000 as models) and `BOARD_MD` on a **master-clock timeline**: 68000, Z80,
 VDP and YM dividers derived from one clock with a region parameter, a bus arbiter (BUSREQ/RESET handshake, bank window, refresh, DMA stalls), VDP access slots kept as data
@@ -250,7 +268,7 @@ Budgets to hold: 0 bytes allocated on the audio thread, and a speed floor to be 
 | Z80 | SingleStepTests/z80 (all non-excluded files) + z80test + zexdoc/zexall, plus a proof that the verifier can fail (inject a bug, see annotated failures, as with the SNES verifier) |
 | 68000 | SingleStepTests 680x0 + m68000 (documented exclusions), then Genesis-specific bus timing against a test ROM |
 | SMS/GG VDP | FluBBa VDP test, vdptest 1-3, Mesen2 frame and register-trace diffs; roster of 20 SMS and 20 GG games from `X:\EMULATION` (342 and 665 titles on disk) |
-| Genesis VDP | Nemesis ROMs (port access, sprite masking, CRAM flicker, FIFO), MacDonald's V-counter/window ROMs, Direct Color DMA, Overdrive 1; Overdrive 2 needs PAL (open decision A); BlastEm diffs; roster of 20 from 948 titles |
+| Genesis VDP | Nemesis ROMs (port access, sprite masking, CRAM flicker, FIFO), MacDonald's V-counter/window ROMs, Direct Color DMA, Overdrive 1; Overdrive 2 needs PAL (certified headless, decision A); BlastEm diffs; roster of 20 from 948 titles |
 | Sound | PSG and YM2413 test ROMs; golden WAVs generated offline from VGM logs through Nuked-OPN2/OPLL (oracle only); pitch and level measured as in the plugin self-test |
 | Whole core | golden-hash frame/sample suites (`--smsbench`-style, with a reference-twin for any fast path), `--smstest` / `--mdtest` / `--sega-run` Workshop CLIs, sweep tools, UAT cases, the plugin self-test extended |
 | Bridges | `--console-run` style sweeps classifying every game x core combination as refused/crashed/dead/frozen/alive, honest results only |
@@ -263,12 +281,12 @@ required (the user's `! Firmwares` folder holds none).
 ## 8. Roadmap
 
 **Phase 0, foundation (sequential, short).**
-1. Oracle and test infrastructure (above); test-asset manifests; `--smstest` / `--mdtest` skeletons.
-2. Provenance: root `THIRD_PARTY_NOTICES.md`, `sega/THIRD_PARTY_NOTICES.md`, the QuickNES entry.
+1. Oracle and test infrastructure (above), after you approve the download list once; test-asset manifests; `--smstest` / `--mdtest` skeletons; the **live dashboard** (one for all three tracks) created and wired to the suite outputs.
+2. Provenance: root `THIRD_PARTY_NOTICES.md`, `sega/THIRD_PARTY_NOTICES.md`, the QuickNES entry; `DSP_SFC` recorded as a documented LGPL exception.
 3. Console plumbing: `ConsoleKind`, `Consoles.*`, `RomDetect`, `CoreCatalog`, `PadButtons`, save paths, the three csproj lists + `LinkerConfig.xml`, menu/Lite/plugin stubs so a dummy session appears everywhere.
-4. Shared chips, ported once: **Z80** and **SN76489**, each with its verifier.
-5. Contracts: the `BOARD_*` factory shape, the Genesis sound-subsystem contract (bus handshake included), the master-clock/region timeline note, the bridge-scaffolding for NES-register hub back-ends.
-*Exit gate:* Z80 passes the vectors and the proof-of-failure; PSG matches oracle audio; a dummy console lists in desktop, Lite and the plugin; ROM-detect tests pass; all merged to main.
+4. Shared chips, ported once: **Z80** and **SN76489**, each with its verifier. Then **retire the joke `CPU_Z80`** (scope in 2.4a) and claim the id `Z80` for the real core.
+5. Contracts: the `BOARD_*` factory shape, the Genesis sound-subsystem contract (bus handshake included), the **region-parameterised master-clock timeline** (NTSC and PAL tables both present, PAL reachable headless), the Genesis model (Model 1/2/3) setting, the bridge scaffolding for NES-register hub back-ends.
+*Exit gate:* Z80 passes the vectors and the proof-of-failure; PSG matches oracle audio; a dummy console lists in desktop, Lite and the plugin; ROM-detect tests pass; the old `Z80` id is gone with Deck Builder saves and stored configs still loading; all merged to main.
 
 **Track A, SMS / GG / SG-1000 / SC-3000 / Mark III.** Board and mappers; Mode 4 + TMS-mode VDP with SMS1/SMS2/GG revisions and counters/IRQ timing; FluBBa/vdptest green;
 YM2413 (port) and the `$F0-$F2` ports; GG window, ports `$00`/`$06`; session, input, saves; BIOS-less post-boot table from public documentation; the climb on 20 + 20 games with Mesen2 diffs.
@@ -277,29 +295,33 @@ YM2612 / YM3438); Z80 integration with bank-window stalls; mappers/SRAM/EEPROM; 
 as soon as the VDP draws**, not at the end.
 **Track C, bridges and plugin.** Sound bridges first (cheapest, and what the plugin needs), then picture bridges, then CPU walls; catalog tables and menus; Lite wiring; plugin Direct chips +
 patch picker, then ROM-mode Mix, then stems, then Runaway; plugin self-test additions. C depends on A and B contracts but starts on the Phase 0 stubs.
-**Phase 4:** Lite performance, certification across desktop/Lite/plugin, docs and the live dashboard (if wanted).
+**Phase 4:** Lite performance, certification across desktop/Lite/plugin (including the headless PAL gate), docs, and a final pass on the dashboard.
 
 **Effort summary** (experienced-human estimates from the research, for scale only; this project's recorded pace for GB and SNES was days per track):
 SMS/GG about 30-45 d, Genesis about 50-70 d (Tier 2.5), bridges and plugin not estimated by the research (their closest precedent is the GB/SNES mix work, about two days of agent time per bridge family).
 
-## 9. Risks and open decisions
+## 9. Risks and decisions
 
 **Risks.**
 - **Genesis in Lite (WASM).** A 68000 + slot-aware VDP + YM2612 in the browser is the biggest performance unknown; the SNES needed AOT. Spike early; a Lite-only reduced mode would be a decision, not a fallback.
 - **Plugin budgets.** 68000 + VDP + YM2612 inside the plugin's allocation-free, 5x-real-time frame; ROM mode may need a lower floor for Genesis than the 5x used for four NES voices.
 - **FM collapse on the NES hub** is accepted, but a Genesis game on NES chips will sound thin; the extension bank mitigates it for pitch/level, not timbre.
-- **PAL deferred:** about 20 SMS titles, PAL Genesis games and **Overdrive 2** cannot be certified NTSC-only.
+- **PAL is deferred in the UI, not in the engine:** the timing tables carry the region from day one and PAL is certified headless (Overdrive 2, the ~20 PAL-timing SMS titles). The risk is a table written NTSC-only by habit: every track's review checks for it.
+- **Retiring `CPU_Z80`** touches Legacy Deck Builder saves; the migration must be tested against a real saved game before the id disappears.
 - **No permissive cycle-exact C# 68000**: the ares port is the bet; the spike must show it carries timestamped bus accesses cleanly.
 - **Static `MixConfig`** does not scale to several concurrent bridged sessions; new bridges should avoid new statics.
 - **Reference availability:** oracle emulators change (see "verify" list); keep local pinned copies.
 
-**Open decisions to confirm.**
-- **A. PAL timing tables.** Recommended: build every timing table region-parameterised from day one (cheap), ship NTSC only, and run PAL headless as a certification gate (Overdrive 2). Confirm.
-- **B. Genesis baseline hardware.** Recommended: Model 1 behaviour (discrete YM2612 with ladder, no TAS write-back, 40-word VSRAM) with switches for YM3438 and later-model quirks (Nemesis advises targeting the first revision).
-- **C. Ids for real Z80/68000 on NES-slot bridges** (the joke `CPU_Z80` id stays untouched).
-- **D. License housekeeping:** the root notices file, the QuickNES entry, and whether the existing LGPL `DSP_SFC` stays as an exception or gets replaced by a permissive/clean-room one.
-- **E. Sega CD** (3 ROMs on disk) as a future wave; 32X and Power Base Converter likewise.
-- **F. A live dashboard** (as for GB/SNES) for the three tracks.
+**Decisions resolved (2026-10-03).**
+- **A. PAL:** region-parameterised timing tables from day one; NTSC ships first; PAL certified headless.
+- **B. Genesis model:** Model 1 / 2 / 3 selectable per game from the start (menus and plugin), with a per-game default. Open detail for Track B: which default each game gets (start from Model 1 for everything, add per-game overrides as tests show a game needs another model).
+- **C. Ids:** CPU slot by chip name (`Z80`, `M68K`), PPU/APU console-style (`SMS`, `GG`, `MD`); the joke `CPU_Z80` is retired (2.4a).
+- **D. Housekeeping:** root notices + Sega ledger + QuickNES entry; `DSP_SFC` stays as a documented exception.
+- **E. Sega CD and 32X:** dropped from the plan (with the Power Base Converter); no design provisions.
+- **F. Dashboard:** one live dashboard for all three tracks.
+- **Downloads:** one approval of the Phase 0 download list.
+
+**Still genuinely open (small).** The per-game Genesis model defaults (above); whether Game Gear is its own `ConsoleKind` (assumed, like GBC) or a model of the SMS board in the menus; the exact Phase 0 download list (written when Phase 0 starts).
 
 ## 10. Verify before relying
 
