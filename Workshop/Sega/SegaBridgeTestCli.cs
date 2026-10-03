@@ -353,6 +353,14 @@ internal static class SegaBridgeTestCli
             Check($"a DMC sample start and three $4011 writes are counted as dropped ({p.DmcStartsDropped} start, {p.DmcDacWritesDropped} DAC writes) and reported in Describe()", p.DmcStartsDropped == 1 && p.DmcDacWritesDropped == 3 && p.Describe().Contains("DMC starts 1") && p.Describe().Contains("$4011 writes 3"));
             Check("the front core still runs the DMC: a $4015 read shows it playing (bit 4)", (r.Apu.ReadAPURegister(0x4015) & 0x10) != 0);
         }
+        {
+            // what a game can read stays real: the front core is stepped, so the frame IRQ flag rises and a short DMC sample plays out
+            var r = new Rig("SMS"); r.W(0x4017, 0x00); r.Run(0.02, false);
+            bool irq = (r.Apu.ReadAPURegister(0x4015) & 0x40) != 0;
+            var q = new Rig("SMS"); q.W(0x4010, 0x0F); q.W(0x4012, 0x00); q.W(0x4013, 0x01); q.W(0x4015, 0x1F);
+            bool on = (q.Apu.ReadAPURegister(0x4015) & 0x10) != 0; q.Run(0.03, false); bool off = (q.Apu.ReadAPURegister(0x4015) & 0x10) == 0;
+            Check("the front core keeps what a game can read real: the frame IRQ flag rises ($4015 bit 6), a short DMC sample plays out (bit 4 set, then clear)", irq && on && off, $"irq {irq}, started {on}, finished {off}");
+        }
 
         // ---- channel masks, reset, polyphony ----
         {
