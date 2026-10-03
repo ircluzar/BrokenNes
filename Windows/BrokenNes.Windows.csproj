@@ -104,4 +104,19 @@
     </Content>
   </ItemGroup>
 
+  <!-- The FL Studio plugin (BrokenNes 2 as an instrument) rides along as Plugin\BrokenNes2_x64.dll: Config > Synthesizer Mode installs it
+       into FL Studio, and the standalone synth hosts it. It is a Native AOT build that needs the MSVC tools, so it is built apart
+       (Plugin\build-dist.ps1 puts it in Plugin\dist); without it this build simply has no plugin to offer. -->
+  <PropertyGroup>
+    <PluginDll>$(MSBuildThisFileDirectory)..\Plugin\dist\BrokenNes2_x64.dll</PluginDll>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(PluginDll)')">
+    <None Include="$(PluginDll)" Link="Plugin\BrokenNes2_x64.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <Target Name="NotePluginDll" BeforeTargets="Build" Condition="!Exists('$(PluginDll)')">
+    <Message Importance="high" Text="BrokenNes2 plugin DLL not found ($(PluginDll)): this build has no FL Studio plugin to install and no standalone synth. Run Plugin\build-dist.ps1 first to bundle it." />
+  </Target>
+
 </Project>

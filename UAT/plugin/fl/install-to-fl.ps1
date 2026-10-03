@@ -7,6 +7,8 @@
   re-launches itself elevated (one UAC prompt) and waits for it. It refuses to run while FL Studio is open
   (a loaded DLL is locked, and FL would not see the new build until restarted anyway).
   Nothing else on the machine is touched.
+  DEVELOPER SHORTCUT: FL Studio 2026 only. The standard way to install is the desktop app (Config > Synthesizer Mode > Install to FL Studio...,
+  or BrokenNes.Windows.exe --install-vst), which detects every FL Studio on the machine and asks which one.
 .EXAMPLE
   install-to-fl.cmd        (double-click it; no arguments needed: installs the latest build)
   powershell -ExecutionPolicy Bypass -File install-to-fl.ps1 [-Dll <path to BrokenNes2_x64.dll>]

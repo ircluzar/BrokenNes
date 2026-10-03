@@ -358,7 +358,9 @@ namespace BrokenNes.Windows
             emulatorBehaviorsMenu.DropDownItems.Add(showFpsItem);
             
             configMenu.DropDownItems.Add(emulatorBehaviorsMenu);
-            
+
+            configMenu.DropDownItems.Add(BuildSynthesizerMenu());
+
             // Debug Tools submenu
             var debugToolsMenu = new ToolStripMenuItem("&Debug Tools");
             

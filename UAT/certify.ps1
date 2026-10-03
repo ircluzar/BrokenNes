@@ -12,7 +12,10 @@
                                               every sound chip, ROM mode (game, picture, live CPU/PPU/APU swaps), robustness, real-time and allocation
     plugin-fl    the same DLL inside FL 2026  UAT\plugin\fl\fl-certify.ps1: FL renders a generated project, the audio is
                                               measured against the fixture. Needs the plugin installed in FL (admin, once:
-                                              UAT\plugin\fl\install-to-fl.ps1); otherwise reported as NOT RUN.
+                                              Config > Synthesizer Mode > Install to FL Studio, or BrokenNes.Windows.exe --install-vst);
+                                              otherwise reported as NOT RUN.
+    plugin-install  "Install to FL Studio"    UAT\plugin\install-smoke.ps1: BrokenNes.Windows.exe --install-vst against fake FL folders
+                                              (detection of real installs, fresh/idempotent/replace, FL running, needs-admin, the picker)
     cores      shared emulator cores          Workshop headless run of a VRUN ROM on the FIX cores must reproduce a recorded
                                               picture hash (guards the shared tree both desktop and plugin modes use)
 
@@ -138,13 +141,24 @@ Run 'plugin-fl' {
     $current = (Test-Path $installed) -and (Test-Path $dll) -and ((Get-FileHash $installed).Hash -eq (Get-FileHash $dll).Hash)
     if (-not $current) {
         $s = if ($RequireFl) { 'FAIL' } else { 'NOT RUN' }
-        return @{ Status = $s; Detail = 'the current plugin build is not installed in FL (needs administrator, once): pwsh -File UAT\plugin\fl\install-to-fl.ps1 -Dll <BrokenNes2_x64.dll>' }
+        return @{ Status = $s; Detail = 'the current plugin build is not installed in FL 2026 (needs administrator, once): BrokenNes.Windows.exe --install-vst (or Config > Synthesizer Mode > Install to FL Studio)' }
     }
     if (Get-Process -Name FL64 -ErrorAction SilentlyContinue) { return @{ Status = 'NOT RUN'; Detail = 'FL Studio is open: close it (a command-line render would be handed to the running instance)' } }
     $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\fl\fl-certify.ps1') -WorkDir (Join-Path $outDir 'fl') 2>&1
     $code = $LASTEXITCODE
     $out | Out-File (Join-Path $outDir 'fl-certify.txt')
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ($out | Where-Object { "$_" -match 'checks passed|FAIL' } | Select-Object -Last 1) }
+}
+
+Run 'plugin-install' {
+    if (-not (Want 'plugin-install')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\install-smoke.ps1') -WorkDir (Join-Path $outDir 'install') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'install-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = $j.error } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
 # ----------------------------------------------------------------------------------------------------

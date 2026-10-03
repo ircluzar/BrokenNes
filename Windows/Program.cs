@@ -37,8 +37,12 @@ namespace BrokenNes.Windows
         ///  The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        static int Main(string[] args)
         {
+            // `--install-vst`: put the FL Studio plugin where FL finds it and stop. No console, no diagnostics, no emulator.
+            if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))
+                return BrokenNes.Windows.Synth.InstallVstFlow.RunCommand(args);
+
             // Forensics first, before anything else can die. See ShutdownDiagnostics for why this
             // has to write to a flushed file rather than the console: the bug being hunted is a
             // *clean* exit, which leaves no dump, no WER report and no event-log entry behind.
@@ -88,8 +92,10 @@ namespace BrokenNes.Windows
                 Console.WriteLine("Press any key to exit...");
                 Console.ReadKey();
 
+                return 1;
             }
-            
+
+            return 0;
 
         }
     }
