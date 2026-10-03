@@ -21,6 +21,7 @@ param(
     [switch]$Dump,
     [switch]$State,
     [switch]$Fm,
+    [switch]$Ports,
     [int]$TimeoutSec = 240,
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
 )
@@ -36,6 +37,7 @@ $settings = @{
     Version = "2.1.1"; ConfigUpgrade = 5
     Sms = @{
         Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent
+        Port1 = @{ Type = "SmsController" }; Port2 = @{ Type = "SmsController" }
         NtscOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
         PalOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
         GameGearOverscan = @{ Left = 48; Right = 48; Top = 48; Bottom = 48 }
@@ -49,6 +51,8 @@ if (Test-Path $saves) { Get-ChildItem $saves -Recurse -File | Remove-Item -Force
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $lua = Join-Path $PSScriptRoot "capture.lua"
 $env:MESEN_OUT = (Resolve-Path $OutDir).Path; $env:MESEN_TAG = $Tag; $env:MESEN_FRAMES = ($Frames -join ","); $env:MESEN_INPUT = $Pad
+$env:MESEN_PORTS = if ($Ports) { "1" } else { "" }
+$env:MESEN_GG = if ([IO.Path]::GetExtension($Rom).ToLowerInvariant() -eq ".gg") { "1" } else { "" }
 $env:MESEN_DUMP = if ($Dump) { "1" } else { "" }; $env:MESEN_STATE = if ($State) { "1" } else { "" }
 $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
 $p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `

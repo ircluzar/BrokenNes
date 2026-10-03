@@ -26,9 +26,12 @@ public sealed partial class SmsVdp
     /// <summary>Called when a picture line begins (before any of its pixels): works out which sprites sit on it.</summary>
     private void BeginLineSprites()
     {
-        if (Line >= activeHeight) return;
-        if (Mode4Active) EvaluateSpritesMode4();
-        else BuildTmsLine();
+        bool visible = Line < activeHeight;
+        // the sprite engine also runs over the 24 border lines above and below the picture: sprites there collide (the collision flag is set) though nothing is drawn and the overflow flag stays clear
+        bool border = !visible && (Line < activeHeight + 24 || Line >= TotalLines - 24);
+        if (!visible && !border) return;
+        if (Mode4Active) EvaluateSpritesMode4(visible);
+        else if (visible) BuildTmsLine();
     }
 
     // =================================================================================== pixel output
@@ -96,9 +99,11 @@ public sealed partial class SmsVdp
         }
     }
 
-    private void EvaluateSpritesMode4()
+    private void EvaluateSpritesMode4(bool visible)
     {
         Array.Clear(sprLine);
+        // the sprites' Y is compared with the V counter, which is not the line number outside the picture (it skips ahead before the vertical blanking lines)
+        int v = visible ? Line : VCounterFor(Line, activeHeight);
         bool tall = (Regs[1] & 2) != 0, zoom = (Regs[1] & 1) != 0;
         int height = (tall ? 16 : 8) * (zoom ? 2 : 1);
         int satBase = (Regs[5] & 0x7E) << 7;
@@ -112,12 +117,12 @@ public sealed partial class SmsVdp
         {
             int y = Vram[(satBase + i) & 0x3FFF];
             if (y == 0xD0 && terminator) break;
-            int r = (Line - y - 1) & 0xFF;
+            int r = (v - y - 1) & 0xFF;
             if (r >= height) continue;
             if (found == 8)
             {
                 // the ninth sprite on the line
-                if (ovrAtMc == int.MaxValue) ovrAtMc = Math.Max(curMc, OverflowFlagMc);
+                if (visible && ovrAtMc == int.MaxValue) ovrAtMc = Math.Max(curMc, OverflowFlagMc);
                 break;
             }
             found++;

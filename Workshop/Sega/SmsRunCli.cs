@@ -63,6 +63,19 @@ internal static class SmsRunCli
                 trace.Enqueue($"{pc:X4} {board.Peek(pc):X2} {board.Peek((ushort)(pc + 1)):X2} {board.Peek((ushort)(pc + 2)):X2}  AF={c.AF:X4} BC={c.BC:X4} DE={c.DE:X4} HL={c.HL:X4} SP={c.SP:X4} IX={c.IX:X4} IY={c.IY:X4} IFF={(c.IFF1 ? 1 : 0)} line={board.Vdp.Line}");
                 if (trace.Count > traceN) trace.Dequeue();
             };
+        if (Opt("trace-io") is { } tio)
+        {
+            // --trace-io <first>-<last>: every port access made in frames first..last (counted from 1), as "frame line cycle R/W port value"
+            var range = tio.Split('-'); int first = int.Parse(range[0]), lastF = range.Length > 1 ? int.Parse(range[1]) : first;
+            int shown = 0, max = int.Parse(Opt("trace-io-max") ?? "400");
+            board.PortHook = (write, port, value, line, cyc) =>
+            {
+                long fr = board.Frames + 1;
+                if (fr < first || fr > lastF || shown >= max) return;
+                shown++;
+                Console.WriteLine($"IO f{fr} l{line} c{cyc} {(write ? "W" : "R")} {port & 0xFF:X2} {value:X2}");
+            };
+        }
         if (Flag("trace-vdp"))
         {
             long f = 0;
@@ -110,6 +123,7 @@ internal static class SmsRunCli
         foreach (var t in trace) Console.WriteLine(t);
         if (Opt("wav") is { } wav) { MixWav(wav, pcm.ToArray(), session.SampleRate); Console.WriteLine($"wrote {wav} ({pcm.Count / (double)session.SampleRate:F1} s)"); }
         if (Opt("dump-vram") is { } dv) { File.WriteAllBytes(dv, board.Vdp.Vram); }
+        if (Opt("dump-cram") is { } dc) { File.WriteAllBytes(dc, Enumerable.Range(0, 64).Select(i => board.Vdp.CramByte(i)).ToArray()); }
         if (Opt("battery-out") is { } bo && session.HasBattery) { File.WriteAllBytes(bo, session.ExportSave()); Console.WriteLine($"battery saved: {bo}"); }
         var vdp = board.Vdp;
         Console.WriteLine($"frames={frames} {secs * 1000 / frames:F2} ms/frame ({frames / secs:F0} fps, {frames / secs / session.FramesPerSecond:F1}x real time) PC=${board.Cpu.PC:X4} " +

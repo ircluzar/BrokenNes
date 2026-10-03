@@ -23,21 +23,25 @@ public enum SmsVdpRevision { Sms1, Sms2, GameGear, Tms9918 }
 public sealed partial class SmsVdp
 {
     // ---- timing constants (master clocks within a line, origin at counter $1E6) -------------------------------------------------------------------------
+    // Found by running FluBBa's VDP test (Workshop --smstest --scan) against the board's access timing (BOARD_SMS.IoPhaseMc = 0): each test passes over a window of a few master clocks, one Z80
+    // cycle wide at most (a port access is sampled at Z80 cycle granularity: 3 master clocks); the value used is inside the window of its test and inside the readme's ordering (the line
+    // interrupt one pixel, two master clocks, after the frame interrupt). VINT flag: tests 32 and 35 pass for 4-6; line IRQ: test 34 for 7-9; collision (pixel x = $83 flags at H $47): test 52 for
+    // about 1-3 past the pixel's own time; overflow: test 60 for 4-6.
     public const int LineMc = 684;                 // 342 pixels x 2
     /// <summary>The V counter takes its new value (H counter $F4).</summary>
     public int VCounterMc = 4;
-    /// <summary>The frame-interrupt flag is set (H counter $F5).</summary>
-    public int VintFlagMc = 8;
+    /// <summary>The frame-interrupt flag is set, and the interrupt line with it (H counter $F5).</summary>
+    public int VintFlagMc = 5;
     /// <summary>The line counter underflows and raises the line interrupt.</summary>
-    public int HintMc = 4;
+    public int HintMc = 8;
     /// <summary>The horizontal scroll value is latched (H counter $F3).</summary>
     public int ScrollLatchMc = 0;
     /// <summary>Master clock at which pixel 0 of the picture is drawn; pixel x follows at two master clocks per pixel.</summary>
     public int PixelOriginMc = 52 + 2 * 11;
     /// <summary>Master clocks the collision flag trails the pixel that caused it.</summary>
-    public int CollisionDelayMc = 0;
+    public int CollisionDelayMc = 2;
     /// <summary>The sprite-overflow flag is set this far into the line it is detected on.</summary>
-    public int OverflowFlagMc = 8;
+    public int OverflowFlagMc = 5;
 
     // ---- configuration -------------------------------------------------------------------------------------------------------------------------------
     public SmsVdpRevision Revision { get; }
@@ -107,16 +111,42 @@ public sealed partial class SmsVdp
     /// <summary>True when the chip can draw Mode 4 and the extended heights: every revision but the TMS9918.</summary>
     private bool HasMode4 => Revision != SmsVdpRevision.Tms9918;
 
-    /// <summary>The state the BIOS leaves behind (the machine here never runs one): registers 0-6 = $36 $80 $FF x5, register 7-9 = 0, register 10 = $FF, address and code cleared.</summary>
+    /// <summary>What colour RAM holds when the Master System BIOS hands over to a cartridge (the logo's palette); the Game Gear BIOS leaves it zero. Hardware powers up with
+    /// undefined contents; these are the values the oracle shows, so the first frames of a game that turns the display on before loading its palette compare.</summary>
+    private static readonly byte[] SmsPostBiosCram =
+    {
+        0x00, 0x3F, 0x3E, 0x3F, 0x30, 0x30, 0x38, 0x3F, 0x37, 0x3F, 0, 0, 0, 0, 0, 0,
+        0x00, 0x03, 0x30, 0x0F, 0x07, 0x16, 0x3F, 0x02, 0x00, 0x0F, 0, 0, 0, 0, 0, 0,
+    };
+
+    /// <summary>
+    /// The state the BIOS leaves behind (the machine here never runs one). Master System: registers $36 $60 $FF $00 $00 $FF $FB $00 $00 $00 $FF, the logo palette in colour RAM,
+    /// the address register at $3D6A in VRAM-write mode. Game Gear: $06 $80 $FF $FF $FF $FF $FB $00 $00 $00 $FF, colour RAM zero. These are what the oracle shows at the first
+    /// instruction of a cartridge (probed with a one-instruction ROM); the BIOS-less state published for other emulators differs in register 1 (display off) only.
+    /// </summary>
     public void PowerOn()
     {
         Array.Clear(Vram); Array.Clear(cram); Array.Clear(Regs);
-        Regs[0] = 0x36; Regs[1] = 0x80;
-        for (int i = 2; i <= 6; i++) Regs[i] = 0xFF;
-        Regs[10] = 0xFF;
-        addr = 0; code = 0; latch = false; readBuffer = 0; ggCramLatch = 0;
-        vintFlag = ovrFlag = colFlag = lineIrqPending = false; fifthSpriteNumber = 0x1F;
-        for (int i = 0; i < 32; i++) palArgb[i] = ConvertColor(0);
+        addr = 0; code = 0;
+        if (gg)
+        {
+            byte[] r = { 0x06, 0x80, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB, 0x00, 0x00, 0x00, 0xFF };
+            Array.Copy(r, Regs, r.Length);
+        }
+        else if (Revision == SmsVdpRevision.Tms9918)
+        {
+            Regs[1] = 0x80;
+        }
+        else
+        {
+            byte[] r = { 0x36, 0x60, 0xFF, 0x00, 0x00, 0xFF, 0xFB, 0x00, 0x00, 0x00, 0xFF };
+            Array.Copy(r, Regs, r.Length);
+            Array.Copy(SmsPostBiosCram, cram, 32);
+            addr = 0x3D6A; code = 1;
+        }
+        latch = false; readBuffer = 0; ggCramLatch = 0;
+        vintFlag = ovrFlag = colFlag = lineIrqPending = false; fifthSpriteNumber = 0x1F; fifthSeen = false;
+        for (int i = 0; i < 32; i++) palArgb[i] = ConvertColor(gg ? cram[i * 2] | cram[i * 2 + 1] << 8 : cram[i]);
         lineCounter = 0xFF; hscrollLatched = 0; vscrollLatched = 0; hCounterLatch = 0;
         Line = 0; vcounter = 0; Frames = 0; renderedX = 256; curMc = 0;
         evCount = evNext = 0; colAtMc = ovrAtMc = int.MaxValue; NextEventMc = int.MaxValue;
@@ -258,7 +288,8 @@ public sealed partial class SmsVdp
                 else lineCounter = Regs[10];
                 break;
             case EvVint:
-                if (Line == activeHeight) vintFlag = true;
+                // the frame interrupt belongs to the line after the first blanking line: V counter $C1 in the 192-line mode (the line counter's reload happens there too)
+                if (Line == activeHeight + 1) vintFlag = true;
                 break;
         }
     }

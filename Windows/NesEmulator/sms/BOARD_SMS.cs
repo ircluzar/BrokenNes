@@ -58,7 +58,7 @@ public sealed class BOARD_SMS
     public double FramesPerSecond => Timeline.FramesPerSecond;
 
     /// <summary>The master-clock offset between the start of a Z80 T-state and the moment the VDP sees a port access made in it.</summary>
-    public int IoPhaseMc = 2;
+    public int IoPhaseMc = 0;
     /// <summary>The master-clock lead at which a VDP event reaches the Z80's interrupt input relative to the start of the T-state it falls in.</summary>
     public int EventPhaseMc = 0;
 
@@ -75,6 +75,8 @@ public sealed class BOARD_SMS
 
     /// <summary>Called at every instruction boundary with the program counter (tracing; a null hook costs nothing).</summary>
     public Action<ushort>? InstructionHook;
+    /// <summary>Called for every port access: (is a write, port, value, frame line, Z80 cycle in the line). Tracing; a null hook costs nothing.</summary>
+    public Action<bool, ushort, byte, int, int>? PortHook;
 
     public BOARD_SMS(SmsCartridge cart, ConsoleKind console, MasterSystemModel model, SegaRegion region, int sampleRate,
                      SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>? parts = null)
@@ -104,7 +106,8 @@ public sealed class BOARD_SMS
         Vdp.PowerOn();
         Sound.Reset();
         Cpu.Reset();
-        Cpu.SP = 0xDFF0;                                  // where the BIOS leaves the stack
+        // the registers the BIOS leaves for the cartridge (as the oracle shows them at a cartridge's first instruction): the stack at $DFF0, interrupt mode 1, interrupts disabled
+        Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1;
         port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
         port3F = 0xFF;
         ApplyMemoryControl();
@@ -211,6 +214,13 @@ public sealed class BOARD_SMS
 
     public byte ReadPort(ushort port)
     {
+        byte v = ReadPortCore(port);
+        PortHook?.Invoke(false, port, v, Vdp.Line, lineCycle);
+        return v;
+    }
+
+    private byte ReadPortCore(ushort port)
+    {
         int p = port & 0xFF;
         if (p == 0xF2 && Sound.HasFm) return Sound.ReadAudioControl();   // without the chip, $F2 is a mirror of $DC like any other port
         if (IsGameGear && p < 0x07) return ReadGgPort(p);
@@ -234,6 +244,7 @@ public sealed class BOARD_SMS
 
     public void WritePort(ushort port, byte value)
     {
+        PortHook?.Invoke(true, port, value, Vdp.Line, lineCycle);
         int p = port & 0xFF;
         if (p is 0xF0 or 0xF1 or 0xF2)
         {
