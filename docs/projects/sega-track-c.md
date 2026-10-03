@@ -11,7 +11,7 @@ shared rules are `sega-tracks-brief.md`.
 | `SmsSoundOnNes` | same file | An `ISmsSound` (the board's sound unit) whose sound comes from a NES APU core, registered as id `NES` / `NES:<chip>` in `SmsSoundFactories`. The real `Sn76489` stays in front for register behaviour; its `DescribeVoices` is replayed on the NES chip through `NesVoiceWriter`. |
 | Catalog | `systems/ConsoleSystems.cs` | The Master System and Game Gear sound menus list `NES:<chip>` for every NES sound chip ("the PSG on a NES sound chip (mono; no YM2413 FM, no Game Gear stereo)"); the NES APU menu lists `SMS` under "From the Master System". |
 | Plugin | `Plugin/BrokenNes2.Plugin/Bn2Consoles.cs` and friends | Console 3 (`SMS`), chip `SMS` appended as chip index 20; Direct mode only. See `Plugin/README.md`, "The Master System console". |
-| Verifier | `Workshop/Sega/SegaBridgeTestCli.cs`, route `--sega-bridge-test` | 125 checks (see below). |
+| Verifier | `Workshop/Sega/SegaBridgeTestCli.cs`, route `--sega-bridge-test` | 126 checks (see below). |
 | Plugin test | `Plugin/BrokenNes.FruityHost/SelfTest.cs`, test `psg` | The plugin self-test is now 40 checks. |
 
 ## How a NES game's sound becomes PSG sound (`APU_SMS`)
@@ -34,6 +34,7 @@ Levels: each NES channel is replayed at the loudness (AC RMS) the NES mixer give
 - The PSG's tone period is 10 bits, so nothing plays below **109 Hz** (A2). A NES pulse reaches 54 Hz, a NES triangle 27 Hz, and real NES music (VRUN's bass is at 34 Hz) goes there. `LowNotePolicy`: `OctaveUp` (default for a NES game: the note plays whole octaves
   up, counted in `LowNotesTransposed`) or `Drop` (silent, counted in `LowNotesDropped`; the plugin's choice). Measured on VRUN: the loudness envelope correlates 0.84 with APU_FIX's when octave-up, 0.54 when dropped.
 - Pulse duty is lost (one waveform). Game Gear stereo does not apply here (NES is mono).
+- A loaded state rebuilds the channel model from the front core's state probe (FIX has one), so the PSG plays what the state was playing; a pulse's sweep period and envelope divider are not in that description, so a sweep restarts from its first step.
 - A game's timing does not depend on the sound chip: VRUN's picture after 900 frames is bit-identical on APU_SMS and APU_FIX (the `IDmcDmaSchedulable` of the front core is forwarded so the bus arms its DMA window the same way).
 
 ## How a Sega game's PSG becomes NES sound (`SmsSoundOnNes`)
