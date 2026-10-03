@@ -31,6 +31,7 @@ internal static class SegaContractsTestCli
         Console.WriteLine("\n== settings"); Settings();
         Console.WriteLine("\n== board parts"); BoardParts();
         Console.WriteLine("\n== genesis sound unit"); GenesisSound();
+        Console.WriteLine("\n== master system sound unit"); SmsSoundUnit();
         Console.WriteLine("\n== NES hub"); Hub();
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
@@ -236,6 +237,35 @@ internal static class SegaContractsTestCli
     {
         public byte ReadBus(int address, long masterClock, out int waitMasterClocks) { waitMasterClocks = 0; return 0xFF; }
         public void WriteBus(int address, byte value, long masterClock, out int waitMasterClocks) { waitMasterClocks = 0; }
+    }
+
+    // ---------------------------------------------------------------------------------------------- Master System sound unit
+
+    private static void SmsSoundUnit()
+    {
+        const int rate = 44100;
+        double z80 = SegaTiming.MasterSystemCpuHz(SegaRegion.Ntsc);
+        ISmsSound unit = new SmsSound(z80, rate);
+        Check("the stock unit has no FM chip and says so ($F2 reads $FF; FM writes are ignored)", !unit.HasFm && unit.ReadAudioControl() == 0xFF && unit.CoreName == "SN76489");
+        foreach (byte b in Tone(0, 254)) unit.WritePsg(b);
+        unit.WritePsg(0x90);
+        var samples = new List<float>(); var buf = new short[2048];
+        for (int frame = 0; frame < 20; frame++)
+        {
+            unit.Run(SegaTiming.MasterSystemCpuCyclesPerLine * SegaTiming.MasterSystemLinesPerFrame(SegaRegion.Ntsc));
+            int n = unit.ReadSamples(buf);
+            for (int i = 0; i < n; i += 2) samples.Add(buf[i] / 32768f);
+        }
+        double hz = ZeroCrossingHz(samples.ToArray(), rate, 2000), want = z80 / (32 * 254);
+        Check($"PSG tone 1 through the unit plays {hz:F1} Hz (expect {want:F1}) and a frame is {samples.Count / 20.0:F1} samples (expect {rate / SegaTiming.MasterSystemFramesPerSecond(SegaRegion.Ntsc):F1})",
+            Near(hz, want, want * 0.005) && Near(samples.Count / 20.0, rate / SegaTiming.MasterSystemFramesPerSecond(SegaRegion.Ntsc), 1.5));
+        var voices = new HubVoice[8];
+        Check("the unit describes four hub voices (tone 1 audible)", unit.DescribeVoices(voices) == 4 && voices[0].Audible && Near(voices[0].Hz, want, 0.01));
+        unit.WriteStereo(0x00); unit.DescribeVoices(voices);
+        Check("the Game Gear stereo port reaches the PSG (everything muted on both sides is silent to the hub)", !voices[0].Audible);
+        var ms = new MemoryStream(); unit.SaveState(new BinaryWriter(ms)); string before = unit.Describe();
+        unit.Reset(); ms.Position = 0; unit.LoadState(new BinaryReader(ms));
+        Check("state round-trips", unit.Describe() == before, unit.Describe());
     }
 
     // ---------------------------------------------------------------------------------------------- NES hub
