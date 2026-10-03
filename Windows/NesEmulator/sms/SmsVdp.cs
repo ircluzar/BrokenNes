@@ -87,6 +87,7 @@ public sealed partial class SmsVdp
     private int renderedX;
     private int curMc;
     private bool lineDrawn;
+    private bool lineDisplayOn;       // whether the line being drawn shows the picture (register 1 bit 6 as the line began, or switched on since)
 
     // timed events of the current line
     private const int EvScroll = 0, EvVCounter = 1, EvVint = 2, EvHint = 3;
@@ -100,6 +101,8 @@ public sealed partial class SmsVdp
 
     /// <summary>Called with (frame line, master clock in the line, register, value) for every register write: the tracing hook of the Workshop.</summary>
     public Action<int, int, int, byte>? RegisterWriteHook;
+    /// <summary>Called with (code register, address, value, frame line, master clock in the line) for every write to the data port (VRAM or colour RAM).</summary>
+    public Action<int, int, byte, int, int>? DataWriteHook;
 
     public SmsVdp(SmsVdpRevision revision, bool pal)
     {
@@ -150,6 +153,7 @@ public sealed partial class SmsVdp
         lineCounter = 0xFF; hscrollLatched = 0; vscrollLatched = 0; hCounterLatch = 0;
         Line = 0; vcounter = 0; Frames = 0; renderedX = 256; curMc = 0;
         evCount = evNext = 0; colAtMc = ovrAtMc = int.MaxValue; NextEventMc = int.MaxValue;
+        pendHead = pendCount = 0; lineBase = 0; lastWriteTime = 0;
         Array.Clear(Frame);
         FrameHeight = 192; activeHeight = 192;
     }
@@ -203,6 +207,7 @@ public sealed partial class SmsVdp
     /// <summary>Starts frame line <paramref name="n"/> (0 = the first picture line). The line's events are queued; the board runs <see cref="RunTo"/> as time passes.</summary>
     public void BeginLine(int n)
     {
+        lineBase += LineMc;
         Line = n;
         if (n == 0) { FrameHeightLatch(); }
         activeHeight = ComputeHeight();
@@ -213,6 +218,7 @@ public sealed partial class SmsVdp
         Queue(VintFlagMc, EvVint);
         curMc = 0; renderedX = 0; lineDrawn = false;
         colAtMc = ovrAtMc = int.MaxValue;
+        lineDisplayOn = (Regs[1] & 0x40) != 0;
         Refresh();
     }
 
@@ -238,26 +244,47 @@ public sealed partial class SmsVdp
         if (Line == TotalLines - 1) Frames++;
     }
 
-    /// <summary>Advances to master-clock position <paramref name="mc"/> in the current line: fires the events that have come due and draws the pixels up to there.</summary>
+    /// <summary>Advances to master-clock position <paramref name="mc"/> in the current line: fires the events and lands the writes that have come due, in time order, drawing the pixels between them.</summary>
     public void RunTo(int mc)
     {
         if (mc > LineMc) mc = LineMc;
-        while (evNext < evCount && evTime[evNext] <= mc)
+        while (true)
         {
-            curMc = evTime[evNext];
-            Fire(evKind[evNext]);
-            evNext++;
+            int t = int.MaxValue, which = 0;
+            if (evNext < evCount) { t = evTime[evNext]; which = 1; }
+            if (pendCount > 0) { long pt = pend[pendHead].Time - lineBase; if (pt < t) { t = (int)pt; which = 2; } }
+            if (colAtMc < t) { t = colAtMc; which = 3; }
+            if (ovrAtMc < t) { t = ovrAtMc; which = 4; }
+            if (t > mc) break;
+            if (t < curMc) t = curMc;
+            RenderUpTo(t);
+            curMc = t;
+            switch (which)
+            {
+                case 1: Fire(evKind[evNext]); evNext++; break;
+                case 2:
+                    {
+                        var op = pend[pendHead];
+                        pendHead = (pendHead + 1) % pend.Length; pendCount--;
+                        ApplyWrite(op.Kind, op.Index, op.Value);
+                        break;
+                    }
+                case 3: colAtMc = int.MaxValue; colFlag = true; break;
+                default: ovrAtMc = int.MaxValue; ovrFlag = true; break;
+            }
         }
-        if (colAtMc <= mc) { colAtMc = int.MaxValue; colFlag = true; }
-        if (ovrAtMc <= mc) { ovrAtMc = int.MaxValue; ovrFlag = true; }
-        if (Line < activeHeight)
-        {
-            int xEnd = (mc - PixelOriginMc + 1) >> 1;
-            if (xEnd > 256) xEnd = 256;
-            if (xEnd > renderedX) { RenderSpan(renderedX, xEnd); renderedX = xEnd; }
-        }
+        RenderUpTo(mc);
         curMc = mc;
         Refresh();
+    }
+
+    /// <summary>Draws the picture pixels whose time is before master-clock position <paramref name="t"/>.</summary>
+    private void RenderUpTo(int t)
+    {
+        if (Line >= activeHeight) return;
+        int xEnd = (t - PixelOriginMc + 1) >> 1;
+        if (xEnd > 256) xEnd = 256;
+        if (xEnd > renderedX) { RenderSpan(renderedX, xEnd); renderedX = xEnd; }
     }
 
     private void Refresh()
@@ -265,6 +292,7 @@ public sealed partial class SmsVdp
         int next = evNext < evCount ? evTime[evNext] : int.MaxValue;
         if (colAtMc < next) next = colAtMc;
         if (ovrAtMc < next) next = ovrAtMc;
+        if (pendCount > 0) { long pt = pend[pendHead].Time - lineBase; if (pt < next) next = (int)pt; }
         NextEventMc = next;
     }
 
@@ -316,13 +344,79 @@ public sealed partial class SmsVdp
         return v;
     }
 
+    // =================================================================================== the write pipeline
+    // The chip does not act on a CPU write the instant it arrives. A register write, or a byte for VRAM or colour RAM, takes effect about 31 pixels later (WriteLatencyMc master clocks), and
+    // a byte for memory while the picture is being drawn (display on, a picture line) waits for the next of eight access slots in the line, one every 32 pixels (SlotFirstMc, SlotPeriodMc).
+    // With the display off the byte shows through on screen as a dot of the colour written at the moment it lands. Measured by sweeping the time of a write through a line against the oracle
+    // (Workshop/Sega/mesen sweeps): the effect edge sits at the first slot at or after the write plus 31 pixels, slots at x = 27 + 32k; registers and display-off writes at write + 31 pixels.
+
+    /// <summary>Master clocks from a CPU write to its effect (31 pixels).</summary>
+    public int WriteLatencyMc = 62;
+    /// <summary>The first VRAM / colour RAM access slot of a picture line, in master clocks into the line (pixel 27).</summary>
+    public int SlotFirstMc = 128;
+    /// <summary>Master clocks between slots (32 pixels).</summary>
+    public int SlotPeriodMc = 64;
+    /// <summary>Slots per picture line.</summary>
+    public int SlotCount = 8;
+    /// <summary>Switch the whole pipeline off (writes act at once): a tool setting for isolating a problem.</summary>
+    public bool WritesImmediate;
+
+    private const int OpVram = 0, OpCram = 1, OpRegister = 2;
+    private struct PendingWrite { public long Time; public int Kind; public int Index; public byte Value; }
+    private readonly PendingWrite[] pend = new PendingWrite[32];
+    private int pendHead, pendCount;
+    private long lineBase;          // the master-clock time of the start of the current line, from power-on
+    private long lastWriteTime;
+
+    private void EnqueueWrite(int kind, int index, byte value, int mc)
+    {
+        if (WritesImmediate) { ApplyWrite(kind, index, value); return; }
+        long t = lineBase + mc + WriteLatencyMc;
+        if (kind != OpRegister && (Regs[1] & 0x40) != 0 && Line < activeHeight)
+        {
+            long rel = t - lineBase;
+            if (rel <= SlotFirstMc) t = lineBase + SlotFirstMc;
+            else
+            {
+                long k = (rel - SlotFirstMc + SlotPeriodMc - 1) / SlotPeriodMc;
+                t = k < SlotCount ? lineBase + SlotFirstMc + k * SlotPeriodMc : lineBase + LineMc + SlotFirstMc;
+            }
+        }
+        if (t < lastWriteTime) t = lastWriteTime;   // writes land in the order they were made
+        lastWriteTime = t;
+        if (pendCount == pend.Length) { ApplyWrite(pend[pendHead].Kind, pend[pendHead].Index, pend[pendHead].Value); pendHead = (pendHead + 1) % pend.Length; pendCount--; }
+        pend[(pendHead + pendCount++) % pend.Length] = new PendingWrite { Time = t, Kind = kind, Index = index, Value = value };
+        Refresh();
+    }
+
+    private void ApplyWrite(int kind, int index, byte value)
+    {
+        switch (kind)
+        {
+            case OpVram: Vram[index] = value; break;
+            case OpCram:
+                WriteCram(index, value);
+                // With the display off the picture shows the backdrop, and a colour RAM write that lands while the line is being drawn shows through as a one-pixel dot of the colour written
+                // (the oracle does this; on the Master System the value is the 6-bit colour of the byte, on the Game Gear the colour the pair completes)
+                if (!lineDisplayOn && Line < activeHeight && renderedX < 256 && (!gg || (index & 1) != 0))
+                    Frame[Line * 256 + renderedX++] = palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F];
+                break;
+            default:
+                RegisterWriteHook?.Invoke(Line, curMc, index, value);
+                Regs[index] = value;
+                // turning the display off blanks the rest of the line at once; turning it on only shows from the next line (measured: a line in which the bit goes high stays blank)
+                if (index == 1 && (value & 0x40) == 0) lineDisplayOn = false;
+                break;
+        }
+    }
+
     /// <summary>A write to the data port ($BE).</summary>
     public void WriteData(byte value, int mc)
     {
         RunTo(mc);
         latch = false;
-        if (code == 3) WriteCram(addr, value);
-        else Vram[addr] = value;
+        DataWriteHook?.Invoke(code, addr, value, Line, curMc);
+        EnqueueWrite(code == 3 ? OpCram : OpVram, addr, value, mc);
         readBuffer = value;
         addr = (addr + 1) & 0x3FFF;
     }
@@ -360,17 +454,16 @@ public sealed partial class SmsVdp
                 addr = (addr + 1) & 0x3FFF;
                 break;
             case 2:
-                WriteRegister(value & 0x0F, latchByte);
+                WriteRegister(value & 0x0F, latchByte, mc);
                 break;
         }
     }
 
-    private void WriteRegister(int reg, byte value)
+    private void WriteRegister(int reg, byte value, int mc)
     {
         int limit = Revision == SmsVdpRevision.Tms9918 ? 8 : 11;
         if (reg >= limit) return;   // registers 11-15 do nothing
-        RegisterWriteHook?.Invoke(Line, curMc, reg, value);
-        Regs[reg] = value;
+        EnqueueWrite(OpRegister, reg, value, mc);
     }
 
     private void WriteCram(int address, byte value)

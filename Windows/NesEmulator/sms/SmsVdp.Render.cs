@@ -39,7 +39,7 @@ public sealed partial class SmsVdp
     private void RenderSpan(int x0, int x1)
     {
         int row = Line * 256;
-        if ((Regs[1] & 0x40) == 0)
+        if (!lineDisplayOn)
         {
             uint bd = Backdrop;
             for (int x = x0; x < x1; x++) Frame[row + x] = bd;

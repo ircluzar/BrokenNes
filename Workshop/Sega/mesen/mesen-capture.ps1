@@ -13,7 +13,7 @@
 #>
 param(
     [Parameter(Mandatory)] [string]$Rom,
-    [Parameter(Mandatory)] [int[]]$Frames,
+    [Parameter(Mandatory)] [string[]]$Frames,
     [Parameter(Mandatory)] [string]$OutDir,
     [string]$Tag,
     [string]$Pad = "",
@@ -22,6 +22,9 @@ param(
     [switch]$State,
     [switch]$Fm,
     [switch]$Ports,
+    [string]$Exec = "",
+    [string]$Watch = "",
+    [switch]$ExecRegs,
     [int]$TimeoutSec = 240,
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
 )
@@ -52,12 +55,16 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 $lua = Join-Path $PSScriptRoot "capture.lua"
 $env:MESEN_OUT = (Resolve-Path $OutDir).Path; $env:MESEN_TAG = $Tag; $env:MESEN_FRAMES = ($Frames -join ","); $env:MESEN_INPUT = $Pad
 $env:MESEN_PORTS = if ($Ports) { "1" } else { "" }
+$env:MESEN_EXEC = $Exec
+$env:MESEN_WATCH = $Watch
+$env:MESEN_EXECREGS = if ($ExecRegs) { "1" } else { "" }
 $env:MESEN_GG = if ([IO.Path]::GetExtension($Rom).ToLowerInvariant() -eq ".gg") { "1" } else { "" }
 $env:MESEN_DUMP = if ($Dump) { "1" } else { "" }; $env:MESEN_STATE = if ($State) { "1" } else { "" }
 $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
 $p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `
     -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
-$missing = $Frames | Where-Object { -not (Test-Path (Join-Path $env:MESEN_OUT "${Tag}_f$_.png")) }
+$expected = foreach ($tok in ($Frames -join "," -split ",")) { if ($tok -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } elseif ($tok) { [int]$tok } }
+$missing = $expected | Where-Object { -not (Test-Path (Join-Path $env:MESEN_OUT "${Tag}_f$_.png")) } | Select-Object -First 5
 if ($missing) { Write-Error "Mesen did not write frames: $($missing -join ',') (see $log)"; exit 4 }
-"mesen: $($Frames.Count) screenshots in $env:MESEN_OUT"
+"mesen: $(@($expected).Count) screenshots in $env:MESEN_OUT"

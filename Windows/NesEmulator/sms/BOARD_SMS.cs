@@ -107,13 +107,14 @@ public sealed class BOARD_SMS
         Sound.Reset();
         Cpu.Reset();
         // the registers the BIOS leaves for the cartridge (as the oracle shows them at a cartridge's first instruction): the stack at $DFF0, interrupt mode 1, interrupts disabled
-        Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1;
+        Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1; Cpu.R = 29;
         port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
         port3F = 0xFF;
         ApplyMemoryControl();
         pad1 = pad2 = SmsButtons.None; pauseHeld = false;
         ggExtData = 0xFF; ggExtConfig = 0x7F; ggSend = 0; ggSerial = 0;
-        lineCycle = 0; soundCycle = 0; Frames = 0;
+        lineCycle = 0; soundCycle = 0; Frames = 0; nextLine = StartLine; firstLineCycle = StartCycle;
+        if (firstLineCycle < 0) { firstLineCycle += SegaTiming.MasterSystemCpuCyclesPerLine; nextLine = (nextLine + Vdp.TotalLines - 1) % Vdp.TotalLines; }
     }
 
     private void ApplyMemoryControl()
@@ -140,11 +141,29 @@ public sealed class BOARD_SMS
 
     // =================================================================================== the frame
 
-    /// <summary>Runs one frame: every line, the Z80 a T-state at a time and the VDP at its event times.</summary>
+    private int nextLine;
+
+    /// <summary>The line the machine powers on at (default 0). A tool setting: hardware starts at an arbitrary place in the frame, and a game that depends on it shows up when this is varied.</summary>
+    public int StartLine { get; set; }
+    /// <summary>The Z80 cycle within <see cref="StartLine"/> the machine powers on at (default 0; may be negative: that many cycles before the line). Tuning aid for the alignment of the picture to the Z80.</summary>
+    public int StartCycle { get; set; }
+    private int firstLineCycle;
+
+    /// <summary>
+    /// Runs one frame: every line, the Z80 a T-state at a time and the VDP at its event times. A frame ends where the picture is complete, as the first blanking line is about to start (line 192
+    /// in the 192-line mode), not at the end of the vertical blanking period: the first frame runs lines 0-191, each later one lines 192-261 and 0-191 (192-312 and 0-191 on PAL). The state
+    /// a caller sees between frames (RAM, VRAM, the picture) is then the one the oracle reports at the end of its frame, and the work the game does in the blanking period belongs to the frame it prepares.
+    /// </summary>
     public void RunFrame()
     {
         int lines = Vdp.TotalLines;
-        for (int n = 0; n < lines; n++) RunLine(n);
+        for (int guard = 0; guard < 2 * lines; guard++)
+        {
+            int n = nextLine;
+            RunLine(n);
+            nextLine = n + 1 == lines ? 0 : n + 1;
+            if (nextLine == Vdp.ActiveHeight) break;
+        }
         SyncSound();
         Frames++;
     }
@@ -155,9 +174,10 @@ public sealed class BOARD_SMS
         Cpu.Irq = Vdp.Irq;
         var cpu = Cpu;
         var vdp = Vdp;
+        int first = firstLineCycle; firstLineCycle = 0;   // only the line the machine powers on in starts part-way
         if (InstructionHook == null)
         {
-            for (lineCycle = 0; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
+            for (lineCycle = first; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
             {
                 int mc = lineCycle * 3 + EventPhaseMc;
                 if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
@@ -166,7 +186,7 @@ public sealed class BOARD_SMS
         }
         else
         {
-            for (lineCycle = 0; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
+            for (lineCycle = first; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
             {
                 int mc = lineCycle * 3 + EventPhaseMc;
                 if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
@@ -202,8 +222,12 @@ public sealed class BOARD_SMS
     /// <summary>A read without side effects, for tools.</summary>
     public byte Peek(ushort address) => ReadMemory(address);
 
+    /// <summary>Called for every memory write: (address, value, frame line, Z80 cycle in the line). Tracing; a null hook costs one test per write.</summary>
+    public Action<ushort, byte, int, int>? MemWriteHook;
+
     public void WriteMemory(ushort address, byte value)
     {
+        MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
         Cart.Write(address, value);
     }

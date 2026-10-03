@@ -37,11 +37,14 @@ internal static class SmsRunCli
         var console = Opt("console") is { } c ? Consoles.FromKey(c) : detected ?? ConsoleKind.MasterSystem;
         if (console is not (ConsoleKind.MasterSystem or ConsoleKind.GameGear)) { Console.WriteLine($"not a Master System / Game Gear ROM ({detected})"); return 2; }
         int frames = int.Parse(Opt("frames") ?? "600");
-        var shots = (Opt("png-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
-        var hashAt = (Opt("hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
+        var shots = ParseFrames(Opt("png-at") ?? "");
+        var hashAt = ParseFrames(Opt("hash-at") ?? "");
+        var ramAt = ParseFrames(Opt("ram-at") ?? "");
+        int diffDetail = int.Parse(Opt("diff-detail") ?? "6");
+        int firstDiffFrame = -1, diffsPrinted = 0;
         string outDir = Opt("out") ?? ".", tag = Opt("tag") ?? Path.GetFileNameWithoutExtension(inner);
         Directory.CreateDirectory(outDir);
-        string? mesenDir = Opt("mesen");
+        string? mesenDir = Opt("mesen"), mesenDirB = Opt("mesen-b");
         var script1 = SmsRomIo.ParseInput(Opt("input") ?? ""); var script2 = SmsRomIo.ParseInput(Opt("input2") ?? "");
         RegionChoice? region = Opt("region") is { } r ? Enum.Parse<RegionChoice>(r, true) : null;
         MasterSystemModel? model = Opt("model") is { } m ? Enum.Parse<MasterSystemModel>(m, true) : null;
@@ -50,6 +53,13 @@ internal static class SmsRunCli
             ? (SmsSession)new GgSession(rom, "Z80", "GG", "GG", inner, region)
             : new SmsSession(rom, console, "Z80", "SMS", "SMS", inner, model, region);
         var board = session.Board;
+        // the oracle starts its VDP at a random scanline; its capture script records the line, and this emulator starts at the same one so the two run in step (frame for frame, cycle for cycle on the Z80 side)
+        string? startLine = Opt("start-line");
+        if (startLine == null && mesenDir != null && File.Exists(Path.Combine(mesenDir, tag + ".phase.txt")))
+            startLine = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(mesenDir, tag + ".phase.txt")), @"scanline=(\d+)").Groups[1].Value;
+        if (!string.IsNullOrEmpty(startLine)) board.StartLine = int.Parse(startLine);
+        if (Opt("start-cycle") is { } sc) board.StartCycle = int.Parse(sc);
+        if (board.StartLine != 0 || board.StartCycle != 0) { board.Reset(); Console.WriteLine($"VDP starts at line {board.StartLine} cycle {board.StartCycle}"); }
         Console.WriteLine(session.Description);
         if (Opt("battery") is { } bat && File.Exists(bat)) { session.ImportSave(File.ReadAllBytes(bat)); Console.WriteLine($"battery loaded: {bat}"); }
 
@@ -76,10 +86,67 @@ internal static class SmsRunCli
                 Console.WriteLine($"IO f{fr} l{line} c{cyc} {(write ? "W" : "R")} {port & 0xFF:X2} {value:X2}");
             };
         }
+        StreamWriter? watchLog = null;
+        if (Opt("watch-pc") is { } wpcs)
+        {
+            // --watch-pc <addr>[,<addr>]: each execution of those instruction addresses as "frame pc cycles line" to <out>/<tag>.watch.txt (the oracle's MESEN_WATCH writes the same, with its own cycle count)
+            watchLog = new StreamWriter(Path.Combine(outDir, $"{tag}.watch.txt"));
+            var set = wpcs.Split(',').Select(h => Convert.ToUInt16(h, 16)).ToHashSet();
+            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cpu.TotalCycles} {board.Vdp.Line}"); };
+        }
+        if (Opt("count-pc") is { } cpc)
+        {
+            // --count-pc <addr> [--count-every N]: print the Z80 cycle count at every Nth execution of an instruction address (compare with the oracle's exec callback)
+            ushort target = Convert.ToUInt16(cpc, 16); int every = int.Parse(Opt("count-every") ?? "4000"); long hits = 0;
+            board.InstructionHook = pc => { if (pc == target && ++hits % every == 1) Console.WriteLine($"n={hits} cycles={board.Cpu.TotalCycles} f={board.Frames + 1} line={board.Vdp.Line}"); };
+        }
+        StreamWriter? pcLog = null;
+        if (Opt("trace-pc") is { } tpc)
+        {
+            // --trace-pc <a>-<b>: the address of every instruction executed in frames a..b, one per line, to <out>/<tag>.pc.txt (compare with Mesen's MESEN_EXEC)
+            var ab = tpc.Split('-'); int fa = int.Parse(ab[0]), fb = int.Parse(ab[1]);
+            pcLog = new StreamWriter(Path.Combine(outDir, $"{tag}.pc.txt"));
+            bool withRegs = Flag("trace-pc-regs");
+            board.InstructionHook = pc =>
+            {
+                long fr = board.Frames + 1;
+                if (fr < fa || fr > fb) return;
+                if (withRegs) { var z = board.Cpu; pcLog.WriteLine($"{pc:X4} {z.A:X2}{z.F:X2} {z.B:X2}{z.C:X2} {z.D:X2}{z.E:X2} {z.H:X2}{z.L:X2} {z.SP:X4}"); }
+                else pcLog.WriteLine(pc.ToString("X4"));
+            };
+        }
+        if (Opt("watch-vram") is { } wv)
+        {
+            // --watch-vram <addr>[-<addr>] [--watch-frames a-b]: every write to those VRAM addresses (or colour RAM with code 3: "C:" prefix on the address) with frame, line and master clock
+            var ab = wv.Split('-'); int lo = Convert.ToInt32(ab[0], 16), hi = ab.Length > 1 ? Convert.ToInt32(ab[1], 16) : lo;
+            var wf = Opt("watch-frames")?.Split('-'); int wlo = wf == null ? 0 : int.Parse(wf[0]), whi = wf == null ? int.MaxValue : int.Parse(wf.Length > 1 ? wf[1] : wf[0]);
+            int shownV = 0; bool cramOnly = Flag("cram");
+            board.Vdp.DataWriteHook = (code, addr, value, line, mc) =>
+            {
+                long fr = board.Frames + 1;
+                if (cramOnly != (code == 3) || addr < lo || addr > hi || fr < wlo || fr > whi || shownV > 3000) return;
+                shownV++;
+                Console.WriteLine($"{(code == 3 ? "CRAM" : "VRAM")} f{fr} l{line} mc{mc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4} cycles={board.Cpu.TotalCycles}");
+            };
+        }
+        if (Opt("watch-write") is { } ww)
+        {
+            // --watch-write <addr>[-<addr>] [--watch-frames a-b]: print every write to those Z80 addresses with the frame, line, cycle and the PC after the write
+            var ab = ww.Split('-'); int lo = Convert.ToInt32(ab[0], 16), hi = ab.Length > 1 ? Convert.ToInt32(ab[1], 16) : lo;
+            var wf = Opt("watch-frames")?.Split('-'); int wlo = wf == null ? 0 : int.Parse(wf[0]), whi = wf == null ? int.MaxValue : int.Parse(wf.Length > 1 ? wf[1] : wf[0]);
+            int shownW = 0;
+            board.MemWriteHook = (addr, value, line, cyc) =>
+            {
+                long fr = board.Frames + 1;
+                if (addr < lo || addr > hi || fr < wlo || fr > whi || shownW > 2000) return;
+                shownW++;
+                Console.WriteLine($"WR f{fr} l{line} c{cyc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4}");
+            };
+        }
         if (Flag("trace-vdp"))
         {
             long f = 0;
-            board.Vdp.RegisterWriteHook = (line, mc, reg, value) => Console.WriteLine($"VDP frame {board.Frames} line {line} mc {mc}: R{reg} = ${value:X2}");
+            board.Vdp.RegisterWriteHook = (line, mc, reg, value) => Console.WriteLine($"VDP frame {board.Frames + 1} line {line} mc {mc}: R{reg} = ${value:X2}  pc=${board.Cpu.PC:X4} cycles={board.Cpu.TotalCycles}");
         }
 
         var pcm = new List<short>();
@@ -87,7 +154,8 @@ internal static class SmsRunCli
         var sw = System.Diagnostics.Stopwatch.StartNew();
         ulong hash = 0xcbf29ce484222325, hashLast = 0;
         PadButtons p1 = 0, p2 = 0;
-        int mesenDiffFrames = 0, mesenFramesCompared = 0;
+        int stableFrames = 0, stableMatched = 0, unstableFrames = 0, unstableMatched = 0;
+        int mesenShift = int.Parse(Opt("mesen-shift") ?? "0");
         for (int f = 0; f < frames; f++)
         {
             if (script1.TryGetValue(f, out var h1)) p1 = h1;
@@ -101,25 +169,63 @@ internal static class SmsRunCli
                 hashLast = HashFrame(session);
                 if (hashAt.Contains(frameNo)) Console.WriteLine($"frame {frameNo} hash {hashLast:X16}");
             }
+            if (ramAt.Contains(frameNo))
+            {
+                File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.ram.bin"), board.Ram);
+                File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.vram.bin"), board.Vdp.Vram);
+                File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.cram.bin"), Enumerable.Range(0, 64).Select(i => board.Vdp.CramByte(i)).ToArray());
+                if (mesenDir != null) Console.WriteLine($"frame {frameNo}: RAM " + SmsPng.DiffBytes(board.Ram, Path.Combine(mesenDir, $"{tag}_f{frameNo}.ram.bin")) +
+                                                        " | VRAM " + SmsPng.DiffBytes(board.Vdp.Vram, Path.Combine(mesenDir, $"{tag}_f{frameNo}.vram.bin")));
+            }
             if (shots.Contains(frameNo))
             {
                 string path = Path.Combine(outDir, $"{tag}_f{frameNo}.png");
-                SmsPng.Save(session.Frame, session.FrameWidth, session.FrameHeight, path);
+                if (mesenDir == null || shots.Count <= 12) SmsPng.Save(session.Frame, session.FrameWidth, session.FrameHeight, path);
                 if (mesenDir != null)
                 {
-                    string theirs = Path.Combine(mesenDir, $"{tag}_f{frameNo}.png");
-                    mesenFramesCompared++;
+                    // --mesen-shift k: compare this emulator's frame N with the oracle's screenshot N+k (a lag test: the oracle may show the frame before the one just completed)
+                    string theirs = Path.Combine(mesenDir, $"{tag}_f{frameNo + mesenShift}.png");
+                    string? theirsB = mesenDirB != null ? Path.Combine(mesenDirB, $"{tag}_f{frameNo + mesenShift}.png") : null;
                     if (!File.Exists(theirs)) Console.WriteLine($"frame {frameNo}: no Mesen shot at {theirs}");
+                    else if (new FileInfo(theirs).Length == 0) { /* Mesen takes no picture of its very first frame */ }
                     else
                     {
-                        int diffs = SmsPng.Compare(session.Frame, session.FrameWidth, session.FrameHeight, theirs, Path.Combine(outDir, $"{tag}_f{frameNo}_diff.png"), out string summary);
-                        Console.WriteLine($"frame {frameNo}: {(diffs == 0 ? "IDENTICAL to Mesen" : summary)}");
-                        if (diffs != 0) mesenDiffFrames++;
+                        // Mesen starts the Z80 and the VDP at a random alignment (run it twice and the two runs differ in R and in the cycle count of the first frame), so a game whose
+                        // picture depends on timing only matches one of its own runs by luck. With two Mesen runs, frames where they agree are the ones this emulator must match.
+                        bool stable = true; uint[]? other = null;
+                        uint[] a = SmsPng.Load(theirs, out int aw, out int ah);
+                        if (theirsB != null && File.Exists(theirsB) && new FileInfo(theirsB).Length > 0)
+                        {
+                            other = SmsPng.Load(theirsB, out int bw, out int bh);
+                            stable = bw == aw && bh == ah && a.AsSpan().SequenceEqual(other);
+                        }
+                        bool sizeOk = aw == session.FrameWidth && ah == session.FrameHeight;
+                        bool matchA = sizeOk && SmsPng.SameAsFrame(session.Frame, a);
+                        if (stable)
+                        {
+                            stableFrames++;
+                            if (matchA) { stableMatched++; if (shots.Count <= 12) Console.WriteLine($"frame {frameNo}: IDENTICAL to Mesen"); }
+                            else
+                            {
+                                if (firstDiffFrame < 0) { firstDiffFrame = frameNo; SmsPng.Save(session.Frame, session.FrameWidth, session.FrameHeight, path); }
+                                if (diffsPrinted++ < diffDetail)
+                                {
+                                    SmsPng.Compare(session.Frame, session.FrameWidth, session.FrameHeight, theirs, Path.Combine(outDir, $"{tag}_f{frameNo}_diff.png"), out string summary, writeDiff: true);
+                                    Console.WriteLine($"frame {frameNo}: {summary}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            unstableFrames++;
+                            if (matchA || (sizeOk && SmsPng.SameAsFrame(session.Frame, other!))) unstableMatched++;
+                        }
                     }
                 }
             }
         }
         double secs = sw.Elapsed.TotalSeconds;
+        pcLog?.Dispose(); watchLog?.Dispose();
         foreach (var t in trace) Console.WriteLine(t);
         if (Opt("wav") is { } wav) { MixWav(wav, pcm.ToArray(), session.SampleRate); Console.WriteLine($"wrote {wav} ({pcm.Count / (double)session.SampleRate:F1} s)"); }
         if (Opt("dump-vram") is { } dv) { File.WriteAllBytes(dv, board.Vdp.Vram); }
@@ -129,8 +235,26 @@ internal static class SmsRunCli
         Console.WriteLine($"frames={frames} {secs * 1000 / frames:F2} ms/frame ({frames / secs:F0} fps, {frames / secs / session.FramesPerSecond:F1}x real time) PC=${board.Cpu.PC:X4} " +
                           $"R0..R10={string.Join(" ", vdp.Regs.Take(11).Select(b => b.ToString("X2")))} height={vdp.FrameHeight} irq={vdp.Irq}");
         if (Flag("hash")) Console.WriteLine($"hash={hashLast:X16}");
-        if (mesenDir != null) Console.WriteLine($"mesen compare: {mesenFramesCompared - mesenDiffFrames}/{mesenFramesCompared} frames identical");
-        return mesenDir != null && mesenDiffFrames > 0 ? 1 : 0;
+        if (Flag("regs")) { var z = board.Cpu; Console.WriteLine($"regs AF={z.AF:X4} BC={z.BC:X4} DE={z.DE:X4} HL={z.HL:X4} IX={z.IX:X4} IY={z.IY:X4} SP={z.SP:X4} PC={z.PC:X4} R={z.R:X2} cycles={z.TotalCycles}"); }
+        if (mesenDir != null)
+        {
+            Console.WriteLine($"mesen compare: stable frames {stableFrames}: {stableMatched} identical, {stableFrames - stableMatched} differ" + (firstDiffFrame > 0 ? $" (first at frame {firstDiffFrame})" : "") +
+                              (mesenDirB != null ? $"; unstable frames (Mesen's two runs differ) {unstableFrames}: this emulator equals one of them in {unstableMatched}" : ""));
+        }
+        return mesenDir != null && stableFrames > stableMatched ? 1 : 0;
+    }
+
+    /// <summary>"60,120,300-310" into a set of frame numbers.</summary>
+    internal static HashSet<int> ParseFrames(string spec)
+    {
+        var set = new HashSet<int>();
+        foreach (var part in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var ab = part.Split('-');
+            int a = int.Parse(ab[0]), b = ab.Length > 1 ? int.Parse(ab[1]) : a;
+            for (int i = a; i <= b; i++) set.Add(i);
+        }
+        return set;
     }
 
     internal static ulong HashFrame(IConsoleSession s)
@@ -218,7 +342,31 @@ internal static class SmsPng
     }
 
     /// <summary>Compares a frame with a PNG. Returns the number of differing pixels (or -1 for a size mismatch) and describes them; writes a diff image (red where they differ, grey where they agree).</summary>
-    public static int Compare(uint[] mine, int w, int h, string theirsPath, string diffPath, out string summary)
+    public static bool SameAsFrame(uint[] mine, uint[] theirs)
+    {
+        int n = theirs.Length;
+        for (int i = 0; i < n; i++) if ((mine[i] | 0xFF000000u) != theirs[i]) return false;
+        return true;
+    }
+
+    /// <summary>"identical", or how many bytes differ and where (the first few runs), against a binary dump the Mesen script wrote.</summary>
+    public static string DiffBytes(byte[] mine, string theirsPath)
+    {
+        if (!File.Exists(theirsPath)) return "no Mesen dump";
+        var theirs = File.ReadAllBytes(theirsPath);
+        int n = Math.Min(mine.Length, theirs.Length), count = 0;
+        var runs = new List<string>();
+        int i = 0;
+        while (i < n)
+        {
+            if (mine[i] == theirs[i]) { i++; continue; }
+            int start = i; while (i < n && mine[i] != theirs[i]) { count++; i++; }
+            if (runs.Count < 6) runs.Add(i - start == 1 ? $"${start:X4}={mine[start]:X2}/{theirs[start]:X2}" : $"${start:X4}-${i - 1:X4}={mine[start]:X2}../{theirs[start]:X2}..");
+        }
+        return count == 0 ? "identical" : $"{count} bytes differ ({string.Join(" ", runs)}{(runs.Count == 6 ? " ..." : "")})";
+    }
+
+    public static int Compare(uint[] mine, int w, int h, string theirsPath, string diffPath, out string summary, bool writeDiff = true)
     {
         var theirs = Load(theirsPath, out int tw, out int th);
         if (tw != w || th != h) { summary = $"SIZE MISMATCH: mine {w}x{h}, Mesen {tw}x{th}"; return -1; }
@@ -235,7 +383,7 @@ internal static class SmsPng
             if (firsts.Count < 4) firsts.Add($"({x},{y}) mine {mine[i] & 0xFFFFFF:X6} mesen {theirs[i] & 0xFFFFFF:X6}");
         }
         summary = count == 0 ? "identical" : $"{count} pixels differ in x {minX}-{maxX}, y {minY}-{maxY}; e.g. {string.Join("; ", firsts)}";
-        if (count > 0) Save(diff, w, h, diffPath);
+        if (count > 0 && writeDiff) Save(diff, w, h, diffPath);
         return count;
     }
 }
