@@ -315,7 +315,32 @@ namespace NesEmulator
         public int GetSampleRate() => psg.SampleRate;
         public void SetEnabledChannels(int mask) { channelMask = mask; front.SetEnabledChannels(mask); }
         public object GetState() => front.GetState();
-        public void SetState(object state) { front.SetState(state); }
+        public void SetState(object state) { front.SetState(state); ResyncModel(); }
+
+        /// <summary>
+        /// After a state load the front core holds the new state but the channel model still holds the old one. When the front core can describe itself (<see cref="IApuStateProbe"/>: FIX can) the model is
+        /// rebuilt from that, so the PSG plays what the loaded state was playing (a pulse's sweep period and envelope divider are not in the description: a sweep starts again from its first step). A front core without
+        /// the probe leaves the model to catch up as the game rewrites its registers.
+        /// </summary>
+        private void ResyncModel()
+        {
+            if (front is not IApuStateProbe probe) return;
+            var s = probe.ProbeApuState();
+            var m = new NesChannelModel();
+            m.Write(0x4017, (byte)(s.FrameMode5 ? 0x80 : 0));
+            void Pulse(NesChannelModel.Pulse p, ushort timer, byte volume, byte length, byte duty, bool enabled, bool halt, bool constant, bool sweepOn, bool negate, byte shift)
+            {
+                p.Timer = timer; p.Duty = duty; p.Len = length; p.Enabled = enabled; p.Halt = halt; p.Const = constant;
+                p.Vol = volume; p.EnvDecay = volume; p.SweepOn = sweepOn; p.SweepNeg = negate; p.SweepShift = shift;
+            }
+            Pulse(m.P[0], s.Pulse1Period, s.Pulse1Volume, s.Pulse1Length, s.Pulse1Duty, s.Pulse1Enabled, s.Pulse1Halt, s.Pulse1ConstVol, s.Pulse1SweepEnabled, s.Pulse1SweepNegate, s.Pulse1SweepShift);
+            Pulse(m.P[1], s.Pulse2Period, s.Pulse2Volume, s.Pulse2Length, s.Pulse2Duty, s.Pulse2Enabled, s.Pulse2Halt, s.Pulse2ConstVol, s.Pulse2SweepEnabled, s.Pulse2SweepNegate, s.Pulse2SweepShift);
+            m.TriTimer = s.TrianglePeriod; m.TriLen = s.TriangleLength; m.TriLinear = s.TriangleLinear; m.TriControl = s.TriangleHalt; m.TriEnabled = s.TriangleEnabled;
+            m.NoisePeriodIdx = Math.Max(0, Array.IndexOf(NesChannelModel.NoisePeriods, (int)s.NoisePeriod));
+            m.NoiseVol = s.NoiseVolume; m.NoiseEnvDecay = s.NoiseVolume; m.NoiseLen = s.NoiseLength; m.NoiseHalt = s.NoiseHalt; m.NoiseConst = s.NoiseConstVol; m.NoiseShort = s.NoiseMode; m.NoiseEnabled = s.NoiseEnabled;
+            m.DmcStarts = model.DmcStarts;   // the count of what was dropped is not part of the game's state
+            model = m;
+        }
         public void ClearAudioBuffers() { Drain(); ringHead = ringCount = 0; front.ClearAudioBuffers(); }
 
         public void Reset()

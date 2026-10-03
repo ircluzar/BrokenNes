@@ -397,6 +397,20 @@ internal static class SegaBridgeTestCli
             Check($"the frame-sequencer jump (ClockBulk) matches counting every cycle over {steps} random register scripts and cycle counts (all four step lengths, both modes)", same, where);
         }
 
+        // ---- a loaded state: the model is rebuilt from the front core, so the PSG plays what the state was playing ----
+        {
+            var a = new Rig("SMS"); var pa = (APU_SMS)a.Apu;
+            a.Pulse(0, 253, 12); a.Pulse(1, 190, 7, 1); a.Triangle(126); a.Noise(9, 9, false);
+            a.Run(0.2, false);
+            object state = a.Apu.GetState();
+            var b = new Rig("SMS"); var pb = (APU_SMS)b.Apu;
+            b.Apu.SetState(state);
+            b.Run(0.05, false);
+            bool same = pb.Psg.Period(0) == pa.Psg.Period(0) && pb.Psg.Period(1) == pa.Psg.Period(1) && pb.Psg.Period(2) == pa.Psg.Period(2)
+                && Enumerable.Range(0, 4).All(c => pb.Psg.Volume(c) == pa.Psg.Volume(c)) && pb.Psg.NoiseControl == pa.Psg.NoiseControl;
+            Check($"a state loaded into a fresh APU_SMS plays what the state was playing: tones {pb.Psg.Period(0)}/{pb.Psg.Period(1)}/{pb.Psg.Period(2)} volumes {pb.Psg.Volume(0)}/{pb.Psg.Volume(1)}/{pb.Psg.Volume(2)}/{pb.Psg.Volume(3)} noise ${pb.Psg.NoiseControl:X} (the original: {pa.Psg.Period(0)}/{pa.Psg.Period(1)}/{pa.Psg.Period(2)}, {pa.Psg.Volume(0)}/{pa.Psg.Volume(1)}/{pa.Psg.Volume(2)}/{pa.Psg.Volume(3)}, ${pa.Psg.NoiseControl:X})", same);
+        }
+
         // ---- channel masks, reset, polyphony ----
         {
             var r = new Rig("SMS");
