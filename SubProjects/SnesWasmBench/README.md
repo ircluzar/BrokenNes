@@ -18,3 +18,10 @@ that window's fps, then the overall fps.
 The Claude preview tool reads `.claude/launch.json` from the main checkout; add a config there
 that runs `node SubProjects/SnesWasmBench/serve.mjs <dir>/wwwroot <port>` to drive it from the
 browser pane.
+
+The `snes-wasm-aot` launch entry serves `SubProjects/_publish/snes-wasm-aot/wwwroot` (port 5022).
+`SubProjects/_publish/` is gitignored, so an AOT publish with a ROM in it can live there safely:
+
+```
+dotnet publish SubProjects/SnesWasmBench -c Release -p:EnableWasmAot=true -o SubProjects/_publish/snes-wasm-aot
+```

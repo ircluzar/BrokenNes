@@ -18,6 +18,24 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "WebLite/BrokenNes.Lite.csproj", "--urls", "http://localhost:5013"],
       "port": 5013
+    },
+    {
+      "name": "brokennes-lite-maxspeed",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "SubProjects/LiteStaticServer", "-c", "Release", "--", "../../WebLite/bin/Release-Publish", "5090"],
+      "port": 5090
+    },
+    {
+      "name": "snes-wasm-bench",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "SubProjects/SnesWasmBench", "-c", "Release", "--urls", "http://localhost:5021"],
+      "port": 5021
+    },
+    {
+      "name": "snes-wasm-aot",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["SubProjects/SnesWasmBench/serve.mjs", "SubProjects/_publish/snes-wasm-aot/wwwroot", "5022"],
+      "port": 5022
     }
   ]
 }
