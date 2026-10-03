@@ -550,11 +550,11 @@ public sealed partial class MdVdp
         if (InHBlank) s |= 0x04;
         if (DmaBusy) s |= 0x02;
         if (Region == SegaRegion.Pal) s |= 0x01;
-        return (ushort)(s | StatusUnusedBits);
+        return (ushort)s;
     }
 
-    /// <summary>The unused top bits of the status register (the 68000's prefetch shows through them on hardware; this is the pattern most boards read).</summary>
-    public const int StatusUnusedBits = 0x3400;
+    /// <summary>The status register is ten bits wide; the top six of the word the 68000 reads are the bus's (on hardware whatever the prefetch left there), which the board fills in.</summary>
+    public const int StatusMask = 0x03FF;
 
     public bool InVBlank => Line >= ActiveLines;
     public bool InHBlank { get { int o = LineOffset; return o >= HBlankStart || o < HBlankEnd; } }
@@ -661,6 +661,50 @@ public sealed partial class MdVdp
         for (int y = 0; y < 16; y++)
             for (int x = 0; x < W; x++)
                 dst[(256 + y) * W + x] = colours[x / 8 & 63];
+    }
+
+    /// <summary>
+    /// A debugging picture of the two scroll planes as the nametables and VRAM hold them: plane B, then plane A over it (colour 0 transparent), the first 40 by 28 cells, <b>no scrolling, no window, no
+    /// sprites, no priority, no shadow or highlight</b>. It is not the picture renderer (the next milestone); it lets test ROMs that print text on a plane be read. Width 320, height 224, row-major ARGB.
+    /// </summary>
+    public void RenderPlaneDump(uint[] dst)
+    {
+        const int W = 320, H = 224;
+        uint[] colours = new uint[64];
+        for (int i = 0; i < 64; i++)
+        {
+            int c = Cram[i];
+            colours[i] = 0xFF000000u | (uint)(((c >> 1 & 7) * 36) << 16 | ((c >> 5 & 7) * 36) << 8 | (c >> 9 & 7) * 36);
+        }
+        uint backdrop = colours[Reg[7] & 0x3F];
+        for (int i = 0; i < W * H; i++) dst[i] = backdrop;
+        int widthCells = (Reg[16] & 3) switch { 0 => 32, 1 => 64, 3 => 128, _ => 32 };
+        int heightCells = (Reg[16] >> 4 & 3) switch { 0 => 32, 1 => 64, 3 => 128, _ => 32 };
+        int baseA = (Reg[2] & 0x38) << 10, baseB = (Reg[4] & 7) << 13;
+        for (int plane = 0; plane < 2; plane++)
+        {
+            int nt = plane == 0 ? baseB : baseA;
+            for (int cy = 0; cy < 28; cy++)
+                for (int cx = 0; cx < 40; cx++)
+                {
+                    if (cx >= widthCells || cy >= heightCells) continue;
+                    int e = Vram[nt + (cy * widthCells + cx) * 2 & 0xFFFF] << 8 | Vram[nt + (cy * widthCells + cx) * 2 + 1 & 0xFFFF];
+                    int tile = e & 0x7FF, pal = e >> 13 & 3;
+                    bool vflip = (e & 0x1000) != 0, hflip = (e & 0x800) != 0;
+                    for (int row = 0; row < 8; row++)
+                    {
+                        int r = vflip ? 7 - row : row;
+                        for (int col = 0; col < 8; col++)
+                        {
+                            int c2 = hflip ? 7 - col : col;
+                            byte b = Vram[tile * 32 + r * 4 + (c2 >> 1) & 0xFFFF];
+                            int px = (c2 & 1) == 0 ? b >> 4 : b & 15;
+                            if (px == 0) continue;
+                            dst[(cy * 8 + row) * W + cx * 8 + col] = colours[pal * 16 + px];
+                        }
+                    }
+                }
+        }
     }
 
     public string Describe()

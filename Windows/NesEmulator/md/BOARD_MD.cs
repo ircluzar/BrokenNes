@@ -64,6 +64,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public Action<uint>? InstructionHook;
     /// <summary>Called for each write to the VDP, I/O chip, Z80 area, BUSREQ and RESET, with a text describing it (traces); null in normal runs.</summary>
     public Action<string>? WriteTrace;
+    /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
+    public Action<string>? ReadTrace;
     public long BusReads, BusWrites, OpenBusReads;
 
     public BOARD_MD(MdCartridge cart, SegaRegion region, GenesisModel model, int sampleRate, SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>? parts = null)
@@ -194,7 +196,10 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BeginAccess(cycles);
         BusReads++;
         address &= 0xFFFFFE;
-        return ReadWord(address, upper, lower, t);
+        ushort v = ReadWord(address, upper, lower, t);
+        if (ReadTrace != null && address >= 0x400000 && address < 0xE00000) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        lastOpenBus = v;
+        return v;
     }
 
     public void BusWrite(uint address, bool upper, bool lower, ushort data, int cycles)
@@ -203,6 +208,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BusWrites++;
         address &= 0xFFFFFE;
         WriteWord(address, upper, lower, data, t);
+        lastOpenBus = data;
     }
 
     private ushort ReadWord(uint address, bool upper, bool lower, long now)
@@ -220,7 +226,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             byte b = Pads.Read((int)(address & 0x1F) | (!upper && lower ? 1 : 0), now);
             return (ushort)(b << 8 | b);
         }
-        if (address == 0xA11100) return (ushort)(Sound.IsBusGranted(now) ? 0x0000 : 0x0100);
+        if (address == 0xA11100) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsBusGranted(now) ? 0x0000 : 0x0100));     // only bit 8 is the register's; the rest of the word is the bus's
+        // the RESET register reads back whether the line is released (bit 8; oracle-derived: BlastEm shows it, hardware not verified), the rest of the word is the bus's
+        if (address == 0xA11200) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsInReset ? 0x0000 : 0x0100));
         if (address >= 0xA130F0 && address < 0xA13100) return 0xFFFF;
         OpenBusReads++;
         return lastOpenBus;
@@ -285,7 +293,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         switch ((int)(address & 0x1F))
         {
             case >= 0x00 and <= 0x03: v = Vdp.ReadData(now); break;
-            case >= 0x04 and <= 0x07: v = Vdp.ReadStatus(now); break;
+            case >= 0x04 and <= 0x07: v = (ushort)(Vdp.ReadStatus(now) & MdVdp.StatusMask | lastOpenBus & ~MdVdp.StatusMask); break;
             case >= 0x08 and <= 0x0F: v = Vdp.ReadHvCounter(now); break;
             default: OpenBusReads++; return lastOpenBus;
         }

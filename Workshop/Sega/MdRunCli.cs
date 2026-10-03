@@ -40,7 +40,7 @@ internal static class MdRunCli
         byte[] data;
         try { data = File.ReadAllBytes(rom); }
         catch (Exception e) { Console.WriteLine($"cannot read {rom}: {e.Message}"); return 2; }
-        if (SegaRomFormat.Detect(data, rom) != ConsoleKind.Genesis) { Console.WriteLine($"{rom} is not a Genesis ROM (no SEGA header at $100)"); return 2; }
+        if (SegaRomFormat.Detect(data, rom) != ConsoleKind.Genesis && !M68kTestCli.Flag(args, "--force")) { Console.WriteLine($"{rom} is not a Genesis ROM (no SEGA header at $100); --force runs it as one anyway (a headerless test ROM; the console itself does not check the header before the TMSS)"); return 2; }
 
         MdSession session;
         try { session = new MdSession(data, "M68K", "MD", apu, region, model); }
@@ -56,6 +56,7 @@ internal static class MdRunCli
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
             board.WriteTrace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             board.Vdp.Trace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             if (tracePc) board.InstructionHook = pc => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
             if (board.Sound is MdSoundUnit unit)
             {
@@ -87,6 +88,14 @@ internal static class MdRunCli
         if (png != null)
         {
             try { WritePng(session, png); Console.WriteLine($"   wrote {png} (VRAM tiles in palette line {palette} and the 64 CRAM colours; there is no picture renderer yet)"); }
+            catch (Exception e) { Console.WriteLine($"   png failed: {e.Message}"); }
+        }
+        string? planePng = M68kTestCli.Arg(args, "--plane-png");
+        if (planePng != null)
+        {
+            var img = new uint[320 * 224];
+            board.Vdp.RenderPlaneDump(img);
+            try { WritePngFrom(img, 320, 224, planePng); Console.WriteLine($"   wrote {planePng} (the two planes' first 40x28 cells, no scroll, no sprites: a debugging dump, not a renderer)"); }
             catch (Exception e) { Console.WriteLine($"   png failed: {e.Message}"); }
         }
         if (board.Cpu.Halted) Console.WriteLine("   RESULT: the 68000 HALTED (a double fault)");
@@ -145,15 +154,20 @@ internal static class MdRunCli
         return map;
     }
 
-    private static void WritePng(MdSession s, string path)
+    private static void WritePng(MdSession s, string path) => WritePngFrom(s.Frame, s.FrameWidth, s.FrameHeight, path);
+
+    private static void WritePngFrom(uint[] pixels, int width, int height, string path)
     {
-        using var bmp = new Bitmap(s.FrameWidth, s.FrameHeight, PixelFormat.Format32bppArgb);
-        var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        var data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
         try
         {
-            var pixels = s.Frame;
-            for (int y = 0; y < bmp.Height; y++)
-                System.Runtime.InteropServices.Marshal.Copy((int[])(object)pixels.AsSpan(y * bmp.Width, bmp.Width).ToArray().Select(p => (int)p).ToArray(), 0, data.Scan0 + y * data.Stride, bmp.Width);
+            var ints = new int[width];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++) ints[x] = (int)pixels[y * width + x];
+                System.Runtime.InteropServices.Marshal.Copy(ints, 0, data.Scan0 + y * data.Stride, width);
+            }
         }
         finally { bmp.UnlockBits(data); }
         bmp.Save(path, ImageFormat.Png);
