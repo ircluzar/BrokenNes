@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BrokenNes2.Plugin", "Plugin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BrokenNes.FruityHost", "Plugin\BrokenNes.FruityHost\BrokenNes.FruityHost.csproj", "{C6C75DA8-7BDD-464E-8EE3-70CFE4DD3679}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BrokenNes.SynthHost", "Plugin\BrokenNes.SynthHost\BrokenNes.SynthHost.csproj", "{0625E5C5-9C8D-42DD-9893-518627EC55C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -103,6 +105,18 @@ Global
 		{C6C75DA8-7BDD-464E-8EE3-70CFE4DD3679}.Release|x64.Build.0 = Release|Any CPU
 		{C6C75DA8-7BDD-464E-8EE3-70CFE4DD3679}.Release|x86.ActiveCfg = Release|Any CPU
 		{C6C75DA8-7BDD-464E-8EE3-70CFE4DD3679}.Release|x86.Build.0 = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|x64.Build.0 = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Debug|x86.Build.0 = Debug|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|x64.ActiveCfg = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|x64.Build.0 = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|x86.ActiveCfg = Release|Any CPU
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -113,6 +127,7 @@ Global
 		{854CB8CA-70FA-4F35-AC89-8420AF4E2F37} = {7F42074E-682A-A599-6CDB-8399CB51B8EF}
 		{424E60CD-A2E6-4738-8EE3-85A7FF63A72D} = {7F42074E-682A-A599-6CDB-8399CB51B8EF}
 		{C6C75DA8-7BDD-464E-8EE3-70CFE4DD3679} = {7F42074E-682A-A599-6CDB-8399CB51B8EF}
+		{0625E5C5-9C8D-42DD-9893-518627EC55C9} = {7F42074E-682A-A599-6CDB-8399CB51B8EF}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0A1F844F-DD96-4B05-B576-01DA53B99C82}

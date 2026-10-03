@@ -3,6 +3,7 @@
 // loudness and stereo balance measured in the audio itself.
 using System.Diagnostics;
 using BrokenNes.Fruity;
+using BrokenNes.SynthHost;
 
 namespace BrokenNes.FruityHost;
 
@@ -147,6 +148,8 @@ public sealed unsafe class SelfTest
             ("cores", "Every NES sound chip produces the note; accurate ones at the right pitch", Cores),
             ("swap", "Switching the sound chip while a note is held keeps it sounding at pitch", Swap),
             ("rates", "Sample rates 22.05-96 kHz and odd block sizes (1..4096) keep pitch and continuity", RatesAndBlocks),
+            ("standalone-rack", "Standalone synth engine: four channels played live (pitch, bend, note off, any callback size, real time, no allocation, saved settings)", StandaloneRack),
+            ("standalone-midi", "Standalone synth: MIDI bytes to notes, bends and all-notes-off; channel routing; noise on the wire is harmless", StandaloneMidi),
             ("realtime", "Real-time: well faster than real time, and no allocation while playing", Realtime),
             ("rom-mode", "ROM mode: a real NES game runs inside the plugin: sound, picture, saved path", RomMode),
             ("rom-chips", "ROM mode: the sound chip switches while the game runs", RomChips),
@@ -630,6 +633,177 @@ public sealed unsafe class SelfTest
                 t.Expect(audio.All(float.IsFinite), $"block {block}: non-finite output");
             }
         }
+    }
+
+    // ---- the standalone synth's engine (BrokenNes.SynthHost): what the desktop's Synthesizer Mode plays through ----
+
+    private static float[] RenderRack(SynthRack rack, int ms, int chunk)
+    {
+        int frames = rack.SampleRate * ms / 1000;
+        var all = new float[frames * 2];
+        for (int done = 0; done < frames; done += chunk)
+        {
+            int n = Math.Min(chunk, frames - done);
+            rack.Render(all.AsSpan(done * 2, n * 2));
+        }
+        return all;
+    }
+
+    private static double Level(float[] stereo, int rate, int fromMs, int toMs) => Audio.Rms(Mono(stereo), fromMs * rate / 1000, toMs * rate / 1000);
+
+    /// <summary>The pitch a NES channel actually plays for <paramref name="cents"/> from C5: the chip only has whole period steps (about 8 cents apart at 500 Hz).</summary>
+    private static double Playable(double cents, bool triangle) => Nes.PeriodHz(Nes.Period(cents, triangle), triangle);
+
+    private void StandaloneRack(T t)
+    {
+        const int rate = 48000;
+        double HzOf(float[] stereo, int fromMs, int toMs) => Audio.Frequency(Mono(stereo), rate, fromMs * rate / 1000, toMs * rate / 1000);
+
+        // every tone channel on its own plays the right pitch (A4 = 440 Hz), the notes of one channel do not leak into the others
+        foreach (var (ch, key) in new[] { (0, 69), (1, 69), (2, 69), (0, 57), (1, 76), (2, 57) })
+        {
+            using var rack = new SynthRack(dllPath, rate);
+            rack.NoteOn(ch, key, 0.8f);
+            var a = RenderRack(rack, 700, 480);
+            string name = $"{SynthRack.ChannelNames[ch]} key {key}";
+            t.NearCents(name, HzOf(a, 200, 650), Playable((key - 60) * 100.0, ch == 2), 3);
+            var live = rack.Instances.Select(p => p.Host.LiveVoices).ToArray();
+            t.Expect(live.Sum() == 1 && live[ch] == 1, $"{name}: voices per channel {string.Join(",", live)} (only channel {ch} should hold one)");
+        }
+
+        // pitch bend: +1 is +2 semitones, -0.5 is -1 semitone; releasing ends the note and the plugin hands the voice back
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.NoteOn(0, 69, 0.8f);
+            RenderRack(rack, 300, 480);
+            rack.PitchBend(0, 1f);
+            var up = RenderRack(rack, 500, 480);
+            rack.PitchBend(0, -0.5f);
+            var down = RenderRack(rack, 500, 480);
+            rack.PitchBend(0, 0f);
+            var back = RenderRack(rack, 500, 480);
+            t.NearCents("bend +1 (+2 st)", HzOf(up, 150, 480), Playable(1100, false), 3);
+            t.NearCents("bend -0.5 (-1 st)", HzOf(down, 150, 480), Playable(800, false), 3);
+            t.NearCents("bend back to centre", HzOf(back, 150, 480), Playable(900, false), 3);
+            rack.NoteOff(0, 69);
+            var tail = RenderRack(rack, 500, 480);
+            t.Expect(Level(tail, rate, 300, 500) < 0.002, $"still sounding after the note off (rms {Level(tail, rate, 300, 500):0.0000})");
+            t.Expect(rack.LiveVoices == 0, $"{rack.LiveVoices} voice(s) not handed back after the note off");
+        }
+
+        // the block size of the audio device must not matter: odd and huge callbacks keep pitch and stay finite
+        foreach (int chunk in new[] { 64, 441, 4096 })
+        {
+            using var rack = new SynthRack(dllPath, rate);
+            rack.NoteOn(1, 69, 0.8f);
+            var a = RenderRack(rack, 800, chunk);
+            t.NearCents($"callback of {chunk} frames", HzOf(a, 250, 750), Playable(900, false), 3);
+            t.Expect(a.All(float.IsFinite), $"non-finite output with {chunk}-frame callbacks");
+        }
+
+        // all four at once, then everything off
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.NoteOn(0, 60, 0.8f); rack.NoteOn(1, 64, 0.8f); rack.NoteOn(2, 55, 0.8f); rack.NoteOn(3, 60, 0.8f);
+            var a = RenderRack(rack, 600, 480);
+            var live = rack.Instances.Select(p => p.Host.LiveVoices).ToArray();
+            t.Expect(live.All(v => v == 1), $"voices per channel {string.Join(",", live)}, expected one on each");
+            t.Expect(Level(a, rate, 200, 600) > 0.01, $"four channels together are nearly silent (rms {Level(a, rate, 200, 600):0.0000})");
+            t.Expect(a.All(s => float.IsFinite(s) && Math.Abs(s) <= 1f), "four channels clip or are non-finite");
+            rack.AllNotesOff();
+            var tail = RenderRack(rack, 500, 480);
+            t.Expect(Level(tail, rate, 300, 500) < 0.002 && rack.LiveVoices == 0, $"all notes off left rms {Level(tail, rate, 300, 500):0.0000}, {rack.LiveVoices} voice(s)");
+        }
+
+        // real time and allocation, as the editor and the audio device would have it: 4 channels sounding, 10 ms callbacks
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.NoteOn(0, 57, 0.8f); rack.NoteOn(1, 64, 0.8f); rack.NoteOn(2, 45, 0.8f); rack.NoteOn(3, 60, 0.8f);
+            var buf = new float[480 * 2];
+            for (int i = 0; i < 100; i++) rack.Render(buf);   // warm up
+            long m0 = GC.GetAllocatedBytesForCurrentThread(), p0 = rack.Instances[0].Test(4);
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < 600; i++) { rack.Render(buf); if (i % 100 == 0) rack.PitchBend(0, (i / 100) % 2 == 0 ? 0.3f : -0.3f); }
+            sw.Stop();
+            long managed = GC.GetAllocatedBytesForCurrentThread() - m0, native = rack.Instances[0].Test(4) - p0;
+            double speed = 6.0 / sw.Elapsed.TotalSeconds;
+            t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 channels (needs 5x or better)");
+            t.Expect(managed <= 2048, $"{managed:N0} bytes allocated by the host while rendering (only bend events may allocate, and only a queue segment)");
+            t.Expect(native == 0, $"{native:N0} bytes allocated by the plugin while rendering");
+            t.Note($"{speed:0.0}x real time with 4 channels in 10 ms callbacks; host allocation {managed} B, plugin {native} B");
+        }
+
+        // saved settings: what the editors change (volume, tuning) survives a restart of the rack
+        byte[][] states;
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.Instances[0].SetParam(PVolume, 400);
+            rack.Instances[2].SetParam(3, 7);
+            states = rack.SaveStates();
+        }
+        t.Expect(states.Length == SynthRack.ChannelCount && states.All(s => s.Length > 0), "SaveStates did not return a state per instance");
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.LoadStates(states);
+            t.Expect(rack.Instances[0].GetParam(PVolume) == 400, $"volume came back as {rack.Instances[0].GetParam(PVolume)}");
+            t.Expect(rack.Instances[2].GetParam(3) == 7, $"coarse tuning came back as {rack.Instances[2].GetParam(3)}");
+            rack.LoadStates([[1, 2, 3], [], [0xFF, 0xFF]]);      // damaged state is survived, not obeyed
+            t.Expect(rack.Instances[0].GetParam(PVolume) >= 0, "damaged state broke the instance");
+        }
+    }
+
+    private void StandaloneMidi(T t)
+    {
+        const int rate = 48000;
+        double HzOf(float[] stereo, int fromMs, int toMs) => Audio.Frequency(Mono(stereo), rate, fromMs * rate / 1000, toMs * rate / 1000);
+        int[] Live(SynthRack r) => r.Instances.Select(p => p.Host.LiveVoices).ToArray();
+
+        using var rack = new SynthRack(dllPath, rate);
+        var midi = new MidiRouter(rack);
+
+        // MIDI channel n plays rack channel n-1 (here channel 2 -> Pulse 2); channels beyond 4 are ignored
+        midi.Handle(0x91, 69, 100);
+        var a = RenderRack(rack, 600, 480);
+        t.Expect(Live(rack).SequenceEqual([0, 1, 0, 0]), $"note on MIDI channel 2 gave voices {string.Join(",", Live(rack))}");
+        t.NearCents("MIDI note 69", HzOf(a, 200, 550), Playable(900, false), 3);
+        midi.Handle(0x95, 60, 100);
+        RenderRack(rack, 100, 480);
+        t.Expect(Live(rack).Sum() == 1, "a note on MIDI channel 6 should be ignored");
+
+        // a raw Windows short message, pitch bend (14 bit: 16383 is full up = +2 semitones, 8192 is the centre)
+        midi.Handle(0xE1 | (0x7F << 8) | (0x7F << 16));
+        var up = RenderRack(rack, 500, 480);
+        t.NearCents("MIDI bend full up", HzOf(up, 150, 480), Playable(1100, false), 3);
+        midi.Handle(0xE1, 0x00, 0x40);
+        var centre = RenderRack(rack, 500, 480);
+        t.NearCents("MIDI bend centre", HzOf(centre, 150, 480), Playable(900, false), 3);
+
+        // a note on with velocity 0 is a note off
+        midi.Handle(0x91, 69, 0);
+        var tail = RenderRack(rack, 500, 480);
+        t.Expect(rack.LiveVoices == 0 && Level(tail, rate, 300, 500) < 0.002, $"velocity-0 note on left {rack.LiveVoices} voice(s), rms {Level(tail, rate, 300, 500):0.0000}");
+
+        // velocity sets the loudness
+        midi.Handle(0x90, 69, 127); var loud = Level(RenderRack(rack, 500, 480), rate, 150, 500); midi.Handle(0x90, 69, 0); RenderRack(rack, 400, 480);
+        midi.Handle(0x90, 69, 30); var soft = Level(RenderRack(rack, 500, 480), rate, 150, 500); midi.Handle(0x90, 69, 0); RenderRack(rack, 400, 480);
+        t.Expect(loud > soft * 1.5 && soft > 0.001, $"velocity 127 rms {loud:0.0000} vs velocity 30 rms {soft:0.0000}");
+
+        // "everything to the selected channel": a keyboard that only knows channel 1 can play the triangle
+        midi.Routing = MidiRouting.AllToSelected; midi.Selected = 2;
+        midi.Handle(0x90, 57, 100);
+        var tri = RenderRack(rack, 600, 480);
+        t.Expect(Live(rack).SequenceEqual([0, 0, 1, 0]), $"AllToSelected gave voices {string.Join(",", Live(rack))}");
+        t.NearCents("selected triangle A3", HzOf(tri, 200, 550), Playable(-300, true), 3);
+        midi.Handle(0xB0, 123, 0);                       // CC 123: all notes off
+        var quiet = RenderRack(rack, 500, 480);
+        t.Expect(rack.LiveVoices == 0 && Level(quiet, rate, 300, 500) < 0.002, "CC 123 did not end the note");
+
+        // noise on the wire is harmless and not counted as music
+        long before = midi.Messages;
+        foreach (byte b in new byte[] { 0xF8, 0xFE, 0x00, 0x7F, 0xA0, 0xC0, 0xD0 }) midi.Handle(b, 0x10, 0x10);
+        t.Expect(midi.Messages == before, "system and unsupported messages were counted as handled");
+        midi.Handle(0x90, 200, 100);                     // a data byte above 127 is masked, not an exception
+        t.Expect(RenderRack(rack, 100, 480).All(float.IsFinite), "output went non-finite after odd MIDI");
     }
 
     private void Realtime(T t)

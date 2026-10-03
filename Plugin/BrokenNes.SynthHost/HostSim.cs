@@ -1,5 +1,6 @@
 // The host side of the Fruity SDK: a native TFruityPlugHost object (vtable of function pointers) that
 // a plugin calls back into, plus the voice bookkeeping FL does around Voice_Release / Voice_Kill.
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using BrokenNes.Fruity;
 
@@ -13,7 +14,7 @@ public sealed unsafe class SimVoice
     public TVoiceParams* Params;   // live levels, rewritten by the mixer every block
     public int Color;
     public float Velocity;
-    public bool Released, Killed;
+    public volatile bool Released, Killed;   // the plugin can kill a voice from any thread (Reset Console does, from the editor's)
 }
 
 public sealed unsafe class HostSim : IDisposable
@@ -23,7 +24,17 @@ public sealed unsafe class HostSim : IDisposable
 
     private readonly nint self;
     private readonly Dictionary<nint, SimVoice> voices = new();
+    private readonly object gate = new();                    // guards voices; held only for dictionary operations, never while calling out
+    private readonly ConcurrentQueue<nint> pendingFree = new();
     private nint nextTag = 0x1000;
+
+    /// <summary>Keep the call logs (<see cref="ParamChanges"/>, <see cref="DispatcherCalls"/>) the tests read. A host that runs for hours turns this
+    /// off: nothing would ever trim them.</summary>
+    public bool Record { get; set; } = true;
+
+    /// <summary>Free a killed voice's native levels block later, in <see cref="FreeDeferred"/>, instead of at once. A live host sets this and calls
+    /// FreeDeferred on its audio thread: the plugin may kill a voice from another thread while the audio thread is still writing its levels.</summary>
+    public bool DeferFree { get; set; }
 
     /// <summary>The plugin instance this host serves (set by <see cref="PluginInstance"/>): Voice_Kill / Voice_Release relay to it.</summary>
     public PluginInstance? Plugin { get; set; }
@@ -36,7 +47,7 @@ public sealed unsafe class HostSim : IDisposable
     public int VoiceReleaseCalls { get; private set; }
 
     public nint Ptr => self;
-    public int LiveVoices => voices.Count;
+    public int LiveVoices { get { lock (gate) return voices.Count; } }
 
     public HostSim()
     {
@@ -71,35 +82,48 @@ public sealed unsafe class HostSim : IDisposable
     {
         var v = new SimVoice
         {
-            Tag = nextTag++,
             Params = (TVoiceParams*)NativeMemory.AllocZeroed((nuint)sizeof(TVoiceParams)),
             Color = color,
             Velocity = velocity,
         };
-        voices[v.Tag] = v;
+        lock (gate) { v.Tag = nextTag++; voices[v.Tag] = v; }
         return v;
     }
 
-    public SimVoice? Voice(nint tag) => voices.TryGetValue(tag, out var v) ? v : null;
+    public SimVoice? Voice(nint tag) { lock (gate) return voices.TryGetValue(tag, out var v) ? v : null; }
 
     private void Remove(SimVoice v)
     {
-        if (v.Killed) return;
-        v.Killed = true;
-        voices.Remove(v.Tag);
-        NativeMemory.Free(v.Params);
+        lock (gate)
+        {
+            if (v.Killed) return;
+            v.Killed = true;
+            voices.Remove(v.Tag);
+        }
+        if (DeferFree) pendingFree.Enqueue((nint)v.Params);
+        else NativeMemory.Free(v.Params);
+    }
+
+    /// <summary>Frees the levels blocks of voices killed while <see cref="DeferFree"/> was set. Call it where the levels are written (the audio thread).</summary>
+    public void FreeDeferred()
+    {
+        while (pendingFree.TryDequeue(out var p)) NativeMemory.Free((void*)p);
     }
 
     [UnmanagedCallersOnly]
     private static nint Dispatcher(nint self, nint sender, nint id, nint index, nint value)
     {
         var h = Of(self);
-        if (h != null) lock (h.DispatcherCalls) h.DispatcherCalls.Add(id);
+        if (h != null && h.Record) lock (h.DispatcherCalls) h.DispatcherCalls.Add(id);
         return 0;
     }
 
     [UnmanagedCallersOnly]
-    private static void OnParamChanged(nint self, nint sender, int index, int value) => Of(self)?.ParamChanges.Add((index, value));
+    private static void OnParamChanged(nint self, nint sender, int index, int value)
+    {
+        var h = Of(self);
+        if (h != null && h.Record) lock (h.ParamChanges) h.ParamChanges.Add((index, value));
+    }
 
     [UnmanagedCallersOnly]
     private static void OnHint(nint self, nint sender, byte* text) { }
@@ -151,7 +175,10 @@ public sealed unsafe class HostSim : IDisposable
 
     public void Dispose()
     {
-        foreach (var v in voices.Values.ToList()) Remove(v);
+        List<SimVoice> all;
+        lock (gate) all = voices.Values.ToList();
+        foreach (var v in all) Remove(v);
+        FreeDeferred();
         lock (Hosts) Hosts.Remove(self);
         NativeMemory.Free((void*)self);
     }
