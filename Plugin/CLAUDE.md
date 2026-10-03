@@ -3,9 +3,21 @@
 Handoff note for whoever works here next (human or agent). **Development is paused; the state is very good.** Read `Plugin/README.md` for the
 full description of what the plugin does and how each test proves it; this file is the practical rest: where things are, how to run them, what bites.
 
+## Synth system, wave 1 (2026-10-03): the plugin is part of the desktop app now
+
+The desktop app (`Windows/Synth`, menu **Config > Synthesizer Mode**) installs the plugin into FL Studio and runs it as a **standalone synth**; see
+"Installing, and the standalone synth" in `Plugin/README.md` for what each does. Pieces: `Windows/Synth/` (`FlStudioInstall` detection, `PluginInstaller`,
+`InstallVstDialog` / `InstallVstFlow` = `--install-vst`, `SynthMode` / `SynthForm` / `SynthAudioOutput` / `SynthMidiInput` / `SynthSettings` = `--synth`),
+`Plugin/BrokenNes.SynthHost` (the live rack and MIDI router, headless-testable). Certified by `UAT/plugin/install-smoke.ps1` (13 checks, fake FL folders, no UAC)
+and `UAT/plugin/synth-smoke.ps1` (12 checks, real window, keys, restart handoff; `certify.ps1 -Only plugin-install` / `plugin-synth`).
+**Not verified by anyone: the WASAPI handoff to a real playback device and the UAC click.** The dev machine had no playback device when this was built
+(the Focusrite was off), so the synth's audio path was certified through `BROKENNES_SYNTH_AUDIO=null`; play a key through real speakers once by hand.
+**Next waves (not done):** per-channel stems / the Mix channel and a game's pad in the synth, an uninstall item, more than the four tone voices, anything
+for DAWs other than FL (this is a native Fruity plugin, not a VST).
+
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **37 checks, all pass** (one expected warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **39 checks, all pass** (one expected warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.
@@ -20,6 +32,7 @@ full description of what the plugin does and how each test proves it; this file 
 |---|---|
 | `BrokenNes.Fruity` | FL native SDK mirror (vtable via `[UnmanagedCallersOnly]`), plugin base class, GDI editor base (`Win32Gdi.cs`) |
 | `BrokenNes2.Plugin` | the plugin (Native AOT DLL `BrokenNes2_x64.dll`): `Bn2Plugin` (voices, params, state), `EmulatorHub` / `Emulator` / `Emulator.Rom` (shared emulators, rings, ROM mode), `Game.cs` (NesGame / SessionGame), `Bn2Editor` (self-drawn UI), `SnesSampler` / `GbSampler` (Runaway), `Bn2Input`, `Prefs`, `About` |
+| `BrokenNes.SynthHost` | library: `HostSim` / `PluginInstance` / `PluginLibrary` (moved here from the test bench, namespace `BrokenNes.FruityHost` kept), `SynthRack` (four instances played live), `MidiRouter`. Used by the test bench and by the desktop's standalone synth |
 | `BrokenNes.FruityHost` | the test bench that loads the DLL like FL does: `selftest`, `render`, `track`, `state`, `analyze`, `editor-shot`, `makerom gb\|gbtone\|sfc`, `romtrace` |
 | `../Core` | `BrokenNes.Core`: allocation-free NES audio path + `ApuStem` (per-channel stems from a Bus write tap) |
 | `../UAT/plugin`, `../UAT/certify.ps1` | FL render certification, installer (`fl/install-to-fl.cmd`), the four-entrypoint certification |
@@ -39,8 +52,13 @@ dotnet build   Plugin/BrokenNes.FruityHost/BrokenNes.FruityHost.csproj -c Releas
 ```
 
 - Everything at once, with the report and a copy of the DLL in `Plugin/dist` (git-ignored): `pwsh UAT/certify.ps1 -Only plugin-host`.
-- Install into FL: `UAT/plugin/fl/install-to-fl.cmd` (**needs a UAC click**, so an agent cannot do it; FL must be closed). FL render
+  Just the DLL, no tests: `pwsh Plugin/build-dist.ps1`. The desktop build copies `Plugin/dist/BrokenNes2_x64.dll` in (and **publish** ships it as a loose file:
+  `ExcludeFromSingleFile`, otherwise the single-file exe swallows it).
+- Install into FL: the desktop app, **Config > Synthesizer Mode > Install to FL Studio...** or `BrokenNes.Windows.exe --install-vst` (**needs a UAC click**, so an
+  agent cannot do the real thing; FL must be closed). `install-to-fl.cmd` is a FL-2026-only shortcut. FL render
   certification: `-Only plugin-fl` (~70 s, never kills FL by name, refuses when FL is open).
+- `selftest` drives real windows with real mouse messages: keep the desktop quiet while it runs (`runaway-gb` failed once when other processes were
+  running, passed alone and in two further full runs).
 - Editor screenshots: `FruityHost editor-shot <dll> out.bmp --console 1 --rom game.gb --runaway [--open instrument|duty|channel|inputs]`.
 - Test hooks into the plugin and editor: `Fpd.TestBase + n` (editor 30-39, plugin 40-51: reset, SetPad, runaway, test snapshot, ...). They
   exist so tests can drive the real editor with real mouse messages; keep new UI testable the same way.
@@ -61,7 +79,13 @@ dotnet build   Plugin/BrokenNes.FruityHost/BrokenNes.FruityHost.csproj -c Releas
 - `python3` in Git Bash is the Windows Store stub and hangs: use `python`. In the Claude tool shell, very long heredocs fail: write scripts to files.
 - A test that leaves an instance alive keeps its claim on emulator #1/channels: dispose instances before the next scenario.
 - The pulse waveform restarts when the period high byte changes (bends across period 256 click): known, see "Ideas parked".
-- Git: a tag named `main` exists next to the branch `main`; use `refs/heads/main` when scripting.
+- Git: the stray tag named `main` was deleted on 2026-10-02; if `main` is ever ambiguous again, use `refs/heads/main` when scripting.
+- A NES channel only has whole period steps (~8 cents apart at 500 Hz): compare measured pitch with `Nes.PeriodHz(Nes.Period(cents, triangle))`, not with the ideal 12-TET frequency.
+- The plugin may call `Voice_Kill` from the editor's thread (Reset Console). `HostSim` therefore guards its voice table and a live host sets `DeferFree`,
+  freeing a killed voice's levels block on the audio thread (`FreeDeferred`); never free it from the callback.
+- UI Automation: a MessageBox owned by a WinForms window sits UNDER that window in the UIA tree (search `Descendants`, not `Children`). A system OK-only box
+  cannot take UIA focus; `CloseMainWindow()` / WM_CLOSE dismisses it. Menu items that open a modal dialog hang `Invoke()` (see `UAT/lib/UiaHelpers.ps1`).
+- This harness refuses `Remove-Item` on unresolved variables and on scratchpad globs: use fresh uniquely named folders instead of cleaning up.
 
 ## Outside the repo (machine-specific)
 

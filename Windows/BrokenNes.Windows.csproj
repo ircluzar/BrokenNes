@@ -28,6 +28,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the standalone synth (Config > Synthesizer Mode > Restart as Standalone Synth) hosts the FL Studio plugin with this -->
+    <ProjectReference Include="..\Plugin\BrokenNes.SynthHost\BrokenNes.SynthHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Exclude Blazor-specific files from the NesEmulator folder (now local) -->
     <Compile Remove="NesEmulator\board\Emulator*.cs" />
     <Compile Remove="NesEmulator\board\NesController.cs" />
@@ -113,6 +118,9 @@
   <ItemGroup Condition="Exists('$(PluginDll)')">
     <None Include="$(PluginDll)" Link="Plugin\BrokenNes2_x64.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <!-- a real file beside the exe, not bundled into it: Install to FL Studio copies it, and the synth loads it from disk -->
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
   <Target Name="NotePluginDll" BeforeTargets="Build" Condition="!Exists('$(PluginDll)')">

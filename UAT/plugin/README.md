@@ -5,11 +5,21 @@ inside the real thing: FL renders a project that uses the plugin, and the audio 
 notes should produce.
 
 ```
-pwsh -File UAT\plugin\fl\install-to-fl.ps1 -Dll <...\BrokenNes2_x64.dll>      # once per build; administrator, one UAC prompt
+BrokenNes.Windows.exe --install-vst                                          # once per build; the picker, then one UAC prompt (or Config > Synthesizer Mode > Install to FL Studio...)
 pwsh -File UAT\plugin\fl\fl-certify.ps1                                      # everything else; FL must be closed
 ```
 
-(`fl-certify.ps1 -Install` does both. `UAT\certify.ps1 -Only plugin-fl` runs it from the orchestrator.)
+(`fl-certify.ps1 -Install` installs through the FL-2026-only developer script `fl\install-to-fl.ps1`. `UAT\certify.ps1 -Only plugin-fl` runs it from the orchestrator.)
+
+## The two other certifications in this folder (no FL Studio involved)
+
+| Script | What it proves | How |
+|---|---|---|
+| `install-smoke.ps1` (`certify.ps1 -Only plugin-install`) | **Install to FL Studio** / `--install-vst`: detection of the real FL installs on the machine (excluding "FL Studio ASIO", Minihost, Shared), fresh / idempotent / replace-another-build installs, no partial file, two targets in one run, FL running from one installation refuses that install only, a non-FL folder, a missing DLL, "needs administrator" reported (an ACL-denied folder + `--elevated`), the picker opens and cancels with exit 2 | the real exe against FAKE FL folders under the work dir: no UAC, nothing in Program Files. **Not covered:** the UAC click and a copy into the real Program Files |
+| `synth-smoke.ps1` (`certify.ps1 -Only plugin-synth`) | **the standalone synth** / `--synth`: the plugin's editor drawn in four tabs, the computer-keyboard piano (note, octave keys, switch off) reaching a rendered level, tab routing, saved settings written on close and restored, and the **restart handoff** emulator -> synth -> emulator through the real menus, plus a build with no plugin saying why and starting the emulator instead | the real windows through UI Automation and real key events, with `BROKENNES_SYNTH_AUDIO=null` (a documented switch: renders in real time into nothing). **Not covered:** the WASAPI handoff to a real playback device, MIDI hardware (the MIDI logic is `selftest standalone-midi`) |
+
+Both build the desktop under `%LOCALAPPDATA%\VRUN_Nes_Dev_work` unless given `-Exe`, and both were also run against a **published** single-file build (the flavor
+users download). Rule zero holds: only PIDs they started are stopped. The synth one presses real keys: keep the desktop quiet.
 
 ## What `fl-certify.ps1` does
 
@@ -74,6 +84,7 @@ cannot find the plugin renders silence). `::` is not valid in a Windows file nam
 | File | Purpose |
 |---|---|
 | `fl/fl-certify.ps1` | the driver |
-| `fl/install-to-fl.ps1` | the one elevated step |
+| `fl/install-to-fl.ps1` | the one elevated step (developer shortcut, FL 2026 only; the standard installer is the desktop app) |
+| `install-smoke.ps1`, `synth-smoke.ps1` | the installer and the standalone synth (above) |
 | `fl/make_template.py`, `fl/flplib.py` | derive the project (FLP event reader / writer) |
 | `golden/cores-vrun-fix.json` | recorded picture hashes for the `cores` check of `certify.ps1` |

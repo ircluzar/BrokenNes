@@ -11,6 +11,10 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
 
+The desktop app is also how the plugin gets to a user: **Config > Synthesizer Mode** installs it into FL Studio and restarts the app as a
+standalone synthesizer (see "Installing, and the standalone synth" below). Those two are certified by `UAT/plugin/install-smoke.ps1` and
+`UAT/plugin/synth-smoke.ps1`.
+
 ## Why a native plugin, not a VST
 
 FL Studio only sends piano-roll **slides and per-note pitch** to its own native ("Fruity") plugins. A VST
@@ -26,6 +30,9 @@ plugin: a DLL that exports `CreatePlugInstance` and hands FL an object shaped li
   `FruityPluginBase`, the class a plugin derives from.
 - **`BrokenNes2.Plugin`** (Native AOT DLL, `BrokenNes2_x64.dll`): the instrument, on `Core/BrokenNes.Core`. FL shows it as **Bogue :: BrokenNes 2**; the DLL and its folder keep the file name `BrokenNes2` because FL finds a native plugin by its file name.
 - **`BrokenNes.FruityHost`** (exe): the test bench, a stand-in for FL's host (see below).
+- **`BrokenNes.SynthHost`** (library): hosting the plugin outside FL. `HostSim` / `PluginInstance` / `PluginLibrary` (the host side of the SDK and the
+  calls into a loaded DLL; shared with the test bench) plus `SynthRack` (four instances played live) and `MidiRouter`. No audio device and no window of
+  its own, so it is tested headless; the desktop app (`Windows/Synth`) adds the device, the MIDI port and the window.
 
 ## Consoles and sound chips
 
@@ -186,6 +193,38 @@ the earlier test builds, which had CPU and PPU parameters, load with defaults in
 - **QLQ** (a deliberately unstable QuickNES variant) plays an octave sharp; the self-test reports it as a warning.
 - **Emulators are per FL process** (an FL project can use up to eight).
 
+## Installing, and the standalone synth
+
+Both live in the desktop app (`Windows/Synth`), under **Config > Synthesizer Mode**. The desktop build carries the plugin as `Plugin\BrokenNes2_x64.dll`
+beside the exe (a loose file, not bundled into the single-file exe: FL needs a real file to copy and the synth loads it from disk).
+
+**Install to FL Studio...** (or `BrokenNes.Windows.exe --install-vst`, which does the same without starting the emulator) lists every FL Studio found under
+`Program Files\Image-Line` (FL's registry keys hold no install path, so the folders are the evidence), says what each holds now (not installed / up to
+date / another build), pre-ticks the newest certified one, labels every FL other than 2026 "not certified", and has Browse... for an install somewhere
+unusual. Several can be ticked. The copy is tried as the current user; what needs administrator rights is done by one elevated copy of the program
+(one UAC prompt), and its outcome is judged by hashing the files. FL running from a target is detected per installation and offers Retry. The DLL is
+copied beside the target and renamed over it, so an interrupted copy never leaves a truncated plugin. Command line:
+`--install-vst [--fl <FL Studio folder>]... [--quiet] [--result <file>] [--dll <plugin>] [--list]`: with `--fl` there is no picker (scripts, tests),
+`--quiet` shows no windows, `--result` writes one line per target, `--list` writes what the picker would offer. Exit 0 ok, 1 failed, 2 backed out.
+
+**Restart as Standalone Synth** (or `BrokenNes.Windows.exe --synth`) starts the program again as a synthesizer and closes the emulator; **Synth > Restart
+as Emulator** is the way back. The mode belongs to the process: nothing is remembered, a plain launch is always the emulator. The window hosts the
+plugin itself (the same DLL FL gets, loaded like FL loads it): four instances, **Pulse 1, Pulse 2, Triangle, Noise**, one tab each with the plugin's own
+editor, sharing one emulator. A tab's settings are the plugin's (sound chip, mode, game, volume...); they and the devices are remembered in
+`%AppData%\BrokenNes\synth.json` and `synth-state.bin` (**Synth > Reset synth settings and restart** forgets them; `BROKENNES_SYNTH_DIR` relocates them).
+- **MIDI input:** any WinMM device (the first one found is opened unless you chose another or none). *MIDI routing* is either "channel 1-4 plays Pulse 1,
+  Pulse 2, Triangle, Noise" or "all MIDI plays the selected tab" (for a keyboard that only knows channel 1). Note on/off (velocity 0 = off), pitch bend
+  (+-2 semitones), CC 120/123 (all notes off).
+- **Computer keyboard:** `A W S E D F T G Y H U J K O L P ;` is a piano from C4 (note 60), `Z` / `X` move it an octave, played on the selected tab. It can be
+  switched off. (In ROM mode the same keys are the game's pad if the plugin's Inputs are on: the notes do nothing there anyway.)
+- **Audio:** WASAPI shared mode, at the device's own rate, 40 ms buffer; pick the output in the bar. With no playback device the status line says
+  "no audio output" and nothing renders (events are dropped, not queued). `BROKENNES_SYNTH_AUDIO=null` is a *test switch*: it renders in real time into
+  nothing, says so on the status line, and exists so the whole path can be certified on a machine with no sound card. It is never a fallback.
+- **Level readout** on the status line and a meter; if the engine throws on the audio thread the status line says so.
+
+What it is not: not a VST (only FL, or a host that behaves like FL, can load a native Fruity plugin; the other DAWs get nothing from this), not
+verified by ear (see below), and one console of four voices: the Mix channel and per-channel game stems are for ROM mode as in FL.
+
 ## The test bench: `BrokenNes.FruityHost`
 
 A faithful stand-in for FL's host. It loads a plugin DLL, hands it the object FL would (the C++-vtable-shaped
@@ -234,6 +273,8 @@ BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audi
 | cores | each of the 22 sound chips makes the note, accurate ones on pitch |
 | swap | switching the chip mid-note keeps it sounding at pitch |
 | rates | 22.05-96 kHz and block sizes 1-4096 keep pitch and continuity |
+| standalone-rack | the standalone synth's engine (`SynthRack`): each tone channel at the pitch the chip can play (whole period steps: ~8 cents apart at 500 Hz), notes of one channel stay in it, bends (+1 = +2 st), note off and every voice handed back, 64 / 441 / 4096-frame callbacks, four channels at once, all notes off, ~7x real time with four channels, 0 bytes allocated by the plugin and ~40 B by the host while rendering, `Accepting` off drops events, saved settings round-trip and damaged state is survived |
+| standalone-midi | `MidiRouter`: MIDI channel to rack channel, channels above 4 ignored, raw Windows messages, 14-bit pitch bend, velocity 0 = off, velocity scales level, AllToSelected, CC 123, system / unsupported messages not counted, stray high bits dropped |
 | realtime | well above real time with four instances sliding, **0 bytes allocated** while playing (inside the AOT DLL); ROM mode likewise (and a test Game Boy / SNES game at 2.5x or better: measured about 16x and 23x) |
 | rom-mode | the built-in game (or `--rom`) runs inside the plugin: ~60 fps of frames, sound, picture; the project remembers it; a missing or junk ROM is harmless; ROM mode loads the built-in game by itself |
 | rom-chips | the sound chip switches five times while the built-in game runs: it keeps sounding, drawing and running |
@@ -254,11 +295,13 @@ BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audi
 ## Building, installing
 
 ```bash
-dotnet publish Plugin/BrokenNes2.Plugin -c Release     # Native AOT; needs the MSVC tools (vswhere on PATH)
+pwsh Plugin/build-dist.ps1                             # Native AOT; needs the MSVC tools. Puts BrokenNes2_x64.dll in Plugin/dist (git-ignored)
+dotnet publish Windows/BrokenNes.Windows.csproj -c Release   # the desktop picks Plugin/dist up and ships it as Plugin\BrokenNes2_x64.dll
 ```
 Output `BrokenNes2_x64.dll` (about 7 MB: it carries the built-in game). FL loads it from
-`<FL>\Plugins\Fruity\Generators\BrokenNes2\`. That is under Program Files, so copying needs administrator rights:
-`UAT/plugin/fl/install-to-fl.cmd` does it (one UAC prompt) and refuses while FL is open.
+`<FL>\Plugins\Fruity\Generators\BrokenNes2\`. That is under Program Files, so copying needs administrator rights: the standard way is the desktop
+app's **Install to FL Studio...** (see "Installing, and the standalone synth"), one UAC prompt, refuses while that FL is open.
+`UAT/plugin/fl/install-to-fl.cmd` remains as a developer shortcut for FL 2026 only.
 
 If FL crashes or shows nothing, set `BROKENNES_PLUGIN_LOG` to a file path and start FL: the last line is what FL was
 asking the plugin when it stopped.

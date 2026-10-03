@@ -43,6 +43,10 @@ namespace BrokenNes.Windows
             if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))
                 return BrokenNes.Windows.Synth.InstallVstFlow.RunCommand(args);
 
+            // `--synth`: BrokenNes 2 as a standalone synthesizer (the FL Studio plugin hosted in a window of its own), not the emulator
+            if (BrokenNes.Windows.Synth.SynthMode.IsRequested(args))
+                return BrokenNes.Windows.Synth.SynthMode.Run(args);
+
             // Forensics first, before anything else can die. See ShutdownDiagnostics for why this
             // has to write to a flushed file rather than the console: the bug being hunted is a
             // *clean* exit, which leaves no dump, no WER report and no event-log entry behind.

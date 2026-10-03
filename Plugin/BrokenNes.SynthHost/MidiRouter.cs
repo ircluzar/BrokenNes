@@ -27,6 +27,9 @@ public sealed class MidiRouter
     /// <summary>What the last handled message was, in words.</summary>
     public string LastEvent { get; private set; } = "";
 
+    /// <summary>Other sources of notes (the computer keyboard) say what they did here, so one status line tells the whole story.</summary>
+    public void Report(string what) => LastEvent = what;
+
     /// <summary>A short message as Windows delivers it: status | data1 &lt;&lt; 8 | data2 &lt;&lt; 16.</summary>
     public void Handle(int raw) => Handle((byte)(raw & 0xFF), (byte)((raw >> 8) & 0x7F), (byte)((raw >> 16) & 0x7F));
 

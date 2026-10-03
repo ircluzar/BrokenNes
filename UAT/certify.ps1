@@ -16,6 +16,10 @@
                                               otherwise reported as NOT RUN.
     plugin-install  "Install to FL Studio"    UAT\plugin\install-smoke.ps1: BrokenNes.Windows.exe --install-vst against fake FL folders
                                               (detection of real installs, fresh/idempotent/replace, FL running, needs-admin, the picker)
+    plugin-synth    standalone synth          UAT\plugin\synth-smoke.ps1: BrokenNes.Windows.exe --synth driven through its real window
+                                              (editors drawn, computer-keyboard piano, tab routing, saved settings) and the restart
+                                              handoff from the emulator's Config > Synthesizer Mode menu and back. Plays into a null
+                                              clock, not a sound card (BROKENNES_SYNTH_AUDIO=null)
     cores      shared emulator cores          Workshop headless run of a VRUN ROM on the FIX cores must reproduce a recorded
                                               picture hash (guards the shared tree both desktop and plugin modes use)
 
@@ -158,6 +162,16 @@ Run 'plugin-install' {
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
     if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = $j.error } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'plugin-synth' {
+    if (-not (Want 'plugin-synth')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\synth-smoke.ps1') -WorkDir (Join-Path $outDir 'synth') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'synth-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 

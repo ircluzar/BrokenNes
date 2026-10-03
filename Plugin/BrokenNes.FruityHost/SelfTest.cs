@@ -733,6 +733,19 @@ public sealed unsafe class SelfTest
             t.Note($"{speed:0.0}x real time with 4 channels in 10 ms callbacks; host allocation {managed} B, plugin {native} B");
         }
 
+        // with no audio device the host turns Accepting off: events are dropped, not queued without end, and nothing stale plays when a device appears
+        using (var rack = new SynthRack(dllPath, rate))
+        {
+            rack.Accepting = false;
+            rack.NoteOn(0, 69, 0.8f); rack.NoteOn(1, 69, 0.8f);
+            var silent = RenderRack(rack, 300, 480);
+            t.Expect(Level(silent, rate, 50, 300) < 0.0005 && rack.LiveVoices == 0, $"notes sent while not accepting sounded (rms {Level(silent, rate, 50, 300):0.0000}, {rack.LiveVoices} voices)");
+            rack.Accepting = true;
+            rack.NoteOn(0, 69, 0.8f);
+            var live = RenderRack(rack, 500, 480);
+            t.NearCents("note after Accepting is back on", HzOf(live, 200, 480), Playable(900, false), 3);
+        }
+
         // saved settings: what the editors change (volume, tuning) survives a restart of the rack
         byte[][] states;
         using (var rack = new SynthRack(dllPath, rate))

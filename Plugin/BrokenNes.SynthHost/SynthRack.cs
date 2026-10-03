@@ -21,7 +21,8 @@ public readonly record struct SynthEvent(SynthEventKind Kind, int Channel, int K
 /// Rendering allocates nothing; a note-on allocates its voice.
 /// </para>
 /// <para>
-/// <b>Not thread safe:</b> Render, and Dispose (stop the audio first). The editors and state calls belong to the UI thread, like in FL.
+/// <b>Shutdown:</b> Render and Dispose exclude each other, so a device thread still rendering when the window closes cannot touch destroyed plugin
+/// instances; stop the audio first all the same. The editors and state calls belong to the UI thread, like in FL.
 /// </para>
 /// </summary>
 public sealed unsafe class SynthRack : IDisposable
@@ -40,9 +41,17 @@ public sealed unsafe class SynthRack : IDisposable
     private readonly ConcurrentQueue<SynthEvent> queue = new();
     private readonly float[] scratch = new float[MaxBlock * 2];
     private volatile float peak;
-    private bool disposed;
+    private readonly object renderGate = new();
+    private bool disposed;   // read and written under renderGate
 
-    public int SampleRate { get; }
+    public int SampleRate { get; private set; }
+
+    /// <summary>Tells every plugin the rate the audio device runs at. Stop rendering first (a device change is what calls for it).</summary>
+    public void SetSampleRate(int sampleRate)
+    {
+        SampleRate = sampleRate;
+        foreach (var p in instances) p.Dispatcher(Fpd.SetSampleRate, 0, sampleRate);
+    }
 
     /// <summary>How far a full pitch bend goes, in semitones (the MIDI default is 2).</summary>
     public float BendRangeSemitones { get; set; } = 2;
@@ -75,11 +84,15 @@ public sealed unsafe class SynthRack : IDisposable
 
     // ---- what the player does (any thread) ----
 
-    public void NoteOn(int channel, int key, float velocity) { if (InRange(channel)) queue.Enqueue(new(SynthEventKind.NoteOn, channel, key, Math.Clamp(velocity, 0f, 1f))); }
-    public void NoteOff(int channel, int key) { if (InRange(channel)) queue.Enqueue(new(SynthEventKind.NoteOff, channel, key, 0)); }
+    /// <summary>Whether events are queued at all. A host with no audio device running turns this off: nothing would ever drain the queue, and a burst of
+    /// stale notes must not sound the moment a device appears. (Events already queued are still played by the next <see cref="Render"/>.)</summary>
+    public volatile bool Accepting = true;
+
+    public void NoteOn(int channel, int key, float velocity) { if (Accepting && InRange(channel)) queue.Enqueue(new(SynthEventKind.NoteOn, channel, key, Math.Clamp(velocity, 0f, 1f))); }
+    public void NoteOff(int channel, int key) { if (Accepting && InRange(channel)) queue.Enqueue(new(SynthEventKind.NoteOff, channel, key, 0)); }
     /// <summary>-1..1, full scale = <see cref="BendRangeSemitones"/>.</summary>
-    public void PitchBend(int channel, float bend) { if (InRange(channel)) queue.Enqueue(new(SynthEventKind.PitchBend, channel, 0, Math.Clamp(bend, -1f, 1f))); }
-    /// <summary>Releases every held note of a channel, or of all of them with -1.</summary>
+    public void PitchBend(int channel, float bend) { if (Accepting && InRange(channel)) queue.Enqueue(new(SynthEventKind.PitchBend, channel, 0, Math.Clamp(bend, -1f, 1f))); }
+    /// <summary>Releases every held note of a channel, or of all of them with -1. Always accepted: ending notes is never wrong.</summary>
     public void AllNotesOff(int channel = -1) { if (channel == -1 || InRange(channel)) queue.Enqueue(new(SynthEventKind.AllNotesOff, channel, 0, 0)); }
 
     private static bool InRange(int channel) => (uint)channel < ChannelCount;
@@ -88,6 +101,17 @@ public sealed unsafe class SynthRack : IDisposable
 
     /// <summary>Fills <paramref name="stereo"/> (interleaved L, R) with the next stretch of sound. Any length; works in blocks of at most <see cref="MaxBlock"/> frames.</summary>
     public void Render(Span<float> stereo)
+    {
+        // Dispose takes this same lock: a device thread that is still inside Render when the window closes finishes its block first, and any
+        // later call gets silence. (The lock is uncontended in play; Monitor does not allocate.)
+        lock (renderGate)
+        {
+            if (disposed) { stereo.Clear(); return; }
+            RenderLocked(stereo);
+        }
+    }
+
+    private void RenderLocked(Span<float> stereo)
     {
         int frames = stereo.Length / 2;
         fixed (float* basePtr = stereo)
@@ -207,9 +231,12 @@ public sealed unsafe class SynthRack : IDisposable
 
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
-        foreach (var p in instances) p.Destroy();   // ends their voices (Voice_Kill) while the hosts are still there to answer
-        foreach (var h in hosts) h.Dispose();
+        lock (renderGate)   // waits for a Render in progress
+        {
+            if (disposed) return;
+            disposed = true;
+            foreach (var p in instances) p.Destroy();   // ends their voices (Voice_Kill) while the hosts are still there to answer
+            foreach (var h in hosts) h.Dispose();
+        }
     }
 }
