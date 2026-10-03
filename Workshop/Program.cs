@@ -57,6 +57,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sega-chips-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaChipsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--z80test", StringComparison.OrdinalIgnoreCase)) return Sega.Z80TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--m68ktest", StringComparison.OrdinalIgnoreCase)) return Sega.M68kTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--md-run", StringComparison.OrdinalIgnoreCase)) return Sega.MdRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-contracts-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaContractsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaOracleTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--console-catalog", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Catalog();

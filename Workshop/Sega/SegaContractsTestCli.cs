@@ -273,7 +273,9 @@ internal static class SegaContractsTestCli
         bool threw = false; try { SmsSoundFactories.Create("NOPE", new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega)); } catch (ArgumentException) { threw = true; }
         Check("an unknown unit id is an error, never a quiet substitution", threw);
         var md = GenesisSoundFactories.Create("MD", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model1, rate));
-        Check("the Genesis factory builds the stand-in unit under the id MD", md.CoreName == "STUB");
+        Check("the Genesis factory builds the Z80 + PSG + YM2612-registers unit under the id MD, which says its FM is silent", md.CoreName.StartsWith("MD") && md.CoreName.Contains("no FM audio"), md.CoreName);
+        var stub = GenesisSoundFactories.Create("MD-STUB", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model1, rate));
+        Check("the labelled stand-in without a Z80 stays available under MD-STUB", stub.CoreName == "STUB");
     }
 
     // ---------------------------------------------------------------------------------------------- NES hub
