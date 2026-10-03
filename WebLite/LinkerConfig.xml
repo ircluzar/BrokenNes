@@ -62,6 +62,7 @@
     <type fullname="NesEmulator.APU_SNES" preserve="all" />
     <type fullname="NesEmulator.APU_DMG" preserve="all" />
     <type fullname="NesEmulator.APU_DMGS" preserve="all" />
+    <type fullname="NesEmulator.APU_SMS" preserve="all" />
     <type fullname="NesEmulator.APU_FIXS" preserve="all" />
     <type fullname="NesEmulator.NES" preserve="fields" />
 

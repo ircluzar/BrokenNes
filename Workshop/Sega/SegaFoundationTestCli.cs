@@ -191,7 +191,10 @@ internal static class SegaFoundationTestCli
             string.Join(" ", expect.Where(e => CoreCatalog.Default(e.Item1, e.Item2) != e.Item3).Select(e => $"{e.Item1}/{e.Item2}={CoreCatalog.Default(e.Item1, e.Item2)}")));
         Check("a stored id the menu no longer offers falls back to the default", expect.All(e => CoreCatalog.Resolve(e.Item1, e.Item2, "BOGUS") == e.Item3 && CoreCatalog.Resolve(e.Item1, e.Item2, null) == e.Item3));
         Check("a stored id the menu offers is kept (case-insensitive)", CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Cpu, "m68k") == "m68k");
-        Check("every Sega option names its own family", expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => o.Family == Consoles.Family(e.Item1))));
+        // Track C: the Master System and Game Gear APU menus also list the PSG replayed on NES chips (ids NES:<chip>, family NES); every other entry is the console's own
+        Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip> in the Master System / Game Gear sound menu)",
+            expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => o.Family == Consoles.Family(e.Item1)
+                || (e.Item2 == CoreSlot.Apu && Consoles.IsMasterSystemFamily(e.Item1) && o.Family == "NES" && o.Id.StartsWith("NES:")))));
         Check("the NES, SNES and Game Boy menus are unchanged by the Sega kinds", CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Cpu) == "SFC" && CoreCatalog.Default(ConsoleKind.GameBoy, CoreSlot.Cpu) == "GB" && CoreCatalog.Default(ConsoleKind.Nes, CoreSlot.Cpu) == "FIX");
     }
 

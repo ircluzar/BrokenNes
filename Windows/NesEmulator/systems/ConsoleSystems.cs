@@ -201,7 +201,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -209,6 +209,7 @@ public static class CoreCatalog
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
+        ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
     };
 
     /// <summary>The family a NES-board core id belongs to ("NES" unless it is a bridge).</summary>
@@ -251,7 +252,11 @@ public static class CoreCatalog
                 {
                     case CoreSlot.Cpu: list.Add(new("Z80", "Z80 (stock clock)", fam)); break;
                     case CoreSlot.Ppu: list.Add(gg ? new("GG", "GG (Game Gear picture chip)", fam) : new("SMS", "SMS (Master System picture chip)", fam)); break;
-                    default: list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam)); break;
+                    default:
+                        list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam));
+                        // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
+                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
+                        break;
                 }
                 break;
             }
@@ -338,6 +343,13 @@ public static class CoreCatalog
         CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) == "NES")
             .OrderBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
             .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The menu label of a Master System / Game Gear game's sound played by a NES chip. Honest about what the trip loses: the PSG alone, mono.</summary>
+    private static string SegaOnNesLabel(string id) => id.ToUpperInvariant() switch
+    {
+        "FIXS" => "FIXS - the PSG on the 8-channel NES chip (mono; no YM2413 FM, no Game Gear stereo)",
+        _ => $"{id} - the PSG on a NES sound chip (mono; no YM2413 FM, no Game Gear stereo)",
+    };
 
     private static string NesSoundLabel(string id) => id.ToUpperInvariant() switch
     {
