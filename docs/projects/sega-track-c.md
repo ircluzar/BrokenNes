@@ -62,7 +62,7 @@ In `Plugin/README.md` ("The Master System console"): the `*Ready` flags and a re
 
 | Check | Result |
 |---|---|
-| `--sega-bridge-test` | 125 passed (catalog 12, APU_SMS 69, a NES game on APU_SMS 5, SmsSoundOnNes 39) |
+| `--sega-bridge-test` | 126 passed (catalog 12, APU_SMS 70, a NES game on APU_SMS 5, SmsSoundOnNes 39) |
 | `--sega-contracts-test` | 77 passed |
 | `--sega-test` | 77 passed (one Phase 0 check widened: the Master System and Game Gear sound menus now also list NES-chip entries) |
 | `--z80test --selftest` | 57 passed |
@@ -77,7 +77,7 @@ In `Plugin/README.md` ("The Master System console"): the `*Ready` flags and a re
 | Game Boy Blargg CPU suite | 11 of 11 |
 
 **Proof that the verifiers can fail** (a bug injected, flagged, reverted): pulse period off by one (9 checks fail), pulse volumes 6 dB quiet (23), short-mode noise played white (2), DMC `$4011` writes not counted (1), the front core not stepped (1), the frame-sequencer jump with a missing half-frame (1),
-`SmsSoundOnNes` periodic noise sent as white (1), its pitch 2% sharp (13), its stereo mask ignored (1), the catalog's NES entries removed (6); in the plugin self-test, tone 3 muted and 16 bytes allocated per step (the `psg` test fails both).
+`SmsSoundOnNes` periodic noise sent as white (1), a loaded state ignored (1), its pitch 2% sharp (13), its stereo mask ignored (1), the catalog's NES entries removed (6); in the plugin self-test, tone 3 muted and 16 bytes allocated per step (the `psg` test fails both).
 
 ## Not tested
 
