@@ -24,7 +24,7 @@ public enum PsgVariant { Sega, Ti }
 /// </list>
 /// Output is unipolar like the chip's; <see cref="BandLimitedMixer"/> makes it band-limited audio and removes the DC offset.
 /// </remarks>
-public sealed class Sn76489
+public sealed class Sn76489 : IHubVoiceSource
 {
     /// <summary>One PSG clock is this many CPU clocks.</summary>
     public const int Divider = 16;
@@ -38,6 +38,7 @@ public sealed class Sn76489
     public float Gain = 0.2f;
 
     private readonly PsgVariant variant;
+    private readonly double cpuClockHz;
     private readonly BandLimitedMixer left, right;
 
     // registers
@@ -63,6 +64,7 @@ public sealed class Sn76489
     public Sn76489(double cpuClockHz, int sampleRate, PsgVariant variant = PsgVariant.Sega)
     {
         this.variant = variant;
+        this.cpuClockHz = cpuClockHz;
         left = new BandLimitedMixer(cpuClockHz / Divider, sampleRate);
         right = new BandLimitedMixer(cpuClockHz / Divider, sampleRate);
         Reset();
@@ -193,7 +195,7 @@ public sealed class Sn76489
     }
 
     /// <summary>Stereo interleaved 16-bit samples finished since the last call; the number of shorts written (always even).</summary>
-    public int ReadSamples(short[] buffer)
+    public int ReadSamples(Span<short> buffer)
     {
         int frames = Math.Min(Math.Min(left.Available, right.Available), buffer.Length / 2);
         Span<float> l = frames <= 512 ? stackalloc float[frames] : new float[frames];
@@ -206,6 +208,34 @@ public sealed class Sn76489
             buffer[2 * i + 1] = (short)Math.Clamp(r[i] * scale, -32768f, 32767f);
         }
         return frames * 2;
+    }
+
+    // ---- the NES hub: what the chip is playing, as voices ----
+
+    /// <summary>The four voices in a stable order (tone 1, tone 2, tone 3, noise). Tones 1 and 2 are pulses at 50% duty, tone 3 is offered as a triangle (the plan's mapping), the
+    /// noise is noise. A tone whose period is 0 or 1 is a constant level on the Sega part, not a note, and is reported silent; a channel the Game Gear stereo port mutes on both
+    /// sides is silent too.</summary>
+    public int DescribeVoices(Span<HubVoice> voices)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            int bit = i;   // stereo bits: tone 1 = 0, tone 2 = 1, tone 3 = 2, noise = 3
+            bool heard = (stereo & ((0x10 | 0x01) << bit)) != 0;
+            float level = heard ? Level[volume[i]] : 0f;
+            if (i < 3)
+            {
+                int n = period[i] == 0 && variant == PsgVariant.Ti ? 0x400 : period[i];
+                if (n <= 1) level = 0f;
+                double hz = n > 0 ? cpuClockHz / (32.0 * n) : 0;
+                voices[i] = new HubVoice(i < 2 ? HubVoiceKind.Pulse : HubVoiceKind.Triangle, hz, level, Duty: 2);
+            }
+            else
+            {
+                double hz = cpuClockHz / 16.0 / (2.0 * NoiseRate());
+                voices[i] = new HubVoice(HubVoiceKind.Noise, hz, level, ShortNoise: (noise & 4) == 0);
+            }
+        }
+        return 4;
     }
 
     // ---- state (registers and counters; the audio buffers are not part of it) ----
