@@ -10,6 +10,9 @@ namespace NesEmulator.Sega;
 /// through its bank window, and the VDP's vertical-blank interrupt into the Z80.
 /// </summary>
 /// <remarks>
+/// <para>The real Z80 (<c>sega/Z80</c>) has no BUSREQ pin: a host pauses it by not ticking it, and it reports only instruction boundaries (<c>AtInstructionBoundary</c>), not machine-cycle ones.
+/// Hardware grants the bus at the end of the current machine cycle, so granting at the next instruction boundary is a few cycles late; how closely to model that is the Genesis track's
+/// decision, to be settled against a bus-timing test ROM. The bank-window stall likewise goes through the core's <c>Wait</c> pin or an added delay on the board's Z80 clock.</para>
 /// <para>Every call that can change what the unit does carries the master-clock reading it happens at, and the unit runs itself up to that reading first. The unit never
 /// steps instruction by instruction on the board's behalf: the board says "run until master clock N" (<see cref="RunTo"/>) before each access and once per frame.</para>
 /// <para>The 68000's view (<see cref="Read"/>, <see cref="Write"/>, offset 0 to $FFFF = addresses $A00000 to $A0FFFF): $0000-$1FFF Z80 RAM, $2000-$3FFF its mirror,
