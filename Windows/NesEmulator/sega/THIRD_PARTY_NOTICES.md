@@ -13,7 +13,7 @@ both VDPs and all bus and cycle timing are written clean-room from documentation
 |---|---|---|---|---|
 | Z80 core (cycle-stepped micro-op design) | `sega/Z80/*.cs`: `Z80<TBus>`, `IZ80Bus`; verifier `Workshop/Sega/Z80TestCli.cs` | BizHawk `Z80A` (`BizHawk.Emulation.Cores/CPUs/Z80A`, Alyosha and the BizHawk team), from the local tree `Bizhawk52X-Vanguard` (HEAD f9c0100, 2025-02-24) | MIT, Copyright (c) BizHawk team | **ported 2026-10-03**; details in section 1a |
 | YM2612 / YM2413 FM cores | `sega/` | ymfm (Aaron Giles); YM2413 alternatively emu2413 (Mitsutaka Okazaki) | BSD-3-Clause / MIT | planned (tracks) |
-| 68000 core | `md/` | ares `m68000` (ISC), Musashi (MIT) as fallback; chosen by a one-day spike | ISC / MIT | planned (Genesis track) |
+| 68000 core (`M68k<TBus>`, `IM68kBus`) | `md/M68k*.cs`, `md/IM68kBus.cs`; verifier `Workshop/Sega/M68kTestCli.cs`, `M68kVectors.cs`, `M68kSelfTest.cs`, `M68kBench.cs` | ares `component/processor/m68000` (ares team, Near et al; pin 4cb8d92, local tree `C:\BrokenNes-tools\sega\port-sources\ares-sparse`) | ISC, Copyright (c) 2004-2025 ares team, Near et al | **ported 2026-10-03**; details in section 1b |
 | SMS mappers and header handling | `sms/` | BizHawk Master System memory-map code | MIT | planned (SMS track) |
 
 (Entries move from "planned" to a dated description of exactly what was taken the day the code lands.)
@@ -59,6 +59,46 @@ No other emulator's Z80 source (ares, MAME, Fuse, Genesis Plus GX, ...) was read
 - zexdoc and zexall (GPL-2.0, Cringle; local only, run as test data): all 67 tests of each report OK (46.7 billion T-states each).
 - 57 hand-written checks of what the vectors cannot reach (interrupts of every mode, NMI, HALT, EI delay, WAIT, save states, the I/O address bus, documented instruction timings).
 - Not covered by any test: the exact WZ after an interrupt response, IM 0 with anything but RST, bus requests, and the address and data bus levels during T-states with no access (the core does not expose them).
+
+### 1b. 68000 (`md/M68k*.cs`), ported 2026-10-03
+
+**Source read.** ares' `component/processor/m68000`: `m68000.hpp`, `m68000.cpp`, `memory.cpp`, `registers.cpp`, `traits.cpp`, `conditions.cpp`, `effective-address.cpp`, `algorithms.cpp`, `instructions.cpp` and `instruction.cpp`, in full, at the pinned commit above. `disassembler.cpp` and `serialization.cpp` were
+neither read nor ported. Musashi (MIT, the planned fallback) was not read: the spike (reading ares for how it carries bus access times) decided for ares, which writes every instruction as the chip does it (internal cycles, then four-clock word-wide bus cycles, with the prefetch
+a real bus read where the chip puts it), which is what a board that must timestamp each access needs. No other emulator's 68000 source (MAME, Musashi, Moira, Genesis Plus GX, jgenesis, BlastEm, ...) was read for this work. The MAME-generated test vectors
+(`singlesteptests-m68000`, MIT) are data, not source.
+
+**Taken from ares (ISC, Copyright (c) 2004-2025 ares team, Near et al; the license text is in the root ledger, section 6).**
+- The **instruction set as code**: every instruction (`instructionADD`, `instructionMOVEM_TO_MEM`, `instructionDIVS`, ...) with the order of its bus cycles and the number of internal clocks between them, the effective-address fetch / read / write routines with their `Hold` and `Fast` variants,
+  the flag algorithms (`ADD`, `SUB`, `CMP`, the eight shifts and rotates, BCD), the condition table, the exception skeleton, the TAS lock hook.
+- The **set of legal opcodes and their addressing-mode restrictions** (the loops of `instruction.cpp`).
+- The **model of time**: a bus access is `wait(4)` plus one word-wide access (`upper`, `lower` strobes), an internal period is `idle(n)`.
+
+**Changed or rewritten here.**
+- The bus: ares' `read(upper, lower, address)` / `write(...)` virtual calls and its `idle` / `wait` became `IM68kBus` (a struct-generic bus like `IZ80Bus`): every call carries the clocks elapsed since the previous call, so a board can run the VDP, Z80 and refresh up to the access; interrupts are a polled level plus an acknowledge cycle.
+- The decode: ares' 65,536 `std::function` closures bound to operand objects became one byte per opcode (a handler number) with the operand fields decoded when the instruction runs; operand sizes are runtime values, not templates.
+- Corrections found by the SingleStepTests vectors (ares' own timing is close but not the vectors'): the stack pushes of a long (LINK, BSR, JSR, PEA push the high word first, unlike the -(An) writes of MOVE and MOVEM, which go low word first); read-modify-write long writes go low word first; ADDX/SUBX -(An) read a long low word first; the order and the idle cycles of the exception frame
+  (PC low, SR, PC high; four idle clocks for TRAP, privilege, illegal; none after the real prefetch of TRAPV; the two clocks before the last prefetch for every exception, not only interrupts); the dummy read of ANDI/ORI/EORI to CCR and SR and of MOVE to CCR and SR; MOVE to an absolute-long destination takes its second address word
+  from the program stream after (memory source) or before (register or immediate source) the write; BTST with an immediate operand; the early-overflow and flag rules of DIVS/DIVU, CHK and STOP follow the MAME vectors (silicon derived), see below.
+- Reset state: SR $2700, registers zero (ares: the same).
+
+**Added here (not in ares).**
+- The **address-error exception** (ares had none): the faulting access is aborted after its four clocks, the 14-byte frame (PC low, SR, PC high, the instruction word, the faulting address, the status word with read/write and function code) is stacked in the chip's order, a double fault (address error while stacking) halts the processor. Detected for word and long accesses and for program fetches. 50 clocks.
+- The **trace exception** (the T bit), **STOP** (nothing fetched until an interrupt; the stacked return address is the instruction after it), the **Halted** state, the TAS switch (`TasWritesBack`), the RESET instruction's reset pulse.
+- The verifier: `Workshop/Sega/M68kTestCli.cs`, `M68kVectors.cs`, `M68kSelfTest.cs`, `M68kBench.cs`, written here.
+
+**Behaviours the two vector sets disagree on, and which the core follows.** SingleStepTests/680x0 (a reference implementation written to the manual, no licence stated, local only) and SingleStepTests/m68000 (generated from MAME's microcoded core, which is derived from the chip, MIT) contradict each other on
+the following; the core follows the MAME set, which it passes in full, and the 680x0 vectors in these classes are excluded from the verifier (counted, run anyway, and reported: see the verifier's output):
+RTE and RTR read the status word first (680x0: the PC's high word first); LINK A7 pushes the original A7 (680x0: decremented); CHK (where its prefetch falls, the branch conditions, the flags); DIVS/DIVU overflow (DIVS runs its full length unless the quotient is 65,536 or more, N is set and Z cleared; 680x0: early exit from 32,768, N and Z untouched);
+ADDQ.L / SUBQ.L to An take 8 clocks (680x0: 6); ASR by a count above the width of a negative value leaves C and X set (680x0: clear); one DIVU by zero (680x0 stacks the instruction's own address); two ASL.B vectors with an impossible result.
+**Tolerances** (one field of a vector is not compared): the stacked PC of an address-error frame in the MAME vectors (it follows microcode state; the core stacks instruction address plus the words consumed, which is what the 680x0 vectors show and which they pass), the address registers' values after an aborted access
+(the sets and the core differ on whether the post-increment or pre-decrement has happened), the instruction word in the 680x0 vectors' frame and the function code of PC-relative operands, the flags in MAME's MOVE.L address errors, the DBcc counter in the 680x0 address errors, MAME's eight extra idle clocks after the aborted access, and the I/N bit of the 680x0 status word.
+
+**Verification (2026-10-03; `--m68ktest`).**
+- SingleStepTests/680x0 (124 files, 1,000,060 vectors): 967,285 pass, 32,775 are excluded by the classes above, **0 fail**. SingleStepTests/m68000 (127 files, 317,500 vectors): **all 317,500 pass**, none excluded, tolerances as above.
+  Every register, SR, the prefetch queue, every written byte, the clock count and every bus transaction (kind, clocks, address, size, data, in order) are compared. The harness was shown to fail: poisoned expected values and bugs injected into the core were flagged with annotated failures, then reverted (see the commit that added the verifier).
+- 44 hand-written checks (`--m68ktest --selftest`): reset, interrupt mask and level 7, the acknowledge, STOP and waking, privilege violation, the exception vectors, address-error frames, the double fault, TAS on the Genesis, the trace exception, byte lanes, RESET, stack switching, bus accounting (every counted clock reaches the bus) and all 65,536 opcodes run without a host exception.
+- Throughput (`--m68ktest --bench`): 420 to 780 million 68000 clocks per second on the three kernels (55 to 100 times the Genesis's real speed) on this machine, the core alone.
+- Not covered by any test: interrupt acknowledge timing (the 54-clock autovector figure is ares', an average of the synchronised acknowledge), the exact stacked PC of an address error, instruction-fetch bus errors (the Genesis has none), the bus error exception (no source raises it here), MOVEP and MOVEM to odd addresses beyond the vectors.
 
 ## 2. Written with a source seen (credited)
 

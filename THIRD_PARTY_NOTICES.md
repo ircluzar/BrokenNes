@@ -27,6 +27,7 @@ find a borrowed piece that is not listed, that is a bug in this file: report it.
 | Mapper 5 (MMC5), adapted | `Windows/NesEmulator/mappers/Mapper5.cs` | BizHawk ExROM, MIT, Copyright (c) BizHawk team |
 | MMC5 expansion audio, adapted | `Windows/NesEmulator/expansion/MMC5Audio.cs` | BizHawk `MMC5Audio`, MIT, Copyright (c) BizHawk team |
 | Mapper 90 and Mapper 228 logic follows BizHawk's, simplified | `Windows/NesEmulator/mappers/Mapper90.cs`, `Mapper228.cs` | BizHawk, MIT, Copyright (c) BizHawk team |
+| Sega: Motorola 68000 core, ported | `Windows/NesEmulator/md/M68k*.cs`, `IM68kBus.cs` | ares `component/processor/m68000`, ISC, Copyright (c) 2004-2025 ares team, Near et al; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (the ISC text is in section 6) |
 | Sega: Z80 and others, **planned** | see `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` | each entry is added to that ledger when the code lands |
 
 BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
@@ -80,5 +81,13 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR
 A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
 ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+**ISC License, Copyright (c) 2004-2025 ares team, Near et al** (the 68000 core under `Windows/NesEmulator/md/`)
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 The licenses of the packages in section 5 ship inside the packages (their `license` files) and are included with the distributed programs.
