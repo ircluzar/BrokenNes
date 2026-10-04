@@ -176,6 +176,14 @@ public sealed partial class MdVdp
     /// </summary>
     public static class SlotTable
     {
+        // Where the free slots fall in a line whose picture is being drawn, as the pixel they show at (measured: a colour RAM write made in a slot puts a dot on the pixel being output, and the oracle's dots
+        // sit at these columns on every line): one external slot every 16 pixels from pixel 12 with every fourth (the refresh slots, at pixels 28, 92, 156, 220 and 284) not free, then a pair of adjacent slots
+        // near the right edge. The slots after the visible picture (the rest of the 18 and 16 a line is documented to have) are placed in the blanking at the end of the line.
+        private static readonly int[] ActivePixelsH40 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 236, 252, 268, 298, 300 };
+        private static readonly int[] ActivePixelsH32 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 234, 236 };
+        private static readonly int[] RefreshPixelsH40 = { 28, 92, 156, 220, 284 };
+        private static readonly int[] RefreshPixelsH32 = { 28, 92, 156, 220 };
+
         public static readonly int[][][] Free = Build();
 
         private static int[][][] Build()
@@ -185,18 +193,21 @@ public sealed partial class MdVdp
             {
                 bool h40 = w == 1;
                 int total = h40 ? 210 : 171, refresh = h40 ? 5 : 4;
+                int pxDiv = h40 ? 8 : 10;
                 int freeBlank = total - refresh, freeActive = h40 ? 18 : 16;
                 t[w] = new int[2][];
-                // blanked: every slot but the refresh ones (spread evenly)
+                // blanked: every slot but the refresh ones, which sit where the picture lines have theirs
                 var refreshSlots = new bool[total];
-                for (int r = 0; r < refresh; r++) refreshSlots[(int)((r + 0.5) * total / refresh)] = true;
+                foreach (int px in h40 ? RefreshPixelsH40 : RefreshPixelsH32) refreshSlots[Math.Min(total - 1, px * pxDiv * total / ClocksPerLine)] = true;
                 var blank = new System.Collections.Generic.List<int>();
                 for (int s = 0; s < total; s++) if (!refreshSlots[s]) blank.Add(s * ClocksPerLine / total);
                 t[w][0] = blank.ToArray();
-                // active: the few that the pattern, sprite and refresh fetches leave
-                var active = new int[freeActive];
-                for (int j = 0; j < freeActive; j++) active[j] = (int)((j + 0.5) * ClocksPerLine / freeActive);
-                t[w][1] = active;
+                // active: the measured columns, then the rest in the blanking at the end of the line, a slot's length apart
+                var active = new System.Collections.Generic.List<int>();
+                foreach (int px in h40 ? ActivePixelsH40 : ActivePixelsH32) active.Add(px * pxDiv);
+                int next = 2560 + 16 * (h40 ? 2 : 1);
+                while (active.Count < freeActive) { active.Add(next); next += 20; }
+                t[w][1] = active.ToArray();
                 if (blank.Count != freeBlank) throw new InvalidOperationException("slot table: blanked free-slot count");
             }
             return t;
@@ -377,6 +388,7 @@ public sealed partial class MdVdp
         while (dmaLength > 0 && fifoCount < 4)
         {
             ushort w = host.ReadBusWord(dmaSource);
+            Trace?.Invoke($"dma word at line {Line}+{LineOffset} fifo {fifoCount}");
             PushFifo(dmaTargetCode, address, w);
             DmaWords++;
             address = (address + (uint)AutoIncrement) & 0x1FFFF;
@@ -455,6 +467,7 @@ public sealed partial class MdVdp
     private void FinishDma()
     {
         var kind = dma;
+        Trace?.Invoke($"dma {kind} done at line {Line}+{LineOffset} fifo {fifoCount}");
         dma = DmaKind.None; dmaSlotsLeft = 0;
         // the length registers end at zero, the source registers where a bus transfer or copy stopped
         Reg[19] = 0; Reg[20] = 0;
@@ -600,6 +613,7 @@ public sealed partial class MdVdp
         if (InHBlank) s |= 0x04;
         if (DmaBusy) s |= 0x02;
         if (Region == SegaRegion.Pal) s |= 0x01;
+        Trace?.Invoke($"status {s:X3} line {Line}+{LineOffset} fifo {fifoCount}");
         return (ushort)s;
     }
 

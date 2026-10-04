@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
 /// <c>--md-run &lt;rom&gt; [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input "60:Start,90:Right+A,120:"] [--every N] [--png out.png] [--palette 0..3] [--trace out.txt]
-/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--pic-hash-at 60,120] [--png-at 60,120 --png-dir d] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
+/// [--trace-pc] [--trace-reads] [--trace-from N] [--trace-frames N] [--hash-at 60,120] [--pic-hash-at 60,120] [--png-at 60,120 --png-dir d] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
 /// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. <c>--png</c> writes the picture of the last frame (the VDP's output at its real size), <c>--png-at 60,120 --png-dir d</c> one picture per listed frame
 /// (<c>d000060.png</c>), <c>--pic-hash-at 60,120</c> prints the picture's hash at those frames, <c>--vram-png</c> the VDP's VRAM/CRAM debug view and <c>--plane-png</c> a dump of the two scroll planes' first 40 by 28 cells (no scroll, window, sprites or priority). <c>--ram-out</c> writes the 64 KB of work RAM (test ROMs keep their results there), <c>--trace-reads</c> adds the 68000's reads outside ROM and RAM to a trace, <c>--force</c> runs a ROM without the SEGA header as a Genesis one.
 /// <c>--trace</c> writes a line per VDP, Z80-area, I/O, BUSREQ, RESET and PSG write (and per instruction with <c>--trace-pc</c>), tagged with frame and line, in a form two runs can be diffed in.
@@ -24,7 +24,7 @@ internal static class MdRunCli
     public static int Run(string[] args)
     {
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : M68kTestCli.Arg(args, "--rom");
-        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at list] [--pic-hash-at list] [--png-at list --png-dir dir] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]"); return 2; }
+        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-reads] [--trace-from N] [--trace-frames N] [--hash-at list] [--pic-hash-at list] [--png-at list --png-dir dir] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]"); return 2; }
         int frames = int.TryParse(M68kTestCli.Arg(args, "--frames"), out int f) ? f : 120;
         int every = int.TryParse(M68kTestCli.Arg(args, "--every"), out int ev) ? ev : 0;
         int palette = int.TryParse(M68kTestCli.Arg(args, "--palette"), out int pal) ? pal : 0;
@@ -32,6 +32,7 @@ internal static class MdRunCli
         string? png = M68kTestCli.Arg(args, "--png"), tracePath = M68kTestCli.Arg(args, "--trace");
         bool tracePc = M68kTestCli.Flag(args, "--trace-pc");
         int traceFrames = int.TryParse(M68kTestCli.Arg(args, "--trace-frames"), out int tf) ? tf : int.MaxValue;
+        int traceFrom = int.TryParse(M68kTestCli.Arg(args, "--trace-from"), out int tfr) ? tfr : 0;
         var hashAt = new HashSet<int>((M68kTestCli.Arg(args, "--hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         var picHashAt = new HashSet<int>((M68kTestCli.Arg(args, "--pic-hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         var pngAt = new HashSet<int>((M68kTestCli.Arg(args, "--png-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
@@ -60,13 +61,13 @@ internal static class MdRunCli
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
-            board.WriteTrace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            board.Vdp.Trace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
-            if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            if (tracePc) board.InstructionHook = pc => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
+            board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+            board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+            if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
             if (board.Sound is MdSoundUnit unit)
             {
-                unit.YmWriteHook = (reg, v, part) => { if (board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   ym{part} {reg:X2}={v:X2}"); };
+                unit.YmWriteHook = (reg, v, part) => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   ym{part} {reg:X2}={v:X2}"); };
             }
         }
 
