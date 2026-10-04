@@ -13,8 +13,8 @@ namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
 /// <c>--md-run &lt;rom&gt; [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input "60:Start,90:Right+A,120:"] [--every N] [--png out.png] [--palette 0..3] [--trace out.txt]
-/// [--trace-pc] [--trace-frames N] [--hash-at 60,120] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
-/// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. There is no picture renderer yet, so <c>--png</c> writes the VDP's VRAM/CRAM debug view.
+/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--plane-png out.png] [--ram-out ram.bin] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
+/// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. There is no picture renderer yet, so <c>--png</c> writes the VDP's VRAM/CRAM debug view and <c>--plane-png</c> a dump of the two scroll planes' first 40 by 28 cells (no scroll, window, sprites or priority: enough to read a test ROM's text or recognise a game's screen). <c>--ram-out</c> writes the 64 KB of work RAM (test ROMs keep their results there), <c>--trace-reads</c> adds the 68000's reads outside ROM and RAM to a trace, <c>--force</c> runs a ROM without the SEGA header as a Genesis one.
 /// <c>--trace</c> writes a line per VDP, Z80-area, I/O, BUSREQ, RESET and PSG write (and per instruction with <c>--trace-pc</c>), tagged with frame and line, in a form two runs can be diffed in.
 /// Exit code 0 = ran every frame without a halt or a 68000 address error; 1 = the CPU halted or took an address error (listed); 2 = usage or file error.
 /// </summary>
@@ -23,7 +23,7 @@ internal static class MdRunCli
     public static int Run(string[] args)
     {
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : M68kTestCli.Arg(args, "--rom");
-        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-frames N] [--hash-at list] [--quiet]"); return 2; }
+        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at list] [--plane-png out.png] [--ram-out ram.bin] [--force] [--quiet]"); return 2; }
         int frames = int.TryParse(M68kTestCli.Arg(args, "--frames"), out int f) ? f : 120;
         int every = int.TryParse(M68kTestCli.Arg(args, "--every"), out int ev) ? ev : 0;
         int palette = int.TryParse(M68kTestCli.Arg(args, "--palette"), out int pal) ? pal : 0;

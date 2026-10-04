@@ -25,7 +25,8 @@ public struct MdBus : IM68kBus
 /// <remarks>
 /// <para><b>Memory map.</b> $000000-$3FFFFF cartridge (ROM, the SRAM window, the SSF2 banks), $A00000-$A0FFFF the Z80's space through the sound unit (while the 68000 holds the Z80 bus),
 /// $A10000-$A1001F the I/O chip (version, two pads, expansion port), $A11100 BUSREQ, $A11200 RESET, $A130F1-$A130FF the mapper, $A14000 TMSS (accepted and ignored: with no boot ROM the VDP is
-/// never locked), $C00000-$C0001F the VDP (data, control/status, H/V counter, PSG), $E00000-$FFFFFF the 64 KB of work RAM, mirrored. Everything else is open bus ($FF).</para>
+/// never locked), $C00000-$C0001F the VDP (data, control/status, H/V counter, PSG), $E00000-$FFFFFF the 64 KB of work RAM, mirrored. Everything else is open bus: a read returns the word of the 68000's last bus cycle (the next
+    /// instruction word for a read made right after the fetch of it, which is what MacDonald's memory-test ROM shows; the VDP status and the BUSREQ and RESET registers show it in the bits they do not drive).</para>
 /// <para><b>Choices recorded here (the plan lists the figures and says how the sources disagree).</b> DRAM refresh: <see cref="RefreshStallCycles"/> clocks lost every <see cref="RefreshPeriodCycles"/>
 /// clocks of 68000 time, on every access (the simplest reading of "about 2 of every 128"). Z80 bank-window stalls: the Z80 waits <see cref="MdSoundUnit.BankWindowZ80Stall"/> T-states and the 68000
 /// <see cref="MdSoundUnit.BankWindow68kStall"/> clocks per access (the test-ROM measurement; the 11-clock figure of other sources is a one-line change). The 68000 samples the interrupt lines at the
