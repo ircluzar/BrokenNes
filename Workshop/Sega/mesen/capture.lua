@@ -107,7 +107,7 @@ local portLog = nil
 if os.getenv("MESEN_PORTS") == "1" then
   portLog = assert(io.open(outDir .. "/" .. tag .. ".ports.txt", "wb"))
   emu.addMemoryCallback(function(address, value)
-    portLog:write(string.format("%d %02X %02X\n", started, address & 0xFF, value & 0xFF))
+    portLog:write(string.format("%d %02X %02X\n", done + 1, address & 0xFF, value & 0xFF))
   end, emu.callbackType.write, 0x00, 0xFF, emu.cpuType.sms, emu.memType.smsPort)
 end
 
@@ -119,9 +119,12 @@ do
     execFrom, execTo = tonumber(a), tonumber(b)
     execLog = assert(io.open(outDir .. "/" .. tag .. ".exec.txt", "wb"))
     local withRegs = os.getenv("MESEN_EXECREGS") == "1"
+    local withCycles = os.getenv("MESEN_EXECCYC") == "1"   -- "pc cycleCount": the Z80's own cycle count before the instruction (compare with --trace-pc-cyc)
     emu.addMemoryCallback(function(address, value)
       if done + 1 >= execFrom and done + 1 <= execTo then
-        if withRegs then
+        if withCycles then
+          execLog:write(string.format("%04X %d\n", address, emu.getState()["cpu.cycleCount"]))
+        elseif withRegs then
           local st = emu.getState()
           execLog:write(string.format("%04X %02X%02X %02X%02X %02X%02X %02X%02X %04X\n", address, st["cpu.a"], st["cpu.flags"], st["cpu.b"], st["cpu.c"], st["cpu.d"], st["cpu.e"], st["cpu.h"], st["cpu.l"], st["cpu.sp"]))
         else
@@ -143,9 +146,45 @@ do
       local pc = tonumber(hex, 16)
       emu.addMemoryCallback(function(address, value)
         local st = emu.getState()
-        watchLog:write(string.format("%d %04X %d %d %d\n", started, address, st["cpu.cycleCount"], st["vdp.scanline"], st["vdp.cycle"]))
+        watchLog:write(string.format("%d %04X %d %d %d\n", done + 1, address, st["cpu.cycleCount"], st["vdp.scanline"], st["vdp.cycle"]))
       end, emu.callbackType.exec, pc, pc, emu.cpuType.sms, emu.memType.smsMemory)
     end
+  end
+end
+
+-- MESEN_VWATCH="3F00-3FFF[,c]" with MESEN_VFRAMES="a-b": every write to VRAM addresses (or colour RAM with ",c") in those frames as "frame scanline dot addr value cpucycle" to <tag>.vwatch.txt
+-- (the scanline and dot are the VDP's own at the moment the write happens, which is when the chip commits it: compare with the Workshop's --watch-vram)
+local vwatchLog = nil
+do
+  local spec = os.getenv("MESEN_VWATCH") or ""
+  local lo, hi, cram = spec:match("^(%x+)%-(%x+)(,?c?)$")
+  if lo then
+    local fa, fb = (os.getenv("MESEN_VFRAMES") or "0-999999"):match("^(%d+)%-(%d+)$")
+    fa, fb = tonumber(fa), tonumber(fb)
+    lo, hi = tonumber(lo, 16), tonumber(hi, 16)
+    vwatchLog = assert(io.open(outDir .. "/" .. tag .. ".vwatch.txt", "wb"))
+    emu.addMemoryCallback(function(address, value)
+      if done + 1 < fa or done + 1 > fb then return end
+      local st = emu.getState()
+      vwatchLog:write(string.format("%d %d %d %04X %02X %d\n", done + 1, st["vdp.scanline"], st["vdp.cycle"], address, value & 0xFF, st["cpu.cycleCount"]))
+    end, emu.callbackType.write, lo, hi, emu.cpuType.sms, cram == ",c" and emu.memType.smsPaletteRam or emu.memType.smsVideoRam)
+  end
+end
+
+-- MESEN_MWATCH="C012[-C020]" with MESEN_VFRAMES="a-b": every Z80 memory write to those addresses as "frame cycleCount value pc" to <tag>.mwatch.txt (compare with the Workshop's --watch-write)
+local mwatchLog = nil
+do
+  local lo, hi = (os.getenv("MESEN_MWATCH") or ""):match("^(%x+)%-?(%x*)$")
+  if lo then
+    local fa, fb = (os.getenv("MESEN_VFRAMES") or "0-999999"):match("^(%d+)%-(%d+)$")
+    fa, fb = tonumber(fa), tonumber(fb)
+    lo = tonumber(lo, 16); hi = hi ~= "" and tonumber(hi, 16) or lo
+    mwatchLog = assert(io.open(outDir .. "/" .. tag .. ".mwatch.txt", "wb"))
+    emu.addMemoryCallback(function(address, value)
+      if done + 1 < fa or done + 1 > fb then return end
+      local st = emu.getState()
+      mwatchLog:write(string.format("%d %d %04X %02X %04X\n", done + 1, st["cpu.cycleCount"], address, value & 0xFF, st["cpu.pc"] or 0))
+    end, emu.callbackType.write, lo, hi, emu.cpuType.sms, emu.memType.smsMemory)
   end
 end
 
@@ -157,6 +196,7 @@ end, emu.eventType.inputPolled)
 
 emu.addEventCallback(function()
   done = done + 1
+  if execLog and done + 1 >= execFrom and done <= execTo then execLog:write("F" .. (done + 1) .. "\n") end   -- marks where frame done+1 starts
   -- the screenshot Mesen takes in this callback is the picture of the frame BEFORE the one just completed (measured: one frame of lag), so frame N's picture is taken at completed frame N+1
   if wanted[done - LAG] and done - LAG >= 1 then
     writeFile(outDir .. "/" .. tag .. "_f" .. (done - LAG) .. ".png", emu.takeScreenshot())
@@ -170,6 +210,8 @@ emu.addEventCallback(function()
     if portLog then portLog:close() end
     if execLog then execLog:close() end
     if watchLog then watchLog:close() end
+    if vwatchLog then vwatchLog:close() end
+    if mwatchLog then mwatchLog:close() end
     emu.stop(0)
   end
 end, emu.eventType.endFrame)

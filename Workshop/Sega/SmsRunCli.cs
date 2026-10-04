@@ -58,8 +58,21 @@ internal static class SmsRunCli
         if (startLine == null && mesenDir != null && File.Exists(Path.Combine(mesenDir, tag + ".phase.txt")))
             startLine = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(mesenDir, tag + ".phase.txt")), @"scanline=(\d+)").Groups[1].Value;
         if (!string.IsNullOrEmpty(startLine)) board.StartLine = int.Parse(startLine);
+        // --tune Name=value[,Name=value]: a timing field of the board or the VDP (WriteLatencyMc, VintFlagMc, ...), to find or check a constant
+        foreach (var kv in (Opt("tune") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Split('=')))
+        {
+            bool done = false;
+            foreach (object target in new object[] { board, board.Vdp })
+            {
+                if (done) break;
+                var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                if (target.GetType().GetField(kv[0], flags) is { } fi && fi.FieldType == typeof(int)) { fi.SetValue(target, int.Parse(kv[1])); done = true; }
+                else if (target.GetType().GetProperty(kv[0], flags) is { CanWrite: true } pi && pi.PropertyType == typeof(int)) { pi.SetValue(target, int.Parse(kv[1])); done = true; }
+            }
+            if (!done) throw new ArgumentException($"no tunable field '{kv[0]}'");
+        }
         if (Opt("start-cycle") is { } sc) board.StartCycle = int.Parse(sc);
-        if (board.StartLine != 0 || board.StartCycle != 0) { board.Reset(); Console.WriteLine($"VDP starts at line {board.StartLine} cycle {board.StartCycle}"); }
+        if (!string.IsNullOrEmpty(startLine) || Opt("start-cycle") != null || Opt("tune") != null) { board.Reset(); Console.WriteLine($"VDP starts at line {board.StartLine} cycle {board.StartCycle}"); }
         Console.WriteLine(session.Description);
         if (Opt("battery") is { } bat && File.Exists(bat)) { session.ImportSave(File.ReadAllBytes(bat)); Console.WriteLine($"battery loaded: {bat}"); }
 
@@ -92,13 +105,13 @@ internal static class SmsRunCli
             // --watch-pc <addr>[,<addr>]: each execution of those instruction addresses as "frame pc cycles line" to <out>/<tag>.watch.txt (the oracle's MESEN_WATCH writes the same, with its own cycle count)
             watchLog = new StreamWriter(Path.Combine(outDir, $"{tag}.watch.txt"));
             var set = wpcs.Split(',').Select(h => Convert.ToUInt16(h, 16)).ToHashSet();
-            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cpu.TotalCycles} {board.Vdp.Line}"); };
+            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cycles} {board.Vdp.Line}"); };
         }
         if (Opt("count-pc") is { } cpc)
         {
             // --count-pc <addr> [--count-every N]: print the Z80 cycle count at every Nth execution of an instruction address (compare with the oracle's exec callback)
             ushort target = Convert.ToUInt16(cpc, 16); int every = int.Parse(Opt("count-every") ?? "4000"); long hits = 0;
-            board.InstructionHook = pc => { if (pc == target && ++hits % every == 1) Console.WriteLine($"n={hits} cycles={board.Cpu.TotalCycles} f={board.Frames + 1} line={board.Vdp.Line}"); };
+            board.InstructionHook = pc => { if (pc == target && ++hits % every == 1) Console.WriteLine($"n={hits} cycles={board.Cycles} f={board.Frames + 1} line={board.Vdp.Line}"); };
         }
         StreamWriter? pcLog = null;
         if (Opt("trace-pc") is { } tpc)
@@ -106,12 +119,15 @@ internal static class SmsRunCli
             // --trace-pc <a>-<b>: the address of every instruction executed in frames a..b, one per line, to <out>/<tag>.pc.txt (compare with Mesen's MESEN_EXEC)
             var ab = tpc.Split('-'); int fa = int.Parse(ab[0]), fb = int.Parse(ab[1]);
             pcLog = new StreamWriter(Path.Combine(outDir, $"{tag}.pc.txt"));
-            bool withRegs = Flag("trace-pc-regs");
+            bool withRegs = Flag("trace-pc-regs"), withCycles = Flag("trace-pc-cyc");   // --trace-pc-cyc: "pc cycles" (the Z80 cycle count before the instruction; the oracle's MESEN_EXECCYC)
+            long lastFr = -1;
             board.InstructionHook = pc =>
             {
                 long fr = board.Frames + 1;
                 if (fr < fa || fr > fb) return;
-                if (withRegs) { var z = board.Cpu; pcLog.WriteLine($"{pc:X4} {z.A:X2}{z.F:X2} {z.B:X2}{z.C:X2} {z.D:X2}{z.E:X2} {z.H:X2}{z.L:X2} {z.SP:X4}"); }
+                if (fr != lastFr) { lastFr = fr; pcLog.WriteLine("F" + fr); }   // a marker where each frame starts (the oracle's log has the same)
+                if (withCycles) pcLog.WriteLine($"{pc:X4} {board.Cycles}");
+                else if (withRegs) { var z = board.Cpu; pcLog.WriteLine($"{pc:X4} {z.A:X2}{z.F:X2} {z.B:X2}{z.C:X2} {z.D:X2}{z.E:X2} {z.H:X2}{z.L:X2} {z.SP:X4}"); }
                 else pcLog.WriteLine(pc.ToString("X4"));
             };
         }
@@ -126,7 +142,7 @@ internal static class SmsRunCli
                 long fr = board.Frames + 1;
                 if (cramOnly != (code == 3) || addr < lo || addr > hi || fr < wlo || fr > whi || shownV > 3000) return;
                 shownV++;
-                Console.WriteLine($"{(code == 3 ? "CRAM" : "VRAM")} f{fr} l{line} mc{mc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4} cycles={board.Cpu.TotalCycles}");
+                Console.WriteLine($"{(code == 3 ? "CRAM" : "VRAM")} f{fr} l{line} mc{mc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4} cycles={board.Cycles}");
             };
         }
         if (Opt("watch-write") is { } ww)
@@ -146,7 +162,7 @@ internal static class SmsRunCli
         if (Flag("trace-vdp"))
         {
             long f = 0;
-            board.Vdp.RegisterWriteHook = (line, mc, reg, value) => Console.WriteLine($"VDP frame {board.Frames + 1} line {line} mc {mc}: R{reg} = ${value:X2}  pc=${board.Cpu.PC:X4} cycles={board.Cpu.TotalCycles}");
+            board.Vdp.RegisterWriteHook = (line, mc, reg, value) => Console.WriteLine($"VDP frame {board.Frames + 1} line {line} mc {mc}: R{reg} = ${value:X2}  pc=${board.Cpu.PC:X4} cycles={board.Cycles}");
         }
 
         var pcm = new List<short>();
@@ -162,6 +178,7 @@ internal static class SmsRunCli
             if (script2.TryGetValue(f, out var h2)) p2 = h2;
             session.SetPad(0, p1); session.SetPad(1, p2);
             session.RunFrame();
+            if (Flag("frame-end-lines") && (f >= 363 && f <= 367 || board.Vdp.Line != 191 || board.Vdp.ActiveHeight != 192)) Console.WriteLine($"frame {f + 1} ended at line {board.Vdp.Line} (active height {board.Vdp.ActiveHeight}) frames={board.Frames}");
             int n; while ((n = session.ReadSamples(abuf)) > 0) if (Opt("wav") != null) for (int i = 0; i + 1 < n; i += 2) pcm.Add((short)((abuf[i] + abuf[i + 1]) / 2));
             int frameNo = f + 1;
             if (Flag("hash") || hashAt.Contains(frameNo))
@@ -233,9 +250,9 @@ internal static class SmsRunCli
         if (Opt("battery-out") is { } bo && session.HasBattery) { File.WriteAllBytes(bo, session.ExportSave()); Console.WriteLine($"battery saved: {bo}"); }
         var vdp = board.Vdp;
         Console.WriteLine($"frames={frames} {secs * 1000 / frames:F2} ms/frame ({frames / secs:F0} fps, {frames / secs / session.FramesPerSecond:F1}x real time) PC=${board.Cpu.PC:X4} " +
-                          $"R0..R10={string.Join(" ", vdp.Regs.Take(11).Select(b => b.ToString("X2")))} height={vdp.FrameHeight} irq={vdp.Irq}");
+                          $"R0..R10={string.Join(" ", vdp.Regs.Take(11).Select(b => b.ToString("X2")))} height={vdp.FrameHeight} irq={vdp.Irq} lastLine={vdp.Line}");
         if (Flag("hash")) Console.WriteLine($"hash={hashLast:X16}");
-        if (Flag("regs")) { var z = board.Cpu; Console.WriteLine($"regs AF={z.AF:X4} BC={z.BC:X4} DE={z.DE:X4} HL={z.HL:X4} IX={z.IX:X4} IY={z.IY:X4} SP={z.SP:X4} PC={z.PC:X4} R={z.R:X2} cycles={z.TotalCycles}"); }
+        if (Flag("regs")) { var z = board.Cpu; Console.WriteLine($"regs AF={z.AF:X4} BC={z.BC:X4} DE={z.DE:X4} HL={z.HL:X4} IX={z.IX:X4} IY={z.IY:X4} SP={z.SP:X4} PC={z.PC:X4} R={z.R:X2} cycles={board.Cycles}"); }
         if (mesenDir != null)
         {
             Console.WriteLine($"mesen compare: stable frames {stableFrames}: {stableMatched} identical, {stableFrames - stableMatched} differ" + (firstDiffFrame > 0 ? $" (first at frame {firstDiffFrame})" : "") +

@@ -110,10 +110,12 @@ public sealed class BOARD_SMS
         Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1; Cpu.R = 29;
         port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
         port3F = 0xFF;
+        Ram[0] = port3E;                                   // the BIOS keeps a copy of the memory-control value at the first byte of work RAM (the oracle's post-BIOS RAM holds nothing else)
         ApplyMemoryControl();
         pad1 = pad2 = SmsButtons.None; pauseHeld = false;
         ggExtData = 0xFF; ggExtConfig = 0x7F; ggSend = 0; ggSerial = 0;
-        lineCycle = 0; soundCycle = 0; Frames = 0; nextLine = StartLine; firstLineCycle = StartCycle;
+        lineCycle = 0; soundCycle = 0; Frames = 0; nextLine = StartLine; firstLineCycle = StartCycle; lineOpen = false;
+        parityStall = paritySkip = parityPending = 0; parityPrevOp = 0; parityCycles = 0;
         if (firstLineCycle < 0) { firstLineCycle += SegaTiming.MasterSystemCpuCyclesPerLine; nextLine = (nextLine + Vdp.TotalLines - 1) % Vdp.TotalLines; }
     }
 
@@ -145,39 +147,50 @@ public sealed class BOARD_SMS
 
     /// <summary>The line the machine powers on at (default 0). A tool setting: hardware starts at an arbitrary place in the frame, and a game that depends on it shows up when this is varied.</summary>
     public int StartLine { get; set; }
-    /// <summary>The Z80 cycle within <see cref="StartLine"/> the machine powers on at (default 0; may be negative: that many cycles before the line). Tuning aid for the alignment of the picture to the Z80.</summary>
-    public int StartCycle { get; set; }
-    private int firstLineCycle;
+    /// <summary>The Z80 cycle within <see cref="StartLine"/> the machine powers on at (may be negative: that many cycles before the line): the phase between the Z80 and the VDP's line. Hardware powers on
+    /// with an arbitrary phase; this is the one the oracle starts with, found by measuring when the frame interrupt reaches the Z80 (an IM 1 handler after a NOP sled, and a status-polling loop, with the
+    /// handler's entry cycle read from both: the difference is 0 at 21 and changes by a boundary of the sled (4 cycles) at 20 and 22).</summary>
+    public int StartCycle { get; set; } = 21;
+    /// <summary>The Z80 cycle of the first blanking line at which a frame ends (the oracle's end-of-frame falls that far after the line's start in this board's line timing; measured as the cycle at which the
+    /// work RAM, the colour RAM and the picture agree with the oracle's at the same frame count).</summary>
+    public int FrameEndCycle { get; set; } = 21;
+    private int firstLineCycle;      // the cycle the next line to run starts at (part-way when the machine powers on, or after a frame ended inside a line)
+    private bool lineOpen;           // the next line has been begun (a frame ended inside it)
 
     /// <summary>
-    /// Runs one frame: every line, the Z80 a T-state at a time and the VDP at its event times. A frame ends where the picture is complete, as the first blanking line is about to start (line 192
-    /// in the 192-line mode), not at the end of the vertical blanking period: the first frame runs lines 0-191, each later one lines 192-261 and 0-191 (192-312 and 0-191 on PAL). The state
-    /// a caller sees between frames (RAM, VRAM, the picture) is then the one the oracle reports at the end of its frame, and the work the game does in the blanking period belongs to the frame it prepares.
+    /// Runs one frame: every line, the Z80 a T-state at a time and the VDP at its event times. A frame ends where the picture is complete, as the first blanking line has just started (line 192
+    /// in the 192-line mode, <see cref="FrameEndCycle"/> cycles in), not at the end of the vertical blanking period: the first frame runs lines 0-191, each later one lines 192-261 and 0-191 (192-312
+    /// and 0-191 on PAL). The state a caller sees between frames (RAM, VRAM, the picture) is then the one the oracle reports at the end of its frame, and the work the game does in the blanking
+    /// period belongs to the frame it prepares.
     /// </summary>
     public void RunFrame()
     {
         int lines = Vdp.TotalLines;
-        for (int guard = 0; guard < 2 * lines; guard++)
+        int perLine = SegaTiming.MasterSystemCpuCyclesPerLine;
+        for (int guard = 0; guard < 2 * lines + 2; guard++)
         {
             int n = nextLine;
-            RunLine(n);
+            bool ends = n == Vdp.ActiveHeight && firstLineCycle < FrameEndCycle;
+            RunLine(n, ends ? FrameEndCycle : perLine);
+            if (ends) { firstLineCycle = FrameEndCycle; lineOpen = true; break; }
             nextLine = n + 1 == lines ? 0 : n + 1;
-            if (nextLine == Vdp.ActiveHeight) break;
+            firstLineCycle = 0; lineOpen = false;
         }
         SyncSound();
         Frames++;
     }
 
-    private void RunLine(int n)
+    /// <summary>Runs line <paramref name="n"/> from <c>firstLineCycle</c> to <paramref name="end"/> (a cycle of the line; the whole line when it is the line's last).</summary>
+    private void RunLine(int n, int end)
     {
-        Vdp.BeginLine(n);
-        Cpu.Irq = Vdp.Irq;
         var cpu = Cpu;
         var vdp = Vdp;
-        int first = firstLineCycle; firstLineCycle = 0;   // only the line the machine powers on in starts part-way
-        if (InstructionHook == null)
+        if (!lineOpen) { vdp.BeginLine(n); cpu.Irq = vdp.Irq; }
+        int first = firstLineCycle;
+        if (OracleZ80Timing != 0) RunLineOracleTiming(first, end);
+        else if (InstructionHook == null)
         {
-            for (lineCycle = first; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
+            for (lineCycle = first; lineCycle < end; lineCycle++)
             {
                 int mc = lineCycle * 3 + EventPhaseMc;
                 if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
@@ -186,7 +199,7 @@ public sealed class BOARD_SMS
         }
         else
         {
-            for (lineCycle = first; lineCycle < SegaTiming.MasterSystemCpuCyclesPerLine; lineCycle++)
+            for (lineCycle = first; lineCycle < end; lineCycle++)
             {
                 int mc = lineCycle * 3 + EventPhaseMc;
                 if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
@@ -194,8 +207,63 @@ public sealed class BOARD_SMS
                 cpu.Tick();
             }
         }
-        vdp.EndLine();
-        cpu.Irq = vdp.Irq;
+        if (end == SegaTiming.MasterSystemCpuCyclesPerLine) { vdp.EndLine(); cpu.Irq = vdp.Irq; }
+    }
+
+    // ---- oracle parity (a tool setting, never on in the app) ----
+    /// <summary>1 = run the Z80 with the instruction lengths the oracle (Mesen 2.1.1) uses where they differ from the Zilog table this core follows. Measured one opcode at a time (Workshop/Sega/mesen: duration probes
+    /// through the V counter and the oracle's exec log): LD (HL),n takes 12 cycles (Zilog 10), INC/DEC (HL) 10 (11), RLD 14 (18), LD (IX/IY+d),n 24 (19), INC/DEC (IX/IY+d) 22 (23) and the undocumented BIT b,(IX/IY+d)
+    /// forms with a register code 19 (20); every other opcode, branch (taken or not), call, return and block instruction measured (about 1600 forms) is the same. Games whose timing depends on those instructions
+    /// (a random number taken from a counter, a raster split) drift apart from the oracle without this; the app never uses it, because the hardware follows the Zilog table.</summary>
+    public int OracleZ80Timing;
+    private int parityStall, paritySkip, parityPending;
+    private byte parityPrevOp;
+    private long parityCycles;
+
+    /// <summary>Z80 cycles run, counting the cycles oracle parity added or removed.</summary>
+    public long Cycles => Cpu.TotalCycles + parityCycles;
+
+    private int OracleQuirk(ushort pc)
+    {
+        byte b0 = ReadMemory(pc), b1 = ReadMemory((ushort)(pc + 1));
+        switch (b0)
+        {
+            case 0x36: return +2;
+            case 0x34: case 0x35: return -1;
+            case 0xED: return b1 == 0x6F ? -4 : 0;
+            case 0xDD: case 0xFD:
+                if (b1 == 0x36) return +5;
+                if (b1 == 0x34 || b1 == 0x35) return -1;
+                if (b1 == 0xCB) { byte op = ReadMemory((ushort)(pc + 3)); return (op & 0xC0) == 0x40 && (op & 7) != 6 ? -1 : 0; }
+                return 0;
+            default: return 0;
+        }
+    }
+
+    private void RunLineOracleTiming(int first, int end)
+    {
+        var cpu = Cpu;
+        var vdp = Vdp;
+        lineCycle = first;
+        while (lineCycle < end)
+        {
+            int mc = lineCycle * 3 + EventPhaseMc;
+            if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
+            if (parityStall > 0) { parityStall--; lineCycle++; parityCycles++; continue; }   // the instruction that just ended is still running, as the oracle times it
+            if (cpu.AtInstructionBoundary)
+            {
+                int q = parityPending; parityPending = 0;
+                if (q > 0) { parityStall = q; continue; }
+                if (q < 0) { paritySkip = -q; parityCycles += q; }   // the instruction ended early: the next ticks take no time
+                InstructionHook?.Invoke(cpu.PC);
+                // an interrupt response starts here instead of the instruction at the program counter when the line is asserted, interrupts are on and the previous instruction was not EI
+                bool respond = cpu.Irq && cpu.IFF1 && parityPrevOp != 0xFB;
+                parityPending = respond ? 0 : OracleQuirk(cpu.PC);
+                parityPrevOp = respond ? (byte)0 : ReadMemory(cpu.PC);
+            }
+            cpu.Tick();
+            if (paritySkip > 0) paritySkip--; else lineCycle++;
+        }
     }
 
     /// <summary>Replaces the sound unit mid-game (the APU menu); the new unit is brought up to the current time first.</summary>

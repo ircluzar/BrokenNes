@@ -34,25 +34,64 @@ internal static class SmsTestCli
             Verbose = args.Any(a => a.Equals("--verbose", StringComparison.OrdinalIgnoreCase)),
             Tune = (Opt(args, "tune") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Split('=')).ToDictionary(x => x[0], x => int.Parse(x[1])),
             Poison = Opt(args, "poison") ?? "",
+            RomDir = GoldenSuite.RomDir(args),
+            GoldenFile = GoldenSuite.FindGolden(args),
         };
         var only = (Opt(args, "only") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (Opt(args, "scan") is { } scan) return Vdptest.Scan(ctx, scan);
+        if (Opt(args, "golden-write") is { } gw) return ctx.RomDir == null ? Fail("--golden-write needs --roms <dir> (folders sms and gg inside)") : GoldenSuite.Write(ctx, ctx.RomDir, gw);
+        if (args.Any(a => a.Equals("--prove", StringComparison.OrdinalIgnoreCase))) return Prove(ctx, only);
         int pass = 0, fail = 0, skipped = 0;
         foreach (var suite in SmsSuites.All)
         {
             if (only.Count > 0 && !only.Contains(suite.Id)) continue;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            List<SmsCheck> checks;
-            try { checks = suite.Run(ctx).ToList(); }
-            catch (Exception e) { checks = new() { new SmsCheck(suite.Id + " (exception)", false, e.GetType().Name + ": " + e.Message) }; }
-            int p = checks.Count(c => c.Status == SmsStatus.Pass), f = checks.Count(c => c.Status == SmsStatus.Fail), s = checks.Count(c => c.Status == SmsStatus.Skip);
+            var (p, f, s) = RunSuite(suite, ctx, print: true);
             pass += p; fail += f; skipped += s;
+        }
+        Console.WriteLine($"smstest: {pass} pass, {fail} fail, {skipped} skip");
+        return fail == 0 ? 0 : 1;
+    }
+
+    private static int Fail(string message) { Console.Error.WriteLine(message); return 2; }
+
+    private static (int Pass, int Fail, int Skip) RunSuite(SmsSuite suite, SmsSuiteContext ctx, bool print)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        List<SmsCheck> checks;
+        try { checks = suite.Run(ctx).ToList(); }
+        catch (Exception e) { checks = new() { new SmsCheck(suite.Id + " (exception)", false, e.GetType().Name + ": " + e.Message) }; }
+        int p = checks.Count(c => c.Status == SmsStatus.Pass), f = checks.Count(c => c.Status == SmsStatus.Fail), s = checks.Count(c => c.Status == SmsStatus.Skip);
+        if (print)
+        {
             Console.WriteLine($"{suite.Id,-16} {p,3} pass {f,3} fail {s,3} skip  ({sw.Elapsed.TotalSeconds:F1}s)  {suite.Title}");
             foreach (var c in checks)
                 if (ctx.Verbose || c.Status != SmsStatus.Pass) Console.WriteLine($"    {c.Status.ToString().ToUpperInvariant(),-4} {c.Name}{(c.Detail.Length > 0 ? "  - " + c.Detail : "")}");
         }
-        Console.WriteLine($"smstest: {pass} pass, {fail} fail, {skipped} skip");
-        return fail == 0 ? 0 : 1;
+        return (p, f, s);
+    }
+
+    /// <summary>
+    /// <c>--smstest --prove</c>: the proof that every suite can fail. Each suite runs clean (it must pass), then again with its poison (a deliberate fault in the emulator or the input: a timing constant moved, a
+    /// sound unit with the wrong clock, a corrupted save, the wrong button) and must report at least one failure. A suite whose poison goes unnoticed, or that fails clean, makes this exit 1.
+    /// </summary>
+    private static int Prove(SmsSuiteContext ctx, HashSet<string> only)
+    {
+        int bad = 0;
+        foreach (var suite in SmsSuites.All)
+        {
+            if (only.Count > 0 && !only.Contains(suite.Id)) continue;
+            if (suite.Poison == null) { Console.WriteLine($"{suite.Id,-12} no poison defined: NOT PROVEN"); bad++; continue; }
+            var clean = RunSuite(suite, new SmsSuiteContext { Tools = ctx.Tools, RomDir = ctx.RomDir, GoldenFile = ctx.GoldenFile }, print: false);
+            if (clean.Pass == 0 && clean.Fail == 0) { Console.WriteLine($"{suite.Id,-12} skipped clean ({clean.Skip} skip): NOT PROVEN (the suite could not run here)"); bad++; continue; }
+            var poisoned = new SmsSuiteContext { Tools = ctx.Tools, RomDir = ctx.RomDir, GoldenFile = ctx.GoldenFile, Poison = suite.Id };
+            suite.Poison(poisoned);
+            var hit = RunSuite(suite, poisoned, print: false);
+            bool ok = clean.Fail == 0 && hit.Fail > 0;
+            Console.WriteLine($"{suite.Id,-12} clean {clean.Pass} pass {clean.Fail} fail; poisoned ({suite.PoisonText}) {hit.Pass} pass {hit.Fail} fail: {(ok ? "CAN FAIL" : "NOT PROVEN")}");
+            if (!ok) bad++;
+        }
+        Console.WriteLine(bad == 0 ? "prove: every suite failed when poisoned" : $"prove: {bad} suite(s) not proven");
+        return bad == 0 ? 0 : 1;
     }
 }
 
@@ -71,38 +110,57 @@ internal sealed class SmsSuiteContext
     public bool Verbose;
     public Dictionary<string, int> Tune = new();
     public string Poison = "";
+    public string? RomDir, GoldenFile;
 
     public string TestRom(params string[] rel) => Path.Combine(new[] { Tools, "test-sets" }.Concat(rel).ToArray());
 
-    /// <summary>A session on a ROM, with any timing override applied to the board and the VDP (by field name).</summary>
+    /// <summary>A session on a ROM file, with any timing override applied to the board and the VDP (by field name).</summary>
     public SmsSession Session(string romPath, string? name = null, ConsoleKind console = ConsoleKind.MasterSystem, RegionChoice? region = null)
+        => Session(File.ReadAllBytes(romPath), name ?? Path.GetFileName(romPath), console, region);
+
+    /// <summary>A session on ROM bytes (a program built in the suite, or a file already read).</summary>
+    public SmsSession Session(byte[] rom, string name, ConsoleKind console = ConsoleKind.MasterSystem, RegionChoice? region = null)
     {
-        byte[] rom = File.ReadAllBytes(romPath);
-        name ??= Path.GetFileName(romPath);
         var s = console == ConsoleKind.GameGear ? new GgSession(rom, "Z80", "GG", "GG", name, region) : new SmsSession(rom, console, "Z80", "SMS", "SMS", name, null, region);
         foreach (var kv in Tune) ApplyField(s, kv.Key, kv.Value);
         return s;
     }
 
+    public SmsSession GgSession(byte[] rom, string name, RegionChoice? region = null) => Session(rom, name, ConsoleKind.GameGear, region);
+
+    /// <summary>Sets a timing constant of the board or the VDP by name (a public int field or property); a property that sets the power-on state (StartCycle, StartLine) takes effect through the reset that follows.</summary>
     private static void ApplyField(SmsSession s, string field, int value)
     {
         foreach (object target in new object[] { s.Board, s.Board.Vdp })
         {
             var f = target.GetType().GetField(field, BindingFlags.Public | BindingFlags.Instance);
-            if (f != null && f.FieldType == typeof(int)) { f.SetValue(target, value); return; }
+            if (f != null && f.FieldType == typeof(int)) { f.SetValue(target, value); s.Board.Reset(); return; }
+            var p = target.GetType().GetProperty(field, BindingFlags.Public | BindingFlags.Instance);
+            if (p is { CanWrite: true } && p.PropertyType == typeof(int)) { p.SetValue(target, value); s.Board.Reset(); return; }
         }
         throw new ArgumentException($"no tunable field '{field}'");
     }
 }
 
-internal sealed record SmsSuite(string Id, string Title, Func<SmsSuiteContext, IEnumerable<SmsCheck>> Run);
+/// <param name="Poison">Sets up the context for the proof-of-failure run (<c>--prove</c>): a deliberate fault the suite must notice. <paramref name="PoisonText"/> says what it is.</param>
+internal sealed record SmsSuite(string Id, string Title, Func<SmsSuiteContext, IEnumerable<SmsCheck>> Run, Action<SmsSuiteContext>? Poison = null, string PoisonText = "");
 
 /// <summary>The suites of <c>--smstest</c>. Each says how its result is read.</summary>
 internal static class SmsSuites
 {
     public static readonly SmsSuite[] All =
     {
-        new("vdptest", "FluBBa's SMS VDP Test: 55 checks (data port, counters, interrupts, sprite flags), read from the test's result bytes in work RAM", Vdptest.Run),
+        new("vdptest", "FluBBa's SMS VDP Test: 55 checks (data port, counters, interrupts, sprite flags), read from the test program's own result bytes in work RAM", Vdptest.Run,
+            c => { c.Tune["VintFlagMc"] = 60; c.Tune["HintMc"] = 60; }, "frame and line interrupt flags 55 master clocks late"),
+        new("irqphase", "interrupt and flag timing against the oracle's recorded Z80 cycle counts (frame interrupt entry after a NOP sled; a status-polling loop)", IrqPhase.Run,
+            c => c.Tune["StartCycle"] = 25, "the Z80 / VDP phase moved by 4 cycles"),
+        new("psg", "the PSG on the delivered audio: tone frequency, 2 dB volume steps, noise, silence at power-on, Game Gear stereo port (measured, not compared with a recording)", PsgSuite.Run,
+            c => { }, "a sound unit 6% fast with no stereo port"),
+        new("save", "battery saves: export, import into a program that reads it, no save offered without RAM mapping", SaveSuite.Run, c => { }, "a corrupted save"),
+        new("mapper", "cartridge mappers: Sega banks and RAM, Codemasters, plain, detection, copier header", MapperSuite.Run, c => { }, "the plain cartridge where the Sega mapper belongs"),
+        new("session", "console layer: pad bits on $DC/$DD, Pause as an NMI, region and model from the name, frame rates, picture sizes", SessionSuite.Run, c => { }, "player 1 presses B where the check expects A"),
+        new("golden", "regression guard: frame hashes of the 18 roster games' scripted play-through (needs --roms)", GoldenSuite.Run, c => c.Tune["VintFlagMc"] = 60, "frame interrupt 55 master clocks late"),
+        new("speed", "throughput on one core (target 8x real time)", SpeedSuite.Run, c => { }, "a target no machine reaches"),
     };
 }
 

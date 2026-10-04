@@ -248,6 +248,7 @@ public sealed partial class SmsVdp
     public void RunTo(int mc)
     {
         if (mc > LineMc) mc = LineMc;
+        if (mc < curMc) mc = curMc;
         while (true)
         {
             int t = int.MaxValue, which = 0;
@@ -351,7 +352,7 @@ public sealed partial class SmsVdp
     // (Workshop/Sega/mesen sweeps): the effect edge sits at the first slot at or after the write plus 31 pixels, slots at x = 27 + 32k; registers and display-off writes at write + 31 pixels.
 
     /// <summary>Master clocks from a CPU write to its effect (31 pixels).</summary>
-    public int WriteLatencyMc = 62;
+    public int WriteLatencyMc = -1;
     /// <summary>The first VRAM / colour RAM access slot of a picture line, in master clocks into the line (pixel 27).</summary>
     public int SlotFirstMc = 128;
     /// <summary>Master clocks between slots (32 pixels).</summary>
@@ -367,6 +368,9 @@ public sealed partial class SmsVdp
     private int pendHead, pendCount;
     private long lineBase;          // the master-clock time of the start of the current line, from power-on
     private long lastWriteTime;
+
+    /// <summary>The position the picture is drawn to when a write arrives at <paramref name="mc"/>: the write's own effect time when that is before the arrival (a negative latency), so pixels after it are not drawn yet.</summary>
+    private int WriteTime(int mc) => WriteLatencyMc < 0 ? mc + WriteLatencyMc : mc;
 
     private void EnqueueWrite(int kind, int index, byte value, int mc)
     {
@@ -413,7 +417,7 @@ public sealed partial class SmsVdp
     /// <summary>A write to the data port ($BE).</summary>
     public void WriteData(byte value, int mc)
     {
-        RunTo(mc);
+        RunTo(WriteTime(mc));
         latch = false;
         DataWriteHook?.Invoke(code, addr, value, Line, curMc);
         EnqueueWrite(code == 3 ? OpCram : OpVram, addr, value, mc);
@@ -436,7 +440,7 @@ public sealed partial class SmsVdp
     /// <summary>A write to the control port ($BF): the first byte is the low half of the address (or a register's value), the second selects the operation.</summary>
     public void WriteControl(byte value, int mc)
     {
-        RunTo(mc);
+        RunTo(WriteTime(mc));
         if (!latch)
         {
             latchByte = value;

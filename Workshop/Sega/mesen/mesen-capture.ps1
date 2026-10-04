@@ -25,6 +25,10 @@ param(
     [string]$Exec = "",
     [string]$Watch = "",
     [switch]$ExecRegs,
+    [switch]$ExecCyc,
+    [string]$VWatch = "",
+    [string]$MWatch = "",
+    [string]$VFrames = "",
     [int]$TimeoutSec = 240,
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
 )
@@ -39,7 +43,7 @@ if (-not (Test-Path (Join-Path $work "Mesen.exe"))) {
 $settings = @{
     Version = "2.1.1"; ConfigUpgrade = 5
     Sms = @{
-        Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent
+        Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
         Port1 = @{ Type = "SmsController" }; Port2 = @{ Type = "SmsController" }
         NtscOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
         PalOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
@@ -58,10 +62,12 @@ $env:MESEN_PORTS = if ($Ports) { "1" } else { "" }
 $env:MESEN_EXEC = $Exec
 $env:MESEN_WATCH = $Watch
 $env:MESEN_EXECREGS = if ($ExecRegs) { "1" } else { "" }
+$env:MESEN_EXECCYC = if ($ExecCyc) { "1" } else { "" }
+$env:MESEN_VWATCH = $VWatch; $env:MESEN_VFRAMES = $VFrames; $env:MESEN_MWATCH = $MWatch
 $env:MESEN_GG = if ([IO.Path]::GetExtension($Rom).ToLowerInvariant() -eq ".gg") { "1" } else { "" }
 $env:MESEN_DUMP = if ($Dump) { "1" } else { "" }; $env:MESEN_STATE = if ($State) { "1" } else { "" }
 $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
-$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `
+$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path -LiteralPath $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `
     -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
 $expected = foreach ($tok in ($Frames -join "," -split ",")) { if ($tok -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } elseif ($tok) { [int]$tok } }
