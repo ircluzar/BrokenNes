@@ -273,7 +273,10 @@ internal static class SegaContractsTestCli
         bool threw = false; try { SmsSoundFactories.Create("NOPE", new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega)); } catch (ArgumentException) { threw = true; }
         Check("an unknown unit id is an error, never a quiet substitution", threw);
         var md = GenesisSoundFactories.Create("MD", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model1, rate));
-        Check("the Genesis factory builds the Z80 + PSG + YM2612-registers unit under the id MD, which says its FM is silent", md.CoreName.StartsWith("MD") && md.CoreName.Contains("no FM audio"), md.CoreName);
+        Check("the Genesis factory builds the real Z80 + PSG + YM2612 unit under the id MD, which names the FM chip (Model 1: the discrete YM2612) and no longer says its FM is silent", md.CoreName.StartsWith("MD") && md.CoreName.Contains("YM2612") && !md.CoreName.Contains("no FM audio"), md.CoreName);
+        var md3 = GenesisSoundFactories.Create("MD", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model3, rate));
+        Check("Model 2 and 3 build the integrated chip (the same id, the YM3438's behaviour)", md3.CoreName.Contains("YM3438"), md3.CoreName);
+        Check("the real unit is a hub voice source with 11 voices (6 FM, the DAC, 3 PSG tones, the noise)", md is IHubVoiceSource src && src.DescribeVoices(new HubVoice[16]) == 11 && MdSoundUnit.VoiceCount == 11);
         var stub = GenesisSoundFactories.Create("MD-STUB", new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), GenesisModel.Model1, rate));
         Check("the labelled stand-in without a Z80 stays available under MD-STUB", stub.CoreName == "STUB");
     }

@@ -4,29 +4,41 @@ using System.IO;
 namespace NesEmulator.Sega;
 
 /// <summary>
-/// The Genesis sound subsystem with a real Z80 in it: the Z80 and its 8 KB of RAM, the bank register and the window into 68000 space, the PSG, and the YM2612's register interface
-/// (address and data ports, the status register's busy flag, timers A and B, the DAC registers) without its sound: <b>the FM chip makes no audio yet</b>, so a game's FM music is silent
-/// while its Z80 driver, the PSG and the timers run for real. The Genesis track replaces this class's YM2612 part with the real chip; the contract (<see cref="IGenesisSound"/>) does not change.
+/// The Genesis sound subsystem: the Z80 and its 8 KB of RAM, the bank register and the window into 68000 space, the PSG, and the YM2612 (<see cref="Ym2612"/>: six FM channels, the DAC, the LFO, the
+/// timers and the busy flag) on the Z80's bus at $4000-$4003 and the 68000's at $A04000. The unit runs by the master clock, mixes FM, DAC and PSG into stereo at the host's rate and answers
+/// <see cref="IHubVoiceSource.DescribeVoices"/> with eleven voices for the NES bridges.
 /// </summary>
 /// <remarks>
 /// <para><b>Bus handshake.</b> The 68000 requests the bus ($A11100); the Z80 grants it at the end of its current instruction (the core reports only instruction boundaries, so the grant can be a few
 /// T-states later than the chip's end-of-machine-cycle grant), and <see cref="IsBusGranted"/> turns true at that time. While the bus is held the Z80 does not run. RESET ($A11200) holds the Z80 and
-/// the YM2612 reset; a held reset also lets the 68000 reach the Z80's RAM. The 68000's window works only while it holds the bus or reset is asserted; otherwise it reads $FF.</para>
+/// resets the YM2612 (its registers, not its sample clock); a held reset also lets the 68000 reach the Z80's RAM. The 68000's window works only while it holds the bus or reset is asserted; otherwise it reads $FF.</para>
 /// <para><b>The Z80's map.</b> $0000-$3FFF RAM (8 KB, mirrored), $4000-$5FFF YM2612 (four ports repeating), $6000-$60FF the bank register (a write shifts one bit in, LSB first, nine bits),
 /// $7F00-$7FFF the VDP window (the PSG at $7F11 and its mirrors), $8000-$FFFF a 32 KB window into 68000 space at <c>bank &lt;&lt; 15</c>. Each bank-window access stalls the Z80 for
 /// <see cref="BankWindowZ80Stall"/> T-states and the 68000 for <see cref="BankWindow68kStall"/> clocks.</para>
+/// <para><b>Time.</b> Every access carries the master clock it happens at; the YM2612 is run to that clock first (its chip clock is master / 7), so a Z80 driver that writes the DAC at a steady rate
+/// plays it at the pitch the real machine would, bank-window stalls included. The Z80 is stepped one T-state per 15 master clocks; the PSG one tick per 16 Z80 clocks.</para>
+/// <para><b>Mixing.</b> The FM chip delivers one stereo sample per 1008 master clocks (53,267 Hz NTSC). Each sample is a step of a held level (the chip's output is sample-and-hold), added into a
+/// band-limited mixer (<see cref="BandLimitedMixer"/>, the PSG's own resampler) that integrates it at the host rate, so the conversion to 44.1 or 48 kHz has no aliasing. The PSG and the FM are summed
+/// with <see cref="FmGain"/> and <see cref="Sn76489.Gain"/>, then clipped to 16 bits. No allocation per sample.</para>
 /// </remarks>
-public sealed class MdSoundUnit : IGenesisSound
+public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
 {
     /// <summary>Z80 T-states a bank-window access stalls the Z80 for (about 3.3; the sources disagree, the plan lists them).</summary>
     public const double BankWindowZ80Stall = 3.3;
     /// <summary>68000 clocks a Z80 bank-window access stalls the 68000 for (the newer test-ROM measurement says 9.7; others say 11).</summary>
     public const double BankWindow68kStall = 9.7;
-    /// <summary>How long the YM2612's busy flag stays up after a data write: 192 clocks of its 7.67 MHz input clock.</summary>
-    public const long YmBusyMasterClocks = 192 * 7;
+    /// <summary>How long the YM2612's busy flag stays up after a data write, in master clocks (192 chip clocks of master / 7).</summary>
+    public const long YmBusyMasterClocks = Ym2612.BusyClocks * 7;
+    /// <summary>Master clocks per YM2612 clock.</summary>
+    public const int MasterPerYmClock = SegaTiming.GenesisYm2612Divider;
+
+    /// <summary>Voices <see cref="DescribeVoices"/> reports: FM 1 to 6, the DAC, PSG tones 1 to 3 and the noise.</summary>
+    public const int VoiceCount = Ym2612.VoiceCount + 4;
 
     private readonly SegaMachine machine;
     private readonly Sn76489 psg;
+    private readonly Ym2612 ym;
+    private readonly BandLimitedMixer fmLeft, fmRight;     // the FM stream, 53 kHz in, the host rate out
     private readonly byte[] ram = new byte[0x2000];
     private readonly Z80<ZBus> z80;
     private IGenesisSoundHost? host;
@@ -38,45 +50,57 @@ public sealed class MdSoundUnit : IGenesisSound
     private long z80Master;                // the master clock of the Z80's current T-state
     private int stallTicks;                // Z80 T-states still to burn for a bank-window stall
     private bool interrupt;
+    private long fmClock;                  // FM samples handed to the mixers so far (monotonic across resets)
+    private float lastFmL, lastFmR;
+    private int ymAddress0, ymAddress1;    // the address latches, for the write trace
     public long BusRequests, BankReads, BankWrites, PsgWrites, YmWrites, Z80Ticks;
-
-    // ---- YM2612 interface (no synthesis)
-    private readonly byte[] ym = new byte[0x200];      // registers of part 1 ($000-$0FF) and part 2 ($100-$1FF)
-    private int ymAddress0, ymAddress1;
-    private long ymBusyUntil;
-    private bool timerALoaded, timerBLoaded, timerAEnable, timerBEnable, timerAFlag, timerBFlag;
-    private int timerACount, timerBCount;
-    private long timerSample;              // YM samples (1008 master clocks each) run so far
 
     /// <summary>The unit's own writes to the YM2612, in order, for tests and tracing: (register, value, 0 or 1 for the part).</summary>
     public Action<int, byte, int>? YmWriteHook;
     /// <summary>Called for every PSG write (a trace, or tests).</summary>
     public Action<byte>? PsgWriteHook;
+    /// <summary>Called for every write to one of the YM2612's four ports with the master clock it lands at (a register log, a VGM recording): (master clock, port 0-3, value).</summary>
+    public Action<long, int, byte>? YmPortTap;
+    /// <summary>Called for every PSG write with the master clock it lands at: (master clock, value).</summary>
+    public Action<long, byte>? PsgPortTap;
+
+    /// <summary>Output gain of the FM chip's mix (before the 16-bit clip); 1 puts a full-scale FM channel at about 17% of full scale, as the chip's own 9-bit DAC range does.</summary>
+    public float FmGain = 1.0f;
 
     public MdSoundUnit(SegaMachine machine)
     {
         this.machine = machine;
-        psg = new Sn76489(machine.Timeline.MasterHz / machine.Timeline.Psg.Divider, machine.SampleRate, PsgVariant.MegaDrive);
+        var t = machine.Timeline;
+        psg = new Sn76489(t.MasterHz / t.Psg.Divider, machine.SampleRate, PsgVariant.MegaDrive);
+        ym = new Ym2612(machine.GenesisModel, t.MasterHz / MasterPerYmClock) { Sink = this };
+        fmLeft = new BandLimitedMixer(t.Ym2612SampleRate, machine.SampleRate);
+        fmRight = new BandLimitedMixer(t.Ym2612SampleRate, machine.SampleRate);
         z80 = new Z80<ZBus>(new ZBus { U = this });
     }
 
-    public string CoreName => "MD (Z80, PSG, YM2612 registers: no FM audio)";
+    public string CoreName => $"MD (Z80, PSG, {(ym.Ladder ? "YM2612" : "YM3438")} FM + DAC)";
     public int SampleRate => machine.SampleRate;
     public Z80<ZBus> Cpu => z80;
     public Sn76489 Psg => psg;
+    public Ym2612 Fm => ym;
     public int BankRegister => bank;
     public byte[] Ram => ram;
+
+    /// <summary>The FM chip's channel mask (bit 0 to 5 FM 1 to 6, bit 6 the DAC): a silenced channel keeps running and only its output is dropped. For stems and for isolating a voice.</summary>
+    public int FmMuteMask { get => ym.MuteMask; set => ym.MuteMask = value; }
 
     public void Attach(IGenesisSoundHost host) => this.host = host;
 
     public void Reset()
     {
-        Array.Clear(ram); Array.Clear(ym);
+        Array.Clear(ram);
         requested = false; inReset = true; granted = false; grantTime = 0; bank = 0; interrupt = false;
-        lastMaster = 0; z80Master = 0; stallTicks = 0; ymAddress0 = ymAddress1 = 0; ymBusyUntil = 0;
-        timerALoaded = timerBLoaded = timerAEnable = timerBEnable = timerAFlag = timerBFlag = false; timerACount = timerBCount = 0; timerSample = 0;
+        lastMaster = 0; z80Master = 0; stallTicks = 0; ymAddress0 = ymAddress1 = 0;
         BusRequests = BankReads = BankWrites = PsgWrites = YmWrites = Z80Ticks = 0;
         psg.Reset();
+        ym.PowerOn();
+        fmLeft.Reset(); fmRight.Reset();
+        lastFmL = lastFmR = 0;
         z80.Reset(); z80.Irq = false;
     }
 
@@ -98,7 +122,6 @@ public sealed class MdSoundUnit : IGenesisSound
     {
         long from = lastMaster;
         psg.Run(machine.Timeline.Psg.Due(from, masterClock));
-        RunTimers(masterClock);
         if (!inReset && !(requested && granted))
         {
             int ticks = machine.Timeline.Z80.Due(from > z80Master ? from : z80Master, masterClock);
@@ -113,29 +136,25 @@ public sealed class MdSoundUnit : IGenesisSound
             }
         }
         else z80Master = masterClock;
+        RunFm(masterClock);
         lastMaster = masterClock;
     }
 
-    private void RunTimers(long masterClock)
+    /// <summary>Brings the YM2612 to the master clock (its clock is master / 7) and tells the mixers how far the FM stream has got.</summary>
+    private void RunFm(long masterClock)
     {
-        long target = masterClock / SegaTiming.GenesisYm2612MasterClocksPerSample;
-        while (timerSample < target)
-        {
-            timerSample++;
-            if (timerALoaded && ++timerACount >= 1024 - TimerAValue)
-            {
-                timerACount = 0;
-                if (timerAEnable) timerAFlag = true;
-            }
-            if (timerBLoaded && ++timerBCount >= (256 - ym[0x26]) * 16)
-            {
-                timerBCount = 0;
-                if (timerBEnable) timerBFlag = true;
-            }
-        }
+        ym.RunTo(masterClock / MasterPerYmClock);
+        fmLeft.Advance(fmClock); fmRight.Advance(fmClock);
     }
 
-    private int TimerAValue => ym[0x24] << 2 | ym[0x25] & 3;
+    /// <summary>One YM2612 sample (the chip calls this as it completes each one): the new level is a step of the held output, added into the band-limited mixers.</summary>
+    void IYm2612Sink.Sample(int left, int right)
+    {
+        float l = left * FmGain * (1f / 32768f), r = right * FmGain * (1f / 32768f);
+        fmClock++;
+        if (l != lastFmL) { fmLeft.Step(fmClock, l - lastFmL); lastFmL = l; }
+        if (r != lastFmR) { fmRight.Step(fmClock, r - lastFmR); lastFmR = r; }
+    }
 
     // =================================================================================================================
     //  The bus handshake
@@ -181,9 +200,10 @@ public sealed class MdSoundUnit : IGenesisSound
         inReset = !released;
         if (inReset)
         {
-            // RESET also resets the YM2612 and (through the Z80's own reset) the Z80 side of the PSG's input state
+            // RESET is the YM2612's reset pin as well: its registers clear (its clocks keep running); the PSG, on the Z80 side of the bus, goes silent too
             z80.ResetPin();
-            Array.Clear(ym); ymAddress0 = ymAddress1 = 0; timerALoaded = timerBLoaded = timerAEnable = timerBEnable = timerAFlag = timerBFlag = false;
+            ym.ResetRegisters();
+            ymAddress0 = ymAddress1 = 0;
             psg.Reset();
             stallTicks = 0;
         }
@@ -231,6 +251,21 @@ public sealed class MdSoundUnit : IGenesisSound
         psg.Write(value);
         PsgWrites++;
         PsgWriteHook?.Invoke(value);
+        PsgPortTap?.Invoke(masterClock, value);
+    }
+
+    /// <summary>A write straight to one of the YM2612's four ports (0 address, 1 data, 2 address of part 2, 3 data of part 2) at a master clock, as a VGM player or a tool does it: no Z80, no bus handshake.</summary>
+    public void WriteYm(int port, byte value, long masterClock)
+    {
+        RunTo(masterClock);
+        YmWrite(port, value, masterClock);
+    }
+
+    /// <summary>A read of a YM2612 port straight from the chip (the status register), at a master clock.</summary>
+    public byte ReadYm(int port, long masterClock)
+    {
+        RunTo(masterClock);
+        return ym.Read(port, masterClock / MasterPerYmClock);
     }
 
     // =================================================================================================================
@@ -240,7 +275,7 @@ public sealed class MdSoundUnit : IGenesisSound
     private byte Z80Read(int address, long master, bool fromZ80)
     {
         if (address < 0x4000) return ram[address & 0x1FFF];
-        if (address < 0x6000) return YmRead(address & 3, master);
+        if (address < 0x6000) return ym.Read(address & 3, master / MasterPerYmClock);
         if (address < 0x7F00) return 0xFF;
         if (address < 0x8000)
         {
@@ -264,7 +299,7 @@ public sealed class MdSoundUnit : IGenesisSound
         if (address < 0x8000)
         {
             int reg = address & 0xFF;
-            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { psg.Write(value); PsgWrites++; PsgWriteHook?.Invoke(value); return; }
+            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { psg.Write(value); PsgWrites++; PsgWriteHook?.Invoke(value); PsgPortTap?.Invoke(master, value); return; }
             if (fromZ80 && host != null) host.WriteBus(0xC00000 + reg, value, master, out _);
             return;
         }
@@ -276,44 +311,19 @@ public sealed class MdSoundUnit : IGenesisSound
     }
 
     // =================================================================================================================
-    //  The YM2612's registers
+    //  The YM2612's ports
     // =================================================================================================================
-
-    private byte YmRead(int port, long master)
-    {
-        // every port reads the status register: busy (bit 7), timer B (bit 1), timer A (bit 0)
-        int s = (master < ymBusyUntil ? 0x80 : 0) | (timerBFlag ? 2 : 0) | (timerAFlag ? 1 : 0);
-        return (byte)s;
-    }
 
     private void YmWrite(int port, byte value, long master)
     {
+        ym.Write(port, value, master / MasterPerYmClock);
+        YmPortTap?.Invoke(master, port & 3, value);
         switch (port)
         {
             case 0: ymAddress0 = value; break;
             case 2: ymAddress1 = value; break;
-            case 1: YmData(0, ymAddress0, value, master); break;
-            case 3: YmData(1, ymAddress1, value, master); break;
-        }
-    }
-
-    private void YmData(int part, int reg, byte value, long master)
-    {
-        YmWrites++;
-        ymBusyUntil = master + YmBusyMasterClocks;
-        ym[part << 8 | reg & 0xFF] = value;
-        YmWriteHook?.Invoke(reg, value, part);
-        if (part != 0) return;
-        switch (reg)
-        {
-            case 0x27:
-                if ((value & 0x01) != 0 && !timerALoaded) timerACount = 0;
-                if ((value & 0x02) != 0 && !timerBLoaded) timerBCount = 0;
-                timerALoaded = (value & 0x01) != 0; timerBLoaded = (value & 0x02) != 0;
-                timerAEnable = (value & 0x04) != 0; timerBEnable = (value & 0x08) != 0;
-                if ((value & 0x10) != 0) timerAFlag = false;
-                if ((value & 0x20) != 0) timerBFlag = false;
-                break;
+            case 1: YmWrites++; YmWriteHook?.Invoke(ymAddress0, value, 0); break;
+            case 3: YmWrites++; YmWriteHook?.Invoke(ymAddress1, value, 1); break;
         }
     }
 
@@ -333,32 +343,70 @@ public sealed class MdSoundUnit : IGenesisSound
     }
 
     // =================================================================================================================
-    //  Sound out, state
+    //  Sound out, voices, state
     // =================================================================================================================
 
-    public int ReadSamples(Span<short> dest) => psg.ReadSamples(dest);
+    /// <summary>Stereo 16-bit samples ready at the host rate (interleaved L, R): the FM and the PSG summed and clipped. Returns the number of shorts written (always even).</summary>
+    public int ReadSamples(Span<short> dest)
+    {
+        const int Chunk = 256;
+        int total = 0;
+        Span<short> psgBuf = stackalloc short[Chunk * 2];
+        Span<float> fl = stackalloc float[Chunk], fr = stackalloc float[Chunk];
+        while (dest.Length - total >= 2)
+        {
+            int frames = Math.Min(Math.Min(Math.Min(fmLeft.Available, fmRight.Available), Chunk), (dest.Length - total) / 2);
+            if (frames <= 0) break;
+            // the PSG delivers however many frames it has finished, up to what we ask for; both streams are at the same host-rate sample, so ask for exactly `frames`
+            int got = psg.ReadSamples(psgBuf[..(frames * 2)]) / 2;
+            if (got < frames) frames = got;
+            if (frames <= 0) break;
+            fmLeft.Read(fl[..frames]); fmRight.Read(fr[..frames]);
+            for (int i = 0; i < frames; i++)
+            {
+                int l = psgBuf[2 * i] + (int)(fl[i] * 32768f), r = psgBuf[2 * i + 1] + (int)(fr[i] * 32768f);
+                dest[total + 2 * i] = (short)(l < -32768 ? -32768 : l > 32767 ? 32767 : l);
+                dest[total + 2 * i + 1] = (short)(r < -32768 ? -32768 : r > 32767 ? 32767 : r);
+            }
+            total += frames * 2;
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// What the unit is playing as hub voices, in a stable order: FM 1 to 6 (pulses), the DAC (noise), PSG tones 1 and 2 (pulses), tone 3 (a triangle) and the PSG noise: 11 voices.
+    /// See <see cref="Ym2612.DescribeVoices"/> and <see cref="Sn76489.DescribeVoices"/> for how each is derived.
+    /// </summary>
+    public int DescribeVoices(Span<HubVoice> voices)
+    {
+        int n = ym.DescribeVoices(voices);
+        n += psg.DescribeVoices(voices[n..]);
+        return n;
+    }
 
     public void SaveState(BinaryWriter w)
     {
-        w.Write(ram); w.Write(ym); w.Write(requested); w.Write(inReset); w.Write(granted); w.Write(grantTime); w.Write(bank); w.Write(lastMaster); w.Write(z80Master); w.Write(stallTicks); w.Write(interrupt);
-        w.Write(ymAddress0); w.Write(ymAddress1); w.Write(ymBusyUntil);
-        w.Write(timerALoaded); w.Write(timerBLoaded); w.Write(timerAEnable); w.Write(timerBEnable); w.Write(timerAFlag); w.Write(timerBFlag); w.Write(timerACount); w.Write(timerBCount); w.Write(timerSample);
+        w.Write(ram); w.Write(requested); w.Write(inReset); w.Write(granted); w.Write(grantTime); w.Write(bank); w.Write(lastMaster); w.Write(z80Master); w.Write(stallTicks); w.Write(interrupt);
+        w.Write(ymAddress0); w.Write(ymAddress1);
+        ym.SaveState(w);
         psg.SaveState(w);
         z80.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
     {
-        r.Read(ram, 0, ram.Length); r.Read(ym, 0, ym.Length);
+        r.Read(ram, 0, ram.Length);
         requested = r.ReadBoolean(); inReset = r.ReadBoolean(); granted = r.ReadBoolean(); grantTime = r.ReadInt64(); bank = r.ReadInt32(); lastMaster = r.ReadInt64(); z80Master = r.ReadInt64(); stallTicks = r.ReadInt32(); interrupt = r.ReadBoolean();
-        ymAddress0 = r.ReadInt32(); ymAddress1 = r.ReadInt32(); ymBusyUntil = r.ReadInt64();
-        timerALoaded = r.ReadBoolean(); timerBLoaded = r.ReadBoolean(); timerAEnable = r.ReadBoolean(); timerBEnable = r.ReadBoolean(); timerAFlag = r.ReadBoolean(); timerBFlag = r.ReadBoolean();
-        timerACount = r.ReadInt32(); timerBCount = r.ReadInt32(); timerSample = r.ReadInt64();
+        ymAddress0 = r.ReadInt32(); ymAddress1 = r.ReadInt32();
+        ym.LoadState(r);
         psg.LoadState(r);
         z80.LoadState(r);
+        // the audio buffers are not part of the state: start the FM stream afresh from the chip's output level
+        fmLeft.Reset(); fmRight.Reset();
+        lastFmL = ym.LastLeft * FmGain * (1f / 32768f); lastFmR = ym.LastRight * FmGain * (1f / 32768f);
     }
 
     public string Describe() =>
-        $"MD sound unit (Z80 + PSG + YM2612 registers, FM silent): z80 pc={z80.PC:X4} {(inReset ? "RESET" : requested && granted ? "bus held" : requested ? "bus requested" : "running")} bank=${bank:X3} z80-int={interrupt} " +
+        $"MD sound unit (Z80 + PSG + {ym.Describe()}): z80 pc={z80.PC:X4} {(inReset ? "RESET" : requested && granted ? "bus held" : requested ? "bus requested" : "running")} bank=${bank:X3} z80-int={interrupt} " +
         $"psg-writes={PsgWrites} ym-writes={YmWrites} bank-reads={BankReads} z80-ticks={Z80Ticks}";
 }
