@@ -8,7 +8,7 @@ namespace BrokenNes2;
 /// at the host's rate, its picture copied out. Used under the emulator's lock only.</summary>
 internal interface IGame : IDisposable
 {
-    /// <summary>0 NES, 1 Game Boy, 2 SNES (<see cref="Cx"/>).</summary>
+    /// <summary>0 NES, 1 Game Boy, 2 SNES, 3 Master System / Game Gear (<see cref="Cx"/>).</summary>
     int Console { get; }
     /// <summary>The NES machine when the game is a NES one: only it can give per-channel stems.</summary>
     NesAudioMachine? Nes { get; }
@@ -97,10 +97,11 @@ internal sealed class SessionGame : IGame
     private long frames;
     private string? crash;
 
-    public SessionGame(byte[] rom, ConsoleKind kind, Chip chip, int hostRate)
+    public SessionGame(byte[] rom, ConsoleKind kind, Chip chip, int hostRate, string fileName = "")
     {
         Console = Cx.FromKind(kind);
-        s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), Cx.RomApu(chip));
+        // the file name matters to the Master System family: its region tag and its SG-1000 / SC-3000 extensions come from it
+        s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), ApuFor(kind, chip), null, fileName);
         HostSampleRate = hostRate;
     }
 
@@ -182,9 +183,12 @@ internal sealed class SessionGame : IGame
         spc.Dsp.Write(0x4C, 0x01);                                 // key on
     }
 
+    /// <summary>The sound unit a game of this kind runs on: the chip's own (<see cref="Cx.RomApu"/>), except that a Game Gear game takes the Game Gear's menu id (the same unit, with its stereo port).</summary>
+    private static string ApuFor(ConsoleKind kind, Chip chip) => kind == ConsoleKind.GameGear ? CoreCatalog.Default(kind, CoreSlot.Apu) : Cx.RomApu(chip);
+
     public bool TrySetChip(Chip chip)
     {
-        if (!s.TrySwapCore(CoreSlot.Apu, Cx.RomApu(chip))) return false;
+        if (!s.TrySwapCore(CoreSlot.Apu, ApuFor(s.Console, chip))) return false;
         resampler.SetRates(s.SampleRate, hostRate);
         return true;
     }

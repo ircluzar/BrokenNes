@@ -19,9 +19,17 @@ for DAWs other than FL (this is a native Fruity plugin, not a VST).
 
 Console 3 (`SMS` on the buttons) holds one chip, `SMS` (chip index 20, appended; the 12 parameters are unchanged): the SN76489 PSG through the bridge core `APU_SMS` (`Windows/NesEmulator/mix/SegaSoundBridges.cs`), Direct mode only. Mapping, limits and **what ROM mode needs once the Sega boards exist** are in `Plugin/README.md` ("The Master System console"); Sega games are refused in ROM mode with a message (`Cx.RomSupported`). Rules this added: **a new APU core id must get a family in `CoreCatalog` (`NesApuFamily`) before the plugin sees it**, otherwise it joins the NES chips alphabetically and shifts every saved chip index; the plugin sets `APU_SMS.DefaultLowNotes = Drop` and `DefaultStepFront = false` before it makes a chip (notes below 109 Hz are silent and counted; the front NES core is not stepped, 3x faster). Test hooks 52-55 read the PSG registers and the dropped-note count of this instance's chip.
 
+## Sega track C2 (2026-10-04): the Genesis chip and Master System / Game Gear ROM mode
+
+Console 4 (`MD` on the buttons, `Cx.Genesis`) holds one chip, `MD` (chip index 21, appended last; the 12 parameters unchanged in meaning): the YM2612 + SN76489 through the bridge core `APU_MD` (`Windows/NesEmulator/mix/GenesisSoundBridges.cs`, patches in `mix/FmPatchBank.cs`), Direct mode only.
+**The Instrument parameter is the FM patch picker for this chip** (`Bn2Plugin.Apply` sets `APU_MD.Patch` on this instance's own chip; the editor shows a patch dropdown on the pulse channels only; out of range is the last patch, the PSG square). The plugin sets `APU_MD.DefaultLowNotes = Drop` and `DefaultStepFront = false` like the PSG chip.
+Genesis *games* are still refused in ROM mode with a message (`Emulator.cs`, `Cx.RomSupported`); **Master System and Game Gear games now run in ROM mode** through `SessionGame` (any `IConsoleSession` mixes through `Mix`; `Cx.FromKind` maps both to console 3; the file filter gained `.sms .gg .sg .sc`). Test hooks 56-62 read the Genesis chip's patch, FM keys and counters.
+Checks: `md` (chip index, pitch 0.6 cent worst, level against the NES chip, the Instrument parameter per instance and through the editor, polyphony, 8x real time, 0 bytes allocated) and `rom-sms` (tiny Master System and Game Gear ROMs made by the test: load, draw at their own size, play their tone through Mix). Note for a test that measures pitch from zero crossings: use patch 14 (the sine) on this chip, a rich timbre doubles the count (`cores`, `swap` and `consoles` do).
+What Genesis stems, Runaway and games need: `Plugin/README.md` ("The Genesis console") and `docs/projects/sega-track-c.md` (milestone C2).
+
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **40 checks, all pass** (the 40th, `psg`, is Sega track C's) (one expected warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **43 checks: 42 pass, 1 warning, 0 failed** (`psg` is Sega track C1's, `md` and `rom-sms` C2's) (the warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.

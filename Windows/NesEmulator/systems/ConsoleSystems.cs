@@ -203,7 +203,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -212,6 +212,7 @@ public static class CoreCatalog
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
+        ["APU:MD"] = "Genesis sound chips (YM2612 FM + SN76489: pulses and triangle as FM voices with a chosen patch, noise on the PSG; the DMC is dropped)",
     };
 
     /// <summary>The family a NES-board core id belongs to ("NES" unless it is a bridge).</summary>
@@ -269,7 +270,12 @@ public static class CoreCatalog
                 {
                     case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
                     case CoreSlot.Ppu: list.Add(new("MD", "MD (Genesis picture chip)", "Genesis")); break;
-                    default: list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis")); break;
+                    default:
+                        list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
+                        // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
+                        // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
+                        foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
+                        break;
                 }
                 break;
             case ConsoleKind.Snes:
@@ -353,6 +359,13 @@ public static class CoreCatalog
     {
         "FIXS" => "FIXS - the PSG on the 8-channel NES chip (mono; no YM2413 FM, no Game Gear stereo)",
         _ => $"{id} - the PSG on a NES sound chip (mono; no YM2413 FM, no Game Gear stereo)",
+    };
+
+    /// <summary>The menu label of a Genesis game's sound played by a NES chip. Honest about what the trip loses: FM timbre (every FM note is a plain pulse), the DAC's samples (noise hits), panning, and voices beyond the chip's channels.</summary>
+    private static string GenesisOnNesLabel(string id) => id.ToUpperInvariant() switch
+    {
+        "FIXS" => "FIXS - FM, DAC and PSG on the 8-channel NES chip (mono; up to 6 tones + 2 noises; no FM timbre, the DAC becomes noise hits)",
+        _ => $"{id} - FM, DAC and PSG on a NES sound chip (mono; 3 tones + 1 noise; no FM timbre, the DAC becomes noise hits)",
     };
 
     private static string NesSoundLabel(string id) => id.ToUpperInvariant() switch

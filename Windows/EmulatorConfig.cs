@@ -135,6 +135,12 @@ namespace BrokenNes.Windows
         public int HighPitchCeilingNote { get; set; } = 108;
 
         /// <summary>
+        /// The FM patch the Genesis sound chips (the NES APU core "MD") play the NES pulses with: an index into the built-in bank (0 is a synth brass, the last is the PSG square).
+        /// </summary>
+        [JsonPropertyName("genesisFmPatch")]
+        public int GenesisFmPatch { get; set; } = 0;
+
+        /// <summary>
         /// The Game Boy look: green (original DMG), grey, pocket, or color (Game Boy pictures run as a GBC)
         /// </summary>
         [JsonPropertyName("gbLook")]

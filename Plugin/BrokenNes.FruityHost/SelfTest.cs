@@ -143,7 +143,9 @@ public sealed unsafe class SelfTest
             ("hub-conflict", "A channel taken by another instance is refused, and handed over when it frees up", HubConflict),
             ("hub-state", "Saved projects keep each instance's emulator, channel and the emulator's chip", HubState),
             ("consoles", "Console selector: each console lists its own chips, picking either way keeps them in step, every console plays", Consoles),
-            ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode refuses Sega games", Psg),
+            ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode refuses Genesis games", Psg),
+            ("md", "Genesis chip (APU_MD: YM2612 FM + PSG), console 4: append-only chip index, FM pitch and level against the NES chip, the Instrument parameter picks the FM patch (per instance, through the editor too), polyphony, range, real time, no allocation, ROM mode refuses Genesis games", Md),
+            ("rom-sms", "ROM mode on Master System and Game Gear games (tiny ROMs made by the test): they load, run, draw at their own size, play their PSG tone through Mix, switch the emulator's console", RomSms),
             ("mono", "Each channel is monophonic: the newest note wins and the older one resumes", Mono_),
             ("lifecycle", "Voices: released voices are handed back (Voice_Kill), bad handles are harmless", Lifecycle),
             ("cores", "Every NES sound chip produces the note; accurate ones at the right pitch", Cores),
@@ -242,7 +244,7 @@ public sealed unsafe class SelfTest
         p.SetParamFromAutomation(6, 1.0); t.Expect(p.GetParam(6) == 5, $"automation 1.0 -> channel {p.GetParam(6)} (Mix)");
         t.Expect(p.GetName(Fpn.ParamValue, 6, 0) == "Auto" && p.GetName(Fpn.ParamValue, 6, 3) == "Triangle" && p.GetName(Fpn.ParamValue, 6, 5).StartsWith("Mix"), "channel names");
         t.Expect(p.GetName(Fpn.ParamValue, PEmulator, 0) == "Auto" && p.GetName(Fpn.ParamValue, PEmulator, 3) == "#3", "emulator names");
-        t.Expect(p.GetName(Fpn.ParamValue, PConsole, 0) == "NES" && p.GetName(Fpn.ParamValue, PConsole, 1) == "Game Boy" && p.GetName(Fpn.ParamValue, PConsole, 2) == "SNES" && p.GetName(Fpn.ParamValue, PConsole, 3) == "SMS", "console names");
+        t.Expect(p.GetName(Fpn.ParamValue, PConsole, 0) == "NES" && p.GetName(Fpn.ParamValue, PConsole, 1) == "Game Boy" && p.GetName(Fpn.ParamValue, PConsole, 2) == "SNES" && p.GetName(Fpn.ParamValue, PConsole, 3) == "SMS" && p.GetName(Fpn.ParamValue, PConsole, 4) == "MD", "console names");
         t.Expect(!chips.Contains("MNES") && !chips.Contains("WF"), "the MNES and WF cores should not be offered");
         t.Expect(p.GetName(Fpn.ParamValue, 8, 1) == "ROM" && p.GetName(Fpn.ParamValue, 8, 0) == "Direct", "mode names");
     }
@@ -555,11 +557,12 @@ public sealed unsafe class SelfTest
         using var probe = lib.Create();
         var chips = Chips(probe);
         // cores that are accurate by design must be on pitch; degraded / speed-hack cores are reported, not required
-        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES" };
+        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES", "MD" };
         var table = new List<string>();
         foreach (var chip in chips)
         {
             var s = One(69, 0, 0.6);
+            if (chip == "MD") s.Params[PInstrument] = 14;     // the Genesis chip's sine patch: the pitch is read from zero crossings, which the default (brass) timbre doubles to an octave
             var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, chip));
             using (plugin)
             {
@@ -583,10 +586,11 @@ public sealed unsafe class SelfTest
 
     private void Swap(T t)
     {
-        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX"), ("FIX", "SMS"), ("SMS", "FIX") })
+        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX"), ("FIX", "SMS"), ("SMS", "FIX"), ("FIX", "MD"), ("MD", "FIX") })
         {
             var s = new Scenario { Name = "swap", Tempo = 60, LengthBeats = 3 };
             s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 2.4, Key = 69, Channel = 0 });
+            s.Params[PInstrument] = 14;       // the Genesis chip's sine patch: the pitch is read from zero crossings, which a rich FM timbre would double
             int swapAt = (int)(1.2 * 44100);
             bool done = false;
             var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, from), probe: (pl, sm) => { if (!done && sm >= swapAt) { SetChip(pl, to); done = true; } });
@@ -853,12 +857,13 @@ public sealed unsafe class SelfTest
         // a Game Boy and a SNES game on the same budget (the test games are small: a real game costs somewhat more)
         var speeds = new List<string> { $"NES {rspeed:0.0}x" };
         string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
-        string gb = Path.Combine(dir, $"bn2_{tag}.gb"), sfc = Path.Combine(dir, $"bn2_{tag}.sfc");
+        string gb = Path.Combine(dir, $"bn2_{tag}.gb"), sfc = Path.Combine(dir, $"bn2_{tag}.sfc"), smsFile = Path.Combine(dir, $"bn2_{tag}.sms");
         File.WriteAllBytes(gb, MakeGbRom(tone: true));
         File.WriteAllBytes(sfc, MakeSnesRom());
+        File.WriteAllBytes(smsFile, MakeSmsRom());
         try
         {
-            foreach (var (name, path, console) in new[] { ("Game Boy", gb, 1), ("SNES", sfc, 2) })
+            foreach (var (name, path, console) in new[] { ("Game Boy", gb, 1), ("SNES", sfc, 2), ("Master System", smsFile, 3) })
             {
                 using var g = OpenGame(path, console);
                 RenderBlocks(g, 1.0);
@@ -870,7 +875,7 @@ public sealed unsafe class SelfTest
                 speeds.Add($"{name} {speed3:0.0}x");
             }
         }
-        finally { try { File.Delete(gb); File.Delete(sfc); } catch { } }
+        finally { try { File.Delete(gb); File.Delete(sfc); File.Delete(smsFile); } catch { } }
         t.Note($"ROM mode: {string.Join(", ", speeds)} real time (test games), allocation {(a1 - a0):N0} B in 8 s");
     }
 
@@ -1275,7 +1280,7 @@ public sealed unsafe class SelfTest
 
             // every control is on screen
             foreach (var (id, name) in new[] { (1, "Emulator"), (2, "Direct"), (3, "ROM"), (4, "Sound chip"), (7, "Game"), (9, "Channel"), (40, "About"), (80, "Inputs"), (60, "Reset Console"), (50, "console NES"), (51, "console Game Boy"), (52, "console SNES"),
-                                               (10, "cell Pulse 1"), (11, "cell Pulse 2"), (12, "cell Triangle"), (13, "cell Noise"), (21, "Volume"), (22, "Pan"), (23, "Coarse"), (24, "Fine"), (25, "Pulse duty") })
+                                               (53, "console SMS"), (54, "console MD"), (10, "cell Pulse 1"), (11, "cell Pulse 2"), (12, "cell Triangle"), (13, "cell Noise"), (21, "Volume"), (22, "Pan"), (23, "Coarse"), (24, "Fine"), (25, "Pulse duty") })
                 t.Expect(p.Test(30, id) != 0, $"control '{name}' is not drawn");
             t.Expect(p.Test(30, 14) == 0, "the Mix cell should be unavailable in Direct mode");
 
@@ -1290,7 +1295,7 @@ public sealed unsafe class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 4, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 4} NES chips (the Game Boy, SNES and Master System chips are under their own consoles)");
+            t.Expect(p.Test(32) == chips.Count - 5, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 5} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1330,6 +1335,11 @@ public sealed unsafe class SelfTest
             t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (SMS)");
             t.Expect(p.Test(32) == 1, $"the Master System chip list has {p.Test(32)} items, expected SMS");
+            Win32Host.Click(hwnd, 20, 20);
+            ClickControl(t, p, 54, "MD segment");
+            t.Expect(p.GetParam(PConsole) == 4 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "MD", $"MD segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
+            ClickControl(t, p, 4, "chip dropdown (MD)");
+            t.Expect(p.Test(32) == 1, $"the Genesis chip list has {p.Test(32)} items, expected MD");
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 50, "NES segment");
             t.Expect(p.GetParam(PConsole) == 0 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "FIX", "NES segment");
@@ -1467,9 +1477,9 @@ public sealed unsafe class SelfTest
         {
             var p = lib.Create(); all.Add(p);
             var chips = Chips(p);
-            t.Expect(chips.Count == 21 && chips[0] == "FIX", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS)");
+            t.Expect(chips.Count == 22 && chips[0] == "FIX", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD)");
             // each console starts with its own chip
-            foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (0, "FIX") })
+            foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (4, "MD"), (0, "FIX") })
             {
                 p.SetParam(PConsole, console);
                 t.Expect(p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == chip && p.Test(14) == console, $"console {console}: chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}, console {p.Test(14)}");
@@ -1479,6 +1489,8 @@ public sealed unsafe class SelfTest
             t.Expect(p.GetParam(PConsole) == 1, $"picking DMGS left the console at {p.GetParam(PConsole)}");
             p.SetParam(PCore, chips.IndexOf("SMS"));
             t.Expect(p.GetParam(PConsole) == 3, $"picking SMS left the console at {p.GetParam(PConsole)}");
+            p.SetParam(PCore, chips.IndexOf("MD"));
+            t.Expect(p.GetParam(PConsole) == 4, $"picking MD left the console at {p.GetParam(PConsole)}");
             p.SetParam(PCore, chips.IndexOf("QN"));
             t.Expect(p.GetParam(PConsole) == 0, $"picking QN left the console at {p.GetParam(PConsole)}");
             // the console is shared by every instance of the emulator
@@ -1492,10 +1504,11 @@ public sealed unsafe class SelfTest
 
         // every console plays in Direct mode, and a console switch under a held note keeps it sounding
         var table = new List<string>();
-        foreach (var (console, name) in new[] { (0, "NES"), (1, "Game Boy"), (2, "SNES"), (3, "SMS") })
+        foreach (var (console, name) in new[] { (0, "NES"), (1, "Game Boy"), (2, "SNES"), (3, "SMS"), (4, "MD") })
         {
             var s = One(69, 0, 0.8);
-            var (audio, mixer, plugin) = Play(s, setup: p => p.SetParam(PConsole, console));
+            // the Genesis chip's pulse is an FM voice with a patch: the sine one, so that its pitch can be read from the zero crossings like the others'
+            var (audio, mixer, plugin) = Play(s, setup: p => { p.SetParam(PConsole, console); if (console == 4) p.SetParam(PInstrument, 14); });
             using (plugin)
             {
                 var mono = Mono(audio);
@@ -1536,7 +1549,7 @@ public sealed unsafe class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 21 && chips.IndexOf(Chip) == 20, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 20)");
+        t.Expect(chips.Count == 22 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); blob = a.SaveState(); }
@@ -1645,7 +1658,7 @@ public sealed unsafe class SelfTest
             t.Expect(all > single * 1.5, $"polyphony: four voices ({all:0.000}) are not louder than one ({single:0.000})");
         }
 
-        // ---- a Sega game in ROM mode is refused with a message, never run as something else; the chip itself keeps working in Direct mode ----
+        // ---- a Genesis game in ROM mode is refused with a message, never run as something else (Master System and Game Gear games run: see the rom-sms test); the chips keep working in Direct mode ----
         {
             string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
             string sms = Path.Combine(dir, $"bn2_{tag}.sms"), gg = Path.Combine(dir, $"bn2_{tag}.gg"), md = Path.Combine(dir, $"bn2_{tag}.md");
@@ -1657,13 +1670,13 @@ public sealed unsafe class SelfTest
                 using var q = RomPlugin();
                 RenderBlocks(q, 0.3);
                 t.Expect(q.Test(15) == 0, "the built-in game should be a NES game");
-                foreach (var (name, path) in new[] { ("Master System", sms), ("Game Gear", gg), ("Genesis", md) })
+                foreach (var (name, path) in new[] { ("Genesis", md) })
                 {
                     int status = LoadFileInto(q, path);
                     RenderBlocks(q, 0.2);
                     t.Expect(status != 0 && q.Test(15) == 0 && q.Test(12) == 0 && q.GetParam(PConsole) == 0, $"a {name} file should be refused and leave the NES game running (status {status}, console {q.GetParam(PConsole)})");
                 }
-                // choosing the Master System console in ROM mode: no game, no crash, no sound from a made-up one; its chip is there for Direct mode
+                // choosing the Master System console in ROM mode with no game chosen: no game, no crash, no sound from a made-up one; its chip is there for Direct mode
                 q.SetParam(PConsole, 3);
                 var silent = RenderBlocks(q, 0.6);
                 t.Expect(q.Test(9) == 0 && q.Test(12) == 0 && silent.All(float.IsFinite) && Audio.Rms(silent, 8000, silent.Length) < 0.002, "ROM mode on the Master System console should hold no game and play nothing");
@@ -1692,6 +1705,323 @@ public sealed unsafe class SelfTest
             t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding PSG voices for 7 s (must be 0: garbage collection is audible)");
             t.Note($"PSG: {speed:0.0}x real time, 4 instances with a sliding voice each, 48 kHz / 512-sample blocks; steady-state allocation {alloc} B");
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // The Genesis chip: Direct mode through APU_MD (NES registers to the YM2612 and the PSG), console 4. The Instrument parameter picks the FM patch of the pulses.
+
+    private void Md(T t)
+    {
+        const string Chip = "MD";
+        const int Brass = 0, Pulse25 = 3, Sine = 14, PsgSquare = 15, Square = 2;
+        // ---- the chip list: appended, so every saved project keeps its chip ----
+        List<string> chips;
+        using (var probe = lib.Create()) chips = Chips(probe);
+        t.Expect(chips.Count == 22 && chips.IndexOf(Chip) == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 21)");
+        t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19 && chips.IndexOf("SMS") == 20, "an existing chip moved (the chip index is part of saved projects: append only)");
+        byte[] blob;
+        using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }
+        using (var b = lib.Create())
+        {
+            b.LoadState(blob);
+            t.Expect(b.GetParam(PCore) == 21 && b.GetParam(PConsole) == 4 && b.GetParam(PInstrument) == 9 && b.GetName(Fpn.ParamValue, PCore, b.GetParam(PCore)) == Chip, $"a project saved on the {Chip} chip came back as chip {b.GetParam(PCore)}, console {b.GetParam(PConsole)}, patch {b.GetParam(PInstrument)}");
+            t.Expect(b.SaveState().SequenceEqual(blob), "save -> load -> save is not stable on the Genesis chip");
+        }
+
+        // ---- pitch: the sine patch carries every channel; the FM chip's frequency registers are chosen by nearest (within 1.8 cents) and the audio is as exact as on the NES chips ----
+        double worst = 0, worstSet = 0; var rows = new List<string>();
+        foreach (var (ch, color, triangle, name) in new[] { (0, 0, false, "pulse1"), (1, 1, false, "pulse2"), (2, 2, true, "triangle") })
+            foreach (int key in new[] { 36, 45, 57, 60, 69, 84, 96 })
+            {
+                int period = Nes.Period((key - 60) * 100.0, triangle);
+                double wantHz = Nes.PeriodHz(period, triangle), setHz = -1; long keyed = -1;
+                var (audio, mixer, plugin) = Play(One(key, color, 0.7), setup: p => { SetChip(p, Chip); p.SetParam(PInstrument, Sine); },
+                    probe: (pl, sample) => { if (sample >= 22050 && setHz < 0) { setHz = pl.Test(58, ch) / 100.0; keyed = pl.Test(57, ch); } });
+                using (plugin)
+                {
+                    double hz = SteadyHz(Mono(audio), 44100, mixer.Log[0]);
+                    t.NearCents($"MD {name} key {key}", hz, wantHz, 2.5);
+                    if (!double.IsNaN(hz)) worst = Math.Max(worst, Math.Abs(Audio.Cents(hz, wantHz)));
+                    double setErr = Audio.Cents(Math.Max(setHz, 1e-9), wantHz); worstSet = Math.Max(worstSet, Math.Abs(setErr));
+                    t.Expect(keyed == 1 && Math.Abs(setErr) < 1.8, $"MD {name} key {key}: FM voice {ch + 1} keyed {keyed}, set to {setHz:0.00} Hz, expected {wantHz:0.00} Hz ({setErr:+0.00;-0.00} cents)");
+                    if (key == 69) rows.Add($"{name} {hz:0.00} Hz");
+                }
+            }
+        t.Note($"MD pitch: worst audio error {worst:0.00} cents, worst register error {worstSet:0.00} cents over 21 notes (65 Hz to 2 kHz); A4: {string.Join(", ", rows)}");
+
+        // ---- level: what the NES chip would play, in dB; velocity falls; zero is silent ----
+        double RmsOf(string chip, double vel, int ch, int patch, int duty = 1, int master = 1000)
+        {
+            var s = One(69, ch, 0.7, vel); s.Params[1] = master; s.Params[5] = duty; s.Params[11] = patch;
+            var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, chip));
+            using (plugin) return Audio.Rms(Mono(audio), mixer.Log[0].StartSample + 8000, mixer.Log[0].EndSample - 2000);
+        }
+        double r1 = RmsOf(Chip, 1.0, 0, Sine), r2 = RmsOf(Chip, 0.66, 0, Sine), r3 = RmsOf(Chip, 0.33, 0, Sine), r4 = RmsOf(Chip, 0.1, 0, Sine), r0 = RmsOf(Chip, 0.0, 0, Sine);
+        t.Expect(r1 > r2 && r2 > r3 && r3 > r4 && r4 > 0, $"MD level must fall with velocity: {r1:0.000} {r2:0.000} {r3:0.000} {r4:0.000}");
+        t.Expect(r0 < 1e-4, $"MD velocity 0 is not silent: {r0:0.0000}");
+        double half = RmsOf(Chip, 1.0, 0, Sine, master: 500);
+        t.Expect(half < r1 * 0.85 && half > r1 * 0.3, $"MD master volume 50% gives {half / r1:P0} of full level");
+        var dbRows = new List<string>();
+        foreach (var (patch, ch, name, duty) in new[] { (Sine, 0, "sine pulse 25%", 1), (Sine, 0, "sine pulse 50%", 2), (Brass, 0, "brass pulse 25%", 1), (Square, 1, "square pulse 2 25%", 1), (PsgSquare, 0, "PSG square 25%", 1), (Sine, 2, "triangle", 1) })
+        {
+            double a = RmsOf(Chip, 1.0, ch, patch, duty), b = RmsOf("FIX", 1.0, ch, patch, duty);
+            double d = 20 * Math.Log10(a / b);
+            dbRows.Add($"{name} {d:+0.0;-0.0} dB");
+            // the bridge aims at the NES mixer's own level; APU_FIX low-passes its output, which takes about 1.3 dB out of a 25% pulse at A4 (it is rich in harmonics), and the brass's two detuned pairs beat by about 1 dB
+            t.Expect(Math.Abs(d) <= 2.5, $"MD {name} is {d:+0.0;-0.0} dB from the NES chip (limit 2.5): {a:0.0000} vs {b:0.0000}");
+        }
+        double noise = RmsOf(Chip, 0.8, 3, 0);
+        t.Expect(noise > 0.003, $"the Genesis noise channel (the PSG's) is silent (rms {noise:0.0000})");
+        t.Note($"MD level against FIX at the same notes: {string.Join(", ", dbRows)}; velocity 1.0/.66/.33/.1: {r1:0.000}/{r2:0.000}/{r3:0.000}/{r4:0.000}");
+
+        // ---- the Instrument parameter is the FM patch: each patch is its own timbre at the same pitch (harmonics measured), and each instance has its own ----
+        double Harmonic(int patch, int n, int ch = 0)
+        {
+            var s = One(60, ch, 0.8); s.Params[11] = patch;
+            var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, Chip));
+            using (plugin)
+            {
+                var mono = Mono(audio); int from = mixer.Log[0].StartSample + 12000;
+                double f0 = Nes.PeriodHz(Nes.Period(0, ch == 2), ch == 2);
+                return Goertzel(mono, 44100, f0 * n, from, from + 22000) / Goertzel(mono, 44100, f0, from, from + 22000);
+            }
+        }
+        double sine3 = Harmonic(Sine, 3), square3 = Harmonic(Square, 3), psg3 = Harmonic(PsgSquare, 3), pulse2nd = Harmonic(Pulse25, 2), oob3 = Harmonic(200, 3);
+        t.Expect(sine3 < 0.03, $"the sine patch has a 3rd harmonic at {sine3:0.000} of the fundamental (limit 0.03, -30 dB: the discrete chip's ladder effect adds a little odd distortion)");
+        t.Expect(Math.Abs(square3 - 0.333) < 0.08, $"the additive square's 3rd harmonic is {square3:0.000} of the fundamental (expect 0.333: -9.5 dB)");
+        t.Expect(Math.Abs(psg3 - 0.333) < 0.06, $"the PSG square's 3rd harmonic is {psg3:0.000} of the fundamental (expect 0.333)");
+        t.Expect(Math.Abs(pulse2nd - 0.707) < 0.12, $"the 25% pulse patch's 2nd harmonic is {pulse2nd:0.000} of the fundamental (expect 0.707: -3 dB)");
+        t.Expect(Math.Abs(oob3 - psg3) < 0.04, $"Instrument 200 (out of range) should be the last patch (the PSG square): 3rd harmonic {oob3:0.000} vs {psg3:0.000}");
+        t.Note($"MD patches: 3rd harmonic / fundamental: sine {sine3:0.000}, additive square {square3:0.000}, PSG square {psg3:0.000}; 25% pulse 2nd {pulse2nd:0.000}");
+        {
+            // the patch is the instance's own: two instances on one emulator, one on the square and one on the sine, each reads back its own
+            var rack = MakeRack([0, 1]);
+            SetChip(rack[0], Chip);
+            rack[0].SetParam(PInstrument, Square); rack[1].SetParam(PInstrument, Sine);
+            var sc = new Scenario { Name = "md-patches", Tempo = 60, LengthBeats = 0.8 };
+            sc.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 0.6, Key = 60, Channel = 0 }); sc.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 0.6, Key = 67, Channel = 1 });
+            long p0 = -1, p1 = -1; var m = new Mixer { SampleRate = 44100, BlockSize = 256, AfterBlock = sm => { if (sm >= 12000 && p0 < 0) { p0 = rack[0].Test(56); p1 = rack[1].Test(56); } } };
+            m.Run(rack, sc);
+            t.Expect(p0 == Square && p1 == Sine, $"two instances on one emulator should each keep their own patch: {p0} and {p1}");
+            rack[0].Dispose();
+        }
+
+        // ---- range: the NES's lowest pulse (54.6 Hz) plays on FM; a note the FM chip cannot reach (above 6.6 kHz) is silent and counted; absurd bends stay finite ----
+        {
+            var (audio, mixer, plugin) = Play(One(33, 0, 0.6), setup: p => { SetChip(p, Chip); p.SetParam(PInstrument, Sine); });
+            using (plugin) t.Expect(Audio.Rms(Mono(audio), mixer.Log[0].StartSample + 8000, mixer.Log[0].EndSample - 2000) > 0.003, "a pulse note at 55 Hz (the NES pulse's bottom) should sound on the FM chip");
+            long above = -1;
+            var (audio2, mixer2, plugin2) = Play(One(125, 0, 0.5), setup: p => SetChip(p, Chip), probe: (pl, sm) => { if (sm >= 20000 && above < 0) above = pl.Test(60); });
+            using (plugin2)
+            {
+                t.Expect(Audio.Rms(Mono(audio2), mixer2.Log[0].StartSample + 4000, mixer2.Log[0].EndSample) < 0.002 && audio2.All(float.IsFinite), "a note above the FM chip's top (10 kHz) should be silent");
+                t.Expect(above == 1, $"... and counted as one note above the FM range (the chip says {above})");
+            }
+            var (audio3, _, plugin3) = Play(One(140, 0, 0.5), setup: p => SetChip(p, Chip));
+            using (plugin3) t.Expect(audio3.All(float.IsFinite) && Audio.Rms(Mono(audio3), 4000, audio3.Length / 2) < 0.002, "an ultrasonic pulse should mute on the Genesis chip too");
+            var s = One(60, 0, 0.5);
+            s.Notes[0].Bend = new() { new[] { 0.0, 100000 }, new[] { 0.25, -100000 }, new[] { 0.5, 0 } };
+            var (audio4, _, plugin4) = Play(s, setup: p => SetChip(p, Chip));
+            using (plugin4) t.Expect(audio4.All(float.IsFinite), "non-finite output after extreme bends on the Genesis chip");
+        }
+
+        // ---- polyphony: pulse 1, pulse 2, the triangle and the noise at once, one instance each, every tone where it belongs in the mix ----
+        {
+            var sc = new Scenario { Name = "md-poly", Tempo = 60, LengthBeats = 1.2 };
+            int[] keys = [57, 64, 69, 60];
+            for (int c = 0; c < 4; c++) sc.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 1.0, Key = keys[c], Channel = c, Velocity = c == 3 ? 0.25 : 0.8 });
+            var rack = MakeRack([0, 1, 2, 3]);
+            var first = rack[0];
+            SetChip(first, Chip);
+            var keyed = new long[4]; var psgVol = -1L; bool taken = false;
+            var mixer = new Mixer { SampleRate = 44100, BlockSize = 256, AfterBlock = sm => { if (sm >= 22050 && !taken) { taken = true; for (int c = 0; c < 3; c++) keyed[c] = rack[c].Test(57, c); psgVol = rack[3].Test(62, 3); } } };
+            var audio = mixer.Run(rack, sc);
+            first.Dispose();
+            var mono = Mono(audio);
+            for (int c = 0; c < 3; c++)
+            {
+                bool tri = c == 2;
+                double hz = Nes.PeriodHz(Nes.Period((keys[c] - 60) * 100.0, tri), tri);
+                double at = Goertzel(mono, 44100, hz, 12000, 36000), off = Goertzel(mono, 44100, hz * 1.059, 12000, 36000);
+                t.Expect(keyed[c] == 1, $"polyphony: instance {c + 1} has FM voice {c + 1} keyed {keyed[c]}");
+                t.Expect(at > off * 4 && at > 0.01, $"polyphony: the mix has {hz:0.0} Hz at {at:0.0000}, only {off:0.0000} a semitone above it");
+            }
+            t.Expect(psgVol >= 0 && psgVol < 15, $"polyphony: the noise instance has PSG noise volume {psgVol} (15 is off)");
+            double all = Audio.Rms(mono, 12000, 36000);
+            var one = Play(One(69, 0, 1.0), setup: p => SetChip(p, Chip));
+            double single;
+            using (one.Plugin) single = Audio.Rms(Mono(one.Audio), 12000, 36000);
+            t.Expect(all > single * 1.5, $"polyphony: four voices ({all:0.000}) are not louder than one ({single:0.000})");
+        }
+
+        // ---- the editor, through real mouse messages: the Genesis console has a patch picker for the pulses, listing the whole bank; the triangle and the noise have none ----
+        {
+            nint parent = Win32Host.CreateParent();
+            try
+            {
+                using var p = lib.Create();
+                p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                p.ShowEditor(parent);
+                Win32Host.Pump(150);
+                if (p.EditorHandle == 0) { t.Expect(false, "no editor"); return; }
+                ClickControl(t, p, 54, "MD segment");
+                t.Expect(p.GetParam(PConsole) == 4 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == Chip, "the MD segment did not switch to the Genesis chip");
+                t.Expect(p.Test(30, 90) != 0 && p.Test(30, 25) == 0, "on a pulse channel of the Genesis console the Instrument picker should replace the Pulse duty slider");
+                ClickControl(t, p, 90, "Instrument dropdown");
+                t.Expect(p.Test(31) == 90 && p.Test(32) == 16, $"the patch list has {p.Test(32)} items, expected the bank's 16");
+                var item = Centre(p, 100 + 2);
+                t.Expect(item != null, "patch 2 is not reachable in the open list");
+                if (item != null) Win32Host.Click(p.EditorHandle, item.Value.X, item.Value.Y);
+                t.Expect(p.Test(31) == 0 && p.GetParam(PInstrument) == 2, $"picking the third patch left Instrument at {p.GetParam(PInstrument)}");
+                PickItem(t, p, 9, 3, "Channel Triangle");
+                t.Expect(p.Test(30, 90) == 0, "the triangle is always a sine: no patch picker on its channel");
+                ClickControl(t, p, 13, "noise cell");
+                t.Expect(p.Test(30, 90) == 0 && p.Test(30, 27) != 0, "the noise channel keeps its Noise mode slider and has no patch picker");
+                ClickControl(t, p, 50, "NES segment");
+                ClickControl(t, p, 10, "pulse 1 cell");
+                t.Expect(p.Test(30, 90) == 0 && p.Test(30, 25) != 0, "back on a NES chip the Pulse duty slider returns and the patch picker goes");
+                p.HideEditor();
+            }
+            finally { Win32Host.DestroyParent(parent); }
+        }
+
+        // ---- a Genesis game in ROM mode is refused with a message and the Genesis console holds no game; the chip keeps working in Direct mode ----
+        {
+            string md = Path.Combine(Path.GetTempPath(), $"bn2_{Guid.NewGuid():N}.md");
+            var mdRom = new byte[0x400]; "SEGA MEGA DRIVE "u8.CopyTo(mdRom.AsSpan(0x100));
+            File.WriteAllBytes(md, mdRom);
+            try
+            {
+                using var q = RomPlugin();
+                RenderBlocks(q, 0.3);
+                int status = LoadFileInto(q, md);
+                RenderBlocks(q, 0.2);
+                t.Expect(status != 0 && q.Test(15) == 0 && q.Test(12) == 0 && q.GetParam(PConsole) == 0, $"a Genesis file should be refused and leave the NES game running (status {status}, console {q.GetParam(PConsole)})");
+                q.SetParam(PConsole, 4);
+                var silent = RenderBlocks(q, 0.6);
+                t.Expect(q.Test(9) == 0 && q.Test(12) == 0 && silent.All(float.IsFinite) && Audio.Rms(silent, 8000, silent.Length) < 0.002, "ROM mode on the Genesis console should hold no game and play nothing");
+                q.SetParam(PMode, 0);
+                t.Expect(q.GetName(Fpn.ParamValue, PCore, q.GetParam(PCore)) == Chip && q.GetParam(PConsole) == 4, "back in Direct mode the MD chip should be there");
+            }
+            finally { File.Delete(md); }
+        }
+
+        // ---- real time and no allocation: four sliding voices on the Genesis chip (each instance has its own YM2612), and the patch changing under them ----
+        {
+            var s = new Scenario { Name = "rt-md", Tempo = 60, LengthBeats = 11 };
+            for (int c = 0; c < 4; c++) s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 9, Key = 57 + c * 5, Channel = c, Slides = new() { new SlideSeg { StartBeat = 1, LengthBeats = 8, ToKey = 69 + c } } });
+            var rack = MakeRack([0, 1, 2, 3]);
+            var plugin = rack[0];
+            SetChip(plugin, Chip);
+            long allocBefore = 0, allocAfter = 0; int patchSwitches = 0;
+            var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
+            {
+                if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4);
+                if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4);
+                if (sm / 48000 != (sm - 512) / 48000) { plugin.SetParam(PInstrument, (sm / 48000) % 16); patchSwitches++; }      // a new patch every second
+            } };
+            var sw = Stopwatch.StartNew();
+            var audio = mixer.Run(rack, s, 0);
+            sw.Stop();
+            plugin.Dispose();
+            double speed = audio.Length / 2 / 48000.0 / sw.Elapsed.TotalSeconds;
+            long alloc = allocAfter - allocBefore;
+            t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 Genesis instances (needs 5x or better: the plugin's floor)");
+            t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding Genesis voices for 7 s with the patch changing every second (must be 0: garbage collection is audible)");
+            t.Expect(audio.All(float.IsFinite), "non-finite output while the patch changed under four sliding voices");
+            t.Note($"MD: {speed:0.0}x real time, 4 instances with a sliding voice each, 48 kHz / 512-sample blocks, {patchSwitches} patch changes; steady-state allocation {alloc} B");
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // ROM mode on Master System and Game Gear games (the plugin carries no such games: tiny ROMs are made here)
+
+    /// <summary>A 32 KB Master System (or Game Gear) ROM with the TMR SEGA header that sets PSG tone 1 to period 254 (440.4 Hz on the NTSC clock) at full volume and then spins.</summary>
+    internal static byte[] MakeSmsRom(bool gameGear = false)
+    {
+        var rom = new byte[0x8000];
+        byte[] code = [0xF3, 0x31, 0xF0, 0xDF, 0x3E, 0x8E, 0xD3, 0x7F, 0x3E, 0x0F, 0xD3, 0x7F, 0x3E, 0x90, 0xD3, 0x7F, 0x18, 0xFE];   // DI; LD SP,$DFF0; OUT ($7F),$8E / $0F / $90; JR $
+        code.CopyTo(rom, 0);
+        "TMR SEGA"u8.CopyTo(rom.AsSpan(0x7FF0));
+        rom[0x7FFF] = (byte)(gameGear ? 0x6C : 0x4C);        // system and region (4 Master System export, 6 Game Gear export), 32 KB
+        return rom;
+    }
+
+    private void RomSms(T t)
+    {
+        string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
+        string sms = Path.Combine(dir, $"bn2_{tag}.sms"), gg = Path.Combine(dir, $"bn2_{tag}.gg");
+        File.WriteAllBytes(sms, MakeSmsRom());
+        File.WriteAllBytes(gg, MakeSmsRom(gameGear: true));
+        try
+        {
+            foreach (var (name, path, wantW) in new[] { ("Master System", sms, 256), ("Game Gear", gg, 160) })
+            {
+                byte[] st;
+                using (var seed = lib.Create()) { seed.SetParam(PConsole, 3); seed.SetParam(PMode, 1); st = seed.SaveState(); }
+                using var p = lib.Create();
+                p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                p.LoadState(StateWithRom(st, path));
+                t.Expect(WaitConsole(p, 3), $"{name}: the game did not load");
+                var audio = RenderBlocks(p, 1.5);
+                t.Expect(p.Test(12) == 0, $"{name}: the game crashed");
+                t.Expect(audio.All(float.IsFinite), $"{name}: non-finite audio");
+                t.Expect(p.Test(11) >= 60, $"{name}: only {p.Test(11)} frames in 1.5 s");
+                t.Expect(p.Test(10) != 0, $"{name}: no picture");
+                t.Expect(p.Test(17) == 4, $"{name}: a game of this console plays through Mix, instance is on channel {p.Test(17)}");
+                t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"{name}: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
+                // the game's own PSG tone reaches the output: tone 1 period 254 = 3,579,545 / (32 x 254) = 440.40 Hz
+                double hz = Audio.Frequency(audio, 48000, 24000, audio.Length - 2000);
+                double rms = Audio.Rms(audio, 24000, audio.Length - 2000);
+                t.Expect(rms > 0.003 && !double.IsNaN(hz) && Math.Abs(Audio.Cents(hz, 440.40)) < 6, $"{name}: the game's tone should be 440.4 Hz and audible (measured {hz:0.00} Hz, rms {rms:0.0000})");
+                nint parent = Win32Host.CreateParent();
+                try
+                {
+                    p.ShowEditor(parent);
+                    for (int k = 0; k < 4; k++) { RenderBlocks(p, 0.1); Win32Host.Pump(60); }
+                    long dims = p.Test(37);
+                    t.Expect((int)(dims & 0xFFFF) == wantW, $"{name}: the picture is {(int)(dims & 0xFFFF)} x {(int)(dims >> 16)} wide, expected {wantW}");
+                    t.Expect(p.Test(30, 10) == 0 && p.Test(30, 14) != 0, $"{name}: the channel strip should offer only Mix");
+                    p.HideEditor();
+                }
+                finally { Win32Host.DestroyParent(parent); }
+                // Instrument Runaway freezes the game and silences it; releasing carries on
+                p.Test(47, 0, 1);
+                var frozen = RenderBlocks(p, 0.5);
+                t.Expect(p.Test(45) == 1 && Audio.Rms(frozen, 4000, frozen.Length) < 0.002, $"{name}: Runaway should freeze the game and silence it");
+                long frames = p.Test(11);
+                RenderBlocks(p, 0.3);
+                t.Expect(p.Test(11) == frames, $"{name}: the game still ran while frozen");
+                p.Test(47, 0, 0);
+                var back = RenderBlocks(p, 1.0);
+                t.Expect(p.Test(45) == 0 && Audio.Rms(back, 12000, back.Length) > 0.003, $"{name}: releasing Runaway should give the game's sound back");
+            }
+            // files: loading one switches the emulator to the Master System console
+            using var q = RomPlugin();
+            RenderBlocks(q, 0.3);
+            t.Expect(q.Test(15) == 0, "the built-in game should be a NES game");
+            t.Expect(LoadFileInto(q, sms) == 0 && WaitConsole(q, 3), "loading a .sms file into a NES emulator should switch it to the Master System");
+            t.Expect(q.GetParam(PConsole) == 3 && q.GetName(Fpn.ParamValue, PCore, q.GetParam(PCore)) == "SMS", "the console parameter and chip did not follow the loaded file");
+            RenderBlocks(q, 0.6);
+            t.Expect(LoadFileInto(q, gg) == 0 && WaitConsole(q, 3) && q.GetParam(PConsole) == 3, "loading a .gg file should stay on the Master System console and load the Game Gear game");
+            var g = RenderBlocks(q, 1.0);
+            nint parent2 = Win32Host.CreateParent();
+            try
+            {
+                q.ShowEditor(parent2);
+                for (int k = 0; k < 4; k++) { RenderBlocks(q, 0.1); Win32Host.Pump(60); }
+                t.Expect((int)(q.Test(37) & 0xFFFF) == 160, $"the Game Gear game replaced the Master System one: the picture is {(int)(q.Test(37) & 0xFFFF)} wide, expected 160");
+                q.HideEditor();
+            }
+            finally { Win32Host.DestroyParent(parent2); }
+            t.Expect(q.Test(12) == 0 && Audio.Rms(g, 8000, g.Length) > 0.003, "the Game Gear game should play");
+            q.SetParam(PConsole, 0);
+            t.Expect(WaitConsole(q, 0), "switching back to the NES should load the built-in game");
+            // the Master System game chosen earlier is remembered for that console
+            q.SetParam(PConsole, 3);
+            t.Expect(WaitConsole(q, 3) && q.Test(12) == 0, "the Master System console's game should come back when the console is chosen again");
+        }
+        finally { foreach (var f in new[] { sms, gg }) File.Delete(f); }
     }
 
     // ------------------------------------------------------------------------------------------------

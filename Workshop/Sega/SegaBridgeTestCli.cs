@@ -50,6 +50,14 @@ internal static class SegaBridgeTestCli
         if (Want("apu")) { Console.WriteLine("\n== APU_SMS: NES registers to the PSG"); ApuSms(); }
         if (Want("game")) { Console.WriteLine("\n== APU_SMS under a running NES game"); Game(Arg(args, "--rom")); }
         if (Want("unit")) { Console.WriteLine("\n== SmsSoundOnNes: the PSG replayed on a NES chip"); Unit(); }
+        // milestone C2: the Genesis side (mdcatalog, mdapu, mdunit, mdgame; `--only md` runs all four). --md-rom <file> or BROKENNES_MD_ROM names a Genesis game for the end-to-end run (Sonic the Hedgehog from the user's library when it is there).
+        {
+            string? mdRom = Arg(args, "--md-rom");
+            if (string.IsNullOrEmpty(mdRom)) mdRom = Environment.GetEnvironmentVariable("BROKENNES_MD_ROM");
+            if (string.IsNullOrEmpty(mdRom)) { const string sonic = @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin"; if (File.Exists(sonic)) mdRom = sonic; }
+            var (p, f) = SegaBridgeMdTests.Run(args, s => only.Length == 0 || only.Equals("md", StringComparison.OrdinalIgnoreCase) || only.Equals(s, StringComparison.OrdinalIgnoreCase), Arg(args, "--rom"), mdRom, verbose);
+            passes += p; failures += f;
+        }
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
     }
