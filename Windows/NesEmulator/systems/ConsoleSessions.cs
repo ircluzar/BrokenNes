@@ -11,12 +11,13 @@ namespace NesEmulator.Systems;
 public static class ConsoleSessions
 {
     /// <param name="loadFirmware">SNES coprocessor firmware lookup (null: none; DSP-1 games then use the homemade chip).</param>
+    /// <param name="fileName">The ROM's file name, when the app has one (the Master System family takes its region tag from it).</param>
     public static IConsoleSession Create(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu,
-                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null) => console switch
+                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "") => console switch
     {
         ConsoleKind.Snes => new SnesSession(rom, cpu, ppu, apu, loadFirmware),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
-        ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu),
+        ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
 
@@ -25,9 +26,12 @@ public static class ConsoleSessions
     /// track replaces the placeholder with its session in the same change that sets the console's Ready flag; a Ready console that still has no session is a
     /// bug, so it refuses rather than quietly running the placeholder.
     /// </summary>
-    private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu)
+    private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu, string fileName)
     {
         if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Sega.MdSession(rom, cpu, ppu, apu);
+        // Track A: the Master System family. Its sessions are the real board once the console is marked ready.
+        if (console == ConsoleKind.MasterSystem && Consoles.MasterSystemReady) return new NesEmulator.Sega.SmsSession(rom, console, cpu, ppu, apu, fileName);
+        if (console == ConsoleKind.GameGear && Consoles.GameGearReady) return new NesEmulator.Sega.GgSession(rom, cpu, ppu, apu, fileName);
         if (Consoles.IsReady(console))
             throw new InvalidOperationException($"{Consoles.DisplayName(console)} is marked ready but ConsoleSessions.CreateSega has no session for it");
         if (!Consoles.IsAvailable(console))

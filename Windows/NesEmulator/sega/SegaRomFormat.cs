@@ -29,7 +29,7 @@ public static class SegaRomFormat
         {
             if (at + 0x10 > sms.Length || !sms.AsSpan(at, TmrSega.Length).SequenceEqual(TmrSega)) continue;
             int system = sms[at + 0x0F] >> 4;
-            if (system is 3 or 4) return ConsoleKind.MasterSystem;
+            if (system is 3 or 4) return ext == ".gg" ? ConsoleKind.GameGear : ConsoleKind.MasterSystem;   // a .gg file with a Master System code is a Game Gear cartridge (a few carry one)
             if (system is 5 or 6 or 7) return ConsoleKind.GameGear;
             break;   // a header with another system code: decide by extension below
         }
