@@ -38,6 +38,10 @@ public sealed partial class SmsVdp
     public int ScrollLatchMc = 0;
     /// <summary>Master clock at which pixel 0 of the picture is drawn; pixel x follows at two master clocks per pixel.</summary>
     public int PixelOriginMc = 52 + 2 * 11;
+    /// <summary>1 = no sprite collisions in the border lines above and below the picture, as the oracle (Mesen 2.1.1) behaves (FluBBa's VDP test #46 says the hardware does set the flag there). A tool setting for comparing
+    /// games with the oracle (<c>--tune OracleNoBorderCollision=1</c>), never on in the app.</summary>
+    public int OracleNoBorderCollision;
+
     /// <summary>Master clocks the collision flag trails the pixel that caused it.</summary>
     public int CollisionDelayMc = 2;
     /// <summary>The sprite-overflow flag is set this far into the line it is detected on.</summary>
@@ -340,9 +344,23 @@ public sealed partial class SmsVdp
         RunTo(mc);
         latch = false;
         byte v = readBuffer;
-        readBuffer = Vram[addr];
+        readBuffer = FetchVram(addr);
         addr = (addr + 1) & 0x3FFF;
         return v;
+    }
+
+    /// <summary>
+    /// The byte a read of VRAM address <paramref name="a"/> fetches: the CPU's accesses go through one queue, so a write the program made before the read (still waiting for its access slot) has landed by the time the read's
+    /// fetch happens. A program that copies VRAM to VRAM a byte at a time with the source one byte behind the destination (Game Gear Shinobi's decompressor: the oracle returns the byte just written) reads it back.
+    /// </summary>
+    private byte FetchVram(int a)
+    {
+        for (int i = pendCount - 1; i >= 0; i--)
+        {
+            ref var w = ref pend[(pendHead + i) % pend.Length];
+            if (w.Kind == OpVram && w.Index == a) return w.Value;
+        }
+        return Vram[a];
     }
 
     // =================================================================================== the write pipeline
@@ -431,7 +449,9 @@ public sealed partial class SmsVdp
         RunTo(mc);
         latch = false;
         int s = (vintFlag ? 0x80 : 0) | (ovrFlag ? 0x40 : 0) | (colFlag ? 0x20 : 0);
-        s |= Revision == SmsVdpRevision.Tms9918 ? fifthSpriteNumber : 0x1F;
+        // TMS9918: bits 4-0 are the number of the fifth sprite of a line while the flag is set, and 0 otherwise (the oracle's reading of probe programs with 0, 1, 5, 20 and 31 sprites and no line with five);
+        // the Master System's Mode 4 reads them as ones
+        s |= Revision == SmsVdpRevision.Tms9918 ? (fifthSeen ? fifthSpriteNumber : 0) : 0x1F;
         vintFlag = ovrFlag = colFlag = false; lineIrqPending = false;
         fifthSpriteNumber = 0x1F; fifthSeen = false;
         return (byte)s;
@@ -454,7 +474,7 @@ public sealed partial class SmsVdp
         switch (code)
         {
             case 0:
-                readBuffer = Vram[addr];
+                readBuffer = FetchVram(addr);
                 addr = (addr + 1) & 0x3FFF;
                 break;
             case 2:
