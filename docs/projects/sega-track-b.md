@@ -88,6 +88,8 @@ None of this says the games are playable: with no sprites and no scroll the pict
 
 ## Next (B2)
 
+**Update 2026-10-04:** items 1, 3 (except interlace and the Overdrive and CRAM-flicker residue) and 4 are done by Track B2a, `docs/projects/sega-track-b2a.md` (the renderer, Nemesis test 16, the slot model, saves, the SSF2 and lock-on mappers, the first ten roster games, `GenesisReady`); item 2 is Track B2b's. The list below is the original plan.
+
 1. The renderer: planes with scroll and priority, window, sprites with the per-line limits, H32/H40, shadow/highlight, interlace; then the `--plane-png` dump retires.
 2. The real YM2612 (ymfm or Nuked as oracle) and the DAC; Z80 sound drivers (Altered Beast speech) and the bridges.
 3. VDP accuracy: test 16, the slot-by-slot VDP, HV counter exactness, sprite masking, window distortion, CRAM dots, Direct Color DMA, Titan Overdrive 1, then Overdrive 2 on PAL.

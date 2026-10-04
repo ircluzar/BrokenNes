@@ -171,6 +171,21 @@ internal static class MdPictureTest
         p.Cell(PlaneB, 0, 1, 7); p.Cell(PlaneB, 1, 1, 7);
         p.Frame();
         Check("the invalid plane width code repeats the name table's first row on every row (MacDonald's window test)", p.Px(2, 12) == Argb(p.CramOf(0, 1), 0) && p.Px(10, 100) == Argb(p.CramOf(0, 2), 0), $"{p.Px(2, 12):X8}");
+
+        // plane sizes: 32 cells wide (register 16 = 0, rows 64 bytes apart, the plane repeats every 256 pixels) and 128 cells wide (register 16 = 3, rows 256 bytes apart, 1024 pixels)
+        p = new Pic();
+        p.V.Reg[16] = 0x00;
+        p.Cell(PlaneA, 31, 0, 2, 32); p.Cell(PlaneA, 0, 1, 3, 32);
+        p.Frame();
+        Check("a 32-cell wide plane: cell 31 is the last of its row (x 248..255) and the plane repeats after 256 pixels", p.Px(250, 2) == Argb(p.CramOf(0, 2), 0) && p.Px(2, 2) == Argb(0, 0) && p.Px(256 + 2, 12) == Argb(p.CramOf(0, 3), 0));
+        Check("... its second row is 64 bytes after the first", p.Px(2, 12) == Argb(p.CramOf(0, 3), 0));
+        p = new Pic();
+        p.V.Reg[16] = 0x03;
+        p.Cell(PlaneA, 100, 0, 2, 128); p.Cell(PlaneA, 0, 1, 3, 128); p.Cell(PlaneA, 127, 0, 4, 128);
+        p.SetHScroll(0, 224, 0);        // plane x = screen x - 224 (mod 1024): cell 100 (x 800..807) shows at screen x 0
+        p.Frame();
+        Check("a 128-cell wide plane: cell 100 is reached by a scroll of 224 and shows at the left edge", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0) && p.Px(10, 2) == Argb(0, 0));
+        Check("... cell 127 is the last (its right neighbour is cell 0 of the next repeat) and rows are 256 bytes apart", p.Px(218, 2) == Argb(p.CramOf(0, 4), 0) && p.Px(226, 12) == Argb(p.CramOf(0, 3), 0), $"{p.Px(218, 2):X8} {p.Px(226, 12):X8}");
     }
 
     // =====================================================================================================================

@@ -201,14 +201,20 @@ public sealed class Sn76489 : IHubVoiceSource
     public int ReadSamples(Span<short> buffer)
     {
         int frames = Math.Min(Math.Min(left.Available, right.Available), buffer.Length / 2);
-        Span<float> l = frames <= 512 ? stackalloc float[frames] : new float[frames];
-        Span<float> r = frames <= 512 ? stackalloc float[frames] : new float[frames];
-        left.Read(l); right.Read(r);
+        // In chunks of up to 512 sample frames on the stack: a video frame's worth of audio (about 735 frames at 44.1 kHz) used to be two heap arrays per call, 5.9 KB of garbage per video frame.
+        Span<float> l = stackalloc float[512];
+        Span<float> r = stackalloc float[512];
         float scale = Gain * 32767f;
-        for (int i = 0; i < frames; i++)
+        for (int done = 0; done < frames; )
         {
-            buffer[2 * i] = (short)Math.Clamp(l[i] * scale, -32768f, 32767f);
-            buffer[2 * i + 1] = (short)Math.Clamp(r[i] * scale, -32768f, 32767f);
+            int n = Math.Min(512, frames - done);
+            left.Read(l.Slice(0, n)); right.Read(r.Slice(0, n));
+            for (int i = 0; i < n; i++)
+            {
+                buffer[2 * (done + i)] = (short)Math.Clamp(l[i] * scale, -32768f, 32767f);
+                buffer[2 * (done + i) + 1] = (short)Math.Clamp(r[i] * scale, -32768f, 32767f);
+            }
+            done += n;
         }
         return frames * 2;
     }
