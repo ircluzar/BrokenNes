@@ -6,7 +6,7 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 |---|---|---|
 | Desktop | `Windows/` | `UAT/entrypoints/desktop-smoke.ps1` |
 | Web (Lite) | `WebLite/` | `UAT/entrypoints/web-smoke.ps1` |
-| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (42 checks) |
+| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (43 checks: 42 pass, 1 expected warning) |
 | Plugin in FL Studio | the same DLL | `UAT/plugin/fl/fl-certify.ps1` |
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
@@ -82,7 +82,7 @@ The chip is the Genesis / Mega Drive's sound pair: the **YM2612** (six FM voices
 
 | Plugin channel | Genesis voice | What is kept, what is not |
 |---|---|---|
-| Pulse 1, Pulse 2 | FM voice 1, FM voice 2 | Pitch to the chip's frequency registers (block and fnum chosen by nearest: **at most 0.8 cent off from 54 Hz up, 1.6 cent at the bottom of the triangle's range**; the NES's own timer steps are coarser than that above 250 Hz). The timbre is the **FM patch** the *Instrument* parameter picks (below). Loudness is the NES channel's own (a thinner *Pulse duty* is played quieter; the duty does not change the timbre), set in 0.75 dB steps through the carriers' total level, within 0.7 dB of the NES chip at every volume and duty cycle. |
+| Pulse 1, Pulse 2 | FM voice 1, FM voice 2 | Pitch to the chip's frequency registers (block and fnum chosen by nearest: **at most 0.8 cent off from 54 Hz up, 1.6 cent at the bottom of the triangle's range**; the NES's own timer steps are coarser than that above 250 Hz). The timbre is the **FM patch** the *Instrument* parameter picks (below). Loudness is the NES channel's own (a thinner *Pulse duty* is played quieter; the duty does not change the timbre), set in 0.75 dB steps through the carriers' total level, within 0.6 dB of the NES mixer's formula at every volume and duty cycle (measured on the sine, brass and additive-square patches; all 16 patches are within 0.7 dB of the NES chip at its loudest step). |
 | Triangle | FM voice 3 | A pure sine (algorithm 7, one carrier) at the NES triangle's fixed loudness; it does not follow the patch. |
 | Noise | the PSG's noise voice | *Noise mode* long = white, short = periodic. Any NES noise rate is exact (the PSG's tone 3 is free to set it). |
 | Mix | (none) | ROM mode only. |
@@ -113,8 +113,8 @@ what is measured is each patch's pitch (the fundamental to 0.7 cent), harmonic s
 envelope and volume writes shape the note; a modulator may fade (a pluck, a bell). `--md-patches` prints each patch's measured spectrum and `--md-patches --wav-dir <dir>` writes a short phrase per patch.
 
 Other limits, none hidden: the chip counts the notes it cannot play (`APU_MD.NotesAboveFmRange`: above about 6.6 kHz; the FM chip reaches the NES's lowest notes, 54.6 Hz for a pulse and 27.3 Hz for the triangle); there is no DMC;
-the YM2612 is the discrete Model 1 chip (its ladder effect included, compensated in the loudness maths). Each instance owns its own chip, so four instances are four YM2612s: **about 11x real time** with four sliding voices (the
-floor is 5x), **0 bytes allocated** on the audio thread, and a patch can change every second under them.
+the YM2612 is the discrete Model 1 chip (its ladder effect included, compensated in the loudness maths). Each instance owns its own chip, so four instances are four YM2612s: **8.3x real time** with four sliding voices on a shared machine (the
+floor is 5x; the NES chip measures 7x and the PSG chip 21x in the same test), **0 bytes allocated** on the audio thread, and a patch can change every second under them.
 
 **Genesis games in ROM mode: not supported, refused with a message** ("Genesis games are not supported in the plugin yet"; a `.md`, `.gen` or `.smd` file given to the Game list is recognised and refused the same way, leaving the running
 game alone): the Genesis picture is not certified yet (`Consoles.GenesisReady`). What the next milestone needs: `ConsoleSessions.CreateSega` returning a certified `MdSession` and `Cx.RomSupported(4)` true with the file filter
