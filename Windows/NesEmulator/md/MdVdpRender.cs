@@ -41,6 +41,7 @@ public sealed partial class MdVdp
     private int hscrollA, hscrollB;
     private bool sprOverflow, sprCollision;
     private bool sprDirty;
+    private bool prevLineDotLimit;     // the previous line used up its pixel budget: the first X=0 sprite of this line then masks (Nemesis' sprite masking test)
 
     /// <summary>How many pixels the index stage runs ahead of the output pixel when it is synchronised (the hardware fetches a couple of cells ahead).</summary>
     public int RenderLead = 16;
@@ -87,14 +88,29 @@ public sealed partial class MdVdp
     /// <summary>Draw what the hardware has put out up to now, so that a change made now only shows from here on.</summary>
     private void SyncRender()
     {
+        LatchWindowIfDue();
         if (!lineActive) return;
         int px = PixelNow();
         RenderTo(px + RenderLead);
         ConvertTo(px);
     }
 
+    // The window's position registers are taken as the line's active picture ends and used for the next line: a write after that moment (MacDonald's window test polls the V counter and
+    // switches the window off, and the oracle still shows it on the line the counter names) first shows on the line after.
+    public const int WindowLatchOffset = 2560;
+    private bool winLatchDone;
+    private byte winNext17, winNext18, winCur17, winCur18;
+
+    private void LatchWindowIfDue()
+    {
+        if (winLatchDone || Time - lineStart < WindowLatchOffset) return;
+        winNext17 = Reg[17]; winNext18 = Reg[18]; winLatchDone = true;
+    }
+
     private void BeginLineRender()
     {
+        if (!winLatchDone) { winNext17 = Reg[17]; winNext18 = Reg[18]; }
+        winCur17 = winNext17; winCur18 = winNext18; winLatchDone = false;
         lineActive = Line < ActiveLines && Line < PictureMaxHeight;
         if (!lineActive) return;
         lineY = Line;
@@ -161,19 +177,19 @@ public sealed partial class MdVdp
         if (!isA) { DrawScrollRun(dst, false, x0, x1, -1, -1); return; }
         // the window replaces plane A where it covers the line: everywhere on a line the vertical part reaches, else the stretch the horizontal part names
         int wx0 = 0, wx1 = 0;
-        int vpos = (Reg[18] & 0x1F) * 8;
-        bool vwin = (Reg[18] & 0x80) != 0 ? lineY >= vpos : lineY < vpos;
+        int vpos = (winCur18 & 0x1F) * 8;
+        bool vwin = (winCur18 & 0x80) != 0 ? lineY >= vpos : lineY < vpos;
         bool leftWindow = false;
         if (vwin) { wx0 = 0; wx1 = lineWidth; }
         else
         {
-            int hpos = (Reg[17] & 0x1F) * 16;
-            if ((Reg[17] & 0x80) != 0) { wx0 = Math.Min(hpos, lineWidth); wx1 = lineWidth; }
+            int hpos = (winCur17 & 0x1F) * 16;
+            if ((winCur17 & 0x80) != 0) { wx0 = Math.Min(hpos, lineWidth); wx1 = lineWidth; }
             else { wx0 = 0; wx1 = Math.Min(hpos, lineWidth); leftWindow = wx1 > 0 && wx1 < lineWidth; }
         }
         // the window bug (MacDonald): with the window at the left and the plane's fine scroll not a multiple of 16, the two cells after it take their name table data from two cells further on
         int bugX0 = -1, bugX1 = -1;
-        if (leftWindow && (hscrollA & 0xF) != 0) { bugX0 = wx1; bugX1 = wx1 + 16; }
+        if (leftWindow && WindowBugApplies(hscrollA)) { bugX0 = wx1; bugX1 = wx1 + 16; }
         int a = x0, b = Math.Min(x1, wx0);
         if (b > a) DrawScrollRun(dst, true, a, b, bugX0, bugX1);
         a = Math.Max(x0, wx0); b = Math.Min(x1, wx1);
@@ -181,6 +197,10 @@ public sealed partial class MdVdp
         a = Math.Max(x0, wx1); b = x1;
         if (b > a) DrawScrollRun(dst, true, a, b, bugX0, bugX1);
     }
+
+    /// <summary>Experiment hook for the window distortion bug's condition on the plane's fine scroll (0: any of the low four bits; 1: bit 3).</summary>
+    public static int WindowBugMode = 0;
+    private static bool WindowBugApplies(int hscroll) => WindowBugMode switch { 0 => (hscroll & 0xF) != 0, 1 => (hscroll & 8) != 0, 2 => false, _ => (hscroll & 0xF) != 0 };
 
     private void DrawWindowRun(byte[] dst, int xa, int xb)
     {
@@ -206,11 +226,13 @@ public sealed partial class MdVdp
         int wCells = ws == 1 ? 64 : ws == 3 ? 128 : 32;
         int hCells = hs2 == 1 ? 64 : hs2 == 3 ? 128 : 32;
         int wMask = wCells * 8 - 1, hMask = hCells * 8 - 1;
+        int rowStride = ws == 2 ? 0 : wCells;        // the invalid width code 2 makes every row read row 0 (MacDonald's window test: 'row 0 repeat')
         int hs = isA ? hscrollA : hscrollB;
         bool colV = (Reg[11] & 4) != 0;
         int vsOff = isA ? 0 : 1;
         int vsFull = Vsram[vsOff] & 0x3FF;
         int x = xa;
+        int bugColumn0 = bugX0 >= 0 ? (bugX0 - hs & wMask) >> 4 : 0;
         while (x < xb)
         {
             int vs, limit = xb;
@@ -220,8 +242,9 @@ public sealed partial class MdVdp
             int px = x - hs & wMask;
             int cell = px >> 3, fine = px & 7;
             int len = Math.Min(8 - fine, limit - x);
-            if (x >= bugX0 && x < bugX1) cell = cell + 2 & (wCells - 1);
-            int ea = nt + ((py >> 3) * wCells + cell) * 2;
+            // the window bug: the plane column (a pair of cells) that supplies the left part of the first screen column after the window is read from the column after it
+            if (x >= bugX0 && x < bugX1 && (cell >> 1) == bugColumn0) cell = cell + 2 & (wCells - 1);
+            int ea = nt + ((py >> 3) * rowStride + cell) * 2;
             int e = Vram[ea & 0xFFFF] << 8 | Vram[ea + 1 & 0xFFFF];
             DrawTileRun(dst, x, len, e, py & 7, fine);
             x += len;
@@ -239,7 +262,7 @@ public sealed partial class MdVdp
             for (int k = 0; k < len; k++)
             {
                 int c = (int)(bits >> (fine + k) * 4) & 15;
-                dst[x + k] = c == 0 ? (byte)0 : (byte)(flags | c);
+                dst[x + k] = c == 0 ? (byte)(flags & 0x80) : (byte)(flags | c);
             }
         }
         else
@@ -247,7 +270,7 @@ public sealed partial class MdVdp
             for (int k = 0; k < len; k++)
             {
                 int c = (int)(bits >> 28 - (fine + k) * 4) & 15;
-                dst[x + k] = c == 0 ? (byte)0 : (byte)(flags | c);
+                dst[x + k] = c == 0 ? (byte)(flags & 0x80) : (byte)(flags | c);
             }
         }
     }
@@ -280,7 +303,7 @@ public sealed partial class MdVdp
                 lineSprites[lineSpriteCount++] = idx;
             }
             idx = link;
-            if (idx == 0) break;
+            if (idx == 0 || idx >= maxSprites) break;      // a link of 0 ends the list; one past the table (64 in H32, 80 in H40) does too
         }
         if (lineSpriteOverflow) sprOverflow = true;
         DrawSpritesToLine();
@@ -289,11 +312,12 @@ public sealed partial class MdVdp
     private void DrawSpritesToLine()
     {
         if (sprDirty) { Array.Clear(sprLine, 0, lineWidth + 16); sprDirty = false; }
-        if (lineSpriteCount == 0) return;
+        if (lineSpriteCount == 0) { prevLineDotLimit = false; return; }
         sprDirty = true;
         int sat = (Reg[5] & (H40 ? 0x7E : 0x7F)) << 9;
         int cellsLeft = H40 ? 40 : 32;
-        bool masked = false;
+        bool masked = false, seenVisible = prevLineDotLimit && lineY != 0;
+        bool limitHit = false;
         for (int i = 0; i < lineSpriteCount && cellsLeft > 0; i++)
         {
             int a = sat + lineSprites[i] * 8;
@@ -302,10 +326,13 @@ public sealed partial class MdVdp
             int attr = Vram[a + 4 & 0xFFFF] << 8 | Vram[a + 5 & 0xFFFF];
             int xraw = (Vram[a + 6 & 0xFFFF] << 8 | Vram[a + 7 & 0xFFFF]) & 0x1FF;
             int ypos = ((Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF) - 128;
-            if (xraw == 0 && i > 0) masked = true;
+            // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
+            if (xraw == 0) { if (seenVisible) masked = true; }
+            else seenVisible = true;
             int draw = Math.Min(w, cellsLeft);
             cellsLeft -= draw;
             if (draw < w) sprOverflow = true;
+            if (cellsLeft <= 0) limitHit = true;
             if (masked) continue;
             int sy = lineY - ypos;
             bool vflip = (attr & 0x1000) != 0, hflip = (attr & 0x800) != 0;
@@ -334,6 +361,7 @@ public sealed partial class MdVdp
                 }
             }
         }
+        prevLineDotLimit = limitHit;
     }
 
     // =================================================================================================================
@@ -349,28 +377,30 @@ public sealed partial class MdVdp
             for (int x = x0; x < x1; x++)
             {
                 int sv = s[x], av = a[x], bv = b[x], v;
-                if (sv != 0 && (sv & 0x80) != 0) v = sv;
-                else if (av != 0 && (av & 0x80) != 0) v = av;
-                else if (bv != 0 && (bv & 0x80) != 0) v = bv;
-                else if (sv != 0) v = sv;
-                else if (av != 0) v = av;
-                else if (bv != 0) v = bv;
+                if ((sv & 15) != 0 && (sv & 0x80) != 0) v = sv;
+                else if ((av & 15) != 0 && (av & 0x80) != 0) v = av;
+                else if ((bv & 15) != 0 && (bv & 0x80) != 0) v = bv;
+                else if ((sv & 15) != 0) v = sv;
+                else if ((av & 15) != 0) v = av;
+                else if ((bv & 15) != 0) v = bv;
                 else v = bd;
                 o[x] = (byte)(v & 0x3F);
             }
         }
         else
         {
+            // shadow and highlight: a pixel is in shadow unless a plane's tile has the priority bit (even where that tile is transparent: the backdrop under a high-priority tile is not darkened)
             for (int x = x0; x < x1; x++)
             {
-                int sv = s[x], av = a[x], bv = b[x], pl, state;
-                if (av != 0 && (av & 0x80) != 0) { pl = av; state = 0; }
-                else if (bv != 0 && (bv & 0x80) != 0) { pl = bv; state = 0; }
-                else if (av != 0) { pl = av; state = 1; }
-                else if (bv != 0) { pl = bv; state = 1; }
-                else { pl = bd; state = 1; }
+                int sv = s[x], av = a[x], bv = b[x], pl;
+                int state = ((av | bv) & 0x80) != 0 ? 0 : 1;
+                if ((av & 15) != 0 && (av & 0x80) != 0) pl = av;
+                else if ((bv & 15) != 0 && (bv & 0x80) != 0) pl = bv;
+                else if ((av & 15) != 0) pl = av;
+                else if ((bv & 15) != 0) pl = bv;
+                else pl = bd;
                 int idx = pl & 0x3F;
-                if (sv != 0)
+                if ((sv & 15) != 0)
                 {
                     int sp = sv & 0x3F;
                     if (sp == 0x3E) state = state == 1 ? 0 : 2;          // highlight: a shadowed pixel becomes normal, a normal one brighter

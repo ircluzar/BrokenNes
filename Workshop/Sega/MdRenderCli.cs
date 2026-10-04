@@ -18,7 +18,7 @@ internal static class MdRenderCli
     {
         string? dir = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         string? bstate = M68kTestCli.Arg(args, "--bstate");
-        if (dir == null && bstate == null) { Console.WriteLine("usage: --md-render <dir with vram.bin cram.bin vsram.bin regs.bin> | --bstate <BlastEm quicksave.state> [--png out.png] [--region ntsc|pal]"); return 2; }
+        if (dir == null && bstate == null) { Console.WriteLine("usage: --md-render <dir with vram.bin cram.bin vsram.bin regs.bin> | --bstate <BlastEm quicksave.state> [--png out.png] [--region ntsc|pal] [--set 17=07,18=00]"); return 2; }
         string? png = M68kTestCli.Arg(args, "--png");
         var region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() == "pal" ? SegaRegion.Pal : SegaRegion.Ntsc;
         var vdp = new MdVdp(SegaTimeline.Genesis(region));
@@ -46,6 +46,14 @@ internal static class MdRenderCli
             for (int i = 0; i < Math.Min(regs.Length, 24); i++) vdp.Reg[i] = regs[i];
         }
         catch (Exception e) { Console.WriteLine($"cannot load {dir}: {e.Message}"); return 2; }
+        // --set 17=07,18=00 : override registers (decimal register number, hex value) before drawing
+        if (M68kTestCli.Arg(args, "--set") is { } setList)
+            foreach (var kv in setList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var parts = kv.Split('=');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int rn) && rn is >= 0 and < 24) vdp.Reg[rn] = Convert.ToByte(parts[1], 16);
+            }
+        if (int.TryParse(Environment.GetEnvironmentVariable("MD_WINBUG"), out int wbm)) MdVdp.WindowBugMode = wbm;
         vdp.ResetPictureState();
         // two frames: the first line of the first frame begins before the registers were in place on a cold start
         long clocks = (long)vdp.Timeline.MasterClocksPerFrame * 2 + 100;
