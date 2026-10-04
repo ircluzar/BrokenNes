@@ -101,6 +101,7 @@ internal static class FmProbes
         foreach (var (name, seq) in SequenceProbes) File.WriteAllBytes(Path.Combine(dir, $"fm-io-seq-{name}.sms"), SequenceAfter(false, true, seq));
         File.WriteAllBytes(Path.Combine(dir, "fm-io-pad.sms"), SequenceAfter(true, true));
         for (int c = 0; c < 4; c++) File.WriteAllBytes(Path.Combine(dir, $"fm-tone-c{c}.sms"), Tone(c, 290, 4, psgPeriod: 254));
+        File.WriteAllBytes(Path.Combine(dir, "fm-nine.sms"), NineChannels(out _));
         File.WriteAllBytes(Path.Combine(dir, "fm-tone-1.sms"), Tone(1, 290, 4));
         File.WriteAllBytes(Path.Combine(dir, "fm-tone-3-psg.sms"), Tone(3, 290, 4, psgPeriod: 254));
         Console.WriteLine($"wrote probes to {dir}");
