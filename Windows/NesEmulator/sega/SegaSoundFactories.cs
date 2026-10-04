@@ -43,12 +43,14 @@ public static class SmsSoundFactories
     }
 }
 
-/// <summary>The Genesis sound units (Z80 + YM2612 + PSG), by APU-menu id. <c>MD</c> is the stock unit: today the labelled stand-in, replaced by the real one when the Genesis track delivers it.</summary>
+/// <summary>The Genesis sound units (Z80 + YM2612 + PSG), by APU-menu id. <c>MD</c> is the stock unit: the real Z80, the PSG and the YM2612's registers and timers (<see cref="MdSoundUnit"/>; its FM makes no
+/// sound yet, and it says so in <c>CoreName</c>). <c>MD-STUB</c> is the labelled stand-in with no Z80 at all.</summary>
 public static class GenesisSoundFactories
 {
     public static readonly Dictionary<string, Func<SegaMachine, IGenesisSound>> Factories = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["MD"] = m => new GenesisSoundStub(m),
+        ["MD"] = m => new MdSoundUnit(m),
+        ["MD-STUB"] = m => new GenesisSoundStub(m),
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;

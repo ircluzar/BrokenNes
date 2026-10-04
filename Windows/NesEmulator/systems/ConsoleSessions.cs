@@ -27,6 +27,7 @@ public static class ConsoleSessions
     /// </summary>
     private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu)
     {
+        if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Sega.MdSession(rom, cpu, ppu, apu);
         if (Consoles.IsReady(console))
             throw new InvalidOperationException($"{Consoles.DisplayName(console)} is marked ready but ConsoleSessions.CreateSega has no session for it");
         if (!Consoles.IsAvailable(console))
