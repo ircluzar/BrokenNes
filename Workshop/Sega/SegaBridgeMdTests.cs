@@ -424,9 +424,10 @@ internal static class SegaBridgeMdTests
             {
                 var live = Rig(0); var lm = (APU_MD)live.Apu; live.Pulse(0, t, 15); live.Run(0.1, false);
                 APU_MD.SetPatchEverywhere(7); live.Run(0.1, false);
-                bool liveOk = lm.Patch == 7 && lm.Describe().Contains("'Marimba'");
+                bool liveOk = lm.Patch == 7 && lm.Describe().Contains($"'{FmPatchBank.Patches[7].Name}'");
                 APU_MD.SetPatchEverywhere(99);
-                Check("APU_MD.SetPatchEverywhere (the desktop's panel, Lite's picker) switches a running core at its next sync and sets the start patch for new ones (out of range is the last)", liveOk && APU_MD.DefaultPatch == 15 && ((APU_MD)new MdPatchCli.Rig("MD").Apu).Patch == 15);
+                int fresh = ((APU_MD)new MdPatchCli.Rig("MD").Apu).Patch;
+                Check($"APU_MD.SetPatchEverywhere (the desktop's panel, Lite's picker) switches a running core at its next sync (now '{FmPatchBank.Patches[7].Name}': {liveOk}) and sets the start patch for new ones (out of range is the last: default {APU_MD.DefaultPatch}, a new core {fresh}, expect 15)", liveOk && APU_MD.DefaultPatch == 15 && fresh == 15);
             }
             finally { APU_MD.SetPatchEverywhere(savedDefault); }
         }
