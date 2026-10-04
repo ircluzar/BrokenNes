@@ -24,9 +24,18 @@ internal static class SegaBridgeMdTests
         if (ok) passes++; else failures++;
         Console.WriteLine($"  {(ok ? "PASS" : "FAIL")}  {name}{(detail.Length > 0 ? "  [" + detail + "]" : "")}");
     }
+    /// <summary>Runs one group of checks; an exception in it (a measurement of silence, an index out of range) is a failed check with the message, not a crashed run that hides every later check.</summary>
+    private static void Guard(Action group, string? name = null)
+    {
+        try { group(); }
+        catch (Exception e) { Check($"{name ?? group.Method.Name} ran to the end", false, e.GetType().Name + ": " + e.Message); }
+    }
     private static void Info(string text) { if (verbose) Console.WriteLine("        " + text); }
 
     private const double NesHz = NesVoiceWriter.NesCpuHz;
+    /// <summary>What the Genesis sound on a NES chip is documented to be under the stock unit (the NES pulse's loudest step against a full-scale FM carrier): written here so the checks do not take it from the code they check.</summary>
+    private const double ScaleDb = -4.0;
+    private static readonly double Scale = Math.Pow(10, ScaleDb / 20);
     private static double Cents(double hz, double want) => SegaMeasure.Cents(hz, want);
     private static double Db(double a, double b)
     {
@@ -51,9 +60,9 @@ internal static class SegaBridgeMdTests
     {
         verbose = verboseOutput; passes = failures = 0;
         if (want("mdcatalog")) { Console.WriteLine("\n== Genesis menus and factory"); Catalog(); }
-        if (want("mdapu")) { Console.WriteLine("\n== APU_MD: NES registers to the YM2612 and the PSG"); Bank(); Pitch(); Level(); CalibrationCheck(); Noise(); Dmc(); Switching(); Polyphony(); PsgSquare(); Range(); Behaviour(); Timing(); }
-        if (want("mdunit")) { Console.WriteLine("\n== MdSoundOnNes: a Genesis game's sound on NES chips"); UnitFactory(); UnitEveryChip(); UnitPitch(); UnitLevel(); UnitPsg(); UnitDac(); UnitPolyphony(); UnitLowNotes(); UnitCounters(); UnitZ80(); UnitState(); UnitNoAllocation(); }
-        if (want("mdgame")) { Console.WriteLine("\n== a NES game on APU_MD, and a Genesis game through MdSoundOnNes"); NesGame(nesRom); GenesisGame(mdRom); }
+        if (want("mdapu")) { Console.WriteLine("\n== APU_MD: NES registers to the YM2612 and the PSG"); Guard(Bank); Guard(Pitch); Guard(Level); Guard(CalibrationCheck); Guard(Noise); Guard(Dmc); Guard(Switching); Guard(Polyphony); Guard(PsgSquare); Guard(Range); Guard(Behaviour); Guard(Timing); }
+        if (want("mdunit")) { Console.WriteLine("\n== MdSoundOnNes: a Genesis game's sound on NES chips"); Guard(UnitFactory); Guard(UnitEveryChip); Guard(UnitPitch); Guard(UnitLevel); Guard(UnitPsg); Guard(UnitDac); Guard(UnitPolyphony); Guard(UnitLowNotes); Guard(UnitCounters); Guard(UnitZ80); Guard(UnitState); Guard(UnitNoAllocation); }
+        if (want("mdgame")) { Console.WriteLine("\n== a NES game on APU_MD, and a Genesis game through MdSoundOnNes"); Guard(() => NesGame(nesRom), "NesGame"); Guard(() => GenesisGame(mdRom), "GenesisGame"); }
         return (passes, failures);
     }
 
@@ -861,8 +870,10 @@ internal static class SegaBridgeMdTests
 
     private static void UnitLevel()
     {
-        // level against the stock unit: the NES chip plays every voice LevelScale (-4.0 dB) quieter, so the figure checked is the deviation from that
-        double scaleDb = Db(MdSoundOnNes.LevelScale, 1);
+        // level against the stock unit: the NES chip plays every voice 4.0 dB quieter (the NES pulse's loudest step against a full-scale FM carrier), so the figure checked is the deviation from that.
+        // The -4.0 is written here, not read from MdSoundOnNes.LevelScale: a test that took its expectation from the code would pass whatever the code said (the check below ties the two).
+        double scaleDb = ScaleDb;
+        Check($"the bridge's LevelScale is the documented -4.0 dB (the NES pulse's loudest step is 4 dB under a full-scale FM carrier): {Db(MdSoundOnNes.LevelScale, 1):F2} dB", Math.Abs(Db(MdSoundOnNes.LevelScale, 1) - ScaleDb) < 0.1);
         Console.WriteLine($"        every voice is replayed {scaleDb:F2} dB quieter than the stock unit (the NES pulse's loudest step against a full-scale FM carrier)");
         double worst = 0; var rows = new List<string>(); var bad = new List<string>();
         foreach (int tl in new[] { 4, 8, 12, 16, 20, 24, 28 })
@@ -870,7 +881,7 @@ internal static class SegaBridgeMdTests
             double rs, rn;
             { var r = new UnitRig("MD"); r.LoadPatch(0, SinePatch, tl); r.FmPitch(0, 261.63); r.Key(0, true); rs = RmsOf(r.Capture(0.5, 0.9), 44100, 0.3, 0.9); }
             { var r = new UnitRig("NES"); r.LoadPatch(0, SinePatch, tl); r.FmPitch(0, 261.63); r.Key(0, true); rn = RmsOf(r.Capture(0.5, 0.9), 44100, 0.3, 0.9); }
-            double d = Db(rn, rs) - scaleDb, bound = StepBound(rs * MdSoundOnNes.LevelScale); worst = Math.Max(worst, Math.Abs(d) - bound + 0.8);
+            double d = Db(rn, rs) - scaleDb, bound = StepBound(rs * Scale); worst = Math.Max(worst, Math.Abs(d) - bound + 0.8);
             rows.Add($"TL {tl}: {Db(rn, rs):+0.0;-0.0}");
             if (Math.Abs(d) > bound) bad.Add($"TL {tl} {d:+0.0;-0.0} (bound {bound:F1})");
         }
@@ -909,7 +920,7 @@ internal static class SegaBridgeMdTests
             if (Math.Abs(diff - analytic) > 0.6 || Math.Abs(diff) > bound) bad.Add($"tone {ch + 1} N={period}: {diff:+0.00;-0.00} cents (timer rounding {analytic:+0.00;-0.00})");
             // the NES chip's own output filter (APU_FIX low-passes near 1 kHz) takes 1 to 6 dB off a square wave above about 500 Hz, on any NES note: the level is held where that filter does not reach, and shown above it
             double stockRms = RmsOf(stock, 44100, 0.2, 1.0);
-            if (hz < 300 && Math.Abs(lvl - Db(MdSoundOnNes.LevelScale, 1)) > StepBound(stockRms * MdSoundOnNes.LevelScale)) bad.Add($"tone {ch + 1} N={period}: level {lvl:+0.0;-0.0} dB");
+            if (hz < 300 && Math.Abs(lvl - ScaleDb) > StepBound(stockRms * Scale)) bad.Add($"tone {ch + 1} N={period}: level {lvl:+0.0;-0.0} dB");
         }
         Console.WriteLine($"        PSG tones through the NES chip: {string.Join("; ", rows)}");
         Check($"PSG tones 1 to 3 (tone 3 on a pulse: it is a square wave) play at the stock unit's pitch to the NES timer's step (worst {worstP:F1} cents) and, below 300 Hz, at the stock level less 4 dB to the nearest NES step (above that APU_FIX's own output low-pass takes 1 to 6 dB off any NES note: shown in the line above)", bad.Count == 0, string.Join("; ", bad));
@@ -921,7 +932,7 @@ internal static class SegaBridgeMdTests
                 double rs, rn;
                 { var r = new UnitRig("MD"); r.PsgTone(0, 508, k); rs = RmsOf(r.Capture(0.4, 0.8), 44100, 0.2, 0.8); }
                 { var r = new UnitRig("NES"); r.PsgTone(0, 508, k); rn = RmsOf(r.Capture(0.4, 0.8), 44100, 0.2, 0.8); }
-                double d = Db(rn, rs) - Db(MdSoundOnNes.LevelScale, 1), bound = StepBound(rs * MdSoundOnNes.LevelScale); seq.Add(rn);
+                double d = Db(rn, rs) - ScaleDb, bound = StepBound(rs * Scale); seq.Add(rn);
                 if (Math.Abs(d) > bound) vbad.Add($"volume {k}: {d:+0.0;-0.0} dB (bound {bound:F1})");
             }
             bool mono = true; for (int i = 1; i < seq.Count; i++) mono &= seq[i] <= seq[i - 1] * 1.001;
@@ -972,7 +983,7 @@ internal static class SegaBridgeMdTests
                 return SegaMeasure.Rms(audio, 4410, Math.Min(audio.Length, 4410 + 25000));
             }
             rs = RunDac("MD", out _); rn = RunDac("NES", out nesAudio);
-            double d = Db(rn, rs) - Db(MdSoundOnNes.LevelScale, 1), bound = StepBound(rs * MdSoundOnNes.LevelScale, noise: true) + 1.5;
+            double d = Db(rn, rs) - ScaleDb, bound = StepBound(rs * Scale, noise: true) + 1.5;
             rows.Add($"swing {amp * 2 / 256.0:F2}: {Db(rn, rs):+0.0;-0.0} dB ({d:+0.0;-0.0} off the offset, bound {bound:F1})");
             if (d > bound || d < -(bound + 3.5)) bad.Add($"amplitude {amp}: {d:+0.0;-0.0} dB off (bound +{bound:F1} / -{bound + 3.5:F1})");
             var (_, peak) = SegaMeasure.Periodicity(nesAudio.Skip(4410).Take(12000).ToArray(), 20, 2000);
@@ -1139,11 +1150,15 @@ internal static class SegaBridgeMdTests
             var a = GenesisSoundFactories.Create("MD", Machine()); var b = GenesisSoundFactories.Create("NES", Machine());
             a.Reset(); b.Reset();
             bool same = a.IsInReset == b.IsInReset;
+            var sa = new List<bool>(); var sb = new List<bool>();      // what the 68000 would read from the bus-request port, at the moments it reads it
+            sa.Add(a.IsBusGranted(0)); sb.Add(b.IsBusGranted(0));       // before any request
             a.WriteBusRequest(true, 0); b.WriteBusRequest(true, 0);
-            same &= a.IsBusGranted(100) == b.IsBusGranted(100);
-            a.WriteReset(true, 100); b.WriteReset(true, 100); a.WriteBusRequest(false, 200); b.WriteBusRequest(false, 200); a.RunTo(2000); b.RunTo(2000);
-            same &= a.IsInReset == b.IsInReset && a.Read(0x4000, 2000) == b.Read(0x4000, 2000);
-            Check("the BUSREQ / RESET handshake and the Z80 RAM window answer exactly as the stock unit's", same && b.IsInReset == false);
+            sa.Add(a.IsBusGranted(100)); sb.Add(b.IsBusGranted(100));   // requested
+            a.WriteReset(true, 100); b.WriteReset(true, 100); a.WriteBusRequest(false, 200); b.WriteBusRequest(false, 200);
+            sa.Add(a.IsBusGranted(300)); sb.Add(b.IsBusGranted(300));   // released again: the Z80 has the bus back, a grant that says otherwise would let the 68000 write Z80 RAM under a running driver
+            a.RunTo(2000); b.RunTo(2000);
+            same &= a.IsInReset == b.IsInReset && a.Read(0x4000, 2000) == b.Read(0x4000, 2000) && sa.SequenceEqual(sb);
+            Check($"the BUSREQ / RESET handshake and the Z80 RAM window answer exactly as the stock unit's (grant before a request / while requested / after release: stock {string.Join("/", sa)}, bridge {string.Join("/", sb)}; the stock answers both ways)", same && b.IsInReset == false && sa.Contains(true) && sa.Contains(false));
         }
     }
 
@@ -1223,7 +1238,7 @@ internal static class SegaBridgeMdTests
         Check($"the game's Z80 driver ran: {real.Z80Ticks:N0} Z80 T-states, {real.YmWrites:N0} YM2612 writes, {real.PsgWrites:N0} PSG writes (the same {br.Inner.YmWrites:N0} / {br.Inner.PsgWrites:N0} inside the bridge)", real.YmWrites > 100 && br.Inner.YmWrites == real.YmWrites && br.Inner.PsgWrites == real.PsgWrites);
         double rs = SegaMeasure.Rms(stock.Audio, 0, stock.Audio.Length), rf = SegaMeasure.Rms(fixs.Audio, 0, fixs.Audio.Length);
         Console.WriteLine($"        {fixs.S.Board.Sound.Describe()}");
-        Check($"the game's sound is audible on the NES chip: rms {rf:F4} against the stock unit's {rs:F4} ({Db(rf, rs):+0.0;-0.0} dB; the NES chip is {Db(MdSoundOnNes.LevelScale, 1):F1} dB under by design)", rf > 0.001 && rs > 0.001);
+        Check($"the game's sound is audible on the NES chip: rms {rf:F4} against the stock unit's {rs:F4} ({Db(rf, rs):+0.0;-0.0} dB; the NES chip is {ScaleDb:F1} dB under by design)", rf > 0.001 && rs > 0.001);
         var env = EnvelopeCorrelation(fixs.Audio, stock.Audio);
         Check($"it is the same music: the loudness envelope on NES:FIXS correlates {env.Corr:F3} with the stock unit's over {env.Windows} windows of 20 ms (limit 0.6: the stock mix has voices the NES chip cannot carry)", env.Corr > 0.6);
         var simFixs = ChromaSimilarity(fixs.Audio, stock.Audio); var simFix = ChromaSimilarity(fixr.Audio, stock.Audio); var simOther = ChromaSimilarity(fixs.Audio, stock.Audio, 110250);
