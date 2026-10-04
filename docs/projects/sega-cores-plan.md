@@ -1,6 +1,6 @@
 # Sega Master System, Game Gear and Genesis / Mega Drive: research and plan
 
-Status: **research and planning only, nothing implemented** (written 2026-10-03). Four research passes fed this: how BrokenNes integrated Game Boy and SNES
+Status (2026-10-04): **Phase 0 and the first two milestones of every track are built, verified and merged**: the Master System, Game Gear and Genesis run in the desktop app, the PSG and FM sound bridges and the plugin chips exist, and the test numbers are in section 12 and in the track records (`sega-track-a.md`, `sega-track-a2.md`, `sega-track-b.md`, `sega-track-b2a.md`, `sega-track-c.md`; the shared rules are `sega-tracks-brief.md`, the game lists `sega-rosters.md`). What is **not** done: nobody has listened to any of it, Genesis games are "working" but not yet played through, interlace, the Genesis stems/Runaway in the plugin, the picture bridges and the CPU walls, Lite speed. The text below is the original plan (written 2026-10-03). Four research passes fed this: how BrokenNes integrated Game Boy and SNES
 (read from the code, `git log` and the project memory notes), Master System / Game Gear hardware, Genesis hardware, and reference implementations plus
 licensing. Facts are tagged where the sources disagree. The "Verify before relying" list at the end names what was not confirmed.
 
