@@ -433,7 +433,7 @@ public sealed partial class MdVdp
         SyncRender();
         Cram[index] = (ushort)(data & 0x0EEE);
         UpdatePal(index);
-        if (lineActive && DisplayEnabled)
+        if (lineActive)      // also with the display switched off: the picture is then the backdrop and the dots are all there is (the direct colour DMA demo)
         {
             int px = PixelNow();
             if (px < lineWidth && px >= colourX)

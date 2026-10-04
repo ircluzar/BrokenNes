@@ -196,40 +196,66 @@ public sealed partial class MdVdp
                 int pxDiv = h40 ? 8 : 10;
                 int freeBlank = total - refresh, freeActive = h40 ? 18 : 16;
                 t[w] = new int[2][];
-                // blanked: every slot but the refresh ones, which sit where the picture lines have theirs
-                var refreshSlots = new bool[total];
-                foreach (int px in h40 ? RefreshPixelsH40 : RefreshPixelsH32) refreshSlots[Math.Min(total - 1, px * pxDiv * total / ClocksPerLine)] = true;
+                // blanked: the slot grid (a slot is 16 master clocks in H40 and 20 in H32, 2 pixels either way) minus the refresh slots. Measured with Chilly Willy's direct colour DMA demo (BlastEm's picture of it: every
+                // line takes 198 words of the DMA and the image does not shear): in H40 each refresh costs two slots, at slots 14-15, 46-47, 78-79, 110-111 and 142-143 (pixels 28, 92, 156, 220 and 284), and the
+                // last six slots of the line (the horizontal sync) carry no word; 214 grid slots in all. H32 has the documented 167 (4 single refresh slots at the same places).
                 var blank = new System.Collections.Generic.List<int>();
-                for (int s = 0; s < total; s++) if (!refreshSlots[s]) blank.Add(s * ClocksPerLine / total);
+                int slotClocks = h40 ? 16 : 20, grid = h40 ? 214 : 171;
+                for (int j = 0; j < grid; j++)
+                {
+                    bool refreshSlot = h40 ? (j % 32 is 14 or 15 && j < 144) : (j % 32 == 14 && j < 112);
+                    bool sync = h40 && j >= 208;
+                    if (!refreshSlot && !sync) blank.Add(j * slotClocks);
+                }
                 t[w][0] = blank.ToArray();
+                freeBlank = blank.Count;
                 // active: the measured columns, then the rest in the blanking at the end of the line, a slot's length apart
                 var active = new System.Collections.Generic.List<int>();
                 foreach (int px in h40 ? ActivePixelsH40 : ActivePixelsH32) active.Add(px * pxDiv);
                 int next = 2560 + 16 * (h40 ? 2 : 1);
                 while (active.Count < freeActive) { active.Add(next); next += 20; }
                 t[w][1] = active.ToArray();
-                if (blank.Count != freeBlank) throw new InvalidOperationException("slot table: blanked free-slot count");
+                if (blank.Count != (h40 ? 198 : 167)) throw new InvalidOperationException("slot table: blanked free-slot count");
             }
             return t;
         }
     }
 
-    private int[] FreeSlotsNow(int line)
+    private int[] FreeSlotsFor(int line)
     {
-        bool active = DisplayEnabled && line < ActiveLines;
+        // the picture lines and the last line of the frame (the pre-render line: the chip fetches line 0's sprites and tiles in it) have the display's slots; every other line is blanked
+        bool active = DisplayEnabled && (line < ActiveLines || line == linesPerFrame - 1);
         return SlotTable.Free[H40 ? 1 : 0][active ? 1 : 0];
     }
 
-    /// <summary>The master clock of the first free slot at or after <paramref name="from"/> (within the current line, else the next).</summary>
-    private long NextFreeSlot(long from)
+    private static int LowerBound(int[] table, long off)
     {
-        long off = from - lineStart;
-        var table = FreeSlotsNow(Line);
         int lo = 0, hi = table.Length;
         while (lo < hi) { int mid = (lo + hi) >> 1; if (table[mid] < off) lo = mid + 1; else hi = mid; }
-        if (lo < table.Length) return lineStart + table[lo];
-        int nextLine = Line + 1 >= linesPerFrame ? 0 : Line + 1;
-        return lineStart + ClocksPerLine + FreeSlotsNow(nextLine)[0];
+        return lo;
+    }
+
+    /// <summary>
+    /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: the stretch of a line from the
+    /// counter's step (<see cref="VCounterStepOffset"/>) on already has the next line's slots (found with the probe ROMs: the FIFO of the last blank line drains as fast as a blank line until the step and as
+    /// slowly as a picture line after it, and the direct colour DMA demo's lead-in only lines up when it does).
+    /// </summary>
+    private long NextFreeSlot(long from)
+    {
+        int line = Line; long ls = lineStart;
+        for (int guard = 0; guard < 4; guard++)
+        {
+            long off = Math.Max(from - ls, 0);
+            int next = line + 1 >= linesPerFrame ? 0 : line + 1;
+            var a = FreeSlotsFor(line);
+            int i = LowerBound(a, off);
+            if (i < a.Length && a[i] < VCounterStepOffset) return ls + a[i];
+            var b = FreeSlotsFor(next);
+            int j = LowerBound(b, Math.Max(off, VCounterStepOffset));
+            if (j < b.Length) return ls + b[j];
+            line = next; ls += ClocksPerLine; from = ls;
+        }
+        return from;
     }
 
     // =================================================================================================================
@@ -356,6 +382,7 @@ public sealed partial class MdVdp
             ref var e = ref fifo[fifoHead];
             if (--e.SlotsLeft <= 0)
             {
+                Trace?.Invoke($"fifo commit code {e.Code:X} at line {Line}+{LineOffset} left {fifoCount - 1}");
                 WriteTarget(e.Code, e.Address, e.Data);
                 fifoHead = fifoHead + 1 & 3; fifoCount--;
             }
@@ -610,7 +637,7 @@ public sealed partial class MdVdp
         if (sprCollision) s |= 0x20;
         sprOverflow = sprCollision = false;
         if (oddFrame) s |= 0x10;
-        if (InVBlank || !DisplayEnabled) s |= 0x08;
+        if (VBlankFlag || !DisplayEnabled) s |= 0x08;
         if (InHBlank) s |= 0x04;
         if (DmaBusy) s |= 0x02;
         if (Region == SegaRegion.Pal) s |= 0x01;
@@ -622,6 +649,18 @@ public sealed partial class MdVdp
     public const int StatusMask = 0x03FF;
 
     public bool InVBlank => Line >= ActiveLines;
+
+    /// <summary>The status register's vertical-blank bit follows the V counter, not the line: it rises when the counter steps to the first line after the picture (224) and falls when it steps to the last line of
+    /// the frame (the pre-render line, 261 NTSC), both at the counter's step in the line before (BlastEm and the probe ROMs agree: the counter's value 224 shows with the flag still low for a few pixels, the
+    /// flag drops as the counter reads 255).</summary>
+    public bool VBlankFlag
+    {
+        get
+        {
+            int vl = LineOffset >= VCounterStepOffset ? (Line + 1 >= linesPerFrame ? 0 : Line + 1) : Line;
+            return vl >= ActiveLines && vl < linesPerFrame - 1;
+        }
+    }
     public bool InHBlank { get { int o = LineOffset; return o >= HBlankStart || o < HBlankEnd; } }
 
     private void WaitForDmaIdle()
