@@ -557,11 +557,12 @@ public sealed unsafe class SelfTest
         using var probe = lib.Create();
         var chips = Chips(probe);
         // cores that are accurate by design must be on pitch; degraded / speed-hack cores are reported, not required
-        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES" };
+        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES", "MD" };
         var table = new List<string>();
         foreach (var chip in chips)
         {
             var s = One(69, 0, 0.6);
+            if (chip == "MD") s.Params[PInstrument] = 14;     // the Genesis chip's sine patch: the pitch is read from zero crossings, which the default (brass) timbre doubles to an octave
             var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, chip));
             using (plugin)
             {
