@@ -28,6 +28,7 @@ find a borrowed piece that is not listed, that is a bug in this file: report it.
 | MMC5 expansion audio, adapted | `Windows/NesEmulator/expansion/MMC5Audio.cs` | BizHawk `MMC5Audio`, MIT, Copyright (c) BizHawk team |
 | Mapper 90 and Mapper 228 logic follows BizHawk's, simplified | `Windows/NesEmulator/mappers/Mapper90.cs`, `Mapper228.cs` | BizHawk, MIT, Copyright (c) BizHawk team |
 | Sega: Motorola 68000 core, ported | `Windows/NesEmulator/md/M68k*.cs`, `IM68kBus.cs` | ares `component/processor/m68000`, ISC, Copyright (c) 2004-2025 ares team, Near et al; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (the ISC text is in section 6) |
+| Sega: YM2612 / YM3438 FM chip (Genesis), ported | `Windows/NesEmulator/sega/Ym2612.cs`, `Ym2612.Tables.cs` | ymfm `ym2612` / `ym3438` and the shared FM engine (`ymfm_opn.cpp`, `ymfm_fm.ipp`, `ymfm_fm.h`, `ymfm.h`), commit 81aec25, BSD-3-Clause, Copyright (c) 2021 Aaron Giles; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1c (the BSD text is in section 6) |
 | Sega: Z80 and others, **planned** | see `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` | each entry is added to that ledger when the code lands |
 
 BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
@@ -89,5 +90,17 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
 ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+**BSD 3-Clause License, Copyright (c) 2021, Aaron Giles** (ymfm; the YM2612 core under `Windows/NesEmulator/sega/`)
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The licenses of the packages in section 5 ship inside the packages (their `license` files) and are included with the distributed programs.

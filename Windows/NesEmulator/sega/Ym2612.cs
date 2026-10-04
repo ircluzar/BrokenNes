@@ -16,9 +16,14 @@ public interface IYm2612Sink
 /// </summary>
 /// <remarks>
 /// <para><b>Source.</b> A C# port of ymfm's OPN2 (<c>ym2612</c> and <c>ym3438</c> in ymfm_opn.cpp, with the shared FM engine of ymfm_fm.ipp and the <c>opna_registers</c> of ymfm_opn.cpp),
-/// ymfm commit 81aec25 (2026-07-27), BSD-3-Clause, Copyright (c) 2021 Aaron Giles. The notice and the list of what changed are in <c>sega/THIRD_PARTY_NOTICES.md</c> section 1c. The arithmetic is ymfm's
-/// line for line (the same tables, shifts, truncations and clamps); the class layout is not: the engine, the registers, the operators and the two chip variants are one class here with the operators in
-/// an array, the timers keep time in chip clocks instead of calling back into a host, and the output goes to an <see cref="IYm2612Sink"/>.</para>
+/// ymfm commit 81aec25 (2026-07-27), BSD-3-Clause, Copyright (c) 2021 Aaron Giles. The notice and the list of what changed are in <c>sega/THIRD_PARTY_NOTICES.md</c> section 1c. With
+/// <see cref="SlotPipeline"/> off the arithmetic is ymfm's line for line (the same tables, shifts, truncations and clamps: <c>--ym-oracle-test</c> checks that against ymfm itself, sample for sample); the class layout is not:
+/// the engine, the registers, the operators and the two chip variants are one class here with the operators in an array, the timers keep time in chip clocks instead of calling back into a host, and the output goes
+/// to an <see cref="IYm2612Sink"/>.</para>
+/// <para><b>The slot pipeline (on by default).</b> ymfm computes a whole sample at once; the chip computes one operator slot per clock in a 24-slot pipeline. Where that shows in the output, this class follows the
+/// behaviour of the Nuked-OPN2 oracle (found by comparing scripted runs, none of its code read): the order and the clamp of the channel accumulator, the one-sample delays of the LFO into each slot, the tick phase of the
+/// fastest envelope rates, timer A's load phase, the busy flag's latency, the status echo of the discrete chip, the ladder's offsets. The bounds of the match, and what is not exact (note-on and note-off timing between
+/// operators, SSG-EG, CSM), are stated by the checks of <c>--ym-oracle-test</c> and in the ledger.</para>
 /// <para><b>Time.</b> The chip runs by the clock it is told (<see cref="RunTo"/> and the access methods take the chip clock, master / 7). Sample n completes at clock 144 n. An access lands in the sample
 /// whose interval contains it; the timers count from the access that loaded them; the busy flag stays up for <see cref="BusyClocks"/> after a data write.</para>
 /// <para><b>Two chips.</b> The discrete YM2612 of the first Mega Drives (<see cref="Ladder"/> true: the DAC's crossover discontinuity, ymfm's <c>ym2612::generate</c>) and the YM3438 / integrated version of
