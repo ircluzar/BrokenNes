@@ -44,18 +44,31 @@ public static class SmsSoundFactories
     }
 }
 
-/// <summary>The Genesis sound units (Z80 + YM2612 + PSG), by APU-menu id. <c>MD</c> is the stock unit: the real Z80, the PSG and the YM2612's registers and timers (<see cref="MdSoundUnit"/>; its FM makes no
-/// sound yet, and it says so in <c>CoreName</c>). <c>MD-STUB</c> is the labelled stand-in with no Z80 at all.</summary>
+/// <summary>The Genesis sound units (Z80 + YM2612 + PSG), by APU-menu id. <c>MD</c> is the stock unit: the real Z80, the PSG and the real YM2612 with its DAC (<see cref="MdSoundUnit"/>). <c>MD-STUB</c> is the labelled stand-in with no Z80 at all.
+/// <c>NES</c> (Track C) is a Genesis game's sound replayed on a NES sound chip (<see cref="MdSoundOnNes"/>; the real unit runs inside it): <c>NES:FIX</c>, <c>NES:FIXS</c> ... name the chip, a bare <c>NES</c> means FIX.</summary>
 public static class GenesisSoundFactories
 {
     public static readonly Dictionary<string, Func<SegaMachine, IGenesisSound>> Factories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["MD"] = m => new MdSoundUnit(m),
         ["MD-STUB"] = m => new GenesisSoundStub(m),
+        ["NES"] = m => new MdSoundOnNes(m),
+    };
+
+    /// <summary>Units whose menu id carries a detail after a colon (<c>NES:FIXS</c>): looked up by the part before the colon, the rest handed over.</summary>
+    public static readonly Dictionary<string, Func<SegaMachine, string, IGenesisSound>> Detailed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["NES"] = (m, detail) => new MdSoundOnNes(m, detail),
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
 
-    public static IGenesisSound Create(string id, SegaMachine machine) =>
-        Factories.TryGetValue(id, out var f) ? f(machine) : throw new ArgumentException($"No Genesis sound unit '{id}' (have: {string.Join(", ", Factories.Keys)})");
+    /// <summary>The unit for <paramref name="id"/>; an unknown id (or an unknown NES chip behind a colon) is an error, never a quiet substitution.</summary>
+    public static IGenesisSound Create(string id, SegaMachine machine)
+    {
+        if (Factories.TryGetValue(id, out var f)) return f(machine);
+        int colon = id.IndexOf(':');
+        if (colon > 0 && Detailed.TryGetValue(id[..colon], out var g)) return g(machine, id[(colon + 1)..]);
+        throw new ArgumentException($"No Genesis sound unit '{id}' (have: {string.Join(", ", Factories.Keys)})");
+    }
 }

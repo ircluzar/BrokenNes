@@ -43,13 +43,18 @@ namespace NesEmulator
         // What a channel adds to the NES mixer when it plays alone (NESdev's mixer formulas): a pulse or the noise at volume v, the triangle at its fixed full swing.
         internal static double PulseOut(int v) => v <= 0 ? 0 : 95.88 / (8128.0 / v + 100);
         internal static double NoiseOut(int v) => v <= 0 ? 0 : 159.79 / (1.0 / (v / 12241.0) + 100);
-        private static readonly double TriangleOut = 159.79 / (1.0 / (15 / 8227.0) + 100);
+        internal static readonly double TriangleOut = 159.79 / (1.0 / (15 / 8227.0) + 100);
 
         /// <summary>Full scale of the PSG output (volume 0): the loudest thing a NES channel can ask for, the noise at volume 15, as the PSG's unipolar amplitude.</summary>
         public static readonly float PsgGain = (float)NoiseOut(15);
 
         // AC RMS of a pulse with a duty cycle d, per unit of amplitude: sqrt(d (1 - d)). The PSG tone is a 50% square (0.5), so a thinner NES pulse is played quieter to sound as loud.
-        private static readonly double[] DutyRms = { Math.Sqrt(0.125 * 0.875), Math.Sqrt(0.25 * 0.75), 0.5, Math.Sqrt(0.25 * 0.75) };
+        internal static readonly double[] DutyRms = { Math.Sqrt(0.125 * 0.875), Math.Sqrt(0.25 * 0.75), 0.5, Math.Sqrt(0.25 * 0.75) };
+
+        /// <summary>The PSG volume register value (0 loudest, 15 off) APU_SMS plays a NES pulse with this duty (0 to 3) and volume (0 to 15) at; shared with <see cref="APU_MD"/>'s PSG-square patch.</summary>
+        internal static byte PsgPulseVolume(int duty, int volume) => PulseVolume[duty & 3, volume & 15];
+        /// <summary>The PSG volume register value for a NES noise volume (0 to 15).</summary>
+        internal static byte PsgNoiseVolume(int volume) => NoiseVolume[volume & 15];
 
         private static readonly byte[,] PulseVolume = new byte[4, 16];
         private static readonly byte[] NoiseVolume = new byte[16];
