@@ -1,0 +1,632 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+using NesEmulator.Sega;
+using NesEmulator.Systems;
+
+namespace BrokenNes.Workshop.Sega;
+
+/// <summary>
+/// <c>--md-pic-test</c>: the Genesis picture, checked against the documented rules and against what Nemesis' sprite masking ROM, MacDonald's window and V counter ROMs and BlastEm's own pictures showed (each check that
+/// comes from the oracle says so). The VDP is set up directly (memories and registers), run for two frames and its <see cref="MdVdp.Picture"/> read pixel by pixel; mid-line behaviour (the colour RAM dot, the display
+/// switched off in the middle of a line, the window registers' latch) is driven through the control port at chosen times. After the picture: the session (pad mapping, the picture it hands the apps), battery saves, and the
+/// cartridge mappers (SRAM, the SSF2 banks, the Sonic &amp; Knuckles lock-on image).
+/// </summary>
+internal static class MdPictureTest
+{
+    private static int pass, fail;
+
+    private static void Check(string name, bool ok, string detail = "")
+    {
+        if (ok) pass++; else fail++;
+        Console.WriteLine($"  {(ok ? "PASS" : "FAIL")}  {name}{(ok || detail == "" ? "" : "  (" + detail + ")")}");
+    }
+
+    private static void Group(string title) => Console.WriteLine($"-- {title}");
+
+    // the DAC: the 15 output levels the picture uses
+    private static readonly int[] L15 = { 0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255 };
+    private static uint Argb(int cram, int mode)
+    {
+        int r = cram >> 1 & 7, g = cram >> 5 & 7, b = cram >> 9 & 7;
+        int Lv(int v) => mode == 0 ? L15[v * 2] : mode == 1 ? L15[v] : L15[v + 7];
+        return 0xFF000000u | (uint)(Lv(r) << 16 | Lv(g) << 8 | Lv(b));
+    }
+
+    // =====================================================================================================================
+    //  A VDP with a little scenery
+    // =====================================================================================================================
+
+    private const int PlaneA = 0x2000, PlaneB = 0x4000, Window = 0x1000, SatAddr = 0x6000, HScroll = 0x7C00;
+
+    private sealed class Pic
+    {
+        public readonly MdVdp V;
+        public long T;
+        public Pic(bool h40 = true, bool v30 = false, SegaRegion region = SegaRegion.Ntsc)
+        {
+            V = new MdVdp(SegaTimeline.Genesis(region));
+            V.Reg[1] = (byte)(0x44 | (v30 ? 8 : 0));
+            V.Reg[2] = PlaneA >> 10; V.Reg[3] = Window >> 10; V.Reg[4] = PlaneB >> 13; V.Reg[5] = SatAddr >> 9; V.Reg[13] = HScroll >> 10;
+            V.Reg[12] = (byte)(h40 ? 0x81 : 0x00);
+            V.Reg[16] = 0x01;            // 64 x 32
+            V.Reg[15] = 2;
+            for (int t = 1; t < 16; t++) Tile(t, t);             // tile n: solid colour n
+            Colours();
+            V.ResetPictureState();
+        }
+
+        /// <summary>CRAM: colour i of palette line p = a distinctive colour; entry 0 of each line is black.</summary>
+        public void Colours()
+        {
+            for (int p = 0; p < 4; p++)
+                for (int i = 0; i < 16; i++)
+                    V.LoadColour(p * 16 + i, (ushort)(i == 0 ? 0 : (i & 7) << 1 | ((i >> 3) * 4 + (p & 3)) << 5 | ((7 - (i & 3) + p) & 7) << 9));
+        }
+
+        public int CramOf(int pal, int idx) => V.Cram[pal * 16 + idx];
+
+        public void Tile(int n, int colour) { for (int i = 0; i < 32; i++) V.Vram[n * 32 + i] = (byte)(colour << 4 | colour); }
+
+        public void TileRows(int n, params int[] rowColours) { for (int r = 0; r < 8; r++) for (int k = 0; k < 4; k++) V.Vram[n * 32 + r * 4 + k] = (byte)(rowColours[r] << 4 | rowColours[r]); }
+
+        /// <summary>A tile with colour <paramref name="c"/> in its left half and 0 (transparent) in its right half.</summary>
+        public void TileLeftHalf(int n, int c) { for (int r = 0; r < 8; r++) { V.Vram[n * 32 + r * 4] = (byte)(c << 4 | c); V.Vram[n * 32 + r * 4 + 1] = (byte)(c << 4 | c); V.Vram[n * 32 + r * 4 + 2] = 0; V.Vram[n * 32 + r * 4 + 3] = 0; } }
+
+        public void Cell(int plane, int cx, int cy, int entry, int width = 64)
+        {
+            int a = plane + (cy * width + cx) * 2;
+            V.Vram[a] = (byte)(entry >> 8); V.Vram[a + 1] = (byte)entry;
+        }
+
+        public void Sprite(int index, int x, int y, int w, int h, int tile, int pal = 0, bool prio = false, int link = 0, bool hflip = false, bool vflip = false)
+        {
+            int a = SatAddr + index * 8;
+            V.Vram[a] = (byte)((y + 128) >> 8); V.Vram[a + 1] = (byte)(y + 128);
+            V.Vram[a + 2] = (byte)((w - 1) << 2 | (h - 1)); V.Vram[a + 3] = (byte)link;
+            int attr = tile | pal << 13 | (prio ? 0x8000 : 0) | (hflip ? 0x800 : 0) | (vflip ? 0x1000 : 0);
+            V.Vram[a + 4] = (byte)(attr >> 8); V.Vram[a + 5] = (byte)attr;
+            int xr = x + 128;
+            V.Vram[a + 6] = (byte)(xr >> 8); V.Vram[a + 7] = (byte)xr;
+        }
+
+        public void SetHScroll(int line, int a, int b) { int at = HScroll + line * 4; V.Vram[at] = (byte)(a >> 8); V.Vram[at + 1] = (byte)a; V.Vram[at + 2] = (byte)(b >> 8); V.Vram[at + 3] = (byte)b; }
+
+        public void Frame() { V.ResetPictureState(); V.RunTo(V.Time + V.Timeline.MasterClocksPerFrame * 2); }
+        public uint Px(int x, int y) => V.Picture[y * MdVdp.PictureStride + x];
+
+        public void Tick(int cycles = 4) { T += cycles * 7L; }
+        public void Ctl(ushort v) { Tick(); V.WriteControl(v, T); if (V.Time > T) T = V.Time; }
+        public void Reg(int r, int val) => Ctl((ushort)(0x8000 | r << 8 | val));
+        public void Cmd(int code, int addr) { Ctl((ushort)((code & 3) << 14 | addr & 0x3FFF)); Ctl((ushort)((code >> 2 & 0xF) << 4 | addr >> 14 & 3)); }
+        public void Data(ushort v) { Tick(); V.WriteData(v, T); if (V.Time > T) T = V.Time; }
+    }
+
+    public static int Run(string[] args)
+    {
+        Console.WriteLine("== Genesis picture, session, saves and mappers self-test");
+        Planes();
+        Scroll();
+        WindowTests();
+        Sprites();
+        ShadowHighlight();
+        ModesAndTiming();
+        Session();
+        Mappers();
+        Console.WriteLine($"== {pass} passed, {fail} failed");
+        return fail == 0 ? 0 : 1;
+    }
+
+    // =====================================================================================================================
+
+    private static void Planes()
+    {
+        Group("planes, priority and the backdrop");
+        var p = new Pic();
+        p.V.Reg[7] = 0x03; p.V.LoadColour(3, 0x0E00);
+        p.Frame();
+        Check("an empty picture is the backdrop colour (register 7: palette 0, colour 3)", p.Px(0, 0) == Argb(0x0E00, 0) && p.Px(319, 223) == Argb(0x0E00, 0) && p.Px(160, 100) == Argb(0x0E00, 0));
+        Check("H40 NTSC 224 lines is a 320 x 224 picture", p.V.PictureWidth == 320 && p.V.PictureHeight == 224);
+
+        p = new Pic();
+        p.Cell(PlaneB, 0, 0, 1); p.Cell(PlaneB, 1, 0, 0x2002);      // cell 1 uses palette line 1
+        p.Frame();
+        Check("plane B draws a tile at the top left in its palette colour", p.Px(0, 0) == Argb(p.CramOf(0, 1), 0) && p.Px(7, 7) == Argb(p.CramOf(0, 1), 0));
+        Check("... the tile ends at the cell edge, the backdrop (black) beyond", p.Px(16, 0) == Argb(0, 0));
+        Check("... and the palette line in the name table entry selects the colour line", p.Px(8, 0) == Argb(p.CramOf(1, 2), 0), $"{p.Px(8, 0):X8} {Argb(p.CramOf(1, 2), 0):X8}");
+
+        p = new Pic();
+        p.Cell(PlaneB, 0, 0, 1); p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneB, 1, 0, 1); p.Cell(PlaneA, 1, 0, 0);
+        p.Frame();
+        Check("plane A is drawn over plane B (both without the priority bit)", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        Check("a transparent plane A pixel (colour 0) shows plane B behind it", p.Px(10, 2) == Argb(p.CramOf(0, 1), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneB, 0, 0, 0x8001);                  // B has the priority bit, A does not
+        p.Cell(PlaneA, 1, 0, 0x8002); p.Cell(PlaneB, 1, 0, 0x8001);              // both have it
+        p.Frame();
+        Check("a high-priority plane B tile covers a low-priority plane A tile", p.Px(2, 2) == Argb(p.CramOf(0, 1), 0));
+        Check("with both high, plane A is on top again", p.Px(10, 2) == Argb(p.CramOf(0, 2), 0));
+
+        p = new Pic();
+        p.Tile(5, 0); p.V.Vram[5 * 32] = 0x12; p.V.Vram[5 * 32 + 1] = 0x34; p.V.Vram[5 * 32 + 2] = 0x56; p.V.Vram[5 * 32 + 3] = 0x70;   // row 0: 1 2 3 4 5 6 7 0
+        p.Cell(PlaneA, 0, 0, 5); p.Cell(PlaneA, 1, 0, 0x0805); p.Cell(PlaneA, 2, 0, 0x1005); p.Cell(PlaneA, 3, 0, 0x1805);
+        p.Frame();
+        Check("a tile's pixels run left to right, high nibble first", p.Px(0, 0) == Argb(p.CramOf(0, 1), 0) && p.Px(6, 0) == Argb(p.CramOf(0, 7), 0) && p.Px(7, 0) == Argb(0, 0));
+        Check("horizontal flip mirrors the row", p.Px(8, 0) == Argb(0, 0) && p.Px(9, 0) == Argb(p.CramOf(0, 7), 0) && p.Px(15, 0) == Argb(p.CramOf(0, 1), 0));
+        Check("vertical flip shows the tile's last row at the top (zero pixels: backdrop)", p.Px(16, 0) == Argb(0, 0) && p.Px(16, 7) == Argb(p.CramOf(0, 1), 0));
+        Check("both flips together", p.Px(24 + 1, 7) == Argb(p.CramOf(0, 7), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneA, 1, 0, 3);
+        p.V.Reg[0] |= 0x20;
+        p.Frame();
+        Check("the left column blank bit (register 0 bit 5) shows the backdrop in the first 8 pixels", p.Px(0, 0) == Argb(0, 0) && p.Px(7, 5) == Argb(0, 0) && p.Px(8, 0) == Argb(p.CramOf(0, 3), 0));
+
+        p = new Pic();
+        p.Cell(PlaneB, 0, 0, 1);
+        p.Cell(PlaneB, 1, 0, 2);
+        p.V.Reg[16] = 0x02;      // the invalid width code: every row reads row 0 (MacDonald's window test)
+        p.Cell(PlaneB, 0, 1, 7); p.Cell(PlaneB, 1, 1, 7);
+        p.Frame();
+        Check("the invalid plane width code repeats the name table's first row on every row (MacDonald's window test)", p.Px(2, 12) == Argb(p.CramOf(0, 1), 0) && p.Px(10, 100) == Argb(p.CramOf(0, 2), 0), $"{p.Px(2, 12):X8}");
+    }
+
+    // =====================================================================================================================
+
+    private static void Scroll()
+    {
+        Group("horizontal and vertical scrolling");
+        var p = new Pic();
+        p.Cell(PlaneA, 1, 0, 2); p.Cell(PlaneA, 63, 0, 3);
+        p.SetHScroll(0, 8, 0);
+        p.Frame();
+        Check("a horizontal scroll of 8 moves plane A 8 pixels to the right", p.Px(16, 0) == Argb(p.CramOf(0, 2), 0) && p.Px(8, 0) == Argb(0, 0));
+        Check("... and the plane wraps round: its last cell (63) shows at the left edge", p.Px(0, 0) == Argb(p.CramOf(0, 3), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneA, 0, 1, 3); p.Cell(PlaneA, 0, 2, 4);
+        p.SetHScroll(0, 0, 0);
+        p.Frame();
+        Check("rows of cells line up: three cells one above the other", p.Px(3, 3) == Argb(p.CramOf(0, 2), 0) && p.Px(3, 11) == Argb(p.CramOf(0, 3), 0) && p.Px(3, 19) == Argb(p.CramOf(0, 4), 0));
+
+        // per-line horizontal scroll (register 11 bits 1-0 = 3): each line has its own entry
+        p = new Pic();
+        p.Cell(PlaneA, 2, 0, 5);
+        p.V.Reg[11] = 3;
+        for (int l = 0; l < 8; l++) p.SetHScroll(l, l * 8, 0);
+        p.Frame();
+        bool lines = true;
+        for (int l = 0; l < 8; l++) lines &= p.Px(16 + l * 8, l) == Argb(p.CramOf(0, 5), 0) && p.Px(15 + l * 8, l) != Argb(p.CramOf(0, 5), 0);
+        Check("per-line scroll: line l has its own offset (8 * l)", lines);
+
+        p = new Pic();
+        p.Cell(PlaneA, 2, 0, 5);
+        p.V.Reg[11] = 2;
+        p.SetHScroll(0, 24, 0); p.SetHScroll(1, 99, 0); p.SetHScroll(7, 99, 0); p.SetHScroll(8, 0, 0);
+        p.Frame();
+        Check("per-8-line scroll uses the entry of the first line of each cell row for all 8 lines", p.Px(40, 0) == Argb(p.CramOf(0, 5), 0) && p.Px(40, 7) == Argb(p.CramOf(0, 5), 0) && p.Px(16, 0) != Argb(p.CramOf(0, 5), 0));
+
+        // plane B has its own scroll value (the second word of an entry)
+        p = new Pic();
+        p.Cell(PlaneB, 0, 0, 6);
+        p.SetHScroll(0, 0, 16);
+        p.Frame();
+        Check("plane B's horizontal scroll is the second word of the entry", p.Px(18, 0) == Argb(p.CramOf(0, 6), 0) && p.Px(2, 0) != Argb(p.CramOf(0, 6), 0));
+
+        // vertical scroll
+        p = new Pic();
+        p.Cell(PlaneA, 0, 1, 7); p.Cell(PlaneA, 2, 1, 8);
+        p.V.Vsram[0] = 8;
+        p.Frame();
+        Check("a vertical scroll of 8 moves plane A up by one cell row", p.Px(3, 0) == Argb(p.CramOf(0, 7), 0) && p.Px(19, 0) == Argb(p.CramOf(0, 8), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 1, 7); p.Cell(PlaneA, 2, 1, 8);
+        p.V.Reg[11] = 4;                 // per two-cell column
+        p.V.Vsram[0] = 8; p.V.Vsram[2] = 0;
+        p.Frame();
+
+        Check("per-column vertical scroll: column 0 scrolled by 8 and column 1 (x 16..31) by 0", p.Px(3, 0) == Argb(p.CramOf(0, 7), 0) && p.Px(19, 0) != Argb(p.CramOf(0, 8), 0) && p.Px(19, 8) == Argb(p.CramOf(0, 8), 0), $"{p.Px(3, 0):X8} {p.Px(19, 0):X8} {p.Px(19, 8):X8} want {Argb(p.CramOf(0, 7), 0):X8} {Argb(p.CramOf(0, 8), 0):X8}");
+
+        p = new Pic();
+        p.Cell(PlaneB, 0, 1, 7);
+        p.V.Vsram[1] = 8;
+        p.Frame();
+        Check("plane B's vertical scroll is the odd VSRAM word", p.Px(3, 0) == Argb(p.CramOf(0, 7), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 31, 9); p.Cell(PlaneA, 0, 0, 2);
+        p.V.Vsram[0] = 248;
+        p.Frame();
+        Check("the plane wraps vertically at its height (a 32-cell plane is 256 lines): cell row 31 at the top, row 0 after it", p.Px(2, 0) == Argb(p.CramOf(0, 9), 0) && p.Px(2, 8) == Argb(p.CramOf(0, 2), 0));
+    }
+
+    // =====================================================================================================================
+
+    private static void WindowTests()
+    {
+        Group("the window");
+        var p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneA, 4, 0, 2); p.Cell(PlaneA, 0, 4, 2);
+        for (int cx = 0; cx < 4; cx++) p.Cell(Window, cx, 0, 3);
+        p.V.Reg[17] = 0x02;               // left of x = 32
+        p.V.Reg[18] = 0x00;
+        p.Frame();
+        Check("a window at the left (register 17 = 2) replaces plane A for x < 32", p.Px(3, 0) == Argb(p.CramOf(0, 3), 0) && p.Px(31, 0) == Argb(p.CramOf(0, 3), 0));
+        Check("... and plane A shows from x = 32 on", p.Px(33, 0) == Argb(p.CramOf(0, 2), 0), $"{p.Px(33, 0):X8}");
+
+        p = new Pic();
+        for (int cx = 0; cx < 64; cx++) { p.Cell(Window, cx, 3, 4); p.Cell(PlaneA, cx, 3, 2); }
+        p.V.Reg[17] = 0x00; p.V.Reg[18] = 0x83;            // from line 24 down
+        p.Frame();
+        Check("a window from line 24 down (register 18 = $83) covers the lines below it", p.Px(10, 24) == Argb(p.CramOf(0, 4), 0) && p.Px(10, 31) == Argb(p.CramOf(0, 4), 0));
+        Check("... and not the line above", p.Px(10, 23) != Argb(p.CramOf(0, 4), 0));
+
+        p = new Pic();
+        for (int cx = 0; cx < 64; cx++) { p.Cell(Window, cx, 0, 5); p.Cell(PlaneA, cx, 0, 2); }
+        p.V.Reg[17] = 0x8A; p.V.Reg[18] = 0x00;                // right of x = 160
+        p.Frame();
+        Check("a window at the right (register 17 bit 7): from x = 160", p.Px(159, 0) == Argb(p.CramOf(0, 2), 0) && p.Px(160, 0) == Argb(p.CramOf(0, 5), 0));
+
+        // the window distortion bug (MacDonald): window at the left, plane A fine scroll not a multiple of 16 -> the plane column that fills the first screen column after the window comes from the column after it
+        p = new Pic();
+        for (int cx = 0; cx < 40; cx++) p.Cell(PlaneA, cx, 0, cx % 7 + 1);
+        for (int cx = 0; cx < 4; cx++) p.Cell(Window, cx, 0, 9);
+        p.V.Reg[17] = 0x02; p.SetHScroll(0, 0, 0);
+        p.Frame();
+        Check("with a fine scroll of 0 there is no distortion: x = 40 shows cell 5 (tile 6)", p.Px(40, 0) == Argb(p.CramOf(0, 5 % 7 + 1), 0) && p.Px(36, 0) == Argb(p.CramOf(0, 4 % 7 + 1), 0));
+        p = new Pic();
+        for (int cx = 0; cx < 40; cx++) p.Cell(PlaneA, cx, 0, cx % 7 + 1);
+        for (int cx = 0; cx < 4; cx++) p.Cell(Window, cx, 0, 9);
+        p.V.Reg[17] = 0x02; p.SetHScroll(0, 8, 0);       // plane A moves right by 8 pixels
+        p.Frame();
+        // screen x 32..47 shows plane pixels 24..39: cells 3 and 4 (plane column 1 = cells 2,3 is replaced by column 2 = cells 4,5; cell 4 belongs to column 2): the cell displayed at x 32..39 is cell 3 -> read from cell 5
+        Check("with the plane scrolled by 8 the first cell after the window is read from two cells further on (MacDonald's window bug)", p.Px(33, 0) == Argb(p.CramOf(0, 5 % 7 + 1), 0) && p.Px(41, 0) == Argb(p.CramOf(0, 4 % 7 + 1), 0), $"{p.Px(33, 0):X8} {p.Px(41, 0):X8}");
+    }
+
+    // =====================================================================================================================
+
+    private static void Sprites()
+    {
+        Group("sprites");
+        var p = new Pic();
+        p.Sprite(0, 100, 50, 1, 1, 4, 0, false, 0);
+        p.Frame();
+        Check("a sprite at (100, 50) draws its 8 x 8 tile", p.Px(100, 50) == Argb(p.CramOf(0, 4), 0) && p.Px(107, 57) == Argb(p.CramOf(0, 4), 0));
+        Check("... and nothing outside it", p.Px(99, 50) != Argb(p.CramOf(0, 4), 0) && p.Px(108, 50) != Argb(p.CramOf(0, 4), 0) && p.Px(100, 49) != Argb(p.CramOf(0, 4), 0) && p.Px(100, 58) != Argb(p.CramOf(0, 4), 0));
+
+        p = new Pic();
+        p.Sprite(0, 60, 20, 2, 2, 4, 0, false, 0);        // tiles 4 5 | 6 7 column by column
+        p.Frame();
+        Check("a 2 x 2 sprite's tiles run down the columns (tile, tile + 1 below it, then the next column)", p.Px(61, 21) == Argb(p.CramOf(0, 4), 0) && p.Px(61, 29) == Argb(p.CramOf(0, 5), 0) && p.Px(69, 21) == Argb(p.CramOf(0, 6), 0) && p.Px(69, 29) == Argb(p.CramOf(0, 7), 0));
+
+        p = new Pic();
+        p.Sprite(0, 60, 20, 2, 2, 4, 0, false, 0, hflip: true);
+        p.Frame();
+        Check("a horizontally flipped 2 x 2 sprite swaps its columns", p.Px(61, 21) == Argb(p.CramOf(0, 6), 0) && p.Px(69, 21) == Argb(p.CramOf(0, 4), 0));
+        p = new Pic();
+        p.Sprite(0, 60, 20, 2, 2, 4, 0, false, 0, vflip: true);
+        p.Frame();
+        Check("a vertically flipped 2 x 2 sprite swaps its rows", p.Px(61, 21) == Argb(p.CramOf(0, 5), 0) && p.Px(61, 29) == Argb(p.CramOf(0, 4), 0));
+
+        p = new Pic();
+        p.Cell(PlaneA, 12, 6, 2);
+        p.Sprite(0, 96, 48, 1, 1, 4, 0, false, 0);
+        p.Frame();
+        Check("a low-priority sprite is drawn over a low-priority plane", p.Px(98, 50) == Argb(p.CramOf(0, 4), 0));
+        p = new Pic();
+        p.Cell(PlaneA, 12, 6, 0x8002);
+        p.Sprite(0, 96, 48, 1, 1, 4, 0, false, 0);
+        p.Frame();
+        Check("... and under a high-priority plane tile", p.Px(98, 50) == Argb(p.CramOf(0, 2), 0));
+        p = new Pic();
+        p.Cell(PlaneA, 12, 6, 0x8002);
+        p.Sprite(0, 96, 48, 1, 1, 4, 0, true, 0);
+        p.Frame();
+        Check("a high-priority sprite beats a high-priority plane", p.Px(98, 50) == Argb(p.CramOf(0, 4), 0));
+
+        p = new Pic();
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, true, 1);        // sprite 0 (high priority) links to sprite 1 (low priority), both at the same place
+        p.Sprite(1, 20, 20, 1, 1, 5, 0, false, 0);
+        p.Frame();
+        Check("of two overlapping sprites the first in the link list is on top", p.Px(22, 22) == Argb(p.CramOf(0, 4), 0));
+        p = new Pic();
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 1);
+        p.Sprite(1, 20, 20, 1, 1, 5, 0, true, 0);
+        p.Frame();
+        Check("... whatever their priority bits say (the priority bit only decides against the planes)", p.Px(22, 22) == Argb(p.CramOf(0, 4), 0));
+
+        p = new Pic();
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 5);        // link to sprite 5, skipping 1..4 which sit elsewhere in the table
+        p.Sprite(1, 100, 100, 1, 1, 6, 0, false, 0);
+        p.Sprite(5, 40, 20, 1, 1, 7, 0, false, 0);
+        p.Frame();
+        Check("the link list is followed: sprite 5 is drawn, sprite 1 (not linked to) is not", p.Px(42, 22) == Argb(p.CramOf(0, 7), 0) && p.Px(102, 102) != Argb(p.CramOf(0, 6), 0));
+
+        // per-line limits
+        p = new Pic();
+        for (int i = 0; i < 21; i++) p.Sprite(i, 8 + i * 12, 100, 1, 1, 4, 0, false, i == 20 ? 0 : i + 1);
+        p.Frame();
+        int drawn = Enumerable.Range(0, 21).Count(i => p.Px(8 + i * 12 + 2, 102) == Argb(p.CramOf(0, 4), 0));
+        Check("H40: at most 20 sprites on a line (the 21st is not drawn)", drawn == 20 && p.Px(8 + 20 * 12 + 2, 102) != Argb(p.CramOf(0, 4), 0), $"{drawn}");
+        Check("... and the sprite overflow flag (status bit 6) is set; reading the status clears it", (p.V.ReadStatus(p.V.Time) & 0x40) != 0 && (p.V.ReadStatus(p.V.Time + 100) & 0x40) == 0);
+
+        p = new Pic(h40: false);
+        for (int i = 0; i < 17; i++) p.Sprite(i, 8 + i * 12, 100, 1, 1, 4, 0, false, i == 16 ? 0 : i + 1);
+        p.Frame();
+        drawn = Enumerable.Range(0, 17).Count(i => p.Px(8 + i * 12 + 2, 102) == Argb(p.CramOf(0, 4), 0));
+        Check("H32: at most 16 sprites on a line", drawn == 16 && p.V.PictureWidth == 256, $"{drawn} {p.V.PictureWidth}");
+
+        p = new Pic();
+        p.Sprite(0, 50, 50, 1, 1, 4, 0, false, 1);
+        p.Sprite(1, 52, 52, 1, 1, 5, 0, false, 0);
+        p.Frame();
+        Check("two overlapping sprites set the collision flag (status bit 5)", (p.V.ReadStatus(p.V.Time) & 0x20) != 0 && (p.V.ReadStatus(p.V.Time + 100) & 0x20) == 0);
+
+        // masking (Nemesis' sprite masking test ROM; the first sprite of a line at X = 0 does not mask)
+        p = new Pic();
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 1);
+        p.Sprite(1, -128, 20, 1, 1, 4, 0, false, 2);       // X = 0 on the screen's coordinate -128
+        p.Sprite(2, 60, 20, 1, 1, 6, 0, false, 0);
+        p.Frame();
+        Check("a sprite at X = 0 after another sprite on the line hides the sprites that follow (Nemesis' sprite masking ROM)", p.Px(22, 22) == Argb(p.CramOf(0, 4), 0) && p.Px(62, 22) != Argb(p.CramOf(0, 6), 0));
+        p = new Pic();
+        p.Sprite(0, -128, 20, 1, 1, 4, 0, false, 1);
+        p.Sprite(1, 60, 20, 1, 1, 6, 0, false, 0);
+        p.Frame();
+        Check("... but the first sprite of a line at X = 0 masks nothing", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0));
+
+        p = new Pic();
+        p.Sprite(0, 300, 40, 1, 1, 4, 0, false, 1);     // partly off the right edge
+        p.Sprite(1, 4, 40, 1, 1, 6, 0, false, 0);
+        p.Frame();
+        Check("sprites are clipped at the right edge of the picture and still counted", p.Px(300, 42) == Argb(p.CramOf(0, 4), 0) && p.Px(6, 42) == Argb(p.CramOf(0, 6), 0));
+        p = new Pic();
+        p.Sprite(0, 12, 40, 1, 1, 7, 2, false, 0);
+        p.Frame();
+        Check("a sprite uses the palette line in its attributes", p.Px(14, 42) == Argb(p.CramOf(2, 7), 0));
+    }
+
+    // =====================================================================================================================
+
+    private static void ShadowHighlight()
+    {
+        Group("shadow and highlight");
+        var p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 2); p.Cell(PlaneA, 1, 0, 0x8002);
+        p.Frame();
+        Check("shadow/highlight mode: a low-priority plane tile is in shadow", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1));
+        Check("... a high-priority one is normal", p.Px(10, 2) == Argb(p.CramOf(0, 2), 0));
+        Check("... the backdrop is in shadow too", p.Px(100, 100) == Argb(0, 1));
+
+        p = new Pic();
+        p.V.Reg[12] |= 8; p.V.Reg[7] = 0x02;
+        p.TileLeftHalf(9, 4);
+        p.Cell(PlaneA, 0, 0, 0x8009);                      // high-priority tile, right half transparent: the backdrop under it is not darkened (vctest, oracle)
+        p.Frame();
+        Check("the backdrop under a high-priority tile's transparent pixels stays normal (vctest, seen in BlastEm)", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0) && p.Px(6, 2) == Argb(p.CramOf(0, 2), 0), $"{p.Px(6, 2):X8}");
+
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x8002);
+        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, false, 0);      // palette 3 colour 15: shadow operator (tile 15 is solid colour 15)
+        p.Frame();
+        Check("a sprite pixel of palette 3 colour 15 shadows what is below it without drawing itself", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x8002);
+        p.Tile(14, 14);
+        p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);      // colour 14 of palette 3: highlight operator
+        p.Frame();
+        Check("palette 3 colour 14 highlights a normal pixel", p.Px(2, 2) == Argb(p.CramOf(0, 2), 2));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 2);
+        p.Tile(14, 14);
+        p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);
+        p.Frame();
+        Check("... and brings a shadowed pixel back to normal", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Sprite(0, 0, 0, 1, 1, 4, 0, true, 0); p.Sprite(1, 16, 0, 1, 1, 4, 0, false, 0); p.V.Vram[SatAddr + 3] = 1;
+        p.Frame();
+        Check("an ordinary sprite is drawn at normal brightness with the priority bit and in shadow without it", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0) && p.Px(18, 2) == Argb(p.CramOf(0, 4), 1));
+    }
+
+    // =====================================================================================================================
+
+    private static void ModesAndTiming()
+    {
+        Group("screen modes, display off, mid-line writes");
+        var p = new Pic(h40: false);
+        p.Cell(PlaneA, 0, 0, 2);
+        p.Frame();
+        Check("H32 is a 256-pixel wide picture", p.V.PictureWidth == 256 && p.V.PictureHeight == 224);
+        p = new Pic(v30: true);
+        p.Frame();
+        Check("V30 (register 1 bit 3) is a 240-line picture", p.V.PictureHeight == 240);
+        p = new Pic(region: SegaRegion.Pal);
+        p.Frame();
+        Check("PAL, 224-line mode: 224 picture lines inside a 313-line frame", p.V.PictureHeight == 224 && p.V.Timeline.LinesPerFrame == 313);
+
+        p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2); p.V.Reg[7] = 0x01; p.V.Reg[1] = 0x04;      // display disabled
+        p.Frame();
+        Check("with the display disabled (register 1 bit 6) the picture is the backdrop", p.Px(2, 2) == Argb(p.CramOf(0, 1), 0) && p.Px(100, 100) == Argb(p.CramOf(0, 1), 0));
+
+        // mid-line: the display switched off at pixel 100 of line 50 (as many games and demos do)
+        p = new Pic();
+        for (int cx = 0; cx < 40; cx++) for (int cy = 0; cy < 28; cy++) p.Cell(PlaneA, cx, cy, 2);
+        p.V.Reg[7] = 0x01;
+        p.V.ResetPictureState();
+        long line50 = 50L * MdVdp.ClocksPerLine;
+        p.T = line50 + 100 * 8;
+        p.V.RunTo(p.T);
+        p.Reg(1, 0x04);
+        p.T = line50 + 120 * 8; p.V.RunTo(p.T); p.Reg(1, 0x44);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        bool before = p.Px(90, 50) == Argb(p.CramOf(0, 2), 0), during = p.Px(110, 50) == Argb(p.CramOf(0, 1), 0), after = p.Px(200, 50) == Argb(p.CramOf(0, 2), 0);
+        Check("the display switched off for pixels 100-120 of one line: before and after the line is drawn, between it is the backdrop", before && during && after, $"{before} {during} {after}");
+        Check("... and the neighbouring lines are not touched", p.Px(110, 49) == Argb(p.CramOf(0, 2), 0) && p.Px(110, 51) == Argb(p.CramOf(0, 2), 0));
+
+        // the colour RAM dot: a colour RAM write made while the picture is drawn puts the written colour on the pixel being output
+        p = new Pic();
+        p.V.Reg[7] = 0x01;
+        p.V.ResetPictureState();
+        p.T = 40L * MdVdp.ClocksPerLine + 96;
+        p.V.RunTo(p.T);
+        p.Cmd(3, 0x40);                                   // CRAM write at colour 32
+        p.Data(0x0E00);
+        p.T += 1000; p.V.RunTo(p.T);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        int dots = 0; for (int x = 0; x < 320; x++) if (p.Px(x, 40) == Argb(0x0E00, 0)) dots++;
+        Check("a colour RAM write during the picture leaves a one-pixel dot of the written colour on the line", dots >= 1 && dots <= 2, $"{dots} dots");
+        Check("... on that line only, and none on the lines around it", Enumerable.Range(0, 320).All(x => p.Px(x, 39) != Argb(0x0E00, 0) && p.Px(x, 41) != Argb(0x0E00, 0)));
+
+        // the window registers are latched at the end of the line: a write in the line's blanking first shows on the line after next
+        p = new Pic();
+        for (int cx = 0; cx < 64; cx++) { p.Cell(Window, cx, 1, 5); p.Cell(PlaneA, cx, 1, 2); }
+        p.V.Reg[17] = 0x00; p.V.Reg[18] = 0x00;
+        p.V.ResetPictureState();
+        // switch the window on (down from line 0) with a write at the end of line 10's active picture: it takes effect on line 12
+        p.T = 10L * MdVdp.ClocksPerLine + 2700; p.V.RunTo(p.T);
+        p.Reg(18, 0x80);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("the window position registers are taken at the end of the active line: a write after that point shows from the line after next (line 12, not 11)", p.Px(5, 10) != Argb(p.CramOf(0, 5), 0) && p.Px(5, 11) != Argb(p.CramOf(0, 5), 0) && p.Px(5, 12) == Argb(p.CramOf(0, 5), 0), $"{p.Px(5, 10):X8} {p.Px(5, 11):X8} {p.Px(5, 12):X8}");
+
+        // the picture stage is part of what a state round trip keeps
+        p = new Pic();
+        p.Cell(PlaneA, 0, 0, 2);
+        p.Frame();
+        var ms = new MemoryStream(); using (var w = new BinaryWriter(ms, Encoding.UTF8, true)) p.V.SaveState(w);
+        var q = new Pic();
+        ms.Position = 0; using (var r = new BinaryReader(ms, Encoding.UTF8, true)) q.V.LoadState(r);
+        q.V.RunTo(q.V.Time + q.V.Timeline.MasterClocksPerFrame * 2);
+        Check("a VDP state restored into another VDP draws the same picture", q.Px(2, 2) == p.Px(2, 2) && q.Px(100, 100) == p.Px(100, 100));
+    }
+
+    // =====================================================================================================================
+    //  The session, saves, mappers
+    // =====================================================================================================================
+
+    private static byte[] BareRom(int size, string regions = "JUE", Action<byte[]>? patch = null)
+    {
+        var rom = new byte[size];
+        void L(int at, uint v) { rom[at] = (byte)(v >> 24); rom[at + 1] = (byte)(v >> 16); rom[at + 2] = (byte)(v >> 8); rom[at + 3] = (byte)v; }
+        L(0, 0xFFFE00); L(4, 0x200);
+        for (int v = 2; v < 64; v++) L(v * 4, 0x400);
+        Encoding.ASCII.GetBytes("SEGA MEGA DRIVE ").CopyTo(rom, 0x100);
+        Encoding.ASCII.GetBytes("(C)TEST 2026.OCT").CopyTo(rom, 0x110);
+        Encoding.ASCII.GetBytes("PICTURE TEST ROM".PadRight(48)).CopyTo(rom, 0x120);
+        Encoding.ASCII.GetBytes("PICTURE TEST ROM".PadRight(48)).CopyTo(rom, 0x150);
+        Encoding.ASCII.GetBytes("GM 00000000-00").CopyTo(rom, 0x180);
+        Encoding.ASCII.GetBytes(regions.PadRight(16)).CopyTo(rom, 0x1F0);
+        rom[0x400] = 0x60; rom[0x401] = 0xFE;
+        patch?.Invoke(rom);
+        return rom;
+    }
+
+    private static void Put(byte[] rom, int at, params ushort[] words) { for (int i = 0; i < words.Length; i++) { rom[at + i * 2] = (byte)(words[i] >> 8); rom[at + i * 2 + 1] = (byte)words[i]; } }
+
+    private static void Session()
+    {
+        Group("the session: the picture, the pads, saves");
+        // a program that sets the backdrop and the colour: move.w #$8144,$C00004 ; move.w #$8707,$C00004 ; set CRAM 7 ; loop
+        var rom = BareRom(0x20000, "JUE", r => Put(r, 0x200,
+            0x33FC, 0x8144, 0x00C0, 0x0004,           // register 1: display on
+            0x33FC, 0x8C81, 0x00C0, 0x0004,           // register 12: H40
+            0x33FC, 0x8707, 0x00C0, 0x0004,           // register 7: backdrop colour 7
+            0x23FC, 0xC00E, 0x0000, 0x00C0, 0x0004,   // CRAM write at colour 7
+            0x33FC, 0x0E00, 0x00C0, 0x0000,           // blue
+            0x60FE));
+        // the 6 words per instruction above: move.w #imm,abs.l is 4 words; move.l #imm,abs.l is 5 words
+        var s = new MdSession(rom, "M68K", "MD", "MD");
+        for (int i = 0; i < 3; i++) s.RunFrame();
+        Check("the session hands the apps the VDP's picture: 320 x 224 here, the backdrop colour in every pixel", s.FrameWidth == 320 && s.FrameHeight == 224 && s.Frame[0] == Argb(0x0E00, 0) && s.Frame[s.FrameWidth * s.FrameHeight - 1] == Argb(0x0E00, 0), $"{s.FrameWidth}x{s.FrameHeight} {s.Frame[0]:X8}");
+        Check("... the width the apps show it at is 320 (an H32 picture is stretched to the same screen width)", s.DisplayWidth == 320);
+        Check("the session says what it runs (no 'no renderer' stand-in)", !s.Description.Contains("NO PICTURE", StringComparison.OrdinalIgnoreCase));
+
+        var pads = new MdSession(BareRom(0x20000), "M68K", "MD", "MD");
+        pads.SetPad(0, PadButtons.R | PadButtons.L | PadButtons.Select | PadButtons.A);
+        // the pad as the board's I/O chip answers: set TH low/high through the bus
+        var board = pads.Board;
+        board.BusWrite(0xA10008, false, true, 0x0040, 4);     // control: TH is an output
+        ushort Rd(uint a) => board.BusRead(a, false, true, 4);
+        board.BusWrite(0xA10002, false, true, 0x0040, 4);     // TH high
+        int th1 = Rd(0xA10002) & 0xFF;
+        Check("R is the Genesis C button (bit 5 of the TH-high read is 0), generic L and Select map to Z and Mode", (th1 & 0x20) == 0, $"{th1:X2}");
+        board.BusWrite(0xA10002, false, true, 0x0000, 4);     // TH low
+        int th0 = Rd(0xA10002) & 0xFF;
+        Check("A reads as pressed with TH low (bit 4 = 0)", (th0 & 0x10) == 0, $"{th0:X2}");
+
+        // battery SRAM: a 128 KB ROM with an odd-byte SRAM header at $200001-$203FFF
+        var sram = BareRom(0x20000, "JUE", r =>
+        {
+            Encoding.ASCII.GetBytes("RA").CopyTo(r, 0x1B0); r[0x1B2] = 0xF8; r[0x1B3] = 0x20;
+            r[0x1B4] = 0; r[0x1B5] = 0x20; r[0x1B6] = 0; r[0x1B7] = 0x01;          // start $200001
+            r[0x1B8] = 0; r[0x1B9] = 0x20; r[0x1BA] = 0x3F; r[0x1BB] = 0xFF;        // end $203FFF
+            // move.b #$5A,$200001 ; move.b #$A5,$200003 ; loop
+            Put(r, 0x200, 0x13FC, 0x005A, 0x0020, 0x0001, 0x13FC, 0x00A5, 0x0020, 0x0003, 0x60FE);
+        });
+        var s2 = new MdSession(sram, "M68K", "MD", "MD");
+        Check("a ROM with an SRAM header reports a battery (and a plain ROM does not)", s2.HasBattery && !pads.HasBattery);
+        for (int i = 0; i < 3; i++) s2.RunFrame();
+        byte[] save = s2.ExportSave();
+        Check("the program's writes land in the battery image (odd bytes: one byte per word)", save.Length == 0x2000 && save[0] == 0x5A && save[1] == 0xA5, $"{save.Length} {save[0]:X2} {save[1]:X2}");
+        var s3 = new MdSession(sram, "M68K", "MD", "MD");
+        var other = new byte[0x2000]; other[0] = 0x11; other[1] = 0x22; other[7] = 0x77;
+        s3.ImportSave(other);
+        Check("an imported save is what the cartridge holds before the game runs", s3.ExportSave()[0] == 0x11 && s3.ExportSave()[7] == 0x77);
+        string tmp = Path.Combine(Path.GetTempPath(), "mdsave_" + Guid.NewGuid().ToString("N") + ".srm");
+        File.WriteAllBytes(tmp, save);
+        var s4 = new MdSession(sram, "M68K", "MD", "MD");
+        s4.ImportSave(File.ReadAllBytes(tmp)); File.Delete(tmp);
+        Check("a save written to a file and read back into a new session is the same battery image", s4.ExportSave().AsSpan().SequenceEqual(save));
+        Check("the game id (the file name of the save) is the ROM's SHA-1, lower-case", s2.GameId.Length == 40 && s2.GameId == s2.GameId.ToLowerInvariant() && s4.GameId == s2.GameId);
+    }
+
+    private static void Mappers()
+    {
+        Group("cartridge mappers");
+        // SSF2: a 5 MB ROM whose every 512 KB bank starts with its own number; $A130F3-$A130FF select the banks of the windows 1-7
+        var rom = BareRom(0x500000, "JUE", r => { for (int b = 0; b < 10; b++) { r[b * 0x80000 + 0x300] = (byte)(0xB0 + b); } r[0x300] = 0xB0; });
+        var cart = new MdCartridge(rom);
+        Check("a ROM above 4 MB is the SSF2 mapper", cart.Mapper.Contains("SSF2"));
+        Check("at power-on window 1 shows bank 1, window 7 bank 7", cart.ReadByte(0x80300) == 0xB1 && cart.ReadByte(0x380300) == 0xB7);
+        cart.WriteMapper(0xA130F3, 8); cart.WriteMapper(0xA130FF, 9);
+        Check("writing bank numbers to $A130F3 and $A130FF maps banks 8 and 9 into windows 1 and 7", cart.ReadByte(0x80300) == 0xB8 && cart.ReadByte(0x380300) == 0xB9 && cart.ReadByte(0x100300) == 0xB2);
+        Check("window 0 is fixed to bank 0", cart.ReadByte(0x300) == 0xB0 && cart.ReadByte(0x7FFFF) == cart.Rom[0x7FFFF]);
+
+        // the 4 MB image of Sonic & Knuckles with a game locked on: the locked-on game's SRAM header at $2001B0
+        var lo = BareRom(0x400000, "JUE", r =>
+        {
+            Encoding.ASCII.GetBytes("SEGA GENESIS    ").CopyTo(r, 0x200100);
+            Encoding.ASCII.GetBytes("RA").CopyTo(r, 0x2001B0); r[0x2001B2] = 0xF8; r[0x2001B3] = 0x20;
+            r[0x2001B4] = 0; r[0x2001B5] = 0x20; r[0x2001B6] = 0; r[0x2001B7] = 0x01;
+            r[0x2001B8] = 0; r[0x2001B9] = 0x20; r[0x2001BA] = 0x03; r[0x2001BB] = 0xFF;
+            r[0x200010] = 0xC3;
+        });
+        var lc = new MdCartridge(lo);
+        Check("a 4 MB Sonic & Knuckles lock-on image takes the locked-on game's SRAM header ($200001-$2003FF, 512 odd bytes)", lc.LockedOn && lc.HasBattery && lc.Sram.Length == 512 && lc.SramStart == 0x200001, $"{lc.LockedOn} {lc.Sram.Length}");
+        Check("... the SRAM is not in the map until the game switches it on through $A130F1", !lc.SramMapped && lc.ReadByte(0x200010) == 0xC3);
+        lc.WriteMapper(0xA130F1, 1);
+        lc.WriteByte(0x200001, 0x42); lc.WriteByte(0x200003, 0x43);
+        Check("... after that the SRAM answers at $200001, $200003 ... and keeps what is written", lc.ReadByte(0x200001) == 0x42 && lc.ReadByte(0x200003) == 0x43 && lc.Sram[0] == 0x42 && lc.Sram[1] == 0x43);
+        lc.WriteMapper(0xA130F1, 0);
+        Check("... and with the register cleared the ROM is back", lc.ReadByte(0x200010) == 0xC3 && lc.Sram[0] == 0x42);
+        var plain = new MdCartridge(BareRom(0x400000));
+        Check("a plain 4 MB ROM is not mistaken for a lock-on image", !plain.LockedOn && !plain.HasBattery);
+
+        // an interleaved .smd image is normalised (a 512-byte copier header and 16 KB blocks with the even bytes in the second half)
+        var plainRom = BareRom(0x20000);
+        var smd = new byte[512 + plainRom.Length];
+        smd[0] = (byte)(plainRom.Length / 16384); smd[1] = 3; smd[8] = 0xAA; smd[9] = 0xBB;
+        for (int blk = 0; blk < plainRom.Length / 16384; blk++)
+            for (int i = 0; i < 8192; i++) { smd[512 + blk * 16384 + i + 8192] = plainRom[blk * 16384 + i * 2]; smd[512 + blk * 16384 + i] = plainRom[blk * 16384 + i * 2 + 1]; }
+        var sc = new MdCartridge(smd);
+        Check("an .smd image (copier header, interleaved blocks) reads as the same ROM", sc.ReadWord(0x100) == 0x5345 && sc.ReadWord(4) == 0x0000 && sc.ReadWord(6) == 0x0200, $"{sc.ReadWord(0x100):X4}");
+    }
+}

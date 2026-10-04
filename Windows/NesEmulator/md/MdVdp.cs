@@ -525,6 +525,7 @@ public sealed partial class MdVdp
         if (reg > 10 && !Mode5) return;       // the extra registers belong to mode 5
         bool vintBefore = VintEnabled, hintBefore = HintEnabled;
         SyncRender();
+        if (reg is 1 or 7 or 12) RewindIndexStage();      // the display switch, the backdrop colour and the shadow mode act at the output, not at the fetch the stage runs ahead with
         Reg[reg] = value;
         if (reg == 0) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
         if (reg == 1 && VintEnabled && !vintBefore) vintEnableFrom = Time + IplDelayMasterClocks;

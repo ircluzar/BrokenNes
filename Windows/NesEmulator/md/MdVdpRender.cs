@@ -107,6 +107,14 @@ public sealed partial class MdVdp
         winNext17 = Reg[17]; winNext18 = Reg[18]; winLatchDone = true;
     }
 
+    /// <summary>Pixels the index stage drew ahead of the output are drawn again after a change that acts at the output.</summary>
+    private void RewindIndexStage()
+    {
+        if (!lineActive) return;
+        int px = PixelNow();
+        if (renderX > px) renderX = px;
+    }
+
     private void BeginLineRender()
     {
         if (!winLatchDone) { winNext17 = Reg[17]; winNext18 = Reg[18]; }

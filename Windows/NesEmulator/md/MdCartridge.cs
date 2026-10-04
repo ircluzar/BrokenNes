@@ -33,6 +33,9 @@ public sealed class MdCartridge
     /// <summary>The cartridge has battery-backed memory the session should save.</summary>
     public bool HasBattery => Sram.Length > 0;
 
+    /// <summary>The image is a Sonic &amp; Knuckles cartridge with a game locked on (the SRAM comes from the locked-on game's header).</summary>
+    public bool LockedOn { get; private set; }
+
     /// <summary>$A130F1 bit 0: the SRAM is mapped over the ROM at its addresses. Set at power-on for a ROM of 2 MB or less that has SRAM (the SRAM then owns the window); a bigger ROM needs the register.</summary>
     public bool SramMapped { get; private set; }
     /// <summary>$A130F1 bit 1: SRAM writes are ignored.</summary>
@@ -43,7 +46,7 @@ public sealed class MdCartridge
     private readonly int[] banks = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
     /// <summary>A short description for status lines.</summary>
-    public string Mapper => bankMapper ? "SSF2 banked (ROM above 4 MB)" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
+    public string Mapper => bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
 
     public MdCartridge(byte[] file)
     {
@@ -79,11 +82,20 @@ public sealed class MdCartridge
         for (int i = 0x200; i + 1 < rom.Length; i += 2) sum += (ushort)(rom[i] << 8 | rom[i + 1]);
         ComputedChecksum = sum;
 
-        // SRAM header at $1B0: "RA", the type byte, $20, then start and end addresses
-        if (rom[0x1B0] == (byte)'R' && rom[0x1B1] == (byte)'A')
+        // SRAM header at $1B0: "RA", the type byte, $20, then start and end addresses. A Sonic & Knuckles image with a game locked on (the 4 MB dumps: the 2 MB Sonic & Knuckles cartridge, then the locked-on
+        // cartridge's 2 MB at $200000) has no header of its own: the locked-on game's, at $2001B0, describes the battery RAM that cartridge brings, which the pair's code switches on through $A130F1.
+        Sram = Array.Empty<byte>();
+        int hdr = 0;
+        if (!(rom[0x1B0] == (byte)'R' && rom[0x1B1] == (byte)'A') && rom.Length >= 0x400000 && rom.Length <= 0x400000
+            && rom[0x200100] == (byte)'S' && rom[0x200101] == (byte)'E' && rom[0x200102] == (byte)'G' && rom[0x200103] == (byte)'A'
+            && rom[0x2001B0] == (byte)'R' && rom[0x2001B1] == (byte)'A')
         {
-            byte type = rom[0x1B2];
-            uint start = U32(0x1B4), end = U32(0x1B8);
+            hdr = 0x200000; LockedOn = true;
+        }
+        if (rom[hdr + 0x1B0] == (byte)'R' && rom[hdr + 0x1B1] == (byte)'A')
+        {
+            byte type = rom[hdr + 0x1B2];
+            uint start = U32(hdr + 0x1B4), end = U32(hdr + 0x1B8);
             if (end >= start && end - start < 0x100000)
             {
                 HasSramHeader = true;
@@ -95,9 +107,7 @@ public sealed class MdCartridge
                 Sram = new byte[held];
                 SramMapped = rom.Length <= 0x200000;
             }
-            else Sram = Array.Empty<byte>();
         }
-        else Sram = Array.Empty<byte>();
         if (!HasSramHeader) Sram = Array.Empty<byte>();
     }
 
