@@ -64,6 +64,8 @@ namespace NesEmulator
         private int patchIndex;
         private FmPatch patch = FmPatchBank.Patches[FmPatchBank.DefaultIndex];
         private bool patchDirty = true;
+        private volatile int requestedPatch = NoRequest;     // a patch asked for from any thread, taken up at the next sync
+        private const int NoRequest = -2;
         private readonly int[,] pulseAtt = new int[4, 16];     // carrier attenuation (total-level steps) for each pulse duty and volume under the current patch
         private int triAtt;
 
@@ -115,20 +117,30 @@ namespace NesEmulator
         /// <summary>The carrier attenuation (total-level steps added to the patch's own) voice <paramref name="channel"/> is set to, -1 before its first note.</summary>
         public int FmAttenuation(int channel) => fm[channel].Att;
 
-        /// <summary>The patch pulses 1 and 2 play (an index into <see cref="FmPatchBank.Patches"/>; out of range is the last). Takes effect at the next sync, held notes included.</summary>
+        /// <summary>The patch pulses 1 and 2 play (an index into <see cref="FmPatchBank.Patches"/>; out of range is the last). Takes effect at the next sync, held notes included; may be set from any thread (the desktop's panel does).</summary>
         public int Patch
         {
-            get => patchIndex;
-            set
+            get { int r = requestedPatch; return r != NoRequest ? r : patchIndex; }
+            set => requestedPatch = FmPatchBank.Clamp(value);
+        }
+
+        /// <summary>Every live core, so a setting made in the app's UI reaches the cores already running (weakly held: a core that is gone is forgotten).</summary>
+        private static readonly System.Collections.Generic.List<WeakReference<APU_MD>> Live = new();
+
+        /// <summary>The patch every new core starts on and every running core switches to: the desktop's "Genesis FM patch" setting, which Lite's picker shares.</summary>
+        public static void SetPatchEverywhere(int index)
+        {
+            index = FmPatchBank.Clamp(index);
+            DefaultPatch = index;
+            lock (Live)
             {
-                value = FmPatchBank.Clamp(value);
-                if (value == patchIndex && !patchDirty) return;
-                patchIndex = value; patch = FmPatchBank.Patches[value]; patchDirty = true;
+                for (int i = Live.Count - 1; i >= 0; i--)
+                    if (Live[i].TryGetTarget(out var core)) core.Patch = index; else Live.RemoveAt(i);
             }
         }
 
         /// <summary>For the verifier and the patch lab: plays a patch that is not in the bank (a test patch with chosen operators). <see cref="Patch"/> reads -1 until a bank patch is chosen again.</summary>
-        internal void UseCustomPatch(FmPatch custom) { patchIndex = -1; patch = custom; patchDirty = true; }
+        internal void UseCustomPatch(FmPatch custom) { requestedPatch = NoRequest; patchIndex = -1; patch = custom; patchDirty = true; }
 
         public APU_MD(Bus bus)
         {
@@ -143,8 +155,9 @@ namespace NesEmulator
             ym = new Ym2612(m, YmClockHz) { Sink = sink };
             fmLeft = new BandLimitedMixer(YmClockHz / Ym2612.ClocksPerSample, rate);
             fmRight = new BandLimitedMixer(YmClockHz / Ym2612.ClocksPerSample, rate);
-            Patch = DefaultPatch;
+            patchIndex = FmPatchBank.Clamp(DefaultPatch); patch = FmPatchBank.Patches[patchIndex]; patchDirty = true;
             PowerOn();
+            lock (Live) { if (Live.Count >= 32) Live.RemoveAll(w => !w.TryGetTarget(out _)); Live.Add(new WeakReference<APU_MD>(this)); }
         }
 
         public string CoreName => $"MD:YM2612+SN76489+{front.CoreName}";
@@ -290,6 +303,12 @@ namespace NesEmulator
         {
             Syncs++;
             var m = model;
+            int asked = requestedPatch;
+            if (asked != NoRequest)
+            {
+                requestedPatch = NoRequest;
+                if (asked != patchIndex || patchDirty) { patchIndex = asked; patch = FmPatchBank.Patches[asked]; patchDirty = true; }
+            }
             if (patchDirty)
             {
                 patchDirty = false;

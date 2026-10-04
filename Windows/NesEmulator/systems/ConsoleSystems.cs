@@ -269,8 +269,9 @@ public static class CoreCatalog
                     case CoreSlot.Ppu: list.Add(new("MD", "MD (Genesis picture chip)", "Genesis")); break;
                     default:
                         list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
-                        // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so.
-                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
+                        // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
+                        // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
+                        foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
                         break;
                 }
                 break;

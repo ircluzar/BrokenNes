@@ -23,6 +23,7 @@ namespace BrokenNes.Windows
         private CheckBox? highPitchCheck;
         private TrackBar? highPitchSlider;
         private Label? highPitchValueLabel, highPitchCaption;
+        private ComboBox? genesisPatchCombo;
         private bool volumeDirty;
 
         private const int VolumeWheelStep = 5;
@@ -33,6 +34,7 @@ namespace BrokenNes.Windows
         {
             ApplyEmulationVolume();
             ApplyPitchGuard();
+            NesEmulator.APU_MD.SetPatchEverywhere(config.GenesisFmPatch);
 
             volumeButton = new VolumeMenuButton
             {
@@ -64,7 +66,7 @@ namespace BrokenNes.Windows
         private Panel BuildVolumePanel()
         {
             var font = SystemFonts.MenuFont ?? Control.DefaultFont;
-            var panel = new Panel { Size = new Size(280, 226), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
+            var panel = new Panel { Size = new Size(280, 296), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
 
             var title = new Label { Text = "Emulation volume", AutoSize = true, Font = new Font(font, FontStyle.Bold), Location = new Point(12, 12) };
             volumeValueLabel = new Label
@@ -153,6 +155,18 @@ namespace BrokenNes.Windows
             panel.Controls.Add(highPitchCaption);
             panel.Controls.Add(highPitchValueLabel);
             panel.Controls.Add(highPitchSlider);
+
+            // The Genesis sound chips (the NES APU core "MD"): the FM patch the pulses are played with.
+            panel.Controls.Add(new Label { BorderStyle = BorderStyle.Fixed3D, AutoSize = false, Location = new Point(12, 226), Size = new Size(panel.Width - 24, 2) });
+            panel.Controls.Add(new Label { Text = "Genesis FM patch (APU core MD)", Font = font, AutoSize = true, Location = new Point(12, 236) });
+            genesisPatchCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = font, Location = new Point(12, 260), Size = new Size(panel.Width - 24, 26), TabStop = false };
+            foreach (var p in NesEmulator.Mix.FmPatchBank.Patches) genesisPatchCombo.Items.Add(p.Name);
+            genesisPatchCombo.SelectedIndexChanged += (_, _) =>
+            {
+                if (genesisPatchCombo.SelectedIndex >= 0 && genesisPatchCombo.SelectedIndex != config.GenesisFmPatch) SetGenesisFmPatch(genesisPatchCombo.SelectedIndex);
+            };
+            tip.SetToolTip(genesisPatchCombo, "The timbre a NES game's pulses get when the audio core is MD (the YM2612 FM chip and PSG of the Genesis). The triangle is always a sine, the noise the PSG's.");
+            panel.Controls.Add(genesisPatchCombo);
             return panel;
         }
 
@@ -170,6 +184,15 @@ namespace BrokenNes.Windows
         }
 
         private static double NoteHz(int midiNote) => 440.0 * Math.Pow(2, (midiNote - 69) / 12.0);
+
+        /// <summary>Choose the FM patch of the Genesis sound chips: it applies to the running core and to every new one, and is saved in config.json (genesisFmPatch).</summary>
+        private void SetGenesisFmPatch(int index)
+        {
+            index = Math.Clamp(index, 0, NesEmulator.Mix.FmPatchBank.Count - 1);
+            if (index != config.GenesisFmPatch) { config.GenesisFmPatch = index; volumeDirty = true; }
+            NesEmulator.APU_MD.SetPatchEverywhere(index);
+            RefreshVolumeUi();
+        }
 
         private void ApplyPitchGuard()
         {
@@ -229,6 +252,11 @@ namespace BrokenNes.Windows
                 highPitchValueLabel.ForeColor = guard ? SystemColors.ControlText : SystemColors.GrayText;
             }
             if (highPitchCaption != null) highPitchCaption.ForeColor = guard ? SystemColors.ControlText : SystemColors.GrayText;
+            if (genesisPatchCombo != null)
+            {
+                int patch = Math.Clamp(config.GenesisFmPatch, 0, NesEmulator.Mix.FmPatchBank.Count - 1);
+                if (genesisPatchCombo.SelectedIndex != patch) genesisPatchCombo.SelectedIndex = patch;
+            }
         }
 
         private void WireVolumeApi(WebApi.WebApiServer server)
@@ -240,11 +268,14 @@ namespace BrokenNes.Windows
                 highPitchCeiling = NesEmulator.Mix.PitchGuard.NoteName(NoteHz(config.HighPitchCeilingNote)),
                 highPitchCeilingHz = Math.Round(NesEmulator.Mix.PitchGuard.CeilingHz),
                 blockedNotes = System.Threading.Interlocked.Read(ref NesEmulator.Mix.PitchGuard.BlockedNotes),
+                genesisFmPatch = config.GenesisFmPatch,
+                genesisFmPatchName = NesEmulator.Mix.FmPatchBank.Patches[Math.Clamp(config.GenesisFmPatch, 0, NesEmulator.Mix.FmPatchBank.Count - 1)].Name,
             };
             server.SetEmulationVolume = r => Invoke(() =>
             {
                 if (r.Volume != null || r.Muted != null) SetEmulationVolume(r.Volume, r.Muted);
                 if (r.RemoveHighPitched != null || r.HighPitchCeilingNote != null) SetHighPitchGuard(r.RemoveHighPitched, r.HighPitchCeilingNote);
+                if (r.GenesisFmPatch != null) SetGenesisFmPatch(r.GenesisFmPatch.Value);
                 SaveVolumeIfDirty();
             });
         }

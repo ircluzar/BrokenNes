@@ -52,7 +52,7 @@ internal static class SegaBridgeMdTests
         verbose = verboseOutput; passes = failures = 0;
         if (want("mdcatalog")) { Console.WriteLine("\n== Genesis menus and factory"); Catalog(); }
         if (want("mdapu")) { Console.WriteLine("\n== APU_MD: NES registers to the YM2612 and the PSG"); Bank(); Pitch(); Level(); CalibrationCheck(); Noise(); Dmc(); Switching(); Polyphony(); PsgSquare(); Range(); Behaviour(); Timing(); }
-        if (want("mdunit")) { Console.WriteLine("\n== MdSoundOnNes: a Genesis game's sound on NES chips"); UnitFactory(); UnitPitch(); UnitLevel(); UnitPsg(); UnitDac(); UnitPolyphony(); UnitLowNotes(); UnitCounters(); UnitZ80(); UnitState(); UnitNoAllocation(); }
+        if (want("mdunit")) { Console.WriteLine("\n== MdSoundOnNes: a Genesis game's sound on NES chips"); UnitFactory(); UnitEveryChip(); UnitPitch(); UnitLevel(); UnitPsg(); UnitDac(); UnitPolyphony(); UnitLowNotes(); UnitCounters(); UnitZ80(); UnitState(); UnitNoAllocation(); }
         if (want("mdgame")) { Console.WriteLine("\n== a NES game on APU_MD, and a Genesis game through MdSoundOnNes"); NesGame(nesRom); GenesisGame(mdRom); }
         return (passes, failures);
     }
@@ -417,6 +417,19 @@ internal static class SegaBridgeMdTests
         Check("an out-of-range patch is the last one (the PSG square), reported as such", md.Patch == 15);
         md.Patch = -5;
         Check("a negative patch is the first", md.Patch == 0);
+        {
+            // the app's setting reaches a core that is already running, and every new one (the desktop's panel and Lite's picker call this)
+            int savedDefault = APU_MD.DefaultPatch;
+            try
+            {
+                var live = Rig(0); var lm = (APU_MD)live.Apu; live.Pulse(0, t, 15); live.Run(0.1, false);
+                APU_MD.SetPatchEverywhere(7); live.Run(0.1, false);
+                bool liveOk = lm.Patch == 7 && lm.Describe().Contains("'Marimba'");
+                APU_MD.SetPatchEverywhere(99);
+                Check("APU_MD.SetPatchEverywhere (the desktop's panel, Lite's picker) switches a running core at its next sync and sets the start patch for new ones (out of range is the last)", liveOk && APU_MD.DefaultPatch == 15 && ((APU_MD)new MdPatchCli.Rig("MD").Apu).Patch == 15);
+            }
+            finally { APU_MD.SetPatchEverywhere(savedDefault); }
+        }
         // the default for a new core is the static setting
         int saved = APU_MD.DefaultPatch;
         try { APU_MD.DefaultPatch = 6; Check("a new core starts on APU_MD.DefaultPatch (the desktop's setting)", ((APU_MD)new MdPatchCli.Rig("MD").Apu).Patch == 6); }
@@ -798,6 +811,25 @@ internal static class SegaBridgeMdTests
         var u = (MdSoundOnNes)plain;
         Check($"it says what it is ({u.CoreName}), reports the NES chip's rate ({u.SampleRate} Hz), and the real unit is inside (Z80, YM2612, PSG)", u.CoreName.StartsWith("NES:") && u.CoreName.Contains("MD (Z80, PSG") && u.SampleRate == 44100 && u.Inner.Cpu != null);
         Check("the writer has one bank on NES:FIX (3 tonal slots, 1 noise) and two on NES:FIXS (6 tonal, 2 noise)", u.Writer.Banks == 1 && ((MdSoundOnNes)GenesisSoundFactories.Create("NES:FIXS", m)).Writer.Banks == 2);
+    }
+
+    private static void UnitEveryChip()
+    {
+        // every NES chip the Genesis APU menu offers builds a unit that plays an FM note and a PSG tone (a chip that cannot would be a menu entry that lies)
+        var ids = CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Apu).Skip(1).Select(o => o.Id).ToList();
+        var silent = new List<string>(); var failed = new List<string>(); int ok = 0;
+        foreach (string id in ids)
+        {
+            try
+            {
+                var r = new UnitRig(id);
+                r.LoadPatch(0, SinePatch, 6); r.FmPitch(0, 261.63); r.Key(0, true); r.PsgTone(0, 508, 1);
+                var x = r.Capture(0.3, 0.5);
+                if (SegaMeasure.Rms(x, 0, x.Length) > 0.003) ok++; else silent.Add(id);
+            }
+            catch (Exception e) { failed.Add($"{id}: {e.GetType().Name} {e.Message}"); }
+        }
+        Check($"every NES chip in the Genesis APU menu ({ids.Count}) builds a unit that sounds: {ok} do; silent: [{string.Join(", ", silent)}]; failed: [{string.Join("; ", failed)}]", silent.Count == 0 && failed.Count == 0);
     }
 
     private static void UnitPitch()

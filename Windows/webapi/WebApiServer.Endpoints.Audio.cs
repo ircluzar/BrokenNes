@@ -12,6 +12,8 @@ namespace BrokenNes.Windows.WebApi
         public bool? Muted { get; set; }
         public bool? RemoveHighPitched { get; set; }
         public int? HighPitchCeilingNote { get; set; }
+        /// <summary>The FM patch (0-15) the Genesis sound chips play the NES pulses with.</summary>
+        public int? GenesisFmPatch { get; set; }
     }
 
     public partial class WebApiServer
@@ -37,8 +39,8 @@ namespace BrokenNes.Windows.WebApi
             {
                 if (GetEmulationVolume == null || SetEmulationVolume == null) return Results.BadRequest(new { success = false, error = "not available" });
                 var body = await context.Request.ReadFromJsonAsync<VolumeRequest>();
-                if (body == null || (body.Volume == null && body.Muted == null && body.RemoveHighPitched == null && body.HighPitchCeilingNote == null))
-                    return Results.BadRequest(new { success = false, error = "volume, muted, removeHighPitched and/or highPitchCeilingNote is required" });
+                if (body == null || (body.Volume == null && body.Muted == null && body.RemoveHighPitched == null && body.HighPitchCeilingNote == null && body.GenesisFmPatch == null))
+                    return Results.BadRequest(new { success = false, error = "volume, muted, removeHighPitched, highPitchCeilingNote and/or genesisFmPatch is required" });
                 SetEmulationVolume(body);
                 return Results.Ok(new { success = true, state = GetEmulationVolume() });
             });

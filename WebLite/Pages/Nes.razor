@@ -140,6 +140,20 @@
                             </button>
                         </div>
                     }
+                    @if (emu!.ActiveConsole == ConsoleKind.Nes && string.Equals(emu!.Controller.ApuCoreSel, "MD", StringComparison.OrdinalIgnoreCase))
+                    {
+                        @* The audio core is the Genesis sound chips (YM2612 FM + PSG): the FM patch the NES pulses are played with. Not saved: a reload starts on the first patch again. *@
+                        <div class="qc-select-stack">
+                            <label for="mdPatchSelect" class="mini-label" title="The FM patch of the Genesis sound chips: the timbre the NES pulses get (the triangle is always a sine, the noise the PSG's)">FM patch</label>
+                            <select id="mdPatchSelect" class="btn btn-rf btn-select console-core-select" aria-label="Genesis FM patch"
+                                    @onchange="(e => NesEmulator.APU_MD.SetPatchEverywhere(int.TryParse(e.Value?.ToString(), out var picked) ? picked : 0))">
+                                @for (int pi = 0; pi < FmPatchBank.Count; pi++)
+                                {
+                                    <option value="@pi" selected="@(pi == NesEmulator.APU_MD.DefaultPatch)">@FmPatchBank.Patches[pi].Name</option>
+                                }
+                            </select>
+                        </div>
+                    }
                     @if (ShowCpuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
                         <div class="qc-select-stack">
