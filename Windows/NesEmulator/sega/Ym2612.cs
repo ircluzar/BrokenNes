@@ -16,7 +16,7 @@ public interface IYm2612Sink
 /// </summary>
 /// <remarks>
 /// <para><b>Source.</b> A C# port of ymfm's OPN2 (<c>ym2612</c> and <c>ym3438</c> in ymfm_opn.cpp, with the shared FM engine of ymfm_fm.ipp and the <c>opna_registers</c> of ymfm_opn.cpp),
-/// ymfm commit 81aec25 (2026-07-27), BSD-3-Clause, Copyright (c) 2021 Aaron Giles. The notice and the list of what changed are in <c>sega/THIRD_PARTY_NOTICES.md</c> section 1c. With
+/// ymfm commit 81aec25 (2026-07-27), BSD-3-Clause, Copyright (c) 2021 Aaron Giles. The notice and the list of what changed are in <c>sega/THIRD_PARTY_NOTICES.md</c> section 1g. With
 /// <see cref="SlotPipeline"/> off the arithmetic is ymfm's line for line (the same tables, shifts, truncations and clamps: <c>--ym-oracle-test</c> checks that against ymfm itself, sample for sample); the class layout is not:
 /// the engine, the registers, the operators and the two chip variants are one class here with the operators in an array, the timers keep time in chip clocks instead of calling back into a host, and the output goes
 /// to an <see cref="IYm2612Sink"/>.</para>

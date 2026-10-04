@@ -33,7 +33,8 @@ public interface ISmsSound
     void WriteFmData(byte value);
     /// <summary>A write to <c>$F2</c>: bit 0 enables FM, bit 1 the PSG mix (the detection routine writes and reads this).</summary>
     void WriteAudioControl(byte value);
-    /// <summary>A read of <c>$F2</c>: what the detection routine sees. A console without the chip returns <c>$FF</c>.</summary>
+    /// <summary>A read of <c>$F2</c> while the console's I/O chip is switched off (bit 2 of <c>$3E</c>): what the detection routine sees, the last value written, bits 0-1 (the board lets it through only then; with the I/O chip
+    /// on, <c>$F2</c> reads as <c>$DC</c>). A console without the chip returns <c>$FF</c>.</summary>
     byte ReadAudioControl();
 
     /// <summary>Move queued stereo samples (interleaved L,R) into <paramref name="dest"/>. Returns the number of shorts written (always even).</summary>

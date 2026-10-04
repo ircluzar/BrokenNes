@@ -164,8 +164,9 @@ internal static class SegaBridgeTestCli
         {
             var apu = CoreCatalog.Options(console, CoreSlot.Apu);
             string stock = console == ConsoleKind.GameGear ? "GG" : "SMS";
-            Check($"{Consoles.DisplayName(console)} APU menu: the stock unit {stock} first, then the PSG on NES chips ({apu.Count - 1} of them)", apu[0].Id == stock && apu.Count > 5 && apu.Skip(1).All(o => o.Id.StartsWith("NES:") && o.Family == "NES"));
-            Check($"{Consoles.DisplayName(console)}: NES:FIX and NES:FIXS are offered; the labels say mono and no FM", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(1).All(o => o.Label.Contains("mono") && o.Label.Contains("no YM2413 FM")));
+            int own = console == ConsoleKind.GameGear ? 1 : 2;   // the stock unit, and on the Master System the Japanese console's SMS-FM (the PSG and the YM2413) right after it
+            Check($"{Consoles.DisplayName(console)} APU menu: the stock unit {stock} first{(own == 2 ? ", then SMS-FM" : "")}, then the PSG on NES chips ({apu.Count - own} of them)", apu[0].Id == stock && (own == 1 || apu[1].Id == "SMS-FM") && apu.Count > 5 && apu.Skip(own).All(o => o.Id.StartsWith("NES:") && o.Family == "NES"));
+            Check($"{Consoles.DisplayName(console)}: NES:FIX and NES:FIXS are offered; the labels say mono and no FM", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(own).All(o => o.Label.Contains("mono") && o.Label.Contains("no YM2413 FM")));
             Check($"{Consoles.DisplayName(console)}: no bridge core is listed as a NES chip (the Master System core itself, and the Game Boy and SNES ones, stay out)", apu.All(o => o.Id != "NES:SMS" && o.Id != "NES:DMG" && o.Id != "NES:SNES"));
             Check($"{Consoles.DisplayName(console)}: a stored NES:FIX is kept, a stored id the menu lacks falls back to the stock unit", CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:FIX") == "NES:FIX" && CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:NOPE") == stock);
         }

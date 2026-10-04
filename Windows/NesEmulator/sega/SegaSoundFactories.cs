@@ -18,7 +18,7 @@ public sealed record SmsSoundRequest(SegaMachine Machine, ConsoleKind Console, P
 /// <summary>
 /// The sound units a Master System / Game Gear session can be given, by the id the console's APU menu uses (<c>CoreCatalog</c>). Each id maps to a factory; adding a unit is one line in
 /// <see cref="Factories"/>. The board never names a unit: its session asks here for the one the user picked, so bridges (a Sega game's sound on NES chips) plug in without touching the board.
-/// Ids: <c>SMS</c> is the stock unit (PSG, Game Gear stereo, and the YM2413 once the Master System track adds it).
+/// Ids: <c>SMS</c> is the stock unit (the PSG and the Game Gear stereo port, no FM chip: the export console), <c>SMS-FM</c> the Japanese console's (the PSG and the YM2413, <see cref="SmsFmSound"/>).
 /// </summary>
 public static class SmsSoundFactories
 {
@@ -27,6 +27,7 @@ public static class SmsSoundFactories
         ["SMS"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),
         ["NES"] = r => new SmsSoundOnNes(r),   // Track C: the PSG replayed on a NES sound chip ("NES" = FIX, "NES:FIXS" ... name the chip)
         ["GG"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Game Gear menu's id for the same unit (its stereo port is part of it)
+        ["SMS-FM"] = r => new SmsFmSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Japanese console's sound: the PSG and the YM2413 (ports $F0-$F2)
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;

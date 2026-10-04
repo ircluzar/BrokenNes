@@ -12,10 +12,11 @@ public sealed partial class SmsVdp
     private readonly uint[] lineBuf = new uint[256];       // TMS modes: the finished line
 
     /// <summary>The 16 colours of the TMS9918 (colour 0, transparent, shows the backdrop). Used by Modes 0-3 on every revision.</summary>
+    // the sixteen colours as the oracle (Mesen 2.1.1) draws them, read off its picture of Workshop/Sega/Sg1000Progs.PaletteProbe (a block of each colour): the common 'TMS9918A' RGB list differs from these in the last digits
     private static readonly uint[] TmsPalette =
     {
-        0xFF000000, 0xFF000000, 0xFF21C842, 0xFF5EDC78, 0xFF5455ED, 0xFF7D76FC, 0xFFD4524D, 0xFF42EBF5,
-        0xFFFC5554, 0xFFFF7978, 0xFFD4C154, 0xFFE6CE80, 0xFF21B03B, 0xFFC95BBA, 0xFFCCCCCC, 0xFFFFFFFF,
+        0xFF000000, 0xFF000000, 0xFF21CE42, 0xFF5ADE7B, 0xFF5252EF, 0xFF7B73FF, 0xFFD6524A, 0xFF42EFF7,
+        0xFFFF5252, 0xFFFF7B7B, 0xFFD6C652, 0xFFE7CE84, 0xFF21B539, 0xFFCE5ABD, 0xFFCECECE, 0xFFFFFFFF,
     };
 
     private bool Mode4Active => HasMode4 && (Regs[0] & 0x04) != 0;
@@ -28,7 +29,7 @@ public sealed partial class SmsVdp
     {
         bool visible = Line < activeHeight;
         // the sprite engine also runs over the 24 border lines above and below the picture: sprites there collide (the collision flag is set) though nothing is drawn and the overflow flag stays clear
-        bool border = !visible && (Line < activeHeight + 24 || Line >= TotalLines - 24);
+        bool border = OracleNoBorderCollision == 0 && !visible && (Line < activeHeight + 24 || Line >= TotalLines - 24);
         if (!visible && !border) return;
         if (Mode4Active) EvaluateSpritesMode4(visible);
         else if (visible) BuildTmsLine();
@@ -229,6 +230,7 @@ public sealed partial class SmsVdp
         int size = (big ? 16 : 8) << (mag ? 1 : 0);
         int sat = (Regs[5] & 0x7F) << 7, sprPat = (Regs[6] & 7) << 11;
         int onLine = 0, colX = int.MaxValue;
+        bool displayEnabled = (Regs[1] & 0x40) != 0;
         for (int i = 0; i < 32; i++)
         {
             int sy = Vram[(sat + i * 4) & 0x3FFF];
@@ -238,8 +240,8 @@ public sealed partial class SmsVdp
             if (r < 0 || r >= size) continue;
             if (++onLine > 4)
             {
-                if (fifthSpriteNumber == 0x1F && !fifthSeen) { fifthSeen = true; fifthSpriteNumber = i; }
-                tmsFifth = true;
+                // with the display blanked (register 1 bit 6 clear) the sprites are not processed: no fifth-sprite flag, no collision (the oracle: a program that loads a sprite table with the display off sees neither)
+                if (displayEnabled) { if (fifthSpriteNumber == 0x1F && !fifthSeen) { fifthSeen = true; fifthSpriteNumber = i; } tmsFifth = true; }
                 break;
             }
             int sx = Vram[(sat + i * 4 + 1) & 0x3FFF];
@@ -263,7 +265,7 @@ public sealed partial class SmsVdp
                 tmsSprOcc[px] = 1; tmsSprColor[px] = (byte)colr;
             }
         }
-        if (colX != int.MaxValue)
+        if (colX != int.MaxValue && displayEnabled)
         {
             int t = PixelOriginMc + 2 * colX;
             if (t < colAtMc) colAtMc = Math.Max(t, curMc);

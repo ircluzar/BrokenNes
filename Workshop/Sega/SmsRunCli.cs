@@ -40,6 +40,7 @@ internal static class SmsRunCli
         var shots = ParseFrames(Opt("png-at") ?? "");
         var hashAt = ParseFrames(Opt("hash-at") ?? "");
         var ramAt = ParseFrames(Opt("ram-at") ?? "");
+        var fmAt = ParseFrames(Opt("fm-regs-at") ?? "");
         int diffDetail = int.Parse(Opt("diff-detail") ?? "6");
         int firstDiffFrame = -1, diffsPrinted = 0;
         string outDir = Opt("out") ?? ".", tag = Opt("tag") ?? Path.GetFileNameWithoutExtension(inner);
@@ -49,9 +50,10 @@ internal static class SmsRunCli
         RegionChoice? region = Opt("region") is { } r ? Enum.Parse<RegionChoice>(r, true) : null;
         MasterSystemModel? model = Opt("model") is { } m ? Enum.Parse<MasterSystemModel>(m, true) : null;
 
+        string apu = Opt("apu") ?? "SMS";      // --apu SMS-FM: the Japanese console's sound unit (PSG and YM2413)
         var session = console == ConsoleKind.GameGear
-            ? (SmsSession)new GgSession(rom, "Z80", "GG", "GG", inner, region)
-            : new SmsSession(rom, console, "Z80", "SMS", "SMS", inner, model, region);
+            ? (SmsSession)new GgSession(rom, "Z80", "GG", apu == "SMS" ? "GG" : apu, inner, region)
+            : new SmsSession(rom, console, "Z80", "SMS", apu, inner, model, region);
         var board = session.Board;
         // the oracle starts its VDP at a random scanline; its capture script records the line, and this emulator starts at the same one so the two run in step (frame for frame, cycle for cycle on the Z80 side)
         string? startLine = Opt("start-line");
@@ -199,6 +201,17 @@ internal static class SmsRunCli
                 hashLast = HashFrame(session);
                 if (hashAt.Contains(frameNo)) Console.WriteLine($"frame {frameNo} hash {hashLast:X16}");
             }
+            if (fmAt.Contains(frameNo) && board.Sound is SmsFmSound fmUnit)
+            {
+                // --fm-regs-at: the YM2413's register file and the audio control in the shape of the oracle's state dump ("fmAudio.opll->regN = V", decimal), for a line by line diff
+                var sb = new StringBuilder();
+                sb.AppendLine($"fmAudio.audioControl = {fmUnit.AudioControl}");
+                for (int i = 0; i < 64; i++) sb.AppendLine($"fmAudio.opll->reg{i} = {fmUnit.Fm.Register(i)}");
+                sb.AppendLine($"fmAudio.opll->rhythm_mode = {(fmUnit.Fm.RhythmMode ? 1 : 0)}");
+                sb.AppendLine($"fmAudio.opll->mix_out0 = {fmUnit.LastFmSample}");
+                for (int i = 0; i < Ym2413.VoiceCount; i++) sb.AppendLine($"fmAudio.opll->ch_out{i} = {fmUnit.Fm.ChannelOutput(i)}");
+                File.WriteAllText(Path.Combine(outDir, $"{tag}_f{frameNo}.fm.txt"), sb.ToString());
+            }
             if (ramAt.Contains(frameNo))
             {
                 File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.ram.bin"), board.Ram);
@@ -223,10 +236,10 @@ internal static class SmsRunCli
                         // Mesen starts the Z80 and the VDP at a random alignment (run it twice and the two runs differ in R and in the cycle count of the first frame), so a game whose
                         // picture depends on timing only matches one of its own runs by luck. With two Mesen runs, frames where they agree are the ones this emulator must match.
                         bool stable = true; uint[]? other = null;
-                        uint[] a = SmsPng.Load(theirs, out int aw, out int ah);
+                        uint[] a = SmsPng.Load(theirs, out int aw, out int ah, session.FrameHeight);
                         if (theirsB != null && File.Exists(theirsB) && new FileInfo(theirsB).Length > 0)
                         {
-                            other = SmsPng.Load(theirsB, out int bw, out int bh);
+                            other = SmsPng.Load(theirsB, out int bw, out int bh, session.FrameHeight);
                             stable = bw == aw && bh == ah && a.AsSpan().SequenceEqual(other);
                         }
                         bool sizeOk = aw == session.FrameWidth && ah == session.FrameHeight;
@@ -358,7 +371,8 @@ internal static class SmsPng
         bmp.Save(path, ImageFormat.Png);
     }
 
-    public static uint[] Load(string path, out int w, out int h)
+    /// <param name="fitHeight">When the picture is taller than this (the oracle's capture script writes the whole video frame, 240 lines, when run with -Overscan 0), the rows are cut evenly top and bottom to this height: a 192-line picture sits 24 rows in, a 224-line one 8.</param>
+    public static uint[] Load(string path, out int w, out int h, int fitHeight = 0)
     {
         using var bmp = new Bitmap(path);
         w = bmp.Width; h = bmp.Height;
@@ -371,6 +385,12 @@ internal static class SmsPng
             for (int x = 0; x < w; x++) px[y * w + x] = (uint)row[x] | 0xFF000000u;
         }
         bmp.UnlockBits(data);
+        if (fitHeight > 0 && h > fitHeight && (h - fitHeight) % 2 == 0)
+        {
+            int top = (h - fitHeight) / 2;
+            px = px.AsSpan(top * w, fitHeight * w).ToArray();
+            h = fitHeight;
+        }
         return px;
     }
 
@@ -401,7 +421,7 @@ internal static class SmsPng
 
     public static int Compare(uint[] mine, int w, int h, string theirsPath, string diffPath, out string summary, bool writeDiff = true)
     {
-        var theirs = Load(theirsPath, out int tw, out int th);
+        var theirs = Load(theirsPath, out int tw, out int th, h);
         if (tw != w || th != h) { summary = $"SIZE MISMATCH: mine {w}x{h}, Mesen {tw}x{th}"; return -1; }
         var diff = new uint[w * h];
         int count = 0, minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;

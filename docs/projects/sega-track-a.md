@@ -1,5 +1,7 @@
 # Sega track A: Master System, Game Gear, SG-1000, milestone A1
 
+**Milestone A2 (the YM2413, the rest of the roster, savestates, PAL, SG-1000, and what became of the open items below) is in `sega-track-a2.md`: items 2, 5 and 6 below were revisited there (the oracle's own run-to-run differences, a VDP read bug found and fixed, the Castle of Illusion dumps).**
+
 Written 2026-10-03/04 at the end of milestone A1. Branch `worktree-agent-a949c301bc3fc0be8`. What was built, what was measured, what was decided, what remains. The plan is `sega-cores-plan.md`; the shared rules are `sega-tracks-brief.md`; provenance is in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (sections 1c, 1d).
 
 ## What exists

@@ -314,7 +314,10 @@ public sealed class BOARD_SMS
     private byte ReadPortCore(ushort port)
     {
         int p = port & 0xFF;
-        if (p == 0xF2 && Sound.HasFm) return Sound.ReadAudioControl();   // without the chip, $F2 is a mirror of $DC like any other port
+        // The FM unit answers a read of $F2 with its audio control (bits 0-1) only while the console's I/O chip is switched off (bit 2 of the memory control port $3E): that is how a game detects the unit
+        // (it writes 0 and 1 to $F2 and reads them back, with the I/O chip off). With the I/O chip on, or without the unit, $F2 is a mirror of $DC like any other port ($F0, $F1 read as $DC / $DD always).
+        // Measured on the oracle (Mesen 2.1.1) with Workshop/Sega/SmsSuitesFm.cs's probes, all 256 written values, with and without its FM chip.
+        if (p == 0xF2 && Sound.HasFm && !ioEnabled) return Sound.ReadAudioControl();
         if (IsGameGear && p < 0x07) return ReadGgPort(p);
         switch (p & 0xC0)
         {
@@ -426,6 +429,9 @@ public sealed class BOARD_SMS
         w.Write(Ram); w.Write(port3E); w.Write(port3F); w.Write((ushort)pad1); w.Write((ushort)pad2); w.Write(pauseHeld);
         w.Write(ggExtData); w.Write(ggExtConfig); w.Write(ggSend); w.Write(ggSerial);
         w.Write(soundCycle); w.Write(Frames);
+        // where the frame loop is (a frame ends part-way through line 192) and the oracle-parity bookkeeping of a tool run
+        w.Write(nextLine); w.Write(firstLineCycle); w.Write(lineOpen); w.Write(lineCycle);
+        w.Write(parityStall); w.Write(paritySkip); w.Write(parityPending); w.Write(parityPrevOp); w.Write(parityCycles);
         Cart.SaveState(w); Vdp.SaveState(w); Sound.SaveState(w); Cpu.SaveState(w);
     }
 
@@ -434,6 +440,8 @@ public sealed class BOARD_SMS
         r.Read(Ram, 0, Ram.Length); port3E = r.ReadByte(); port3F = r.ReadByte(); pad1 = (SmsButtons)r.ReadUInt16(); pad2 = (SmsButtons)r.ReadUInt16(); pauseHeld = r.ReadBoolean();
         ggExtData = r.ReadByte(); ggExtConfig = r.ReadByte(); ggSend = r.ReadByte(); ggSerial = r.ReadByte();
         soundCycle = r.ReadInt64(); Frames = r.ReadInt64();
+        nextLine = r.ReadInt32(); firstLineCycle = r.ReadInt32(); lineOpen = r.ReadBoolean(); lineCycle = r.ReadInt32();
+        parityStall = r.ReadInt32(); paritySkip = r.ReadInt32(); parityPending = r.ReadInt32(); parityPrevOp = r.ReadByte(); parityCycles = r.ReadInt64();
         ApplyMemoryControl();
         Cart.LoadState(r); Vdp.LoadState(r); Sound.LoadState(r); Cpu.LoadState(r);
     }
