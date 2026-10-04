@@ -38,7 +38,8 @@ public static class Consoles
     // (BROKENNES_SEGA=1 on the desktop and Workshop, or SegaPreview = true from Lite's page) shows all three, each running a placeholder session so the
     // plumbing can be exercised end to end. A track sets its console's Ready flag when its core is certified (and replaces the placeholder in
     // ConsoleSessions.Create at the same time: Create refuses a Ready console that still has none).
-    public static readonly bool MasterSystemReady = false, GameGearReady = false, GenesisReady = false;
+    // Master System / Game Gear: Track A milestone A1 met (PSG sound; the YM2413 follows in A2): see docs/projects/sega-track-a.md for the evidence.
+    public static readonly bool MasterSystemReady = true, GameGearReady = true, GenesisReady = false;
 
     public static bool SegaPreview { get; set; } = Environment.GetEnvironmentVariable("BROKENNES_SEGA") == "1";
 

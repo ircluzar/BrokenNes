@@ -412,6 +412,75 @@ internal static class SessionSuite
 }
 
 /// <summary>
+/// The programs the desktop smoke test (UAT/entrypoints/sega-preview-smoke.ps1) loads into the real app: they must do what the smoke script claims (a three-colour picture, a picture that changes while Right is held, a
+/// cartridge RAM that keeps what the program wrote and a program that notices it), and the hex the script carries must be the programs' bytes.
+/// </summary>
+internal static class SmokeSuite
+{
+    private static int Colors(uint[] px, int n) => px.Take(n).Distinct().Count();
+    private static double NonBlackPct(uint[] px, int n) => 100.0 * px.Take(n).Count(c => (c & 0xFFFFFF) != 0) / n;
+
+    public static IEnumerable<SmsCheck> Run(SmsSuiteContext ctx)
+    {
+        foreach (bool gg in new[] { false, true })
+        {
+            string name = gg ? "Game Gear" : "Master System";
+            var console = gg ? ConsoleKind.GameGear : ConsoleKind.MasterSystem;
+            var s = ctx.Session(SmokeProgs.Picture(gg), gg ? "smoke.gg" : "smoke.sms", console);
+            for (int f = 0; f < 30; f++) s.RunFrame();
+            int n = s.FrameWidth * s.FrameHeight;
+            yield return new SmsCheck($"{name} picture program: {s.FrameWidth}x{s.FrameHeight} with at least 3 colours and a mostly non-black picture", Colors(s.Frame, n) >= 3 && NonBlackPct(s.Frame, n) >= 90, $"{Colors(s.Frame, n)} colours, {NonBlackPct(s.Frame, n):F0}% non-black");
+            string still = GoldenSuite.Hash(s);
+            for (int f = 0; f < 10; f++) s.RunFrame();
+            string stillLater = GoldenSuite.Hash(s);
+            s.SetPad(0, ctx.Poison == "smoke" ? PadButtons.Left : PadButtons.Right);
+            for (int f = 0; f < 10; f++) s.RunFrame();
+            string moved = GoldenSuite.Hash(s);
+            yield return new SmsCheck($"{name} picture program: stays still without input, scrolls while Right is held", still == stillLater && moved != stillLater, $"still {still == stillLater}, moved {moved != stillLater}");
+
+            // battery: the first boot writes the marker and shows red, the second (with the save imported) counts and shows green
+            var b = ctx.Session(SmokeProgs.Battery(gg), gg ? "battery.gg" : "battery.sms", console);
+            for (int f = 0; f < 5; f++) b.RunFrame();
+            byte[] save = b.ExportSave();
+            uint c1 = b.Frame[b.FrameWidth * 10 + 10];
+            var b2 = ctx.Session(SmokeProgs.Battery(gg), gg ? "battery.gg" : "battery.sms", console);
+            b2.ImportSave(save);
+            for (int f = 0; f < 5; f++) b2.RunFrame();
+            byte[] save2 = b2.ExportSave();
+            uint c2 = b2.Frame[b2.FrameWidth * 10 + 10];
+            static bool red(uint c) => ((c >> 16) & 0xFF) > 0x80 && ((c >> 8) & 0xFF) < 0x40;
+            static bool green(uint c) => ((c >> 8) & 0xFF) > 0x80 && ((c >> 16) & 0xFF) < 0x40;
+            yield return new SmsCheck($"{name} battery program: offered a save, first boot writes the marker and shows red", b.HasBattery && save[0] == 0x5A && save[1] == 0xA5 && save[2] == 1 && red(c1), $"has battery {b.HasBattery}, save {save[0]:X2} {save[1]:X2} {save[2]}, colour {c1:X8}");
+            yield return new SmsCheck($"{name} battery program: with the save imported it counts the boot and shows green", save2[2] == 2 && green(c2), $"count {save2[2]}, colour {c2:X8}");
+        }
+
+        // the script carries the same bytes
+        string? script = FindScript();
+        if (script == null) { yield return SmsCheck.Skipped("sega-preview-smoke.ps1 carries these programs", "script not found from the current directory"); yield break; }
+        string text = File.ReadAllText(script);
+        foreach (var (key, rom) in new[] { ("SmsPicture", SmokeProgs.Picture(false)), ("GgPicture", SmokeProgs.Picture(true)), ("SmsBattery", SmokeProgs.Battery(false)), ("GgBattery", SmokeProgs.Battery(true)) })
+            yield return new SmsCheck($"sega-preview-smoke.ps1 embeds the {key} program as built here", text.Contains($"${key}Hex = '{SmokeProgs.Hex(rom)}'", StringComparison.OrdinalIgnoreCase), "regenerate with --smstest --print-smoke-hex");
+    }
+
+    private static string? FindScript()
+    {
+        for (var dir = new DirectoryInfo(Directory.GetCurrentDirectory()); dir != null; dir = dir.Parent)
+        {
+            string p = Path.Combine(dir.FullName, "UAT", "entrypoints", "sega-preview-smoke.ps1");
+            if (File.Exists(p)) return p;
+        }
+        return null;
+    }
+
+    /// <summary>--print-smoke-hex: the PowerShell lines the smoke script carries.</summary>
+    public static void Print()
+    {
+        foreach (var (key, rom) in new[] { ("SmsPicture", SmokeProgs.Picture(false)), ("GgPicture", SmokeProgs.Picture(true)), ("SmsBattery", SmokeProgs.Battery(false)), ("GgBattery", SmokeProgs.Battery(true)) })
+            Console.WriteLine($"${key}Hex = '{SmokeProgs.Hex(rom)}'");
+    }
+}
+
+/// <summary>
 /// A regression guard on the picture of the climb's games: the hash of the frame at fixed frame counts of a scripted play-through, against the hashes recorded when each game matched the oracle (the notes in the
 /// golden file say which frames the oracle's own picture matched and which differences are explained). It does not say the picture is right, only that it has not changed. The ROMs are the user's (never in the
 /// repository): pass <c>--roms &lt;dir&gt;</c> (folders sms and gg inside) or set BROKENNES_SMS_ROMS; without them the suite is skipped, and says so.

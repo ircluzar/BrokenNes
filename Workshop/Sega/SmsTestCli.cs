@@ -40,6 +40,7 @@ internal static class SmsTestCli
         var only = (Opt(args, "only") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (Opt(args, "scan") is { } scan) return Vdptest.Scan(ctx, scan);
         if (Opt(args, "golden-write") is { } gw) return ctx.RomDir == null ? Fail("--golden-write needs --roms <dir> (folders sms and gg inside)") : GoldenSuite.Write(ctx, ctx.RomDir, gw);
+        if (args.Any(a => a.Equals("--print-smoke-hex", StringComparison.OrdinalIgnoreCase))) { SmokeSuite.Print(); return 0; }
         if (args.Any(a => a.Equals("--prove", StringComparison.OrdinalIgnoreCase))) return Prove(ctx, only);
         int pass = 0, fail = 0, skipped = 0;
         foreach (var suite in SmsSuites.All)
@@ -159,6 +160,8 @@ internal static class SmsSuites
         new("save", "battery saves: export, import into a program that reads it, no save offered without RAM mapping", SaveSuite.Run, c => { }, "a corrupted save"),
         new("mapper", "cartridge mappers: Sega banks and RAM, Codemasters, plain, detection, copier header", MapperSuite.Run, c => { }, "the plain cartridge where the Sega mapper belongs"),
         new("session", "console layer: pad bits on $DC/$DD, Pause as an NMI, region and model from the name, frame rates, picture sizes", SessionSuite.Run, c => { }, "player 1 presses B where the check expects A"),
+        new("smoke", "the programs of the desktop smoke test: a three-colour picture that scrolls with Right held, a battery program that notices its save; the smoke script carries the same bytes", SmokeSuite.Run,
+            c => { }, "Left held where the check expects Right"),
         new("golden", "regression guard: frame hashes of the 18 roster games' scripted play-through (needs --roms)", GoldenSuite.Run, c => c.Tune["VintFlagMc"] = 60, "frame interrupt 55 master clocks late"),
         new("speed", "throughput on one core (target 8x real time)", SpeedSuite.Run, c => { }, "a target no machine reaches"),
     };

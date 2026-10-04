@@ -91,10 +91,12 @@ internal static class SmsRunCli
             // --trace-io <first>-<last>: every port access made in frames first..last (counted from 1), as "frame line cycle R/W port value"
             var range = tio.Split('-'); int first = int.Parse(range[0]), lastF = range.Length > 1 ? int.Parse(range[1]) : first;
             int shown = 0, max = int.Parse(Opt("trace-io-max") ?? "400");
+            var only = Opt("trace-io-ports")?.Split(',').Select(h => Convert.ToInt32(h, 16)).ToHashSet();   // --trace-io-ports 7F,06: only those ports
             board.PortHook = (write, port, value, line, cyc) =>
             {
                 long fr = board.Frames + 1;
                 if (fr < first || fr > lastF || shown >= max) return;
+                if (only != null && !only.Contains(port & 0xFF)) return;
                 shown++;
                 Console.WriteLine($"IO f{fr} l{line} c{cyc} {(write ? "W" : "R")} {port & 0xFF:X2} {value:X2}");
             };
@@ -172,6 +174,7 @@ internal static class SmsRunCli
         PadButtons p1 = 0, p2 = 0;
         int stableFrames = 0, stableMatched = 0, unstableFrames = 0, unstableMatched = 0;
         int mesenShift = int.Parse(Opt("mesen-shift") ?? "0");
+        long audioN = 0; double audioSqL = 0, audioSqR = 0; int audioPeakL = 0, audioPeakR = 0, audioFrameMax = 0, audioActiveFrames = 0, frameNo0 = -1;
         for (int f = 0; f < frames; f++)
         {
             if (script1.TryGetValue(f, out var h1)) p1 = h1;
@@ -179,7 +182,17 @@ internal static class SmsRunCli
             session.SetPad(0, p1); session.SetPad(1, p2);
             session.RunFrame();
             if (Flag("frame-end-lines") && (f >= 363 && f <= 367 || board.Vdp.Line != 191 || board.Vdp.ActiveHeight != 192)) Console.WriteLine($"frame {f + 1} ended at line {board.Vdp.Line} (active height {board.Vdp.ActiveHeight}) frames={board.Frames}");
-            int n; while ((n = session.ReadSamples(abuf)) > 0) if (Opt("wav") != null) for (int i = 0; i + 1 < n; i += 2) pcm.Add((short)((abuf[i] + abuf[i + 1]) / 2));
+            int n;
+            while ((n = session.ReadSamples(abuf)) > 0)
+                for (int i = 0; i + 1 < n; i += 2)
+                {
+                    if (Opt("wav") != null) pcm.Add((short)((abuf[i] + abuf[i + 1]) / 2));
+                    audioN++; audioSqL += (double)abuf[i] * abuf[i]; audioSqR += (double)abuf[i + 1] * abuf[i + 1];
+                    audioPeakL = Math.Max(audioPeakL, Math.Abs((int)abuf[i])); audioPeakR = Math.Max(audioPeakR, Math.Abs((int)abuf[i + 1]));
+                    int mono = (abuf[i] + abuf[i + 1]) / 2;
+                    if (frameNo0 != f) { frameNo0 = f; if (audioFrameMax > 200) audioActiveFrames++; audioFrameMax = 0; }
+                    audioFrameMax = Math.Max(audioFrameMax, Math.Abs(mono));
+                }
             int frameNo = f + 1;
             if (Flag("hash") || hashAt.Contains(frameNo))
             {
@@ -252,6 +265,9 @@ internal static class SmsRunCli
         Console.WriteLine($"frames={frames} {secs * 1000 / frames:F2} ms/frame ({frames / secs:F0} fps, {frames / secs / session.FramesPerSecond:F1}x real time) PC=${board.Cpu.PC:X4} " +
                           $"R0..R10={string.Join(" ", vdp.Regs.Take(11).Select(b => b.ToString("X2")))} height={vdp.FrameHeight} irq={vdp.Irq} lastLine={vdp.Line}");
         if (Flag("hash")) Console.WriteLine($"hash={hashLast:X16}");
+        if (Flag("audio-stats"))
+            Console.WriteLine($"audio: {audioN} sample pairs ({audioN / (double)session.SampleRate:F1} s), peak L {audioPeakL} R {audioPeakR}, rms L {Math.Sqrt(audioSqL / Math.Max(1, audioN)):F0} R {Math.Sqrt(audioSqR / Math.Max(1, audioN)):F0}, " +
+                              $"{audioActiveFrames} of {frames} frames louder than 200, battery={session.HasBattery}, sound unit {board.Sound.CoreName}");
         if (Flag("regs")) { var z = board.Cpu; Console.WriteLine($"regs AF={z.AF:X4} BC={z.BC:X4} DE={z.DE:X4} HL={z.HL:X4} IX={z.IX:X4} IY={z.IY:X4} SP={z.SP:X4} PC={z.PC:X4} R={z.R:X2} cycles={board.Cycles}"); }
         if (mesenDir != null)
         {

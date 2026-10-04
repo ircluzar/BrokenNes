@@ -119,24 +119,34 @@ internal static class SegaFoundationTestCli
 
     // ---------------------------------------------------------------------------------------------- the checks
 
+    // A Sega console whose core is finished (its Ready flag) is on show without the preview, so what "hidden" means is: every Sega console that is NOT ready.
+    private static readonly ConsoleKind[] SegaKinds = { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis };
+    private static ConsoleKind[] NotReady => SegaKinds.Where(k => !Consoles.IsReady(k)).ToArray();
+
     private static void Hidden()
     {
-        var orig = new[] { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor };
-        Check("Consoles.All lists only the four finished consoles, in the original order", Consoles.All.SequenceEqual(orig), string.Join(",", Consoles.All));
-        var exts = new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc", ".zip" };
-        Check("AllRomExtensions is exactly the original six", Consoles.AllRomExtensions.SequenceEqual(exts), string.Join(" ", Consoles.AllRomExtensions));
-        Check("a Sega ROM is not recognised", RomDetect.Detect(Sms(4), "game.sms") == null && RomDetect.Detect(Genesis(), "game.md") == null && RomDetect.Detect(Sms(6), "game.gg") == null);
+        var ready = SegaKinds.Where(Consoles.IsReady).ToArray();
+        var orig = new[] { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor }.Concat(ready).ToArray();
+        Check("Consoles.All lists only the finished consoles (the four original ones, then each ready Sega console), in order", Consoles.All.SequenceEqual(orig), string.Join(",", Consoles.All));
+        var exts = new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc" }.Concat(ready.SelectMany(Consoles.Extensions)).Append(".zip").ToArray();
+        Check("AllRomExtensions is exactly the original six plus the ready consoles' own", Consoles.AllRomExtensions.SequenceEqual(exts), string.Join(" ", Consoles.AllRomExtensions));
+        Check("a Sega ROM of a console that is not ready is not recognised",
+            (Consoles.IsReady(ConsoleKind.MasterSystem) || RomDetect.Detect(Sms(4), "game.sms") == null) && (Consoles.IsReady(ConsoleKind.Genesis) || RomDetect.Detect(Genesis(), "game.md") == null)
+            && (Consoles.IsReady(ConsoleKind.GameGear) || RomDetect.Detect(Sms(6), "game.gg") == null));
         Check("the other consoles are detected as before",
             RomDetect.Detect(Nes(), "a.nes") == ConsoleKind.Nes && RomDetect.Detect(Snes(), "a.sfc") == ConsoleKind.Snes
             && RomDetect.Detect(GameBoy(false), "a.gb") == ConsoleKind.GameBoy && RomDetect.Detect(GameBoy(true), "a.gbc") == ConsoleKind.GameBoyColor
             && RomDetect.Detect(Snes(), "noextension") == ConsoleKind.Snes);
-        Check("a zip holding a Sega ROM is not unwrapped", Throws<InvalidDataException>(() => RomDetect.Unwrap(Zip("game.md", Genesis()), "x.zip", out _)));
+        Check("a zip holding a ROM of a console that is not ready is not unwrapped", Consoles.IsReady(ConsoleKind.Genesis) || Throws<InvalidDataException>(() => RomDetect.Unwrap(Zip("game.md", Genesis()), "x.zip", out _)));
         bool refused = true;
-        foreach (var k in new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis })
+        foreach (var k in NotReady)
             refused &= Throws<NotSupportedException>(() => ConsoleSessions.Create(k, Genesis(), "", "", ""));
-        Check("no Sega session can be created", refused);
-        Check("no Sega console is ready yet (a Ready console must have a real session)",
-            !Consoles.IsReady(ConsoleKind.MasterSystem) && !Consoles.IsReady(ConsoleKind.GameGear) && !Consoles.IsReady(ConsoleKind.Genesis));
+        Check("no session can be created for a Sega console that is not ready", refused);
+        foreach (var k in SegaKinds.Where(Consoles.IsReady))
+        {
+            using var s = ConsoleSessions.Create(k, k == ConsoleKind.GameGear ? Sms(6) : Sms(4), CoreCatalog.Default(k, CoreSlot.Cpu), CoreCatalog.Default(k, CoreSlot.Ppu), CoreCatalog.Default(k, CoreSlot.Apu), fileName: k == ConsoleKind.GameGear ? "a.gg" : "a.sms");
+            Check($"{Consoles.DisplayName(k)} is ready, and a Ready console has a real session (not the placeholder)", s is not SegaPlaceholderSession && !s.Description.Contains("PLACEHOLDER"));
+        }
     }
 
     private static bool Throws<T>(Action a) where T : Exception { try { a(); return false; } catch (T) { return true; } catch { return false; } }
@@ -233,6 +243,7 @@ internal static class SegaFoundationTestCli
         foreach (var (kind, w, h, rom) in new[] { (ConsoleKind.MasterSystem, 256, 192, Sms(4)), (ConsoleKind.GameGear, 160, 144, Sms(6)), (ConsoleKind.Genesis, 320, 224, Genesis()) })
         {
             string name = Consoles.DisplayName(kind);
+            if (Consoles.IsReady(kind)) continue;      // a ready console runs its real core (the placeholder's square, silence and empty save are not its behaviour; --smstest covers it)
             using var s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), CoreCatalog.Default(kind, CoreSlot.Apu));
             Check($"{name}: a placeholder session says what it is", s is SegaPlaceholderSession && s.Description.Contains("PLACEHOLDER") && s.Console == kind);
             Check($"{name}: frame is {w}x{h}, ARGB, ~59.92 fps", s.FrameWidth == w && s.FrameHeight == h && s.Frame.Length >= w * h && Math.Abs(s.FramesPerSecond - 59.9227) < 0.001 && s.Frame.All(p => p >> 24 == 0xFF));
