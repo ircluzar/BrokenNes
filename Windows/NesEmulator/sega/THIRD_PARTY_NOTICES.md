@@ -138,6 +138,16 @@ output format (sign and magnitude with the magnitude cut to `(res >> 3) + 1`), t
 **Verification (`--fm-oracle-test`, 173 checks, about 12 s; `--prove`: every group fails when a fault is injected).** Exact: all multipliers, feedback 0-6, both waveforms, total levels, volumes, the key-scale level on every channel, tremolo and vibrato over their whole periods. Bounded: the 15 instruments on nine pitches
 (loudness within 2 dB of every 128-sample window, 0.5 dB on average), the envelope phases of a lone carrier (SNR at least 26 dB), the bass drum and the tom. Not the oracle's: the noise of the snare, cymbal and hi-hat (level within 0.4 dB), the release of the tom, the chaotic corner (feedback 7 at full level).
 
+### 1f. Master System / Game Gear / SG-1000, milestone A2, written 2026-10-04 (Track A): measured facts, no borrowed code
+
+Nothing was ported for the board, the sound-port decode, the save state or the SG-1000 mode. What was learnt from the oracle (Mesen 2.1.1, GPL-3.0; run only, its source never read) came from probe programs written here (`Workshop/Sega/SmsSuitesFm.cs`,
+`IrqProbes.cs`, `VdpSlotProbes.cs`, `Sg1000Progs.cs`: hand-assembled Z80, no ROM or code of anyone else) and the oracle's own state dump, work RAM dump and pictures:
+- the YM2413 ports: `$F2` reads back its audio control (bits 0-1) only while the I/O chip is off (bit 2 of `$3E`), otherwise it and `$F0` read as `$DC` and `$F1` as `$DD`, with and without the chip (all 256 values; six write sequences);
+- the TMS9918's sixteen colours (RGB values read off the oracle's picture of a block of each colour: `Sg1000Progs.PaletteProbe`; they differ in the last digits from the usual published list), the status register's low five bits (0 without a fifth sprite), and that sprites are not processed with the display blanked;
+- instruction-boundary interrupt acceptance for 13 instruction kinds (equal), and the frame-end behaviour of a read after a write to VRAM (a read sees the write waiting for its slot);
+- the YM2413 register file and the chip's output (last sample, per channel) of four Japanese games and a test ROM, as numbers to compare with, not as code.
+The FM unit's mix of the PSG and the FM chip follows the documented convention (bit 0 FM on, bit 1 PSG off) and was **not** compared with a recording: none can be made here.
+
 ## 2. Written with a source seen (credited)
 
 | What | Where | Notes |
