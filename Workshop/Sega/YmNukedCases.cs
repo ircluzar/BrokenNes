@@ -590,7 +590,7 @@ internal static class NukedCases
             Key(s, 0, 15);
             var a = Scenario(s, 1500, false, (int)start + 12, 1, 6, pipeline: true);
             var b = Scenario(s, 1500, false, (int)start + 12, 1, 6, pipeline: false);
-            on.Add($"{alg}: {a.MixLeft.ExactPercent:F0}% {a.MixLeft.SnrDb:F0} dB"); off.Add($"{alg}: {b.MixLeft.ExactPercent:F0}% {(double.IsInfinity(b.MixLeft.SnrDb) ? "inf" : b.MixLeft.SnrDb.ToString("F0"))} dB");
+            on.Add($"{alg}: {a.MixLeft.ExactPercent:F0}% {(double.IsInfinity(a.MixLeft.SnrDb) ? "inf" : a.MixLeft.SnrDb.ToString("F0"))} dB"); off.Add($"{alg}: {b.MixLeft.ExactPercent:F0}% {(double.IsInfinity(b.MixLeft.SnrDb) ? "inf" : b.MixLeft.SnrDb.ToString("F0"))} dB");
             exactOn += a.MixLeft.Exact; exactOff += b.MixLeft.Exact; total += a.MixLeft.Compared;
         }
         Console.WriteLine($"   slot pipeline on : algorithm: percent exact, SNR  {string.Join("; ", on)}");
