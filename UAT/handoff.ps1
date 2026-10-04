@@ -53,12 +53,6 @@ foreach ($f in 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'LICENSE.md', 'LICENSE.txt')
 Copy-Item (Join-Path $repo 'Windows\NesEmulator\sega\THIRD_PARTY_NOTICES.md') (Join-Path $app 'THIRD_PARTY_NOTICES-sega.md') -Force
 @'
 @echo off
-rem BrokenNes with the Genesis / Mega Drive preview switched on (it stays hidden otherwise until the Genesis picture is certified).
-set BROKENNES_SEGA=1
-start "" "%~dp0BrokenNes\BrokenNes.Windows.exe"
-'@ | Set-Content (Join-Path $dest 'Run BrokenNes (Genesis preview on).cmd') -Encoding ASCII
-@'
-@echo off
 start "" "%~dp0BrokenNes\BrokenNes.Windows.exe"
 '@ | Set-Content (Join-Path $dest 'Run BrokenNes.cmd') -Encoding ASCII
 @'
