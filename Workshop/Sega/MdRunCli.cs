@@ -13,8 +13,9 @@ namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
 /// <c>--md-run &lt;rom&gt; [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input "60:Start,90:Right+A,120:"] [--every N] [--png out.png] [--palette 0..3] [--trace out.txt]
-/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--plane-png out.png] [--ram-out ram.bin] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
-/// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. There is no picture renderer yet, so <c>--png</c> writes the VDP's VRAM/CRAM debug view and <c>--plane-png</c> a dump of the two scroll planes' first 40 by 28 cells (no scroll, window, sprites or priority: enough to read a test ROM's text or recognise a game's screen). <c>--ram-out</c> writes the 64 KB of work RAM (test ROMs keep their results there), <c>--trace-reads</c> adds the 68000's reads outside ROM and RAM to a trace, <c>--force</c> runs a ROM without the SEGA header as a Genesis one.
+/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--pic-hash-at 60,120] [--png-at 60,120 --png-dir d] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
+/// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. <c>--png</c> writes the picture of the last frame (the VDP's output at its real size), <c>--png-at 60,120 --png-dir d</c> one picture per listed frame
+/// (<c>d000060.png</c>), <c>--pic-hash-at 60,120</c> prints the picture's hash at those frames, <c>--vram-png</c> the VDP's VRAM/CRAM debug view and <c>--plane-png</c> a dump of the two scroll planes' first 40 by 28 cells (no scroll, window, sprites or priority). <c>--ram-out</c> writes the 64 KB of work RAM (test ROMs keep their results there), <c>--trace-reads</c> adds the 68000's reads outside ROM and RAM to a trace, <c>--force</c> runs a ROM without the SEGA header as a Genesis one.
 /// <c>--trace</c> writes a line per VDP, Z80-area, I/O, BUSREQ, RESET and PSG write (and per instruction with <c>--trace-pc</c>), tagged with frame and line, in a form two runs can be diffed in.
 /// Exit code 0 = ran every frame without a halt or a 68000 address error; 1 = the CPU halted or took an address error (listed); 2 = usage or file error.
 /// </summary>
@@ -23,7 +24,7 @@ internal static class MdRunCli
     public static int Run(string[] args)
     {
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : M68kTestCli.Arg(args, "--rom");
-        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at list] [--plane-png out.png] [--ram-out ram.bin] [--force] [--quiet]"); return 2; }
+        if (rom == null) { Console.WriteLine("usage: --md-run <rom> [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input script] [--every N] [--png out.png] [--palette n] [--trace out.txt] [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at list] [--pic-hash-at list] [--png-at list --png-dir dir] [--vram-png out.png] [--plane-png out.png] [--ram-out ram.bin] [--vdp-out dir] [--force] [--quiet]"); return 2; }
         int frames = int.TryParse(M68kTestCli.Arg(args, "--frames"), out int f) ? f : 120;
         int every = int.TryParse(M68kTestCli.Arg(args, "--every"), out int ev) ? ev : 0;
         int palette = int.TryParse(M68kTestCli.Arg(args, "--palette"), out int pal) ? pal : 0;
@@ -32,6 +33,10 @@ internal static class MdRunCli
         bool tracePc = M68kTestCli.Flag(args, "--trace-pc");
         int traceFrames = int.TryParse(M68kTestCli.Arg(args, "--trace-frames"), out int tf) ? tf : int.MaxValue;
         var hashAt = new HashSet<int>((M68kTestCli.Arg(args, "--hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
+        var picHashAt = new HashSet<int>((M68kTestCli.Arg(args, "--pic-hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
+        var pngAt = new HashSet<int>((M68kTestCli.Arg(args, "--png-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
+        string? pngDir = M68kTestCli.Arg(args, "--png-dir");
+        if (pngDir != null) Directory.CreateDirectory(pngDir);
         string apu = M68kTestCli.Arg(args, "--apu") ?? "MD";
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         GenesisModelChoice? model = M68kTestCli.Arg(args, "--model") switch { "1" => GenesisModelChoice.Model1, "2" => GenesisModelChoice.Model2, "3" => GenesisModelChoice.Model3, _ => null };
@@ -46,6 +51,7 @@ internal static class MdRunCli
         try { session = new MdSession(data, "M68K", "MD", apu, region, model); }
         catch (Exception e) { Console.WriteLine($"cannot start: {e.Message}"); return 2; }
         session.DebugPalette = palette;
+        string? vramPng = M68kTestCli.Arg(args, "--vram-png");
         var board = session.Board;
         Console.WriteLine($"== {Path.GetFileName(rom)}: {session.Description}");
         Console.WriteLine($"   header: '{board.Cart.OverseasTitle}' serial {board.Cart.Serial} regions '{board.Cart.Regions}' rom {board.Cart.RomLength:N0} bytes, checksum header {board.Cart.HeaderChecksum:X4} computed {board.Cart.ComputedChecksum:X4}, sram {(board.Cart.HasSramHeader ? $"${board.Cart.SramStart:X6}-${board.Cart.SramEnd:X6} ({board.Cart.Sram.Length} bytes)" : "none")}");
@@ -77,6 +83,8 @@ internal static class MdRunCli
             if (board.Cpu.Halted) { halts++; break; }
             if (every > 0 && (i + 1) % every == 0 && !quiet) Console.WriteLine($"   frame {i + 1,5}: {Summary(board)}");
             if (hashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} hash: {StateHash(board):X16}");
+            if (picHashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} picture {session.FrameWidth}x{session.FrameHeight} hash: {PicHash(session):X16}");
+            if (pngAt.Contains(i + 1) && pngDir != null) WritePng(session, Path.Combine(pngDir, $"f{i + 1:D6}.png"));
         }
         sw.Stop();
         trace?.Dispose();
@@ -87,8 +95,29 @@ internal static class MdRunCli
         if (!quiet) Dump(board);
         if (png != null)
         {
-            try { WritePng(session, png); Console.WriteLine($"   wrote {png} (VRAM tiles in palette line {palette} and the 64 CRAM colours; there is no picture renderer yet)"); }
+            try { WritePng(session, png); Console.WriteLine($"   wrote {png} ({session.FrameWidth}x{session.FrameHeight})"); }
             catch (Exception e) { Console.WriteLine($"   png failed: {e.Message}"); }
+        }
+        if (vramPng != null)
+        {
+            try { session.DebugView = true; session.DebugPalette = palette; board.Vdp.RenderDebugView(session.Frame, palette); WritePngFrom(session.Frame, MdSession.DebugWidth, MdSession.DebugHeight, vramPng); session.DebugView = false; Console.WriteLine($"   wrote {vramPng} (VRAM tiles in palette line {palette} and the 64 CRAM colours)"); }
+            catch (Exception e) { Console.WriteLine($"   png failed: {e.Message}"); }
+        }
+        string? vdpOut = M68kTestCli.Arg(args, "--vdp-out");
+        if (vdpOut != null)
+        {
+            try
+            {
+                Directory.CreateDirectory(vdpOut);
+                File.WriteAllBytes(Path.Combine(vdpOut, "vram.bin"), board.Vdp.Vram);
+                var cr = new byte[128]; for (int i = 0; i < 64; i++) { cr[i * 2] = (byte)(board.Vdp.Cram[i] >> 8); cr[i * 2 + 1] = (byte)board.Vdp.Cram[i]; }
+                File.WriteAllBytes(Path.Combine(vdpOut, "cram.bin"), cr);
+                var vs = new byte[128]; for (int i = 0; i < 64; i++) { vs[i * 2] = (byte)(board.Vdp.Vsram[i] >> 8); vs[i * 2 + 1] = (byte)board.Vdp.Vsram[i]; }
+                File.WriteAllBytes(Path.Combine(vdpOut, "vsram.bin"), vs);
+                File.WriteAllBytes(Path.Combine(vdpOut, "regs.bin"), board.Vdp.Reg.Take(24).ToArray());
+                Console.WriteLine($"   wrote vram.bin, cram.bin, vsram.bin and regs.bin to {vdpOut}");
+            }
+            catch (Exception e) { Console.WriteLine($"   vdp dump failed: {e.Message}"); }
         }
         string? ramOut = M68kTestCli.Arg(args, "--ram-out");
         if (ramOut != null)
@@ -138,6 +167,14 @@ internal static class MdRunCli
         Console.WriteLine($"   bus: {b.BusReads:N0} reads, {b.BusWrites:N0} writes, {b.OpenBusReads:N0} open-bus reads | {b.Pads.Describe()}");
         if (b.Sound is MdSoundUnit u)
             Console.WriteLine($"   sound unit: z80 ticks {u.Z80Ticks:N0}, bus requests {u.BusRequests}, bank reads {u.BankReads:N0}, psg writes {u.PsgWrites}, ym writes {u.YmWrites}, z80 ram non-zero {u.Ram.Count(x => x != 0)}/8192");
+    }
+
+    private static ulong PicHash(MdSession s)
+    {
+        ulong h = 14695981039346656037UL;
+        int n = s.FrameWidth * s.FrameHeight;
+        for (int i = 0; i < n; i++) { h ^= s.Frame[i]; h *= 1099511628211UL; }
+        return h ^ (ulong)s.FrameWidth << 40 ^ (ulong)s.FrameHeight << 52;
     }
 
     private static ulong Hash(byte[] d) { ulong h = 14695981039346656037UL; foreach (byte x in d) { h ^= x; h *= 1099511628211UL; } return h; }

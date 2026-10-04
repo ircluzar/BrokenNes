@@ -4,16 +4,23 @@ using NesEmulator.Systems;
 namespace NesEmulator.Sega;
 
 /// <summary>
-/// A Genesis / Mega Drive game on <see cref="BOARD_MD"/>: the 68000 core, the VDP and the sound unit the console's menus selected. <b>This milestone has no picture renderer</b>:
-/// <see cref="Frame"/> is the VDP's debug view (VRAM as tiles in the palette line <see cref="DebugPalette"/>, with the colour RAM under it), which says so in <see cref="Description"/>. The console stays
-/// behind the preview switch (<see cref="Consoles.GenesisReady"/> is false) until a real picture exists.
+/// A Genesis / Mega Drive game on <see cref="BOARD_MD"/>: the 68000 core, the VDP and the sound unit the console's menus selected. <see cref="Frame"/> is the VDP's picture at its real size (256 or 320 wide,
+/// 224 or 240 high; the width can change from frame to frame when a game switches modes), or, with <see cref="DebugView"/> set, the VDP's memory view (VRAM as tiles in the palette line
+/// <see cref="DebugPalette"/> with the colour RAM under it).
 /// </summary>
+/// <remarks>
+/// Pad mapping: the apps send the twelve generic buttons, the Genesis pad has eight. A, B, X, Y, Start and the directions are themselves; C is <see cref="PadButtons.C"/> or R, Z is <see cref="PadButtons.Z"/> or L and
+/// Mode is <see cref="PadButtons.Mode"/> or Select (so the six-button pad is reachable from the layout the apps already have). Player 1 has a six-button pad, player 2 a three-button one.
+/// </remarks>
 public sealed class MdSession : IConsoleSession
 {
     public const int DebugWidth = 512, DebugHeight = 272;
 
     public BOARD_MD Board { get; }
-    private readonly uint[] frame = new uint[DebugWidth * DebugHeight];
+    private readonly uint[] frame = new uint[Math.Max(DebugWidth * DebugHeight, MdVdp.PictureStride * MdVdp.PictureMaxHeight)];
+    private int frameWidth = 320, frameHeight = 224;
+    /// <summary>Show the VDP's memory view instead of the picture.</summary>
+    public bool DebugView { get; set; }
     private readonly string cpuId, ppuId;
     private string apuId;
     private readonly short[] scratch = new short[0];
@@ -41,24 +48,39 @@ public sealed class MdSession : IConsoleSession
     public ConsoleKind Console => ConsoleKind.Genesis;
     public string Title => title;
     public string Description =>
-        $"Genesis {title} ({Board.Cart.Mapper}) | {Board.Region} {Board.Model} | CPU {cpuId} | PPU {ppuId} (NO PICTURE RENDERER YET: the frame is the VDP's VRAM/CRAM debug view) | APU {apuId}: {Board.Sound.CoreName}";
+        $"Genesis {title} ({Board.Cart.Mapper}) | {Board.Region} {Board.Model} | CPU {cpuId} | PPU {ppuId} | APU {apuId}: {Board.Sound.CoreName}";
     public double FramesPerSecond { get; }
     public string GameId => gameId;
 
-    public void SetPad(int player, PadButtons buttons) => Board.SetPad(player, buttons);
+    public void SetPad(int player, PadButtons buttons)
+    {
+        if ((buttons & PadButtons.R) != 0) buttons |= PadButtons.C;
+        if ((buttons & PadButtons.L) != 0) buttons |= PadButtons.Z;
+        if ((buttons & PadButtons.Select) != 0) buttons |= PadButtons.Mode;
+        Board.SetPad(player, buttons);
+    }
 
     public void RunFrame()
     {
         Board.RunFrame();
-        Board.Vdp.RenderDebugView(frame, DebugPalette);
+        var v = Board.Vdp;
+        if (DebugView)
+        {
+            v.RenderDebugView(frame, DebugPalette);
+            frameWidth = DebugWidth; frameHeight = DebugHeight;
+            return;
+        }
+        frameWidth = v.PictureWidth; frameHeight = v.PictureHeight;
+        v.CopyPicture(frame);
     }
 
     public void Reset() => Board.Reset();
 
     public uint[] Frame => frame;
-    public int FrameWidth => DebugWidth;
-    public int FrameHeight => DebugHeight;
-    public int DisplayWidth => DebugWidth;
+    public int FrameWidth => frameWidth;
+    public int FrameHeight => frameHeight;
+    /// <summary>The picture fills the same width of screen in both modes (a 256-wide line is stretched to the 320 of the wide one).</summary>
+    public int DisplayWidth => DebugView ? DebugWidth : 320;
     public int SampleRate => sampleRate;
 
     public int ReadSamples(short[] buffer) => Board.Sound.ReadSamples(buffer);

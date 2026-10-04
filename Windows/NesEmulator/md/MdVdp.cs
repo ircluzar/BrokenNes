@@ -15,9 +15,9 @@ public interface IMdVdpHost
 }
 
 /// <summary>
-/// The Genesis video chip (YM7101 / 315-5313) as far as this milestone takes it: VRAM, CRAM, VSRAM and the registers, the command and data port protocol, the write FIFO, DMA (68000 to VDP,
-/// fill, copy), the status register, the H and V counters and the vertical and horizontal interrupts. It draws nothing yet: the picture renderer is the next milestone, so the sprite overflow and
-/// collision flags are never set and <see cref="RenderDebugView"/> shows the memories, not the screen.
+/// The Genesis video chip (YM7101 / 315-5313): VRAM, CRAM, VSRAM and the registers, the command and data port protocol, the write FIFO, DMA (68000 to VDP,
+/// fill, copy), the status register, the H and V counters, the vertical and horizontal interrupts, and (in MdVdpRender.cs) the picture: planes, window, sprites, priority, shadow and highlight.
+/// <see cref="RenderDebugView"/> and <see cref="RenderPlaneDump"/> still show the memories and the bare planes for debugging.
 /// </summary>
 /// <remarks>
 /// <para><b>Time.</b> The VDP runs on the machine's master clock (3420 clocks a line in both widths). <see cref="RunTo"/> brings it to a time; everything it does is placed by the time
@@ -162,6 +162,8 @@ public sealed partial class MdVdp
         DataWrites = ControlWrites = FifoStalls = DmaWords = 0; FifoStallClocks = 0;
         // the post-boot state the console's own code leaves is the game's business; the chip itself powers on with everything zero
         hintTime = lineStart + HIntOffset; slotCursor = 0;
+        InitRender();
+        BeginLineRender();
     }
 
     // =================================================================================================================
@@ -281,6 +283,7 @@ public sealed partial class MdVdp
 
     private void StartNextLine()
     {
+        FinishLineRender();
         lineStart += ClocksPerLine;
         Line++;
         if (Line >= linesPerFrame)
@@ -290,6 +293,7 @@ public sealed partial class MdVdp
         }
         hintTime = lineStart + HIntOffset;
         if (Line == ActiveLines) vintTime = lineStart + VintDelay;     // the vertical blank begins; VINT follows after its delay
+        BeginLineRender();
     }
 
     /// <summary>Master clock of the next thing that changes the VDP's visible state: a line boundary, an interrupt or flag, or a free slot with work waiting.</summary>
@@ -333,6 +337,7 @@ public sealed partial class MdVdp
     private void ConsumeSlot()
     {
         slotCursor = Time + 1;
+        SyncRender();       // the memories this slot may write are drawn up to the pixel being output first
         // a bus transfer moves its words through the write FIFO, as every write does: it fetches while there is room
         if (dma == DmaKind.Bus) FeedBusDma();
         if (fifoCount > 0)
@@ -394,7 +399,7 @@ public sealed partial class MdVdp
                 Vram[a] = (byte)(data >> 8); Vram[a + 1] = (byte)data;
                 break;
             }
-            case 3: Cram[(addr >> 1) & 0x3F] = (ushort)(data & 0x0EEE); break;
+            case 3: OnCramWrite((int)(addr >> 1) & 0x3F, data); break;
             case 5:
             {
                 // VSRAM holds 40 words: a write to one of the other addresses of its 64-word range is lost, and a read there returns entry 0 (BlastEm and Nemesis' fill-to-VSRAM tests: entries 40-63 read as entry 0)
@@ -506,6 +511,7 @@ public sealed partial class MdVdp
     {
         if (reg > 10 && !Mode5) return;       // the extra registers belong to mode 5
         bool vintBefore = VintEnabled, hintBefore = HintEnabled;
+        SyncRender();
         Reg[reg] = value;
         if (reg == 0) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
         if (reg == 1 && VintEnabled && !vintBefore) vintEnableFrom = Time + IplDelayMasterClocks;
@@ -586,6 +592,9 @@ public sealed partial class MdVdp
         if (fifoCount == 0) s |= 0x200;
         if (fifoCount == 4) s |= 0x100;
         if (vintPending) s |= 0x80;
+        if (sprOverflow) s |= 0x40;
+        if (sprCollision) s |= 0x20;
+        sprOverflow = sprCollision = false;
         if (oddFrame) s |= 0x10;
         if (InVBlank || !DisplayEnabled) s |= 0x08;
         if (InHBlank) s |= 0x04;
@@ -761,7 +770,6 @@ public sealed partial class MdVdp
         sb.Append($"VDP line {Line} (+{LineOffset}) frame {Frames} | {(H40 ? "H40" : "H32")} {(V30 ? "V30" : "V28")} display {(DisplayEnabled ? "on" : "off")} dma {(DmaEnabled ? "on" : "off")} vint {(VintEnabled ? "on" : "off")} hint {(HintEnabled ? "on" : "off")} | ");
         sb.Append($"code {code:X2} addr {address:X4} fifo {fifoCount} dma {dma}{(fillArmed ? "(armed)" : "")} | regs");
         for (int i = 0; i < 24; i++) sb.Append($" {Reg[i]:X2}");
-        sb.Append(" | no picture renderer yet: sprite flags are never set");
         return sb.ToString();
     }
 
@@ -785,5 +793,8 @@ public sealed partial class MdVdp
         fifoHead = r.ReadInt32(); fifoCount = r.ReadInt32();
         for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32() };
         dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
+        // the picture is not part of a state: the colours are rebuilt and the line in progress is drawn from where the state left it
+        for (int i = 0; i < 64; i++) UpdatePal(i);
+        BeginLineRender();
     }
 }
