@@ -90,6 +90,12 @@ internal static class MdRunCli
             try { WritePng(session, png); Console.WriteLine($"   wrote {png} (VRAM tiles in palette line {palette} and the 64 CRAM colours; there is no picture renderer yet)"); }
             catch (Exception e) { Console.WriteLine($"   png failed: {e.Message}"); }
         }
+        string? ramOut = M68kTestCli.Arg(args, "--ram-out");
+        if (ramOut != null)
+        {
+            try { File.WriteAllBytes(ramOut, board.Ram); Console.WriteLine($"   wrote the 64 KB of work RAM to {ramOut}"); }
+            catch (Exception e) { Console.WriteLine($"   ram dump failed: {e.Message}"); }
+        }
         string? planePng = M68kTestCli.Arg(args, "--plane-png");
         if (planePng != null)
         {

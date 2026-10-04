@@ -113,6 +113,10 @@ public sealed partial class MdVdp
     private uint address;              // 17 bits used (VRAM 64 KB: 16)
     private ushort readBuffer;
     private long readReadyAt;
+    private int readCacheCode;         // what the read-ahead was taken for, so that it can be taken again after the FIFO's writes land
+    private uint readCacheAddress;
+    private int hvLatched = -1;       // the HV counter frozen by R0 bit 1, or -1 while it runs
+    private bool readStale;            // the read-ahead was taken while writes were still queued; the word is fetched again once they are done
 
     /// <summary>The access code of the current command (bits CD5-CD0: 0 VRAM read, 1 VRAM write, 3 CRAM write, 5 VSRAM write, 8 CRAM read, 4 VSRAM read).</summary>
     public int Code => code;
@@ -138,6 +142,7 @@ public sealed partial class MdVdp
     private int dmaSlotsLeft;          // slots the word or byte in progress still needs
     private ushort fillData;
     private int dmaTargetCode;
+    private int fillSourceStart, fillLengthStart;     // a fill steps the source address registers by its length, as a transfer does
 
     /// <summary>The VDP holds the 68000 while a bus DMA runs.</summary>
     public bool DmaHaltsCpu => dma == DmaKind.Bus;
@@ -151,7 +156,7 @@ public sealed partial class MdVdp
         Array.Clear(Vram); Array.Clear(Cram); Array.Clear(Vsram); Array.Clear(Reg);
         Time = 0; lineStart = 0; Line = 0; Frames = 0; FrameCompleted = false; oddFrame = false;
         vintPending = hintPending = false; hintCounter = 0; vintTime = hintTime = z80IntClear = long.MaxValue; vintEnableFrom = hintEnableFrom = 0; z80IntAsserted = false;
-        pendingCommand = false; commandFirst = 0; code = 0; address = 0; readBuffer = 0; readReadyAt = 0;
+        pendingCommand = false; commandFirst = 0; code = 0; address = 0; readBuffer = 0; readReadyAt = 0; hvLatched = -1; readStale = false;
         fifoHead = fifoCount = 0; lastFifoData = 0;
         dma = DmaKind.None; fillArmed = false; dmaLength = 0; dmaSlotsLeft = 0;
         DataWrites = ControlWrites = FifoStalls = DmaWords = 0; FifoStallClocks = 0;
@@ -428,8 +433,8 @@ public sealed partial class MdVdp
     {
         if (dmaSlotsLeft == 0) dmaSlotsLeft = 2;
         if (--dmaSlotsLeft > 0) return;
-        byte b = Vram[dmaSource & 0xFFFF];
-        Vram[address & 0xFFFF] = b;
+        byte b = Vram[(dmaSource ^ 1) & 0xFFFF];            // a copy moves bytes in the VDP's own byte order, like a fill: the address with its low bit flipped on both sides
+        Vram[(address ^ 1) & 0xFFFF] = b;
         dmaSource = (dmaSource + 1) & 0xFFFF;
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         if (--dmaLength <= 0) FinishDma();
@@ -451,6 +456,11 @@ public sealed partial class MdVdp
         {
             Reg[21] = (byte)dmaSource; Reg[22] = (byte)(dmaSource >> 8);
         }
+        else if (kind == DmaKind.Fill)
+        {
+            int v = fillSourceStart + fillLengthStart & 0xFFFF;
+            Reg[21] = (byte)v; Reg[22] = (byte)(v >> 8);
+        }
     }
 
     // =================================================================================================================
@@ -461,13 +471,13 @@ public sealed partial class MdVdp
     public void WriteControl(ushort value, long t)
     {
         RunTo(t);
-        WaitForDmaIdle();
         ControlWrites++;
         if (!pendingCommand)
         {
             if ((value & 0xC000) == 0x8000)
             {
                 RegisterWrite((value >> 8) & 0x1F, (byte)value);
+                code = code & ~3 | 2;       // the word's top two bits (10) land in CD1:0 like any first word's: the target is no write target until a command sets it again (Nemesis: Register Writes and Code Reg)
                 return;
             }
             commandFirst = value;
@@ -480,7 +490,7 @@ public sealed partial class MdVdp
         code = code & 3 | value >> 2 & 0x3C;
         address = address & 0x3FFF | (uint)(value & 3) << 14 | (uint)(value >> 2 & 1) << 16;
         Trace?.Invoke($"cmd code={code:X2} addr={address:X4}");
-        if ((code & 0x20) != 0 && DmaEnabled) StartDma();
+        if ((code & 0x20) != 0 && DmaEnabled && dma == DmaKind.None) StartDma();
         else if ((code & 0x20) != 0 && !DmaEnabled) { /* a DMA command while DMA is disabled is an ordinary command with CD5 */ }
         if ((code & 0x30) == 0 && (code & 0xF) is 0 or 4 or 8 or 12) StartReadAhead();    // a read command fetches the first word
     }
@@ -490,6 +500,7 @@ public sealed partial class MdVdp
         if (reg > 10 && !Mode5) return;       // the extra registers belong to mode 5
         bool vintBefore = VintEnabled, hintBefore = HintEnabled;
         Reg[reg] = value;
+        if (reg == 0) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
         if (reg == 1 && VintEnabled && !vintBefore) vintEnableFrom = Time + IplDelayMasterClocks;
         if (reg == 0 && HintEnabled && !hintBefore) hintEnableFrom = Time + IplDelayMasterClocks;
         Trace?.Invoke($"reg {reg:X2}={value:X2}");
@@ -498,6 +509,8 @@ public sealed partial class MdVdp
 
     private void StartReadAhead()
     {
+        readCacheCode = code; readCacheAddress = address;
+        readStale = fifoCount > 0;
         readBuffer = ReadSource(code, address);
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         readReadyAt = NextFreeSlot(Math.Max(Time, slotCursor));
@@ -507,20 +520,30 @@ public sealed partial class MdVdp
     public void WriteData(ushort value, long t)
     {
         RunTo(t);
-        WaitForDmaIdle();
         DataWrites++;
         pendingCommand = false;
+        if (dma == DmaKind.Fill)
+        {
+            // the 68000 is not held during a fill: a data port write meanwhile only replaces the word the fill repeats (it is not written itself, and the address does not move)
+            fillData = value;
+            return;
+        }
+        if (dma == DmaKind.Copy) return;
         // every data port write takes a FIFO entry, whatever the target: a word written while a read target is set advances the FIFO and is lost
         long stallFrom = Time;
         while (fifoCount == 4) { FifoStalls++; AdvanceWork(); }
         FifoStallClocks += Time - stallFrom;
         PushFifo(code, address, value);
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
-        if (fillArmed && (code & 1) != 0)
+        if (fillArmed)
         {
-            // the word that starts a fill is written like any other (it went into the FIFO above); the fill that follows repeats its high byte and leaves the FIFO alone
-            fillData = value; fillArmed = false; dma = DmaKind.Fill;
-            dmaTargetCode = code & 0xF; dmaSlotsLeft = 1;
+            // the word that starts a fill is written like any other (it went into the FIFO above, to whatever target the code register names now); the fill that follows repeats its high byte
+            // into the target the DMA command named and leaves the FIFO alone
+            fillArmed = false; dma = DmaKind.Fill;
+            // VRAM fills repeat the high byte of the word that started them; fills of CRAM and VSRAM write the data left in the next FIFO entry (hardware, Nemesis' fill tests: the word
+            // that started the fill goes in as an ordinary write and the rest take the stale entry after it)
+            fillData = (dmaTargetCode & 0xF) == 1 ? value : NextFifoData;
+            dmaSlotsLeft = 1;
             Trace?.Invoke($"fill start data={value:X4} len={dmaLength}");
         }
     }
@@ -534,8 +557,10 @@ public sealed partial class MdVdp
         if ((code & 1) != 0) return lastFifoData;      // reading while a write command is set returns the FIFO's last word
         // make sure the FIFO has drained and the read-ahead has had its slot
         while (fifoCount > 0) AdvanceWork();
+        if (readStale) { readBuffer = ReadSource(readCacheCode, readCacheAddress); readStale = false; }      // the writes queued ahead of the read have landed: it sees them
         if (readReadyAt > Time) RunTo(readReadyAt);
         ushort data = readBuffer;
+        readCacheCode = code; readCacheAddress = address;
         readBuffer = ReadSource(code, address);
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         readReadyAt = NextFreeSlot(Math.Max(Time, slotCursor));
@@ -586,6 +611,7 @@ public sealed partial class MdVdp
         }
         else if (mode == 2)
         {
+            fillSourceStart = Reg[22] << 8 | Reg[21]; fillLengthStart = dmaLength;
             fillArmed = true; dma = DmaKind.None;
             Trace?.Invoke($"dma fill armed len={dmaLength} code {dmaTargetCode:X} addr {address:X4}");
         }
@@ -628,6 +654,12 @@ public sealed partial class MdVdp
     public ushort ReadHvCounter(long t)
     {
         RunTo(t);
+        return hvLatched >= 0 ? (ushort)hvLatched : HvNow();
+    }
+
+    /// <summary>The HV counter value now. With the latch bit (R0 bit 1) set the counter stops where it was when the bit was set; a read then keeps returning that value until the bit is cleared.</summary>
+    private ushort HvNow()
+    {
         int off = LineOffset;
         int line = off >= VCounterStepOffset ? (Line + 1 >= linesPerFrame ? 0 : Line + 1) : Line;
         int v = VCounterFor(line);
@@ -728,10 +760,10 @@ public sealed partial class MdVdp
         w.Write(Vram); foreach (ushort c in Cram) w.Write(c); foreach (ushort v in Vsram) w.Write(v); w.Write(Reg);
         w.Write(Time); w.Write(lineStart); w.Write(Line); w.Write(Frames); w.Write(oddFrame);
         w.Write(vintPending); w.Write(hintPending); w.Write(hintCounter); w.Write(vintTime); w.Write(hintTime); w.Write(z80IntClear); w.Write(z80IntAsserted);
-        w.Write(pendingCommand); w.Write(commandFirst); w.Write(code); w.Write(address); w.Write(readBuffer); w.Write(readReadyAt);
+        w.Write(pendingCommand); w.Write(commandFirst); w.Write(code); w.Write(address); w.Write(readBuffer); w.Write(readReadyAt); w.Write(readCacheCode); w.Write(readCacheAddress); w.Write(readStale); w.Write(hvLatched);
         w.Write(fifoHead); w.Write(fifoCount);
         foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); }
-        w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode);
+        w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode); w.Write(fillSourceStart); w.Write(fillLengthStart);
     }
 
     public void LoadState(BinaryReader r)
@@ -739,9 +771,9 @@ public sealed partial class MdVdp
         r.Read(Vram, 0, Vram.Length); for (int i = 0; i < Cram.Length; i++) Cram[i] = r.ReadUInt16(); for (int i = 0; i < Vsram.Length; i++) Vsram[i] = r.ReadUInt16(); r.Read(Reg, 0, Reg.Length);
         Time = r.ReadInt64(); lineStart = r.ReadInt64(); Line = r.ReadInt32(); Frames = r.ReadInt64(); oddFrame = r.ReadBoolean();
         vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();
-        pendingCommand = r.ReadBoolean(); commandFirst = r.ReadUInt16(); code = r.ReadInt32(); address = r.ReadUInt32(); readBuffer = r.ReadUInt16(); readReadyAt = r.ReadInt64();
+        pendingCommand = r.ReadBoolean(); commandFirst = r.ReadUInt16(); code = r.ReadInt32(); address = r.ReadUInt32(); readBuffer = r.ReadUInt16(); readReadyAt = r.ReadInt64(); readCacheCode = r.ReadInt32(); readCacheAddress = r.ReadUInt32(); readStale = r.ReadBoolean(); hvLatched = r.ReadInt32();
         fifoHead = r.ReadInt32(); fifoCount = r.ReadInt32();
         for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32() };
-        dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32();
+        dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
     }
 }

@@ -278,6 +278,33 @@ internal static class MdBoardTest
         ushort o1 = r.ReadData(), o2 = r.ReadData();
         Check("a read at an odd VRAM address returns the even word's own bytes", o1 == 0x2211 && o2 == 0x4433, $"{o1:X4} {o2:X4}");
 
+        // Nemesis (Partial CP Writes): a first word alone changes CD1:0 and A13:0 and leaves the rest; the next control word is then the second half of a command even if it looks like a register write
+        var pc = new Rig();
+        pc.Reg(1, 0x64); pc.Reg(12, 0x81); pc.Reg(15, 2);
+        pc.Cmd(1, 0x8000); pc.Data(0xFFFF); pc.Cmd(1, 0x8002); pc.Data(0xFFFF); pc.Settle();
+        pc.Reg(15, 1);
+        pc.Cmd(1, 0x8000); pc.Ctl(0x4000); pc.Ctl(0x8F02);
+        Check("a register-write-looking word after a lone first word completes the command (R15 stays 1)", pc.V.Reg[15] == 1 && !pc.V.CommandPending);
+        pc.Data(0x0123); pc.Data(0x4567); pc.Settle();
+        pc.Reg(15, 2);
+        pc.Cmd(0, 0x8000);
+        ushort p1 = pc.ReadData(), p2 = pc.ReadData();
+        Check("... so the two words went in at increment 1: $0123 at $8000, $4567 byte-swapped over it ($6745), $FFFF at $8002", p1 == 0x6745 && p2 == 0xFFFF, $"{p1:X4} {p2:X4}");
+
+        // Nemesis (Register Writes and Code Reg): a register write puts 10 in CD1:0, so data written after it goes nowhere
+        var rw = new Rig();
+        rw.Reg(1, 0x64); rw.Reg(12, 0x81); rw.Reg(15, 2);
+        rw.Cmd(1, 0x8000); rw.Data(0xFFFF); rw.Settle();
+        rw.Cmd(1, 0x8000); rw.Reg(15, 2); rw.Data(0xBEEF); rw.Settle();
+        Check("data written after a register write is lost (CD1:0 became 10)", rw.V.Vram[0x8000] == 0xFF && rw.V.Vram[0x8001] == 0xFF);
+        // a read right behind queued writes sees them (the pre-cache waits for the FIFO)
+        var rb = new Rig();
+        rb.Reg(1, 0x64); rb.Reg(12, 0x81); rb.Reg(15, 2);
+        rb.Cmd(1, 0x4000); rb.Data(0x1111); rb.Data(0x2222); rb.Data(0x3333); rb.Data(0x4444);
+        rb.Cmd(0, 0x4004);
+        ushort rd = rb.ReadData();
+        Check("a read command right behind queued writes returns the written word ($3333 at $4004)", rd == 0x3333, $"{rd:X4}");
+
         // the status register
         r.Settle();
         ushort s = r.Status();
@@ -515,6 +542,46 @@ internal static class MdBoardTest
         Check("VRAM fill with autoincrement 1 and length 6: bytes 12 34 12 12 12 12 00 12", fill == "1234121212120012", fill);
         Check("the fill's length register reads 0 afterwards", f.V.Reg[19] == 0 && f.V.Reg[20] == 0);
 
+        // after a fill the source address registers have moved on by the length (Nemesis: DMA Fill Source Reg Update)
+        var fs = new Rig();
+        fs.Reg(1, 0x74); fs.Reg(12, 0x81); fs.Reg(15, 1);
+        fs.Reg(19, 4); fs.Reg(20, 0); fs.Reg(21, 0xFA); fs.Reg(22, 0x00); fs.Reg(23, 0x80);
+        fs.Cmd(0x21, 0x0800); fs.Data(0x1234); fs.Settle();
+        Check("a fill of 4 moves the source registers from $00FA to $00FE", fs.V.Reg[21] == 0xFE && fs.V.Reg[22] == 0x00, $"{fs.V.Reg[22]:X2}{fs.V.Reg[21]:X2}");
+        fs.Reg(19, 4); fs.Reg(21, 0xFE); fs.Reg(22, 0x00);
+        fs.Cmd(0x21, 0x0900); fs.Data(0x1234); fs.Settle();
+        Check("... with the carry into the middle byte ($00FE + 4 = $0102)", fs.V.Reg[21] == 0x02 && fs.V.Reg[22] == 0x01, $"{fs.V.Reg[22]:X2}{fs.V.Reg[21]:X2}");
+        // CRAM fills repeat the data left in the next FIFO entry, not the word that started them
+        var cf = new Rig();
+        cf.Reg(1, 0x74); cf.Reg(12, 0x81); cf.Reg(15, 2);
+        cf.Cmd(3, 0x00); foreach (ushort v in new ushort[] { 0x0A06, 0x0C04, 0x0E02, 0x0200 }) cf.Data(v);
+        cf.Settle();
+        cf.Reg(19, 3); cf.Reg(20, 0); cf.Reg(23, 0x80);
+        cf.Cmd(0x23, 0x20); cf.Data(0x08AC); cf.Settle();
+        Check("a CRAM fill writes the first word as given and then the stale next FIFO entry ($0C04)", cf.V.Cram[16] == 0x08AC && cf.V.Cram[17] == 0x0C04 && cf.V.Cram[18] == 0x0C04, $"{cf.V.Cram[16]:X4} {cf.V.Cram[17]:X4} {cf.V.Cram[18]:X4}");
+        // a data port write during a fill changes the byte it repeats; the 68000 is not held
+        var fd = new Rig();
+        fd.Reg(1, 0x74); fd.Reg(12, 0x81); fd.Reg(15, 1);
+        fd.Reg(19, 40); fd.Reg(20, 0); fd.Reg(23, 0x80);
+        fd.Cmd(0x21, 0x0800); fd.Data(0x1234);
+        long before2 = fd.T;
+        fd.Tick(8);
+        fd.V.WriteData(0x5678, fd.T);
+        Check("a fill does not hold the 68000: the port write returned at once (the clock did not jump)", fd.V.Time - before2 < 200 * 7 && fd.V.DmaBusy);
+        fd.Settle();
+        Check("... and the bytes after it are $56 (the new high byte)", fd.V.Vram[0x800 + 40] == 0x56 || fd.V.Vram[0x800 + 39] == 0x56);
+        // the HV counter latch (R0 bit 1) freezes the counter
+        var hv = new Rig();
+        hv.Reg(0, 0x06); hv.Reg(1, 0x64); hv.Reg(12, 0x81);
+        hv.RunTo(hv.LineStart(50) + 1000);
+        ushort h1 = hv.V.ReadHvCounter(hv.T);
+        hv.RunTo(hv.LineStart(60) + 1500);
+        ushort h2 = hv.V.ReadHvCounter(hv.T);
+        hv.Reg(0, 0x04);
+        hv.RunTo(hv.LineStart(61) + 2000);
+        ushort h3 = hv.V.ReadHvCounter(hv.T);
+        Check("with R0 bit 1 set the HV counter stops; with it clear it runs again (Nemesis: HV Counter Latch)", h1 == h2 && h3 != h2, $"{h1:X4} {h2:X4} {h3:X4}");
+
         // copy: VRAM to VRAM bytes
         var c = new Rig();
         c.Reg(1, 0x74); c.Reg(12, 0x81); c.Reg(15, 2);
@@ -522,6 +589,13 @@ internal static class MdBoardTest
         c.Reg(15, 1); c.Reg(19, 4); c.Reg(20, 0); c.Reg(21, 0x00); c.Reg(22, 0x10); c.Reg(23, 0xC0);
         c.Cmd(0x31, 0x2000);
         c.Settle();
+        // a copy moves bytes in the VDP's byte order: source and destination addresses with their low bit flipped (Nemesis: DMA Copy Length Reg Update: an odd length ends on the odd byte)
+        var oc = new Rig();
+        oc.Reg(1, 0x34); oc.Reg(12, 0x81); oc.Reg(15, 2);       // display off: every slot but refresh is free, so the copy is quick
+        oc.Cmd(1, 0x9200); oc.Data(0x0123); oc.Settle();
+        oc.Reg(15, 1); oc.Reg(19, 0x01); oc.Reg(20, 0x02); oc.Reg(21, 0x00); oc.Reg(22, 0x90); oc.Reg(23, 0xC0);
+        oc.Cmd(0x30, 0x8000); oc.Settle();
+        Check("a copy of $201 bytes: the 513th lands on $8201 with the byte from $9201", oc.V.Vram[0x8201] == 0x23 && oc.V.Vram[0x8200] == 0x00, $"{oc.V.Vram[0x8200]:X2}{oc.V.Vram[0x8201]:X2}");
         Check("VRAM copy: four bytes from $1000 to $2000", c.V.Vram[0x2000] == 0x01 && c.V.Vram[0x2001] == 0x02 && c.V.Vram[0x2002] == 0x03 && c.V.Vram[0x2003] == 0x04, $"{c.V.Vram[0x2000]:X2}{c.V.Vram[0x2001]:X2}{c.V.Vram[0x2002]:X2}{c.V.Vram[0x2003]:X2}");
     }
 
