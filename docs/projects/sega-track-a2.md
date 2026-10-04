@@ -143,7 +143,19 @@ the status low bits (0 without a fifth sprite, not 31), and sprites not being pr
 
 ## Speed
 
-`--smstest` throughput 23x real time on one core (Astro Warrior; unchanged), with `SMS-FM` and nine FM channels sounding the whole machine runs 17x (target 8x), the FM unit alone 43x with no allocation while it runs. Lite: the WASM build was not measured here (see the open items).
+`--smstest` throughput 23x real time on one core (Astro Warrior; unchanged), with `SMS-FM` and nine FM channels sounding the whole machine runs 17x (target 8x), the FM unit alone 43x with no allocation while it runs.
+
+**Lite (WebAssembly, ahead-of-time compiled, measured in the Browser pane's Chromium on this machine).** `dotnet publish WebLite -c Release -p:EnableWasmAot=true` built (236 s), served with `SubProjects/LiteStaticServer`, ROMs imported through the page's own file input (the console follows the ROM), frames driven through `nesInterop._dotNetRef.invokeMethodAsync('FrameTick')` (the page's frame call returns the picture and the audio to JavaScript; the page's animation clock does not run in a hidden pane, so the frames are driven directly) in five batches of 250, median of the batch means:
+
+| Program | Unit | ms per frame (median) | audio |
+|---|---|---|---|
+| `fm-nine.sms` (nine FM channels, the Z80 halted) | `SMS-FM` | 4.67 | RMS 0.061, peak 0.383 |
+| `fm-nine.sms` | `SMS` (stock) | 4.62 | silent (RMS 0) |
+| Fantasy Zone (Japan), title and demo | `SMS` | 4.74 | RMS 0.070 |
+| Fantasy Zone (Japan) | `SMS-FM` | 4.84 | RMS 0.070 |
+| VRUN (NES), same session | NES | 5.56 | RMS 0.083 |
+
+So in Lite the Master System runs at about 210 frames per second (3.5x real time) **through the page's frame call, which is below the 8x target**; but the number is set by that call, not by the core: an idle machine with the Z80 halted already costs 4.6 ms, a running game 0.1 to 0.2 ms more, nine FM channels about 0.05 ms more, and the NES in the same session costs more (5.6 ms) than any Master System program. The per-frame cost that is left is the picture and audio crossing from WebAssembly to JavaScript (the 196,608-byte framebuffer), shared by every console in Lite. The core's own cost inside the call could not be isolated (the `BenchEmulationOnlyMs` diagnostic is trimmed out of the AOT publish), so "the core is faster than 8x in WebAssembly" is an inference from the 0.1 to 0.2 ms difference, **not a measurement**. Also, the FM audio check in the first row shows the chip sounding in Lite (RMS 0.061 against silence on the stock unit); Fantasy Zone (Japan) gives the same RMS on both units over the measured window, so that run does not show the game using the FM chip. One machine, one browser, one session.
 
 ## Verifiers (all on this branch, last run)
 
