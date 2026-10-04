@@ -3,7 +3,7 @@
 Branch `worktree-agent-a7e6220722d0ae708`, written 2026-10-03 and 04 against `docs/projects/sega-tracks-brief.md`, on top of Track B milestone B1 (`docs/projects/sega-track-b.md`).
 B2a is the VDP's renderer and everything the picture needs: the real session (`MdSession` shows the VDP's picture, takes the pad), the access-slot and counter model made faithful to the oracle,
 battery saves, the SSF2 and Sonic & Knuckles mappers, and the first ten roster games on screen against BlastEm. **`Consoles.GenesisReady` is flipped to true** on this branch (the picture is
-verified for ten of ten roster games; the FM sound is Track B2b's, merged separately).
+verified for ten of ten roster games; the sound unit is Track B2b's and Track A's Master System and Game Gear work is in the same tree: main (at 6d4b3c7) was merged into the branch on 2026-10-04, so the numbers below are on the merged tree).
 
 ## What is where
 
@@ -50,18 +50,18 @@ Each one was seen on BlastEm 1.0.0's screen or in a probe's output, not in its s
 
 ## Verification
 
-All on the branch tip with `GenesisReady = true`, built with `--artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b2a`:
+All on the merged branch tip with `GenesisReady = true`, built with `--artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b2a`:
 
 | What | Result |
 |---|---|
 | `--md-pic-test` | 93 of 93 (89, plus four checks for 32- and 128-cell planes added last): planes, priority, scroll modes, window and its bug, sprites and their limits and masking, shadow/highlight, H32/H40, V28/V30, PAL, mid-line display switch and CRAM dot, window latch, pad mapping, SRAM saves with a synthetic ROM, SSF2 banks, lock-on SRAM header, `.smd` normalisation |
-| `--md-test` | 113 of 113 (B1's suite, with Nemesis test 16 now passing) |
+| `--md-test` | 143 of 143 (B1's 113, the sound group B2b added, Nemesis test 16 now passing) |
 | Nemesis' VDP port test ROM, its own tally | all pages (9, 16, 34 and 86 passed at the page ends I read) with 0 failed; page 2 (tests 10 to 16) shows `Results: (16/ 0/ 16)`. B1 was 82 of 83 (test 16, FIFO wait states). Cause: the slot model (access slots, refresh, irregular HSYNC) was not faithful |
 | `--md-golden` | 75 frames of 18 entries match: 71 frames that matched BlastEm's own screenshots pixel for pixel (ten roster games 43, Titan Overdrive 1 on PAL 13, Overdrive 2 on PAL 10, `vctest`, Fonzie's window test, the window distortion bug, Nemesis' CRAM flicker H32 2), 4 regression-only frames (the direct colour DMA demo, the VDP port test) |
 | `--m68ktest` | 1,317,560 vectors, 0 failed |
-| `--sega-contracts-test`, `--sega-test`, `--z80test --selftest`, `--sega-chips-test`, `--sega-bridge-test` | 78 of 78, 79 of 79 (the foundation test adapted for a finished Genesis), 57 of 57, 34 of 34, 126 of 126 |
+| `--sega-contracts-test`, `--sega-test`, `--z80test --selftest`, `--sega-chips-test`, `--sega-bridge-test`, `--smstest` | 80 of 80, 65 of 65 (Track A's generalised foundation test: it now builds the ready Genesis's real session too), 57 of 57, 34 of 34, 126 of 126, 135 pass 0 fail 1 skip (Track A's suite, unaffected) |
 | `UAT\entrypoints\desktop-smoke.ps1` | 9 of 9 |
-| `UAT\entrypoints\sega-preview-smoke.ps1` | 28 of 28, adapted deliberately: the Genesis no longer needs the switch; its synthetic ROM is a 94-byte 68000 program that sets H40 and draws the pad as the backdrop colour (idle `92FF00`, Right `92AE00`); input is held and sampled repeatedly. Fixed along the way: the script's frame reader dropped two colour channels (`[byte] -shl` stays a byte in PowerShell: a green backdrop counted as black), it now waits for the first frame, and the menu read retries |
+| `UAT\entrypoints\sega-preview-smoke.ps1` | 42 of 42 on the merged tree (Track A's script, extended): with the switch off the menu lists the seven ready consoles and a Master System program and the Genesis program run; with it on each of the three loads a real program, shows a picture that is still without input and changes with Right held. The Genesis program is a 94-byte 68000 program that sets H40 and draws the pad as the backdrop colour (idle `92FF00`, Right `92AE00`). Fixed along the way (in both my version and, by merge, Track A's helpers): the frame reader dropped two colour channels (`[byte] -shl` stays a byte in PowerShell: a green backdrop counted as black), it now waits for the first frame and holds Right while sampling repeatedly instead of racing a 600 ms hold, and the menu read retries. The Track A battery section (SMS and GG saves across two app runs) passes unchanged |
 | Lite | builds (0 errors) and runs a Genesis picture in the browser: the synthetic program's backdrop and Fonzie's window test (WINDOW / PLANE A / PLANE B) in both the dev server (debug, interpreted) and an AOT-trimmed publish. Sonic the Hedgehog loads and runs (console switches to Genesis, 320x224 frames arrive) but did not reach its logo in the time I watched: the embedded browser pane throttles `requestAnimationFrame` (the NES demo also ran at 2.7 fps there), so no speed figure for Lite is claimed |
 
 **Shown able to fail** (a verifier that cannot fail proves nothing): `poison.ps1` injects a bug into the renderer or mapper source, rebuilds, runs `--md-pic-test` and counts the failures; each of
@@ -112,10 +112,10 @@ cannot give.
 
 ## Speed and allocation
 
-`--md-golden` runs 27,109 frames in 88.6 s: **306 frames/s overall (5.1 times real time at 59.92 fps)**, 216 to 569 frames/s per entry (3.6 to 9.5 times), on a machine shared with other
-jobs. `--md-run --alloc-probe` over 600 frames of Sonic the Hedgehog: picture copy 0.0 bytes per frame, sound drain 0.0 (was 5.9 KB: `Sn76489.ReadSamples` allocated two arrays when a video
-frame's audio is more than 512 sample frames; it now works in 512-frame chunks on the stack, same output, a shared-file change), `board.RunFrame` 23.2 bytes per frame (one small object per frame
-somewhere in the sound unit or Z80 path, not the VDP; `MdSoundUnit.cs` is B2b's file, not changed here).
+On the merged tree (real YM2612 in the sound unit): `--md-run` Sonic the Hedgehog, 1,200 frames: **224 frames/s (3.7 times real time at 59.92)**, **0.0 bytes allocated per frame** (`--alloc-probe`: `board.RunFrame` 0.0,
+picture copy 0.0, sound drain 0.0). `--md-golden` runs 27,109 frames in 100.8 s: 269 frames/s overall (4.5 times real time). Both on a machine shared with other agents' jobs; one core. Before the merge (silent FM
+stand-in) the same golden run was 306 frames/s. The sound drain used to allocate 5.9 KB per video frame: `Sn76489.ReadSamples` made two arrays whenever a frame's audio was more than 512 sample frames; it now works
+in 512-frame chunks on the stack with the same output (a shared-file change). `board.RunFrame` showed 23 bytes per frame before the merge (one small object in the old sound unit); it is 0.0 with B2b's sound unit.
 
 ## Decisions
 

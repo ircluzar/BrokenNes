@@ -67,6 +67,11 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sega-contracts-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaContractsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaOracleTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-bridge-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaBridgeTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--ym-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.YmOracleTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--ym-render", StringComparison.OrdinalIgnoreCase)) return Sega.YmRenderCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--md-sound-bench", StringComparison.OrdinalIgnoreCase)) return Sega.MdSoundBenchCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--sms-run", StringComparison.OrdinalIgnoreCase)) return Sega.SmsRunCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--smstest", StringComparison.OrdinalIgnoreCase)) return Sega.SmsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--console-catalog", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Catalog();
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--snesrun", StringComparison.OrdinalIgnoreCase))

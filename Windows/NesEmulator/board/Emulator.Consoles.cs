@@ -155,7 +155,7 @@ namespace BrokenNes
             IConsoleSession s;
             try
             {
-                s = ConsoleSessions.Create(console, rom, ConsoleCore(console, CoreSlot.Cpu), ConsoleCore(console, CoreSlot.Ppu), ConsoleCore(console, CoreSlot.Apu));
+                s = ConsoleSessions.Create(console, rom, ConsoleCore(console, CoreSlot.Cpu), ConsoleCore(console, CoreSlot.Ppu), ConsoleCore(console, CoreSlot.Apu), fileName: romName);
             }
             catch (Exception ex)
             {

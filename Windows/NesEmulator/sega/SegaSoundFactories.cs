@@ -26,6 +26,7 @@ public static class SmsSoundFactories
     {
         ["SMS"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),
         ["NES"] = r => new SmsSoundOnNes(r),   // Track C: the PSG replayed on a NES sound chip ("NES" = FIX, "NES:FIXS" ... name the chip)
+        ["GG"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Game Gear menu's id for the same unit (its stereo port is part of it)
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;

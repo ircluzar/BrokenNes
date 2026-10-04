@@ -97,6 +97,7 @@ internal static class MdBoardTest
         VdpDma();
         Timing();
         Cartridge();
+        MdSoundTest.Run(Check, Group);
         Console.WriteLine($"== {pass} passed, {fail} failed");
         return fail == 0 ? 0 : 1;
     }
