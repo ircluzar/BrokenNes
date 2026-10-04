@@ -268,6 +268,10 @@ internal static class MdBoardTest
         Check("CRAM writes keep only the 9 colour bits ($0EEE mask)", r.V.Cram[2] == 0x0EEE && r.V.Cram[3] == 0x0EEE);
         r.Cmd(5, 0x02); r.Data(0xFFFF); r.Settle();
         Check("VSRAM writes keep 11 bits", r.V.Vsram[1] == 0x07FF, $"{r.V.Vsram[1]:X4}");
+        r.Cmd(5, 0x00); r.Data(0x0123); r.Cmd(5, 0x50); r.Data(0x0456); r.Settle();
+        r.Cmd(4, 0x50);
+        ushort vs = r.ReadData();
+        Check("VSRAM holds 40 words: a write to entry 40 is lost and a read there returns entry 0 (Nemesis' DMA fill to VSRAM tests)", (vs & 0x7FF) == 0x123 && r.V.Vsram[40] == 0, $"{vs:X4}");
         r.Cmd(1, 0xFFFE); r.Data(0xAAAA); r.Data(0xBBBB); r.Settle();
         Check("the VRAM address wraps at 64 KB", r.V.Vram[0xFFFE] == 0xAA && r.V.Vram[0] == 0xBB && r.V.Vram[1] == 0xBB);
 

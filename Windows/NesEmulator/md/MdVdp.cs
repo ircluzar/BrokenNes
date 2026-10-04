@@ -395,7 +395,13 @@ public sealed partial class MdVdp
                 break;
             }
             case 3: Cram[(addr >> 1) & 0x3F] = (ushort)(data & 0x0EEE); break;
-            case 5: Vsram[(addr >> 1) & 0x3F] = (ushort)(data & 0x07FF); break;
+            case 5:
+            {
+                // VSRAM holds 40 words: a write to one of the other addresses of its 64-word range is lost, and a read there returns entry 0 (BlastEm and Nemesis' fill-to-VSRAM tests: entries 40-63 read as entry 0)
+                int i = (int)(addr >> 1) & 0x3F;
+                if (i < 40) Vsram[i] = (ushort)(data & 0x07FF);
+                break;
+            }
         }
     }
 
@@ -410,7 +416,7 @@ public sealed partial class MdVdp
         {
             case 0: { int a = (int)(addr & 0xFFFE); return (ushort)(Vram[a] << 8 | Vram[a + 1]); }
             case 8: return (ushort)(Cram[(addr >> 1) & 0x3F] | slot & ~0x0EEE);
-            case 4: return (ushort)(Vsram[(addr >> 1) & 0x3F] | slot & 0xF800);
+            case 4: { int i = (int)(addr >> 1) & 0x3F; return (ushort)(Vsram[i < 40 ? i : 0] | slot & 0xF800); }
             case 12: return (ushort)(Vram[(addr & 0xFFFF) ^ 1] | slot & 0xFF00);       // the undocumented 8-bit read: the byte at the address with its low bit flipped
         }
         return 0;
@@ -419,10 +425,11 @@ public sealed partial class MdVdp
     private void StepFill()
     {
         if (--dmaSlotsLeft > 0) return;
-        switch (dmaTargetCode & 0xF)
+        // the target is whatever the code register names at the time of each write (a register write after the fill command makes it no target: the fill still runs but writes nothing)
+        switch (code & 0xF)
         {
             case 1: Vram[(address ^ 1) & 0xFFFF] = (byte)(fillData >> 8); break;
-            default: WriteTarget(dmaTargetCode, address, fillData); break;
+            default: WriteTarget(code, address, NextFifoData); break;      // CRAM and VSRAM: the stale next entry, looked at afresh for every write
         }
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         dmaSlotsLeft = 1;
@@ -522,17 +529,20 @@ public sealed partial class MdVdp
         RunTo(t);
         DataWrites++;
         pendingCommand = false;
-        if (dma == DmaKind.Fill)
-        {
-            // the 68000 is not held during a fill: a data port write meanwhile only replaces the word the fill repeats (it is not written itself, and the address does not move)
-            fillData = value;
-            return;
-        }
         if (dma == DmaKind.Copy) return;
         // every data port write takes a FIFO entry, whatever the target: a word written while a read target is set advances the FIFO and is lost
         long stallFrom = Time;
         while (fifoCount == 4) { FifoStalls++; AdvanceWork(); }
         FifoStallClocks += Time - stallFrom;
+        if (dma == DmaKind.Fill)
+        {
+            // the 68000 is not held during a fill. A data port write meanwhile takes a FIFO entry that is written nowhere, replaces the word the fill repeats, and adds one step to the fill's
+            // length (Nemesis' DP-writes-during-fill tests); the address does not move
+            PushFifo(2, address, value);
+            fillData = value;
+            dmaLength++;
+            return;
+        }
         PushFifo(code, address, value);
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         if (fillArmed)
@@ -540,9 +550,9 @@ public sealed partial class MdVdp
             // the word that starts a fill is written like any other (it went into the FIFO above, to whatever target the code register names now); the fill that follows repeats its high byte
             // into the target the DMA command named and leaves the FIFO alone
             fillArmed = false; dma = DmaKind.Fill;
-            // VRAM fills repeat the high byte of the word that started them; fills of CRAM and VSRAM write the data left in the next FIFO entry (hardware, Nemesis' fill tests: the word
-            // that started the fill goes in as an ordinary write and the rest take the stale entry after it)
-            fillData = (dmaTargetCode & 0xF) == 1 ? value : NextFifoData;
+            // VRAM fills repeat the high byte of the word that started them; fills of CRAM and VSRAM write the data left in the next FIFO entry, whichever it is at the time of each write
+            // (hardware, Nemesis' fill tests: the word that started the fill goes in as an ordinary write and the rest take the stale entry after it, which moves on when the 68000 writes meanwhile)
+            fillData = value;
             dmaSlotsLeft = 1;
             Trace?.Invoke($"fill start data={value:X4} len={dmaLength}");
         }
