@@ -429,6 +429,9 @@ public sealed class BOARD_SMS
         w.Write(Ram); w.Write(port3E); w.Write(port3F); w.Write((ushort)pad1); w.Write((ushort)pad2); w.Write(pauseHeld);
         w.Write(ggExtData); w.Write(ggExtConfig); w.Write(ggSend); w.Write(ggSerial);
         w.Write(soundCycle); w.Write(Frames);
+        // where the frame loop is (a frame ends part-way through line 192) and the oracle-parity bookkeeping of a tool run
+        w.Write(nextLine); w.Write(firstLineCycle); w.Write(lineOpen); w.Write(lineCycle);
+        w.Write(parityStall); w.Write(paritySkip); w.Write(parityPending); w.Write(parityPrevOp); w.Write(parityCycles);
         Cart.SaveState(w); Vdp.SaveState(w); Sound.SaveState(w); Cpu.SaveState(w);
     }
 
@@ -437,6 +440,8 @@ public sealed class BOARD_SMS
         r.Read(Ram, 0, Ram.Length); port3E = r.ReadByte(); port3F = r.ReadByte(); pad1 = (SmsButtons)r.ReadUInt16(); pad2 = (SmsButtons)r.ReadUInt16(); pauseHeld = r.ReadBoolean();
         ggExtData = r.ReadByte(); ggExtConfig = r.ReadByte(); ggSend = r.ReadByte(); ggSerial = r.ReadByte();
         soundCycle = r.ReadInt64(); Frames = r.ReadInt64();
+        nextLine = r.ReadInt32(); firstLineCycle = r.ReadInt32(); lineOpen = r.ReadBoolean(); lineCycle = r.ReadInt32();
+        parityStall = r.ReadInt32(); paritySkip = r.ReadInt32(); parityPending = r.ReadInt32(); parityPrevOp = r.ReadByte(); parityCycles = r.ReadInt64();
         ApplyMemoryControl();
         Cart.LoadState(r); Vdp.LoadState(r); Sound.LoadState(r); Cpu.LoadState(r);
     }

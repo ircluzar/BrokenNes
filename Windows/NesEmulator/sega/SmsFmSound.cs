@@ -86,6 +86,7 @@ public sealed class SmsFmSound : ISmsSound
         {
             fmRemainder -= Ym2413.ClocksPerSample;
             int s = fm.Calc();
+            LastFmSample = s;
             resampler.Push((short)Math.Clamp(s, short.MinValue, short.MaxValue));
             while (resampler.TryRead(out short o)) { fmQ[fmWrite & QueueMask] = o; fmWrite++; }
         }
@@ -93,6 +94,9 @@ public sealed class SmsFmSound : ISmsSound
         if (psgWrite - psgRead > QueueMask) { Overflowed += psgWrite - psgRead - QueueMask; psgRead = psgWrite - QueueMask; }
         if (fmWrite - fmRead > QueueMask) { fmRead = fmWrite - QueueMask; }
     }
+
+    /// <summary>The YM2413's most recent output sample, at the chip's own rate before the host-rate conversion (what the oracle's state dump calls mix_out0): for probes and level statistics.</summary>
+    public int LastFmSample { get; private set; }
 
     /// <summary>Samples dropped because nothing read the queue (a probe that never drains the unit).</summary>
     public long Overflowed { get; private set; }

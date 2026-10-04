@@ -30,6 +30,7 @@ param(
     [string]$MWatch = "",
     [string]$VFrames = "",
     [int]$TimeoutSec = 240,
+    [int]$Overscan = 24,        # rows cut top and bottom of the 240-line frame: 24 leaves 192 lines; 0 writes the whole frame and --sms-run cuts it to the picture height of each frame (a 224-line game)
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
 )
 $ErrorActionPreference = "Stop"
@@ -45,8 +46,8 @@ $settings = @{
     Sms = @{
         Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
         Port1 = @{ Type = "SmsController" }; Port2 = @{ Type = "SmsController" }
-        NtscOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
-        PalOverscan = @{ Left = 0; Right = 0; Top = 24; Bottom = 24 }
+        NtscOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
+        PalOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
         GameGearOverscan = @{ Left = 48; Right = 48; Top = 48; Bottom = 48 }
     }
     Debug = @{ ScriptWindow = @{ AllowIoOsAccess = $true; ScriptTimeout = 600 } }

@@ -42,6 +42,7 @@ internal static class SmsTestCli
         if (Opt(args, "golden-write") is { } gw) return ctx.RomDir == null ? Fail("--golden-write needs --roms <dir> (folders sms and gg inside)") : GoldenSuite.Write(ctx, ctx.RomDir, gw);
         if (args.Any(a => a.Equals("--print-smoke-hex", StringComparison.OrdinalIgnoreCase))) { SmokeSuite.Print(); return 0; }
         if (Opt(args, "write-fm-probes") is { } probeDir) return FmProbes.Write(probeDir);
+        if (args.Any(a => a.Equals("--pal-vdptest", StringComparison.OrdinalIgnoreCase))) return PalSuite.Print(ctx);
         if (args.Any(a => a.Equals("--prove", StringComparison.OrdinalIgnoreCase))) return Prove(ctx, only);
         int pass = 0, fail = 0, skipped = 0;
         foreach (var suite in SmsSuites.All)
@@ -160,6 +161,10 @@ internal static class SmsSuites
             c => { }, "a sound unit 6% fast with no stereo port"),
         new("fm", "the YM2413 on the board (SMS-FM): $F2 detection and the ports against the oracle's answers, registers, pitch/volume/mix on the delivered audio, rhythm, hub voices, APU swap, state round trip, speed, and the chip against Nuked-OPLL", FmSuite.Run,
             c => { }, "the FM data port ($F1) dropped and the $F2 read-back wrong in bit 0"),
+        new("state", "the board's save state: a session restored from a state runs on frame for frame and sample for sample as the one that carried on (programs built here, and roster games with --roms)", StateSuite.Run,
+            c => { }, "a work RAM byte left unrestored after the load"),
+        new("pal", "the 50 Hz machine: 313 lines of 228 cycles, the PAL Z80 clock in the PSG's and the YM2413's pitch, FluBBa's VDP test run as a PAL console against the oracle's PAL result bytes", PalSuite.Run,
+            c => { }, "a PAL console whose frame is the NTSC length"),
         new("save", "battery saves: export, import into a program that reads it, no save offered without RAM mapping", SaveSuite.Run, c => { }, "a corrupted save"),
         new("mapper", "cartridge mappers: Sega banks and RAM, Codemasters, plain, detection, copier header", MapperSuite.Run, c => { }, "the plain cartridge where the Sega mapper belongs"),
         new("session", "console layer: pad bits on $DC/$DD, Pause as an NMI, region and model from the name, frame rates, picture sizes", SessionSuite.Run, c => { }, "player 1 presses B where the check expects A"),
