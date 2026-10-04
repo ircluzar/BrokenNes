@@ -265,8 +265,8 @@ public sealed partial class Emulator : IDisposable
             // A Sega file is recognised here even while the Sega consoles are hidden everywhere else (the preview switch), so it gets a proper message instead of "not a ROM".
             var kind = RomDetect.Detect(rom, inner) ?? NesEmulator.Sega.SegaRomFormat.Detect(rom, inner);
             if (kind == null) { RomStatus = "not a NES, Game Boy or SNES ROM: " + name; return RomStatus; }
-            // Sega games are not supported in ROM mode yet (their boards are unfinished; the Master System's PSG chip plays in Direct mode); Cx.FromKind would quietly call such a ROM a NES game.
-            if (Consoles.IsSega(kind.Value)) { RomStatus = $"{Consoles.DisplayName(kind.Value)} games are not supported in the plugin yet (the Master System PSG chip plays in Direct mode): " + name; return RomStatus; }
+            // Genesis games are not supported in ROM mode yet (their picture is not certified; the YM2612 + PSG chip plays in Direct mode); Cx.FromKind would not run such a ROM as anything else.
+            if (kind.Value == ConsoleKind.Genesis) { RomStatus = $"{Consoles.DisplayName(kind.Value)} games are not supported in the plugin yet (the Genesis sound chip plays in Direct mode): " + name; return RomStatus; }
             console = Cx.FromKind(kind.Value);
         }
         catch (Exception e)

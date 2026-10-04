@@ -299,7 +299,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Dropdown(dc, IdEmulator, "Emulator", x, y, w, 86, er == 0 ? (emu != null ? $"Auto  ->  #{emu.Id}" : "Auto  (none free)") : $"#{er}");
         y += RowPitch;
 
-        Segments(dc, "Console", x, y, w, IdConsole, Cx.Names, console);
+        Segments(dc, "Console", x, y, w, IdConsole, Cx.ShortNames, console);
         y += RowPitch;
 
         Segments(dc, "Mode", x, y, w, IdModeDirect, ModeLabels, mode);
@@ -368,6 +368,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
+        else if (console == Cx.Genesis && mode == 0 && (ch == Ch.Pulse1 || ch == Ch.Pulse2))
+        {
+            // the Genesis chip plays a pulse as an FM voice with a patch of the built-in bank; the Instrument parameter picks it. (The pulse duty only sets the loudness there.)
+            var patch = NesEmulator.Mix.FmPatchBank.Patches[NesEmulator.Mix.FmPatchBank.Clamp(plugin.Get(P.Instrument))];
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
+            Txt(dc, patch.Description, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        }
+        else if (console == Cx.Genesis && mode == 0 && ch == Ch.Triangle)
+            Txt(dc, "a sine on FM voice 3: the triangle's voice (the patch is for the pulses)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
         else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
 
@@ -946,9 +955,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 string? path = emu?.RomPath;
                 if (nes) { items.Add(("VRUN (built-in)", path == null ? "loaded" : null)); vals.Add(0); }
                 if (path != null) { items.Add((emu!.RomDisplayName, "loaded")); vals.Add(1); }
-                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .zip")); vals.Add(2);
+                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .sms  .gg  .zip")); vals.Add(2);
                 int current = path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
+            }
+            case IdInstrument when plugin.Get(P.Console) == Cx.Genesis && emu?.SamplerMode != true:
+            {
+                // the Genesis chip's FM patch bank
+                var patches = NesEmulator.Mix.FmPatchBank.Patches;
+                return (patches.Select(p => (p.Name, (string?)(p.Psg ? "PSG tones, no FM" : $"algorithm {p.Algorithm}"))).ToArray(), Enumerable.Range(0, patches.Length).ToArray(), NesEmulator.Mix.FmPatchBank.Clamp(plugin.Get(P.Instrument)));
             }
             case IdInstrument:
             {

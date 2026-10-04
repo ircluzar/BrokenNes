@@ -420,6 +420,9 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 NesEmulator.APU_SMS.DefaultLowNotes = NesEmulator.LowNotePolicy.Drop;
                 // No CPU reads this chip back: it only takes registers and plays, so its front NES core (frame IRQ, $4015, DMC) is not stepped (it would only cost time).
                 NesEmulator.APU_SMS.DefaultStepFront = false;
+                // The Genesis chip: the same two switches (its PSG-square patch cannot play below 109 Hz; no CPU reads the chip back). Its FM voices go down to the NES's own 27 Hz, so nothing is dropped there.
+                NesEmulator.APU_MD.DefaultLowNotes = NesEmulator.LowNotePolicy.Drop;
+                NesEmulator.APU_MD.DefaultStepFront = false;
                 if (chip == null) { chip = new NesApuInstrument(core, rate); gate = false; }
                 else
                 {
@@ -477,6 +480,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
 
     private void Apply(NesApuInstrument c, int ch, Voice? v)
     {
+        // The Genesis chip plays its pulses with the FM patch the Instrument parameter picks (an index into the bank; out of range is the last). Each instance owns its chip, so each has its own patch.
+        if (c.Apu is NesEmulator.APU_MD md)
+        {
+            int patch = NesEmulator.Mix.FmPatchBank.Clamp(Get(P.Instrument));
+            if (md.Patch != patch) md.Patch = patch;
+        }
         if (v == null)
         {
             if (gate) { Silence(c, ch); gate = false; curLevel = 0; }
@@ -706,6 +715,15 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 53: return chip?.Apu is NesEmulator.APU_SMS s53 && (uint)index < 4 ? s53.Psg.Volume((int)index) : -1;
             case 54: return chip?.Apu is NesEmulator.APU_SMS s54 ? (nint)s54.LowNotesDropped : -1;
             case 55: return chip?.Apu is NesEmulator.APU_SMS s55 ? s55.Psg.NoiseControl : -1;
+            // the Genesis chip as this instance's chip has it (-1 when this instance's chip is not the Genesis one): 56 patch, 57 FM voice index (0 pulse 1, 1 pulse 2, 2 triangle) keyed (0/1),
+            // 58 that voice's frequency in hundredths of a hertz, 59 its carrier attenuation (total-level steps added to the patch), 60 notes silenced for being above the FM range, 61 PSG noise control register, 62 PSG volume register of voice index (0-3, 15 = off)
+            case 56: return chip?.Apu is NesEmulator.APU_MD m56 ? m56.Patch : -1;
+            case 57: return chip?.Apu is NesEmulator.APU_MD m57 && (uint)index < 3 ? (m57.FmKeyed((int)index) ? 1 : 0) : -1;
+            case 58: return chip?.Apu is NesEmulator.APU_MD m58 && (uint)index < 3 ? (nint)Math.Round(m58.FmHz((int)index) * 100) : -1;
+            case 59: return chip?.Apu is NesEmulator.APU_MD m59 && (uint)index < 3 ? m59.FmAttenuation((int)index) : -1;
+            case 60: return chip?.Apu is NesEmulator.APU_MD m60 ? (nint)m60.NotesAboveFmRange : -1;
+            case 61: return chip?.Apu is NesEmulator.APU_MD m61 ? m61.Psg.NoiseControl : -1;
+            case 62: return chip?.Apu is NesEmulator.APU_MD m62 && (uint)index < 4 ? m62.Psg.Volume((int)index) : -1;
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
