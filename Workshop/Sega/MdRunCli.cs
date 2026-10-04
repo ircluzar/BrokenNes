@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
 /// <c>--md-run &lt;rom&gt; [--frames N] [--region ntsc|pal] [--model 1|2|3] [--apu id] [--input "60:Start,90:Right+A,120:"] [--every N] [--png out.png] [--palette 0..3] [--trace out.txt]
-/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--plane-png out.png] [--ram-out ram.bin] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
+/// [--trace-pc] [--trace-reads] [--trace-frames N] [--hash-at 60,120] [--plane-png out.png] [--ram-out ram.bin] [--wav out.wav] [--vgm out.vgm] [--sound-report] [--force] [--quiet]</c>: runs a Genesis ROM headless on <see cref="BOARD_MD"/> and reports what the machine ended up in: the 68000, the VDP registers,
 /// VRAM, CRAM and VSRAM (with hashes you can compare between runs), the Z80 and the sound unit, the pads. There is no picture renderer yet, so <c>--png</c> writes the VDP's VRAM/CRAM debug view and <c>--plane-png</c> a dump of the two scroll planes' first 40 by 28 cells (no scroll, window, sprites or priority: enough to read a test ROM's text or recognise a game's screen). <c>--ram-out</c> writes the 64 KB of work RAM (test ROMs keep their results there), <c>--trace-reads</c> adds the 68000's reads outside ROM and RAM to a trace, <c>--force</c> runs a ROM without the SEGA header as a Genesis one.
 /// <c>--trace</c> writes a line per VDP, Z80-area, I/O, BUSREQ, RESET and PSG write (and per instruction with <c>--trace-pc</c>), tagged with frame and line, in a form two runs can be diffed in.
 /// Exit code 0 = ran every frame without a halt or a 68000 address error; 1 = the CPU halted or took an address error (listed); 2 = usage or file error.
@@ -47,6 +47,8 @@ internal static class MdRunCli
         catch (Exception e) { Console.WriteLine($"cannot start: {e.Message}"); return 2; }
         session.DebugPalette = palette;
         var board = session.Board;
+        string? wavOut = M68kTestCli.Arg(args, "--wav"), vgmOut = M68kTestCli.Arg(args, "--vgm");
+        var audio = wavOut != null || vgmOut != null || M68kTestCli.Flag(args, "--sound-report") ? new MdAudioCapture(board) : null;      // B2b: collects the sound (WAV, VGM, measurements)
         Console.WriteLine($"== {Path.GetFileName(rom)}: {session.Description}");
         Console.WriteLine($"   header: '{board.Cart.OverseasTitle}' serial {board.Cart.Serial} regions '{board.Cart.Regions}' rom {board.Cart.RomLength:N0} bytes, checksum header {board.Cart.HeaderChecksum:X4} computed {board.Cart.ComputedChecksum:X4}, sram {(board.Cart.HasSramHeader ? $"${board.Cart.SramStart:X6}-${board.Cart.SramEnd:X6} ({board.Cart.Sram.Length} bytes)" : "none")}");
 
@@ -73,7 +75,7 @@ internal static class MdRunCli
             session.SetPad(0, pad);
             session.RunFrame();
             // sound is produced by the board's own clock; drain it so the PSG's buffer does not grow
-            DrainSamples(session);
+            if (audio != null) audio.Drain(session); else DrainSamples(session);
             if (board.Cpu.Halted) { halts++; break; }
             if (every > 0 && (i + 1) % every == 0 && !quiet) Console.WriteLine($"   frame {i + 1,5}: {Summary(board)}");
             if (hashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} hash: {StateHash(board):X16}");
@@ -85,6 +87,7 @@ internal static class MdRunCli
         Console.WriteLine($"   {Summary(board)}");
         Console.WriteLine($"   state hash {StateHash(board):X16} | vram {Hash(board.Vdp.Vram):X16} cram {Hash(board.Vdp.Cram):X16} vsram {Hash(board.Vdp.Vsram):X16} regs {Hash(board.Vdp.Reg):X16}");
         if (!quiet) Dump(board);
+        audio?.Finish(wavOut, vgmOut, Path.GetFileNameWithoutExtension(rom));
         if (png != null)
         {
             try { WritePng(session, png); Console.WriteLine($"   wrote {png} (VRAM tiles in palette line {palette} and the 64 CRAM colours; there is no picture renderer yet)"); }
