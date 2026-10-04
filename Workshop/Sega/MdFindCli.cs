@@ -10,7 +10,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--md-find &lt;rom&gt; --shots a.png,b.png,... [--input "60:Start,66:"] [--from F] [--to G] [--dy 9] [--dx 0] [--dy-search] [--best out.png] [--tol N]</c>: runs the game and looks for the stretch of consecutive frames that matches the oracle's
+/// <c>--md-find &lt;rom&gt; --shots a.png,b.png,... [--input "60:Start,66:"] [--from F] [--to G] [--dy 9] [--dx 0] [--scan] [--dy-search] [--best out.png] [--tol N]</c>: runs the game and looks for the stretch of consecutive frames that matches the oracle's
 /// screenshots best: for every start frame F in [from, to] it adds up, over the K listed screenshots, the pixels that differ between our frame F+k and screenshot k (the oracle's screenshots are offset by <c>dy</c> rows,
 /// 9 for a 224-line picture) and reports the start frame with the fewest. One screenshot finds a picture; several consecutive ones (the oracle stepped frame by frame) pin the frame and check the animation and the raster effects too.
 /// Exit code 0 when the best stretch has no differing pixel, 1 otherwise.
@@ -62,7 +62,7 @@ internal static class MdFindCli
     {
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         string? shotList = M68kTestCli.Arg(args, "--shots");
-        if (rom == null || shotList == null) { Console.WriteLine("usage: --md-find <rom> --shots a.png,b.png [--input script] [--from F] [--to G] [--dy 9] [--dx 0] [--best out.png] [--tol N] [--region ntsc|pal] [--force]"); return 2; }
+        if (rom == null || shotList == null) { Console.WriteLine("usage: --md-find <rom> --shots a.png,b.png [--input script] [--from F] [--to G] [--dy 9] [--dx 0] [--scan] [--best out.png] [--tol N] [--region ntsc|pal] [--force]"); return 2; }
         var shots = shotList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Load).ToArray();
         int from = int.TryParse(M68kTestCli.Arg(args, "--from"), out int vf) ? vf : 0;
         int to = int.TryParse(M68kTestCli.Arg(args, "--to"), out int vt) ? vt : 900;
@@ -85,6 +85,30 @@ internal static class MdFindCli
         if (SegaRomFormat.Detect(data, rom) != ConsoleKind.Genesis && !M68kTestCli.Flag(args, "--force")) { Console.WriteLine($"{rom} is not a Genesis ROM; --force"); return 2; }
         var session = new MdSession(data, "M68K", "MD", "MD", region);
         int k = shots.Length;
+        if (M68kTestCli.Flag(args, "--scan"))
+        {
+            // independent screenshots: the best frame of ours for each one (they need not be consecutive)
+            var bestBadS = Enumerable.Repeat(long.MaxValue, k).ToArray(); var bestFrameS = new int[k]; var bestDyS = new int[k];
+            int[] dys = M68kTestCli.Arg(args, "--dys") is { } dl ? dl.Split(',').Select(int.Parse).ToArray() : new[] { dy };
+            PadButtons padS = PadButtons.None;
+            for (int f = 0; f <= to; f++)
+            {
+                if (inputs.TryGetValue(f, out var bs)) padS = bs;
+                session.SetPad(0, padS);
+                session.RunFrame();
+                if (f < from) continue;
+                for (int i = 0; i < k; i++)
+                {
+                    foreach (int dyv in dys)
+                    {
+                        long bad = Compare(session.Frame, session.FrameWidth, session.FrameHeight, shots[i].px, shots[i].w, shots[i].h, dx, dyv, tol, bestBadS[i]);
+                        if (bad < bestBadS[i]) { bestBadS[i] = bad; bestFrameS[i] = f; bestDyS[i] = dyv; }
+                    }
+                }
+            }
+            for (int i = 0; i < k; i++) Console.WriteLine($"shot {i}: best frame {bestFrameS[i]} (dy {bestDyS[i]}): {bestBadS[i]:N0} differing pixels");
+            return bestBadS.All(b => b == 0) ? 0 : 1;
+        }
         // our frames, kept in a ring of k: frame f's picture is copied after f is run
         var ring = new (int w, int h, uint[] px)[k];
         for (int i = 0; i < k; i++) ring[i] = (0, 0, new uint[MdVdp.PictureStride * MdVdp.PictureMaxHeight]);

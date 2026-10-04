@@ -62,6 +62,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--img-diff", StringComparison.OrdinalIgnoreCase)) return Sega.ImgDiffCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-find", StringComparison.OrdinalIgnoreCase)) return Sega.MdFindCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-pic-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdPictureTest.Run(args);
+        if (args.Length > 0 && args[0].Equals("--md-golden", StringComparison.OrdinalIgnoreCase)) return Sega.MdGoldenCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdBoardTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-contracts-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaContractsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaOracleTestCli.Run(args);

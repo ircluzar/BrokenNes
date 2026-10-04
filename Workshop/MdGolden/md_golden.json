@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "note": "Genesis golden pictures: FNV-1a over width, height and ARGB pixels at the listed frame counts (frames run, 1-based). \u0027oracle\u0027 entries are frames that matched BlastEm 1.0.0\u0027s own screenshots pixel for pixel; \u0027regression\u0027 entries only pin this emulator. ROMs are not in git; a missing ROM is skipped.",
+  "entries": [
+    {
+      "name": "md01 Flicky (title)",
+      "rom": "games:Flicky (JUE) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "182": "81F03A610107815B"
+      },
+      "input": "318:Start,324:,797:Right"
+    },
+    {
+      "name": "md02 Altered Beast",
+      "rom": "games:Altered Beast (JU) (REV 01) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "433": "BA80963B15CEEF60",
+        "623": "87E43F5C705FB2EA",
+        "1176": "897A87F1B2D7C24A",
+        "1364": "9BF21E9FC3E77092",
+        "1616": "865CFC4AEF840685",
+        "1868": "278840A41496BA83"
+      },
+      "input": "497:Start,503:,797:Start,803:,1097:Start,1103:"
+    },
+    {
+      "name": "md03 Sonic the Hedgehog",
+      "rom": "games:Sonic the Hedgehog (JUE) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "160": "43858905C862FB25",
+        "555": "0B7A6887CA78BDFB",
+        "815": "C8606B90AE2D4AD4"
+      },
+      "input": "737:Start,743:,1276:Right"
+    },
+    {
+      "name": "md04 Golden Axe",
+      "rom": "games:Golden Axe (JU) (REV 00) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "228": "6F78B95F86E328BF",
+        "495": "C9B81DA30456BE09",
+        "924": "3DA1FBC5B4FC741A",
+        "1344": "F91DAA2E802A0886",
+        "1655": "084ECCAF14E3C940",
+        "1964": "6D58A4025E90CA9D"
+      },
+      "input": "557:Start,563:,857:Start,863:,1156:Start,1162:"
+    },
+    {
+      "name": "md05 Strider",
+      "rom": "games:Strider (UE) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "125": "2B3EB8B48AEB109D",
+        "558": "43881597385F3FEA",
+        "639": "8C76834E55FB899C",
+        "1597": "CE70795833A73D70",
+        "1864": "D711B6B86BF664C8"
+      },
+      "input": "617:Start,623:,1097:Start,1103:"
+    },
+    {
+      "name": "md06 Streets of Rage",
+      "rom": "games:Streets of Rage (JUE) (REV 00) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "245": "056B3997DC91365C",
+        "493": "1145004E1838A432",
+        "763": "838AFD28C2AAD522"
+      },
+      "input": "737:Start,743:,1037:Start,1043:,1396:Start,1402:"
+    },
+    {
+      "name": "md07 Castle of Illusion",
+      "rom": "games:Mickey Mouse - Castle of Illusion (U) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "64": "C22DCAD2AA14B61D",
+        "452": "1401619842D2C8CB",
+        "745": "8D771F7E48F25980",
+        "1178": "E7768AE900072D6B",
+        "1693": "51430CDE1521D3C0"
+      },
+      "input": "737:Start,743:,1216:Start,1222:"
+    },
+    {
+      "name": "md08 Ecco the Dolphin",
+      "rom": "games:ECCO (U) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "221": "BF356E56ED4AF21A",
+        "615": "E480F5FE09AD7BE6",
+        "802": "8CE132C6EF758DB9",
+        "1526": "31F1E693F2FCECC3",
+        "1836": "7B6D14F7BAFE51AE"
+      },
+      "input": "737:Start,743:,1276:Start,1282:"
+    },
+    {
+      "name": "md09 Sonic the Hedgehog 2",
+      "rom": "games:Sonic the Hedgehog 2 (JUE) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "243": "F018688F7F646425",
+        "475": "2A77C2954DBF3FDB",
+        "929": "81858163BED072DE"
+      },
+      "input": "617:Start,623:,1097:Start,1103:,1456:Start,1462:"
+    },
+    {
+      "name": "md10 Kid Chameleon",
+      "rom": "games:Kid Chameleon (JUE) [!].bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "235": "00F7EE88DAED6C2C",
+        "420": "193B3617A73955AB",
+        "716": "C6A134AA3A31285D",
+        "1176": "B4ADFEAD3CA2DEA9",
+        "1264": "566DDE4227DDC868",
+        "1968": "FAF4634E69DB3EFF"
+      },
+      "input": "617:Start,623:,1156:Start,1162:"
+    },
+    {
+      "name": "Titan Overdrive 1 (PAL)",
+      "rom": "tests:Titan_Overdrive_Rev1.1-106-Final.bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "82": "CD1EA5AED3960585",
+        "413": "A3C71EAA2207684D",
+        "647": "5D091B9A7011F2EB",
+        "786": "A175EC09BAC459B7",
+        "1007": "BFE8122705C4C52B",
+        "1082": "90ABC5D91050F7D0",
+        "1430": "93866456735817A6",
+        "1797": "8240AA64025C8A02",
+        "1855": "52EF3AB4D937B981",
+        "3173": "005033304A579A1F",
+        "4315": "6044375592C8B1F4",
+        "4673": "7A4AB1DE4244B2A2",
+        "5031": "A3DBF293502BE527"
+      },
+      "region": "pal"
+    },
+    {
+      "name": "Titan Overdrive 2 (PAL)",
+      "rom": "tests:titan-overdrive2.zip|titan-overdrive2.bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "306": "6325DC4C75DE87B9",
+        "612": "B1C8E86AB290F598",
+        "921": "18357851ABD93F55",
+        "1163": "B30E1D61FB88C3B9",
+        "1535": "2E4E135ACC323951",
+        "1848": "101AC2EB1C068623",
+        "2155": "0C1ADF830D3D618A",
+        "2463": "BB1395EEF02FD5D1",
+        "2772": "7204A3B800A80073",
+        "3709": "9EA97E624A1A1BD3"
+      },
+      "region": "pal"
+    },
+    {
+      "name": "MacDonald V counter test",
+      "rom": "tests:vctest.zip|vctest.bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "400": "232B645A0DFE6925"
+      }
+    },
+    {
+      "name": "Fonzie\u0027s window test",
+      "rom": "tests:window-test-by-fonzie.zip|Window Test by Fonzie (PD).bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "400": "2E90CC27146481D5"
+      }
+    },
+    {
+      "name": "MacDonald window distortion bug",
+      "rom": "tests:window-distortion-bug.zip|Window distortion bug.BIN",
+      "verified": "oracle",
+      "checkpoints": {
+        "284": "50F9E591267A0789"
+      }
+    },
+    {
+      "name": "Nemesis CRAM flicker (H32)",
+      "rom": "tests:cram-flicker.zip|cram flicker.bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "400": "85ACBA2D69E933D5",
+        "403": "85ACBA2D69E933D5"
+      }
+    },
+    {
+      "name": "Chilly Willy direct colour DMA",
+      "rom": "tests:Direct-Color-DMA.zip|Direct-Color-DMA.bin",
+      "verified": "regression",
+      "checkpoints": {
+        "10": "E8F45979909FF93D",
+        "101": "E8F45979909FF93D",
+        "400": "E8F45979909FF93D"
+      }
+    },
+    {
+      "name": "Nemesis VDP FIFO test, page 2 (tests 10-16)",
+      "rom": "tests:VDPFIFOTesting.zip|VDPFIFOTesting.bin",
+      "verified": "regression",
+      "checkpoints": {
+        "2600": "FE283CFB39CBB554"
+      },
+      "input": "400:Start,410:"
+    }
+  ]
+}

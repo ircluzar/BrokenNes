@@ -71,11 +71,32 @@ internal static class MdRunCli
             }
         }
 
+        if (M68kTestCli.Flag(args, "--alloc-probe"))
+        {
+            // where the bytes go: the board's frame, the picture copy, the sound drain
+            long aBoard = 0, aCopy = 0, aDrain = 0; int counted = 0;
+            var scratch = new uint[MdVdp.PictureStride * MdVdp.PictureMaxHeight];
+            for (int i = 0; i < frames; i++)
+            {
+                long a0 = GC.GetAllocatedBytesForCurrentThread();
+                board.RunFrame();
+                long a1 = GC.GetAllocatedBytesForCurrentThread();
+                board.Vdp.CopyPicture(scratch);
+                long a2 = GC.GetAllocatedBytesForCurrentThread();
+                DrainSamples(session);
+                long a3 = GC.GetAllocatedBytesForCurrentThread();
+                if (i >= frames / 2) { aBoard += a1 - a0; aCopy += a2 - a1; aDrain += a3 - a2; counted++; }
+            }
+            Console.WriteLine($"   bytes per frame: board.RunFrame {aBoard / (double)Math.Max(1, counted):F1}, picture copy {aCopy / (double)Math.Max(1, counted):F1}, sound drain {aDrain / (double)Math.Max(1, counted):F1}");
+            return 0;
+        }
         var sw = Stopwatch.StartNew();
         PadButtons pad = PadButtons.None;
         long halts = 0;
+        long allocAt = 0; int allocFrom = frames / 2;
         for (int i = 0; i < frames; i++)
         {
+            if (i == allocFrom) allocAt = GC.GetAllocatedBytesForCurrentThread();
             if (inputs.TryGetValue(i, out var b)) pad = b;
             session.SetPad(0, pad);
             session.RunFrame();
@@ -90,6 +111,7 @@ internal static class MdRunCli
         sw.Stop();
         trace?.Dispose();
 
+        if (frames > 2) Console.WriteLine($"   allocated {(GC.GetAllocatedBytesForCurrentThread() - allocAt) / (double)Math.Max(1, frames - allocFrom):F1} bytes per frame over the second half of the run");
         Console.WriteLine($"   ran {board.Frames} frames in {sw.Elapsed.TotalSeconds:F2} s ({board.Frames / Math.Max(0.001, sw.Elapsed.TotalSeconds):F0} frames/s, {board.Cpu.Instructions:N0} 68000 instructions, {board.Cpu.Cycles:N0} clocks)");
         Console.WriteLine($"   {Summary(board)}");
         Console.WriteLine($"   state hash {StateHash(board):X16} | vram {Hash(board.Vdp.Vram):X16} cram {Hash(board.Vdp.Cram):X16} vsram {Hash(board.Vdp.Vsram):X16} regs {Hash(board.Vdp.Reg):X16}");
@@ -139,10 +161,11 @@ internal static class MdRunCli
         return board.Cpu.Halted || board.Cpu.AddressErrorCount > 0 ? 1 : 0;
     }
 
+    private static readonly short[] drainBuffer = new short[8192];
+
     private static void DrainSamples(MdSession s)
     {
-        var buf = new short[8192];
-        while (s.ReadSamples(buf) > 0) { }
+        while (s.ReadSamples(drainBuffer) > 0) { }
     }
 
     private static string Summary(BOARD_MD b)
