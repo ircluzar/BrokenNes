@@ -84,19 +84,19 @@ our own test code.
 | Titan Overdrive 2 (PAL) | attempted as asked, 10 pinned frames pixel-identical; one more differs (a sprite phase). Not complete: audio sync and any interlaced scene untested |
 
 **Roster, first ten games** (ROMs in `X:\EMULATION\Sega Genesis`, not in git). The method: BlastEm runs a wall-clock script (key presses and screenshots, `roster_scan.ps1`); our emulator runs the same
-presses at the frames they fall on and `--md-find --scan` looks, for each screenshot, for the frame of ours that matches it best. Frames with 0 differing pixels are in the golden suite; the rest are listed.
+presses at the frames they fall on and `--md-find --scan` looks, for each screenshot, for the frame of ours that matches it best. Frames with 0 differing pixels are in the golden suite; the rest are listed. "Probably input timing" is a guess (the same scenes match exactly at other points and the capture's key presses are wall-clock, not frame-exact), not a finding: none of these differences was traced to its cause.
 
 | # | Game | Frames pixel-identical (golden) | Differences, and why |
 |---|---|---|---|
-| 01 | Flicky | 1 (title) | gameplay shots not compared exactly: input timing against a wall-clock capture; Right during the title/demo does not change the picture in my scripts (attract mode), so no play check |
+| 01 | Flicky | 1 (title) | gameplay shots not compared exactly (a wall-clock capture against scripted frames); Right during the title/demo does not change the picture in my scripts (attract mode), so no play check |
 | 02 | Altered Beast | 6 | none in the captured shots; Right changes the picture in-stage |
-| 03 | Sonic the Hedgehog | 3 | gameplay shots after Right not exact (input timing); Right changes the picture (68%) |
+| 03 | Sonic the Hedgehog | 3 | gameplay shots after Right not exact (probably input timing, not investigated); Right changes the picture (68%) |
 | 04 | Golden Axe | 6 | one shot differs by 4,428 pixels (a typed-text phase, not investigated); with A pressed to clear the text box Right changes the picture |
 | 05 | Strider | 5 | one shot differs by 47 pixels (frame 1286, not investigated); Right changes the picture |
-| 06 | Streets of Rage | 3 | two later shots differ (19,047 and 55,861 pixels): input timing in the menus, not investigated; Right changes the picture |
-| 07 | Castle of Illusion | 5 | two later shots differ by most of the picture (story pages, input timing); my scripts did not reach controllable play, so no play check |
+| 06 | Streets of Rage | 3 | two later shots differ (19,047 and 55,861 pixels): probably input timing in the menus, not investigated; Right changes the picture |
+| 07 | Castle of Illusion | 5 | two later shots differ by most of the picture (probably input timing, not investigated); my scripts did not reach controllable play, so no play check |
 | 08 | Ecco the Dolphin | 5 | none in the captured shots; Right changes the picture |
-| 09 | Sonic the Hedgehog 2 | 3 | later shots differ (input timing; my first script's third Start paused the level); with the script fixed Right changes the picture (65%) |
+| 09 | Sonic the Hedgehog 2 | 3 | later shots differ (probably input timing, not investigated; my first play-check script's third Start paused the level, which is a script fault, not the emulator's); with the script fixed Right changes the picture (65%) |
 | 10 | Kid Chameleon | 6 | none in the captured shots; my scripts did not reach controllable play |
 
 The dashboard status for each is **working** (picture checked against the oracle at several points through title, menus and the first stage; pad Start works in all ten, a held direction
@@ -142,6 +142,7 @@ oracle-scripts line in section 4), `docs/projects/`. Contracts: no change to `IC
 ## Open problems and risks
 
 - H40 CRAM flicker colour phase (above); direct colour DMA phase (above); Overdrive 1's three scenes and Overdrive 2's one frame: all are slot or DMA phase questions in the same area, likely one root cause.
+- The brief asked for the access slots to be faithful including the irregular HSYNC: the slot grid excludes the refresh and sync slots as the oracle's probes showed, and that is what closed test 16 and fixed the direct colour DMA picture's streaks, but the HV counter's own jump across HSYNC is as B1 left it (an approximation) and was not re-checked in B2a; an exact HV counter against the oracle (probe ROMs reading it at every pixel) is B3 work.
 - The sprite table is read from VRAM in full at the start of each line. The hardware keeps an internal copy of part of it (updated as VRAM is written), so a game that edits the table late in a frame may differ; not compared against the oracle.
 - Sega Genesis Plus GX or any other emulator's source was not read for any of this (ledger section 2b).
 - The golden suite depends on the ROMs being at the same paths; a changed ROM image shows as "changed", a missing one as "skipped".
