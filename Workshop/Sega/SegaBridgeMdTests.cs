@@ -829,7 +829,7 @@ internal static class SegaBridgeMdTests
             }
             catch (Exception e) { failed.Add($"{id}: {e.GetType().Name} {e.Message}"); }
         }
-        Check($"every NES chip in the Genesis APU menu ({ids.Count}) builds a unit that sounds: {ok} do; silent: [{string.Join(", ", silent)}]; failed: [{string.Join("; ", failed)}]", silent.Count == 0 && failed.Count == 0);
+        Check($"every NES chip in the Genesis APU menu ({ids.Count}) builds a unit that sounds: {ok} do; silent: [{string.Join(", ", silent)}]; failed: [{string.Join("; ", failed)}]", ids.Count >= 15 && silent.Count == 0 && failed.Count == 0);
     }
 
     private static void UnitPitch()
