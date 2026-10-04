@@ -8,8 +8,10 @@ namespace NesEmulator.Sega;
 /// to stereo. A console without the FM chip is <see cref="SmsSound"/> (<see cref="HasFm"/> false); the board only routes the three ports when a unit says it has the chip.
 /// </summary>
 /// <remarks>
-/// <para><b>Audio control ($F2).</b> Bit 0 enables the FM output; bit 1 mutes the PSG. Both are 0 at power-on (PSG only). The detection routine every FM game runs writes a value and reads it back; the unit answers
-/// <see cref="ReadAudioControl"/> with what it holds (see the record, docs/projects/sega-track-a.md, for how the read-back was settled against the oracle).</para>
+/// <para><b>Audio control ($F2).</b> Bit 0 enables the FM output; bit 1 mutes the PSG. Both are 0 at power-on (PSG only). The detection routine every FM game runs (Phantasy Star's: I/O chip off, write 0 and 1 to $F2 seven times,
+/// read it back each time) gets <see cref="ReadAudioControl"/>, the value written masked to bits 0-1, while the board lets it through (the I/O chip off; see BOARD_SMS). That read-back and the register file a game builds
+/// through $F0/$F1 were measured against the oracle (Mesen 2.1.1 with its FM chip): the probes, and four Japanese games' register files frame by frame, are in the record (docs/projects/sega-track-a.md).
+/// What the two bits do to the MIX is the convention above (bit 0 FM on, bit 1 PSG off): the oracle shows its audio control register but its audio cannot be captured here, so the mix is not compared with a recording.</para>
 /// <para><b>Clocks.</b> The YM2413 runs from the Z80 clock: one chip sample per 72 clocks (49,716 Hz on an NTSC console, 49,262 Hz PAL), converted to the host rate by <see cref="Ym2413Resampler"/> (the converter of emu2413).
 /// A register write lands on the next chip sample boundary, which is at most 72 Z80 clocks (20 microseconds) after the Z80's write; the chip's state is brought to the Z80's time before every write by the board.</para>
 /// <para><b>Mix.</b> The PSG's band-limited stereo output and the FM output (mono, centre) are added at the host rate. <see cref="FmGain"/> and <see cref="PsgGain"/> scale them; the defaults put a full-volume FM channel
@@ -134,13 +136,35 @@ public sealed class SmsFmSound : ISmsSound
     {
         psg.SaveState(w); fm.SaveState(w); resampler.SaveState(w);
         w.Write(audioControl); w.Write(fmRemainder);
+        // the samples the host has not read yet, so that a restored unit keeps the offset between the PSG and FM streams (the resampler's delay) and its next samples are the carried-on unit's, bit for bit
+        int np = (int)(psgWrite - psgRead), nf = (int)(fmWrite - fmRead);
+        w.Write(np);
+        for (long i = 0; i < np; i++) { w.Write(psgL[(psgRead + i) & QueueMask]); w.Write(psgR[(psgRead + i) & QueueMask]); }
+        w.Write(nf);
+        for (long i = 0; i < nf; i++) w.Write(fmQ[(fmRead + i) & QueueMask]);
     }
 
     public void LoadState(BinaryReader r)
     {
-        psg.LoadState(r); fm.LoadState(r); resampler.LoadState(r);
+        psg.LoadState(r);
+        if (r.BaseStream.CanSeek && r.BaseStream.Position >= r.BaseStream.Length)
+        {
+            // the state of a PSG-only unit (an APU swap from the stock unit): the PSG goes on as it was, the FM chip starts as at power-on
+            fm.Reset(); fm.ResetPatch(); resampler.Reset(); audioControl = 0; fmRemainder = 0;
+            psgRead = psgWrite = fmRead = fmWrite = 0;
+            return;
+        }
+        fm.LoadState(r); resampler.LoadState(r);
         audioControl = r.ReadInt32(); fmRemainder = r.ReadInt32();
         psgRead = psgWrite = fmRead = fmWrite = 0;
+        int np = r.ReadInt32();
+        if (np < 0 || np > QueueMask + 1) throw new InvalidDataException("SMS-FM state: bad PSG queue length");
+        for (int i = 0; i < np; i++) { psgL[i] = r.ReadInt16(); psgR[i] = r.ReadInt16(); }
+        psgWrite = np;
+        int nf = r.ReadInt32();
+        if (nf < 0 || nf > QueueMask + 1) throw new InvalidDataException("SMS-FM state: bad FM queue length");
+        for (int i = 0; i < nf; i++) fmQ[i] = r.ReadInt16();
+        fmWrite = nf;
     }
 
     public string Describe() =>

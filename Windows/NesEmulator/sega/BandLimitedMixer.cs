@@ -100,4 +100,22 @@ public sealed class BandLimitedMixer
 
     /// <summary>Forgets what is buffered and the DC state; chip time keeps counting (the chip's clock is monotonic across its own reset).</summary>
     public void Reset() { Array.Clear(ring); sum = 0; consumed = Math.Max(0, (long)Math.Floor(now) - Taps / 2); }
+
+    /// <summary>The whole state: the DC integrator, the time, and the buffered samples from the first one not yet handed out to the last the kernel can still touch (a restored mixer carries on bit for bit).</summary>
+    public void SaveState(System.IO.BinaryWriter w)
+    {
+        w.Write(sum); w.Write(consumed); w.Write(now);
+        int count = (int)Math.Clamp((long)Math.Floor(now) + Taps - consumed + 1, 0, Mask + 1);
+        w.Write(count);
+        for (int i = 0; i < count; i++) w.Write(ring[(int)((consumed + i) & Mask)]);
+    }
+
+    public void LoadState(System.IO.BinaryReader r)
+    {
+        Array.Clear(ring);
+        sum = r.ReadSingle(); consumed = r.ReadInt64(); now = r.ReadDouble();
+        int count = r.ReadInt32();
+        if (count < 0 || count > Mask + 1) throw new System.IO.InvalidDataException("band-limited mixer state: bad buffer length");
+        for (int i = 0; i < count; i++) ring[(int)((consumed + i) & Mask)] = r.ReadSingle();
+    }
 }

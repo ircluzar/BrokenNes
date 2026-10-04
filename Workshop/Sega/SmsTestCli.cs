@@ -41,6 +41,7 @@ internal static class SmsTestCli
         if (Opt(args, "scan") is { } scan) return Vdptest.Scan(ctx, scan);
         if (Opt(args, "golden-write") is { } gw) return ctx.RomDir == null ? Fail("--golden-write needs --roms <dir> (folders sms and gg inside)") : GoldenSuite.Write(ctx, ctx.RomDir, gw);
         if (args.Any(a => a.Equals("--print-smoke-hex", StringComparison.OrdinalIgnoreCase))) { SmokeSuite.Print(); return 0; }
+        if (Opt(args, "write-fm-probes") is { } probeDir) return FmProbes.Write(probeDir);
         if (args.Any(a => a.Equals("--prove", StringComparison.OrdinalIgnoreCase))) return Prove(ctx, only);
         int pass = 0, fail = 0, skipped = 0;
         foreach (var suite in SmsSuites.All)
@@ -120,9 +121,9 @@ internal sealed class SmsSuiteContext
         => Session(File.ReadAllBytes(romPath), name ?? Path.GetFileName(romPath), console, region);
 
     /// <summary>A session on ROM bytes (a program built in the suite, or a file already read).</summary>
-    public SmsSession Session(byte[] rom, string name, ConsoleKind console = ConsoleKind.MasterSystem, RegionChoice? region = null)
+    public SmsSession Session(byte[] rom, string name, ConsoleKind console = ConsoleKind.MasterSystem, RegionChoice? region = null, string apu = "SMS")
     {
-        var s = console == ConsoleKind.GameGear ? new GgSession(rom, "Z80", "GG", "GG", name, region) : new SmsSession(rom, console, "Z80", "SMS", "SMS", name, null, region);
+        var s = console == ConsoleKind.GameGear ? new GgSession(rom, "Z80", "GG", apu == "SMS" ? "GG" : apu, name, region) : new SmsSession(rom, console, "Z80", "SMS", apu, name, null, region);
         foreach (var kv in Tune) ApplyField(s, kv.Key, kv.Value);
         return s;
     }
@@ -157,6 +158,8 @@ internal static class SmsSuites
             c => c.Tune["StartCycle"] = 25, "the Z80 / VDP phase moved by 4 cycles"),
         new("psg", "the PSG on the delivered audio: tone frequency, 2 dB volume steps, noise, silence at power-on, Game Gear stereo port (measured, not compared with a recording)", PsgSuite.Run,
             c => { }, "a sound unit 6% fast with no stereo port"),
+        new("fm", "the YM2413 on the board (SMS-FM): $F2 detection and the ports against the oracle's answers, registers, pitch/volume/mix on the delivered audio, rhythm, hub voices, APU swap, state round trip, speed, and the chip against Nuked-OPLL", FmSuite.Run,
+            c => { }, "the FM data port ($F1) dropped and the $F2 read-back wrong in bit 0"),
         new("save", "battery saves: export, import into a program that reads it, no save offered without RAM mapping", SaveSuite.Run, c => { }, "a corrupted save"),
         new("mapper", "cartridge mappers: Sega banks and RAM, Codemasters, plain, detection, copier header", MapperSuite.Run, c => { }, "the plain cartridge where the Sega mapper belongs"),
         new("session", "console layer: pad bits on $DC/$DD, Pause as an NMI, region and model from the name, frame rates, picture sizes", SessionSuite.Run, c => { }, "player 1 presses B where the check expects A"),

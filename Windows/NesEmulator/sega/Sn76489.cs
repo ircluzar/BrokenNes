@@ -251,6 +251,9 @@ public sealed class Sn76489 : IHubVoiceSource
         foreach (int c in counter) w.Write(c);
         foreach (bool t in tone) w.Write(t);
         w.Write(noiseDivider); w.Write(shift); w.Write(cpuRemainder);
+        // the output side: the chip's time, the levels last handed to the mixers and the mixers' own state, so that a restored chip's samples are the carried-on chip's, bit for bit
+        w.Write(clock); w.Write(lastLeft); w.Write(lastRight);
+        left.SaveState(w); right.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
@@ -261,7 +264,7 @@ public sealed class Sn76489 : IHubVoiceSource
         for (int i = 0; i < 4; i++) counter[i] = r.ReadInt32();
         for (int i = 0; i < 3; i++) tone[i] = r.ReadBoolean();
         noiseDivider = r.ReadBoolean(); shift = r.ReadInt32(); cpuRemainder = r.ReadInt32();
-        lastLeft = lastRight = 0;
-        SetOutput();
+        clock = r.ReadInt64(); lastLeft = r.ReadSingle(); lastRight = r.ReadSingle();
+        left.LoadState(r); right.LoadState(r);
     }
 }

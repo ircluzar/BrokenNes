@@ -145,7 +145,7 @@ internal static class PsgSuite
 
     private static byte[] Program(params (int Port, int Value)[] writes) => SmsProg.Rom(SmsProg.Cat(SmsProg.Prolog, SmsProg.Out(writes), SmsProg.Halt));
 
-    private static (short[] L, short[] R) Capture(SmsSession s, int settle = 4, int frames = 30)
+    internal static (short[] L, short[] R) Capture(SmsSession s, int settle = 4, int frames = 30)
     {
         var buf = new short[8192];
         var l = new List<short>(); var r = new List<short>();
@@ -159,7 +159,7 @@ internal static class PsgSuite
         return (l.ToArray(), r.ToArray());
     }
 
-    private static double Frequency(short[] x, int rate)
+    internal static double Frequency(short[] x, int rate)
     {
         int min = x.Min(), max = x.Max();
         if (max - min < 200) return 0;
@@ -173,8 +173,8 @@ internal static class PsgSuite
         return crossings < 3 ? 0 : (crossings - 1) * (double)rate / (last - first);
     }
 
-    private static double Peak(short[] x) => (double)(x.Max() - x.Min());
-    private static double Rms(short[] x) { double m = x.Average(s => (double)s); return Math.Sqrt(x.Average(s => (s - m) * (s - m))); }
+    internal static double Peak(short[] x) => (double)(x.Max() - x.Min());
+    internal static double Rms(short[] x) { double m = x.Average(s => (double)s); return Math.Sqrt(x.Average(s => (s - m) * (s - m))); }
 
     private static SmsSession Make(SmsSuiteContext ctx, byte[] rom, ConsoleKind console = ConsoleKind.MasterSystem)
     {

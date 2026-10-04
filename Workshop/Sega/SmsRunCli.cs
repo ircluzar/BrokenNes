@@ -40,6 +40,7 @@ internal static class SmsRunCli
         var shots = ParseFrames(Opt("png-at") ?? "");
         var hashAt = ParseFrames(Opt("hash-at") ?? "");
         var ramAt = ParseFrames(Opt("ram-at") ?? "");
+        var fmAt = ParseFrames(Opt("fm-regs-at") ?? "");
         int diffDetail = int.Parse(Opt("diff-detail") ?? "6");
         int firstDiffFrame = -1, diffsPrinted = 0;
         string outDir = Opt("out") ?? ".", tag = Opt("tag") ?? Path.GetFileNameWithoutExtension(inner);
@@ -49,9 +50,10 @@ internal static class SmsRunCli
         RegionChoice? region = Opt("region") is { } r ? Enum.Parse<RegionChoice>(r, true) : null;
         MasterSystemModel? model = Opt("model") is { } m ? Enum.Parse<MasterSystemModel>(m, true) : null;
 
+        string apu = Opt("apu") ?? "SMS";      // --apu SMS-FM: the Japanese console's sound unit (PSG and YM2413)
         var session = console == ConsoleKind.GameGear
-            ? (SmsSession)new GgSession(rom, "Z80", "GG", "GG", inner, region)
-            : new SmsSession(rom, console, "Z80", "SMS", "SMS", inner, model, region);
+            ? (SmsSession)new GgSession(rom, "Z80", "GG", apu == "SMS" ? "GG" : apu, inner, region)
+            : new SmsSession(rom, console, "Z80", "SMS", apu, inner, model, region);
         var board = session.Board;
         // the oracle starts its VDP at a random scanline; its capture script records the line, and this emulator starts at the same one so the two run in step (frame for frame, cycle for cycle on the Z80 side)
         string? startLine = Opt("start-line");
@@ -198,6 +200,15 @@ internal static class SmsRunCli
             {
                 hashLast = HashFrame(session);
                 if (hashAt.Contains(frameNo)) Console.WriteLine($"frame {frameNo} hash {hashLast:X16}");
+            }
+            if (fmAt.Contains(frameNo) && board.Sound is SmsFmSound fmUnit)
+            {
+                // --fm-regs-at: the YM2413's register file and the audio control in the shape of the oracle's state dump ("fmAudio.opll->regN = V", decimal), for a line by line diff
+                var sb = new StringBuilder();
+                sb.AppendLine($"fmAudio.audioControl = {fmUnit.AudioControl}");
+                for (int i = 0; i < 64; i++) sb.AppendLine($"fmAudio.opll->reg{i} = {fmUnit.Fm.Register(i)}");
+                sb.AppendLine($"fmAudio.opll->rhythm_mode = {(fmUnit.Fm.RhythmMode ? 1 : 0)}");
+                File.WriteAllText(Path.Combine(outDir, $"{tag}_f{frameNo}.fm.txt"), sb.ToString());
             }
             if (ramAt.Contains(frameNo))
             {

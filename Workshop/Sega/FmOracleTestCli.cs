@@ -82,6 +82,28 @@ internal static class FmOracleTestCli
         return bad == 0 ? 0 : 1;
     }
 
+    /// <summary>For <c>--smstest</c>'s fm suite: every group once, clean, with its numbers (null when the oracle is not built: the suite then reports a skip, never a pass).</summary>
+    internal static List<(string Id, int Passed, int Failed)>? RunForSuite(string toolsRoot)
+    {
+        string exe = Path.Combine(toolsRoot, @"oracles\harness\opll_oracle.exe");
+        if (!File.Exists(exe)) return null;
+        Exe = exe; verbose = false;
+        var result = new List<(string, int, int)>();
+        var save = Console.Out;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            foreach (var g in Groups)
+            {
+                passes = failures = 0;
+                g.Run(Poison.None);
+                result.Add((g.Id, passes, failures));
+            }
+        }
+        finally { Console.SetOut(save); }
+        return result;
+    }
+
     private static void Info(string name, string detail)
     {
         if (verbose) Console.WriteLine($"  info  {name}  [{detail}]");
