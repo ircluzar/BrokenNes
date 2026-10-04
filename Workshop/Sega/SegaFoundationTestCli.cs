@@ -121,22 +121,32 @@ internal static class SegaFoundationTestCli
 
     private static void Hidden()
     {
-        var orig = new[] { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor };
-        Check("Consoles.All lists only the four finished consoles, in the original order", Consoles.All.SequenceEqual(orig), string.Join(",", Consoles.All));
-        var exts = new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc", ".zip" };
-        Check("AllRomExtensions is exactly the original six", Consoles.AllRomExtensions.SequenceEqual(exts), string.Join(" ", Consoles.AllRomExtensions));
-        Check("a Sega ROM is not recognised", RomDetect.Detect(Sms(4), "game.sms") == null && RomDetect.Detect(Genesis(), "game.md") == null && RomDetect.Detect(Sms(6), "game.gg") == null);
+        // The consoles whose boards are real are not hidden by the preview switch: the Genesis since Track B2a (Consoles.GenesisReady). Everything else about the switch is unchanged.
+        bool md = Consoles.GenesisReady;
+        var orig = md ? new[] { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.Genesis } : new[] { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor };
+        Check(md ? "Consoles.All lists the four old consoles and the finished Genesis, in that order" : "Consoles.All lists only the four finished consoles, in the original order", Consoles.All.SequenceEqual(orig), string.Join(",", Consoles.All));
+        var exts = md ? new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc", ".md", ".gen", ".smd", ".bin", ".zip" } : new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc", ".zip" };
+        Check(md ? "AllRomExtensions is the original five, the Genesis four and .zip" : "AllRomExtensions is exactly the original six", Consoles.AllRomExtensions.SequenceEqual(exts), string.Join(" ", Consoles.AllRomExtensions));
+        Check("a Master System or Game Gear ROM is not recognised", RomDetect.Detect(Sms(4), "game.sms") == null && RomDetect.Detect(Sms(6), "game.gg") == null);
+        Check(md ? "a Genesis ROM is recognised (the finished console)" : "a Genesis ROM is not recognised", (RomDetect.Detect(Genesis(), "game.md") == ConsoleKind.Genesis) == md);
         Check("the other consoles are detected as before",
             RomDetect.Detect(Nes(), "a.nes") == ConsoleKind.Nes && RomDetect.Detect(Snes(), "a.sfc") == ConsoleKind.Snes
             && RomDetect.Detect(GameBoy(false), "a.gb") == ConsoleKind.GameBoy && RomDetect.Detect(GameBoy(true), "a.gbc") == ConsoleKind.GameBoyColor
             && RomDetect.Detect(Snes(), "noextension") == ConsoleKind.Snes);
-        Check("a zip holding a Sega ROM is not unwrapped", Throws<InvalidDataException>(() => RomDetect.Unwrap(Zip("game.md", Genesis()), "x.zip", out _)));
+        if (md) Check("a zip holding a Genesis ROM is unwrapped", RomDetect.Unwrap(Zip("game.md", Genesis()), "x.zip", out string inner) is { } && inner == "game.md");
+        else Check("a zip holding a Sega ROM is not unwrapped", Throws<InvalidDataException>(() => RomDetect.Unwrap(Zip("game.md", Genesis()), "x.zip", out _)));
         bool refused = true;
-        foreach (var k in new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis })
+        foreach (var k in new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear })
             refused &= Throws<NotSupportedException>(() => ConsoleSessions.Create(k, Genesis(), "", "", ""));
-        Check("no Sega session can be created", refused);
-        Check("no Sega console is ready yet (a Ready console must have a real session)",
-            !Consoles.IsReady(ConsoleKind.MasterSystem) && !Consoles.IsReady(ConsoleKind.GameGear) && !Consoles.IsReady(ConsoleKind.Genesis));
+        if (!md) refused &= Throws<NotSupportedException>(() => ConsoleSessions.Create(ConsoleKind.Genesis, Genesis(), "", "", ""));
+        Check(md ? "no Master System or Game Gear session can be created (the Genesis one can)" : "no Sega session can be created", refused);
+        Check(md ? "only the Genesis is ready (a Ready console must have a real session): the next check builds it" : "no Sega console is ready yet (a Ready console must have a real session)",
+            !Consoles.IsReady(ConsoleKind.MasterSystem) && !Consoles.IsReady(ConsoleKind.GameGear) && Consoles.IsReady(ConsoleKind.Genesis) == md);
+        if (md)
+        {
+            using var s = ConsoleSessions.Create(ConsoleKind.Genesis, Genesis(), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Apu));
+            Check("the ready Genesis builds a real session (NesEmulator.Sega.MdSession), not the placeholder", s is MdSession && s is not SegaPlaceholderSession && !s.Description.Contains("PLACEHOLDER"));
+        }
     }
 
     private static bool Throws<T>(Action a) where T : Exception { try { a(); return false; } catch (T) { return true; } catch { return false; } }
@@ -233,7 +243,9 @@ internal static class SegaFoundationTestCli
 
     private static void Placeholder()
     {
-        foreach (var (kind, w, h, rom) in new[] { (ConsoleKind.MasterSystem, 256, 192, Sms(4)), (ConsoleKind.GameGear, 160, 144, Sms(6)), (ConsoleKind.Genesis, 320, 224, Genesis()) })
+        var placeholders = new List<(ConsoleKind kind, int w, int h, byte[] rom)> { (ConsoleKind.MasterSystem, 256, 192, Sms(4)), (ConsoleKind.GameGear, 160, 144, Sms(6)) };
+        if (!Consoles.GenesisReady) placeholders.Add((ConsoleKind.Genesis, 320, 224, Genesis()));
+        foreach (var (kind, w, h, rom) in placeholders)
         {
             string name = Consoles.DisplayName(kind);
             using var s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), CoreCatalog.Default(kind, CoreSlot.Apu));
@@ -257,6 +269,21 @@ internal static class SegaFoundationTestCli
             Check($"{name}: ~1 second of silent stereo audio per 60 frames", silent && Math.Abs(total - expected) <= 4, $"{total} shorts, expected {expected:0}");
             Check($"{name}: no battery, empty save", !s.HasBattery && s.ExportSave().Length == 0);
             Check($"{name}: swapping a core in place is accepted", s.TrySwapCore(CoreSlot.Ppu, "SMS") && s.Description.Contains("PPU SMS"));
+            s.Reset();
+        }
+        if (Consoles.GenesisReady)
+        {
+            // the finished Genesis: a real session (the placeholder's colour bars are gone)
+            var rom = Genesis();
+            using var s = ConsoleSessions.Create(ConsoleKind.Genesis, rom, CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Apu));
+            Check("Genesis: the session is the real one and names its sound unit", s is MdSession && s.Description.Contains("Genesis") && s.Description.Contains("APU MD") && s.Console == ConsoleKind.Genesis);
+            for (int i = 0; i < 30; i++) s.RunFrame();
+            Check("Genesis: a frame of a real size (256 or 320 by 224 or 240), ARGB, ~59.92 fps", (s.FrameWidth is 256 or 320) && (s.FrameHeight is 224 or 240) && s.DisplayWidth == 320 && Math.Abs(s.FramesPerSecond - 59.9227) < 0.001
+                && s.Frame.Take(s.FrameWidth * s.FrameHeight).All(p => p >> 24 == 0xFF));
+            Check("Genesis: GameId is the ROM's SHA-1 (40 hex)", s.GameId.Length == 40 && s.GameId == ConsoleSessions.Sha1(rom));
+            var buf = new short[8192]; int n = 0; while (s.ReadSamples(buf) > 0) n++;
+            Check("Genesis: no battery on a ROM without an SRAM header, an empty save", !s.HasBattery);
+            Check("Genesis: swapping a core is refused for another id and accepted for the same one (the parts are fixed per game)", !s.TrySwapCore(CoreSlot.Ppu, "NES:FIX") && s.TrySwapCore(CoreSlot.Ppu, "MD"));
             s.Reset();
         }
     }

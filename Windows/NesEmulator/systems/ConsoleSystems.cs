@@ -37,8 +37,9 @@ public static class Consoles
     // detection, not in a file filter. A build with unfinished Sega work therefore behaves exactly like one without it. The foundation preview
     // (BROKENNES_SEGA=1 on the desktop and Workshop, or SegaPreview = true from Lite's page) shows all three, each running a placeholder session so the
     // plumbing can be exercised end to end. A track sets its console's Ready flag when its core is certified (and replaces the placeholder in
-    // ConsoleSessions.Create at the same time: Create refuses a Ready console that still has none).
-    public static readonly bool MasterSystemReady = false, GameGearReady = false, GenesisReady = false;
+    // ConsoleSessions.Create at the same time: Create refuses a Ready console that still has none). The Genesis is Ready since Track B2a: its picture is real (the VDP's renderer, see
+    // docs/projects/sega-track-b2a.md); its FM sound is not yet (the YM2612 is silent until the real chip lands), which the sound menu entry and the session description say.
+    public static readonly bool MasterSystemReady = false, GameGearReady = false, GenesisReady = true;
 
     public static bool SegaPreview { get; set; } = Environment.GetEnvironmentVariable("BROKENNES_SEGA") == "1";
 
@@ -265,7 +266,7 @@ public static class CoreCatalog
                 {
                     case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
                     case CoreSlot.Ppu: list.Add(new("MD", "MD (Genesis picture chip)", "Genesis")); break;
-                    default: list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis")); break;
+                    default: list.Add(new("MD", "MD (Z80 + PSG + YM2612 sound unit; FM audio not synthesised yet)", "Genesis")); break;
                 }
                 break;
             case ConsoleKind.Snes:
