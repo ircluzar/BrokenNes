@@ -9,7 +9,7 @@ namespace BrokenNes.Workshop.Sega;
 /// <summary>
 /// <c>--ym-render in.vgm out.wav [--model 1|2|3] [--rate 44100] [--loops N] [--seconds S] [--tail S] [--stems dir] [--solo n] [--mute mask] [--no-psg] [--info]</c>: plays a VGM file's YM2612 and SN76489 commands
 /// through the real Genesis sound unit (<see cref="MdSoundUnit"/>: the chip, the band-limited resampler, the PSG) and writes a 16-bit stereo WAV at the host rate, then prints what it measured (length, peak, RMS,
-/// clipped samples, writes by kind, notes). There is no playback device on the machine this was written on, so nothing here is heard: every claim is a measurement of the samples. <c>--stems dir</c> renders each of the six FM
+/// clipped samples, writes by kind, notes). <c>--ym-render --compare a.wav b.wav</c> measures how close two renders are; <c>--ym-render --compare-logs a.vgm b.vgm</c> compares the notes and the DAC stream two emulators wrote for the same game (see <see cref="VgmCompare"/>). There is no playback device on the machine this was written on, so nothing here is heard: every claim is a measurement of the samples. <c>--stems dir</c> renders each of the six FM
 /// channels, the DAC and the PSG on their own (the unit's mute mask) next to the full mix. <c>--solo n</c> keeps only FM channel n (1 to 6; 7 = the DAC; 8 = the PSG), <c>--mute mask</c> silences the FM channels in the mask
 /// (bit 0 to 5 = FM 1 to 6, bit 6 = the DAC), <c>--loops</c> plays the file's loop section that many times in all. Exit code 0 = rendered, 2 = usage or file error.
 /// </summary>
@@ -55,6 +55,7 @@ internal static class YmRenderCli
     public static int Run(string[] args)
     {
         if (args.Length > 1 && args[1] == "--compare") return Compare(args);
+        if (args.Length > 1 && args[1] == "--compare-logs") return VgmCompare.Run(args);
         string? input = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         string? output = args.Length > 2 && !args[2].StartsWith("--") ? args[2] : null;
         if (input == null) { Console.WriteLine("usage: --ym-render in.vgm [out.wav] [--model 1|2|3] [--rate 44100] [--loops N] [--seconds S] [--tail S] [--stems dir] [--solo n] [--mute mask] [--no-psg] [--info]"); return 2; }
