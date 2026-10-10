@@ -110,6 +110,7 @@ internal static class PictureBridgeTestCli
         Check("... and alive with good similarity", C(M(m => { m.FidSamples = 30; m.Ssim = 0.9; }), ok) == "alive");
         Check("sound: silent where the game's own sound is not is dead", C(M(m => m.AudioRms = 0), ok, true) == "dead");
         Check("sound: silent where the game is silent too is static", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0), true) == "static");
+        Check("sound: ... and static when the game's own level is only a chip's idle ripple (-50 dBFS)", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0.0033), true) == "static");
         Check("sound: any real sound is alive", C(M(), ok, true) == "alive");
     }
 

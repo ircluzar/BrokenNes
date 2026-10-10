@@ -76,7 +76,11 @@ internal static class BridgeSweepCli
     }
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
+    /// <summary>A bridge that makes less than this (AC level of its loudest 20 frames, full scale 1.0) is silent.</summary>
     private const double SilentRms = 0.0004;
+    /// <summary>A game whose own sound (on its own chips) stays below this is silent for the sweep's purpose: -46 dBFS. The Model 1 Genesis's discrete DAC rests at a level that ripples (0.0033 on two games that play nothing: Strider
+    /// and Castle of Illusion measured with --md-run --sound-report: no key-on, no DAC, no PSG tone), the quietest game that plays music in the sweep sets 0.028.</summary>
+    private const double GameAudibleRms = 0.005;
 
     // ------------------------------------------------------------------------------------------------------------------ the combinations
     internal static string[] DefaultPictures(string console) => console switch
@@ -103,7 +107,7 @@ internal static class BridgeSweepCli
         if (m.Timeout) return "hung";
         if (sound)
         {
-            bool controlSound = control == null || control.AudioRms >= SilentRms;
+            bool controlSound = control == null || control.AudioRms >= GameAudibleRms;
             return m.AudioRms < SilentRms ? (controlSound ? "dead" : "static") : "alive";
         }
         if (m.Colours <= 1) return control == null || control.Colours > 1 ? "dead" : "static";
