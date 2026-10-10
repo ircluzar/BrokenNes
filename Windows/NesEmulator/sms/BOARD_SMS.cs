@@ -290,6 +290,10 @@ public sealed class BOARD_SMS
     /// <summary>A read without side effects, for tools.</summary>
     public byte Peek(ushort address) => ReadMemory(address);
 
+    /// <summary>True when nothing answers a read of <paramref name="address"/> (the cartridge slot or the work RAM switched off through port $3E, or a plain cartridge read past its end): the bus floats high. A tool question
+    /// (the sweep asks it of the program counter to tell a program that ran off the end of its code).</summary>
+    public bool IsUnmapped(ushort address) => address >= 0xC000 ? !ramEnabled : !cartEnabled || Cart.IsOpenBus(address);
+
     /// <summary>Called for every memory write: (address, value, frame line, Z80 cycle in the line). Tracing; a null hook costs one test per write.</summary>
     public Action<ushort, byte, int, int>? MemWriteHook;
 

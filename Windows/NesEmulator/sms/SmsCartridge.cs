@@ -47,6 +47,8 @@ public sealed class SmsCartridge
     public bool HasBattery { get; private set; }
     /// <summary>The cartridge RAM was written since it was last exported or imported.</summary>
     public bool RamDirty { get; private set; }
+    /// <summary>Called for every write to $0000-$BFFF that lands on ROM, not on cartridge RAM: the addresses a program writes there are the registers of the cartridge's mapper (the sweep tool reads them to name the mapper a game expects). Tracing; null costs one test.</summary>
+    public Action<ushort, byte>? RomSpaceWriteHook;
 
     // page tables: each 1 KB of $0000-$BFFF points at a byte array and an offset into it
     private readonly byte[][] rd = new byte[48][];
@@ -224,6 +226,9 @@ public sealed class SmsCartridge
     /// <summary>Reads $0000-$BFFF.</summary>
     public byte Read(ushort address) => rd[address >> 10][rdBase[address >> 10] + address];
 
+    /// <summary>True when nothing is wired to this address of $0000-$BFFF (a plain cartridge past the end of its ROM).</summary>
+    public bool IsOpenBus(ushort address) => address < 0xC000 && ReferenceEquals(rd[address >> 10], OpenBus);
+
     /// <summary>A write to $0000-$FFFF as the cartridge sees it: cartridge RAM, and the mapper registers.</summary>
     public void Write(ushort address, byte value)
     {
@@ -237,6 +242,7 @@ public sealed class SmsCartridge
                 if (w[idx] != value) { w[idx] = value; RamDirty = true; HasBattery |= Mapper == SmsMapperKind.Sega; }
                 return;
             }
+            RomSpaceWriteHook?.Invoke(address, value);
         }
         switch (Mapper)
         {

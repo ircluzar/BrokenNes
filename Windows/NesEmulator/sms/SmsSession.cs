@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using NesEmulator.Systems;
 
@@ -78,6 +79,57 @@ public class SmsSession : IConsoleSession
     public byte[] ExportSave() => board.Cart.ExportSave();
     public void ImportSave(byte[] data) => board.Cart.ImportSave(data);
 
+    // ---- save states (the shared contract in ConsoleSystems.cs; the container in ConsoleStates.cs) ----
+
+    /// <summary>The layout of the board's payload: bump it whenever the board, the VDP, the cartridge, the Z80 or a sound unit changes what it writes, so an old state is refused rather than misread.</summary>
+    public const string StateFormat = "sms-2";
+
+    public bool SupportsState => true;
+
+    /// <summary>The parts a state depends on and that must be equal for it to load: the sound unit (a state saved with the stock unit does not fit the FM unit), the board model and the timing region, and the payload layout.</summary>
+    private Dictionary<string, string> StateUnits() => new() { ["apu"] = apuId, ["model"] = Model.ToString(), ["region"] = board.Region.ToString(), ["format"] = StateFormat };
+
+    public byte[] SaveState()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.SaveState(w);
+        var units = StateUnits();
+        units["cpu"] = cpuId; units["ppu"] = ppuId;   // information only: the Z80 and the picture chip are what they are
+        return ConsoleStateFile.Wrap(Console, GameId, Title, units, ms.ToArray());
+    }
+
+    public void LoadState(byte[] state)
+    {
+        // the header is checked before anything is touched; a refusal leaves the machine as it was
+        byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        byte[] before = SnapshotForUndo();
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(payload), System.Text.Encoding.UTF8);
+            board.LoadState(r);
+            if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
+            AfterStateLoad();
+        }
+        catch (Exception e)
+        {
+            // a payload that passed the checksum but does not fit (a layout the format name did not catch): put the machine back as it was and say so, never run on half a state
+            using var r = new BinaryReader(new MemoryStream(before), System.Text.Encoding.UTF8);
+            board.LoadState(r);
+            AfterStateLoad();
+            throw new InvalidDataException("The state could not be loaded and the game was left as it was: " + e.Message, e);
+        }
+    }
+
+    private byte[] SnapshotForUndo()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.SaveState(w);
+        return ms.ToArray();
+    }
+
+    /// <summary>What a session derives from the board after a state load (the Game Gear's window of the picture).</summary>
+    protected virtual void AfterStateLoad() { }
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         switch (slot)
@@ -119,12 +171,19 @@ public sealed class GgSession : SmsSession
     public override void RunFrame()
     {
         board.RunFrame();
+        CropLcd();
+    }
+
+    private void CropLcd()
+    {
         var src = board.Vdp.Frame;
         int h = board.Vdp.FrameHeight;
         int top = Math.Max(0, (h - LcdHeight) / 2);
         for (int y = 0; y < LcdHeight; y++)
             Array.Copy(src, (top + y) * 256 + 48, lcd, y * LcdWidth, LcdWidth);
     }
+
+    protected override void AfterStateLoad() => CropLcd();
 
     public override uint[] Frame => lcd;
     public override int FrameWidth => LcdWidth;

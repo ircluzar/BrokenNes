@@ -31,11 +31,12 @@ param(
     [string]$VFrames = "",
     [int]$TimeoutSec = 240,
     [int]$Overscan = 24,        # rows cut top and bottom of the 240-line frame: 24 leaves 192 lines; 0 writes the whole frame and --sms-run cuts it to the picture height of each frame (a 224-line game)
-    [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
+    [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1",
+    [string]$Work = ""           # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
 )
 $ErrorActionPreference = "Stop"
 if (-not $Tag) { $Tag = [IO.Path]::GetFileNameWithoutExtension($Rom) }
-$work = Join-Path $env:LOCALAPPDATA "BrokenNes\sega-mesen"
+$work = if ($Work) { $Work } else { Join-Path $env:LOCALAPPDATA "BrokenNes\sega-mesen" }
 if (-not (Test-Path (Join-Path $work "Mesen.exe"))) {
     New-Item -ItemType Directory -Force $work | Out-Null
     Copy-Item (Join-Path $OracleDir "*.exe") $work

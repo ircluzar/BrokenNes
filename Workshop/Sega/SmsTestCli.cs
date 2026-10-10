@@ -170,6 +170,8 @@ internal static class SmsSuites
             c => { }, "the FM data port ($F1) dropped and the $F2 read-back wrong in bit 0"),
         new("state", "the board's save state: a session restored from a state runs on frame for frame and sample for sample as the one that carried on (programs built here, and roster games with --roms)", StateSuite.Run,
             c => { }, "a work RAM byte left unrestored after the load"),
+        new("sessionstate", "save states through the shared session contract (IConsoleSession.SaveState / LoadState): round trip at many save points, every field compared, refusals of a state that does not belong (sound unit, game, console, region, damage) with the machine left as it was, a session without states says so", SessionStateSuite.Run,
+            c => { }, "a VRAM byte left unrestored after the load"),
         new("pal", "the 50 Hz machine: 313 lines of 228 cycles, the PAL Z80 clock in the PSG's and the YM2413's pitch, FluBBa's VDP test run as a PAL console against the oracle's PAL result bytes", PalSuite.Run,
             c => { }, "a PAL console whose frame is the NTSC length"),
         new("sg1000", "the SG-1000 / TMS9918A: eight hand-assembled programs (four modes, two sprite sizes) as .sg cartridges, picture and status flags against the oracle's", Sg1000Suite.Run,

@@ -375,6 +375,7 @@ namespace BrokenNes.Windows
         
         private void LoadStateFromFile_Click(object? sender, EventArgs e)
         {
+            if (session != null) { LoadSessionStateFromFile(); return; }
             using var openDialog = new OpenFileDialog
             {
                 Filter = "State Images (*.png)|*.png|State Files (*.state)|*.state|All Files (*.*)|*.*",
@@ -390,6 +391,7 @@ namespace BrokenNes.Windows
         
         private async void SaveStateToFile_Click(object? sender, EventArgs e)
         {
+            if (session != null) { SaveSessionStateToFile(); return; }
             if (nes == null)
             {
                 MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -465,6 +467,7 @@ namespace BrokenNes.Windows
 
         private bool TryQuickSaveState(bool showDialogs)
         {
+            if (session != null) return TrySessionQuickSave(showDialogs);   // a console session (Master System, Game Gear ...): MainForm.SessionStates.cs; the NES path below is unchanged
             if (nes == null)
             {
                 if (showDialogs)
@@ -504,6 +507,7 @@ namespace BrokenNes.Windows
 
         private bool TryQuickLoadState(bool showDialogs)
         {
+            if (session != null) return TrySessionQuickLoad(showDialogs);
             if (nes == null)
             {
                 if (showDialogs)
