@@ -224,7 +224,8 @@ internal static class MdSoundTest
         double expected = b.Timeline.MasterHz / 15.0 / 556.0;
         Check($"a Z80 loop writing the DAC every 556 T-states plays a square wave at {expected:F1} Hz (the Z80 timed in master clocks, the DAC sampled at 53 kHz)", Math.Abs(hz - expected) / expected < 0.01, $"{hz:F2} Hz");
         int peak = Peak(s, 4 * 735, s.Count);
-        Check("... at the DAC's amplitude (+-127 on the 9-bit scale, about +-5400 of 32768 at the output)", peak > 4000 && peak < 7500, $"peak {peak}");
+        // the band-limited square wave overshoots its edges by up to about 40 percent (Gibbs): the peak depends on where the edges fall against the output samples, which moves with the 68000's start time
+        Check("... at the DAC's amplitude (+-127 on the 9-bit scale, about +-5400 of 32768 at the output)", peak > 4000 && peak < 7900, $"peak {peak}");
     }
 
     private static void MuteAndMix()

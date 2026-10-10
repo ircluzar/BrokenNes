@@ -150,12 +150,14 @@ public sealed partial class MdVdp
     public static int ReleaseLatency = 16;
     /// <summary>The release latency and the fetch period scale with the slot length: H32 slots are 20 clocks, H40 ones 16.</summary>
     public int ReleaseClocks => ReleaseLatency * (H40 ? 16 : 20) / 16;
+    public static int DmaReleaseLatency = 16;
+    public int DmaReleaseClocks => DmaReleaseLatency * (H40 ? 16 : 20) / 16;
     private int FetchClocks => DmaFetchClocks * (H40 ? 16 : 20) / 16;
 
     /// <summary>How long after the command word a DMA waits before its first fetch (master clocks), and the time between fetches while the FIFO has room: a bus transfer reads the 68000's bus at its own pace and only the
     /// writes into VRAM, CRAM and VSRAM need slots. Measured against the oracle with FIFO-synchronised starts (the direct colour demo's lead-in): in blanked lines the 68000 runs again one tick (16 clocks) per word
     /// after the command; with the FIFO partly full the first two words are fetched together.</summary>
-    public static int DmaStartDelay = 60, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
+    public static int DmaStartDelay = 56, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
     /// <summary>The DMA engine fetches nothing while the VDP is in a refresh slot.</summary>
     public static bool DmaSkipsRefresh = true;
 

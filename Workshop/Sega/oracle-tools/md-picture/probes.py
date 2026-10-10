@@ -291,6 +291,59 @@ def direct_colour_replica(nwrites=13, nops=4, length=0xAD40, h40=True, display_o
     return s
 
 
+def fifo_wait10_exact(iterations=200, pad_step=1, h40=True, targets=None):
+    """Nemesis' FIFO wait-state variant 10 with the ROM's own instruction forms (absolute addresses, the same register writes, the DMA command copied through RAM), `iterations` times at differing phases
+    (the V counter poll then `pad` nops). RAM: sixteen status words ($0302 masked) per iteration; one word before them, the status read before the DMA (D5)."""
+    s = prologue(h40, True, regs={15: 2, 1: 0x44})
+    s += '    lea ($FF8000).l,a5\n    lea ($FF0000).l,a0\n'
+    targets = targets or [(it * 7) % 224 for it in range(iterations)]
+    for it in range(iterations):
+        s += wait_v(targets[it % len(targets)], 'wvi%d' % it)
+        s += '    nop\n' * ((it * pad_step) % 118)
+        s += '    move.w #$8144,($C00004).l\n'
+        s += '    move.l #$40000002,($C00004).l\n'
+        s += '    move.w #$FFFF,($C00000).l\n' * 3
+        s += '    move.w #$8154,($C00004).l\n'
+        s += '    move.w ($C00004).l,d5\n'
+        s += '    move.w #$9303,($C00004).l\n'
+        s += '    move.w #$9500,($C00004).l\n'
+        s += '    move.l #$40000082,(a5)\n'
+        s += '    move.l (a5),($C00004).l\n'
+        s += '    move.w ($C00004).l,d4\n'
+        s += '    move.w d5,(a0)+\n'
+        for k in range(16): s += '    move.w ($C00004).l,(a0)+\n'
+    s += SPIN
+    return s
+
+
+def iteration_clock(iterations=300, pad_cycles=2000, h40=True, dma_words=3, cpu_writes=3, dest='vram', samples=16):
+    """A free-running loop like the FIFO test's, timed by the HV counter: each iteration reads HV, writes `cpu_writes` VRAM words, starts a DMA of `dma_words` words, samples the status register `samples` times and
+    waits `pad_cycles` cycles (a delay loop). RAM word i = the HV counter at the start of iteration i (V and H). Any difference in how long the FIFO stalls or the DMA takes between two emulators builds up
+    over the iterations and shows as a drift of these values."""
+    table_at = 0x1F000
+    cmd = {'vram': '$40000082', 'cram': '$C0000080'}[dest]
+    s = prologue(h40, True, regs={15: 2, 1: 0x44})
+    s += '    lea ($FF8000).l,a5\n    lea ($FF0000).l,a0\n'
+    s += '    move.w #%d,d7\n' % (pad_cycles // 10)
+    for it in range(iterations):
+        s += '    move.w (a1),(a0)+\n'
+        if cpu_writes or dma_words:
+            s += '    move.w #$8144,(a4)\n'
+            s += '    move.l #$40000002,(a4)\n'
+            s += '    move.w #$FFFF,(a3)\n' * cpu_writes
+            s += '    move.w #$8154,(a4)\n'
+        if dma_words:
+            s += dma_regs(table_at, dma_words)
+            s += '    move.l #%s,(a4)\n' % cmd
+        for k in range(samples): s += '    move.w (a4),d4\n'
+        s += '    move.w #%d,d7\n' % (pad_cycles // 10)
+        s += 'pad%d: dbf d7,pad%d\n' % (it, it)
+    s += SPIN
+    s += '    org $%X\n' % table_at
+    s += colour_table(8)
+    return s
+
+
 def replica_hv(ns, nwrites=13, nops=4, h40=True, display_off=True):
     """The direct colour demo's lead-in (display on, wait for the VBlank flag to rise and fall, `nwrites` data port writes to saturate the FIFO, `nops` nops, DMA registers, command with the display switched off) for
     each word count in `ns`, one per frame, reading HV when the 68000 runs again: the first word's slot is fixed by the FIFO sync, so the HV values are the times of the slots that follow it, in blanked
@@ -332,6 +385,24 @@ def fifo_wait_variant(variant=7, iterations=100, pad_step=3, display=True, h40=T
         elif variant == 7: s += '    move.l #$00000002,(a4)\n    move.w (a3),d4\n'
         s += '    move.w (a4),d4\n'
         for k in range(16): s += '    move.w (a4),(a0)+\n'
+    s += SPIN
+    return s
+
+
+def fifo_release_probe(iterations=60, pad_step=7, display=True, h40=True, ctrl_write=True, nsamples=12):
+    """After six VRAM writes (the sixth is held until the FIFO has room) and optionally a full control write, `nsamples` pairs (status word, HV word) are stored per iteration, at differing line phases: the
+    time (HV) at which the FIFO leaves the full state, measured from the moment the 68000 was let go. RAM: 2 * nsamples words per iteration, then one word: HV right after the sixth write returned."""
+    s = prologue(h40, display, regs={15: 2})
+    s += '    lea ($FF0000).l,a0\n'
+    for it in range(iterations):
+        s += wait_v((it * 5) % 224, 'wvi%d' % it)
+        s += '    nop\n' * ((it * pad_step) % 120)
+        s += '    move.l #$40000002,(a4)\n'
+        s += '    move.w #$FFFF,(a3)\n' * 6
+        s += '    move.w (a1),(a0)+\n'
+        if ctrl_write: s += '    move.l #$00000002,(a4)\n'
+        for k in range(nsamples):
+            s += '    move.w (a4),(a0)+\n    move.w (a1),(a0)+\n'
     s += SPIN
     return s
 

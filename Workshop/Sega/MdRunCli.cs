@@ -181,10 +181,16 @@ internal static class MdRunCli
             {
                 case "dmadelay": MdVdp.DmaStartDelay = v[0]; break;
                 case "release": MdVdp.ReleaseLatency = v[0]; break;
+                case "dmarelease": MdVdp.DmaReleaseLatency = v[0]; break;
                 case "dmafetch": MdVdp.DmaFetchClocks = v[0]; break;
                 case "dmafifo": MdVdp.DmaFifoLimit = v[0]; break;
                 case "dmablank": MdVdp.DmaBlankLimit = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
+                case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
+                case "boot": BOARD_MD.BootOffsetClocks = v[0]; break;
+                case "refreshphase": BOARD_MD.RefreshPhaseClocks = v[0]; break;
+                case "refreshperiod": BOARD_MD.RefreshPeriodClocks = v[0]; break;
+                case "refreshstall": BOARD_MD.RefreshStallClocks = v[0]; break;
                 case "cuth40": MdVdp.SlotTable.CutH40 = v[0]; break;
                 case "cuth32": MdVdp.SlotTable.CutH32 = v[0]; break;
                 case "originh40": MdVdp.SlotTable.OriginH40 = v[0]; break;

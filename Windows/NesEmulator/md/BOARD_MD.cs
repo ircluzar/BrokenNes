@@ -92,7 +92,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// <summary>Power-on: the VDP, the sound unit and the pads at their reset state, the 68000 taking its stack pointer and start address from the cartridge's vectors.</summary>
     public void Reset()
     {
-        t = 0; refreshAccumulator = 0; cpuStall = 0; iplSample = 0;
+        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; nextRefresh = RefreshPhaseClocks;
         Array.Clear(Ram);
         Vdp.Reset();
         Sound.Reset();
@@ -145,6 +145,18 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     private void AddRefresh(int cycles)
     {
+        if (TimeBasedRefresh)
+        {
+            // the refresh request comes every RefreshPeriodCycles of the 68000's clock whatever the 68000 is doing (a DMA that holds it does not stop the clock): when the master clock has passed the request, the access
+            // that crosses it is delayed
+            long period = RefreshPeriodClocks;
+            if (t >= nextRefresh)
+            {
+                t += RefreshStallClocks;
+                nextRefresh = (t / period + 1) * period;
+            }
+            return;
+        }
         refreshAccumulator += cycles;
         if (refreshAccumulator >= RefreshPeriodCycles)
         {
@@ -152,6 +164,16 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             t += RefreshStallCycles * ClocksPer68k;
         }
     }
+
+    private long nextRefresh = RefreshPhaseClocks;
+    /// <summary>Refresh follows the master clock instead of counting the cycles the 68000 ran.</summary>
+    public static bool TimeBasedRefresh = false;
+    /// <summary>Master clock the 68000 starts at when the VDP's time is 0 (negative: the 68000 has run that long before the first line starts); experiment parameter for matching the oracle from power-on.</summary>
+    public static int BootOffsetClocks = 0;
+    /// <summary>The master clock of the first refresh request (time-based refresh); experiment parameter.</summary>
+    public static int RefreshPhaseClocks = 896;
+    /// <summary>Master clocks between refresh requests when <see cref="TimeBasedRefresh"/> is on, and how long each one holds the 68000 (2 of its cycles).</summary>
+    public static int RefreshPeriodClocks = 896, RefreshStallClocks = 14;
 
     /// <summary>Bring the sound unit to the 68000's clock; whatever its Z80 cost the 68000 on the way (bank-window accesses) is paid, and the unit and VDP run on through the stall.</summary>
     private void SyncSound()
@@ -176,7 +198,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             Vdp.AdvanceWork();
             if (Vdp.Time > t) t = Vdp.Time;
         }
-        if (halted) t += Vdp.ReleaseClocks;      // the 68000 runs again a little after the slot that finished the transfer
+        if (halted) t += Vdp.DmaReleaseClocks;      // the 68000 runs again a little after the slot that finished the transfer
         SyncSound();
     }
 
@@ -201,7 +223,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BusReads++;
         address &= 0xFFFFFE;
         ushort v = ReadWord(address, upper, lower, t);
-        if (ReadTrace != null && address >= 0x400000 && address < 0xE00000) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        if (ReadTrace != null && address >= 0x400000 && address < 0xE00000) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4}) at {t}");
         lastOpenBus = v;
         return v;
     }
@@ -379,13 +401,13 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     public void SaveState(BinaryWriter w)
     {
-        w.Write(t); w.Write(refreshAccumulator); w.Write(cpuStall); w.Write(iplSample); w.Write(Ram);
+        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(Ram);
         Vdp.SaveState(w); Sound.SaveState(w); Cart.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
     {
-        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); r.Read(Ram, 0, Ram.Length);
+        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); r.Read(Ram, 0, Ram.Length);
         Vdp.LoadState(r); Sound.LoadState(r); Cart.LoadState(r);
     }
 }
