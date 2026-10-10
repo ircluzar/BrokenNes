@@ -58,7 +58,20 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private ushort lastOpenBus = 0xFFFF;
 
     public long MasterClock => t;
-    public int InterruptSample => iplSample;
+
+    /// <summary>
+    /// The interrupt level the 68000 sees. It is sampled where each bus cycle starts (<see cref="BeginAccess"/>), which is right while the processor runs; a processor stopped by STOP makes no bus cycles at all, so
+    /// its level is read from the VDP as the clock stands (the VDP has been brought to it by the run loop): without that a stopped game never wakes (Beast Wrestler, Valis, Mr. Nutz, the HardBall games and a dozen more
+    /// sit in STOP waiting for the vertical interrupt, which the stale sample hid).
+    /// </summary>
+    public int InterruptSample
+    {
+        get
+        {
+            if (Cpu.Stopped) iplSample = Vdp.IplAt(t);
+            return iplSample;
+        }
+    }
     public long Frames => Vdp.Frames;
 
     /// <summary>Called with each 68000 instruction's address just before it runs (for traces); null in normal runs.</summary>
@@ -74,6 +87,22 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public uint LastOpenBusAddress, LastUnclaimedWrite;
     public long UnclaimedWrites, TmssWrites;
     public readonly ushort[] TmssWords = new ushort[2];
+    private readonly uint[] recentIoAddr = new uint[16];
+    private readonly ushort[] recentIoVal = new ushort[16];
+    private int recentIoPos;
+
+    /// <summary>The last reads the 68000 made outside the cartridge and the work RAM (VDP, I/O, Z80 area, unmapped), newest last, as "address=value" and merged by address: what a game that is stuck is polling.</summary>
+    public string RecentIoReads()
+    {
+        var seen = new System.Collections.Generic.List<(uint a, ushort v)>();
+        for (int k = 0; k < 16 && k < recentIoPos; k++)
+        {
+            int idx = (recentIoPos - 1 - k) & 15;
+            uint a = recentIoAddr[idx];
+            if (!seen.Exists(s => s.a == a)) seen.Add((a, recentIoVal[idx]));
+        }
+        return string.Join(",", seen.ConvertAll(s => $"{s.a:X6}={s.v:X4}"));
+    }
 
     public BOARD_MD(MdCartridge cart, SegaRegion region, GenesisModel model, int sampleRate, SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>? parts = null)
     {
@@ -204,7 +233,11 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BusReads++;
         address &= 0xFFFFFE;
         ushort v = ReadWord(address, upper, lower, t);
-        if (ReadTrace != null && address >= 0x400000 && address < 0xE00000) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        if (address >= 0x400000 && address < 0xE00000)
+        {
+            recentIoAddr[recentIoPos & 15] = address; recentIoVal[recentIoPos & 15] = v; recentIoPos++;
+            if (ReadTrace != null) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        }
         lastOpenBus = v;
         return v;
     }

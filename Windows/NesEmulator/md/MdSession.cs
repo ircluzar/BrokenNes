@@ -87,7 +87,7 @@ public sealed class MdSession : IConsoleSession
 
     public bool HasBattery => Board.Cart.HasBattery;
     public byte[] ExportSave() => (byte[])Board.Cart.Sram.Clone();
-    public void ImportSave(byte[] data) => Array.Copy(data, Board.Cart.Sram, Math.Min(data.Length, Board.Cart.Sram.Length));
+    public void ImportSave(byte[] data) { Array.Copy(data, Board.Cart.Sram, Math.Min(data.Length, Board.Cart.Sram.Length)); Board.Cart.SramImported(); }
 
     /// <summary>Swapping a part needs a restart: the 68000 and the VDP have one choice each, and the sound unit's state cannot move between units yet.</summary>
     public bool TrySwapCore(CoreSlot slot, string id) => slot switch

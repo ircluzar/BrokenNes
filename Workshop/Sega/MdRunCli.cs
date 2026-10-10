@@ -106,6 +106,62 @@ internal static class MdRunCli
             Console.WriteLine($"   bytes per frame: board.RunFrame {aBoard / (double)Math.Max(1, counted):F1}, picture copy {aCopy / (double)Math.Max(1, counted):F1}, sound drain {aDrain / (double)Math.Max(1, counted):F1}");
             return 0;
         }
+        // --first-exception [vec,vec]: run until the 68000 takes one of these vectors (default: bus error 2, address error 3, illegal 4, divide 5, line-A 10, line-F 11, privilege 8), print the last 40 instruction
+        // addresses with the registers at the moment, and stop. The quickest way to see what a game that ends in an exception storm did just before it.
+        string? firstEx = M68kTestCli.Flag(args, "--first-exception") ? (M68kTestCli.Arg(args, "--first-exception") is { } fe && !fe.StartsWith("--") ? fe : "2,3,4,5,8,10,11") : null;
+        if (firstEx != null)
+        {
+            var vecs = firstEx.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray();
+            var ring = new (uint pc, uint sr, uint a7, long frame, int line)[40]; int rn = 0;
+            board.InstructionHook = pc => { ring[rn++ % 40] = (pc, board.Cpu.ReadSr(), board.Cpu.A[7], board.Frames, board.Vdp.Line); };
+            long[] before = new long[256];
+            int eventsLeft = int.TryParse(M68kTestCli.Arg(args, "--events"), out int evN) ? evN : 1;      // --events N: print the first N-1 occurrences as one line each and stop at the Nth with the history
+            PadButtons fpad = PadButtons.None;
+            for (int i = 0; i < frames; i++)
+            {
+                if (padScript != null) fpad = MdSweepCli.PadAt(padScript, i);
+                if (inputs.TryGetValue(i, out var fb)) fpad = fb;
+                session.SetPad(0, fpad);
+                // step instruction by instruction through the frame so the first exception stops at its instruction
+                var hit = -1;
+                board.Vdp.ClearFrameFlag();
+                long guardT = board.MasterClock + board.Timeline.MasterClocksPerFrame * 4;
+                while (!board.Vdp.FrameCompleted && board.MasterClock < guardT && hit < 0)
+                {
+                    uint prePc = board.Cpu.Pc - 4, preSr = board.Cpu.ReadSr();
+                    board.StepInstruction();
+                    foreach (int v in vecs)
+                        if (board.Cpu.ExceptionCounts[v] != before[v])
+                        {
+                            before[v] = board.Cpu.ExceptionCounts[v];
+                            if (eventsLeft > 1)
+                            {
+                                // a long list: one line per event (interrupted pc and SR, the handler's first address), keep going
+                                eventsLeft--;
+                                Console.WriteLine($"   event vector {v} at f{board.Frames} l{board.Vdp.Line}: interrupted pc {prePc:X6} sr {preSr:X4}, handler at {board.Cpu.Pc - 4:X6} sr now {board.Cpu.ReadSr():X4}");
+                            }
+                            else hit = v;
+                            break;
+                        }
+                }
+                board.Sound.RunTo(board.MasterClock);
+                DrainSamples(session);
+                if (hit >= 0)
+                {
+                    Console.WriteLine($"   FIRST EXCEPTION: vector {hit} at frame {board.Frames}, line {board.Vdp.Line}; stacked pc/sr/instruction in the exception frame follow the instruction history (oldest first)");
+                    for (int k = 0; k < 40; k++)
+                    {
+                        var e = ring[(rn + k) % 40];
+                        if (e.pc == 0 && e.frame == 0 && e.sr == 0 && e.a7 == 0) continue;
+                        Console.WriteLine($"     f{e.frame} l{e.line} pc {e.pc:X6} sr {e.sr:X4} a7 {e.a7:X8}");
+                    }
+                    Console.WriteLine($"   now: pc {board.Cpu.Pc - 4:X6} sr {board.Cpu.ReadSr():X4} a7 {board.Cpu.A[7]:X8} | D {string.Join(" ", Enumerable.Range(0, 8).Select(k => board.Cpu.D[k].ToString("X8")))} | A {string.Join(" ", Enumerable.Range(0, 8).Select(k => board.Cpu.A[k].ToString("X8")))}");
+                    return 1;
+                }
+            }
+            Console.WriteLine($"   no exception of vectors {firstEx} in {frames} frames");
+            return 0;
+        }
         // --save-in file: start with this battery image (SRAM or EEPROM bytes, as the session saves them); --save-out file: write the image at the end
         string? saveIn = M68kTestCli.Arg(args, "--save-in"), saveOut = M68kTestCli.Arg(args, "--save-out");
         if (saveIn != null) { try { session.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"   loaded {saveIn} into the battery memory"); } catch (Exception e) { Console.WriteLine($"   cannot load {saveIn}: {e.Message}"); return 2; } }
@@ -144,6 +200,7 @@ internal static class MdRunCli
         Console.WriteLine($"   {Summary(board)}");
         Console.WriteLine($"   state hash {StateHash(board):X16} | vram {Hash(board.Vdp.Vram):X16} cram {Hash(board.Vdp.Cram):X16} vsram {Hash(board.Vdp.Vsram):X16} regs {Hash(board.Vdp.Reg):X16}");
         if (!quiet) Dump(board);
+        Console.WriteLine($"   exceptions and interrupts taken (vector x count): {string.Join(" ", Enumerable.Range(0, 256).Where(k => board.Cpu.ExceptionCounts[k] > 0).Select(k => $"{k}x{board.Cpu.ExceptionCounts[k]}"))}");
         if (board.Cart.Eeprom is { } ee) Console.WriteLine($"   EEPROM {ee.Chip} ({board.Cart.EepromWiring}): starts {ee.Starts}, stops {ee.Stops}, bytes in {ee.BytesIn}, out {ee.BytesOut}, committed writes {ee.Commits}, device bytes [{string.Join(" ", Enumerable.Range(0, 256).Where(k => ee.DeviceHistogram[k] > 0).Select(k => $"{k:X2}x{ee.DeviceHistogram[k]}"))}], highest address {ee.MaxAddress}, non-$FF bytes {ee.Data.Count(x => x != 0xFF)}/{ee.Data.Length}, hash {Hash(ee.Data):X16}");
         else if (board.Cart.EepromUnsupported != null) Console.WriteLine($"   EEPROM: {board.Cart.EepromUnsupported}");
         if (saveOut != null && session.HasBattery) { File.WriteAllBytes(saveOut, session.ExportSave()); Console.WriteLine($"   wrote the battery image ({session.ExportSave().Length} bytes, hash {Hash(session.ExportSave()):X16}) to {saveOut}"); }

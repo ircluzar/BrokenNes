@@ -47,6 +47,9 @@ internal static class MdSweepCli
         public string Model = "", RegionUsed = "", PicHash = "";
         public bool HeaderOk;
         public string ThumbPath = "";
+        public string Script = "";
+        public long LateTrouble;       // address errors, illegal, privilege, divide-by-zero taken in the last quarter of the run
+        public long LateTraps;         // line-A and line-F traps in the last quarter (some games use them as a call mechanism: not trouble by themselves)
     }
 
     // =================================================================================================================
@@ -150,9 +153,31 @@ internal static class MdSweepCli
 
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n];
 
-    private static Result RunOne(string label, byte[] data, string script, int frames, Worker w, short[] drain, string? thumbDir, string apu, RegionChoice? region, GenesisModelChoice? model)
+    private static int Rank(string cls) => cls switch { "ok" => 0, "silent" => 1, "frozen" => 2, "no-picture" => 3, _ => 4 };
+
+    /// <summary>Runs a game with the chosen pad script; a game that looks frozen or blank under it gets the other scripts too (a Start press that paused it, a menu that wants A or C): the best outcome is kept and says which script reached it.</summary>
+    private static Result RunOne(string label, byte[] data, string script, int frames, Worker w, short[] drain, string? thumbDir, string apu, RegionChoice? region, GenesisModelChoice? model, bool retry)
     {
-        var r = new Result { File = label, Name = Path.GetFileNameWithoutExtension(label), Size = data.Length };
+        var first = RunScript(label, data, script, frames, w, drain, thumbDir, apu, region, model);
+        if (!retry || Rank(first.Class) < 2 || Rank(first.Class) > 3) return first;
+        Result best = first;
+        foreach (string alt in new[] { "mash", "start" }.Where(a => a != script))
+        {
+            var again = RunScript(label, data, alt, frames, w, drain, thumbDir, apu, region, model);
+            if (Rank(again.Class) < Rank(best.Class))
+            {
+                again.Detail = $"alive under script '{alt}' ({again.Detail}); under '{script}' it was {first.Class}: {first.Detail}";
+                best = again;
+                if (best.Class == "ok") break;
+            }
+        }
+        if (best != first && best.Class != "ok") { best.Detail += $" (script '{script}' gave {first.Class})"; }
+        return best;
+    }
+
+    private static Result RunScript(string label, byte[] data, string script, int frames, Worker w, short[] drain, string? thumbDir, string apu, RegionChoice? region, GenesisModelChoice? model)
+    {
+        var r = new Result { File = label, Name = Path.GetFileNameWithoutExtension(label), Size = data.Length, Script = script };
         // 1. what the file claims to be
         var kind = SegaRomFormat.Detect(data, label);
         var hw = HardwareVerdict(data, null);
@@ -190,10 +215,14 @@ internal static class MdSweepCli
         int i = 0;
         uint[]? lastPicture = null; int lastW = 0, lastH = 0;
         int halfHashFrame = frames * 3 / 4; ulong hashAtThreeQuarters = 0;
+        long trouble0 = 0, traps0 = 0;
+        long Trouble() { var c = board.Cpu; return c.AddressErrorCount + c.ExceptionCounts[M68k<MdBus>.VecIllegal] + c.ExceptionCounts[M68k<MdBus>.VecPrivilege] + c.ExceptionCounts[M68k<MdBus>.VecDivideByZero] + c.ExceptionCounts[M68k<MdBus>.VecBusError]; }
+        long Traps() { var c = board.Cpu; return c.ExceptionCounts[M68k<MdBus>.VecLineA] + c.ExceptionCounts[M68k<MdBus>.VecLineF]; }
         try
         {
             for (; i < frames; i++)
             {
+                if (i == halfHashFrame) { trouble0 = Trouble(); traps0 = Traps(); }
                 pad = PadAt(script, i);
                 session.SetPad(0, pad);
                 session.RunFrame();
@@ -233,24 +262,26 @@ internal static class MdSweepCli
         lastPicture = session.Frame; lastW = session.FrameWidth; lastH = session.FrameHeight;
 
         // 2. classify
-        long exceptionsLoop = r.Illegal + r.LineA + r.LineF + r.Priv;
+        r.LateTrouble = Trouble() - trouble0; r.LateTraps = Traps() - traps0;
+        long lateFrames = Math.Max(1, i - halfHashFrame);
         if (board.Cpu.Halted)
         {
             r.Class = "halted"; r.Cause = "double fault";
             r.Detail = $"68000 halted at frame {i} pc {r.Pc:X6}: an address error while stacking an exception (address errors {r.AddressErrors}, illegal {r.Illegal})";
         }
         else if (hw != null) { r.Class = "unsupported"; r.Cause = hw.Value.cause; r.Detail = hw.Value.detail; }
-        else if (r.AddressErrors > 200 || exceptionsLoop > 200)
+        else if (r.LateTrouble >= lateFrames)       // at least one address error, illegal instruction, privilege violation or divide-by-zero per frame, still, in the last quarter of the run
         {
             r.Class = "exception-loop";
-            r.Cause = r.AddressErrors > 200 ? "address-error storm" : r.Illegal > 200 ? "illegal-instruction storm" : r.LineA > 200 ? "line-A storm" : r.LineF > 200 ? "line-F storm" : "privilege storm";
-            r.Detail = $"address errors {r.AddressErrors}, illegal {r.Illegal}, line-A {r.LineA}, line-F {r.LineF}, privilege {r.Priv}; pc {r.Pc:X6}";
+            r.Cause = r.AddressErrors > r.Illegal ? "address-error storm" : r.Illegal >= r.Priv ? "illegal-instruction storm" : "privilege storm";
+            r.Detail = $"address errors {r.AddressErrors}, illegal {r.Illegal}, privilege {r.Priv}, divide-by-zero {r.DivZero}, line-A {r.LineA}, line-F {r.LineF}; {r.LateTrouble} in the last quarter; pc {r.Pc:X6}";
         }
         else if (firstShow < 0 || (lastBlank && r.DistinctPictures <= 2))
         {
             r.Class = "no-picture";
             r.Cause = !board.Vdp.DisplayEnabled ? "display never enabled" : "picture is one colour";
             r.Detail = $"display {(board.Vdp.DisplayEnabled ? "on" : "off")}, vint {(board.Vdp.VintEnabled ? "on" : "off")}, pc {r.Pc:X6}, distinct pictures {r.DistinctPictures}, 68000 {(board.Cpu.Stopped ? "stopped" : "running")}";
+            r.Detail += $", recent register reads {board.RecentIoReads()}";
             if (r.StrayWrites > 0) r.Detail += $", {r.StrayWrites} writes into cartridge space (last ${r.LastStray:X6})";
             if (r.OtherMapperWrites > 0) r.Detail += $", {r.OtherMapperWrites} writes to unknown mapper registers (last ${r.LastOtherMapper:X6})";
             if (r.OpenBusReads > 1000) r.Detail += $", {r.OpenBusReads} open-bus reads (last ${r.LastOpenBus:X6})";
@@ -261,6 +292,7 @@ internal static class MdSweepCli
             r.Cause = board.Cpu.Stopped ? "68000 stopped (STOP)" : "picture unchanged";
             r.Detail = $"last picture change at frame {lastChange} of {i}; pc {r.Pc:X6}; display {(board.Vdp.DisplayEnabled ? "on" : "off")} vint {(board.Vdp.VintEnabled ? "on" : "off")}; distinct pictures {r.DistinctPictures}";
             if (r.OpenBusReads > 1000) r.Detail += $"; {r.OpenBusReads} open-bus reads (last ${r.LastOpenBus:X6})";
+            r.Detail += $"; recent register reads {board.RecentIoReads()}";
         }
         else if (peak < 24)
         {
@@ -268,7 +300,13 @@ internal static class MdSweepCli
             r.Cause = r.PsgWrites + r.YmWrites == 0 ? (r.Z80Ticks == 0 ? "Z80 never started, no sound writes" : "no sound writes (Z80 ran)") : "sound writes made no sound";
             r.Detail = $"peak {peak}, psg writes {r.PsgWrites}, ym writes {r.YmWrites}, bus requests {r.BusRequests}, z80 ticks {r.Z80Ticks}";
         }
-        else { r.Class = "ok"; r.Cause = ""; r.Detail = $"{r.DistinctPictures} distinct pictures, {r.LastColours} colours at the end, peak {peak}"; }
+        else
+        {
+            r.Class = "ok"; r.Cause = "";
+            r.Detail = $"{r.DistinctPictures} distinct pictures, {r.LastColours} colours at the end, peak {peak}";
+            if (r.LateTraps >= lateFrames) r.Detail += $"; uses line-A/F traps ({r.LateTraps} in the last quarter: a call mechanism, not an error)";
+            if (r.LateTrouble > 0) r.Detail += $"; {r.LateTrouble} exceptions (address error, illegal, privilege, divide) in the last quarter";
+        }
 
         if (thumbDir != null && r.Class != "ok" && lastPicture != null)
         {
@@ -372,7 +410,7 @@ internal static class MdSweepCli
     //  The command
     // =================================================================================================================
 
-    private const string Header = "class\tcause\tname\tsize\ttitle\tserial\tregions\tio\tdevice\tmapper\tmodel\tregion\tframes\tsecs\tfps\tdistinct_pics\tfirst_show\tlast_change\tcolours\tpic_hash\taudio_peak\taudio_nonzero\tpsg_w\tym_w\tbusreq\tz80_ticks\taddr_err\tillegal\tlineA\tlineF\tpriv\tdivzero\tchk\ttrapv\tpc\tstray_w\tlast_stray\tmapper_w\tlast_mapper\topenbus_r\tlast_openbus\tunclaimed_w\tlast_unclaimed\ttmss_w\thdr_ok\tdetail\tthumb\tfile";
+    private const string Header = "class\tcause\tname\tsize\ttitle\tserial\tregions\tio\tdevice\tmapper\tmodel\tregion\tframes\tsecs\tfps\tdistinct_pics\tfirst_show\tlast_change\tcolours\tpic_hash\taudio_peak\taudio_nonzero\tpsg_w\tym_w\tbusreq\tz80_ticks\taddr_err\tillegal\tlineA\tlineF\tpriv\tdivzero\tchk\ttrapv\tpc\tstray_w\tlast_stray\tmapper_w\tlast_mapper\topenbus_r\tlast_openbus\tunclaimed_w\tlast_unclaimed\ttmss_w\thdr_ok\tscript\tlate_trouble\tlate_traps\tdetail\tthumb\tfile";
 
     private static string Row(Result r)
     {
@@ -385,7 +423,7 @@ internal static class MdSweepCli
             r.AudioPeak.ToString(), r.AudioNonZero.ToString(), r.PsgWrites.ToString(), r.YmWrites.ToString(), r.BusRequests.ToString(), r.Z80Ticks.ToString(),
             r.AddressErrors.ToString(), r.Illegal.ToString(), r.LineA.ToString(), r.LineF.ToString(), r.Priv.ToString(), r.DivZero.ToString(), r.Chk.ToString(), r.TrapV.ToString(), r.Pc.ToString("X6"),
             r.StrayWrites.ToString(), X(r.LastStray), r.OtherMapperWrites.ToString(), X(r.LastOtherMapper), r.OpenBusReads.ToString(), X(r.LastOpenBus), r.UnclaimedWrites.ToString(), X(r.LastUnclaimed), r.TmssWrites.ToString(),
-            r.HeaderOk ? "1" : "0", S(r.Detail), S(r.ThumbPath), S(r.File),
+            r.HeaderOk ? "1" : "0", r.Script, r.LateTrouble.ToString(), r.LateTraps.ToString(), S(r.Detail), S(r.ThumbPath), S(r.File),
         });
     }
 
@@ -432,6 +470,7 @@ internal static class MdSweepCli
         string apu = M68kTestCli.Arg(args, "--apu") ?? "MD";
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         GenesisModelChoice? model = M68kTestCli.Arg(args, "--model") switch { "1" => GenesisModelChoice.Model1, "2" => GenesisModelChoice.Model2, "3" => GenesisModelChoice.Model3, _ => null };
+        bool retry = !M68kTestCli.Flag(args, "--no-retry");
 
         var files = Gather(input).Where(f => filter == null || f.Contains(filter, StringComparison.OrdinalIgnoreCase)).Skip(skip).Take(limit).ToList();
         if (files.Count == 0) { Console.WriteLine($"no ROMs found in {input}"); return 2; }
@@ -472,7 +511,7 @@ internal static class MdSweepCli
                     if (data == null) res = new Result { File = item.path, Name = Path.GetFileNameWithoutExtension(item.path), Class = "rejected", Cause = "unreadable file", Detail = error ?? "" };
                     else
                     {
-                        try { res = RunOne(label, data, script, frames, w, drain, thumbs, apu, region, model); }
+                        try { res = RunOne(label, data, script, frames, w, drain, thumbs, apu, region, model, retry); }
                         catch (Exception e) { res = new Result { File = label, Name = Path.GetFileNameWithoutExtension(label), Size = data.Length, Class = "crashed", Cause = "sweep: " + e.GetType().Name, Detail = e.Message + " @ " + FirstFrame(e) }; }
                     }
                     if (w.Abandoned) return;      // the watchdog already recorded this ROM as hung
