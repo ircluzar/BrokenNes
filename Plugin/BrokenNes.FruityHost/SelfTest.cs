@@ -45,10 +45,10 @@ public sealed unsafe partial class SelfTest
         lib = new PluginLibrary(dllPath);
     }
 
-    private static readonly string[] ParamNames = ["Sound chip", "Volume", "Pan", "Coarse", "Fine", "Pulse duty", "Channel", "Noise mode", "Mode", "Emulator", "Console", "Instrument"];
+    private static readonly string[] ParamNames = ["Sound chip", "Volume", "Pan", "Coarse", "Fine", "Pulse duty", "Channel", "Noise mode", "Mode", "Emulator", "Console", "Instrument", "Voice"];
 
     // parameter indices
-    private const int PCore = 0, PVolume = 1, PPan = 2, PChannel = 6, PMode = 8, PEmulator = 9, PConsole = 10, PInstrument = 11;
+    private const int PCore = 0, PVolume = 1, PPan = 2, PChannel = 6, PMode = 8, PEmulator = 9, PConsole = 10, PInstrument = 11, PVoice = 12;
     private const int PDuty = 5, PNoiseMode = 7;
 
     /// <summary>A one-note scenario where 1 beat = 1 second.</summary>
@@ -143,9 +143,11 @@ public sealed unsafe partial class SelfTest
             ("hub-conflict", "A channel taken by another instance is refused, and handed over when it frees up", HubConflict),
             ("hub-state", "Saved projects keep each instance's emulator, channel and the emulator's chip", HubState),
             ("consoles", "Console selector: each console lists its own chips, picking either way keeps them in step, every console plays", Consoles),
-            ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode refuses Genesis games", Psg),
-            ("md", "Genesis chip (APU_MD: YM2612 FM + PSG), console 4: append-only chip index, FM pitch and level against the NES chip, the Instrument parameter picks the FM patch (per instance, through the editor too), polyphony, range, real time, no allocation, ROM mode refuses Genesis games", Md),
+            ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode on the Master System console holds no game until one is chosen", Psg),
+            ("md", "Genesis chip (APU_MD: YM2612 FM + PSG), console 4: append-only chip index, FM pitch and level against the NES chip, the Instrument parameter picks the FM patch (per instance, through the editor too), polyphony, range, real time, no allocation, ROM mode on the Genesis console holds no game until one is chosen", Md),
             ("fm", "Master System FM chip (APU_SMSFM: YM2413 FM + PSG), console 3: appended last (chip 22), FM pitch and level against the NES chip, the Instrument parameter picks the chip's instrument or a designed one (per instance, through the editor too), polyphony, range, real time, no allocation", SmsFm),
+            ("rom-md", "ROM mode on Genesis games (a tiny ROM made by the test): it loads, runs, draws, plays its PSG tones and YM2612 sines through Mix, Runaway freezes it, files switch the emulator to the Genesis console", RomMd),
+            ("stems-sega", "Per-channel stems of Sega games: PSG tone 1-3 and noise, the Genesis' FM voices, the Master System FM chip's, each its own voice, adding up to the game's mix; voices a console does not have are refused", SegaStems),
             ("rom-sms", "ROM mode on Master System and Game Gear games (tiny ROMs made by the test): they load, run, draw at their own size, play their PSG tone through Mix, switch the emulator's console", RomSms),
             ("mono", "Each channel is monophonic: the newest note wins and the older one resumes", Mono_),
             ("lifecycle", "Voices: released voices are handed back (Voice_Kill), bad handles are harmless", Lifecycle),
@@ -253,7 +255,7 @@ public sealed unsafe partial class SelfTest
     private void State(T t)
     {
         using var a = lib.Create();
-        int[] want = [Chips(a).IndexOf("QN"), 612, -41, 7, -23, 2, 3, 1, 1, 2, 0, 37];   // chip QN, volume, pan, coarse, fine, duty, channel (Triangle), noise mode, mode (ROM), emulator #2, console NES
+        int[] want = [Chips(a).IndexOf("QN"), 612, -41, 7, -23, 2, 3, 1, 1, 2, 0, 37, 3];   // chip QN, volume, pan, coarse, fine, duty, channel (Triangle), noise mode, mode (ROM), emulator #2, console NES, instrument, voice (FM 3)
         // the emulator first: an instance that moves to another emulator takes that emulator's chip, mode and cores
         a.SetParam(PEmulator, want[PEmulator]);
         for (int i = 0; i < want.Length; i++) a.SetParam(i, want[i]);
@@ -1297,7 +1299,7 @@ public sealed unsafe partial class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 5, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 5} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles)");
+            t.Expect(p.Test(32) == chips.Count - 6, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 6} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1336,7 +1338,7 @@ public sealed unsafe partial class SelfTest
             ClickControl(t, p, 53, "SMS segment");
             t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (SMS)");
-            t.Expect(p.Test(32) == 1, $"the Master System chip list has {p.Test(32)} items, expected SMS");
+            t.Expect(p.Test(32) == 2, $"the Master System chip list has {p.Test(32)} items, expected SMS and SMSFM");
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 54, "MD segment");
             t.Expect(p.GetParam(PConsole) == 4 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "MD", $"MD segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
@@ -1660,32 +1662,21 @@ public sealed unsafe partial class SelfTest
             t.Expect(all > single * 1.5, $"polyphony: four voices ({all:0.000}) are not louder than one ({single:0.000})");
         }
 
-        // ---- a Genesis game in ROM mode is refused with a message, never run as something else (Master System and Game Gear games run: see the rom-sms test); the chips keep working in Direct mode ----
+        // ---- choosing the Master System console in ROM mode with no game chosen: no game, no crash, no sound from a made-up one; its chip is there for Direct mode ----
         {
-            string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
-            string sms = Path.Combine(dir, $"bn2_{tag}.sms"), gg = Path.Combine(dir, $"bn2_{tag}.gg"), md = Path.Combine(dir, $"bn2_{tag}.md");
-            var smsRom = new byte[0x8000]; "TMR SEGA"u8.CopyTo(smsRom.AsSpan(0x7FF0)); smsRom[0x7FFF] = 0x4C;
-            var mdRom = new byte[0x400]; "SEGA MEGA DRIVE "u8.CopyTo(mdRom.AsSpan(0x100));
-            File.WriteAllBytes(sms, smsRom); File.WriteAllBytes(gg, smsRom); File.WriteAllBytes(md, mdRom);
             try
             {
                 using var q = RomPlugin();
                 RenderBlocks(q, 0.3);
                 t.Expect(q.Test(15) == 0, "the built-in game should be a NES game");
-                foreach (var (name, path) in new[] { ("Genesis", md) })
-                {
-                    int status = LoadFileInto(q, path);
-                    RenderBlocks(q, 0.2);
-                    t.Expect(status != 0 && q.Test(15) == 0 && q.Test(12) == 0 && q.GetParam(PConsole) == 0, $"a {name} file should be refused and leave the NES game running (status {status}, console {q.GetParam(PConsole)})");
-                }
-                // choosing the Master System console in ROM mode with no game chosen: no game, no crash, no sound from a made-up one; its chip is there for Direct mode
+                // 
                 q.SetParam(PConsole, 3);
                 var silent = RenderBlocks(q, 0.6);
                 t.Expect(q.Test(9) == 0 && q.Test(12) == 0 && silent.All(float.IsFinite) && Audio.Rms(silent, 8000, silent.Length) < 0.002, "ROM mode on the Master System console should hold no game and play nothing");
                 q.SetParam(PMode, 0);
                 t.Expect(q.GetName(Fpn.ParamValue, PCore, q.GetParam(PCore)) == Chip && q.GetParam(PConsole) == 3, "back in Direct mode the SMS chip should be there");
             }
-            finally { foreach (var f in new[] { sms, gg, md }) File.Delete(f); }
+            finally { }
         }
 
         // ---- real time and no allocation: four sliding voices on the PSG chip, like the Realtime test on the NES chip ----
@@ -1887,25 +1878,19 @@ public sealed unsafe partial class SelfTest
             finally { Win32Host.DestroyParent(parent); }
         }
 
-        // ---- a Genesis game in ROM mode is refused with a message and the Genesis console holds no game; the chip keeps working in Direct mode ----
+        // ---- ROM mode on the Genesis console with no game chosen holds no game; the chip keeps working in Direct mode (the Genesis games themselves: see the rom-md test) ----
         {
-            string md = Path.Combine(Path.GetTempPath(), $"bn2_{Guid.NewGuid():N}.md");
-            var mdRom = new byte[0x400]; "SEGA MEGA DRIVE "u8.CopyTo(mdRom.AsSpan(0x100));
-            File.WriteAllBytes(md, mdRom);
             try
             {
                 using var q = RomPlugin();
                 RenderBlocks(q, 0.3);
-                int status = LoadFileInto(q, md);
-                RenderBlocks(q, 0.2);
-                t.Expect(status != 0 && q.Test(15) == 0 && q.Test(12) == 0 && q.GetParam(PConsole) == 0, $"a Genesis file should be refused and leave the NES game running (status {status}, console {q.GetParam(PConsole)})");
                 q.SetParam(PConsole, 4);
                 var silent = RenderBlocks(q, 0.6);
                 t.Expect(q.Test(9) == 0 && q.Test(12) == 0 && silent.All(float.IsFinite) && Audio.Rms(silent, 8000, silent.Length) < 0.002, "ROM mode on the Genesis console should hold no game and play nothing");
                 q.SetParam(PMode, 0);
                 t.Expect(q.GetName(Fpn.ParamValue, PCore, q.GetParam(PCore)) == Chip && q.GetParam(PConsole) == 4, "back in Direct mode the MD chip should be there");
             }
-            finally { File.Delete(md); }
+            finally { }
         }
 
         // ---- real time and no allocation: four sliding voices on the Genesis chip (each instance has its own YM2612), and the patch changing under them ----
@@ -1983,7 +1968,7 @@ public sealed unsafe partial class SelfTest
                     for (int k = 0; k < 4; k++) { RenderBlocks(p, 0.1); Win32Host.Pump(60); }
                     long dims = p.Test(37);
                     t.Expect((int)(dims & 0xFFFF) == wantW, $"{name}: the picture is {(int)(dims & 0xFFFF)} x {(int)(dims >> 16)} wide, expected {wantW}");
-                    t.Expect(p.Test(30, 10) == 0 && p.Test(30, 14) != 0, $"{name}: the channel strip should offer only Mix");
+                    t.Expect(Enumerable.Range(10, 5).All(id => p.Test(30, id) != 0) && p.Test(30, 406) == 0, $"{name}: the channel strip should offer the PSG's four voices and Mix (and no FM voice on the PSG chip)");
                     p.HideEditor();
                 }
                 finally { Win32Host.DestroyParent(parent); }

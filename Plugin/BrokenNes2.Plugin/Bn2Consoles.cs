@@ -26,11 +26,10 @@ public static class Cx
     public static readonly string[] RomNames = ["NES", "Game Boy", "SNES", "Master System", "Genesis"];
 
     /// <summary>
-    /// Whether ROM mode can run this console's games: the NES, Game Boy, SNES and Master System / Game Gear (their boards are certified: <c>Consoles.MasterSystemReady</c>), played through Mix like any session game.
-    /// The Genesis console exists for its sound chip in Direct mode only: its picture is not certified yet (<c>Consoles.GenesisReady</c>) and the plugin has no YM2612 stems or Runaway sampler. What ROM mode
-    /// needs once the board is certified is written down in Plugin/README.md ("The Genesis console"); until then a Genesis game is refused with a message, never run as something else.
+    /// Whether ROM mode can run this console's games: all five. The Genesis joined with round 3 (its board and picture are certified: <c>Consoles.GenesisReady</c>; the game plays through Mix, and its sound unit's voices are stems, see
+    /// <see cref="Channels"/>); the Master System and Game Gear before it. Every game runs through the console sessions like a Game Boy or SNES game.
     /// </summary>
-    public static bool RomSupported(int console) => console != Genesis;
+    public static bool RomSupported(int console) => console is >= 0 and < Count;
 
     /// <summary>Cores that are not offered: MNES and WF turn the sound into MIDI-style playback rather than emulating a chip.</summary>
     private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase) { "MNES", "WF" };
@@ -111,16 +110,31 @@ public static class Cx
 
     public static ConsoleKind Kind(int console) => console switch { GameBoy => ConsoleKind.GameBoy, Snes => ConsoleKind.Snes, MasterSystem => ConsoleKind.MasterSystem, Genesis => ConsoleKind.Genesis, _ => ConsoleKind.Nes };
 
-    /// <summary>The plugin console a game of this kind runs on. The Master System and the Game Gear (and the SG-1000) share the Master System console. A Genesis game throws until ROM mode supports it
-    /// (<see cref="RomSupported"/>), never quietly becoming a NES game.</summary>
+    /// <summary>The plugin console a game of this kind runs on. The Master System and the Game Gear (and the SG-1000) share the Master System console. A kind the plugin does not run throws, never quietly becoming a NES game.</summary>
     public static int FromKind(ConsoleKind k) => k switch
     {
         ConsoleKind.Snes => Snes,
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => GameBoy,
         ConsoleKind.Nes => Nes,
         ConsoleKind.MasterSystem or ConsoleKind.GameGear => MasterSystem,
+        ConsoleKind.Genesis => Genesis,
         _ => throw new NotSupportedException($"the plugin does not run {NesEmulator.Systems.Consoles.DisplayName(k)} games yet"),
     };
+
+    /// <summary>
+    /// The channels (other than Mix) an instance can sit on for a console, mode and sound chip, in the order the editor lists them: the four tone channels of the NES model in Direct mode and for a NES game; a Sega game's stems in ROM mode (the PSG's
+    /// four voices, then the FM chip's: the Genesis' FM 1 to 6 and DAC, the Master System FM chip's FM 1 to 9 and five rhythm voices); none for a Game Boy or SNES game (those play through Mix).
+    /// </summary>
+    public static int[] Channels(int console, int mode, string chipId)
+    {
+        if (mode == 0 || console == Nes) return [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise];
+        if (console == Genesis) return [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise, .. Enumerable.Range(Ch.Fm1, 6), Ch.Dac];
+        if (console == MasterSystem)
+            return chipId.Equals("SMSFM", StringComparison.OrdinalIgnoreCase)
+                ? [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise, .. Enumerable.Range(Ch.Fm1, 9), Ch.Bass, Ch.HiHat, Ch.Snare, Ch.Tom, Ch.Cymbal]
+                : [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise];
+        return [];
+    }
 
     /// <summary>The CPU and PPU a game of this console runs on: the best of its own family.</summary>
     public static string BestCpu(int console) => CoreCatalog.Default(Kind(console), CoreSlot.Cpu);
@@ -133,10 +147,10 @@ public static class Cx
         Nes => chip.Id,
         GameBoy => chip.Id.Equals("DMGS", StringComparison.OrdinalIgnoreCase) ? "GBS" : "GB",
         MasterSystem => chip.Id.Equals("SMSFM", StringComparison.OrdinalIgnoreCase) ? "SMS-FM" : "SMS",   // the stock unit (the PSG; a Game Gear game takes its own menu id in SessionGame), or the Japanese console's PSG + YM2413 for the FM chip
-        Genesis => "MD",         // the stock Genesis unit (GenesisSoundFactories id); unused until Genesis games run
+        Genesis => "MD",         // the stock Genesis unit (GenesisSoundFactories id): the Z80, the YM2612 with its DAC and the PSG
         _ => "SFC",
     };
 
     /// <summary>The file types the Load dialog and the Game list take.</summary>
-    public const string RomFilter = "Game ROMs (*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.zip)|*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.zip|All files (*.*)|*.*";
+    public const string RomFilter = "Game ROMs (*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip)|*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip|All files (*.*)|*.*";
 }

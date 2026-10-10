@@ -147,11 +147,23 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case P.Mode: e?.SetMode(value); break;
             case P.Console: e?.SetConsole(value); break;
             case P.Channel:
+            case P.Voice:
             case P.Emulator: Reresolve(); break;
         }
     }
 
-    /// <summary>The Emulator or Channel parameter changed: take a new place (staying on the same emulator when it is on Auto).</summary>
+    /// <summary>The channel this instance asks for: the Sega chip voice its Voice parameter names, else the one its Channel parameter names; -1 is Auto.</summary>
+    public int RequestedChannel => Get(P.Voice) != 0 ? Ch.OfVoice(Get(P.Voice)) : Get(P.Channel) - 1;
+
+    /// <summary>Puts the Channel and Voice parameters to ask for <paramref name="channel"/> (-1: Auto). Used by the editor; FL sees both parameter changes.</summary>
+    internal void SetChannelFromUi(int channel)
+    {
+        int voice = Ch.VoiceOf(channel), chan = channel is >= 0 and < Ch.Count ? channel + 1 : 0;
+        if (Get(P.Voice) != voice) SetFromUi(P.Voice, voice);
+        if (Get(P.Channel) != chan) SetFromUi(P.Channel, chan);
+    }
+
+    /// <summary>The Emulator, Channel or Voice parameter changed: take a new place (staying on the same emulator when it is on Auto).</summary>
     private void Reresolve() =>
         EmulatorHub.Resolve(this, hintEmulator: Get(P.Emulator) == 0 ? assignment.Emulator?.Id ?? 0 : 0, hintChannel: -1);
 
@@ -707,8 +719,10 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 19: return emu?.MemberCount ?? 0;
             case 20: return assignment.Problem != null ? 1 : 0;
             case 21: return emu?.Mode ?? 0;
-            case 22: return emu?.Activity((int)index % Ch.Count) ?? 0;
+            case 22: return emu?.Activity((int)index % Ch.Total) ?? 0;
             case 24: return emu?.AutoCreated == true ? 1 : 0;
+            case 25: return emu?.Owner((int)index % Ch.Total) == this ? 1 : 0;       // whether this instance sits on channel index (any of the Ch ids)
+            case 26: return emu?.StemAvailable((int)index % Ch.Total) == true ? 1 : 0;   // whether the running game's sound unit has a stem for channel index
             case 43: emu?.Reset(); return 0;
             case 44: emu?.SetPad(this, (int)value); return 0;
             case 45: return emu?.Runaway == true ? 1 : 0;

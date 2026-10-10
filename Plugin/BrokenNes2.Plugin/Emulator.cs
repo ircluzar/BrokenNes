@@ -11,12 +11,12 @@ namespace BrokenNes2;
 public sealed partial class Emulator : IDisposable
 {
     private readonly List<Bn2Plugin> members = new();            // under EmulatorHub.Gate
-    private readonly Bn2Plugin?[] owners = new Bn2Plugin?[Ch.Count];
+    private readonly Bn2Plugin?[] owners = new Bn2Plugin?[Ch.Total];
     private int mode, chip;
     private int configVersion;
-    private int claimedTones;                                     // bit per tone channel somebody sits on (audio threads read it)
+    private int claimed;                                          // bit per channel (not Mix) somebody sits on (audio threads read it)
     private readonly string?[] romPaths = new string?[Cx.Count];   // the game of each console (NES: null = the built-in one)
-    private readonly int[] activity = new int[Ch.Count];
+    private readonly int[] activity = new int[Ch.Total];
     private int runaway, padBits;
     private SpcSnapshot? snapshot;
     private GbSnapshot? gbState;
@@ -41,7 +41,10 @@ public sealed partial class Emulator : IDisposable
     public string ChipId => Cx.Chips[Math.Clamp(Chip, 0, Cx.Chips.Count - 1)].Id;
     /// <summary>Counts up whenever the configuration changed (instances compare it to know when to look again).</summary>
     public int ConfigVersion => Volatile.Read(ref configVersion);
-    public int ClaimedTones => Volatile.Read(ref claimedTones);
+    /// <summary>The tone channels (0 to 3) somebody sits on: the NES stems that are made.</summary>
+    public int ClaimedTones => Volatile.Read(ref claimed) & ((1 << Ch.ToneCount) - 1);
+    /// <summary>Every channel (a bit per <see cref="Ch"/> id, Mix left out) somebody sits on: the stems that are made.</summary>
+    public int ClaimedChannels => Volatile.Read(ref claimed);
 
     public int MemberCount { get { lock (EmulatorHub.Gate) return members.Count; } }
     internal List<Bn2Plugin> MembersSnapshot() { lock (EmulatorHub.Gate) return members.ToList(); }
@@ -139,7 +142,7 @@ public sealed partial class Emulator : IDisposable
 
     internal void ReleaseClaim(Bn2Plugin who)
     {
-        for (int c = 0; c < Ch.Count; c++)
+        for (int c = 0; c < Ch.Total; c++)
             if (owners[c] == who) { owners[c] = null; Volatile.Write(ref activity[c], 0); }
         UpdateClaimed();
     }
@@ -147,16 +150,20 @@ public sealed partial class Emulator : IDisposable
     private void UpdateClaimed()
     {
         int m = 0;
-        for (int c = 0; c < Ch.ToneCount; c++) if (owners[c] != null) m |= 1 << c;
-        Volatile.Write(ref claimedTones, m);
+        for (int c = 0; c < Ch.Total; c++) if (c != Ch.Mix && c != Ch.Sampler && owners[c] != null) m |= 1 << c;
+        Volatile.Write(ref claimed, m);
     }
 
     /// <summary>Which channels exist: in Direct mode the four tone channels (every console's chip takes the NES registers); in ROM mode
-    /// the game's Mix, and for a NES game also each tone channel on its own (a Game Boy or SNES game has no per-channel stems yet).</summary>
-    private bool Usable(int channel) => channel == Ch.Mix ? Mode == 1 : !(Mode == 1 && Console != Cx.Nes);
+    /// the game's Mix, and each voice that has a stem: a NES game's four tone channels, a Sega game's PSG, FM and DAC voices (<see cref="Cx.Channels"/>); a Game Boy or SNES game has no per-channel stems.</summary>
+    internal bool Usable(int channel)
+    {
+        if (channel == Ch.Mix) return Mode == 1;
+        if ((uint)channel >= Ch.Total || channel == Ch.Sampler) return false;
+        return Array.IndexOf(Cx.Channels(Console, Mode, ChipId), channel) >= 0;
+    }
 
-    private int[] AutoOrder() =>
-        Mode == 1 ? (Console == Cx.Nes ? [Ch.Mix, Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise] : [Ch.Mix]) : [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise];
+    private int[] AutoOrder() => Mode == 1 ? [Ch.Mix, .. Cx.Channels(Console, 1, ChipId)] : Cx.Channels(Console, 0, ChipId);
 
     /// <summary>Puts an instance on this emulator and a channel of it. <paramref name="requested"/> is the Channel parameter (0 = Auto).
     /// Returns null when an Auto emulator cannot give the instance what it asks for (the hub then tries another); an explicitly
@@ -170,15 +177,22 @@ public sealed partial class Emulator : IDisposable
         }
         int ch = -1;
         string? problem = null;
+        bool unavailable = false;           // the channel does not exist on this emulator (its console, mode or chip has no such voice): another Auto emulator would not have it either
         if (requested > 0)
         {
             int c = requested - 1;
-            if (!Usable(c) && c != Ch.Mix && Mode == 1 && (owners[Ch.Mix] == null || owners[Ch.Mix] == who))
+            if ((uint)c >= Ch.Total) problem = "no such channel";
+            else if (!Usable(c) && c != Ch.Mix && Mode == 1 && (owners[Ch.Mix] == null || owners[Ch.Mix] == who))
                 ch = Ch.Mix;                       // a Game Boy or SNES game has no tone channels of its own: its whole sound goes to this instance
             else if (!Usable(c))
+            {
+                unavailable = true;
                 problem = c == Ch.Mix ? "Mix is the game's whole sound: it exists in ROM mode only"
-                                      : $"{Ch.ShortNames[c]} on its own exists for NES games only: a {Cx.Names[Console]} game plays through Mix";
-            else if (owners[c] != null && owners[c] != who) problem = $"{Ch.ShortNames[c]} of emulator #{Id} is already used by another instance";
+                        : Mode == 0 ? (Ch.IsChipVoice(c) ? $"{Ch.Label(c)} is a voice of the Sega FM chips in ROM mode: Direct mode has the four NES-register channels" : $"{Ch.Label(c)} is not a channel of this emulator")
+                        : Console is Cx.MasterSystem or Cx.Genesis ? $"{Ch.Label(c, Console, Mode)} is not a voice of the {ChipId} chip"
+                        : $"{Ch.Label(c)} on its own exists for NES and Sega games only: a {Cx.Names[Console]} game plays through Mix";
+            }
+            else if (owners[c] != null && owners[c] != who) problem = $"{Ch.Label(c, Console, Mode)} of emulator #{Id} is already used by another instance";
             else ch = c;
         }
         else
@@ -189,9 +203,9 @@ public sealed partial class Emulator : IDisposable
             if (ch < 0) problem = $"all channels of emulator #{Id} are in use";
         }
 
-        if (ch < 0 && !explicitEmulator) return null;
+        if (ch < 0 && !explicitEmulator && !unavailable) return null;     // (busy: another Auto emulator may have it free. Not there at all: the instance stays here, with the reason, and is placed again when this emulator's chip or mode changes)
         if (!members.Contains(who)) members.Add(who);
-        if (ch >= 0) owners[ch] = who;
+        if (ch >= 0) { owners[ch] = who; EnsureRing(ch); }
         UpdateClaimed();
         return new Assignment(this, ch, problem);
     }
@@ -239,8 +253,11 @@ public sealed partial class Emulator : IDisposable
     {
         if (value == chip) return;
         int before = Console;
+        string chipBefore = ChipId;
         Volatile.Write(ref chip, value);
         if (Console != before) PlaceChanged();
+        // a chip of the same console can offer other voices (the Master System FM chip has FM 1-9 where the PSG chip has none): instances are placed again, so those that asked for one get it (or lose it)
+        else if (Mode == 1 && !Cx.Channels(Console, 1, chipBefore).SequenceEqual(Cx.Channels(Console, 1, ChipId))) EmulatorHub.ReResolveAll(this);
     }
 
     /// <summary>Switches the console: the emulator takes that console's first chip (FIX, DMG, SNES), and in ROM mode its game.</summary>
@@ -262,11 +279,8 @@ public sealed partial class Emulator : IDisposable
         try
         {
             var rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out string inner);
-            // A Sega file is recognised here even while the Sega consoles are hidden everywhere else (the preview switch), so it gets a proper message instead of "not a ROM".
             var kind = RomDetect.Detect(rom, inner) ?? NesEmulator.Sega.SegaRomFormat.Detect(rom, inner);
-            if (kind == null) { RomStatus = "not a NES, Game Boy or SNES ROM: " + name; return RomStatus; }
-            // Genesis games are not supported in ROM mode yet (their picture is not certified; the YM2612 + PSG chip plays in Direct mode); Cx.FromKind would not run such a ROM as anything else.
-            if (kind.Value == ConsoleKind.Genesis) { RomStatus = $"{Consoles.DisplayName(kind.Value)} games are not supported in the plugin yet (the Genesis sound chip plays in Direct mode): " + name; return RomStatus; }
+            if (kind == null) { RomStatus = "not a NES, Game Boy, SNES, Master System, Game Gear or Genesis ROM: " + name; return RomStatus; }
             console = Cx.FromKind(kind.Value);
         }
         catch (Exception e)
@@ -294,7 +308,7 @@ public sealed partial class Emulator : IDisposable
         lock (EmulatorHub.Gate)
         {
             foreach (var m in members) m.RequestReset();
-            for (int c = 0; c < Ch.Count; c++) Volatile.Write(ref activity[c], 0);
+            for (int c = 0; c < Ch.Total; c++) Volatile.Write(ref activity[c], 0);
             ResetOutputs();
             bool wasRunaway = Runaway;
             if (Mode == 1) StartLoad();       // the running game goes on until the new one is ready, then it is replaced

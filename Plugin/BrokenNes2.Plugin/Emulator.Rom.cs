@@ -44,7 +44,21 @@ public sealed partial class Emulator
     private IGame? game;                                   // romLock
     private IGame? pendingGame;                            // built on a worker thread, taken under romLock
     private readonly ApuStem?[] stems = new ApuStem?[Ch.ToneCount];
-    private readonly Ring[] rings = Enumerable.Range(0, Ch.Count).Select(_ => new Ring()).ToArray();
+    private readonly Ring?[] rings = new Ring?[Ch.Total];                // made when somebody sits on the channel (a ring is 256 KB)
+    private readonly bool[] stemLive = new bool[Ch.Total];               // a Sega stem that is being made (its ring's origin was set when it started)
+
+    /// <summary>The ring of a channel, made on first use (under the hub's lock when an instance takes the channel, so the audio threads find it there).</summary>
+    private Ring RingOf(int channel) => Volatile.Read(ref rings[channel]) ?? EnsureRing(channel);
+
+    private Ring EnsureRing(int channel)
+    {
+        lock (rings)
+        {
+            var r = rings[channel];
+            if (r == null) { r = new Ring(); Volatile.Write(ref rings[channel], r); }
+            return r;
+        }
+    }
     private readonly float[] scratch = new float[4096];
     private readonly float[] zeros = new float[8192];
     private readonly byte[] latch = new byte[0x18];
@@ -151,8 +165,7 @@ public sealed partial class Emulator
             Interlocked.Exchange(ref pendingGame, null);
             Volatile.Write(ref unloadRequested, 1);
             loading = false;
-            romStatus = Cx.RomSupported(console) ? $"No {Cx.Names[console]} game loaded: choose one in the Game list"
-                                                 : $"{Cx.RomNames[console]} games are not supported in the plugin yet: this console's sound chip plays in Direct mode only";
+            romStatus = $"No {Cx.RomNames[console]} game loaded: choose one in the Game list";
             return;
         }
         loading = true;
@@ -264,11 +277,14 @@ public sealed partial class Emulator
         {
             // frozen: the game does not run, the picture stays, and every channel is silent for as long as a frame would have lasted
             int silent = Math.Clamp((int)Math.Round(g.HostSampleRate / g.FramesPerSecond), 1, zeros.Length);
-            foreach (var r in rings) r.Append(zeros.AsSpan(0, silent));
+            foreach (var r in rings) r?.Append(zeros.AsSpan(0, silent));
             return;
         }
         g.SetPad(PadBits);
         var nes = g.Nes;
+        int claimedNow = ClaimedChannels;
+        var gs = g.Stems;
+        gs?.Want(claimedNow);
         int wanted = nes != null ? ClaimedTones : 0;
         if (nes != null) nes.CaptureApuWrites = wanted != 0;
         int rate = g.HostSampleRate;
@@ -282,7 +298,7 @@ public sealed partial class Emulator
                 {
                     uint written = nes!.CopyApuLatch(latch);
                     stems[c] = new ApuStem(chipId, c, rate, nes.ApuClock, latch, written);
-                    rings[c].Origin = rings[c].Write;
+                    RingOf(c).Origin = RingOf(c).Write;
                 }
                 catch (Exception e) { BrokenNes.Fruity.Diag.Log($"stem for {Ch.ShortNames[c]} failed: {e.Message}"); }
             }
@@ -293,15 +309,36 @@ public sealed partial class Emulator
         CaptureFrame(g);
 
         int n;
-        while ((n = g.ReadAvailable(scratch)) > 0) rings[Ch.Mix].Append(scratch.AsSpan(0, n));
-        if (nes == null) return;
+        while ((n = g.ReadAvailable(scratch)) > 0) RingOf(Ch.Mix).Append(scratch.AsSpan(0, n));
+        if (nes == null)
+        {
+            if (gs == null) return;
+            // a Sega game: each voice somebody sits on has a stream from the sound unit, frame for frame with the mix
+            for (int c = 0; c < Ch.Total; c++)
+            {
+                if (c == Ch.Mix || c == Ch.Sampler) continue;
+                bool want = (claimedNow >> c & 1) != 0 && gs.Has(c);
+                if (want && !stemLive[c]) { var ring = RingOf(c); ring.Origin = ring.Write; stemLive[c] = true; }
+                else if (!want) { stemLive[c] = false; continue; }
+                while ((n = gs.Read(c, scratch)) > 0) RingOf(c).Append(scratch.AsSpan(0, n));
+            }
+            return;
+        }
         for (int c = 0; c < Ch.ToneCount; c++)
         {
             var s = stems[c];
             if (s == null) continue;
             s.Replay(nes.ApuLog, nes.ApuClock);
-            while ((n = s.ReadAvailable(scratch)) > 0) rings[c].Append(scratch.AsSpan(0, n));
+            while ((n = s.ReadAvailable(scratch)) > 0) RingOf(c).Append(scratch.AsSpan(0, n));
         }
+    }
+
+    /// <summary>Whether the running game's sound unit has a voice for this channel (Mix always; a NES game's tone channels; a Sega game's stems). False with no game.</summary>
+    public bool StemAvailable(int channel)
+    {
+        if (channel == Ch.Mix) return game != null;
+        var g = game;
+        return g != null && (g.Nes != null ? channel < Ch.ToneCount : g.Stems?.Has(channel) == true);
     }
 
     /// <summary>Test hook: a tone on the running SNES game's sound unit.</summary>
@@ -351,11 +388,13 @@ public sealed partial class Emulator
                 return;
             }
 
-            var ring = rings[channel];
+            // a channel the game's sound unit has no voice for (an FM voice of a Game Gear game, say) is silent: it must never make the game run ahead looking for sound that will not come
+            if (channel != Ch.Mix && !StemAvailable(channel)) { dest.Clear(); return; }
+            var ring = RingOf(channel);
             int e = Volatile.Read(ref epoch);
             if (ringEpoch != e)
             {
-                foreach (var r in rings) r.Origin = r.Write;      // everything that was buffered belongs to the old epoch
+                foreach (var r in rings) if (r != null) r.Origin = r.Write;      // everything that was buffered belongs to the old epoch
                 ringEpoch = e;
             }
             if (readPos < 0 || e != epochSeen)

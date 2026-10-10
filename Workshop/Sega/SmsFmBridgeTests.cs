@@ -47,7 +47,6 @@ internal static class SmsFmBridgeTests
     {
         verbose = verboseOutput; passes = failures = 0;
         if (args.Any(a => a.Equals("--calibrate", StringComparison.OrdinalIgnoreCase))) { Calibrate(); return (0, 0); }
-        if (want("smsfm-debug")) { Debug(); return (0, 0); }
         if (want("smsfm"))
         {
             Console.WriteLine("\n== Master System FM: menus and the patch bank");
@@ -98,52 +97,6 @@ internal static class SmsFmBridgeTests
             sb.Append(v.ToString("F5", System.Globalization.CultureInfo.InvariantCulture)).Append(i + 1 < P.Length ? ", " : ",");
         }
         Console.WriteLine("\n" + sb);
-    }
-
-    private static void Debug()
-    {
-        // (1) a modulator that never opens (AR 0), then the instrument replaced under the held note
-        {
-            var fm = new Ym2413(APU_SMSFM.ClockHz); fm.Reset(); fm.ResetPatch();
-            var res = new Ym2413Resampler(APU_SMSFM.ClockHz / Ym2413.ClocksPerSample, 44100);
-            var sine = P[OpllPatchBank.SineIndex].User!; var lead = P[OpllPatchBank.SineIndex + 2].User!;
-            for (int r = 0; r < 8; r++) fm.WriteRegister(r, sine[r]);
-            OpllPatchBank.TryPitch(261.63, APU_SMSFM.ClockHz, out int blk, out int fnum, out _);
-            fm.WriteRegister(0x30, 0x00); fm.WriteRegister(0x10, (byte)(fnum & 0xFF)); fm.WriteRegister(0x20, (byte)(0x10 | (blk << 1) | (fnum >> 8)));
-            var list = new List<float>();
-            void Run(double sec) { long n = (long)(sec * APU_SMSFM.ClockHz / 72); for (long i = 0; i < n; i++) { res.Push((short)Math.Clamp(fm.Calc(), short.MinValue, short.MaxValue)); while (res.TryRead(out short o)) list.Add(o / 32768f); } }
-            Run(0.3);
-            Console.WriteLine($"   before: mod operator {fm.Operator(0, false)}, carrier {fm.Operator(0, true)}");
-            for (int r = 0; r < 8; r++) fm.WriteRegister(r, lead[r]);
-            list.Clear(); Run(0.1);
-            Console.WriteLine($"   100 ms after: mod operator {fm.Operator(0, false)}, carrier {fm.Operator(0, true)}");
-            Run(0.6);
-            var x = list.ToArray(); double f0 = OpllPatchBank.Hz(blk, fnum, APU_SMSFM.ClockHz);
-            double a1 = SegaMeasure.Component(x, 44100, f0, 8000, 8000 + 16384), a2 = SegaMeasure.Component(x, 44100, 2 * f0, 8000, 8000 + 16384);
-            Console.WriteLine($"   after the replacement: 2nd/1st = {a2 / a1:F3}; mod operator {fm.Operator(0, false)}");
-            // for comparison: a fresh key-on with the lead
-            var fm2 = new Ym2413(APU_SMSFM.ClockHz); fm2.Reset(); fm2.ResetPatch();
-            for (int r = 0; r < 8; r++) fm2.WriteRegister(r, lead[r]);
-            fm2.WriteRegister(0x30, 0x00); fm2.WriteRegister(0x10, (byte)(fnum & 0xFF)); fm2.WriteRegister(0x20, (byte)(0x10 | (blk << 1) | (fnum >> 8)));
-            for (int i = 0; i < 20000; i++) fm2.Calc();
-            Console.WriteLine($"   fresh lead: mod operator {fm2.Operator(0, false)}");
-        }
-        // (2) the synthesizer bass: the pitch window by window
-        {
-            int t = TimerFor(261.63); double want = PulseHz(t);
-            var rig = Rig(12); rig.Pulse(0, t, 15);
-            var x = Capture(rig, 0.0, 2.0);
-            var fm = (APU_SMSFM)rig.Apu;
-            Console.WriteLine($"   synth bass: want {want:F2} Hz; FmHz {fm.FmHz(0):F3} ({fm.FmCents(0):+0.00;-0.00} c), instrument {fm.FmInstrument(0)}");
-            for (int w = 0; w < 14; w++)
-            {
-                var (f0, a) = SegaMeasure.Peak(x, 44100, want, 2000 + w * 4410, 2000 + w * 4410 + 8192, 0.05);
-                double sub = SegaMeasure.Component(x, 44100, want / 2, 2000 + w * 4410, 2000 + w * 4410 + 8192);
-                Console.WriteLine($"   window {w}: peak {f0:F2} Hz ({Cents(f0, want):+0.0;-0.0} c) amp {a:F5}, at half {sub:F5}");
-            }
-            foreach (int h in new[] { 1, 2, 3, 4, 5 }) Console.WriteLine($"   harmonic {h}: {SegaMeasure.Component(x, 44100, want * h, 6000, 6000 + 32768):F5}");
-            Console.WriteLine($"   at half: {SegaMeasure.Component(x, 44100, want / 2, 6000, 6000 + 32768):F5}, at 1.5x: {SegaMeasure.Component(x, 44100, want * 1.5, 6000, 6000 + 32768):F5}");
-        }
     }
 
     // ============================================================================================ menus and bank

@@ -1,5 +1,6 @@
 using NesEmulator;
 using NesEmulator.Plugin;
+using NesEmulator.Sega;
 using NesEmulator.Systems;
 
 namespace BrokenNes2;
@@ -10,8 +11,10 @@ internal interface IGame : IDisposable
 {
     /// <summary>0 NES, 1 Game Boy, 2 SNES, 3 Master System / Game Gear (<see cref="Cx"/>).</summary>
     int Console { get; }
-    /// <summary>The NES machine when the game is a NES one: only it can give per-channel stems.</summary>
+    /// <summary>The NES machine when the game is a NES one: it gives per-channel stems by replaying the register writes.</summary>
     NesAudioMachine? Nes { get; }
+    /// <summary>The stems of a Sega game's sound unit (its PSG, FM and DAC voices on their own), or null for every other game.</summary>
+    IGameStems? Stems { get; }
     /// <summary>The sound chip (index into <see cref="Cx.Chips"/>) the game was built with.</summary>
     int ChipIndex { get; set; }
     int HostSampleRate { get; set; }
@@ -36,6 +39,17 @@ internal interface IGame : IDisposable
     GbSnapshot? CaptureGb();
 }
 
+/// <summary>A running game's voices on their own, by plugin channel (<see cref="Ch"/>), at the host's rate and in step with the game's whole mix.</summary>
+internal interface IGameStems
+{
+    /// <summary>Whether the game's sound unit has this channel's voice (a Game Gear game has no FM; a Master System game on the PSG chip has none either).</summary>
+    bool Has(int channel);
+    /// <summary>Which channels are wanted (a bit per <see cref="Ch"/> id); the unit makes only those, and a newly wanted one starts in step with the mix from the next frame.</summary>
+    void Want(int channelMask);
+    /// <summary>Moves the finished frames of a wanted channel out (after a frame has run).</summary>
+    int Read(int channel, Span<float> dest);
+}
+
 /// <summary>A NES game on <see cref="NesAudioMachine"/>: the best CPU and PPU (FIX), the chosen NES sound chip.</summary>
 internal sealed class NesGame : IGame
 {
@@ -49,6 +63,7 @@ internal sealed class NesGame : IGame
     public int Console => Cx.Nes;
     public int ChipIndex { get; set; }
     public NesAudioMachine? Nes => m;
+    public IGameStems? Stems => null;
     public int HostSampleRate { get => m.HostSampleRate; set => m.HostSampleRate = value; }
     public double FramesPerSecond => NesAudioMachine.FramesPerSecond;
     public long FramesRun => m.FramesRun;
@@ -87,7 +102,7 @@ internal sealed class NesGame : IGame
 
 /// <summary>A Game Boy or SNES game on BrokenNes's console sessions: the console's own CPU, picture chip and sound unit (the best of its
 /// family). Its stereo sound is mixed to mono and resampled to the host's rate.</summary>
-internal sealed class SessionGame : IGame
+internal sealed class SessionGame : IGame, IGameStems
 {
     private readonly IConsoleSession s;
     private readonly StreamResampler resampler = new();
@@ -96,6 +111,12 @@ internal sealed class SessionGame : IGame
     private int hostRate;
     private long frames;
     private string? crash;
+
+    // ---- stems (Master System, Game Gear and Genesis games): the sound unit's voices on their own, brought to the host rate by a resampler each that starts in step with the mix's ----
+    private readonly StreamResampler?[] stemRes = new StreamResampler?[Ch.Total];
+    private readonly float[] stemTmp = new float[8192];
+    private IVoiceStems? armedUnit;
+    private int wantedMask;
 
     public SessionGame(byte[] rom, ConsoleKind kind, Chip chip, int hostRate, string fileName = "")
     {
@@ -108,7 +129,7 @@ internal sealed class SessionGame : IGame
     public int Console { get; }
     public int ChipIndex { get; set; }
     public NesAudioMachine? Nes => null;
-    public int HostSampleRate { get => hostRate; set { hostRate = value; resampler.SetRates(s.SampleRate, value); } }
+    public int HostSampleRate { get => hostRate; set { hostRate = value; resampler.SetRates(s.SampleRate, value); foreach (var r in stemRes) r?.SetRates(s.SampleRate, value); } }
     public double FramesPerSecond => s.FramesPerSecond;
     public long FramesRun => frames;
     public bool Crashed => crash != null;
@@ -134,6 +155,7 @@ internal sealed class SessionGame : IGame
                     resampler.Write(mono.AsSpan(0, take));
                 }
             }
+            DrainStems();
         }
         catch (Exception e)
         {
@@ -143,6 +165,90 @@ internal sealed class SessionGame : IGame
     }
 
     public int ReadAvailable(Span<float> dest) => resampler.Read(dest);
+
+    // ---- stems ----
+
+    /// <summary>The session's sound unit when it has stems (Master System, Game Gear, Genesis); read each time, since an APU swap replaces the unit.</summary>
+    private IVoiceStems? Unit => s switch
+    {
+        NesEmulator.Sega.SmsSession sms => sms.Board.Sound as IVoiceStems,
+        NesEmulator.Sega.MdSession md => md.Board.Sound as IVoiceStems,
+        _ => null,
+    };
+
+    public IGameStems? Stems => Unit != null ? this : null;
+
+    /// <summary>The unit's stem for a plugin channel, or -1 when the unit has none. The PSG's four voices are channels 0 to 3 everywhere; FM 1 to 9 follow the PSG's stems (the Genesis has six); the Genesis DAC and the
+    /// Master System chip's five rhythm voices have their channels.</summary>
+    internal static int StemOf(IVoiceStems u, int channel)
+    {
+        if (channel is >= Ch.Pulse1 and <= Ch.Noise) return channel;
+        if (u is NesEmulator.Sega.MdSoundUnit)
+        {
+            if (channel is >= Ch.Fm1 and < Ch.Fm1 + 6) return NesEmulator.Sega.SegaStems.MdFm1 + (channel - Ch.Fm1);
+            if (channel == Ch.Dac) return NesEmulator.Sega.SegaStems.MdDac;
+        }
+        else if (u is NesEmulator.Sega.SmsFmSound)
+        {
+            if (channel is >= Ch.Fm1 and <= Ch.Fm9) return NesEmulator.Sega.SegaStems.SmsFm1 + (channel - Ch.Fm1);
+            if (channel is >= Ch.Bass and <= Ch.Cymbal) return NesEmulator.Sega.SegaStems.SmsRhythm1 + (channel - Ch.Bass);
+        }
+        return -1;
+    }
+
+    public bool Has(int channel) => (uint)channel < Ch.Total && Unit is { } u && StemOf(u, channel) >= 0;
+
+    public void Want(int channelMask)
+    {
+        var u = Unit;
+        if (u == null) return;
+        if (!ReferenceEquals(u, armedUnit))
+        {
+            // a new unit (the game started, or the sound chip was swapped): it starts with nothing wanted
+            armedUnit = u; wantedMask = 0;
+            foreach (var r in stemRes) r?.Clear();
+        }
+        if (channelMask == wantedMask) return;
+        long unitMask = 0;
+        for (int c = 0; c < Ch.Total; c++)
+        {
+            int idx = StemOf(u, c);
+            if (idx < 0 || (channelMask >> c & 1) == 0) continue;
+            unitMask |= 1L << idx;
+            if ((wantedMask >> c & 1) == 0)
+            {
+                stemRes[c] ??= new StreamResampler();
+                stemRes[c]!.CopyPhaseFrom(resampler);
+            }
+        }
+        u.StemMask = unitMask;
+        wantedMask = channelMask;
+    }
+
+    /// <summary>After a frame: every wanted voice's finished frames go through its own resampler (the same rates and phase as the mix's, so they add up to it).</summary>
+    private void DrainStems()
+    {
+        var u = Unit;
+        if (u == null || wantedMask == 0 || !ReferenceEquals(u, armedUnit)) return;
+        for (int c = 0; c < Ch.Total; c++)
+        {
+            if ((wantedMask >> c & 1) == 0) continue;
+            int idx = StemOf(u, c);
+            if (idx < 0) continue;
+            var res = stemRes[c]!;
+            int n;
+            while ((n = u.ReadStem(idx, stemTmp)) > 0)
+                for (int off = 0; off < n; )
+                {
+                    int take = Math.Min(n - off, res.FreeSpace);
+                    if (take <= 0) break;
+                    res.Write(stemTmp.AsSpan(off, take));
+                    off += take;
+                }
+        }
+    }
+
+    public int Read(int channel, Span<float> dest) => (uint)channel < Ch.Total ? stemRes[channel]?.Read(dest) ?? 0 : 0;
 
     public void CopyFrame(byte[] rgba, out int w, out int h, out int dispW, out int dispH)
     {

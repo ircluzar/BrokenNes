@@ -17,6 +17,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     // ---- control ids (also what the test hooks address) ----
     public const int IdEmulator = 1, IdModeDirect = 2, IdModeRom = 3, IdChip = 4, IdGame = 7, IdChannel = 9;
     public const int IdCell = 10;      // + channel 0..4
+    public const int IdVoiceCell = 400;   // + channel 6..20: the Sega chips' own voices (a Sega game's stems); the ids below 100 are taken
     public const int IdSlider = 20;    // + parameter index
     public const int IdAbout = 40, IdAboutClose = 41;
     public const int IdReset = 60;
@@ -315,6 +316,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         // channel strip (or, in Instrument Runaway, a banner)
         bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true;
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
+        if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
         if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : 0, x, y, w); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
@@ -330,9 +332,9 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         }
         else
         {
-            int cr = plugin.Get(P.Channel);
+            int cr = plugin.Get(P.Channel), req = plugin.RequestedChannel;
             string chText = gbSampler ? (cr == 0 ? "Auto  ->  Pulse 1" : GbChannelNames[Bn2Plugin.GbChannelOf(cr)])
-                          : cr == 0 ? (a.Channel >= 0 ? $"Auto  ->  {Ch.Label(a.Channel)}" : "Auto") : Bn2Params.ChannelNames[cr];
+                          : req < 0 ? (a.Channel >= 0 ? $"Auto  ->  {Ch.Label(a.Channel, console, mode)}" : "Auto") : Ch.Label(req, console, mode);
             Dropdown(dc, IdChannel, "Channel", x, y, w, 86, chText);
         }
         y += RowPitch;
@@ -529,30 +531,68 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         return $"playing, level {level}";
     }
 
+    /// <summary>The channels the strip shows, in order, Mix last: the four tone channels and Mix for a NES emulator (and in Direct mode, and for a Game Boy or SNES game, whose tone cells are greyed), a Sega game's voices
+    /// when the console has stems (the PSG's four, then the FM chip's, Mix last).</summary>
+    private int[] StripChannels()
+    {
+        int console = plugin.Get(P.Console), mode = plugin.Get(P.Mode);
+        var chans = Cx.Channels(console, mode, Cx.Chips[Math.Clamp(plugin.Get(P.Core), 0, Cx.Chips.Count - 1)].Id);
+        return [.. chans, Ch.Mix];
+    }
+
+    private static int CellId(int channel) => channel < Ch.Count ? IdCell + channel : IdVoiceCell + channel;
+    private static int CellChannel(int id) => id >= IdVoiceCell ? id - IdVoiceCell : id - IdCell;
+    private static bool IsCellId(int id) => id is >= IdCell and < IdCell + Ch.Count || id is >= IdVoiceCell and < IdVoiceCell + Ch.Total;
+
+    private static readonly string[] CompactNames = ["T1", "T2", "T3", "Nz", "Mix", "", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "DAC", "BD", "HH", "SD", "TM", "CY"];
+
     private void DrawCells(nint dc, Emulator? emu, Assignment a, int x, int y, int w)
     {
-        int gap = 6, cw = (w - gap * (Ch.Count - 1)) / Ch.Count;
+        var order = StripChannels();
         int mode = plugin.Get(P.Mode), console = plugin.Get(P.Console);
-        for (int c = 0; c < Ch.Count; c++)
+        bool compact = order.Length > Ch.Count;
+        int gap = compact ? 3 : 6, cols = compact ? 10 : order.Length, cw = (w - gap * (cols - 1)) / cols, chH = compact ? 26 : 56, rowGap = 4;
+        for (int i = 0; i < order.Length; i++)
         {
-            var r = R(x + c * (cw + gap), y, cw, 56);
+            int c = order[i];
+            int row = i / cols, col = i % cols;
+            var r = R(x + col * (cw + gap), y + row * (chH + rowGap), cw, chH);
             var owner = emu?.Owner(c);
             bool mine = owner != null && owner == plugin;
-            bool unavailable = c == Ch.Mix ? mode != 1 : (mode == 1 && console != Cx.Nes);
+            bool unavailable = emu != null ? !emu.Usable(c) : c == Ch.Mix ? mode != 1 : (mode == 1 && console != Cx.Nes);
             bool taken = owner != null && !mine;
-            int id = IdCell + c;
+            int id = CellId(c);
             bool isHot = hot == id && !unavailable;
-            Box(dc, r, mine ? AccentDim : (isHot ? FieldHot : Field), mine ? Accent : Line, 6);
-            Txt(dc, Ch.ShortNames[c], R(r.Left, r.Top + 6, cw, 16), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : Text, fontSmall);
-            string state = unavailable ? (c == Ch.Mix ? "ROM only" : "NES only") : mine ? "this" : taken ? "in use" : "free";
-            Txt(dc, state, R(r.Left, r.Top + 22, cw, 14), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : mine ? Text : taken ? Warn : Good, fontSmall);
-            // activity meter
+            Box(dc, r, mine ? AccentDim : (isHot ? FieldHot : Field), mine ? Accent : (taken ? Warn : Line), compact ? 4 : 6);
             int level = owner != null && emu != null ? emu.Activity(c) : 0;
-            var bar = R(r.Left + 8, r.Bottom - 12, cw - 16, 4);
-            Box(dc, bar, Bg, -1, 2);
-            if (level > 0) Box(dc, R(bar.Left, bar.Top, Math.Max(3, (bar.Right - bar.Left) * level / 15), 4), mine ? Accent : Good, -1, 2);
+            if (compact)
+            {
+                Txt(dc, CompactNames[c], R(r.Left, r.Top + 2, cw, 14), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : taken ? Warn : Text, fontSmall);
+                var cbar = R(r.Left + 4, r.Bottom - 7, cw - 8, 3);
+                Box(dc, cbar, Bg, -1, 1);
+                if (level > 0) Box(dc, R(cbar.Left, cbar.Top, Math.Max(2, (cbar.Right - cbar.Left) * level / 15), 3), mine ? Accent : Good, -1, 1);
+            }
+            else
+            {
+                Txt(dc, Ch.ShortNames[c], R(r.Left, r.Top + 6, cw, 16), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : Text, fontSmall);
+                string state = unavailable ? (c == Ch.Mix ? "ROM only" : "NES only") : mine ? "this" : taken ? "in use" : "free";
+                Txt(dc, state, R(r.Left, r.Top + 22, cw, 14), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : mine ? Text : taken ? Warn : Good, fontSmall);
+                var bar = R(r.Left + 8, r.Bottom - 12, cw - 16, 4);
+                Box(dc, bar, Bg, -1, 2);
+                if (level > 0) Box(dc, R(bar.Left, bar.Top, Math.Max(3, (bar.Right - bar.Left) * level / 15), 4), mine ? Accent : Good, -1, 2);
+            }
             if (!unavailable) AddHit(id, r, Kind.Cell);
         }
+    }
+
+    /// <summary>What the strip says about the cell under the mouse (the compact cells are only a few letters wide): the voice's name and who has it.</summary>
+    private string CellHint(Emulator? emu)
+    {
+        if (!IsCellId(hot)) return "";
+        int c = CellChannel(hot);
+        var owner = emu?.Owner(c);
+        string who = owner == null ? "free" : owner == plugin ? "this instance" : "in use by another instance";
+        return $"{Ch.Label(c, plugin.Get(P.Console), plugin.Get(P.Mode))}: {who}";
     }
 
     // ---------------------------------------------------------------- the dropdown list (drawn over everything)
@@ -879,7 +919,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (e != null)
         {
             Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4);
-            for (int c = 0; c < Ch.Count; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }
+            for (int c = 0; c < Ch.Total; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }
         }
         return h;
     }
@@ -990,16 +1030,20 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             }
             case IdChannel:
             {
+                // Auto, then the channels this emulator offers (Mix last); the values are the channel + 1 (0 is Auto)
                 var list = new List<(string, string?)> { ("Auto", "first free") };
-                for (int c = 0; c < Ch.Count; c++)
+                var vals = new List<int> { 0 };
+                int console = plugin.Get(P.Console), mode = plugin.Get(P.Mode);
+                foreach (int c in StripChannels())
                 {
                     var owner = emu?.Owner(c);
                     string? note = owner == plugin ? "this instance" : owner != null ? "in use"
-                        : c == Ch.Mix ? ((emu?.Mode ?? 0) != 1 ? "ROM only" : null)
-                        : ((emu?.Mode ?? 0) == 1 && (emu?.Console ?? 0) != Cx.Nes ? "NES games only" : null);
-                    list.Add((Ch.Names[c].Replace(" (ROM only)", " (whole game)"), note));
+                        : c == Ch.Mix ? (mode != 1 ? "ROM only" : null)
+                        : (emu != null && !emu.Usable(c) ? "NES and Sega games only" : null);
+                    list.Add((c == Ch.Mix ? "Mix (whole game)" : Ch.Label(c, console, mode), note));
+                    vals.Add(c + 1);
                 }
-                return (list.ToArray(), Enumerable.Range(0, list.Count).ToArray(), plugin.Get(P.Channel));
+                return (list.ToArray(), vals.ToArray(), plugin.RequestedChannel + 1);
             }
         }
         return ([], [], 0);
@@ -1033,6 +1077,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         openId = 0;
         openHover = -1;
         if (id == IdGame) PickGame(value);
+        else if (id == IdChannel && !(plugin.Emulator?.GbSamplerMode == true)) plugin.SetChannelFromUi(value - 1);
         else plugin.SetFromUi(ParamOf(id), value);
         Refresh();
     }
@@ -1045,7 +1090,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 OpenList(h.Id, h.Rect);
                 break;
             case Kind.Cell:
-                plugin.SetFromUi(P.Channel, h.Id - IdCell + 1);
+                plugin.SetChannelFromUi(CellChannel(h.Id));
                 Refresh();
                 break;
             case Kind.Button:

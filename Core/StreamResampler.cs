@@ -38,6 +38,15 @@ public sealed class StreamResampler
         step = (double)InputRate / OutputRate;
     }
 
+    /// <summary>Takes the phase of another resampler that runs beside this one (the same two rates) with an empty history: the next output falls at the same point of the input as the other's next output, and the input
+    /// already buffered there counts as buffered here (as silence). For a stem that starts while the stream it accompanies is running, so that the two stay sample for sample in step and add up exactly.</summary>
+    public void CopyPhaseFrom(StreamResampler other)
+    {
+        Array.Clear(buffer);
+        InputRate = other.InputRate; OutputRate = other.OutputRate; step = other.step;
+        count = other.count; position = other.position;
+    }
+
     /// <summary>How many output samples the buffered input can produce right now.</summary>
     public int Available => Math.Max(0, (int)Math.Floor((count - 3 - position) / step) + 1);
 

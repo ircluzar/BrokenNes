@@ -94,7 +94,7 @@ public static class EmulatorHub
         var old = who.Assignment;
         old.Emulator?.ReleaseClaim(who);
 
-        int reqEmulator = who.Get(P.Emulator), reqChannel = who.Get(P.Channel);
+        int reqEmulator = who.Get(P.Emulator), reqChannel = who.RequestedChannel + 1;
         Assignment result;
         if (reqEmulator > 0)
         {
