@@ -32,6 +32,7 @@ param(
     [int]$TimeoutSec = 240,
     [int]$Overscan = 24,        # rows cut top and bottom of the 240-line frame: 24 leaves 192 lines; 0 writes the whole frame and --sms-run cuts it to the picture height of each frame (a 224-line game)
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1",
+    [string]$SmsRevision = "",   # the oracle's VDP revision setting (Sms.Revision: Compatibility, Sms1, Sms2); empty leaves its default
     [string]$Work = ""           # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
 )
 $ErrorActionPreference = "Stop"
@@ -53,6 +54,7 @@ $settings = @{
     }
     Debug = @{ ScriptWindow = @{ AllowIoOsAccess = $true; ScriptTimeout = 600 } }
 }
+if ($SmsRevision) { $settings.Sms.Revision = $SmsRevision }
 $settings | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $work "settings.json") -Encoding utf8
 $saves = Join-Path $work "Saves"
 if (Test-Path $saves) { Get-ChildItem $saves -Recurse -File | Remove-Item -Force }

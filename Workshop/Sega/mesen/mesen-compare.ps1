@@ -30,7 +30,8 @@ param(
     [int]$TimeoutSec = 400,
     [switch]$Keep,
     [switch]$NoOracleTiming,
-    [string]$ExtraArgs = "",        # added to every `--sms-run` (for example "--tune X=1")
+    [string]$Tune = "",             # board / VDP tool settings for every comparison, "Name=value,Name=value" (for example OracleHaltNoRefresh=1: R does not count while halted, as the oracle's does not); the oracle-lengths comparison adds OracleZ80Timing=1
+    [string]$ExtraArgs = "",        # added to every `--sms-run`
     [string]$Variant = ""           # a third comparison of the same oracle pictures with these extra `--sms-run` arguments (for example "--model sms1"), reported as the variant_* columns
 )
 $ErrorActionPreference = "Stop"
@@ -89,7 +90,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         }
         $row.mesen_s = [math]::Round($sw.Elapsed.TotalSeconds)
         if (-not $row.error) {
-            $modes = @(@{ Name = "zilog"; Tune = @() }, @{ Name = "oracle"; Tune = @("--tune", "OracleZ80Timing=1") })
+            $modes = @(@{ Name = "zilog"; Tune = $(if ($using:Tune) { @("--tune", $using:Tune) } else { @() }) }, @{ Name = "oracle"; Tune = @("--tune", ("OracleZ80Timing=1" + $(if ($using:Tune) { "," + $using:Tune } else { "" }))) })
             if ($using:Variant) { $modes += @{ Name = "variant"; Tune = @($using:Variant -split " ") } }
             foreach ($mode in $modes) {
                 if ($mode.Name -eq "oracle" -and $using:NoOracleTiming) { continue }

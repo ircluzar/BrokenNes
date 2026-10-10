@@ -194,6 +194,7 @@ public sealed class BOARD_SMS
     {
         var cpu = Cpu;
         var vdp = Vdp;
+        cpu.HaltRefreshesR = OracleHaltNoRefresh == 0;
         if (!lineOpen) { vdp.BeginLine(n); cpu.Irq = vdp.Irq; }
         int first = firstLineCycle;
         if (OracleZ80Timing != 0) RunLineOracleTiming(first, end);
@@ -225,6 +226,10 @@ public sealed class BOARD_SMS
     /// forms with a register code 19 (20); every other opcode, branch (taken or not), call, return and block instruction measured (about 1600 forms) is the same. Games whose timing depends on those instructions
     /// (a random number taken from a counter, a raster split) drift apart from the oracle without this; the app never uses it, because the hardware follows the Zilog table.</summary>
     public int OracleZ80Timing;
+    /// <summary>1 = the refresh register R does not count while the Z80 is halted (the oracle's behaviour; a real Z80 refreshes during HALT, so R after a vertical-blank wait is a pseudo-random number there). Measured with a probe that reads
+    /// R before a HALT, in the interrupt handler and after the wake-up: the oracle's R moves by 1 for the HALT and 1 for the acknowledge, nothing for the thousands of halted cycles in between. Games that take random numbers from R
+    /// (Sonic 2, Golden Axe Warrior, Fantasy Zone, Black Belt, ...) diverge from the oracle without this; the app never uses it.</summary>
+    public int OracleHaltNoRefresh;
     private int parityStall, paritySkip, parityPending;
     private byte parityPrevOp;
     private long parityCycles;
