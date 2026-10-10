@@ -58,6 +58,11 @@ internal static class SegaBridgeTestCli
             var (p, f) = SegaBridgeMdTests.Run(args, s => only.Length == 0 || only.Equals("md", StringComparison.OrdinalIgnoreCase) || only.Equals(s, StringComparison.OrdinalIgnoreCase), Arg(args, "--rom"), mdRom, verbose);
             passes += p; failures += f;
         }
+        // round 3 (track C3b): the Master System FM chip as a NES sound chip (`--only smsfm`; `--only smsfm --calibrate` prints the patch calibration table)
+        {
+            var (p, f) = SmsFmBridgeTests.Run(args, s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), Arg(args, "--rom"), verbose);
+            passes += p; failures += f;
+        }
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
     }
