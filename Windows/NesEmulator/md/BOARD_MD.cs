@@ -58,7 +58,20 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private ushort lastOpenBus = 0xFFFF;
 
     public long MasterClock => t;
-    public int InterruptSample => iplSample;
+
+    /// <summary>
+    /// The interrupt level the 68000 sees. It is sampled where each bus cycle starts (<see cref="BeginAccess"/>), which is right while the processor runs; a processor stopped by STOP makes no bus cycles at all, so
+    /// its level is read from the VDP as the clock stands (the VDP has been brought to it by the run loop): without that a stopped game never wakes (Beast Wrestler, Valis, Mr. Nutz, the HardBall games and a dozen more
+    /// sit in STOP waiting for the vertical interrupt, which the stale sample hid).
+    /// </summary>
+    public int InterruptSample
+    {
+        get
+        {
+            if (Cpu.Stopped) iplSample = Vdp.IplAt(t);
+            return iplSample;
+        }
+    }
     public long Frames => Vdp.Frames;
 
     /// <summary>Called with each 68000 instruction's address just before it runs (for traces); null in normal runs.</summary>
@@ -67,7 +80,29 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public Action<string>? WriteTrace;
     /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
     public Action<string>? ReadTrace;
+    /// <summary>Called for each 68000 access to $200000-$3FFFFF with a text describing it (the I2C EEPROM and mapper regions; traces); null in normal runs.</summary>
+    public Action<string>? CartTrace;
     public long BusReads, BusWrites, OpenBusReads;
+    /// <summary>Diagnostics for the whole-library sweep: the last address a read found nothing at, writes nobody claimed (and the last one), and the last value written to the TMSS register at $A14000.</summary>
+    public uint LastOpenBusAddress, LastUnclaimedWrite;
+    public long UnclaimedWrites, TmssWrites;
+    public readonly ushort[] TmssWords = new ushort[2];
+    private readonly uint[] recentIoAddr = new uint[16];
+    private readonly ushort[] recentIoVal = new ushort[16];
+    private int recentIoPos;
+
+    /// <summary>The last reads the 68000 made outside the cartridge and the work RAM (VDP, I/O, Z80 area, unmapped), newest last, as "address=value" and merged by address: what a game that is stuck is polling.</summary>
+    public string RecentIoReads()
+    {
+        var seen = new System.Collections.Generic.List<(uint a, ushort v)>();
+        for (int k = 0; k < 16 && k < recentIoPos; k++)
+        {
+            int idx = (recentIoPos - 1 - k) & 15;
+            uint a = recentIoAddr[idx];
+            if (!seen.Exists(s => s.a == a)) seen.Add((a, recentIoVal[idx]));
+        }
+        return string.Join(",", seen.ConvertAll(s => $"{s.a:X6}={s.v:X4}"));
+    }
 
     public BOARD_MD(MdCartridge cart, SegaRegion region, GenesisModel model, int sampleRate, SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>? parts = null)
     {
@@ -110,6 +145,26 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         Vdp.ClearFrameFlag();
         long guard = t + Timeline.MasterClocksPerFrame * 4;
         while (!Vdp.FrameCompleted && t < guard)
+        {
+            InstructionHook?.Invoke(Cpu.Pc - 4);
+            Cpu.Step();
+            Vdp.RunTo(t);
+        }
+        Sound.RunTo(t);
+    }
+
+    /// <summary>
+    /// Run until the VDP reaches scanline <paramref name="line"/> (of this frame if it is still ahead, else of the next), the way an emulator that is stepped a frame at a time stops: BlastEm's pause and frame advance
+    /// stop at about line 232, after the vertical interrupt has begun (measured with a pad-polling probe ROM: a key pressed while it is paused is first seen by the game at V counter 232). Scripted input meant for
+    /// a comparison with it changes the pad here. Returns after the first instruction that starts the line (the 68000's granularity).
+    /// </summary>
+    public void RunUntilLine(int line)
+    {
+        int perFrame = Region == SegaRegion.Pal ? 313 : 262;
+        long target = Vdp.Frames * perFrame + line;
+        if (Vdp.Frames * perFrame + Vdp.Line >= target) target += perFrame;
+        long guard = t + Timeline.MasterClocksPerFrame * 4;
+        while (Vdp.Frames * perFrame + Vdp.Line < target && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
             Cpu.Step();
@@ -198,7 +253,11 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BusReads++;
         address &= 0xFFFFFE;
         ushort v = ReadWord(address, upper, lower, t);
-        if (ReadTrace != null && address >= 0x400000 && address < 0xE00000) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        if (address >= 0x400000 && address < 0xE00000)
+        {
+            recentIoAddr[recentIoPos & 15] = address; recentIoVal[recentIoPos & 15] = v; recentIoPos++;
+            if (ReadTrace != null) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4})");
+        }
         lastOpenBus = v;
         return v;
     }
@@ -214,7 +273,12 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     private ushort ReadWord(uint address, bool upper, bool lower, long now)
     {
-        if (address < 0x400000) return Cart.ReadWord(address);
+        if (address < 0x400000)
+        {
+            ushort cv = Cart.ReadWord(address);
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
+            return cv;
+        }
         if (address >= 0xE00000) { int a = (int)(address & 0xFFFE); return (ushort)(Ram[a] << 8 | Ram[a + 1]); }
         if (address >= 0xC00000 && address < 0xE00000) return ReadVdp(address, now);
         if (address >= 0xA00000 && address < 0xA10000)
@@ -231,7 +295,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         // the RESET register reads back whether the line is released (bit 8; oracle-derived: BlastEm shows it, hardware not verified), the rest of the word is the bus's
         if (address == 0xA11200) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsInReset ? 0x0000 : 0x0100));
         if (address >= 0xA130F0 && address < 0xA13100) return 0xFFFF;
-        OpenBusReads++;
+        OpenBusReads++; LastOpenBusAddress = address;
         return lastOpenBus;
     }
 
@@ -239,6 +303,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         if (address < 0x400000)
         {
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart write ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} = {data:X4}");
             if (upper) Cart.WriteByte(address, (byte)(data >> 8));
             if (lower) Cart.WriteByte(address | 1, (byte)data);
             return;
@@ -279,10 +344,12 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         }
         if (address >= 0xA130F0 && address < 0xA13100)
         {
-            if (lower) Cart.WriteMapper(address | 1, (byte)data);
+            if (lower) { WriteTrace?.Invoke($"mapper ${address | 1:X6} = {(byte)data:X2}"); Cart.WriteMapper(address | 1, (byte)data); }
             return;
         }
-        // $A14000 (TMSS) and everything else: ignored
+        if (address >= 0xA14000 && address < 0xA14004) { TmssWrites++; TmssWords[(address - 0xA14000) >> 1] = data; return; }
+        // everything else: ignored (counted for the sweep)
+        UnclaimedWrites++; LastUnclaimedWrite = address;
     }
 
     // ---- the VDP's addresses

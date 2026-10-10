@@ -20,7 +20,7 @@ $vkmap = @{ Up=0x26; Down=0x28; Left=0x25; Right=0x27; Enter=0x0D; Start=0x0D; S
 function Key([string]$name, [bool]$down) {
   $vk = if ($vkmap.ContainsKey($name)) { $vkmap[$name] } elseif ($name.Length -eq 1) { [int][char]$name.ToUpper() } else { throw "key $name" }
   $sc = [byte][BW]::MapVirtualKey([uint32]$vk, 0)
-  [BW]::keybd_event([byte]$vk, $sc, $(if ($down) { 0 } else { 2 }), 0)
+  $ext = if (@(0x25,0x26,0x27,0x28) -contains $vk) { 1 } else { 0 }; [BW]::keybd_event([byte]$vk, $sc, ($ext -bor $(if ($down) { 0 } else { 2 })), 0)
 }
 function Focus() { if ([BW]::GetForegroundWindow() -ne $script:hwnd) { [BW]::ShowWindow($script:hwnd, 9) | Out-Null; [BW]::BringWindowToTop($script:hwnd) | Out-Null; [BW]::SetForegroundWindow($script:hwnd) | Out-Null; Start-Sleep -Milliseconds 60; $script:refocus++ } }
 $script:refocus = 0; $script:nstate = 0
@@ -64,6 +64,7 @@ $files = Get-ChildItem $shotDir -Filter "blastem_*.png" -ErrorAction SilentlyCon
 $i = 0
 foreach ($f in $files) { $dst = Join-Path $OutDir ("{0}{1:D3}.png" -f $Prefix, $i); Move-Item $f.FullName $dst -Force; $i++ }
 "shots requested $n, collected $i into $OutDir (refocus $($script:refocus))"
+
 
 
 

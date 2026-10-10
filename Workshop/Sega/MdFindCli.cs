@@ -17,7 +17,7 @@ namespace BrokenNes.Workshop.Sega;
 /// </summary>
 internal static class MdFindCli
 {
-    private static (int w, int h, uint[] px) Load(string path)
+    internal static (int w, int h, uint[] px) Load(string path)
     {
         using var bmp = new Bitmap(path);
         int w = bmp.Width, h = bmp.Height;
@@ -42,7 +42,7 @@ internal static class MdFindCli
         return Math.Max(dr, Math.Max(dg, db));
     }
 
-    private static long Compare(uint[] ours, int ow, int oh, uint[] theirs, int tw, int th, int dx, int dy, int tol, long stopAbove)
+    internal static long Compare(uint[] ours, int ow, int oh, uint[] theirs, int tw, int th, int dx, int dy, int tol, long stopAbove)
     {
         long bad = 0;
         for (int y = 0; y < oh; y++)
