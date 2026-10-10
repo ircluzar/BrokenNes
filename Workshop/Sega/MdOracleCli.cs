@@ -4,122 +4,204 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using NesEmulator.Sega;
 using NesEmulator.Systems;
 
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--md-oracle &lt;rom&gt; [--line 232] [--f0 N | --scan shot.png [--scan-to N]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--shot-offset 0|1] [--region ntsc|pal]</c>:
+/// <c>--md-oracle &lt;rom&gt; [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs 4] [--region ntsc|pal]</c>:
 /// runs a game the way BlastEm is stepped by hand with its pause (F7) and frame advance (F8) keys, so a scripted play-through can be compared with the oracle frame by frame.
 /// <para>BlastEm stops a frame at about scanline 232 (measured with a pad-polling probe ROM: a key pressed while it is paused is first seen by the game at V counter 232 and, running freely, events are taken at
 /// 232-233 every frame). This command stops at that line too: it runs boundary after boundary (<see cref="MdSession.RunToLine"/>), changing the pad at the boundary exactly where the oracle's key press falls.
-/// <b>Protocol:</b> BlastEm runs from reset without input until it is paused at some boundary F0 (found here with <c>--scan</c>: the boundary whose picture matches BlastEm's screenshot best, or given with
+/// <b>Protocol:</b> BlastEm runs from reset without input until it is paused at some boundary F0 (found here with <c>--scan</c>: the boundary whose picture matches BlastEm's first screenshot, or given with
 /// <c>--f0</c>); from there both get the same buttons at the same boundaries (<c>--script</c>: "step:buttons", buttons joined by + or empty for none, the pad changes before the advance of that step) and
 /// are compared at the steps listed in <c>--shots</c> (the picture after that many advances): with <c>--theirs dir</c> holding BlastEm's screenshots s000.png, s001.png ... in the same order, each pair is diffed
-/// (their rows are offset by <c>--dy</c>, 9 for a 224-line picture); with <c>--out dir</c> our pictures are written. Exit code 0 when every compared pair is pixel-identical.</para>
+/// (their rows are offset by <c>--dy</c>, 9 for a 224-line picture); with <c>--out dir</c> our pictures are written. A shot that differs is searched in our last <c>--lags</c> pictures: an exact match at another
+/// step means the oracle stood at another frame (a frame-advance key tap that was lost), not that the picture differs. Exit code 0 when every compared pair is pixel-identical.</para>
+/// <para>When the first screenshot matches several boundaries (a still or repeating picture) the scan reports it as ambiguous; with the later screenshots the candidates are told apart by replaying the script from
+/// each of them (<c>--jobs</c> in parallel) and keeping the one whose pictures match. <c>--windows N [--min 40]</c> lists, for a game run without input, where the picture is different on every frame (a good place to
+/// pause). <c>--emit-script default --offset 90 --steps N</c> prints the sweep's pad script as a <c>--script</c>.</para>
 /// </summary>
 internal static class MdOracleCli
 {
-    public static int Run(string[] args)
+    private static SortedDictionary<int, PadButtons> ParseScript(string? sc)
     {
-        string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
-        if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 232] [--f0 N | --scan shot.png [--scan-to N]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--shot-offset 0|1] [--region ntsc|pal]"); return 2; }
-        int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
-        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : 9;
-        int shotOffset = int.TryParse(M68kTestCli.Arg(args, "--shot-offset"), out int so) ? so : 0;
-        string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
-        if (outDir != null) Directory.CreateDirectory(outDir);
-        RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         var script = new SortedDictionary<int, PadButtons>();
-        if (M68kTestCli.Arg(args, "--script") is { } sc)
-            foreach (var part in sc.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                int colon = part.IndexOf(':');
-                if (colon < 0 || !int.TryParse(part[..colon], out int step)) continue;
-                PadButtons b = PadButtons.None;
-                foreach (var name in part[(colon + 1)..].Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                    if (Enum.TryParse<PadButtons>(name, true, out var one)) b |= one;
-                script[step] = b;
-            }
-        var shots = (M68kTestCli.Arg(args, "--shots") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToList();
-        int steps = int.TryParse(M68kTestCli.Arg(args, "--steps"), out int st) ? st : (shots.Count > 0 ? shots.Max() : 0);
+        if (sc == null) return script;
+        foreach (var part in sc.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int colon = part.IndexOf(':');
+            if (colon < 0 || !int.TryParse(part[..colon], out int step)) continue;
+            PadButtons b = PadButtons.None;
+            foreach (var name in part[(colon + 1)..].Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (Enum.TryParse<PadButtons>(name, true, out var one)) b |= one;
+            script[step] = b;
+        }
+        return script;
+    }
 
-        byte[] data = File.ReadAllBytes(rom);
+    private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
+    {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
+        for (int f = 0; f < boundaries; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line); }
+        return session;
+    }
 
-        int f0;
-        if (M68kTestCli.Arg(args, "--scan") is { } scanPng)
-        {
-            var target = MdFindCli.Load(scanPng);
-            int scanTo = int.TryParse(M68kTestCli.Arg(args, "--scan-to"), out int sto) ? sto : 900;
-            long best = long.MaxValue; int bestF = -1; var exact = new List<int>();
-            for (int f = 0; f <= scanTo; f++)
-            {
-                session.SetPad(0, PadButtons.None);
-                session.RunToLine(line);
-                long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, target.px, target.w, target.h, 0, dy, 0, bad0(best));
-                if (bad == 0) exact.Add(f);
-                if (bad < best) { best = bad; bestF = f; }
-            }
-            Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
-            if (exact.Count > 1) { Console.WriteLine($"scan: AMBIGUOUS, {exact.Count} boundaries match exactly ({string.Join(",", exact.Take(12))}{(exact.Count > 12 ? ",..." : "")}): the picture is the same for several frames; pause at a moving picture, or pass --f0"); if (M68kTestCli.Arg(args, "--pick") is { } pk) bestF = int.Parse(pk); }
-            if (bestF < 0) return 1;
-            f0 = bestF + shotOffset;
-            // rewind: rebuild the session and run to f0
-            session = new MdSession(data, "M68k".ToUpperInvariant(), "MD", "MD", region);
-            for (int f = 0; f <= bestF; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line); }
-            Console.WriteLine($"f0 = {bestF}: paused here, the script starts");
-        }
-        else
-        {
-            f0 = int.TryParse(M68kTestCli.Arg(args, "--f0"), out int f0v) ? f0v : 0;
-            for (int f = 0; f <= f0; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line); }
-        }
+    /// <summary>One shot of a replay: how many pixels differ from the oracle's screenshot at the expected step, and where our history says it stood.</summary>
+    private sealed record ShotResult(int Step, long Bad, int ClosestStep, long ClosestBad);
 
+    /// <summary>
+    /// Plays the script from the session's boundary and compares the pictures at the listed steps with the oracle's screenshots. <paramref name="stopAtFirstBad"/> ends the replay at the first shot that differs
+    /// (used to try candidate start frames cheaply). <paramref name="lagRange"/> keeps a history of our pictures to say where a differing shot would have matched.
+    /// </summary>
+    private static List<ShotResult> Replay(MdSession session, SortedDictionary<int, PadButtons> script, int steps, List<int> shots, List<(int w, int h, uint[] px)> theirs, int dy, int lagRange, bool stopAtFirstBad, string? outDir, Action<string>? log)
+    {
+        var results = new List<ShotResult>();
         PadButtons pad = PadButtons.None;
-        long totalBad = 0; int compared = 0;
-        var theirsFiles = theirsDir != null ? Directory.GetFiles(theirsDir, "s*.png").OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList() : new List<string>();
-        // a history of our pictures (one per boundary since f0): when a shot differs from ours at its expected step, the closest picture of the history says whether the oracle simply stood at another frame
-        // (a frame advance that was lost makes it lag: its key tap landed while the previous frame was still running) rather than drew a different picture
-        int lagRange = int.TryParse(M68kTestCli.Arg(args, "--lags"), out int lg) ? lg : 400;
         var history = new List<(uint[] px, int w, int h)>();
         for (int s = 0; s < steps; s++)
         {
             if (script.TryGetValue(s, out var nb)) pad = nb;
             session.SetPad(0, pad);
-            session.RunToLine(line);
-            int n = s + 1;       // advances done
-            int shotIdx = shots.IndexOf(n);
+            session.RunToLine(232);
+            int n = s + 1;
             if (lagRange > 0) { var copy = new uint[session.FrameWidth * session.FrameHeight]; Array.Copy(session.Frame, copy, copy.Length); history.Add((copy, session.FrameWidth, session.FrameHeight)); }
-            if (shotIdx < 0) continue;
+            int idx = shots.IndexOf(n);
+            if (idx < 0) continue;
             if (outDir != null) WritePng(session.Frame, session.FrameWidth, session.FrameHeight, Path.Combine(outDir, $"o{n:D5}.png"));
-            if (shotIdx < theirsFiles.Count)
+            if (idx >= theirs.Count) { log?.Invoke($"after {n,5} advances: picture hash {Hash(session.Frame, session.FrameWidth * session.FrameHeight):X16}"); continue; }
+            var th = theirs[idx];
+            long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, dy, 0, long.MaxValue);
+            int bestN = n; long bestBad = bad;
+            if (bad != 0 && lagRange > 0)
             {
-                var th = MdFindCli.Load(theirsFiles[shotIdx]);
-                long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, dy, 0, long.MaxValue);
-                string lagNote = "";
-                if (bad != 0 && lagRange > 0)
+                bestBad = long.MaxValue; bestN = -1;
+                for (int k = Math.Max(0, history.Count - 1 - lagRange); k < history.Count; k++)
                 {
-                    long bestBad = long.MaxValue; int bestN = -1;
-                    for (int k = Math.Max(0, history.Count - 1 - lagRange); k < history.Count; k++)
-                    {
-                        long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, dy, 0, bestBad);
-                        if (b2 < bestBad) { bestBad = b2; bestN = k + 1; }
-                    }
-                    lagNote = $"  | closest of our last {Math.Min(history.Count, lagRange + 1)} pictures: after {bestN} advances ({bestBad:N0} differing){(bestN != n ? $", i.e. the oracle stands {n - bestN} advance(s) {(bestN < n ? "behind" : "ahead")}" : "")}";
+                    long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, dy, 0, bestBad);
+                    if (b2 < bestBad) { bestBad = b2; bestN = k + 1; }
                 }
-                Console.WriteLine($"after {n,5} advances: {bad,8:N0} differing pixels vs {Path.GetFileName(theirsFiles[shotIdx])}   [ours {session.FrameWidth}x{session.FrameHeight}, pc {session.Board.Cpu.Pc - 4:X6}]{lagNote}");
-                totalBad += bad; compared++;
             }
-            else Console.WriteLine($"after {n,5} advances: picture hash {Hash(session.Frame, session.FrameWidth * session.FrameHeight):X16}");
+            results.Add(new ShotResult(n, bad, bestN, bestBad));
+            if (log != null)
+            {
+                string note = bad != 0 && lagRange > 0 ? $"  | closest of our last {Math.Min(history.Count, lagRange + 1)} pictures: after {bestN} advances ({bestBad:N0} differing){(bestN != n && bestBad == 0 ? $", i.e. the oracle stands {n - bestN} advance(s) {(bestN < n ? "behind" : "ahead")} (a lost frame-advance tap)" : "")}" : "";
+                log($"after {n,5} advances: {bad,8:N0} differing pixels   [ours {session.FrameWidth}x{session.FrameHeight}, pc {session.Board.Cpu.Pc - 4:X6}]{note}");
+            }
+            if (stopAtFirstBad && bad != 0) break;
         }
-        if (M68kTestCli.Arg(args, "--ram-out") is { } ramOut) { File.WriteAllBytes(ramOut, session.Board.Ram); Console.WriteLine($"wrote the work RAM to {ramOut}"); }
-        if (compared > 0) Console.WriteLine($"compared {compared} picture(s): {totalBad:N0} differing pixels in all");
-        return compared > 0 && totalBad != 0 ? 1 : 0;
+        return results;
     }
 
-    private static long bad0(long best) => best == long.MaxValue ? long.MaxValue : Math.Max(best, 1);      // keep counting past an exact match so a repeated picture is noticed
+    public static int Run(string[] args)
+    {
+        // --emit-script default [--offset 90] [--steps 1500]: print the sweep's pad script (see MdSweepCli) as "step:buttons" changes, step 0 being frame <offset> of it, for --script and for oraclerun.ps1
+        if (M68kTestCli.Arg(args, "--emit-script") is { } emitName)
+        {
+            int off = int.TryParse(M68kTestCli.Arg(args, "--offset"), out int o) ? o : 90, n = int.TryParse(M68kTestCli.Arg(args, "--steps"), out int ns) ? ns : 1500;
+            var parts = new List<string>(); PadButtons last = unchecked((PadButtons)(-1));
+            for (int s = 0; s < n; s++)
+            {
+                var b = MdSweepCli.PadAt(emitName.ToLowerInvariant(), off + s);
+                if (b != last) { parts.Add($"{s}:{string.Join("+", Enum.GetValues<PadButtons>().Where(x => x != PadButtons.None && (b & x) == x && System.Numerics.BitOperations.PopCount((uint)x) == 1).Select(x => x.ToString()))}"); last = b; }
+            }
+            Console.WriteLine(string.Join(",", parts));
+            return 0;
+        }
+        string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
+        if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
+        int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
+        if (line != 232) Console.WriteLine("(note: Replay stops at line 232; --line only affects the scan and --windows)");
+        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : 9;
+        string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
+        if (outDir != null) Directory.CreateDirectory(outDir);
+        RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
+        var script = ParseScript(M68kTestCli.Arg(args, "--script"));
+        var shots = (M68kTestCli.Arg(args, "--shots") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToList();
+        int steps = int.TryParse(M68kTestCli.Arg(args, "--steps"), out int st) ? st : (shots.Count > 0 ? shots.Max() : 0);
+        int lagRange = int.TryParse(M68kTestCli.Arg(args, "--lags"), out int lg) ? lg : 400;
+        int jobs = int.TryParse(M68kTestCli.Arg(args, "--jobs"), out int jb) ? Math.Clamp(jb, 1, 6) : 4;
+        byte[] data = File.ReadAllBytes(rom);
+
+        // --windows N [--min 40]: with no input, the stretches of the first N boundaries whose pictures are all different from every other boundary's (including each other's): a pause inside one can be pinned to its
+        // exact frame by --scan (a still or repeating picture cannot)
+        if (int.TryParse(M68kTestCli.Arg(args, "--windows"), out int winN))
+        {
+            int min = int.TryParse(M68kTestCli.Arg(args, "--min"), out int mn) ? mn : 40;
+            var session0 = new MdSession(data, "M68K", "MD", "MD", region);
+            var hashes = new ulong[winN + 1];
+            for (int f = 0; f <= winN; f++) { session0.SetPad(0, PadButtons.None); session0.RunToLine(line); hashes[f] = Hash(session0.Frame, session0.FrameWidth * session0.FrameHeight) ^ (ulong)session0.FrameWidth; }
+            var counts = hashes.GroupBy(h => h).ToDictionary(g => g.Key, g => g.Count());
+            var runs = new List<string>(); int start = -1;
+            for (int f = 0; f <= winN + 1; f++)
+            {
+                bool unique = f <= winN && counts[hashes[f]] == 1;
+                if (unique && start < 0) start = f;
+                if (!unique && start >= 0) { if (f - start >= min) runs.Add($"{start}-{f - 1}"); start = -1; }
+            }
+            Console.WriteLine($"windows of at least {min} boundaries with pictures seen nowhere else (a pause at frame f lands about f = 60 x seconds since launch): {(runs.Count == 0 ? "none" : string.Join(", ", runs))}");
+            return 0;
+        }
+
+        var theirsFiles = theirsDir != null ? Directory.GetFiles(theirsDir, "s*.png").OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList() : new List<string>();
+        var theirs = theirsFiles.Select(MdFindCli.Load).ToList();
+
+        // where the script starts: the boundary the oracle was paused at
+        List<int> candidates;
+        if (M68kTestCli.Arg(args, "--scan") is { } scanPng)
+        {
+            var target = MdFindCli.Load(scanPng);
+            int scanTo = int.TryParse(M68kTestCli.Arg(args, "--scan-to"), out int sto) ? sto : 900;
+            var session0 = new MdSession(data, "M68K", "MD", "MD", region);
+            long best = long.MaxValue; int bestF = -1; var exact = new List<int>();
+            for (int f = 0; f <= scanTo; f++)
+            {
+                session0.SetPad(0, PadButtons.None);
+                session0.RunToLine(line);
+                long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, dy, 0, best == long.MaxValue ? best : Math.Max(best, 1));
+                if (bad == 0) exact.Add(f);
+                if (bad < best) { best = bad; bestF = f; }
+            }
+            Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
+            if (exact.Count > 1)
+            {
+                Console.WriteLine($"scan: AMBIGUOUS, {exact.Count} boundaries match exactly ({string.Join(",", exact.Take(12))}{(exact.Count > 12 ? ",..." : "")}): the picture is the same for several frames");
+                candidates = M68kTestCli.Arg(args, "--pick") is { } pk ? new List<int> { int.Parse(pk) } : exact;
+            }
+            else candidates = new List<int> { bestF };
+            if (bestF < 0) return 1;
+        }
+        else candidates = new List<int> { int.TryParse(M68kTestCli.Arg(args, "--f0"), out int f0v) ? f0v : 0 };
+
+        int chosen = candidates[0];
+        if (candidates.Count > 1)
+        {
+            // tell the candidates apart by replaying the script from each (first shot that differs ends a candidate): needs the later screenshots
+            if (theirs.Count == 0 || shots.Count == 0 || steps == 0) { Console.WriteLine("ambiguous start and nothing to tell the candidates apart with: give --script, --shots and --theirs, or --pick"); return 3; }
+            Console.WriteLine($"replaying the script from each of the {candidates.Count} candidates ({jobs} at a time) ...");
+            var scored = new (int f, int ok, long bad)[candidates.Count];
+            Parallel.For(0, candidates.Count, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
+            {
+                var s = Boot(data, region, line, candidates[ci] + 1);
+                var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
+                scored[ci] = (candidates[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
+            });
+            var order = scored.OrderByDescending(x => x.ok).ThenBy(x => x.bad).ToList();
+            foreach (var x in order.Take(6)) Console.WriteLine($"   start {x.f,5}: {x.ok} of {shots.Count(sh => true)} shot(s) exact before the first difference, {x.bad:N0} differing pixels there");
+            chosen = order[0].f;
+            if (order.Count > 1 && order[0].ok == order[1].ok && order[0].bad == order[1].bad) Console.WriteLine("   (the best two candidates are not told apart by these shots)");
+        }
+
+        Console.WriteLine($"f0 = {chosen}: the oracle is paused here, the script starts");
+        var session = Boot(data, region, line, chosen + 1);
+        var results = Replay(session, script, steps, shots, theirs, dy, lagRange, false, outDir, Console.WriteLine);
+        if (M68kTestCli.Arg(args, "--ram-out") is { } ramOut) { File.WriteAllBytes(ramOut, session.Board.Ram); Console.WriteLine($"wrote the work RAM to {ramOut}"); }
+        long totalBad = results.Sum(r => r.Bad);
+        if (results.Count > 0) Console.WriteLine($"compared {results.Count} picture(s): {results.Count(r => r.Bad == 0)} exact, {totalBad:N0} differing pixels in all");
+        return results.Count > 0 && totalBad != 0 ? 1 : 0;
+    }
 
     private static ulong Hash(uint[] px, int n) { ulong h = 14695981039346656037UL; for (int i = 0; i < n; i++) { h ^= px[i]; h *= 1099511628211UL; } return h; }
 

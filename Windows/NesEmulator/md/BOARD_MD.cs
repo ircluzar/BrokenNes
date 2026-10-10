@@ -344,7 +344,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         }
         if (address >= 0xA130F0 && address < 0xA13100)
         {
-            if (lower) Cart.WriteMapper(address | 1, (byte)data);
+            if (lower) { WriteTrace?.Invoke($"mapper ${address | 1:X6} = {(byte)data:X2}"); Cart.WriteMapper(address | 1, (byte)data); }
             return;
         }
         if (address >= 0xA14000 && address < 0xA14004) { TmssWrites++; TmssWords[(address - 0xA14000) >> 1] = data; return; }

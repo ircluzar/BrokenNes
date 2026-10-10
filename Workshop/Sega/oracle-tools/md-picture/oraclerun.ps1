@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [string]$Region = "")
+param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [string]$Region = "", [string]$Pad = "", [int]$Offset = 90, [int]$ShotEvery = 100)
 # A scripted play-through compared with BlastEm frame by frame (see Workshop\Sega\MdOracleCli.cs for the protocol).
 #   -Script "0:Start,4:,400:Right,500:Right+C,520:Right"   step:buttons (buttons joined by +, empty = none); the pad changes before the advance of that step
 #   -Shots  "50,100,200"                                   compare the pictures after that many advances
@@ -8,6 +8,12 @@ param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [
 # buttons at the same frame boundaries. Window-driven: hold the BlastEm lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem) while this runs.
 $root = Split-Path $MyInvocation.MyCommand.Path
 $dir = Join-Path $root "be\$Name"
+# -Pad default [-Offset 90] [-ShotEvery 100]: the script is the sweep's pad script from frame -Offset on (step 0 = that frame), shots every -ShotEvery steps
+if ($Pad) {
+  if ($Steps -le 0) { throw "-Pad needs -Steps" }
+  $Script = ((& (Join-Path $root "ws.ps1") --md-oracle --emit-script $Pad --offset $Offset --steps $Steps) | Where-Object { $_ -match '^\d+:' } | Select-Object -Last 1)
+  if ($ShotEvery -gt 0 -and -not $Shots) { $Shots = ((1..[int]($Steps / $ShotEvery) | ForEach-Object { $_ * $ShotEvery }) -join ",") }
+}
 $map = @{}
 foreach ($part in $Script.Split(',', [StringSplitOptions]::RemoveEmptyEntries)) { $c = $part.IndexOf(':'); if ($c -gt 0) { $map[[int]$part.Substring(0, $c)] = @($part.Substring($c + 1).Split('+', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { $_.Trim() }) } }
 $shotList = @($Shots.Split(',', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { [int]$_ })

@@ -106,6 +106,28 @@ internal static class MdRunCli
             Console.WriteLine($"   bytes per frame: board.RunFrame {aBoard / (double)Math.Max(1, counted):F1}, picture copy {aCopy / (double)Math.Max(1, counted):F1}, sound drain {aDrain / (double)Math.Max(1, counted):F1}");
             return 0;
         }
+        // --until-pc ADDR[,ADDR...] [--hits N]: run until the 68000 is about to execute one of these addresses (the Nth time), print the frame and line and the registers, and stop: where a game gets to, and when
+        if (M68kTestCli.Arg(args, "--until-pc") is { } untilPc)
+        {
+            var targets = untilPc.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => Convert.ToUInt32(x, 16)).ToHashSet();
+            int hitsWanted = int.TryParse(M68kTestCli.Arg(args, "--hits"), out int hw) ? hw : 1, hitsSeen = 0;
+            PadButtons upad = PadButtons.None;
+            uint hitPc = 0; bool hit = false;
+            board.InstructionHook = pc => { if (!hit && targets.Contains(pc) && ++hitsSeen >= hitsWanted) { hit = true; hitPc = pc; } };
+            for (int i = 0; i < frames && !hit; i++)
+            {
+                if (padScript != null) upad = MdSweepCli.PadAt(padScript, i);
+                if (inputs.TryGetValue(i, out var ub)) upad = ub;
+                session.SetPad(0, upad);
+                board.Vdp.ClearFrameFlag();
+                long guard2 = board.MasterClock + board.Timeline.MasterClocksPerFrame * 4;
+                while (!board.Vdp.FrameCompleted && board.MasterClock < guard2 && !hit) board.StepInstruction();
+                board.Sound.RunTo(board.MasterClock); DrainSamples(session);
+            }
+            if (hit) Console.WriteLine($"   reached ${hitPc:X6} (hit {hitsSeen}) in frame {board.Frames}, line {board.Vdp.Line}: sr {board.Cpu.ReadSr():X4} a7 {board.Cpu.A[7]:X8} | D {string.Join(" ", Enumerable.Range(0, 8).Select(k => board.Cpu.D[k].ToString("X8")))} | A {string.Join(" ", Enumerable.Range(0, 8).Select(k => board.Cpu.A[k].ToString("X8")))}");
+            else Console.WriteLine($"   did not reach any of {untilPc} in {frames} frames");
+            return hit ? 0 : 1;
+        }
         // --first-exception [vec,vec]: run until the 68000 takes one of these vectors (default: bus error 2, address error 3, illegal 4, divide 5, line-A 10, line-F 11, privilege 8), print the last 40 instruction
         // addresses with the registers at the moment, and stop. The quickest way to see what a game that ends in an exception storm did just before it.
         string? firstEx = M68kTestCli.Flag(args, "--first-exception") ? (M68kTestCli.Arg(args, "--first-exception") is { } fe && !fe.StartsWith("--") ? fe : "2,3,4,5,8,10,11") : null;
