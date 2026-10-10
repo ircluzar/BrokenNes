@@ -296,3 +296,10 @@ Written 2026-10-09 on branch `worktree-agent-a8d18d7cf3b00f58f` (it starts from 
 2. Listening: the designed YM2413 instruments, the Genesis DAC sounds played from FL notes, a Genesis game's stems in a real project.
 3. Runaway: a rhythm-voice instrument for the YM2413, a longer capture window for the DAC (more than 12 sounds, pieces joined), the Game Gear's stereo mask, a roster pass of Runaway over Master System FM games.
 4. Per-instance stem alignment after a chip swap (a shared read position for stems claimed in the same frame).
+
+## C3b: half-done at the wrap-up (read this before relying on the numbers above)
+
+- **Desktop smoke** (`UAT/entrypoints/desktop-smoke.ps1 -Exe <published build>`): 9 of 9. **Sega preview smoke** (`sega-preview-smoke.ps1 -Exe <published build>`): 38 passed, **4 failed** (`sms_real_picture_is_still_without_input`, `gg_real_picture_is_still_without_input`, `md_input_reaches_session`, `on_graceful_shutdown`); run once, **not rerun alone and not compared with main's build**, on a machine at 60 to 100 percent load with other agents driving windows, so the cause (load or interference rather than this branch's stems and plugin changes, which touch none of the pictures) is unproven.
+- **`synth-smoke.ps1`**: its restart-handoff checks did not run to the end (see Verification); the first eight checks pass.
+- **Speed floors** of the plugin self-test (4 checks) were not seen passing on a quiet machine; only the A/B against main (above) says they are load.
+- **Lite AOT** and a YM2413 Runaway from a real Master System FM game were not done.
