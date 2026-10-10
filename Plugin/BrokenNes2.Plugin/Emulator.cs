@@ -20,6 +20,7 @@ public sealed partial class Emulator : IDisposable
     private int runaway, padBits;
     private SpcSnapshot? snapshot;
     private GbSnapshot? gbState;
+    private SegaSnapshot? segaState;
     private readonly Dictionary<object, int> padSources = new();
 
     internal Emulator(int id, bool autoCreated)
@@ -83,10 +84,16 @@ public sealed partial class Emulator : IDisposable
     public SpcSnapshot? Snapshot => Volatile.Read(ref snapshot);
     /// <summary>The sound registers and wave RAM captured when Runaway started on a Game Boy game; null for the other consoles.</summary>
     public GbSnapshot? GbState => Volatile.Read(ref gbState);
+    /// <summary>The sound chips' registers (and, on a Genesis game, the DAC sounds found) captured when Runaway started on a Master System, Game Gear or Genesis game; null for the other consoles.</summary>
+    public SegaSnapshot? SegaState => Volatile.Read(ref segaState);
     /// <summary>Runaway on a SNES game: every instance plays the game's samples through its own S-DSP.</summary>
     public bool SamplerMode => Runaway && Snapshot != null;
     /// <summary>Runaway on a Game Boy game: every instance plays one Game Boy channel, with the game's settings, on its own sound unit.</summary>
     public bool GbSamplerMode => Runaway && GbState != null;
+    /// <summary>Runaway on a Master System, Game Gear or Genesis game: every instance plays the game's sound chips, set up as the game had them, on chips of its own.</summary>
+    public bool SegaSamplerMode => Runaway && SegaState != null;
+    /// <summary>Any of the sampler modes: the instances are samplers of the frozen game's instruments, not channels of it.</summary>
+    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode;
     /// <summary>Runaway needs a running game.</summary>
     public bool CanRunaway => Mode == 1 && RomLoaded;
 
@@ -100,10 +107,11 @@ public sealed partial class Emulator : IDisposable
             if (on)
             {
                 if (!CanRunaway) return;
-                SpcSnapshot? snap; GbSnapshot? gb;
-                lock (romLock) { ApplyPending(); snap = game?.CaptureSpc(); gb = game?.CaptureGb(); }
+                SpcSnapshot? snap; GbSnapshot? gb; SegaSnapshot? sega;
+                lock (romLock) { ApplyPending(); snap = game?.CaptureSpc(); gb = game?.CaptureGb(); sega = game?.CaptureSega(); }
                 Volatile.Write(ref snapshot, snap);
                 Volatile.Write(ref gbState, gb);
+                Volatile.Write(ref segaState, sega);
                 Volatile.Write(ref runaway, 1);
             }
             else ClearRunaway();
@@ -130,6 +138,7 @@ public sealed partial class Emulator : IDisposable
         Volatile.Write(ref runaway, 0);
         Volatile.Write(ref snapshot, null);
         Volatile.Write(ref gbState, null);
+        Volatile.Write(ref segaState, null);
     }
 
     // ---- claims (EmulatorHub.Gate held) ----
@@ -170,7 +179,7 @@ public sealed partial class Emulator : IDisposable
     /// named emulator always takes the instance in, with a Problem and no channel when the channel is not available.</summary>
     internal Assignment? Attach(Bn2Plugin who, int requested, int hintChannel, bool explicitEmulator)
     {
-        if (SamplerMode || GbSamplerMode)
+        if (AnySamplerMode)
         {
             if (!members.Contains(who)) members.Add(who);
             return new Assignment(this, Ch.Sampler, null);
@@ -332,7 +341,7 @@ public sealed partial class Emulator : IDisposable
     }
 
     /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
-    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null)
+    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null)
     {
         lock (EmulatorHub.Gate)
         {
@@ -355,6 +364,13 @@ public sealed partial class Emulator : IDisposable
                 if (restoredGb != null && console == Cx.GameBoy)
                 {
                     Volatile.Write(ref gbState, restoredGb);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+                if (restoredSega != null && (restoredSega.Kind == SegaSnapshot.KindOpn ? console == Cx.Genesis : console == Cx.MasterSystem))
+                {
+                    // a project saved in Instrument Runaway on a Master System, Game Gear or Genesis game: it starts frozen and the chips come back from the copy in the project
+                    Volatile.Write(ref segaState, restoredSega);
                     Volatile.Write(ref runaway, 1);
                     EmulatorHub.ReResolveAll(this);
                 }
@@ -384,6 +400,18 @@ public sealed partial class Emulator : IDisposable
 
     /// <summary>The picture area's text when there is no picture to show.</summary>
     public string? PictureMessage => Mode == 0 ? "Direct Mode: Bypassing the ROM" : (PictureValid ? null : Runaway ? "Instrument Runaway: game frozen" : RomStatus);
+
+    /// <summary>Test hook: puts a made-up Sega snapshot in place of the captured one (a test ROM has no DAC sounds worth the name, a bad project has a hostile one).</summary>
+    internal void ReplaceSegaForTests(SegaSnapshot snap)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            Volatile.Write(ref segaState, snap);
+            Volatile.Write(ref runaway, 1);
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
 
     internal void HostRateChanged() { }
 

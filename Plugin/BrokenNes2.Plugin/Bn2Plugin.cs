@@ -28,6 +28,9 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         public TVoiceParams* Params;
         public bool Released, Finished, KillRequested, Fresh;
         public int Dsp = -1;          // the S-DSP voice playing it in sampler mode
+        public int Slot = -1;         // the slot of the Sega sampler playing it (see SegaSnapshot.SlotBase), -1 none
+        public int Instr = -1;        // the instrument it was started on
+        public bool Silenced;         // it lost its slot to a newer note: silent until released
     }
 
     private readonly List<Voice> voices = new(32);
@@ -59,6 +62,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
     private int samplerRate;
     private readonly bool[] dspUsed = new bool[8];
     private readonly float[] stereo = new float[Chunk * 2];
+
+    // Instrument Runaway on a Master System, Game Gear or Genesis game: this instance's own set of the game's sound chips, set up as the game had them
+    private SegaSampler? segaSampler;
+    private SegaSnapshot? segaFor;
+    private int segaRate;
+    private readonly bool[] slotUsed = new bool[32];
 
     // Instrument Runaway on a Game Boy game: this instance's own sound unit, playing one channel with the game's settings
     private GbSampler? gbSampler;
@@ -112,8 +121,11 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         gbChannel = -1;
         sampler = null;
         samplerFor = null;
+        segaSampler = null;
+        segaFor = null;
         Array.Clear(dspUsed);
-        foreach (var v in voices) v.Dsp = -1;
+        Array.Clear(slotUsed);
+        foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; }
     }
 
     /// <summary>Makes the emulator-level parameter values show what the emulator it sits on has (the emulator owns them).</summary>
@@ -175,6 +187,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         v.Params = p;
         v.Released = v.Finished = v.KillRequested = false;
         v.Fresh = true;
+        v.Slot = -1; v.Instr = -1; v.Silenced = false;
         voices.Add(v);
         return v.Handle;
     }
@@ -242,7 +255,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             RenderGbSampler(emu, dest, length, gl, gr);
             return;
         }
-        if (sampler != null || gbSampler != null) DropSampler();
+        if (emu.SegaSamplerMode)
+        {
+            RenderSegaSampler(emu, dest, length, gl, gr);
+            return;
+        }
+        if (sampler != null || gbSampler != null || segaSampler != null) DropSampler();
 
         if (emu.Mode == 1)
         {
@@ -355,6 +373,81 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 s.NoteOn(dv, instrument, pitch, level, level);
             }
             else s.Update(v.Dsp, pitch, level, level);
+        }
+    }
+
+    private void RenderSegaSampler(Emulator emu, float* dest, int length, float gl, float gr)
+    {
+        DropChip();
+        var snap = emu.SegaState;
+        int rate = EmulatorHub.HostRate;
+        if (snap == null) { FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
+        if (segaSampler == null || !ReferenceEquals(segaFor, snap) || segaRate != rate)
+        {
+            DropSampler();
+            segaSampler = snap.Kind switch
+            {
+                SegaSnapshot.KindOpn => new OpnSampler(snap, rate),
+                SegaSnapshot.KindOpll => new OpllSampler(snap, rate),
+                _ => new PsgSampler(snap, rate),
+            };
+            segaFor = snap;
+            segaRate = rate;
+        }
+        var s = segaSampler;
+        float vol = Get(P.Volume) / 1000f;
+        for (int off = 0; off < length; off += Chunk)
+        {
+            int n = Math.Min(Chunk, length - off);
+            UpdateSegaVoices(s, snap);
+            s.Render(stereo.AsSpan(0, n * 2), n);
+            for (int i = 0; i < n; i++)
+            {
+                dest[(off + i) * 2] = stereo[i * 2] * vol * gl;
+                dest[(off + i) * 2 + 1] = stereo[i * 2 + 1] * vol * gr;
+            }
+        }
+    }
+
+    /// <summary>The control-rate step of Sega Runaway: each FL voice owns a slot of the sampler (the instrument's range of them: the YM2413's nine channels, the YM2612's six, eight DAC voices, the PSG's three tones or its noise; the
+    /// oldest note gives way for one more), with pitch and level re-read from FL's live values like in Direct mode, so slides and bends work. A note that lost its slot stays silent until it ends.</summary>
+    private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap)
+    {
+        int instrument = snap.Resolve(Get(P.Instrument));
+        foreach (var v in voices)
+        {
+            if (v.Finished) continue;
+            if (v.Released)
+            {
+                if (v.Slot >= 0) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }
+                v.Finished = true;
+                continue;
+            }
+            if (v.Silenced) continue;
+            ref var fl = ref v.Params->FinalLevels;
+            double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
+            double hz = 440.0 * Math.Pow(2.0, ((60.0 + cents / 100.0) - 69.0) / 12.0);
+            double velocity = Math.Clamp(fl.Vol, 0.0, 1.0);
+            if (v.Slot >= 0 && v.Instr != instrument) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }     // another instrument was picked under a held note: it starts again on that one
+            if (v.Slot >= 0) { s.Update(v.Slot, hz, velocity); continue; }
+            int first = snap.SlotBase(instrument), count = snap.Slots(instrument), slot = -1;
+            for (int i = first; i < first + count && i < slotUsed.Length; i++) if (!slotUsed[i]) { slot = i; break; }
+            if (slot < 0)
+            {
+                // all taken: the oldest note of this instrument's slots gives way
+                foreach (var other in voices)
+                    if (other != v && other.Slot >= first && other.Slot < first + count)
+                    {
+                        slot = other.Slot;
+                        s.NoteOff(slot);
+                        other.Slot = -1; other.Silenced = true;
+                        break;
+                    }
+                if (slot < 0) { v.Silenced = true; continue; }
+            }
+            slotUsed[slot] = true;
+            v.Slot = slot; v.Instr = instrument;
+            s.NoteOn(slot, instrument, hz, velocity);
         }
     }
 
@@ -589,6 +682,8 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
     private const uint PlaceMagic = 0x32554D45; // "EMU2"
     private const uint SpcMagic = 0x31435053;   // "SPC1"
     private const uint GbMagic = 0x31534247;    // "GBS1"
+    /// <summary>The biggest Sega snapshot section a project may carry: the largest real one (12 DAC sounds of 64 KB at most 4 in all, the chip registers) is under 270,000 bytes.</summary>
+    private const int MaxSegaSection = 300_000;
 
     public override void SaveRestoreState(ComStream stream, bool save)
     {
@@ -610,6 +705,16 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             // A project saved in Instrument Runaway on a SNES game keeps a copy of the game's sound memory, so the instruments come back.
             var snap = a.Emulator is { Runaway: true } running ? running.Snapshot : null;
             var gbSnap = a.Emulator is { Runaway: true } gbRunning ? gbRunning.GbState : null;
+            var segaSnap = a.Emulator is { Runaway: true } segaRunning ? segaRunning.SegaState : null;
+            if (segaSnap != null)
+            {
+                uint segaMagic = segaSnap.Tag;
+                var segaBytes = segaSnap.ToBytes();
+                int segaLen = segaBytes.Length;
+                stream.Write(&segaMagic, 4);
+                stream.Write(&segaLen, 4);
+                fixed (byte* p = segaBytes) stream.Write(p, (uint)segaLen);
+            }
             if (gbSnap != null)
             {
                 uint gbMagic = GbMagic;
@@ -635,6 +740,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int hintEmu = 0, hintCh = -1;
         SpcSnapshot? restoredSnapshot = null;
         GbSnapshot? restoredGb = null;
+        SegaSnapshot? restoredSega = null;
         restoring = true;
         try
         {
@@ -667,6 +773,13 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                             var gbBuf = new byte[slen];
                             fixed (byte* p = gbBuf) if (stream.Read(p, (uint)slen)) restoredGb = GbSnapshot.FromBytes(gbBuf);
                         }
+                        else if ((tag == SegaSnapshot.TagPsg || tag == SegaSnapshot.TagOpll || tag == SegaSnapshot.TagOpn) && slen is > 0 and <= MaxSegaSection)
+                        {
+                            // read and checked, never trusted: a stream that is not a snapshot of the kind its tag says is dropped
+                            var segaBuf = new byte[slen];
+                            fixed (byte* p = segaBuf) if (stream.Read(p, (uint)slen)) restoredSega = SegaSnapshot.FromBytes(segaBuf);
+                            if (restoredSega != null && restoredSega.Tag != tag) restoredSega = null;
+                        }
                     }
                 }
             }
@@ -679,7 +792,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
-        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb);
+        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega);
     }
 
     // ---- test hooks (see Fpd.TestBase) ----
@@ -758,6 +871,26 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 68: return chip?.Apu is NesEmulator.APU_SMSFM f68 && (uint)index < 3 ? f68.FmInstrument((int)index) : -1;
             case 69: return chip?.Apu is NesEmulator.APU_SMSFM f69 && (uint)index < 4 ? f69.Psg.Volume((int)index) : -1;
             case 70: return chip?.Apu is NesEmulator.APU_SMSFM f70 ? (nint)f70.TooQuietSyncs : -1;
+            // Instrument Runaway on a Sega game: 71 the kind of the captured snapshot (0 none, 1 PSG, 2 YM2413, 3 YM2612), 72 how many instruments it offers, 73 notes this instance's sampler could not play (-1 no sampler),
+            // 74 DAC sounds found, 75 DAC sound index: its pitch in hundredths of a hertz (0 for a one-shot), 76 DAC sound index: loop length (0 none), 77 voices of this instance that hold a slot, 78 the instrument the Instrument parameter plays,
+            // 79 the snapshot's bytes as saved (a length; value 1 puts a copy of the snapshot back through its own bytes), 80 whether the instance can play (sampler mode and not out of slots)
+            case 71: return emu?.SegaState?.Kind ?? 0;
+            case 72: return emu?.SegaState?.InstrumentCount ?? 0;
+            case 73: return segaSampler?.NotesDropped is { } dropped ? (nint)dropped : -1;
+            case 74: return emu?.SegaState?.Dac.Length ?? 0;
+            case 75: { var d = emu?.SegaState?.Dac; return d != null && (uint)index < (uint)d.Length ? (nint)Math.Round(d[(int)index].CycleHz * 100) : -1; }
+            case 76: { var d = emu?.SegaState?.Dac; return d != null && (uint)index < (uint)d.Length ? d[(int)index].LoopLength : -1; }
+            case 77: return voices.Count(v => v.Slot >= 0);
+            case 78: return emu?.SegaState?.Resolve(Get(P.Instrument)) ?? -1;
+            case 79:
+            {
+                var snap = emu?.SegaState;
+                if (snap == null) return -1;
+                var bytes = snap.ToBytes();
+                if (value != 0) { var again = SegaSnapshot.FromBytes(bytes); if (again == null || again.Tag != snap.Tag) return -2; emu!.ReplaceSegaForTests(again); }
+                return bytes.Length;
+            }
+            case 80: return segaSampler != null && assignment.Channel == Ch.Sampler ? 1 : 0;
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

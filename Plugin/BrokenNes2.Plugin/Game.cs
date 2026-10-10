@@ -37,6 +37,8 @@ internal interface IGame : IDisposable
     SpcSnapshot? CaptureSpc();
     /// <summary>A copy of the Game Boy game's sound registers and wave RAM (null for every other game).</summary>
     GbSnapshot? CaptureGb();
+    /// <summary>A copy of a Master System, Game Gear or Genesis game's sound chips: the PSG's registers, the YM2413's, or the YM2612's channel patches and the DAC sounds found in its recent writes (null for every other game).</summary>
+    SegaSnapshot? CaptureSega();
 }
 
 /// <summary>A running game's voices on their own, by plugin channel (<see cref="Ch"/>), at the host's rate and in step with the game's whole mix.</summary>
@@ -96,6 +98,7 @@ internal sealed class NesGame : IGame
 
     public SpcSnapshot? CaptureSpc() => null;
     public GbSnapshot? CaptureGb() => null;
+    public SegaSnapshot? CaptureSega() => null;
 
     public void Dispose() { }
 }
@@ -124,6 +127,20 @@ internal sealed class SessionGame : IGame, IGameStems
         // the file name matters to the Master System family: its region tag and its SG-1000 / SC-3000 extensions come from it
         s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), ApuFor(kind, chip), null, fileName);
         HostSampleRate = hostRate;
+        HookDacRecorder();
+    }
+
+    // ---- Instrument Runaway on a Genesis game: the writes the game makes to the YM2612's DAC register, kept so the sounds in them can be found ----
+    private readonly DacRecorder dacRecorder = new();
+    private MdSoundUnit? dacHooked;
+
+    /// <summary>Taps the Genesis sound unit's port writes (a unit that was swapped for another gets tapped when it first runs).</summary>
+    private void HookDacRecorder()
+    {
+        if (s is not NesEmulator.Sega.MdSession md || md.Board.Sound is not MdSoundUnit unit || ReferenceEquals(unit, dacHooked)) return;
+        if (dacHooked != null) dacHooked.YmPortTap = null;
+        unit.YmPortTap = dacRecorder.OnWrite;
+        dacHooked = unit;
     }
 
     public int Console { get; }
@@ -141,6 +158,7 @@ internal sealed class SessionGame : IGame, IGameStems
         if (crash != null) return;
         try
         {
+            HookDacRecorder();
             s.RunFrame();
             frames++;
             int n;
@@ -274,6 +292,27 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public GbSnapshot? CaptureGb() =>
         s is GbSession gb && gb.Apu is NesEmulator.Gb.APU_GB apu ? GbSnapshot.FromApu(apu) : null;
+
+    public SegaSnapshot? CaptureSega()
+    {
+        switch (s)
+        {
+            case NesEmulator.Sega.SmsSession sms:
+            {
+                var t = sms.Board.Timeline;
+                double clock = t.MasterHz / t.Z80.Divider;
+                return sms.Board.Sound switch
+                {
+                    SmsFmSound fm => SegaSnapshot.FromOpll(fm, clock),
+                    SmsSound psg => SegaSnapshot.FromPsg(psg.Psg, clock),
+                    _ => null,                       // a NES chip playing the Master System's registers (the mix lab): no Sega chip to copy
+                };
+            }
+            case NesEmulator.Sega.MdSession md when md.Board.Sound is MdSoundUnit unit:
+                return SegaSnapshot.FromOpn(unit, md.Board.Timeline.MasterHz, dacRecorder);
+        }
+        return null;
+    }
 
     /// <summary>Test hook: starts a tone on the running SNES sound unit, as a game's sound driver would (a test ROM has no sound driver).</summary>
     internal void PokeSnesTone()

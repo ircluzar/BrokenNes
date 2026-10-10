@@ -314,21 +314,21 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         y += RowPitch + 4;
 
         // channel strip (or, in Instrument Runaway, a banner)
-        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true;
+        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true;
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
-        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : 0, x, y, w); else DrawCells(dc, emu, a, x, y, w);
+        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
 
         // THIS INSTANCE
         Section(dc, "THIS INSTANCE", null, x, y, w);
         y += 30;
-        if (sampler)
+        if (sampler || segaSampler)
         {
             Txt(dc, "Channel", R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
             Box(dc, R(x + 86, y, w - 86, RowH), Panel, Line, 5);
-            Txt(dc, "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
+            Txt(dc, segaSampler ? "Sampler  -  game's sound chips" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
         }
         else
         {
@@ -357,6 +357,16 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             string info = current.Blocks > 0 ? $"{current.Milliseconds:0} ms, {(current.Loops ? "loops" : "one-shot")}{(current.Sounding ? ", the game was playing it" : "")}   ({found.Count} found)"
                 : found.Count == 0 ? "the game's sample table has no sample the plugin can read" : $"nothing in this slot   ({found.Count} found: pick one from the list)";
             Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        }
+        else if (segaSampler)
+        {
+            // the picker lists the game's instruments: what its chips were set up with, and the sounds found in the Genesis DAC's stream
+            var sn = emu!.SegaState!;
+            int pv = plugin.Get(P.Instrument), ins = sn.Resolve(pv);
+            var (iname, inote) = sn.Instrument(ins);
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, pv == 0 ? $"Auto  ->  {iname}" : iname);
+            int n = sn.Slots(ins);
+            Txt(dc, (inote != null ? inote + "   -   " : "") + (n == 1 ? "one note at a time" : $"{n} notes at once") + $"   ({sn.InstrumentCount} found)", R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (gbSampler)
         {
@@ -391,7 +401,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         bool canRun = emu?.CanRunaway == true;
         if (canRun || frozen) Button(dc, IdRunaway, frozen ? "Runaway ON  -  release" : "Instrument Runaway", runBtn, primary: frozen);
         else { Box(dc, runBtn, Panel, Line, 5); Txt(dc, "Instrument Runaway", runBtn, Win32.DT_CENTER | Mid, Faint, fontLabel); }
-        string runHint = frozen ? (sampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
+        string runHint = frozen ? (sampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
         Txt(dc, runHint, R(runBtn.Right + 10, by, ColX - runBtn.Right - 20, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         // Reset Console, bottom right: starts this emulator over for every instance on it
@@ -409,13 +419,13 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         else if (inputsOpen) DrawInputs(dc);
     }
 
-    /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels.</summary>
+    /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
     private void DrawRunawayBanner(nint dc, int kind, int x, int y, int w)
     {
         var r = R(x, y, w, 56);
         Box(dc, r, AccentDim, Accent, 6);
-        string title = kind == 1 ? "GAME FROZEN  -  INSTRUMENTS LIVE" : kind == 2 ? "GAME FROZEN  -  GAME BOY CHANNELS LIVE" : "GAME FROZEN  -  SILENT";
-        string text = kind == 1 ? "Pick one of the game's own instruments below." : kind == 2 ? "Pick a Game Boy channel for each instance." : "Instrument playing works on SNES and Game Boy games.";
+        string title = kind == 1 ? "GAME FROZEN  -  INSTRUMENTS LIVE" : kind == 2 ? "GAME FROZEN  -  GAME BOY CHANNELS LIVE" : kind == 3 ? "GAME FROZEN  -  SOUND CHIPS LIVE" : "GAME FROZEN  -  SILENT";
+        string text = kind == 1 ? "Pick one of the game's own instruments below." : kind == 2 ? "Pick a Game Boy channel for each instance." : kind == 3 ? "Pick one of the game's own instruments below." : "Instrument playing works on SNES, Game Boy, Master System, Game Gear and Genesis games.";
         Txt(dc, title, R(r.Left + 12, r.Top + 8, w - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE, White, fontSection);
         Txt(dc, text, R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
     }
@@ -506,7 +516,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     {
         string s;
         if (emu == null) s = a.Problem ?? "";
-        else if (emu.Runaway) s = $"Instrument Runaway: {emu.RomDisplayName} frozen at frame {emu.FramesRun}   |   " + (emu.SamplerMode ? "sound memory captured" : emu.GbSamplerMode ? "sound settings captured" : "silent");
+        else if (emu.Runaway) s = $"Instrument Runaway: {emu.RomDisplayName} frozen at frame {emu.FramesRun}   |   " + (emu.SamplerMode ? "sound memory captured" : emu.GbSamplerMode ? "sound settings captured" : emu.SegaSamplerMode ? "sound chips captured" : "silent");
         else if (emu.Mode == 1)
         {
             s = emu.RomLoaded
@@ -999,9 +1009,18 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 string? path = emu?.RomPath;
                 if (nes) { items.Add(("VRUN (built-in)", path == null ? "loaded" : null)); vals.Add(0); }
                 if (path != null) { items.Add((emu!.RomDisplayName, "loaded")); vals.Add(1); }
-                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .sms  .gg  .zip")); vals.Add(2);
+                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .sms  .gg  .md  .gen  .zip")); vals.Add(2);
                 int current = path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
+            }
+            case IdInstrument when emu?.SegaSamplerMode == true:
+            {
+                // Auto is the game's choice (what it was playing when it froze); the instruments follow (the parameter is the instrument number + 1)
+                var sn = emu.SegaState!;
+                var items = new List<(string, string?)> { ("Auto", "the game's choice: " + sn.Instrument(sn.Resolve(0)).Name) };
+                var vals = new List<int> { 0 };
+                for (int i = 0; i < sn.InstrumentCount; i++) { var (name, note) = sn.Instrument(i); items.Add((name, note)); vals.Add(i + 1); }
+                return (items.ToArray(), vals.ToArray(), Math.Clamp(plugin.Get(P.Instrument), 0, sn.InstrumentCount));
             }
             case IdInstrument when PatchBank(plugin.Get(P.Mode)) != 0 && emu?.SamplerMode != true:
             {

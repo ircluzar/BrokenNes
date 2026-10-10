@@ -162,6 +162,7 @@ public sealed unsafe partial class SelfTest
             ("rom-audio", "A loaded Game Boy or SNES game's whole sound reaches the first instance (Mix), whatever channel it was on", RomAudio),
             ("runaway-gb", "Instrument Runaway on a Game Boy game: the frozen game's channels play from FL notes with its settings", RunawayGb),
             ("runaway-snes", "Instrument Runaway on a SNES game: the picker lists the game's instruments, the chosen one plays", RunawaySnesPicker),
+            ("runaway-sega", "Instrument Runaway on Master System, Game Gear and Genesis games: the PSG, the YM2413, the YM2612 and the Genesis DAC's sounds play from FL notes (pitch, level, polyphony, slides, the project, damaged projects, cost)", RunawaySega),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
             ("runaway", "Instrument Runaway: the game freezes and goes silent; a SNES game's samples play from FL notes, polyphonically, and survive a saved project", RunawayTest),
             ("reset", "Reset Console: held notes and chips are cleared for every instance, a ROM-mode game restarts from power-on", ResetConsole),
@@ -861,13 +862,14 @@ public sealed unsafe partial class SelfTest
         // a Game Boy and a SNES game on the same budget (the test games are small: a real game costs somewhat more)
         var speeds = new List<string> { $"NES {rspeed:0.0}x" };
         string dir = Path.GetTempPath(), tag = Guid.NewGuid().ToString("N");
-        string gb = Path.Combine(dir, $"bn2_{tag}.gb"), sfc = Path.Combine(dir, $"bn2_{tag}.sfc"), smsFile = Path.Combine(dir, $"bn2_{tag}.sms");
+        string gb = Path.Combine(dir, $"bn2_{tag}.gb"), sfc = Path.Combine(dir, $"bn2_{tag}.sfc"), smsFile = Path.Combine(dir, $"bn2_{tag}.sms"), mdFile = Path.Combine(dir, $"bn2_{tag}.md");
         File.WriteAllBytes(gb, MakeGbRom(tone: true));
         File.WriteAllBytes(sfc, MakeSnesRom());
         File.WriteAllBytes(smsFile, MakeSmsRom());
+        File.WriteAllBytes(mdFile, MakeMdRom(dac: true));
         try
         {
-            foreach (var (name, path, console) in new[] { ("Game Boy", gb, 1), ("SNES", sfc, 2), ("Master System", smsFile, 3) })
+            foreach (var (name, path, console) in new[] { ("Game Boy", gb, 1), ("SNES", sfc, 2), ("Master System", smsFile, 3), ("Genesis", mdFile, 4) })
             {
                 using var g = OpenGame(path, console);
                 RenderBlocks(g, 1.0);
@@ -879,8 +881,36 @@ public sealed unsafe partial class SelfTest
                 speeds.Add($"{name} {speed3:0.0}x");
             }
         }
-        finally { try { File.Delete(gb); File.Delete(sfc); File.Delete(smsFile); } catch { } }
+        finally { try { File.Delete(gb); File.Delete(sfc); File.Delete(smsFile); File.Delete(mdFile); } catch { } }
         t.Note($"ROM mode: {string.Join(", ", speeds)} real time (test games), allocation {(a1 - a0):N0} B in 8 s");
+
+        // real games, when named (BROKENNES_TEST_GAMES = files separated by ';'): what a game of each console costs for real, with the Mix instance alone and with every stem of the game claimed (informational: a game is not in the repository)
+        string? games = Environment.GetEnvironmentVariable("BROKENNES_TEST_GAMES");
+        if (!string.IsNullOrEmpty(games))
+            foreach (var gamePath in games.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!File.Exists(gamePath)) { t.Note($"(no such game: {gamePath})"); continue; }
+                int console = Path.GetExtension(gamePath).ToLowerInvariant() switch { ".nes" => 0, ".gb" or ".gbc" => 1, ".sfc" or ".smc" => 2, ".md" or ".gen" or ".smd" or ".bin" => 4, _ => 3 };
+                using var g = SegaOrAnyGame(gamePath, console);
+                RenderBlocks(g, 1.5);
+                var swg = Pace.Start();
+                RenderBlocks(g, 6.0);
+                swg.Stop();
+                t.Note($"{Path.GetFileName(gamePath)} ({Cx_Names(console)}): {swg.Describe(6.0)} with the Mix instance alone");
+                if (console is 3 or 4)
+                {
+                    var set = new List<PluginInstance> { g };
+                    int voices = console == 4 ? 11 : 4;
+                    for (int v = 0; v < 4; v++) set.Add(Companion(channelParam: v + 1));
+                    if (console == 4) for (int v = 1; v <= 7; v++) set.Add(Companion(voiceParam: v > 6 ? 10 : v));
+                    RenderSet(set, 1.5);
+                    var sws = Pace.Start();
+                    RenderSet(set, 6.0);
+                    sws.Stop();
+                    t.Note($"{Path.GetFileName(gamePath)} with the Mix and {set.Count - 1} stems claimed: {sws.Describe(6.0)}");
+                    foreach (var extra in set.Skip(1)) extra.Destroy();
+                }
+            }
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -2269,6 +2299,10 @@ public sealed unsafe partial class SelfTest
 
     // ------------------------------------------------------------------------------------------------
     // Game sound reaches FL, and Instrument Runaway on Game Boy and SNES
+
+    private static string Cx_Names(int console) => console switch { 0 => "NES", 1 => "Game Boy", 2 => "SNES", 3 => "Master System / Game Gear", _ => "Genesis" };
+
+    private PluginInstance SegaOrAnyGame(string path, int console) => OpenGame(path, console);
 
     private PluginInstance OpenGame(string path, int console, int channelParam = 0, int rate = 48000)
     {
