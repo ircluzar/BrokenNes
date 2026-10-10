@@ -101,6 +101,19 @@ internal static class SegaScenes
         return mm;
     }
 
+    /// <summary>How many pixels of the region are not the NES colour nearest to the reference's own colour there: the exact colour check of the layered path (which draws a pixel in the textbook colour of the NES index it picked).
+    /// Unlike <see cref="MaskMismatch"/> it sees a tile swapped for another of the same drawn-ness, a wrong palette line or the wrong layer on top.</summary>
+    private static int ColourMismatch(SegaPictureSession w, (int X, int Y, int W, int H) r)
+    {
+        int bad = 0; var b = w.BridgeCanvas; var f = w.ReferenceCanvas;
+        for (int y = r.Y; y < r.Y + r.H; y++) for (int x = r.X; x < r.X + r.W; x++)
+        {
+            uint rf = At(f, x, y);
+            if (At(b, x, y) != NesLook((int)(rf >> 16 & 0xFF), (int)(rf >> 8 & 0xFF), (int)(rf & 0xFF))) bad++;
+        }
+        return bad;
+    }
+
     private static uint NesLook(int r, int g, int b) => (uint)NesFixPalette.Rgb(NesFixPalette.Nearest(r, g, b));
     private static uint SmsLook(int bgr6) { int[] l = { 0, 0x52, 0xAD, 0xFF }; return NesLook(l[bgr6 & 3], l[bgr6 >> 2 & 3], l[bgr6 >> 4 & 3]); }
     private static uint MdLook(int c) { int[] l = { 0, 49, 87, 119, 146, 174, 206, 255 }; return NesLook(l[c >> 1 & 7], l[c >> 5 & 7], l[c >> 9 & 7]); }
@@ -167,6 +180,13 @@ internal static class SegaScenes
         r.Regs(0x04 | 0x08, 0x40, 0x0E, 0, 0, 0x7E, 0xFB, 0x00, 0, 0, 0xFF); r.Frames();         // X shifted by 8
         mm = Mm(r.Wrap, tag);
         Check($"{tag}: the 8-pixel sprite shift", mm == 0, $"{mm} pixels differ");
+        // six zoomed sprites on one line are twelve 8x8 pieces a line: the VDP shows them all, a NES chip drops the 9th on (16 lines), and the count says so
+        r = new SmsRig(chip); r.Cram(0, 0); r.Cram(16, 0); r.Cram(17, Green); r.Tile(3, 1);
+        for (int i = 0; i < 6; i++) r.Sprite(i, 8 + i * 30, 80, 3);
+        r.V.Vram[0x3F00 + 6] = 0xD0;                                                          // the list ends here, as a game's does
+        r.Regs(0x04, 0x41, 0x0E, 0, 0, 0x7E, 0xFB, 0x00, 0, 0, 0xFF); r.Frames();
+        long overLines = r.Wrap.Counters.Total(layered ? "sprite pieces over the 8-per-line limit (the chip drops them too)" : "lines with more than 8 sprite pieces (the NES chip drops the rest)");
+        Check($"{tag}: twelve sprite pieces a line: the flat chip (8 a line) counts the 16 lines it drops pieces on, each of 3 frames; the layered one (16 a line for zoomed sprites) loses nothing", layered ? overLines == 0 : overLines == 3 * 16, $"{overLines}; {r.Wrap.Counters}");
 
         // ---- priority: a background tile with the priority bit covers a sprite, one without does not
         r = new SmsRig(chip); r.Cram(0, 0); r.Cram(1, Blue); r.Cram(16, 0); r.Cram(17, Green); r.Tile(1, 1); r.Tile(3, 1);
@@ -209,7 +229,8 @@ internal static class SegaScenes
             Check($"{tag}: the bezel around it is black", At(r.Wrap.BridgeCanvas, 10, 10) == 0 && At(r.Wrap.BridgeCanvas, 240, 200) == 0 && At(r.Wrap.BridgeCanvas, 100, 20) == 0);
             int mm = Mm(r.Wrap, tag);
             Check($"{tag}: what the window shows is what the Game Gear shows", mm <= (chip == "NES:FIXS" ? 0 : 200), $"{mm} pixels differ");
-            Check($"{tag}: a 12-bit colour (red 15) is the NES colour nearest to it", At(r.Wrap.BridgeCanvas, 49 + 0, 48 + 8) == NesLook(0xFF, 0, 0) || At(r.Wrap.BridgeCanvas, 49, 48) == NesLook(0xFF, 0, 0) || true);
+            Check($"{tag}: a 12-bit colour (red 15) is the NES colour nearest to it", At(r.Wrap.BridgeCanvas, 49, 48 + 8) == NesLook(0xFF, 0, 0), $"{At(r.Wrap.BridgeCanvas, 49, 56):X6} want {NesLook(0xFF, 0, 0):X6}");
+            if (chip == "NES:FIXS") Check($"{tag}: every pixel of the window is the NES colour nearest to the Game Gear's own", ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
         }
     }
 
@@ -249,13 +270,29 @@ internal static class SegaScenes
         if (!layered) Check($"{tag}: ... the flat path has one fine scroll for the frame and counts what disagrees", r.Wrap.Counters.Total("lines with a fine scroll other than the frame's") > 0, r.Wrap.Counters.ToString());
 
         // ---- the window replaces plane A
-        r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(17, 0x0E0); r.Color(33, 0xE00); r.Tile(1, 1); r.Tile(2, 1); r.Tile(3, 1);
-        for (int row = 0; row < 28; row++) for (int col = 0; col < 32; col++) { if ((col + row) % 2 == 0) r.Cell(MdRig.PlaneA, 64, row, col, 1, 0); if (row < 3) r.Cell(MdRig.WindowNt, 32, row, col, 2, 1); }
+        r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(17, 0x0E0); r.Color(18, 0xE0E); r.Color(33, 0xE00); r.Tile(1, 1); r.Tile(2, 1); r.Tile(3, 2);
+        // the window's cells alternate between two tiles of different colours, so a window drawn one cell to the side shows in the colours
+        for (int row = 0; row < 28; row++) for (int col = 0; col < 32; col++) { if ((col + row) % 2 == 0) r.Cell(MdRig.PlaneA, 64, row, col, 1, 0); if (row < 3) r.Cell(MdRig.WindowNt, 32, row, col, 2 + col % 2, 1); }
         r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x00, 0x3F, 0, 0x02, 0x01, 0x04, 0x03);   // window at the top, 3 cells high ; left part 4*16 wide
         r.Go();
         mm = Mm(r.Wrap, tag);
         Check($"{tag}: the window layer replaces plane A where the registers put it", mm <= (layered ? 0 : 600), $"{mm} pixels differ");
         Check($"{tag}: the window's own tiles and palette show in it", At(r.Wrap.BridgeCanvas, 4, 8 + 4) == MdLook(0x0E0) || !layered, $"{At(r.Wrap.BridgeCanvas, 4, 12):X6}");
+        if (layered) Check($"{tag}: the window's cells are on the columns the VDP puts them (every colour is the VDP's)", At(r.Wrap.BridgeCanvas, 4, 12) == MdLook(0x0E0) && At(r.Wrap.BridgeCanvas, 12, 12) == MdLook(0xE0E) && ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{At(r.Wrap.BridgeCanvas, 4, 12):X6}/{At(r.Wrap.BridgeCanvas, 12, 12):X6}; {ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
+
+        // ---- sprites against the planes: the ladder spr_hi > A_hi > B_hi > spr_lo > A_lo > B_lo
+        r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(17, 0xE00); r.Color(33, 0x0E0); r.Tile(1, 1);
+        r.Cell(MdRig.PlaneA, 64, 5, 4, 1, 0);                  // 1: plane A low, a low sprite over it: the sprite wins (blue)
+        r.Cell(MdRig.PlaneA, 64, 5, 8, 1, 0, prio: true);      // 2: plane A high, a low sprite: plane A wins (red)
+        r.Cell(MdRig.PlaneA, 64, 5, 12, 1, 0, prio: true);     // 3: plane A high, a high sprite: the sprite wins (blue)
+        r.Cell(MdRig.PlaneB, 64, 5, 16, 1, 2, prio: true);     // 4: plane B high, a low sprite: plane B wins (green)
+        r.Cell(MdRig.PlaneB, 64, 5, 20, 1, 2, prio: true); r.Cell(MdRig.PlaneA, 64, 5, 20, 1, 0);   // 5: plane B high over plane A low, a low sprite: plane B wins (green)
+        for (int k = 0; k < 5; k++) r.Sprite(k, (4 + 4 * k) * 8, 5 * 8, 1, 1, 1, pal: 1, prio: k == 2, link: k == 4 ? 0 : k + 1);
+        r.Go();
+        uint[] want = { MdLook(0xE00), MdLook(0x00E), MdLook(0xE00), MdLook(0x0E0), MdLook(0x0E0) }; var got = new uint[5];
+        for (int k = 0; k < 5; k++) got[k] = At(r.Wrap.BridgeCanvas, (4 + 4 * k) * 8 + 3, 8 + 5 * 8 + 3);
+        Check($"{tag}: a sprite and a plane meet as the VDP's ladder says (sprite over plane A low, plane A high over a low sprite, a high sprite over everything, plane B high over a low sprite)", got.SequenceEqual(want) || !layered, string.Join("/", got.Select(g => g.ToString("X6"))) + " want " + string.Join("/", want.Select(g => g.ToString("X6"))));
+        if (layered) Check($"{tag}: ... and every pixel of the scene is the VDP's", ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
 
         // ---- sprites: sizes, flips, a link chain, the per-line limit
         r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(2, 0x0E0); r.Color(17, 0xE00); r.Color(18, 0x0EE);
