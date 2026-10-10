@@ -8,7 +8,7 @@
   compared twice: with the Zilog Z80 timing the board uses, and with `OracleZ80Timing=1` (the oracle's instruction lengths, a tool-only switch). The result is one TSV row per game.
   Mesen's pictures are the only large thing written; they are deleted after each game unless -Keep.
 
-  The input list is a text file, one game per line:  <rom path> [TAB <pad script>] [TAB <region Auto|Ntsc|Pal>]
+  The input list is a text file, one game per line:  <rom path or file name> [TAB <pad script>] [TAB <region Auto|Ntsc|Pal>] [TAB <frames>]
   Without a pad script the Workshop's golden scripts are used (tap button 1 / Start, then walk); without a region the file name decides (a "(Europe)" tag is PAL) like the board does.
   Each concurrent job needs its own copy of the oracle (about 85 MB): they live in <Scratch>\mesen-slot<n>.
 
@@ -30,7 +30,8 @@ param(
     [int]$TimeoutSec = 400,
     [switch]$Keep,
     [string]$Modes = "zilog=;oracle=--tune OracleZ80Timing=1",   # the comparisons made against each game's oracle pictures: "name=extra --sms-run arguments;name=..." (the app's own configuration is "zilog"; "oracle" runs the Z80 with the oracle's instruction lengths; add for example "rhalt=--tune OracleHaltNoRefresh=1" for R not counting while halted, as the oracle's does not; tool settings combine in one --tune: "both=--tune OracleZ80Timing=1,OracleHaltNoRefresh=1")
-    [string]$ExtraArgs = ""         # added to every `--sms-run`
+    [string]$ExtraArgs = "",        # added to every `--sms-run`
+    [string]$RomDir = ""            # a list row that is a bare file name is looked up under this folder (the committed menu-scripts.tsv has names, not paths)
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Workshop)) { throw "Workshop exe not found: $Workshop" }
@@ -42,7 +43,9 @@ $padGg  = "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Rig
 $games = foreach ($line in Get-Content $List) {
     if (-not $line.Trim() -or $line.TrimStart().StartsWith("#")) { continue }
     $f = $line -split "`t"
-    [pscustomobject]@{ Rom = $f[0].Trim(); Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" } }
+    $romPath = $f[0].Trim()
+    if (-not (Test-Path -LiteralPath $romPath) -and $RomDir) { $hit = Get-ChildItem -LiteralPath $RomDir -Recurse -File -Filter $romPath | Select-Object -First 1; if ($hit) { $romPath = $hit.FullName } else { throw "ROM not found under ${RomDir}: $romPath" } }
+    [pscustomobject]@{ Rom = $romPath; Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" }; Frames = if ($f.Count -gt 3 -and $f[3].Trim()) { [int]$f[3].Trim() } else { 0 } }
 }
 "compare: $(@($games).Count) games, $Frames frames, $Jobs jobs"
 $slots = [System.Collections.Concurrent.ConcurrentQueue[int]]::new()
@@ -60,7 +63,8 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         $gg = $ext -eq ".gg"
         $tag = ($name -replace '[^A-Za-z0-9]+', '_')
         if ($tag.Length -gt 60) { $tag = $tag.Substring(0, 60) }
-        $pad = if ($g.Pad) { $g.Pad } elseif ($using:SweepPad) { (& $using:Workshop --sms-sweep --print-pad $(if ($gg) { "gg" } else { "sms" }) --frames $using:Frames | Out-String).Trim() } elseif ($gg) { $using:padGg } else { $using:padSms }
+        $gFrames = if ($g.Frames -gt 0) { $g.Frames } else { $using:Frames }      # a list row may give its own length (a menu script that needs more than the default 899 frames)
+        $pad = if ($g.Pad) { $g.Pad } elseif ($using:SweepPad) { (& $using:Workshop --sms-sweep --print-pad $(if ($gg) { "gg" } else { "sms" }) --frames $gFrames | Out-String).Trim() } elseif ($gg) { $using:padGg } else { $using:padSms }
         $region = $g.Region
         if (-not $region) {
             $pal = $name -match '[\(\[](?:[^\)\]]*,\s*)?(Europe|Australia|PAL|E)(?:\s*,[^\)\]]*)?[\)\]]'
@@ -73,7 +77,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         $work = Join-Path $using:Scratch "mesen-slot$slot"
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $row = [ordered]@{ game = $name; console = $(if ($gg) { "GG" } else { "SMS" }); region = $region; error = "" }
-        $frameList = if ($using:Spec) { $using:Spec } else { "2-$($using:Frames)" }
+        $frameList = if ($using:Spec) { $using:Spec } else { "2-$gFrames" }
         $runList = @(@{ Dir = $a; Tag = $tag }, @{ Dir = $b; Tag = $tag })[0..($using:Runs - 1)]
         foreach ($run in $runList) {
             # a child process each: the capture script passes its settings to the oracle through environment variables, which concurrent runs of one process would overwrite in each other
@@ -91,7 +95,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
             foreach ($def in ($using:Modes -split ";")) {
                 $nm, $ar = $def -split "=", 2
                 $mode = @{ Name = $nm.Trim(); Tune = @(($ar -split " ") | Where-Object { $_ }) }
-                $args2 = @("--sms-run", $rom, "--frames", $using:Frames, "--input", $pad, "--png-at", $frameList, "--out", $mine, "--tag", $tag, "--mesen", $a, "--region", $region, "--diff-detail", $(if ($using:Spec) { "40" } else { "0" })) + $mode.Tune
+                $args2 = @("--sms-run", $rom, "--frames", $gFrames, "--input", $pad, "--png-at", $frameList, "--out", $mine, "--tag", $tag, "--mesen", $a, "--region", $region, "--diff-detail", $(if ($using:Spec) { "40" } else { "0" })) + $mode.Tune
                 if ($using:Runs -gt 1) { $args2 += @("--mesen-b", $b) }
                 if ($using:ExtraArgs) { $args2 += ($using:ExtraArgs -split " ") }
                 $o = & $using:Workshop @args2 2>&1 | Out-String

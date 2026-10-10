@@ -32,6 +32,7 @@ param(
     [int]$TimeoutSec = 240,
     [int]$Overscan = 24,        # rows cut top and bottom of the 240-line frame: 24 leaves 192 lines; 0 writes the whole frame and --sms-run cuts it to the picture height of each frame (a 224-line game)
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1",
+    [string]$RamPowerOn = "AllZeros",   # the oracle's work RAM at power-on: AllZeros (like this emulator), AllOnes or Random
     [string]$SmsRevision = "",   # the oracle's VDP revision setting (Sms.Revision: Compatibility, Sms1, Sms2); empty leaves its default
     [string]$Work = ""           # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
 )
@@ -46,7 +47,7 @@ if (-not (Test-Path (Join-Path $work "Mesen.exe"))) {
 $settings = @{
     Version = "2.1.1"; ConfigUpgrade = 5
     Sms = @{
-        Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
+        Region = $Region; GameGearRegion = $Region; RamPowerOnState = $RamPowerOn; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
         Port1 = @{ Type = "SmsController" }; Port2 = @{ Type = "SmsController" }
         NtscOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
         PalOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
