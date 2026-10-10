@@ -416,8 +416,9 @@ namespace BrokenNes.Windows
         private void LoadSessionSave()
         {
             var s = session;
-            // a Genesis cartridge with no SRAM header reports a battery only after its game has written to it, so a save made on an earlier run is loaded whenever the file exists
-            if (s == null || (!s.HasBattery && !(s.Console == ConsoleKind.Genesis && File.Exists(SessionSavePath(s) ?? "")))) return;
+            // a Genesis cartridge with no SRAM header reports a battery only after its game has written to it, and a Master System / Game Gear game whose RAM mapping the ROM scan missed still gets its
+            // save back: the file is looked for whatever the scan said, so a save made on an earlier run is loaded whenever the file exists
+            if (s == null || (!s.HasBattery && s.Console is not (ConsoleKind.MasterSystem or ConsoleKind.GameGear) && !(s.Console == ConsoleKind.Genesis && File.Exists(SessionSavePath(s) ?? "")))) return;
             try
             {
                 string path = SessionSavePath(s)!;

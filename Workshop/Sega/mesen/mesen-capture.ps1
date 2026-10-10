@@ -31,11 +31,14 @@ param(
     [string]$VFrames = "",
     [int]$TimeoutSec = 240,
     [int]$Overscan = 24,        # rows cut top and bottom of the 240-line frame: 24 leaves 192 lines; 0 writes the whole frame and --sms-run cuts it to the picture height of each frame (a 224-line game)
-    [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1"
+    [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1",
+    [string]$RamPowerOn = "AllZeros",   # the oracle's work RAM at power-on: AllZeros (like this emulator), AllOnes or Random
+    [string]$SmsRevision = "",   # the oracle's VDP revision setting (Sms.Revision: Compatibility, Sms1, Sms2); empty leaves its default
+    [string]$Work = ""           # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
 )
 $ErrorActionPreference = "Stop"
 if (-not $Tag) { $Tag = [IO.Path]::GetFileNameWithoutExtension($Rom) }
-$work = Join-Path $env:LOCALAPPDATA "BrokenNes\sega-mesen"
+$work = if ($Work) { $Work } else { Join-Path $env:LOCALAPPDATA "BrokenNes\sega-mesen" }
 if (-not (Test-Path (Join-Path $work "Mesen.exe"))) {
     New-Item -ItemType Directory -Force $work | Out-Null
     Copy-Item (Join-Path $OracleDir "*.exe") $work
@@ -44,7 +47,7 @@ if (-not (Test-Path (Join-Path $work "Mesen.exe"))) {
 $settings = @{
     Version = "2.1.1"; ConfigUpgrade = 5
     Sms = @{
-        Region = $Region; GameGearRegion = $Region; RamPowerOnState = "AllZeros"; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
+        Region = $Region; GameGearRegion = $Region; RamPowerOnState = $RamPowerOn; EnableFmAudio = $Fm.IsPresent; GgBlendFrames = $false
         Port1 = @{ Type = "SmsController" }; Port2 = @{ Type = "SmsController" }
         NtscOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
         PalOverscan = @{ Left = 0; Right = 0; Top = $Overscan; Bottom = $Overscan }
@@ -52,6 +55,7 @@ $settings = @{
     }
     Debug = @{ ScriptWindow = @{ AllowIoOsAccess = $true; ScriptTimeout = 600 } }
 }
+if ($SmsRevision) { $settings.Sms.Revision = $SmsRevision }
 $settings | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $work "settings.json") -Encoding utf8
 $saves = Join-Path $work "Saves"
 if (Test-Path $saves) { Get-ChildItem $saves -Recurse -File | Remove-Item -Force }
@@ -68,7 +72,10 @@ $env:MESEN_VWATCH = $VWatch; $env:MESEN_VFRAMES = $VFrames; $env:MESEN_MWATCH = 
 $env:MESEN_GG = if ([IO.Path]::GetExtension($Rom).ToLowerInvariant() -eq ".gg") { "1" } else { "" }
 $env:MESEN_DUMP = if ($Dump) { "1" } else { "" }; $env:MESEN_STATE = if ($State) { "1" } else { "" }
 $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
-$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path -LiteralPath $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `
+# the oracle is given a copy with a plain name: it does not open some dump names (commas, ampersands, "(Proto)") from the command line, and then ends without running one instruction
+$plainRom = Join-Path $work ("game" + [IO.Path]::GetExtension($Rom).ToLowerInvariant())
+Copy-Item -LiteralPath $Rom -Destination $plainRom -Force
+$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$plainRom`"", "`"$lua`"") -PassThru -NoNewWindow `
     -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
 $expected = foreach ($tok in ($Frames -join "," -split ",")) { if ($tok -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } elseif ($tok) { [int]$tok } }

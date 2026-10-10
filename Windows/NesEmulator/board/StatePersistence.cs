@@ -17,6 +17,7 @@ namespace BrokenNes
 
         private async Task SaveState()
         {
+            if (session != null) { await SaveSessionStateAsync(); return; }   // a console session (Master System, Game Gear ...): Emulator.Consoles.cs; the NES path below is unchanged
             if (nes == null || stateBusy) return; stateBusy = true;
 #if DIAG_LOG
             void Diag(string s){ try { Console.WriteLine($"[SaveStateUI] {DateTime.UtcNow:O} {s}"); } catch {} }
@@ -97,6 +98,7 @@ namespace BrokenNes
 
         private async Task LoadState()
         {
+            if (session != null) { await LoadSessionStateAsync(); return; }
             if (stateBusy) return; stateBusy = true; bool wasRunning = nesController.IsRunning;
             try
             {

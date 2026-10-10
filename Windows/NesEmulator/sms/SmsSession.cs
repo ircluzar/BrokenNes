@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using NesEmulator.Systems;
 
@@ -25,20 +26,31 @@ public class SmsSession : IConsoleSession
         GameId = ConsoleSessions.Sha1(rom);
         Console = console;
         var model = SegaSettings.ResolveMasterSystemModel(modelChoice, console, fileName);
+        // a game that needs the original VDP (see SmsCartridge.KnownModels) gets it unless the user chose a board
+        if ((modelChoice is null or MasterSystemModel.Auto) && console == ConsoleKind.MasterSystem && model == MasterSystemModel.Sms2 && SmsCartridge.KnownModel(rom) is { } needed) model = needed;
         // every Game Gear runs at 60 Hz whatever market its cartridge was sold in: a "(E)" in the file name does not make it a 50 Hz machine (only an explicit user choice does)
         var region = console == ConsoleKind.GameGear && (regionChoice is null or RegionChoice.Auto) ? SegaRegion.Ntsc : SegaSettings.ResolveRegion(regionChoice, console, rom, fileName);
         variant = model is MasterSystemModel.Sg1000 or MasterSystemModel.Sc3000 ? PsgVariant.Ti : PsgVariant.Sega;
-        var cart = new SmsCartridge(rom, SmsCartridge.DetectMapper(rom, model));
-        mapperName = cart.Mapper.ToString();
+        // A BIOS image (a file whose name says so: "[BIOS] ..." in the common dump sets) is not a cartridge: it is run as the console's BIOS with an empty slot, from a cold power-on, which is what it is for. Nothing in the app
+        // ever needs a BIOS; this only lets the user's own BIOS images (and the games built into some of them) run as what they are.
+        bool biosImage = IsBiosImage(fileName);
+        SmsCartridge? bios = null;
+        SmsCartridge cart;
+        if (biosImage) { bios = new SmsCartridge(rom, SmsMapperKind.Sega); cart = new SmsCartridge(new byte[0x4000], SmsMapperKind.Plain); Array.Fill(cart.Rom, (byte)0xFF); mapperName = "BIOS"; }
+        else { cart = new SmsCartridge(rom, SmsCartridge.DetectMapper(rom, model)); mapperName = cart.Mapper.ToString(); }
         cpuId = cpu; ppuId = ppu; apuId = apu;
         var parts = new SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>
         {
             Apu = m => SmsSoundFactories.Create(apu, new SmsSoundRequest(m, console, variant)),
         };
-        board = new BOARD_SMS(cart, console, model, region, Rate, parts);
+        board = new BOARD_SMS(cart, console, model, region, Rate, parts, bios);
         Title = !string.IsNullOrEmpty(fileName) ? Path.GetFileNameWithoutExtension(fileName) : $"{Consoles.DisplayName(console)} game";
         Model = model;
     }
+
+    /// <summary>True for a file that is a BIOS image by its name ("[BIOS]" in the dump sets' names, or the word BIOS as a word).</summary>
+    public static bool IsBiosImage(string fileName) =>
+        !string.IsNullOrEmpty(fileName) && System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(fileName), @"(^|[\s\[\(_-])BIOS($|[\s\]\)_-])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public MasterSystemModel Model { get; }
     public BOARD_SMS Board => board;
@@ -77,6 +89,57 @@ public class SmsSession : IConsoleSession
     public bool HasBattery => board.Cart.HasBattery;
     public byte[] ExportSave() => board.Cart.ExportSave();
     public void ImportSave(byte[] data) => board.Cart.ImportSave(data);
+
+    // ---- save states (the shared contract in ConsoleSystems.cs; the container in ConsoleStates.cs) ----
+
+    /// <summary>The layout of the board's payload: bump it whenever the board, the VDP, the cartridge, the Z80 or a sound unit changes what it writes, so an old state is refused rather than misread.</summary>
+    public const string StateFormat = "sms-2";
+
+    public bool SupportsState => true;
+
+    /// <summary>The parts a state depends on and that must be equal for it to load: the sound unit (a state saved with the stock unit does not fit the FM unit), the board model and the timing region, and the payload layout.</summary>
+    private Dictionary<string, string> StateUnits() => new() { ["apu"] = apuId, ["model"] = Model.ToString(), ["region"] = board.Region.ToString(), ["format"] = StateFormat };
+
+    public byte[] SaveState()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.SaveState(w);
+        var units = StateUnits();
+        units["cpu"] = cpuId; units["ppu"] = ppuId;   // information only: the Z80 and the picture chip are what they are
+        return ConsoleStateFile.Wrap(Console, GameId, Title, units, ms.ToArray());
+    }
+
+    public void LoadState(byte[] state)
+    {
+        // the header is checked before anything is touched; a refusal leaves the machine as it was
+        byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        byte[] before = SnapshotForUndo();
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(payload), System.Text.Encoding.UTF8);
+            board.LoadState(r);
+            if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
+            AfterStateLoad();
+        }
+        catch (Exception e)
+        {
+            // a payload that passed the checksum but does not fit (a layout the format name did not catch): put the machine back as it was and say so, never run on half a state
+            using var r = new BinaryReader(new MemoryStream(before), System.Text.Encoding.UTF8);
+            board.LoadState(r);
+            AfterStateLoad();
+            throw new InvalidDataException("The state could not be loaded and the game was left as it was: " + e.Message, e);
+        }
+    }
+
+    private byte[] SnapshotForUndo()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.SaveState(w);
+        return ms.ToArray();
+    }
+
+    /// <summary>What a session derives from the board after a state load (the Game Gear's window of the picture).</summary>
+    protected virtual void AfterStateLoad() { }
 
     public bool TrySwapCore(CoreSlot slot, string id)
     {
@@ -119,12 +182,19 @@ public sealed class GgSession : SmsSession
     public override void RunFrame()
     {
         board.RunFrame();
+        CropLcd();
+    }
+
+    private void CropLcd()
+    {
         var src = board.Vdp.Frame;
         int h = board.Vdp.FrameHeight;
         int top = Math.Max(0, (h - LcdHeight) / 2);
         for (int y = 0; y < LcdHeight; y++)
             Array.Copy(src, (top + y) * 256 + 48, lcd, y * LcdWidth, LcdWidth);
     }
+
+    protected override void AfterStateLoad() => CropLcd();
 
     public override uint[] Frame => lcd;
     public override int FrameWidth => LcdWidth;

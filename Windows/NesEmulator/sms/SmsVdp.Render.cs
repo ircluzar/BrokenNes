@@ -11,18 +11,38 @@ public sealed partial class SmsVdp
     private readonly byte[] sprLine = new byte[256];       // Mode 4: 0 = no sprite pixel, else the sprite palette colour 1..15
     private readonly uint[] lineBuf = new uint[256];       // TMS modes: the finished line
 
-    /// <summary>The 16 colours of the TMS9918 (colour 0, transparent, shows the backdrop). Used by Modes 0-3 on every revision.</summary>
-    // the sixteen colours as the oracle (Mesen 2.1.1) draws them, read off its picture of Workshop/Sega/Sg1000Progs.PaletteProbe (a block of each colour): the common 'TMS9918A' RGB list differs from these in the last digits
+    /// <summary>The 16 colours of the TMS9918A of the SG-1000 / SC-3000 (colour 0, transparent, shows the backdrop): the video chip's own analog levels.</summary>
+    // the sixteen colours as the oracle (Mesen 2.1.1) draws an SG-1000 picture, read off Workshop/Sega/Sg1000Progs.PaletteProbe (a block of each colour): the common 'TMS9918A' RGB list differs from these in the last digits
     private static readonly uint[] TmsPalette =
     {
         0xFF000000, 0xFF000000, 0xFF21CE42, 0xFF5ADE7B, 0xFF5252EF, 0xFF7B73FF, 0xFFD6524A, 0xFF42EFF7,
         0xFFFF5252, 0xFFFF7B7B, 0xFFD6C652, 0xFFE7CE84, 0xFF21B539, 0xFFCE5ABD, 0xFFCECECE, 0xFFFFFFFF,
     };
 
+    /// <summary>
+    /// The 16 colours the Master System's and the Game Gear's video chips give the TMS9918 modes (0-3): the SMS chips do not reproduce the TMS9918A's analog levels, they map each of the sixteen colour codes to a fixed 6-bit colour
+    /// (BBGGRR: 00 00 08 0C 10 30 01 3C 02 03 05 0F 04 33 15 3F, the table the VDP documentation gives) which goes through the same two-bits-a-channel output as colour RAM. The same probe program run as a Master System
+    /// cartridge shows these on the oracle: 000000 000000 00AD00 00FF00 000052 0000FF 520000 00FFFF AD0000 FF0000 525200 FFFF00 005200 FF00FF 525252 FFFFFF. (Found by Loretta no Shouzou, which uses Graphics II on a Master System: every
+    /// colour of its picture differed from the oracle's before.)
+    /// </summary>
+    private static readonly uint[] SmsTmsPalette = BuildSmsTmsPalette();
+    private static uint[] BuildSmsTmsPalette()
+    {
+        // the two-bit channel levels the colour RAM output uses (0, 52, AD, FF), written here so the table does not depend on the order static fields of the two halves of this class are set up in
+        ReadOnlySpan<byte> level = stackalloc byte[] { 0x00, 0x52, 0xAD, 0xFF };
+        var p = new uint[16];
+        var c6 = new byte[] { 0x00, 0x00, 0x08, 0x0C, 0x10, 0x30, 0x01, 0x3C, 0x02, 0x03, 0x05, 0x0F, 0x04, 0x33, 0x15, 0x3F };
+        for (int i = 0; i < 16; i++) { int v = c6[i]; p[i] = 0xFF000000u | (uint)(level[v & 3] << 16 | level[(v >> 2) & 3] << 8 | level[(v >> 4) & 3]); }
+        return p;
+    }
+
+    /// <summary>The colours of the TMS modes on this chip: the analog TMS9918A set on the SG-1000 / SC-3000, the fixed 6-bit set on the Master System and Game Gear.</summary>
+    private uint[] TmsColors => Revision == SmsVdpRevision.Tms9918 ? TmsPalette : SmsTmsPalette;
+
     private bool Mode4Active => HasMode4 && (Regs[0] & 0x04) != 0;
 
     /// <summary>The colour shown when nothing else is: the sprite palette entry register 7 selects (Mode 4), or the TMS colour of its low nibble.</summary>
-    private uint Backdrop => Mode4Active ? palArgb[16 + (Regs[7] & 0x0F)] : TmsPalette[Regs[7] & 0x0F];
+    private uint Backdrop => Mode4Active ? palArgb[16 + (Regs[7] & 0x0F)] : TmsColors[Regs[7] & 0x0F];
 
     /// <summary>Called when a picture line begins (before any of its pixels): works out which sprites sit on it.</summary>
     private void BeginLineSprites()
@@ -166,7 +186,8 @@ public sealed partial class SmsVdp
         bool multi = (Regs[1] & 0x08) != 0;  // Multicolor
         bool text = (Regs[1] & 0x10) != 0;   // Text
         Array.Clear(tmsBg);
-        uint bdColor = TmsPalette[Regs[7] & 0x0F];
+        var tms = TmsColors;
+        uint bdColor = tms[Regs[7] & 0x0F];
         int ntBase = (Regs[2] & 0x0F) << 10;
         int row = y >> 3, fy = y & 7;
         if (text)
@@ -181,7 +202,7 @@ public sealed partial class SmsVdp
                 for (int p = 0; p < 6; p++)
                 {
                     int colr = (bits & (0x80 >> p)) != 0 ? fg : bg;
-                    lineBuf[8 + col * 6 + p] = colr == 0 ? bdColor : TmsPalette[colr];
+                    lineBuf[8 + col * 6 + p] = colr == 0 ? bdColor : tms[colr];
                 }
             }
             return;   // the text mode has no sprites
@@ -276,7 +297,7 @@ public sealed partial class SmsVdp
         {
             int c = tmsBg[x];
             if (tmsSprOcc[x] != 0 && tmsSprColor[x] != 0) c = tmsSprColor[x];
-            lineBuf[x] = c == 0 ? bdColor : TmsPalette[c];
+            lineBuf[x] = c == 0 ? bdColor : tms[c];
         }
     }
 

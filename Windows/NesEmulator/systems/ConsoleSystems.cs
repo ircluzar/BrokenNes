@@ -410,4 +410,24 @@ public interface IConsoleSession : IDisposable
     /// from the current state. False when this swap cannot be done in place (the app then restarts the game on it).
     /// </summary>
     bool TrySwapCore(CoreSlot slot, string id);
+
+    // ---- save states (the shared mechanism: the apps keep a quick slot per game and file / key-value storage; the NES has its own, older one and does not use this) ----
+
+    /// <summary>True when <see cref="SaveState"/> and <see cref="LoadState"/> work for this session. A session that has no state says so here and in <see cref="StateUnsupportedReason"/>; it never pretends.</summary>
+    bool SupportsState => false;
+
+    /// <summary>Why this session has no save states, in words fit for a message to the user.</summary>
+    string StateUnsupportedReason => $"The {Consoles.DisplayName(Console)} has no save states yet.";
+
+    /// <summary>
+    /// The whole machine as bytes (a <see cref="ConsoleStateFile"/>): taken between frames, never in the middle of one. It carries the game's id and the ids of the parts the state depends on (the sound unit), so
+    /// <see cref="LoadState"/> can refuse a state that does not belong. Throws <see cref="NotSupportedException"/> when <see cref="SupportsState"/> is false.
+    /// </summary>
+    byte[] SaveState() => throw new NotSupportedException(StateUnsupportedReason);
+
+    /// <summary>
+    /// Puts a state made by <see cref="SaveState"/> back. Throws <see cref="InvalidDataException"/> (the message is for the user) when the state is for another game, console or sound unit, or is damaged, and leaves the
+    /// machine as it was; <see cref="NotSupportedException"/> when <see cref="SupportsState"/> is false. A state is never loaded into a different sound unit and no part is swapped to make it fit.
+    /// </summary>
+    void LoadState(byte[] state) => throw new NotSupportedException(StateUnsupportedReason);
 }

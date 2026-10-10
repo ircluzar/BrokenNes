@@ -190,6 +190,42 @@ namespace BrokenNes
             if (wasRunning) await StartEmulation();
         }
 
+        // ------------------------------------------------------------------ save states of a running session (the shared mechanism: IConsoleSession.SaveState / LoadState)
+        // The page's Save / Load buttons reach these through SaveState() / LoadState() in StatePersistence.cs while a console session runs; the NES keeps its own path there. One slot per game, in IndexedDB.
+
+        private async Task SaveSessionStateAsync()
+        {
+            var s = session;
+            if (s == null) return;
+            if (!s.SupportsState) { nesController.ErrorMessage = s.StateUnsupportedReason; Status.Set(s.StateUnsupportedReason); StateHasChanged(); return; }
+            try
+            {
+                byte[] state = s.SaveState();   // a frame is one synchronous call in this page, so this is always between frames
+                if (await JS.InvokeAsync<bool>("nesInterop.idbSetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId), state)) Status.Set($"State saved ({state.Length / 1024} KB)");
+                else { nesController.ErrorMessage = "Save error: the browser refused to store the state."; Status.Set(nesController.ErrorMessage); }
+            }
+            catch (Exception ex) { nesController.ErrorMessage = "Save error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
+            StateHasChanged();
+        }
+
+        private async Task LoadSessionStateAsync()
+        {
+            var s = session;
+            if (s == null) return;
+            if (!s.SupportsState) { nesController.ErrorMessage = s.StateUnsupportedReason; Status.Set(s.StateUnsupportedReason); StateHasChanged(); return; }
+            try
+            {
+                var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
+                if (data == null || data.Length == 0) { Status.Set("No saved state for this game"); StateHasChanged(); return; }
+                s.LoadState(data);   // refuses a state of another game / sound unit with the reason; the game keeps running as it was
+                try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+                Status.Set("State loaded");
+            }
+            catch (Exception ex) when (ex is System.IO.InvalidDataException or NotSupportedException) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
+            catch (Exception ex) { nesController.ErrorMessage = "Load error: " + ex.Message; Status.Set(nesController.ErrorMessage); }
+            StateHasChanged();
+        }
+
         // ------------------------------------------------------------------ battery saves (IndexedDB kv)
         private string SessionSaveKey(IConsoleSession s) => s.Console switch
         {
@@ -203,8 +239,9 @@ namespace BrokenNes
         private async Task LoadSessionBatteryAsync()
         {
             var s = session;
-            // a Genesis cartridge with no SRAM header reports a battery only after its game has written to it, so a save made on an earlier run is looked up regardless
-            if (s == null || (!s.HasBattery && s.Console != ConsoleKind.Genesis)) return;
+            // as on the desktop: a Genesis cartridge with no SRAM header reports a battery only after its game has written to it, and a Master System / Game Gear game whose RAM mapping the ROM scan
+            // missed still gets its save back, so a save made on an earlier run is looked up regardless
+            if (s == null || (!s.HasBattery && s.Console is not (ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis))) return;
             try
             {
                 var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", SessionSaveKey(s));

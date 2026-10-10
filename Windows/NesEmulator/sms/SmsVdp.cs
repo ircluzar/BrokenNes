@@ -131,11 +131,13 @@ public sealed partial class SmsVdp
     /// the address register at $3D6A in VRAM-write mode. Game Gear: $06 $80 $FF $FF $FF $FF $FB $00 $00 $00 $FF, colour RAM zero. These are what the oracle shows at the first
     /// instruction of a cartridge (probed with a one-instruction ROM); the BIOS-less state published for other emulators differs in register 1 (display off) only.
     /// </summary>
-    public void PowerOn()
+    /// <param name="postBios">False for a machine that runs a BIOS image: the chip then powers up cold (every register and colour entry zero, the address at 0) and the BIOS sets it up itself.</param>
+    public void PowerOn(bool postBios = true)
     {
         Array.Clear(Vram); Array.Clear(cram); Array.Clear(Regs);
         addr = 0; code = 0;
-        if (gg)
+        if (!postBios) { }
+        else if (gg)
         {
             byte[] r = { 0x06, 0x80, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB, 0x00, 0x00, 0x00, 0xFF };
             Array.Copy(r, Regs, r.Length);
@@ -551,6 +553,15 @@ public sealed partial class SmsVdp
         w.Write(vintFlag); w.Write(ovrFlag); w.Write(colFlag); w.Write(lineIrqPending); w.Write(fifthSpriteNumber);
         w.Write(Line); w.Write(vcounter); w.Write(lineCounter); w.Write(hscrollLatched); w.Write(vscrollLatched); w.Write(hCounterLatch);
         w.Write(Frames);
+        // where the chip is inside the line it is part-way through (a frame ends 21 Z80 cycles into the first blanking line), the queue of writes still waiting for their access slot, and the picture so far
+        w.Write(fifthSeen); w.Write(activeHeight); w.Write(FrameHeight); w.Write(renderedX); w.Write(curMc); w.Write(lineDrawn); w.Write(lineDisplayOn);
+        w.Write(evCount); w.Write(evNext); for (int i = 0; i < evTime.Length; i++) { w.Write(evTime[i]); w.Write(evKind[i]); }
+        w.Write(colAtMc); w.Write(ovrAtMc);
+        w.Write(pendHead); w.Write(pendCount); w.Write(lineBase); w.Write(lastWriteTime);
+        for (int i = 0; i < pend.Length; i++) { w.Write(pend[i].Time); w.Write(pend[i].Kind); w.Write(pend[i].Index); w.Write(pend[i].Value); }
+        w.Write(sprLine); foreach (uint c in lineBuf) w.Write(c);
+        w.Write(tmsBg); w.Write(tmsSprOcc); w.Write(tmsSprColor);
+        foreach (uint p in Frame) w.Write(p);
     }
 
     public void LoadState(BinaryReader r)
@@ -560,7 +571,16 @@ public sealed partial class SmsVdp
         vintFlag = r.ReadBoolean(); ovrFlag = r.ReadBoolean(); colFlag = r.ReadBoolean(); lineIrqPending = r.ReadBoolean(); fifthSpriteNumber = r.ReadInt32();
         Line = r.ReadInt32(); vcounter = r.ReadInt32(); lineCounter = r.ReadInt32(); hscrollLatched = r.ReadInt32(); vscrollLatched = r.ReadInt32(); hCounterLatch = r.ReadInt32();
         Frames = r.ReadInt64();
+        fifthSeen = r.ReadBoolean(); activeHeight = r.ReadInt32(); FrameHeight = r.ReadInt32(); renderedX = r.ReadInt32(); curMc = r.ReadInt32(); lineDrawn = r.ReadBoolean(); lineDisplayOn = r.ReadBoolean();
+        evCount = r.ReadInt32(); evNext = r.ReadInt32(); for (int i = 0; i < evTime.Length; i++) { evTime[i] = r.ReadInt32(); evKind[i] = r.ReadInt32(); }
+        colAtMc = r.ReadInt32(); ovrAtMc = r.ReadInt32();
+        pendHead = r.ReadInt32(); pendCount = r.ReadInt32(); lineBase = r.ReadInt64(); lastWriteTime = r.ReadInt64();
+        for (int i = 0; i < pend.Length; i++) pend[i] = new PendingWrite { Time = r.ReadInt64(), Kind = r.ReadInt32(), Index = r.ReadInt32(), Value = r.ReadByte() };
+        r.Read(sprLine, 0, sprLine.Length); for (int i = 0; i < lineBuf.Length; i++) lineBuf[i] = r.ReadUInt32();
+        r.Read(tmsBg, 0, tmsBg.Length); r.Read(tmsSprOcc, 0, tmsSprOcc.Length); r.Read(tmsSprColor, 0, tmsSprColor.Length);
+        for (int i = 0; i < Frame.Length; i++) Frame[i] = r.ReadUInt32();
         for (int i = 0; i < 32; i++)
             palArgb[i] = ConvertColor(gg ? cram[i * 2] | (cram[i * 2 + 1] & 0x0F) << 8 : cram[i] & 0x3F);
+        Refresh();
     }
 }

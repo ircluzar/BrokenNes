@@ -139,7 +139,9 @@ public sealed partial class Z80<TBus> where TBus : struct, IZ80Bus
     private bool I_skip;                    // this slot does not count towards the end of the instruction (fetch, wait state, prefix)
     private bool boundary;                  // the last Tick finished an instruction
     private bool halted;
-    private int prefixRun;                  // consecutive prefix bytes since the last instruction boundary (see ExecuteInstruction)
+    /// <summary>The refresh register counts the NOP cycles of a halted CPU (the Zilog behaviour, the default). A tool setting turns it off to follow an oracle that does not (see BOARD_SMS.OracleHaltNoRefresh); no app code does.</summary>
+    public bool HaltRefreshesR = true;
+    private int prefixRun;                 // consecutive prefix bytes since the last instruction boundary (see ExecuteInstruction)
 
     // interrupt and flag-latch state
     private bool iff1, iff2;
@@ -249,7 +251,7 @@ public sealed partial class Z80<TBus> where TBus : struct, IZ80Bus
                 break;
             case HALT_R:
                 Regs[rDB] = 0xFF;
-                IncR();
+                if (HaltRefreshesR) IncR();
                 break;
             case RD:
                 Read_Func(cur_instr[instr_pntr++], cur_instr[instr_pntr++], cur_instr[instr_pntr++]);

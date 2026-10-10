@@ -327,6 +327,15 @@ internal static class MapperSuite
         cc.Write(0x4000, 0x80 | 3); cc.Write(0xA010, 0x66);
         yield return new SmsCheck("Codemasters: bit 7 of the slot 1 register maps 8 KB of RAM at $A000", cc.Read(0xA010) == 0x66, $"{cc.Read(0xA010):X2}");
 
+        // the Korean cartridges with one bank register at $A000 (found by comparison with the oracle's pictures; the table in SmsCartridge.KnownCartridges names them by hash)
+        var ko = new SmsCartridge(Banks(8, -1), ctx.Poison == "mapper" ? SmsMapperKind.Plain : SmsMapperKind.KoreanA000);
+        bool koFixed = ko.Read(0x0000) == 0 && ko.Read(0x4000) == 1 && ko.Read(0x8000) == 2;
+        ko.Write(0xA000, 5); ko.Write(0xFFFF, 6); ko.Write(0x8000, 3);      // only $A000 is a register; the Sega mapper's registers and a write into the window do nothing
+        yield return new SmsCheck("the Korean $A000 mapper: slots 0 and 1 are banks 0 and 1 for good, the register at $A000 selects the bank of slot 2, the Sega registers do nothing",
+                                  koFixed && ko.Read(0x0000) == 0 && ko.Read(0x4000) == 1 && ko.Read(0x8000) == 5, $"{ko.Read(0):X2} {ko.Read(0x4000):X2} {ko.Read(0x8000):X2}");
+        var table = Banks(2, -1);
+        yield return new SmsCheck("a ROM that is not in the table keeps the Sega mapper (the table is by SHA-1, nothing else changes)", SmsCartridge.DetectMapper(table, MasterSystemModel.Sms2) == SmsMapperKind.Sega, "");
+
         // SG-1000 cartridges are wired straight in
         yield return new SmsCheck("an SG-1000 ROM of 32 KB has no mapper", SmsCartridge.DetectMapper(new byte[0x8000], MasterSystemModel.Sg1000) == SmsMapperKind.Plain, "");
         var p = new SmsCartridge(Banks(2, -1), SmsMapperKind.Plain);

@@ -78,11 +78,16 @@ public sealed class BOARD_SMS
     /// <summary>Called for every port access: (is a write, port, value, frame line, Z80 cycle in the line). Tracing; a null hook costs nothing.</summary>
     public Action<bool, ushort, byte, int, int>? PortHook;
 
+    /// <summary>A BIOS image running as the console's BIOS, with <see cref="Cart"/> an empty slot: the machine then powers up cold (BIOS enabled, nothing set up) and the BIOS does what a BIOS does, instead of starting in the state
+    /// the BIOS leaves for a cartridge. Null for every cartridge.</summary>
+    public SmsCartridge? Bios { get; }
+    private bool BiosMapped => Bios != null && (port3E & 0x08) == 0;
+
     public BOARD_SMS(SmsCartridge cart, ConsoleKind console, MasterSystemModel model, SegaRegion region, int sampleRate,
-                     SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>? parts = null)
+                     SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>? parts = null, SmsCartridge? bios = null)
     {
         parts ??= SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>.Stock;
-        Console = console; Model = model; Cart = cart;
+        Console = console; Model = model; Cart = cart; Bios = bios;
         Timeline = SegaTimeline.MasterSystem(region, console);
         var revision = model switch
         {
@@ -102,15 +107,20 @@ public sealed class BOARD_SMS
     public void Reset()
     {
         Array.Clear(Ram);
-        Cart.Reset();
-        Vdp.PowerOn();
+        Cart.Reset(); Bios?.Reset();
+        Vdp.PowerOn(Bios == null);
         Sound.Reset();
         Cpu.Reset();
-        // the registers the BIOS leaves for the cartridge (as the oracle shows them at a cartridge's first instruction): the stack at $DFF0, interrupt mode 1, interrupts disabled
-        Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1; Cpu.R = 29;
-        port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
-        port3F = 0xFF;
-        Ram[0] = port3E;                                   // the BIOS keeps a copy of the memory-control value at the first byte of work RAM (the oracle's post-BIOS RAM holds nothing else)
+        if (Bios == null)
+        {
+            // the registers the BIOS leaves for the cartridge (as the oracle shows them at a cartridge's first instruction): the stack at $DFF0, interrupt mode 1, interrupts disabled
+            Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1; Cpu.R = 29;
+            Cpu.BC2 = 0x0200; Cpu.DE2 = 0xC700; Cpu.HL2 = 0xC75F;   // the shadow set the BIOS leaves too (read by the oracle's reg-probe program before any game code runs; Fantastic Dizzy's interrupt handler uses them before it writes them)
+            port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
+            port3F = 0xFF;
+            Ram[0] = port3E;                                   // the BIOS keeps a copy of the memory-control value at the first byte of work RAM (the oracle's post-BIOS RAM holds nothing else)
+        }
+        else { port3E = 0; port3F = 0xFF; }                    // cold power-on: nothing disabled, the BIOS (which wins the bus) runs from $0000
         ApplyMemoryControl();
         pad1 = pad2 = SmsButtons.None; pauseHeld = false;
         ggExtData = 0xFF; ggExtConfig = 0x7F; ggSend = 0; ggSerial = 0;
@@ -185,6 +195,7 @@ public sealed class BOARD_SMS
     {
         var cpu = Cpu;
         var vdp = Vdp;
+        cpu.HaltRefreshesR = OracleHaltNoRefresh == 0;
         if (!lineOpen) { vdp.BeginLine(n); cpu.Irq = vdp.Irq; }
         int first = firstLineCycle;
         if (OracleZ80Timing != 0) RunLineOracleTiming(first, end);
@@ -216,6 +227,10 @@ public sealed class BOARD_SMS
     /// forms with a register code 19 (20); every other opcode, branch (taken or not), call, return and block instruction measured (about 1600 forms) is the same. Games whose timing depends on those instructions
     /// (a random number taken from a counter, a raster split) drift apart from the oracle without this; the app never uses it, because the hardware follows the Zilog table.</summary>
     public int OracleZ80Timing;
+    /// <summary>1 = the refresh register R does not count while the Z80 is halted (the oracle's behaviour; a real Z80 refreshes during HALT, so R after a vertical-blank wait is a pseudo-random number there). Measured with a probe that reads
+    /// R before a HALT, in the interrupt handler and after the wake-up: the oracle's R moves by 1 for the HALT and 1 for the acknowledge, nothing for the thousands of halted cycles in between. Games that take random numbers from R
+    /// (Sonic 2, Golden Axe Warrior, Fantasy Zone, Black Belt, ...) diverge from the oracle without this; the app never uses it.</summary>
+    public int OracleHaltNoRefresh;
     private int parityStall, paritySkip, parityPending;
     private byte parityPrevOp;
     private long parityCycles;
@@ -284,11 +299,16 @@ public sealed class BOARD_SMS
     public byte ReadMemory(ushort address)
     {
         if (address >= 0xC000) return ramEnabled ? Ram[address & 0x1FFF] : (byte)0xFF;
+        if (BiosMapped) return Bios!.Read(address);
         return cartEnabled ? Cart.Read(address) : (byte)0xFF;
     }
 
     /// <summary>A read without side effects, for tools.</summary>
     public byte Peek(ushort address) => ReadMemory(address);
+
+    /// <summary>True when nothing answers a read of <paramref name="address"/> (the cartridge slot or the work RAM switched off through port $3E, or a plain cartridge read past its end): the bus floats high. A tool question
+    /// (the sweep asks it of the program counter to tell a program that ran off the end of its code).</summary>
+    public bool IsUnmapped(ushort address) => address >= 0xC000 ? !ramEnabled : BiosMapped ? Bios!.IsOpenBus(address) : !cartEnabled || Cart.IsOpenBus(address);
 
     /// <summary>Called for every memory write: (address, value, frame line, Z80 cycle in the line). Tracing; a null hook costs one test per write.</summary>
     public Action<ushort, byte, int, int>? MemWriteHook;
@@ -298,6 +318,7 @@ public sealed class BOARD_SMS
         MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
         if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
         Cart.Write(address, value);
+        Bios?.Write(address, value);                 // the BIOS ROM board has a mapper of its own on the same bus
     }
 
     // =================================================================================== I/O ports
@@ -432,7 +453,7 @@ public sealed class BOARD_SMS
         // where the frame loop is (a frame ends part-way through line 192) and the oracle-parity bookkeeping of a tool run
         w.Write(nextLine); w.Write(firstLineCycle); w.Write(lineOpen); w.Write(lineCycle);
         w.Write(parityStall); w.Write(paritySkip); w.Write(parityPending); w.Write(parityPrevOp); w.Write(parityCycles);
-        Cart.SaveState(w); Vdp.SaveState(w); Sound.SaveState(w); Cpu.SaveState(w);
+        Cart.SaveState(w); w.Write(Bios != null); Bios?.SaveState(w); Vdp.SaveState(w); Sound.SaveState(w); Cpu.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
@@ -443,6 +464,9 @@ public sealed class BOARD_SMS
         nextLine = r.ReadInt32(); firstLineCycle = r.ReadInt32(); lineOpen = r.ReadBoolean(); lineCycle = r.ReadInt32();
         parityStall = r.ReadInt32(); paritySkip = r.ReadInt32(); parityPending = r.ReadInt32(); parityPrevOp = r.ReadByte(); parityCycles = r.ReadInt64();
         ApplyMemoryControl();
-        Cart.LoadState(r); Vdp.LoadState(r); Sound.LoadState(r); Cpu.LoadState(r);
+        Cart.LoadState(r);
+        if (r.ReadBoolean()) { if (Bios == null) throw new InvalidDataException("The state was saved from a BIOS image; this machine is running a cartridge."); Bios.LoadState(r); }
+        else if (Bios != null) throw new InvalidDataException("The state was saved from a cartridge; this machine is running a BIOS image.");
+        Vdp.LoadState(r); Sound.LoadState(r); Cpu.LoadState(r);
     }
 }
