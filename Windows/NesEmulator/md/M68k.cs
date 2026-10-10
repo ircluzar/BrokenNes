@@ -381,6 +381,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private void EnterHandler(int vector)
     {
+        ExceptionCounts[vector & 0xFF]++;
         Pc = ReadMem(Long, (uint)vector << 2);
         Prefetch();
         Idle(2);
@@ -492,4 +493,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     /// <summary>Address errors taken.</summary>
     public long AddressErrorCount;
+
+    /// <summary>How many times each exception vector was taken (interrupts included: autovectors 25 to 31), for diagnostics and the whole-library sweep.</summary>
+    public readonly long[] ExceptionCounts = new long[256];
 }

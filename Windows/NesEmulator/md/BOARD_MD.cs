@@ -67,7 +67,13 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public Action<string>? WriteTrace;
     /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
     public Action<string>? ReadTrace;
+    /// <summary>Called for each 68000 access to $200000-$3FFFFF with a text describing it (the I2C EEPROM and mapper regions; traces); null in normal runs.</summary>
+    public Action<string>? CartTrace;
     public long BusReads, BusWrites, OpenBusReads;
+    /// <summary>Diagnostics for the whole-library sweep: the last address a read found nothing at, writes nobody claimed (and the last one), and the last value written to the TMSS register at $A14000.</summary>
+    public uint LastOpenBusAddress, LastUnclaimedWrite;
+    public long UnclaimedWrites, TmssWrites;
+    public readonly ushort[] TmssWords = new ushort[2];
 
     public BOARD_MD(MdCartridge cart, SegaRegion region, GenesisModel model, int sampleRate, SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>? parts = null)
     {
@@ -214,7 +220,12 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     private ushort ReadWord(uint address, bool upper, bool lower, long now)
     {
-        if (address < 0x400000) return Cart.ReadWord(address);
+        if (address < 0x400000)
+        {
+            ushort cv = Cart.ReadWord(address);
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
+            return cv;
+        }
         if (address >= 0xE00000) { int a = (int)(address & 0xFFFE); return (ushort)(Ram[a] << 8 | Ram[a + 1]); }
         if (address >= 0xC00000 && address < 0xE00000) return ReadVdp(address, now);
         if (address >= 0xA00000 && address < 0xA10000)
@@ -231,7 +242,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         // the RESET register reads back whether the line is released (bit 8; oracle-derived: BlastEm shows it, hardware not verified), the rest of the word is the bus's
         if (address == 0xA11200) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsInReset ? 0x0000 : 0x0100));
         if (address >= 0xA130F0 && address < 0xA13100) return 0xFFFF;
-        OpenBusReads++;
+        OpenBusReads++; LastOpenBusAddress = address;
         return lastOpenBus;
     }
 
@@ -239,6 +250,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         if (address < 0x400000)
         {
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart write ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} = {data:X4}");
             if (upper) Cart.WriteByte(address, (byte)(data >> 8));
             if (lower) Cart.WriteByte(address | 1, (byte)data);
             return;
@@ -282,7 +294,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             if (lower) Cart.WriteMapper(address | 1, (byte)data);
             return;
         }
-        // $A14000 (TMSS) and everything else: ignored
+        if (address >= 0xA14000 && address < 0xA14004) { TmssWrites++; TmssWords[(address - 0xA14000) >> 1] = data; return; }
+        // everything else: ignored (counted for the sweep)
+        UnclaimedWrites++; LastUnclaimedWrite = address;
     }
 
     // ---- the VDP's addresses

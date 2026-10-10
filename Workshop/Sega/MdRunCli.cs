@@ -38,6 +38,11 @@ internal static class MdRunCli
         var pngAt = new HashSet<int>((M68kTestCli.Arg(args, "--png-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         string? pngDir = M68kTestCli.Arg(args, "--png-dir");
         if (pngDir != null) Directory.CreateDirectory(pngDir);
+        // --sheet out.png --sheet-at 100,200,300: a contact sheet of the picture at those frames (4 across, half size, frame numbers on them), for looking at a whole run at once
+        string? sheetPath = M68kTestCli.Arg(args, "--sheet");
+        var sheetAt = new HashSet<int>((M68kTestCli.Arg(args, "--sheet-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
+        var sheetFrames = new List<(int frame, Bitmap bmp)>();
+        string? padScript = M68kTestCli.Arg(args, "--pad-script")?.ToLowerInvariant();
         string apu = M68kTestCli.Arg(args, "--apu") ?? "MD";
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         GenesisModelChoice? model = M68kTestCli.Arg(args, "--model") switch { "1" => GenesisModelChoice.Model1, "2" => GenesisModelChoice.Model2, "3" => GenesisModelChoice.Model3, _ => null };
@@ -60,12 +65,21 @@ internal static class MdRunCli
         Console.WriteLine($"   header: '{board.Cart.OverseasTitle}' serial {board.Cart.Serial} regions '{board.Cart.Regions}' rom {board.Cart.RomLength:N0} bytes, checksum header {board.Cart.HeaderChecksum:X4} computed {board.Cart.ComputedChecksum:X4}, sram {(board.Cart.HasSramHeader ? $"${board.Cart.SramStart:X6}-${board.Cart.SramEnd:X6} ({board.Cart.Sram.Length} bytes)" : "none")}");
 
         StreamWriter? trace = null;
+        // --cart-trace out.txt: only the 68000's accesses to $200000-$3FFFFF (the I2C EEPROM and mapper area), small enough to read for a whole run
+        string? cartTracePath = M68kTestCli.Arg(args, "--cart-trace");
+        StreamWriter? cartTrace = null;
+        if (cartTracePath != null)
+        {
+            cartTrace = new StreamWriter(cartTracePath, false, new UTF8Encoding(false));
+            board.CartTrace = s => cartTrace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}");
+        }
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
             board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
             if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+            if (M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
             if (board.Sound is MdSoundUnit unit)
             {
@@ -92,6 +106,9 @@ internal static class MdRunCli
             Console.WriteLine($"   bytes per frame: board.RunFrame {aBoard / (double)Math.Max(1, counted):F1}, picture copy {aCopy / (double)Math.Max(1, counted):F1}, sound drain {aDrain / (double)Math.Max(1, counted):F1}");
             return 0;
         }
+        // --save-in file: start with this battery image (SRAM or EEPROM bytes, as the session saves them); --save-out file: write the image at the end
+        string? saveIn = M68kTestCli.Arg(args, "--save-in"), saveOut = M68kTestCli.Arg(args, "--save-out");
+        if (saveIn != null) { try { session.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"   loaded {saveIn} into the battery memory"); } catch (Exception e) { Console.WriteLine($"   cannot load {saveIn}: {e.Message}"); return 2; } }
         var sw = Stopwatch.StartNew();
         PadButtons pad = PadButtons.None;
         long halts = 0;
@@ -99,6 +116,7 @@ internal static class MdRunCli
         for (int i = 0; i < frames; i++)
         {
             if (i == allocFrom) allocAt = GC.GetAllocatedBytesForCurrentThread();
+            if (padScript != null) pad = MdSweepCli.PadAt(padScript, i);       // the sweep's scripts (default, mash, start, none), for looking at what the sweep saw
             if (inputs.TryGetValue(i, out var b)) pad = b;
             session.SetPad(0, pad);
             session.RunFrame();
@@ -109,15 +127,26 @@ internal static class MdRunCli
             if (hashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} hash: {StateHash(board):X16}");
             if (picHashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} picture {session.FrameWidth}x{session.FrameHeight} hash: {PicHash(session):X16}");
             if (pngAt.Contains(i + 1) && pngDir != null) WritePng(session, Path.Combine(pngDir, $"f{i + 1:D6}.png"));
+            if (sheetPath != null && sheetAt.Contains(i + 1)) sheetFrames.Add((i + 1, ToBitmap(session.Frame, session.FrameWidth, session.FrameHeight)));
         }
         sw.Stop();
+        if (sheetPath != null && sheetFrames.Count > 0)
+        {
+            try { WriteSheet(sheetFrames, sheetPath); Console.WriteLine($"   wrote contact sheet {sheetPath} ({sheetFrames.Count} frames)"); }
+            catch (Exception e) { Console.WriteLine($"   sheet failed: {e.Message}"); }
+            foreach (var (_, bmp) in sheetFrames) bmp.Dispose();
+        }
         trace?.Dispose();
+        cartTrace?.Dispose();
 
         if (frames > 2) Console.WriteLine($"   allocated {(GC.GetAllocatedBytesForCurrentThread() - allocAt) / (double)Math.Max(1, frames - allocFrom):F1} bytes per frame over the second half of the run");
         Console.WriteLine($"   ran {board.Frames} frames in {sw.Elapsed.TotalSeconds:F2} s ({board.Frames / Math.Max(0.001, sw.Elapsed.TotalSeconds):F0} frames/s, {board.Cpu.Instructions:N0} 68000 instructions, {board.Cpu.Cycles:N0} clocks)");
         Console.WriteLine($"   {Summary(board)}");
         Console.WriteLine($"   state hash {StateHash(board):X16} | vram {Hash(board.Vdp.Vram):X16} cram {Hash(board.Vdp.Cram):X16} vsram {Hash(board.Vdp.Vsram):X16} regs {Hash(board.Vdp.Reg):X16}");
         if (!quiet) Dump(board);
+        if (board.Cart.Eeprom is { } ee) Console.WriteLine($"   EEPROM {ee.Chip} ({board.Cart.EepromWiring}): starts {ee.Starts}, stops {ee.Stops}, bytes in {ee.BytesIn}, out {ee.BytesOut}, committed writes {ee.Commits}, device bytes [{string.Join(" ", Enumerable.Range(0, 256).Where(k => ee.DeviceHistogram[k] > 0).Select(k => $"{k:X2}x{ee.DeviceHistogram[k]}"))}], highest address {ee.MaxAddress}, non-$FF bytes {ee.Data.Count(x => x != 0xFF)}/{ee.Data.Length}, hash {Hash(ee.Data):X16}");
+        else if (board.Cart.EepromUnsupported != null) Console.WriteLine($"   EEPROM: {board.Cart.EepromUnsupported}");
+        if (saveOut != null && session.HasBattery) { File.WriteAllBytes(saveOut, session.ExportSave()); Console.WriteLine($"   wrote the battery image ({session.ExportSave().Length} bytes, hash {Hash(session.ExportSave()):X16}) to {saveOut}"); }
         audio?.Finish(wavOut, vgmOut, Path.GetFileNameWithoutExtension(rom));
         if (png != null)
         {
@@ -222,6 +251,41 @@ internal static class MdRunCli
             map[frame] = b;
         }
         return map;
+    }
+
+    private static Bitmap ToBitmap(uint[] pixels, int width, int height)
+    {
+        var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        var data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var ints = new int[width];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++) ints[x] = (int)pixels[y * width + x];
+                System.Runtime.InteropServices.Marshal.Copy(ints, 0, data.Scan0 + y * data.Stride, width);
+            }
+        }
+        finally { bmp.UnlockBits(data); }
+        return bmp;
+    }
+
+    private static void WriteSheet(List<(int frame, Bitmap bmp)> frames, string path)
+    {
+        const int cols = 4, cw = 192, ch = 136;      // a cell: 320x224 at 0.6, with a little room for the label
+        int rows = (frames.Count + cols - 1) / cols;
+        using var sheet = new Bitmap(cols * cw, rows * ch, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(sheet);
+        g.Clear(Color.FromArgb(32, 32, 32));
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+        using var font = new Font("Consolas", 8f);
+        for (int k = 0; k < frames.Count; k++)
+        {
+            int cx = k % cols * cw, cy = k / cols * ch;
+            g.DrawImage(frames[k].bmp, new Rectangle(cx + 1, cy + 11, cw - 2, ch - 12));
+            g.DrawString($"f{frames[k].frame}", font, Brushes.Yellow, cx + 2, cy);
+        }
+        sheet.Save(path, ImageFormat.Png);
     }
 
     private static void WritePng(MdSession s, string path) => WritePngFrom(s.Frame, s.FrameWidth, s.FrameHeight, path);
