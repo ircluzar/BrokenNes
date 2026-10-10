@@ -42,6 +42,7 @@ internal static class MdRunCli
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         GenesisModelChoice? model = M68kTestCli.Arg(args, "--model") switch { "1" => GenesisModelChoice.Model1, "2" => GenesisModelChoice.Model2, "3" => GenesisModelChoice.Model3, _ => null };
         var inputs = ParseInput(M68kTestCli.Arg(args, "--input"));
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) ApplySlotSet(slotSet);
 
         byte[] data;
         try { data = File.ReadAllBytes(rom); }
@@ -162,6 +163,42 @@ internal static class MdRunCli
         if (board.Cpu.Halted) Console.WriteLine("   RESULT: the 68000 HALTED (a double fault)");
         Console.WriteLine($"   address errors: {board.Cpu.AddressErrorCount}, halted: {board.Cpu.Halted}");
         return board.Cpu.Halted || board.Cpu.AddressErrorCount > 0 ? 1 : 0;
+    }
+
+    /// <summary>
+    /// <c>--slot-set "originh40=192;preh40=3,7,11;refreshh40=26,29,..."</c>: change the VDP's slot-table data for this run (experiments with the probe ROMs; the names are the <see cref="MdVdp.SlotTable"/> fields:
+    /// originh40, originh32, activepixh40, activepixh32, preh40, preh32, refreshh40, refreshh32). Fitting tool, not a feature.
+    /// </summary>
+    internal static void ApplySlotSet(string spec)
+    {
+        foreach (var part in spec.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            string name = part[..eq].ToLowerInvariant();
+            int[] v = part[(eq + 1)..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToArray();
+            switch (name)
+            {
+                case "dmadelay": MdVdp.DmaStartDelay = v[0]; break;
+                case "release": MdVdp.ReleaseLatency = v[0]; break;
+                case "dmafetch": MdVdp.DmaFetchClocks = v[0]; break;
+                case "dmafifo": MdVdp.DmaFifoLimit = v[0]; break;
+                case "dmablank": MdVdp.DmaBlankLimit = v[0]; break;
+                case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
+                case "cuth40": MdVdp.SlotTable.CutH40 = v[0]; break;
+                case "cuth32": MdVdp.SlotTable.CutH32 = v[0]; break;
+                case "originh40": MdVdp.SlotTable.OriginH40 = v[0]; break;
+                case "originh32": MdVdp.SlotTable.OriginH32 = v[0]; break;
+                case "activepixh40": MdVdp.SlotTable.ActivePixelsH40 = v; break;
+                case "activepixh32": MdVdp.SlotTable.ActivePixelsH32 = v; break;
+                case "preh40": MdVdp.SlotTable.ActivePreTicksH40 = v; break;
+                case "preh32": MdVdp.SlotTable.ActivePreTicksH32 = v; break;
+                case "refreshh40": MdVdp.SlotTable.BlankRefreshH40 = v; break;
+                case "refreshh32": MdVdp.SlotTable.BlankRefreshH32 = v; break;
+                default: throw new ArgumentException("unknown slot-set name " + name);
+            }
+        }
+        MdVdp.SlotTable.Rebuild();
     }
 
     private static readonly short[] drainBuffer = new short[8192];

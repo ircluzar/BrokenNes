@@ -169,11 +169,14 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private void AfterVdpAccess()
     {
         if (Vdp.Time > t) t = Vdp.Time;
+        bool halted = false;
         while (Vdp.DmaHaltsCpu)
         {
+            halted = true;
             Vdp.AdvanceWork();
             if (Vdp.Time > t) t = Vdp.Time;
         }
+        if (halted) t += Vdp.ReleaseClocks;      // the 68000 runs again a little after the slot that finished the transfer
         SyncSound();
     }
 

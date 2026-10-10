@@ -477,7 +477,7 @@ internal static class MdPictureTest
         for (int cx = 0; cx < 40; cx++) for (int cy = 0; cy < 28; cy++) p.Cell(PlaneA, cx, cy, 2);
         p.V.Reg[7] = 0x01;
         p.V.ResetPictureState();
-        long line50 = 50L * MdVdp.ClocksPerLine;
+        long line50 = 50L * MdVdp.ClocksPerLine + p.V.PixelOrigin;        // the line's first picture pixel (it starts at its H counter 0, 12 ticks before)
         p.T = line50 + 100 * 8;
         p.V.RunTo(p.T);
         p.Reg(1, 0x04);
@@ -491,7 +491,7 @@ internal static class MdPictureTest
         p = new Pic();
         p.V.Reg[7] = 0x01;
         p.V.ResetPictureState();
-        p.T = 40L * MdVdp.ClocksPerLine + 96;
+        p.T = 40L * MdVdp.ClocksPerLine + p.V.PixelOrigin + 96;
         p.V.RunTo(p.T);
         p.Cmd(3, 0x40);                                   // CRAM write at colour 32
         p.Data(0x0E00);

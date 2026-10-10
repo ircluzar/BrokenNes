@@ -28,6 +28,7 @@ function Tap([string]$name, [int]$ms = 60) { Focus; Key $name $true; Start-Sleep
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $env:SDL_AUDIODRIVER = "dummy"
 $root = Split-Path $MyInvocation.MyCommand.Path
+if ($env:BN_ORACLE_ROOT) { $root = $env:BN_ORACLE_ROOT }   # a private working folder holding blastem\ (its default.cfg pointing screenshot_path at be_shots and save_path at be_save), be_shots and be_save
 $be = Join-Path $root "blastem\blastem.exe"
 $shotDir = Join-Path $root "be_shots"; $saveRoot = Join-Path $root "be_save"
 $before = Get-Date
