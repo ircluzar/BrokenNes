@@ -239,7 +239,8 @@ namespace BrokenNes
         private async Task LoadSessionBatteryAsync()
         {
             var s = session;
-            if (s == null || !s.HasBattery) return;
+            // as on the desktop: a Master System / Game Gear game whose RAM mapping the ROM scan missed still gets its save back
+            if (s == null || !s.HasBattery && s.Console is not (ConsoleKind.MasterSystem or ConsoleKind.GameGear)) return;
             try
             {
                 var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", SessionSaveKey(s));

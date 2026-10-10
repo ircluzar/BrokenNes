@@ -191,6 +191,9 @@ public sealed class SnesSession : IConsoleSession
     public byte[] ExportSave() => (byte[])board.Cart.Sram.Clone();
     public void ImportSave(byte[] data) => Array.Copy(data, board.Cart.Sram, Math.Min(data.Length, board.Cart.Sram.Length));
     public void Dispose() { }
+
+    // save states: the SNES board (65816, S-PPU, SPC700 and DSP, coprocessors) keeps no save/load of its own yet, so this session reports that through the contract's defaults and says why
+    public string StateUnsupportedReason => "The SNES has no save states yet: its CPU, picture chip, sound unit and coprocessors have no state to save.";
 }
 
 /// <summary>A Game Boy (DMG) or Game Boy Color game: the GB board with the SM83 at its own or another console's clock,
@@ -334,6 +337,39 @@ public sealed class GbSession : IConsoleSession
     public byte[] ExportSave() => board.ExportSave();
     public void ImportSave(byte[] data) => board.ImportSave(data);
     public void Dispose() { }
+
+    // ---- save states (the shared contract in ConsoleSystems.cs). The board's own state covers the Game Boy's SM83, picture chip, sound chip, cartridge and memory; the parts that are not the Game Boy's own (the 65816 in the
+    // SM83's place, a NES sound chip standing in for the Game Boy's) have no state of their own to carry, so a session using one says so rather than saving half a machine.
+
+    /// <summary>The layout of the payload: bump it whenever the board, the cartridge, the SM83, the picture chip or a Game Boy sound chip changes what it writes.</summary>
+    public const string StateFormat = "gb-1";
+
+    private bool OwnParts => !cpuId.Equals("65816", StringComparison.OrdinalIgnoreCase) && !apuId.StartsWith("NES:", StringComparison.OrdinalIgnoreCase);
+    public bool SupportsState => OwnParts;
+    public string StateUnsupportedReason => OwnParts ? "" : "Save states need the Game Boy's own CPU and sound chip: the 65816 and the NES sound chips standing in for them have no state to save. Switch them back in the Console menu (CPU / APU) to use save states.";
+
+    private Dictionary<string, string> StateUnits() => new() { ["cpu"] = cpuId, ["apu"] = apuId, ["model"] = board.Model.ToString(), ["format"] = StateFormat };
+
+    public byte[] SaveState()
+    {
+        if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);
+        var units = StateUnits();
+        units["ppu"] = ppuId;   // information only: a picture chip other than the Game Boy's is a view of the Game Boy chip's state
+        return ConsoleStateFile.Wrap(Console, GameId, Title, units, board.SaveState());
+    }
+
+    public void LoadState(byte[] state)
+    {
+        if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);
+        byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        byte[] before = board.SaveState();
+        try { board.LoadState(payload); }
+        catch (Exception e)
+        {
+            board.LoadState(before);   // put the machine back as it was, and say so
+            throw new System.IO.InvalidDataException("The state could not be loaded and the game was left as it was: " + e.Message, e);
+        }
+    }
 }
 
 /// <summary>Stereo 16-bit -> mono float at another rate (linear interpolation), for audio paths that play mono float.</summary>

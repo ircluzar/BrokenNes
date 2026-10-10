@@ -50,6 +50,9 @@ internal static class SmsRunCli
         RegionChoice? region = Opt("region") is { } r ? Enum.Parse<RegionChoice>(r, true) : null;
         MasterSystemModel? model = Opt("model") is { } m ? Enum.Parse<MasterSystemModel>(m, true) : null;
 
+        // --mapper <kind>: run this ROM on that cartridge wiring instead of the one the image or the table of known cartridges gives it (a way to find out what a game needs)
+        if (Opt("mapper") is { } mapperName)
+            SmsCartridge.KnownCartridges[Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(SegaRomFormat.StripCopierHeader(rom)))] = Enum.Parse<SmsMapperKind>(mapperName, true);
         string apu = Opt("apu") ?? "SMS";      // --apu SMS-FM: the Japanese console's sound unit (PSG and YM2413)
         var session = console == ConsoleKind.GameGear
             ? (SmsSession)new GgSession(rom, "Z80", "GG", apu == "SMS" ? "GG" : apu, inner, region)
@@ -109,7 +112,7 @@ internal static class SmsRunCli
             // --watch-pc <addr>[,<addr>]: each execution of those instruction addresses as "frame pc cycles line" to <out>/<tag>.watch.txt (the oracle's MESEN_WATCH writes the same, with its own cycle count)
             watchLog = new StreamWriter(Path.Combine(outDir, $"{tag}.watch.txt"));
             var set = wpcs.Split(',').Select(h => Convert.ToUInt16(h, 16)).ToHashSet();
-            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cycles} {board.Vdp.Line}"); };
+            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cycles} {board.Vdp.Line} A={board.Cpu.A:X2} BC={board.Cpu.BC:X4} DE={board.Cpu.DE:X4} HL={board.Cpu.HL:X4} [HL]={board.Peek(board.Cpu.HL):X2}"); };
         }
         if (Opt("count-pc") is { } cpc)
         {
@@ -161,6 +164,25 @@ internal static class SmsRunCli
                 if (addr < lo || addr > hi || fr < wlo || fr > whi || shownW > 2000) return;
                 shownW++;
                 Console.WriteLine($"WR f{fr} l{line} c{cyc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4}");
+            };
+        }
+        // --fast-writes <cycles>: how many writes to the VDP data port during the picture (display on, a picture line) follow the previous one within that many Z80 cycles, by gap: the hardware-documented limit is about 26 cycles
+        // (MacDonald's VDP document section 15, Maxim and sverx on SMS Power); a game that does this on hardware loses or misplaces bytes
+        int[]? fastGaps = null; long fastTotal = 0, lastWriteMc = long.MinValue; int fastLimit = 0;
+        if (Opt("fast-writes") is { } fw)
+        {
+            fastLimit = int.Parse(fw); fastGaps = new int[fastLimit + 1];
+            var vdp0 = board.Vdp;
+            board.Vdp.DataWriteHook = (code, addr, value, line, mc) =>
+            {
+                long now = ((long)board.Frames * vdp0.TotalLines + line) * 684 + mc;
+                if (vdp0.DisplayEnabled && line < vdp0.ActiveHeight)
+                {
+                    fastTotal++;
+                    long gap = lastWriteMc == long.MinValue ? long.MaxValue : (now - lastWriteMc) / 3;
+                    if (gap >= 0 && gap <= fastLimit) fastGaps[gap]++;
+                }
+                lastWriteMc = now;
             };
         }
         if (Flag("trace-vdp"))
@@ -278,6 +300,8 @@ internal static class SmsRunCli
         Console.WriteLine($"frames={frames} {secs * 1000 / frames:F2} ms/frame ({frames / secs:F0} fps, {frames / secs / session.FramesPerSecond:F1}x real time) PC=${board.Cpu.PC:X4} " +
                           $"R0..R10={string.Join(" ", vdp.Regs.Take(11).Select(b => b.ToString("X2")))} height={vdp.FrameHeight} irq={vdp.Irq} lastLine={vdp.Line}");
         if (Flag("hash")) Console.WriteLine($"hash={hashLast:X16}");
+        if (fastGaps != null)
+            Console.WriteLine($"fast writes: {fastTotal} data-port writes during the picture; gaps up to {fastLimit} cycles: {fastGaps.Sum()} ({string.Join(" ", Enumerable.Range(0, fastLimit + 1).Where(g => fastGaps[g] > 0).Select(g => $"{g}:{fastGaps[g]}"))})");
         if (Flag("audio-stats"))
             Console.WriteLine($"audio: {audioN} sample pairs ({audioN / (double)session.SampleRate:F1} s), peak L {audioPeakL} R {audioPeakR}, rms L {Math.Sqrt(audioSqL / Math.Max(1, audioN)):F0} R {Math.Sqrt(audioSqR / Math.Max(1, audioN)):F0}, " +
                               $"{audioActiveFrames} of {frames} frames louder than 200, battery={session.HasBattery}, sound unit {board.Sound.CoreName}");

@@ -416,7 +416,8 @@ namespace BrokenNes.Windows
         private void LoadSessionSave()
         {
             var s = session;
-            if (s == null || !s.HasBattery) return;
+            // A Master System / Game Gear game whose RAM mapping the scan of the ROM did not recognise still gets its save back: the file is looked for whatever the scan said (writing it needed the game to map RAM and use it)
+            if (s == null || !s.HasBattery && s.Console is not (ConsoleKind.MasterSystem or ConsoleKind.GameGear)) return;
             try
             {
                 string path = SessionSavePath(s)!;

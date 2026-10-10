@@ -19,6 +19,9 @@ public enum SmsMapperKind
     Nemesis,
     /// <summary>No mapper: the ROM is wired straight into $0000-$BFFF (SG-1000, SC-3000, and any small cartridge).</summary>
     Plain,
+    /// <summary>The Sega mapper with a 24C01 two-wire serial EEPROM in the place of the cartridge RAM: with $FFFC bit 3 set, slot 2 ($8000-$BFFF) is the chip's port (bit 0 the data line, bit 1 the clock) instead of ROM or RAM.
+    /// A few Game Gear baseball cartridges keep their save this way. Nothing in the ROM says so, so a cartridge is given this mapper by <see cref="SmsCartridge.KnownCartridges"/>, not by a scan.</summary>
+    SegaEeprom,
 }
 
 /// <summary>
@@ -49,6 +52,8 @@ public sealed class SmsCartridge
     public bool RamDirty { get; private set; }
     /// <summary>Called for every write to $0000-$BFFF that lands on ROM, not on cartridge RAM: the addresses a program writes there are the registers of the cartridge's mapper (the sweep tool reads them to name the mapper a game expects). Tracing; null costs one test.</summary>
     public Action<ushort, byte>? RomSpaceWriteHook;
+    /// <summary>Called for every write that lands on cartridge RAM mapped into $0000-$BFFF (the address and value): a program that keeps a save there writes many addresses, one that talks to a serial EEPROM through the same window writes one.</summary>
+    public Action<ushort, byte>? RamWriteHook;
 
     // page tables: each 1 KB of $0000-$BFFF points at a byte array and an offset into it
     private readonly byte[][] rd = new byte[48][];
@@ -79,9 +84,16 @@ public sealed class SmsCartridge
             Ram = new byte[0x8000];
             HasBattery = ScansForRamMapping(Rom);
         }
+        else if (mapper == SmsMapperKind.SegaEeprom) { Eeprom = new Eeprom24c01(); HasBattery = true; }
         else if (mapper == SmsMapperKind.Codemasters) Ram = null;   // allocated when the first bit-7 write arrives
         Reset();
     }
+
+    /// <summary>The serial EEPROM of a <see cref="SmsMapperKind.SegaEeprom"/> cartridge, else null.</summary>
+    public Eeprom24c01? Eeprom { get; }
+    private readonly byte[] eepromPage = new byte[Slot];   // what a read of the EEPROM window returns, refreshed after each write to the chip
+
+    private void RefreshEepromPage() => Array.Fill(eepromPage, Eeprom!.Read());
 
     public string Title { get; }
 
@@ -90,9 +102,24 @@ public sealed class SmsCartridge
     public static SmsMapperKind DetectMapper(byte[] rom, MasterSystemModel model)
     {
         if (model is MasterSystemModel.Sg1000 or MasterSystemModel.Sc3000) return rom.Length <= 0xC000 ? SmsMapperKind.Plain : SmsMapperKind.Sega;
+        if (KnownCartridges.Count > 0 && KnownCartridges.TryGetValue(Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(rom)), out var known)) return known;
         if (IsCodemasters(rom)) return SmsMapperKind.Codemasters;
         return SmsMapperKind.Sega;
     }
+
+    /// <summary>
+    /// Cartridges whose wiring nothing in their ROM tells apart from the common one, by the SHA-1 of the ROM (upper-case hex, copier header removed). This is a table of what was found out about each game by running it (the sweep tool, and the
+    /// oracle's pictures for the mappers it knows): a serial EEPROM sits behind the same register as the RAM of any other Sega-mapper cartridge, a Korean cartridge's registers are at addresses a scan cannot tell from stray writes.
+    /// A game that is not in it gets what <see cref="DetectMapper"/> can read from the image.
+    /// </summary>
+    public static readonly System.Collections.Generic.Dictionary<string, SmsMapperKind> KnownCartridges = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Game Gear baseball cartridges with a 24C01 two-wire serial EEPROM (found from the driver's bus pattern: see Eeprom24c01)
+        ["76F3C504D717067134A88F7F1D0EF38BD6698E50"] = SmsMapperKind.SegaEeprom,   // The Majors Pro Baseball (U)
+        ["CCFD03EDF130F28E6BB4C2764DF7ACE7BBE9E159"] = SmsMapperKind.SegaEeprom,   // World Series Baseball (U) (V1.0)
+        ["333DD99F11781D6DE5720043530A460A409D652B"] = SmsMapperKind.SegaEeprom,   // World Series Baseball (U) (V1.1)
+        ["66D31ED6BB6DFEDD769BF5E6C5DCBF899F2F2C8C"] = SmsMapperKind.SegaEeprom,   // World Series Baseball '95 (U)
+    };
 
     /// <summary>Codemasters cartridges carry a checksum at $7FE6 and its two's complement at $7FE8 (the sum of the two words is $10000), beside a build date; no Sega header uses that pair.</summary>
     public static bool IsCodemasters(byte[] rom)
@@ -129,6 +156,7 @@ public sealed class SmsCartridge
     public void Reset()
     {
         ctl = 0; cmRamOn = false;
+        if (Eeprom != null) RefreshEepromPage();
         switch (Mapper)
         {
             case SmsMapperKind.Codemasters: pages[0] = 0; pages[1] = 1; pages[2] = 0; break;
@@ -182,6 +210,16 @@ public sealed class SmsCartridge
                 int p1 = (pages[1] % RomPages16) * 0x4000;
                 MapRom(16, 16, p1);
                 if ((ctl & 0x08) != 0 && Ram != null) MapRam(32, 16, Ram, (ctl & 0x04) != 0 ? 0x4000 : 0);
+                else MapRom(32, 16, (pages[2] % RomPages16) * 0x4000);
+                break;
+            }
+            case SmsMapperKind.SegaEeprom:
+            {
+                MapRom(0, 1, 0);
+                MapRom(1, 15, (pages[0] % RomPages16) * 0x4000 + Slot);
+                MapRom(16, 16, (pages[1] % RomPages16) * 0x4000);
+                if ((ctl & 0x08) != 0)
+                    for (int i = 32; i < 48; i++) { rd[i] = eepromPage; rdBase[i] = -i * Slot; wr[i] = null; }   // every address of the window reads the chip's output
                 else MapRom(32, 16, (pages[2] % RomPages16) * 0x4000);
                 break;
             }
@@ -239,7 +277,14 @@ public sealed class SmsCartridge
             if (w != null)
             {
                 int idx = wrBase[slot] + address;
+                RamWriteHook?.Invoke(address, value);
                 if (w[idx] != value) { w[idx] = value; RamDirty = true; HasBattery |= Mapper == SmsMapperKind.Sega; }
+                return;
+            }
+            if (Eeprom != null && address >= 0x8000 && (ctl & 0x08) != 0)
+            {
+                RamWriteHook?.Invoke(address, value);
+                Eeprom.Write(value); RefreshEepromPage();
                 return;
             }
             RomSpaceWriteHook?.Invoke(address, value);
@@ -247,6 +292,7 @@ public sealed class SmsCartridge
         switch (Mapper)
         {
             case SmsMapperKind.Sega:
+            case SmsMapperKind.SegaEeprom:
                 if (address >= 0xFFFC)
                 {
                     switch (address & 3)
@@ -290,16 +336,19 @@ public sealed class SmsCartridge
     // =================================================================================== battery
 
     /// <summary>The bytes a save file holds: the cartridge RAM (the 32 KB of the Sega mapper), or empty when the cartridge has none.</summary>
-    public byte[] ExportSave() => Ram != null && Mapper == SmsMapperKind.Sega ? (byte[])Ram.Clone() : Array.Empty<byte>();
+    public byte[] ExportSave() => Eeprom != null ? (byte[])Eeprom.Memory.Clone() : Ram != null && Mapper == SmsMapperKind.Sega ? (byte[])Ram.Clone() : Array.Empty<byte>();
 
+    /// <summary>Puts a save file into the cartridge RAM (or the EEPROM). A game whose RAM mapping the scan of the ROM did not see is a battery game all the same once a save exists for it.</summary>
     public void ImportSave(byte[] data)
     {
+        if (Eeprom != null) { Eeprom.Load(data); RamDirty = false; return; }
         if (Ram == null || Mapper != SmsMapperKind.Sega) return;
         Array.Copy(data, Ram, Math.Min(data.Length, Ram.Length));
+        if (data.AsSpan().ContainsAnyExcept((byte)0)) HasBattery = true;
         RamDirty = false;
     }
 
-    public void ClearDirty() => RamDirty = false;
+    public void ClearDirty() { RamDirty = false; Eeprom?.ClearDirty(); }
 
     // =================================================================================== state
 
@@ -308,6 +357,7 @@ public sealed class SmsCartridge
         w.Write(ctl); w.Write(cmRamOn);
         for (int i = 0; i < 4; i++) w.Write(pages[i]);
         w.Write(Ram != null); if (Ram != null) { w.Write(Ram.Length); w.Write(Ram); }
+        w.Write(Eeprom != null); Eeprom?.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
@@ -315,6 +365,8 @@ public sealed class SmsCartridge
         ctl = r.ReadByte(); cmRamOn = r.ReadBoolean();
         for (int i = 0; i < 4; i++) pages[i] = r.ReadInt32();
         if (r.ReadBoolean()) { int n = r.ReadInt32(); var b = r.ReadBytes(n); if (Ram == null || Ram.Length != n) Ram = new byte[n]; Array.Copy(b, Ram, n); }
+        if (r.ReadBoolean()) { if (Eeprom == null) throw new InvalidDataException("The state has a serial EEPROM this cartridge does not."); Eeprom.LoadState(r); }
+        if (Eeprom != null) RefreshEepromPage();
         Remap();
     }
 }

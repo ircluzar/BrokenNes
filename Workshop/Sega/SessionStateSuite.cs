@@ -176,9 +176,89 @@ internal static class SessionStateSuite
         bool again; try { healthy.LoadState(smsState); again = true; } catch (Exception) { again = false; }
         yield return new SmsCheck("the session that refused all of them still loads a good state", again);
 
+        // ---- 3b. the same contract on the Game Boy (its board already had a state; the session now carries it in the shared container), and the SNES saying plainly that it has none
+        foreach (var c in GameBoyChecks(ctx)) yield return c;
+
         // ---- 4. a session without states says so
         yield return new SmsCheck("a session that has no state support says so (contract default: NotSupportedException with a reason, SupportsState false)", NoStateSession.Check(), "");
         yield return new SmsCheck("the Master System and Game Gear sessions report SupportsState", sms.SupportsState && gg.SupportsState);
+        foreach (var c in SnesChecks()) yield return c;
+    }
+
+    // ------------------------------------------------------------------------------------------------ the Game Boy
+    private static IEnumerable<SmsCheck> GameBoyChecks(SmsSuiteContext ctx)
+    {
+        string dir = Environment.GetEnvironmentVariable("BROKENNES_GB_ROMS") is { Length: > 0 } e ? e : @"X:\EMULATION\GameBoy";
+        var games = new[] { "Super Mario Land (W) (V1.1) [!].zip", "Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].zip" };
+        bool any = false;
+        foreach (var file in games)
+        {
+            string path = Path.Combine(dir, file);
+            if (!File.Exists(path)) continue;
+            any = true;
+            byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(path), file, out string inner);
+            IConsoleSession Make(string cpu = "GB", string apu = "GB") => ConsoleSessions.Create(ConsoleKind.GameBoy, rom, cpu, "GB", apu, null, inner);
+            var padScript = SmsRomIo.ParseInput("100:Start,110:,200:A,210:,300:Right,400:A+Right,420:Right,500:Down,600:Start,610:");
+            (List<string> Hashes, List<short> Audio) Go(IConsoleSession s, int from, int frames)
+            {
+                var hashes = new List<string>(); var audio = new List<short>(); var buf = new short[16384];
+                PadButtons held = 0;
+                foreach (var kv in padScript.Where(k => k.Key <= from).OrderBy(k => k.Key)) held = kv.Value;
+                for (int f = from; f < from + frames; f++)
+                {
+                    if (padScript.TryGetValue(f, out var h)) held = h;
+                    s.SetPad(0, held); s.RunFrame();
+                    hashes.Add(GoldenSuite.Hash(s));
+                    int n; while ((n = s.ReadSamples(buf)) > 0) for (int i = 0; i < n; i++) audio.Add(buf[i]);
+                }
+                return (hashes, audio);
+            }
+            int bad = 0, badAudio = 0; long size = 0;
+            foreach (int at in new[] { 300, 301, 450 })
+            {
+                var a = Make(); Go(a, 0, at);
+                byte[] state = a.SaveState(); size = state.Length;
+                var carried = Go(a, at, 60);
+                var b = Make(); Go(b, 0, 2);
+                b.LoadState(state);
+                if (ctx.Poison == "sessionstate") b.Reset();                       // the poison: the loading session starts over instead of restoring
+                var restored = Go(b, at, 60);
+                if (!carried.Hashes.SequenceEqual(restored.Hashes)) bad++;
+                if (!carried.Audio.SequenceEqual(restored.Audio)) badAudio++;
+            }
+            yield return new SmsCheck($"Game Boy {inner}: 60 frames after a state load are the picture of the session that carried on (3 save points)", bad == 0, bad == 0 ? $"state {size} bytes" : $"{bad} of 3 differ");
+            yield return new SmsCheck($"Game Boy {inner}: the audio is the same sample for sample (3 save points)", badAudio == 0, badAudio == 0 ? "" : $"{badAudio} of 3 differ");
+            // refusals
+            var g = Make(); Go(g, 0, 20); byte[] gs = g.SaveState();
+            string msg = ""; try { Make(apu: "GBS").LoadState(gs); } catch (InvalidDataException ex) { msg = ex.Message; }
+            yield return new SmsCheck($"Game Boy {inner}: a state of the stock sound unit is refused by a session on the 8-channel unit, naming them", msg.Contains("sound unit") && msg.Contains("GBS"), msg);
+            msg = ""; try { Make("65816").SaveState(); } catch (NotSupportedException ex) { msg = ex.Message; }
+            yield return new SmsCheck($"Game Boy {inner}: a session with the 65816 in the SM83's place says it has no states instead of saving half a machine", msg.Contains("65816"), msg);
+            msg = ""; try { ConsoleSessions.Create(ConsoleKind.GameBoy, rom, "GB", "GB", "GB", null, inner).LoadState(SmsSession_DifferentGame()); } catch (InvalidDataException ex) { msg = ex.Message; }
+            yield return new SmsCheck($"Game Boy {inner}: a Master System state is refused", msg.Contains("Master System"), msg);
+        }
+        if (!any) yield return SmsCheck.Skipped("Game Boy state round trip", $"no Game Boy ROM under {dir} (set BROKENNES_GB_ROMS): not run");
+    }
+
+    private static IEnumerable<SmsCheck> SnesChecks()
+    {
+        string dir = Environment.GetEnvironmentVariable("BROKENNES_SNES_ROMS") is { Length: > 0 } e ? e : @"X:\EMULATION\Super Nintendo";
+        string? zip = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories).Where(f => f.EndsWith(".sfc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".smc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).FirstOrDefault() : null;
+        if (zip == null) { yield return SmsCheck.Skipped("SNES session reports no state", "no SNES ROM found (set BROKENNES_SNES_ROMS)"); yield break; }
+        IConsoleSession? s = null; string why = "";
+        try { byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(zip), Path.GetFileName(zip), out string inner); s = ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", "SFC", "SFC", null, inner); }
+        catch (Exception ex) { why = ex.Message; }
+        if (s == null) { yield return SmsCheck.Skipped("SNES session reports no state", "could not build a SNES session from " + Path.GetFileName(zip) + ": " + why); yield break; }
+        string msg = ""; try { s.SaveState(); } catch (NotSupportedException ex) { msg = ex.Message; }
+        yield return new SmsCheck("the SNES session says why it has no states (SupportsState false, SaveState throws with a reason naming the SNES)", !s.SupportsState && msg.Contains("SNES"), msg);
+        s.Dispose();
+    }
+
+    private static byte[] SmsSession_DifferentGame()
+    {
+        var s = new SmsSession(SmokeProgs.Picture(false), ConsoleKind.MasterSystem, "Z80", "SMS", "SMS", "x.sms");
+        s.RunFrame();
+        return s.SaveState();
     }
 
     /// <summary>A session that implements none of the state members: the contract's defaults answer.</summary>

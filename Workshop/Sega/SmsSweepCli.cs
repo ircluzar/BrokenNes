@@ -34,6 +34,7 @@ internal static class SmsSweepCli
         bool Flag(string name) => args.Any(a => a.Equals("--" + name, StringComparison.OrdinalIgnoreCase));
         string? target = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : Opt("src");
         int frames = int.Parse(Opt("frames") ?? "2400");
+        if (Flag("selftest")) return SweepSelfTest.Run(Flag("poison"));
         // --print-pad sms|gg: the sweep's pad pattern as an input script (the same input can then drive the oracle)
         if (Flag("print-pad")) { Console.WriteLine(SweepProbe.PadSpec(frames, args.Any(a => a.Equals("gg", StringComparison.OrdinalIgnoreCase)))); return 0; }
         if (target == null)
@@ -174,13 +175,13 @@ internal sealed class SweepRow
     public int DisplayFirst = -1, PictureFirst = -1, Colors, DistinctPictures, StaticTail, AudioActive, PsgWrites, FmWrites;
     public int AudioPeak, DarkTail;
     public double Noise;
-    public string PcEnd = "", Iff = "", WindowPcs = "", Ports = "", RomWrites = "", Battery = "", Modes = "", FinalHash = "";
+    public string PcEnd = "", Iff = "", WindowPcs = "", Ports = "", RomWrites = "", CartRam = "", Battery = "", Modes = "", FinalHash = "";
 
     public static readonly string TsvHeader = string.Join('\t', "console", "file", "archive", "bytes", "sha1", "model", "region", "mapper", "header", "class", "detail", "flags", "frames", "ms_per_frame", "x_realtime",
-        "display_first", "picture_first", "colors_end", "distinct_pictures", "static_tail", "dark_tail", "noise", "audio_peak", "audio_active_frames", "psg_writes", "fm_writes", "pc_end", "iff", "window_pcs", "ports", "rom_writes", "battery", "vdp_modes", "final_hash");
+        "display_first", "picture_first", "colors_end", "distinct_pictures", "static_tail", "dark_tail", "noise", "audio_peak", "audio_active_frames", "psg_writes", "fm_writes", "pc_end", "iff", "window_pcs", "ports", "rom_writes", "cart_ram_writes", "battery", "vdp_modes", "final_hash");
 
     public string ToTsv() => string.Join('\t', Console, Clean(File), Clean(Archive), Size, Sha1, Model, Region, Mapper, Header, Class, Clean(Detail), Flags, Frames, MsPerFrame.ToString("F2"), XRealTime.ToString("F1"),
-        DisplayFirst, PictureFirst, Colors, DistinctPictures, StaticTail, DarkTail, Noise.ToString("F2"), AudioPeak, AudioActive, PsgWrites, FmWrites, PcEnd, Iff, WindowPcs, Ports, RomWrites, Battery, Modes, FinalHash);
+        DisplayFirst, PictureFirst, Colors, DistinctPictures, StaticTail, DarkTail, Noise.ToString("F2"), AudioPeak, AudioActive, PsgWrites, FmWrites, PcEnd, Iff, WindowPcs, Ports, RomWrites, CartRam, Battery, Modes, FinalHash);
 
     private static string Clean(string s) => s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
 }
@@ -263,10 +264,18 @@ internal static class SweepProbe
 
     public static SweepRow Probe(SweepItem item, int frames, Dictionary<int, PadButtons>? custom, string? shotsDir)
     {
+        byte[] raw;
+        try { raw = File.ReadAllBytes(item.Path); }
+        catch (Exception e) { return new SweepRow { File = item.Name, Archive = item.Archive, Class = "crash", Detail = $"{e.GetType().Name}: {e.Message}" }; }
+        return ProbeBytes(raw, item.Name, item.Archive, frames, custom, shotsDir);
+    }
+
+    public static SweepRow ProbeBytes(byte[] raw, string name, string archive, int frames, Dictionary<int, PadButtons>? custom, string? shotsDir)
+    {
+        var item = new SweepItem("", name, archive);
         var row = new SweepRow { File = item.Name, Archive = item.Archive };
         try
         {
-            byte[] raw = File.ReadAllBytes(item.Path);
             row.Size = raw.Length;
             byte[] rom = RomDetect.Unwrap(raw, item.Name, out string inner);
             row.Sha1 = Convert.ToHexString(SHA1.HashData(SegaRomFormat.StripCopierHeader(rom))).ToLowerInvariant();
@@ -289,11 +298,13 @@ internal static class SweepProbe
 
             // ---- evidence collected while the game runs
             var romWrites = new Dictionary<ushort, int>();
-            int glassesWrites = 0, ioCtlWrites = 0, hcReads = 0, vcReads = 0, padReads = 0, statReads = 0, psg = 0, fm = 0, thMask = 0, dataW = 0;
+            int glassesWrites = 0, ioCtlWrites = 0, hcReads = 0, vcReads = 0, padReads = 0, statReads = 0, psg = 0, psgLoud = 0, fm = 0, thMask = 0, dataW = 0;
             var ioCtlValues = new HashSet<byte>();
             long winPortReads = 0, winPadReads = 0;
             bool inWindow = false;
             board.Cart.RomSpaceWriteHook = (addr, val) => { if (romWrites.Count < 32 || romWrites.ContainsKey(addr)) romWrites[addr] = romWrites.GetValueOrDefault(addr) + 1; };
+            var ramWrites = new Dictionary<ushort, int>(); int ramWriteTotal = 0; int ramValueMask = 0;
+            board.Cart.RamWriteHook = (addr, val) => { ramWriteTotal++; ramValueMask |= val; if (ramWrites.Count < 64 || ramWrites.ContainsKey(addr)) ramWrites[addr] = ramWrites.GetValueOrDefault(addr) + 1; };
             board.MemWriteHook = (addr, val, line, cyc) => { if (addr >= 0xFFF8 && addr <= 0xFFFB) glassesWrites++; };
             board.PortHook = (write, port, value, line, cyc) =>
             {
@@ -306,7 +317,7 @@ internal static class SweepProbe
                     else switch (p & 0xC1)
                         {
                             case 0x01: ioCtlWrites++; if (ioCtlValues.Count < 16) ioCtlValues.Add(value); thMask |= value & 0xAA; break;
-                            case 0x40: case 0x41: psg++; break;
+                            case 0x40: case 0x41: psg++; if ((value & 0x90) == 0x90 && (value & 0x0F) != 0x0F) psgLoud++; break;
                             case 0x80: dataW++; break;
                         }
                 }
@@ -393,7 +404,8 @@ internal static class SweepProbe
                 if (framePeak > 200) audioActive++;
                 audioPeak = Math.Max(audioPeak, framePeak);
             }
-            board.InstructionHook = null; board.PortHook = null; board.MemWriteHook = null; board.Cart.RomSpaceWriteHook = null;
+            board.InstructionHook = null; board.PortHook = null; board.MemWriteHook = null; board.Cart.RomSpaceWriteHook = null; board.Cart.RamWriteHook = null;
+            row.CartRam = ramWriteTotal == 0 ? "" : $"{ramWriteTotal}w/{ramWrites.Count}a/mask{ramValueMask:X2}:{string.Join(' ', ramWrites.OrderByDescending(kv => kv.Value).Take(3).Select(kv => kv.Key.ToString("X4")))}";
             row.Frames = f;
             double secs = sw.Elapsed.TotalSeconds;
             row.MsPerFrame = f > 0 ? secs * 1000 / f : 0;
@@ -440,7 +452,8 @@ internal static class SweepProbe
             else if (noiseEnd > 0.55) { row.Class = "noisy"; row.Detail = $"{noiseEnd:P0} of neighbouring pixels differ at the end (a scene is under a third; noise is near all)"; }
             else if (row.StaticTail >= 900) { row.Class = "static"; row.Detail = $"picture unchanged for the last {row.StaticTail} frames ({row.WindowPcs} addresses executed, {(polls ? "polls ports" : "no port reads")}, interrupts {row.Iff})"; }
             else if (psg == 0 && fm == 0) { row.Class = "silent"; row.Detail = "not one PSG write in the whole run"; }
-            else if (audioPeak < 100) { row.Class = "silent"; row.Detail = $"{psg} PSG writes but the output never exceeded {audioPeak}"; }
+            else if (psgLoud == 0 && fm == 0) { row.Class = "silent"; row.Detail = $"{psg} PSG writes, all of them silence (volume off): no sound ever started in {f} frames"; }
+            else if (audioPeak < 100) { row.Class = "audio-bug?"; row.Detail = $"{psgLoud} PSG volume writes above silence but the output never exceeded {audioPeak}"; }
             else { row.Class = "ok"; row.Detail = ""; }
 
             if (shotsDir != null)
@@ -490,6 +503,75 @@ internal static class SweepProbe
         if (Has(0x0000) || Has(0x0001) || Has(0x0002) || Has(0x0003)) return selected is SmsMapperKind.MsxKorean or SmsMapperKind.Nemesis ? null : selected == SmsMapperKind.Codemasters ? null : $"MSX/Nemesis[{list}]";
         if (selected == SmsMapperKind.Codemasters) return null;
         return $"other[{list}]";
+    }
+}
+
+/// <summary>
+/// <c>--sms-sweep --selftest [--poison]</c>: the classifier run on hand-assembled programs that are each one of the sweep's classes (and on a clean one), so a change that makes it call everything "ok" is seen. <c>--poison</c> replaces every
+/// verdict by "ok" before the comparison: the proof that this check fails when the classifier is broken.
+/// </summary>
+internal static class SweepSelfTest
+{
+    private static readonly int[] Regs = { 0x04, 0x80, 0x80, 0x81, 0xFF, 0x82, 0xFF, 0x83, 0xFF, 0x84, 0xFF, 0x85, 0xFF, 0x86, 0x00, 0x87, 0x00, 0x88, 0x00, 0x89, 0xFF, 0x8A };
+
+    /// <summary>Common start: DI, IM 1, stack, the VDP registers, a palette of two colours, one solid tile and a name table of stripes; <paramref name="displayOn"/> then sets R1.</summary>
+    private static Z80Asm Start(bool displayOn)
+    {
+        var a = new Z80Asm(0x100);
+        a.Db(0xF3, 0xED, 0x56, 0x31, 0xF0, 0xDF);
+        a.Db(0x0E, 0xBF, 0x06, Regs.Length).LdHl("regs").Db(0xED, 0xB3);
+        a.OutImm(0xBF, 0x00).OutImm(0xBF, 0xC0).OutImm(0xBE, 0x00).OutImm(0xBE, 0x30).OutImm(0xBE, 0x03);           // colours 0 black, 1 blue, 2 red
+        a.OutImm(0xBF, 0x20).OutImm(0xBF, 0x40);                                                                    // VRAM $0020: tile 1, solid colour 1
+        for (int row = 0; row < 8; row++) a.OutImm(0xBE, 0xFF).OutImm(0xBE, 0x00).OutImm(0xBE, 0x00).OutImm(0xBE, 0x00);
+        a.OutImm(0xBF, 0x00).OutImm(0xBF, 0x78);                                                                    // name table $3800: every other tile column
+        a.Db(0x11, 0x00, 0x03);                                                                                      // LD DE,768
+        a.Label("nt").Db(0x7B, 0xE6, 0x01).OutN(0xBE).Db(0xAF).OutN(0xBE).Db(0x1B, 0x7A, 0xB3).JrNz("nt");           // tile (E & 1), high byte 0
+        if (displayOn) a.OutImm(0xBF, 0xC0).OutImm(0xBF, 0x81);
+        return a;
+    }
+
+    private static byte[] Rom(Z80Asm a) { a.Label("regs").Bytes(Regs.Select(x => (byte)x)); return SmsProg.Rom(a.Assemble(), null, null, 0x100); }
+
+    /// <summary>Scrolls every frame (the picture keeps changing) and plays a tone on the PSG: a clean game.</summary>
+    private static byte[] Healthy(bool tone)
+    {
+        var a = Start(true);
+        if (tone) a.OutImm(0x7F, 0x8A).OutImm(0x7F, 0x0A).OutImm(0x7F, 0x90);              // tone 1, a period, full volume
+        else a.OutImm(0x7F, 0x9F);                                                           // volume off: all silence
+        a.Db(0x16, 0x00);                                                                    // LD D,0
+        a.Label("v").InN(0x7E).Db(0xFE, 0xC0).JrNz("v");                                     // wait for line 192
+        a.Db(0x14, 0x7A).OutN(0xBF).OutImm(0xBF, 0x88);                                      // INC D; LD A,D; OUT: horizontal scroll = D
+        a.Label("w").InN(0x7E).Db(0xFE, 0xC0).JrZ("w").Jr("v");
+        return Rom(a);
+    }
+
+    private static byte[] DeadLoop() { var a = Start(true); a.Label("here").Jr("here"); return Rom(a); }                                 // display on, DI, JR $: the Z80 is dead
+    private static byte[] NoDisplay() { var a = Start(false); a.Db(0xFB); a.Label("here").Jr("here"); return Rom(a); }                  // EI, JR $, the display never switched on
+    private static byte[] StaticPicture() { var a = Start(true); a.Db(0xFB); a.Label("here").Jr("here"); return Rom(a); }                  // a picture, EI, JR $: nothing ever changes
+    private static byte[] RunsOff() { var a = Start(true); a.OutImm(0x3E, 0xE8); a.Db(0xC3, 0x00, 0x40); return Rom(a); }                  // switches the cartridge slot off (port $3E bit 6) and keeps running into memory nothing answers
+
+    public static int Run(bool poison)
+    {
+        var cases = new (string Name, byte[] Rom, string Expect)[]
+        {
+            ("a clean game (animated picture, a tone)", Healthy(true), "ok"),
+            ("a game that never starts a sound (volume off only)", Healthy(false), "silent"),
+            ("a program that halts with interrupts off", DeadLoop(), "hung"),
+            ("a program that never switches the display on", NoDisplay(), "no-picture"),
+            ("a program whose picture never changes", StaticPicture(), "static"),
+            ("a program that runs into memory nothing answers", RunsOff(), "hung"),
+        };
+        int bad = 0;
+        foreach (var (name, rom, expect) in cases)
+        {
+            var row = SweepProbe.ProbeBytes(rom, "selftest.sms", "", 1500, null, null);
+            string got = poison ? "ok" : row.Class;
+            bool pass = got == expect;
+            if (!pass) bad++;
+            Console.WriteLine($"{(pass ? "PASS" : "FAIL")}  {name}: wanted {expect}, got {got}{(pass ? "" : "  (" + row.Detail + ")")}");
+        }
+        Console.WriteLine(bad == 0 ? "sweep selftest: every class recognised" : $"sweep selftest: {bad} of {cases.Length} wrong");
+        return bad == 0 ? 0 : 1;
     }
 }
 
