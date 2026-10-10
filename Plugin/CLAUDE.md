@@ -23,20 +23,33 @@ Console 3 (`SMS` on the buttons) holds one chip, `SMS` (chip index 20, appended;
 
 Console 4 (`MD` on the buttons, `Cx.Genesis`) holds one chip, `MD` (chip index 21, appended last; the 12 parameters unchanged in meaning): the YM2612 + SN76489 through the bridge core `APU_MD` (`Windows/NesEmulator/mix/GenesisSoundBridges.cs`, patches in `mix/FmPatchBank.cs`), Direct mode only.
 **The Instrument parameter is the FM patch picker for this chip** (`Bn2Plugin.Apply` sets `APU_MD.Patch` on this instance's own chip; the editor shows a patch dropdown on the pulse channels only; out of range is the last patch, the PSG square). The plugin sets `APU_MD.DefaultLowNotes = Drop` and `DefaultStepFront = false` like the PSG chip.
-Genesis *games* are still refused in ROM mode with a message (`Emulator.cs`, `Cx.RomSupported`); **Master System and Game Gear games now run in ROM mode** through `SessionGame` (any `IConsoleSession` mixes through `Mix`; `Cx.FromKind` maps both to console 3; the file filter gained `.sms .gg .sg .sc`). Test hooks 56-62 read the Genesis chip's patch, FM keys and counters.
+Genesis *games* were refused in ROM mode at C2 (they run since C3b, see the next section); **Master System and Game Gear games run in ROM mode** from C2 through `SessionGame` (any `IConsoleSession` mixes through `Mix`; `Cx.FromKind` maps both to console 3; the file filter gained `.sms .gg .sg .sc`). Test hooks 56-62 read the Genesis chip's patch, FM keys and counters.
 Checks: `md` (chip index, pitch 0.6 cent worst, level against the NES chip, the Instrument parameter per instance and through the editor, polyphony, 8x real time, 0 bytes allocated) and `rom-sms` (tiny Master System and Game Gear ROMs made by the test: load, draw at their own size, play their tone through Mix). Note for a test that measures pitch from zero crossings: use patch 14 (the sine) on this chip, a rich timbre doubles the count (`cores`, `swap` and `consoles` do).
 What Genesis stems, Runaway and games need: `Plugin/README.md` ("The Genesis console") and `docs/projects/sega-track-c.md` (milestone C2).
 
+## Sega track C3b (2026-10-09): the Master System FM chip, Genesis games and Sega stems in ROM mode, Sega Runaway
+
+- **Chip 22, `SMSFM`** (appended last; core `APU_SMSFM` in `Windows/NesEmulator/mix/SmsFmBridge.cs`, the 22-instrument bank in `mix/OpllPatchBank.cs`: the chip's 15, six designed ones, the PSG square). The Instrument parameter is its instrument picker (`Cx.PatchBankOf` 2, `Cx.PatchItems`). Test hooks 63-70 read its registers and counters.
+- **Genesis games in ROM mode:** `Cx.RomSupported` is true for every console; the file filter has `.md .gen .smd`. A Sega game (`SessionGame`) offers `IGame.Stems` (`IGameStems`: `Has`, `Want(mask)`, `Read`); `SessionGame.StemOf` maps plugin channels to the sound unit's stems (`IVoiceStems` in `sega/SegaStems.cs`, implemented by `SmsSound`, `SmsFmSound`, `MdSoundUnit`).
+  Stems cost CPU only for the channels somebody sits on (`Emulator.ClaimedChannels`).
+- **Channel model** (`Bn2Params.cs`, `Ch`): ids 0-4 Pulse 1, Pulse 2, Triangle, Noise, Mix; 5 the Sampler (a hole: never a real channel); 6-20 FM 1-9, DAC, Bass drum, Hi-hat, Snare, Tom, Cymbal; `Ch.Total` = 21. Parameter 12 is `Voice` (0 = use *Channel*). **Everything that indexes by channel uses `Ch.Total`; ids are append-only (a saved project stores them).** A new voice needs `AllNames`,
+  the editor's `CompactNames`, `Cx.Channels` (which console and chip offers it), `StemOf` and `Ch.Label`. An instance that asks for a voice the emulator lacks keeps a Problem and stays attached (`Emulator.Attach`), and is placed again when the chip or console changes (`SetChipLocked`).
+- **Sega Runaway:** `SegaSnapshot.cs` (the PSG1 / OPL1 / OPN1 sections, `DacRecorder`, `DacAnalyzer`), `SegaSamplers.cs` (`PsgSampler`, `OpllSampler`, `OpnSampler`; notes go to numbered slots, `SegaSnapshot.SlotBase`), `Bn2Plugin.RenderSegaSampler` / `UpdateSegaVoices`, `Emulator.SegaState` / `SegaSamplerMode` / `AnySamplerMode`, `IGame.CaptureSega`
+  (`SessionGame` taps `MdSoundUnit.YmPortTap` for the DAC writes). The Instrument parameter is 0 = the game's choice, else the instrument + 1. The state reader checks the tag against the bytes' kind and the length (<= 300,000), `SegaSnapshot.FromBytes` validates every field; anything that fails is dropped, never trusted. Test hooks 71-80.
+- **Rules this added:** a new APU core id needs a family in `CoreCatalog` *and* a root in `WebLite/LinkerConfig.xml` (as for C1); the plugin sets `APU_SMSFM.DefaultLowNotes = Drop` and `DefaultStepFront = false`; ask for a stem before the unit's first write when you can (one asked for later joins the mix within about 0.3 s, which the verifier measures);
+  every sampler must stay allocation-free (`runaway-sega` measures 0 bytes); speed tests read processor time (`Pace`) but a busy machine still skews them (other agents compiling cut every figure by a third or more): rerun when it is quiet and compare with the NES chip measured in the same run.
+- **Checks:** 47 in all (46 pass + the QLQ warning): new `fm`, `rom-md`, `stems-sega`, `runaway-sega`. Failure injections recorded for them are in `docs/projects/sega-track-c.md` (milestone C3b).
+
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **43 checks: 42 pass, 1 warning, 0 failed** (`psg` is Sega track C1's, `md` and `rom-sms` C2's) (the warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **47 checks: 46 pass, 1 warning, 0 failed** (`psg` is Sega track C1's, `md` and `rom-sms` C2's, `fm`, `rom-md`, `stems-sega` and `runaway-sega` C3b's) (the warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.
 - One FL instance = one channel of an emulator; instances share emulators through a static hub (`EmulatorHub`, Auto or #1..#8). Consoles NES /
-  Game Boy / SNES, Direct mode (private bare chip) or ROM mode (a game runs, picture in the editor). NES stems per channel; Game Boy / SNES
-  games play through Mix. Instrument Runaway freezes a game: SNES = instrument picker over the game's BRR samples, Game Boy = the real channels
-  with the game's duty/waveform; NES = freeze and silence only (no DMGS sampler either).
+  Game Boy / SNES / Master System / Game Gear / Genesis, Direct mode (private bare chip) or ROM mode (a game runs, picture in the editor). NES stems per channel, Sega games per voice
+  (PSG, FM, DAC, rhythm); Game Boy / SNES games play through Mix. Instrument Runaway freezes a game: SNES = instrument picker over the game's BRR samples, Game Boy = the real channels
+  with the game's duty/waveform, Sega = the game's chips on private copies (PSG, YM2413, YM2612 patches and the Genesis DAC's sounds); NES = freeze and silence only (no DMGS sampler either).
 
 ## Layout
 
@@ -50,8 +63,8 @@ What Genesis stems, Runaway and games need: `Plugin/README.md` ("The Genesis con
 | `../UAT/plugin`, `../UAT/certify.ps1` | FL render certification, installer (`fl/install-to-fl.cmd`), the four-entrypoint certification |
 
 Names: the plugin is branded "Bogue :: BrokenNes 2" but the DLL, folder and FL's plugin identity stay `BrokenNes2` (`::` is not valid in file names).
-Params: 12 (`Bn2Params.cs`; Emulator, Console and Instrument are the later additions). State version 2; trailers after the params: ROM path,
-`EMU2` (emulator id + channel), `SPC1` (SNES sound memory), `GBS1` (Game Boy sound settings). Older projects load defaults.
+Params: 13 (`Bn2Params.cs`; Emulator, Console, Instrument and Voice are the later additions). State version 2; trailers after the params: ROM path,
+`EMU2` (emulator id + channel), then in Runaway one of `SPC1` (SNES sound memory), `GBS1` (Game Boy sound settings), `PSG1` / `OPL1` / `OPN1` (a Sega game's chips). Older projects load defaults.
 
 ## Commands (Git Bash or PowerShell; build output goes OUTSIDE the repo)
 
