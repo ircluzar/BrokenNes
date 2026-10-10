@@ -32,7 +32,7 @@ The causes, by number of games, and what was done:
 | 2 | Fatal Rewind / Killing Game Show: double fault after any Start press | open, see below |
 | remaining | bad dumps ([b1]: 512 KB halves, Road Rash, F-22, Centurion ...), pirate carts with their own mappers (Pocket Monsters 1 and 2, Aq Renkan Awa, Mulan, Super Mario World (Unl), Rockman X3, Magic Girl, Command & Conquer beta: writes to `$A130F3` and beyond that nothing implements), Pioneer LaserActive BIOS, Virtua Racing (SVP: the game runs, the chip is not there), Super Street Fighter II (a 4 MB cut of a 5 MB game that writes the SSF2 bank registers: needs a good dump) | listed in the summary below; not fixed |
 
-A second whole-library run on the fixed tree (with the retry logic) is the next table; it was still running when this was written: **partial** results are in the summary section at the end, the final ones in the dashboard.
+A second whole-library run on the fixed tree (with the retry logic) was **stopped at 370 of 948 files** (the work was wrapped up): of those 370, **347 ok, 9 frozen, 3 no picture, 2 exception loops, 1 halted (Fatal Rewind), 1 rejected (delete.me), 7 32X refused**, against about 13 percent non-ok before. The frozen ones left in that part: Bugs Bunny in Double Trouble (writes `$BF` to every `$A130F1-FF` register at frame 2202: a mapper nobody implements), College Football's National Championship (polls `$A1001E`, an I/O address nothing answers), Double Dragon 2 (J) (polls the VDP status forever at `$001078`: a VDP flag the game waits for, possibly B3a's area), Fatal Fury 2 [b1], Barver Battle Saga (pirate). **The remaining 578 files have not been re-run on the fixed tree**.
 
 ## Cartridge hardware
 
@@ -57,18 +57,25 @@ BlastEm's debugger cannot be driven over a pipe on Windows (its console detaches
 | # | Game | Result against BlastEm (scripted input, frames compared) |
 |---|---|---|
 | 3 | Sonic the Hedgehog | **15 of 15 pictures pixel-identical over 1,500 frames** with Start, C and A presses and walking right in Green Hill (pause at boundary 700, pictures every 100 frames) |
-| other 19 | | runs with the default script reach gameplay in ours for all 20 (contact sheets); the BlastEm comparison for the others was running when this was written: see the dashboard |
+| 2, 4, 5 | Altered Beast, Golden Axe, Strider | **comparison invalid, not a difference**: BlastEm wrote 19, 24 screenshots for the 16 asked for in those runs (extra files by the second), so the shots were paired with the wrong pictures of ours (the lag search said "oracle stands 400 advances behind" on a picture that matched at step 100). `oraclerun.ps1` now refuses such a run ("CAPTURE UNRELIABLE"); these games need a rerun. Game 5 was cut off |
+| other 16 | | not compared. With the default script all 20 roster games reach gameplay in ours (contact sheets of 2,400 frames each: Flicky, Altered Beast stage 1, Sonic 1 Green Hill, Golden Axe stage 1, Strider, Streets of Rage, Castle of Illusion, Ecco, Sonic 2, Kid Chameleon, Gunstar Heroes, SoR2, Shinobi III, Castlevania Bloodlines, Comix Zone, Contra Hard Corps, Phantasy Star IV intro, Sonic 3 and S&K intros, SoR3 stage 1); that is not a comparison with BlastEm |
 
 ## Found for another owner (VDP, `MdVdp.cs`: B3a)
 
 The vertical interrupt (and the VINT status flag) comes about **780 master clocks late** in ours: `StartNextLine` sets `vintTime = lineStart + VintDelay` at line 224, but the plan's 788 clocks are counted from the VBlank flag, which the V counter raises at line 223's offset 2640. Probe ROMs on both machines (`vinttime.py`: the H/V counter at the interrupt handler's first instruction, and when the flag is first seen): BlastEm `$E023` and `$E016`, ours `$E050` and `$E042`; with `vintTime = lineStart + 40` ours gave `$E027`/`$E022` (+8: `$E01F`/`$E012`, +72: `$E027`/`$E022`). It did not change the Sonic 1 comparison above (all exact either way), so no game was shown to depend on it yet. Not changed here.
 
+## Half-done and not done (read this first)
+
+* **Roster**: only Sonic 1 is compared (15 of 15 exact). The other 19: runs of games 2, 4 and 5 were invalid (screenshot count), the rest not started. The pause frames per game that give a pinnable first screenshot are in `scratchpad` notes only; `--md-oracle --windows N` finds them again (a pause inside a window of frames whose pictures are unique). Games with no such window (Streets of Rage 1, 2, 3, Shinobi III, Phantasy Star IV) need the ambiguous-start resolution of `--md-oracle` (built, not yet used on BlastEm data). Status on the dashboard: Sonic 1 playable, the others unchanged (`working` where they were).
+* **Whole-library second run**: 370 of 948.
+* **Saves against BlastEm's files, Mega Man Wily Wars' 3-wire EEPROM, pirate mappers, SVP**: not done.
+* **Kid Chameleon boot sound**: not investigated (the plan: BlastEm VGM log from a pause at frame ~100 with `m`, compare the first DAC (`$2A`) write time with ours; ours uploads the driver at frames 14, 30 and 204 and starts the DAC at 208).
+* **Z80 bank-window stall and refresh constants, model defaults, YM busy flag**: not measured. Per-frame allocation: 0.0 bytes (`--alloc-probe`, Sonic, 1,200 frames); speed not re-measured on a quiet machine (about 125-190 frames/s with other jobs running).
+* **Fatal Rewind**: see below.
+
 ## Open
 
-* Fatal Rewind (and Killing Game Show): pressing Start at any time from frame 20 on halts the 68000 (a `JSR` through a RAM vector at `$FFE03E` that is still 0); without input it runs. The no-input state matches BlastEm exactly at `$02249E` (same registers). Not yet compared with Start pressed (needs the oracle with a script).
-* Kid Chameleon boot sound (task 4): not investigated yet.
-* Z80 bank-window stall and 68000 refresh constants, model defaults, YM busy flag, speed, per-frame allocation: not measured in this round yet.
-
+* Fatal Rewind (and Killing Game Show): pressing Start at any time from frame 20 on halts the 68000 (a `JSR` through a RAM vector at `$FFE03E` that is still 0); without input it runs and its state at `$02249E` matches BlastEm's registers exactly. Not compared with Start pressed (needs the oracle with a script; the first screenshot is black, so use the ambiguous-start resolution).
 ## Verification (what was run)
 
 | What | Result |
