@@ -257,6 +257,28 @@ try {
         $moved = Test-InputChangesPicture $id $f0
         Check "$($e.Key)_input_reaches_session" $moved "frame hash changed while Right was held: $moved"
         Start-Sleep -Milliseconds 400
+
+        # save state through the app's own quick save / quick load (the API calls the same methods as F7 and F5): save the still picture, scroll away, load, and the still picture is back.
+        # The Genesis has no state yet and must say so instead of pretending.
+        $stateDir = Join-Path $env:APPDATA 'BrokenNes\States'
+        if ($e.Real -and $e.Key -in 'sms', 'gg') {
+            $slot = Join-Path $stateDir "$($e.Key)\$(Get-RomSha1 ([IO.File]::ReadAllBytes((Join-Path $roms $e.File)))).quick.bnstate"
+            if (Test-Path -LiteralPath $slot) { Remove-Item -LiteralPath $slot -Force }
+            Load-BrokenNesRom -ProcessId $id -Path (Join-Path $roms $e.File) | Out-Null
+            Wait-Picture $id 5 | Out-Null; Start-Sleep -Milliseconds 800
+            $still = Get-Frame $id
+            $sv = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/quick-save-state'
+            $slotLen = if (Test-Path -LiteralPath $slot) { (Get-Item -LiteralPath $slot).Length } else { 0 }
+            Check "$($e.Key)_quick_save_writes_the_slot" ([bool]$sv.success -and $slotLen -gt 1000) "success=$($sv.success); $slot is $slotLen bytes"
+            $away = Test-InputChangesPicture $id $still
+            $ld = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/quick-load-state'
+            $back = Wait-Frame $id { param($x) $x.Hash -eq $still.Hash } 6
+            Check "$($e.Key)_quick_load_restores_the_picture" ([bool]$ld.success -and $away -and $back.Hash -eq $still.Hash) "load success=$($ld.success); the picture had moved away: $away; it is the saved one again: $($back.Hash -eq $still.Hash)"
+            if (Test-Path -LiteralPath $slot) { Remove-Item -LiteralPath $slot -Force }
+        } elseif ($e.Key -eq 'md') {
+            $sv = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/quick-save-state'
+            Check 'md_quick_save_is_refused_not_faked' (-not [bool]$sv.success) "success=$($sv.success) (the Genesis session has no save state yet)"
+        }
     }
     $alive = [bool](Get-Process -Id $id -ErrorAction SilentlyContinue)
     $health = $false; if ($alive) { try { $health = [bool](Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/health') } catch { } }

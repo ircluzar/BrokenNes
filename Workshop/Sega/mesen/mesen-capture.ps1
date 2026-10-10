@@ -72,7 +72,10 @@ $env:MESEN_VWATCH = $VWatch; $env:MESEN_VFRAMES = $VFrames; $env:MESEN_MWATCH = 
 $env:MESEN_GG = if ([IO.Path]::GetExtension($Rom).ToLowerInvariant() -eq ".gg") { "1" } else { "" }
 $env:MESEN_DUMP = if ($Dump) { "1" } else { "" }; $env:MESEN_STATE = if ($State) { "1" } else { "" }
 $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
-$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$((Resolve-Path -LiteralPath $Rom).Path)`"", "`"$lua`"") -PassThru -NoNewWindow `
+# the oracle is given a copy with a plain name: it does not open some dump names (commas, ampersands, "(Proto)") from the command line, and then ends without running one instruction
+$plainRom = Join-Path $work ("game" + [IO.Path]::GetExtension($Rom).ToLowerInvariant())
+Copy-Item -LiteralPath $Rom -Destination $plainRom -Force
+$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$plainRom`"", "`"$lua`"") -PassThru -NoNewWindow `
     -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
 $expected = foreach ($tok in ($Frames -join "," -split ",")) { if ($tok -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } elseif ($tok) { [int]$tok } }

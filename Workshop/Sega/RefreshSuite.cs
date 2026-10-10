@@ -45,6 +45,13 @@ internal static class RefreshSuite
         return s.Board.Ram.AsSpan(0, 10).ToArray();
     }
 
+    /// <summary>A program that stores every register as the cartridge finds it at its first instruction (main set, shadow set, SP, IX, IY) to $C100 and up.</summary>
+    private static byte[] RegisterProbe() => SmsProg.Rom(SmsProg.Cat(
+        SmsProg.B(0xED, 0x73, 0x00, 0xC1, 0x22, 0x02, 0xC1, 0xED, 0x53, 0x04, 0xC1, 0xED, 0x43, 0x06, 0xC1),          // LD ($C100),SP ; LD ($C102),HL ; LD ($C104),DE ; LD ($C106),BC
+        SmsProg.B(0x31, 0xF0, 0xDF, 0xF5, 0xE1, 0x22, 0x08, 0xC1),                                                      // LD SP,$DFF0 ; PUSH AF ; POP HL ; LD ($C108),HL
+        SmsProg.B(0xD9, 0x22, 0x0A, 0xC1, 0xED, 0x53, 0x0C, 0xC1, 0xED, 0x43, 0x0E, 0xC1),                              // EXX ; LD ($C10A),HL' ; LD ($C10C),DE' ; LD ($C10E),BC'
+        SmsProg.B(0x08, 0xF5, 0xE1, 0x22, 0x10, 0xC1, 0xDD, 0x22, 0x14, 0xC1, 0xFD, 0x22, 0x16, 0xC1, 0x18, 0xFE)));   // EX AF,AF' ; PUSH AF ; POP HL ; LD ($C110),HL ; LD ($C114),IX ; LD ($C116),IY ; JR $
+
     private static int D(byte[] r, int hi, int lo) => (r[hi] - r[lo]) & 0x7F;       // R is a 7-bit counter (bit 7 is only what a program wrote)
 
     public static IEnumerable<SmsCheck> Run(SmsSuiteContext ctx)
@@ -66,6 +73,14 @@ internal static class RefreshSuite
         yield return new SmsCheck("with the oracle's setting (R does not count while halted): store, EI, HALT, acknowledge and the handler's read = 6, then the handler's store, the status read, RETI and the read after the wake-up = 6",
             D(o, 6, 5) == 6 && D(o, 7, 6) == 6, dumpO);
         yield return new SmsCheck("as the chip does (default): the thousands of halted NOP cycles move R, so the handler sees more than the oracle's 6 (here a count of the halted cycles / 4 modulo 128)", halted != 6, $"{halted} vs 6; {dump}");
+        // the registers at a cartridge's first instruction, read by the oracle with the same program: SP $DFF0, AF $AB42, BC $0002, DE $A51B, HL 0; shadow BC' $0200, DE' $C700, HL' $C75F, AF' 0; IX and IY 0
+        var rs = ctx.Session(RegisterProbe(), "reg-probe.sms");
+        if (ctx.Poison == "refresh") { rs.Board.Cpu.BC2 = 0; rs.Board.Cpu.DE2 = 0; rs.Board.Cpu.HL2 = 0; }      // the proof of failure: the shadow set left at zero, as it was before this check existed
+        for (int f = 0; f < 3; f++) rs.RunFrame();
+        var ram = rs.Board.Ram;
+        string regs = string.Join(' ', ram.AsSpan(0x100, 0x18).ToArray().Select(b => b.ToString("X2")));
+        const string expect = "F0 DF 00 00 1B A5 02 00 42 AB 5F C7 00 C7 00 02 00 00 00 00 00 00 00 00";
+        yield return new SmsCheck("the registers at a cartridge's first instruction, shadow set included, are the oracle's (SP, HL, DE, BC, AF, HL', DE', BC', AF', IX, IY)", regs == expect, regs);
         yield return new SmsCheck("after the acknowledge both settings take the same steps (the handler's store, the status read, RETI and the read: 6)", D(z, 7, 6) == 6, dump);
     }
 }

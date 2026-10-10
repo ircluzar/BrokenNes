@@ -128,9 +128,14 @@ internal static class SmsRunCli
             pcLog = new StreamWriter(Path.Combine(outDir, $"{tag}.pc.txt"));
             bool withRegs = Flag("trace-pc-regs"), withCycles = Flag("trace-pc-cyc");   // --trace-pc-cyc: "pc cycles" (the Z80 cycle count before the instruction; the oracle's MESEN_EXECCYC)
             long lastFr = -1;
+            int lastPc = -1;
             board.InstructionHook = pc =>
             {
                 long fr = board.Frames + 1;
+                // a halted CPU that an interrupt wakes reaches a boundary at the instruction after the HALT before the interrupt response starts in its place: that instruction never runs, and the oracle's log has no line for it
+                bool afterHalt = lastPc >= 0 && pc == (ushort)(lastPc + 1) && board.Peek((ushort)lastPc) == 0x76 && board.Cpu.Irq;
+                lastPc = pc;
+                if (afterHalt) return;
                 if (fr < fa || fr > fb) return;
                 if (fr != lastFr) { lastFr = fr; pcLog.WriteLine("F" + fr); }   // a marker where each frame starts (the oracle's log has the same)
                 if (withCycles) pcLog.WriteLine($"{pc:X4} {board.Cycles}");

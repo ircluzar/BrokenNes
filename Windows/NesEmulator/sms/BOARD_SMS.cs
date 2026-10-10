@@ -115,6 +115,7 @@ public sealed class BOARD_SMS
         {
             // the registers the BIOS leaves for the cartridge (as the oracle shows them at a cartridge's first instruction): the stack at $DFF0, interrupt mode 1, interrupts disabled
             Cpu.SP = 0xDFF0; Cpu.AF = 0xAB42; Cpu.BC = 0x0002; Cpu.DE = 0xA51B; Cpu.HL = 0x0000; Cpu.InterruptMode = 1; Cpu.R = 29;
+            Cpu.BC2 = 0x0200; Cpu.DE2 = 0xC700; Cpu.HL2 = 0xC75F;   // the shadow set the BIOS leaves too (read by the oracle's reg-probe program before any game code runs; Fantastic Dizzy's interrupt handler uses them before it writes them)
             port3E = (byte)(IsGameGear ? 0xA8 : 0xAB);        // BIOS and expansion off, cartridge on (the state after the BIOS has run)
             port3F = 0xFF;
             Ram[0] = port3E;                                   // the BIOS keeps a copy of the memory-control value at the first byte of work RAM (the oracle's post-BIOS RAM holds nothing else)
