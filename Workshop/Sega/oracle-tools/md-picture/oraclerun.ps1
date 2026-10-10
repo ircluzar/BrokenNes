@@ -43,6 +43,8 @@ if (-not $NoCapture) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyCon
 $got = @(Get-ChildItem $dir -Filter "s*.png" | Sort-Object Name)
 "BlastEm screenshots: $($got.Count) (expected $($shotList.Count + 1))"
 if ($got.Count -lt 1) { return }
+# BlastEm names its screenshots by the second and now and then writes one more (or one fewer) than were asked for; shots are paired with ours by their order, so a count that is not exactly right cannot be compared
+if ($got.Count -ne $shotList.Count + 1) { "CAPTURE UNRELIABLE: $($got.Count) screenshots for $($shotList.Count + 1) requested; the shots cannot be paired with ours. Rerun."; return }
 # ours: scan S0 for the boundary, then replay; the other screenshots are s001.. in --shots order
 $theirs = Join-Path $root "be\${Name}_t"; Remove-Item $theirs -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force $theirs | Out-Null
 for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $theirs ("s{0:D3}.png" -f ($i - 1))) }
