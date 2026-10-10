@@ -74,6 +74,15 @@ public sealed class MdSession : IConsoleSession
         v.CopyPicture(frame);
     }
 
+    /// <summary>Run to scanline <paramref name="line"/> (see <see cref="BOARD_MD.RunUntilLine"/>) instead of to the end of the frame, and show the picture as it stands: for comparisons with an emulator that is stepped a frame at a time.</summary>
+    public void RunToLine(int line)
+    {
+        Board.RunUntilLine(line);
+        var v = Board.Vdp;
+        frameWidth = v.PictureWidth; frameHeight = v.PictureHeight;
+        v.CopyPicture(frame);
+    }
+
     public void Reset() => Board.Reset();
 
     public uint[] Frame => frame;

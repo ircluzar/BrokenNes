@@ -30,8 +30,9 @@ public sealed class MdCartridge
     public readonly uint SramStart, SramEnd;
     public readonly bool SramOdd, SramEven;
 
-    /// <summary>The cartridge has battery-backed memory the session should save.</summary>
-    public bool HasBattery => Sram.Length > 0;
+    /// <summary>The cartridge has battery-backed memory the session should save. A headerless cartridge's RAM (see <see cref="SramHeaderless"/>) counts only once a game has written to it or a saved game was loaded into it: before that
+    /// nothing says the cartridge has any, and no save file should be made for it. (The app loads a Genesis save file whenever one exists, so a game that saved before finds its RAM at the start.)</summary>
+    public bool HasBattery => Sram.Length > 0 && (!SramHeaderless || SramMapped);
 
     /// <summary>The image is a Sonic &amp; Knuckles cartridge with a game locked on (the SRAM comes from the locked-on game's header).</summary>
     public bool LockedOn { get; private set; }

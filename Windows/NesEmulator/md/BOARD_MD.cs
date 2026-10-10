@@ -153,6 +153,26 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         Sound.RunTo(t);
     }
 
+    /// <summary>
+    /// Run until the VDP reaches scanline <paramref name="line"/> (of this frame if it is still ahead, else of the next), the way an emulator that is stepped a frame at a time stops: BlastEm's pause and frame advance
+    /// stop at about line 232, after the vertical interrupt has begun (measured with a pad-polling probe ROM: a key pressed while it is paused is first seen by the game at V counter 232). Scripted input meant for
+    /// a comparison with it changes the pad here. Returns after the first instruction that starts the line (the 68000's granularity).
+    /// </summary>
+    public void RunUntilLine(int line)
+    {
+        int perFrame = Region == SegaRegion.Pal ? 313 : 262;
+        long target = Vdp.Frames * perFrame + line;
+        if (Vdp.Frames * perFrame + Vdp.Line >= target) target += perFrame;
+        long guard = t + Timeline.MasterClocksPerFrame * 4;
+        while (Vdp.Frames * perFrame + Vdp.Line < target && t < guard)
+        {
+            InstructionHook?.Invoke(Cpu.Pc - 4);
+            Cpu.Step();
+            Vdp.RunTo(t);
+        }
+        Sound.RunTo(t);
+    }
+
     /// <summary>One 68000 instruction (or interrupt, or stopped slice), then the VDP and the sound unit are brought to the 68000's clock. Returns the 68000 clocks it counted.</summary>
     public int StepInstruction()
     {

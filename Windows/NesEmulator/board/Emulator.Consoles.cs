@@ -203,7 +203,8 @@ namespace BrokenNes
         private async Task LoadSessionBatteryAsync()
         {
             var s = session;
-            if (s == null || !s.HasBattery) return;
+            // a Genesis cartridge with no SRAM header reports a battery only after its game has written to it, so a save made on an earlier run is looked up regardless
+            if (s == null || (!s.HasBattery && s.Console != ConsoleKind.Genesis)) return;
             try
             {
                 var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", SessionSaveKey(s));
