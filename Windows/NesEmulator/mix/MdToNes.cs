@@ -612,27 +612,32 @@ internal sealed class MdToNes
         bgQ.Solve(4);
         pic.Pal[0] = NesFixPalette.Nearest(bdFrame >> 16 & 0xFF, bdFrame >> 8 & 0xFF, bdFrame & 0xFF);
         for (int g = 0; g < 4; g++) for (int lv = 1; lv < 4; lv++) { int rgb = bgQ.Palette[g][lv]; pic.Pal[g * 4 + lv] = NesFixPalette.Nearest(rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF); }
-        var bgTiles = new Dictionary<int, int>(); int nextBg = 1, bgOver = 0;
-        int BgTile(Cell cl)
+        // the tile variants (content, palette line, flips) the picture needs, by how many cells use each; the chip holds 255, the most used get one each and the rest are shown as the closest
+        int VariantKey(Cell cl) => ContentOf(cl.Tile) | cl.Pal << 20 | (cl.HFlip ? 1 << 22 : 0) | (cl.VFlip ? 1 << 23 : 0);
+        var variantUses = new Dictionary<int, int>(); var variantCell = new Dictionary<int, Cell>();
+        for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
-            int key = ContentOf(cl.Tile) | cl.Pal << 20 | (cl.HFlip ? 1 << 22 : 0) | (cl.VFlip ? 1 << 23 : 0);
-            if (bgTiles.TryGetValue(key, out int t)) return t;
-            if (nextBg > 255) { bgOver++; return 1 + cl.Tile % 255; }
-            t = nextBg++; bgTiles[key] = t;
-            int item = itemOf[ContentOf(cl.Tile) << 2 | cl.Pal]; var pal = palettes[cl.Pal];
-            for (int y = 0; y < 8; y++)
-            {
-                byte p0 = 0, p1 = 0;
-                for (int x = 0; x < 8; x++)
-                {
-                    int ci = TilePixel(cl.Tile, cl.VFlip ? 7 - y : y, cl.HFlip ? 7 - x : x);
-                    int lv = ci == 0 ? 0 : bgQ.Level(item, pal[ci]);
-                    p0 |= (byte)((lv & 1) << (7 - x)); p1 |= (byte)((lv >> 1 & 1) << (7 - x));
-                }
-                pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1;
-            }
-            return t;
+            if (cells[cy, cx] is not { } cl) continue;
+            int vk = VariantKey(cl);
+            variantUses[vk] = variantUses.GetValueOrDefault(vk) + 1; variantCell[vk] = cl;
         }
+        byte[] VariantLevels(int vk)
+        {
+            var cl = variantCell[vk];
+            int item = itemOf[ContentOf(cl.Tile) << 2 | cl.Pal]; var pal = palettes[cl.Pal];
+            var lvs = new byte[64];
+            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+            {
+                int ci = TilePixel(cl.Tile, cl.VFlip ? 7 - y : y, cl.HFlip ? 7 - x : x);
+                lvs[y * 8 + x] = (byte)(ci == 0 ? 0 : bgQ.Level(item, pal[ci]));
+            }
+            return lvs;
+        }
+        var bgMap = FlatTilePacker.Pack(variantUses, VariantLevels, 255, out var bgKept, out int bgOver);
+        for (int t = 1; t <= 255; t++)
+            if (bgKept[t] is { } lv) for (int y = 0; y < 8; y++) { var (p0, p1) = FlatTilePacker.Row(lv, y); pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1; }
+        var bgTiles = bgMap;
+        int BgTile(Cell cl) => bgMap[VariantKey(cl)];
         var votes = new int[15, 17, 4]; int conflicts = 0;
         for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
@@ -651,8 +656,8 @@ internal sealed class MdToNes
             nt[ai] = (byte)((nt[ai] & ~(3 << sh)) | (best << sh));
         }
         c.Add("tiles whose 16x16 block holds another palette (shown in the block's colours)", conflicts);
-        c.Add("background tiles past the 255 the NES holds (wrong tiles shown)", bgOver);
-        c.Level("background tiles", bgTiles.Count);
+        c.Add("background tile variants past the 255 the NES holds (shown as the closest kept tile)", bgOver);
+        c.Level("background tiles", Math.Min(255, bgTiles.Count));
 
         // ---- sprites: the VDP's evaluated list, 8x8 pieces, 64 at most
         var sprites = ReadSprites(out int dropped, out _);

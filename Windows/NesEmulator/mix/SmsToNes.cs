@@ -112,6 +112,7 @@ internal sealed class SmsToNes
         Counters.BeginFrame();
         var win = Window = WindowFor(vdp);
         cap.Complete(vdp.ActiveHeight);
+        BuildCanon(vdp.Vram);
         bool mode4 = vdp.Revision != SmsVdpRevision.Tms9918 && (vdp.Regs[0] & 4) != 0;
         var layered = sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront;
         if (!mode4)
@@ -128,14 +129,27 @@ internal sealed class SmsToNes
     // ----------------------------------------------------------------------------------------------------------------------- shared reading of the chip's memory
     private readonly record struct Cell(int Tile, bool HFlip, bool VFlip, bool Pal2, bool Prio);
 
-    private static Cell ReadCell(SmsVdp vdp, int ntBase, int row, int col)
+    // Tiles are told apart by what is in them: every tile number is replaced by the lowest number with the same pixels (a game that clears with several different blank tiles shows one).
+    private readonly int[] canon = new int[512];
+    private void BuildCanon(byte[] vram)
+    {
+        var first = new Dictionary<ulong, int>();
+        for (int t = 0; t < 512; t++)
+        {
+            ulong h = 14695981039346656037UL;
+            for (int i = 0; i < 32; i++) h = (h ^ vram[(t * 32 + i) & 0x3FFF]) * 1099511628211UL;
+            canon[t] = first.TryGetValue(h, out int f) ? f : (first[h] = t);
+        }
+    }
+
+    private Cell ReadCell(SmsVdp vdp, int ntBase, int row, int col)
     {
         int nt = ntBase + row * 64 + col * 2;
         if (vdp.Revision == SmsVdpRevision.Sms1 && (vdp.Regs[2] & 1) == 0) nt &= ~0x400;
         nt &= 0x3FFF;
         var v = vdp.Vram;
         int entry = v[nt] | v[(nt + 1) & 0x3FFF] << 8;
-        return new Cell(entry & 0x1FF, (entry & 0x200) != 0, (entry & 0x400) != 0, (entry & 0x800) != 0, (entry & 0x1000) != 0);
+        return new Cell(canon[entry & 0x1FF], (entry & 0x200) != 0, (entry & 0x400) != 0, (entry & 0x800) != 0, (entry & 0x1000) != 0);
     }
 
     private static int NameTableBase(SmsVdp vdp) => vdp.ActiveHeight != 192 ? ((vdp.Regs[2] & 0x0C) << 10) | 0x700 : (vdp.Regs[2] & 0x0E) << 10;
@@ -159,7 +173,7 @@ internal sealed class SmsToNes
     private readonly record struct Piece(int X, int Y, int Tile, int Quadrant, bool Zoom);
 
     /// <summary>The chip's sprite list as it draws it: the 0xD0 terminator, the 8-pixel shift, tall and zoomed sprites, positions that wrap to the top. Pieces are in the chip's own priority order.</summary>
-    private static List<Piece> ReadSprites(SmsVdp vdp, out int sprites, out bool zoom)
+    private List<Piece> ReadSprites(SmsVdp vdp, out int sprites, out bool zoom)
     {
         var v = vdp.Vram; var r = vdp.Regs; var list = new List<Piece>();
         int satBase = (r[5] & 0x7E) << 7;
@@ -178,7 +192,7 @@ internal sealed class SmsToNes
             int rows = tall ? 2 : 1;
             for (int pr = 0; pr < rows; pr++)
             {
-                int tile = tall ? ((tn & 0xFE) | tileHi) + pr : tn | tileHi;
+                int tile = canon[(tall ? ((tn & 0xFE) | tileHi) + pr : tn | tileHi) & 0x1FF];
                 if (!zoom)
                 {
                     int py = top + 8 * pr; if (py >= 256) py -= 256;
@@ -480,28 +494,33 @@ internal sealed class SmsToNes
             int rgb = bgQ.Palette[g][lv];
             pic.Pal[g * 4 + lv] = NesFixPalette.Nearest(rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF);
         }
-        var bgTiles = new Dictionary<int, int>(); int nextBg = 1, bgOver = 0;
-        int BgTile(Cell cell)
+        // the tile variants (a tile of the video memory in a palette and a flip) the picture needs, by how many cells use each; the chip holds 255, the most used get one each and the rest are shown as the closest
+        static int VariantKey(Cell cell) => cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0);
+        var variantUses = new Dictionary<int, int>(); var variantCell = new Dictionary<int, Cell>();
+        for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
-            int key = cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0);
-            if (bgTiles.TryGetValue(key, out int t)) return t;
-            if (nextBg > 255) { bgOver++; return 1 + cell.Tile % 255; }
-            t = nextBg++; bgTiles[key] = t;
+            if (cells[cy, cx] is not { } cell) continue;
+            int vk = VariantKey(cell);
+            variantUses[vk] = variantUses.GetValueOrDefault(vk) + 1; variantCell[vk] = cell;
+        }
+        byte[] VariantLevels(int vk)
+        {
+            var cell = variantCell[vk];
             int item = itemOf[cell.Tile << 1 | (cell.Pal2 ? 1 : 0)];
             var pal = bgPalette[cell.Pal2 ? 1 : 0];
-            for (int y = 0; y < 8; y++)
+            var lvs = new byte[64];
+            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
             {
-                byte p0 = 0, p1 = 0;
-                for (int x = 0; x < 8; x++)
-                {
-                    int ci = Pixel(vram, cell.Tile * 32, cell.VFlip ? 7 - y : y, cell.HFlip ? 7 - x : x);
-                    int lv = ci == 0 && pal[0] == bdFrame ? 0 : bgQ.Level(item, pal[ci]);
-                    p0 |= (byte)((lv & 1) << (7 - x)); p1 |= (byte)((lv >> 1 & 1) << (7 - x));
-                }
-                pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1;
+                int ci = Pixel(vram, cell.Tile * 32, cell.VFlip ? 7 - y : y, cell.HFlip ? 7 - x : x);
+                lvs[y * 8 + x] = (byte)(ci == 0 && pal[0] == bdFrame ? 0 : bgQ.Level(item, pal[ci]));
             }
-            return t;
+            return lvs;
         }
+        var bgMap = FlatTilePacker.Pack(variantUses, VariantLevels, 255, out var bgKept, out int bgOver);
+        for (int t = 1; t <= 255; t++)
+            if (bgKept[t] is { } lv) for (int y = 0; y < 8; y++) { var (p0, p1) = FlatTilePacker.Row(lv, y); pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1; }
+        var bgTiles = bgMap;
+        int BgTile(Cell cell) => bgMap[VariantKey(cell)];
         var votes = new int[15, 17, 4]; int conflicts = 0;
         for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
@@ -521,8 +540,8 @@ internal sealed class SmsToNes
             nt[ai] = (byte)((nt[ai] & ~(3 << sh)) | (best << sh));
         }
         c.Add("tiles whose 16x16 block holds another palette (shown in the block's colours)", conflicts);
-        c.Add("background tiles past the 255 the NES holds (wrong tiles shown)", bgOver);
-        c.Level("background tiles", bgTiles.Count);
+        c.Add("background tile variants past the 255 the NES holds (shown as the closest kept tile)", bgOver);
+        c.Level("background tiles", Math.Min(255, bgTiles.Count));
 
         // ---- sprites: 8x8 pieces in the chip's order; 64 at most (the NES chip drops what it cannot show on a line)
         var pieces = ReadSprites(vdp, out _, out bool zoom);
