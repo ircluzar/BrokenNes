@@ -277,7 +277,7 @@ internal static class SegaFoundationTestCli
             // the finished Genesis: a real session (the placeholder's colour bars are gone)
             var rom = Genesis();
             using var s = ConsoleSessions.Create(ConsoleKind.Genesis, rom, CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Apu));
-            Check("Genesis: the session is the real one and names its sound unit", s is MdSession && s.Description.Contains("Genesis") && s.Description.Contains("APU MD") && s.Console == ConsoleKind.Genesis);
+            Check("Genesis: the session is the real one and names its sound unit", (s is MdSession || (s is NesEmulator.Mix.SegaPictureSession ps && ps.Inner is MdSession)) && s.Description.Contains("Genesis") && s.Description.Contains("APU MD") && s.Console == ConsoleKind.Genesis);
             for (int i = 0; i < 30; i++) s.RunFrame();
             Check("Genesis: a frame of a real size (256 or 320 by 224 or 240), ARGB, ~59.92 fps", (s.FrameWidth is 256 or 320) && (s.FrameHeight is 224 or 240) && s.DisplayWidth == 320 && Math.Abs(s.FramesPerSecond - 59.9227) < 0.001
                 && s.Frame.Take(s.FrameWidth * s.FrameHeight).All(p => p >> 24 == 0xFF));

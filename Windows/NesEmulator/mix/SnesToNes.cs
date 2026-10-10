@@ -650,7 +650,7 @@ internal sealed class SnesToNes
     /// a star tile that shared one 16-colour SNES palette can land in different palettes instead of averaging into one pale
     /// colour. Distances weigh green most (as the eye does). Levels 1-3 run from dark to bright, so Game Boy shades follow.
     /// </summary>
-    private sealed class Quantizer
+    internal sealed class Quantizer
     {
         private readonly Dictionary<long, int> index = new();
         private readonly List<Dictionary<int, int>> hist = new();

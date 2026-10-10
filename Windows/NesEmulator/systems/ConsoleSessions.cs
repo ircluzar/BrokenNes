@@ -28,10 +28,13 @@ public static class ConsoleSessions
     /// </summary>
     private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu, string fileName)
     {
-        if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Sega.MdSession(rom, cpu, ppu, apu);
+        // Track C3a: the picture can be drawn by a NES chip ("NES:<chip>", through the NES also a Game Boy or SNES one). The board session always runs with the console's own chip; the wrapper turns its VDP state into the
+        // other chip's picture (and is a pass-through while the console's own chip is selected).
+        string own = ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase) ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
+        if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.MdSession(rom, cpu, own, apu), ppu);
         // Track A: the Master System family. Its sessions are the real board once the console is marked ready.
-        if (console == ConsoleKind.MasterSystem && Consoles.MasterSystemReady) return new NesEmulator.Sega.SmsSession(rom, console, cpu, ppu, apu, fileName);
-        if (console == ConsoleKind.GameGear && Consoles.GameGearReady) return new NesEmulator.Sega.GgSession(rom, cpu, ppu, apu, fileName);
+        if (console == ConsoleKind.MasterSystem && Consoles.MasterSystemReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.SmsSession(rom, console, cpu, own, apu, fileName), ppu);
+        if (console == ConsoleKind.GameGear && Consoles.GameGearReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.GgSession(rom, cpu, own, apu, fileName), ppu);
         if (Consoles.IsReady(console))
             throw new InvalidOperationException($"{Consoles.DisplayName(console)} is marked ready but ConsoleSessions.CreateSega has no session for it");
         if (!Consoles.IsAvailable(console))
