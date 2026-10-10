@@ -28,6 +28,9 @@ namespace BrokenNes.Workshop.Sega;
 /// </summary>
 internal static class SmsSweepCli
 {
+    /// <summary>--model: every Master System game of the sweep runs as this board (to see which games behave differently on the original VDP).</summary>
+    internal static MasterSystemModel? ForcedModel;
+
     public static int Run(string[] args)
     {
         string? Opt(string name) { int i = Array.FindIndex(args, a => a.Equals("--" + name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
@@ -43,6 +46,7 @@ internal static class SmsSweepCli
             Console.WriteLine("       --sms-sweep --print-pad sms|gg [--frames N]      the scripted pad pattern as an input script");
             return 2;
         }
+        if (Opt("model") is { } mdl) SmsSweepCli.ForcedModel = Enum.Parse<MasterSystemModel>(mdl, true);      // run every Master System game as this board (the Game Gear is always itself)
         int jobs = Math.Clamp(int.Parse(Opt("jobs") ?? "4"), 1, 8);
         string? outTsv = Opt("out"), shots = Opt("shots");
         string cache = Opt("cache") ?? Path.Combine(Path.GetTempPath(), "bn-sms-sweep-cache");
@@ -291,7 +295,9 @@ internal static class SweepProbe
             var header = SmsHeader.Find(SegaRomFormat.StripCopierHeader(rom));
             row.Header = header is { } h ? $"{h.RegionName};prod{h.ProductCode};v{h.Version};size{h.SizeNibble:X}" : "none";
 
-            using var session = (SmsSession)ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner);
+            using var session = SmsSweepCli.ForcedModel is { } forced && kind == ConsoleKind.MasterSystem
+                ? new SmsSession(rom, kind.Value, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), inner, forced, null)
+                : (SmsSession)ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner);
             var board = session.Board;
             row.Model = session.Model.ToString(); row.Region = board.Region.ToString().ToUpperInvariant(); row.Mapper = board.Cart.Mapper.ToString();
             bool staticBattery = board.Cart.HasBattery;

@@ -29,10 +29,8 @@ param(
     [int]$Jobs = 3,
     [int]$TimeoutSec = 400,
     [switch]$Keep,
-    [switch]$NoOracleTiming,
-    [string]$Tune = "",             # board / VDP tool settings for every comparison, "Name=value,Name=value" (for example OracleHaltNoRefresh=1: R does not count while halted, as the oracle's does not); the oracle-lengths comparison adds OracleZ80Timing=1
-    [string]$ExtraArgs = "",        # added to every `--sms-run`
-    [string]$Variant = ""           # a third comparison of the same oracle pictures with these extra `--sms-run` arguments (for example "--model sms1"), reported as the variant_* columns
+    [string]$Modes = "zilog=;oracle=--tune OracleZ80Timing=1",   # the comparisons made against each game's oracle pictures: "name=extra --sms-run arguments;name=..." (the app's own configuration is "zilog"; "oracle" runs the Z80 with the oracle's instruction lengths; add for example "rhalt=--tune OracleHaltNoRefresh=1" for R not counting while halted, as the oracle's does not; tool settings combine in one --tune: "both=--tune OracleZ80Timing=1,OracleHaltNoRefresh=1")
+    [string]$ExtraArgs = ""         # added to every `--sms-run`
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Workshop)) { throw "Workshop exe not found: $Workshop" }
@@ -90,10 +88,9 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         }
         $row.mesen_s = [math]::Round($sw.Elapsed.TotalSeconds)
         if (-not $row.error) {
-            $modes = @(@{ Name = "zilog"; Tune = $(if ($using:Tune) { @("--tune", $using:Tune) } else { @() }) }, @{ Name = "oracle"; Tune = @("--tune", ("OracleZ80Timing=1" + $(if ($using:Tune) { "," + $using:Tune } else { "" }))) })
-            if ($using:Variant) { $modes += @{ Name = "variant"; Tune = @($using:Variant -split " ") } }
-            foreach ($mode in $modes) {
-                if ($mode.Name -eq "oracle" -and $using:NoOracleTiming) { continue }
+            foreach ($def in ($using:Modes -split ";")) {
+                $nm, $ar = $def -split "=", 2
+                $mode = @{ Name = $nm.Trim(); Tune = @(($ar -split " ") | Where-Object { $_ }) }
                 $args2 = @("--sms-run", $rom, "--frames", $using:Frames, "--input", $pad, "--png-at", $frameList, "--out", $mine, "--tag", $tag, "--mesen", $a, "--region", $region, "--diff-detail", $(if ($using:Spec) { "40" } else { "0" })) + $mode.Tune
                 if ($using:Runs -gt 1) { $args2 += @("--mesen-b", $b) }
                 if ($using:ExtraArgs) { $args2 += ($using:ExtraArgs -split " ") }
@@ -115,11 +112,12 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         $row.total_s = [math]::Round($sw.Elapsed.TotalSeconds)
         ($using:results).Add([pscustomobject]$row)
         if (-not $using:Keep) { Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue; Remove-Item -Force "$dir.cap.out", "$dir.cap.err" -ErrorAction SilentlyContinue }
-        "{0,-60} {1}" -f $name, $(if ($row.error) { "ERROR " + $row.error } else { "zilog $($row.zilog_identical)/$($row.zilog_stable)+oo$($row.zilog_oo_matched)/$($row.zilog_oo)  oracle-lengths $($row.oracle_identical)/$($row.oracle_stable)+oo$($row.oracle_oo_matched)/$($row.oracle_oo)" })
+        "{0,-60} {1}" -f $name, $(if ($row.error) { "ERROR " + $row.error } else { (($using:Modes -split ";") | ForEach-Object { $n = ($_ -split "=", 2)[0].Trim(); "$n $($row["$($n)_identical"])/$($row["$($n)_stable"])+oo$($row["$($n)_oo_matched"])/$($row["$($n)_oo"])" }) -join "  " })
     }
     catch { ($using:results).Add([pscustomobject]@{ game = $g.Rom; error = $_.Exception.Message }); "ERROR $($g.Rom): $($_.Exception.Message)" }
     finally { ($using:slots).Enqueue($slot) }
 }
-$cols = "game", "console", "region", "zilog_stable", "zilog_identical", "zilog_differ", "zilog_first_diff", "zilog_oo", "zilog_oo_matched", "zilog_checkpoints", "oracle_stable", "oracle_identical", "oracle_differ", "oracle_first_diff", "oracle_oo", "oracle_oo_matched", "oracle_checkpoints", "variant_stable", "variant_identical", "variant_differ", "variant_first_diff", "variant_checkpoints", "mesen_s", "total_s", "error"
+$modeNames = ($Modes -split ";") | ForEach-Object { ($_ -split "=", 2)[0].Trim() }
+$cols = @("game", "console", "region") + ($modeNames | ForEach-Object { "$($_)_stable", "$($_)_identical", "$($_)_differ", "$($_)_first_diff", "$($_)_oo", "$($_)_oo_matched", "$($_)_checkpoints" }) + @("mesen_s", "total_s", "error")
 $results | Sort-Object game | Select-Object $cols | Export-Csv -Path $OutTsv -Delimiter "`t" -NoTypeInformation
 "wrote $OutTsv"

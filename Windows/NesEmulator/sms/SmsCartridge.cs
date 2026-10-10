@@ -124,6 +124,21 @@ public sealed class SmsCartridge
         ["C0256188B15271BB814BB8356B3311340E53EA3E"] = SmsMapperKind.KoreanA000,   // Sangokushi 3 (Korea) (Unl)
     };
 
+    /// <summary>
+    /// Games that need the original VDP, by the SHA-1 of the ROM (as <see cref="KnownCartridges"/>). The common board is the SMS 2; a few games were written for the Mark III / SMS 1 VDP (315-5124), whose
+    /// registers 2 and 5 keep bits the later chip ignores, and draw garbage on the later one. Applied only when the user has not chosen a board; the session's description names the board it ran on.
+    /// Ancient Ys (Japan): the status bar is drawn by writing R2 = $F8 / $FF and R5 = $EF at lines 159, 167, 175 and 183; on the SMS 2 model 3,437 pixels of the bar are wrong at frame 300, on the SMS 1 model none are, and the
+    /// oracle with its VDP revision set to SMS 1 draws the same picture as the SMS 1 model, pixel for pixel.
+    /// </summary>
+    public static readonly System.Collections.Generic.Dictionary<string, MasterSystemModel> KnownModels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["614B589080B732E17CC0D253E17216A72A268955"] = MasterSystemModel.Sms1,   // Ancient Ys Vanished Omen (Japan)
+    };
+
+    /// <summary>The board a known game needs, or null.</summary>
+    public static MasterSystemModel? KnownModel(byte[] rom) =>
+        KnownModels.Count > 0 && KnownModels.TryGetValue(Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(rom)), out var m) ? m : null;
+
     /// <summary>Codemasters cartridges carry a checksum at $7FE6 and its two's complement at $7FE8 (the sum of the two words is $10000), beside a build date; no Sega header uses that pair.</summary>
     public static bool IsCodemasters(byte[] rom)
     {

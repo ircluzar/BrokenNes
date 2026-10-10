@@ -142,6 +142,28 @@ internal static class EepromSuite
         yield return new SmsCheck("that state is refused by a cartridge session of the same bytes (different machine), with the reason", msg.Length > 0, msg);
     }
 
+    /// <summary>The table of games that need the original VDP (<see cref="SmsCartridge.KnownModels"/>): a listed game takes the SMS 1 board unless the user chose one; nothing else does.</summary>
+    public static IEnumerable<SmsCheck> RunKnown(SmsSuiteContext ctx)
+    {
+        byte[] rom = SmokeProgs.Picture(false);
+        string key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(rom));
+        bool had = SmsCartridge.KnownModels.TryGetValue(key, out var before);
+        try
+        {
+            var plain = ctx.Session(rom, "unlisted.sms");
+            yield return new SmsCheck("a game that is not in the table runs on the common board (SMS 2)", plain.Model == MasterSystemModel.Sms2, plain.Model.ToString());
+            SmsCartridge.KnownModels[key] = ctx.Poison == "known" ? MasterSystemModel.Sms2 : MasterSystemModel.Sms1;     // the poison lists the game with the wrong board
+            var known = ctx.Session(rom, "listed.sms");
+            yield return new SmsCheck("the same bytes listed as needing the original VDP run on the SMS 1 board, and the description says so", known.Model == MasterSystemModel.Sms1 && known.Description.Contains("Sms1"), known.Description);
+            yield return new SmsCheck("the SMS 1 board is really the SMS 1 VDP (its revision, not just a name)", known.Board.Vdp.Revision == SmsVdpRevision.Sms1, known.Board.Vdp.Revision.ToString());
+            var chosen = new SmsSession(rom, ConsoleKind.MasterSystem, "Z80", "SMS", "SMS", "listed.sms", MasterSystemModel.Sms2, null);
+            yield return new SmsCheck("a board chosen by the user wins over the table", chosen.Model == MasterSystemModel.Sms2, chosen.Model.ToString());
+            var gg = ctx.GgSession(rom, "listed.gg");
+            yield return new SmsCheck("the table does not touch the Game Gear (the same bytes on the Game Gear stay a Game Gear)", gg.Model == MasterSystemModel.GameGear, gg.Model.ToString());
+        }
+        finally { if (had) SmsCartridge.KnownModels[key] = before; else SmsCartridge.KnownModels.Remove(key); }
+    }
+
     private static bool SetWindow(SmsCartridge cart)
     {
         cart.Write(0xFFFC, 0x08);

@@ -26,6 +26,8 @@ public class SmsSession : IConsoleSession
         GameId = ConsoleSessions.Sha1(rom);
         Console = console;
         var model = SegaSettings.ResolveMasterSystemModel(modelChoice, console, fileName);
+        // a game that needs the original VDP (see SmsCartridge.KnownModels) gets it unless the user chose a board
+        if ((modelChoice is null or MasterSystemModel.Auto) && console == ConsoleKind.MasterSystem && model == MasterSystemModel.Sms2 && SmsCartridge.KnownModel(rom) is { } needed) model = needed;
         // every Game Gear runs at 60 Hz whatever market its cartridge was sold in: a "(E)" in the file name does not make it a 50 Hz machine (only an explicit user choice does)
         var region = console == ConsoleKind.GameGear && (regionChoice is null or RegionChoice.Auto) ? SegaRegion.Ntsc : SegaSettings.ResolveRegion(regionChoice, console, rom, fileName);
         variant = model is MasterSystemModel.Sg1000 or MasterSystemModel.Sc3000 ? PsgVariant.Ti : PsgVariant.Sega;
