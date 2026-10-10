@@ -124,7 +124,7 @@ public sealed partial class MdVdp
     public bool CommandPending => pendingCommand;
 
     // ---- the write FIFO
-    private struct FifoEntry { public int Code; public uint Address; public ushort Data; public int SlotsLeft; }
+    private struct FifoEntry { public int Code; public uint Address; public ushort Data; public int SlotsLeft; public bool FromDma; }
     private readonly FifoEntry[] fifo = new FifoEntry[4];
     private int fifoHead, fifoCount;
     private ushort lastFifoData;       // the last word the 68000 or a DMA put in the FIFO (a data port read while a write target is set returns it)
@@ -143,6 +143,23 @@ public sealed partial class MdVdp
     private ushort fillData;
     private int dmaTargetCode;
     private int fillSourceStart, fillLengthStart;     // a fill steps the source address registers by its length, as a transfer does
+    private long dmaStartTime;         // the DMA engine's first fetch is no earlier than this (the command's time plus its start-up)
+    private long dmaNextFetch;         // a bus transfer fetches a word every DmaFetchClocks while the FIFO has room: not before this
+    private int dmaInFifo;             // how many of the FIFO's entries are words of the running transfer
+    /// <summary>Master clocks between the slot that lets a held 68000 go (a full FIFO, a finished DMA) and the 68000 running again.</summary>
+    public static int ReleaseLatency = 16;
+    /// <summary>The release latency and the fetch period scale with the slot length: H32 slots are 20 clocks, H40 ones 16.</summary>
+    public int ReleaseClocks => ReleaseLatency * (H40 ? 16 : 20) / 16;
+    public static int DmaReleaseLatency = 16;
+    public int DmaReleaseClocks => DmaReleaseLatency * (H40 ? 16 : 20) / 16;
+    private int FetchClocks => DmaFetchClocks * (H40 ? 16 : 20) / 16;
+
+    /// <summary>How long after the command word a DMA waits before its first fetch (master clocks), and the time between fetches while the FIFO has room: a bus transfer reads the 68000's bus at its own pace and only the
+    /// writes into VRAM, CRAM and VSRAM need slots. Measured against the oracle with FIFO-synchronised starts (the direct colour demo's lead-in): in blanked lines the 68000 runs again one tick (16 clocks) per word
+    /// after the command; with the FIFO partly full the first two words are fetched together.</summary>
+    public static int DmaStartDelay = 56, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
+    /// <summary>The DMA engine fetches nothing while the VDP is in a refresh slot.</summary>
+    public static bool DmaSkipsRefresh = true;
 
     /// <summary>The VDP holds the 68000 while a bus DMA runs.</summary>
     public bool DmaHaltsCpu => dma == DmaKind.Bus;
@@ -158,7 +175,7 @@ public sealed partial class MdVdp
         vintPending = hintPending = false; hintCounter = 0; vintTime = hintTime = z80IntClear = long.MaxValue; vintEnableFrom = hintEnableFrom = 0; z80IntAsserted = false;
         pendingCommand = false; commandFirst = 0; code = 0; address = 0; readBuffer = 0; readReadyAt = 0; hvLatched = -1; readStale = false;
         fifoHead = fifoCount = 0; lastFifoData = 0;
-        dma = DmaKind.None; fillArmed = false; dmaLength = 0; dmaSlotsLeft = 0;
+        dma = DmaKind.None; fillArmed = false; dmaLength = 0; dmaSlotsLeft = 0; dmaStartTime = 0; dmaNextFetch = 0; dmaInFifo = 0;
         DataWrites = ControlWrites = FifoStalls = DmaWords = 0; FifoStallClocks = 0;
         // the post-boot state the console's own code leaves is the game's business; the chip itself powers on with everything zero
         hintTime = lineStart + HIntOffset; slotCursor = 0;
@@ -170,21 +187,74 @@ public sealed partial class MdVdp
     //  Access slots
     // =================================================================================================================
 
+    /// <summary>The first picture pixel of a line comes this many master clocks after the line's H counter is 0: 12 counter ticks (24 pixels) in either width (measured against the oracle: a register write made
+    /// at a given H counter reading shows 24 pixels further left than the old assumption "pixel 0 is counter 0" put it; in H32 the 171 slots of a blanked line then sit on one 20-clock grid, slot 12 = pixel 0).</summary>
+    public int PixelOrigin => H40 ? SlotTable.OriginH40 : SlotTable.OriginH32;
+
     /// <summary>
-    /// The slots of one line that are free for the CPU, the FIFO and DMA, as offsets in master clocks from the line start: <c>[h40][active]</c>. Every line has <c>Total</c> slots of equal length; the refresh
-    /// slots are never free and the fetch slots of an active line are not either. The numbers of free slots per line are Sega's documented ones (H40 18 active, 205 blanked; H32 16 and 167).
+    /// The slots of one line that are free for the CPU, the FIFO and DMA: <c>Free[h40][active]</c> are the offsets in master clocks from the line's H counter 0, sorted, of the slots in the line's <i>window</i>:
+    /// from the V counter's step in the line before (<see cref="VCounterStepOffset"/>, so some offsets are negative) up to the step in this line. Which pattern a slot follows is decided by the line that owns the
+    /// window (found with the probe ROMs: the FIFO of the last blank line drains as fast as a blank line until the step and as slowly as a picture line after it).
+    /// A line is 210 slots (H40) or 171 (H32). Slot s starts 16 (20 in H32) clocks after slot s-1, except that the H40 line's last 38 slots share the 668 clocks the horizontal sync leaves; the picture's pixel 0 is
+    /// slot 12, a slot is two pixels. A blanked line has 12 non-free slots in H40 (six refresh pairs, <see cref="BlankRefreshH40"/>) and 4 in H32; a picture line only a few free ones (18 in H40, 16 in H32, measured
+    /// as the pixel columns of colour RAM dots and, for the slots before pixel 0, by when a stalled 68000 is let go). All of it is data: <see cref="Rebuild"/> after changing a list.
     /// </summary>
     public static class SlotTable
     {
-        // Where the free slots fall in a line whose picture is being drawn, as the pixel they show at (measured: a colour RAM write made in a slot puts a dot on the pixel being output, and the oracle's dots
-        // sit at these columns on every line): one external slot every 16 pixels from pixel 12 with every fourth (the refresh slots, at pixels 28, 92, 156, 220 and 284) not free, then a pair of adjacent slots
-        // near the right edge. The slots after the visible picture (the rest of the 18 and 16 a line is documented to have) are placed in the blanking at the end of the line.
-        private static readonly int[] ActivePixelsH40 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 236, 252, 268, 298, 300 };
-        private static readonly int[] ActivePixelsH32 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 234, 236 };
-        private static readonly int[] RefreshPixelsH40 = { 28, 92, 156, 220, 284 };
-        private static readonly int[] RefreshPixelsH32 = { 28, 92, 156, 220 };
+        /// <summary>Master clocks from a line's H counter 0 to its picture pixel 0 (12 ticks).</summary>
+        public static int OriginH40 = 192, OriginH32 = 240;
 
-        public static readonly int[][][] Free = Build();
+        /// <summary>Where in a line the slot pattern of the next line takes over (the window boundary): offsets from H counter 0.</summary>
+        public static int CutH40 = 2640, CutH32 = 2640;
+
+        /// <summary>The picture pixel of each free slot of a drawn line (the oracle's dots sit at these columns on every line) and the H counter ticks (slot numbers) of the free slots before pixel 0.</summary>
+        public static int[] ActivePixelsH40 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 236, 252, 268, 298, 300 };
+        public static int[] ActivePixelsH32 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 234, 236 };
+        public static int[] ActivePreTicksH40 = { 187, 2, 10 };
+        public static int[] ActivePreTicksH32 = { 2, 5, 8, 11 };
+        /// <summary>Slots (counting from slot 0 at the line's H counter 0) that a blanked line cannot use: the refresh pairs. H40 has six pairs (five in the picture, the sixth in the horizontal blank); H32 four single slots.</summary>
+        public static int[] BlankRefreshH40 = { 26, 29, 59, 62, 90, 93, 122, 125, 154, 157, 186, 189 };
+        public static int[] BlankRefreshH32 = { 26, 58, 90, 122 };
+
+        // a slot is one tick of the H counter's 8-bit value: tick i is the i-th value of the line's sequence ($00-$B6 then $E4-$FF in H40, $00-$93 then $E9-$FF in H32)
+        private static readonly int[][] tickStart = new int[2][];
+
+        public static int[][][] Free = Build();
+
+        public static void Rebuild() { tickStart[0] = tickStart[1] = null; Free = Build(); }
+
+        /// <summary>Master clocks from H counter 0 at which tick (slot) <paramref name="s"/> starts, following the H counter's own function (<see cref="HCounter9"/>).</summary>
+        public static int SlotStart(bool h40, int s)
+        {
+            var t = tickStart[h40 ? 1 : 0] ??= BuildTickStarts(h40);
+            return t[s];
+        }
+
+        /// <summary>Clocks to wait from line offset <paramref name="off"/> (taken modulo the line) until the refresh slot it falls in is over (0 when it is not in one): the DMA engine fetches nothing during a refresh slot.</summary>
+        public static int RefreshWait(bool h40, int off)
+        {
+            off %= ClocksPerLine;
+            var t = tickStart[h40 ? 1 : 0] ??= BuildTickStarts(h40);
+            int lo = 0, hi = t.Length - 1;
+            while (lo < hi) { int mid = (lo + hi + 1) >> 1; if (t[mid] <= off) lo = mid; else hi = mid - 1; }     // the tick this offset is in
+            foreach (int r in h40 ? BlankRefreshH40 : BlankRefreshH32)
+                if (r == lo) return (lo + 1 < t.Length ? t[lo + 1] : ClocksPerLine) - off;
+            return 0;
+        }
+
+        private static int[] BuildTickStarts(bool h40)
+        {
+            int lastMain = h40 ? 0xB6 : 0x93, firstJump = h40 ? 0xE4 : 0xE9, ticks = h40 ? 211 : 171;
+            var t = new int[ticks]; for (int i = 0; i < ticks; i++) t[i] = -1;
+            for (int off = 0; off < ClocksPerLine; off++)
+            {
+                int h8 = HCounter9(h40, off) >> 1;
+                int idx = h8 <= lastMain ? h8 : h8 >= firstJump ? lastMain + 1 + h8 - firstJump : -1;
+                if (idx >= 0 && idx < ticks && t[idx] < 0) t[idx] = off;
+            }
+            for (int i = 0; i < ticks; i++) if (t[i] < 0) t[i] = i > 0 ? t[i - 1] : 0;
+            return t;
+        }
 
         private static int[][][] Build()
         {
@@ -192,32 +262,32 @@ public sealed partial class MdVdp
             for (int w = 0; w < 2; w++)
             {
                 bool h40 = w == 1;
-                int total = h40 ? 210 : 171, refresh = h40 ? 5 : 4;
-                int pxDiv = h40 ? 8 : 10;
-                int freeBlank = total - refresh, freeActive = h40 ? 18 : 16;
+                int total = h40 ? 210 : 171;
+                int origin = h40 ? OriginH40 : OriginH32, pxDiv = h40 ? 8 : 10;
                 t[w] = new int[2][];
-                // blanked: the slot grid (a slot is 16 master clocks in H40 and 20 in H32, 2 pixels either way) minus the refresh slots. Measured with Chilly Willy's direct colour DMA demo (BlastEm's picture of it: every
-                // line takes 198 words of the DMA and the image does not shear): in H40 each refresh costs two slots, at slots 14-15, 46-47, 78-79, 110-111 and 142-143 (pixels 28, 92, 156, 220 and 284), and the
-                // last six slots of the line (the horizontal sync) carry no word; 214 grid slots in all. H32 has the documented 167 (4 single refresh slots at the same places).
+                // the pattern of a counter line, offsets 0..3419: blanked first
                 var blank = new System.Collections.Generic.List<int>();
-                int slotClocks = h40 ? 16 : 20, grid = h40 ? 214 : 171;
-                for (int j = 0; j < grid; j++)
-                {
-                    bool refreshSlot = h40 ? (j % 32 is 14 or 15 && j < 144) : (j % 32 == 14 && j < 112);
-                    bool sync = h40 && j >= 208;
-                    if (!refreshSlot && !sync) blank.Add(j * slotClocks);
-                }
-                t[w][0] = blank.ToArray();
-                freeBlank = blank.Count;
-                // active: the measured columns, then the rest in the blanking at the end of the line, a slot's length apart
+                var refresh = new System.Collections.Generic.HashSet<int>(h40 ? BlankRefreshH40 : BlankRefreshH32);
+                for (int s = 0; s < total; s++) if (!refresh.Contains(s)) blank.Add(SlotStart(h40, s));
                 var active = new System.Collections.Generic.List<int>();
-                foreach (int px in h40 ? ActivePixelsH40 : ActivePixelsH32) active.Add(px * pxDiv);
-                int next = 2560 + 16 * (h40 ? 2 : 1);
-                while (active.Count < freeActive) { active.Add(next); next += 20; }
-                t[w][1] = active.ToArray();
-                if (blank.Count != (h40 ? 198 : 167)) throw new InvalidOperationException("slot table: blanked free-slot count");
+                foreach (int tick in h40 ? ActivePreTicksH40 : ActivePreTicksH32) active.Add(SlotStart(h40, tick));
+                foreach (int px in h40 ? ActivePixelsH40 : ActivePixelsH32) active.Add(origin + px * pxDiv);
+                t[w][0] = Window(blank, h40);
+                t[w][1] = Window(active, h40);
+                if (t[w][0].Length != (h40 ? 198 : 167)) throw new InvalidOperationException("slot table: blanked free-slot count");
+                if (t[w][1].Length != (h40 ? 18 : 16)) throw new InvalidOperationException("slot table: picture free-slot count");
             }
             return t;
+        }
+
+        /// <summary>The counter line's pattern as the window of a line: offsets from the step on are the line before's end, so they go in front as negative ones.</summary>
+        private static int[] Window(System.Collections.Generic.List<int> pattern, bool h40)
+        {
+            var w = new System.Collections.Generic.List<int>();
+            int cut = h40 ? CutH40 : CutH32;
+            foreach (int o in pattern) w.Add(o >= cut ? o - ClocksPerLine : o);
+            w.Sort();
+            return w.ToArray();
         }
     }
 
@@ -236,23 +306,26 @@ public sealed partial class MdVdp
     }
 
     /// <summary>
-    /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: the stretch of a line from the
-    /// counter's step (<see cref="VCounterStepOffset"/>) on already has the next line's slots (found with the probe ROMs: the FIFO of the last blank line drains as fast as a blank line until the step and as
-    /// slowly as a picture line after it, and the direct colour DMA demo's lead-in only lines up when it does).
+    /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: from the counter's step
+    /// (<see cref="VCounterStepOffset"/>) on the next line's slots apply (see <see cref="SlotTable"/>: its window starts with the end of this line).
     /// </summary>
     private long NextFreeSlot(long from)
     {
-        int line = Line; long ls = lineStart;
+        int line = Line; long ls = lineStart; int cut = H40 ? SlotTable.CutH40 : SlotTable.CutH32;
         for (int guard = 0; guard < 4; guard++)
         {
             long off = Math.Max(from - ls, 0);
+            if (off < cut)
+            {
+                var a = FreeSlotsFor(line);
+                int i = LowerBound(a, off);
+                if (i < a.Length && a[i] < cut) return ls + a[i];
+                off = cut;
+            }
             int next = line + 1 >= linesPerFrame ? 0 : line + 1;
-            var a = FreeSlotsFor(line);
-            int i = LowerBound(a, off);
-            if (i < a.Length && a[i] < VCounterStepOffset) return ls + a[i];
             var b = FreeSlotsFor(next);
-            int j = LowerBound(b, Math.Max(off, VCounterStepOffset));
-            if (j < b.Length) return ls + b[j];
+            int j = LowerBound(b, off - ClocksPerLine);
+            if (j < b.Length && b[j] < 0) return ls + ClocksPerLine + b[j];       // a slot of the next window that falls before the line ends
             line = next; ls += ClocksPerLine; from = ls;
         }
         return from;
@@ -279,14 +352,17 @@ public sealed partial class MdVdp
         {
             long evt = NextEvent();
             long slot = long.MaxValue;
-            bool work = fifoCount > 0 || dma == DmaKind.Bus || dma == DmaKind.Copy || (dma == DmaKind.Fill && !fillArmed);
-            if (work) slot = NextFreeSlot(Math.Max(Time, slotCursor));
+            bool work = SlotWork;
+            if (work) slot = NextFreeSlot(WorkFrom());
+            long fetch = NextFetchTime();
             long next = t;
             if (evt < next) next = evt;
             if (slot < next) next = slot;
+            if (fetch < next) next = fetch;
             if (next < Time) next = Time;
             Time = next;
-            if (work && slot <= next) { ConsumeSlot(); continue; }
+            if (work && slot <= next) { ConsumeSlot(); continue; }       // a slot first: a write from the FIFO makes room for a word the transfer fetches at the same time
+            if (fetch <= Time) { FetchDmaWord(); continue; }
             if (evt <= Time) FireEvents();
         }
         if (NextEvent() <= Time) FireEvents();      // anything due exactly at t
@@ -337,9 +413,30 @@ public sealed partial class MdVdp
     public long NextWorkTime()
     {
         long next = NextEvent();
-        bool work = fifoCount > 0 || dma == DmaKind.Bus || dma == DmaKind.Copy || (dma == DmaKind.Fill && !fillArmed);
-        if (work) { long s = NextFreeSlot(Math.Max(Time, slotCursor)); if (s < next) next = s; }
+        if (SlotWork) { long s = NextFreeSlot(WorkFrom()); if (s < next) next = s; }
+        long fetch = NextFetchTime();
+        if (fetch < next) next = fetch;
         return next;
+    }
+
+    /// <summary>Something waits for a free slot: a FIFO entry to write, or a fill or copy to step.</summary>
+    private bool SlotWork => fifoCount > 0 || dma == DmaKind.Copy || (dma == DmaKind.Fill && !fillArmed);
+
+    /// <summary>The earliest time work may use a slot: after the last slot, and when only a fill or copy is waiting (the FIFO has nothing to write) not before the DMA engine has started.</summary>
+    private long WorkFrom()
+    {
+        long f = Math.Max(Time, slotCursor);
+        if (dma != DmaKind.None && fifoCount == 0 && dmaStartTime > f) f = dmaStartTime;
+        return f;
+    }
+
+    /// <summary>When a bus transfer fetches its next word: from the engine's start on, every <see cref="DmaFetchClocks"/> while the FIFO has room (a full FIFO waits for the write that makes room).</summary>
+    private long NextFetchTime()
+    {
+        if (dma != DmaKind.Bus || dmaLength <= 0 || fifoCount >= 4 || dmaInFifo >= (DisplayEnabled ? DmaFifoLimit : DmaBlankLimit)) return long.MaxValue;
+        long t = Math.Max(Math.Max(Time, dmaNextFetch), dmaStartTime);
+        if (DmaSkipsRefresh) t += SlotTable.RefreshWait(H40, (int)((t - lineStart) % ClocksPerLine));
+        return t;
     }
 
     /// <summary>Run the VDP to its next event or slot (always at least one clock), so a caller waiting for the FIFO or for a DMA to finish always makes progress.</summary>
@@ -375,8 +472,6 @@ public sealed partial class MdVdp
     {
         slotCursor = Time + 1;
         SyncRender();       // the memories this slot may write are drawn up to the pixel being output first
-        // a bus transfer moves its words through the write FIFO, as every write does: it fetches while there is room
-        if (dma == DmaKind.Bus) FeedBusDma();
         if (fifoCount > 0)
         {
             ref var e = ref fifo[fifoHead];
@@ -384,45 +479,47 @@ public sealed partial class MdVdp
             {
                 Trace?.Invoke($"fifo commit code {e.Code:X} at line {Line}+{LineOffset} left {fifoCount - 1}");
                 WriteTarget(e.Code, e.Address, e.Data);
+                if (e.FromDma) dmaInFifo--;
                 fifoHead = fifoHead + 1 & 3; fifoCount--;
             }
             return;
         }
-        switch (dma)
-        {
-            case DmaKind.Fill: StepFill(); break;
-            case DmaKind.Copy: StepCopy(); break;
-        }
+        if (dma != DmaKind.None && Time >= dmaStartTime)
+            switch (dma)
+            {
+                case DmaKind.Fill: StepFill(); break;
+                case DmaKind.Copy: StepCopy(); break;
+            }
     }
-
     private static int SlotsFor(int code) => (code & 0xF) == 1 ? 2 : 1;
 
     /// <summary>The word the next FIFO write would overwrite: stale or not yet written, it is the data the chip holds in that entry, and a read of CRAM, VSRAM or the 8-bit VRAM target takes its unused bits from it.</summary>
     private ushort NextFifoData => fifo[fifoHead + fifoCount & 3].Data;
 
     /// <summary>Put a word in the next FIFO entry (the caller made sure there is room). Writes to a target that is not a write target take their place in the FIFO too and are lost when their turn comes.</summary>
-    private void PushFifo(int c, uint addr, ushort data)
+    private void PushFifo(int c, uint addr, ushort data, bool fromDma = false)
     {
         int idx = fifoHead + fifoCount & 3;
-        fifo[idx] = new FifoEntry { Code = c, Address = addr, Data = data, SlotsLeft = SlotsFor(c) };
+        fifo[idx] = new FifoEntry { Code = c, Address = addr, Data = data, SlotsLeft = SlotsFor(c), FromDma = fromDma };
+        if (fromDma) dmaInFifo++;
         fifoCount++;
         lastFifoData = data;
     }
 
-    /// <summary>A bus transfer's next words: read from the 68000's space into the FIFO while it has room (the 68000 is held, so the reads cost it nothing), until the length runs out.</summary>
-    private void FeedBusDma()
+    /// <summary>A bus transfer's next word: read from the 68000's space into the FIFO (the 68000 is held, so the read costs it nothing). The transfer is over, and the 68000 let go, when the last word has been fetched;
+    /// the word is written from the FIFO in a later slot.</summary>
+    private void FetchDmaWord()
     {
-        while (dmaLength > 0 && fifoCount < 4)
-        {
-            ushort w = host.ReadBusWord(dmaSource);
-            Trace?.Invoke($"dma word at line {Line}+{LineOffset} fifo {fifoCount}");
-            PushFifo(dmaTargetCode, address, w);
-            DmaWords++;
-            address = (address + (uint)AutoIncrement) & 0x1FFFF;
-            // the source wraps inside its 128 KB window
-            dmaSource = (dmaSource & 0xFE0000) | ((dmaSource + 2) & 0x1FFFF);
-            if (--dmaLength <= 0) { FinishDma(); break; }
-        }
+        SyncRender();
+        ushort w = host.ReadBusWord(dmaSource);
+        Trace?.Invoke($"dma word at line {Line}+{LineOffset} fifo {fifoCount}");
+        PushFifo(dmaTargetCode, address, w, true);
+        DmaWords++;
+        dmaNextFetch = Time + FetchClocks;
+        address = (address + (uint)AutoIncrement) & 0x1FFFF;
+        // the source wraps inside its 128 KB window
+        dmaSource = (dmaSource & 0xFE0000) | ((dmaSource + 2) & 0x1FFFF);
+        if (--dmaLength <= 0) FinishDma();
     }
 
     /// <summary>Write a word to VRAM, CRAM or VSRAM at <paramref name="addr"/> (the address register as the command left it).</summary>
@@ -581,6 +678,7 @@ public sealed partial class MdVdp
         long stallFrom = Time;
         while (fifoCount == 4) { FifoStalls++; AdvanceWork(); }
         FifoStallClocks += Time - stallFrom;
+        if (Time > stallFrom && ReleaseClocks > 0) RunTo(Time + ReleaseClocks);       // a held 68000 is let go a little after the slot that made room (measured: the oracle's reads are a tick later)
         if (dma == DmaKind.Fill)
         {
             // the 68000 is not held during a fill. A data port write meanwhile takes a FIFO entry that is written nowhere, replaces the word the fill repeats, and adds one step to the fill's
@@ -676,6 +774,7 @@ public sealed partial class MdVdp
         if (dmaLength == 0) dmaLength = 0x10000;
         dmaTargetCode = code & 0xF;
         dmaSlotsLeft = 0;
+        dmaStartTime = dmaNextFetch = Time + DmaStartDelay;
         if ((mode & 2) == 0)
         {
             dma = DmaKind.Bus;
@@ -701,9 +800,12 @@ public sealed partial class MdVdp
     // =================================================================================================================
 
     /// <summary>The 9-bit horizontal counter at a line offset: the active part counts at the pixel clock, the HSYNC stretch at the end covers the rest of the counter's range (H40: $000-$16C then $1C9-$1FF; H32: $000-$127 then $1D2-$1FF).</summary>
-    public int HCounterAt(int offset)
+    public int HCounterAt(int offset) => HCounter9(H40, offset);
+
+    /// <summary>The H counter's 9-bit value at a line offset (the function behind <see cref="HCounterAt"/>, usable without a VDP: the slot tables are built from it).</summary>
+    public static int HCounter9(bool h40, int offset)
     {
-        if (H40)
+        if (h40)
         {
             const int mainEnd = 365 * 8;
             if (offset < mainEnd) return offset / 8;
@@ -834,8 +936,10 @@ public sealed partial class MdVdp
         w.Write(vintPending); w.Write(hintPending); w.Write(hintCounter); w.Write(vintTime); w.Write(hintTime); w.Write(z80IntClear); w.Write(z80IntAsserted);
         w.Write(pendingCommand); w.Write(commandFirst); w.Write(code); w.Write(address); w.Write(readBuffer); w.Write(readReadyAt); w.Write(readCacheCode); w.Write(readCacheAddress); w.Write(readStale); w.Write(hvLatched);
         w.Write(fifoHead); w.Write(fifoCount);
-        foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); }
+        foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); w.Write(e.FromDma); }
+        w.Write(dmaInFifo);
         w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode); w.Write(fillSourceStart); w.Write(fillLengthStart);
+        w.Write(dmaStartTime); w.Write(dmaNextFetch);
     }
 
     public void LoadState(BinaryReader r)
@@ -845,8 +949,10 @@ public sealed partial class MdVdp
         vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();
         pendingCommand = r.ReadBoolean(); commandFirst = r.ReadUInt16(); code = r.ReadInt32(); address = r.ReadUInt32(); readBuffer = r.ReadUInt16(); readReadyAt = r.ReadInt64(); readCacheCode = r.ReadInt32(); readCacheAddress = r.ReadUInt32(); readStale = r.ReadBoolean(); hvLatched = r.ReadInt32();
         fifoHead = r.ReadInt32(); fifoCount = r.ReadInt32();
-        for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32() };
+        for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32(), FromDma = r.ReadBoolean() };
+        dmaInFifo = r.ReadInt32();
         dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
+        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64();
         // the picture is not part of a state: the colours are rebuilt and the line in progress is drawn from where the state left it
         for (int i = 0; i < 64; i++) UpdatePal(i);
         BeginLineRender();

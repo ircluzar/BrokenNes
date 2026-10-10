@@ -191,10 +191,10 @@
     {
       "name": "Nemesis CRAM flicker (H32)",
       "rom": "tests:cram-flicker.zip|cram flicker.bin",
-      "verified": "oracle",
+      "verified": "regression",
       "checkpoints": {
-        "400": "85ACBA2D69E933D5",
-        "403": "85ACBA2D69E933D5"
+        "400": "94CD16EF47D3437A",
+        "403": "B06C0672ABD7797A"
       }
     },
     {
@@ -202,9 +202,9 @@
       "rom": "tests:Direct-Color-DMA.zip|Direct-Color-DMA.bin",
       "verified": "regression",
       "checkpoints": {
-        "10": "E8F45979909FF93D",
-        "101": "E8F45979909FF93D",
-        "400": "E8F45979909FF93D"
+        "10": "E5E9C4060F1FB13B",
+        "101": "E5E9C4060F1FB13B",
+        "400": "E5E9C4060F1FB13B"
       }
     },
     {

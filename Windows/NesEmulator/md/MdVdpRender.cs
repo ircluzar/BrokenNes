@@ -76,10 +76,11 @@ public sealed partial class MdVdp
     //  Time to pixel, and the stages
     // =================================================================================================================
 
-    /// <summary>The pixel being output at the VDP's clock (0 when the line has not begun its picture, <see cref="lineWidth"/> or more when the active part is over).</summary>
+    /// <summary>The pixel being output at the VDP's clock (0 when the line has not begun its picture, <see cref="lineWidth"/> or more when the active part is over). The line starts at its H counter 0; the
+    /// first picture pixel is <see cref="PixelOrigin"/> clocks later.</summary>
     private int PixelNow()
     {
-        long off = Time - lineStart;
+        long off = Time - lineStart - PixelOrigin;
         if (off <= 0) return 0;
         long p = off / linePxDiv;
         return p > lineWidth ? lineWidth : (int)p;
@@ -433,10 +434,12 @@ public sealed partial class MdVdp
         SyncRender();
         Cram[index] = (ushort)(data & 0x0EEE);
         UpdatePal(index);
-        if (lineActive)      // also with the display switched off: the picture is then the backdrop and the dots are all there is (the direct colour DMA demo)
+        // also with the display switched off: the picture is then the backdrop and the dots are all there is (the direct colour DMA demo). Before the first picture pixel there is nothing to put a dot on (the
+        // colour shows from pixel 0 on through the table); a second write in the same pixel replaces the first one's dot
+        if (lineActive && Time - lineStart >= PixelOrigin)
         {
             int px = PixelNow();
-            if (px < lineWidth && px >= colourX)
+            if (px < lineWidth && px >= colourX - 1)
             {
                 building[rowBase + px] = Argb(data, 0);
                 colourX = px + 1;

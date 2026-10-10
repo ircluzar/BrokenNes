@@ -432,7 +432,10 @@ internal static class MdBoardTest
         Check("the V counter steps to the next line inside the horizontal blank (before the line ends)", r.V.ReadHvCounter(r.T) >> 8 == 101);
         r.RunTo(r.LineStart(524 + 120) + 8 * 100);
         int h = r.V.ReadHvCounter(r.T) & 0xFF;
-        Check("H counter in H40: pixel 100 reads $32 (the counter is pixel/2)", h == 0x32, $"{h:X2}");
+        Check("H counter in H40 at the line start's pixel 100 (offset 800 from counter 0) reads $32 (the counter is offset/16)", h == 0x32, $"{h:X2}");
+        r.RunTo(r.LineStart(524 + 121) + r.V.PixelOrigin + 8 * 100);
+        h = r.V.ReadHvCounter(r.T) & 0xFF;
+        Check("... and the picture's pixel 100 reads $3E: the first picture pixel is 12 counter ticks after the counter's 0 (BlastEm: a register write made at a given counter reading shows 24 pixels further left)", h == 0x3E, $"{h:X2}");
 
         var pal = new Rig(SegaRegion.Pal);
         pal.Reg(1, 0x64);
