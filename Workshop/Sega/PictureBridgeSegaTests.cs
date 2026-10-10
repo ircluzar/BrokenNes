@@ -365,14 +365,14 @@ internal static class SegaScenes
             foreach (var (file, min) in new[] { ("Sonic the Hedgehog (JUE) [!].bin", 0.90), ("Streets of Rage (JUE) (REV 00) [!].bin", 0.85), ("Golden Axe (JU) (REV 00) [!].bin", 0.88), ("Flicky (JUE) [!].bin", 0.95), ("ECCO (U) [!].bin", 0.85), ("Strider (UE) [!].bin", 0.80) })
                 Sega(mdDir, file, ConsoleKind.Genesis, "NES:FIXS", min);
         if (nesDir != "")
-            foreach (var game in (Environment.GetEnvironmentVariable("PBT_NES_ONLY") ?? "smb1,smb3,zelda,mm3,cv3,battletoads").Split(','))
+            foreach (var game in (Environment.GetEnvironmentVariable("PBT_NES_ONLY") ?? "smb1,smb3,zelda,mm3,cv3,battletoads,vrun").Split(','))
             {
                 string path = Path.Combine(nesDir, game + ".nes"); if (!File.Exists(path)) { Console.WriteLine($"  (missing {game}.nes)"); continue; }
                 foreach (var chip in new[] { "SMS", "MD" })
                 {
                     var script = MixLab.MixLabCli.ParseNesInput(input);
-                    var nes = new NES { RomName = game + ".nes" }; nes.LoadROM(File.ReadAllBytes(path)); nes.SetPpuCore(chip);
-                    var fix = new NES { RomName = game + ".nes" }; fix.LoadROM(File.ReadAllBytes(path)); fix.SetPpuCore("FIX");     // selected the same way, so the power-on state is the same
+                    var nes = new NES { RomName = game + ".nes" }; nes.LoadROM(File.ReadAllBytes(path)); nes.SetCpuCore("FIX"); nes.SetApuCore("FIX"); nes.SetPpuCore(chip);
+                    var fix = new NES { RomName = game + ".nes" }; fix.LoadROM(File.ReadAllBytes(path)); fix.SetCpuCore("FIX"); fix.SetApuCore("FIX"); fix.SetPpuCore("FIX");     // selected the same way, so the power-on state is the same
                     var held = new bool[8]; var fid = new List<PictureMetrics.Result>(); bool sameFront = true;
                     for (int f = 1; f <= 600; f++)
                     {

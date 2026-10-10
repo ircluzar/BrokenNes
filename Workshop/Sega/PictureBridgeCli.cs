@@ -48,8 +48,8 @@ internal static class PictureBridgeCli
         var script = MixLabCli.ParseNesInput(opt("input", ""));
         Directory.CreateDirectory(outDir);
         var nes = new NES { RomName = Path.GetFileName(rom) };
-        nes.LoadROM(File.ReadAllBytes(rom));
-        if (!nes.SetPpuCore(ppu) || !nes.GetPpuCoreId().EndsWith("_" + ppu, StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"REFUSED: PPU {ppu} not applied (got {nes.GetPpuCoreId()})"); return 3; }
+        nes.LoadROM(File.ReadAllBytes(rom)); nes.SetCpuCore("FIX"); nes.SetApuCore("FIX");     // the app's defaults (a bare NES object starts on the Famiclone cores)
+        if (!nes.SetPpuCore(ppu) ||!nes.GetPpuCoreId().EndsWith("_" + ppu, StringComparison.OrdinalIgnoreCase)) { Console.WriteLine($"REFUSED: PPU {ppu} not applied (got {nes.GetPpuCoreId()})"); return 3; }
         var bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
         if (bus.ppu is not NesFrontedPpu core) { Console.WriteLine($"PPU {ppu} is not a Sega picture bridge"); return 3; }
         var held = new bool[8]; var res = new List<PictureMetrics.Result>(); int crashed = -1;
@@ -78,7 +78,7 @@ internal static class PictureBridgeCli
     {
         string rom = opt("rom", ""), ppu = opt("ppu", "SMS"); int frames = int.Parse(opt("frames", "600"));
         var script = MixLabCli.ParseNesInput(opt("input", ""));
-        NES Make(string id) { var n = new NES { RomName = Path.GetFileName(rom) }; n.LoadROM(File.ReadAllBytes(rom)); if (!n.SetPpuCore(id)) throw new Exception("not applied"); return n; }
+        NES Make(string id) { var n = new NES { RomName = Path.GetFileName(rom) }; n.LoadROM(File.ReadAllBytes(rom)); n.SetCpuCore("FIX"); n.SetApuCore("FIX"); if (!n.SetPpuCore(id)) throw new Exception("not applied"); return n; }
         var a = Make("FIX"); var b = Make(ppu); var held = new bool[8]; int frameDiffs = 0, lagDiffs = 0; byte[]? prevA = null;
         for (int f = 1; f <= frames; f++)
         {

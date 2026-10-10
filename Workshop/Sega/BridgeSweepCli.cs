@@ -258,7 +258,7 @@ internal static class BridgeSweepCli
     {
         public readonly HashSet<ulong> Hashes = new(); public ulong Last; public bool First = true; public int Changes, Colours, Samples;
         public readonly List<PictureMetrics.Result> Fid = new();
-        public double AudioMax; public long AudioSamples; public double AudioWindowSum; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
+        public double AudioMax; public long AudioSamples; public double AudioWindowSum, AudioWindowDc; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
 
         public void Picture(ReadOnlySpan<uint> argb)
         {
@@ -271,16 +271,18 @@ internal static class BridgeSweepCli
 
         public void Audio(IEnumerable<float> mono, int count)
         {
-            double sum = 0; int n = 0;
-            foreach (float f in mono) { sum += (double)f * f; n++; }
-            AudioSamples += n; AudioWindowSum += sum; AudioWindowN += n;
+            double sum = 0, dc = 0; int n = 0;
+            foreach (float f in mono) { sum += (double)f * f; dc += f; n++; }
+            AudioSamples += n; AudioWindowSum += sum; AudioWindowDc += dc; AudioWindowN += n;
         }
 
+        /// <summary>The loudest window's AC level (the mean is taken off: an idle DAC, like the Model 1 Genesis's discrete one, rests at a constant offset that is not sound).</summary>
         public void EndAudioWindow()
         {
             if (AudioWindowN == 0) return;
-            AudioMax = Math.Max(AudioMax, Math.Sqrt(AudioWindowSum / AudioWindowN));
-            AudioWindowSum = 0; AudioWindowN = 0;
+            double mean = AudioWindowDc / AudioWindowN;
+            AudioMax = Math.Max(AudioMax, Math.Sqrt(Math.Max(0, AudioWindowSum / AudioWindowN - mean * mean)));
+            AudioWindowSum = 0; AudioWindowDc = 0; AudioWindowN = 0;
         }
     }
 
@@ -300,6 +302,10 @@ internal static class BridgeSweepCli
         var script = MixLabCli.ParseNesInput(input);
         var nes = new NES { RomName = Path.GetFileName(rom) };
         nes.LoadROM(File.ReadAllBytes(rom));
+        // the app's defaults are the FIX family (a bare NES object starts on the Famiclone cores, which do not run every cartridge: VRUN's unofficial opcodes crash them), so the control and every bridge start from FIX
+        if (!nes.SetCpuCore("FIX")) return new Measure { Refused = true, Message = "CPU FIX not applied" };
+        if (ppu == "" && !nes.SetPpuCore("FIX")) return new Measure { Refused = true, Message = "PPU FIX not applied" };
+        if (apu == "" && !nes.SetApuCore("FIX")) return new Measure { Refused = true, Message = "APU FIX not applied" };
         if (ppu != "" && (!nes.SetPpuCore(ppu) || !nes.GetPpuCoreId().EndsWith("_" + ppu, StringComparison.OrdinalIgnoreCase))) return new Measure { Refused = true, Message = $"PPU {ppu} not applied (got {nes.GetPpuCoreId()})" };
         if (apu != "" && (!nes.SetApuCore(apu) || !nes.GetApuCoreId().EndsWith("_" + apu, StringComparison.OrdinalIgnoreCase))) return new Measure { Refused = true, Message = $"APU {apu} not applied (got {nes.GetApuCoreId()})" };
         var bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
