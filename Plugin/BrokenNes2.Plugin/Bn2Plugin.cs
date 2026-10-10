@@ -423,6 +423,9 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 // The Genesis chip: the same two switches (its PSG-square patch cannot play below 109 Hz; no CPU reads the chip back). Its FM voices go down to the NES's own 27 Hz, so nothing is dropped there.
                 NesEmulator.APU_MD.DefaultLowNotes = NesEmulator.LowNotePolicy.Drop;
                 NesEmulator.APU_MD.DefaultStepFront = false;
+                // The Master System's FM chip: the same two switches (its PSG-square patch cannot play below 109 Hz; no CPU reads the chip back).
+                NesEmulator.APU_SMSFM.DefaultLowNotes = NesEmulator.LowNotePolicy.Drop;
+                NesEmulator.APU_SMSFM.DefaultStepFront = false;
                 if (chip == null) { chip = new NesApuInstrument(core, rate); gate = false; }
                 else
                 {
@@ -485,6 +488,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         {
             int patch = NesEmulator.Mix.FmPatchBank.Clamp(Get(P.Instrument));
             if (md.Patch != patch) md.Patch = patch;
+        }
+        else if (c.Apu is NesEmulator.APU_SMSFM sf)
+        {
+            // The Master System FM chip: the Instrument parameter is an entry of its bank (the chip's 15 instruments, 6 designed ones, the PSG square).
+            int patch = NesEmulator.Mix.OpllPatchBank.Clamp(Get(P.Instrument));
+            if (sf.Patch != patch) sf.Patch = patch;
         }
         if (v == null)
         {
@@ -724,6 +733,17 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 60: return chip?.Apu is NesEmulator.APU_MD m60 ? (nint)m60.NotesAboveFmRange : -1;
             case 61: return chip?.Apu is NesEmulator.APU_MD m61 ? m61.Psg.NoiseControl : -1;
             case 62: return chip?.Apu is NesEmulator.APU_MD m62 && (uint)index < 4 ? m62.Psg.Volume((int)index) : -1;
+            // the Master System FM chip as this instance's chip has it (-1 when this instance's chip is not that one): 63 patch, 64 FM channel index (0 pulse 1, 1 pulse 2, 2 triangle) keyed (0/1),
+            // 65 that channel's frequency in hundredths of a hertz, 66 its volume register (0 loudest, 15 quietest), 67 notes silenced for being above the FM range, 68 its instrument number (0 user, 1-15 ROM),
+            // 69 PSG volume register of voice index (0-3, 15 = off), 70 syncs at which a note was quieter than the NES channel's
+            case 63: return chip?.Apu is NesEmulator.APU_SMSFM f63 ? f63.Patch : -1;
+            case 64: return chip?.Apu is NesEmulator.APU_SMSFM f64 && (uint)index < 3 ? (f64.FmKeyed((int)index) ? 1 : 0) : -1;
+            case 65: return chip?.Apu is NesEmulator.APU_SMSFM f65 && (uint)index < 3 ? (nint)Math.Round(f65.FmHz((int)index) * 100) : -1;
+            case 66: return chip?.Apu is NesEmulator.APU_SMSFM f66 && (uint)index < 3 ? f66.FmAttenuation((int)index) : -1;
+            case 67: return chip?.Apu is NesEmulator.APU_SMSFM f67 ? (nint)f67.NotesAboveFmRange : -1;
+            case 68: return chip?.Apu is NesEmulator.APU_SMSFM f68 && (uint)index < 3 ? f68.FmInstrument((int)index) : -1;
+            case 69: return chip?.Apu is NesEmulator.APU_SMSFM f69 && (uint)index < 4 ? f69.Psg.Volume((int)index) : -1;
+            case 70: return chip?.Apu is NesEmulator.APU_SMSFM f70 ? (nint)f70.TooQuietSyncs : -1;
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

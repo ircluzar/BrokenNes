@@ -39,10 +39,14 @@ public static class Cx
     {
         ["FIX"] = "accurate", ["FIXS"] = "8 channels", ["DMG"] = "Game Boy sound chip", ["DMGS"] = "8 channels", ["SNES"] = "S-DSP", ["SMS"] = "SN76489 PSG: 109 Hz and up",
         ["MD"] = "YM2612 FM + PSG: pick the patch with Instrument",
+        ["SMSFM"] = "YM2413 FM + PSG: pick the instrument with Instrument",
     };
 
-    /// <summary>Every sound chip, grouped by console: NES chips (FIX first), then Game Boy, then SNES, then Master System, then Genesis. The Sound chip parameter is an index into this list: new chips are
-    /// only ever appended (a core id must be given a family in <c>CoreCatalog</c> first, or it would join the NES chips and shift every index after it).</summary>
+    /// <summary>Chips added after the first Sega release, in the order they were added; each is listed after every earlier chip whatever console it belongs to (a saved project stores the chip's index: nothing before it may move). Declared before <see cref="Chips"/>: static initializers run in order.</summary>
+    private static readonly string[] Appended = ["SMSFM"];
+
+    /// <summary>Every sound chip, grouped by console: NES chips (FIX first), then Game Boy, then SNES, then Master System (SMS), then Genesis (MD), then the chips appended since, in the order they were added (SMSFM, the Master System's FM chip, belongs to the
+    /// Master System console but sits last). The Sound chip parameter is an index into this list: new chips are only ever appended (a core id must be given a family in <c>CoreCatalog</c> first, or it would join the NES chips and shift every index after it).</summary>
     public static IReadOnlyList<Chip> Chips { get; } = Build();
 
     private static string NesFamily(string id) => CoreCatalog.NesFamilyOf(CoreSlot.Apu, id);
@@ -59,12 +63,37 @@ public static class Cx
             list.Add(new Chip(id, GameBoy, Notes.GetValueOrDefault(id)));
         foreach (var id in all.Where(i => NesFamily(i) == "SNES").OrderBy(i => i, StringComparer.OrdinalIgnoreCase))
             list.Add(new Chip(id, Snes, Notes.GetValueOrDefault(id)));
-        foreach (var id in all.Where(i => NesFamily(i) == "Master System").OrderBy(i => i, StringComparer.OrdinalIgnoreCase))
+        foreach (var id in all.Where(i => NesFamily(i) == "Master System" && !Appended.Contains(i, StringComparer.OrdinalIgnoreCase)).OrderBy(i => i, StringComparer.OrdinalIgnoreCase))
             list.Add(new Chip(id, MasterSystem, Notes.GetValueOrDefault(id)));
-        foreach (var id in all.Where(i => NesFamily(i) == "Genesis").OrderBy(i => i, StringComparer.OrdinalIgnoreCase))
+        foreach (var id in all.Where(i => NesFamily(i) == "Genesis" && !Appended.Contains(i, StringComparer.OrdinalIgnoreCase)).OrderBy(i => i, StringComparer.OrdinalIgnoreCase))
             list.Add(new Chip(id, Genesis, Notes.GetValueOrDefault(id)));
+        foreach (var id in Appended)
+        {
+            string? found = all.FirstOrDefault(i => i.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (found == null) continue;
+            int console = NesFamily(found) switch { "Master System" => MasterSystem, "Genesis" => Genesis, "SNES" => Snes, "Game Boy" => GameBoy, _ => Nes };
+            list.Add(new Chip(found, console, Notes.GetValueOrDefault(found)));
+        }
         return list;
     }
+
+    // ---- the instrument pickers: the Instrument parameter is a patch of the chip's own bank for the FM chips ----
+
+    /// <summary>What the Instrument parameter picks for this chip: 0 nothing (the NES chips: Pulse duty is the control), 1 the Genesis chip's FM patch, 2 the Master System FM chip's instrument.</summary>
+    public static int PatchBankOf(string chipId) => chipId.ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, _ => 0 };
+
+    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, _ => 0 };
+
+    /// <summary>A patch index made safe (out of range is the bank's last entry, the PSG square, as the bridges clamp it).</summary>
+    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), _ => index };
+
+    /// <summary>The picker's rows: a name, a note beside it, and a line that says what the patch is.</summary>
+    public static (string Name, string Note, string Description)[] PatchItems(int bank) => bank switch
+    {
+        1 => NesEmulator.Mix.FmPatchBank.Patches.Select(p => (p.Name, p.Psg ? "PSG tones, no FM" : $"algorithm {p.Algorithm}", p.Description)).ToArray(),
+        2 => NesEmulator.Mix.OpllPatchBank.Patches.Select(p => (p.Name, p.Psg ? "PSG tones, no FM" : p.Rom > 0 ? $"chip instrument {p.Rom}" : "designed", p.Description)).ToArray(),
+        _ => [],
+    };
 
     public static int ConsoleOf(int chip) => Chips[Math.Clamp(chip, 0, Chips.Count - 1)].Console;
 
@@ -103,7 +132,7 @@ public static class Cx
     {
         Nes => chip.Id,
         GameBoy => chip.Id.Equals("DMGS", StringComparison.OrdinalIgnoreCase) ? "GBS" : "GB",
-        MasterSystem => "SMS",   // the stock sound unit (SmsSoundFactories id): the Game Gear's stereo port is part of it
+        MasterSystem => chip.Id.Equals("SMSFM", StringComparison.OrdinalIgnoreCase) ? "SMS-FM" : "SMS",   // the stock unit (the PSG; a Game Gear game takes its own menu id in SessionGame), or the Japanese console's PSG + YM2413 for the FM chip
         Genesis => "MD",         // the stock Genesis unit (GenesisSoundFactories id); unused until Genesis games run
         _ => "SFC",
     };

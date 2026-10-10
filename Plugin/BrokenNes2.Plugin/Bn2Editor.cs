@@ -368,15 +368,16 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
-        else if (console == Cx.Genesis && mode == 0 && (ch == Ch.Pulse1 || ch == Ch.Pulse2))
+        else if (PatchBank(mode) != 0 && (ch == Ch.Pulse1 || ch == Ch.Pulse2))
         {
-            // the Genesis chip plays a pulse as an FM voice with a patch of the built-in bank; the Instrument parameter picks it. (The pulse duty only sets the loudness there.)
-            var patch = NesEmulator.Mix.FmPatchBank.Patches[NesEmulator.Mix.FmPatchBank.Clamp(plugin.Get(P.Instrument))];
+            // the FM chips (Genesis, Master System FM) play a pulse as an FM voice with a patch of the chip's own bank; the Instrument parameter picks it. (The pulse duty only sets the loudness there.)
+            int bank = PatchBank(mode);
+            var patch = Cx.PatchItems(bank)[Cx.PatchClamp(bank, plugin.Get(P.Instrument))];
             Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
             Txt(dc, patch.Description, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
-        else if (console == Cx.Genesis && mode == 0 && ch == Ch.Triangle)
-            Txt(dc, "a sine on FM voice 3: the triangle's voice (the patch is for the pulses)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        else if (PatchBank(mode) != 0 && ch == Ch.Triangle)
+            Txt(dc, PatchBank(mode) == 1 ? "a sine on FM voice 3: the triangle's voice (the patch is for the pulses)" : "a sine on FM channel 3 (a designed instrument plays it too: the chip has one custom instrument)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
         else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
 
@@ -416,6 +417,9 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Txt(dc, title, R(r.Left + 12, r.Top + 8, w - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE, White, fontSection);
         Txt(dc, text, R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
     }
+
+    /// <summary>Which patch bank the Instrument parameter picks from on this emulator's sound chip in Direct mode (0 none: the Pulse duty is the control; 1 the Genesis chip's, 2 the Master System FM chip's).</summary>
+    private int PatchBank(int mode) => mode != 0 ? 0 : Cx.PatchBankOf(Cx.Chips[Math.Clamp(plugin.Get(P.Core), 0, Cx.Chips.Count - 1)].Id);
 
     private static readonly string[] GbChannelNames = ["Pulse 1", "Pulse 2", "Wave", "Noise"];
     private static readonly string[] GbDutyNames = ["12.5%", "25%", "50%", "75%"];
@@ -959,11 +963,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 int current = path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
             }
-            case IdInstrument when plugin.Get(P.Console) == Cx.Genesis && emu?.SamplerMode != true:
+            case IdInstrument when PatchBank(plugin.Get(P.Mode)) != 0 && emu?.SamplerMode != true:
             {
-                // the Genesis chip's FM patch bank
-                var patches = NesEmulator.Mix.FmPatchBank.Patches;
-                return (patches.Select(p => (p.Name, (string?)(p.Psg ? "PSG tones, no FM" : $"algorithm {p.Algorithm}"))).ToArray(), Enumerable.Range(0, patches.Length).ToArray(), NesEmulator.Mix.FmPatchBank.Clamp(plugin.Get(P.Instrument)));
+                // the FM chip's patch bank (Genesis: FM patches; Master System FM: the chip's instruments and the designed ones)
+                int bank = PatchBank(plugin.Get(P.Mode));
+                var patches = Cx.PatchItems(bank);
+                return (patches.Select(p => (p.Name, (string?)p.Note)).ToArray(), Enumerable.Range(0, patches.Length).ToArray(), Cx.PatchClamp(bank, plugin.Get(P.Instrument)));
             }
             case IdInstrument:
             {

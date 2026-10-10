@@ -28,7 +28,7 @@ public sealed class T
     }
 }
 
-public sealed unsafe class SelfTest
+public sealed unsafe partial class SelfTest
 {
     private readonly PluginLibrary lib;
     private readonly string dllPath;
@@ -145,6 +145,7 @@ public sealed unsafe class SelfTest
             ("consoles", "Console selector: each console lists its own chips, picking either way keeps them in step, every console plays", Consoles),
             ("psg", "Master System PSG chip (APU_SMS): append-only chip index, pitch, level against the NES chip, polyphony, range (notes below 109 Hz are silent and counted), real time, no allocation, ROM mode refuses Genesis games", Psg),
             ("md", "Genesis chip (APU_MD: YM2612 FM + PSG), console 4: append-only chip index, FM pitch and level against the NES chip, the Instrument parameter picks the FM patch (per instance, through the editor too), polyphony, range, real time, no allocation, ROM mode refuses Genesis games", Md),
+            ("fm", "Master System FM chip (APU_SMSFM: YM2413 FM + PSG), console 3: appended last (chip 22), FM pitch and level against the NES chip, the Instrument parameter picks the chip's instrument or a designed one (per instance, through the editor too), polyphony, range, real time, no allocation", SmsFm),
             ("rom-sms", "ROM mode on Master System and Game Gear games (tiny ROMs made by the test): they load, run, draw at their own size, play their PSG tone through Mix, switch the emulator's console", RomSms),
             ("mono", "Each channel is monophonic: the newest note wins and the older one resumes", Mono_),
             ("lifecycle", "Voices: released voices are handed back (Voice_Kill), bad handles are harmless", Lifecycle),
@@ -176,7 +177,7 @@ public sealed unsafe class SelfTest
         {
             if (only != null && !only.Split(',').Contains(id)) continue;
             var t = new T();
-            var sw = Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();   // (the test's own duration, not a speed measurement)
             Outcome outcome; string detail;
             try
             {
@@ -557,12 +558,13 @@ public sealed unsafe class SelfTest
         using var probe = lib.Create();
         var chips = Chips(probe);
         // cores that are accurate by design must be on pitch; degraded / speed-hack cores are reported, not required
-        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES", "MD" };
+        var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES", "MD", "SMSFM" };
         var table = new List<string>();
         foreach (var chip in chips)
         {
             var s = One(69, 0, 0.6);
             if (chip == "MD") s.Params[PInstrument] = 14;     // the Genesis chip's sine patch: the pitch is read from zero crossings, which the default (brass) timbre doubles to an octave
+            if (chip == "SMSFM") s.Params[PInstrument] = 15;  // the Master System FM chip's designed sine
             var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, chip));
             using (plugin)
             {
@@ -586,11 +588,11 @@ public sealed unsafe class SelfTest
 
     private void Swap(T t)
     {
-        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX"), ("FIX", "SMS"), ("SMS", "FIX"), ("FIX", "MD"), ("MD", "FIX") })
+        foreach (var (from, to) in new[] { ("FIX", "QN"), ("FIX", "DMG"), ("QN", "FIXS"), ("DMG", "FIX"), ("FIX", "SMS"), ("SMS", "FIX"), ("FIX", "MD"), ("MD", "FIX"), ("FIX", "SMSFM"), ("SMSFM", "FIX") })
         {
             var s = new Scenario { Name = "swap", Tempo = 60, LengthBeats = 3 };
             s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 2.4, Key = 69, Channel = 0 });
-            s.Params[PInstrument] = 14;       // the Genesis chip's sine patch: the pitch is read from zero crossings, which a rich FM timbre would double
+            s.Params[PInstrument] = from == "SMSFM" || to == "SMSFM" ? 15 : 14;       // the FM chips' sine patches (the Genesis chip's 14, the Master System FM chip's 15): the pitch is read from zero crossings, which a rich FM timbre would double
             int swapAt = (int)(1.2 * 44100);
             bool done = false;
             var (audio, mixer, plugin) = Play(s, setup: p => SetChip(p, from), probe: (pl, sm) => { if (!done && sm >= swapAt) { SetChip(pl, to); done = true; } });
@@ -727,11 +729,11 @@ public sealed unsafe class SelfTest
             var buf = new float[480 * 2];
             for (int i = 0; i < 100; i++) rack.Render(buf);   // warm up
             long m0 = GC.GetAllocatedBytesForCurrentThread(), p0 = rack.Instances[0].Test(4);
-            var sw = Stopwatch.StartNew();
+            var sw = Pace.Start();
             for (int i = 0; i < 600; i++) { rack.Render(buf); if (i % 100 == 0) rack.PitchBend(0, (i / 100) % 2 == 0 ? 0.3f : -0.3f); }
             sw.Stop();
             long managed = GC.GetAllocatedBytesForCurrentThread() - m0, native = rack.Instances[0].Test(4) - p0;
-            double speed = 6.0 / sw.Elapsed.TotalSeconds;
+            double speed = 6.0 / sw.Seconds;
             t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 channels (needs 5x or better)");
             t.Expect(managed <= 2048, $"{managed:N0} bytes allocated by the host while rendering (only bend events may allocate, and only a queue segment)");
             t.Expect(native == 0, $"{native:N0} bytes allocated by the plugin while rendering");
@@ -832,12 +834,12 @@ public sealed unsafe class SelfTest
         var plugin = rack[0];
         long allocBefore = 0, allocAfter = 0;
         var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
-        var sw = Stopwatch.StartNew();
+        var sw = Pace.Start();
         var audio = mixer.Run(rack, s, 0);
         sw.Stop();
         plugin.Dispose();
         double seconds = audio.Length / 2 / 48000.0;
-        double speed = seconds / sw.Elapsed.TotalSeconds;
+        double speed = seconds / sw.Seconds;
         t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 instances (needs 5x or better: each instance runs its own chip)");
         long alloc = allocAfter - allocBefore;
         t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding voices for 7 s (must be 0: garbage collection is audible)");
@@ -846,11 +848,11 @@ public sealed unsafe class SelfTest
         using var rp = RomPlugin();
         RenderBlocks(rp, 1.0);
         long a0 = rp.Test(4);
-        var sw2 = Stopwatch.StartNew();
+        var sw2 = Pace.Start();
         RenderBlocks(rp, 8.0);
         sw2.Stop();
         long a1 = rp.Test(4);
-        double rspeed = 8.0 / sw2.Elapsed.TotalSeconds;
+        double rspeed = 8.0 / sw2.Seconds;
         t.Expect(rspeed >= 2.5, $"ROM mode runs at {rspeed:0.0}x real time (needs 2.5x or better)");
         t.Warn(a1 - a0 < 1000, $"ROM mode allocated {(a1 - a0) / 1024:N0} KB in 8 s while playing (garbage collection is audible)");
         rp.Dispose();                                  // its emulator would otherwise be the one the next instances share
@@ -867,10 +869,10 @@ public sealed unsafe class SelfTest
             {
                 using var g = OpenGame(path, console);
                 RenderBlocks(g, 1.0);
-                var sw3 = Stopwatch.StartNew();
+                var sw3 = Pace.Start();
                 RenderBlocks(g, 6.0);
                 sw3.Stop();
-                double speed3 = 6.0 / sw3.Elapsed.TotalSeconds;
+                double speed3 = 6.0 / sw3.Seconds;
                 t.Expect(speed3 >= 2.5, $"{name} game runs at {speed3:0.0}x real time (needs 2.5x or better)");
                 speeds.Add($"{name} {speed3:0.0}x");
             }
@@ -1477,7 +1479,7 @@ public sealed unsafe class SelfTest
         {
             var p = lib.Create(); all.Add(p);
             var chips = Chips(p);
-            t.Expect(chips.Count == 22 && chips[0] == "FIX", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD)");
+            t.Expect(chips.Count == 23 && chips[0] == "FIX" && chips[22] == "SMSFM", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD, and SMSFM appended last)");
             // each console starts with its own chip
             foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (4, "MD"), (0, "FIX") })
             {
@@ -1549,7 +1551,7 @@ public sealed unsafe class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 22 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip appended after it)");
+        t.Expect(chips.Count == 23 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip and then the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); blob = a.SaveState(); }
@@ -1695,11 +1697,11 @@ public sealed unsafe class SelfTest
             SetChip(plugin, Chip);
             long allocBefore = 0, allocAfter = 0;
             var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
-            var sw = Stopwatch.StartNew();
+            var sw = Pace.Start();
             var audio = mixer.Run(rack, s, 0);
             sw.Stop();
             plugin.Dispose();
-            double speed = audio.Length / 2 / 48000.0 / sw.Elapsed.TotalSeconds;
+            double speed = audio.Length / 2 / 48000.0 / sw.Seconds;
             long alloc = allocAfter - allocBefore;
             t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 PSG instances (needs 5x or better: the plugin's floor)");
             t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding PSG voices for 7 s (must be 0: garbage collection is audible)");
@@ -1717,7 +1719,7 @@ public sealed unsafe class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 22 && chips.IndexOf(Chip) == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 21)");
+        t.Expect(chips.Count == 23 && chips.IndexOf(Chip) == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 21, with the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19 && chips.IndexOf("SMS") == 20, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }
@@ -1920,11 +1922,11 @@ public sealed unsafe class SelfTest
                 if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4);
                 if (sm / 48000 != (sm - 512) / 48000) { plugin.SetParam(PInstrument, (sm / 48000) % 16); patchSwitches++; }      // a new patch every second
             } };
-            var sw = Stopwatch.StartNew();
+            var sw = Pace.Start();
             var audio = mixer.Run(rack, s, 0);
             sw.Stop();
             plugin.Dispose();
-            double speed = audio.Length / 2 / 48000.0 / sw.Elapsed.TotalSeconds;
+            double speed = audio.Length / 2 / 48000.0 / sw.Seconds;
             long alloc = allocAfter - allocBefore;
             t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 Genesis instances (needs 5x or better: the plugin's floor)");
             t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding Genesis voices for 7 s with the patch changing every second (must be 0: garbage collection is audible)");
