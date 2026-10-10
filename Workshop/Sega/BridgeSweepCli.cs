@@ -49,6 +49,8 @@ internal static class BridgeSweepCli
         public double Fps { get; set; }
         public int Colours { get; set; }
         public int Changes { get; set; }
+        /// <summary>Changes of the picture in the second half of the run (a core that stops drawing part-way is frozen even though the picture changed before).</summary>
+        public int ChangesLate { get; set; }
         public int Samples { get; set; }
         public int FidSamples { get; set; }
         public double Ssim { get; set; }
@@ -106,6 +108,7 @@ internal static class BridgeSweepCli
         }
         if (m.Colours <= 1) return control == null || control.Colours > 1 ? "dead" : "static";
         if (m.Changes == 0) return control != null && control.Changes == 0 ? "static" : "frozen";
+        if (m.ChangesLate == 0 && control != null && control.ChangesLate > 0) return "frozen";      // it stopped part-way while the game went on
         if (m.FidSamples > 0 && m.Ssim < 0.55) return "lossy";
         return "alive";
     }
@@ -256,16 +259,16 @@ internal static class BridgeSweepCli
 
     private sealed class Sampler
     {
-        public readonly HashSet<ulong> Hashes = new(); public ulong Last; public bool First = true; public int Changes, Colours, Samples;
+        public readonly HashSet<ulong> Hashes = new(); public ulong Last; public bool First = true; public int Changes, ChangesLate, Colours, Samples;
         public readonly List<PictureMetrics.Result> Fid = new();
         public double AudioMax; public long AudioSamples; public double AudioWindowSum, AudioWindowDc; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
 
-        public void Picture(ReadOnlySpan<uint> argb)
+        public void Picture(ReadOnlySpan<uint> argb, bool late = false)
         {
             ulong h = 14695981039346656037UL; var set = new HashSet<uint>();
             foreach (uint c in argb) { h = (h ^ c) * 1099511628211UL; if (set.Count <= 64) set.Add(c & 0xFFFFFF); }
             Hashes.Add(h); Samples++;
-            if (!First && h != Last) Changes++;
+            if (!First && h != Last) { Changes++; if (late) ChangesLate++; }
             First = false; Last = h; Colours = Math.Max(Colours, set.Count);
         }
 
@@ -288,7 +291,7 @@ internal static class BridgeSweepCli
 
     private static Measure Finish(Sampler s, int frames, double seconds, IPictureBridgeInfo? info, string description)
     {
-        var m = new Measure { Frames = frames, Fps = frames / Math.Max(seconds, 1e-6), Colours = s.Colours, Changes = s.Changes, Samples = s.Samples, AudioRms = s.AudioMax, AudioSamples = s.AudioSamples, Description = description };
+        var m = new Measure { Frames = frames, Fps = frames / Math.Max(seconds, 1e-6), Colours = s.Colours, Changes = s.Changes, ChangesLate = s.ChangesLate, Samples = s.Samples, AudioRms = s.AudioMax, AudioSamples = s.AudioSamples, Description = description };
         if (s.Fid.Count > 0)
         {
             m.FidSamples = s.Fid.Count; m.Ssim = s.Fid.Average(r => r.Ssim); m.SsimMin = s.Fid.Min(r => r.Ssim); m.BlockError = s.Fid.Average(r => r.BlockError); m.ColourError = s.Fid.Average(r => r.ColourError); m.Recognisable = s.Fid.Count(r => r.Recognisable);
@@ -325,7 +328,7 @@ internal static class BridgeSweepCli
             {
                 var fb = nes.GetFrameBuffer(); var argb = new uint[256 * 240];
                 for (int i = 0; i < argb.Length; i++) argb[i] = 0xFF000000u | (uint)fb[i * 4] << 16 | (uint)fb[i * 4 + 1] << 8 | fb[i * 4 + 2];
-                s.Picture(argb);
+                s.Picture(argb, f > frames / 2);
                 if (info != null) s.Fid.Add(PictureMetrics.Compare(info.ReferenceCanvas, info.BridgeCanvas, info.CanvasWidth, 0, 0, 256, 240));
             }
         }
@@ -357,7 +360,7 @@ internal static class BridgeSweepCli
             if (f % 20 == 0) s.EndAudioWindow();
             if (f > 30 && f % 10 == 0)
             {
-                s.Picture(session.Frame.AsSpan(0, session.FrameWidth * session.FrameHeight));
+                s.Picture(session.Frame.AsSpan(0, session.FrameWidth * session.FrameHeight), f > frames / 2);
                 if (info != null)
                 {
                     var (rx, ry, rw, rh) = info.Region;

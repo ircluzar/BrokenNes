@@ -103,6 +103,9 @@ internal static class PictureBridgeTestCli
         Check("a one-colour picture is dead when the game itself shows more", C(M(m => m.Colours = 1), ok) == "dead");
         Check("a picture that never changes is frozen when the game itself moves", C(M(m => m.Changes = 0), ok) == "frozen");
         Check("... and static when the game itself idles (nothing to judge)", C(M(m => m.Changes = 0), M(m => m.Changes = 0)) == "static");
+        var moving = M(m => m.ChangesLate = 6);
+        Check("a picture that changed early and then stopped is frozen when the game itself kept moving", C(M(m => m.ChangesLate = 0), moving) == "frozen");
+        Check("... but not when the game itself had stopped moving by then too", C(M(m => m.ChangesLate = 0), M(m => m.ChangesLate = 0)) == "alive");
         Check("an alive picture with low structural similarity to the source is lossy", C(M(m => { m.FidSamples = 30; m.Ssim = 0.3; }), ok) == "lossy");
         Check("... and alive with good similarity", C(M(m => { m.FidSamples = 30; m.Ssim = 0.9; }), ok) == "alive");
         Check("sound: silent where the game's own sound is not is dead", C(M(m => m.AudioRms = 0), ok, true) == "dead");
