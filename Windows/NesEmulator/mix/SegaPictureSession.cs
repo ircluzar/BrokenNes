@@ -59,6 +59,17 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
 
     private void ClearBridge() { toNesSms = null; toNesMd = null; }
 
+    // ---- save states: the board's (the picture chip keeps no state of its own; the bridge is rebuilt from the loaded VDP) ----
+    public bool SupportsState => inner.SupportsState;
+    public string StateUnsupportedReason => inner.StateUnsupportedReason;
+    public byte[] SaveState() => inner.SaveState();
+
+    public void LoadState(byte[] state)
+    {
+        inner.LoadState(state);
+        if (IsNesChip(ppuId)) SetBridge(ppuId);   // the translators' caches and the line capture describe the old picture
+    }
+
     // ---------------------------------------------------------------------------------------------------------- IConsoleSession
     public ConsoleKind Console => inner.Console;
     public string Title => inner.Title;

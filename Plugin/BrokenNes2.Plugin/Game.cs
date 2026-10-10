@@ -137,7 +137,7 @@ internal sealed class SessionGame : IGame, IGameStems
     /// <summary>Taps the Genesis sound unit's port writes (a unit that was swapped for another gets tapped when it first runs).</summary>
     private void HookDacRecorder()
     {
-        if (s is not NesEmulator.Sega.MdSession md || md.Board.Sound is not MdSoundUnit unit || ReferenceEquals(unit, dacHooked)) return;
+        if (Concrete is not NesEmulator.Sega.MdSession md || md.Board.Sound is not MdSoundUnit unit || ReferenceEquals(unit, dacHooked)) return;
         if (dacHooked != null) dacHooked.YmPortTap = null;
         unit.YmPortTap = dacRecorder.OnWrite;
         dacHooked = unit;
@@ -184,10 +184,13 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public int ReadAvailable(Span<float> dest) => resampler.Read(dest);
 
+    /// <summary>The console session underneath the picture-bridge wrapper (a Master System, Game Gear or Genesis session is always built wrapped, so the plugin's pattern matches on the concrete session type look through it).</summary>
+    private NesEmulator.Systems.IConsoleSession? Concrete => s is NesEmulator.Mix.SegaPictureSession w ? w.Inner : s;
+
     // ---- stems ----
 
     /// <summary>The session's sound unit when it has stems (Master System, Game Gear, Genesis); read each time, since an APU swap replaces the unit.</summary>
-    private IVoiceStems? Unit => s switch
+    private IVoiceStems? Unit => Concrete switch
     {
         NesEmulator.Sega.SmsSession sms => sms.Board.Sound as IVoiceStems,
         NesEmulator.Sega.MdSession md => md.Board.Sound as IVoiceStems,
@@ -295,7 +298,7 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public SegaSnapshot? CaptureSega()
     {
-        switch (s)
+        switch (Concrete)
         {
             case NesEmulator.Sega.SmsSession sms:
             {

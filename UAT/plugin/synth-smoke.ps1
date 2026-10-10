@@ -202,7 +202,8 @@ try {
     for ($i = 0; $i -lt 150 -and -not $emu.MainWindowHandle; $i++) { Start-Sleep -Milliseconds 200; $emu.Refresh() }
     Start-Sleep -Seconds 3; $emu.Refresh()
     if ($emu.MainWindowTitle -eq 'Audio Warning') { [void]$emu.CloseMainWindow(); Start-Sleep -Seconds 2 }   # a box with no playback device: the emulator says so once
-    $main = $AE::RootElement.FindFirst($TS::Children, (New-Object Windows.Automation.AndCondition((New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id)), (New-Object Windows.Automation.PropertyCondition($AE::ClassNameProperty, 'WindowsForms10.Window.8.app.0.2671f12_r3_ad1')))))
+    # the emulator's top-level window: by its process and the WinForms class prefix (the hash after it changes with the exe's path)
+    $main = $AE::RootElement.FindAll($TS::Children, (New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id))) | Where-Object { $_.Current.ClassName -like 'WindowsForms10.Window.8.app.*' } | Select-Object -First 1
     Expand (ByName $main 'Config'); Start-Sleep -Milliseconds 500
     Expand (ByName $AE::RootElement 'Synthesizer Mode'); Start-Sleep -Milliseconds 500
     $item = ByName $AE::RootElement 'Restart as Standalone Synth'

@@ -225,6 +225,12 @@ try {
 
     # ================= switch ON =================
     $env:BROKENNES_SEGA = '1'
+    # the quick save / load API is the opt-in "webmodule savestate debug shortcuts" (off by default, answers success=false gated=true); the save-state checks below need it on for this run (the stored config comes back after)
+    if ($haveBackup) {
+        $cfg = Get-Content -LiteralPath $configBackup -Raw | ConvertFrom-Json
+        $cfg | Add-Member -NotePropertyName enableWebmoduleSavestateDebugShortcuts -NotePropertyValue $true -Force
+        ($cfg | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $configPath -Encoding UTF8
+    }
     $inst = Start-BrokenNesInstance -ExePath $Exe -TimeoutSeconds 120
     $id = $inst.ProcessId
     $dlg = Clear-StartupDialogs $id; if ($dlg.Count) { $notes.Add('dismissed start-up dialog(s): ' + ($dlg -join ', ')) }
@@ -286,6 +292,7 @@ try {
     $r = Stop-BrokenNesInstance -ProcessId $id -TimeoutSeconds 25
     Check 'on_graceful_shutdown' ($r.Stopped -and $r.Method -in 'CloseMainWindow', 'already-exited') "method=$($r.Method) stopped=$($r.Stopped)"
     $inst = $null
+    if ($haveBackup) { Copy-Item -LiteralPath $configBackup -Destination $configPath -Force }
 
     # ================= battery saves, in the shipped default (switch off) =================
     $env:BROKENNES_SEGA = $null
