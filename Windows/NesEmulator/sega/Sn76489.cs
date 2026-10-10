@@ -73,6 +73,51 @@ public sealed class Sn76489 : IHubVoiceSource
 
     public int SampleRate => left.SampleRate;
 
+    // ---- the voices on their own (the plugin's stems): one mono band-limited stream per wanted voice, run beside the mix and read in step with it ----
+    private BandLimitedMixer[]? voiceMix;
+    private StemQueue[]? voiceQueue;
+    private readonly float[] voiceLast = new float[4];
+    private int stemVoices;
+
+    /// <summary>Which voices are being made on their own (a bit per voice: tone 1, tone 2, tone 3, noise). A voice switched on starts at the chip's present time.</summary>
+    public int VoiceStems
+    {
+        get => stemVoices;
+        set
+        {
+            value &= 15;
+            if (value != 0 && voiceMix == null)
+            {
+                voiceMix = new BandLimitedMixer[4]; voiceQueue = new StemQueue[4];
+                for (int i = 0; i < 4; i++) { voiceMix[i] = new BandLimitedMixer(cpuClockHz / Divider, left.SampleRate); voiceQueue[i] = new StemQueue(); }
+            }
+            for (int i = 0; i < 4; i++)
+                if ((value >> i & 1) != 0 && (stemVoices >> i & 1) == 0)
+                {
+                    voiceMix![i].CopyTimeFrom(left);
+                    voiceQueue![i].Clear();
+                    voiceLast[i] = VoiceLevel(i);
+                }
+            stemVoices = value;
+        }
+    }
+
+    /// <summary>What a voice contributes right now to the mono mix (its two sides averaged), 0 when it is low or silent.</summary>
+    private float VoiceLevel(int i)
+    {
+        bool high = i < 3 ? tone[i] : (shift & 1) != 0;
+        if (!high) return 0f;
+        float a = Level[volume[i]];
+        int bit = i == 3 ? 3 : i;
+        return (((stereo & (0x10 << bit)) != 0 ? a : 0f) + ((stereo & (0x01 << bit)) != 0 ? a : 0f)) * 0.5f;
+    }
+
+    /// <summary>Moves the finished frames of a voice's stem out (mono floats, 1.0 = full scale of the mix's 16-bit samples). They are queued as the mix's own are read with <see cref="ReadSamples"/>, frame for frame.</summary>
+    public int ReadVoiceStem(int voice, Span<float> dest) => voiceQueue != null && (uint)voice < 4 ? voiceQueue[voice].Pop(dest) : 0;
+
+    /// <summary>Frames a voice's stem lost because nothing read them.</summary>
+    public long VoiceStemDropped(int voice) => voiceQueue?[voice].Dropped ?? 0;
+
     // ---- the registers, for the bridges and the plugin ----
     public int Period(int channel) => period[channel];
     public int Volume(int channel) => volume[channel];
@@ -94,7 +139,20 @@ public sealed class Sn76489 : IHubVoiceSource
         cpuRemainder = 0;
         lastLeft = lastRight = 0;
         left.Reset(); right.Reset();
+        RealignStems();
         SetOutput();
+    }
+
+    /// <summary>The main mixers were reset or loaded: the voice streams start again from their time with the voices' present levels.</summary>
+    private void RealignStems()
+    {
+        if (voiceMix == null) return;
+        for (int i = 0; i < 4; i++)
+        {
+            voiceMix[i].CopyTimeFrom(left);
+            voiceQueue![i].Clear();
+            voiceLast[i] = (stemVoices >> i & 1) != 0 ? VoiceLevel(i) : 0f;
+        }
     }
 
     /// <summary>A byte written to the PSG port.</summary>
@@ -143,6 +201,7 @@ public sealed class Sn76489 : IHubVoiceSource
         cpuRemainder += cpuClocks;
         while (cpuRemainder >= Divider) { cpuRemainder -= Divider; Tick(); }
         left.Advance(clock); right.Advance(clock);
+        if (stemVoices != 0) for (int i = 0; i < 4; i++) if ((stemVoices >> i & 1) != 0) voiceMix![i].Advance(clock);
     }
 
     /// <summary>One PSG clock.</summary>
@@ -186,12 +245,20 @@ public sealed class Sn76489 : IHubVoiceSource
         for (int i = 0; i < 4; i++)
         {
             bool high = i < 3 ? tone[i] : (shift & 1) != 0;
-            if (!high) continue;
-            float a = Level[volume[i]];
-            // stereo bits: noise = 7/3, tone3 = 6/2, tone2 = 5/1, tone1 = 4/0
-            int bit = i == 3 ? 3 : i;
-            if ((stereo & (0x10 << bit)) != 0) l += a;
-            if ((stereo & (0x01 << bit)) != 0) r += a;
+            float vl = 0f, vr = 0f;
+            if (high)
+            {
+                float a = Level[volume[i]];
+                // stereo bits: noise = 7/3, tone3 = 6/2, tone2 = 5/1, tone1 = 4/0
+                int bit = i == 3 ? 3 : i;
+                if ((stereo & (0x10 << bit)) != 0) { vl = a; l += a; }
+                if ((stereo & (0x01 << bit)) != 0) { vr = a; r += a; }
+            }
+            if ((stemVoices >> i & 1) != 0)
+            {
+                float m = (vl + vr) * 0.5f;
+                if (m != voiceLast[i]) { voiceMix![i].Step(clock, m - voiceLast[i]); voiceLast[i] = m; }
+            }
         }
         if (l != lastLeft) { left.Step(clock, l - lastLeft); lastLeft = l; }
         if (r != lastRight) { right.Step(clock, r - lastRight); lastRight = r; }
@@ -213,6 +280,18 @@ public sealed class Sn76489 : IHubVoiceSource
             {
                 buffer[2 * (done + i)] = (short)Math.Clamp(l[i] * scale, -32768f, 32767f);
                 buffer[2 * (done + i) + 1] = (short)Math.Clamp(r[i] * scale, -32768f, 32767f);
+            }
+            if (stemVoices != 0)
+            {
+                // the wanted voices' streams are read the same number of frames, so every stem has exactly the frames the mix has (same clock, same filter, same latency)
+                Span<float> s = stackalloc float[512];
+                float stemScale = Gain * (32767f / 32768f);
+                for (int v = 0; v < 4; v++)
+                {
+                    if ((stemVoices >> v & 1) == 0) continue;
+                    voiceMix![v].Read(s.Slice(0, n));
+                    for (int i = 0; i < n; i++) voiceQueue![v].Push(s[i] * stemScale);
+                }
             }
             done += n;
         }
@@ -272,5 +351,6 @@ public sealed class Sn76489 : IHubVoiceSource
         noiseDivider = r.ReadBoolean(); shift = r.ReadInt32(); cpuRemainder = r.ReadInt32();
         clock = r.ReadInt64(); lastLeft = r.ReadSingle(); lastRight = r.ReadSingle();
         left.LoadState(r); right.LoadState(r);
+        RealignStems();
     }
 }

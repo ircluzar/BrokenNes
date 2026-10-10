@@ -783,15 +783,25 @@ public sealed partial class Ym2612 : IHubVoiceSource
     //  One sample (ymfm: ym2612::generate and ym3438::generate)
     // =================================================================================================================
 
+    /// <summary>Per-channel contributions to the latest sample (round 3, the plugin's stems): when both arrays are set (seven entries each: FM 1 to 6, then the DAC) every sample leaves each channel's share of the left and right sums in them, in
+    /// the units the sums are in before the final scale (<see cref="StemScale"/>), the discrete chip's DAC offsets included, so the shares add up to the sums exactly. A channel that did not run this sample (FM 6 while the DAC is on) is 0.</summary>
+    public int[]? StemLeft, StemRight;
+
+    /// <summary>The factor that turns the sums of <see cref="StemLeft"/> / <see cref="StemRight"/> into the 16-bit sample the chip delivers to its sink.</summary>
+    public double StemScale => Ladder ? 128.0 * 64 / (6 * 65) : 128.0 / 6;
+
     private void GenerateSample()
     {
         ClockEngine();
 
         int accL = 0, accR = 0;
         int lastFm = dacEnable ? 5 : 6;
+        var stemL = StemLeft; var stemR = StemRight;
+        if (stemL != null && stemR != null && dacEnable) { stemL[5] = 0; stemR[5] = 0; }
         for (int ch = 0; ch < lastFm; ch++)
         {
             int tl = 0, tr = 0;
+            int beforeL = accL, beforeR = accR;
             if (DebugChannelOutputs != null) DebugChannelOutputs[ch] = 0;
             if (SlotPipeline)
             {
@@ -808,6 +818,7 @@ public sealed partial class Ym2612 : IHubVoiceSource
                     accR += (cpan & 1) != 0 ? v + (v < 0 ? -3 : 4) : (v < 0 ? -4 : 4);
                 }
                 else { accL += tl; accR += tr; }
+                if (stemL != null && stemR != null) { stemL[ch] = accL - beforeL; stemR[ch] = accR - beforeR; }
                 continue;
             }
             if ((activeChannels >> ch & 1) != 0) ChannelOutput(ch, ref tl, ref tr);
@@ -819,10 +830,12 @@ public sealed partial class Ym2612 : IHubVoiceSource
                 accR += tr < 0 ? tr - 3 : tr + 4;
             }
             else { accL += tl; accR += tr; }
+            if (stemL != null && stemR != null) { stemL[ch] = accL - beforeL; stemR[ch] = accR - beforeR; }
         }
 
         if (dacEnable)
         {
+            int beforeL = accL, beforeR = accR;
             int dac = (short)(dacData << 7) >> 7;                     // the 9-bit signed DAC value
             if ((MuteMask >> 6 & 1) != 0) dac = 0;
             int pan = regs[0x1B6] >> 6 & 3;                           // channel 6's pan bits steer the DAC
@@ -838,7 +851,9 @@ public sealed partial class Ym2612 : IHubVoiceSource
                 if ((pan & 2) != 0) accL += dac;
                 if ((pan & 1) != 0) accR += dac;
             }
+            if (stemL != null && stemR != null) { stemL[6] = accL - beforeL; stemR[6] = accR - beforeR; }
         }
+        else if (stemL != null && stemR != null) { stemL[6] = 0; stemR[6] = 0; }
 
         // the real output is multiplexed, not mixed; ymfm averages the six channels. The discrete chip also scales by 64/65 for the discontinuity added above
         int left, right;

@@ -18,7 +18,7 @@ namespace NesEmulator.Sega;
 /// (peak 2,042 of 32,768) a little under a full-volume PSG tone (peak 3,277), the level the two chips have on the real console to within the accuracy measured in the record.</para>
 /// <para>Per-channel stems: <see cref="Fm"/>.<see cref="Ym2413.Mask"/> mutes FM voices, the PSG's volume registers silence its voices; nothing here allocates per sample.</para>
 /// </remarks>
-public sealed class SmsFmSound : ISmsSound
+public sealed class SmsFmSound : ISmsSound, IVoiceStems
 {
     /// <summary>Gain of the FM part in the mix (1.0 is the chip's own scale: a full-volume channel peaks at about 2,042 of 32,768).</summary>
     public float FmGain = 1.0f;
@@ -40,6 +40,15 @@ public sealed class SmsFmSound : ISmsSound
     private readonly short[] fmQ = new short[QueueMask + 1];
     private long fmRead, fmWrite;
     private readonly short[] drain = new short[1024];   // 512 stereo frames: the largest the PSG reads without allocating
+
+    // the voices on their own (the plugin's stems): the PSG's four from the chip, the YM2413's fourteen from a converter each, queued by the same frame numbers as the mix so that they pair up exactly as it does
+    private long stemMask;
+    private int psgStemBits, fmStemBits;
+    private readonly IndexedRing?[] psgStemRing = new IndexedRing?[4];
+    private readonly IndexedRing?[] fmStemRing = new IndexedRing?[Ym2413.VoiceCount];
+    private readonly Ym2413Resampler?[] fmStemRes = new Ym2413Resampler?[Ym2413.VoiceCount];
+    private readonly StemQueue?[] stemQ = new StemQueue?[SegaStems.SmsFmCount];
+    private readonly float[] stemTmp = new float[512];
 
     /// <param name="cpuClockHz">The Z80 clock of the machine.</param>
     /// <param name="sampleRate">The host audio rate.</param>
@@ -70,6 +79,51 @@ public sealed class SmsFmSound : ISmsSound
         psg.Reset(); fm.Reset(); fm.ResetPatch(); resampler.Reset();
         audioControl = 0; fmRemainder = 0;
         psgRead = psgWrite = fmRead = fmWrite = 0;
+        RealignStems();
+    }
+
+    // =================================================================================================================
+    //  Stems
+    // =================================================================================================================
+
+    public int StemCount => SegaStems.SmsFmCount;
+    public string StemName(int stem) => stem < 4 ? SegaStems.PsgNames[stem] : stem < SegaStems.SmsRhythm1 ? "FM " + (stem - SegaStems.SmsFm1 + 1) : SegaStems.RhythmNames[stem - SegaStems.SmsRhythm1];
+
+    /// <summary>Which stems are made: bits 0 to 3 the PSG's voices, 4 to 12 FM 1 to 9, 13 to 17 the rhythm voices (bass drum, hi-hat, snare, tom, cymbal), see <see cref="SegaStems"/>.</summary>
+    public long StemMask
+    {
+        get => stemMask;
+        set
+        {
+            value &= (1L << SegaStems.SmsFmCount) - 1;
+            psg.VoiceStems = (int)(value & 15);
+            for (int s = 0; s < SegaStems.SmsFmCount; s++)
+            {
+                if ((value >> s & 1) == 0 || (stemMask >> s & 1) != 0) continue;
+                stemQ[s] ??= new StemQueue();
+                stemQ[s]!.Clear();
+                if (s < 4) psgStemRing[s] ??= new IndexedRing(QueueMask + 1);
+                else
+                {
+                    int v = s - 4;
+                    fmStemRing[v] ??= new IndexedRing(QueueMask + 1);
+                    fmStemRes[v] ??= new Ym2413Resampler(fm.SampleRate, sampleRate);
+                    fmStemRes[v]!.CopyTimingFrom(resampler);
+                }
+            }
+            psgStemBits = (int)(value & 15);
+            fmStemBits = (int)(value >> 4) & 0x3FFF;
+            stemMask = value;
+        }
+    }
+
+    public int ReadStem(int stem, Span<float> dest) => (uint)stem < (uint)stemQ.Length && stemQ[stem] != null ? stemQ[stem]!.Pop(dest) : 0;
+
+    /// <summary>The unit was reset or loaded: the stems start again from the converter's time.</summary>
+    private void RealignStems()
+    {
+        for (int v = 0; v < Ym2413.VoiceCount; v++) fmStemRes[v]?.CopyTimingFrom(resampler);
+        for (int s = 0; s < stemQ.Length; s++) stemQ[s]?.Clear();
     }
 
     public void Run(int cpuClocks)
@@ -77,10 +131,20 @@ public sealed class SmsFmSound : ISmsSound
         psg.Run(cpuClocks);
         int n;
         while ((n = psg.ReadSamples(drain)) > 0)
+        {
+            long first = psgWrite;
             for (int i = 0; i + 1 < n; i += 2)
             {
                 psgL[psgWrite & QueueMask] = drain[i]; psgR[psgWrite & QueueMask] = drain[i + 1]; psgWrite++;
             }
+            if (psgStemBits != 0)
+                for (int v = 0; v < 4; v++)
+                {
+                    if ((psgStemBits >> v & 1) == 0) continue;
+                    int k = psg.ReadVoiceStem(v, stemTmp.AsSpan(0, n / 2));
+                    for (int i = 0; i < k; i++) psgStemRing[v]![first + i] = stemTmp[i];
+                }
+        }
         fmRemainder += cpuClocks;
         while (fmRemainder >= Ym2413.ClocksPerSample)
         {
@@ -88,7 +152,17 @@ public sealed class SmsFmSound : ISmsSound
             int s = fm.Calc();
             LastFmSample = s;
             resampler.Push((short)Math.Clamp(s, short.MinValue, short.MaxValue));
-            while (resampler.TryRead(out short o)) { fmQ[fmWrite & QueueMask] = o; fmWrite++; }
+            if (fmStemBits != 0)
+                for (int v = 0; v < Ym2413.VoiceCount; v++)
+                    if ((fmStemBits >> v & 1) != 0) fmStemRes[v]!.Push((short)Math.Clamp(fm.ChannelOutput(v), short.MinValue, short.MaxValue));
+            while (resampler.TryRead(out short o))
+            {
+                fmQ[fmWrite & QueueMask] = o;
+                if (fmStemBits != 0)
+                    for (int v = 0; v < Ym2413.VoiceCount; v++)
+                        if ((fmStemBits >> v & 1) != 0) fmStemRing[v]![fmWrite] = fmStemRes[v]!.TryRead(out short so) ? so : 0;      // the converters run in lockstep: the voice's output is there whenever the mix's is
+                fmWrite++;
+            }
         }
         // a stalled reader must not make the queues wrap over unread samples: drop the oldest, counted
         if (psgWrite - psgRead > QueueMask) { Overflowed += psgWrite - psgRead - QueueMask; psgRead = psgWrite - QueueMask; }
@@ -120,6 +194,26 @@ public sealed class SmsFmSound : ISmsSound
             if (useFm) { float f = fmQ[b] * FmGain; l += f; r += f; }
             dest[(int)(2 * i)] = (short)Math.Clamp(l, -32768f, 32767f);
             dest[(int)(2 * i + 1)] = (short)Math.Clamp(r, -32768f, 32767f);
+        }
+        if (stemMask != 0)
+        {
+            // each wanted stem gets the frames the mix just got, indexed the way the mix is (a muted half is silent in the stems too)
+            for (int s = 0; s < SegaStems.SmsFmCount; s++)
+            {
+                if ((stemMask >> s & 1) == 0) continue;
+                var q = stemQ[s]!;
+                if (s < 4)
+                {
+                    var ring = psgStemRing[s]!;
+                    for (long i = 0; i < frames; i++) q.Push(usePsg ? ring[psgRead + i] * PsgGain : 0f);
+                }
+                else
+                {
+                    var ring = fmStemRing[s - 4]!;
+                    float k = FmGain / 32768f;
+                    for (long i = 0; i < frames; i++) q.Push(useFm ? ring[fmRead + i] * k : 0f);
+                }
+            }
         }
         psgRead += frames; fmRead += frames;
         return (int)(frames * 2);
@@ -156,6 +250,7 @@ public sealed class SmsFmSound : ISmsSound
             // the state of a PSG-only unit (an APU swap from the stock unit): the PSG goes on as it was, the FM chip starts as at power-on
             fm.Reset(); fm.ResetPatch(); resampler.Reset(); audioControl = 0; fmRemainder = 0;
             psgRead = psgWrite = fmRead = fmWrite = 0;
+            RealignStems();
             return;
         }
         fm.LoadState(r); resampler.LoadState(r);
@@ -169,6 +264,7 @@ public sealed class SmsFmSound : ISmsSound
         if (nf < 0 || nf > QueueMask + 1) throw new InvalidDataException("SMS-FM state: bad FM queue length");
         for (int i = 0; i < nf; i++) fmQ[i] = r.ReadInt16();
         fmWrite = nf;
+        RealignStems();
     }
 
     public string Describe() =>

@@ -50,6 +50,14 @@ public sealed class Ym2413Resampler
         Array.Clear(buf);
     }
 
+    /// <summary>Takes the timing of another converter that runs beside this one (the same two rates) with an empty history: for a stem that starts while the converter it accompanies is already running. The samples
+    /// already pushed to the other count as pushed here too (as zeros), so the two make the same number of outputs from then on.</summary>
+    public void CopyTimingFrom(Ym2413Resampler other)
+    {
+        timer = other.timer; outTime = other.outTime; queued = other.queued;
+        Array.Clear(buf); Array.Clear(queue);
+    }
+
     /// <summary>A chip sample is ready.</summary>
     public void Push(short sample)
     {

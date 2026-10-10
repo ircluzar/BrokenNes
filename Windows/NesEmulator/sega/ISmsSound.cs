@@ -51,7 +51,7 @@ public interface ISmsSound
 }
 
 /// <summary>The stock sound unit: the SN76489 (with the Game Gear's stereo port) and no FM chip.</summary>
-public sealed class SmsSound : ISmsSound
+public sealed class SmsSound : ISmsSound, IVoiceStems
 {
     private readonly Sn76489 psg;
 
@@ -80,6 +80,12 @@ public sealed class SmsSound : ISmsSound
 
     public int ReadSamples(Span<short> dest) => psg.ReadSamples(dest);
     public int DescribeVoices(Span<HubVoice> voices) => psg.DescribeVoices(voices);
+
+    // ---- the PSG's four voices on their own (the plugin's stems) ----
+    public int StemCount => SegaStems.PsgCount;
+    public string StemName(int stem) => SegaStems.PsgNames[stem];
+    public long StemMask { get => psg.VoiceStems; set => psg.VoiceStems = (int)(value & 15); }
+    public int ReadStem(int stem, Span<float> dest) => psg.ReadVoiceStem(stem, dest);
 
     public void SaveState(BinaryWriter w) => psg.SaveState(w);
     public void LoadState(BinaryReader r) => psg.LoadState(r);

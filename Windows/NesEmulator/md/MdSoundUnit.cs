@@ -21,7 +21,7 @@ namespace NesEmulator.Sega;
 /// band-limited mixer (<see cref="BandLimitedMixer"/>, the PSG's own resampler) that integrates it at the host rate, so the conversion to 44.1 or 48 kHz has no aliasing. The PSG and the FM are summed
 /// with <see cref="FmGain"/> and <see cref="Sn76489.Gain"/>, then clipped to 16 bits. No allocation per sample.</para>
 /// </remarks>
-public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
+public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, IVoiceStems
 {
     /// <summary>Z80 T-states a bank-window access stalls the Z80 for (about 3.3; the sources disagree, the plan lists them).</summary>
     public const double BankWindowZ80Stall = 3.3;
@@ -53,6 +53,12 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
     private long fmClock;                  // FM samples handed to the mixers so far (monotonic across resets)
     private float lastFmL, lastFmR;
     private int ymAddress0, ymAddress1;    // the address latches, for the write trace
+    // the voices on their own (the plugin's stems): the PSG's four from the chip, the FM chip's six and the DAC from one mono band-limited stream each, run beside the mix and read in step with it
+    private long stemMask;
+    private int fmStemBits;
+    private readonly BandLimitedMixer?[] fmStem = new BandLimitedMixer?[7];
+    private readonly float[] fmStemLast = new float[7];
+    private readonly StemQueue?[] stemQ = new StemQueue?[SegaStems.MdCount];
     public long BusRequests, BankReads, BankWrites, PsgWrites, YmWrites, Z80Ticks;
 
     /// <summary>The unit's own writes to the YM2612, in order, for tests and tracing: (register, value, 0 or 1 for the part).</summary>
@@ -101,7 +107,67 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
         ym.PowerOn();
         fmLeft.Reset(); fmRight.Reset();
         lastFmL = lastFmR = 0;
+        RealignStems();
         z80.Reset(); z80.Irq = false;
+    }
+
+    // =================================================================================================================
+    //  Stems
+    // =================================================================================================================
+
+    public int StemCount => SegaStems.MdCount;
+    public string StemName(int stem) => stem < 4 ? SegaStems.PsgNames[stem] : stem == SegaStems.MdDac ? "DAC" : "FM " + (stem - SegaStems.MdFm1 + 1);
+
+    /// <summary>Which stems are made: bits 0 to 3 the PSG's voices, 4 to 9 FM 1 to 6, 10 the DAC (see <see cref="SegaStems"/>).</summary>
+    public long StemMask
+    {
+        get => stemMask;
+        set
+        {
+            value &= (1L << SegaStems.MdCount) - 1;
+            psg.VoiceStems = (int)(value & 15);
+            int fmBits = (int)(value >> 4) & 0x7F;
+            for (int s = 0; s < SegaStems.MdCount; s++)
+                if ((value >> s & 1) != 0 && (stemMask >> s & 1) == 0)
+                {
+                    stemQ[s] ??= new StemQueue();
+                    stemQ[s]!.Clear();
+                    if (s >= 4)
+                    {
+                        int c = s - 4;
+                        fmStem[c] ??= new BandLimitedMixer(machine.Timeline.Ym2612SampleRate, machine.SampleRate);
+                        fmStem[c]!.CopyTimeFrom(fmLeft);
+                        fmStemLast[c] = 0;
+                    }
+                }
+            ym.StemLeft = fmBits != 0 ? ym.StemLeft ?? new int[7] : null;
+            ym.StemRight = fmBits != 0 ? ym.StemRight ?? new int[7] : null;
+            fmStemBits = fmBits;
+            stemMask = value;
+        }
+    }
+
+    public int ReadStem(int stem, Span<float> dest) => (uint)stem < (uint)stemQ.Length && stemQ[stem] != null ? stemQ[stem]!.Pop(dest) : 0;
+
+    /// <summary>The main FM mixers were reset or loaded: the stems start again from their time.</summary>
+    private void RealignStems()
+    {
+        for (int c = 0; c < 7; c++)
+            if (fmStem[c] != null) { fmStem[c]!.CopyTimeFrom(fmLeft); fmStemLast[c] = 0; }
+        for (int s = 0; s < stemQ.Length; s++) stemQ[s]?.Clear();
+    }
+
+    /// <summary>One sample's share of each wanted FM channel into its own stream (the same step of a held level the mix gets).</summary>
+    private void StemSample()
+    {
+        var sl = ym.StemLeft!; var sr = ym.StemRight!;
+        float k = (float)(ym.StemScale * FmGain / 32768.0);
+        for (int c = 0; c < 7; c++)
+        {
+            if ((fmStemBits >> c & 1) == 0) continue;
+            float m = (sl[c] + sr[c]) * 0.5f * k;
+            if (m != fmStemLast[c]) { fmStem[c]!.Step(fmClock, m - fmStemLast[c]); fmStemLast[c] = m; }
+        }
     }
 
     // =================================================================================================================
@@ -145,6 +211,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
     {
         ym.RunTo(masterClock / MasterPerYmClock);
         fmLeft.Advance(fmClock); fmRight.Advance(fmClock);
+        if (fmStemBits != 0) for (int c = 0; c < 7; c++) if ((fmStemBits >> c & 1) != 0) fmStem[c]!.Advance(fmClock);
     }
 
     /// <summary>One YM2612 sample (the chip calls this as it completes each one): the new level is a step of the held output, added into the band-limited mixers.</summary>
@@ -154,6 +221,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
         fmClock++;
         if (l != lastFmL) { fmLeft.Step(fmClock, l - lastFmL); lastFmL = l; }
         if (r != lastFmR) { fmRight.Step(fmClock, r - lastFmR); lastFmR = r; }
+        if (fmStemBits != 0) StemSample();
     }
 
     // =================================================================================================================
@@ -362,6 +430,17 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
             if (got < frames) frames = got;
             if (frames <= 0) break;
             fmLeft.Read(fl[..frames]); fmRight.Read(fr[..frames]);
+            if (stemMask != 0)
+            {
+                // every wanted stem gets the same frames the mix does (the PSG's from its own queue, the FM chip's from their streams)
+                Span<float> st = stackalloc float[Chunk];
+                for (int s = 0; s < SegaStems.MdCount; s++)
+                {
+                    if ((stemMask >> s & 1) == 0) continue;
+                    int k = s < 4 ? psg.ReadVoiceStem(s, st[..frames]) : fmStem[s - 4]!.Read(st[..frames]);
+                    stemQ[s]!.Push(st[..k]);
+                }
+            }
             for (int i = 0; i < frames; i++)
             {
                 int l = psgBuf[2 * i] + (int)(fl[i] * 32768f), r = psgBuf[2 * i + 1] + (int)(fr[i] * 32768f);
@@ -403,6 +482,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink
         z80.LoadState(r);
         // the audio buffers are not part of the state: start the FM stream afresh from the chip's output level
         fmLeft.Reset(); fmRight.Reset();
+        RealignStems();
         lastFmL = ym.LastLeft * FmGain * (1f / 32768f); lastFmR = ym.LastRight * FmGain * (1f / 32768f);
     }
 

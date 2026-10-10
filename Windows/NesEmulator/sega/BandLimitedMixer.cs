@@ -101,6 +101,10 @@ public sealed class BandLimitedMixer
     /// <summary>Forgets what is buffered and the DC state; chip time keeps counting (the chip's clock is monotonic across its own reset).</summary>
     public void Reset() { Array.Clear(ring); sum = 0; consumed = Math.Max(0, (long)Math.Floor(now) - Taps / 2); }
 
+    /// <summary>Takes the time of another mixer that runs beside this one (same clock and rate): the same next output sample, nothing buffered, no DC state. For a stem that starts while the mixer it accompanies is already running
+    /// (the voice's level is then handed in by the caller as its last level, so the first step is the change from there; the high-pass makes any DC in it die away within about 0.1 s).</summary>
+    public void CopyTimeFrom(BandLimitedMixer other) { Array.Clear(ring); sum = 0; consumed = other.consumed; now = other.now; }
+
     /// <summary>The whole state: the DC integrator, the time, and the buffered samples from the first one not yet handed out to the last the kernel can still touch (a restored mixer carries on bit for bit).</summary>
     public void SaveState(System.IO.BinaryWriter w)
     {
