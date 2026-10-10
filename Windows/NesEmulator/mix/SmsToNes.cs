@@ -227,7 +227,7 @@ internal sealed class SmsToNes
         var L0 = e.Layers[0]; var L1 = e.Layers[1];
         L0.On.AsSpan().Clear(); L1.On.AsSpan().Clear();
         bool vlockAny = false, anyBg = false, anyObj = false;
-        var seen0 = new bool[32 * 32]; var seen1 = new bool[32 * 32];
+        var seen0 = new bool[32 * 32]; var seen1 = new bool[32 * 32]; var fsLine = new int[ExtPicture.Lines];
         bool hiddenCols(int srcX) => srcX < win.X0 || srcX >= win.X0 + win.W;
         for (int el = 0; el < h; el++)
         {
@@ -244,13 +244,19 @@ internal sealed class SmsToNes
             L0.On[el] = true; L0.ScrollX[el] = (short)(dx - hs); L0.ScrollY[el] = (short)(my - el);
             L0.ZLow[el] = 1; L0.ZHigh[el] = 5;
             for (int c = 0; c < 32; c++) seen0[(my >> 3) * 32 + c] = true;
+            fsLine[el] = hs & 7;
             if (vLock)
             {
+                // the lock applies to the scrolled tile columns 24-31 of the line, which start 8 x 24 pixels after the fine scroll's shift
                 vlockAny = true;
                 int my1 = ext ? l & 0xFF : l % 224;
                 L1.On[el] = true; L1.ScrollX[el] = (short)(dx - hs); L1.ScrollY[el] = (short)(my1 - el);
                 L1.ZLow[el] = 1; L1.ZHigh[el] = 5;
-                for (int c = 24; c < 32; c++) seen1[(my1 >> 3) * 32 + c] = true;
+                for (int sx = 192 + (hs & 7); sx < 256; sx += 8)
+                {
+                    seen1[(my1 >> 3) * 32 + (((sx - hs) & 255) >> 3)] = true;
+                    seen1[(my1 >> 3) * 32 + (((sx + 7 - hs) & 255) >> 3)] = true;
+                }
             }
             e.ObjOn[el] = true; anyObj = true;
             for (int p = 0; p < 4; p++) e.ObjZ[el * 4 + p] = 3;
@@ -263,8 +269,8 @@ internal sealed class SmsToNes
                 for (int x = 0; x < 256; x++) { bool hd = hide(el, x + dx); if (hd) any = true; L.Hidden[el * 256 + x] = hd; }
             L.AnyHidden = any;
         }
-        HideLayer(L0, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || ((cap.R0[win.Y0 + el] & 0x80) != 0 && sx >= 192));
-        if (vlockAny) HideLayer(L1, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || sx < 192);
+        HideLayer(L0, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || ((cap.R0[win.Y0 + el] & 0x80) != 0 && sx >= 192 + fsLine[el]));
+        if (vlockAny) HideLayer(L1, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || sx < 192 + fsLine[el]);
         for (int el = 0; el < h; el++)
             for (int x = 0; x < 256; x++)
             {
@@ -308,7 +314,7 @@ internal sealed class SmsToNes
                 }
         }
         AddCells(seen0, 0, 0, 32);
-        if (vlockAny) AddCells(seen1, 1, 24, 32);
+        if (vlockAny) AddCells(seen1, 1, 0, 32);
         bgQ.Solve(ExtPicture.Palettes);
         for (int g = 0; g < ExtPicture.Palettes; g++) for (int lv = 1; lv < 4; lv++) e.BgRgb[g * 4 + lv] = (uint)NesFixPalette.ForTextbook(bgQ.Palette[g][lv]);
         var tileOf = new Dictionary<int, int>[2] { new(), new() }; var nextTile = new[] { 1, 1 };
@@ -418,11 +424,12 @@ internal sealed class SmsToNes
         pic.Blank = !displayOn;
         // the NES shows the nametable shifted by one fine X and one fine Y for the whole frame: pick the ones most lines of the picture share
         var xh = new int[8];
-        for (int el = 0; el < h; el++) xh[-cap.R8[win.Y0 + el] & 7]++;
+        int EffHs(int l) => (cap.R0[l] & 0x40) != 0 && l < 16 ? 0 : cap.R8[l];       // the top rows' scroll lock makes the line's scroll 0
+        for (int el = 0; el < h; el++) xh[-EffHs(win.Y0 + el) & 7]++;
         int fineX = 0; for (int i = 1; i < 8; i++) if (xh[i] > xh[fineX]) fineX = i;
         int fineY = (vs + win.Y0 - oy) & 7;
         pic.FineX = fineX; pic.FineY = fineY;
-        int linesOffFine = 0; for (int el = 0; el < h; el++) if ((-cap.R8[win.Y0 + el] & 7) != fineX) linesOffFine++;
+        int linesOffFine = 0; for (int el = 0; el < h; el++) if ((-EffHs(win.Y0 + el) & 7) != fineX) linesOffFine++;
         c.Add("lines with a fine scroll other than the frame's", linesOffFine);
 
         // cells: 33 x 30 of the NES screen, each the chip's tile under the cell's middle
@@ -430,8 +437,9 @@ internal sealed class SmsToNes
         var rowHs = new int[30];
         for (int cy = 0; cy < 30; cy++)
         {
-            int srcY = cy * 8 - fineY - oy + win.Y0 + 4;               // a line through the middle of the cell
-            if (srcY < win.Y0 || srcY >= win.Y0 + h) continue;
+            int cellTop = cy * 8 - fineY - oy + win.Y0;                // the source line of the cell's first line (the cell may stick out above or below the window)
+            if (cellTop + 7 < win.Y0 || cellTop >= win.Y0 + h) continue;
+            int srcY = Math.Clamp(cellTop + 4, win.Y0, win.Y0 + h - 1);    // a line through the middle of the part of the cell the window shows
             int lineHs = (cap.R0[srcY] & 0x40) != 0 && srcY < 16 ? 0 : cap.R8[srcY];
             rowHs[cy] = lineHs;
             bool vLock = (cap.R0[srcY] & 0x80) != 0;
@@ -439,10 +447,11 @@ internal sealed class SmsToNes
             int myLocked = ext ? srcY & 0xFF : srcY % 224;
             for (int cx = 0; cx < 33; cx++)
             {
-                int srcX = cx * 8 - fineX - ox + win.X0 + 4;
-                if (srcX < win.X0 || srcX >= win.X0 + win.W) continue;
+                int cellLeft = cx * 8 - fineX - ox + win.X0;
+                if (cellLeft + 7 < win.X0 || cellLeft >= win.X0 + win.W) continue;
+                int srcX = Math.Clamp(cellLeft + 4, win.X0, win.X0 + win.W - 1);
                 int mx = (srcX - lineHs) & 255;
-                cells[cy, cx] = ReadCell(vdp, ntBase, (vLock && srcX >= 192 ? myLocked : my) >> 3, mx >> 3);
+                cells[cy, cx] = ReadCell(vdp, ntBase, (vLock && srcX >= 192 + (lineHs & 7) ? myLocked : my) >> 3, mx >> 3);
             }
         }
         // tiles -> items (colours each uses) -> 4 palettes
@@ -558,16 +567,21 @@ internal sealed class SmsToNes
             }
         }
         Array.Fill(pic.Oam, (byte)0xFF);
-        int nOam = 0, dropped = 0;
+        int nOam = 0, dropped = 0; var perLine = new int[240];
         foreach (var (p, item) in keptPieces)
         {
             if (nOam >= 64 || item >= 256) { dropped++; continue; }
-            int o = nOam++ * 4;
             int ny = p.Y - win.Y0 + oy - 1, nx = p.X - dx;
-            if (ny < -1 || ny > 238 || nx < 0 || nx > 255) { nOam--; dropped++; continue; }
-            pic.Oam[o] = (byte)ny; pic.Oam[o + 1] = (byte)item; pic.Oam[o + 2] = (byte)objQ.Group[item]; pic.Oam[o + 3] = (byte)nx;
+            if (ny < -1 || ny > 238 || nx < 0 || nx > 255) { dropped++; continue; }
+            int o = nOam++ * 4;
+            // the chip's tile priority bit covers a sprite: a NES sprite "behind the background" is the nearest it comes (both chips: only where the background has a colour)
+            int cx = Math.Clamp((nx + fineX + 4) >> 3, 0, 32), cy = Math.Clamp((ny + 1 + fineY + 4) >> 3, 0, 29);
+            bool behind = cells[cy, cx] is { Prio: true };
+            pic.Oam[o] = (byte)ny; pic.Oam[o + 1] = (byte)item; pic.Oam[o + 2] = (byte)(objQ.Group[item] | (behind ? 0x20 : 0)); pic.Oam[o + 3] = (byte)nx;
+            for (int ln = Math.Max(0, ny + 1); ln < Math.Min(240, ny + 9); ln++) perLine[ln]++;
         }
         c.Add("sprite pieces past the NES's 64 (or its 256 sprite tiles)", dropped);
+        c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", perLine.Count(n => n > 8));
         return sink.Present(pic);
     }
 }

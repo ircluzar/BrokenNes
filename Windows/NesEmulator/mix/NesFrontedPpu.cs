@@ -206,8 +206,14 @@ public abstract class NesFrontedPpu : IPPU, IPpuFixTiming, IPictureBridgeInfo
     {
         FrameNo++;
         Counters.BeginFrame();
+        // a frame the chip started before it had seen a pre-render line (power-on, or a hot swap in the middle of a frame) has nothing captured: it is not translated, and says so
+        if (groupChr[0] == null) { Counters.Add("frames started before the first capture (not translated)"); return; }
         // the pattern tables were sampled only up to the last group; groups never reached keep the last version
         for (int g = 1; g < 30; g++) groupChr[g] ??= groupChr[g - 1];
+        // the front chip's own picture of this very frame, complete now (the reference a fidelity measurement compares the bridged picture with)
+        var live = front.GetFrameBuffer();
+        if (frontDone.Length != live.Length) frontDone = new byte[live.Length];
+        Buffer.BlockCopy(live, 0, frontDone, 0, live.Length);
         Present();
     }
 
@@ -228,10 +234,11 @@ public abstract class NesFrontedPpu : IPPU, IPpuFixTiming, IPictureBridgeInfo
     public (int X, int Y, int W, int H) Region => (0, 0, 256, 240);
     public bool ReferenceIsSameFrame => true;
     private uint[]? refCanvas, bridgeCanvas;
-    public uint[] ReferenceCanvas => ToArgb(front.GetFrameBuffer(), ref refCanvas);
+    private byte[] frontDone = Array.Empty<byte>();
+    public uint[] ReferenceCanvas => ToArgb(frontDone.Length == 0 ? front.GetFrameBuffer() : frontDone, ref refCanvas);
     public uint[] BridgeCanvas => ToArgb(frame, ref bridgeCanvas);
-    /// <summary>The front chip's own picture (RGBA), what the NES would have shown.</summary>
-    public byte[] FrontFrame => front.GetFrameBuffer();
+    /// <summary>The front chip's own picture (RGBA) of the last frame the bridge translated, complete: what the NES would have shown.</summary>
+    public byte[] FrontFrame => frontDone.Length == 0 ? front.GetFrameBuffer() : frontDone;
 
     private static uint[] ToArgb(byte[] rgba, ref uint[]? cache)
     {

@@ -31,7 +31,8 @@ internal static class PictureBridgeCli
             switch (mode)
             {
                 case "nes": return NesOnSega(Opt);
-                case "sega": return SegaOnNes(Opt);
+                case "sega": case "session": return SegaOnNes(Opt);
+                case "lockstep": return Lockstep(Opt);
                 default: Console.Error.WriteLine("usage: --picture-bridge nes|sega ..."); return 2;
             }
         }
@@ -72,6 +73,36 @@ internal static class PictureBridgeCli
         return crashed > 0 ? 1 : 0;
     }
 
+    /// <summary>A NES game on PPU_FIX and on a bridge core, frame by frame: where does the game's own state (system RAM) first differ? (A bridge must leave the game alone.)</summary>
+    private static int Lockstep(Func<string, string, string> opt)
+    {
+        string rom = opt("rom", ""), ppu = opt("ppu", "SMS"); int frames = int.Parse(opt("frames", "600"));
+        var script = MixLabCli.ParseNesInput(opt("input", ""));
+        NES Make(string id) { var n = new NES { RomName = Path.GetFileName(rom) }; n.LoadROM(File.ReadAllBytes(rom)); if (!n.SetPpuCore(id)) throw new Exception("not applied"); return n; }
+        var a = Make("FIX"); var b = Make(ppu); var held = new bool[8]; int frameDiffs = 0, lagDiffs = 0; byte[]? prevA = null;
+        for (int f = 1; f <= frames; f++)
+        {
+            if (script.TryGetValue(f - 1, out var h)) held = h;
+            a.SetInputs(held, null); b.SetInputs(held, null); a.RunFrame(); b.RunFrame();
+            if (b.GetPictureBridge() is NesFrontedPpu core && f > 30)
+            {
+                var fa = a.GetFrameBuffer(); var fb = core.FrontFrame;
+                if (!fa.AsSpan().SequenceEqual(fb)) { frameDiffs++; if (prevA != null && prevA.AsSpan().SequenceEqual(fb)) lagDiffs++; }
+                prevA = (byte[])fa.Clone();
+            }
+            ulong ha = 14695981039346656037UL, hb = ha;
+            for (int i = 0; i < 2048; i++) { ha = (ha ^ a.PeekSystemRam(i)) * 1099511628211UL; hb = (hb ^ b.PeekSystemRam(i)) * 1099511628211UL; }
+            if (ha != hb)
+            {
+                int first = -1; for (int i = 0; i < 2048; i++) if (a.PeekSystemRam(i) != b.PeekSystemRam(i)) { first = i; break; }
+                Console.WriteLine($"first RAM difference at frame {f}: byte ${first:X3} FIX={a.PeekSystemRam(first):X2} {ppu}={b.PeekSystemRam(first):X2}; scanline/dot FIX {string.Join('/', a.GetPpuTiming().Scanline, a.GetPpuTiming().Dot)} {ppu} {string.Join('/', b.GetPpuTiming().Scanline, b.GetPpuTiming().Dot)}");
+                return 1;
+            }
+        }
+        Console.WriteLine($"{frames} frames: system RAM identical on PPU_FIX and PPU_{ppu}; the front chip's completed frame differs from PPU_FIX's on {frameDiffs} frames ({lagDiffs} of them equal to PPU_FIX's frame of the call before)");
+        return 0;
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ a Sega game on a NES chip
     private static int SegaOnNes(Func<string, string, string> opt)
     {
@@ -84,7 +115,7 @@ internal static class PictureBridgeCli
         var console = opt("console", "") is { Length: > 0 } c ? Consoles.FromKey(c) : RomDetect.Detect(rom, inner) ?? throw new InvalidDataException("unknown ROM");
         using var s = ConsoleSessions.Create(console, rom, CoreCatalog.Default(console, CoreSlot.Cpu), ppu, CoreCatalog.Default(console, CoreSlot.Apu), null, inner);
         Console.WriteLine($"{tag}: {s.Description}");
-        var info = s as IPictureBridgeInfo;
+        var info = FindBridgeInfo(s);
         var res = new List<PictureMetrics.Result>(); var floors = new List<PictureMetrics.Result>(); var held = PadButtons.None; var buf = new short[65536];
         uint[]? prev = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -148,6 +179,20 @@ internal static class PictureBridgeCli
         if (res.Count == 0) { Console.WriteLine("  no fidelity samples"); return; }
         double Avg(Func<PictureMetrics.Result, double> f) => res.Average(f);
         Console.WriteLine($"  fidelity over {res.Count} frames: colour error {Avg(r => r.ColourError):F1}%  block error {Avg(r => r.BlockError):F1}%  structure (SSIM) {Avg(r => r.Ssim):F3} (worst {res.Min(r => r.Ssim):F3})  match {Avg(r => r.Match) * 100:F0}%  recognisable {res.Count(r => r.Recognisable)}/{res.Count}");
+    }
+
+    /// <summary>The picture bridge a session's picture crosses: the Sega wrapper itself, or the Sega-chip NES core inside a Game Boy / SNES session's NES hop (found by reflection: a tool, not product code).</summary>
+    internal static IPictureBridgeInfo? FindBridgeInfo(IConsoleSession s)
+    {
+        if (s is IPictureBridgeInfo direct) return direct;
+        const BindingFlags F = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
+        foreach (var name in new[] { "toNes", "down" })
+        {
+            var hop = s.GetType().GetField(name, F)?.GetValue(s);
+            var sink = hop?.GetType().GetField("sink", F)?.GetValue(hop);
+            if (sink?.GetType().GetProperty("Ppu", F)?.GetValue(sink) is IPictureBridgeInfo info) return info;
+        }
+        return null;
     }
 
     internal static void SideBySide(uint[] a, uint[] b, int w, int h, string path)

@@ -91,7 +91,8 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         {
             var rgba = toNesMd.Render();
             ConsoleSessions.RgbaToArgb(rgba, frame);
-            toNesMd.BuildReference(reference, out region);
+            toNesMd.BuildReference(reference, out var r);
+            region = Viewed(r);
         }
     }
 
@@ -104,7 +105,8 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or InvalidOperationException) { ClearBridge(); return false; }   // the app restarts the game on it and says why
             ppuId = id; return true;
         }
-        if (!inner.TrySwapCore(slot, id)) return false;
+        // the console's own chip is the only other picture chip: any other id is not a choice this console has (the app restarts the game on it, which then says so)
+        if (!id.Equals(CoreCatalog.Default(Console, CoreSlot.Ppu), StringComparison.OrdinalIgnoreCase) || !inner.TrySwapCore(slot, id)) return false;
         ClearBridge(); ppuId = id; return true;
     }
 
@@ -125,6 +127,14 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         var src = sms!.Vdp.Frame;
         for (int y = 0; y < w.H; y++)
             for (int x = 0; x < w.W; x++) reference[(w.OffsetY + y) * 256 + w.OffsetX + x] = 0xFF000000u | src[(w.Y0 + y) * 256 + w.X0 + x];
-        region = (w.OffsetX, w.OffsetY, w.W, w.H);
+        region = Viewed((w.OffsetX, w.OffsetY, w.W, w.H));
+    }
+
+    /// <summary>The part of a region the chosen chip shows at all: the plain Game Boy chip (DMG) shows 160 x 144 of the 256 x 240, every other NES-family chip the whole picture.</summary>
+    internal (int X, int Y, int W, int H) Viewed((int X, int Y, int W, int H) r)
+    {
+        if (!ppuId.Equals("NES:DMG", StringComparison.OrdinalIgnoreCase)) return r;
+        int x0 = Math.Max(r.X, MixConfig.GbCropX), y0 = Math.Max(r.Y, MixConfig.GbCropY), x1 = Math.Min(r.X + r.W, MixConfig.GbCropX + 160), y1 = Math.Min(r.Y + r.H, MixConfig.GbCropY + 144);
+        return (x0, y0, Math.Max(0, x1 - x0), Math.Max(0, y1 - y0));
     }
 }

@@ -315,39 +315,18 @@ internal sealed class MdToNes
         }
         if (!displayAny) return Finish(e, 0, 0, 0);
 
-        // ---- layers: each is a plane (or the window) over a range of columns, with its own scroll
+        // ---- layers: plane B, plane A and (where the registers put one) the window; a column-scroll plane keeps one layer and a vertical scroll for each 16-pixel column
         var layers = new List<LayerSpec>();
-        // vertical scroll runs from the frame's vertical scroll RAM
         bool colMode = (rEnd[11] & 4) != 0;
         int width = cap.H40 ? 320 : 256;
-        List<(int c0, int c1, int vsRam)> RunsFor(int vsOff)
-        {
-            var runs = new List<(int, int, int)>();
-            int cols = width / 16;
-            if (!colMode) { runs.Add((0, cols, vsOff)); return runs; }
-            int start = 0;
-            for (int col = 1; col <= cols; col++)
-                if (col == cols || (cap.VsramEnd[(col << 1) + vsOff & 0x3F] & 0x3FF) != (cap.VsramEnd[(start << 1) + vsOff & 0x3F] & 0x3FF)) { runs.Add((start, col, (start << 1) + vsOff)); start = col; }
-            return runs;
-        }
-        var runsB = RunsFor(1); var runsA = RunsFor(0);
         bool windowUsed = false;
         for (int el = 0; el < h; el++) { var (f, t) = WindowSpan(y0 + el); if (t > f && (cap.Reg[y0 + el][1] & 0x40) != 0) { windowUsed = true; break; } }
-        int budget = ExtPicture.MaxLayers - (windowUsed ? 1 : 0);
-        int collapsed = 0;
-        while (runsA.Count + runsB.Count > budget)
-        {
-            // too many column-scroll runs for the layers: collapse the plane with more runs to its first run's scroll
-            if (runsA.Count >= runsB.Count) { collapsed += runsA.Count - 1; runsA = new() { (0, width / 16, runsA[0].vsRam) }; }
-            else { collapsed += runsB.Count - 1; runsB = new() { (0, width / 16, runsB[0].vsRam) }; }
-        }
-        c.Add("column-scroll runs merged (more than the layers allow)", collapsed);
-        foreach (var r in runsB) layers.Add(new LayerSpec { Plane = B, IsA = false, Col0 = r.c0, Col1 = r.c1, VsIndex = r.vsRam });
-        foreach (var r in runsA) layers.Add(new LayerSpec { Plane = A, IsA = true, Col0 = r.c0, Col1 = r.c1, VsIndex = r.vsRam });
-        LayerSpec? win0 = null;
-        if (windowUsed) { win0 = new LayerSpec { Window = true, IsA = true, Col0 = 0, Col1 = width / 16 }; layers.Add(win0); }
+        layers.Add(new LayerSpec { Plane = B, IsA = false, VsOff = 1 });
+        layers.Add(new LayerSpec { Plane = A, IsA = true, VsOff = 0 });
+        if (windowUsed) layers.Add(new LayerSpec { Window = true, IsA = true });
         for (int k = 0; k < layers.Count; k++) { layers[k].Index = k; var X = e.Layers[k]; X.Reset(); layers[k].X = X; }
         e.LayerCount = layers.Count;
+        int vsLinesOff = 0;
 
         // ---- per line: which layers are on, their scroll, the masks
         bool anyBg = false;
@@ -357,6 +336,16 @@ internal sealed class MdToNes
             X.Enabled = true; X.SnesLayer = L.IsA ? 0 : 1;
             X.MapWidth = L.Window ? (cap.H40 ? 64 : 32) : L.Plane!.WCells; X.MapHeight = L.Window ? 32 : L.Plane!.HCells;
             L.Seen = new bool[X.MapWidth * X.MapHeight];
+            if (colMode && !L.Window)
+            {
+                X.ColumnScroll = new short[16];
+                for (int k = 0; k < 16; k++) X.ColumnScroll[k] = (short)(cap.VsramEnd[(((k + dx / 16) << 1) + L.VsOff) & 0x3F] & 0x3FF);
+            }
+        }
+        int VsAt(int l, LayerSpec L, int srcX)
+        {
+            int idx = colMode ? (((srcX >> 4) << 1) + L.VsOff) : L.VsOff;
+            return cap.Vsram[l][Math.Min(idx, 39)] & 0x3FF;
         }
         for (int el = 0; el < h; el++)
         {
@@ -368,9 +357,8 @@ internal sealed class MdToNes
             {
                 var X = L.X;
                 Array.Fill(vis, false);
-                int from = L.Col0 * 16, to = L.Col1 * 16;
-                if (L.Window) { from = Math.Max(from, wf); to = Math.Min(to, wt); }
-                else if (L.IsA) { /* plane A: not where the window is */ }
+                int from = 0, to = width;
+                if (L.Window) { from = wf; to = wt; }
                 if (to <= from) continue;
                 // visible source columns of this layer on this line
                 bool any = false;
@@ -384,12 +372,14 @@ internal sealed class MdToNes
                 if (!any) continue;
                 X.On[el] = true;
                 X.ZLow[el] = (byte)(L.IsA ? 2 : 1); X.ZHigh[el] = (byte)(L.IsA ? 5 : 4);
-                if (L.Window) { X.ScrollX[el] = (short)dx; X.ScrollY[el] = (short)(y0); }
+                if (L.Window) { X.ScrollX[el] = (short)dx; X.ScrollY[el] = (short)y0; }
                 else
                 {
                     int hs = L.IsA ? cap.HsA[l] : cap.HsB[l];
-                    int vs = cap.Vsram[l][Math.Min(L.VsIndex, 39)] & 0x3FF;
-                    X.ScrollX[el] = (short)(dx - hs); X.ScrollY[el] = (short)(y0 + vs);
+                    X.ScrollX[el] = (short)(dx - hs);
+                    // the plane's vertical scroll: one for the whole line, or (column mode) the layer's column table added to the line offset
+                    X.ScrollY[el] = colMode ? (short)y0 : (short)(y0 + VsAt(l, L, 0));
+                    if (colMode) for (int k = 0; k < 16; k++) if ((VsAt(l, L, (k + dx / 16) << 4)) != X.ColumnScroll![k]) { vsLinesOff++; break; }
                 }
                 for (int x = 0; x < 256; x++) X.Hidden[el * 256 + x] = !vis[x];
                 X.AnyHidden = true;
@@ -397,23 +387,19 @@ internal sealed class MdToNes
                 for (int sx = from; sx < to; sx += 8)
                 {
                     int ex = sx - dx; if (ex + 8 <= 0 || ex >= 256) continue;
-                    if (L.Window)
-                    {
-                        L.Seen[(l >> 3) * X.MapWidth + (sx >> 3)] = true;
-                    }
-                    else
-                    {
-                        int hs = L.IsA ? cap.HsA[l] : cap.HsB[l], vs = cap.Vsram[l][Math.Min(L.VsIndex, 39)] & 0x3FF;
-                        int py = (l + vs) & L.Plane!.HMask, px0 = (sx - hs) & L.Plane.WMask;
-                        L.Seen[(py >> 3) * X.MapWidth + (px0 >> 3)] = true;
-                        L.Seen[(py >> 3) * X.MapWidth + (((px0 + 7) & L.Plane.WMask) >> 3)] = true;
-                    }
+                    if (L.Window) { L.Seen[(l >> 3) * X.MapWidth + (sx >> 3)] = true; continue; }
+                    int hs = L.IsA ? cap.HsA[l] : cap.HsB[l];
+                    int vs = VsAt(l, L, sx);       // a step of 8 never crosses a 16-pixel column border
+                    int py = (l + vs) & L.Plane!.HMask, px0 = (sx - hs) & L.Plane.WMask;
+                    L.Seen[(py >> 3) * X.MapWidth + (px0 >> 3)] = true;
+                    L.Seen[(py >> 3) * X.MapWidth + (((px0 + 7) & L.Plane.WMask) >> 3)] = true;
                 }
             }
             // sprites are drawn on every line the display is on
             e.ObjOn[el] = true;
             e.ObjZ[el * 4 + 0] = 3; e.ObjZ[el * 4 + 1] = 6; e.ObjZ[el * 4 + 2] = 3; e.ObjZ[el * 4 + 3] = 6;
         }
+        c.Add("lines with a vertical scroll other than the frame's (column scroll taken from the end of the frame)", vsLinesOff);
         if (!anyBg) return Finish(e, 0, 0, 0);
 
         // ---- background tiles: one item per (tile, palette line), 3 colours each, 8 palettes
@@ -540,7 +526,7 @@ internal sealed class MdToNes
 
     private sealed class LayerSpec
     {
-        public Plane? Plane; public bool IsA, Window; public int Col0, Col1, VsIndex, Index; public ExtPicture.Layer X = null!; public bool[] Seen = Array.Empty<bool>();
+        public Plane? Plane; public bool IsA, Window; public int VsOff, Index; public ExtPicture.Layer X = null!; public bool[] Seen = Array.Empty<bool>();
     }
 
     private byte[] Finish(ExtPicture e, int bgOverflow, int objOverflow, int unused)
@@ -578,13 +564,15 @@ internal sealed class MdToNes
         var cells = new Cell?[30, 33]; int hidden2 = 0;
         for (int cy = 0; cy < 30; cy++)
         {
-            int srcY = cy * 8 - fineY - oy + y0 + 4;
-            if (srcY < y0 || srcY >= y0 + h) continue;
+            int cellTop = cy * 8 - fineY - oy + y0;                // the cell may stick out above or below the window: the part inside it is what counts
+            if (cellTop + 7 < y0 || cellTop >= y0 + h) continue;
+            int srcY = Math.Clamp(cellTop + 4, y0, y0 + h - 1);
             var (wf, wt) = WindowSpan(srcY);
             for (int cx = 0; cx < 33; cx++)
             {
-                int srcX = cx * 8 - fineX - ox + win.X0 + 4;
-                if (srcX < win.X0 || srcX >= win.X0 + win.W) continue;
+                int cellLeft = cx * 8 - fineX - ox + win.X0;
+                if (cellLeft + 7 < win.X0 || cellLeft >= win.X0 + win.W) continue;
+                int srcX = Math.Clamp(cellLeft + 4, win.X0, win.X0 + win.W - 1);
                 Cell? Pick()
                 {
                     Cell? a = null;
@@ -706,18 +694,23 @@ internal sealed class MdToNes
             }
         }
         Array.Fill(pic.Oam, (byte)0xFF);
-        int nOam = 0, over = 0;
+        int nOam = 0, over = 0; var perLine = new int[240];
         foreach (var p in keptPieces)
         {
             if (nOam >= 64 || p.item >= 256) { over++; continue; }
-            int ny = p.y + oy - 1, nx = p.x + ox;
+            int ny = p.y + oy - 1, nx = p.x;
             if (ny < -1 || ny > 238 || nx < 0 || nx > 255) { over++; continue; }
             int o = nOam++ * 4;
+            // a low-priority sprite is behind the planes' high-priority tiles only; the NES's flag is behind every background colour, so it is set where the cell under the piece is high priority
+            int cx = Math.Clamp((nx + fineX + 4) >> 3, 0, 32), cy = Math.Clamp((ny + 1 + fineY + 4) >> 3, 0, 29);
+            bool behind = p.behind && cells[cy, cx] is { Prio: true };
             pic.Oam[o] = (byte)ny; pic.Oam[o + 1] = (byte)p.item;
-            pic.Oam[o + 2] = (byte)(objQ.Group[p.item] | (p.behind ? 0x20 : 0) | (p.hf ? 0x40 : 0) | (p.vf ? 0x80 : 0));
+            pic.Oam[o + 2] = (byte)(objQ.Group[p.item] | (behind ? 0x20 : 0) | (p.hf ? 0x40 : 0) | (p.vf ? 0x80 : 0));
             pic.Oam[o + 3] = (byte)nx;
+            for (int ln = Math.Max(0, ny + 1); ln < Math.Min(240, ny + 9); ln++) perLine[ln]++;
         }
         c.Add("sprite pieces past the NES's 64 (or its 256 sprite tiles)", over);
+        c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", perLine.Count(n => n > 8));
         return sink.Present(pic);
     }
 

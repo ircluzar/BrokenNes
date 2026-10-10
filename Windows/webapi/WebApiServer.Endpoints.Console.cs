@@ -17,6 +17,12 @@ namespace BrokenNes.Windows.WebApi
         public int FrameWidth { get; set; }
         public int FrameHeight { get; set; }
         public double Fps { get; set; }
+        /// <summary>When the picture crosses a bridge (a Sega game on a NES / Game Boy / SNES picture chip, a NES game on the Master System or Genesis chip): what the bridge is.</summary>
+        public string? PictureBridge { get; set; }
+        /// <summary>What the picture bridge could not carry, by name, totals since the game started (each loss is counted, none hidden).</summary>
+        public System.Collections.Generic.Dictionary<string, long>? PictureBridgeCounters { get; set; }
+        /// <summary>The same counters in one line.</summary>
+        public string? PictureBridgeSummary { get; set; }
     }
 
     public partial class WebApiServer
