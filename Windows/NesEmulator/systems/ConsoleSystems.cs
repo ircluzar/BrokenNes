@@ -202,7 +202,7 @@ public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
@@ -210,6 +210,8 @@ public static class CoreCatalog
         ["CPU:SNES"] = "65816 (SNES CPU)", ["CPU:SM83"] = "SM83 (Game Boy CPU)",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
+        ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
+        ["PPU:MD"] = "Genesis picture chip (4-bit tiles, 64 colours of 512, 16 sprites a line, per-line scroll)",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
         ["APU:SMSFM"] = "Master System FM chip (YM2413: pulses and triangle as FM channels with a chosen instrument, noise on the SN76489 PSG; the DMC is dropped)",
@@ -255,7 +257,11 @@ public static class CoreCatalog
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("Z80", "Z80 (stock clock)", fam)); break;
-                    case CoreSlot.Ppu: list.Add(gg ? new("GG", "GG (Game Gear picture chip)", fam) : new("SMS", "SMS (Master System picture chip)", fam)); break;
+                    case CoreSlot.Ppu:
+                        list.Add(gg ? new("GG", "GG (Game Gear picture chip)", fam) : new("SMS", "SMS (Master System picture chip)", fam));
+                        // The game's picture drawn by a NES chip (SmsToNes, picture id "NES:<chip>"), or through the NES by a Game Boy / SNES / Genesis chip. Lossy and said so (the losses are counted).
+                        foreach (var id in SegaPictureChips(fam)) list.Add(new("NES:" + id, SegaPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
+                        break;
                     default:
                         list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam));
                         // The Japanese Master System / Mark III also has the YM2413 FM chip (ports $F0-$F2); a game that detects it plays its FM music. Not the default: the export console has none.
@@ -270,7 +276,10 @@ public static class CoreCatalog
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
-                    case CoreSlot.Ppu: list.Add(new("MD", "MD (Genesis picture chip)", "Genesis")); break;
+                    case CoreSlot.Ppu:
+                        list.Add(new("MD", "MD (Genesis picture chip)", "Genesis"));
+                        foreach (var id in SegaPictureChips("Genesis")) list.Add(new("NES:" + id, SegaPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
+                        break;
                     default:
                         list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
                         // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
@@ -341,8 +350,26 @@ public static class CoreCatalog
             .ThenBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
             .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
 
+    // The NES picture chips a Sega game can be drawn on: every NES-board picture chip but the console family's own (a Master System game on the Master System chip is the console itself).
+    private static IEnumerable<string> SegaPictureChips(string ownFamily) =>
+        CoreRegistry.PpuIds.Where(i => NesFamilyOf(CoreSlot.Ppu, i) != ownFamily)
+            .OrderBy(i => NesFamilyOf(CoreSlot.Ppu, i) == "NES" ? 0 : 1)
+            .ThenBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The menu label of a Sega game's picture drawn by a NES (or, through it, another console's) chip. Honest about the route and what it costs.</summary>
+    private static string SegaPictureLabel(string id) => id.ToUpperInvariant() switch
+    {
+        "FIXS" => "FIXS - NES picture chip with layers (per-line scroll, tiles in 3 colours + clear, 8 palettes, sprites in the VDP's order; losses counted)",
+        "SNES" => "SNES - through a NES onto the SNES picture chip",
+        "DMG" or "DMGX" or "DMGS" or "SMS" or "MD" => NesPictureLabel(id),
+        _ => $"{id} - NES picture chip (flat: one 256-tile background, 4 palettes of 3 colours, 64 sprites; losses counted)",
+    };
+
     private static string NesPictureLabel(string id) => id.ToUpperInvariant() switch
     {
+        "SMS" => "SMS - through a NES onto the Master System picture chip",
+        "MD" => "MD - through a NES onto the Genesis picture chip",
         "FIXS" => "FIXS - NES picture chip with SNES layers + all sprites",
         "DMG" => "DMG - through a NES onto the Game Boy picture chip",
         "DMGX" => "DMGX - through a NES onto the big-screen Game Boy chip",

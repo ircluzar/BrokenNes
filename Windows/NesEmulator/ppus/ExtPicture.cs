@@ -40,10 +40,13 @@ namespace NesEmulator
             public bool AnyHidden;
             /// <summary>The SNES layer (0-3 = BG1-4) this is, for colour math.</summary>
             public int SnesLayer;
+            /// <summary>Optional (null for every SNES layer): a vertical scroll of its own for each 16-pixel column of the composed line (index x >> 4, 16 entries), added to <see cref="ScrollY"/> - the
+            /// Genesis's 2-cell column scroll. Set by the Genesis bridge only.</summary>
+            public short[]? ColumnScroll;
 
             public void Reset()
             {
-                Enabled = false; AnyHidden = false;
+                Enabled = false; AnyHidden = false; ColumnScroll = null;
                 Array.Clear(On); Array.Clear(Map); Array.Clear(Attr);
             }
         }
@@ -152,13 +155,16 @@ namespace NesEmulator
                 var L = Layers[k];
                 if (!L.Enabled || !L.On[line]) continue;
                 int wMask = L.MapWidth * 8 - 1, hMask = L.MapHeight * 8 - 1, shiftW = Log2(L.MapWidth);
-                int my = (L.ScrollY[line] + line) & hMask, ty = my & 7, mapRow = (my >> 3) << shiftW;
+                int baseY = L.ScrollY[line] + line;
+                int my = baseY & hMask, ty = my & 7, mapRow = (my >> 3) << shiftW;
+                var colScroll = L.ColumnScroll;
                 byte zl = L.ZLow[line], zh = L.ZHigh[line];
                 for (int i = 0; i < count; i++)
                 {
                     int sx = x0 + i;
                     if ((uint)sx >= Width) continue;
                     if (L.AnyHidden && L.Hidden[row + sx]) continue;
+                    if (colScroll != null) { int cy = (baseY + colScroll[sx >> 4]) & hMask; ty = cy & 7; mapRow = (cy >> 3) << shiftW; }
                     int mx = (L.ScrollX[line] + sx) & wMask, cell = mapRow + (mx >> 3);
                     int v = L.Tiles[L.Map[cell] * 64 + ty * 8 + (mx & 7)];
                     if (v == 0) continue;

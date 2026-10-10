@@ -202,9 +202,11 @@ internal static class SegaFoundationTestCli
         Check("a stored id the menu no longer offers falls back to the default", expect.All(e => CoreCatalog.Resolve(e.Item1, e.Item2, "BOGUS") == e.Item3 && CoreCatalog.Resolve(e.Item1, e.Item2, null) == e.Item3));
         Check("a stored id the menu offers is kept (case-insensitive)", CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Cpu, "m68k") == "m68k");
         // Track C: the Master System, Game Gear and Genesis APU menus also list the console's sound replayed on NES chips (ids NES:<chip>, family NES); every other entry is the console's own
-        Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip> in the Master System / Game Gear / Genesis sound menu)",
+        // Track C3a: the picture menus list the NES-family picture chips too (a Sega game's picture drawn by a NES, Game Boy or SNES chip, ids NES:<chip>, family of the chip)
+        Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip> in the Master System / Game Gear / Genesis sound or picture menu)",
             expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => o.Family == Consoles.Family(e.Item1)
-                || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Family == "NES" && o.Id.StartsWith("NES:")))));
+                || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Family == "NES" && o.Id.StartsWith("NES:"))
+                || (e.Item2 == CoreSlot.Ppu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:")))));
         Check("the NES, SNES and Game Boy menus are unchanged by the Sega kinds", CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Cpu) == "SFC" && CoreCatalog.Default(ConsoleKind.GameBoy, CoreSlot.Cpu) == "GB" && CoreCatalog.Default(ConsoleKind.Nes, CoreSlot.Cpu) == "FIX");
     }
 
@@ -277,14 +279,15 @@ internal static class SegaFoundationTestCli
             // the finished Genesis: a real session (the placeholder's colour bars are gone)
             var rom = Genesis();
             using var s = ConsoleSessions.Create(ConsoleKind.Genesis, rom, CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Genesis, CoreSlot.Apu));
-            Check("Genesis: the session is the real one and names its sound unit", s is MdSession && s.Description.Contains("Genesis") && s.Description.Contains("APU MD") && s.Console == ConsoleKind.Genesis);
+            Check("Genesis: the session is the real one and names its sound unit", (s is MdSession || (s is NesEmulator.Mix.SegaPictureSession ps && ps.Inner is MdSession)) && s.Description.Contains("Genesis") && s.Description.Contains("APU MD") && s.Console == ConsoleKind.Genesis);
             for (int i = 0; i < 30; i++) s.RunFrame();
             Check("Genesis: a frame of a real size (256 or 320 by 224 or 240), ARGB, ~59.92 fps", (s.FrameWidth is 256 or 320) && (s.FrameHeight is 224 or 240) && s.DisplayWidth == 320 && Math.Abs(s.FramesPerSecond - 59.9227) < 0.001
                 && s.Frame.Take(s.FrameWidth * s.FrameHeight).All(p => p >> 24 == 0xFF));
             Check("Genesis: GameId is the ROM's SHA-1 (40 hex)", s.GameId.Length == 40 && s.GameId == ConsoleSessions.Sha1(rom));
             var buf = new short[8192]; int n = 0; while (s.ReadSamples(buf) > 0) n++;
             Check("Genesis: no battery on a ROM without an SRAM header, an empty save", !s.HasBattery);
-            Check("Genesis: swapping a core is refused for another id and accepted for the same one (the parts are fixed per game)", !s.TrySwapCore(CoreSlot.Ppu, "NES:FIX") && s.TrySwapCore(CoreSlot.Ppu, "MD"));
+            Check("Genesis: swapping a core is refused for an id that is not on the menu, accepted for the console's own chip, and (C3a) for a NES picture chip, in place", !s.TrySwapCore(CoreSlot.Ppu, "NES:NOPE") && !s.TrySwapCore(CoreSlot.Ppu, "SMS") && s.TrySwapCore(CoreSlot.Ppu, "MD")
+                && s.TrySwapCore(CoreSlot.Ppu, "NES:FIX") && s.TrySwapCore(CoreSlot.Ppu, "MD"));
             s.Reset();
         }
     }

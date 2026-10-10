@@ -66,6 +66,9 @@ namespace BrokenNes.Windows
             else UpdateCoresMenus();
         }
 
+        /// <summary>The picture bridge in play: a Sega session whose picture a NES chip draws, or the NES's own PPU core when it is the Master System / Genesis chip.</summary>
+        private NesEmulator.Mix.IPictureBridgeInfo? BridgeOf(IConsoleSession? s) => (s as NesEmulator.Mix.IPictureBridgeInfo) ?? (s == null ? nes?.GetPictureBridge() : null);
+
         /// <summary>The NES bridge picture chips (SNES / Game Boy chips on a NES) need the board's cycle-precise PPU
         /// stepping, as in the mix lab; every other chip keeps the timing the user picked.</summary>
         private void ApplyBridgeTiming()
@@ -93,6 +96,10 @@ namespace BrokenNes.Windows
                     Ppu = console == ConsoleKind.Nes ? nes?.GetPpuCoreId() : SelectedCore(console, CoreSlot.Ppu),
                     Apu = console == ConsoleKind.Nes ? nes?.GetApuCoreId() : SelectedCore(console, CoreSlot.Apu),
                     FrameWidth = s?.FrameWidth ?? NES_WIDTH, FrameHeight = s?.FrameHeight ?? NES_HEIGHT, Fps = currentFps,
+                    // a picture that crosses a bridge says what it is and what it lost (Sega game on a NES chip, NES game on the Master System / Genesis chip)
+                    PictureBridge = BridgeOf(s) is { } bi && bi.BridgeName != "none" ? bi.BridgeName : null,
+                    PictureBridgeCounters = BridgeOf(s) is { } bc && bc.BridgeName != "none" ? new Dictionary<string, long>(bc.Counters.Totals) : null,
+                    PictureBridgeSummary = BridgeOf(s) is { } bs && bs.BridgeName != "none" ? bs.Counters.Summary(12) : null,
                 };
             };
             server.GetConsoleFrame = () =>

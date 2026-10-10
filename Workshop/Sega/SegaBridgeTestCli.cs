@@ -183,7 +183,9 @@ internal static class SegaBridgeTestCli
             Check($"{Consoles.DisplayName(console)}: no bridge core is listed as a NES chip (the Master System core itself, and the Game Boy and SNES ones, stay out)", apu.All(o => o.Id != "NES:SMS" && o.Id != "NES:DMG" && o.Id != "NES:SNES"));
             Check($"{Consoles.DisplayName(console)}: a stored NES:FIX is kept, a stored id the menu lacks falls back to the stock unit", CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:FIX") == "NES:FIX" && CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:NOPE") == stock);
         }
-        Check("the CPU and picture slots of the Master System are unchanged (own cores only)", CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Cpu).Count == 1 && CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Ppu).Count == 1);
+        // the picture slot gained the NES picture chips in C3a (the Master System's picture drawn by a NES chip): its own chip first, then NES:<chip> entries, never the Master System's own chip as a NES one (the picture bridges are verified by --picture-bridge-test)
+        var smsPpu = CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Ppu);
+        Check("the CPU slot of the Master System is unchanged (own core only) and its picture slot is its own chip first, then NES chips", CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Cpu).Count == 1 && smsPpu[0].Id == "SMS" && smsPpu.Skip(1).All(o => o.Id.StartsWith("NES:")) && smsPpu.All(o => o.Id != "NES:SMS"));
     }
 
     // ---------------------------------------------------------------------------------------------- APU_SMS

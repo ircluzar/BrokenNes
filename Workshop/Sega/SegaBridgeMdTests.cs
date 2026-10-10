@@ -79,7 +79,8 @@ internal static class SegaBridgeMdTests
         Check("... NES:FIX and NES:FIXS are offered; the labels say mono, no FM timbre, and that the DAC becomes noise", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(1).All(o => o.Label.Contains("mono") && o.Label.Contains("no FM timbre") && o.Label.Contains("DAC")));
         Check("... no bridge core is listed as a NES chip (the Genesis, Master System, Game Boy and SNES ones stay out)", apu.All(o => o.Id != "NES:MD" && o.Id != "NES:SMS" && o.Id != "NES:DMG" && o.Id != "NES:SNES"));
         Check("... a stored NES:FIX is kept, a stored id the menu lacks falls back to the stock unit", CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Apu, "NES:FIX") == "NES:FIX" && CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Apu, "NES:NOPE") == "MD");
-        Check("the Genesis CPU and picture slots are unchanged (own cores only)", CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Cpu).Count == 1 && CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu).Count == 1);
+        var mdPpu = CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu);   // the picture slot gained the NES picture chips in C3a (verified by --picture-bridge-test)
+        Check("the Genesis CPU slot is unchanged (own core only) and its picture slot is its own chip first, then NES chips", CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Cpu).Count == 1 && mdPpu[0].Id == "MD" && mdPpu.Skip(1).All(o => o.Id.StartsWith("NES:")) && mdPpu.All(o => o.Id != "NES:MD"));
         Check("the Master System and Game Gear menus still list the PSG on NES chips and no Genesis entry", CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Apu).All(o => o.Id != "MD" && !o.Label.Contains("YM2612")) && CoreCatalog.Options(ConsoleKind.GameGear, CoreSlot.Apu).Count > 5);
     }
 
