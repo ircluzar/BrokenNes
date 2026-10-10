@@ -127,6 +127,43 @@ public sealed unsafe partial class SelfTest
         RunawaySegaOpll(t);
         RunawaySegaOpn(t);
         RunawaySegaCost(t);
+        RunawaySegaGames(t);
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // real games, when named (BROKENNES_TEST_GAMES = files separated by ';'): informational, a game is not in the repository
+
+    private void RunawaySegaGames(T t)
+    {
+        string? games = Environment.GetEnvironmentVariable("BROKENNES_TEST_GAMES");
+        if (string.IsNullOrEmpty(games)) return;
+        foreach (var path in games.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            int console = ext is ".md" or ".gen" or ".smd" or ".bin" ? 4 : ext is ".sms" or ".gg" ? 3 : -1;
+            if (console < 0 || !File.Exists(path)) continue;
+            string chip = console == 4 ? "MD" : "SMS";
+            using var p = SegaGame(path, console, chip);
+            RenderBlocks(p, 12.0);
+            if (p.Test(12) != 0) { t.Expect(false, $"{Path.GetFileName(path)}: the game crashed"); continue; }
+            p.Test(47, 0, 1);
+            int kind = (int)p.Test(71), count = (int)p.Test(72);
+            t.Expect(p.Test(45) == 1 && kind != 0 && count > 0, $"{Path.GetFileName(path)}: Runaway captured nothing (runaway {p.Test(45)}, kind {kind}, instruments {count})");
+            if (kind == 0) continue;
+            int dac = (int)p.Test(74);
+            var audible = new List<string>(); int finite = 0, silent = 0;
+            for (int i = 0; i < count; i++)
+            {
+                p.SetParam(PInstrument, i + 1);
+                var (a, log) = PlayNote(p, 60, 0.9, 0.4);
+                if (a.All(float.IsFinite) && Audio.Peak(a, 0, a.Length) < 4) finite++;
+                double rms = Audio.Rms(a, log.StartSample + 4000, log.EndSample - 2000);
+                if (rms > 0.003) audible.Add(i.ToString()); else silent++;
+            }
+            t.Expect(finite == count, $"{Path.GetFileName(path)}: {count - finite} of {count} instruments gave non-finite or runaway audio");
+            byte[] saved = p.SaveState();
+            t.Note($"{Path.GetFileName(path)}: Runaway kind {kind}, {count} instruments ({dac} DAC sounds{(dac > 0 ? $", the first {p.Test(76, 0)} samples looped at {p.Test(75, 0) / 100.0:0.0} Hz" : "")}); {audible.Count} sound at C5, {silent} do not; the project is {saved.Length:N0} bytes");
+        }
     }
 
     // ------------------------------------------------------------------------------------------------
