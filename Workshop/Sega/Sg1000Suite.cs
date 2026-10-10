@@ -38,8 +38,24 @@ internal static class Sg1000Suite
         return Convert.ToHexString(SHA1.HashData(MemoryMarshal.AsBytes(px.AsSpan(0, w * h))));
     }
 
+    /// <summary>The sixteen colours (RGB) of a block each, as the oracle draws the palette probe run as a Master System cartridge (the SMS chip's TMS modes: fixed 6-bit colours) and as an SG-1000 cartridge (the TMS9918A's own).</summary>
+    private static readonly uint[] OracleSmsTms = { 0x000000, 0x000000, 0x00AD00, 0x00FF00, 0x000052, 0x0000FF, 0x520000, 0x00FFFF, 0xAD0000, 0xFF0000, 0x525200, 0xFFFF00, 0x005200, 0xFF00FF, 0x525252, 0xFFFFFF };
+    private static readonly uint[] OracleSgTms = { 0x000000, 0x000000, 0x21CE42, 0x5ADE7B, 0x5252EF, 0x7B73FF, 0xD6524A, 0x42EFF7, 0xFF5252, 0xFF7B7B, 0xD6C652, 0xE7CE84, 0x21B539, 0xCE5ABD, 0xCECECE, 0xFFFFFF };
+
+    private static uint[] BlockColours(SmsSession s) => Enumerable.Range(0, 16).Select(c => s.Frame[4 * 256 + 4 + 8 * c] & 0xFFFFFFu).ToArray();
+
     public static IEnumerable<SmsCheck> Run(SmsSuiteContext ctx)
     {
+        // the palette of the TMS modes depends on the chip: the SMS / Game Gear chips map the sixteen codes to fixed 6-bit colours, the SG-1000's TMS9918A has its own
+        var sms = ctx.Session(Sg1000Progs.PaletteProbe(), "probe-palette.sms");
+        for (int f = 0; f < 30; f++) sms.RunFrame();
+        var smsColours = BlockColours(sms);
+        yield return new SmsCheck("the TMS modes on a Master System (Graphics I, a block of each of the 16 colours) draw the oracle's fixed 6-bit palette", smsColours.SequenceEqual(ctx.Poison == "sg1000" ? OracleSgTms : OracleSmsTms), string.Join(' ', smsColours.Select(c => c.ToString("X6"))));
+        var sgProbe = ctx.Session(Sg1000Progs.PaletteProbe(), "probe-palette.sg");
+        for (int f = 0; f < 30; f++) sgProbe.RunFrame();
+        var sgColours = BlockColours(sgProbe);
+        yield return new SmsCheck("the same program as an SG-1000 cartridge draws the TMS9918A's own colours (the oracle's)", sgColours.SequenceEqual(OracleSgTms), string.Join(' ', sgColours.Select(c => c.ToString("X6"))));
+
         foreach (Sg1000Progs.Mode m in Enum.GetValues<Sg1000Progs.Mode>())
             foreach (bool big in new[] { false, true })
             {

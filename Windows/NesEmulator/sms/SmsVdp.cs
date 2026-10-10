@@ -131,11 +131,13 @@ public sealed partial class SmsVdp
     /// the address register at $3D6A in VRAM-write mode. Game Gear: $06 $80 $FF $FF $FF $FF $FB $00 $00 $00 $FF, colour RAM zero. These are what the oracle shows at the first
     /// instruction of a cartridge (probed with a one-instruction ROM); the BIOS-less state published for other emulators differs in register 1 (display off) only.
     /// </summary>
-    public void PowerOn()
+    /// <param name="postBios">False for a machine that runs a BIOS image: the chip then powers up cold (every register and colour entry zero, the address at 0) and the BIOS sets it up itself.</param>
+    public void PowerOn(bool postBios = true)
     {
         Array.Clear(Vram); Array.Clear(cram); Array.Clear(Regs);
         addr = 0; code = 0;
-        if (gg)
+        if (!postBios) { }
+        else if (gg)
         {
             byte[] r = { 0x06, 0x80, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB, 0x00, 0x00, 0x00, 0xFF };
             Array.Copy(r, Regs, r.Length);

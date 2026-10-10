@@ -29,17 +29,26 @@ public class SmsSession : IConsoleSession
         // every Game Gear runs at 60 Hz whatever market its cartridge was sold in: a "(E)" in the file name does not make it a 50 Hz machine (only an explicit user choice does)
         var region = console == ConsoleKind.GameGear && (regionChoice is null or RegionChoice.Auto) ? SegaRegion.Ntsc : SegaSettings.ResolveRegion(regionChoice, console, rom, fileName);
         variant = model is MasterSystemModel.Sg1000 or MasterSystemModel.Sc3000 ? PsgVariant.Ti : PsgVariant.Sega;
-        var cart = new SmsCartridge(rom, SmsCartridge.DetectMapper(rom, model));
-        mapperName = cart.Mapper.ToString();
+        // A BIOS image (a file whose name says so: "[BIOS] ..." in the common dump sets) is not a cartridge: it is run as the console's BIOS with an empty slot, from a cold power-on, which is what it is for. Nothing in the app
+        // ever needs a BIOS; this only lets the user's own BIOS images (and the games built into some of them) run as what they are.
+        bool biosImage = IsBiosImage(fileName);
+        SmsCartridge? bios = null;
+        SmsCartridge cart;
+        if (biosImage) { bios = new SmsCartridge(rom, SmsMapperKind.Sega); cart = new SmsCartridge(new byte[0x4000], SmsMapperKind.Plain); Array.Fill(cart.Rom, (byte)0xFF); mapperName = "BIOS"; }
+        else { cart = new SmsCartridge(rom, SmsCartridge.DetectMapper(rom, model)); mapperName = cart.Mapper.ToString(); }
         cpuId = cpu; ppuId = ppu; apuId = apu;
         var parts = new SegaBoardParts<SmsBus, Z80<SmsBus>, SmsVdp, ISmsSound>
         {
             Apu = m => SmsSoundFactories.Create(apu, new SmsSoundRequest(m, console, variant)),
         };
-        board = new BOARD_SMS(cart, console, model, region, Rate, parts);
+        board = new BOARD_SMS(cart, console, model, region, Rate, parts, bios);
         Title = !string.IsNullOrEmpty(fileName) ? Path.GetFileNameWithoutExtension(fileName) : $"{Consoles.DisplayName(console)} game";
         Model = model;
     }
+
+    /// <summary>True for a file that is a BIOS image by its name ("[BIOS]" in the dump sets' names, or the word BIOS as a word).</summary>
+    public static bool IsBiosImage(string fileName) =>
+        !string.IsNullOrEmpty(fileName) && System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(fileName), @"(^|[\s\[\(_-])BIOS($|[\s\]\)_-])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public MasterSystemModel Model { get; }
     public BOARD_SMS Board => board;

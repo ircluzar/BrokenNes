@@ -104,6 +104,44 @@ internal static class EepromSuite
         yield return new SmsCheck("a state saved between the address byte and the data byte, loaded into another cartridge, takes the data byte and writes it", done && new Master(b).ReadByte(9) == 0x5C, "");
     }
 
+    /// <summary>BIOS images (<see cref="SmsSession.IsBiosImage"/>): run as the console's BIOS from a cold power-on with an empty cartridge slot.</summary>
+    public static IEnumerable<SmsCheck> RunBios(SmsSuiteContext ctx)
+    {
+        // the probe: read $0000 (the BIOS's own first byte while it is mapped), copy a routine to RAM, switch the BIOS off ($3E = $AB: BIOS off, cartridge on) and read $0000 again (an empty slot)
+        var a = new Z80Asm(0x100);
+        a.Db(0xF3, 0x31, 0xF0, 0xDF);                                                            // DI; LD SP,$DFF0
+        a.Db(0x3A, 0x00, 0x00, 0x32, 0x00, 0xC1);                                                // LD A,($0000); LD ($C100),A
+        a.LdHl("tail").Db(0x11, 0x00, 0xC2, 0x01, 0x0C, 0x00, 0xED, 0xB0, 0xC3, 0x00, 0xC2);       // copy the tail to RAM and jump there (the BIOS is about to disappear from under the program counter)
+        a.Label("tail").Db(0x3E, 0xAB, 0xD3, 0x3E, 0x3A, 0x00, 0x00, 0x32, 0x01, 0xC1, 0x18, 0xFE);  // LD A,$AB; OUT ($3E),A; LD A,($0000); LD ($C101),A; JR $
+        byte[] rom = SmsProg.Rom(a.Assemble(), null, null, 0x100);
+
+        var bios = ctx.Session(rom, ctx.Poison == "bios" ? "probe-image.sms" : "[BIOS] probe.sms");      // the poison: the BIOS name is left off, so the image is run as a cartridge
+        bool coldVdp = bios.Board.Vdp.Regs.Take(11).All(r => r == 0);
+        for (int f = 0; f < 3; f++) bios.RunFrame();
+        yield return new SmsCheck("a file named as a BIOS image is run as the BIOS (SmsSession.Bios set, the description names it)", bios.Board.Bios != null && bios.Description.Contains("BIOS"), bios.Description);
+        yield return new SmsCheck("the machine powers up cold: the VDP registers are all zero before the first instruction (a cartridge gets the post-BIOS registers)", coldVdp, "");
+        yield return new SmsCheck("with the BIOS mapped $0000 reads the image's own first byte ($C3)", bios.Board.Ram[0x100] == 0xC3, $"{bios.Board.Ram[0x100]:X2}; PC {bios.Board.Cpu.PC:X4}, RAM $C100.. {string.Join(' ', bios.Board.Ram.Skip(0x100).Take(4).Select(b => b.ToString("X2")))}, $C200.. {string.Join(' ', bios.Board.Ram.Skip(0x200).Take(12).Select(b => b.ToString("X2")))}");
+        yield return new SmsCheck("after $3E switches the BIOS off the empty cartridge slot answers $FF", bios.Board.Ram[0x101] == 0xFF, $"{bios.Board.Ram[0x101]:X2}");
+
+        var cart = ctx.Session(rom, "probe.sms");
+        yield return new SmsCheck("the same bytes under an ordinary name are a cartridge: post-BIOS registers (R0 $36), no BIOS", cart.Board.Bios == null && cart.Board.Vdp.Regs[0] == 0x36, $"R0 {cart.Board.Vdp.Regs[0]:X2}");
+
+        string[] yes = { "[BIOS] Sega Master System (USA) (v1.3).sms", "BIOS.sms", "Majesco Game Gear BIOS (U) [!].gg", "master_system_bios.sms" };
+        string[] no = { "Biosphere (USA).sms", "Robios Quest.sms", "Alex Kidd.sms", "" };
+        yield return new SmsCheck("the name rule: BIOS as a word is a BIOS image, a word that merely contains it is not", yes.All(SmsSession.IsBiosImage) && !no.Any(SmsSession.IsBiosImage), "");
+
+        // state: the BIOS cartridge's own mapper state travels
+        var s1 = ctx.Session(SmokeProgs.Picture(false), "[BIOS] picture.sms");
+        for (int f = 0; f < 10; f++) s1.RunFrame();
+        byte[] state = s1.SaveState();
+        var s2 = ctx.Session(SmokeProgs.Picture(false), "[BIOS] picture.sms");
+        s2.LoadState(state);
+        for (int f = 0; f < 5; f++) { s1.RunFrame(); s2.RunFrame(); }
+        yield return new SmsCheck("a state of a BIOS-image session loads into another one and runs on identically", GoldenSuite.Hash(s1) == GoldenSuite.Hash(s2) && s1.Board.Cpu.PC == s2.Board.Cpu.PC, "");
+        string msg = ""; try { ctx.Session(SmokeProgs.Picture(false), "picture.sms").LoadState(state); } catch (InvalidDataException e) { msg = e.Message; }
+        yield return new SmsCheck("that state is refused by a cartridge session of the same bytes (different machine), with the reason", msg.Length > 0, msg);
+    }
+
     private static bool SetWindow(SmsCartridge cart)
     {
         cart.Write(0xFFFC, 0x08);

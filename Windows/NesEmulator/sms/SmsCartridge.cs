@@ -119,6 +119,9 @@ public sealed class SmsCartridge
         ["CCFD03EDF130F28E6BB4C2764DF7ACE7BBE9E159"] = SmsMapperKind.SegaEeprom,   // World Series Baseball (U) (V1.0)
         ["333DD99F11781D6DE5720043530A460A409D652B"] = SmsMapperKind.SegaEeprom,   // World Series Baseball (U) (V1.1)
         ["66D31ED6BB6DFEDD769BF5E6C5DCBF899F2F2C8C"] = SmsMapperKind.SegaEeprom,   // World Series Baseball '95 (U)
+        // Korean cartridges with one bank register at $A000 (found by running them under each mapper against the oracle's pictures: with this mapper the first checkpoints are pixel-identical, under the Sega mapper they are black or garbage)
+        ["9EBD5A7B025E980795EAAC206F3F6F5DC297084F"] = SmsMapperKind.KoreanA000,   // Dallyeora Pigu-Wang (Korea) (Unl)
+        ["C0256188B15271BB814BB8356B3311340E53EA3E"] = SmsMapperKind.KoreanA000,   // Sangokushi 3 (Korea) (Unl)
     };
 
     /// <summary>Codemasters cartridges carry a checksum at $7FE6 and its two's complement at $7FE8 (the sum of the two words is $10000), beside a build date; no Sega header uses that pair.</summary>

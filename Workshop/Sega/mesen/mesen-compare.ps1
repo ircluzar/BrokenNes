@@ -29,7 +29,9 @@ param(
     [int]$Jobs = 3,
     [int]$TimeoutSec = 400,
     [switch]$Keep,
-    [switch]$NoOracleTiming
+    [switch]$NoOracleTiming,
+    [string]$ExtraArgs = "",        # added to every `--sms-run` (for example "--tune X=1")
+    [string]$Variant = ""           # a third comparison of the same oracle pictures with these extra `--sms-run` arguments (for example "--model sms1"), reported as the variant_* columns
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Workshop)) { throw "Workshop exe not found: $Workshop" }
@@ -76,15 +78,24 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
         $runList = @(@{ Dir = $a; Tag = $tag }, @{ Dir = $b; Tag = $tag })[0..($using:Runs - 1)]
         foreach ($run in $runList) {
             # a child process each: the capture script passes its settings to the oracle through environment variables, which concurrent runs of one process would overwrite in each other
-            $cap = Start-Process -FilePath pwsh -ArgumentList @("-NoProfile", "-File", $using:capture, "-Rom", "`"$rom`"", "-Frames", "`"$frameList`"", "-OutDir", "`"$($run.Dir)`"", "-Tag", $run.Tag, "-Pad", "`"$pad`"", "-Region", $region, "-Overscan", "0", "-Work", "`"$work`"", "-TimeoutSec", $using:TimeoutSec) -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput "$dir.cap.out" -RedirectStandardError "$dir.cap.err"
-            if ($cap.ExitCode -ne 0) { $row.error = "mesen capture exit $($cap.ExitCode): " + ((Get-Content "$dir.cap.err" -ErrorAction SilentlyContinue | Select-Object -First 2) -join " "); break }
+            # the oracle sometimes ends without writing its pictures when several run at once: each run is tried up to three times before it counts as an error
+            $cap = $null
+            for ($try = 1; $try -le 3; $try++) {
+                Remove-Item -Recurse -Force $run.Dir -ErrorAction SilentlyContinue
+                $cap = Start-Process -FilePath pwsh -ArgumentList @("-NoProfile", "-File", $using:capture, "-Rom", "`"$rom`"", "-Frames", "`"$frameList`"", "-OutDir", "`"$($run.Dir)`"", "-Tag", $run.Tag, "-Pad", "`"$pad`"", "-Region", $region, "-Overscan", "0", "-Work", "`"$work`"", "-TimeoutSec", $using:TimeoutSec) -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput "$dir.cap.out" -RedirectStandardError "$dir.cap.err"
+                if ($cap.ExitCode -eq 0) { break }
+            }
+            if ($cap.ExitCode -ne 0) { $row.error = "mesen capture exit $($cap.ExitCode) after 3 tries: " + ((Get-Content "$dir.cap.err" -ErrorAction SilentlyContinue | Select-Object -First 2) -join " "); break }
         }
         $row.mesen_s = [math]::Round($sw.Elapsed.TotalSeconds)
         if (-not $row.error) {
-            foreach ($mode in @(@{ Name = "zilog"; Tune = @() }, @{ Name = "oracle"; Tune = @("--tune", "OracleZ80Timing=1") })) {
+            $modes = @(@{ Name = "zilog"; Tune = @() }, @{ Name = "oracle"; Tune = @("--tune", "OracleZ80Timing=1") })
+            if ($using:Variant) { $modes += @{ Name = "variant"; Tune = @($using:Variant -split " ") } }
+            foreach ($mode in $modes) {
                 if ($mode.Name -eq "oracle" -and $using:NoOracleTiming) { continue }
                 $args2 = @("--sms-run", $rom, "--frames", $using:Frames, "--input", $pad, "--png-at", $frameList, "--out", $mine, "--tag", $tag, "--mesen", $a, "--region", $region, "--diff-detail", $(if ($using:Spec) { "40" } else { "0" })) + $mode.Tune
                 if ($using:Runs -gt 1) { $args2 += @("--mesen-b", $b) }
+                if ($using:ExtraArgs) { $args2 += ($using:ExtraArgs -split " ") }
                 $o = & $using:Workshop @args2 2>&1 | Out-String
                 if ($using:Spec) {
                     # a short list of checkpoints: which were identical, and by how many pixels the others differ
@@ -108,6 +119,6 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
     catch { ($using:results).Add([pscustomobject]@{ game = $g.Rom; error = $_.Exception.Message }); "ERROR $($g.Rom): $($_.Exception.Message)" }
     finally { ($using:slots).Enqueue($slot) }
 }
-$cols = "game", "console", "region", "zilog_stable", "zilog_identical", "zilog_differ", "zilog_first_diff", "zilog_oo", "zilog_oo_matched", "zilog_checkpoints", "oracle_stable", "oracle_identical", "oracle_differ", "oracle_first_diff", "oracle_oo", "oracle_oo_matched", "oracle_checkpoints", "mesen_s", "total_s", "error"
+$cols = "game", "console", "region", "zilog_stable", "zilog_identical", "zilog_differ", "zilog_first_diff", "zilog_oo", "zilog_oo_matched", "zilog_checkpoints", "oracle_stable", "oracle_identical", "oracle_differ", "oracle_first_diff", "oracle_oo", "oracle_oo_matched", "oracle_checkpoints", "variant_stable", "variant_identical", "variant_differ", "variant_first_diff", "variant_checkpoints", "mesen_s", "total_s", "error"
 $results | Sort-Object game | Select-Object $cols | Export-Csv -Path $OutTsv -Delimiter "`t" -NoTypeInformation
 "wrote $OutTsv"

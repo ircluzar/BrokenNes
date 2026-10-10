@@ -174,6 +174,8 @@ internal static class SmsSuites
             c => { }, "a VRAM byte left unrestored after the load"),
         new("eeprom", "the 24C01 serial EEPROM of the Game Gear baseball cartridges (the SegaEeprom mapper) driven by a data-sheet bit-banging master: acknowledge, byte write, random and sequential read, page wrap, stop, save file, state in mid-transfer", EepromSuite.Run,
             c => { }, "a read started with the write bit"),
+        new("bios", "BIOS images (names with BIOS as a word) run as the console's BIOS from a cold power-on with an empty slot: BIOS mapped, VDP cold, $3E switches it off, the name rule, state", EepromSuite.RunBios,
+            c => { }, "the BIOS name left off the file, so the image runs as a cartridge"),
         new("pal", "the 50 Hz machine: 313 lines of 228 cycles, the PAL Z80 clock in the PSG's and the YM2413's pitch, FluBBa's VDP test run as a PAL console against the oracle's PAL result bytes", PalSuite.Run,
             c => { }, "a PAL console whose frame is the NTSC length"),
         new("sg1000", "the SG-1000 / TMS9918A: eight hand-assembled programs (four modes, two sprite sizes) as .sg cartridges, picture and status flags against the oracle's", Sg1000Suite.Run,
