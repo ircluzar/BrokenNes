@@ -96,6 +96,20 @@ public sealed unsafe partial class SelfTest
         return Mono(new Mixer { SampleRate = 48000 }.Run(p, s));
     }
 
+    /// <summary>The octave's strength over the fundamental's.</summary>
+    private static double SecondHarmonic(float[] x, double fundamentalHz, int from, int to) => ToneAmp(x, 2 * fundamentalHz, from, to) / Math.Max(1e-9, ToneAmp(x, fundamentalHz, from, to));
+
+    /// <summary>Removes a temporary game file; a game that is still being read by an emulator that was just closed is given a moment (a leftover temp file is harmless, a test that dies on cleaning up is not).</summary>
+    private static void DeleteQuietly(string path)
+    {
+        for (int i = 0; i < 20; i++)
+        {
+            try { File.Delete(path); return; }
+            catch (IOException) { Thread.Sleep(100); }
+            catch (UnauthorizedAccessException) { Thread.Sleep(100); }
+        }
+    }
+
     private static int LastIndexOf(byte[] data, byte[] pattern)
     {
         for (int i = data.Length - pattern.Length; i >= 0; i--)
@@ -206,7 +220,7 @@ public sealed unsafe partial class SelfTest
                 t.Expect(q.Test(45) == 0 && q.Test(17) == 4, $"after releasing: runaway {q.Test(45)}, channel {q.Test(17)}");
             }
         }
-        finally { File.Delete(sms); }
+        finally { DeleteQuietly(sms); }
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -237,11 +251,18 @@ public sealed unsafe partial class SelfTest
                 t.Expect(Math.Abs(d2 + 6.0) < 0.7 && Math.Abs(d4 + 12.0) < 0.7, $"velocity 0.5 and 0.25 should play 6 dB and 12 dB down (3 dB steps): {d2:0.00} and {d4:0.00} dB");
                 t.Expect(r1 > 0.02, $"the full-level FM tone is too quiet (RMS {r1:0.0000})");
                 t.Note($"YM2413 Runaway: level steps {d2:0.00}/{d4:0.00} dB for velocity 0.5/0.25; full level RMS {r1:0.000}");
-                // a built-in instrument of the chip: the flute (instrument 4 -> parameter 5), a 1:1 pair
+                // the user instrument is a pure sine: nothing at the octave
+                var userNote = PlayNote(p, 69, 1.0);
+                double userH2 = SecondHarmonic(userNote.Audio, OpllHz(440), userNote.Log.StartSample + 6000, userNote.Log.EndSample - 3000);
+                t.Expect(userH2 < 0.02, $"the game's user instrument is a sine: its octave should be nearly absent ({userH2:0.000} of the fundamental)");
+                // a built-in instrument of the chip: the flute (instrument 4 -> parameter 5), a 1:1 pair, richer than the sine
                 p.SetParam(PInstrument, 5);
                 var flute = PlayNote(p, 69, 1.0);
                 t.NearCents("YM2413 flute key 69", ScanHz(flute.Audio, 440, flute.Log.StartSample + 6000, flute.Log.EndSample - 3000), OpllHz(440), 3.0);
                 t.Expect(Audio.Rms(flute.Audio, flute.Log.StartSample + 6000, flute.Log.EndSample - 3000) > 0.01, "the flute should sound");
+                double fluteH2 = SecondHarmonic(flute.Audio, OpllHz(440), flute.Log.StartSample + 6000, flute.Log.EndSample - 3000);
+                t.Expect(fluteH2 > 0.05, $"the chip's flute is an FM pair, not the game's sine: its octave should be there ({fluteH2:0.000} of the fundamental)");
+                t.Note($"YM2413 timbre: octave over fundamental {userH2:0.000} for the user sine, {fluteH2:0.000} for the flute");
                 // the synthesizer bass (instrument 12 -> parameter 13) has a carrier at half the base: the note must still be the note
                 p.SetParam(PInstrument, 13);
                 var bass = PlayNote(p, 45, 1.0);
@@ -290,11 +311,12 @@ public sealed unsafe partial class SelfTest
                 t.Expect(q.Test(45) == 1 && q.Test(71) == 2 && q.GetParam(PInstrument) == 5, $"the saved project did not come back in Runaway on the flute (runaway {q.Test(45)}, kind {q.Test(71)}, instrument {q.GetParam(PInstrument)})");
                 var r = PlayNote(q, 69, 1.0);
                 t.NearCents("restored YM2413 flute key 69", ScanHz(r.Audio, 440, r.Log.StartSample + 6000, r.Log.EndSample - 3000), OpllHz(440), 3.0);
+                t.Expect(SecondHarmonic(r.Audio, OpllHz(440), r.Log.StartSample + 6000, r.Log.EndSample - 3000) > 0.05, "the restored project should play the flute, not the sine");
                 q.SetParam(PInstrument, 0);
                 t.NearCents("restored YM2413 user instrument key 69", NoteZeroCrossHz(q, 69), OpllHz(440), 1.0);
             }
         }
-        finally { File.Delete(sms); }
+        finally { DeleteQuietly(sms); }
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -332,6 +354,13 @@ public sealed unsafe partial class SelfTest
                 t.Expect(Math.Abs(d2 + 6.0) < 0.4 && Math.Abs(d4 + 12.0) < 0.4, $"velocity 0.5 and 0.25 should play 6 dB and 12 dB down (0.75 dB steps): {d2:0.00} and {d4:0.00} dB");
                 t.Expect(r1 > 0.02, $"the full-level FM tone is too quiet (RMS {r1:0.0000})");
                 t.Note($"YM2612 Runaway: level steps {d2:0.00}/{d4:0.00} dB for velocity 0.5/0.25; full level RMS {r1:0.000}");
+                // the patch that plays is the one picked: FM 3 (instrument 2 -> parameter 3) was never set up by the game (its attack rate is 0), so it is silent; FM 2 (parameter 2) is a sine like FM 1
+                p.SetParam(PInstrument, 3);
+                var never = PlayNote(p, 69, 1.0);
+                t.Expect(Audio.Peak(never.Audio, never.Log.StartSample + 6000, never.Log.EndSample - 3000) < 1e-3, "FM 3 was never set up by the game: its patch should be silent");
+                p.SetParam(PInstrument, 2);
+                t.NearCents("YM2612 FM 2 patch key 69", NoteZeroCrossHz(p, 69), OpnHz(440), 1.0);
+                p.SetParam(PInstrument, 0);
                 // polyphony, then more notes than channels
                 var chord = PlayChord(p, 1.0, 69, 73, 76);
                 bool all3 = new[] { 69.0, 73.0, 76.0 }.All(k => HasTone(chord, OpnHz(KeyHz(k)), 12000, 36000, 3).Present);
@@ -422,7 +451,7 @@ public sealed unsafe partial class SelfTest
                     survived++;
                     return on;
                 }
-                var cut = saved[..(tagAt + 8 + 40)];
+                var cut = saved[..Math.Min(saved.Length, tagAt + 8 + 40)];
                 t.Expect(Load(cut) == 0, "a snapshot cut short should be dropped, not restored");
                 var wrongTag = (byte[])saved.Clone(); "PSG1"u8.CopyTo(wrongTag.AsSpan(tagAt));
                 t.Expect(Load(wrongTag) == 0, "a section whose tag says PSG but whose bytes are a Genesis snapshot should be dropped");
@@ -438,21 +467,24 @@ public sealed unsafe partial class SelfTest
                 t.Expect(Load(badClock) == 0, "a snapshot with a chip clock of 5 Hz should be dropped");
                 // the first DAC sound's length field: 19 header bytes + 64 YM2413 registers + 5 (clock, LFO) + 6 patches of 31 + the sound count = 275, then its rate (4 bytes), then its length
                 int dacLen = tagAt + 8 + 275 + 4;
-                var hugeSound = (byte[])saved.Clone(); BitConverter.GetBytes(int.MaxValue).CopyTo(hugeSound, dacLen);
-                t.Expect(Load(hugeSound) == 0, "a DAC sound that claims 2 GB should drop the snapshot");
+                if (dacLen + 4 <= saved.Length)
+                {
+                    var hugeSound = (byte[])saved.Clone(); BitConverter.GetBytes(int.MaxValue).CopyTo(hugeSound, dacLen);
+                    t.Expect(Load(hugeSound) == 0, "a DAC sound that claims 2 GB should drop the snapshot");
+                }
                 // random damage inside a valid snapshot: whatever loads must play without blowing up
                 var rng = new Random(2026);
                 int playable = 0;
                 for (int v = 0; v < 14; v++)
                 {
                     var b = (byte[])saved.Clone();
-                    for (int k = 0; k < 10; k++) b[tagAt + 8 + 2 + rng.Next(Math.Min(300, b.Length - tagAt - 10))] = (byte)rng.Next(256);
+                    for (int k = 0; k < 10; k++) b[tagAt + 8 + 2 + rng.Next(Math.Max(1, Math.Min(300, b.Length - tagAt - 10)))] = (byte)rng.Next(256);
                     if (Load(b) == 1) playable++;
                 }
                 t.Note($"hostile Genesis snapshots: 8 deliberate breakages dropped, 14 random ones survived ({playable} still loaded and played finite audio), {survived} loads in all");
             }
         }
-        finally { File.Delete(md); }
+        finally { DeleteQuietly(md); }
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -495,6 +527,6 @@ public sealed unsafe partial class SelfTest
                 t.Note($"{c.Name} Runaway: {sw.Describe(seconds)}, {c.Detail}; steady-state allocation {alloc} B");
             }
         }
-        finally { foreach (var c in cases) File.Delete(c.Path); }
+        finally { foreach (var c in cases) DeleteQuietly(c.Path); }
     }
 }
