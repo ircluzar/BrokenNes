@@ -36,6 +36,7 @@ public sealed class MdPads
 
     private readonly Port[] ports = { new() { Kind = MdPadKind.SixButton }, new() { Kind = MdPadKind.ThreeButton }, new() { Kind = MdPadKind.ThreeButton } };
     private readonly byte version;
+    private readonly byte[] serialTx = new byte[3], serialCtrl = new byte[3];
 
     /// <param name="version">The value of the version register ($A10001): bit 7 overseas, bit 6 PAL, bit 5 no expansion unit, bits 3-0 the hardware version.</param>
     public MdPads(byte version) { this.version = version; }
@@ -132,7 +133,13 @@ public sealed class MdPads
             4 => ReadControl(0),
             5 => ReadControl(1),
             6 => ReadControl(2),
-            _ => 0xFF,        // serial registers: nothing connected, no data
+            // the serial registers of the three ports ($A1000F-$A1001F: transmit data, receive data, serial control). Nothing is plugged in: a byte sent goes nowhere (the transmit buffer is never full), nothing is ever received
+            // (receive-ready and error stay clear, the receive data reads as the idle line, all ones) and the control register reads back the bits a game wrote (baud rate, SIN, SOUT, RINT) with its three status bits low.
+            // A game that probes a port for a multitap or a link cable by polling the control register (College Football's National Championship waits on port 3's) gets its "nothing there" answer instead of a stuck flag.
+            7 => serialTx[0], 10 => serialTx[1], 13 => serialTx[2],
+            8 or 11 or 14 => 0xFF,
+            9 => (byte)(serialCtrl[0] & 0xF8), 12 => (byte)(serialCtrl[1] & 0xF8), 15 => (byte)(serialCtrl[2] & 0xF8),
+            _ => 0xFF,
         };
     }
 
@@ -147,6 +154,12 @@ public sealed class MdPads
             case 4: WriteControl(0, value, now); break;
             case 5: WriteControl(1, value, now); break;
             case 6: WriteControl(2, value, now); break;
+            case 7: serialTx[0] = value; break;
+            case 10: serialTx[1] = value; break;
+            case 13: serialTx[2] = value; break;
+            case 9: serialCtrl[0] = value; break;
+            case 12: serialCtrl[1] = value; break;
+            case 15: serialCtrl[2] = value; break;
         }
     }
 
@@ -158,10 +171,12 @@ public sealed class MdPads
     public void SaveState(BinaryWriter w)
     {
         foreach (var p in ports) { w.Write(p.DataLatch); w.Write(p.Control); w.Write(p.Falls); w.Write(p.Th); w.Write(p.LastEdge); }
+        w.Write(serialTx); w.Write(serialCtrl);
     }
 
     public void LoadState(BinaryReader r)
     {
         foreach (var p in ports) { p.DataLatch = r.ReadByte(); p.Control = r.ReadByte(); p.Falls = r.ReadInt32(); p.Th = r.ReadBoolean(); p.LastEdge = r.ReadInt64(); }
+        MdVdp.ReadAll(r, serialTx); MdVdp.ReadAll(r, serialCtrl);
     }
 }

@@ -221,6 +221,25 @@ internal static class MdBoardTest
         Check("BUSREQ with the Z80 running is granted within a few Z80 instructions", granted);
         Check("the program ran: the Z80 stored $42 at $0100", R8(b, 0xA00100) == 0x42, $"{R8(b, 0xA00100):X2}");
 
+        // the grant comes at the end of the machine cycle the Z80 is in, not at the end of its instruction: a Z80 looping on EX (SP),HL (19 T-states) is asked for the bus at 60 different phases of the loop
+        // and the 68000 looks 20 of its cycles (140 master clocks, 9 T-states) later; a grant at the instruction boundary is up to 19 T-states (285 clocks) late and misses some of them. Games start their
+        // sound drivers with "request, release RESET, test BUSACK once" and branch into the middle of the test if the first answer is "not yet" (Bugs Bunny in Double Trouble).
+        var slow = Board();
+        W16(slow, 0xA11100, 0x0100);
+        byte[] longLoop = { 0x31, 0x00, 0x01, 0xE3, 0x18, 0xFD };     // LD SP,$0100 ; loop: EX (SP),HL ; JR loop
+        for (int i = 0; i < longLoop.Length; i++) W8(slow, (uint)(0xA00000 + i), longLoop[i]);
+        W16(slow, 0xA11200, 0x0100); W16(slow, 0xA11100, 0x0000);
+        int notYet = 0;
+        for (int phase = 0; phase < 60; phase++)
+        {
+            Idle(slow, 300 + phase * 3);
+            W16(slow, 0xA11100, 0x0100);
+            Idle(slow, 20);
+            if ((R16(slow, 0xA11100) & 0x100) != 0) notYet++;
+            W16(slow, 0xA11100, 0x0000);
+        }
+        Check("BUSREQ is granted within 20 68000 cycles wherever a Z80 in a 19-T-state instruction loop is asked (60 phases)", notYet == 0, $"{notYet} of 60 not granted yet");
+
         // the bank window: ROM at the 68000 address (bank << 15) | (z80 address & $7FFF)
         var c = Board();
         W16(c, 0xA11100, 0x0100);

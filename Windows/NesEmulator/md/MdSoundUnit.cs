@@ -237,10 +237,13 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         {
             BusRequests++;
             if (inReset) { granted = true; grantTime = masterClock; return; }
-            // the Z80 finishes the instruction it is in, then lets go of the bus
+            // The Z80 lets go of the bus at the end of the machine cycle it is in (at most about six T-states: BUSREQ is sampled at the end of each cycle; an instruction has up to 23), not at the end of the instruction:
+            // a game that starts its sound driver with "request the bus, release RESET, test BUSACK once" (Bugs Bunny in Double Trouble: its loop branches into the middle of the test if the first answer is "not yet")
+            // relies on the grant being quick, and an instruction boundary can be more than the 300 master clocks the 68000 takes to get to the test. The core has no machine-cycle marker: it is stopped where it stands after
+            // GrantLatencyTicks, which is a place between two micro-steps of the instruction, as the hardware's grant is between two cycles of it.
             granted = false;
             int guard = 0;
-            while (!z80.AtInstructionBoundary && guard++ < 64)
+            while (!z80.AtInstructionBoundary && guard++ < GrantLatencyTicks)
             {
                 if (stallTicks > 0) stallTicks--; else z80.Tick();
                 z80Master += machine.Timeline.Z80.Divider;
@@ -255,6 +258,8 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         }
     }
 
+    /// <summary>The most Z80 T-states the unit lets pass between a BUSREQ and the grant when the Z80 is in the middle of an instruction (the end of the machine cycle it is in).</summary>
+    public static int GrantLatencyTicks = 6;
     public bool IsBusGranted(long masterClock)
     {
         RunTo(masterClock);

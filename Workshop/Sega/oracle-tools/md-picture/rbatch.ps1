@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause)
+param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause, [string]$LockOwner = "b4b")
 # The roster climb: each game of docs/projects/sega-rosters.md played through with the sweep's pad script (or --Pad) in lock-step with BlastEm (oraclerun.ps1: pause and frame advance, a picture every -ShotEvery
 # advances), one line per game in the log. Needs: the blastem lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem -Owner <you>), BN_ORACLE_ROOT (a private folder with blastem\, be_shots\, be_save\) and BN_ARTIFACTS
 # (the build folder of the Workshop exe). A capture the run itself calls unreliable (the screenshot count is wrong) is repeated up to -Retries times.
@@ -30,6 +30,10 @@ foreach ($n in $list) {
     Add-Content $Log ("=== #{0} windows: {1} -> pause at {2} ms" -f $n, ($w -replace '.*: ', ''), $wait)
   }
   $gap = 45
+  # the window lock is held per game only (about five minutes), so that another agent's window work can take its turn between two games
+  $lock = Join-Path $here "..\..\oracle-lock.ps1"
+  & pwsh -NoProfile -File $lock -Acquire blastem -Owner $LockOwner -WaitMinutes 90 | Out-Null
+  try {
   for ($try = 1; $try -le ($Retries + 1); $try++) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $env:BN_ADV_MS = "$gap"
@@ -42,5 +46,6 @@ foreach ($n in $list) {
     Add-Content $Log ("=== #{0} {1}`r`n{2}`r`n{3}" -f $n, $roster[$n], $result, (($out -split "`r?`n" | Where-Object { $_ -match "^after " }) -join "`r`n"))
     if (-not $unreliable) { break }
   }
+  } finally { & pwsh -NoProfile -File $lock -Release blastem -Owner $LockOwner | Out-Null }
   Write-Host "#$n $($roster[$n]): $result"
 }
