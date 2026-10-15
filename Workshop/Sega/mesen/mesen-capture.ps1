@@ -36,6 +36,7 @@ param(
     [string]$RamPowerOn = "AllZeros",   # the oracle's work RAM at power-on: AllZeros (like this emulator), AllOnes or Random
     [string]$SmsRevision = "",   # the oracle's VDP revision setting (Sms.Revision: Compatibility, Sms1, Sms2); empty leaves its default
     [string]$Work = "",          # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
+    [int]$Segment = 0,           # frames per oracle run: Mesen's test runner ends a run after 100 seconds (about 30,000 frames with dumps), so a longer play is cut into runs that continue from the oracle's own save state (0: one run)
     [string]$SaveIn = ""         # a battery file (the cartridge RAM's bytes) the oracle starts from, as the game's save: placed in its Saves folder after that is emptied (a restart of a game that saved)
 )
 $ErrorActionPreference = "Stop"
@@ -83,10 +84,35 @@ $log = Join-Path $env:MESEN_OUT "$Tag.mesen.log"
 # the oracle is given a copy with a plain name: it does not open some dump names (commas, ampersands, "(Proto)") from the command line, and then ends without running one instruction
 $plainRom = Join-Path $work ("game" + [IO.Path]::GetExtension($Rom).ToLowerInvariant())
 Copy-Item -LiteralPath $Rom -Destination $plainRom -Force
-$p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$plainRom`"", "`"$lua`"") -PassThru -NoNewWindow `
-    -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
 $expected = foreach ($tok in ($Frames -join "," -split ",")) { if ($tok -match '^(\d+)-(\d+)$') { [int]$Matches[1]..[int]$Matches[2] } elseif ($tok) { [int]$tok } }
+# Mesen's test runner ends a run after exactly 100 seconds. -Segment N: a play longer than N frames is made in several runs, each ending by writing the oracle's own save state that the next one continues from
+# (capture.lua MESEN_STATE_OUT / MESEN_STATE_IN); the pictures and dumps of all the runs land in the same folder as if it had been one run. A cut is moved off any wanted frame.
+$maxFrame = ($expected | Measure-Object -Maximum).Maximum
+$cuts = @()
+if ($Segment -gt 0) {
+    for ($c = $Segment; $c -lt $maxFrame + 1; $c += $Segment) {
+        $cut = $c; while ($expected -contains $cut -or $expected -contains ($cut - 1) -or $expected -contains ($cut + 1)) { $cut += 3 }
+        $cuts += $cut
+    }
+}
+$bounds = @(0) + $cuts + @([int]::MaxValue)
+$stateFile = Join-Path $env:MESEN_OUT "$Tag.chain.state"
+for ($s = 0; $s -lt $bounds.Count - 1; $s++) {
+    $lo = $bounds[$s]; $hi = $bounds[$s + 1]
+    # a picture of frame N is taken when frame N+1 completes (the oracle's lag of one frame): the segment that sees frame N+1 complete takes it
+    $segFrames = @($expected | Where-Object { ($_ + 1) -gt $lo -and ($_ + 1) -le $hi })
+    if ($cuts.Count -gt 0) {
+        $env:MESEN_FRAMES = ($segFrames -join ",")
+        $env:MESEN_STATE_OUT = if ($s -lt $cuts.Count) { "${stateFile}:$hi" } else { "" }
+        $env:MESEN_STATE_IN = if ($s -gt 0) { "${stateFile}:$lo" } else { "" }
+        if (-not $segFrames) { $env:MESEN_FRAMES = "0" }
+    }
+    $p = Start-Process -FilePath (Join-Path $work "Mesen.exe") -ArgumentList @("--testRunner", "`"$plainRom`"", "`"$lua`"") -PassThru -NoNewWindow `
+        -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    if (-not $p.WaitForExit($TimeoutSec * 1000)) { $p.Kill(); Write-Error "Mesen timed out after $TimeoutSec s ($Rom)"; exit 3 }
+    if ($s -lt $cuts.Count -and -not (Test-Path $stateFile)) { Write-Error "segment $($s + 1) of $($bounds.Count - 1) wrote no state (the 100 s cap? use a smaller -Segment)"; exit 5 }
+}
+if ($cuts.Count -gt 0) { Remove-Item $stateFile -ErrorAction SilentlyContinue }
 $missing = $expected | Where-Object { -not (Test-Path (Join-Path $env:MESEN_OUT "${Tag}_f$_.png")) } | Select-Object -First 5
 if ($missing) { Write-Error "Mesen did not write frames: $($missing -join ',') (see $log)"; exit 4 }
 "mesen: $(@($expected).Count) screenshots in $env:MESEN_OUT"

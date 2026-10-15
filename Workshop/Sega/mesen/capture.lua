@@ -50,9 +50,12 @@ table.sort(script, function(p, q) return p.frame < q.frame end)
 local held = {}
 local done = 0      -- frames completed
 
+-- (the script is sorted and `index` only grows: a position walks along it, instead of the whole script being scanned at every poll, which made a 20,000-entry play of 60,000 frames crawl)
+local scriptPos = 0
 local function applyScript(index)
-  for _, e in ipairs(script) do
-    if e.frame <= index then held = e.held end
+  while scriptPos < #script and script[scriptPos + 1].frame <= index do
+    scriptPos = scriptPos + 1
+    held = script[scriptPos].held
   end
 end
 
@@ -99,7 +102,7 @@ end
 -- Mesen starts the VDP at a random scanline (the Z80 and the VDP are not aligned at power-on, and a game that depends on it shows different frames run to run). The line is written to
 -- <tag>.phase.txt as "scanline=<n> vdpcycle=<dots> r=<R>" at the first instruction, so the Workshop can start this emulator's VDP at the same line (--start-line / --mesen).
 do
-  local done = false
+  local done = os.getenv("MESEN_STATE_IN") ~= nil and os.getenv("MESEN_STATE_IN") ~= ""   -- a run that continues from a state keeps the first run's phase file
   emu.addMemoryCallback(function(address, value)
     if done then return end
     done = true
@@ -155,7 +158,10 @@ do
       local pc = tonumber(hex, 16)
       emu.addMemoryCallback(function(address, value)
         local st = emu.getState()
-        watchLog:write(string.format("%d %04X %d %d %d\n", done + 1, address, st["cpu.cycleCount"], st["vdp.scanline"], st["vdp.cycle"]))
+        -- the last columns: the frame interrupt flag and its enable, the line interrupt flag and its enable, the CPU's interrupt inputs (cpu.activeIrqs) and its IFF1
+        watchLog:write(string.format("%d %04X %d %d %d vint=%s vie=%s line=%s lie=%s irqs=%s iff1=%s lc=%s latch=%s\n", done + 1, address, st["cpu.cycleCount"], st["vdp.scanline"], st["vdp.cycle"],
+          tostring(st["vdp.verticalBlankIrqPending"]), tostring(st["vdp.enableVerticalBlankIrq"]), tostring(st["vdp.scanlineIrqPending"]), tostring(st["vdp.enableScanlineIrq"]),
+          tostring(st["cpu.activeIrqs"]), tostring(st["cpu.iff1"]), tostring(st["vdp.scanlineCounter"]), tostring(st["vdp.scanlineCounterLatch"])))
       end, emu.callbackType.exec, pc, pc, emu.cpuType.sms, emu.memType.smsMemory)
     end
   end
@@ -216,6 +222,21 @@ local function logSound(n)
   end
 end
 
+-- MESEN_STATE_OUT="file:N" writes the oracle's own save state after frame N to that file and stops; MESEN_STATE_IN="file:N" continues from such a state as if frame N had just completed.
+-- Mesen's test runner ends every run after exactly 100 seconds (measured: about 38,000 frames of a bare script, fewer with dumps), so a longer play is made in segments (mesen-capture.ps1 -Segment).
+-- The oracle only lets a script create or load a state inside an exec callback of the main CPU: a callback that removes itself after the first instruction is registered for the moment.
+local stateOutPath, stateOutFrame = (os.getenv("MESEN_STATE_OUT") or ""):match("^(.+):(%d+)$")
+local stateInPath, stateInFrame = (os.getenv("MESEN_STATE_IN") or ""):match("^(.+):(%d+)$")
+stateOutFrame = tonumber(stateOutFrame); stateInFrame = tonumber(stateInFrame)
+local function onceAtNextInstruction(fn)
+  local id
+  id = emu.addMemoryCallback(function(address, value)
+    emu.removeMemoryCallback(id, emu.callbackType.exec, 0x0000, 0xFFFF, emu.cpuType.sms, emu.memType.smsMemory)
+    fn()
+  end, emu.callbackType.exec, 0x0000, 0xFFFF, emu.cpuType.sms, emu.memType.smsMemory)
+end
+local stateLoaded = false
+
 -- the input of frame index f (0-based; the frame that starts at the end of the picture of frame f-1) is what the game reads when it polls while `done` frames have completed
 emu.addEventCallback(function()
   applyScript(done)
@@ -235,7 +256,24 @@ emu.addEventCallback(function()
     if os.getenv("MESEN_DUMP") == "1" or os.getenv("MESEN_STATE") == "1" then dumpState(done) end
     if os.getenv("MESEN_DUMP") == "1" then dumpVdp(done) end
   end
-  if done >= last + LAG then
+  if stateInPath and not stateLoaded then
+    stateLoaded = true
+    onceAtNextInstruction(function()
+      local g = assert(io.open(stateInPath, "rb")); local s = g:read("*a"); g:close()
+      emu.loadSavestate(s)
+      done = stateInFrame
+    end)
+  end
+  if stateOutPath and done == stateOutFrame then
+    onceAtNextInstruction(function()
+      local s = emu.createSavestate()
+      local g = assert(io.open(stateOutPath, "wb")); g:write(s); g:close()
+      if psgLog then psgLog:close() end
+      if fmLog then fmLog:close() end
+      emu.stop(0)
+    end)
+  end
+  if done >= last + LAG and not stateOutPath then
     if portLog then portLog:close() end
     if execLog then execLog:close() end
     if watchLog then watchLog:close() end

@@ -118,7 +118,7 @@ internal static class SmsRunCli
             // --watch-pc <addr>[,<addr>]: each execution of those instruction addresses as "frame pc cycles line" to <out>/<tag>.watch.txt (the oracle's MESEN_WATCH writes the same, with its own cycle count)
             watchLog = new StreamWriter(Path.Combine(outDir, $"{tag}.watch.txt"));
             var set = wpcs.Split(',').Select(h => Convert.ToUInt16(h, 16)).ToHashSet();
-            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cycles} {board.Vdp.Line} A={board.Cpu.A:X2} BC={board.Cpu.BC:X4} DE={board.Cpu.DE:X4} HL={board.Cpu.HL:X4} [HL]={board.Peek(board.Cpu.HL):X2}"); };
+            board.InstructionHook = pc => { if (set.Contains(pc)) watchLog.WriteLine($"{board.Frames + 1} {pc:X4} {board.Cycles} {board.Vdp.Line} A={board.Cpu.A:X2} BC={board.Cpu.BC:X4} DE={board.Cpu.DE:X4} HL={board.Cpu.HL:X4} [HL]={board.Peek(board.Cpu.HL):X2} vint={board.Vdp.VintPending} line={board.Vdp.LineIrqPending} R0={board.Vdp.Regs[0]:X2} R1={board.Vdp.Regs[1]:X2} lc={board.Vdp.LineCounterValue} irq={board.Vdp.Irq} iff1={board.Cpu.IFF1}"); };
         }
         if (Opt("count-pc") is { } cpc)
         {
@@ -210,7 +210,11 @@ internal static class SmsRunCli
         int stableFrames = 0, stableMatched = 0, unstableFrames = 0, unstableMatched = 0, framesA = 0, framesAMatched = 0, firstDiffA = -1;
         int mesenShift = int.Parse(Opt("mesen-shift") ?? "0");
         long audioN = 0; double audioSqL = 0, audioSqR = 0; int audioPeakL = 0, audioPeakR = 0, audioFrameMax = 0, audioActiveFrames = 0, frameNo0 = -1;
-        for (int f = 0; f < frames; f++)
+        // --state-out <file> --state-at N: the machine's save state (the one the apps' F7 writes) after frame N; --state-in <file> --state-from N: start from such a state
+        // (taken after frame N of the same game on the same console: the script's frame numbers stay absolute). A long play (a battle) is then built in steps.
+        int stateAt = int.Parse(Opt("state-at") ?? "-1"), fStart = 0;
+        if (Opt("state-in") is { } stateIn) { session.LoadState(File.ReadAllBytes(stateIn)); fStart = int.Parse(Opt("state-from") ?? "0"); foreach (var kv0 in script1.Where(k => k.Key < fStart).OrderBy(k => k.Key)) p1 = kv0.Value; Console.WriteLine($"state loaded: {stateIn} (from frame {fStart})"); }
+        for (int f = fStart; f < frames; f++)
         {
             if (script1.TryGetValue(f, out var h1)) p1 = h1;
             if (script2.TryGetValue(f, out var h2)) p2 = h2;
@@ -229,6 +233,7 @@ internal static class SmsRunCli
                     audioFrameMax = Math.Max(audioFrameMax, Math.Abs(mono));
                 }
             int frameNo = f + 1;
+            if (stateAt == frameNo && Opt("state-out") is { } stateOut) { File.WriteAllBytes(stateOut, session.SaveState()); Console.WriteLine($"state written: {stateOut} (after frame {frameNo})"); }
             if (soundRegs != null || fmRegsFile != null)
             {
                 var psgNow = board.Sound switch { SmsSound s0 => s0.Psg, SmsFmSound s1 => s1.Psg, _ => null };

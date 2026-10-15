@@ -8,7 +8,7 @@
   compared twice: with the Zilog Z80 timing the board uses, and with `OracleZ80Timing=1` (the oracle's instruction lengths, a tool-only switch). The result is one TSV row per game.
   Mesen's pictures are the only large thing written; they are deleted after each game unless -Keep.
 
-  The input list is a text file, one game per line:  <rom path or file name> [TAB <pad script>] [TAB <region Auto|Ntsc|Pal>] [TAB <frames>]
+  The input list is a text file, one game per line:  <rom path or file name> [TAB <pad script>] [TAB <region Auto|Ntsc|Pal>] [TAB <frames>] [TAB <note: ignored>] [TAB <battery file: both emulators start from this save>]
   Without a pad script the Workshop's golden scripts are used (tap button 1 / Start, then walk); without a region the file name decides (a "(Europe)" tag is PAL) like the board does.
   Each concurrent job needs its own copy of the oracle (about 85 MB): they live in <Scratch>\mesen-slot<n>.
 
@@ -34,6 +34,7 @@ param(
     [string]$RomDir = "",           # a list row that is a bare file name is looked up under this folder (the committed menu-scripts.tsv has names, not paths)
     [switch]$Sound,                 # also log the oracle's sound-chip registers at the end of every frame (its first run) and compare them with this emulator's in every mode: columns <mode>_psg_* (and _fm_* with -Apu SMS-FM)  (Workshop --sms-run --sound-regs / --fm-regs-file)
     [string]$Apu = "",              # the sound unit of this emulator's runs (SMS-FM for the Japanese games: the oracle then runs with its FM chip on, and the YM2413 ports are part of the events)
+    [int]$Segment = 0,              # frames per oracle run (mesen-capture.ps1 -Segment): Mesen's test runner ends a run after 100 seconds, so a game played for more than about 30,000 frames needs the oracle's runs chained through its save states
     [switch]$Dump                   # the oracle also dumps its state at every compared frame (-Spec "600,1500"), including its cartridge RAM: this emulator's save is compared with it ("<mode>_save" column: "frame:identical" or "frame:N bytes differ")
 )
 $ErrorActionPreference = "Stop"
@@ -48,7 +49,7 @@ $games = foreach ($line in Get-Content $List) {
     $f = $line -split "`t"
     $romPath = $f[0].Trim()
     if (-not (Test-Path -LiteralPath $romPath) -and $RomDir) { $hit = Get-ChildItem -LiteralPath $RomDir -Recurse -File -Filter $romPath | Select-Object -First 1; if ($hit) { $romPath = $hit.FullName } else { throw "ROM not found under ${RomDir}: $romPath" } }
-    [pscustomobject]@{ Rom = $romPath; Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" }; Frames = if ($f.Count -gt 3 -and $f[3].Trim()) { [int]$f[3].Trim() } else { 0 }; Battery = if ($f.Count -gt 4 -and $f[4].Trim()) { $f[4].Trim() } else { "" } }
+    [pscustomobject]@{ Rom = $romPath; Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" }; Frames = if ($f.Count -gt 3 -and $f[3].Trim()) { [int]$f[3].Trim() } else { 0 }; Battery = if ($f.Count -gt 5 -and $f[5].Trim()) { $f[5].Trim() } else { "" } }
 }
 "compare: $(@($games).Count) games, $Frames frames, $Jobs jobs"
 $slots = [System.Collections.Concurrent.ConcurrentQueue[int]]::new()
@@ -92,6 +93,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                 $capArgs = @("-NoProfile", "-File", $using:capture, "-Rom", "`"$rom`"", "-Frames", "`"$frameList`"", "-OutDir", "`"$($run.Dir)`"", "-Tag", $run.Tag, "-Pad", "`"$pad`"", "-Region", $region, "-Overscan", "0", "-Work", "`"$work`"", "-TimeoutSec", $using:TimeoutSec)
                 if ($using:Sound -and $run.Dir -eq $a) { $capArgs += "-Psg" }
                 if ($using:Dump) { $capArgs += "-Dump" }
+                if ($using:Segment -gt 0) { $capArgs += @("-Segment", $using:Segment) }
                 if ($g.Battery) { $capArgs += @("-SaveIn", "`"$($g.Battery)`"") }       # a restart from a save: the oracle's Saves folder gets the file (list column 5)
                 if ($using:Apu -eq "SMS-FM") { $capArgs += "-Fm" }
                 $cap = Start-Process -FilePath pwsh -ArgumentList $capArgs -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput "$dir.cap.out" -RedirectStandardError "$dir.cap.err"
