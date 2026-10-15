@@ -185,6 +185,10 @@ internal static class MdCartTest
         for (int i = 0; i < 8; i++) { SegaSet(true, true); v = v << 1 | (sega.ReadByte(0x200001) & 1); SegaSet(true, false); }
         Check("... and reads it back on bit 0 of the byte at $200001", v == 0xC9, $"{v:X2}");
         Check("... while the rest of cartridge space is still ROM", sega.ReadByte(0x400) == 0x60 && sega.ReadByte(0x200002) == sega.ReadByte(0x2));
+        // NBA Jam (Europe, REV 01) tests the whole word it reads for the acknowledge (it never got past its Iguana logo when the other bits came from the ROM's filler) and drives the Sega wiring, not Acclaim's
+        Check("a word read of $200000 gives the SDA line alone (bits 1 to 15 are 0, not ROM): the byte at $200001 is 0 or 1", (sega.ReadWord(0x200000) & 0xFFFE) == 0 && (sega.ReadByte(0x200001) & 0xFE) == 0, $"{sega.ReadWord(0x200000):X4}");
+        var nba = new MdCartridge(BareRom(0x200000, "U", "GM T-081326 01"));
+        Check("NBA Jam (Europe, REV 01, T-081326 01) has a 24C02 on the Sega wiring (it clocks SCL on bit 1 of $200001, as its writes of 1, 3, 2, 0 show)", nba.Eeprom != null && nba.Eeprom.Chip == MdEepromChip.C24C02 && nba.EepromWiring == MdEepromWiring.Sega);
 
         // Acclaim: SCL = bit 0 of $200000, SDA = bit 0 of $200001
         var acc = new MdCartridge(BareRom(0x300000, "JUE", "GM T-081276 00"));

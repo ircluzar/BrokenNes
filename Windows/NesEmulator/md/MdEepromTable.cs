@@ -33,7 +33,7 @@ public static class MdEepromTable
         new("GM T-081276 00", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Acclaim, "NFL Quarterback Club"),
         new("GM T-081586-00", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Acclaim, "NFL Quarterback Club 96"),
         new("GM T-81406 -00", -1, -1, MdEepromChip.C24C08, MdEepromWiring.Acclaim, "NBA Jam Tournament Edition (and the Blockbuster compilation of it): the game addresses four 256-byte pages through device bytes A0, A2, A4, A6"),
-        new("GM T-081326 01", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Acclaim, "NBA Jam"),
+        new("GM T-081326 01", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Sega, "NBA Jam (Europe, REV 01)"),
         new("GM T-81576 -00", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Acclaim, "College Slam"),
         new("GM T-81476 -00", -1, -1, MdEepromChip.C24C02, MdEepromWiring.Acclaim, "Frank Thomas Big Hurt Baseball"),
         new("GM T-120106-50", -1, -1, MdEepromChip.C24C08, MdEepromWiring.Codemasters, "Brian Lara Cricket"),

@@ -176,7 +176,7 @@ public sealed class MdCartridge
         value = 0; mask = 0;
         switch (EepromWiring)
         {
-            case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1; return true;
+            case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 0xFF; return true;
             case MdEepromWiring.Acclaim when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1; return true;
             case MdEepromWiring.Codemasters when address == 0x380001: value = (byte)(Eeprom!.SdaLine ? 0x80 : 0); mask = 0x80; return true;
         }
