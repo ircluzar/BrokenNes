@@ -20,8 +20,8 @@ def vs_values(n=40, second=False):
     return [(37 * (i // 2) + 11) % 256 if i % 2 == 0 else (53 * (i // 2) + 101) % 256 for i in range(n)]
 
 
-def make(index, h40=True, hfine=0, left_blank=False, v30=False, plane='A', second=False):
-    regs = {0: 0x04 | (0x20 if left_blank else 0), 2: 0x30, 3: 0x20, 4: 0x07, 5: 0x6C, 7: 0, 10: 0xFF, 11: 0x04, 12: 0x81 if h40 else 0, 13: 0x3C, 15: 2, 16: 0x01, 17: 0, 18: 0}
+def make(index, h40=True, hfine=0, left_blank=False, v30=False, plane='A', second=False, win=None):
+    regs = {0: 0x04 | (0x20 if left_blank else 0), 2: 0x30, 3: 0x20, 4: 0x07, 5: 0x6C, 7: 0, 10: 0xFF, 11: 0x04, 12: 0x81 if h40 else 0, 13: 0x3C, 15: 2, 16: 0x01, 17: win[0] if win else 0, 18: win[1] if win else 0}
     tiles = []
     for n in range(1, 33):
         for r in range(8):
@@ -37,7 +37,7 @@ def make(index, h40=True, hfine=0, left_blank=False, v30=False, plane='A', secon
     for c in range(1, 16): cram[c] = ((c & 7) << 1) | ((c >> 3) << 5) | ((c & 3) << 9)       # a distinct colour per index
     s = {'index': index, 'family': 'vsprobe', 'h40': h40, 'v30': v30, 'interlace': 0, 'shadow': False, 'regs': regs, 'vsram': vs_values(second=second), 'cram': cram,
          'sat': bytes(640), 'sat_addr': (0x6C & 0x7E) << 9, 'hscroll': bytes([hfine >> 8 & 3, hfine & 255, 0, 0]) if plane == 'A' else bytes([0, 0, hfine >> 8 & 3, hfine & 255]), 'hs_addr': 0x3C << 10, 'window': [0, 0], 'window_on': False, 'dma_window': index % 8,
-         'extra_writes': [(0x0, [0] * 16), (0x20, tiles), (0xC000, nt_a if plane == 'A' else [0] * 2048), (0xE000, nt_b if plane == 'A' else nt_a)], 'hfine': hfine, 'left_blank': left_blank, 'plane': plane, 'second': second}
+         'extra_writes': [(0x0, [0] * 16), (0x8000, [0] * 2048), (0x20, tiles), (0xC000, nt_a if plane == 'A' else [0] * 2048), (0xE000, nt_b if plane == 'A' else nt_a)], 'hfine': hfine, 'left_blank': left_blank, 'plane': plane, 'second': second, 'win': win}
     return s
 
 
@@ -71,8 +71,24 @@ def scenes2():
     return s
 
 
+def scenes3():
+    s = []
+    for fine in (0, 5, 13, 21):
+        for wn in (1, 2, 3):
+            s.append(make(len(s), True, fine, second=True, win=(wn, 0)))              # a window on the left, 16 * wn pixels wide, full height (R18 = 0: no vertical part)
+    for wn in (1, 2):
+        s.append(make(len(s), True, 5, second=True, win=(0x80 | (20 - wn), 0)))        # a window on the right, from x = 16 * (20 - wn)
+    return s
+
+
 def main():
     out = sys.argv[1]
+    if len(sys.argv) > 2 and sys.argv[2] == '3':
+        scenes = scenes3()
+        scenefuzz.build(scenes, out)
+        meta = [{k: v for k, v in s.items() if k not in ('sat', 'hscroll', 'cram', 'extra_writes')} for s in scenes]
+        json.dump(meta, open(os.path.splitext(out)[0] + '.json', 'w'), indent=1)
+        print('wrote', out, len(scenes), 'scenes (probe 3: window)'); return
     if len(sys.argv) > 2 and sys.argv[2] == '2':
         scenes = scenes2()
         scenefuzz.build(scenes, out)

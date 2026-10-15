@@ -463,8 +463,11 @@ internal static class MdBoardTest
         ushort sv3 = r.V.ReadStatus(r.T); bool early = (sv3 & 0x80) == 0 && r.V.IplAt(r.T) == 0 && !r.Z80Int;
         r.RunTo(r.LineStart(224) + 20);
         Check("VINT arrives 788 master clocks after the V counter's step (8 clocks into line 224; the oracle's handler entry and flag agree to a few clocks): status bit 7, IPL 6, Z80 interrupt line up", early && (r.V.ReadStatus(r.T) & 0x80) != 0 && r.V.IplAt(r.T) == 6 && r.Z80Int, $"{sv3:X4}");
+        r.RunTo(r.LineStart(224) + 8 + 2560);
+        bool z80Up = r.Z80Int;
+        r.RunTo(r.LineStart(224) + 8 + 2590);
+        Check("the Z80 interrupt line stays up 2573 master clocks (171.5 Z80 cycles, as the oracle's re-entry counts show) from the VINT and then drops, within line 224", z80Up && !r.Z80Int, $"{z80Up} {r.Z80Int}");
         r.RunTo(r.LineStart(225) + 100);
-        Check("the Z80 interrupt line drops after one line", !r.Z80Int);
         r.V.AcknowledgeInterrupt(6);
         Check("the acknowledge clears the pending VINT (status bit 7 and the IPL)", (r.V.ReadStatus(r.T) & 0x80) == 0 && r.V.IplAt(r.T) == 0);
         r.RunTo(r.LineStart(262) + 100);

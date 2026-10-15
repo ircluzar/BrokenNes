@@ -128,10 +128,6 @@ internal static class MdSceneCli
                 for (int dy = -2; dy <= maxDy + 2; dy++)
                     for (int dx = 0; dx <= maxDx; dx += 1)
                     {
-                        // a cheap test on a few rows first
-                        long probe = 0;
-                        for (int y = 0; y < c.H && probe < 24; y += Math.Max(1, c.H / 8)) probe += Count(new Img { W = c.W, H = 1, Px = c.Px.AsSpan(y * c.W, c.W).ToArray() }, t, dx, dy + y, 24);
-                        if (probe >= 24 && best != long.MaxValue) continue;
                         long bad = Count(c, t, dx, dy, best);
                         if (bad < best) { best = bad; bdx = dx; bdy = dy; bc = c; }
                     }

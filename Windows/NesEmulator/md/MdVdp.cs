@@ -408,8 +408,13 @@ public sealed partial class MdVdp
     {
         vintPending = true;
         if (!z80IntAsserted) { z80IntAsserted = true; host.SetZ80Interrupt(true, Time); }
-        z80IntClear = Time + ClocksPerLine;
+        z80IntClear = Time + Z80IntClocks;
     }
+
+    /// <summary>How many master clocks the VDP holds the Z80's interrupt line after the vertical interrupt starts: 2573 (171.5 Z80 cycles), the length at which a Z80 handler that
+    /// re-enables interrupts before RETI is entered again by exactly the same share of frames as BlastEm gives (probe ROM <c>z80_int_repeats</c>, handler lengths 14..34 nops; lengths
+    /// 2565..2580 give identical counts, 2555 and below and 2590 and above differ). It was a whole line (3420) before.</summary>
+    public static int Z80IntClocks = 2573;
 
     private void StartNextLine()
     {
