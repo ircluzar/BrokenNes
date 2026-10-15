@@ -463,6 +463,7 @@ internal static class SmsRomIo
     public static Dictionary<int, PadButtons> ParseInput(string spec)
     {
         var d = new Dictionary<int, PadButtons>();
+        if (spec.StartsWith('@')) spec = File.ReadAllText(spec[1..]).Trim();   // "@file": the script is in a file (a long play that does not fit on a command line)
         foreach (var part in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split(':');

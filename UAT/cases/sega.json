@@ -372,7 +372,107 @@
         "battery": "False",
         "swapsRefused": 0
       }
+    },
+    {
+      "id": "sega-save-sms-phantasy-star",
+      "description": "Phantasy Star (USA, Europe) v1.3: an in-game save and a restart that loads it. Pass 1 plays the intro to the command menu (button 2 opens it, button 2 chooses, button 1 CANCELS), picks SAVE, slot 1, YES: the game writes slot 1 of its cartridge RAM. Pass 2 is a new session from that file: START / CONTINUE shows CONTINUE GAME, slot 1 loads and the game stands where it saved. The control run has no save file and cannot reach that picture.",
+      "kind": "sega-run",
+      "rom": "{sms}/Phantasy Star.7z#(USA, Europe) (v1.3)",
+      "frames": 2800,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1850:Down,1856:,1880:Down,1886:,1910:Down,1916:,1940:Down,1946:,1980:B,1986:,2200:B,2206:,2500:B,2506:,2600:B,2606:",
+      "roundtrip": {
+        "load_frames": 1700,
+        "load_input": "200:Down,206:,240:B,246:,520:B,526:,900:B,906:"
+      },
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E5BC950A5B6A4598",
+        "size": "256x192",
+        "distinctColors": 3,
+        "saveBytes": 32768,
+        "saveNonZeroBytes": 300,
+        "saveSha1": "02999089532E",
+        "loadedHash": "9468E647FEBE1A86",
+        "loadedColors": 19,
+        "noSaveHash": "860541160C43F1B8",
+        "loadDiffersFromNoSave": true
+      }
+    },
+    {
+      "id": "sega-save-sms-golden-axe-warrior",
+      "description": "Golden Axe Warrior: an in-game save and a restart that loads it. Pass 1 names the hero ABC, leaves the graveyard to the village, walks into the inn and talks to the keeper: 'You can save your game data here', YES (button 2 chooses, button 1 only moves the cursor), file 1. Pass 2 starts from that file: the title offers 'SELECT A FILE TO LOAD', file 1 shows ABC and loads the hero in the village at the inn.",
+      "kind": "sega-run",
+      "rom": "{sms}/Golden Axe Warrior (USA, Europe).7z",
+      "frames": 2300,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,450:B,458:,466:Right,474:,482:B,490:,498:Right,506:,514:B,522:,530:Down,538:,546:Down,554:,562:Down,570:,578:Right,586:,594:Right,602:,610:Right,618:,626:Right,634:,642:Right,650:,658:Right,666:,674:Right,682:,690:Right,698:,706:B,714:,882:B,890:,978:B,986:,1100:Up,1118:,1122:Left,1330:,1340:Right,1352:,1356:Up,1390:,1580:Up,1700:,1720:A,1726:,1800:Up,1806:,1840:B,1846:,2000:B,2006:",
+      "roundtrip": {
+        "load_frames": 1600,
+        "load_input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,500:B,506:"
+      },
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "C5BD2CA9F0D9AFA3",
+        "size": "256x192",
+        "distinctColors": 13,
+        "saveBytes": 32768,
+        "saveNonZeroBytes": 1074,
+        "saveSha1": "2C6438E6BD2F",
+        "loadedHash": "CB5F5FEDFEE581B8",
+        "loadedColors": 21,
+        "noSaveHash": "C5C67419191CB55F",
+        "loadDiffersFromNoSave": true
+      }
+    },
+    {
+      "id": "sega-save-sms-penguin-land-editor",
+      "description": "Penguin Land: the stage editor's SAVE-01 / LOAD-01 (the game's only use of its battery besides the round select). Pass 1 opens the editor, takes the brick tool, places bricks and saves slot 1; pass 2 is a new session from that file: the editor's LOAD-01 puts the saved bricks back on the empty field. The control run (no file) loads nothing.",
+      "kind": "sega-run",
+      "rom": "{sms}/Penguin Land.7z#(USA, Europe)",
+      "frames": 1900,
+      "input": "300:Down,306:,360:A,366:,600:B,606:,700:Right,708:,760:B,766:,820:Right,860:,900:A,906:,960:Down,990:,1030:A,1036:,1100:B,1106:,1160:Right,1168:,1210:Right,1218:,1260:Right,1268:,1310:Right,1318:,1360:Right,1368:,1410:Right,1418:,1460:Right,1468:,1510:Right,1518:,1700:B,1706:",
+      "roundtrip": {
+        "load_frames": 1500,
+        "load_input": "300:Down,306:,360:A,366:,600:B,606:,700:Right,708:,750:Right,758:,800:Right,808:,850:Right,858:,900:Right,908:,950:Right,958:,1000:Right,1008:,1050:Right,1058:,1100:Right,1108:,1150:Right,1158:,1300:B,1306:"
+      },
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "40F6D13554D88624",
+        "size": "256x192",
+        "distinctColors": 9,
+        "saveBytes": 32768,
+        "saveNonZeroBytes": 131,
+        "saveSha1": "B227314EC42C",
+        "loadedHash": "A6840E7AEAA86D53",
+        "loadedColors": 4,
+        "noSaveHash": "00AAB0E616EDE5B3",
+        "loadDiffersFromNoSave": true
+      }
+    },
+    {
+      "id": "sega-save-gg-defenders-of-oasis",
+      "description": "Defenders of Oasis (Game Gear): the game saves by itself when the throne-room conversation ends (slots 1 and 2 of its cartridge RAM go from the empty-slot fill to a record). Pass 2 is a new session from that file: the title menu offers New Game / Continue / Copy Game / Delete Game with Continue chosen, 'Which game will you continue from?' shows Game 1 LV 1 Chap. 1, and loading puts the prince in the throne room with control.",
+      "kind": "sega-run",
+      "rom": "{gg}/Defenders of Oasis (U) [!].gg",
+      "frames": 3300,
+      "input": "300:Start,306:,350:Start,356:,400:Start,406:,450:Start,456:,500:Start,506:,550:Start,556:,600:B,606:,650:B,656:,700:B,706:,750:B,756:,800:B,806:,850:B,856:,900:B,906:,950:B,956:,1000:B,1006:,1050:B,1056:,1100:B,1106:,1150:B,1156:,1200:B,1206:,1250:B,1256:,1300:B,1306:,1350:B,1356:,1400:B,1406:,1450:B,1456:,1500:B,1506:,1550:B,1556:,1600:B,1606:,1650:B,1656:,1700:B,1706:,1750:B,1756:,1800:B,1806:,1850:B,1856:,1900:B,1906:,1950:B,1956:,2000:B,2006:,2050:B,2056:,2100:B,2106:,2150:B,2156:,2200:B,2206:,2250:B,2256:,2300:B,2306:,2350:B,2356:,2400:B,2406:,2450:B,2456:,2500:B,2506:,2550:B,2556:,2600:B,2606:,2650:B,2656:,2700:B,2706:,2750:B,2756:,2800:B,2806:,2850:B,2856:,2900:B,2906:,2950:B,2956:,3000:B,3006:,3050:B,3056:,3100:B,3106:,3150:B,3156:,3200:B,3206:,3250:B,3256:,3300:B,3306:",
+      "roundtrip": {
+        "load_frames": 1800,
+        "load_input": "300:Start,306:,350:Start,356:,400:Start,406:,450:Start,456:,500:Start,506:,550:Start,556:,640:B,646:,900:B,906:"
+      },
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1EA040F46047EF0A",
+        "size": "160x144",
+        "distinctColors": 22,
+        "saveBytes": 32768,
+        "saveNonZeroBytes": 6231,
+        "saveSha1": "FA368BD2C184",
+        "loadedHash": "2A1482F218C94589",
+        "loadedColors": 22,
+        "noSaveHash": "8976497D8F31ED8C",
+        "loadDiffersFromNoSave": true
+      }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T16:10:25Z"
+  "goldenGeneratedUtc": "2026-10-15T18:37:43Z"
 }
