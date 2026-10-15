@@ -601,9 +601,10 @@ namespace BrokenNes.Windows.Rendering
             float clientHeight = ClientSize.Height;
             
             // Native NES aspect ratio is approximately 8:7 (256:224 visible, but 256:240 buffer). The 8:7 option only
-            // applies to 256-wide pictures (NES, SNES); a Game Boy screen keeps its own 10:9.
+            // applies to 256-wide pictures that are 224 or more lines high (NES, SNES, a Genesis in its 256-wide mode); a Game Boy screen keeps its own 10:9
+            // and the Master System's 256x192 its own 4:3 (192 lines at 8:7 would be a 1.14 picture, narrower than any television showed it).
             int logicalWidth = AspectWidth > 0 ? AspectWidth : nesWidth;
-            float nesAspect = ForceNativeAspectRatio && logicalWidth == 256 ? (8.0f / 7.0f) : ((float)logicalWidth / nesHeight);
+            float nesAspect = ForceNativeAspectRatio && logicalWidth == 256 && nesHeight >= 224 ? (8.0f / 7.0f) : ((float)logicalWidth / nesHeight);
             float clientAspect = clientWidth / clientHeight;
             
             float destWidth, destHeight;

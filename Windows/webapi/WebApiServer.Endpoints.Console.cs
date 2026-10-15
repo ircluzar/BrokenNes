@@ -23,7 +23,17 @@ namespace BrokenNes.Windows.WebApi
         public System.Collections.Generic.Dictionary<string, long>? PictureBridgeCounters { get; set; }
         /// <summary>The same counters in one line.</summary>
         public string? PictureBridgeSummary { get; set; }
+        /// <summary>A Sega game's video standard ("Ntsc" / "Pal") and board ("Model1", "Sms2", "GameGear", ...) as the running board has them; null for any other console.</summary>
+        public string? Region { get; set; }
+        public string? Model { get; set; }
+        /// <summary>Whether the game has a battery save, whether the session has save states (and, when it does not, why), and a remark about the last event (a core swap that restarted the game, and why).</summary>
+        public bool? HasBattery { get; set; }
+        public bool? SupportsState { get; set; }
+        public string? StateUnsupportedReason { get; set; }
+        public string? Note { get; set; }
     }
+
+    public sealed class SegaSettingsRequest { public string? Region { get; set; } public string? GenesisModel { get; set; } public string? MasterSystemModel { get; set; } }
 
     public partial class WebApiServer
     {
@@ -41,6 +51,21 @@ namespace BrokenNes.Windows.WebApi
         public Func<(string look, bool invertBackground, bool invertSprites)>? GetGbLook { get; set; }
         /// <summary>Change the Game Boy look; null leaves that part alone.</summary>
         public Action<string?, bool?, bool?>? SetGbLook { get; set; }
+
+        /// <summary>Why the last quick save / load through the API failed, or null: the opt-in flag is off, the session has no save states (and why), or the state itself was refused.</summary>
+        public Func<string?>? QuickStateReason { get; set; }
+
+        /// <summary>The answer of POST /api/emulator/quick-save-state and quick-load-state: success, the reason when it failed, and <c>gated</c> only when the reason is the opt-in flag (it used to be true for every failure).</summary>
+        private object StateResult(bool success)
+        {
+            string? reason = success ? null : QuickStateReason?.Invoke();
+            return new { success, gated = !success && reason != null && reason.Contains("enableWebmoduleSavestateDebugShortcuts", StringComparison.Ordinal), reason };
+        }
+
+        /// <summary>The Sega machine settings (video standard, Genesis board, Master System board) and the choices for each, plus what the running game is.</summary>
+        public Func<object>? GetSegaSettings { get; set; }
+        /// <summary>Change them (null leaves one alone); false when a key is not one of the choices. A running game of a console the change concerns restarts on it.</summary>
+        public Func<string?, string?, string?, bool>? SetSegaSettings { get; set; }
 
         public sealed class GbLookRequest { public string? Look { get; set; } public bool? InvertBackground { get; set; } public bool? InvertSprites { get; set; } }
 
@@ -64,6 +89,22 @@ namespace BrokenNes.Windows.WebApi
                 return Results.Ok(new { success = true, look, invertBackground = bg, invertSprites = obj });
             });
 
+            // GET /api/console/sega - the Sega machine settings: region ("auto" / "ntsc" / "pal"), genesisModel ("auto" / "1" / "2" / "3"), masterSystemModel ("auto" / "markiii" / "sms1" / "sms2"), the choices, and the machine a running game is
+            app.MapGet("/api/console/sega", () =>
+                GetSegaSettings == null ? Results.BadRequest(new { success = false, error = "not available" })
+                                        : Results.Ok(new { success = true, settings = GetSegaSettings() }));
+            // POST /api/console/sega {"region": "pal", "genesisModel": "2", "masterSystemModel": "sms1"} - any field optional; a running game of that console restarts on the change
+            app.MapPost("/api/console/sega", async (HttpContext context) =>
+            {
+                if (GetSegaSettings == null || SetSegaSettings == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var body = await context.Request.ReadFromJsonAsync<SegaSettingsRequest>();
+                if (body == null || (body.Region == null && body.GenesisModel == null && body.MasterSystemModel == null))
+                    return Results.BadRequest(new { success = false, error = "region, genesisModel and/or masterSystemModel is required" });
+                if (!SetSegaSettings(body.Region, body.GenesisModel, body.MasterSystemModel))
+                    return Results.BadRequest(new { success = false, error = "a value is not one of the choices (GET /api/console/sega lists them)", settings = GetSegaSettings() });
+                return Results.Ok(new { success = true, settings = GetSegaSettings(), status = GetConsoleStatus?.Invoke() });
+            });
+
             // GET /api/console - the console, the game and the cores
             app.MapGet("/api/console", () =>
                 GetConsoleStatus == null ? Results.BadRequest(new { success = false, error = "not available" })
@@ -82,7 +123,7 @@ namespace BrokenNes.Windows.WebApi
                 return Results.Ok(new { success = true, status = GetConsoleStatus?.Invoke() });
             });
 
-            // POST /api/console/core/{slot}/{id} - pick a core for the selected console (SNES / Game Boy picks restart the game)
+            // POST /api/console/core/{slot}/{id} - pick a core for the selected console (the game keeps running when the session can swap it in place; the status says if it had to restart, and why)
             app.MapPost("/api/console/core/{slot}/{id}", (string slot, string id) =>
             {
                 if (SelectConsoleCore == null) return Results.BadRequest(new { success = false, error = "not available" });

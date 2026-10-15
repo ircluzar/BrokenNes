@@ -63,6 +63,16 @@ internal static class SegaBridgeTestCli
             var (p, f) = SmsFmBridgeTests.Run(args, s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), Arg(args, "--rom"), verbose);
             passes += p; failures += f;
         }
+        // round 4 (track C4b): the YM2413 on NES chips and the shared voice-slot allocator (`--only smsfmnes`)
+        {
+            var (p, f) = SmsFmOnNesTests.Run(s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), verbose);
+            passes += p; failures += f;
+        }
+        // the patch banks by analysis (`--only patches`)
+        {
+            var (p, f) = PatchDistinctTests.Run(s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), verbose);
+            passes += p; failures += f;
+        }
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
     }
@@ -178,9 +188,10 @@ internal static class SegaBridgeTestCli
             var apu = CoreCatalog.Options(console, CoreSlot.Apu);
             string stock = console == ConsoleKind.GameGear ? "GG" : "SMS";
             int own = console == ConsoleKind.GameGear ? 1 : 2;   // the stock unit, and on the Master System the Japanese console's SMS-FM (the PSG and the YM2413) right after it
-            Check($"{Consoles.DisplayName(console)} APU menu: the stock unit {stock} first{(own == 2 ? ", then SMS-FM" : "")}, then the PSG on NES chips ({apu.Count - own} of them)", apu[0].Id == stock && (own == 1 || apu[1].Id == "SMS-FM") && apu.Count > 5 && apu.Skip(own).All(o => o.Id.StartsWith("NES:") && o.Family == "NES"));
-            Check($"{Consoles.DisplayName(console)}: NES:FIX and NES:FIXS are offered; the labels say mono and no FM", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(own).All(o => o.Label.Contains("mono") && o.Label.Contains("no YM2413 FM")));
-            Check($"{Consoles.DisplayName(console)}: no bridge core is listed as a NES chip (the Master System core itself, and the Game Boy and SNES ones, stay out)", apu.All(o => o.Id != "NES:SMS" && o.Id != "NES:DMG" && o.Id != "NES:SNES"));
+            Check($"{Consoles.DisplayName(console)} APU menu: the stock unit {stock} first{(own == 2 ? ", then SMS-FM" : "")}, then the PSG on NES chips ({apu.Skip(own).Count(o => o.Family == "NES")} of them), then on other consoles' chips through the NES registers", apu[0].Id == stock && (own == 1 || apu[1].Id == "SMS-FM") && apu.Count > 5 && apu.Skip(own).All(o => o.Id.StartsWith("NES:") || o.Id.StartsWith("NES-FM:")) && apu.Skip(own).TakeWhile(o => o.Family == "NES").Count() > 15);
+            Check($"{Consoles.DisplayName(console)}: NES:FIX and NES:FIXS are offered; the NES entries' labels say mono and no FM", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(own).Where(o => o.Id.StartsWith("NES:") && o.Family == "NES").All(o => o.Label.Contains("mono") && o.Label.Contains("no YM2413 FM")));
+            Check($"{Consoles.DisplayName(console)}: the PSG + YM2413 on a NES chip (NES-FM:FIX, NES-FM:FIXS) is offered on the Master System only, with labels that say the game finds the FM chip", console == ConsoleKind.GameGear ? apu.All(o => !o.Id.StartsWith("NES-FM")) : apu.Any(o => o.Id == "NES-FM:FIX") && apu.Any(o => o.Id == "NES-FM:FIXS") && apu.Where(o => o.Id.StartsWith("NES-FM:")).All(o => o.Label.Contains("FM found by the game")));
+            Check($"{Consoles.DisplayName(console)}: the Game Boy, SNES and Genesis chips are offered through the NES (C4b), the Master System's own are not", new[] { "NES:DMG", "NES:DMGS", "NES:SNES", "NES:MD" }.All(id => apu.Any(o => o.Id == id && o.Family != "NES")) && apu.All(o => o.Id != "NES:SMS" && o.Id != "NES:SMSFM"));
             Check($"{Consoles.DisplayName(console)}: a stored NES:FIX is kept, a stored id the menu lacks falls back to the stock unit", CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:FIX") == "NES:FIX" && CoreCatalog.Resolve(console, CoreSlot.Apu, "NES:NOPE") == stock);
         }
         // the picture slot gained the NES picture chips in C3a (the Master System's picture drawn by a NES chip): its own chip first, then NES:<chip> entries, never the Master System's own chip as a NES one (the picture bridges are verified by --picture-bridge-test)

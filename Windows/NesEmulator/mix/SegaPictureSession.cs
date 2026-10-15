@@ -107,8 +107,14 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         }
     }
 
+    public string SwapRefusal(CoreSlot slot, string id) => !ConsoleSessions.Offers(Console, slot, id) ? ConsoleSessions.NotOffered(Console, slot, id)
+        : slot != CoreSlot.Ppu ? inner.SwapRefusal(slot, id)
+        : IsNesChip(id) ? $"the picture bridge to {id} could not be built for this {Consoles.DisplayName(Console)} game"
+        : $"the {Consoles.DisplayName(Console)} has one picture chip of its own ({CoreCatalog.Default(Console, CoreSlot.Ppu)}) and {id} is not it";
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
+        if (!ConsoleSessions.Offers(Console, slot, id)) return false;     // an id the menu does not list is refused, whichever slot
         if (slot != CoreSlot.Ppu) return inner.TrySwapCore(slot, id);
         if (IsNesChip(id))
         {

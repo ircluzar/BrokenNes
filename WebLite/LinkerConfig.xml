@@ -61,6 +61,8 @@
     <type fullname="NesEmulator.PPU_MD" preserve="all" />
     <type fullname="NesEmulator.CPU_SNES" preserve="all" />
     <type fullname="NesEmulator.CPU_SM83" preserve="all" />
+    <type fullname="NesEmulator.CPU_Z80" preserve="all" />
+    <type fullname="NesEmulator.CPU_M68K" preserve="all" />
     <type fullname="NesEmulator.APU_SNES" preserve="all" />
     <type fullname="NesEmulator.APU_DMG" preserve="all" />
     <type fullname="NesEmulator.APU_DMGS" preserve="all" />

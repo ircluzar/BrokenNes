@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "suite": "sega-sessions",
+  "description": "The Master System, Game Gear and Genesis through Workshop --session-test: a real game from the user's libraries on the console's own cores, on machine variants (PAL, Genesis Model 2), with its picture drawn by a NES chip, its sound played by a NES chip or another console's chip through the NES registers, and with a core swapped in the middle of the run. Every golden says what this build did when it was recorded (nothing moved), not that the game is right: the accuracy gates are --smstest, --md-golden, --md-test and the oracle comparisons. A ROM that is not on this machine SKIPs. The Master System games are unpacked by UAT/lib/Prepare-SegaRoms.ps1 (the suite and certify.ps1 run it first).",
+  "roots": {
+    "sms": "%LOCALAPPDATA%/VRUN_Nes_Dev_work/sega_roms/sms",
+    "gg": "X:/EMULATION/Sega Game Gear",
+    "md": "X:/EMULATION/Sega Genesis"
+  },
+  "cases": [
+    {
+      "id": "sega-sms-alexkidd-own",
+      "description": "Alex Kidd in Miracle World on the Master System's own Z80, VDP and PSG: title, demo, then the game.",
+      "kind": "session",
+      "rom": "{sms}/alexkidd.sms",
+      "frames": 600,
+      "input": "120:A,126:,260:A,266:,400:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "2025AE9F110B2F07",
+        "audioHash": "A65335A512775B95",
+        "framesRun": 600,
+        "distinctColors": 17,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-alexkidd-pal",
+      "description": "The same game as a 50 Hz machine (the region is chosen, not read from the file name).",
+      "kind": "session",
+      "rom": "{sms}/alexkidd.sms",
+      "region": "pal",
+      "frames": 400,
+      "input": "120:A,126:",
+      "tags": [
+        "sega",
+        "sms",
+        "region"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "21836C6B83A4FA30",
+        "audioHash": "94DBE9CE428869D9",
+        "framesRun": 400,
+        "distinctColors": 16,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-alexkidd-fixs",
+      "description": "Alex Kidd's picture drawn by the 8-layer NES chip FIXS (the layered path of the picture bridge).",
+      "kind": "session",
+      "rom": "{sms}/alexkidd.sms",
+      "ppu": "NES:FIXS",
+      "frames": 400,
+      "input": "120:A,126:",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge",
+        "picture"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "FA802CE409D347C5",
+        "audioHash": "C49BC3833FC7E1ED",
+        "framesRun": 400,
+        "distinctColors": 13,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-alexkidd-nes-sound",
+      "description": "Alex Kidd's PSG replayed on the NES chip FIX.",
+      "kind": "session",
+      "rom": "{sms}/alexkidd.sms",
+      "apu": "NES:FIX",
+      "frames": 400,
+      "input": "120:A,126:",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge",
+        "sound"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "21836C6B83A4FA30",
+        "audioHash": "9BDBD84AB81370F1",
+        "framesRun": 400,
+        "distinctColors": 16,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-sonic-own",
+      "description": "Sonic the Hedgehog (Master System) on its own chips: title, then Green Hill.",
+      "kind": "session",
+      "rom": "{sms}/sonic.sms",
+      "frames": 600,
+      "input": "150:A,156:,300:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E326DE09C3512325",
+        "audioHash": "7421D079029D5DC7",
+        "framesRun": 600,
+        "distinctColors": 34,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-sonic-fm",
+      "description": "The Japanese console's sound unit (the PSG and the YM2413) under a game that does not use the FM chip.",
+      "kind": "session",
+      "rom": "{sms}/sonic.sms",
+      "apu": "SMS-FM",
+      "frames": 400,
+      "input": "150:A,156:",
+      "tags": [
+        "sega",
+        "sms",
+        "fm"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "99A577D2C2DEF444",
+        "audioHash": "DD3D5AC41EEE7F0F",
+        "framesRun": 400,
+        "distinctColors": 30,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-sonic-fm-on-nes",
+      "description": "The PSG and the FM chip together replayed on the NES chip FIX (NES-FM).",
+      "kind": "session",
+      "rom": "{sms}/sonic.sms",
+      "apu": "NES-FM:FIX",
+      "frames": 400,
+      "input": "150:A,156:",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge",
+        "sound",
+        "fm"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "99A577D2C2DEF444",
+        "audioHash": "061BE5301A9AE75D",
+        "framesRun": 400,
+        "distinctColors": 30,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-sonic-on-snes-chip",
+      "description": "Sonic's sound on the SNES's S-DSP through the NES registers (the hub).",
+      "kind": "session",
+      "rom": "{sms}/sonic.sms",
+      "apu": "NES:SNES",
+      "frames": 300,
+      "input": "150:A,156:",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge",
+        "sound",
+        "hub"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "538B56BBB4B33C50",
+        "audioHash": "A96AF40A37E646A7",
+        "framesRun": 300,
+        "distinctColors": 30,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-fantasyzone-swap-sound",
+      "description": "Fantasy Zone with the sound unit swapped from the PSG to the NES chip FIX in the middle of the run, in place.",
+      "kind": "session",
+      "rom": "{sms}/fantasyzone.sms",
+      "swap": "150:apu:NES:FIX",
+      "frames": 400,
+      "input": "100:A,106:",
+      "tags": [
+        "sega",
+        "sms",
+        "swap"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "B08BA80981A37C54",
+        "audioHash": "956473CE5BD3BB69",
+        "framesRun": 400,
+        "distinctColors": 26,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-sms-fantasyzone-swap-picture",
+      "description": "Fantasy Zone with the picture chip swapped to the NES chip FIXS in the middle of the run.",
+      "kind": "session",
+      "rom": "{sms}/fantasyzone.sms",
+      "swap": "150:ppu:NES:FIXS",
+      "frames": 400,
+      "input": "100:A,106:",
+      "tags": [
+        "sega",
+        "sms",
+        "swap"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "554ABF614D639901",
+        "audioHash": "765675C207E1BEFD",
+        "framesRun": 400,
+        "distinctColors": 28,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-gg-sonic-own",
+      "description": "Sonic the Hedgehog (Game Gear) on the Game Gear's own chips.",
+      "kind": "session",
+      "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+      "frames": 600,
+      "input": "120:Start,126:,240:Right",
+      "tags": [
+        "sega",
+        "gg",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "096ABAB4E7E1FEDF",
+        "audioHash": "FFDE477745C9B193",
+        "framesRun": 600,
+        "distinctColors": 26,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-gg-columns-own",
+      "description": "Columns (Game Gear): a small game, tile rewrites in play.",
+      "kind": "session",
+      "rom": "{gg}/Columns (U) [!].gg",
+      "frames": 600,
+      "input": "100:Start,106:,200:A,206:",
+      "tags": [
+        "sega",
+        "gg",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "EB3D613C5FA6FB72",
+        "audioHash": "9CC766A0EA0E8403",
+        "framesRun": 600,
+        "distinctColors": 43,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-gg-sonic-fixs",
+      "description": "The Game Gear's 160x144 window drawn by the NES chip FIXS.",
+      "kind": "session",
+      "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+      "ppu": "NES:FIXS",
+      "frames": 400,
+      "input": "120:Start,126:",
+      "tags": [
+        "sega",
+        "gg",
+        "bridge",
+        "picture"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "2CFB361C1717AF0D",
+        "audioHash": "35A427FFDCCF4CE5",
+        "framesRun": 400,
+        "distinctColors": 15,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-gg-sonic-on-gb-chip",
+      "description": "The Game Gear's PSG on the Game Boy's sound chip through the NES registers (the hub).",
+      "kind": "session",
+      "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+      "apu": "NES:DMG",
+      "frames": 300,
+      "input": "120:Start,126:",
+      "tags": [
+        "sega",
+        "gg",
+        "bridge",
+        "sound",
+        "hub"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "096ABAB4E7E1FEDF",
+        "audioHash": "977780EEEA8F621F",
+        "framesRun": 300,
+        "distinctColors": 26,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-own",
+      "description": "Sonic the Hedgehog (Genesis) on the Genesis's own 68000, VDP and sound unit: title, then Green Hill.",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "frames": 600,
+      "input": "150:Start,156:,300:Right",
+      "tags": [
+        "sega",
+        "md",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "FC98B6BDDC2EF368",
+        "audioHash": "1E2AAE60A2A5A815",
+        "framesRun": 600,
+        "distinctColors": 61,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sor2-own",
+      "description": "Streets of Rage 2: heavy FM and DAC use, a large ROM.",
+      "kind": "session",
+      "rom": "{md}/Streets of Rage 2 (U) [!].bin",
+      "frames": 600,
+      "input": "200:Start,206:,300:Start,306:",
+      "tags": [
+        "sega",
+        "md",
+        "own"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "FEF9FBF78EC745C5",
+        "audioHash": "101DB394B106D9A3",
+        "framesRun": 600,
+        "distinctColors": 66,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-model2",
+      "description": "Sonic on the Model 2 board (no ladder effect in the DAC).",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "genesisModel": "2",
+      "frames": 400,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "model"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5E2049AD86DD58C7",
+        "audioHash": "52FB1F92DB7279ED",
+        "framesRun": 400,
+        "distinctColors": 23,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-pal",
+      "description": "Sonic as a 50 Hz machine.",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "region": "pal",
+      "frames": 400,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "region"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5E2049AD86DD58C7",
+        "audioHash": "C5060677B17CCCAB",
+        "framesRun": 400,
+        "distinctColors": 22,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-fixs",
+      "description": "The Genesis's picture drawn by the NES chip FIXS (layered).",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "ppu": "NES:FIXS",
+      "frames": 400,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "bridge",
+        "picture"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "250E5CC163E0F839",
+        "audioHash": "E936233E6F9585A7",
+        "framesRun": 400,
+        "distinctColors": 9,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-nes-sound",
+      "description": "The Genesis's FM, DAC and PSG replayed on the 8-channel NES chip FIXS.",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "apu": "NES:FIXS",
+      "frames": 400,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "bridge",
+        "sound"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5E2049AD86DD58C7",
+        "audioHash": "2464668EA1851F37",
+        "framesRun": 400,
+        "distinctColors": 23,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-on-sms-chip",
+      "description": "The Genesis's sound on the Master System's PSG through the NES registers (the hub).",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "apu": "NES:SMS",
+      "frames": 300,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "bridge",
+        "sound",
+        "hub"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "4D84C905C862FB25",
+        "audioHash": "4AACAC5003321871",
+        "framesRun": 300,
+        "distinctColors": 9,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "sega-md-sonic1-swap-sound",
+      "description": "Sonic with the sound unit swapped to the NES chip FIX in the middle of the run (the Genesis may restart: the result records whether it was in place).",
+      "kind": "session",
+      "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
+      "swap": "150:apu:NES:FIX",
+      "frames": 400,
+      "input": "150:Start,156:",
+      "tags": [
+        "sega",
+        "md",
+        "swap"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5E2049AD86DD58C7",
+        "audioHash": "E936233E6F9585A7",
+        "framesRun": 400,
+        "distinctColors": 23,
+        "result": "ok"
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-10-15T16:03:00Z"
+}

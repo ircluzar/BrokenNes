@@ -74,6 +74,10 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--picture-bridge-test", StringComparison.OrdinalIgnoreCase)) return Sega.PictureBridgeTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bridge-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.BridgeSweepCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bridge-sweep-one", StringComparison.OrdinalIgnoreCase)) return Sega.BridgeSweepCli.RunOne(args);
+        if (args.Length > 0 && args[0].Equals("--cpu-wall-test", StringComparison.OrdinalIgnoreCase)) return Sega.CpuWallTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--session-test", StringComparison.OrdinalIgnoreCase)) return Sega.SessionTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--swap-matrix-test", StringComparison.OrdinalIgnoreCase)) return Sega.SwapMatrixTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--md-bridge-scenes", StringComparison.OrdinalIgnoreCase)) return Sega.MdBridgeScenesCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-patches", StringComparison.OrdinalIgnoreCase)) return Sega.MdPatchCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-stems-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaStemsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--ym-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.YmOracleTestCli.Run(args);

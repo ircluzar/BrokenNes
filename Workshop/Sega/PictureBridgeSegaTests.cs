@@ -129,6 +129,185 @@ internal static class SegaScenes
         Guard("Game Gear: the LCD window and the black bezel", GgScenes);
         foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
             Guard($"Genesis scenes on {chip}", () => MdScenes(chip));
+        Guard("Genesis VDP rules measured by Track B4a (column scroll pairs, plane sizes, shadow/highlight operators) on NES:FIXS", MdRuleScenes);
+    }
+
+    // ================================================================================================================ the VDP rules Track B4a measured on BlastEm
+    // These checks do not compare with this build's VDP (whose copy of the rules moves with its own track): the expected picture is computed from the rules as the oracle showed them (docs/projects/sega-track-b4a.md, 1.2 and
+    // 1.3), for scenes built to tell the old rule from the new one - each scene also counts how many pixels the OLD rule would have drawn differently, and that number has to be large, so a scene that cannot tell them apart fails.
+    private static readonly int[] RowCram = { 0, 0x00E, 0x0E0, 0xE00, 0x0EE, 0xEE0, 0xE0E };
+
+    /// <summary>A rig whose plane (name table at <paramref name="nt"/>, <paramref name="width"/> cells wide, <paramref name="rows"/> rows) shows plane row R in the solid colour 1 + R % 6, so the row every pixel shows can be told from its colour.</summary>
+    private static MdRig PlaneRig(string chip, int nt, int width, int rows, int r11, int r12, int r16)
+    {
+        var r = new MdRig(chip); r.Color(0, 0);
+        for (int i = 1; i <= 6; i++) { r.Color(i, RowCram[i]); r.Tile(i, i); }
+        for (int row = 0; row < rows; row++) for (int col = 0; col < width; col++) r.Cell(nt, width, row, col, 1 + row % 6);
+        r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, r11, r12, 0x3F, 0, 0x02, r16, 0, 0);
+        return r;
+    }
+
+    /// <summary>Pixels of the bridge's picture that are not the colour of the plane row <paramref name="rowAt"/>(line, screen x) gives; <paramref name="dx"/>: the screen column of the picture's first column (32 in H40).</summary>
+    private static int RowMismatch(MdRig r, int dx, Func<int, int, int> rowAt, int fromScreenX = 0)
+    {
+        var c = r.Wrap.BridgeCanvas; int bad = 0;
+        for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++)
+            if (x + dx >= fromScreenX && At(c, x, 8 + y) != MdLook(RowCram[1 + rowAt(y, x + dx) % 6])) bad++;
+        return bad;
+    }
+
+    private static (int bad, int oldRuleBad) ColumnScrollScene(string chip, bool h40, bool planeB, Func<int, int> hsOf, int r11, int winW = 0)
+    {
+        int nt = planeB ? MdRig.PlaneB : MdRig.PlaneA, off = planeB ? 1 : 0, last = h40 ? 19 : 15, dx = h40 ? 32 : 0, mask = (r11 & 3) == 0 ? 0 : 0xF8;
+        var r = PlaneRig(chip, nt, 64, 32, r11, h40 ? 0x81 : 0x00, 0x01);
+        var vs = new int[40];
+        for (int c = 0; c < 20; c++) { vs[2 * c + off] = 8 * ((5 * c + 1) % 32); vs[2 * c + 1 - off] = 8 * ((5 * c + 3) % 32); }
+        vs[2 * last + off] = h40 ? 144 : 96; vs[2 * last + 1 - off] = h40 ? 160 : 80;      // the last pair's two entries differ, and so does their AND (128 / 64) from both
+        for (int i = 0; i < 40; i++) r.V.Vsram[i] = (ushort)vs[i];
+        for (int l = 0; l < 224; l += mask == 0 ? 224 : 8) r.W16(MdRig.HScroll + l * 4 + (planeB ? 2 : 0), hsOf(l));
+        if (winW > 0)
+        {
+            // a window at the left, winW pixels wide on every line (plane A shows only to its right); its cells are another colour so the split is visible
+            r.Color(7, 0x888); r.Tile(7, 7);
+            int cells = h40 ? 64 : 32;
+            for (int row = 0; row < 28; row++) for (int col = 0; col < cells; col++) r.Cell(MdRig.WindowNt, cells, row, col, 7);
+            r.V.Reg[17] = (byte)(winW / 16); r.V.Reg[18] = 0;
+        }
+        r.Go();
+        // the rule (docs/projects/sega-track-b4a.md 1.2): the pairs start at hs mod 16; before the first pair the H40 value is the last pair's two entries ANDed and the H32 value 0;
+        // with a window at the left of winW = 16 w pixels and hs mod 16 != 0, plane A's first b0 pixels after the window use column w, not w - 1
+        int Row(int y, int sx, int b0, bool rule)
+        {
+            int v;
+            if (sx < b0) v = rule && !h40 ? 0 : vs[2 * last] & vs[2 * last + 1];
+            else
+            {
+                int col = (sx - b0) >> 4;
+                if (rule && winW > 0 && !planeB && b0 != 0 && sx >= winW && sx < winW + b0) col = winW >> 4;
+                v = vs[2 * col + off];
+            }
+            return ((y + (v & 0x3FF)) & 255) >> 3;
+        }
+        return (RowMismatch(r, dx, (y, sx) => Row(y, sx, hsOf(y & mask) & 15, true), winW), RowMismatch(r, dx, (y, sx) => Row(y, sx, 0, false), winW));
+    }
+
+    private static void MdRuleScenes()
+    {
+        const string chip = "NES:FIXS"; string tag = $"Genesis on {chip}";
+        // ---- 1. 2-cell column vertical scroll: the pairs of cells start at the plane's scroll mod 16, the strip before the first pair takes the last column's two entries ANDed
+        var scenes = new (string name, bool h40, bool planeB, Func<int, int> hs, int r11, bool tellsApart, int winW)[]
+        {
+            ("plane A, H32, scrolled 5 pixels (the strip before the first pair is column 0 of the table in H32: value 0)", false, false, _ => 5, 0x04, true, 0),
+            ("plane B, H32, scrolled 29 pixels", false, true, _ => 29, 0x04, true, 0),
+            ("plane A, H40 (the picture's first column is screen column 32), scrolled 27 pixels", true, false, _ => 27, 0x04, true, 0),
+            ("plane A, H32, a different scroll every 8 lines (0, 7, 14, ... mod 16 decide the pairs line by line)", false, false, l => (l >> 3) * 7 & 0x1FF, 0x04 | 0x02, true, 0),
+            ("plane A, H32, not scrolled (the one case the old rule had right)", false, false, _ => 0, 0x04, false, 0),
+            ("plane A, H32, scrolled 5, a window 32 pixels wide at the left (the 5 pixels after it take the NEXT pair's entry)", false, false, _ => 5, 0x04, true, 32),
+            ("plane A, H32, scrolled 13, a window 48 pixels wide at the left", false, false, _ => 13, 0x04, true, 48),
+            ("plane A, H40, scrolled 27, a window 64 pixels wide at the left (screen columns 64 to 74 are the strip)", true, false, _ => 27, 0x04, true, 64),
+        };
+        foreach (var s in scenes)
+        {
+            var (bad, oldBad) = ColumnScrollScene(chip, s.h40, s.planeB, s.hs, s.r11, s.winW);
+            Check($"{tag}: 2-cell column scroll, {s.name}: every pixel is the row the rule picks", bad == 0, $"{bad} pixels differ (the old rule would differ in {oldBad})");
+            Check($"{tag}: ... and the scene tells the rules apart", s.tellsApart ? oldBad > 1000 : oldBad == 0, $"the old rule differs in {oldBad} pixels");
+        }
+
+        // ---- 2. plane sizes the 4096-entry plane cannot hold
+        {
+            var r = PlaneRig(chip, MdRig.PlaneA, 128, 32, 0x00, 0x00, 0x13);          // width code 3 (128), height code 1 (64): a 128-wide plane is only 32 high
+            r.V.Vsram[0] = 320; r.Go();
+            int bad = RowMismatch(r, 0, (y, _) => ((y + 320) & 255) >> 3), oldBad = RowMismatch(r, 0, (y, _) => ((y + 320) & 511) >> 3);
+            Check($"{tag}: a 128-wide plane with the height code 64 is 32 high (it wraps at 256 lines)", bad == 0 && oldBad > 1000, $"{bad} pixels differ (a 64-high plane would differ in {oldBad})");
+            r = PlaneRig(chip, MdRig.PlaneA, 64, 64, 0x00, 0x00, 0x31);               // width code 1 (64), height code 3 (128): 64 x 64
+            r.V.Vsram[0] = 536; r.Go();
+            bad = RowMismatch(r, 0, (y, _) => ((y + 536) & 511) >> 3); oldBad = RowMismatch(r, 0, (y, _) => ((y + 536) & 1023) >> 3);
+            Check($"{tag}: a 64-wide plane with the height code 128 is 64 x 64 (it wraps at 512 lines)", bad == 0 && oldBad > 1000, $"{bad} pixels differ (a 128-high plane would differ in {oldBad})");
+            r = PlaneRig(chip, MdRig.PlaneA, 32, 128, 0x00, 0x00, 0x30);              // width code 0 (32), height code 3 (128): valid, stays 32 x 128
+            r.V.Vsram[0] = 800; r.Go();
+            bad = RowMismatch(r, 0, (y, _) => ((y + 800) & 1023) >> 3);
+            Check($"{tag}: a 32-wide plane with the height code 128 is a valid 32 x 128 plane (unchanged)", bad == 0, $"{bad} pixels differ");
+        }
+
+        // ---- 3. shadow/highlight: a sprite pixel of palette line 3 with colour 14 or 15 is an operator on what lies under it, not a pixel of its own (the shading itself is not drawn, and says so)
+        foreach (bool sh in new[] { true, false })
+        {
+            var r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(2, 0x0E0); r.Color(55, 0xE0E); r.Color(62, 0xEEE); r.Color(63, 0xEEE);
+            r.Tile(1, 1); r.Tile(2, 15); r.Tile(3, 14); r.Tile(4, 7); r.Tile(5, 2);
+            for (int row = 12; row < 15; row++) for (int col = 10; col < 17; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1);        // a block of plane A (colour 1) the operator sprite lies over
+            r.Sprite(0, 40, 40, 1, 1, 2, pal: 3); r.Sprite(1, 88, 96, 1, 1, 2, pal: 3); r.Sprite(2, 40, 60, 1, 1, 3, pal: 3); r.Sprite(3, 200, 40, 1, 1, 4, pal: 3); r.Sprite(4, 200, 60, 1, 1, 5, link: 0);
+            r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, sh ? 0x08 : 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
+            r.Go();
+            uint P(int x, int y) => At(r.Wrap.BridgeCanvas, x + 3, 8 + y + 3);
+            uint white = MdLook(0xEEE);
+            string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
+            Check($"{tag}: {mode}: a shadow operator (palette 3, colour 15) over the backdrop {(sh ? "is not drawn" : "is an ordinary white pixel")}", P(40, 40) == (sh ? 0u : white), $"{P(40, 40):X6}");
+            Check($"{tag}: {mode}: a highlight operator (palette 3, colour 14) over the backdrop {(sh ? "is not drawn" : "is an ordinary white pixel")}", P(40, 60) == (sh ? 0u : white), $"{P(40, 60):X6}");
+            Check($"{tag}: {mode}: an operator over a plane pixel {(sh ? "leaves the plane's colour (the darkening is not drawn)" : "is an ordinary white pixel")}", P(88, 96) == (sh ? MdLook(0x00E) : white), $"{P(88, 96):X6}");
+            Check($"{tag}: {mode}: a palette 3 sprite pixel that is not colour 14 or 15 is drawn", P(200, 40) == MdLook(0xE0E), $"{P(200, 40):X6}");
+            Check($"{tag}: {mode}: a palette 0 sprite is drawn", P(200, 60) == MdLook(0x0E0), $"{P(200, 60):X6}");
+            long ops = r.Wrap.Counters.Total("sprite pieces holding shadow/highlight operators (their pixels are not drawn, and neither is the shading they cause)");
+            Check($"{tag}: {mode}: the operator pieces are counted ({(sh ? "2 distinct pieces a frame, over the frames run" : "none")})", sh ? ops >= 2 : ops == 0, $"{ops}; {r.Wrap.Counters}");
+        }
+
+        // ---- 4. register 0 bit 5, the left column blank: the first 8 pixels are the backdrop, sprites too; with shadow/highlight on, the planes of the second cell (x 8-15) are the first cell's planes (sprites stay)
+        foreach (bool sh in new[] { false, true })
+        {
+            var r = new MdRig(chip); r.Color(0, 0);
+            for (int i = 1; i <= 6; i++) { r.Color(i, RowCram[i]); r.Tile(i, i); }
+            r.Color(7, 0x888); r.Tile(7, 7);
+            for (int row = 0; row < 28; row++) for (int col = 0; col < 32; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1 + col % 6);        // screen cell c shows tile 1 + c % 6, so the cell a pixel comes from can be told from its colour
+            r.Sprite(0, 0, 40, 1, 1, 7, link: 1); r.Sprite(1, 8, 60, 1, 1, 7, link: 0);          // one wholly in the blank column, one wholly in the second cell
+            r.Regs(0x04 | 0x20, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, sh ? 0x08 : 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
+            r.Go();
+            var cv = r.Wrap.BridgeCanvas; string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
+            uint Cell(int c) => MdLook(RowCram[1 + c % 6]);
+            int blankBad = 0, secondBad = 0, restBad = 0;
+            for (int y = 100; y < 130; y++)
+            {
+                for (int x = 0; x < 8; x++) if (At(cv, x, 8 + y) != 0u) blankBad++;
+                for (int x = 8; x < 16; x++) if (At(cv, x, 8 + y) != Cell(sh ? 0 : 1)) secondBad++;
+                for (int x = 16; x < 256; x++) if (At(cv, x, 8 + y) != Cell(x >> 3)) restBad++;
+            }
+            Check($"{tag}: {mode}: the first 8 pixels are the backdrop, not the plane", blankBad == 0, $"{blankBad} pixels differ");
+            Check($"{tag}: {mode}: the second cell (x 8-15) shows {(sh ? "the FIRST cell's plane" : "its own plane")}", secondBad == 0, $"{secondBad} pixels differ");
+            Check($"{tag}: {mode}: the cells from x = 16 on are their own", restBad == 0, $"{restBad} pixels differ");
+            Check($"{tag}: {mode}: a sprite wholly in the blank column is hidden, one in the second cell is drawn", At(cv, 3, 8 + 43) == 0u && At(cv, 11, 8 + 63) == MdLook(0x888), $"{At(cv, 3, 8 + 43):X6} / {At(cv, 11, 8 + 63):X6}");
+            if (sh) Check($"{tag}: {mode}: the blank column is drawn in the plain backdrop and the frame says so (the shadowed backdrop is part of the shading this bridge does not draw)", r.Wrap.Counters.Total("lines with the left column blanked in shadow/highlight mode (the column shows the plain backdrop, not the shadowed one)") >= 200, r.Wrap.Counters.ToString());
+        }
+
+        // ---- 5. interlace mode 2: the cells are 8 x 16 (64-byte patterns); the field's lines show every other pattern row, the vertical scroll counts picture rows and has 11 bits
+        {
+            var r = new MdRig(chip); r.Color(0, 0); r.Color(1, RowCram[1]); r.Color(2, RowCram[2]);
+            for (int row16 = 0; row16 < 16; row16++) for (int k = 0; k < 4; k++) r.V.Vram[64 + row16 * 4 + k] = (byte)(row16 < 8 ? 0x11 : 0x22);       // pattern 1: rows 0-7 colour 1, rows 8-15 colour 2
+            for (int row = 0; row < 28; row++) for (int col = 0; col < 64; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1);
+            r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x06, 0x3F, 0, 0x02, 0x01, 0, 0);
+            r.Go();
+            var cv = r.Wrap.BridgeCanvas; int bad = 0;
+            for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++) if (At(cv, x, 8 + y) != MdLook(RowCram[(y & 7) < 4 ? 1 : 2])) bad++;
+            Check($"{tag}: interlace mode 2: a cell is 16 pattern rows tall, the field shows every other one (the top half colour 1, the bottom half colour 2)", bad == 0, $"{bad} pixels differ");
+            Check($"{tag}: ... and the frame counts it (double-height cells drawn as the field's even rows)", r.Wrap.Counters.Total("frames in interlace mode 2 (the field is drawn from the even rows of the 8x16 cells)") >= 2, r.Wrap.Counters.ToString());
+
+            // the vertical scroll has 11 bits in this mode: 0x410 = 1040 picture rows = 520 field lines; read with 10 bits it would be 16 rows = 8 lines
+            r = PlaneRig(chip, MdRig.PlaneA, 32, 128, 0x00, 0x06, 0x30);
+            for (int t = 1; t <= 6; t++) for (int i = 0; i < 64; i++) r.V.Vram[t * 64 + i] = (byte)(t << 4 | t);
+            r.V.Vsram[0] = 0x410; r.Go();
+            int bad11 = RowMismatch(r, 0, (y, _) => ((y + 520) & 1023) >> 3), bad10 = RowMismatch(r, 0, (y, _) => ((y + 8) & 1023) >> 3);
+            Check($"{tag}: interlace mode 2: the vertical scroll has 11 bits (0x410 scrolls 520 field lines of a 128-row plane, not 8)", bad11 == 0 && bad10 > 1000, $"{bad11} pixels differ (with 10 bits it would differ in {bad10})");
+
+            // the console's own chip in this mode: whatever picture the session reports (the field, or the woven double-height one of a VDP that has it), the frame buffer holds it and the shape on screen stays 10:7;
+            // on a NES chip the bridge's canvas is the NES's 256 x 240 as always
+            foreach (int r12 in new[] { 0x87, 0x06 })
+            {
+                var own = new MdRig("MD"); own.Color(0, 0); own.Tile(1, 1);
+                own.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, r12, 0x3F, 0, 0x02, 0x01, 0, 0); own.Go();
+                var w = own.Wrap; double aspect = (double)w.DisplayWidth / w.FrameHeight;
+                Check($"{tag}: interlace mode 2 on the console's own chip ({(r12 == 0x87 ? "H40" : "H32")}): the picture is {w.FrameWidth} x {w.FrameHeight} shown {w.DisplayWidth} wide, 10:7, and the frame buffer holds it", !w.Bridged && w.Frame.Length >= w.FrameWidth * w.FrameHeight && Math.Abs(aspect - 10.0 / 7.0) < 0.01 && (w.FrameHeight == 224 || w.FrameHeight == 448), $"{w.FrameWidth}x{w.FrameHeight}, display width {w.DisplayWidth}, frame {w.Frame.Length}");
+            }
+            var onNes = new MdRig(chip); onNes.Color(0, 0); onNes.Tile(1, 1);
+            onNes.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x87, 0x3F, 0, 0x02, 0x01, 0, 0); onNes.Go();
+            Check($"{tag}: interlace mode 2 on a NES chip: the canvas is the NES's 256 x 240 shown 256 wide", onNes.Wrap.Bridged && onNes.Wrap.FrameWidth == 256 && onNes.Wrap.FrameHeight == 240 && onNes.Wrap.DisplayWidth == 256, $"{onNes.Wrap.FrameWidth}x{onNes.Wrap.FrameHeight}, {onNes.Wrap.DisplayWidth}");
+        }
     }
 
     private static void SmsScenes(string chip)
@@ -335,6 +514,138 @@ internal static class SegaScenes
         r.Go(2); var hashes = new HashSet<ulong>();
         for (int i = 0; i < 6; i++) { r.Go(1); ulong h = 14695981039346656037UL; foreach (uint c in r.Wrap.Frame) h = (h ^ c) * 1099511628211UL; hashes.Add(h); }
         Check($"{tag}: a static scene is drawn identically every frame", hashes.Count == 1, $"{hashes.Count} different pictures");
+    }
+
+    // ================================================================================================================ allocation
+    /// <summary>Bytes allocated per frame once the program is warm: the least over three windows (a method the runtime compiles once more as it tiers up allocates once, never again).</summary>
+    private static double BytesPerFrame(Action frame, int warm = 150, int window = 40)
+    {
+        for (int i = 0; i < warm; i++) frame();
+        long best = long.MaxValue;
+        for (int w = 0; w < 3; w++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < window; i++) frame();
+            best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        return best / (double)window;
+    }
+
+    /// <summary>The most a bridged frame may allocate beyond what the board's own frame allocates, in bytes. Zero is the aim (the pipeline's other paths allocate nothing); the figure is what the pooled translators measure, so a new per-frame array fails here.</summary>
+    internal const double BridgeBytesLimit = 0;
+
+    /// <summary>With <c>--alloc-types</c>: which types the runtime says it allocated (its allocation-tick event, one per ~100 KB, with the type allocated at that moment), for finding where a nonzero number comes from.</summary>
+    private sealed class AllocTypeListener : System.Diagnostics.Tracing.EventListener
+    {
+        public readonly Dictionary<string, int> Ticks = new();
+        protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource source)
+        {
+            if (source.Name == "Microsoft-Windows-DotNETRuntime") EnableEvents(source, System.Diagnostics.Tracing.EventLevel.Verbose, (System.Diagnostics.Tracing.EventKeywords)0x1);
+        }
+        protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+        {
+            if (e.EventName == null || !e.EventName.StartsWith("GCAllocationTick", StringComparison.Ordinal) || e.PayloadNames == null || e.Payload == null) return;
+            for (int i = 0; i < e.PayloadNames.Count; i++)
+                if (e.PayloadNames[i] == "TypeName") lock (Ticks) { string t = e.Payload[i] as string ?? "?"; Ticks[t] = Ticks.GetValueOrDefault(t) + 1; }
+        }
+        public string Top(int n) { lock (Ticks) return string.Join(", ", Ticks.OrderByDescending(k => k.Value).Take(n).Select(k => $"{k.Key} x{k.Value}")); }
+    }
+
+    /// <summary>The same for a real game after a long run: the translators' tables (a dictionary of the tiles seen, the pool of histograms) grow to the most the game has needed, each growth one allocation, bounded and never repeated for a size already reached; a game still streaming new tiles after 600 frames shows a few tens of bytes a frame.</summary>
+    internal const double GameBytesLimit = 256;
+
+    private static void AllocCase(string name, double bridged, double board, double limit = BridgeBytesLimit)
+    {
+        double extra = Math.Max(0, bridged - board);
+        Check($"{name}: the bridge allocates {extra:F0} bytes a frame beyond the board's own ({bridged:F0} with the bridge, {board:F0} for the board alone; limit {limit:F0})", extra <= limit, $"{bridged:F0} / {board:F0}");
+    }
+
+    /// <summary>The translators' steady-state allocation per frame: synthetic scenes that move every frame (scroll, sprites), then, when game directories are given, real games.</summary>
+    public static void Alloc(string[] args)
+    {
+        foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
+        {
+            double[] sms = new double[2], gg = new double[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                string ppu = pass == 0 ? chip : "SMS";
+                var r = new SmsRig(ppu); SmsMoving(r); int f = 0;
+                sms[pass] = BytesPerFrame(() => { r.V.Regs[8] = (byte)(f++ * 3); r.Wrap.RunFrame(); });
+                var g = new SmsRig(pass == 0 ? chip : "GG", gg: true); SmsMoving(g); f = 0;
+                gg[pass] = BytesPerFrame(() => { g.V.Regs[8] = (byte)(f++ * 3); g.Wrap.RunFrame(); });
+            }
+            AllocCase($"Master System scene on {chip}", sms[0], sms[1]);
+            AllocCase($"Game Gear scene on {chip}", gg[0], gg[1]);
+            double[] md = new double[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var r = new MdRig(pass == 0 ? chip : "MD"); MdMoving(r); r.Go(1); int f = 0;
+                md[pass] = BytesPerFrame(() => { for (int l = 0; l < 224; l++) r.W16(MdRig.HScroll + l * 4, (l * 3 + f) & 0x1FF); f += 2; r.Wrap.RunFrame(); });
+            }
+            AllocCase($"Genesis scene on {chip}", md[0], md[1]);
+        }
+        string smsDir = Arg(args, "--sms-roms"), ggDir = Arg(args, "--gg-roms"), mdDir = Arg(args, "--md-roms");
+        // real games run long (a game is run for a thousand frames on each of three chips): only when asked for, with --only alloc or --alloc-games
+        bool realGames = Arg(args, "--only").Equals("alloc", StringComparison.OrdinalIgnoreCase) || args.Contains("--alloc-games", StringComparer.OrdinalIgnoreCase);
+        if (!realGames) { Console.WriteLine("  (real games not measured: --only alloc or --alloc-games, with --sms-roms --gg-roms --md-roms)"); return; }
+        if (smsDir + ggDir + mdDir == "") { Console.WriteLine("  (no game directories given: --sms-roms --gg-roms --md-roms; real games not measured)"); return; }
+        const string input = "100:Start,106:,160:Start,166:,200:A,210:,260:Start,266:,300:Right,420:A,430:";
+        // a game keeps showing tiles it has not shown before for a long while, and the bridge's tables grow to the most it has needed (bounded: they are not made again): a real game is measured after a long run
+        bool withTypes = args.Contains("--alloc-types", StringComparer.OrdinalIgnoreCase);
+        int warmFrames = int.TryParse(Arg(args, "--alloc-warm"), out int aw) ? aw : 600, windowFrames = int.TryParse(Arg(args, "--alloc-window"), out int awin) ? awin : 100;
+        void Game(string dir, string file, ConsoleKind console)
+        {
+            string path = Path.Combine(dir, file);
+            if (!File.Exists(path)) { Console.WriteLine($"  (missing {file})"); return; }
+            if (Arg(args, "--alloc-game").Length > 0 && !file.Contains(Arg(args, "--alloc-game"), StringComparison.OrdinalIgnoreCase)) return;       // --alloc-game <part of a file name>: just that game
+            var script = PictureBridgeCli.ParseInput(input);
+            byte[] rom = File.ReadAllBytes(path);
+            double Run(string chip, out ulong pictureHash)
+            {
+                using var s = ConsoleSessions.Create(console, rom, CoreCatalog.Default(console, CoreSlot.Cpu), chip, CoreCatalog.Default(console, CoreSlot.Apu), null, Path.GetFileName(path));
+                var held = PadButtons.None; var buf = new short[65536]; int f = 0; ulong hash = 14695981039346656037UL;
+                void Step() { s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { } var px = s.Frame; int n = s.FrameWidth * s.FrameHeight; for (int i = 0; i < n; i++) hash = (hash ^ px[i]) * 1099511628211UL; }
+                for (; f < 420; f++) { if (script.TryGetValue(f, out var h)) held = h; Step(); }      // into the game, through the menus
+                using var types = withTypes ? new AllocTypeListener() : null;
+                bool own = chip == CoreCatalog.Default(console, CoreSlot.Ppu);      // the board alone allocates nothing in any game, so a short run says so
+                double bytes = BytesPerFrame(Step, warm: own ? 60 : warmFrames, window: own ? 40 : windowFrames);
+                if (types != null) { System.Threading.Thread.Sleep(500); Info($"{Path.GetFileNameWithoutExtension(file)} on {chip}: the runtime's allocation ticks by type: {types.Top(8)}"); }
+                pictureHash = hash;                                                                  // every frame's picture, so a change in what the bridge draws shows with --verbose (the allocation numbers are blind to it)
+                return bytes;
+            }
+            double own = Run(CoreCatalog.Default(console, CoreSlot.Ppu), out _);
+            foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
+            {
+                double bytes = Run(chip, out ulong ph);
+                Info($"{Path.GetFileNameWithoutExtension(file)} on {chip}: hash of every frame's picture {ph:X16}");
+                AllocCase($"{Consoles.DisplayName(console)} {Path.GetFileNameWithoutExtension(file)} on {chip}", bytes, own, GameBytesLimit);
+            }
+        }
+        if (smsDir != "") foreach (var f in new[] { "Alex Kidd in Miracle World (USA).sms", "Sonic The Hedgehog (USA, Europe).sms" }) Game(smsDir, f, ConsoleKind.MasterSystem);
+        if (ggDir != "") foreach (var f in new[] { "Sonic The Hedgehog (U) (V1.1) [!].gg", "Columns (U) [!].gg" }) Game(ggDir, f, ConsoleKind.GameGear);
+        if (mdDir != "") foreach (var f in new[] { "Sonic the Hedgehog (JUE) [!].bin", "Streets of Rage (JUE) (REV 00) [!].bin", "Golden Axe (JU) (REV 00) [!].bin" }) Game(mdDir, f, ConsoleKind.Genesis);
+    }
+
+    /// <summary>A Master System / Game Gear scene with five tiles over every cell and twenty sprites; the caller moves the horizontal scroll each frame.</summary>
+    private static void SmsMoving(SmsRig r)
+    {
+        r.Cram(0, 0); r.Cram(1, Red); r.Cram(2, Green); r.Cram(3, Blue); r.Cram(4, Yellow); r.Cram(5, White); r.Cram(16, 0); r.Cram(17, Green); r.Cram(18, Yellow);
+        for (int t = 1; t <= 5; t++) r.Tile(t, t);
+        r.Tile(6, 1); r.Stripe(7, 2, 1);
+        for (int row = 0; row < 24; row++) for (int col = 0; col < 32; col++) r.Cell(row, col, 1 + (row * 3 + col) % 5);
+        for (int i = 0; i < 20; i++) r.Sprite(i, 10 + i * 11, 20 + (i % 5) * 30, 6 + i % 2);
+        r.Frames(2);
+    }
+
+    /// <summary>A Genesis scene with two planes, a window strip, thirty linked sprites and a scroll value for every line; the caller moves the lines each frame.</summary>
+    private static void MdMoving(MdRig r)
+    {
+        r.Color(0, 0); r.Color(1, 0x00E); r.Color(2, 0x0E0); r.Color(3, 0xE00); r.Color(17, 0x0EE); r.Color(18, 0xEE0); r.Color(33, 0xEEE);
+        for (int t = 1; t <= 6; t++) r.Stripe(t, 1 + t % 3, 3 - t % 3);
+        for (int row = 0; row < 28; row++) for (int col = 0; col < 64; col++) { r.Cell(MdRig.PlaneB, 64, row, col, 1 + (row + col) % 3, 0, prio: (col & 7) == 0); if ((row + col) % 3 == 0) r.Cell(MdRig.PlaneA, 64, row, col, 4 + col % 3, 1); }
+        for (int i = 0; i < 30; i++) r.Sprite(i, 8 + (i % 15) * 16, 20 + (i / 15) * 90, 2, 2, 1 + i % 6, pal: i % 2, link: i == 29 ? 0 : i + 1);
+        r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x03, 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
+        r.V.Vsram[0] = 11;
     }
 
     // ================================================================================================================ the session wrapper

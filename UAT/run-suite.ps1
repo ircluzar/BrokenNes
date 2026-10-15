@@ -181,7 +181,7 @@ function Resolve-RomPath {
             $p = $p.Replace('{' + $r.Name + '}', [string]$r.Value)
         }
     }
-    $p = [Environment]::ExpandEnvironmentVariables($p)   # a root may be %TEMP%\something (the Sega cases' generated programs)
+    $p = [Environment]::ExpandEnvironmentVariables($p)   # a root may be %TEMP%\something (the Sega cases' generated programs) or name %LOCALAPPDATA% (the Sega session cases keep unpacked ROMs under it)
     $p = $p -replace '/', '\'
     if ([System.IO.Path]::IsPathRooted($p)) { return $p }
     return (Join-Path $RepoRoot $p)
@@ -287,6 +287,41 @@ function Invoke-RomTestCase {
             crashInfo       = [string](Get-Prop $j 'CrashInfo' '')
         }
         Display  = "exit={0} {1}" -f $r.ExitCode, $(if ($j) { [string](Get-Prop $j 'FrameBufferHash' '(no hash)') } else { '(no json)' })
+    }
+}
+
+function Invoke-SessionCase {
+    <#
+      A console session (SNES, Game Boy, Master System, Game Gear, Genesis; the NES keeps romtest): Workshop --session-test builds the session the way the apps do, runs it
+      for 'frames' with the pad 'input', optional core swaps 'swap' ("200:apu:NES:FIX,..."), and reports the picture hash, the sound hash and level. Optional 'console'
+      (detected from the ROM when absent), 'region', 'genesisModel', 'smsModel'. expect: exitCode, frameBufferHash, audioHash, framesRun, distinctColors, result.
+    #>
+    param($Case, [string]$RomPath)
+    $a = @('--session-test', '--rom', $RomPath)
+    foreach ($k in @('console', 'cpu', 'ppu', 'apu', 'swap', 'region')) {
+        $v = Get-Prop $Case $k $null
+        if ($v) { $a += @("--$k", [string]$v) }
+    }
+    if (Get-Prop $Case 'genesisModel' $null) { $a += @('--genesis-model', [string](Get-Prop $Case 'genesisModel' '')) }
+    if (Get-Prop $Case 'smsModel' $null) { $a += @('--sms-model', [string](Get-Prop $Case 'smsModel' '')) }
+    $a += @('--frames', "$([int](Get-Prop $Case 'frames' 600))")
+    $inp = Get-Prop $Case 'input' $null
+    if ($inp) { $a += @('--input', [string]$inp) }
+    $a += '--json'
+
+    $r = Invoke-Workshop -Arguments $a -TimeoutMs ($TimeoutSeconds * 1000)
+    $j = ConvertFrom-CliJson $r.StdOut
+    [pscustomobject]@{
+        Raw      = $r
+        Observed = [pscustomobject]@{
+            exitCode        = $r.ExitCode
+            frameBufferHash = [string](Get-Prop $j 'FrameBufferHash' '')
+            audioHash       = [string](Get-Prop $j 'AudioHash' '')
+            framesRun       = [int](Get-Prop $j 'FramesRun' (-1))
+            distinctColors  = [int](Get-Prop $j 'DistinctColors' (-1))
+            result          = [string](Get-Prop $j 'Result' '')
+        }
+        Display  = "exit={0} {1}{2}" -f $r.ExitCode, $(if ($j) { [string](Get-Prop $j 'FrameBufferHash' '(no hash)') } else { '(no json)' }), $(if ($j -and (Get-Prop $j 'AudioRms' $null) -ne $null) { " a=$([string](Get-Prop $j 'AudioRms' ''))" } else { '' })
     }
 }
 
@@ -417,10 +452,11 @@ foreach ($w in $work) {
     for ($i = 0; $i -lt $runsPerCase; $i++) {
         $runs += switch ($kind) {
             'romtest'   { Invoke-RomTestCase   -Case $c -RomPath $w.RomPath }
+            'session'   { Invoke-SessionCase   -Case $c -RomPath $w.RomPath }
             'savestate' { Invoke-SaveStateCase -Case $c -RomPath $w.RomPath }
             'benchmark' { Invoke-BenchmarkCase -Case $c -RomPath $w.RomPath }
             'sega-run'  { Invoke-SegaRunCase   -Case $c -RomPath $w.RomPath }
-            default     { throw "Case '$id' has unknown kind '$kind' (expected romtest|savestate|benchmark|sega-run)" }
+            default     { throw "Case '$id' has unknown kind '$kind' (expected romtest|session|savestate|benchmark|sega-run)" }
         }
     }
     $first      = $runs[0]

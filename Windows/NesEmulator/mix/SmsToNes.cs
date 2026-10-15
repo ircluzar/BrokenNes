@@ -79,7 +79,7 @@ internal readonly record struct PictureWindow(int X0, int Y0, int W, int H, int 
 /// The 16-colour palettes are reduced by <see cref="SnesToNes.Quantizer"/> (the same grouping the SNES bridge uses): tiles are grouped by the colours they use, each group gets the 3 colours that fit its pixels best, and the
 /// colours are then matched to the NES chips' palette (as the FIX family draws it). The Master System's own picture is untouched by all of this: the board keeps running and is the reference.
 /// </summary>
-internal sealed class SmsToNes
+internal sealed class SmsToNes : IVariantLevels
 {
     private readonly NesPictureSink sink;
     public readonly BridgeCounters Counters = new();
@@ -91,7 +91,29 @@ internal sealed class SmsToNes
     // palette solvers that keep their last solution as the next frame's start (steady colours)
     private readonly SegaQuantizer layeredBgQ = new(), layeredObjQ = new(), flatBgQ = new(), flatObjQ = new();
 
-    public SmsToNes(string nesPpuId, bool gameGear) { sink = new NesPictureSink(nesPpuId); gg = gameGear; }
+    // The working memory of a frame, made once and cleared for each frame: a bridge that makes its tables anew allocates a few hundred KB a frame
+    // (`--picture-bridge-test --only alloc` measures what is left).
+    private readonly NesPicture scratch = new();
+    private readonly Dictionary<ulong, int> canonFirst = new(512);
+    private readonly int[] pal0 = new int[16], pal1 = new int[16];
+    private readonly int[][] bgPalette;
+    private readonly List<Piece> pieceBuf = new(), itemPiece = new();
+    private readonly bool[] seen0 = new bool[32 * 32], seen1 = new bool[32 * 32];
+    private readonly int[] fsLine = new int[ExtPicture.Lines], perLineLayered = new int[ExtPicture.Lines], perLineFlat = new int[240];
+    private readonly Dictionary<int, int> cellItem = new(), itemOf = new(), variantUses = new();
+    private readonly Dictionary<long, int> pieceItem = new();
+    private readonly Dictionary<int, int>[] tileOf = { new(), new() };
+    private readonly int[] nextTile = new int[2], fineXVotes = new int[8];
+    private readonly List<(int layer, int cell, int variant, int item, Cell c)> variants = new();
+    private readonly List<(Piece p, int item)> kept = new();
+    private readonly Cell?[,] cellGrid = new Cell?[30, 33];
+    private readonly Dictionary<int, Cell> variantCell = new();
+    private readonly int[,,] votes = new int[15, 17, 4];
+    private readonly FlatTilePacker packer = new();
+    // what FillLevels needs from the frame being drawn (the packer asks for the pixels of a variant while the flat path runs)
+    private SegaQuantizer? levelsQ; private byte[]? vramNow; private int bdNow;
+
+    public SmsToNes(string nesPpuId, bool gameGear) { sink = new NesPictureSink(nesPpuId); gg = gameGear; bgPalette = new[] { pal0, pal1 }; }
 
     public bool Layered => (sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront) != null;
 
@@ -120,7 +142,8 @@ internal sealed class SmsToNes
             // the TMS9918 modes of the SG-1000 are not translated: say so and show the backdrop, nothing else
             Counters.Add("frames in a TMS9918 graphics mode (not translated)");
             if (layered != null) { var e0 = layered.Ext ??= new ExtPicture(); e0.BeginFrame(); layered.ExtLineOffset = 8; }
-            return sink.Present(new NesPicture { Blank = true, Pal = Enumerable.Repeat((byte)0x0F, 32).ToArray(), Oam = Enumerable.Repeat((byte)0xFF, 256).ToArray() });
+            scratch.ClearToBlank();
+            return sink.Present(scratch);
         }
         for (int l = 0; l < win.H; l++) if (cap.PaletteHash[win.Y0 + l] != cap.PaletteHash[Math.Min(vdp.ActiveHeight, SmsLineCapture.Lines) - 1]) { Counters.Add("lines drawn with a palette other than the frame's"); }
         return layered != null ? RenderLayered(vdp, cap, win, layered) : RenderFlat(vdp, cap, win);
@@ -133,7 +156,7 @@ internal sealed class SmsToNes
     private readonly int[] canon = new int[512];
     private void BuildCanon(byte[] vram)
     {
-        var first = new Dictionary<ulong, int>();
+        var first = canonFirst; first.Clear();
         for (int t = 0; t < 512; t++)
         {
             ulong h = 14695981039346656037UL;
@@ -161,13 +184,15 @@ internal sealed class SmsToNes
         return (vram[a] >> bit & 1) | (vram[(a + 1) & 0x3FFF] >> bit & 1) << 1 | (vram[(a + 2) & 0x3FFF] >> bit & 1) << 2 | (vram[(a + 3) & 0x3FFF] >> bit & 1) << 3;
     }
 
-    /// <summary>The 16 colours of a palette (0 background, 1 sprite) as RGB.</summary>
-    private static int[] Colours(SmsVdp vdp, int bank)
+    /// <summary>The 16 colours of a palette (0 background, 1 sprite) as RGB, written into <paramref name="c"/>.</summary>
+    private static void Colours(SmsVdp vdp, int bank, int[] c)
     {
-        var pal = vdp.Palette; var c = new int[16];
+        var pal = vdp.Palette;
         for (int i = 0; i < 16; i++) c[i] = Rgb(pal[bank * 16 + i]);
-        return c;
     }
+
+    /// <summary>Both palettes of the frame (<c>bgPalette</c>[0] the background's, [1] the sprites' - the sprites read the same one).</summary>
+    private int[][] FramePalettes(SmsVdp vdp) { Colours(vdp, 0, pal0); Colours(vdp, 1, pal1); return bgPalette; }
 
     /// <summary>One sprite piece (an 8x8 tile of a sprite) on the chip's picture.</summary>
     private readonly record struct Piece(int X, int Y, int Tile, int Quadrant, bool Zoom);
@@ -175,7 +200,7 @@ internal sealed class SmsToNes
     /// <summary>The chip's sprite list as it draws it: the 0xD0 terminator, the 8-pixel shift, tall and zoomed sprites, positions that wrap to the top. Pieces are in the chip's own priority order.</summary>
     private List<Piece> ReadSprites(SmsVdp vdp, out int sprites, out bool zoom)
     {
-        var v = vdp.Vram; var r = vdp.Regs; var list = new List<Piece>();
+        var v = vdp.Vram; var r = vdp.Regs; var list = pieceBuf; list.Clear();
         int satBase = (r[5] & 0x7E) << 7;
         int xnBase = vdp.Revision == SmsVdpRevision.Sms1 && (r[5] & 1) == 0 ? satBase : satBase + 0x80;
         int shift = (r[0] & 0x08) != 0 ? 8 : 0, tileHi = (r[6] & 0x04) != 0 ? 256 : 0;
@@ -234,15 +259,14 @@ internal sealed class SmsToNes
         e.SpriteLimit = 1024; e.SpritesPerLine = zoomAny ? 16 : 8;
         int ntBase = NameTableBase(vdp);
         int bdFrame = Rgb(cap.Backdrop[Math.Min(H, SmsLineCapture.Lines) - 1]);
-        var bgPalette = new[] { Colours(vdp, 0), Colours(vdp, 1) };
-        var objPalette = Colours(vdp, 1);
+        var bgPalette = FramePalettes(vdp);
+        var objPalette = pal1;
 
         // ---- per line: backdrop, which layers and sprites are on, scroll, masks
         var L0 = e.Layers[0]; var L1 = e.Layers[1];
         L0.On.AsSpan().Clear(); L1.On.AsSpan().Clear();
         bool vlockAny = false, anyBg = false, anyObj = false;
-        var seen0 = new bool[32 * 32]; var seen1 = new bool[32 * 32]; var fsLine = new int[ExtPicture.Lines];
-        bool hiddenCols(int srcX) => srcX < win.X0 || srcX >= win.X0 + win.W;
+        Array.Clear(seen0); Array.Clear(seen1); Array.Clear(fsLine);
         for (int el = 0; el < h; el++)
         {
             int l = win.Y0 + el;
@@ -276,62 +300,30 @@ internal sealed class SmsToNes
             for (int p = 0; p < 4; p++) e.ObjZ[el * 4 + p] = 3;
         }
         // masks: outside the window (and the left-column mask, and the vertical-lock split) hide a layer's pixels
-        void HideLayer(ExtPicture.Layer L, Func<int, int, bool> hide)
-        {
-            bool any = false;
-            for (int el = 0; el < h; el++)
-                for (int x = 0; x < 256; x++) { bool hd = hide(el, x + dx); if (hd) any = true; L.Hidden[el * 256 + x] = hd; }
-            L.AnyHidden = any;
-        }
-        HideLayer(L0, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || ((cap.R0[win.Y0 + el] & 0x80) != 0 && sx >= 192 + fsLine[el]));
-        if (vlockAny) HideLayer(L1, (el, sx) => hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8) || sx < 192 + fsLine[el]);
+        HideLayer(L0, false, cap, win, h, dx);
+        if (vlockAny) HideLayer(L1, true, cap, win, h, dx);
         for (int el = 0; el < h; el++)
             for (int x = 0; x < 256; x++)
             {
                 int sx = x + dx;
-                bool hd = hiddenCols(sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8);
+                bool hd = HiddenCol(win, sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8);
                 e.ObjHidden[el * 256 + x] = hd;
                 if (hd) e.AnyObjHidden = true;
             }
         // outside the window (the Game Gear's bezel, the lines above and below): black
         for (int el = 0; el < h; el++)
-            for (int x = 0; x < 256; x++) if (hiddenCols(x + dx)) { e.Black[el * 256 + x] = true; e.AnyBlack = true; }
+            for (int x = 0; x < 256; x++) if (HiddenCol(win, x + dx)) { e.Black[el * 256 + x] = true; e.AnyBlack = true; }
 
         if (!anyBg) { return Finish(e, 0, 0, 0); }
 
         // ---- background tiles: one item per (tile, palette), 3 colours each, 8 palettes of them
         var bgQ = layeredBgQ; bgQ.BeginFrame();
-        var cellItem = new Dictionary<int, int>(); var variants = new List<(int layer, int cell, int variant, int item, Cell c)>();
-        void AddCells(bool[] seen, int layer, int col0, int col1)
-        {
-            for (int row = 0; row < 32; row++)
-                for (int col = col0; col < col1; col++)
-                {
-                    if (!seen[row * 32 + col]) continue;
-                    var cell = ReadCell(vdp, ntBase, row, col);
-                    int key = cell.Tile << 1 | (cell.Pal2 ? 1 : 0);
-                    if (!cellItem.TryGetValue(key, out int item))
-                    {
-                        var pal = bgPalette[cell.Pal2 ? 1 : 0];
-                        item = bgQ.Add(key, hist =>
-                        {
-                            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
-                            {
-                                int ci = Pixel(vram, cell.Tile * 32, y, x);
-                                if (ci == 0 && pal[0] == bdFrame) continue;
-                                int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
-                            }
-                        });
-                        cellItem[key] = item;
-                    }
-                    variants.Add((layer, row * 32 + col, cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0), item, cell));
-                }
-        }
-        AddCells(seen0, 0, 0, 32);
-        if (vlockAny) AddCells(seen1, 1, 0, 32);
+        cellItem.Clear(); variants.Clear();
+        AddCells(vdp, seen0, 0, 0, 32, ntBase, bdFrame, bgQ);
+        if (vlockAny) AddCells(vdp, seen1, 1, 0, 32, ntBase, bdFrame, bgQ);
         bgQ.Solve(ExtPicture.Palettes);
         for (int g = 0; g < ExtPicture.Palettes; g++) for (int lv = 1; lv < 4; lv++) e.BgRgb[g * 4 + lv] = (uint)NesFixPalette.ForTextbook(bgQ.Palette[g][lv]);
-        var tileOf = new Dictionary<int, int>[2] { new(), new() }; var nextTile = new[] { 1, 1 };
+        tileOf[0].Clear(); tileOf[1].Clear(); nextTile[0] = 1; nextTile[1] = 1;
         int overflow = 0;
         e.LayerCount = vlockAny ? 2 : 1;
         for (int k = 0; k < e.LayerCount; k++) { var X = e.Layers[k]; X.Enabled = true; X.MapWidth = 32; X.MapHeight = 32; X.SnesLayer = 0; }
@@ -357,8 +349,7 @@ internal sealed class SmsToNes
 
         // ---- sprites: the chip's own list, each piece a tile of its own palette group
         var objQ = layeredObjQ; objQ.BeginFrame();
-        var pieceItem = new Dictionary<long, int>(); var itemPiece = new List<Piece>();
-        var kept = new List<(Piece p, int item)>();
+        pieceItem.Clear(); itemPiece.Clear(); kept.Clear();
         int wanted = 0;
         foreach (var p in pieces)
         {
@@ -369,16 +360,14 @@ internal sealed class SmsToNes
             long key = (long)p.Tile << 4 | (p.Zoom ? (long)(p.Quadrant + 1) : 0);
             if (!pieceItem.TryGetValue(key, out int item))
             {
-                var pp = p;
-                item = objQ.Add(key, hist =>
-                {
+                item = objQ.Add(key, out var hist);
+                if (hist != null)
                     for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
                     {
-                        int ci = PiecePixel(vram, pp, y, x);
+                        int ci = PiecePixel(vram, p, y, x);
                         if (ci == 0) continue;
                         int rgb = objPalette[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
                     }
-                });
                 pieceItem[key] = item; itemPiece.Add(p);
             }
             kept.Add((p, item));
@@ -407,16 +396,64 @@ internal sealed class SmsToNes
         e.SpriteCount = n;
         e.PaletteVersion++;
         // sprites the chip itself drops (more than 8 pieces on a line): counted from the list, not from the compositor (which runs twice a frame)
-        var perLine = new int[ExtPicture.Lines]; int excess = 0;
+        var perLine = perLineLayered; Array.Clear(perLine); int excess = 0;
         foreach (var (p, _) in kept) for (int ln = Math.Max(0, p.Y - win.Y0); ln < Math.Min(h, p.Y - win.Y0 + 8); ln++) perLine[ln]++;
         for (int ln = 0; ln < h; ln++) if (perLine[ln] > e.SpritesPerLine) excess += perLine[ln] - e.SpritesPerLine;
         return Finish(e, overflow, objTilesOver, excess);
     }
 
+    /// <summary>The layered path's background cells that were seen: the tile each shows (one item per tile and palette line), and the variant (tile, palette line, flips) the layer's map will point at.</summary>
+    private void AddCells(SmsVdp vdp, bool[] seen, int layer, int col0, int col1, int ntBase, int bdFrame, SegaQuantizer bgQ)
+    {
+        var vram = vdp.Vram;
+        for (int row = 0; row < 32; row++)
+            for (int col = col0; col < col1; col++)
+            {
+                if (!seen[row * 32 + col]) continue;
+                var cell = ReadCell(vdp, ntBase, row, col);
+                int key = cell.Tile << 1 | (cell.Pal2 ? 1 : 0);
+                if (!cellItem.TryGetValue(key, out int item))
+                {
+                    var pal = bgPalette[cell.Pal2 ? 1 : 0];
+                    item = bgQ.Add(key, out var hist);
+                    if (hist != null)
+                        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                        {
+                            int ci = Pixel(vram, cell.Tile * 32, y, x);
+                            if (ci == 0 && pal[0] == bdFrame) continue;
+                            int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
+                        }
+                    cellItem[key] = item;
+                }
+                variants.Add((layer, row * 32 + col, cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0), item, cell));
+            }
+    }
+
+    private static bool HiddenCol(in PictureWindow win, int srcX) => srcX < win.X0 || srcX >= win.X0 + win.W;
+
+    /// <summary>The pixels of a layer that the window, the left-column mask and the vertical-lock split hide (the vertical-lock layer holds the columns from 192 on, the other layer is hidden there).</summary>
+    private void HideLayer(ExtPicture.Layer L, bool lockLayer, SmsLineCapture cap, in PictureWindow win, int h, int dx)
+    {
+        bool any = false;
+        for (int el = 0; el < h; el++)
+        {
+            int r0 = cap.R0[win.Y0 + el], from = 192 + fsLine[el];
+            for (int x = 0; x < 256; x++)
+            {
+                int sx = x + dx;
+                bool hd = HiddenCol(win, sx) || ((r0 & 0x20) != 0 && sx < 8) || (lockLayer ? sx < from : (r0 & 0x80) != 0 && sx >= from);
+                if (hd) any = true;
+                L.Hidden[el * 256 + x] = hd;
+            }
+        }
+        L.AnyHidden = any;
+    }
+
     private byte[] Finish(ExtPicture e, int bgOverflow, int objTilesOver, int spriteExcess)
     {
         // the native NES picture stays off: only the extension draws
-        var frame = sink.Present(new NesPicture { Pal = Enumerable.Repeat((byte)0x0F, 32).ToArray(), Oam = Enumerable.Repeat((byte)0xFF, 256).ToArray(), Blank = true });
+        scratch.ClearToBlank();
+        var frame = sink.Present(scratch);
         Counters.Add("background tiles past the layer's 1023 (wrong tiles shown)", bgOverflow);
         Counters.Add("sprite tiles past the 1024 the extension holds", objTilesOver);
         Counters.Add("sprite pieces over the 8-per-line limit (the chip drops them too)", spriteExcess);
@@ -428,7 +465,7 @@ internal sealed class SmsToNes
     private byte[] RenderFlat(SmsVdp vdp, SmsLineCapture cap, PictureWindow win)
     {
         var c = Counters;
-        var vram = vdp.Vram; var pic = new NesPicture();
+        var vram = vdp.Vram; var pic = scratch; pic.Clear();
         int H = vdp.ActiveHeight; bool ext = H != 192;
         int ox = win.OffsetX, oy = win.OffsetY, dx = win.Dx, h = win.H;
         int ntBase = NameTableBase(vdp);
@@ -437,7 +474,7 @@ internal sealed class SmsToNes
         bool displayOn = (cap.R1[Math.Min(win.Y0 + h / 2, SmsLineCapture.Lines - 1)] & 0x40) != 0;
         pic.Blank = !displayOn;
         // the NES shows the nametable shifted by one fine X and one fine Y for the whole frame: pick the ones most lines of the picture share
-        var xh = new int[8];
+        var xh = fineXVotes; Array.Clear(xh);
         int EffHs(int l) => (cap.R0[l] & 0x40) != 0 && l < 16 ? 0 : cap.R8[l];       // the top rows' scroll lock makes the line's scroll 0
         for (int el = 0; el < h; el++) xh[-EffHs(win.Y0 + el) & 7]++;
         int fineX = 0; for (int i = 1; i < 8; i++) if (xh[i] > xh[fineX]) fineX = i;
@@ -447,15 +484,13 @@ internal sealed class SmsToNes
         c.Add("lines with a fine scroll other than the frame's", linesOffFine);
 
         // cells: 33 x 30 of the NES screen, each the chip's tile under the cell's middle
-        var cells = new Cell?[30, 33];
-        var rowHs = new int[30];
+        var cells = cellGrid; Array.Clear(cells);
         for (int cy = 0; cy < 30; cy++)
         {
             int cellTop = cy * 8 - fineY - oy + win.Y0;                // the source line of the cell's first line (the cell may stick out above or below the window)
             if (cellTop + 7 < win.Y0 || cellTop >= win.Y0 + h) continue;
             int srcY = Math.Clamp(cellTop + 4, win.Y0, win.Y0 + h - 1);    // a line through the middle of the part of the cell the window shows
             int lineHs = (cap.R0[srcY] & 0x40) != 0 && srcY < 16 ? 0 : cap.R8[srcY];
-            rowHs[cy] = lineHs;
             bool vLock = (cap.R0[srcY] & 0x80) != 0;
             int my = ext ? (srcY + vs) & 0xFF : (srcY + vs) % 224;
             int myLocked = ext ? srcY & 0xFF : srcY % 224;
@@ -469,23 +504,23 @@ internal sealed class SmsToNes
             }
         }
         // tiles -> items (colours each uses) -> 4 palettes
-        var bgPalette = new[] { Colours(vdp, 0), Colours(vdp, 1) };
-        var bgQ = flatBgQ; bgQ.BeginFrame(); var itemOf = new Dictionary<int, int>();
+        var bgPalette = FramePalettes(vdp);
+        var bgQ = flatBgQ; bgQ.BeginFrame(); itemOf.Clear();
         for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
             if (cells[cy, cx] is not { } cell) continue;
             int key = cell.Tile << 1 | (cell.Pal2 ? 1 : 0);
             if (itemOf.ContainsKey(key)) continue;
-            var pal = bgPalette[cell.Pal2 ? 1 : 0]; var cc = cell;
-            itemOf[key] = bgQ.Add(key, hist =>
-            {
+            var pal = bgPalette[cell.Pal2 ? 1 : 0];
+            int newItem = bgQ.Add(key, out var hist);
+            if (hist != null)
                 for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
                 {
-                    int ci = Pixel(vram, cc.Tile * 32, y, x);
+                    int ci = Pixel(vram, cell.Tile * 32, y, x);
                     if (ci == 0 && pal[0] == bdFrame) continue;
                     int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
                 }
-            });
+            itemOf[key] = newItem;
         }
         bgQ.Solve(4);
         pic.Pal[0] = NesFixPalette.Nearest(bdFrame >> 16 & 0xFF, bdFrame >> 8 & 0xFF, bdFrame & 0xFF);
@@ -495,37 +530,23 @@ internal sealed class SmsToNes
             pic.Pal[g * 4 + lv] = NesFixPalette.Nearest(rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF);
         }
         // the tile variants (a tile of the video memory in a palette and a flip) the picture needs, by how many cells use each; the chip holds 255, the most used get one each and the rest are shown as the closest
-        static int VariantKey(Cell cell) => cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0);
-        var variantUses = new Dictionary<int, int>(); var variantCell = new Dictionary<int, Cell>();
+        variantUses.Clear(); variantCell.Clear();
         for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
             if (cells[cy, cx] is not { } cell) continue;
             int vk = VariantKey(cell);
             variantUses[vk] = variantUses.GetValueOrDefault(vk) + 1; variantCell[vk] = cell;
         }
-        byte[] VariantLevels(int vk)
-        {
-            var cell = variantCell[vk];
-            int item = itemOf[cell.Tile << 1 | (cell.Pal2 ? 1 : 0)];
-            var pal = bgPalette[cell.Pal2 ? 1 : 0];
-            var lvs = new byte[64];
-            for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
-            {
-                int ci = Pixel(vram, cell.Tile * 32, cell.VFlip ? 7 - y : y, cell.HFlip ? 7 - x : x);
-                lvs[y * 8 + x] = (byte)(ci == 0 && pal[0] == bdFrame ? 0 : bgQ.Level(item, pal[ci]));
-            }
-            return lvs;
-        }
-        var bgMap = FlatTilePacker.Pack(variantUses, VariantLevels, 255, out var bgKept, out int bgOver);
+        levelsQ = bgQ; vramNow = vram; bdNow = bdFrame;          // what FillLevels reads while the packer asks for the pixels of the variants
+        var bgMap = packer.Pack(variantUses, this, 255, out int bgOver);
         for (int t = 1; t <= 255; t++)
-            if (bgKept[t] is { } lv) for (int y = 0; y < 8; y++) { var (p0, p1) = FlatTilePacker.Row(lv, y); pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1; }
+            if (packer.Kept(t) is { } lv) for (int y = 0; y < 8; y++) { var (p0, p1) = FlatTilePacker.Row(lv, y); pic.ChrBg[t * 16 + y] = p0; pic.ChrBg[t * 16 + 8 + y] = p1; }
         var bgTiles = bgMap;
-        int BgTile(Cell cell) => bgMap[VariantKey(cell)];
-        var votes = new int[15, 17, 4]; int conflicts = 0;
+        Array.Clear(votes); int conflicts = 0;
         for (int cy = 0; cy < 30; cy++) for (int cx = 0; cx < 33; cx++)
         {
             if (cells[cy, cx] is not { } cell) continue;
-            int t = BgTile(cell);
+            int t = bgMap[VariantKey(cell)];
             if (cx < 32) pic.Nt0[cy * 32 + cx] = (byte)t; else pic.Nt1[cy * 32] = (byte)t;
             int g = bgQ.Group[itemOf[cell.Tile << 1 | (cell.Pal2 ? 1 : 0)]];
             votes[cy >> 1, cx >> 1, g]++;
@@ -545,9 +566,9 @@ internal sealed class SmsToNes
 
         // ---- sprites: 8x8 pieces in the chip's order; 64 at most (the NES chip drops what it cannot show on a line)
         var pieces = ReadSprites(vdp, out _, out bool zoom);
-        var objPalette = Colours(vdp, 1);
-        var objQ = flatObjQ; objQ.BeginFrame(); var pieceItem = new Dictionary<long, int>(); var itemPiece = new List<Piece>();
-        var keptPieces = new List<(Piece p, int item)>();
+        var objPalette = pal1;
+        var objQ = flatObjQ; objQ.BeginFrame(); pieceItem.Clear(); itemPiece.Clear();
+        var keptPieces = kept; keptPieces.Clear();
         foreach (var p in pieces)
         {
             int ey = p.Y - win.Y0, ex = p.X - dx;
@@ -555,11 +576,9 @@ internal sealed class SmsToNes
             long key = (long)p.Tile << 4 | (p.Zoom ? (long)(p.Quadrant + 1) : 0);
             if (!pieceItem.TryGetValue(key, out int item))
             {
-                var pp = p;
-                item = objQ.Add(key, hist =>
-                {
-                    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { int ci = PiecePixel(vram, pp, y, x); if (ci != 0) { int rgb = objPalette[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } }
-                });
+                item = objQ.Add(key, out var hist);
+                if (hist != null)
+                    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) { int ci = PiecePixel(vram, p, y, x); if (ci != 0) { int rgb = objPalette[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } }
                 pieceItem[key] = item; itemPiece.Add(p);
             }
             keptPieces.Add((p, item));
@@ -586,7 +605,7 @@ internal sealed class SmsToNes
             }
         }
         Array.Fill(pic.Oam, (byte)0xFF);
-        int nOam = 0, dropped = 0; var perLine = new int[240];
+        int nOam = 0, dropped = 0; var perLine = perLineFlat; Array.Clear(perLine);
         foreach (var (p, item) in keptPieces)
         {
             if (nOam >= 64 || item >= 256) { dropped++; continue; }
@@ -600,7 +619,23 @@ internal sealed class SmsToNes
             for (int ln = Math.Max(0, ny + 1); ln < Math.Min(240, ny + 9); ln++) perLine[ln]++;
         }
         c.Add("sprite pieces past the NES's 64 (or its 256 sprite tiles)", dropped);
-        c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", perLine.Count(n => n > 8));
+        int crowded = 0; for (int ln = 0; ln < perLine.Length; ln++) if (perLine[ln] > 8) crowded++;
+        c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", crowded);
         return sink.Present(pic);
+    }
+
+    private static int VariantKey(Cell cell) => cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0);
+
+    /// <summary>The 64 levels of a background tile variant (a tile of the video memory in a palette line and a flip) on the palettes the flat path chose this frame.</summary>
+    void IVariantLevels.FillLevels(int variantKey, byte[] lvs)
+    {
+        var cell = variantCell[variantKey];
+        int item = itemOf[cell.Tile << 1 | (cell.Pal2 ? 1 : 0)];
+        var pal = bgPalette[cell.Pal2 ? 1 : 0];
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+        {
+            int ci = Pixel(vramNow!, cell.Tile * 32, cell.VFlip ? 7 - y : y, cell.HFlip ? 7 - x : x);
+            lvs[y * 8 + x] = (byte)(ci == 0 && pal[0] == bdNow ? 0 : levelsQ!.Level(item, pal[ci]));
+        }
     }
 }

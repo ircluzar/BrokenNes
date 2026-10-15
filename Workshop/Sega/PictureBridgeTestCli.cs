@@ -11,7 +11,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--picture-bridge-test [--only catalog|nes2sega|sega2nes|session|classify|games] [--nes-roms dir] [--sms-roms dir] [--gg-roms dir] [--md-roms dir] [--verbose]</c>: the picture bridges, by measurement.
+/// <c>--picture-bridge-test [--only catalog|nes2sega|sega2nes|session|classify|games|alloc] [--nes-roms dir] [--sms-roms dir] [--gg-roms dir] [--md-roms dir] [--verbose] [--alloc-games] [--alloc-types] [--alloc-game name] [--alloc-warm N] [--alloc-window N]</c>: the picture bridges, by measurement.
 /// <list type="bullet">
 /// <item><b>catalog</b>: the menus (a Sega console lists the NES chips and, through them, the Game Boy / SNES / other Sega chips, never its own family's through a bridge; the NES lists SMS and MD under their families).</item>
 /// <item><b>nes2sega</b>: <c>PPU_SMS</c> and <c>PPU_MD</c> with synthetic NES pictures (a NES chip in front, the Sega chip drawing): exact colours by the documented rule, tile and sprite positions, flips, behind-the-background sprites, fine scroll, the sprite limits, 8x16, the tile budget and the counters that say so.</item>
@@ -19,6 +19,7 @@ namespace BrokenNes.Workshop.Sega;
 /// <item><b>session</b>: the wrapper session: in-place chip swaps, the status text, the counters, a static scene staying steady from frame to frame.</item>
 /// <item><b>classify</b>: the sweep's classifier with synthetic measurements (frozen, dead, static, lossy, hung, refused, crashed, alive).</item>
 /// <item><b>games</b>: real games from the user's libraries (when the directories are given): recognisable, tracked against the source chip's own picture, and the NES game untouched by its bridge.</item>
+/// <item><b>alloc</b>: what the translators (<c>SmsToNes</c>, <c>MdToNes</c>, the layered extension path and the flat path) allocate in a frame once warm: synthetic scenes that move every frame (0 bytes beyond the board's own), and with <c>--only alloc</c> (or <c>--alloc-games</c>) and the game directories, real games after a long run (a few tens of bytes at most: the tables grow to the most the game has needed). <c>--alloc-types</c> lists the types the runtime allocated, to find where a number comes from; <c>--verbose</c> prints a hash of every frame's picture, so a before and after of a change can be compared for being identical.</item>
 /// </list>
 /// Exit code 0 = every check passed. Every group is guarded: a bridge that throws is a failed check, not a crashed run.
 /// </summary>
@@ -57,6 +58,7 @@ internal static class PictureBridgeTestCli
         if (Want("session")) Guard("the Sega picture session", SessionChecks);
         if (Want("classify")) Guard("the sweep's classifier", Classifier);
         if (Want("games")) Guard("real games", () => Games(args));
+        if (only.Equals("alloc", StringComparison.OrdinalIgnoreCase) || only.Length == 0) Guard("allocation: what the translators allocate in a frame once warm", () => SegaScenes.Alloc(args));
         Console.WriteLine($"\n{Passes} passed, {Fails} failed");
         return Fails == 0 ? 0 : 1;
     }
@@ -112,6 +114,20 @@ internal static class PictureBridgeTestCli
         Check("sound: silent where the game is silent too is static", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0), true) == "static");
         Check("sound: ... and static when the game's own level is only a chip's idle ripple (-50 dBFS)", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0.0033), true) == "static");
         Check("sound: any real sound is alive", C(M(), ok, true) == "alive");
+        // round 4 (C4b): the hot-swap classes and the late-audio rule
+        string S(BridgeSweepCli.Measure m, BridgeSweepCli.Measure? control) => BridgeSweepCli.ClassifySwap(m, control);
+        var swapped = M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 5; });
+        Check("swap: in place, the picture still moving, is alive", S(swapped, M(m => m.ChangesLate = 6)) == "alive");
+        Check("swap: TrySwapCore refused is restart (the app would restart the game; the reason is in SwapNote), not a failure of the picture", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = false; }), ok) == "restart");
+        Check("swap: the picture gone after the swap is dead", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 1; }), ok) == "dead");
+        Check("swap: the picture stopped after the swap while the game goes on is frozen", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 0; }), M(m => m.ChangesLate = 6)) == "frozen");
+        Check("swap: ... and static when the game itself idles in the second half", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 0; }), M(m => m.ChangesLate = 0)) == "static");
+        Check("swap: refused, crashed and hung keep their own classes", S(M(m => m.Refused = true), ok) == "refused" && S(M(m => m.Crashed = true), ok) == "crashed" && S(M(m => m.Timeout = true), ok) == "hung");
+        Check("audio: silent where the game's own sound is audible, static where it is not", BridgeSweepCli.ClassifyAudio(0, ok) == "silent" && BridgeSweepCli.ClassifyAudio(0, M(m => m.AudioRms = 0)) == "static" && BridgeSweepCli.ClassifyAudio(0.05, ok) == "alive");
+        Check("audio after a swap is judged against the control's second half (a game silent by then is not blamed)", BridgeSweepCli.ClassifyAudio(0, M(m => { m.AudioRms = 0.05; m.AudioRmsLate = 0; }), lateOnly: true) == "static" && BridgeSweepCli.ClassifyAudio(0, M(m => { m.AudioRms = 0.05; m.AudioRmsLate = 0.05; }), lateOnly: true) == "silent");
+        Check("diverged: an alive run whose picture is far from the control's (mean luma 0.30) is diverged, one close to it (0.01) stays alive", BridgeSweepCli.Diverged("alive", false, 0.30) == "diverged" && BridgeSweepCli.Diverged("alive", false, 0.01) == "alive");
+        Check("diverged: ... a run that changed the picture chip is exempt, and a frozen or dead run keeps its own class", BridgeSweepCli.Diverged("alive", true, 0.30) == "alive" && BridgeSweepCli.Diverged("frozen", false, 0.30) == "frozen" && BridgeSweepCli.Diverged("dead", false, 0.30) == "dead");
+        Check("the menu entries of a console list every non-default option of its three menus (the sweep's input)", BridgeSweepCli.MenuEntries("sms", false).Count(e => e.slot == "apu") > 20 && BridgeSweepCli.MenuEntries("gb", false).Any(e => e.slot == "cpu" && e.id == "65816") && BridgeSweepCli.MenuEntries("nes", false).Any(e => e.slot == "cpu" && e.id == "Z80") && BridgeSweepCli.MenuEntries("nes", false).All(e => e.id != "FIX"));
     }
 
     // ------------------------------------------------------------------------------------------------------------------ games

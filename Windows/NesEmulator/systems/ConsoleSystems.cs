@@ -170,6 +170,23 @@ public static class RomDetect
         };
     }
 
+    /// <summary>What a file no console recognises is told: its name and size, what BrokenNes plays (by console and file extension, only the consoles that are on), and the one near miss the Sega library has (a 32X cartridge).</summary>
+    public static string UnrecognisedMessage(string fileName, int length)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"BrokenNes does not recognise \"{fileName}\" ({length:N0} bytes) as a game for any console it plays.\n\nIt plays:\n");
+        foreach (var k in Consoles.All)
+        {
+            if (k == ConsoleKind.GameBoyColor || !Consoles.IsAvailable(k)) continue;
+            var ext = Consoles.Extensions(k);
+            if (k == ConsoleKind.GameBoy) ext = ext.Concat(Consoles.Extensions(ConsoleKind.GameBoyColor)).Distinct().ToArray();
+            sb.Append($"  - {(k == ConsoleKind.GameBoy ? "Game Boy / Color" : Consoles.DisplayName(k))}: {string.Join(", ", ext)}\n");
+        }
+        sb.Append("\nor a .zip holding one of them. A file with another extension is read by its contents (a NES header, a Game Boy logo, a Sega header), so a renamed ROM still loads; this one matched none.");
+        if (Path.GetExtension(fileName).Equals(".32x", StringComparison.OrdinalIgnoreCase)) sb.Append("\n\nA Sega 32X cartridge needs the 32X's own processors and is not supported.");
+        return sb.ToString();
+    }
+
     /// <summary>A SNES internal header (LoROM $7FC0 or HiROM $FFC0, after an optional 512-byte copier header): the
     /// checksum and its complement add up to $FFFF.</summary>
     private static bool LooksLikeSnes(byte[] rom)
@@ -191,7 +208,11 @@ public static class RomDetect
 }
 
 /// <summary>One entry of a core menu: the id stored in settings, what to show, and the family it belongs to.</summary>
-public sealed record CoreOption(string Id, string Label, string Family);
+public sealed record CoreOption(string Id, string Label, string Family)
+{
+    /// <summary>True for a CPU entry that is an instruction-set wall: the chip really runs the game's machine code, which is another processor's, so the game stops almost at once (said in the label; the menus and the HTTP API show it).</summary>
+    public bool Wall { get; init; }
+}
 
 /// <summary>
 /// The core menus of each console: the console's own family first, then the other consoles' parts that can stand in
@@ -201,13 +222,16 @@ public sealed record CoreOption(string Id, string Label, string Family);
 public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
-    private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["CPU:SNES"] = "65816 (SNES CPU)", ["CPU:SM83"] = "SM83 (Game Boy CPU)",
+        ["CPU:SNES"] = "65816 (SNES CPU) - runs the game's 6502 code in its emulation mode; a game that uses the 6502's unofficial opcodes stops",
+        ["CPU:SM83"] = "SM83 (Game Boy CPU) - an instruction-set wall: it runs the game's 6502 code as SM83 instructions, so most games stop at once",
+        ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
+        ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
@@ -230,6 +254,25 @@ public static class CoreCatalog
         CoreSlot.Cpu => CoreRegistry.CpuIds, CoreSlot.Ppu => CoreRegistry.PpuIds, _ => CoreRegistry.ApuIds,
     };
 
+    /// <summary>
+    /// The tooltip of a core menu entry on a console other than the NES (the NES shows overlay cards): what the entry is in a line or two, and what it cannot do. The label says what the part is; this adds what the
+    /// choice costs: a part from another console is a bridge, and every bridge loses something that the status line and the HTTP API count.
+    /// </summary>
+    public static string Tip(ConsoleKind console, CoreSlot slot, CoreOption o)
+    {
+        string name = Consoles.DisplayName(console), own = Consoles.Family(console);
+        if (o.Wall) return o.Label;      // an instruction-set wall says so in its label: the game stops almost at once
+        if (o.Family == own) return $"{o.Label}\nThe {name}'s own {slot.ToString().ToUpperInvariant()} part: the game runs on it as it was made.";
+        string chip = o.Id.Contains(':') ? o.Id[(o.Id.IndexOf(':') + 1)..] : o.Id;
+        return slot switch
+        {
+            CoreSlot.Ppu => $"{o.Label}\nDraws the {name} picture with this {o.Family} picture part through a picture bridge. What the part cannot show (colours past its palette, more tiles than it holds, shading) is counted: the status line and GET /api/console list the losses.",
+            CoreSlot.Apu when o.Id.StartsWith("NES-FM:", StringComparison.OrdinalIgnoreCase) => $"{o.Label}\nPlays the Master System's PSG and its FM chip (the YM2413) as notes on the NES {chip} sound part. Voices the part cannot hold are dropped and counted; the chips' own timbres are approximated.",
+            CoreSlot.Apu => $"{o.Label}\nPlays the {name}'s sound chips as notes on this {o.Family} sound part (the {chip} chip). Voices it cannot hold are dropped and counted; the {name}'s own timbres are approximated, not reproduced.",
+            _ => $"{o.Label}\nRuns the game's code on another console's processor: this works only where the two instruction sets agree.",
+        };
+    }
+
     /// <summary>The menu for one slot of one console, own family first (and within the NES family, FIX first).</summary>
     public static IReadOnlyList<CoreOption> Options(ConsoleKind console, CoreSlot slot)
     {
@@ -243,7 +286,7 @@ public static class CoreCatalog
                 foreach (var id in ids.OrderBy(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(i => i, StringComparer.OrdinalIgnoreCase))
                 {
                     string fam = NesFamilyOf(slot, id);
-                    list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam));
+                    list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
                 }
                 break;
             }
@@ -268,6 +311,10 @@ public static class CoreCatalog
                         if (!gg) list.Add(new("SMS-FM", "SMS-FM (SN76489 PSG + YM2413 FM, the Japanese console)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
+                        // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
+                        if (!gg) foreach (var id in NesSoundChips().Where(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) || i.Equals("FIXS", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES-FM:" + id, SegaFmOnNesLabel(id), "NES"));
+                        // ... and, through the NES registers, on another console's sound chip (the Game Boy, SNES and Genesis ones; the Master System's own are this console's).
+                        foreach (var id in HubSoundChips(fam)) list.Add(new("NES:" + id, HubSoundLabel(id, "the Master System's PSG"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -285,6 +332,7 @@ public static class CoreCatalog
                         // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
                         // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
                         foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
+                        foreach (var id in HubSoundChips("Genesis")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Genesis's FM, DAC and PSG"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -302,6 +350,7 @@ public static class CoreCatalog
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
                         if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip, 8 channels (through NES registers)", "Game Boy"));
+                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the SNES's voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -314,7 +363,7 @@ public static class CoreCatalog
                         list.Add(new("GB-2X", "SM83 at double speed", "Game Boy"));
                         list.Add(new("GB-NESCLOCK", "SM83 at the NES clock (1.79 MHz)", "NES"));
                         list.Add(new("GB-SNESCLOCK", "SM83 at the SNES clock (3.58 MHz)", "SNES"));
-                        list.Add(new("65816", "65816 (SNES CPU)", "SNES"));
+                        list.Add(new("65816", "65816 (SNES CPU) - an instruction-set wall: it runs the game's SM83 code as 65816 instructions, so nearly every game stops at the boot logo", "SNES") { Wall = true });
                         break;
                     case CoreSlot.Ppu:
                         list.Add(new("GB", console == ConsoleKind.GameBoyColor ? "GB (Game Boy Color picture chip)" : "GB (Game Boy picture chip)", "Game Boy"));
@@ -326,6 +375,7 @@ public static class CoreCatalog
                         list.Add(new("GBS", "GBS (Game Boy sound chip + 4 channels for the bridges)", "Game Boy"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
+                        foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -377,6 +427,24 @@ public static class CoreCatalog
         _ => $"{id} - NES picture chip",
     };
 
+    /// <summary>The sound chips of other consoles that are NES APU cores (the bridges: Game Boy, SNES, Master System, Genesis), minus <paramref name="ownFamily"/>'s: a game's sound reaches them through the NES registers, which is how every foreign sound path works.</summary>
+    private static IEnumerable<string> HubSoundChips(string ownFamily) =>
+        CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) is var f && f != "NES" && f != ownFamily)
+            .OrderBy(i => Array.IndexOf(new[] { "Game Boy", "SNES", "Master System", "Genesis" }, NesFamilyOf(CoreSlot.Apu, i)))
+            .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The menu label of a Sega game's (or a Game Boy / SNES game's) sound played by another console's chip through the NES registers. Says what the chip is and what is carried; the losses of the NES hop are counted by the bridge.</summary>
+    private static string HubSoundLabel(string id, string carried) => id.ToUpperInvariant() switch
+    {
+        "DMG" => $"DMG - through a NES onto the Game Boy sound chip ({carried} as 2 pulses, wave and noise; mono)",
+        "DMGS" => $"DMGS - through a NES onto the Game Boy sound chip with 8 channels ({carried}; mono)",
+        "SNES" => $"SNES - through a NES onto the SNES sound (S-DSP; {carried} as sampled voices)",
+        "SMS" => $"SMS - through a NES onto the Master System sound chip ({carried} on the SN76489's 3 tones + noise)",
+        "SMSFM" => $"SMSFM - through a NES onto the Master System FM chip ({carried} on YM2413 instruments + the PSG's noise)",
+        "MD" => $"MD - through a NES onto the Genesis sound chips ({carried} on YM2612 voices + PSG)",
+        _ => $"{id} - through a NES onto another console's sound chip",
+    };
+
     private static IEnumerable<string> NesSoundChips() =>
         CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) == "NES")
             .OrderBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
@@ -387,6 +455,13 @@ public static class CoreCatalog
     {
         "FIXS" => "FIXS - the PSG on the 8-channel NES chip (mono; no YM2413 FM, no Game Gear stereo)",
         _ => $"{id} - the PSG on a NES sound chip (mono; no YM2413 FM, no Game Gear stereo)",
+    };
+
+    /// <summary>The menu label of the Japanese console's PSG + YM2413 played by a NES chip: says what is kept (the chip is detected, the music is the FM music) and what is lost (the timbre, voices beyond the chip's channels).</summary>
+    private static string SegaFmOnNesLabel(string id) => id.ToUpperInvariant() switch
+    {
+        "FIXS" => "FIXS - the Japanese console's PSG + FM on the 8-channel NES chip (FM found by the game; mono; 6 tonal voices + 2 noises of 18, the rest dropped and counted; every FM voice a plain pulse)",
+        _ => $"{id} - the Japanese console's PSG + FM on a NES sound chip (FM found by the game; mono; 3 tonal voices + 1 noise of 18, the rest dropped and counted; every FM voice a plain pulse)",
     };
 
     /// <summary>The menu label of a Genesis game's sound played by a NES chip. Honest about what the trip loses: FM timbre (every FM note is a plain pulse), the DAC's samples (noise hits), panning, and voices beyond the chip's channels.</summary>
@@ -437,6 +512,12 @@ public interface IConsoleSession : IDisposable
     /// from the current state. False when this swap cannot be done in place (the app then restarts the game on it).
     /// </summary>
     bool TrySwapCore(CoreSlot slot, string id);
+
+    /// <summary>
+    /// Why <see cref="TrySwapCore"/> refused (or would refuse) to change <paramref name="slot"/> to <paramref name="id"/> in place: words fit for a message, so the app can tell the user why the game restarts on the new core
+    /// instead of swapping it live. The default says only that this session cannot; a session that knows the real reason (a chip whose state cannot move between units, say) overrides it. Never empty.
+    /// </summary>
+    string SwapRefusal(CoreSlot slot, string id) => $"the {Consoles.DisplayName(Console)} session cannot change its {slot} core to {id} while the game runs";
 
     // ---- save states (the shared mechanism: the apps keep a quick slot per game and file / key-value storage; the NES has its own, older one and does not use this) ----
 
