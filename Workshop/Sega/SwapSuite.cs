@@ -77,6 +77,14 @@ internal static class SwapSuite
 
     private static IConsoleSession Real(IConsoleSession s) => s is BrokenSwap b ? b.Inner : s;
 
+    /// <summary>True when the session's sound is a NES core that sends its notes to the system MIDI synth instead of making samples (<c>NES:WF</c> on a machine that has a MIDI device): no PCM exists to measure.</summary>
+    private static bool MidiMode(IConsoleSession s)
+    {
+        if (SmsRomIo.Concrete(Real(s)).Board.Sound is not SmsSoundOnNes unit) return false;
+        var back = typeof(SmsSoundOnNes).GetField("back", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(unit);
+        return back is NesEmulator.APU_WF { SoundFontMode: true };
+    }
+
     private static string Sha(ReadOnlySpan<byte> b) => Convert.ToHexString(SHA1.HashData(b))[..16];
 
     private static Snap Take(IConsoleSession s)
@@ -170,6 +178,7 @@ internal static class SwapSuite
             yield return new SmsCheck($"{tag}: the control run is repeatable (machine, picture and every sample equal to a second run)", Describe(Take(again), want).Length == 0 && Take(again).Pic == want.Pic && SameAudio(againAudio, controlAudio));
 
             // ---- every id of every slot of the console's menus, swapped in the running game
+            var midiIds = new HashSet<string>();
             foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
                 foreach (var option in CoreCatalog.Options(console, slot))
                 {
@@ -184,10 +193,13 @@ internal static class SwapSuite
                     if (differs != "") problems.Add("the game was disturbed: " + differs);
                     if (!s.Description.Contains(slot switch { CoreSlot.Cpu => "CPU " + option.Id, CoreSlot.Ppu => option.Id.StartsWith("NES:") ? "PICTURE " + option.Id : "PPU " + option.Id, _ => "APU " + option.Id }, StringComparison.OrdinalIgnoreCase))
                         problems.Add("the description does not name the new core: " + s.Description);
-                    if (Math.Abs(audio.Count - controlAudio.Count) > 8) problems.Add($"audio {audio.Count} samples, control {controlAudio.Count}");   // a NES chip runs on its own sample clock: a sample or two over 90 frames
+                    // NES:WF sends its notes to the Windows MIDI synth when the machine has one (and then makes no PCM at all): its tone is not in the delivered samples, so it cannot be measured here; said, not hidden
+                    bool midi = slot == CoreSlot.Apu && MidiMode(s);
+                    if (midi) midiIds.Add(option.Id);
+                    if (!midi && Math.Abs(audio.Count - controlAudio.Count) > 8) problems.Add($"audio {audio.Count} samples, control {controlAudio.Count}");   // a NES chip runs on its own sample clock: a sample or two over 90 frames
                     var (hz, peak) = Tone(audio, s.SampleRate);
                     double wantHz = ToneHz * (slot == CoreSlot.Apu ? PitchFactor.GetValueOrDefault(option.Id, 1.0) : 1.0);
-                    if (Math.Abs(hz / wantHz - 1) > 0.02 || peak < 400) problems.Add($"the tone is {hz:F1} Hz at peak {peak}, wanted {wantHz:F1} Hz audible");
+                    if (!midi && (Math.Abs(hz / wantHz - 1) > 0.02 || peak < 400)) problems.Add($"the tone is {hz:F1} Hz at peak {peak}, wanted {wantHz:F1} Hz audible");
                     bool ownUnit = slot == CoreSlot.Apu && option.Family == Consoles.Family(console) && option.Id != "SMS-FM";
                     if (slot != CoreSlot.Apu || ownUnit)
                         if (!SameAudio(audio, controlAudio)) problems.Add("the sound is not the control's sample for sample");
@@ -205,6 +217,8 @@ internal static class SwapSuite
                     }
                     yield return new SmsCheck($"{tag}: swap {slot} -> {option.Id} mid-game keeps the game, the picture and the sound", problems.Count == 0, string.Join("; ", problems));
                 }
+
+            if (midiIds.Count > 0) yield return SmsCheck.Skipped($"{tag}: the tone of {string.Join(", ", midiIds.OrderBy(x => x))} after a swap", "this machine has a MIDI device, so the unit sent its notes to the system synth and made no samples to measure (the swap itself, the game and the picture were still checked)");
 
             // ---- an id that is not on the menu is refused and nothing is touched
             foreach (var (slot, bogus) in new[] { (CoreSlot.Cpu, "BOGUS"), (CoreSlot.Ppu, "NES:NOPE"), (CoreSlot.Ppu, "MD"), (CoreSlot.Apu, "NO-SUCH-UNIT"), (CoreSlot.Apu, "NES:NOPE"), (CoreSlot.Apu, gg ? "SMS-FM" : "GG"), (CoreSlot.Apu, "") })
@@ -227,7 +241,7 @@ internal static class SwapSuite
                     {
                         using var s = slot == CoreSlot.Ppu ? Make(console, rom, file, ppu: option.Id) : Make(console, rom, file, apu: option.Id);
                         var audio = Play(s, 20);
-                        if (Take(s).Colours < 2 || audio.Count == 0) broken.Add($"{slot} {option.Id}: blank or silent");
+                        if (Take(s).Colours < 2 || (audio.Count == 0 && !(slot == CoreSlot.Apu && MidiMode(s)))) broken.Add($"{slot} {option.Id}: blank or silent");
                     }
                     catch (Exception e) { broken.Add($"{slot} {option.Id}: {e.GetType().Name} {e.Message}"); }
                 }
@@ -316,7 +330,7 @@ internal static class SwapSuite
                 string differs = Describe(got, want);
                 if (differs != "") problems.Add("the game was disturbed: " + differs);
                 var (_, peak) = Tone(audio, s.SampleRate);
-                if (ctlPeak > 300 && slot == CoreSlot.Apu && peak < 100) problems.Add($"silent after the swap (peak {peak}, control {ctlPeak})");
+                if (ctlPeak > 300 && slot == CoreSlot.Apu && peak < 100 && !MidiMode(s)) problems.Add($"silent after the swap (peak {peak}, control {ctlPeak})");
                 if (slot == CoreSlot.Ppu && got.Colours < 2) problems.Add("blank picture");
                 yield return new SmsCheck($"{inner}: swap {slot} -> {id} at frame {WarmReal} of a played game: the game goes on as the control does", problems.Count == 0, string.Join("; ", problems));
             }

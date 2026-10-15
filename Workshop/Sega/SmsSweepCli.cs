@@ -637,7 +637,7 @@ internal static class Sheets
                     string cap = (r.Console + " " + Path.GetFileNameWithoutExtension(r.File));
                     g.DrawString(cap.Length > 52 ? cap[..52] : cap, font, Brushes.White, new RectangleF(x + 2, y + th + 1, tw - 4, label - 2));
                 }
-                string path = Path.Combine(shotsDir, $"sheet_{group.Key}_{s + 1}.png");
+                string path = Path.Combine(shotsDir, $"sheet_{group.Key.Replace('?', 'q')}_{s + 1}.png");   // the class "audio-bug?" has a character a file name cannot (GDI+ then failed with a generic error and ended the whole sweep run)
                 bmp.Save(path, ImageFormat.Png);
             }
         }
