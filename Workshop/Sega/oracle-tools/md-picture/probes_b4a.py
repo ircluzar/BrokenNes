@@ -169,6 +169,18 @@ def z80_int_repeats(ks, frames=20, h40=True, vint_on=True):
     return s
 
 
+def write_rate(kind='cram', h40=True, display=True, per=16):
+    """How fast the 68000 can push words into one VDP memory: a main loop of `per` data-port writes and a counter increment, the vertical interrupt counting frames. RAM: long at $FF0000 = loop laps, word at
+    $FF0004 = frames; laps per frame is the throughput (write waits for the FIFO and the access slots included), compared between the machines. kind: 'cram', 'vram' or 'vsram'; display off gives the
+    blanking-rate access slots."""
+    cmd = {'cram': '$C0000000', 'vram': '$40000000', 'vsram': '$40000010'}[kind]
+    s = prologue(h40, display, regs={1: (0x74 if display else 0x34), 0: 0x04, 15: 2})
+    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.l #%s,(a4)' % cmd, '    moveq #0,d0', '    move.w #$2000,sr', 'main:')
+    s += ('    move.w d0,(a3)' + NL) * per
+    s += _lines('    addq.l #1,(a0)', '    bra.s main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    rte')
+    return s
+
+
 def frame_phase(il=0, h40=True):
     """The VINT handler reads the HV counter first and the status register second (field flag, bit 4), into RAM ($FF0004...: HV, status per frame). Interrupts on, a nop loop as the main program: successive HV
     values drift by the 68000's phase against the frame, and a field that is a line longer shows as a jump. `il` is R12's interlace field (0, 1 or 3)."""
