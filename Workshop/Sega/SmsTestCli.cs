@@ -46,6 +46,7 @@ internal static class SmsTestCli
         if (Opt(args, "write-irq-probes") is { } irqDir) return IrqProbes.Write(irqDir);
         if (Opt(args, "write-vdp-probes") is { } vdpDir) return VdpSlotProbes.Write(vdpDir);
         if (Opt(args, "write-sg-programs") is { } sgDir) return Sg1000Progs.Write(sgDir);
+        if (Opt(args, "write-swap-programs") is { } swapDir) { Directory.CreateDirectory(swapDir); File.WriteAllBytes(Path.Combine(swapDir, "tone-scroller.sms"), SwapSuite.ToneScroller(false)); File.WriteAllBytes(Path.Combine(swapDir, "tone-scroller.gg"), SwapSuite.ToneScroller(true)); Console.WriteLine("wrote tone-scroller.sms / .gg to " + swapDir); return 0; }
         if (Opt(args, "vram-sweep") is { } sweepDir) return VdpSlotProbes.Sweep(ctx, sweepDir);
         if (Opt(args, "vram-double") is { } doubleDir) return VdpSlotProbes.DoubleReport(ctx, doubleDir);
         if (Opt(args, "sg-hash") is { } sgHashDir) { Directory.CreateDirectory(sgHashDir); return Sg1000Suite.Print(ctx, sgHashDir); }
@@ -172,6 +173,8 @@ internal static class SmsSuites
             c => { }, "a work RAM byte left unrestored after the load"),
         new("sessionstate", "save states through the shared session contract (IConsoleSession.SaveState / LoadState): round trip at many save points, every field compared, refusals of a state that does not belong (sound unit, game, console, region, damage) with the machine left as it was, a session without states says so", SessionStateSuite.Run,
             c => { }, "a VRAM byte left unrestored after the load"),
+        new("swap", "hot swapping of every core slot of the Master System and the Game Gear mid-game through the session the apps build: every id of the CPU, picture (own chip and each NES:<chip>) and sound (own unit, SMS-FM, each NES:<chip>) menus on a tone-and-scroll program and, with --roms, on real games; the game, its picture and its tone carry on, a bad id is refused, chains and a swap per frame", SwapSuite.Run,
+            c => { }, "a session whose TrySwapCore says yes to every id and silences the PSG on a sound swap"),
         new("eeprom", "the 24C01 serial EEPROM of the Game Gear baseball cartridges (the SegaEeprom mapper) driven by a data-sheet bit-banging master: acknowledge, byte write, random and sequential read, page wrap, stop, save file, state in mid-transfer", EepromSuite.Run,
             c => { }, "a read started with the write bit"),
         new("bios", "BIOS images (names with BIOS as a word) run as the console's BIOS from a cold power-on with an empty slot: BIOS mapped, VDP cold, $3E switches it off, the name rule, state", EepromSuite.RunBios,

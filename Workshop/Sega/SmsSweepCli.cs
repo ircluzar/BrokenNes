@@ -297,7 +297,7 @@ internal static class SweepProbe
 
             using var session = SmsSweepCli.ForcedModel is { } forced && kind == ConsoleKind.MasterSystem
                 ? new SmsSession(rom, kind.Value, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), inner, forced, null)
-                : (SmsSession)ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner);
+                : SmsRomIo.Concrete(ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner));
             var board = session.Board;
             row.Model = session.Model.ToString(); row.Region = board.Region.ToString().ToUpperInvariant(); row.Mapper = board.Cart.Mapper.ToString();
             bool staticBattery = board.Cart.HasBattery;

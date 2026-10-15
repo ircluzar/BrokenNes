@@ -355,6 +355,10 @@ internal static class SmsRunCli
 /// <summary>ROM loading and input scripts shared by the Master System tools.</summary>
 internal static class SmsRomIo
 {
+    /// <summary>The board session under a session the app's factory returned: every Sega session is wrapped by <c>SegaPictureSession</c> (the NES picture-chip bridge), so a tool that wants the Master System / Game Gear board looks through it.</summary>
+    public static SmsSession Concrete(IConsoleSession s) =>
+        (s as NesEmulator.Mix.SegaPictureSession)?.Inner as SmsSession ?? s as SmsSession ?? throw new InvalidCastException($"{s.GetType().Name} is not a Master System / Game Gear session");
+
     /// <summary>The ROM bytes of a file: a .zip is searched for its first Master System / Game Gear / SG-1000 file; any other file is read as it is.</summary>
     public static byte[] Load(string path, out string innerName)
     {
