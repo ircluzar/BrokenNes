@@ -308,6 +308,7 @@ internal static class MdRunCli
                 case "winstretch": MdVdp.WindowStretchColumn = v[0] != 0; break;
                 case "h32stretch": MdVdp.H32StretchZero = v[0] != 0; break;
                 case "lbshadow": MdVdp.LeftBlankShadowRule = v[0]; break;
+                case "vsmask11": MdVdp.VsramIm2Mask11 = v[0] != 0; break;
                 case "vsshift": MdVdp.VsramColumnShift = v[0]; break;
                 case "colpair": MdVdp.ColumnPairRule = v[0] != 0; break;
                 case "sizerule": MdVdp.PlaneSizeRule = v[0]; break;

@@ -598,6 +598,15 @@ internal static class MdPictureTest
         p.Frame();
         Check("vertical scroll in mode 2 counts picture rows: a scroll of 16 shows the second cell row at the top", p.V.WovenPicture[2] == Argb(p.CramOf(0, 5), 0) && p.V.WovenPicture[15 * MdVdp.PictureStride + 2] == Argb(p.CramOf(0, 5), 0));
 
+        // a 128-cell-high plane is 2048 picture rows in mode 2, and the vertical scroll has eleven bits there (oracle: a random scene with such a plane, 53,000 pixels off with ten bits, 15 with eleven)
+        p = new Pic();
+        p.V.Reg[12] = 0x87; p.V.Reg[16] = 0x30;
+        Cell16(p, 3, 1, 1); Cell16(p, 4, 5, 5);
+        p.Cell(PlaneA, 0, 0, 3, 32); p.Cell(PlaneA, 0, 64, 4, 32);
+        p.V.Vsram[0] = 0x400;
+        p.Frame();
+        Check("interlace mode 2 with a 32 x 128 plane: a vertical scroll of 1024 (eleven bits) shows cell row 64 (picture row 1024) at the top", p.V.WovenPicture[2] == Argb(p.CramOf(0, 5), 0), $"{p.V.WovenPicture[2]:X8}");
+
         // sprites: Y is in picture rows (offset 256), a cell is 16 rows
         p = new Pic();
         p.V.Reg[12] = 0x87;
