@@ -191,7 +191,11 @@ public static class RomDetect
 }
 
 /// <summary>One entry of a core menu: the id stored in settings, what to show, and the family it belongs to.</summary>
-public sealed record CoreOption(string Id, string Label, string Family);
+public sealed record CoreOption(string Id, string Label, string Family)
+{
+    /// <summary>True for a CPU entry that is an instruction-set wall: the chip really runs the game's machine code, which is another processor's, so the game stops almost at once (said in the label; the menus and the HTTP API show it).</summary>
+    public bool Wall { get; init; }
+}
 
 /// <summary>
 /// The core menus of each console: the console's own family first, then the other consoles' parts that can stand in
@@ -207,7 +211,8 @@ public static class CoreCatalog
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["CPU:SNES"] = "65816 (SNES CPU)", ["CPU:SM83"] = "SM83 (Game Boy CPU)",
+        ["CPU:SNES"] = "65816 (SNES CPU) - runs the game's 6502 code in its emulation mode; a game that uses the 6502's unofficial opcodes stops",
+        ["CPU:SM83"] = "SM83 (Game Boy CPU) - an instruction-set wall: it runs the game's 6502 code as SM83 instructions, so most games stop at once",
         ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
         ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
@@ -245,7 +250,7 @@ public static class CoreCatalog
                 foreach (var id in ids.OrderBy(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(i => i, StringComparer.OrdinalIgnoreCase))
                 {
                     string fam = NesFamilyOf(slot, id);
-                    list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam));
+                    list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
                 }
                 break;
             }
@@ -322,7 +327,7 @@ public static class CoreCatalog
                         list.Add(new("GB-2X", "SM83 at double speed", "Game Boy"));
                         list.Add(new("GB-NESCLOCK", "SM83 at the NES clock (1.79 MHz)", "NES"));
                         list.Add(new("GB-SNESCLOCK", "SM83 at the SNES clock (3.58 MHz)", "SNES"));
-                        list.Add(new("65816", "65816 (SNES CPU) - an instruction-set wall: it runs the game's SM83 code as 65816 instructions, so nearly every game stops at the boot logo", "SNES"));
+                        list.Add(new("65816", "65816 (SNES CPU) - an instruction-set wall: it runs the game's SM83 code as 65816 instructions, so nearly every game stops at the boot logo", "SNES") { Wall = true });
                         break;
                     case CoreSlot.Ppu:
                         list.Add(new("GB", console == ConsoleKind.GameBoyColor ? "GB (Game Boy Color picture chip)" : "GB (Game Boy picture chip)", "Game Boy"));

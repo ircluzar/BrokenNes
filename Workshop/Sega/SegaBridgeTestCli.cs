@@ -68,6 +68,11 @@ internal static class SegaBridgeTestCli
             var (p, f) = SmsFmOnNesTests.Run(s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), verbose);
             passes += p; failures += f;
         }
+        // the patch banks by analysis (`--only patches`)
+        {
+            var (p, f) = PatchDistinctTests.Run(s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), verbose);
+            passes += p; failures += f;
+        }
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
     }

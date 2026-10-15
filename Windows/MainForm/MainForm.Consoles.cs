@@ -56,9 +56,19 @@ namespace BrokenNes.Windows
             {
                 // Hot swap: the game keeps running on the new part (memory, picture and sound state carry over). Only a
                 // swap the session cannot do in place restarts the game.
-                bool swapped;
-                lock (emulationLock) swapped = session.TrySwapCore(slot, id);
-                if (!swapped) { StartSession(console, sessionRom, sessionRomName, currentRomPath); return; }
+                bool swapped; string why = "";
+                lock (emulationLock) { swapped = session.TrySwapCore(slot, id); if (!swapped) why = session.SwapRefusal(slot, id); }
+                if (!swapped)
+                {
+                    // the game restarts on the new part, and the title says why (never a silent restart)
+                    Console.WriteLine($"[Console] {slot} -> {id} restarts the game: {why}");
+                    Diagnostics.ShutdownDiagnostics.Log($"Core swap restarts the game: {console} {slot} -> {id}: {why}");
+                    StartSession(console, sessionRom, sessionRomName, currentRomPath);
+                    consoleNote = $"restarted on {slot.ToString().ToUpperInvariant()} {id}: {why}";
+                    UpdateConsoleTitle();
+                    return;
+                }
+                consoleNote = "";
                 Diagnostics.ShutdownDiagnostics.Log($"Core hot-swap: {console} {slot} -> {id} ({session.Description})");
                 UpdateCoresMenus();
                 UpdateConsoleTitle();
@@ -100,8 +110,27 @@ namespace BrokenNes.Windows
                     PictureBridge = BridgeOf(s) is { } bi && bi.BridgeName != "none" ? bi.BridgeName : null,
                     PictureBridgeCounters = BridgeOf(s) is { } bc && bc.BridgeName != "none" ? new Dictionary<string, long>(bc.Counters.Totals) : null,
                     PictureBridgeSummary = BridgeOf(s) is { } bs && bs.BridgeName != "none" ? bs.Counters.Summary(12) : null,
+                    // the machine a Sega game runs as, and what the session can do with saves and states (the reason when it cannot)
+                    Region = SegaMachineOf(s)?.region, Model = SegaMachineOf(s)?.model,
+                    HasBattery = s?.HasBattery, SupportsState = s?.SupportsState, StateUnsupportedReason = s != null && !s.SupportsState ? s.StateUnsupportedReason : null,
+                    Note = s != null && consoleNote.Length > 0 ? consoleNote : null,
                 };
             };
+            server.QuickStateReason = () => quickStateReason;
+            server.GetSegaSettings = () => new
+            {
+                region = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.RegionFromKey(config.SegaRegion)),
+                genesisModel = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.GenesisModelFromKey(config.GenesisModel)),
+                masterSystemModel = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.MasterSystemModelFromKey(config.MasterSystemModel)),
+                running = SegaMachineOf(session) is { } m ? new { region = m.region, model = m.model } : null,
+                choices = new
+                {
+                    region = NesEmulator.Sega.SegaOptions.RegionChoices.Select(c => new { key = c.Key, label = c.Label }),
+                    genesisModel = NesEmulator.Sega.SegaOptions.GenesisModelChoices.Select(c => new { key = c.Key, label = c.Label }),
+                    masterSystemModel = NesEmulator.Sega.SegaOptions.MasterSystemModelChoices.Select(c => new { key = c.Key, label = c.Label }),
+                },
+            };
+            server.SetSegaSettings = (region, genesisModel, masterSystemModel) => { bool ok = false; Invoke(() => ok = SetSegaOptions(region, genesisModel, masterSystemModel)); return ok; };
             server.GetConsoleFrame = () =>
             {
                 var s = session;
@@ -182,6 +211,7 @@ namespace BrokenNes.Windows
             }
             consoleMenu.DropDownItems.Add(new ToolStripSeparator());
             consoleMenu.DropDownItems.Add(BuildGbLookMenu());
+            consoleMenu.DropDownItems.Add(BuildSegaMenu());
             consoleMenu.DropDownOpening += (s, e) => RefreshConsoleMenu();
             RefreshConsoleMenu();
             return consoleMenu;
@@ -280,6 +310,77 @@ namespace BrokenNes.Windows
                 if (item.Tag is ConsoleKind k) item.Checked = k == SelectedConsole;
         }
 
+        // ------------------------------------------------------------------ the Sega machine settings
+        private ToolStripMenuItem? segaMenu;
+
+        /// <summary>What the user chose for the Sega machines (Auto reads each from the game), as the sessions take it.</summary>
+        private NesEmulator.Sega.SegaOptions SegaOptionsFromConfig() =>
+            new(NesEmulator.Sega.SegaOptions.RegionFromKey(config.SegaRegion), NesEmulator.Sega.SegaOptions.GenesisModelFromKey(config.GenesisModel), NesEmulator.Sega.SegaOptions.MasterSystemModelFromKey(config.MasterSystemModel));
+
+        /// <summary>Console > Sega machine: the video standard, the Genesis board and the Master System board. Each is "Automatic" until chosen; a change restarts a running game of the console it concerns (the boards' states include them).</summary>
+        private ToolStripMenuItem BuildSegaMenu()
+        {
+            segaMenu = new ToolStripMenuItem("Sega machine");
+            void Group(string heading, (string Key, string Label)[] choices, Func<string> current, Action<string> set)
+            {
+                if (segaMenu.DropDownItems.Count > 0) segaMenu.DropDownItems.Add(new ToolStripSeparator());
+                segaMenu.DropDownItems.Add(new ToolStripMenuItem(heading) { Enabled = false, Font = new Font(segaMenu.Font ?? SystemFonts.MenuFont!, FontStyle.Bold) });
+                foreach (var (key, label) in choices)
+                {
+                    string k = key;
+                    segaMenu.DropDownItems.Add(new ToolStripMenuItem(label, null, (s, e) => set(k)) { Tag = (heading, k), Padding = new Padding(8, 0, 0, 0) });
+                }
+                segaMenu.DropDownOpening += (s, e) => { foreach (var it in segaMenu.DropDownItems.OfType<ToolStripMenuItem>()) if (it.Tag is ValueTuple<string, string> t && t.Item1 == heading) it.Checked = t.Item2 == current(); };
+            }
+            Group("Video standard (Master System, Genesis; the Game Gear is always 60 Hz)", NesEmulator.Sega.SegaOptions.RegionChoices, () => NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.RegionFromKey(config.SegaRegion)), k => SetSegaOptions(k, null, null));
+            Group("Genesis board", NesEmulator.Sega.SegaOptions.GenesisModelChoices, () => NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.GenesisModelFromKey(config.GenesisModel)), k => SetSegaOptions(null, k, null));
+            Group("Master System board", NesEmulator.Sega.SegaOptions.MasterSystemModelChoices, () => NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.MasterSystemModelFromKey(config.MasterSystemModel)), k => SetSegaOptions(null, null, k));
+            return segaMenu;
+        }
+
+        /// <summary>Change the Sega machine settings (null leaves one alone; an unknown key is refused and false is returned). A running game of a console the change concerns restarts on it, and the title says why.</summary>
+        private bool SetSegaOptions(string? region, string? genesisModel, string? masterSystemModel)
+        {
+            bool Known((string Key, string Label)[] choices, string? v) => v == null || choices.Any(c => c.Key.Equals(v, StringComparison.OrdinalIgnoreCase));
+            if (!Known(NesEmulator.Sega.SegaOptions.RegionChoices, region) || !Known(NesEmulator.Sega.SegaOptions.GenesisModelChoices, genesisModel) || !Known(NesEmulator.Sega.SegaOptions.MasterSystemModelChoices, masterSystemModel)) return false;
+            var before = SegaOptionsFromConfig();
+            Helpers.ConfigHelper.Update(config, c =>
+            {
+                if (region != null) c.SegaRegion = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.RegionFromKey(region));
+                if (genesisModel != null) c.GenesisModel = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.GenesisModelFromKey(genesisModel));
+                if (masterSystemModel != null) c.MasterSystemModel = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.MasterSystemModelFromKey(masterSystemModel));
+            });
+            var after = SegaOptionsFromConfig();
+            if (session != null && sessionRom != null && Consoles.IsSega(session.Console))
+            {
+                bool concerns = session.Console switch
+                {
+                    ConsoleKind.Genesis => before.Region != after.Region || before.GenesisModel != after.GenesisModel,
+                    ConsoleKind.MasterSystem => before.Region != after.Region || before.MasterSystemModel != after.MasterSystemModel,
+                    _ => before.Region != after.Region,
+                };
+                if (concerns)
+                {
+                    StartSession(session.Console, sessionRom, sessionRomName, currentRomPath);
+                    consoleNote = "restarted on the new machine settings";
+                    UpdateConsoleTitle();
+                }
+            }
+            return true;
+        }
+
+        /// <summary>The machine a Sega session runs as (region, board), read from the board itself, for the status line and the HTTP API; null for any other session.</summary>
+        private static (string region, string model)? SegaMachineOf(IConsoleSession? s)
+        {
+            var inner = (s as NesEmulator.Mix.SegaPictureSession)?.Inner ?? s;
+            return inner switch
+            {
+                NesEmulator.Sega.SmsSession sms => (sms.Board.Region.ToString(), sms.Model.ToString()),
+                NesEmulator.Sega.MdSession md => (md.Board.Region.ToString(), md.Board.Model.ToString()),
+                _ => null,
+            };
+        }
+
         /// <summary>Switch the base console. A game the new console can run (Game Boy <-> Game Boy Color) restarts on it;
         /// any other game is closed and the console waits for a ROM.</summary>
         private void SwitchConsole(ConsoleKind console)
@@ -311,8 +412,12 @@ namespace BrokenNes.Windows
             string game = session != null ? session.Title
                 : nes != null && !string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(nes.RomName) : "";
             string console = Consoles.DisplayName(session?.Console ?? SelectedConsole);
-            Text = game.Length > 0 ? $"BrokenNes 2 - {console} - {game}" : $"BrokenNes 2 - {console} - Emulator > Load ROM";
+            string note = session != null && consoleNote.Length > 0 ? $" ({consoleNote})" : "";
+            Text = game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}" : $"BrokenNes 2 - {console} - Emulator > Load ROM";
         }
+
+        /// <summary>A short remark the title carries after an event the user should know about (a core swap that restarted the game, and why); cleared by the next swap or ROM.</summary>
+        private string consoleNote = "";
 
         // ------------------------------------------------------------------ loading a SNES / Game Boy game
         /// <summary>Everything a ROM load goes through first: unpack a .zip, find the console, and either return the bytes
@@ -351,7 +456,7 @@ namespace BrokenNes.Windows
             try
             {
                 s = ConsoleSessions.Create(console, rom, SelectedCore(console, CoreSlot.Cpu), SelectedCore(console, CoreSlot.Ppu),
-                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names), romName);
+                                           SelectedCore(console, CoreSlot.Apu), names => FindSnesFirmware(romPath, names), romName, SegaOptionsFromConfig());
             }
             catch (Exception ex)
             {
@@ -359,7 +464,7 @@ namespace BrokenNes.Windows
                 LoadEmbeddedRom(allowHomeWebModule: false);
                 return;
             }
-            session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0;
+            session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0; consoleNote = "";
             currentRomPath = romPath ?? romName;
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             LoadSessionSave();
@@ -475,6 +580,17 @@ namespace BrokenNes.Windows
             return b;
         }
 
+        /// <summary>
+        /// The twelve-button pad as one console wants it. The Master System has a Pause button and no Start (the keyboard's Return, the pad's Start, mean Pause there), and the Game Gear has a Start
+        /// and no Pause (Select would raise the Z80's non-maskable interrupt, which is what the Master System's Pause is, and pause games that never asked to be). Other consoles read the pad as it is.
+        /// </summary>
+        internal static PadButtons ForConsole(ConsoleKind console, PadButtons b) => console switch
+        {
+            ConsoleKind.MasterSystem => (b & PadButtons.Start) != 0 ? b | PadButtons.Select : b,
+            ConsoleKind.GameGear => b & ~PadButtons.Select,
+            _ => b,
+        };
+
         private static PadButtons FromNesOrder(bool[] b)
         {
             PadButtons p = 0;
@@ -493,6 +609,7 @@ namespace BrokenNes.Windows
             bool[] a1 = new bool[8], a2 = new bool[8];
             WebApi.ApiInputInjector.Apply(a1, a2);
             p1 |= FromNesOrder(a1) | WebApi.ApiInputInjector.ExtraButtons(0); p2 |= FromNesOrder(a2) | WebApi.ApiInputInjector.ExtraButtons(1);
+            p1 = ForConsole(s.Console, p1); p2 = ForConsole(s.Console, p2);
             webModuleInputManager?.Poll();
 
             lock (emulationLock)
@@ -522,7 +639,8 @@ namespace BrokenNes.Windows
             }
 
             int w = s.FrameWidth, h = s.FrameHeight;
-            if (backBuffer == null || backBuffer.Width != w || backBuffer.Height != h)
+            // the aspect width is part of the size: a Genesis game in its 256-wide mode (PAL, H32) has the NES's pixel size but not its shape
+            if (backBuffer == null || backBuffer.Width != w || backBuffer.Height != h || displayWidth != s.DisplayWidth)
             {
                 RequestDisplaySize(w, h, s.DisplayWidth);
                 return;   // this frame is dropped while the display is rebuilt at the new size
@@ -573,7 +691,7 @@ namespace BrokenNes.Windows
         /// <summary>Back to the NES picture size when the NES runs again.</summary>
         private void EnsureNesDisplaySize()
         {
-            if (backBuffer != null && backBuffer.Width == NES_WIDTH && backBuffer.Height == NES_HEIGHT) return;
+            if (backBuffer != null && backBuffer.Width == NES_WIDTH && backBuffer.Height == NES_HEIGHT && displayWidth == NES_WIDTH) return;
             SetDisplaySize(NES_WIDTH, NES_HEIGHT, NES_WIDTH);
         }
 

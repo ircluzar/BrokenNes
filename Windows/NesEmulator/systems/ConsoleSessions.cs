@@ -12,12 +12,13 @@ public static class ConsoleSessions
 {
     /// <param name="loadFirmware">SNES coprocessor firmware lookup (null: none; DSP-1 games then use the homemade chip).</param>
     /// <param name="fileName">The ROM's file name, when the app has one (the Master System family takes its region tag from it).</param>
+    /// <param name="sega">The machine settings of the Sega consoles (region, Genesis model, Master System board); null or Auto takes them from the game (the file name's region tag, the header) as before.</param>
     public static IConsoleSession Create(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu,
-                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "") => console switch
+                                         Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "", NesEmulator.Sega.SegaOptions? sega = null) => console switch
     {
         ConsoleKind.Snes => new SnesSession(rom, cpu, ppu, apu, loadFirmware),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
-        ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName),
+        ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
 
@@ -26,15 +27,16 @@ public static class ConsoleSessions
     /// track replaces the placeholder with its session in the same change that sets the console's Ready flag; a Ready console that still has no session is a
     /// bug, so it refuses rather than quietly running the placeholder.
     /// </summary>
-    private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu, string fileName)
+    private static IConsoleSession CreateSega(ConsoleKind console, byte[] rom, string cpu, string ppu, string apu, string fileName, NesEmulator.Sega.SegaOptions? options)
     {
+        options ??= NesEmulator.Sega.SegaOptions.Default;
         // Track C3a: the picture can be drawn by a NES chip ("NES:<chip>", through the NES also a Game Boy or SNES one). The board session always runs with the console's own chip; the wrapper turns its VDP state into the
         // other chip's picture (and is a pass-through while the console's own chip is selected).
         string own = ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase) ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
-        if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.MdSession(rom, cpu, own, apu), ppu);
+        if (console == ConsoleKind.Genesis && Consoles.GenesisReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.MdSession(rom, cpu, own, apu, options.Region, options.GenesisModel), ppu);
         // Track A: the Master System family. Its sessions are the real board once the console is marked ready.
-        if (console == ConsoleKind.MasterSystem && Consoles.MasterSystemReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.SmsSession(rom, console, cpu, own, apu, fileName), ppu);
-        if (console == ConsoleKind.GameGear && Consoles.GameGearReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.GgSession(rom, cpu, own, apu, fileName), ppu);
+        if (console == ConsoleKind.MasterSystem && Consoles.MasterSystemReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.SmsSession(rom, console, cpu, own, apu, fileName, options.MasterSystemModel, options.Region), ppu);
+        if (console == ConsoleKind.GameGear && Consoles.GameGearReady) return new NesEmulator.Mix.SegaPictureSession(new NesEmulator.Sega.GgSession(rom, cpu, own, apu, fileName, options.Region), ppu);
         if (Consoles.IsReady(console))
             throw new InvalidOperationException($"{Consoles.DisplayName(console)} is marked ready but ConsoleSessions.CreateSega has no session for it");
         if (!Consoles.IsAvailable(console))

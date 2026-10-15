@@ -22,6 +22,15 @@
                                               clock, not a sound card (BROKENNES_SYNTH_AUDIO=null)
     cores      shared emulator cores          Workshop headless run of a VRUN ROM on the FIX cores must reproduce a recorded
                                               picture hash (guards the shared tree both desktop and plugin modes use)
+    suite      golden-hash cases              UAT\run-suite.ps1 over every manifest: the NES cases, the story ROMs, the instruction-set walls and the Master
+                                              System, Game Gear and Genesis games (own cores, machine variants, bridges both ways, core swaps mid-run). Goldens
+                                              say "nothing moved", not "correct" (UAT\README.md); a ROM not on this machine SKIPs, never passes
+    sega-gate  Sega verifiers                 UAT\sega-gate.ps1: every Workshop verifier of the three Sega consoles in one table (the chips, the boards, the VDPs,
+                                              the oracles, the bridges, the stems, the CPU walls); refuses a stale exe
+    sega-preview  Sega in the desktop app     UAT\entrypoints\sega-preview-smoke.ps1: the Console menu, the real Master System / Game Gear / Genesis programs
+                                              through RomDetect into the real sessions, battery saves (UI-driven: rerun alone if it fails while the machine is busy)
+    notices    third-party notices            UAT\entrypoints\notices-check.ps1: the ledgers match the tree, the four license texts are there, and the desktop
+                                              folder, the Lite site and (in install-smoke) the installed plugin folder hold the notices
 
   Build output goes to %LOCALAPPDATA%\VRUN_Nes_Dev_work (never into the repo). Exit code 0 = nothing FAILED
   (NOT RUN entrypoints do not fail unless -RequireFl).
@@ -91,6 +100,64 @@ Run 'cores' {
     $bad = @('f300', 'f600') | Where-Object { $g.$_ -ne $now[$_] }
     if ($bad) { return @{ Status = 'FAIL'; Detail = "picture differs from the recorded run at: $($bad -join ', ')" } }
     @{ Status = 'PASS'; Detail = 'VRUN on CPU/PPU/APU FIX reproduces the recorded pictures (frames 300, 600)' }
+}
+
+# The Workshop build the next entries share (built once, into the same artifacts folder as `cores`).
+$script:workshopExe = $null
+function Get-WorkshopExe {
+    if ($script:workshopExe) { return $script:workshopExe }
+    if (-not $SkipBuild) { $o = Invoke-Dotnet build (Join-Path $repo 'Workshop\BrokenNes.Workshop.csproj') -c Release --artifacts-path $art; if ($LASTEXITCODE -ne 0) { throw "Workshop build failed: $($o.Substring([Math]::Max(0, $o.Length - 400)))" } }
+    $script:workshopExe = Join-Path $art 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
+    $script:workshopExe
+}
+
+Run 'suite' {
+    if (-not (Want 'suite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib\Prepare-SegaRoms.ps1') | Out-File (Join-Path $outDir 'prepare-sega-roms.txt')
+    $json = Join-Path $outDir 'suite.json'
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'run-suite.ps1') -Exe $exe -Json $json 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'suite.txt')
+    $line = ($out | Where-Object { "$_" -match '\d+ pass' } | Select-Object -Last 1)
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = "NES, story, cores, corpus, Sega and wall cases (golden hashes: nothing moved, not proof of accuracy): $line" }
+}
+
+Run 'sega-gate' {
+    if (-not (Want 'sega-gate')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'sega-gate.ps1') -Exe $exe -ReportDir (Join-Path $outDir 'sega-gate') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-gate.txt')
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ($out | Where-Object { "$_" -match 'step\(s\) passed' } | Select-Object -Last 1) }
+}
+
+Run 'sega-preview' {
+    if (-not (Want 'sega-preview')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\sega-preview-smoke.ps1') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-preview-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'notices' {
+    if (-not (Want 'notices')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    # the ledgers against the tree, and the folders the other entries built: the desktop app, the Lite site (when the web entry published one)
+    $app = Join-Path $workRoot 'uat_desktop\bin\BrokenNes.Windows\release_win-x64'
+    if (-not (Test-Path $app)) { $app = Join-Path $art 'bin\BrokenNes.Windows\release_win-x64' }
+    $lite = Join-Path $workRoot 'uat_web'
+    $a = @(); if (Test-Path $app) { $a += @('-AppDir', $app) }
+    $liteOut = Get-ChildItem $lite -Recurse -Directory -Filter wwwroot -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } | Select-Object -First 1
+    if ($liteOut) { $a += @('-LiteDir', (Split-Path $liteOut.FullName)) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\notices-check.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'notices.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $skipped = @($out | Where-Object { "$_" -like '`[SKIP`]*' }).Count
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($skipped) { ", $skipped folder check(s) skipped (no folder built by this run)" } else { '' })) }
 }
 
 Run 'plugin-host' {

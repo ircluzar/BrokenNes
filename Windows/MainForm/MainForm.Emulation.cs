@@ -88,7 +88,7 @@ namespace BrokenNes.Windows
         {
             TimerResolution.Enable();
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            const double targetFrameTime = 1.0 / 60.0; // 60 FPS
+            double targetFrameTime = 1.0 / 60.0; // 60 FPS (a console session sets its own below: a PAL Master System or Genesis runs at 50)
             double accumulator = 0;
             int framesSinceReport = 0;
             var reportStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -111,9 +111,26 @@ namespace BrokenNes.Windows
             long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
             long targetFrameTicks = (long)(ticksPerSecond / NtscFramesPerSecond);
             long nextFrameTime = stopwatch.ElapsedTicks;
-            
+            double pacedFps = NtscFramesPerSecond;
+
             while (isEmulationRunning)
             {
+                // A console session (SNES, Game Boy, Master System, Game Gear, Genesis) is paced at its own frame rate: the machine's, which for the Sega consoles
+                // is the region's (a PAL Master System or Genesis makes 50 frames a second, an NTSC Game Boy 59.73), not the NES's 60.0988. Otherwise a PAL game would be fed at 60,
+                // the audio buffer would fill and the pacer would skip frames to hold it, or with the audio off the game would run 20% fast.
+                {
+                    var sess = session;
+                    double fps = sess != null && sess.FramesPerSecond is > 20 and < 200 ? sess.FramesPerSecond : NtscFramesPerSecond;
+                    if (Math.Abs(fps - pacedFps) > 1e-6)
+                    {
+                        pacedFps = fps;
+                        targetFrameTicks = (long)(ticksPerSecond / fps);
+                        targetFrameTime = 1.0 / fps;
+                        nextFrameTime = stopwatch.ElapsedTicks;
+                        accumulator = 0;
+                    }
+                }
+
                 // Process queued actions
                 while (emulationActions.TryDequeue(out var act))
                 {

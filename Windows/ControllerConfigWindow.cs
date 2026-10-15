@@ -205,6 +205,22 @@ namespace BrokenNes.Windows
 
             var buttonNames = new[] { "B", "A", "Y", "X", "L", "R", "Select", "Start", "Up", "Down", "Left", "Right" };
 
+            // What each of the twelve buttons is on each console (hover the name): the Sega pads are reached through these twelve, as the Genesis's C, Z and Mode and the
+            // Master System's Pause have no keys of their own.
+            var hints = new Dictionary<string, string>
+            {
+                ["A"] = "NES A, SNES A, Game Boy A, Genesis A, Master System / Game Gear button 1",
+                ["B"] = "NES B, SNES B, Game Boy B, Genesis B, Master System / Game Gear button 2",
+                ["X"] = "SNES X, Genesis X",
+                ["Y"] = "SNES Y, Genesis Y",
+                ["L"] = "SNES L, Genesis Z (six-button pad)",
+                ["R"] = "SNES R, Genesis C",
+                ["Select"] = "Select on the NES, SNES and Game Boy; Genesis Mode; Master System Pause (the Game Gear has no such button)",
+                ["Start"] = "Start; on the Master System also Pause, since the console has no Start button",
+                ["Up"] = "Directions on every console", ["Down"] = "Directions on every console", ["Left"] = "Directions on every console", ["Right"] = "Directions on every console",
+            };
+            var tips = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
+
             foreach (var name in buttonNames)
             {
                 var label = new Label
@@ -215,6 +231,7 @@ namespace BrokenNes.Windows
                     Font = new Font(Font.FontFamily, 9, FontStyle.Bold),
                     Margin = new Padding(5, 7, 5, 5)
                 };
+                if (hints.TryGetValue(name, out var hint)) tips.SetToolTip(label, hint);
 
                 var button = new Button
                 {

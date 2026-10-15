@@ -25,16 +25,17 @@ namespace BrokenNes.Windows.WebApi
     /// </summary>
     public static class ApiInputInjector
     {
-        public const int ButtonCount = 12;
+        public const int ButtonCount = 15;
 
         /// <summary>NES button order used everywhere in this codebase (index == bit order), then the SNES-only buttons
-        /// X, Y, L, R (BrokenNes 2). The NES reads the first 8; a SNES / Game Boy session reads all of them.</summary>
+        /// X, Y, L, R (BrokenNes 2), then the Genesis pad's C, Z and Mode (the Master System's Reset is Mode too). The NES reads the first 8; a session reads all of them.
+        /// The Master System's Pause is Select and the Genesis's Start is Start; the apps' own pad folds R, L and Select into C, Z and Mode.</summary>
         private static readonly string[] ButtonNames =
         {
-            "A", "B", "Select", "Start", "Up", "Down", "Left", "Right", "X", "Y", "L", "R"
+            "A", "B", "Select", "Start", "Up", "Down", "Left", "Right", "X", "Y", "L", "R", "C", "Z", "Mode"
         };
 
-        /// <summary>The injected X / Y / L / R of a player (0 or 1), for the SNES.</summary>
+        /// <summary>The injected X / Y / L / R / C / Z / Mode of a player (0 or 1), for the SNES, the Genesis and the Master System.</summary>
         public static NesEmulator.Systems.PadButtons ExtraButtons(int playerIndex)
         {
             if (Volatile.Read(ref _anyInjected) == 0 || playerIndex is < 0 or > 1) return NesEmulator.Systems.PadButtons.None;
@@ -44,6 +45,7 @@ namespace BrokenNes.Windows.WebApi
                 var src = Injected[playerIndex]; var b = NesEmulator.Systems.PadButtons.None;
                 if (src[8]) b |= NesEmulator.Systems.PadButtons.X; if (src[9]) b |= NesEmulator.Systems.PadButtons.Y;
                 if (src[10]) b |= NesEmulator.Systems.PadButtons.L; if (src[11]) b |= NesEmulator.Systems.PadButtons.R;
+                if (src[12]) b |= NesEmulator.Systems.PadButtons.C; if (src[13]) b |= NesEmulator.Systems.PadButtons.Z; if (src[14]) b |= NesEmulator.Systems.PadButtons.Mode;
                 return b;
             }
         }
@@ -109,10 +111,11 @@ namespace BrokenNes.Windows.WebApi
             switch (trimmed.ToLowerInvariant())
             {
                 case "sel": index = 2; return true;
+                case "pause": index = 2; return true;     // the Master System's Pause is the Select bit
+                case "reset": index = 14; return true;    // the Master System's Reset is the Mode bit
                 case "u": index = 4; return true;
                 case "d": index = 5; return true;
-                case "l": index = 6; return true;
-                case "r": index = 7; return true;
+                // "l" and "r" are the SNES shoulder buttons (and the Genesis Z and C): they are names, matched above
                 default: return false;
             }
         }

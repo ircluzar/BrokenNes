@@ -559,25 +559,30 @@ namespace BrokenNes.Windows
             }
         }
 
-        private bool QuickSaveStateFromApi()
+        /// <summary>Why the last quick save / load over HTTP did not happen (see WebApiServer.QuickStateReason).</summary>
+        private string? quickStateReason;
+
+        private bool QuickStateFromApi(bool save)
         {
+            quickStateReason = null;
             if (!config.EnableWebmoduleSavestateDebugShortcuts)
             {
+                quickStateReason = "quick save / load over HTTP is an opt-in: set enableWebmoduleSavestateDebugShortcuts to true in config.json";
                 return false;
             }
-
-            return TryQuickSaveState(showDialogs: false);
-        }
-
-        private bool QuickLoadStateFromApi()
-        {
-            if (!config.EnableWebmoduleSavestateDebugShortcuts)
+            if (session != null && !session.SupportsState)
             {
+                quickStateReason = session.StateUnsupportedReason;
                 return false;
             }
-
-            return TryQuickLoadState(showDialogs: false);
+            bool ok = save ? TryQuickSaveState(showDialogs: false) : TryQuickLoadState(showDialogs: false);
+            if (!ok) quickStateReason = $"the state could not be {(save ? "saved" : "loaded")} (the console log has the message)";
+            return ok;
         }
+
+        private bool QuickSaveStateFromApi() => QuickStateFromApi(save: true);
+
+        private bool QuickLoadStateFromApi() => QuickStateFromApi(save: false);
 
         private void SaveContinueState()
         {
