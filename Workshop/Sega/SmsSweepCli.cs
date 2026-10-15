@@ -155,7 +155,7 @@ internal static class SweepSource
         return null;
     }
 
-    private static void SevenZip(string archive, string dest)
+    internal static void SevenZip(string archive, string dest)
     {
         string exe = SevenZipExe() ?? throw new FileNotFoundException("7-Zip (7z.exe) is needed to unpack " + archive + ": install it, or unpack the archives and sweep the folder");
         Directory.CreateDirectory(dest);

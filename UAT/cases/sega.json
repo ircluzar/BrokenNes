@@ -1,0 +1,378 @@
+{
+  "schema": 1,
+  "suite": "sega",
+  "description": "The Master System, the Game Gear and the SG-1000 through the console layer the apps use (ConsoleSessions.Create: the board session wrapped by the picture-chip bridge), headless via --console-run. Each case plays a game with a scripted pad and records the picture hash, the picture size, the number of distinct colours (the honesty check: a case whose picture is a flat colour proves nothing) and the audio peak (a game that made no sound shows 0). The goldens are what this build did when they were recorded after the same games were compared with Mesen 2.1.1 frame by frame (docs/projects/sega-track-a4.md): a green run says nothing moved, not that the emulation is right. Games are the user's library (X:\\EMULATION; the cases skip on a machine without it); the SG-1000 programs and the tone-and-scroll program are written by the Workshop itself (--smstest --write-sg-programs / --write-swap-programs) into the 'gen' root, so no ROM of any kind is in the repository. Paths ending .7z# pick an entry of the archive by a piece of its name.",
+  "roots": {
+    "sms": "X:/EMULATION/Sega Master System",
+    "gg": "X:/EMULATION/Sega Game Gear",
+    "gen": "%TEMP%/bn-uat-sega-programs"
+  },
+  "cases": [
+    {
+      "id": "sega-sms-astro-warrior",
+      "description": "Master System, the simplest roster game: title, then Galaxy Zone with fire held. Stock cores (Z80 / SMS / SMS).",
+      "kind": "sega-run",
+      "rom": "{sms}/Astro Warrior.7z",
+      "frames": 900,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "sms"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "525B8259B3CC6B7D",
+        "size": "256x192",
+        "distinctColors": 12,
+        "audioPeak": 18686,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-sonic1",
+      "description": "Master System Sonic The Hedgehog: Green Hill, line-interrupt water and scroll effects, PSG music.",
+      "kind": "sega-run",
+      "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
+      "frames": 900,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "sms"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "F5B8FE57361EE2A8",
+        "size": "256x192",
+        "distinctColors": 20,
+        "audioPeak": 13528,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-alex-kidd",
+      "description": "Master System Alex Kidd in Miracle World (v1.1): title, map, platforming.",
+      "kind": "sega-run",
+      "rom": "{sms}/Alex Kidd in Miracle World.7z#(USA, Europe) (v1.1)",
+      "frames": 900,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "sms"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "130A4D48CCF87532",
+        "size": "256x192",
+        "distinctColors": 16,
+        "audioPeak": 8808,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-micro-machines-pal",
+      "description": "Master System Micro Machines (Europe): the 50 Hz machine (the region comes from the file name through the app's factory), the Codemasters mapper, 224-line mode.",
+      "kind": "sega-run",
+      "rom": "{sms}/Micro Machines (Europe).7z",
+      "frames": 900,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "pal"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "94778F33A1F14472",
+        "size": "256x224",
+        "distinctColors": 9,
+        "audioPeak": 17449,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-phantasy-star-fm",
+      "description": "Master System Phantasy Star (Japan) on the Japanese sound unit SMS-FM (the game detects the YM2413 and plays its FM music); also a battery game.",
+      "kind": "sega-run",
+      "rom": "{sms}/Phantasy Star.7z#(Japan)",
+      "apu": "SMS-FM",
+      "frames": 900,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "fm"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D8A1E2C0277F7488",
+        "size": "256x192",
+        "distinctColors": 16,
+        "audioPeak": 12265,
+        "battery": "True",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-wonder-boy-3",
+      "description": "Master System Wonder Boy III: The Dragon's Trap, with the menu script that gets past the title (New Game, the story, the castle).",
+      "kind": "sega-run",
+      "rom": "{sms}/Wonder Boy III - The Dragon's Trap.7z",
+      "frames": 1100,
+      "input": "150:A,156:,215:Down,221:,260:A,266:,330:A,336:,400:A,406:,470:A,476:,540:Right,600:Right+A,610:Right,680:Right+B,690:Right,750:A,756:,820:Right,880:Right+A,890:Right",
+      "tags": [
+        "sega",
+        "sms"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "451AFD0CA884CB24",
+        "size": "256x192",
+        "distinctColors": 16,
+        "audioPeak": 15394,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-sonic1-picture-on-nes-fixs",
+      "description": "Master System Sonic drawn by the NES picture chip FIXS (PPU menu id NES:FIXS): the picture bridge, 256x240 canvas.",
+      "kind": "sega-run",
+      "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
+      "ppu": "NES:FIXS",
+      "frames": 600,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "4FE81ADE5DD06AF7",
+        "size": "256x240",
+        "distinctColors": 18,
+        "audioPeak": 12269,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-sonic1-sound-on-nes-fix",
+      "description": "Master System Sonic with its PSG replayed on the NES FIX sound chip (APU menu id NES:FIX).",
+      "kind": "sega-run",
+      "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
+      "apu": "NES:FIX",
+      "frames": 600,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "bridge"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "25E687F81CE78651",
+        "size": "256x192",
+        "distinctColors": 20,
+        "audioPeak": 11497,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-sonic1-hot-swaps",
+      "description": "Master System Sonic with every slot swapped while it runs (sound to SMS-FM, picture to NES:FIXS, sound to NES:FIX, picture and sound back to the console's own); all swaps must be in place and the game goes on.",
+      "kind": "sega-run",
+      "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
+      "swap": "300:apu:SMS-FM,320:ppu:NES:FIXS,340:apu:NES:FIX,360:ppu:SMS,380:apu:SMS,390:cpu:Z80",
+      "frames": 600,
+      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "tags": [
+        "sega",
+        "sms",
+        "swap"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "25E687F81CE78651",
+        "size": "256x192",
+        "distinctColors": 20,
+        "audioPeak": 11930,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-sonic1",
+      "description": "Game Gear Sonic The Hedgehog: the 160x144 window, 12-bit colour, stereo PSG.",
+      "kind": "sega-run",
+      "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+      "frames": 900,
+      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "gg"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "95F65E5A6498760F",
+        "size": "160x144",
+        "distinctColors": 14,
+        "audioPeak": 11824,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-columns",
+      "description": "Game Gear Columns: tile rewrites during play, the game whose timing only matches the oracle with its own Z80 instruction lengths (this build keeps the Zilog ones).",
+      "kind": "sega-run",
+      "rom": "{gg}/Columns (U) [!].gg",
+      "frames": 900,
+      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "gg"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "37108937F5F1D3C6",
+        "size": "160x144",
+        "distinctColors": 20,
+        "audioPeak": 9971,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-wonder-boy",
+      "description": "Game Gear Wonder Boy: line-interrupt status bar.",
+      "kind": "sega-run",
+      "rom": "{gg}/Wonder Boy (E) [!].gg",
+      "frames": 900,
+      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "gg"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "D949C5871679505E",
+        "size": "160x144",
+        "distinctColors": 17,
+        "audioPeak": 9531,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-shining-force-2",
+      "description": "Game Gear Shining Force II: 4 Mbit cartridge with battery RAM, intro dialogue.",
+      "kind": "sega-run",
+      "rom": "{gg}/Shining Force II - The Sword of Hajya (U) [!].gg",
+      "frames": 900,
+      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "tags": [
+        "sega",
+        "gg"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "38B66EC370D36D87",
+        "size": "160x144",
+        "distinctColors": 17,
+        "audioPeak": 11734,
+        "battery": "True",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-sonic1-hot-swaps",
+      "description": "Game Gear Sonic with every slot swapped while it runs (sound to NES:FIXS, picture to NES:DMG, back to GG / GG); all swaps must be in place.",
+      "kind": "sega-run",
+      "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+      "swap": "300:apu:NES:FIXS,320:ppu:NES:DMG,340:apu:GG,360:ppu:GG,380:cpu:Z80",
+      "frames": 600,
+      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "tags": [
+        "sega",
+        "gg",
+        "swap"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "95F65E5A6498760F",
+        "size": "160x144",
+        "distinctColors": 14,
+        "audioPeak": 11226,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sg1000-graphics2-big-sprites",
+      "description": "SG-1000 (TMS9918A Graphics II mode, magnified sprites): a hand-assembled program the Workshop writes (no real SG-1000 game exists in the library); the oracle's picture for the same program is pixel-identical (--smstest --only sg1000).",
+      "kind": "sega-run",
+      "rom": "{gen}/sg-graphics2-big.sg",
+      "frames": 60,
+      "tags": [
+        "sega",
+        "sg1000"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "9E1D2EF023E1A93F",
+        "size": "256x192",
+        "distinctColors": 15,
+        "audioPeak": 0,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-sms-tone-scroller",
+      "description": "The assembled tone-and-scroll program of the hot-swap suite on a Master System: a steady 440 Hz PSG tone and a scrolling three-colour picture.",
+      "kind": "sega-run",
+      "rom": "{gen}/tone-scroller.sms",
+      "frames": 300,
+      "tags": [
+        "sega",
+        "sms"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "0418033319EB7383",
+        "size": "256x192",
+        "distinctColors": 3,
+        "audioPeak": 7304,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    },
+    {
+      "id": "sega-gg-tone-scroller",
+      "description": "The same program on a Game Gear (stereo port opened).",
+      "kind": "sega-run",
+      "rom": "{gen}/tone-scroller.gg",
+      "frames": 300,
+      "tags": [
+        "sega",
+        "gg"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "50401027055FF983",
+        "size": "160x144",
+        "distinctColors": 3,
+        "audioPeak": 7145,
+        "battery": "False",
+        "swapsRefused": 0
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-10-15T15:20:51Z"
+}

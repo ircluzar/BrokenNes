@@ -363,6 +363,23 @@ internal static class SmsRomIo
     public static byte[] Load(string path, out string innerName)
     {
         innerName = Path.GetFileName(path);
+        // a .7z (the Master System library keeps one game per archive; some hold several versions): "archive.7z" takes the first ROM by name, "archive.7z#text" the first whose name contains the text. Needs 7-Zip.
+        int hash = path.IndexOf(".7z#", StringComparison.OrdinalIgnoreCase);
+        if (hash >= 0 || path.EndsWith(".7z", StringComparison.OrdinalIgnoreCase))
+        {
+            string archive = hash >= 0 ? path[..(hash + 3)] : path, pick = hash >= 0 ? path[(hash + 4)..] : "";
+            string tmp = Path.Combine(Path.GetTempPath(), "bn-7z-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                SweepSource.SevenZip(archive, tmp);
+                string[] roms = { ".sms", ".gg", ".sg", ".sc" };
+                var file = Directory.EnumerateFiles(tmp, "*", SearchOption.AllDirectories).Where(f => roms.Contains(Path.GetExtension(f).ToLowerInvariant()) && Path.GetFileName(f).Contains(pick, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).FirstOrDefault() ?? throw new InvalidDataException($"no ROM{(pick != "" ? $" matching '{pick}'" : "")} inside {archive}");
+                innerName = Path.GetFileName(file);
+                return File.ReadAllBytes(file);
+            }
+            finally { try { Directory.Delete(tmp, true); } catch { } }
+        }
         if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return File.ReadAllBytes(path);
         using var zip = ZipFile.OpenRead(path);
         string[] ext = { ".sms", ".gg", ".sg", ".sc" };
