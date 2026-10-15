@@ -28,7 +28,7 @@ internal static class MdSaveTest
     }
 
     /// <summary>A game with a battery, the library's file name, the pad script that makes it write its save, and how long to play.</summary>
-    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind, bool PictureShowsIt = true);
+    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind, bool PictureShowsIt = true, int Every = 20);
 
     private static readonly Case[] Cases =
     {
@@ -43,7 +43,7 @@ internal static class MdSaveTest
         new("Shining Force II", "Shining Force II (E) [!].bin", "mash", 3600, "SRAM 8 KB"),
         new("Landstalker", "Landstalker - The Treasures of King Nole (E) (Eng) [!].bin", "default", 3000, "SRAM 8 KB", false),
         new("Mega Man: The Wily Wars", "Mega Man - The Wily Wars (E).bin", "default", 1800, "3-wire EEPROM (93C46)"),
-        new("Madden NFL 95", "Madden NFL 95 (JUE) [!].bin", "default", 3600, "headerless battery RAM"),
+        new("Madden NFL 95", "Madden NFL 95 (JUE) [!].bin", "default", 3600, "headerless battery RAM", false),      // the one picture that differs between a file and a blank battery at the first frames moves with the interrupt timing (1 of 600 on the old sampling, 0 with BlastEm's): the evidence that it reads the file is the damaged-file check
     };
 
     public static int Run(string[] args)
@@ -51,7 +51,8 @@ internal static class MdSaveTest
         pass = fail = skipped = 0;
         poison = M68kTestCli.Arg(args, "--poison") ?? "";       // "import": the loading session is not given the file (the check must notice)
         var only = M68kTestCli.Arg(args, "--games")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        string tmp = Path.Combine(Path.GetTempPath(), "mdsave-" + Guid.NewGuid().ToString("N"));
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);        // experiment switches (e.g. "braipl=0;movemipl=0": the old interrupt sampling)
+        string tmp =Path.Combine(Path.GetTempPath(), "mdsave-" + Guid.NewGuid().ToString("N"));
         try
         {
             foreach (var c in Cases)
@@ -107,10 +108,10 @@ internal static class MdSaveTest
 
         // the game reads it: with the file and without, the same script shows different pictures; with the file twice the same ones
         const int look = 2400;
-        var withSave = Play(b, c.Pad, look, 20);
-        var blank1 = Play(Make(c, rom), c.Pad, look, 20);
-        var blank2 = Play(Make(c, rom), c.Pad, look, 20);
-        var again = Make(c, rom); if (poison != "import") again.ImportSave(save); var withSave2 = Play(again, c.Pad, look, 20);
+        var withSave = Play(b, c.Pad, look, c.Every);
+        var blank1 = Play(Make(c, rom), c.Pad, look, c.Every);
+        var blank2 = Play(Make(c, rom), c.Pad, look, c.Every);
+        var again = Make(c, rom); if (poison != "import") again.ImportSave(save); var withSave2 = Play(again, c.Pad, look, c.Every);
         int differing = Enumerable.Range(0, Math.Min(withSave.Count, blank1.Count)).Count(i => withSave[i] != blank1[i]);
         Check($"{tag}: two blank sessions show the same pictures under the same script (the comparison is deterministic)", blank1.SequenceEqual(blank2));
         Check($"{tag}: two sessions started from the file show the same pictures", withSave.SequenceEqual(withSave2));
@@ -119,7 +120,7 @@ internal static class MdSaveTest
 
         // a damaged file is not taken for a save game
         var bad = (byte[])save.Clone(); for (int i = 0; i < bad.Length; i++) bad[i] ^= 0xFF;
-        var d = Make(c, rom); d.ImportSave(bad); var damaged = Play(d, c.Pad, look, 20);
+        var d = Make(c, rom); d.ImportSave(bad); var damaged = Play(d, c.Pad, look, c.Every);
         byte[] afterDamaged = d.ExportSave();
         bool reacted = !damaged.SequenceEqual(withSave) || !afterDamaged.AsSpan().SequenceEqual(bad);
         Check($"{tag}: a damaged file (every byte flipped) makes the game react (other pictures than the good file's, or the data formatted again)", reacted, $"pictures {(damaged.SequenceEqual(withSave) ? "same" : "different")}, image {(afterDamaged.AsSpan().SequenceEqual(bad) ? "left as it was" : "rewritten")}");

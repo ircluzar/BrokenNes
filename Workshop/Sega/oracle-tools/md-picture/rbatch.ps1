@@ -39,11 +39,11 @@ foreach ($n in $list) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $env:BN_ADV_MS = "$gap"
     $saveDir = Join-Path $work ("be_save\" + [IO.Path]::GetFileNameWithoutExtension($rom))
-    if ($Saves) { Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue }      # the oracle starts from an empty battery, as ours does
+    if ($Saves) { Remove-Item -LiteralPath $saveDir -Recurse -Force -ErrorAction SilentlyContinue }      # the oracle starts from an empty battery, as ours does
     $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait -SaveOut:$Saves -PauseSnap:$PauseSnap 2>&1 | Out-String
     if ($Saves) {
       # BlastEm writes its battery file when it exits: compare it with ours byte for byte
-      $theirs = Get-ChildItem $saveDir -Include "save.sram","save.eeprom" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+      $theirs = Get-ChildItem -LiteralPath $saveDir -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in "save.sram","save.eeprom" } | Select-Object -First 1
       $mine = Join-Path $work "our\$name\save.bin"
       if ($theirs -and (Test-Path $mine)) {
         $tb = [IO.File]::ReadAllBytes($theirs.FullName); $mb = [IO.File]::ReadAllBytes($mine)
