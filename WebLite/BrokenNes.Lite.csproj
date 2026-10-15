@@ -179,4 +179,14 @@
     <Compile Include="$(NesRoot)nullproviders\WaterRipplesNullProvider.cs" Link="NesEmulator\nullproviders\WaterRipplesNullProvider.cs" />
   </ItemGroup>
 
+  <!-- Third-party notices are served with the site (Notices link in the header): the ported cores (Z80, 68000, ymfm, emu2413, BizHawk mappers) are under licenses that ask for it.
+       UAT\entrypoints\notices-check.ps1 verifies a published folder holds them. -->
+  <ItemGroup>
+    <Content Include="..\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES.md" />
+    <Content Include="..\LICENSE.txt" Link="wwwroot\LICENSE.txt" />
+    <Content Include="..\Windows\NesEmulator\gb\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-gb.md" />
+    <Content Include="..\Windows\NesEmulator\snes\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-snes.md" />
+    <Content Include="..\Windows\NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-sega.md" />
+  </ItemGroup>
+
 </Project>

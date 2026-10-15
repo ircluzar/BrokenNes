@@ -168,8 +168,8 @@ namespace NesEmulator.Mix
             for (int s = 0; s < TonalOwner.Length; s++) if (TonalOwner[s] >= 0 && !wanted[TonalOwner[s]]) TonalOwner[s] = -1;
             for (int s = 0; s < NoiseOwner.Length; s++) if (NoiseOwner[s] >= 0 && !wanted[NoiseOwner[s]]) NoiseOwner[s] = -1;
 
-            // newcomers, loudest first
-            while (true)
+            // newcomers, loudest first. Every pass places or drops exactly one voice, so voiceCount passes always suffice: the bound is a guard against a policy bug ever hanging the audio thread.
+            for (int pass = 0; pass < voiceCount; pass++)
             {
                 int pick = -1;
                 for (int i = 0; i < voiceCount; i++)

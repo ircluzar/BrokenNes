@@ -13,9 +13,7 @@ both VDPs and all bus and cycle timing are written clean-room from documentation
 |---|---|---|---|---|
 | Z80 core (cycle-stepped micro-op design) | `sega/Z80/*.cs`: `Z80<TBus>`, `IZ80Bus`; verifier `Workshop/Sega/Z80TestCli.cs` | BizHawk `Z80A` (`BizHawk.Emulation.Cores/CPUs/Z80A`, Alyosha and the BizHawk team), from the local tree `Bizhawk52X-Vanguard` (HEAD f9c0100, 2025-02-24) | MIT, Copyright (c) BizHawk team | **ported 2026-10-03**; details in section 1a |
 | YM2612 / YM3438 FM core | `sega/Ym2612.cs`, `Ym2612.Tables.cs`; verifiers `Workshop/Sega/YmOracleTestCli.cs`, `YmNukedCases.cs`, `YmScript.cs`, `oracle/ymfm_ref.cpp`, `oracle/opn2_oracle.c` | ymfm (Aaron Giles), commit 81aec25 | BSD-3-Clause, Copyright (c) 2021 Aaron Giles | **ported 2026-10-03**; details in section 1g |
-| YM2413 FM core | `sega/` | ymfm (Aaron Giles) or emu2413 (Mitsutaka Okazaki) | BSD-3-Clause / MIT | planned (SMS track) |
 | YM2413 (OPLL) FM core, `Ym2413` | `sega/Ym2413.cs`, `Ym2413Tables.cs`, `Ym2413Resampler.cs`, `SmsFmSound.cs`; verifier `Workshop/Sega/FmOracleTestCli.cs` | emu2413 v1.6.2 (Mitsutaka Okazaki; local copy `C:\BrokenNes-tools\sega\port-sources\emu2413`, tag 1.6.2, 2e4f6f9) | MIT, Copyright (c) 2001-2019 Mitsutaka Okazaki | **ported 2026-10-04**; details in section 1e |
-| YM2612 FM core | `sega/` | ymfm (Aaron Giles) | BSD-3-Clause | planned (Genesis track) |
 | 68000 core (`M68k<TBus>`, `IM68kBus`) | `md/M68k*.cs`, `md/IM68kBus.cs`; verifier `Workshop/Sega/M68kTestCli.cs`, `M68kVectors.cs`, `M68kSelfTest.cs`, `M68kBench.cs` | ares `component/processor/m68000` (ares team, Near et al; pin 4cb8d92, local tree `C:\BrokenNes-tools\sega\port-sources\ares-sparse`) | ISC, Copyright (c) 2004-2025 ares team, Near et al | **ported 2026-10-03**; details in section 1b |
 | SMS mappers and header handling | `sms/SmsCartridge.cs`, `sega/SegaRomFormat.cs` | BizHawk Master System memory map, read as a cross-check (see section 1c); the structure and code are written here | MIT | **written 2026-10-03** (read, not copied), details in section 1b |
 
@@ -238,6 +236,13 @@ Nothing was ported. What was learnt, and from where:
 - **The plugin's Sega Runaway** (`Plugin/BrokenNes2.Plugin/SegaSnapshot.cs`, `SegaSamplers.cs`): a copy of the chips' registers (the PSG's, the YM2413's 64, the YM2612's six channel patches) and the Genesis DAC sounds found in the stream of writes the game made to $2A (a ring of the last 65,536 writes; stretches split at gaps over four times the recent median, trimmed of silence, deduplicated by their first and last 64 bytes; a cycle found by the normalised autocorrelation of the last 4,096 samples with
   a parabola through the peak for the fraction of a sample, looped on the shortest whole number of cycles whose total is a whole number of samples). Standard signal processing, written here. The samplers run private copies of our own `Sn76489`, `Ym2413` and `Ym2612`.
 - **Provenance of the figures in the plugin tests**: pitches are checked against the chips' own frequency formulas (datasheet formulas, public), levels against the chips' documented step sizes (PSG 2 dB, YM2413 3 dB, YM2612 total level 0.75 dB).
+
+### 2d. Round 4, track C4b (2026-10-15): the CPU walls, the Master System FM bridge, the shared allocator, the dead-combination wave
+
+**No third-party source was read or taken for any of this.** `mix/CpuWalls.cs` (`CPU_Z80`, `CPU_M68K`) wraps our own ports of the Z80 (section 1a) and the 68000 (section 1b) behind the NES bus: the adapter is written here (interrupt vectors answered
+from the NES vectors, the NES clock ratios, the level/latch translation of the IRQ). `mix/HubReplayer.cs` (the voice-slot allocator and replayer shared by `MdSoundOnNes` and `SmsFmSoundOnNes`) was extracted from `MdSoundOnNes` without change of behaviour
+and gained an iteration bound; `mix/SmsFmSoundOnNes.cs` plays the unit `SmsFmSound` (section 1e) inside it. The verifiers (`Workshop/Sega/CpuWallTestCli.cs`, `SmsFmOnNesTests.cs`, the menu / swap / cross modes of `BridgeSweepCli.cs`) contain hand-assembled
+Z80 and 68000 programs of a dozen instructions each, written for the tests. Clock ratios are from the consoles' public specifications (Z80 3,579,545 Hz = 2 x the NES CPU; 68000 7,670,454 Hz = 30/7 x the NES CPU).
 
 ## 3. Hardware facts and documentation used (public; any correct emulator shares them)
 

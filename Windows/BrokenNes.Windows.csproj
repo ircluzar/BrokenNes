@@ -103,6 +103,16 @@
     </None>
   </ItemGroup>
 
+  <!-- Third-party notices ship beside the program (root ledger, one per console family, and the license): the ported cores (Z80, 68000, ymfm, emu2413, BizHawk mappers) are under licenses that ask for it.
+       UAT\entrypoints\notices-check.ps1 verifies a published folder holds them. -->
+  <ItemGroup>
+    <None Include="..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="..\LICENSE.txt" Link="LICENSE.txt"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\gb\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-gb.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\snes\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-snes.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-sega.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="BrokenNes.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
