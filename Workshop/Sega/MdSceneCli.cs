@@ -20,7 +20,8 @@ namespace BrokenNes.Workshop.Sega;
 internal static class MdSceneCli
 {
     private static readonly SortedDictionary<string, int> SprStat = new();
-    private static int ClassifyXMin = 0, ClassifyXMax = int.MaxValue;
+    private static int ClassifyXMin = 0, ClassifyXMax = int.MaxValue, ClassifyYMin = 0, ClassifyYMax = int.MaxValue, ClassifyMax = 30;
+    private static bool ClassifyAll;
 
     private sealed class Img { public int W, H; public uint[] Px = Array.Empty<uint>(); public string Name = ""; }
 
@@ -68,6 +69,10 @@ internal static class MdSceneCli
         if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);
         if (int.TryParse(M68kTestCli.Arg(args, "--xmin"), out int xmn)) ClassifyXMin = xmn;
         if (int.TryParse(M68kTestCli.Arg(args, "--xmax"), out int xmx)) ClassifyXMax = xmx;
+        if (int.TryParse(M68kTestCli.Arg(args, "--ymin"), out int ymn)) ClassifyYMin = ymn;
+        if (int.TryParse(M68kTestCli.Arg(args, "--ymax"), out int ymx)) ClassifyYMax = ymx;
+        if (int.TryParse(M68kTestCli.Arg(args, "--max"), out int cmx)) ClassifyMax = cmx;
+        ClassifyAll = M68kTestCli.Flag(args, "--all");
         if (outDir != null) Directory.CreateDirectory(outDir);
         JsonElement[]? meta = null;
         if (metaPath != null && File.Exists(metaPath)) meta = JsonDocument.Parse(File.ReadAllText(metaPath)).RootElement.EnumerateArray().ToArray();
@@ -172,9 +177,13 @@ internal static class MdSceneCli
         for (int y = 0; y < c.H; y++) for (int x = 0; x < c.W; x++)
             {
                 int tx = x + dx, ty = y + dy; if (tx < 0 || tx >= t.W || ty < 0 || ty >= t.H) continue;
-                if (x < ClassifyXMin || x > ClassifyXMax) continue;
+                if (x < ClassifyXMin || x > ClassifyXMax || y < ClassifyYMin || y > ClassifyYMax) continue;
                 uint a = c.Px[y * c.W + x] & 0xFFFFFF, b = t.Px[ty * t.W + tx] & 0xFFFFFF;
-                if (a == b) continue;
+                if (a == b)
+                {
+                    if (ClassifyAll && layers != null && plain && shown < ClassifyMax) { shown++; int o = y * MdVdp.PictureStride + x; Console.WriteLine($"      ({x},{y}) A={layers[0][o]:X2} B={layers[1][o]:X2} S={layers[2][o]:X2} both {a:X6}"); }
+                    continue;
+                }
                 map.TryGetValue(a, out var la); map.TryGetValue(b, out var lb);
                 string k;
                 if (la == null || lb == null) k = $"{(la == null ? "ours-not-a-palette-colour" : "ours-ok")}/{(lb == null ? "theirs-not-a-palette-colour" : "theirs-ok")}";
@@ -182,7 +191,12 @@ internal static class MdSceneCli
                 else k = "other entry" + (la.Any(p => lb.Any(q => p.m != q.m)) ? " (modes differ)" : " (same modes)");
                 kinds[k] = kinds.GetValueOrDefault(k) + 1;
                 if (firsts.Count < 6) firsts.Add($"({x},{y}) {k}");
-                if (layers != null && plain && shown < 30) { shown++; int o = y * MdVdp.PictureStride + x; Console.WriteLine($"      ({x},{y}) A={layers[0][o]:X2} B={layers[1][o]:X2} S={layers[2][o]:X2} ours {a:X6} theirs {b:X6} {k}"); }
+                if (layers != null && plain && shown < ClassifyMax)
+                {
+                    shown++; int o = y * MdVdp.PictureStride + x;
+                    string Ents(List<(int e, int m)>? l) => l == null ? "-" : string.Join("|", l.Take(3).Select(p => $"{p.e:X2}{"nsh"[p.m]}"));
+                    Console.WriteLine($"      ({x},{y}) A={layers[0][o]:X2} B={layers[1][o]:X2} S={layers[2][o]:X2} ours {a:X6} [{Ents(la)}] theirs {b:X6} [{Ents(lb)}] {k}");
+                }
             }
         Console.WriteLine("    classes: " + string.Join("; ", kinds.Select(kv => $"{kv.Key} {kv.Value}")) + "   e.g. " + string.Join(" ", firsts.Take(4)));
     }

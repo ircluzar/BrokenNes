@@ -305,6 +305,8 @@ internal static class MdRunCli
                 case "hintrule": MdVdp.HIntPreRenderRule = v[0] != 0; break;
                 case "iplshift": BOARD_MD.IplSampleAdjustClocks = v[0]; break;
                 case "z80int": MdVdp.Z80IntClocks = v[0]; break;
+                case "winstretch": MdVdp.WindowStretchColumn = v[0] != 0; break;
+                case "h32stretch": MdVdp.H32StretchZero = v[0] != 0; break;
                 case "vsshift": MdVdp.VsramColumnShift = v[0]; break;
                 case "colpair": MdVdp.ColumnPairRule = v[0] != 0; break;
                 case "sizerule": MdVdp.PlaneSizeRule = v[0]; break;

@@ -240,6 +240,10 @@ public sealed partial class MdVdp
     /// <summary>Experiment: the column whose vertical scroll entry a 16-pixel column uses is this many columns further on.</summary>
     public static int VsramColumnShift = 0;
     public static bool ColumnPairRule = true;
+    /// <summary>The window-edge stretch of the first plane A pair uses the entry of the pair after it (false: the entry the pair would have without the window).</summary>
+    public static bool WindowStretchColumn = true;
+    /// <summary>The left stretch of the 2-cell column scroll in H32 mode (the plane's partial pair at the left edge) uses vertical scroll 0, not the two last entries ANDed as in H40.</summary>
+    public static bool H32StretchZero = true;
     private static bool WindowBugApplies(int hscroll) => WindowBugMode switch { 0 => (hscroll & 0xF) != 0, 1 => (hscroll & 8) != 0, 2 => false, _ => (hscroll & 0xF) != 0 };
 
     private void DrawWindowRun(byte[] dst, int xa, int xb)
@@ -301,8 +305,15 @@ public sealed partial class MdVdp
                 // number counts the pairs from the first boundary. The stretch before it (the plane's partial pair at the left edge) uses the last column's two entries ANDed (probe scenes on the oracle: every
                 // pair, every fine and coarse scroll, both planes; the left stretch decodes as VSRAM[last A] & VSRAM[last B])
                 int b0 = ColumnPairRule ? hs & 15 : 0, lastCol = H40 ? 19 : 15;
-                if (x < b0) { vs = (Vsram[lastCol << 1] & Vsram[(lastCol << 1) + 1]) & 0x3FF; limit = Math.Min(xb, b0); }
-                else { int col = x - b0 >> 4; vs = Vsram[(col + VsramColumnShift << 1) + vsOff & 0x3F] & 0x3FF; limit = Math.Min(xb, b0 + (col + 1 << 4)); }
+                if (x < b0) { vs = H40 || !H32StretchZero ? (Vsram[lastCol << 1] & Vsram[(lastCol << 1) + 1]) & 0x3FF : 0; limit = Math.Min(xb, b0); }
+                else
+                {
+                    int col = x - b0 >> 4;
+                    limit = Math.Min(xb, b0 + (col + 1 << 4));
+                    // after a window at the left the part of the first pair that the window leaves (x from the window's edge to the edge plus the fine scroll) takes the entry of the pair after it (oracle: probe 3)
+                    if (WindowStretchColumn && bugX0 >= 0 && x >= bugX0 && x < bugX0 + b0) { col = bugX0 >> 4; limit = Math.Min(xb, bugX0 + b0); }
+                    vs = Vsram[(col + VsramColumnShift << 1) + vsOff & 0x3F] & 0x3FF;
+                }
             }
             else vs = vsFull;
             int py = imgRow + vs & hMask;

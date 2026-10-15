@@ -106,6 +106,8 @@ internal static class MdPictureTest
     public static int Run(string[] args)
     {
         Console.WriteLine("== Genesis picture, session, saves and mappers self-test");
+        // proof that the checks can fail: --slot-set "winstretch=0;h32stretch=0" (or any other experiment name) runs the same checks on the old rule
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         Planes();
         Scroll();
         ColumnScrollAndSizes();
@@ -268,10 +270,11 @@ internal static class MdPictureTest
         Group("2-cell column scroll with a horizontal scroll, and plane sizes that do not fit");
         // plane A: each cell row cy is tile 1 + cy % 14 (a solid colour per row); column c of plane A scrolls by VSRAM[2c] = 8 * (c + 2), plane B by 0x7F8 ... the last column's pair is ANDed for the left stretch
         int Colour(int vs) => (vs >> 3) % 14 + 1;
-        Pic Setup(int hscroll, bool h40 = true)
+        Pic Setup(int hscroll, bool h40 = true, int r17 = 0)
         {
             var q = new Pic(h40);
             q.V.Reg[11] = 0x04;
+            q.V.Reg[17] = (byte)r17;
             for (int cy = 0; cy < 32; cy++) for (int cx = 0; cx < 64; cx++) q.Cell(PlaneA, cx, cy, 1 + cy % 14);
             for (int c = 0; c < 20; c++) { q.V.Vsram[2 * c] = (ushort)(8 * (c + 2)); q.V.Vsram[2 * c + 1] = 0x7F8; }
             q.V.Vsram[38] = 40; q.V.Vsram[39] = 24;            // the last column: 40 & 24 = 8
@@ -288,6 +291,17 @@ internal static class MdPictureTest
         Check("... and the stretch to its left (x 0-12) scrolls by VSRAM[38] AND VSRAM[39] (the last column's pair: 40 and 24 give 8)", p.Px(2, 0) == Argb(p.CramOf(0, Colour(8)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0), $"{p.Px(2, 0):X8}");
         p = Setup(29);
         Check("a horizontal scroll of 29 starts the first column at x = 13 as well (29 mod 16)", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0));
+        // H32: the stretch at the left uses vertical scroll 0 (oracle: probe scenes vsprobe 3 and vsprobe2 5-7, 9, and the fuzz families on H32); H40 keeps the two ANDed entries (above)
+        p = Setup(13, false);
+        Check("H32: with a horizontal scroll of 13 the first column starts at x = 13 as in H40 ...", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(28, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(29, 0) == Argb(p.CramOf(0, Colour(24)), 0));
+        Check("... and the stretch to its left (x 0-12) scrolls by 0, not by the two last entries ANDed (VSRAM[30] and [31] would give 136)", p.Px(2, 0) == Argb(p.CramOf(0, Colour(0)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(0)), 0), $"{p.Px(2, 0):X8} want {Argb(p.CramOf(0, Colour(0)), 0):X8}");
+        // a window at the left and a fine scroll: the part of the first pair the window leaves (from the window's edge to the edge + the fine scroll) takes the entry of the pair after it (oracle: vsprobe 3 scenes
+        // 3-11 and the fuzz family with window and column scroll; the entry index is the window's width in 16-pixel steps)
+        p = Setup(13, true, 2);        // window left of x = 32; plane pairs at 13 + 16 k
+        Check("a window at the left (x < 32) with a fine scroll of 13: the pair that would be column 1 (x 29-44) uses the entry of column 2 from the window's edge on (x 32-44) ...", p.Px(35, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(44, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0), $"{p.Px(35, 0):X8} want {Argb(p.CramOf(0, Colour(8 * 4)), 0):X8}");
+        Check("... column 2 (x 45-60) keeps its own entry and column 3 starts at x = 61", p.Px(50, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(60, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(62, 0) == Argb(p.CramOf(0, Colour(8 * 5)), 0));
+        p = Setup(0, true, 2);
+        Check("a window at the left without a fine scroll changes nothing: x 32-47 is column 2, x 48 column 3", p.Px(33, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(47, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(49, 0) == Argb(p.CramOf(0, Colour(8 * 5)), 0));
 
         // plane sizes: a width of 128 cells forces a height of 32; a height of 128 with a width of 64 is a 64 x 64 plane
         var q = new Pic();
