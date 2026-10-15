@@ -7,10 +7,11 @@
     are right. This script is the missing half: UAT/cases/*.json stores the EXPECTED value for each
     run, this runner produces the ACTUAL value, diffs them, and exits non-zero when they disagree.
 
-    Three case kinds, all driven through Workshop\bin\Release\net10.0-windows\BrokenNes.Workshop.exe:
+    Four case kinds (the fourth, sega-run, lives in lib\SegaCases.ps1), all driven through Workshop\bin\Release\net10.0-windows\BrokenNes.Workshop.exe:
 
       romtest    -> --romtest. Gates on exit code + FNV-1a64 framebuffer hash after N frames.
       savestate  -> --diag-savestate-roundtrip. Gates on exit code + verdict.
+      sega-run   -> --console-run on a Master System / Game Gear / SG-1000 ROM through the apps' session factory: picture hash, size, colours, audio peak.
       benchmark  -> --benchmark. INFORMATIONAL ONLY. Timing is machine-dependent; it is printed
                     but can never fail the suite.
 
@@ -180,6 +181,7 @@ function Resolve-RomPath {
             $p = $p.Replace('{' + $r.Name + '}', [string]$r.Value)
         }
     }
+    $p = [Environment]::ExpandEnvironmentVariables($p)   # a root may be %TEMP%\something (the Sega cases' generated programs)
     $p = $p -replace '/', '\'
     if ([System.IO.Path]::IsPathRooted($p)) { return $p }
     return (Join-Path $RepoRoot $p)
@@ -249,6 +251,10 @@ if ($UpdateGolden) {
     Write-Host '  Each case runs TWICE; a case whose two runs disagree is NOT written as golden.' -ForegroundColor Yellow
     Write-Host ''
 }
+
+# Sega cases ('sega-run'): lib\SegaCases.ps1. The programs the Workshop writes itself are generated before any case looks for its ROM.
+. (Join-Path $UatRoot 'lib\SegaCases.ps1')
+if ($work | Where-Object { $_.Kind -eq 'sega-run' }) { Initialize-SegaGeneratedPrograms -Manifests $manifests }
 
 $runsPerCase = [Math]::Max(1, $Repeat)
 if ($UpdateGolden) { $runsPerCase = [Math]::Max(2, $runsPerCase) }
@@ -387,7 +393,8 @@ foreach ($w in $work) {
     }
 
     # --- ROM missing on this machine -----------------------------------------
-    if ($kind -ne 'none' -and -not (Test-Path -LiteralPath $w.RomPath)) {
+    # (a Sega case may name a version inside an archive: "archive.7z#text" - the file to look for is the archive)
+    if ($kind -ne 'none' -and -not (Test-Path -LiteralPath ($w.RomPath -replace '(?i)(\.7z)#.*$', '$1'))) {
         if ($StrictMissing) {
             $row.status = 'FAIL'; $row.note = "ROM not found: $($w.RomPath)"; $failCount++
         } else {
@@ -412,7 +419,8 @@ foreach ($w in $work) {
             'romtest'   { Invoke-RomTestCase   -Case $c -RomPath $w.RomPath }
             'savestate' { Invoke-SaveStateCase -Case $c -RomPath $w.RomPath }
             'benchmark' { Invoke-BenchmarkCase -Case $c -RomPath $w.RomPath }
-            default     { throw "Case '$id' has unknown kind '$kind' (expected romtest|savestate|benchmark)" }
+            'sega-run'  { Invoke-SegaRunCase   -Case $c -RomPath $w.RomPath }
+            default     { throw "Case '$id' has unknown kind '$kind' (expected romtest|savestate|benchmark|sega-run)" }
         }
     }
     $first      = $runs[0]

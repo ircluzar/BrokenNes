@@ -155,7 +155,7 @@ internal static class SweepSource
         return null;
     }
 
-    private static void SevenZip(string archive, string dest)
+    internal static void SevenZip(string archive, string dest)
     {
         string exe = SevenZipExe() ?? throw new FileNotFoundException("7-Zip (7z.exe) is needed to unpack " + archive + ": install it, or unpack the archives and sweep the folder");
         Directory.CreateDirectory(dest);
@@ -297,7 +297,7 @@ internal static class SweepProbe
 
             using var session = SmsSweepCli.ForcedModel is { } forced && kind == ConsoleKind.MasterSystem
                 ? new SmsSession(rom, kind.Value, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), inner, forced, null)
-                : (SmsSession)ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner);
+                : SmsRomIo.Concrete(ConsoleSessions.Create(kind.Value, rom, CoreCatalog.Default(kind.Value, CoreSlot.Cpu), CoreCatalog.Default(kind.Value, CoreSlot.Ppu), CoreCatalog.Default(kind.Value, CoreSlot.Apu), null, inner));
             var board = session.Board;
             row.Model = session.Model.ToString(); row.Region = board.Region.ToString().ToUpperInvariant(); row.Mapper = board.Cart.Mapper.ToString();
             bool staticBattery = board.Cart.HasBattery;
@@ -637,7 +637,7 @@ internal static class Sheets
                     string cap = (r.Console + " " + Path.GetFileNameWithoutExtension(r.File));
                     g.DrawString(cap.Length > 52 ? cap[..52] : cap, font, Brushes.White, new RectangleF(x + 2, y + th + 1, tw - 4, label - 2));
                 }
-                string path = Path.Combine(shotsDir, $"sheet_{group.Key}_{s + 1}.png");
+                string path = Path.Combine(shotsDir, $"sheet_{group.Key.Replace('?', 'q')}_{s + 1}.png");   // the class "audio-bug?" has a character a file name cannot (GDI+ then failed with a generic error and ended the whole sweep run)
                 bmp.Save(path, ImageFormat.Png);
             }
         }

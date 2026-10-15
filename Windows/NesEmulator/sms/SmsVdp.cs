@@ -41,6 +41,11 @@ public sealed partial class SmsVdp
     /// <summary>1 = no sprite collisions in the border lines above and below the picture, as the oracle (Mesen 2.1.1) behaves (FluBBa's VDP test #46 says the hardware does set the flag there). A tool setting for comparing
     /// games with the oracle (<c>--tune OracleNoBorderCollision=1</c>), never on in the app.</summary>
     public int OracleNoBorderCollision;
+    /// <summary>1 = the line counter powers up at 0 instead of 255, as the oracle (Mesen 2.1.1) has it: it runs no BIOS, so the counter underflows at the first picture line of its first frame and a line interrupt is
+    /// pending from then on until the game reads the status port (a game that enables the line interrupt before its first status read takes that interrupt at its first <c>EI</c>: Shining Force II on the Game Gear does, one
+    /// interrupt the real machine does not take, because its BIOS has reloaded the counter every frame before the cartridge starts). A tool setting for comparing games with the oracle
+    /// (<c>--tune OracleLineCounterAtPowerOn=1</c>), never on in the app.</summary>
+    public int OracleLineCounterAtPowerOn;
 
     /// <summary>Master clocks the collision flag trails the pixel that caused it.</summary>
     public int CollisionDelayMc = 2;
@@ -105,6 +110,8 @@ public sealed partial class SmsVdp
 
     /// <summary>Called with (frame line, master clock in the line, register, value) for every register write: the tracing hook of the Workshop.</summary>
     public Action<int, int, int, byte>? RegisterWriteHook;
+    /// <summary>A tool hook: a colour RAM write has just taken effect (line, the picture x the dot was drawn at or -1 when no dot was, the colour RAM byte index, the colour of the dot, the master clock into the line the chip is at).</summary>
+    public Action<int, int, int, uint, int>? CramDotHook;
     /// <summary>Called with (code register, address, value, frame line, master clock in the line) for every write to the data port (VRAM or colour RAM).</summary>
     public Action<int, int, byte, int, int>? DataWriteHook;
 
@@ -156,7 +163,7 @@ public sealed partial class SmsVdp
         latch = false; readBuffer = 0; ggCramLatch = 0;
         vintFlag = ovrFlag = colFlag = lineIrqPending = false; fifthSpriteNumber = 0x1F; fifthSeen = false;
         for (int i = 0; i < 32; i++) palArgb[i] = ConvertColor(gg ? cram[i * 2] | cram[i * 2 + 1] << 8 : cram[i]);
-        lineCounter = 0xFF; hscrollLatched = 0; vscrollLatched = 0; hCounterLatch = 0;
+        lineCounter = OracleLineCounterAtPowerOn != 0 ? 0 : 0xFF; hscrollLatched = 0; vscrollLatched = 0; hCounterLatch = 0;
         Line = 0; vcounter = 0; Frames = 0; renderedX = 256; curMc = 0;
         evCount = evNext = 0; colAtMc = ovrAtMc = int.MaxValue; NextEventMc = int.MaxValue;
         pendHead = pendCount = 0; lineBase = 0; lastWriteTime = 0;
@@ -423,7 +430,11 @@ public sealed partial class SmsVdp
                 // With the display off the picture shows the backdrop, and a colour RAM write that lands while the line is being drawn shows through as a one-pixel dot of the colour written
                 // (the oracle does this; on the Master System the value is the 6-bit colour of the byte, on the Game Gear the colour the pair completes)
                 if (!lineDisplayOn && Line < activeHeight && renderedX < 256 && (!gg || (index & 1) != 0))
+                {
+                    CramDotHook?.Invoke(Line, renderedX, index, palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F], curMc);
                     Frame[Line * 256 + renderedX++] = palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F];
+                }
+                else CramDotHook?.Invoke(Line, -1, index, palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F], curMc);   // no dot (a tool sees the write anyway)
                 break;
             default:
                 RegisterWriteHook?.Invoke(Line, curMc, index, value);

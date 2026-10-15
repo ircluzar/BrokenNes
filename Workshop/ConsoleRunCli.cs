@@ -31,7 +31,11 @@ internal static class ConsoleRunCli
     {
         string Opt(string name, string dflt) { int i = Array.IndexOf(args, "--" + name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : dflt; }
         string romPath = Opt("rom", "");
-        byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(romPath), romPath, out string inner);
+        // a Master System / Game Gear ROM may come out of a .7z ("archive.7z#text" picks a version; 7-Zip is needed): the file name matters to those consoles (the region tag of a "(Europe)" dump), so it goes on to the session
+        bool sevenZip = romPath.Contains(".7z", StringComparison.OrdinalIgnoreCase);
+        string loadedName = romPath;
+        byte[] raw = sevenZip ? BrokenNes.Workshop.Sega.SmsRomIo.Load(romPath, out loadedName) : File.ReadAllBytes(romPath);
+        byte[] rom = RomDetect.Unwrap(raw, loadedName, out string inner);
         var detected = RomDetect.Detect(rom, inner) ?? throw new InvalidDataException("Unknown ROM type");
         var console = Opt("console", "") is { Length: > 0 } c ? Consoles.FromKey(c) : detected;
         string cpu = CoreCatalog.Resolve(console, CoreSlot.Cpu, Opt("cpu", "")), ppu = CoreCatalog.Resolve(console, CoreSlot.Ppu, Opt("ppu", "")), apu = CoreCatalog.Resolve(console, CoreSlot.Apu, Opt("apu", ""));
@@ -45,7 +49,7 @@ internal static class ConsoleRunCli
         NesEmulator.Mix.GbLook.Palette = NesEmulator.Mix.GbLook.FromKey(Opt("gb-look", "green"));
         NesEmulator.Mix.GbLook.InvertBackground = args.Contains("--gb-invert-bg");
         NesEmulator.Mix.GbLook.InvertSprites = args.Contains("--gb-invert-obj");
-        using var s = ConsoleSessions.Create(console, rom, cpu, ppu, apu);
+        using var s = ConsoleSessions.Create(console, rom, cpu, ppu, apu, null, Path.GetFileName(inner));
         Console.WriteLine($"detected {Consoles.DisplayName(detected)}, running {s.Description}");
         // --battery <file>: start from a copy of a battery save (read only). --wav <file> [--wav-from <frame>]: record the output as mono.
         string battery = Opt("battery", ""), wav = Opt("wav", "");
@@ -70,7 +74,7 @@ internal static class ConsoleRunCli
             .Select(x => (frame: int.Parse(x[0]), slot: Enum.Parse<CoreSlot>(x[1], true), id: x[2])).ToList();
         // --sfc-layers <mask>: the native SNES picture with only these layers (bit 0-3 BG1-4, bit 4 OBJ) - diagnosis.
         if (Opt("sfc-layers", "") is { Length: > 0 } lm && s is SnesSession lms) lms.Ppu.DebugLayerMask = Convert.ToInt32(lm, 16);
-        var buf = new short[32768]; long samples = 0; var held = PadButtons.None;
+        var buf = new short[32768]; long samples = 0; var held = PadButtons.None; int peak = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int f = 1; f <= frames; f++)
         {
@@ -102,6 +106,7 @@ internal static class ConsoleRunCli
             int n; while ((n = s.ReadSamples(buf)) > 0)
             {
                 samples += n;
+                for (int i = 0; i < n; i++) peak = Math.Max(peak, Math.Abs((int)buf[i]));
                 if (wav != "" && f >= wavFrom) for (int i = 0; i + 1 < n; i += 2) pcm.Add((short)((buf[i] + buf[i + 1]) / 2));
             }
             if (pngAt.Contains(f)) MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, Path.Combine(outDir, $"{tag}_{Consoles.Key(console)}_f{f:D5}.png"));
@@ -113,11 +118,13 @@ internal static class ConsoleRunCli
             for (int m = 0; m < 128; m++)
                 if (census[m] > 0) Console.WriteLine($"  {NesEmulator.Mix.PitchGuard.NoteName(440 * Math.Pow(2, (m - 69) / 12.0)),-4} {440 * Math.Pow(2, (m - 69) / 12.0),8:F0} Hz  {census[m]}");
         }
+        // --battery-out <file>: the battery save as the session exports it after the run (a game that saved in the run shows non-zero bytes)
+        if (Opt("battery-out", "") is { Length: > 0 } bout && s.HasBattery) { byte[] save = s.ExportSave(); File.WriteAllBytes(bout, save); Console.WriteLine($"battery saved: {bout} ({save.Length} bytes, {save.Count(b => b != 0)} non-zero)"); }
         if (wav != "") { MixAudioCli.WriteWav(wav, pcm.ToArray(), s.SampleRate); Console.WriteLine($"wav: {wav} ({pcm.Count / (double)s.SampleRate:F1} s)"); }
         ulong hash = 1469598103934665603;
         for (int i = 0; i < s.FrameWidth * s.FrameHeight; i++) hash = (hash ^ s.Frame[i]) * 1099511628211;
         Console.WriteLine($"frames={frames} last={s.FrameWidth}x{s.FrameHeight} display-width={s.DisplayWidth} audio={samples / 2:N0} stereo samples @ {s.SampleRate} Hz " +
-                          $"battery={s.HasBattery} hash={hash:X16} {frames / sw.Elapsed.TotalSeconds:F0} fps");
+                          $"battery={s.HasBattery} hash={hash:X16} {frames / sw.Elapsed.TotalSeconds:F0} fps colors={s.Frame.Take(s.FrameWidth * s.FrameHeight).Distinct().Count()} peak={peak}");
         return 0;
     }
 
