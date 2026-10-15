@@ -80,7 +80,7 @@ def make_scene(rng, idx, family='all'):
         for i in range(0, 64, 16): s['cram'][i] = 0
     # sprite table: a chain of n sprites
     maxs = 80 if h40 else 64
-    n = rng.choice([4, 12, 24, 40, maxs]) if fam != 'sprites' else maxs
+    n = rng.choice([4, 12, 24, 40, maxs]) if fam not in ('sprites', 'satcache') else maxs
     dbl = il == 3
     sat = bytearray(8 * maxs)
     order = list(range(n))
@@ -105,6 +105,10 @@ def make_scene(rng, idx, family='all'):
         hs_tbl += struct.pack('>HH', rng.randrange(0, 1024) if rng.random() < 0.7 else rng.randrange(0, 16), rng.randrange(0, 1024) if rng.random() < 0.7 else rng.randrange(0, 16))
     s['hscroll'] = bytes(hs_tbl)
     s['hs_addr'] = (regs[13] & 0x3F) << 10
+    if fam == 'satcache':
+        r5e = rng.randrange(0x80)
+        while (r5e & (0x7E if h40 else 0x7F)) == (regs[5] & (0x7E if h40 else 0x7F)): r5e = rng.randrange(0x80)
+        s['r5_early'] = r5e
     s['window'] = [r17, r18]
     s['window_on'] = win
     s['dma_window'] = idx % 8
@@ -120,7 +124,10 @@ def scene_asm(s, i, press):
     a('scene%d:' % i)
     a('    move.w #$%04X,(a4)' % (0x8100 | r1_off))
     # registers first (the sprite attribute table address among them: the VDP's sprite cache follows writes to the table the register names), then the memories
-    for r, v in sorted(s['regs'].items()): a('    move.w #$%04X,(a4)' % (0x8000 | r << 8 | v))
+    # family 'satcache': the sprite table address register first names ANOTHER table (r5_early) and only gets its real value after the memories are loaded, so a VDP that caches the table's first bytes as they
+    # are written has its cache from the wrong place
+    r5e = s.get('r5_early')
+    for r, v in sorted(s['regs'].items()): a('    move.w #$%04X,(a4)' % (0x8000 | r << 8 | (r5e if r == 5 and r5e is not None else v)))
     # the 64 KB of VRAM by DMA from the table window
     src = TABLE_AT + s['dma_window'] * 0x10000
     for v in (0x9300 | 0x00, 0x9400 | 0x80, 0x9500 | (src >> 1) & 0xFF, 0x9600 | (src >> 9) & 0xFF, 0x9700 | (src >> 17) & 0x7F, 0x8F02):
@@ -143,6 +150,7 @@ def scene_asm(s, i, press):
     for addr, words in s.get('extra_writes', []):
         a('    move.l #$%08X,(a4)' % vram_cmd(addr))
         for w in words: a('    move.w #$%04X,(a3)' % (w & 0xFFFF))
+    if r5e is not None: a('    move.w #$%04X,(a4)' % (0x8500 | s['regs'][5]))
     # display on
     a('    move.w #$%04X,(a4)' % (0x8100 | r1_on))
     # wait for Start (pressed, then released)

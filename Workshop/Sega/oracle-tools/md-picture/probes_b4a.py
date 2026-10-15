@@ -181,6 +181,51 @@ def write_rate(kind='cram', h40=True, display=True, per=16):
     return s
 
 
+def dma_rate(kind='68k_vram', h40=True, display=True, words=2048):
+    """How long a DMA of `words` words takes, in laps per frame: one DMA, then a poll until the status register's DMA-busy bit is clear, then a counter increment; the vertical interrupt counts frames. RAM: long at
+    $FF0000 = laps, word at $FF0004 = frames (the same layout as write_rate). kind: '68k_vram', '68k_cram', 'fill' (VRAM fill) or 'copy' (VRAM copy)."""
+    lo, hi = words & 0xFF, words >> 8 & 0xFF
+    if kind == '68k_vram': r23, cmd, extra = 0x00, '$40000080', []
+    elif kind == '68k_cram': r23, cmd, extra = 0x00, '$C0000080', []
+    elif kind == 'fill': r23, cmd, extra = 0x80, '$40000080', ['    move.w #$1234,(a3)']
+    else: r23, cmd, extra = 0xC0, '$40000080', []
+    s = prologue(h40, display, regs={1: (0x74 if display else 0x34), 0: 0x04, 15: 2})
+    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.w #$2000,sr', 'main:',
+                '    move.w #$%04X,(a4)' % (0x9300 | lo), '    move.w #$%04X,(a4)' % (0x9400 | hi), '    move.w #$9500,(a4)', '    move.w #$9608,(a4)', '    move.w #$%04X,(a4)' % (0x9700 | r23),
+                '    move.l #%s,(a4)' % cmd)
+    s += ''.join(x + NL for x in extra)
+    s += _lines('poll: move.w (a2),d1', '    btst #1,d1', '    bne.s poll', '    addq.l #1,(a0)', '    bra.s main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    rte')
+    return s
+
+
+SR_VARIANTS = {
+    # name: (the instruction that lowers the interrupt mask, the instruction repeated after it)
+    'move_sr_nop': ('move.w #$2000,sr', 'nop'),
+    'andi_sr_nop': ('andi.w #$F8FF,sr', 'nop'),
+    'move_sr_addq': ('move.w #$2000,sr', 'addq.w #1,d0'),
+    'move_sr_mulu': ('move.w #$2000,sr', 'mulu d2,d3'),
+    'move_sr_movem': ('move.w #$2000,sr', 'movem.l d0-d7,(a6)'),
+    'move_sr_clrl': ('move.w #$2000,sr', 'clr.l (a6)'),
+    'move_sr_divu': ('move.w #$2000,sr', 'divu d4,d3'),
+    'move_sr_lsl': ('move.w #$2000,sr', 'lsl.l #8,d5'),
+}
+
+
+def sr_delay(variants=None, frames=30, h40=True, run=6):
+    """How many instructions run after an interrupt mask lowering before a pending vertical interrupt is taken. For each variant: with the mask at 7 wait for the interrupt pending flag (status bit 7), then lower
+    the mask with the variant's first instruction and run `run` copies of its second instruction; the handler logs the return address it was given (the first instruction not executed). Labels `v<i>m` (the mask
+    instruction), `v<i>r<k>` (copy k) and `v<i>e` (after the run) let the analysis turn the logged addresses into 'after copy k'. RAM: variant i, frame f at $FF0100 + (i * frames + f) * 4 (a long)."""
+    variants = variants or list(SR_VARIANTS)
+    s = prologue(h40, True, regs={1: 0x74, 0: 0x04})
+    s += _lines('    lea ($FF0100).l,a0', '    lea ($FF8000).l,a6', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #7,d4', '    moveq #1,d5')
+    for i, name in enumerate(variants):
+        mask_ins, ins = SR_VARIANTS[name]
+        s += _lines('    move.w #%d,d7' % (frames - 1), 'f%d:' % i, '    move.w #$2700,sr', 'w%d: move.w (a2),d1' % i, '    btst #7,d1', '    beq.s w%d' % i, '    moveq #0,d0', 'v%dm: %s' % (i, mask_ins))
+        for k in range(run): s += 'v%dr%d: %s' % (i, k, ins) + NL
+        s += _lines('v%de: nop' % i, '    dbf d7,f%d' % i)
+    s += _lines('_spin: bra.s _spin', 'handler:', '    move.l 2(sp),(a0)+', '    rte')
+    return s
+
 def frame_phase(il=0, h40=True):
     """The VINT handler reads the HV counter first and the status register second (field flag, bit 4), into RAM ($FF0004...: HV, status per frame). Interrupts on, a nop loop as the main program: successive HV
     values drift by the 68000's phase against the frame, and a field that is a line longer shows as a jump. `il` is R12's interlace field (0, 1 or 3)."""
