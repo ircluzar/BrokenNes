@@ -107,6 +107,10 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         }
     }
 
+    public string SwapRefusal(CoreSlot slot, string id) => slot != CoreSlot.Ppu ? inner.SwapRefusal(slot, id)
+        : IsNesChip(id) ? $"the picture bridge to {id} could not be built for this {Consoles.DisplayName(Console)} game"
+        : $"the {Consoles.DisplayName(Console)} has one picture chip of its own ({CoreCatalog.Default(Console, CoreSlot.Ppu)}) and {id} is not it";
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         if (slot != CoreSlot.Ppu) return inner.TrySwapCore(slot, id);

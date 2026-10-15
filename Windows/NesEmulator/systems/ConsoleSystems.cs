@@ -201,13 +201,15 @@ public sealed record CoreOption(string Id, string Label, string Family);
 public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
-    private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy" };
+    private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
         ["CPU:SNES"] = "65816 (SNES CPU)", ["CPU:SM83"] = "SM83 (Game Boy CPU)",
+        ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
+        ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
         ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
@@ -437,6 +439,12 @@ public interface IConsoleSession : IDisposable
     /// from the current state. False when this swap cannot be done in place (the app then restarts the game on it).
     /// </summary>
     bool TrySwapCore(CoreSlot slot, string id);
+
+    /// <summary>
+    /// Why <see cref="TrySwapCore"/> refused (or would refuse) to change <paramref name="slot"/> to <paramref name="id"/> in place: words fit for a message, so the app can tell the user why the game restarts on the new core
+    /// instead of swapping it live. The default says only that this session cannot; a session that knows the real reason (a chip whose state cannot move between units, say) overrides it. Never empty.
+    /// </summary>
+    string SwapRefusal(CoreSlot slot, string id) => $"the {Consoles.DisplayName(Console)} session cannot change its {slot} core to {id} while the game runs";
 
     // ---- save states (the shared mechanism: the apps keep a quick slot per game and file / key-value storage; the NES has its own, older one and does not use this) ----
 
