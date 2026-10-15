@@ -86,6 +86,14 @@ local function dumpVdp(n)
   local ram = {}
   for i = 0, 0x1FFF do ram[#ram + 1] = string.char(emu.read(i, emu.memType.smsWorkRam)) end
   writeFile(outDir .. "/" .. tag .. "_f" .. n .. ".ram.bin", table.concat(ram))
+  -- the cartridge RAM (a battery game's save): up to 32 KB, as far as the oracle's cartridge has any
+  local sram = {}
+  for i = 0, 0x7FFF do
+    local ok, v = pcall(emu.read, i, emu.memType.smsCartRam)
+    if not ok then break end
+    sram[#sram + 1] = string.char(v & 0xFF)
+  end
+  writeFile(outDir .. "/" .. tag .. "_f" .. n .. ".sram.bin", table.concat(sram))
 end
 
 -- Mesen starts the VDP at a random scanline (the Z80 and the VDP are not aligned at power-on, and a game that depends on it shows different frames run to run). The line is written to
@@ -97,7 +105,8 @@ do
     done = true
     local st = emu.getState()
     local f = assert(io.open(outDir .. "/" .. tag .. ".phase.txt", "wb"))
-    f:write(string.format("scanline=%d vdpcycle=%d r=%d vcounter=%d\n", st["vdp.scanline"], st["vdp.cycle"], st["cpu.r"], st["vdp.vcounter"]))
+    f:write(string.format("scanline=%d vdpcycle=%d r=%d vcounter=%d counter=%s latch=%s linepend=%s vintpend=%s\n", st["vdp.scanline"], st["vdp.cycle"], st["cpu.r"], st["vdp.vcounter"],
+      tostring(st["vdp.scanlineCounter"]), tostring(st["vdp.scanlineCounterLatch"]), tostring(st["vdp.scanlineIrqPending"]), tostring(st["vdp.verticalBlankIrqPending"])))
     f:close()
   end, emu.callbackType.exec, 0x0000, 0x0000, emu.cpuType.sms, emu.memType.smsMemory)
 end

@@ -88,7 +88,7 @@ internal static class SmsRunCli
             board.InstructionHook = pc =>
             {
                 var c = board.Cpu;
-                trace.Enqueue($"{pc:X4} {board.Peek(pc):X2} {board.Peek((ushort)(pc + 1)):X2} {board.Peek((ushort)(pc + 2)):X2}  AF={c.AF:X4} BC={c.BC:X4} DE={c.DE:X4} HL={c.HL:X4} SP={c.SP:X4} IX={c.IX:X4} IY={c.IY:X4} IFF={(c.IFF1 ? 1 : 0)} line={board.Vdp.Line}");
+                trace.Enqueue($"{pc:X4} {board.Peek(pc):X2} {board.Peek((ushort)(pc + 1)):X2} {board.Peek((ushort)(pc + 2)):X2}  AF={c.AF:X4} BC={c.BC:X4} DE={c.DE:X4} HL={c.HL:X4} SP={c.SP:X4} IX={c.IX:X4} IY={c.IY:X4} IFF={(c.IFF1 ? 1 : 0)} line={board.Vdp.Line} irq={(board.Vdp.Irq ? 1 : 0)} R0={board.Vdp.Regs[0]:X2} R1={board.Vdp.Regs[1]:X2} R10={board.Vdp.Regs[10]:X2} lc={board.Vdp.LineCounterValue}");
                 if (trace.Count > traceN) trace.Dequeue();
             };
         if (Opt("trace-io") is { } tio)
@@ -251,11 +251,27 @@ internal static class SmsRunCli
                 for (int i = 0; i < Ym2413.VoiceCount; i++) sb.AppendLine($"fmAudio.opll->ch_out{i} = {fmUnit.Fm.ChannelOutput(i)}");
                 File.WriteAllText(Path.Combine(outDir, $"{tag}_f{frameNo}.fm.txt"), sb.ToString());
             }
+            if (Opt("vdp-flags-at") is { } vfa && ParseFrames(vfa).Contains(frameNo))
+            {
+                // --vdp-flags-at f1,f2: the VDP's interrupt flags and line counter at the end of those frames (the oracle's state dump has vdp.scanlineIrqPending, vdp.verticalBlankIrqPending, vdp.scanlineCounter)
+                var vdpType = typeof(SmsVdp); const System.Reflection.BindingFlags nonPublic = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                Console.WriteLine($"frame {frameNo}: VDP line {board.Vdp.Line} lineIrqPending={vdpType.GetField("lineIrqPending", nonPublic)!.GetValue(board.Vdp)} vintFlag={vdpType.GetField("vintFlag", nonPublic)!.GetValue(board.Vdp)} lineCounter={board.Vdp.LineCounterValue} R0={board.Vdp.Regs[0]:X2} R1={board.Vdp.Regs[1]:X2} R10={board.Vdp.Regs[10]:X2}");
+            }
             if (ramAt.Contains(frameNo))
             {
                 File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.ram.bin"), board.Ram);
                 File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.vram.bin"), board.Vdp.Vram);
                 File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.cram.bin"), Enumerable.Range(0, 64).Select(i => board.Vdp.CramByte(i)).ToArray());
+                if (session.HasBattery || board.Cart.Ram != null) File.WriteAllBytes(Path.Combine(outDir, $"{tag}_f{frameNo}.sram.bin"), session.ExportSave());
+                if (mesenDir != null && File.Exists(Path.Combine(mesenDir, $"{tag}_f{frameNo}.sram.bin")))
+                {
+                    // the save: the oracle's cartridge RAM (as far as its cartridge has any) against the first bytes of this emulator's save file (which is 32 KB, the oracle's 8 KB or less; the rest of ours must be zero)
+                    var theirsRam = File.ReadAllBytes(Path.Combine(mesenDir, $"{tag}_f{frameNo}.sram.bin")); var oursRam = session.ExportSave();
+                    int n2 = Math.Min(theirsRam.Length, oursRam.Length), bad = 0, firstBad = -1;
+                    for (int i = 0; i < n2; i++) if (theirsRam[i] != oursRam[i]) { bad++; if (firstBad < 0) firstBad = i; }
+                    int extra = oursRam.Skip(theirsRam.Length).Count(b => b != 0);
+                    Console.WriteLine($"frame {frameNo}: SAVE RAM {(bad == 0 && extra == 0 ? "identical" : $"{bad} bytes differ" + (firstBad >= 0 ? $" (first at ${firstBad:X4})" : ""))} over the oracle's {theirsRam.Length:N0} bytes ({oursRam.Skip(0).Count(b => b != 0)} non-zero in ours, {theirsRam.Count(b => b != 0)} in the oracle's); {extra} non-zero bytes of ours beyond");
+                }
                 if (mesenDir != null) Console.WriteLine($"frame {frameNo}: RAM " + SmsPng.DiffBytes(board.Ram, Path.Combine(mesenDir, $"{tag}_f{frameNo}.ram.bin")) +
                                                         " | VRAM " + SmsPng.DiffBytes(board.Vdp.Vram, Path.Combine(mesenDir, $"{tag}_f{frameNo}.vram.bin")));
             }
