@@ -145,99 +145,99 @@
   "md-sonic": {
     "frames": 900,
     "video": "468d348925c135b4",
-    "audio": "9aec8323942726b7",
+    "audio": "f0c31d04b6f541cd",
     "checkpoints": [
       "250:6df26c286479c5e6:fe7f5af28ae0985f",
       "500:050f8f1b827bc16d:d6748bb5ce5fac6f",
-      "750:be34d080b6a397be:9a55f12cdde31945"
+      "750:be34d080b6a397be:4e1e29c4e2af9fff"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-sonic2": {
     "frames": 900,
     "video": "6919a467b3d73f1b",
-    "audio": "2b15f2eb78f007a1",
+    "audio": "b2205b9a6e2e5c95",
     "checkpoints": [
-      "250:8bc7611dbb3ebbc9:0b7d88daa01a8915",
-      "500:a9133eb68b34a94c:b129e52a79c4833b",
-      "750:a287c5410daccdc5:4abbd27ba6ad9dc1"
+      "250:8bc7611dbb3ebbc9:c07c55d3603767e5",
+      "500:a9133eb68b34a94c:ddae97f345d3f29d",
+      "750:a287c5410daccdc5:c88042a8fb13750d"
     ],
     "description": "Genesis SONIC THE             HEDGEHOG 2 (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-streetsofrage": {
     "frames": 900,
     "video": "ead7995944301c47",
-    "audio": "6f90056cf4036555",
+    "audio": "b1f988039f3f54f5",
     "checkpoints": [
       "250:534313198add5fdd:a3ef8d1d38fdf80b",
       "500:77f1de0617ed55bf:41f9b9714ecc04f3",
-      "750:5e48c6707d3e913f:a349027e00e57bed"
+      "750:5e48c6707d3e913f:243efce8b6b9297b"
     ],
     "description": "Genesis STREETS OF RAGE (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-goldenaxe": {
     "frames": 900,
     "video": "74a0dfe99d632fa6",
-    "audio": "40082b9e643413ab",
+    "audio": "15636f5c9dd9ef73",
     "checkpoints": [
       "250:42a77ea06b5ab466:dcbfd6c9a0259a1d",
-      "500:cfdd806da1741f99:7a6bf62f2b7724f1",
-      "750:75742f34432c3fc4:2f20298e0dff1825"
+      "500:cfdd806da1741f99:b6843aeec9e2a4db",
+      "750:75742f34432c3fc4:5090cf8d02acd7dd"
     ],
     "description": "Genesis f n k c d m @ \u0060 w d @ @ @ @ @ @ (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-gunstar": {
     "frames": 900,
-    "video": "1b641fe01cc78fe3",
-    "audio": "caace5db94ac6f27",
+    "video": "e7d2852847f415d8",
+    "audio": "ce9a99ec8a996e56",
     "checkpoints": [
-      "250:1c958820dddc599a:c08f8aad0cf89fa3",
-      "500:93604047af2c1322:305fe7b8f537361b",
-      "750:5e3e64b683a5bf39:dd149d072bf9521b"
+      "250:7f65bb268b9014e2:c08f8aad0cf89fa3",
+      "500:3eefcba2290e61f0:305fe7b8f537361b",
+      "750:d06bcb709cdd5dd3:dd149d072bf9521b"
     ],
     "description": "Genesis GUNSTAR HEROES (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Pal Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-comixzone": {
     "frames": 900,
-    "video": "a5ade3f0297a065b",
-    "audio": "44ca5fa6314ead58",
+    "video": "cd236fcf4874eb7b",
+    "audio": "6dbe06fdf82318c4",
     "checkpoints": [
-      "250:8c1d883029322725:5146467ce80d6cc1",
-      "500:f5e93e486844cfbb:e7e89e38b39948ad",
-      "750:6199491f4c7e86ef:b8aaae127600cce6"
+      "250:a798884cdf73ffc3:c97501dd850b9a44",
+      "500:4f21caf9645b99db:b96f9acc470a3a2c",
+      "750:fddb8bd49dded14f:0316c94c3619676f"
     ],
     "description": "Genesis COMIX ZONE (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-sonic\u003Efixs": {
     "frames": 900,
     "video": "59af7416c93146a5",
-    "audio": "9aec8323942726b7",
+    "audio": "f0c31d04b6f541cd",
     "checkpoints": [
       "250:99863718bf1e7775:fe7f5af28ae0985f",
       "500:3f26c96eb614c475:d6748bb5ce5fac6f",
-      "750:3eba81d478ae7b8d:9a55f12cdde31945"
+      "750:3eba81d478ae7b8d:4e1e29c4e2af9fff"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC) | PICTURE NES:FIXS [no frames yet]"
   },
   "md-sonic\u003Efix": {
     "frames": 900,
     "video": "27b7cadba2b26ae9",
-    "audio": "9aec8323942726b7",
+    "audio": "f0c31d04b6f541cd",
     "checkpoints": [
       "250:95d746b35add775d:fe7f5af28ae0985f",
       "500:4f8098938e41e9fd:d6748bb5ce5fac6f",
-      "750:2f7171ea6a898605:9a55f12cdde31945"
+      "750:2f7171ea6a898605:4e1e29c4e2af9fff"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC) | PICTURE NES:FIX [no frames yet]"
   },
   "md-sonic\u003Enesapu": {
     "frames": 900,
     "video": "468d348925c135b4",
-    "audio": "3922b9ef1f5e54b1",
+    "audio": "60e54fef89493085",
     "checkpoints": [
-      "250:6df26c286479c5e6:117d96a9ce0a41ab",
-      "500:050f8f1b827bc16d:117ac7c3a6dd397f",
-      "750:be34d080b6a397be:78a66b26c02df3bf"
+      "250:6df26c286479c5e6:d7067d3634130e2d",
+      "500:050f8f1b827bc16d:d224619edec99eed",
+      "750:be34d080b6a397be:71c6970c6a776d6f"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU NES:FIX: NES:Fix\u002BMD (Z80, PSG, YM2612 FM \u002B DAC)"
   }

@@ -45,6 +45,7 @@ internal static class MdStateTest
         {
             ("round trip on the roster", () => RoundTrips(games, quick)),
             ("every field", () => Fields(games)),
+            ("a state saved while the sound Z80's loop is parked", () => ParkedLoop(games)),
             ("refusals", Refusals),
             ("the app's own factory", Factory),
             ("hot swapping", HotSwap),
@@ -181,13 +182,92 @@ internal static class MdStateTest
             Advance(b, 0, 40);
             b.LoadState(state);
             ApplyPoison(b);
-            var diffs = DeepCompare.Differences(a, b);
+            var diffs = DeepCompare.Differences(a, b).Where(d => !IsLoopBookkeeping(d)).ToList();
             Check($"#{g.Number} {g.Short}: every field of the session, the board, the 68000, the VDP, the cartridge, the Z80, the YM2612 and the PSG equals the saved session's (reflection over {DeepCompare.LastCount} fields)", diffs.Count == 0, string.Join("; ", diffs.Take(14)));
             // the comparison can fail: two sessions at different points differ, and it says where
             var c = Make(rom); Advance(c, 0, 650);
             var other = DeepCompare.Differences(a, c);
             Check($"#{g.Number}: the field comparison reports differences between sessions at different points (its own proof of failure)", other.Count > 20, $"{other.Count} differences, e.g. {string.Join(", ", other.Take(3))}");
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------------
+    //  2b. A state saved while the sound Z80 is parked in a polling loop (Track C4a's fast-forward)
+    // ---------------------------------------------------------------------------------------------------------------------
+
+    private static readonly System.Reflection.FieldInfo ParkedField = typeof(MdSoundUnit).GetField("parked", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+    /// <summary>
+    /// The sound unit's loop detector (Track C4a: what it has learned about the loop it saw last, its quiet period, its counters) is bookkeeping of the fast-forward, not machine state: a loaded session starts it afresh
+    /// (<c>ResetLoops</c>) and the group below shows that the machine's every output and its saved state do not depend on it. The reflection comparison therefore skips exactly these fields.
+    /// </summary>
+    private static bool IsLoopBookkeeping(string diff) =>
+        System.Text.RegularExpressions.Regex.IsMatch(diff, @"\.Sound>\.(loopMark|loopTicks|loopRefresh|loopHead|loopStartTick|loopQuietUntil|loopState|loopImpure|LoopParks|LoopParkedTicks|seenPc|seenTick)\b");
+
+    private static bool IsParked(IConsoleSession s) => (bool)ParkedField.GetValue(Core(Md(s).Board))!;
+
+    /// <summary>
+    /// The sound CPU's polling loops are counted instead of run (<c>MdSoundUnit.FastLoops</c>); the machine is brought up to date before anything looks at it, a state included. A state that is taken at a frame boundary where the Z80
+    /// stands parked must (a) be the very bytes a session that ticks every T-state (<c>FastLoops = false</c>) writes at the same frame, (b) load into a fresh session that then carries on exactly like the session that saved it, in
+    /// picture, sound, memory and in the state it writes 60 frames later.
+    /// </summary>
+    private static void ParkedLoop(List<MdRoster.Game> games)
+    {
+        Group("a state saved while the sound Z80 is parked in a polling loop is the state of a machine that ticks every T-state, and carries on exactly");
+        var pick = games.Where(g => g.Number is 3 or 9 or 11 or 12).ToList();
+        if (pick.Count == 0) pick = games.Take(2).ToList();
+        if (pick.Count == 0) { Skip("parked loop", "no roster ROM"); return; }
+        bool savedSwitch = MdSoundUnit.FastLoops;
+        try
+        {
+            foreach (var g in pick)
+            {
+                byte[] rom = g.Load();
+                MdSoundUnit.FastLoops = true;
+                var a = Make(rom);
+                int f = 0, at = -1; var buf = new short[16384];
+                for (; f < 1200; f++)
+                {
+                    Frame(a, f, null, null, buf);
+                    if (f >= 200 && IsParked(a)) { at = f + 1; break; }
+                }
+                string tag = $"#{g.Number} {g.Short}";
+                Check($"{tag}: the Z80 stands parked in a polling loop at a frame boundary (frame {at}; {Core(Md(a).Board).LoopParks:N0} parks so far)", at > 0);
+                if (at < 0) continue;
+                byte[] state = a.SaveState();
+                Check($"{tag}: saving a parked machine brings it up to date (it no longer stands parked)", !IsParked(a));
+                const int window = 60;
+                var carried = Play(a, at, window);
+                byte[] endA = a.SaveState();
+                // the reference: every T-state ticked, the same frames, the state at the same point
+                MdSoundUnit.FastLoops = false;
+                var r = Make(rom);
+                Advance(r, 0, at);
+                byte[] refState = r.SaveState();
+                MdSoundUnit.FastLoops = true;
+                int diff = FirstDifference(state, refState);
+                Check($"{tag}: the state written while parked is byte for byte the state of the session that ticked every T-state ({state.Length / 1024} KB)", diff < 0, $"lengths {state.Length} and {refState.Length}, first differing byte {diff}");
+                var b = Make(rom);
+                Advance(b, 0, 1);
+                b.LoadState(state);
+                var restored = Play(b, at, window);
+                int first = Enumerable.Range(0, window).FirstOrDefault(i => carried.Pictures[i] != restored.Pictures[i], -1);
+                Check($"{tag}: {window} frames after loading it are the picture of the session that carried on", first < 0, first < 0 ? "" : $"first differing frame {at + first}");
+                Check($"{tag}: the audio is the same sample for sample, and the memories and the CPUs agree", carried.Audio == restored.Audio && SameMachine(carried, restored));
+                byte[] endB = b.SaveState();
+                int d2 = FirstDifference(endA, endB);
+                Check($"{tag}: the state each of them writes {window} frames later is identical (every field, the audio path and the loop detector's effects included)", d2 < 0, $"lengths {endA.Length} and {endB.Length}, first differing byte {d2}");
+            }
+        }
+        finally { MdSoundUnit.FastLoops = savedSwitch; }
+    }
+
+    /// <summary>The index of the first byte that differs (or the shorter length when one is a prefix of the other), -1 when they are equal.</summary>
+    private static int FirstDifference(byte[] x, byte[] y)
+    {
+        int n = Math.Min(x.Length, y.Length);
+        for (int i = 0; i < n; i++) if (x[i] != y[i]) return i;
+        return x.Length == y.Length ? -1 : n;
     }
 
     // ---------------------------------------------------------------------------------------------------------------------
