@@ -74,6 +74,17 @@ internal static class MdSceneCli
         if (int.TryParse(M68kTestCli.Arg(args, "--max"), out int cmx)) ClassifyMax = cmx;
         ClassifyAll = M68kTestCli.Flag(args, "--all");
         if (outDir != null) Directory.CreateDirectory(outDir);
+        // pinned pictures: --hash-out <tsv> --set <name> appends one line per scene that was pixel-identical with the oracle (set, scene, candidate picture, hash); --hash-check <tsv> --set <name> (no shots needed) compares
+        // the current build's pictures with those lines
+        string? hashOut = M68kTestCli.Arg(args, "--hash-out"), hashCheck = M68kTestCli.Arg(args, "--hash-check");
+        string setName = M68kTestCli.Arg(args, "--set") ?? Path.GetFileNameWithoutExtension(rom);
+        var pinned = new SortedDictionary<int, (int ci, string hash)>();
+        if (hashCheck != null)
+            foreach (var line in File.ReadAllLines(hashCheck))
+            {
+                var f = line.Split('\t');
+                if (f.Length >= 4 && f[0] == setName && int.TryParse(f[1], out int pi) && int.TryParse(f[2], out int pc)) pinned[pi] = (pc, f[3]);
+            }
         JsonElement[]? meta = null;
         if (metaPath != null && File.Exists(metaPath)) meta = JsonDocument.Parse(File.ReadAllText(metaPath)).RootElement.EnumerateArray().ToArray();
 
@@ -83,6 +94,10 @@ internal static class MdSceneCli
         var cand = new List<Img>[count];
         var cramAt = new ushort[count][];
         var layersAt = new byte[count][][];
+        var layersPrevAt = new byte[count][][];
+        byte[][]? prevLayers = null;
+        var vramAt = new byte[count][]; var regAt = new byte[count][];
+        int sprLineY = int.TryParse(M68kTestCli.Arg(args, "--sprline"), out int sly) ? sly : -1;
         if (M68kTestCli.Flag(args, "--classify") || M68kTestCli.Flag(args, "--sprstat")) vdp.DebugKeepLayers = true;
         Img? prevField = null;
         int total = first + (count - 1) * period;
@@ -104,17 +119,34 @@ internal static class MdSceneCli
                 if (prevField != null) list.Add(prevField);
                 cand[si] = list;
                 cramAt[si] = (ushort[])vdp.Cram.Clone();
-                if (vdp.DebugKeepLayers && vdp.DebugA != null) layersAt[si] = new[] { (byte[])vdp.DebugA.Clone(), (byte[])vdp.DebugB!.Clone(), (byte[])vdp.DebugS!.Clone() };
+                if (sprLineY >= 0) { vramAt[si] = (byte[])vdp.Vram.Clone(); regAt[si] = (byte[])vdp.Reg.Clone(); }
+                if (vdp.DebugKeepLayers && vdp.DebugA != null) { layersAt[si] = new[] { (byte[])vdp.DebugA.Clone(), (byte[])vdp.DebugB!.Clone(), (byte[])vdp.DebugS!.Clone() }; layersPrevAt[si] = prevLayers; }
             }
             prevField = field;
+            if (vdp.DebugKeepLayers && vdp.DebugA != null) prevLayers = new[] { (byte[])vdp.DebugA.Clone(), (byte[])vdp.DebugB!.Clone(), (byte[])vdp.DebugS!.Clone() };
         }
 
-        long totalBad = 0; int compared = 0, identical = 0;
-        for (int i = 0; i < count; i++)
+        if (hashCheck != null)
+        {
+            int ok = 0, bad = 0;
+            foreach (var kv in pinned)
+            {
+                if (only.Count > 0 && !only.Contains(kv.Key)) continue;
+                if (kv.Key >= count || cand[kv.Key] == null || kv.Value.ci >= cand[kv.Key].Count) { bad++; Console.WriteLine($"scene {kv.Key}: no picture to check"); continue; }
+                string h = PictureHash(cand[kv.Key][kv.Value.ci]);
+                if (h == kv.Value.hash) ok++; else { bad++; Console.WriteLine($"scene {kv.Key}: CHANGED {h} (pinned {kv.Value.hash}, candidate {kv.Value.ci})"); }
+            }
+            if (pinned.Count == 0) { Console.WriteLine($"no pinned scenes for set '{setName}' in {hashCheck}"); return 1; }
+            Console.WriteLine($"== pinned scene check '{setName}': {ok} of {ok + bad} match");
+            return bad == 0 ? 0 : 1;
+        }
+
+        long totalBad = 0; int compared = 0, identical = 0;        for (int i = 0; i < count; i++)
         {
             if (only.Count > 0 && !only.Contains(i)) continue;
             if (cand[i] == null) { Console.WriteLine($"scene {i}: no picture captured"); continue; }
             string what = meta != null && i < meta.Length ? Describe(meta[i]) : "";
+            if (sprLineY >= 0 && vramAt[i] != null) SpriteLine(vramAt[i], regAt[i], sprLineY);
             if (shotsDir == null)
             {
                 if (outDir != null) for (int k = 0; k < cand[i].Count; k++) Save(cand[i][k], Path.Combine(outDir, $"ours_{i:D3}_{cand[i][k].Name}{k}.png"));
@@ -140,8 +172,9 @@ internal static class MdSceneCli
             if (M68kTestCli.Flag(args, "--sprstat") && bc != null && layersAt[i] != null && cramAt[i] != null && bc.W == cand[i][0].W && bc.H == cand[i][0].H && bc.Name != "woven") SpriteStats(bc, t, bdx, bdy, cramAt[i], layersAt[i]);
             compared++; totalBad += best;
             if (best == 0) identical++;
+            if (best == 0 && hashOut != null && bc != null) File.AppendAllText(hashOut, $"{setName}\t{i}\t{cand[i].IndexOf(bc)}\t{PictureHash(bc)}\n");
             Console.WriteLine($"scene {i}: {(best == 0 ? "identical" : $"{best:N0} px differ")}  [{bc?.Name} {bc?.W}x{bc?.H} at ({bdx},{bdy}) in a {t.W}x{t.H} shot] {what}");
-            if (best != 0 && bc != null && M68kTestCli.Flag(args, "--classify") && cramAt[i] != null) Classify(bc, t, bdx, bdy, cramAt[i], layersAt[i], bc.Name != "woven" && bc.W == cand[i][0].W && bc.H == cand[i][0].H);
+            if (best != 0 && bc != null && M68kTestCli.Flag(args, "--classify") && cramAt[i] != null) Classify(bc, t, bdx, bdy, cramAt[i], cand[i].Count > 2 && ReferenceEquals(bc, cand[i][2]) ? layersPrevAt[i] : layersAt[i], bc.Name != "woven" && (ReferenceEquals(bc, cand[i][0]) || cand[i].Count > 1 && ReferenceEquals(bc, cand[i][1]) || cand[i].Count > 2 && ReferenceEquals(bc, cand[i][2])));
             if (best != 0 && bc != null && outDir != null)
             {
                 Save(bc, Path.Combine(outDir, $"ours_{i:D3}.png"));
@@ -220,6 +253,38 @@ internal static class MdSceneCli
                 string k = $"{((sv & 0x80) != 0 ? "S:hi" : "S:lo")}{((sv & 15) >= 14 ? " c" + (sv & 15) : "")} {pa} {pb} -> {shown}";
                 SprStat[k] = SprStat.GetValueOrDefault(k) + 1;
             }
+    }
+
+    /// <summary>Tool: the sprites on picture line <paramref name="y"/> (a field line in interlace mode 2: picture row 2y and 2y+1), in link order, with the cell count so far and the per-line limits.</summary>
+    private static void SpriteLine(byte[] vram, byte[] reg, int y)
+    {
+        bool h40 = (reg[12] & 0x81) == 0x81, dbl = (reg[12] & 6) == 6;
+        int maxSprites = h40 ? 80 : 64, sat = (reg[5] & (h40 ? 0x7E : 0x7F)) << 9, cells = 0;
+        Console.WriteLine($"    sprites on line {y} ({(h40 ? "H40" : "H32")}{(dbl ? ", double rows 2y and 2y+1" : "")}), SAT at {sat:X4}:");
+        int idx = 0, onLine = 0;
+        for (int n = 0; n < maxSprites; n++)
+        {
+            int a = sat + idx * 8;
+            int ypos = (vram[a & 0xFFFF] << 8 | vram[a + 1 & 0xFFFF]) & 0x3FF, size = vram[a + 2 & 0xFFFF], link = vram[a + 3 & 0xFFFF] & 0x7F;
+            int xraw = (vram[a + 6 & 0xFFFF] << 8 | vram[a + 7 & 0xFFFF]) & 0x1FF;
+            int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
+            int top = ypos - (dbl ? 256 : 128), rows = h << (dbl ? 4 : 3);
+            int row = dbl ? 2 * y : y;
+            bool hit = row + (dbl ? 1 : 0) >= top && row < top + rows;
+            if (hit) { onLine++; cells += w; }
+            if (hit) Console.WriteLine($"      #{onLine} sprite {idx}: x {xraw - 128} (raw {xraw}) w {w} cells h {h}, top row {top}, cells so far {cells}");
+            idx = link; if (idx == 0 || idx >= maxSprites) break;
+        }
+        Console.WriteLine($"      {onLine} sprites, {cells} cells on the line (limits {(h40 ? "20 sprites, 40 cells" : "16 sprites, 32 cells")})");
+    }
+
+    /// <summary>FNV-1a over the size and the 24-bit colours of a picture.</summary>
+    private static string PictureHash(Img c)
+    {
+        ulong h = 14695981039346656037UL;
+        h = (h ^ (ulong)c.W) * 1099511628211UL; h = (h ^ (ulong)c.H) * 1099511628211UL;
+        for (int i = 0; i < c.W * c.H; i++) { h ^= c.Px[i] & 0xFFFFFF; h *= 1099511628211UL; }
+        return h.ToString("x16");
     }
 
     private static string Describe(JsonElement m)

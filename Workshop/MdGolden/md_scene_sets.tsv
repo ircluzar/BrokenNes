@@ -1,0 +1,28 @@
+# Genesis VDP static-scene sets (Track B4a): random complete VDP states (oracle-tools/md-picture/scenefuzz.py, seeded) and probe scenes (vsprobe.py), shown by a generated ROM until Start is pressed.
+# Each scene's picture was compared with BlastEm's screenshot of the same ROM and was pixel-identical when it was pinned in md_scene_oracle.tsv (scene, which of our pictures matched, its hash).
+# Check with Workshop/Sega/oracle-tools/md-picture/scenes-check.ps1 (python + the Workshop exe, no BlastEm needed); re-pin with scenerun.py --record after a deliberate rule change and a fresh oracle run.
+# name	kind	family-or-probe	scenes	seed
+sc_plain	fuzz	plain	30	11
+sc_il2	fuzz	interlace2	24	12
+sc_v30	fuzz	v30	12	21
+sc_shadow	fuzz	shadow	20	22
+sc_spr	fuzz	sprites	20	23
+sc_sizes	fuzz	sizes	16	31
+sc_shnw	fuzz	shnw	16	32
+sc_winnw	fuzz	winnw	16	33
+sc_vsc	fuzz	vsc	20	41
+sc_vscw	fuzz	vscw	20	42
+sc_h32	fuzz	h32	16	43
+sc_plain2	fuzz	plain	30	44
+f_plain	fuzz	plain	40	61
+f_all	fuzz	all	40	62
+f_il2	fuzz	interlace2	30	63
+f_shadow	fuzz	shadow	25	64
+f_h32	fuzz	h32	20	65
+f_v30	fuzz	v30	20	66
+f_window	fuzz	window	20	67
+f_sprites	fuzz	sprites	30	68
+f_il1	fuzz	interlace1	20	69
+vsprobe	vsprobe	1	5	-
+vsprobe2	vsprobe	2	12	-
+vsprobe3	vsprobe	3	14	-

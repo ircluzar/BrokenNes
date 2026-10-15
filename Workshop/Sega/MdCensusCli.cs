@@ -43,17 +43,24 @@ internal static class MdCensusCli
         Console.WriteLine($"census of {files.Count} ROMs, {frames} frames each, {jobs} jobs");
         var rows = new Row[files.Count];
         int done = 0;
+        var cols = Feat.Concat(new[] { "actReg", "actCram", "actVsram", "actVram", "hintTaken", "vintTaken", "sprOverflowLines", "reg7", "reg11", "reg12", "reg0", "reg1", "reg10", "reg13", "reg2", "reg4", "reg5", "reg16", "reg17", "reg18" }).ToArray();
+        string header = "file\ttitle\tframes\t" + string.Join('\t', cols) + "\tnote";
+        string RowLine(Row r) => $"{r.File}\t{r.Title}\t{r.Frames}\t" + string.Join('\t', cols.Select(c => r.F.TryGetValue(c, out var v) ? v.ToString() : "0")) + "\t" + r.Note;
+        // every finished game is appended to <out>.part at once, so a run that is cut short still leaves its rows
+        string? partPath = outPath != null ? outPath + ".part" : null;
+        if (partPath != null) File.WriteAllText(partPath, header + "\n");
+        var partLock = new object();
         Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = jobs }, i =>
         {
             try { rows[i] = RunOne(files[i], frames, script); }
             catch (Exception e) { rows[i] = new Row { File = Path.GetFileName(files[i]), Note = "crash: " + e.GetType().Name }; }
+            if (partPath != null) lock (partLock) File.AppendAllText(partPath, RowLine(rows[i]) + "\n");
             int d = Interlocked.Increment(ref done);
             if (d % 20 == 0) Console.WriteLine($"  {d}/{files.Count}");
         });
         var sb = new StringBuilder();
-        var cols = Feat.Concat(new[] { "actReg", "actCram", "actVsram", "actVram", "hintTaken", "vintTaken", "sprOverflowLines", "reg7", "reg11", "reg12", "reg0", "reg1", "reg10", "reg13", "reg2", "reg4", "reg5", "reg16", "reg17", "reg18" }).ToArray();
-        sb.AppendLine("file\ttitle\tframes\t" + string.Join('\t', cols) + "\tnote");
-        foreach (var r in rows) sb.AppendLine($"{r.File}\t{r.Title}\t{r.Frames}\t" + string.Join('\t', cols.Select(c => r.F.TryGetValue(c, out var v) ? v.ToString() : "0")) + "\t" + r.Note);
+        sb.AppendLine(header);
+        foreach (var r in rows) sb.AppendLine(RowLine(r));
         if (outPath != null) { File.WriteAllText(outPath, sb.ToString()); Console.WriteLine($"wrote {outPath}"); }
         var ok = rows.Where(r => r.Frames > 0).ToList();
         Console.WriteLine($"\n{ok.Count} games ran; games using each feature in >= 2% of their frames:");

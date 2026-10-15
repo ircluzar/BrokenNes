@@ -24,6 +24,8 @@ def main():
     ap.add_argument('--slot-set', default=None)
     ap.add_argument('--only', default=None)
     ap.add_argument('--region', default=None)
+    ap.add_argument('--build-only', action='store_true', help='only write the ROM and its scene list (for scenes-check.ps1)')
+    ap.add_argument('--record', default=None, help='append the scenes that are pixel-identical with the oracle to this tsv (Workshop/MdGolden/md_scene_oracle.tsv); the set name is NAME')
     a = ap.parse_args()
     os.makedirs(os.path.join(W, 'roms'), exist_ok=True)
     rom = os.path.join(W, 'roms', a.name + '.bin')
@@ -32,6 +34,7 @@ def main():
     scenefuzz.build(scenes, rom)
     meta = [{k: v for k, v in s.items() if k not in ('sat', 'hscroll', 'cram', 'vsram')} for s in scenes]
     json.dump(meta, open(os.path.splitext(rom)[0] + '.json', 'w'), indent=1)
+    if a.build_only: print('wrote', rom); return
     out = os.path.join(W, 'out', a.name)
     if not a.no_blastem:
         script = 'w500,' + ','.join(['shot', 'k:Start', 'w350'] * a.scenes)
@@ -42,6 +45,7 @@ def main():
     cmd = [oracle.WORKSHOP, '--md-scenes', rom, '--count', str(a.scenes), '--shots', out, '--meta', os.path.splitext(rom)[0] + '.json', '--out', cmp_dir]
     if a.slot_set: cmd += ['--slot-set', a.slot_set]
     if a.only: cmd += ['--only', a.only]
+    if a.record: cmd += ['--hash-out', a.record, '--set', a.name]
     if a.region: cmd += ['--region', a.region]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     print(p.stdout + p.stderr)
