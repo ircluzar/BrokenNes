@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "")
+param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause)
 # The roster climb: each game of docs/projects/sega-rosters.md played through with the sweep's pad script (or --Pad) in lock-step with BlastEm (oraclerun.ps1: pause and frame advance, a picture every -ShotEvery
 # advances), one line per game in the log. Needs: the blastem lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem -Owner <you>), BN_ORACLE_ROOT (a private folder with blastem\, be_shots\, be_save\) and BN_ARTIFACTS
 # (the build folder of the Workshop exe). A capture the run itself calls unreliable (the screenshot count is wrong) is repeated up to -Retries times.
@@ -19,10 +19,24 @@ foreach ($n in $list) {
   $rom = Join-Path $dir $roster[$n]
   $name = "g{0:D2}$Tag" -f $n
   $result = ""
+  # where to pause: the middle of the first stretch (at least 80 boundaries long, after boundary 250) of a run without input whose pictures are seen nowhere else (a still picture matches many boundaries and makes the start ambiguous);
+  # a pause at wall-clock t lands at about boundary 62 x (t + 1.3 s)
+  $wait = $WaitMs
+  if ($AutoPause) {
+    $w = (& (Join-Path $here "ws.ps1") -TimeoutSec 600 --md-oracle $rom --windows 2400 --min 80) -join " "
+    $pick = $null
+    foreach ($m in [regex]::Matches($w, '(\d+)-(\d+)')) { $a = [int]$m.Groups[1].Value; $b = [int]$m.Groups[2].Value; if ($b -gt 250 -and $b - [Math]::Max($a, 250) -ge 80) { $pick = ([Math]::Max($a, 250) + $b) / 2; break } }
+    if ($pick) { $wait = [int](($pick / 62 - 1.3) * 1000) }
+    Add-Content $Log ("=== #{0} windows: {1} -> pause at {2} ms" -f $n, ($w -replace '.*: ', ''), $wait)
+  }
+  $gap = 45
   for ($try = 1; $try -le ($Retries + 1); $try++) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $WaitMs 2>&1 | Out-String
-    $unreliable = $out -match "CAPTURE UNRELIABLE"
+    $env:BN_ADV_MS = "$gap"
+    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait 2>&1 | Out-String
+    $lost = $out -match "advance\(s\) (behind|ahead)"
+    $unreliable = ($out -match "CAPTURE UNRELIABLE") -or $lost
+    if ($lost) { $out = "TAP LOSS (gap $gap ms): retrying slower`r`n" + $out; $gap = [int]($gap * 2.2) }
     $summary = ($out -split "`r?`n" | Where-Object { $_ -match "^compared |^f0 =|AMBIGUOUS|CAPTURE UNRELIABLE|scan: the screenshot|no window|stopped after" }) -join " | "
     $result = "{0} try {1} ({2:N0} s): {3}" -f $name, $try, $sw.Elapsed.TotalSeconds, $summary
     Add-Content $Log ("=== #{0} {1}`r`n{2}`r`n{3}" -f $n, $roster[$n], $result, (($out -split "`r?`n" | Where-Object { $_ -match "^after " }) -join "`r`n"))

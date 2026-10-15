@@ -348,12 +348,22 @@ public sealed partial class MdVdp
     public void RunTo(long t)
     {
         if (t <= Time) return;
+        int spins = 0;
         while (Time < t)
         {
+            if (++spins > 20_000_000) throw new InvalidOperationException($"VDP made no progress: time {Time} (line {Line}+{LineOffset}) target {t} dma {dma} fifo {fifoCount} slotCursor {slotCursor} nextEvent {NextEvent()} work {SlotWork} slot {(SlotWork ? NextFreeSlot(WorkFrom()) : -1)} fetch {NextFetchTime()}");
             long evt = NextEvent();
             long slot = long.MaxValue;
             bool work = SlotWork;
-            if (work) slot = NextFreeSlot(WorkFrom());
+            if (work)
+            {
+                long from = WorkFrom();
+                slot = NextFreeSlot(from);
+                // A request past the end of the line is answered with the next line's first slot, which can lie before the request (NextFreeSlot). An early slot is used at once, as it always was (the fitted DMA
+                // constants rely on it), except when using it would do nothing: a fill or copy that may not start before dmaStartTime (which lies past the line end) with no FIFO entry to write. Asking for that slot
+                // again never lets the clock move (Brett Hull Hockey '95, ATP Tour Tennis and D&D Warriors of the Eternal Sun hung on it): the request itself is the slot then.
+                if (slot < from && fifoCount == 0 && dma != DmaKind.None && Time < dmaStartTime) slot = from;
+            }
             long fetch = NextFetchTime();
             long next = t;
             if (evt < next) next = evt;

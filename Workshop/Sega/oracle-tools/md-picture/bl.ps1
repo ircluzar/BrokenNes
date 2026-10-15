@@ -34,6 +34,9 @@ $shotDir = Join-Path $root "be_shots"; $saveRoot = Join-Path $root "be_save"
 $before = Get-Date
 $args = @($Extra) + @('"' + $Rom + '"')
 $p = Start-Process $be -ArgumentList $args -PassThru -WorkingDirectory (Split-Path $be)
+# a frame advance tapped while the previous one is still running is lost (BlastEm then stands behind the script for the rest of the run): BN_ADV_MS is the gap after each tap (default 45; a busy machine needs more), and the oracle runs a little above normal priority
+$advGap = if ($env:BN_ADV_MS) { [int]$env:BN_ADV_MS } else { 45 }
+try { $p.PriorityClass = 'AboveNormal' } catch { }
 $n = 0
 try {
   $deadline = (Get-Date).AddSeconds(15)
@@ -55,7 +58,7 @@ try {
     elseif ($a -eq 'resume') { Tap 'F7' 40; Start-Sleep -Milliseconds 150 }
     elseif ($a -match '^movie(\d+)$') { for ($i = 0; $i -lt [int]$Matches[1]; $i++) { Tap 'P' 40; Start-Sleep -Milliseconds 120; Tap 'F8' 25; Start-Sleep -Milliseconds 1100; $n++ } }
     elseif ($a -eq 'pause') { Tap 'F7' 40; Start-Sleep -Milliseconds 150 }
-    elseif ($a -match '^adv(\d*)$') { $c = if ($Matches[1]) { [int]$Matches[1] } else { 1 }; for ($i = 0; $i -lt $c; $i++) { Tap 'F8' 25; Start-Sleep -Milliseconds 45 } }
+    elseif ($a -match '^adv(\d*)$') { $c = if ($Matches[1]) { [int]$Matches[1] } else { 1 }; for ($i = 0; $i -lt $c; $i++) { Tap 'F8' 25; Start-Sleep -Milliseconds $advGap } }
     else { throw "bad action '$a'" }
   }
   Start-Sleep -Milliseconds 400

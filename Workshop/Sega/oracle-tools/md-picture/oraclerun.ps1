@@ -40,7 +40,7 @@ for ($s = 0; $s -lt $Steps; $s++) {
 FlushPlain
 if ($held.Count) { foreach ($b in $held) { $a.Add("u:$b") } }
 Write-Host ("BlastEm script: " + (($a -join ",").Substring(0, [Math]::Min(400, ($a -join ",").Length))) + " ...")
-if (-not $NoCapture) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; & (Join-Path $root "bl.ps1") -Rom $Rom -OutDir $dir -Script ($a -join ",") -StartupMs $StartupMs | Out-Null }
+if (-not $NoCapture) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; & (Join-Path $root "bl.ps1") -Rom $Rom -OutDir $dir -Script ($a -join ",") -StartupMs $StartupMs | Where-Object { $_ -match '^shots requested|no window' } | Write-Output }
 $got = @(Get-ChildItem $dir -Filter "s*.png" | Sort-Object Name)
 "BlastEm screenshots: $($got.Count) (expected $($shotList.Count + 1))"
 if ($got.Count -lt 1) { return }
@@ -52,5 +52,5 @@ for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $
 $ws = Join-Path $root "ws.ps1"
 $wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $work "our\$Name"))
 if ($Region) { $wsArgs += @("--region", $Region) }
-& $ws @wsArgs
+& $ws -TimeoutSec 1500 @wsArgs
 

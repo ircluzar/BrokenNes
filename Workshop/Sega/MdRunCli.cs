@@ -205,6 +205,25 @@ internal static class MdRunCli
         string? saveIn = M68kTestCli.Arg(args, "--save-in"), saveOut = M68kTestCli.Arg(args, "--save-out");
         if (saveIn != null) { try { session.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"   loaded {saveIn} into the battery memory"); } catch (Exception e) { Console.WriteLine($"   cannot load {saveIn}: {e.Message}"); return 2; } }
         var sw = Stopwatch.StartNew();
+        // --watchdog S: if no frame completes for S seconds (an emulator loop), print where the machine is, three times a second apart, and exit with code 3
+        if (double.TryParse(M68kTestCli.Arg(args, "--watchdog"), out double wdSeconds) && wdSeconds > 0)
+        {
+            var dog = new System.Threading.Thread(() =>
+            {
+                long lastFrames = -1; var since = Stopwatch.StartNew();
+                while (true)
+                {
+                    System.Threading.Thread.Sleep(200);
+                    long fr = board.Frames;
+                    if (fr != lastFrames) { lastFrames = fr; since.Restart(); continue; }
+                    if (since.Elapsed.TotalSeconds < wdSeconds) continue;
+                    Console.WriteLine($"   WATCHDOG: no frame completed for {wdSeconds} s (frame {fr}); the machine at three moments:");
+                    for (int k = 0; k < 3; k++) { Console.WriteLine("   " + board.Describe()); System.Threading.Thread.Sleep(300); }
+                    Console.Out.Flush(); Environment.Exit(3);
+                }
+            }) { IsBackground = true };
+            dog.Start();
+        }
         PadButtons pad = PadButtons.None;
         long halts = 0;
         long allocAt = 0; int allocFrom = frames / 2;
