@@ -50,8 +50,8 @@ Lossy pictures are the 4-shade chips (`NES:DMG`, `NES:DMGX`, `NES:DMGS`, and `NE
 | Game Boy Color | 45 | 44 alive, **65816 dead** |
 | NES | 16 | 13 alive, **Z80 and 68000 frozen** (the walls, silent), **SM83 diverged** |
 | Genesis | 40 | 18 alive in place; **22 `restart`** (all of the Genesis sound slot except the stock unit): the game restarts on the new chip and the menu / API say "the Genesis sound unit (the Z80 sound driver, the YM2612 and the PSG with the bus handshake the 68000 sees) cannot yet hand its state to NES:<chip> while the game runs" |
-| Game Boy | 45 | **40 static** (the one Game Boy game the sweep scripts, Super Mario Land, sits on a title the control does not move either: nothing to judge; a Tetris attempt did no better), 4 alive, the 65816 diverged |
-| **Totals** | 274 | **207 alive, 2 diverged, 22 restart, 40 static, 2 frozen, 1 dead, 0 refused / crashed / hung** |
+| Game Boy | 45 | **40 static** in the run above (the script walked no picture in the late half: Super Mario Land sat on a title the control did not move either; a Tetris attempt did no better), 4 alive, the 65816 diverged. **Judged since** (section 14.2: a script that presses Start three times and walks right, 600 frames): **43 alive, 1 diverged (the 65816 half-rate case), 1 frozen (the 65816 wall), 0 static** |
+| **Totals** | 274 | in the run above: **207 alive, 2 diverged, 22 restart, 40 static, 2 frozen, 1 dead, 0 refused / crashed / hung**; with the Game Boy rows judged the 40 static cells become 43 alive, 1 diverged and 1 frozen (section 14.2) |
 
 The Sega consoles' own swaps (CPU, picture, sound, every menu entry) are not left to the sweep's one game each: `--swap-matrix-test` (section 7) swaps every entry of every slot of every console and checks the answer.
 
@@ -131,7 +131,7 @@ Done by reading the desktop code against the Game Boy and SNES paths (an Explore
 
 Verified by: `desktop-smoke.ps1` 9 / 9, `sega-preview-smoke.ps1` 47 / 47, `install-smoke.ps1` 14 / 14 (all on my build, run alone), and the API integration batch in the UAT suite (section 8).
 
-**Not done from the audit** (each is small, none blocks the gate): Genesis save states (B4b's `SupportsState`; the app says so with a reason); a live Genesis APU swap without a restart (B4b: the sound unit restarts the game and says why, section 3); the session-level Master System / Game Gear Pause (A4's `SmsSession.SetPad`; only the desktop-layer mapping is done); Lite's UI for region / model / SMS FM instrument (C4a); bridge loss counters in a desktop window (they are in the status API and the sweep); a clearer error for a file no console recognises (it goes to the NES loader and reports its message); tooltips on the non-NES core menus.
+**Not done from the audit** (each is small, none blocks the gate): Genesis save states (B4b's `SupportsState`; the app says so with a reason); a live Genesis APU swap without a restart (B4b: the sound unit restarts the game and says why, section 3); the session-level Master System / Game Gear Pause (A4's `SmsSession.SetPad`; only the desktop-layer mapping is done); Lite's UI for region / model / SMS FM instrument (C4a); bridge loss counters in a desktop window (they are in the status API and the sweep). *Done later* (section 14.3): a clearer error for a file no console recognises, and tooltips on the non-NES core menus.
 
 ## 6. FL plugin
 
@@ -147,18 +147,18 @@ Verified by: `desktop-smoke.ps1` 9 / 9, `sega-preview-smoke.ps1` 47 / 47, `insta
 
 ## 7. Verifiers, with numbers
 
-**The Sega gate on this branch** (`pwsh UAT\sega-gate.ps1 -Build`, a fresh build of the committed tree, one machine shared with other agents): **18 steps passed, 1 failed, 0 skipped (two full runs: 543 s on the first commit set, 486 s on the final tree).** The table is the final run.
+**The Sega gate on this branch** (`pwsh UAT\sega-gate.ps1 -Build`, a fresh build of the committed tree, one machine shared with other agents): **18 steps passed, 1 failed, 0 skipped (full runs: 543 s on the first commit set, 486 s on the tree of the first report, 488 s on the tree of commit c1d6b10 after the second work list).** The table is the first-report run, except the two rows that changed since (`--sega-test` 65 to 72, `--picture-bridge-test` 230 to 236 passed, both from section 14; the rest of the third run is the same numbers).
 
 | Step | Result | Passed / failed | Seconds |
 |---|---|---|---|
-| `--sega-test` | PASS | 65 / 0 | 1 |
+| `--sega-test` | PASS | 72 / 0 (65 + 7 catalog checks, 14.3) | 1 |
 | `--sega-chips-test` | PASS | 34 / 0 | 1 |
 | `--sega-contracts-test` | PASS | 80 / 0 | 1 |
 | `--cpu-wall-test` (new) | PASS | 27 / 0 | 2 |
 | `--swap-matrix-test` (new) | PASS | 21 / 0 | 46 |
 | `--sega-bridge-test` (incl. the new `smsfmnes` 28 and `patches` 6) | PASS | 356 / 0 | 202 |
 | `--sega-stems-test` | PASS | 38 / 0 | 15 |
-| `--picture-bridge-test` | **FAIL** | 230 / 1 | 7 |
+| `--picture-bridge-test` | **FAIL** | 236 / 1 (230 + the 6 synthetic allocation checks, 14.5) | 22 |
 | `--md-test` | PASS | 144 / 0 | 1 |
 | `--md-cart-test` | PASS | 47 / 0 | 0 |
 | `--md-pic-test` | PASS | 93 / 0 | 1 |
@@ -238,7 +238,7 @@ What ships: the Z80 core (BizHawk `Z80A`, MIT), the 68000 core (ares, ISC), the 
 - **Quiet-machine speed floors:** the plugin's four floors, the gate's speed checks and the bridges' frame rates were measured under other agents' load only (plugin A/B against main, section 6). No claim they hold on a quiet machine.
 - **Lite:** only the notices and the linker roots (a published output folder was checked). Lite's UI for the new Sega options and a bridged picture on screen in Lite were not seen (C4a's side).
 - **Genesis save states and a live Genesis sound-unit swap** (B4b).
-- **Game Boy swap cells:** 40 of 45 static in the sweep (the one script moves no picture in the late half); the Game Boy swaps are covered by `--swap-matrix-test`'s answers, not by the sweep's pictures.
+- **Game Boy swap cells:** judged since section 14.2 (43 alive, 1 diverged, 1 frozen, with the 600-frame script); `--swap-matrix-test` also answers for every entry.
 - **The reference check of `--picture-bridge-test`** ("2-cell column vertical scroll (20 different values) is followed") fails on this branch until B4a's VDP is in the tree; it was shown green only by copying B4a's two VDP files in temporarily (reverted), not by a merge.
 - **A merge with the other round-4 branches:** none done (the brief says only `refs/heads/main` is merged, at wrap-up); `main` had not moved from `e758833` at the time of writing.
 - **A fresh hand-off build** and a run on another machine.
@@ -255,6 +255,7 @@ Files outside this track's own new files that other tracks also edit (expect tex
 - Desktop: `Windows/MainForm/MainForm.{Consoles,Emulation,Initialization,SaveStates,Volume}.cs`, `EmulatorConfig.cs`, `ControllerConfigWindow.cs`, `Rendering/NesDirectXRenderer.cs`, `Synth/PluginInstaller.cs`, `webapi/WebApiServer.Endpoints.{Audio,Console,Emulator,Input}.cs`, `webapi/README.md`, `BrokenNes.Windows.csproj`.
 - Lite: `WebLite/BrokenNes.Lite.csproj`, `Layout/MainLayout.razor`, `LinkerConfig.xml`.
 - Tests and UAT: `Workshop/Sega/{PictureBridgeSegaTests,PictureBridgeTestCli,SegaBridgeMdTests,SegaBridgeTestCli,SegaFoundationTestCli,SmsFmBridgeTests,BridgeSweepCli}.cs` (catalog checks widened for the hub and `NES-FM:` entries), `UAT/run-suite.ps1`, `UAT/README.md`, `UAT/certify.ps1`, `UAT/plugin/{install,synth}-smoke.ps1`.
+- **Second work list (section 14):** `Windows/NesEmulator/mix/{SmsToNes,MdToNes,SegaQuantizer,FlatTilePacker,NesPictureSink}.cs` rewritten to keep their tables (MdToNes is also B4a's and mine by domain: the rule changes of 4.4 and the pooling touch the same functions, so expect to merge by hand and rerun the identity comparison of 14.5), `ppus/ExtPicture.cs` (`Layer.TakeColumnScroll`, 3 lines beside the C3a / B4a column-scroll members), `systems/ConsoleSystems.cs` (`CoreCatalog.Tip`, `RomDetect.UnrecognisedMessage`), `MainForm.{Consoles,Initialization}.cs` (the frame-loop race, the unrecognised-file throw, tooltips, `ShowItemToolTips`), `UAT/certify.ps1` (the `lite-sega` entry and its three parameters: it only calls C4a's `UAT/entrypoints/lite-sega.ps1`, which is not in this branch), `UAT/entrypoints/sega-preview-smoke.ps1`, `UAT/README.md`, `Windows/webapi/README.md`, new `Workshop/Sega/bridge-sweep-games.json`.
 - **After B4a merges:** the Genesis session goldens in `UAT/cases/sega.json` (`sega-md-*`) pin pictures drawn by the VDP; B4a's timing and rule changes will (correctly) change them. Re-record them with `UAT\run-suite.ps1 -Filter 'sega-md-*' -UpdateGolden` after looking at the new pictures; do not loosen the check.
 
 ## 13. Open problems and next steps
@@ -265,6 +266,73 @@ Files outside this track's own new files that other tracks also edit (expect tex
 4. **Lite UI** for region, board model and the SMS FM instrument (C4a); the API and desktop have them.
 5. **Plugin on a quiet machine:** the four speed floors; the Genesis ROM mode is the one near the floor (2.7 to 2.9x real time in processor time under load, 2.0x with 11 stems claimed, against a 2.5x ROM-mode floor): the real YM2612 and 68000 together.
 6. **A load-sensitive speed check in `--smstest`** (the nine-FM-channels check at 25x failed once at 80 percent load): A3 / A4's check, not changed here; the gate reports it by name.
-7. **Desktop leftovers:** bridge loss counters in a window, a clearer message for a file no console recognises, tooltips for the non-NES core menus, separate bindings for C / Z / Mode if wanted.
-8. **Game Boy sweep coverage:** pick a Game Boy game whose picture moves in the late half (or script the one used) so the 40 static swap cells get a verdict.
+7. **Desktop leftovers:** bridge loss counters in a window (skipped: not under an hour), separate bindings for C / Z / Mode if wanted. (The clearer message for an unrecognised file and the core-menu tooltips are done: 14.3.)
+8. ~~Game Boy sweep coverage~~ done: 14.2.
 9. **Listening:** a person should play NES-FM on two or three chips, the 22 instruments and the sound hub entries on a Genesis game, and say what is wrong; the numbers say the pitch and level are right, not that it is pleasant.
+
+## 14. Second work list (after the first report)
+
+Every number here is from a run on this machine, shared with other agents; the UI-driven ones need the desktop to themselves. Commits: `9a0f93a` (swap smoke, frame-loop race), `1ac99d5` (sweep manifest and Game Boy script), `346441f` (unrecognised file, tooltips), `62778b0` (`lite-sega` entry), `c1d6b10` (allocation).
+
+### 14.1 Core swaps in the desktop smoke, and the race it found
+
+`UAT/entrypoints/sega-preview-smoke.ps1` now swaps cores in the running desktop app for all three consoles through the app's own endpoint (`POST /api/console/core/{slot}/{id}`), and once through the real `Console > PPU` menu with UI Automation:
+
+| Check (per console) | What it asserts |
+|---|---|
+| `*_swap_ppu_to_nes_fixs` | the swap answers success, the status names `NES:FIXS` and the bridge, the picture is 256x240, mostly not black, and differs from the native one |
+| `*_swap_ppu_back_restores_the_picture` | back on the console's own chip the picture is the one from before the swap (same size, same hash of a settled frame) |
+| `*_swap_ppu_game_keeps_running` | the picture changes under a held pad on the NES chip, and again on the console's own chip afterwards (a game that died on the swap fails here) |
+| `sms_/gg_swap_apu_in_place`, `md_swap_apu_is_live_or_restarts_and_says_why`, `*_swap_apu_back` | the sound unit to `NES:FIXS` and back; the game still answers the pad. Master System and Game Gear swap in place; the Genesis check **passes on either side of the B4b merge**: a live swap (empty note) or a restart whose note matches `restarted on APU NES:FIXS: <20+ characters of reason>` (it asserts sanity and the reason text, not which path) |
+| `*_swap_refuses_an_id_the_menu_does_not_list` | `NES:NOPE` answers `success=false` with a reason and the chip stays |
+| `ui_ppu_menu_swaps_the_picture` | the menu item (found by the catalog label, then by prefix) invoked through UI Automation swaps the Master System's picture to the bridge |
+| `unrecognised_file_says_what_it_plays`, `unrecognised_file_leaves_the_game_running` | section 14.3 |
+
+Checks that need the app to hold the foreground (`on_menu_lists_seven`, the UI check) are **NOT RUN**, never PASS or FAIL, when another window has it; the result line carries `"status":"NOT RUN"` only when nothing failed, and `certify.ps1` reports it that way. `-SwapsOnly` runs just this section. Runs: the **whole smoke 68 / 68 in 101 s** (0 NOT RUN, 0 failed) on a desktop built from the tree of commit c1d6b10, and `-SwapsOnly` 26 / 26 in 54 s on the tree of commit 346441f; earlier, 4 of 5 runs of the UI check passed and the 5th was NOT RUN (the app had lost the foreground).
+
+**What it found: a race that killed the emulation after a swap.** `RunSessionFrame` read the picture's width and height, then took the emulation lock, then copied `session.Frame`; a swap between the two (the Sega wrapper changes size from 256x192 to 256x240) made the copy index past the end, the exception ended the loop (`isEmulationRunning = false`) and the game stopped for good: the API reported `emulationActive=False` while a button was latched. Fixed in `MainForm.Consoles.cs`: size, buffer check and copy are read under the lock, with the copy length bounded. The loop also publishes the pad the session was handed (`PublishObserved`), so `/api/input/state` reports a console's real pad (found because the machine has an Xbox 360 controller whose stuck axes held Down / Left / X / Y at times; the picture checks use buttons that still move the picture then).
+
+**Shown able to fail** (each: a bug put in, the smoke run, the bug taken out): an API swap that does nothing makes the three `*_swap_ppu_to_nes_fixs` fail; a menu handler that does nothing makes `ui_ppu_menu_swaps_the_picture` fail; a restart note without its reason fails `md_swap_apu_is_live_or_restarts_and_says_why`; the **old, racy frame loop** (kept in a scratch build) fails `md_` and `gg_swap_ppu_game_keeps_running` in 3 of 3 runs; the old desktop build fails both unrecognised-file checks.
+
+### 14.2 The Game Boy swap cells are judged
+
+`Workshop/Sega/bridge-sweep-games.json` (new; the sweep's game list is in the repo now, with the ROM folder taken from `BN_SWEEP_ROMS`, no machine paths) carries an input script for Super Mario Land that keeps the picture moving in the second half: `100:Start,106:,160:Start,166:,220:Start,226:,260:Right`, run with `--frames 600`. The 45 Game Boy swap cells that were 40 static + 4 alive + 1 diverged are now **43 alive, 1 diverged (`GB-HALF`), 1 frozen (the 65816 wall)**. `BridgeSweepCli` expands environment variables in the manifest's paths.
+
+### 14.3 Desktop leftovers
+
+- **A file no console recognises** (`RomDetect.UnrecognisedMessage`, thrown from `RouteRom`): the message names the file and its size and lists what BrokenNes plays, by console and extension (only the consoles that are on), says a renamed ROM is still read by its contents, and mentions the one near miss (a `.32x` cartridge). Before, the file went to the NES loader, the dialog said "Invalid iNES Header! Got: 74 68 69 73..." and **the running game was dropped**; now the game keeps running (checked by the smoke).
+- **Tooltips on the non-NES core menu entries** (`CoreCatalog.Tip`; the menu strip has `ShowItemToolTips`; the NES menu keeps its overlay cards): what the entry is in a line or two and what the choice costs, honest about limits: the console's own part ("runs as it was made"); a picture chip from another family ("through a picture bridge ... what the part cannot show is counted: the status line and GET /api/console list the losses"); a sound chip ("voices it cannot hold are dropped and counted; the timbres are approximated, not reproduced"); the FM chip of the Master System; a CPU of another instruction set ("works only where the two instruction sets agree"); a wall keeps its own label.
+- 7 catalog checks in `--sega-test` (65 to **72**): tooltips carry the label, state a cost, differ by slot, a wall's tooltip is its label, a text file is unrecognised, the message names file / size / extensions / zip, the 32X sentence. Shown able to fail: with `Tip` returning only the label and the message listing no consoles, `--sega-test` gave 70 passed, 2 failed.
+- **Not done:** the bridge counters window (not under an hour: the counters are in the status line and in `GET /api/console`).
+
+### 14.4 `lite-sega` in `certify.ps1`
+
+`UAT/certify.ps1 -Only lite-sega` runs Track C4a's `UAT/entrypoints/lite-sega.ps1` (read from its worktree, commit c421178; the script and its `UAT/lite/*.mjs` are **not in this branch**: they arrive with C4a's merge). There is no "quick set" in `certify.ps1` (everything runs without `-Only`), so the entry is **opt-in**: without `-Only lite-sega` it reports SKIPPED. It is **NOT RUN with the reason** when: the script is not in the tree, node 22 or newer is missing, there is no Edge or Chrome, the `wasm-tools` workload is missing (and no `-LitePublish`), `-LitePublish` holds no site (`wwwroot\index.html`), `-LiteRoms` lacks `sms\ gg\ md\`, or `X:\EMULATION` / 7-Zip is not there for the script to gather its games. Otherwise PASS or FAIL from the script's exit code, with the check summary (and the script's error) in the detail. Parameters: `-LitePublish`, `-LiteRoms`, `-LiteOnly`.
+
+Run, with C4a's files copied in temporarily (not committed): the missing-script reason in this tree; each other NOT RUN reason on a scratch copy of `certify.ps1` with the condition made false (no browser, no workload, node "too old"), plus a missing `-LitePublish` folder and a `-LiteRoms` without folders; a **PASS** (`-LiteOnly console`: 7 / 7, 8 s, against an earlier non-AOT publish of this branch) and a **FAIL** (`-LiteOnly layout,pickers,swap`: 20 of 30 checks, 531 s, certify exit 1) against the same older publish, whose failures name the checks. **Not run: the whole 109-check suite against a fresh AOT publish of a merged tree** (needs C4a's UI in the build, ~6 min publish + ~15 min).
+
+### 14.5 Allocation: the picture bridges allocate nothing once warm
+
+The Master System, Game Gear and Genesis pictures drawn by a NES chip allocated 88 to 441 KB a frame (up to 26 MB a second at 60 frames a second, all of it garbage for the collector) while the boards themselves, the NES chips and every other path of the pipeline allocated nothing. Measured with the repo's own method (`GC.GetAllocatedBytesForCurrentThread` around warm frames, as the plugin and sound checks do), in the new group **`--picture-bridge-test --only alloc`**: bytes per frame beyond what the board allocates alone (0 in every case), least of three windows after a warm-up.
+
+| Case (bridge on the layered `NES:FIXS` / the flat `NES:FIX`) | Before (bytes a frame) | After |
+|---|---|---|
+| Synthetic scenes that move every frame: Master System / Game Gear / Genesis on `FIXS` | 126,544 / 121,880 / 204,696 | 0 / 0 / 0 |
+| ... on `FIX` | 92,896 / 88,232 / 143,288 | 0 / 0 / 0 |
+| Master System Alex Kidd, `FIXS` / `FIX` | 197,380 / 172,692 | 0 / 0 |
+| Master System Sonic, `FIXS` / `FIX` | 146,688 / 196,096 | 0 / 0 |
+| Game Gear Sonic, `FIXS` / `FIX` | 261,680 / 226,172 | 0 / 0 |
+| Game Gear Columns, `FIXS` / `FIX` | 193,872 / 194,488 | 0 / 0 |
+| Genesis Sonic, `FIXS` / `FIX` | 222,536 / 157,840 | 0 / 0 |
+| Genesis Streets of Rage, `FIXS` / `FIX` | 436,688 / 402,828 | 12 / 14 |
+| Genesis Golden Axe, `FIXS` / `FIX` | 414,916 / 440,608 | 0 / 0 |
+
+The 12 and 14 bytes are a table still growing to the most that game has needed (a dictionary doubling; the check's allowance for real games is 256 bytes and `--alloc-types` names the types: `Entry[Int32,Int32][]`, `Int32[]`, `Entry[UInt64,Int32][]`). Real games are measured after 600 frames of warm-up (`--alloc-warm`, `--alloc-window`), with the game directories and `--only alloc` (or `--alloc-games`); the synthetic scenes (limit 0) run in every `--picture-bridge-test` and so in the Sega gate.
+
+**What was allocating, and what changed** (`SmsToNes.cs`, `MdToNes.cs`, `SegaQuantizer.cs`, `FlatTilePacker.cs`, `NesPictureSink.cs`, and `ExtPicture.Layer.TakeColumnScroll`): a new `NesPicture` (10.5 KB of tables) and two `Enumerable.Repeat(...).ToArray()` per frame; the tile-identity dictionary (512 entries) of the Master System bridge; the Genesis sprite records with a per-line array each (72 KB at 80 sprites); a `bool` array per layer and per frame; colour tables, histograms (a `Dictionary` per tile) and closures per tile in the quantizer; the flat path's sort (`OrderByDescending`), packer tables and cells; lists, dictionaries and tuples. Now each bridge keeps its tables and clears them for the next frame; the quantizer keeps its histograms; the packer sorts one `long` per variant (count high to low, key low to high: the same order); the environment variable the sink read for every frame is read once. The colour-RAM copies the Genesis line capture made for every palette change are reused.
+
+**Golden-exact, by comparison with the old translators** (a Workshop built from the committed old translators with the new test code, run beside the pooled one): every group of `--picture-bridge-test` (catalog 17, nes2sega 48, sega2nes 127 passed + the one known branch failure, session 12, classify 26, games 13: 0 differing lines of output, SSIM values and counters included); **18 scene sets** (`--md-bridge-scenes`, B4a's pinned sets, about 380 scenes) on `NES:FIXS` and again on `NES:FIX`: 18 of 18 outputs identical each time; a hash of every frame's picture over nine game runs (`--verbose`): identical; the Sega cases of the golden suite on their recorded goldens: 24 pass, 0 fail (it includes the bridged picture of Sonic on `NES:FIXS`).
+
+**Shown able to fail:** the build with the old translators fails 20 of the 20 allocation checks; a 424-byte array put into the layered Master System path (static field, reverted) fails exactly the two cases that run it, at 424 bytes.
+
+**Not covered:** the SNES and Game Boy bridges to the NES (`SnesToNes`, `GbPictureBridges`) still make tables per frame, and the other direction (a NES game on `PPU_SMS` / `PPU_MD`) was not looked at; neither is in the brief for this item.
