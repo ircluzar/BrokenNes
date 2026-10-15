@@ -40,9 +40,14 @@ namespace NesEmulator
             public bool AnyHidden;
             /// <summary>The SNES layer (0-3 = BG1-4) this is, for colour math.</summary>
             public int SnesLayer;
-            /// <summary>Optional (null for every SNES layer): a vertical scroll of its own for each 16-pixel column of the composed line (index x >> 4, 16 entries), added to <see cref="ScrollY"/> - the
-            /// Genesis's 2-cell column scroll. Set by the Genesis bridge only.</summary>
+            /// <summary>Optional (null for every SNES layer): the Genesis's 2-cell column scroll, set by the Genesis bridge only. A vertical scroll of its own for each PAIR of the plane's cells (16 pixels), by pair
+            /// number (20 entries), added to <see cref="ScrollY"/>. The pairs of a line start where <see cref="ColumnShift"/> says (the plane's horizontal scroll mod 16 decides: pair number = (x + shift) >> 4);
+            /// pixels before the first pair (x + shift below 0) take <see cref="ColumnLeft"/>.</summary>
             public short[]? ColumnScroll;
+            public short ColumnLeft;
+            public readonly short[] ColumnShift = new short[Lines];
+            /// <summary>The column scroll at source x <paramref name="sx"/> of <paramref name="line"/> (only for a layer that has <see cref="ColumnScroll"/>).</summary>
+            public int ColumnValue(int line, int sx) { int ci = sx + ColumnShift[line]; return ci < 0 ? ColumnLeft : ColumnScroll![Math.Min(ci >> 4, ColumnScroll.Length - 1)]; }
 
             public void Reset()
             {
@@ -164,7 +169,7 @@ namespace NesEmulator
                     int sx = x0 + i;
                     if ((uint)sx >= Width) continue;
                     if (L.AnyHidden && L.Hidden[row + sx]) continue;
-                    if (colScroll != null) { int cy = (baseY + colScroll[sx >> 4]) & hMask; ty = cy & 7; mapRow = (cy >> 3) << shiftW; }
+                    if (colScroll != null) { int cy = (baseY + L.ColumnValue(line, sx)) & hMask; ty = cy & 7; mapRow = (cy >> 3) << shiftW; }
                     int mx = (L.ScrollX[line] + sx) & wMask, cell = mapRow + (mx >> 3);
                     int v = L.Tiles[L.Map[cell] * 64 + ty * 8 + (mx & 7)];
                     if (v == 0) continue;

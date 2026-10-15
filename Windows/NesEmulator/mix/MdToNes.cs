@@ -99,7 +99,7 @@ internal sealed class MdLineCapture
 /// <item><b>Flat path</b> (every other NES chip): the planes are composed cell by cell into one background (a cell takes the first of plane A high, plane B high, plane A low, plane B low that has any pixel), 256 tiles, 4 palettes,
 /// the NES's single fine scroll; the sprites become NES sprites (64 pieces, the chip enforces 8 a line).</item>
 /// </list>
-/// Not carried, and counted: shadow and highlight, interlace (each field is drawn as a normal frame), colour RAM written in the middle of a frame (the frame's palette is used), VRAM written in the middle of a frame (the
+/// Not carried, and counted: shadow and highlight (the shading; the sprites that are its operators are not drawn as pixels either), interlace (each field is drawn as a normal frame), colour RAM written in the middle of a frame (the frame's palette is used), VRAM written in the middle of a frame (the
 /// picture's end state is used), more column-scroll runs than layers.
 /// </summary>
 internal sealed class MdToNes
@@ -189,6 +189,8 @@ internal sealed class MdToNes
     {
         var r = cap.RegEnd;
         int ws = r[16] & 3, hs = r[16] >> 4 & 3;
+        // sizes the 4096-entry plane cannot hold (measured on BlastEm, Track B4a, 16 of 16 scenes identical): a 128-wide plane is only 32 high, and 64 wide with the height code 128 is 64 x 64 (32 x 128 is valid)
+        if (ws == 3 && hs != 0) hs = 0; else if (hs == 3 && ws != 0) hs = 1;
         int w = ws == 1 ? 64 : ws == 3 ? 128 : 32, h = hs == 1 ? 64 : hs == 3 ? 128 : 32;
         return new Plane { Base = a ? (r[2] & 0x38) << 10 : (r[4] & 7) << 13, WCells = w, HCells = h, RowStride = ws == 2 ? 0 : w };
     }
@@ -209,6 +211,25 @@ internal sealed class MdToNes
         return Entry(v[ea & 0xFFFF] << 8 | v[(ea + 1) & 0xFFFF]);
     }
 
+    private const string OperatorCounter = "sprite pieces holding shadow/highlight operators (their pixels are not drawn, and neither is the shading they cause)";
+
+    /// <summary>
+    /// A sprite's pixel, as a colour index: in shadow/highlight mode the pixels of palette line 3 with colour 14 (highlight) or 15 (shadow) are operators on what lies under them, not pixels of their own
+    /// (Track B4a's record, 1.3: measured on BlastEm), so they are see-through here; the shading itself is the part of the mode this bridge does not draw.
+    /// </summary>
+    private int SpritePixel(int tile, int pal, int y, int x)
+    {
+        int ci = TilePixel(tile, y, x);
+        return ci >= 14 && pal == 3 && (cap.RegEnd[12] & 8) != 0 ? 0 : ci;
+    }
+
+    private bool HoldsOperators(int tile, int pal)
+    {
+        if (pal != 3 || (cap.RegEnd[12] & 8) == 0) return false;
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) if (TilePixel(tile, y, x) >= 14) return true;
+        return false;
+    }
+
     private int TilePixel(int tile, int y, int x)
     {
         int a = (tile << 5) + (y << 2);
@@ -222,6 +243,21 @@ internal sealed class MdToNes
         var c = new int[16];
         for (int i = 0; i < 16; i++) c[i] = Rgb9(cap.Cram[line * 16 + i]);
         return c;
+    }
+
+    /// <summary>
+    /// The vertical scroll the VDP applies to a plane at screen column <paramref name="screenX"/> of line <paramref name="l"/> (<paramref name="vsOff"/>: 0 plane A, 1 plane B; <paramref name="hs"/>: the plane's horizontal
+    /// scroll entry on that line). Full-screen mode: entry 0 / 1. 2-cell column mode: a vertical scroll entry covers a PAIR of the plane's cells, so the pairs start at screen x = hs mod 16 and the entry is the pair's number;
+    /// the stretch before the first pair uses the last column's two entries ANDed (the same for both planes). Measured on BlastEm (Track B4a: 17 probe scenes, H40 and H32, both planes, fine and coarse scroll,
+    /// pixel-identical); the rule before it counted the columns from the screen's edge (hs mod 16 = 0 is the old rule's one case).
+    /// </summary>
+    private int VerticalScroll(int l, int vsOff, int screenX, int hs)
+    {
+        var vr = cap.Vsram[l];
+        if ((cap.RegEnd[11] & 4) == 0) return vr[vsOff] & 0x3FF;
+        int b0 = hs & 15, last = cap.H40 ? 19 : 15;
+        if (screenX < b0) return (vr[2 * last] & vr[2 * last + 1]) & 0x3FF;
+        return vr[Math.Min(2 * ((screenX - b0) >> 4) + vsOff, 39)] & 0x3FF;
     }
 
     // the window of a line: whole line, a part of it, or none (the VDP's rule, register 17 and 18 as the line was drawn)
@@ -338,15 +374,15 @@ internal sealed class MdToNes
             L.Seen = new bool[X.MapWidth * X.MapHeight];
             if (colMode && !L.Window)
             {
-                X.ColumnScroll = new short[16];
-                for (int k = 0; k < 16; k++) X.ColumnScroll[k] = (short)(cap.VsramEnd[(((k + dx / 16) << 1) + L.VsOff) & 0x3F] & 0x3FF);
+                // one entry per PAIR of the plane's cells (the table is by pair number); each line says where its pairs start (ColumnShift: they follow the line's horizontal scroll) and the stretch
+                // before the first pair has a value of its own (ColumnLeft, the two entries of the last column ANDed)
+                X.ColumnScroll = new short[20];
+                for (int k = 0; k < 20; k++) X.ColumnScroll[k] = (short)(cap.VsramEnd[(2 * k + L.VsOff) & 0x3F] & 0x3FF);
+                int last = cap.H40 ? 19 : 15;
+                X.ColumnLeft = (short)((cap.VsramEnd[2 * last] & cap.VsramEnd[2 * last + 1]) & 0x3FF);
             }
         }
-        int VsAt(int l, LayerSpec L, int srcX)
-        {
-            int idx = colMode ? (((srcX >> 4) << 1) + L.VsOff) : L.VsOff;
-            return cap.Vsram[l][Math.Min(idx, 39)] & 0x3FF;
-        }
+        int VsAt(int l, LayerSpec L, int screenX, int hs) => VerticalScroll(l, L.VsOff, screenX, hs);
         for (int el = 0; el < h; el++)
         {
             int l = y0 + el; var R = cap.Reg[l];
@@ -378,8 +414,12 @@ internal sealed class MdToNes
                     int hs = L.IsA ? cap.HsA[l] : cap.HsB[l];
                     X.ScrollX[el] = (short)(dx - hs);
                     // the plane's vertical scroll: one for the whole line, or (column mode) the layer's column table added to the line offset
-                    X.ScrollY[el] = colMode ? (short)y0 : (short)(y0 + VsAt(l, L, 0));
-                    if (colMode) for (int k = 0; k < 16; k++) if ((VsAt(l, L, (k + dx / 16) << 4)) != X.ColumnScroll![k]) { vsLinesOff++; break; }
+                    X.ScrollY[el] = colMode ? (short)y0 : (short)(y0 + VsAt(l, L, 0, hs));
+                    if (colMode)
+                    {
+                        X.ColumnShift[el] = (short)(dx - (hs & 15));
+                        for (int ex = 0; ex < 256; ex++) if (vis[ex] && VsAt(l, L, ex + dx, hs) != X.ColumnValue(el, ex)) { vsLinesOff++; break; }
+                    }
                 }
                 for (int x = 0; x < 256; x++) X.Hidden[el * 256 + x] = !vis[x];
                 X.AnyHidden = true;
@@ -389,7 +429,17 @@ internal sealed class MdToNes
                     int ex = sx - dx; if (ex + 8 <= 0 || ex >= 256) continue;
                     if (L.Window) { L.Seen[(l >> 3) * X.MapWidth + (sx >> 3)] = true; continue; }
                     int hs = L.IsA ? cap.HsA[l] : cap.HsB[l];
-                    int vs = VsAt(l, L, sx);       // a step of 8 never crosses a 16-pixel column border
+                    if (colMode)
+                    {
+                        // the pairs start at the plane's scroll mod 16, so the vertical scroll can change inside these 8 pixels: each pixel's own
+                        for (int p = sx; p < sx + 8; p++)
+                        {
+                            int pyc = (l + VsAt(l, L, p, hs)) & L.Plane!.HMask, pxc = (p - hs) & L.Plane.WMask;
+                            L.Seen[(pyc >> 3) * X.MapWidth + (pxc >> 3)] = true;
+                        }
+                        continue;
+                    }
+                    int vs = VsAt(l, L, sx, hs);
                     int py = (l + vs) & L.Plane!.HMask, px0 = (sx - hs) & L.Plane.WMask;
                     L.Seen[(py >> 3) * X.MapWidth + (px0 >> 3)] = true;
                     L.Seen[(py >> 3) * X.MapWidth + (((px0 + 7) & L.Plane.WMask) >> 3)] = true;
@@ -461,7 +511,7 @@ internal sealed class MdToNes
         var sprites = ReadSprites(out int dropped, out _);
         c.Add("sprites the VDP dropped itself (20/16 a line, 40/32 cells, the X = 0 mask)", dropped);
         var objQ = layeredObjQ; objQ.BeginFrame();
-        var pieceItem = new Dictionary<long, int>(); var itemTile = new List<(int tile, int pal)>();
+        var pieceItem = new Dictionary<long, int>(); var itemTile = new List<(int tile, int pal)>(); int operatorPieces = 0;
         var kept = new List<(int x, int y, int from, int to, int item, bool hf, bool vf, bool prio)>();
         foreach (var s in sprites)
         {
@@ -483,12 +533,13 @@ internal sealed class MdToNes
                             long key = (long)ContentOf(tile) << 2 | (long)s.Pal;
                             if (!pieceItem.TryGetValue(key, out int item))
                             {
-                                var pal = palettes[s.Pal]; int tt = tile;
+                                var pal = palettes[s.Pal]; int tt = tile, sp = s.Pal;
                                 item = objQ.Add(key, hist =>
                                 {
-                                    for (int yy = 0; yy < 8; yy++) for (int xx = 0; xx < 8; xx++) { int ci = TilePixel(tt, yy, xx); if (ci != 0) { int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } }
+                                    for (int yy = 0; yy < 8; yy++) for (int xx = 0; xx < 8; xx++) { int ci = SpritePixel(tt, sp, yy, xx); if (ci != 0) { int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } }
                                 });
                                 pieceItem[key] = item; itemTile.Add((tile, s.Pal));
+                                if (HoldsOperators(tile, s.Pal)) operatorPieces++;
                             }
                             int ex = s.XRaw - 128 + 8 * k - dx;
                             if (ex + 8 > 0 && ex < 256)
@@ -507,10 +558,11 @@ internal sealed class MdToNes
             var (tile, pl) = itemTile[item]; var pal = palettes[pl];
             for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
             {
-                int ci = TilePixel(tile, y, x);
+                int ci = SpritePixel(tile, pl, y, x);
                 e.SpriteTiles[item * 64 + y * 8 + x] = ci == 0 ? (byte)0 : objQ.Level(item, pal[ci]);
             }
         }
+        c.Add(OperatorCounter, operatorPieces);
         if (e.Sprites.Length < kept.Count) e.Sprites = new ExtPicture.Sprite[kept.Count];
         int n = 0;
         foreach (var k in kept)
@@ -579,10 +631,10 @@ internal sealed class MdToNes
                     if (srcX >= wf && srcX < wt) a = WindowCell(srcY >> 3, srcX >> 3);
                     else
                     {
-                        int hs = cap.HsA[srcY], vs = cap.Vsram[srcY][Math.Min((cap.RegEnd[11] & 4) != 0 ? (srcX >> 4) * 2 : 0, 39)] & 0x3FF;
+                        int hs = cap.HsA[srcY], vs = VerticalScroll(srcY, 0, srcX, hs);
                         a = PlaneCell(A, ((srcY + vs) & A.HMask) >> 3, ((srcX - hs) & A.WMask) >> 3);
                     }
-                    int hsB = cap.HsB[srcY], vsB = cap.Vsram[srcY][Math.Min((cap.RegEnd[11] & 4) != 0 ? (srcX >> 4) * 2 + 1 : 1, 39)] & 0x3FF;
+                    int hsB = cap.HsB[srcY], vsB = VerticalScroll(srcY, 1, srcX, hsB);
                     var b = PlaneCell(B, ((srcY + vsB) & B.HMask) >> 3, ((srcX - hsB) & B.WMask) >> 3);
                     bool aOpaque = Opaque(a!.Value.Tile), bOpaque = Opaque(b.Tile);
                     if (aOpaque && bOpaque) hidden2++;
@@ -663,8 +715,8 @@ internal sealed class MdToNes
         var sprites = ReadSprites(out int dropped, out _);
         c.Add("sprites the VDP dropped itself (20/16 a line, 40/32 cells, the X = 0 mask)", dropped);
         var objQ = flatObjQ; objQ.BeginFrame();
-        var pieceItem = new Dictionary<long, int>(); var itemTile = new List<(int tile, int pal)>();
-        var keptPieces = new List<(int x, int y, int item, bool hf, bool vf, bool behind)>();
+        var pieceItem = new Dictionary<long, int>(); var itemTile = new List<(int tile, int pal)>(); int operatorPieces = 0;
+        var keptPieces =new List<(int x, int y, int item, bool hf, bool vf, bool behind)>();
         foreach (var s in sprites)
             for (int k = 0; k < s.W; k++) for (int r = 0; r < s.H; r++)
             {
@@ -676,9 +728,10 @@ internal sealed class MdToNes
                 int tile = (s.Tile + sc * s.H + sr) & 0x7FF; long key = (long)ContentOf(tile) << 2 | (long)s.Pal;
                 if (!pieceItem.TryGetValue(key, out int item))
                 {
-                    var pal = palettes[s.Pal]; int tt = tile;
-                    item = objQ.Add(key, hist => { for (int yy = 0; yy < 8; yy++) for (int xx = 0; xx < 8; xx++) { int ci = TilePixel(tt, yy, xx); if (ci != 0) { int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } } });
+                    var pal = palettes[s.Pal]; int tt = tile, sp = s.Pal;
+                    item = objQ.Add(key, hist => { for (int yy = 0; yy < 8; yy++) for (int xx = 0; xx < 8; xx++) { int ci = SpritePixel(tt, sp, yy, xx); if (ci != 0) { int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1; } } });
                     pieceItem[key] = item; itemTile.Add((tile, s.Pal));
+                    if (HoldsOperators(tile, s.Pal)) operatorPieces++;
                 }
                 keptPieces.Add((ex, ey, item, s.HF, s.VF, !s.Prio));
             }
@@ -692,12 +745,13 @@ internal sealed class MdToNes
                 byte p0 = 0, p1 = 0;
                 for (int x = 0; x < 8; x++)
                 {
-                    int ci = TilePixel(tile, y, x); int lv = ci == 0 ? 0 : objQ.Level(item, pal[ci]);
+                    int ci = SpritePixel(tile, pl, y, x); int lv = ci == 0 ? 0 : objQ.Level(item, pal[ci]);
                     p0 |= (byte)((lv & 1) << (7 - x)); p1 |= (byte)((lv >> 1 & 1) << (7 - x));
                 }
                 pic.ChrObj[item * 16 + y] = p0; pic.ChrObj[item * 16 + 8 + y] = p1;
             }
         }
+        c.Add(OperatorCounter, operatorPieces);
         Array.Fill(pic.Oam, (byte)0xFF);
         int nOam = 0, over = 0; var perLine = new int[240];
         foreach (var p in keptPieces)
