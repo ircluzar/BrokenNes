@@ -309,6 +309,9 @@ internal static class MdRunCli
                 case "h32stretch": MdVdp.H32StretchZero = v[0] != 0; break;
                 case "lbshadow": MdVdp.LeftBlankShadowRule = v[0]; break;
                 case "nextslotfix": MdVdp.NextFreeSlotMode = v[0]; break;
+                case "satcache": MdVdp.SpriteCacheOn = v[0] != 0; break;
+                case "spritey9": MdVdp.SpriteY9 = v[0] != 0; break;
+                case "h32links": MdVdp.SpriteLinks80 = v[0] != 0; break;
                 case "vsmask11": MdVdp.VsramIm2Mask11 = v[0] != 0; break;
                 case "sprnormal": MdVdp.SpriteNormalFromColour = v[0]; MdVdp.SpriteNormalToColour = v.Length > 1 ? v[1] : 15; break;
                 case "vsshift": MdVdp.VsramColumnShift = v[0]; break;

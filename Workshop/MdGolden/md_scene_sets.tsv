@@ -23,6 +23,7 @@ f_v30	fuzz	v30	20	66
 f_window	fuzz	window	20	67
 f_sprites	fuzz	sprites	30	68
 f_il1	fuzz	interlace1	20	69
+f_satcache	fuzz	satcache	12	71
 vsprobe	vsprobe	1	5	-
 vsprobe2	vsprobe	2	12	-
 vsprobe3	vsprobe	3	14	-

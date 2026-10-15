@@ -184,7 +184,7 @@ public sealed partial class MdVdp
 
     public void Reset()
     {
-        Array.Clear(Vram); Array.Clear(Cram); Array.Clear(Vsram); Array.Clear(Reg);
+        Array.Clear(Vram); Array.Clear(Cram); Array.Clear(Vsram); Array.Clear(Reg); Array.Clear(SpriteCache);
         Time = 0; lineStart = 0; Line = 0; Frames = 0; FrameCompleted = false; oddFrame = false;
         vintPending = hintPending = false; hintCounter = 0; vintTime = hintTime = z80IntClear = long.MaxValue; vintEnableFrom = hintEnableFrom = 0; z80IntAsserted = false;
         pendingCommand = false; commandFirst = 0; code = 0; address = 0; readBuffer = 0; readReadyAt = 0; hvLatched = -1; readStale = false;
@@ -321,13 +321,16 @@ public sealed partial class MdVdp
         return lo;
     }
 
+    /// <summary>The search for a free slot, when it goes on in the next line: 0 = the old search, which went back to that line's start (a slot before the time asked for: a fill or copy started in the last 56 clocks
+    /// of a blanked line found a slot before the engine's start again and again and froze the VDP, D&D - Warriors of the Eternal Sun; fills and copies ran several times too fast), 2 (the default) = it keeps the time
+    /// asked for, for the steps of a fill or copy, 1 = always (the roster games' golden frames matched the oracle with the old search for FIFO writes and data port reads, and move by frames when those change:
+    /// the old behaviour stays for those).</summary>
+    public static int NextFreeSlotMode = 2;
+
     /// <summary>
     /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: from the counter's step
     /// (<see cref="VCounterStepOffset"/>) on the next line's slots apply (see <see cref="SlotTable"/>: its window starts with the end of this line).
     /// </summary>
-    /// <summary>The search for a free slot, when it goes on in the next line: 0 = the old search, which went back to that line's start (a slot before rom: a fill or copy started in the last 56 clocks of a blanked line\n    /// found a slot before the engine's start again and again and froze the VDP, D&D - Warriors of the Eternal Sun; fills and copies ran several times too fast), 2 = it keeps rom for the steps of a fill or copy\n    /// (the default), 1 = always (the roster games' golden frames, which matched the oracle with the old search for FIFO writes and data port reads, then change: the old behaviour stays for those).</summary>
-    public static int NextFreeSlotMode = 2;
-
     private long NextFreeSlot(long from, bool keepFrom = false)
     {
         int line = Line; long ls = lineStart; int cut = H40 ? SlotTable.CutH40 : SlotTable.CutH32;
@@ -555,6 +558,27 @@ public sealed partial class MdVdp
         if (--dmaLength <= 0) FinishDma();
     }
 
+    /// <summary>The sprite attribute cache: the first four bytes (Y, size, link) of each of the 80 sprites, kept as the table's bytes are written (a write to VRAM inside the table the sprite table address register
+    /// names at that moment); sprite selection and sizes read these, the position, tile and attributes come from VRAM. A table written while the register named another place is not in the cache.</summary>
+    public readonly byte[] SpriteCache = new byte[320];
+    /// <summary>Experiment: false makes the sprites read the table in VRAM directly, as every version before did.</summary>
+    public static bool SpriteCacheOn = true;
+    /// <summary>The cache and the link list cover 80 sprites in H32 too: a link to sprite 64..79 is followed (the walk still stops after 64 sprites); a link of 80 or more ends the list. False: H32 stops at 64.</summary>
+    public static bool SpriteLinks80 = true;
+
+    private void SatNote(int addr, byte v)
+    {
+        int rel = addr - ((Reg[5] & (H40 ? 0x7E : 0x7F)) << 9) & 0xFFFF;
+        if (rel < (H40 || SpriteLinks80 ? 0x280 : 0x200) && (rel & 7) < 4) SpriteCache[(rel >> 3) * 4 + (rel & 7)] = v;
+    }
+
+    /// <summary>Tools: after the memories were set directly, take the cache from the table the register names now.</summary>
+    public void RebuildSpriteCache()
+    {
+        int sat = (Reg[5] & (H40 ? 0x7E : 0x7F)) << 9;
+        for (int i = 0; i < 80; i++) for (int b = 0; b < 4; b++) SpriteCache[i * 4 + b] = Vram[sat + i * 8 + b & 0xFFFF];
+    }
+
     /// <summary>Write a word to VRAM, CRAM or VSRAM at <paramref name="addr"/> (the address register as the command left it).</summary>
     private void WriteTarget(int c, uint addr, ushort data)
     {
@@ -567,6 +591,7 @@ public sealed partial class MdVdp
                 if ((a & 1) != 0) data = (ushort)(data << 8 | data >> 8);
                 a &= ~1;
                 Vram[a] = (byte)(data >> 8); Vram[a + 1] = (byte)data;
+                SatNote(a, Vram[a]); SatNote(a + 1, Vram[a + 1]);
                 break;
             }
             case 3: OnCramWrite((int)(addr >> 1) & 0x3F, data); break;
@@ -604,7 +629,7 @@ public sealed partial class MdVdp
         // the target is whatever the code register names at the time of each write (a register write after the fill command makes it no target: the fill still runs but writes nothing)
         switch (code & 0xF)
         {
-            case 1: Vram[(address ^ 1) & 0xFFFF] = (byte)(fillData >> 8); break;
+            case 1: Vram[(address ^ 1) & 0xFFFF] = (byte)(fillData >> 8); SatNote((int)(address ^ 1) & 0xFFFF, (byte)(fillData >> 8)); break;
             default: WriteTarget(code, address, NextFifoData); break;      // CRAM and VSRAM: the stale next entry, looked at afresh for every write
         }
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
@@ -617,7 +642,7 @@ public sealed partial class MdVdp
         if (dmaSlotsLeft == 0) dmaSlotsLeft = 2;
         if (--dmaSlotsLeft > 0) return;
         byte b = Vram[(dmaSource ^ 1) & 0xFFFF];            // a copy moves bytes in the VDP's own byte order, like a fill: the address with its low bit flipped on both sides
-        Vram[(address ^ 1) & 0xFFFF] = b;
+        Vram[(address ^ 1) & 0xFFFF] = b; SatNote((int)(address ^ 1) & 0xFFFF, b);
         dmaSource = (dmaSource + 1) & 0xFFFF;
         address = (address + (uint)AutoIncrement) & 0x1FFFF;
         if (--dmaLength <= 0) FinishDma();
@@ -975,7 +1000,7 @@ public sealed partial class MdVdp
         foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); w.Write(e.FromDma); }
         w.Write(dmaInFifo);
         w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode); w.Write(fillSourceStart); w.Write(fillLengthStart);
-        w.Write(dmaStartTime); w.Write(dmaNextFetch);
+        w.Write(dmaStartTime); w.Write(dmaNextFetch); w.Write(SpriteCache);
     }
 
     public void LoadState(BinaryReader r)
@@ -988,7 +1013,7 @@ public sealed partial class MdVdp
         for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32(), FromDma = r.ReadBoolean() };
         dmaInFifo = r.ReadInt32();
         dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
-        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64();
+        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64(); r.Read(SpriteCache, 0, SpriteCache.Length);
         // the picture is not part of a state: the colours are rebuilt and the line in progress is drawn from where the state left it
         for (int i = 0; i < 64; i++) UpdatePal(i);
         BeginLineRender();

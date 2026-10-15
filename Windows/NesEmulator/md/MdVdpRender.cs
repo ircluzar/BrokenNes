@@ -363,6 +363,10 @@ public sealed partial class MdVdp
     //  Sprites
     // =================================================================================================================
 
+    /// <summary>A sprite's Y position has 9 bits (bit 9 of the table word is ignored) except in interlace mode 2, where it has 10 (measured on BlastEm with attribute-cache scenes whose cached Y words carry random bit 9).</summary>
+    public static bool SpriteY9 = true;
+    private int SpriteYMask => SpriteY9 && !dbl ? 0x1FF : 0x3FF;
+
     private readonly int[] lineSprites = new int[24];
     private int lineSpriteCount;
     private bool lineSpriteOverflow;
@@ -377,8 +381,9 @@ public sealed partial class MdVdp
         for (int n = 0; n < maxSprites; n++)
         {
             int a = sat + idx * 8;
-            int ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF;
-            int size = Vram[a + 2 & 0xFFFF], link = Vram[a + 3 & 0xFFFF] & 0x7F;
+            int ypos, size, link;
+            if (SpriteCacheOn) { int c = idx * 4; ypos = (SpriteCache[c] << 8 | SpriteCache[c + 1]) & SpriteYMask; size = SpriteCache[c + 2]; link = SpriteCache[c + 3] & 0x7F; }
+            else { ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask; size = Vram[a + 2 & 0xFFFF]; link = Vram[a + 3 & 0xFFFF] & 0x7F; }
             int h = (size & 3) + 1;
             int top = ypos - (128 << (dbl ? 1 : 0));
             if (imgRow >= top && imgRow < top + (h << cellShift))
@@ -387,7 +392,7 @@ public sealed partial class MdVdp
                 lineSprites[lineSpriteCount++] = idx;
             }
             idx = link;
-            if (idx == 0 || idx >= maxSprites) break;      // a link of 0 ends the list; one past the table (64 in H32, 80 in H40) does too
+            if (idx == 0 || idx >= (SpriteLinks80 ? 80 : maxSprites)) break;      // a link of 0 ends the list, and so does one past the 80 cached sprites (past 64 in H32 only with SpriteLinks80 off)
         }
         if (lineSpriteOverflow) { sprOverflow = true; SpriteOverflowLines++; }
         DrawSpritesToLine();
@@ -405,11 +410,11 @@ public sealed partial class MdVdp
         for (int i = 0; i < lineSpriteCount && cellsLeft > 0; i++)
         {
             int a = sat + lineSprites[i] * 8;
-            int size = Vram[a + 2 & 0xFFFF];
+            int size = SpriteCacheOn ? SpriteCache[lineSprites[i] * 4 + 2] : Vram[a + 2 & 0xFFFF];
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
             int attr = Vram[a + 4 & 0xFFFF] << 8 | Vram[a + 5 & 0xFFFF];
             int xraw = (Vram[a + 6 & 0xFFFF] << 8 | Vram[a + 7 & 0xFFFF]) & 0x1FF;
-            int ypos = ((Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF) - (128 << (dbl ? 1 : 0));
+            int ypos = (SpriteCacheOn ? (SpriteCache[lineSprites[i] * 4] << 8 | SpriteCache[lineSprites[i] * 4 + 1]) & SpriteYMask : (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask) - (128 << (dbl ? 1 : 0));
             // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
             if (xraw == 0) { if (seenVisible) masked = true; }
             else seenVisible = true;
@@ -544,7 +549,7 @@ public sealed partial class MdVdp
     public void LoadColour(int index, ushort data) { Cram[index & 0x3F] = (ushort)(data & 0x0EEE); UpdatePal(index & 0x3F); }
 
     /// <summary>Tools: after the memories and registers were set directly, begin the current line afresh.</summary>
-    public void ResetPictureState() { for (int i = 0; i < 64; i++) UpdatePal(i); BeginLineRender(); }
+    public void ResetPictureState() { for (int i = 0; i < 64; i++) UpdatePal(i); RebuildSpriteCache(); BeginLineRender(); }
 
     /// <summary>The debug picture of the picture itself (what the session shows), for tools: a copy of the finished frame at its real size.</summary>
     public void CopyPicture(uint[] dst)

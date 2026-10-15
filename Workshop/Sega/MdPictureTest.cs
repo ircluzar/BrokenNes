@@ -101,6 +101,8 @@ internal static class MdPictureTest
         public void Reg(int r, int val) => Ctl((ushort)(0x8000 | r << 8 | val));
         public void Cmd(int code, int addr) { Ctl((ushort)((code & 3) << 14 | addr & 0x3FFF)); Ctl((ushort)((code >> 2 & 0xF) << 4 | addr >> 14 & 3)); }
         public void Data(ushort v) { Tick(); V.WriteData(v, T); if (V.Time > T) T = V.Time; }
+        /// <summary>Let the FIFO empty: queued data port writes reach their memory at a later slot, and what they do (the sprite cache) depends on the registers at that moment.</summary>
+        public void Settle() { V.RunTo(V.Time + 20000); T = V.Time; }
     }
 
     public static int Run(string[] args)
@@ -470,6 +472,40 @@ internal static class MdPictureTest
         p.Sprite(0, 12, 40, 1, 1, 7, 2, false, 0);
         p.Frame();
         Check("a sprite uses the palette line in its attributes", p.Px(14, 42) == Argb(p.CramOf(2, 7), 0));
+
+        // the sprite attribute cache (BlastEm, scenes whose table address register named another table while the memories were loaded): Y, size and link of each sprite are kept as the table is written
+        // through the data port while the register names it; the position, tile and attributes are read from VRAM when the line is drawn
+        p = new Pic();
+        p.Sprite(0, 100, 100, 1, 1, 4, 0, false, 0);          // poked into $6000: Y 100
+        p.V.ResetPictureState();                              // the cache is taken from it (as a tool or a bridge that sets the memories directly does)
+        p.Reg(5, 0x6800 >> 9);                                // the register names another table now ...
+        p.Cmd(1, 0x6800); p.Data((ushort)(50 + 128)); p.Data(0x0000);            // ... and a write there (Y 50, size 1 x 1, link 0) goes into the cache
+        p.Settle();
+        p.Cmd(1, SatAddr); p.Data((ushort)(170 + 128));       // a write to $6000 while the register names $6800 does not
+        p.Settle();
+        p.Reg(5, SatAddr >> 9);
+        p.V.RunTo(p.V.Time + p.V.Timeline.MasterClocksPerFrame * 2);
+        uint t4 = Argb(p.CramOf(0, 4), 0);
+        Check("the sprite attribute cache: a sprite's Y comes from the cache (50, written while the register named $6800), its X and tile from the table in VRAM", p.Px(102, 52) == t4 && p.Px(102, 102) != t4 && p.Px(102, 172) != t4, $"{p.Px(102, 52):X8} {p.Px(102, 102):X8} {p.Px(102, 172):X8}");
+        p.Cmd(1, SatAddr); p.Data((ushort)(150 + 128));
+        p.V.RunTo(p.V.Time + p.V.Timeline.MasterClocksPerFrame * 2);
+        Check("... and a write to the table the register names now moves it (Y 150)", p.Px(102, 152) == t4 && p.Px(102, 52) != t4);
+
+        // a sprite's Y word has nine bits outside interlace mode 2
+        p = new Pic();
+        p.Sprite(0, 100, 50, 1, 1, 4, 0, false, 0);
+        p.V.Vram[SatAddr] |= 2;                               // bit 9 of the Y word
+        p.Frame();
+        Check("a sprite's Y word has 9 bits: with bit 9 set (Y = 512 + 178) the sprite is still at line 50 (oracle: attribute cache scenes with random Y words)", p.Px(102, 52) == t4, $"{p.Px(102, 52):X8}");
+
+        // the link list: H32 has 64 sprites but follows links up to 79
+        p = new Pic(h40: false);
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 70);           // 70 is past the 64 entries of an H32 table
+        p.Sprite(70, 60, 20, 1, 1, 6, 0, false, 85);
+        p.Sprite(85, 100, 20, 1, 1, 7, 0, false, 0);          // 85 is past the 80 the cache covers: the list ends at sprite 70
+        p.Frame();
+        Check("H32: a link to sprite 70 is followed (the table's 64 entries are the number of sprites drawn, not the highest link)", p.Px(22, 22) == t4 && p.Px(62, 22) == Argb(p.CramOf(0, 6), 0), $"{p.Px(62, 22):X8}");
+        Check("... and a link of 80 or more ends the list", p.Px(102, 22) != Argb(p.CramOf(0, 7), 0));
     }
 
     // =====================================================================================================================
@@ -623,6 +659,9 @@ internal static class MdPictureTest
         int ya = SatAddr; p.V.Vram[ya] = (byte)((40 + 256) >> 8 & 3); p.V.Vram[ya + 1] = (byte)((40 + 256) & 0xFF);
         p.Frame();
         Check("a sprite in mode 2 is 8 x 16 pixels at Y - 256 picture rows: rows 40-47 colour 1, 48-55 colour 2, nothing above or below", W(100, 40) == c1 && W(107, 47) == c1 && W(100, 48) == c2 && W(107, 55) == c2 && W(100, 39) == bd && W(100, 56) == bd, $"{W(100, 40):X8} {W(100, 48):X8} {W(100, 56):X8}");
+        p.V.Vram[ya] |= 2;
+        p.Frame();
+        Check("... Y keeps its tenth bit in mode 2: with bit 9 set the sprite is far below the picture (outside mode 2 the bit is ignored)", W(100, 40) == bd && W(100, 48) == bd, $"{W(100, 40):X8}");
 
         // the field flag toggles every frame in either interlace mode, and is zero without interlace
         foreach (var (mode, r12) in new[] { (1, 0x83), (2, 0x87), (0, 0x81) })

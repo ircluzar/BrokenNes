@@ -96,7 +96,7 @@ internal static class MdSceneCli
         var layersAt = new byte[count][][];
         var layersPrevAt = new byte[count][][];
         byte[][]? prevLayers = null;
-        var vramAt = new byte[count][]; var regAt = new byte[count][];
+        var vramAt = new byte[count][]; var regAt = new byte[count][]; var cacheAt = new byte[count][];
         int sprLineY = int.TryParse(M68kTestCli.Arg(args, "--sprline"), out int sly) ? sly : -1;
         if (M68kTestCli.Flag(args, "--classify") || M68kTestCli.Flag(args, "--sprstat")) vdp.DebugKeepLayers = true;
         Img? prevField = null;
@@ -119,7 +119,7 @@ internal static class MdSceneCli
                 if (prevField != null) list.Add(prevField);
                 cand[si] = list;
                 cramAt[si] = (ushort[])vdp.Cram.Clone();
-                if (sprLineY >= 0) { vramAt[si] = (byte[])vdp.Vram.Clone(); regAt[si] = (byte[])vdp.Reg.Clone(); }
+                if (sprLineY >= 0) { vramAt[si] = (byte[])vdp.Vram.Clone(); regAt[si] = (byte[])vdp.Reg.Clone(); cacheAt[si] = (byte[])vdp.SpriteCache.Clone(); }
                 if (vdp.DebugKeepLayers && vdp.DebugA != null) { layersAt[si] = new[] { (byte[])vdp.DebugA.Clone(), (byte[])vdp.DebugB!.Clone(), (byte[])vdp.DebugS!.Clone() }; layersPrevAt[si] = prevLayers; }
             }
             prevField = field;
@@ -146,7 +146,7 @@ internal static class MdSceneCli
             if (only.Count > 0 && !only.Contains(i)) continue;
             if (cand[i] == null) { Console.WriteLine($"scene {i}: no picture captured"); continue; }
             string what = meta != null && i < meta.Length ? Describe(meta[i]) : "";
-            if (sprLineY >= 0 && vramAt[i] != null) SpriteLine(vramAt[i], regAt[i], sprLineY);
+            if (sprLineY >= 0 && vramAt[i] != null) SpriteLine(vramAt[i], regAt[i], sprLineY, cacheAt[i]);
             if (shotsDir == null)
             {
                 if (outDir != null) for (int k = 0; k < cand[i].Count; k++) Save(cand[i][k], Path.Combine(outDir, $"ours_{i:D3}_{cand[i][k].Name}{k}.png"));
@@ -256,7 +256,7 @@ internal static class MdSceneCli
     }
 
     /// <summary>Tool: the sprites on picture line <paramref name="y"/> (a field line in interlace mode 2: picture row 2y and 2y+1), in link order, with the cell count so far and the per-line limits.</summary>
-    private static void SpriteLine(byte[] vram, byte[] reg, int y)
+    private static void SpriteLine(byte[] vram, byte[] reg, int y, byte[] cache)
     {
         bool h40 = (reg[12] & 0x81) == 0x81, dbl = (reg[12] & 6) == 6;
         int maxSprites = h40 ? 80 : 64, sat = (reg[5] & (h40 ? 0x7E : 0x7F)) << 9, cells = 0;
@@ -265,7 +265,7 @@ internal static class MdSceneCli
         for (int n = 0; n < maxSprites; n++)
         {
             int a = sat + idx * 8;
-            int ypos = (vram[a & 0xFFFF] << 8 | vram[a + 1 & 0xFFFF]) & 0x3FF, size = vram[a + 2 & 0xFFFF], link = vram[a + 3 & 0xFFFF] & 0x7F;
+            int ypos = (cache[idx * 4] << 8 | cache[idx * 4 + 1]) & (MdVdp.SpriteY9 && !dbl ? 0x1FF : 0x3FF), size = cache[idx * 4 + 2], link = cache[idx * 4 + 3] & 0x7F;
             int xraw = (vram[a + 6 & 0xFFFF] << 8 | vram[a + 7 & 0xFFFF]) & 0x1FF;
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
             int top = ypos - (dbl ? 256 : 128), rows = h << (dbl ? 4 : 3);
@@ -273,7 +273,7 @@ internal static class MdSceneCli
             bool hit = row + (dbl ? 1 : 0) >= top && row < top + rows;
             if (hit) { onLine++; cells += w; }
             if (hit) Console.WriteLine($"      #{onLine} sprite {idx}: x {xraw - 128} (raw {xraw}) w {w} cells h {h}, top row {top}, cells so far {cells}");
-            idx = link; if (idx == 0 || idx >= maxSprites) break;
+            idx = link; if (idx == 0 || idx >= (MdVdp.SpriteLinks80 ? 80 : maxSprites)) break;
         }
         Console.WriteLine($"      {onLine} sprites, {cells} cells on the line (limits {(h40 ? "20 sprites, 40 cells" : "16 sprites, 32 cells")})");
     }
