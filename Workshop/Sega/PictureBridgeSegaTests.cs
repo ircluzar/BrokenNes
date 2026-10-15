@@ -516,6 +516,138 @@ internal static class SegaScenes
         Check($"{tag}: a static scene is drawn identically every frame", hashes.Count == 1, $"{hashes.Count} different pictures");
     }
 
+    // ================================================================================================================ allocation
+    /// <summary>Bytes allocated per frame once the program is warm: the least over three windows (a method the runtime compiles once more as it tiers up allocates once, never again).</summary>
+    private static double BytesPerFrame(Action frame, int warm = 150, int window = 40)
+    {
+        for (int i = 0; i < warm; i++) frame();
+        long best = long.MaxValue;
+        for (int w = 0; w < 3; w++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < window; i++) frame();
+            best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        return best / (double)window;
+    }
+
+    /// <summary>The most a bridged frame may allocate beyond what the board's own frame allocates, in bytes. Zero is the aim (the pipeline's other paths allocate nothing); the figure is what the pooled translators measure, so a new per-frame array fails here.</summary>
+    internal const double BridgeBytesLimit = 0;
+
+    /// <summary>With <c>--alloc-types</c>: which types the runtime says it allocated (its allocation-tick event, one per ~100 KB, with the type allocated at that moment), for finding where a nonzero number comes from.</summary>
+    private sealed class AllocTypeListener : System.Diagnostics.Tracing.EventListener
+    {
+        public readonly Dictionary<string, int> Ticks = new();
+        protected override void OnEventSourceCreated(System.Diagnostics.Tracing.EventSource source)
+        {
+            if (source.Name == "Microsoft-Windows-DotNETRuntime") EnableEvents(source, System.Diagnostics.Tracing.EventLevel.Verbose, (System.Diagnostics.Tracing.EventKeywords)0x1);
+        }
+        protected override void OnEventWritten(System.Diagnostics.Tracing.EventWrittenEventArgs e)
+        {
+            if (e.EventName == null || !e.EventName.StartsWith("GCAllocationTick", StringComparison.Ordinal) || e.PayloadNames == null || e.Payload == null) return;
+            for (int i = 0; i < e.PayloadNames.Count; i++)
+                if (e.PayloadNames[i] == "TypeName") lock (Ticks) { string t = e.Payload[i] as string ?? "?"; Ticks[t] = Ticks.GetValueOrDefault(t) + 1; }
+        }
+        public string Top(int n) { lock (Ticks) return string.Join(", ", Ticks.OrderByDescending(k => k.Value).Take(n).Select(k => $"{k.Key} x{k.Value}")); }
+    }
+
+    /// <summary>The same for a real game after a long run: the translators' tables (a dictionary of the tiles seen, the pool of histograms) grow to the most the game has needed, each growth one allocation, bounded and never repeated for a size already reached; a game still streaming new tiles after 600 frames shows a few tens of bytes a frame.</summary>
+    internal const double GameBytesLimit = 256;
+
+    private static void AllocCase(string name, double bridged, double board, double limit = BridgeBytesLimit)
+    {
+        double extra = Math.Max(0, bridged - board);
+        Check($"{name}: the bridge allocates {extra:F0} bytes a frame beyond the board's own ({bridged:F0} with the bridge, {board:F0} for the board alone; limit {limit:F0})", extra <= limit, $"{bridged:F0} / {board:F0}");
+    }
+
+    /// <summary>The translators' steady-state allocation per frame: synthetic scenes that move every frame (scroll, sprites), then, when game directories are given, real games.</summary>
+    public static void Alloc(string[] args)
+    {
+        foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
+        {
+            double[] sms = new double[2], gg = new double[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                string ppu = pass == 0 ? chip : "SMS";
+                var r = new SmsRig(ppu); SmsMoving(r); int f = 0;
+                sms[pass] = BytesPerFrame(() => { r.V.Regs[8] = (byte)(f++ * 3); r.Wrap.RunFrame(); });
+                var g = new SmsRig(pass == 0 ? chip : "GG", gg: true); SmsMoving(g); f = 0;
+                gg[pass] = BytesPerFrame(() => { g.V.Regs[8] = (byte)(f++ * 3); g.Wrap.RunFrame(); });
+            }
+            AllocCase($"Master System scene on {chip}", sms[0], sms[1]);
+            AllocCase($"Game Gear scene on {chip}", gg[0], gg[1]);
+            double[] md = new double[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var r = new MdRig(pass == 0 ? chip : "MD"); MdMoving(r); r.Go(1); int f = 0;
+                md[pass] = BytesPerFrame(() => { for (int l = 0; l < 224; l++) r.W16(MdRig.HScroll + l * 4, (l * 3 + f) & 0x1FF); f += 2; r.Wrap.RunFrame(); });
+            }
+            AllocCase($"Genesis scene on {chip}", md[0], md[1]);
+        }
+        string smsDir = Arg(args, "--sms-roms"), ggDir = Arg(args, "--gg-roms"), mdDir = Arg(args, "--md-roms");
+        // real games run long (a game is run for a thousand frames on each of three chips): only when asked for, with --only alloc or --alloc-games
+        bool realGames = Arg(args, "--only").Equals("alloc", StringComparison.OrdinalIgnoreCase) || args.Contains("--alloc-games", StringComparer.OrdinalIgnoreCase);
+        if (!realGames) { Console.WriteLine("  (real games not measured: --only alloc or --alloc-games, with --sms-roms --gg-roms --md-roms)"); return; }
+        if (smsDir + ggDir + mdDir == "") { Console.WriteLine("  (no game directories given: --sms-roms --gg-roms --md-roms; real games not measured)"); return; }
+        const string input = "100:Start,106:,160:Start,166:,200:A,210:,260:Start,266:,300:Right,420:A,430:";
+        // a game keeps showing tiles it has not shown before for a long while, and the bridge's tables grow to the most it has needed (bounded: they are not made again): a real game is measured after a long run
+        bool withTypes = args.Contains("--alloc-types", StringComparer.OrdinalIgnoreCase);
+        int warmFrames = int.TryParse(Arg(args, "--alloc-warm"), out int aw) ? aw : 600, windowFrames = int.TryParse(Arg(args, "--alloc-window"), out int awin) ? awin : 100;
+        void Game(string dir, string file, ConsoleKind console)
+        {
+            string path = Path.Combine(dir, file);
+            if (!File.Exists(path)) { Console.WriteLine($"  (missing {file})"); return; }
+            if (Arg(args, "--alloc-game").Length > 0 && !file.Contains(Arg(args, "--alloc-game"), StringComparison.OrdinalIgnoreCase)) return;       // --alloc-game <part of a file name>: just that game
+            var script = PictureBridgeCli.ParseInput(input);
+            byte[] rom = File.ReadAllBytes(path);
+            double Run(string chip, out ulong pictureHash)
+            {
+                using var s = ConsoleSessions.Create(console, rom, CoreCatalog.Default(console, CoreSlot.Cpu), chip, CoreCatalog.Default(console, CoreSlot.Apu), null, Path.GetFileName(path));
+                var held = PadButtons.None; var buf = new short[65536]; int f = 0; ulong hash = 14695981039346656037UL;
+                void Step() { s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { } var px = s.Frame; int n = s.FrameWidth * s.FrameHeight; for (int i = 0; i < n; i++) hash = (hash ^ px[i]) * 1099511628211UL; }
+                for (; f < 420; f++) { if (script.TryGetValue(f, out var h)) held = h; Step(); }      // into the game, through the menus
+                using var types = withTypes ? new AllocTypeListener() : null;
+                bool own = chip == CoreCatalog.Default(console, CoreSlot.Ppu);      // the board alone allocates nothing in any game, so a short run says so
+                double bytes = BytesPerFrame(Step, warm: own ? 60 : warmFrames, window: own ? 40 : windowFrames);
+                if (types != null) { System.Threading.Thread.Sleep(500); Info($"{Path.GetFileNameWithoutExtension(file)} on {chip}: the runtime's allocation ticks by type: {types.Top(8)}"); }
+                pictureHash = hash;                                                                  // every frame's picture, so a change in what the bridge draws shows with --verbose (the allocation numbers are blind to it)
+                return bytes;
+            }
+            double own = Run(CoreCatalog.Default(console, CoreSlot.Ppu), out _);
+            foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
+            {
+                double bytes = Run(chip, out ulong ph);
+                Info($"{Path.GetFileNameWithoutExtension(file)} on {chip}: hash of every frame's picture {ph:X16}");
+                AllocCase($"{Consoles.DisplayName(console)} {Path.GetFileNameWithoutExtension(file)} on {chip}", bytes, own, GameBytesLimit);
+            }
+        }
+        if (smsDir != "") foreach (var f in new[] { "Alex Kidd in Miracle World (USA).sms", "Sonic The Hedgehog (USA, Europe).sms" }) Game(smsDir, f, ConsoleKind.MasterSystem);
+        if (ggDir != "") foreach (var f in new[] { "Sonic The Hedgehog (U) (V1.1) [!].gg", "Columns (U) [!].gg" }) Game(ggDir, f, ConsoleKind.GameGear);
+        if (mdDir != "") foreach (var f in new[] { "Sonic the Hedgehog (JUE) [!].bin", "Streets of Rage (JUE) (REV 00) [!].bin", "Golden Axe (JU) (REV 00) [!].bin" }) Game(mdDir, f, ConsoleKind.Genesis);
+    }
+
+    /// <summary>A Master System / Game Gear scene with five tiles over every cell and twenty sprites; the caller moves the horizontal scroll each frame.</summary>
+    private static void SmsMoving(SmsRig r)
+    {
+        r.Cram(0, 0); r.Cram(1, Red); r.Cram(2, Green); r.Cram(3, Blue); r.Cram(4, Yellow); r.Cram(5, White); r.Cram(16, 0); r.Cram(17, Green); r.Cram(18, Yellow);
+        for (int t = 1; t <= 5; t++) r.Tile(t, t);
+        r.Tile(6, 1); r.Stripe(7, 2, 1);
+        for (int row = 0; row < 24; row++) for (int col = 0; col < 32; col++) r.Cell(row, col, 1 + (row * 3 + col) % 5);
+        for (int i = 0; i < 20; i++) r.Sprite(i, 10 + i * 11, 20 + (i % 5) * 30, 6 + i % 2);
+        r.Frames(2);
+    }
+
+    /// <summary>A Genesis scene with two planes, a window strip, thirty linked sprites and a scroll value for every line; the caller moves the lines each frame.</summary>
+    private static void MdMoving(MdRig r)
+    {
+        r.Color(0, 0); r.Color(1, 0x00E); r.Color(2, 0x0E0); r.Color(3, 0xE00); r.Color(17, 0x0EE); r.Color(18, 0xEE0); r.Color(33, 0xEEE);
+        for (int t = 1; t <= 6; t++) r.Stripe(t, 1 + t % 3, 3 - t % 3);
+        for (int row = 0; row < 28; row++) for (int col = 0; col < 64; col++) { r.Cell(MdRig.PlaneB, 64, row, col, 1 + (row + col) % 3, 0, prio: (col & 7) == 0); if ((row + col) % 3 == 0) r.Cell(MdRig.PlaneA, 64, row, col, 4 + col % 3, 1); }
+        for (int i = 0; i < 30; i++) r.Sprite(i, 8 + (i % 15) * 16, 20 + (i / 15) * 90, 2, 2, 1 + i % 6, pal: i % 2, link: i == 29 ? 0 : i + 1);
+        r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x03, 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
+        r.V.Vsram[0] = 11;
+    }
+
     // ================================================================================================================ the session wrapper
     public static void Session()
     {

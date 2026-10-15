@@ -11,7 +11,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--picture-bridge-test [--only catalog|nes2sega|sega2nes|session|classify|games] [--nes-roms dir] [--sms-roms dir] [--gg-roms dir] [--md-roms dir] [--verbose]</c>: the picture bridges, by measurement.
+/// <c>--picture-bridge-test [--only catalog|nes2sega|sega2nes|session|classify|games|alloc] [--nes-roms dir] [--sms-roms dir] [--gg-roms dir] [--md-roms dir] [--verbose] [--alloc-games] [--alloc-types] [--alloc-game name] [--alloc-warm N] [--alloc-window N]</c>: the picture bridges, by measurement.
 /// <list type="bullet">
 /// <item><b>catalog</b>: the menus (a Sega console lists the NES chips and, through them, the Game Boy / SNES / other Sega chips, never its own family's through a bridge; the NES lists SMS and MD under their families).</item>
 /// <item><b>nes2sega</b>: <c>PPU_SMS</c> and <c>PPU_MD</c> with synthetic NES pictures (a NES chip in front, the Sega chip drawing): exact colours by the documented rule, tile and sprite positions, flips, behind-the-background sprites, fine scroll, the sprite limits, 8x16, the tile budget and the counters that say so.</item>
@@ -19,6 +19,7 @@ namespace BrokenNes.Workshop.Sega;
 /// <item><b>session</b>: the wrapper session: in-place chip swaps, the status text, the counters, a static scene staying steady from frame to frame.</item>
 /// <item><b>classify</b>: the sweep's classifier with synthetic measurements (frozen, dead, static, lossy, hung, refused, crashed, alive).</item>
 /// <item><b>games</b>: real games from the user's libraries (when the directories are given): recognisable, tracked against the source chip's own picture, and the NES game untouched by its bridge.</item>
+/// <item><b>alloc</b>: what the translators (<c>SmsToNes</c>, <c>MdToNes</c>, the layered extension path and the flat path) allocate in a frame once warm: synthetic scenes that move every frame (0 bytes beyond the board's own), and with <c>--only alloc</c> (or <c>--alloc-games</c>) and the game directories, real games after a long run (a few tens of bytes at most: the tables grow to the most the game has needed). <c>--alloc-types</c> lists the types the runtime allocated, to find where a number comes from; <c>--verbose</c> prints a hash of every frame's picture, so a before and after of a change can be compared for being identical.</item>
 /// </list>
 /// Exit code 0 = every check passed. Every group is guarded: a bridge that throws is a failed check, not a crashed run.
 /// </summary>
@@ -57,6 +58,7 @@ internal static class PictureBridgeTestCli
         if (Want("session")) Guard("the Sega picture session", SessionChecks);
         if (Want("classify")) Guard("the sweep's classifier", Classifier);
         if (Want("games")) Guard("real games", () => Games(args));
+        if (only.Equals("alloc", StringComparison.OrdinalIgnoreCase) || only.Length == 0) Guard("allocation: what the translators allocate in a frame once warm", () => SegaScenes.Alloc(args));
         Console.WriteLine($"\n{Passes} passed, {Fails} failed");
         return Fails == 0 ? 0 : 1;
     }

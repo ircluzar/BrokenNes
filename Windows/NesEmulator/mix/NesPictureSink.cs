@@ -13,6 +13,21 @@ internal sealed class NesPicture
     public bool Blank;
     /// <summary>Show sprites from pattern table 1 (the default) - off keeps the picture BG-only.</summary>
     public bool Sprites = true;
+
+    /// <summary>Back to what a new picture is: every table zero, no fine scroll, rendering on, sprites shown. A bridge keeps one picture and clears it for each frame instead of making a new one.</summary>
+    public void Clear()
+    {
+        Array.Clear(ChrBg); Array.Clear(ChrObj); Array.Clear(Nt0); Array.Clear(Nt1); Array.Clear(Pal); Array.Clear(Oam);
+        FineX = 0; FineY = 0; Blank = false; Sprites = true;
+    }
+
+    /// <summary>The picture of a frame that shows nothing (the backdrop only): rendering off, every palette entry colour $0F, every sprite off the screen.</summary>
+    public void ClearToBlank()
+    {
+        Clear();
+        Array.Fill(Pal, (byte)0x0F); Array.Fill(Oam, (byte)0xFF);
+        Blank = true;
+    }
 }
 
 /// <summary>
@@ -23,11 +38,13 @@ internal sealed class NesPictureSink
 {
     private readonly NES nes;
     private readonly Bus bus;
+    private readonly bool backdoor;
     public string PpuId { get; }
 
     public NesPictureSink(string nesPpuId)
     {
         PpuId = nesPpuId;
+        backdoor = Environment.GetEnvironmentVariable("MIX_BACKDOOR") != "0";      // read once: reading it for every frame made a string for every frame
         nes = new NES { RomName = "mixlab-idle.nes" };
         nes.LoadROM(SnesToNes.IdleRom());
         if (!nes.SetPpuCore(nesPpuId) || !string.Equals(nes.GetPpuCoreId(), "PPU_" + nesPpuId, StringComparison.OrdinalIgnoreCase))
@@ -51,7 +68,7 @@ internal sealed class NesPictureSink
         // Instant register writes are fine for cores without a $2006 -> v delay, but PPU_FIX models the real 4-dot
         // delay: with no time passing between writes, every $2007 byte lands at the old address. Where the core has
         // a PPU-bus backdoor (IPpuProbe) and MIX_BACKDOOR is not 0, upload through it instead.
-        if (bus.ppu is IPpuProbe pb && Environment.GetEnvironmentVariable("MIX_BACKDOOR") != "0")
+        if (bus.ppu is IPpuProbe pb && backdoor)
         {
             for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)i, p.ChrBg[i]);
             for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)(0x1000 + i), p.ChrObj[i]);

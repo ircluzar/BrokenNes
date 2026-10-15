@@ -44,6 +44,9 @@ namespace NesEmulator
             /// number (20 entries), added to <see cref="ScrollY"/>. The pairs of a line start where <see cref="ColumnShift"/> says (the plane's horizontal scroll mod 16 decides: pair number = (x + shift) >> 4);
             /// pixels before the first pair (x + shift below 0) take <see cref="ColumnLeft"/>.</summary>
             public short[]? ColumnScroll;
+            private short[]? columnScrollSpare;
+            /// <summary>A column-scroll table of <paramref name="n"/> entries for the Genesis bridge to fill and put in <see cref="ColumnScroll"/>: the layer keeps one between frames (<see cref="Reset"/> clears the field, not the table), so a frame does not make a new array.</summary>
+            public short[] TakeColumnScroll(int n) => columnScrollSpare is { } s && s.Length == n ? s : (columnScrollSpare = new short[n]);
             public short ColumnLeft;
             public readonly short[] ColumnShift = new short[Lines];
             /// <summary>Per line, the Genesis's window-at-the-left quirk of the column scroll: for the <see cref="ColumnExtra"/> pixels from <see cref="ColumnExtraFrom"/> on, the pair number counts that many pixels further (the pair after the one the shift gives).</summary>
