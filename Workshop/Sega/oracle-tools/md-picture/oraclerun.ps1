@@ -47,13 +47,14 @@ if ($held.Count) { foreach ($b in $held) { $a.Add("u:$b") } }
 Write-Host ("BlastEm script: " + (($a -join ",").Substring(0, [Math]::Min(400, ($a -join ",").Length))) + " ...")
 if (-not $NoCapture) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue; & (Join-Path $root "bl.ps1") -Rom $Rom -OutDir $dir -Script ($a -join ",") -StartupMs $StartupMs | Where-Object { $_ -match '^shots requested|no window' } | Write-Output }
 $got = @(Get-ChildItem $dir -Filter "s*.png" | Sort-Object Name)
-"BlastEm screenshots: $($got.Count) (expected $($shotList.Count + 1))"
+$extraShots = if ($PauseSnap) { 1 } else { 0 }       # a state snapshot writes a screenshot too (the one of the pause point comes right after S0)
+"BlastEm screenshots: $($got.Count) (expected $($shotList.Count + 1 + $extraShots))"
 if ($got.Count -lt 1) { return }
 # BlastEm names its screenshots by the second and now and then writes one more (or one fewer) than were asked for; shots are paired with ours by their order, so a count that is not exactly right cannot be compared
-if ($got.Count -ne $shotList.Count + 1) { "CAPTURE UNRELIABLE: $($got.Count) screenshots for $($shotList.Count + 1) requested; the shots cannot be paired with ours. Rerun."; return }
+if ($got.Count -ne $shotList.Count + 1 + $extraShots) { "CAPTURE UNRELIABLE: $($got.Count) screenshots for $($shotList.Count + 1 + $extraShots) requested; the shots cannot be paired with ours. Rerun."; return }
 # ours: scan S0 for the boundary, then replay; the other screenshots are s001.. in --shots order
 $theirs = Join-Path $work "be\${Name}_t"; Remove-Item $theirs -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force $theirs | Out-Null
-for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $theirs ("s{0:D3}.png" -f ($i - 1))) }
+for ($i = 1 + $extraShots; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $theirs ("s{0:D3}.png" -f ($i - 1 - $extraShots))) }
 $ws = Join-Path $root "ws.ps1"
 $wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $work "our\$Name"))
 if ($Region) { $wsArgs += @("--region", $Region) }

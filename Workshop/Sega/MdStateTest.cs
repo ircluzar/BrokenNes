@@ -363,6 +363,10 @@ internal static class MdStateTest
             Check($"{tag}: the frames of the swapping session are identical to a control that never swapped (every frame where the VDP's own picture is shown)", mismatches == 0, mismatches == 0 ? $"{960 - bridgedFrames} frames compared" : $"{mismatches} frames differ, first at {firstMismatch}");
             var xm = Md(x).Board; var ym = Md(y).Board;
             Check($"{tag}: after 960 frames the 68000's PC, cycle count, master clock and work RAM equal the control's, so neither swap disturbed the board", xm.Cpu.Pc == ym.Cpu.Pc && xm.Cpu.Cycles == ym.Cpu.Cycles && xm.MasterClock == ym.MasterClock && xm.Ram.AsSpan().SequenceEqual(ym.Ram), $"x pc={xm.Cpu.Pc:X6} cyc={xm.Cpu.Cycles} clk={xm.MasterClock}; y pc={ym.Cpu.Pc:X6} cyc={ym.Cpu.Cycles} clk={ym.MasterClock}");
+            var ux = xm.Sound as MdSoundUnit; var uy = ym.Sound as MdSoundUnit;
+            Check($"{tag}: the sound driver was carried through the unit swaps: after 960 frames the Z80's PC and tick count and the counts of YM2612 writes, PSG writes and bus requests equal the control's (nothing restarted: no voice was dropped, no register lost)",
+                ux != null && uy != null && ux.Cpu.PC == uy.Cpu.PC && ux.Z80Ticks == uy.Z80Ticks && ux.YmWrites == uy.YmWrites && ux.PsgWrites == uy.PsgWrites && ux.BusRequests == uy.BusRequests,
+                ux == null || uy == null ? "no stock unit" : $"Z80 pc {ux.Cpu.PC:X4}/{uy.Cpu.PC:X4}, ticks {ux.Z80Ticks}/{uy.Z80Ticks}, YM {ux.YmWrites}/{uy.YmWrites}, PSG {ux.PsgWrites}/{uy.PsgWrites}");
             Check($"{tag}: the picture chip was drawn by a NES chip for {bridgedFrames} frames and the sound units made sound in turn", bridgedFrames == 80 && audioPeak.Count >= 3 && audioPeak.Values.All(p => p > 100), string.Join(", ", audioPeak.Select(kv => kv.Key + " peak " + kv.Value)));
             Check($"{tag}: the session's description follows the swaps", x.Description.Contains("MD") && Md(x).Description.Contains("APU MD"), Md(x).Description);
         }

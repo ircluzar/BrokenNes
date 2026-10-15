@@ -81,3 +81,42 @@ def sr_delay(variants=None, frames=30, h40=True, run=6):
 
 
 NL_ = '\n'
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+#  After which instruction of a loop is a horizontal interrupt taken? (return address histogram)
+# ---------------------------------------------------------------------------------------------------------------------
+
+RET_LOOPS = {
+    'nop': ['nop'],
+    'tst_abs': ['tst.b ($8000).w'],                       # the wait loop of Streets of Rage's intro: tst.b ($FA00).w / bne.s back (the branch costs what bra.s costs)
+    'tst_abs2': ['tst.b ($8000).w', 'tst.b ($8000).w'],
+    'move_b_abs': ['move.b d1,($8000).w'],
+    'move': ['move.w (a6),d1', 'move.w (a6),d1'],
+    'addq_reg': ['addq.w #1,d1'],
+    'mulu': ['mulu d2,d3'],
+    'divu': ['divu d4,d3'],
+    'clr_l': ['clr.l (a6)'],
+    'add_rmw': ['add.l d3,(a6)'],
+    'jsr_rts': ['jsr sub1'],
+    'movem_out': ['movem.l d0-d7,(a6)'],
+    'movem_in': ['movem.l (a6),d0-d7'],
+    'movem_short': ['movem.l d0-d1,(a6)'],
+    'lsl8': ['lsl.l #8,d5'],
+    'move_l_mem': ['move.l (a6),(a5)'],
+    'pea': ['pea (a6)', 'addq.l #4,sp'],
+    'btst_reg': ['btst #3,d1'],
+    'cmp_mem': ['cmp.w (a6),d1'],
+}
+
+
+def ret_hist(body, n=4000, h40=True):
+    """HINT every line (R10 = 0); the loop is `body` and a BRA.S (labels i0, i1, ... on the instructions, bra on the branch); the handler stores the return address of the interrupt it was given (the first instruction NOT executed);
+    RAM: the count at $FF0000, the long addresses from $FF0004."""
+    s = prologue(h40, True, regs={0: 0x14, 1: 0x44, 10: 0})
+    s += NL_.join(['    lea ($FF0004).l,a0', '    lea ($FF8000).l,a6', '    lea ($FF8100).l,a5', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #7,d4', '    moveq #0,d1', '    move.w #0,($FF0000).l',
+                   '    move.w #$2000,sr', 'main:']) + NL_
+    for i, ins in enumerate(RET_LOOPS[body]):
+        s += 'i%d: %s\n' % (i, ins)
+    s += NL_.join(['bra: bra.s main', '_spin: bra.s _spin', 'sub1: rts', 'hint:', '    cmpi.w #%d,($FF0000).l' % n, '    bcc.s done', '    move.l 2(sp),(a0)+', '    addq.w #1,($FF0000).l', 'done:', '    rte']) + NL_
+    return s
