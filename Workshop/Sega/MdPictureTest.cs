@@ -544,6 +544,25 @@ internal static class MdPictureTest
         p.Sprite(0, 0, 0, 1, 1, 4, 0, true, 0); p.Sprite(1, 16, 0, 1, 1, 4, 0, false, 0); p.V.Vram[SatAddr + 3] = 1;
         p.Frame();
         Check("an ordinary sprite is drawn at normal brightness with the priority bit and in shadow without it", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0) && p.Px(18, 2) == Argb(p.CramOf(0, 4), 1));
+
+        // the left column blank in shadow/highlight mode (oracle, four random-scene families): the blank column is the backdrop in shadow; the planes in the next cell are the blanked cell's planes; sprites stay put
+        p = new Pic();
+        p.V.Reg[12] |= 8; p.V.Reg[0] |= 0x20; p.V.Reg[7] = 0x02;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003); p.Cell(PlaneA, 2, 0, 0x8004);
+        p.Frame();
+        Check("shadow/highlight with the left column blank: the blank column shows the backdrop in shadow (a high-priority tile hidden under it does not make it normal)", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1) && p.Px(7, 5) == Argb(p.CramOf(0, 2), 1), $"{p.Px(2, 2):X8}");
+        Check("... the second cell (x 8-15) shows the first cell's plane pixels (tile 2) instead of its own (tile 3), the third its own", p.Px(10, 2) == Argb(p.CramOf(0, 2), 0) && p.Px(18, 2) == Argb(p.CramOf(0, 4), 0), $"{p.Px(10, 2):X8} {p.Px(18, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8; p.V.Reg[0] |= 0x20;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003);
+        p.Sprite(0, 8, 0, 1, 1, 5, 0, true, 0);
+        p.Frame();
+        Check("... a sprite in the second cell stays in the second cell", p.Px(10, 2) == Argb(p.CramOf(0, 5), 0), $"{p.Px(10, 2):X8}");
+        p = new Pic();
+        p.V.Reg[0] |= 0x20;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003);
+        p.Frame();
+        Check("... without shadow/highlight mode the second cell is its own and the blank column normal", p.Px(10, 2) == Argb(p.CramOf(0, 3), 0) && p.Px(2, 2) == Argb(0, 0));
     }
 
     // =====================================================================================================================

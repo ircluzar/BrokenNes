@@ -471,9 +471,11 @@ public sealed partial class MdVdp
             // A sprite pixel takes part in the priority ladder first: it wins over a plane pixel unless that one is visible and has the priority bit and the sprite has not; only a sprite that wins acts:
             // the operators (palette 3, colour 14 highlights, 15 shadows) change the state of what lies under them, an ordinary pixel is drawn normal when its priority bit is set or its colour is 14 or 15
             // and shadowed when the state is shadow (all measured on the oracle with random scenes: sprites over every plane combination)
+            bool dupCell = LeftBlankShadowRule >= 3 && (Reg[0] & 0x20) != 0;
             for (int x = x0; x < x1; x++)
             {
                 int sv = s[x], av = a[x], bv = b[x], pl;
+                if (dupCell && x >= 8 && x < 16) { av = a[x - 8]; bv = b[x - 8]; }
                 int state = ((av | bv) & 0x80) != 0 ? 0 : 1;
                 bool aHi = (av & 15) != 0 && (av & 0x80) != 0, bHi = (bv & 15) != 0 && (bv & 0x80) != 0;
                 if (aHi) pl = av;
@@ -494,8 +496,16 @@ public sealed partial class MdVdp
         }
         // the left column blank bit shows the backdrop in the first eight pixels
         if ((Reg[0] & 0x20) != 0)
-            for (int x = x0; x < Math.Min(x1, 8); x++) o[x] = (byte)bd;
+        {
+            bool sh = (Reg[12] & 8) != 0 && LeftBlankShadowRule > 0;
+            for (int x = x0; x < Math.Min(x1, 8); x++) o[x] = (byte)(bd | (sh ? 0x40 : 0));
+        }
     }
+
+    /// <summary>Left column blank (R0 bit 5) in shadow/highlight mode, as the oracle draws it (4 random-scene families, ten scenes 900 to 3700 pixels off before, 2 to 35 after): 0 = the old picture (backdrop at
+    /// normal brightness, nothing else); 1 = the blank column is the backdrop in shadow; 3 (the default) = also the planes (A, window, B) in the second cell (x 8-15) are the first cell's planes, while the sprites
+    /// stay where they are. Without shadow/highlight neither happens. The second part may be an oracle quirk that the hardware does not share; no hardware measurement says either way.</summary>
+    public static int LeftBlankShadowRule = 3;
 
     // =================================================================================================================
     //  Hooks the rest of the VDP calls
