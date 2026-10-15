@@ -205,6 +205,10 @@
             <div class="overlay-status small">
                 <div class="badges d-flex flex-wrap">
                     <span class="badge bg-dark-subtle text-dark me-1">FPS: @emu!.Controller.Fps.ToString("F1")</span>
+                    @if (!string.IsNullOrEmpty(emu!.SessionSpeedNote))
+                    {
+                        <span class="badge bg-warning text-dark me-1" id="speed-note" title="This device cannot run this console and these cores at full speed: pick a lighter core: the console's own picture chip and sound unit are the fastest, a NES chip standing in for them costs the most.">@emu!.SessionSpeedNote</span>
+                    }
                     <span class="badge bg-dark-subtle text-dark me-1">State: @(emu!.Controller.IsRunning ? "Running" : "Paused")</span>
                     <span class="badge bg-dark-subtle text-dark me-1">@emu!.ActiveConsoleName</span>
                     <span class="badge bg-dark-subtle text-dark me-1">ROM: <strong>@emu!.Controller.CurrentRomName</strong></span>
@@ -256,17 +260,24 @@
                                     <div class="center-dot"></div>
                                 </div>
                                 <div class="actions">
+                                    @{ var padLayout = Consoles.Key(emu!.ActiveConsole); bool padSmsFamily = padLayout is "sms" or "gg"; }
                                     <div class="ab-cluster">
                                         <div class="btn-y" data-btn="y">Y</div>
                                         <div class="btn-x" data-btn="x">X</div>
-                                        <div class="btn-b" data-btn="b">B</div>
-                                        <div class="btn-a" data-btn="a">A</div>
+                                        @if (padLayout == "md")
+                                        {
+                                            @* Genesis: C is the generic R button and Z the generic L button (MdSession maps them), Mode the generic Select. *@
+                                            <div class="btn-z" data-btn="l">Z</div>
+                                            <div class="btn-c" data-btn="r">C</div>
+                                        }
+                                        <div class="btn-b" data-btn="b">@(padSmsFamily ? "2" : "B")</div>
+                                        <div class="btn-a" data-btn="a">@(padSmsFamily ? "1" : "A")</div>
                                     </div>
                                 </div>
                             </div>
                             <div class="start-select-row">
-                                <div class="small-btn" data-btn="select">SELECT</div>
-                                <div class="small-btn" data-btn="start">START</div>
+                                @if (padLayout != "gg") { <div class="small-btn" data-btn="select">@(padLayout == "sms" ? "PAUSE" : padLayout == "md" ? "MODE" : "SELECT")</div> }
+                                @if (padLayout != "sms") { <div class="small-btn" data-btn="start">START</div> }
                             </div>
                             <div class="system-row">
                                 <button class="sys-btn" data-act="exit">Exit Fullscreen</button>
@@ -458,7 +469,7 @@
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
             </div>
-            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs@(Consoles.All.Any(Consoles.IsSega) ? " (and Sega: " + string.Join(" ", Consoles.All.Where(Consoles.IsSega).SelectMany(Consoles.Extensions)) + (Consoles.SegaPreview ? ", preview on" : "") + ")" : ""), or a .zip holding one - the console follows the ROM.</div>
+            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs@(Consoles.All.Any(Consoles.IsSega) ? " (and Sega: " + string.Join(" ", Consoles.All.Where(Consoles.IsSega).SelectMany(Consoles.Extensions)) + (Consoles.SegaPreview ? ", preview on" : "") + ")" : ""), or a .zip holding one - the console follows the ROM. A .7z or .rar archive cannot be opened in the browser: unpack it first (7-Zip) or put the ROM in a .zip.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
                 <table id="rom-table" class="table table-sm table-dark align-middle mb-0 rom-table">
                     <thead class="table-secondary text-dark" style="position:sticky;top:0;">
@@ -862,6 +873,19 @@
                             <div>@s.Player1.Keyboard.R: R</div>
                         }
                     </div>
+                    @* The Sega pads have their own button names; the keys are the same ones as above. *@
+                    @if (emu!.ActiveConsole == ConsoleKind.MasterSystem)
+                    {
+                        <div class="mt-1 text-muted" id="sega-pad-hint">Master System pad: @s.Player1.Keyboard.A = button 1, @s.Player1.Keyboard.B = button 2, @s.Player1.Keyboard.Select = Pause.</div>
+                    }
+                    else if (emu!.ActiveConsole == ConsoleKind.GameGear)
+                    {
+                        <div class="mt-1 text-muted" id="sega-pad-hint">Game Gear pad: @s.Player1.Keyboard.A = button 1, @s.Player1.Keyboard.B = button 2, @s.Player1.Keyboard.Start = Start.</div>
+                    }
+                    else if (emu!.ActiveConsole == ConsoleKind.Genesis)
+                    {
+                        <div class="mt-1 text-muted" id="sega-pad-hint">Genesis pad: @s.Player1.Keyboard.A = A, @s.Player1.Keyboard.B = B, @s.Player1.Keyboard.R = C, @s.Player1.Keyboard.X = X, @s.Player1.Keyboard.Y = Y, @s.Player1.Keyboard.L = Z, @s.Player1.Keyboard.Select = Mode, @s.Player1.Keyboard.Start = Start (player 1 has the six-button pad, player 2 three buttons).</div>
+                    }
                 }
                 else if (s.Player1.Device == InputDeviceType.Gamepad)
                 {

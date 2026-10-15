@@ -10,8 +10,10 @@ script lists exactly what is and is not verified.
 |---|---|---|
 | `desktop-smoke.ps1` | `Windows\BrokenNes.Windows.csproj` (WinForms app), driven through `UAT\lib\ApiClient.ps1` | ~15 s warm build, +~60 s cold build |
 | `web-smoke.ps1` | `WebLite\BrokenNes.Lite.csproj` (Blazor WASM), served by `python -m http.server`, driven in headless Edge/Chrome over the DevTools protocol | ~25 s warm publish, a few minutes cold |
+| `lite-sega.ps1` | `WebLite\BrokenNes.Lite.csproj` AOT build with the Master System, Game Gear and Genesis, driven by `UAT\lite\test-lite-sega.mjs` in a real Edge over the DevTools protocol (node 22+; the speed table is `UAT\lite\bench-lite.mjs`, `-Bench`) | AOT publish ~6 min, suite ~15 min |
 
 ```powershell
+pwsh -File UAT\entrypoints\lite-sega.ps1 [-Publish <dir>] [-Roms <dir>] [-Only rom,saves] [-Bench]   # the Lite Sega suite (publishes AOT unless -Publish)
 pwsh -File UAT\entrypoints\desktop-smoke.ps1                 # builds, runs VRUN (mapper 30, FIX cores) 8 s
 pwsh -File UAT\entrypoints\desktop-smoke.ps1 -Exe <path>     # skip the build
 pwsh -File UAT\entrypoints\web-smoke.ps1                     # non-AOT publish, boots /?rom=vrun.nes

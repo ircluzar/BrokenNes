@@ -35,6 +35,8 @@ namespace BrokenNes
         {
             [JsonPropertyName("fb"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public byte[]? Framebuffer { get; set; }
             [JsonPropertyName("audio"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public float[]? Audio { get; set; }
+            // BrokenNes 2 console sessions: the same samples as raw little-endian float bytes (the interop's byte-array path, far cheaper than a JSON array of floats); the page turns them into a Float32Array.
+            [JsonPropertyName("pcm"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public byte[]? AudioBytes { get; set; }
             [JsonPropertyName("sr")] public int SampleRate { get; set; }
             // BrokenNes 2: the picture's size and display width (SNES / Game Boy sessions); omitted for the NES (256x240).
             [JsonPropertyName("w"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? Width { get; set; }

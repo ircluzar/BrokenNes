@@ -107,7 +107,17 @@ namespace BrokenNes
             if (console == ConsoleKind.Nes) return;
             consoleCores[CoreKey(console, slot)] = id;
             try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", CoreKey(console, slot), id); } catch { }
-            if (session != null && sessionRom != null && !session.TrySwapCore(slot, id)) await StartSessionAsync(session.Console, sessionRom, sessionRomName);
+            if (session != null && sessionRom != null)
+            {
+                string label = $"{slot.ToString().ToUpperInvariant()} {id}";
+                if (session.TrySwapCore(slot, id)) Status.Set($"{Consoles.DisplayName(console)}: {label} swapped in, the game runs on");
+                else
+                {
+                    // never silent: this session cannot swap that part under a running game, so the game starts again on it and the status says so
+                    await StartSessionAsync(session.Console, sessionRom, sessionRomName);
+                    Status.Set($"{Consoles.DisplayName(console)} cannot swap {label} while a game runs: the game was restarted on it");
+                }
+            }
             StateHasChanged();
         }
 
@@ -131,7 +141,14 @@ namespace BrokenNes
         private async Task<bool> TryStartSessionAsync(string romName, byte[] data)
         {
             byte[] rom; string inner;
-            try { rom = RomDetect.Unwrap(data, romName, out inner); } catch { return false; }
+            try { rom = RomDetect.Unwrap(data, romName, out inner); }
+            catch (System.IO.InvalidDataException ex)
+            {
+                // a 7z / RAR archive, or a .zip with no ROM in it: the page says what it is instead of trying to run it as a NES ROM
+                nesController.ErrorMessage = ex.Message; Status.Set(ex.Message); StateHasChanged();
+                return true;
+            }
+            catch { return false; }
             var kind = RomDetect.Detect(rom, inner);
             if (kind == null || kind == ConsoleKind.Nes)
             {
@@ -172,6 +189,7 @@ namespace BrokenNes
             nesController.ErrorMessage = "";
             await LoadSessionBatteryAsync();
             try { await JS.InvokeVoidAsync("nesInterop.setTouchLayout", Consoles.Key(console)); } catch { }
+            try { await JS.InvokeVoidAsync("nesInterop.setSessionFps", s.FramesPerSecond); } catch { }   // a PAL game runs at 50, not the page's 60
             Status.Set($"{Consoles.DisplayName(console)}: {s.Title}");
             await StartEmulation();
             StateHasChanged();
@@ -186,6 +204,8 @@ namespace BrokenNes
             session.Dispose();
             session = null; sessionRom = null; sessionLastSave = null;
             nesController.CurrentRomName = nes?.RomName ?? "test.nes";
+            SessionSpeedNote = ""; slowSeconds = 0;
+            try { await JS.InvokeVoidAsync("nesInterop.setSessionFps", 0.0); } catch { }   // the NES paces at 60 again
             try { await JS.InvokeVoidAsync("nesInterop.setTouchLayout", Consoles.Key(ActiveConsole)); } catch { }
             if (wasRunning) await StartEmulation();
         }
@@ -274,32 +294,115 @@ namespace BrokenNes
             return b;
         }
 
+        // ---- where a session frame's time goes (read by the speed suite through GetSessionProfile; the cost of the bookkeeping is a few timestamps a frame)
+        private long profRun, profAudio, profPix, profBody, profFrames;
+
+        /// <summary>
+        /// How a session frame crosses to the page. 1 (default): the audio goes as raw float bytes (the interop's byte-array path) and the pixels are converted a whole word at a time. 0: the original path, a JSON
+        /// array of floats and four byte writes a pixel, kept as the twin the speed suite measures against (the two produce the same picture bytes and the same samples).
+        /// </summary>
+        public static int PayloadMode = 1;
+
+        private float[] monoScratch = new float[4096];
+        private readonly Dictionary<int, byte[]> pcmBuffers = new();
+
+        /// <summary>The frame cost split, in milliseconds since the last reset: [frames, RunFrame, audio read and mix-down, pixel conversion, the whole frame body].</summary>
+        [JSInvokable]
+        public double[] GetSessionProfile()
+        {
+            double ms(long t) => t * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            return new[] { (double)profFrames, ms(profRun), ms(profAudio), ms(profPix), ms(profBody) };
+        }
+
+        [JSInvokable]
+        public void ResetSessionProfile() { profRun = profAudio = profPix = profBody = profFrames = 0; }
+
+        [JSInvokable]
+        public int SetPayloadMode(int mode) { PayloadMode = mode == 0 ? 0 : 1; return PayloadMode; }
+
+        // ---- a speed note, never a silent drop: when this device cannot keep the console at real time, the page says so (with what it manages) instead of just running slow
+        private double slowSeconds;
+        /// <summary>Empty while the game runs at its real frame rate; otherwise a sentence for the status badge ("Running at 41 of 60 frames a second on this device").</summary>
+        public string SessionSpeedNote { get; private set; } = "";
+
+        private void UpdateSpeedNote(double fps, double target, double seconds)
+        {
+            // the page's loop is throttled in a hidden tab (a few frames a second): that is not the device being slow, and the badge would only be noise
+            if (nesController.IsRunning && fps < target * 0.9 && fps >= 1.0 && !PageHidden) slowSeconds += seconds; else slowSeconds = 0;
+            SessionSpeedNote = slowSeconds >= 3 ? $"Slow: {fps:F0} of {target:F0} frames a second on this device" : "";
+        }
+
+        /// <summary>True while the browser reports the page hidden (set from the page's visibility hook).</summary>
+        public bool PageHidden { get; set; }
+
         private FramePayload RunSessionFrame(IConsoleSession s)
         {
             try
             {
+                long tBody = System.Diagnostics.Stopwatch.GetTimestamp();
                 s.SetPad(0, PadFrom(inputState, extraP1));
                 s.SetPad(1, PadFrom(inputStateP2, extraP2));
                 int runs = nesController.FastForward ? 3 : 1;
                 for (int i = 0; i < runs; i++) s.RunFrame();
                 sessionFrames += runs;
                 if (sessionFrames % 600 < runs) _ = SaveSessionBatteryAsync(force: false);
+                long tRun = System.Diagnostics.Stopwatch.GetTimestamp();
 
                 // Stereo -> mono float at the session's own rate (the browser resamples).
-                var mono = new List<float>(2048);
+                float[]? monoArray = null; byte[]? pcm = null; int monoCount = 0;
                 int n;
-                while ((n = s.ReadSamples(sessionAudio)) > 0)
-                    for (int i = 0; i + 1 < n; i += 2) mono.Add((sessionAudio[i] + sessionAudio[i + 1]) * (0.5f / 32768f));
+                if (PayloadMode == 0)
+                {
+                    var mono = new List<float>(2048);
+                    while ((n = s.ReadSamples(sessionAudio)) > 0)
+                        for (int i = 0; i + 1 < n; i += 2) mono.Add((sessionAudio[i] + sessionAudio[i + 1]) * (0.5f / 32768f));
+                    monoCount = mono.Count;
+                    if (monoCount > 0) monoArray = mono.ToArray();
+                }
+                else
+                {
+                    while ((n = s.ReadSamples(sessionAudio)) > 0)
+                    {
+                        int add = n / 2;
+                        if (monoCount + add > monoScratch.Length) Array.Resize(ref monoScratch, Math.Max(monoScratch.Length * 2, monoCount + add));
+                        var sc = monoScratch;
+                        for (int i = 0, o = monoCount; i + 1 < n; i += 2, o++) sc[o] = (sessionAudio[i] + sessionAudio[i + 1]) * (0.5f / 32768f);
+                        monoCount += add;
+                    }
+                    if (monoCount > 0)
+                    {
+                        // one exact-size buffer per sample count (a frame is 734 to 736 samples, a fast-forward three of them): the interop serialises the whole array
+                        if (!pcmBuffers.TryGetValue(monoCount, out pcm)) pcmBuffers[monoCount] = pcm = new byte[monoCount * 4];
+                        Buffer.BlockCopy(monoScratch, 0, pcm, 0, monoCount * 4);
+                    }
+                }
+                long tAudio = System.Diagnostics.Stopwatch.GetTimestamp();
 
                 int w = s.FrameWidth, h = s.FrameHeight;
                 var src = s.Frame;
                 var fb = nesController.sessionFrameBuffer;
                 if (fb == null || fb.Length != w * h * 4) nesController.sessionFrameBuffer = fb = new byte[w * h * 4];
-                for (int i = 0, o = 0; i < w * h; i++, o += 4)
+                if (PayloadMode == 0)
                 {
-                    uint c = src[i];
-                    fb[o] = (byte)(c >> 16); fb[o + 1] = (byte)(c >> 8); fb[o + 2] = (byte)c; fb[o + 3] = 255;
+                    for (int i = 0, o = 0; i < w * h; i++, o += 4)
+                    {
+                        uint c = src[i];
+                        fb[o] = (byte)(c >> 16); fb[o + 1] = (byte)(c >> 8); fb[o + 2] = (byte)c; fb[o + 3] = 255;
+                    }
                 }
+                else
+                {
+                    // 0xAARRGGBB -> the bytes R, G, B, 255 in memory order, one 32-bit write a pixel
+                    var dst = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(fb.AsSpan());
+                    int count = w * h;
+                    for (int i = 0; i < count; i++)
+                    {
+                        uint c = src[i];
+                        dst[i] = 0xFF000000u | ((c & 0xFFu) << 16) | (c & 0x0000FF00u) | ((c >> 16) & 0xFFu);
+                    }
+                }
+                long tPix = System.Diagnostics.Stopwatch.GetTimestamp();
+                profRun += tRun - tBody; profAudio += tAudio - tRun; profPix += tPix - tAudio; profBody += tPix - tBody; profFrames++;
 
                 nesController.FrameCount++;
                 if (nesController.FrameCount % nesController.StatsUpdateDivider == 0)
@@ -307,15 +410,17 @@ namespace BrokenNes
                     var now = DateTime.Now;
                     if ((now - nesController.LastFpsUpdate).TotalSeconds >= 0.5)
                     {
-                        nesController.Fps = (nesController.FrameCount - nesController.LastFrameCount) / (float)(now - nesController.LastFpsUpdate).TotalSeconds;
+                        double span = (now - nesController.LastFpsUpdate).TotalSeconds;
+                        nesController.Fps = (nesController.FrameCount - nesController.LastFrameCount) / (float)span;
                         nesController.LastFrameCount = nesController.FrameCount;
                         nesController.LastFpsUpdate = now;
+                        UpdateSpeedNote(nesController.Fps, s.FramesPerSecond * (nesController.FastForward ? 3 : 1), span);
                     }
                     StateHasChanged();
                 }
                 return new FramePayload
                 {
-                    Framebuffer = fb, Audio = mono.Count > 0 ? mono.ToArray() : null, SampleRate = s.SampleRate,
+                    Framebuffer = fb, Audio = monoArray, AudioBytes = pcm, SampleRate = s.SampleRate,
                     Width = w, Height = h, DisplayWidth = s.DisplayWidth,
                 };
             }
