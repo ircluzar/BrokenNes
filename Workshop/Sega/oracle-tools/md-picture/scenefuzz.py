@@ -29,21 +29,32 @@ def make_scene(rng, idx, family='all'):
     """The parameters of one scene as a dict."""
     s = {'index': idx, 'family': family}
     fam = family
+    ISO = ('sizes', 'shnw', 'winnw')            # families that isolate one feature: H40, V28, no interlace, full scroll
     h40 = rng.random() < 0.8
     if fam in ('h32',): h40 = False
+    VS = ('vsc', 'vscw')                         # column vertical scroll, with and without the window; H32 and H40
+    if fam in ISO: h40 = True
     v30 = rng.random() < 0.15
     if fam in ('v30',): v30 = True
+    if fam in ISO or fam in VS: v30 = False
     il = rng.choice([0, 0, 0, 1, 3])
     if fam == 'interlace2': il = 3
     elif fam == 'interlace1': il = 1
-    elif fam == 'plain': il = 0
+    elif fam == 'plain' or fam in ISO or fam in VS: il = 0
     shadow = rng.random() < 0.3 or fam == 'shadow'
+    if fam in ISO: shadow = fam == 'shnw'
+    if fam in VS: shadow = False
     s.update(h40=h40, v30=v30, interlace=il, shadow=shadow)
     ws = rng.choice([0, 1, 3]); hs = rng.choice([0, 1, 3])
     if fam == 'small': ws, hs = 0, 0
+    if fam in ('shnw', 'winnw') or fam in VS: ws, hs = rng.choice([0, 1]), rng.choice([0, 1])
     hmode = rng.choice([0, 2, 3, 3]); vmode = rng.choice([0, 1])
     if fam == 'vscroll': vmode = 1
+    if fam in ISO: hmode, vmode = 0, 0
+    if fam in VS: hmode, vmode = rng.choice([0, 2, 3]), 1
     win = rng.random() < 0.5 or fam == 'window'
+    if fam in ISO: win = fam == 'winnw'
+    if fam in VS: win = fam == 'vscw'
     r17 = (rng.choice([0, 0x80]) | rng.randrange(0, 21 if h40 else 17)) if win else 0
     r18 = (rng.choice([0, 0x80]) | rng.randrange(0, 29 if not v30 else 31)) if win else 0
     regs = {
@@ -128,6 +139,10 @@ def scene_asm(s, i, press):
     a('    move.l #$%08X,(a4)' % vram_cmd(s['hs_addr']))
     hs = s['hscroll']
     for k in range(0, len(hs), 2): a('    move.w #$%04X,(a3)' % (hs[k] << 8 | hs[k + 1]))
+    # extra controlled writes (a probe scene's patterns and tables over the random memory): (VRAM address, [words])
+    for addr, words in s.get('extra_writes', []):
+        a('    move.l #$%08X,(a4)' % vram_cmd(addr))
+        for w in words: a('    move.w #$%04X,(a3)' % (w & 0xFFFF))
     # display on
     a('    move.w #$%04X,(a4)' % (0x8100 | r1_on))
     # wait for Start (pressed, then released)

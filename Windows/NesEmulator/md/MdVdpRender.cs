@@ -151,11 +151,21 @@ public sealed partial class MdVdp
         BuildSprites();
     }
 
+    /// <summary>Tools: keep, for the finished frame, each pixel's layer values (the plane A, plane B and sprite bytes of the index stage: bit 7 priority, bits 5-4 palette line, bits 3-0 colour) in
+    /// <see cref="DebugA"/>, <see cref="DebugB"/>, <see cref="DebugS"/> (rows of <see cref="PictureStride"/>, the field's lines).</summary>
+    public bool DebugKeepLayers;
+    public byte[]? DebugA, DebugB, DebugS;
+
     private void FinishLineRender()
     {
         if (!lineActive) return;
         RenderTo(lineWidth);
         ConvertTo(lineWidth);
+        if (DebugKeepLayers)
+        {
+            DebugA ??= new byte[PictureStride * PictureMaxHeight]; DebugB ??= new byte[PictureStride * PictureMaxHeight]; DebugS ??= new byte[PictureStride * PictureMaxHeight];
+            Array.Copy(bufA, 0, DebugA, rowBase, lineWidth); Array.Copy(bufB, 0, DebugB, rowBase, lineWidth); Array.Copy(sprLine, 0, DebugS, rowBase, lineWidth);
+        }
         lineActive = false;
         if (dbl) Array.Copy(building, rowBase, woven, imgRow * PictureStride, lineWidth);       // the field's line goes to its row of the double-height picture; the other field's rows stay from the frame before
         if (Line + 1 >= ActiveLines || Line + 1 >= PictureMaxHeight)
@@ -227,6 +237,9 @@ public sealed partial class MdVdp
 
     /// <summary>Experiment hook for the window distortion bug's condition on the plane's fine scroll (0: any of the low four bits; 1: bit 3).</summary>
     public static int WindowBugMode = 0;
+    /// <summary>Experiment: the column whose vertical scroll entry a 16-pixel column uses is this many columns further on.</summary>
+    public static int VsramColumnShift = 0;
+    public static bool ColumnPairRule = true;
     private static bool WindowBugApplies(int hscroll) => WindowBugMode switch { 0 => (hscroll & 0xF) != 0, 1 => (hscroll & 8) != 0, 2 => false, _ => (hscroll & 0xF) != 0 };
 
     private void DrawWindowRun(byte[] dst, int xa, int xb)
@@ -246,10 +259,29 @@ public sealed partial class MdVdp
         }
     }
 
+    /// <summary>Experiment: what a combination of width and height codes that does not fit the 4096 entries of a plane (128 x 64, 128 x 128, 64 x 128) draws.</summary>
+    public static int PlaneSizeRule = 6;
+    /// <summary>Experiment: false restores the old rule (a sprite pixel acts even where a visible high-priority plane pixel covers it).</summary>
+    public static bool ShadowSpriteOverHighPlane = true;
+    private static void PlaneSizeFix(ref int ws, ref int hs)
+    {
+        switch (PlaneSizeRule)
+        {
+            case 1: if (ws == 3 && hs != 0) hs = 0; else if (hs == 3 && ws != 0) ws = 0; break;
+            case 2: if (hs == 3 && ws != 0) ws = 0; else if (ws == 3 && hs != 0) hs = 0; break;
+            case 3: if (ws == 3 && hs != 0) hs = 0; if (hs == 3 && ws != 0) ws = 0; break;
+            case 4: if (ws == 3 && hs != 0) hs = 0; if (hs == 3 && ws != 0) ws = 1; break;
+            case 5: if (ws == 3 && hs != 0) hs = 0; else if (hs == 3 && ws != 0) hs = 0; break;
+            case 6: if (ws == 3 && hs != 0) hs = 0; else if (hs == 3 && ws != 0) hs = 1; break;
+            case 7: if (ws == 3 && hs != 0) hs = 0; else if (hs == 3 && ws != 0) hs = 2; break;
+        }
+    }
+
     private void DrawScrollRun(byte[] dst, bool isA, int xa, int xb, int bugX0, int bugX1)
     {
         int nt = isA ? (Reg[2] & 0x38) << 10 : (Reg[4] & 7) << 13;
         int ws = Reg[16] & 3, hs2 = Reg[16] >> 4 & 3;
+        PlaneSizeFix(ref ws, ref hs2);
         int wCells = ws == 1 ? 64 : ws == 3 ? 128 : 32;
         int hCells = hs2 == 1 ? 64 : hs2 == 3 ? 128 : 32;
         int wMask = wCells * 8 - 1, hMask = (hCells << cellShift) - 1;
@@ -263,7 +295,15 @@ public sealed partial class MdVdp
         while (x < xb)
         {
             int vs, limit = xb;
-            if (colV) { int col = x >> 4; vs = Vsram[(col << 1) + vsOff & 0x3F] & 0x3FF; limit = Math.Min(xb, (col + 1) << 4); }
+            if (colV)
+            {
+                // 2-cell column scroll: a vertical scroll entry covers a pair of the plane's cells, so the pair boundaries sit where the scrolled plane has them (screen x = hscroll mod 16 + 16 k), and the entry
+                // number counts the pairs from the first boundary. The stretch before it (the plane's partial pair at the left edge) uses the last column's two entries ANDed (probe scenes on the oracle: every
+                // pair, every fine and coarse scroll, both planes; the left stretch decodes as VSRAM[last A] & VSRAM[last B])
+                int b0 = ColumnPairRule ? hs & 15 : 0, lastCol = H40 ? 19 : 15;
+                if (x < b0) { vs = (Vsram[lastCol << 1] & Vsram[(lastCol << 1) + 1]) & 0x3FF; limit = Math.Min(xb, b0); }
+                else { int col = x - b0 >> 4; vs = Vsram[(col + VsramColumnShift << 1) + vsOff & 0x3F] & 0x3FF; limit = Math.Min(xb, b0 + (col + 1 << 4)); }
+            }
             else vs = vsFull;
             int py = imgRow + vs & hMask;
             int px = x - hs & wMask;
@@ -416,23 +456,27 @@ public sealed partial class MdVdp
         }
         else
         {
-            // shadow and highlight: a pixel is in shadow unless a plane's tile has the priority bit (even where that tile is transparent: the backdrop under a high-priority tile is not darkened)
+            // shadow and highlight: a pixel is in shadow unless a plane's tile has the priority bit (even where that tile is transparent: the backdrop under a high-priority tile is not darkened).
+            // A sprite pixel takes part in the priority ladder first: it wins over a plane pixel unless that one is visible and has the priority bit and the sprite has not; only a sprite that wins acts:
+            // the operators (palette 3, colour 14 highlights, 15 shadows) change the state of what lies under them, an ordinary pixel is drawn normal when its priority bit is set or its colour is 14 or 15
+            // and shadowed when the state is shadow (all measured on the oracle with random scenes: sprites over every plane combination)
             for (int x = x0; x < x1; x++)
             {
                 int sv = s[x], av = a[x], bv = b[x], pl;
                 int state = ((av | bv) & 0x80) != 0 ? 0 : 1;
-                if ((av & 15) != 0 && (av & 0x80) != 0) pl = av;
-                else if ((bv & 15) != 0 && (bv & 0x80) != 0) pl = bv;
+                bool aHi = (av & 15) != 0 && (av & 0x80) != 0, bHi = (bv & 15) != 0 && (bv & 0x80) != 0;
+                if (aHi) pl = av;
+                else if (bHi) pl = bv;
                 else if ((av & 15) != 0) pl = av;
                 else if ((bv & 15) != 0) pl = bv;
                 else pl = bd;
                 int idx = pl & 0x3F;
-                if ((sv & 15) != 0)
+                if ((sv & 15) != 0 && ((sv & 0x80) != 0 || !(aHi || bHi) || !ShadowSpriteOverHighPlane))
                 {
                     int sp = sv & 0x3F;
                     if (sp == 0x3E) state = state == 1 ? 0 : 2;          // highlight: a shadowed pixel becomes normal, a normal one brighter
                     else if (sp == 0x3F) state = 1;                       // shadow
-                    else if ((sv & 0x80) != 0 || state == 1) { idx = sp; state = (sv & 0x80) != 0 ? 0 : 1; }
+                    else { idx = sp; state = (sv & 0x80) != 0 || (sv & 15) >= 14 ? 0 : state; }
                 }
                 o[x] = (byte)(idx | state << 6);
             }

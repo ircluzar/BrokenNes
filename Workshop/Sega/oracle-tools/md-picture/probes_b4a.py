@@ -56,15 +56,17 @@ def hint_lines(ns, frames_per=3, h40=True, v30=False, hint_first=False):
     return s
 
 
-def hv_in_handler_limited(kind='hint', limit=20000, h40=True, extra_regs=None, loop_nops=1, v30=False):
-    """As hv_in_handler, but the handler records at most `limit` readings (the count word keeps counting): the horizontal interrupt fires up to 224 times a frame and the work RAM is only 32,768 words."""
+def hv_in_handler_limited(kind='hint', limit=20000, h40=True, extra_regs=None, loop_nops=1, v30=False, body=None):
+    """As hv_in_handler, but the handler records at most `limit` readings (the count word keeps counting): the horizontal interrupt fires up to 224 times a frame and the work RAM is only 32,768 words.
+    `body` (a LOOP_BODIES key) replaces the nop loop by other instructions (registers d2 = $FFFF, d3 = $7FFF0000, d4 = 7, a6 = $FF8000 are set up for them)."""
     regs = dict(extra_regs or {})
     if kind == 'vint': regs.update({1: 0x64 | (0x08 if v30 else 0), 0: 0x04})
     else: regs.update({1: 0x44 | (0x08 if v30 else 0), 0: 0x14, 10: 0})
     s = prologue(h40, True, regs=regs)
-    s += _lines('    lea ($FF0002).l,a0', '    lea ($C00008).l,a1', '    move.w #0,($FF0000).l', '    move.w #$2000,sr', 'main:')
-    s += ('    nop' + NL) * loop_nops
-    s += _lines('    bra.s main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),d1', '    cmpi.w #%d,($FF0000).l' % limit, '    bcc.s done', '    move.w d1,(a0)+',
+    s += _lines('    lea ($FF0002).l,a0', '    lea ($C00008).l,a1', '    lea ($FF8000).l,a6', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #7,d4', '    move.w #0,($FF0000).l', '    move.w #$2000,sr', 'main:')
+    if body: s += ''.join('    ' + ins + NL for ins in LOOP_BODIES[body])
+    else: s += ('    nop' + NL) * loop_nops
+    s += _lines('    bra.s main', '_spin: bra.s _spin', 'sub1: rts', 'handler:', '    move.w (a1),d1', '    cmpi.w #%d,($FF0000).l' % limit, '    bcc.s done', '    move.w d1,(a0)+',
                 '    addq.w #1,($FF0000).l', 'done:', '    rte')
     return s
 
@@ -76,6 +78,17 @@ LOOP_BODIES = {
     'divu': ['divu d4,d3'],
     'mixed': ['move.l (a6),d1', 'addq.w #1,d1', 'lsl.l #8,d3', 'move.w d1,(a6)', 'nop'],
     'longmove': ['movem.l d0-d7,-(sp)', 'movem.l (sp)+,d0-d7'],
+    # single long instructions (one instruction and a bra.s per loop): which ones does the oracle take an interrupt after later than we do?
+    'movem_out': ['movem.l d0-d7,(a6)'],
+    'movem_in': ['movem.l (a6),d0-d7'],
+    'movem_short': ['movem.l d0-d1,(a6)'],
+    'mulu1': ['moveq #1,d5', 'mulu d2,d5'],
+    'divu1': ['move.l d3,d6', 'divu d4,d6'],
+    'lsl8': ['lsl.l #8,d5'],
+    'lslr': ['moveq #30,d5', 'lsl.l d5,d6'],
+    'clr_l': ['clr.l (a6)'],
+    'add_rmw': ['add.l d3,(a6)'],
+    'jsr_rts': ['jsr sub1'],
 }
 
 
@@ -140,9 +153,9 @@ def z80_int_repeats(ks, frames=20, h40=True, vint_on=True):
     s += _lines('    lea ($A11100).l,a5', '    lea ($A11200).l,a6', '    lea ($FF0100).l,a0')
     for i, k in enumerate(ks):
         n = len(z80(k)); n += n & 1
-        s += _lines('    move.w #$0000,(a6)', '    move.w #$0100,(a5)', 'g%d: move.w (a5),d1' % i, '    btst #8,d1', '    bne.s g%d' % i,
+        s += _lines('    move.w #$0100,(a5)', '    move.w #$0100,(a6)', 'g%d: move.w (a5),d1' % i, '    btst #8,d1', '    bne.s g%d' % i,
                     '    lea ($A00000).l,a1', '    lea z80prog%d,a2' % i, '    move.w #%d,d0' % (n - 1), 'c%d: move.b (a2)+,(a1)+' % i, '    dbf d0,c%d' % i,
-                    '    move.w #$0100,(a6)', '    move.w #$0000,(a5)', '    move.w #%d,d7' % (frames - 1),
+                    '    move.w #$0000,(a6)', '    nop', '    nop', '    nop', '    nop', '    move.w #$0000,(a5)', '    move.w #$0100,(a6)', '    move.w #%d,d7' % (frames - 1),
                     'f%d: move.w (a4),d1' % i, '    btst #3,d1', '    bne.s f%d' % i,
                     'h%d: move.w (a4),d1' % i, '    btst #3,d1', '    beq.s h%d' % i, '    dbf d7,f%d' % i,
                     '    move.w #$0100,(a5)', 'r%d: move.w (a5),d1' % i, '    btst #8,d1', '    bne.s r%d' % i,

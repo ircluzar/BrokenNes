@@ -19,6 +19,9 @@ namespace BrokenNes.Workshop.Sega;
 /// </summary>
 internal static class MdSceneCli
 {
+    private static readonly SortedDictionary<string, int> SprStat = new();
+    private static int ClassifyXMin = 0, ClassifyXMax = int.MaxValue;
+
     private sealed class Img { public int W, H; public uint[] Px = Array.Empty<uint>(); public string Name = ""; }
 
     private static Img Copy(uint[] src, int w, int h, int srcStride, string name)
@@ -41,7 +44,7 @@ internal static class MdSceneCli
         long bad = 0;
         for (int y = 0; y < c.H; y++)
         {
-            int ty = y + dy; if (ty < 0 || ty >= t.H) { bad += c.W; continue; }
+            int ty = y + dy; if (ty < 0 || ty >= t.H) continue;      // a row the oracle's window cuts off (its V30 picture starts a line above the window) is not compared
             for (int x = 0; x < c.W; x++)
             {
                 int tx = x + dx;
@@ -63,6 +66,8 @@ internal static class MdSceneCli
         var only = (M68kTestCli.Arg(args, "--only") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet();
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
         if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);
+        if (int.TryParse(M68kTestCli.Arg(args, "--xmin"), out int xmn)) ClassifyXMin = xmn;
+        if (int.TryParse(M68kTestCli.Arg(args, "--xmax"), out int xmx)) ClassifyXMax = xmx;
         if (outDir != null) Directory.CreateDirectory(outDir);
         JsonElement[]? meta = null;
         if (metaPath != null && File.Exists(metaPath)) meta = JsonDocument.Parse(File.ReadAllText(metaPath)).RootElement.EnumerateArray().ToArray();
@@ -71,6 +76,9 @@ internal static class MdSceneCli
         var vdp = session.Board.Vdp;
         // our pictures: for each scene, the session's frame and the field pictures of the last two frames before the next press
         var cand = new List<Img>[count];
+        var cramAt = new ushort[count][];
+        var layersAt = new byte[count][][];
+        if (M68kTestCli.Flag(args, "--classify") || M68kTestCli.Flag(args, "--sprstat")) vdp.DebugKeepLayers = true;
         Img? prevField = null;
         int total = first + (count - 1) * period;
         for (int f = 0; f < total; f++)
@@ -90,6 +98,8 @@ internal static class MdSceneCli
                 list.Add(field);
                 if (prevField != null) list.Add(prevField);
                 cand[si] = list;
+                cramAt[si] = (ushort[])vdp.Cram.Clone();
+                if (vdp.DebugKeepLayers && vdp.DebugA != null) layersAt[si] = new[] { (byte[])vdp.DebugA.Clone(), (byte[])vdp.DebugB!.Clone(), (byte[])vdp.DebugS!.Clone() };
             }
             prevField = field;
         }
@@ -115,7 +125,7 @@ internal static class MdSceneCli
             {
                 // the shot has a border of its own around the picture: search the offsets that fit
                 int maxDx = Math.Max(0, t.W - c.W), maxDy = Math.Max(0, t.H - c.H);
-                for (int dy = 0; dy <= maxDy; dy++)
+                for (int dy = -2; dy <= maxDy + 2; dy++)
                     for (int dx = 0; dx <= maxDx; dx += 1)
                     {
                         // a cheap test on a few rows first
@@ -126,9 +136,11 @@ internal static class MdSceneCli
                         if (bad < best) { best = bad; bdx = dx; bdy = dy; bc = c; }
                     }
             }
+            if (M68kTestCli.Flag(args, "--sprstat") && bc != null && layersAt[i] != null && cramAt[i] != null && bc.W == cand[i][0].W && bc.H == cand[i][0].H && bc.Name != "woven") SpriteStats(bc, t, bdx, bdy, cramAt[i], layersAt[i]);
             compared++; totalBad += best;
             if (best == 0) identical++;
             Console.WriteLine($"scene {i}: {(best == 0 ? "identical" : $"{best:N0} px differ")}  [{bc?.Name} {bc?.W}x{bc?.H} at ({bdx},{bdy}) in a {t.W}x{t.H} shot] {what}");
+            if (best != 0 && bc != null && M68kTestCli.Flag(args, "--classify") && cramAt[i] != null) Classify(bc, t, bdx, bdy, cramAt[i], layersAt[i], bc.Name != "woven" && bc.W == cand[i][0].W && bc.H == cand[i][0].H);
             if (best != 0 && bc != null && outDir != null)
             {
                 Save(bc, Path.Combine(outDir, $"ours_{i:D3}.png"));
@@ -137,15 +149,67 @@ internal static class MdSceneCli
                 for (int y = 0; y < bc.H; y++) for (int x = 0; x < bc.W; x++)
                     {
                         int tx = x + bdx, ty = y + bdy;
-                        uint tv = tx < t.W && ty < t.H ? t.Px[ty * t.W + tx] : 0xFF000000u;
+                        uint tv = tx >= 0 && tx < t.W && ty >= 0 && ty < t.H ? t.Px[ty * t.W + tx] : (bc.Px[y * bc.W + x] & 0xFFFFFF) | 0xFF000000u;      // a row or column outside the shot counts as equal
                         th.Px[y * bc.W + x] = tv;
                         df.Px[y * bc.W + x] = (bc.Px[y * bc.W + x] & 0xFFFFFF) == (tv & 0xFFFFFF) ? 0xFF000000u : 0xFFFF00FFu;
                     }
                 Save(th, Path.Combine(outDir, $"theirs_{i:D3}.png")); Save(df, Path.Combine(outDir, $"diff_{i:D3}.png"));
             }
         }
+        if (SprStat.Count > 0) { Console.WriteLine("sprite pixel statistics (sprite priority, plane A, plane B -> the brightness the oracle shows the sprite pixel in):"); foreach (var kv in SprStat) Console.WriteLine($"  {kv.Key} {kv.Value}"); }
         if (shotsDir != null) Console.WriteLine($"== {identical} of {compared} scenes identical, {totalBad:N0} differing pixels in all");
         return shotsDir == null || identical == compared ? 0 : 1;
+    }
+
+    /// <summary>What kind of difference each differing pixel is, by looking at the colour RAM: the same entry in another brightness (shadow/highlight), another entry, or a colour that is no entry at all.</summary>
+    private static void Classify(Img c, Img t, int dx, int dy, ushort[] cram, byte[][]? layers, bool plain)
+    {
+        static uint Lv(int v, int mode) { int[] L = { 0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255 }; return (uint)(mode == 0 ? L[v * 2] : mode == 1 ? L[v] : L[v + 7]); }
+        var map = new Dictionary<uint, List<(int e, int m)>>();
+        for (int e = 0; e < 64; e++) for (int m = 0; m < 3; m++)
+            {
+                int col = cram[e]; uint rgb = Lv(col >> 1 & 7, m) << 16 | Lv(col >> 5 & 7, m) << 8 | Lv(col >> 9 & 7, m);
+                if (!map.TryGetValue(rgb, out var l)) map[rgb] = l = new List<(int, int)>(); l.Add((e, m));
+            }
+        var kinds = new SortedDictionary<string, int>(); int shown = 0;
+        var firsts = new List<string>();
+        for (int y = 0; y < c.H; y++) for (int x = 0; x < c.W; x++)
+            {
+                int tx = x + dx, ty = y + dy; if (tx < 0 || tx >= t.W || ty < 0 || ty >= t.H) continue;
+                if (x < ClassifyXMin || x > ClassifyXMax) continue;
+                uint a = c.Px[y * c.W + x] & 0xFFFFFF, b = t.Px[ty * t.W + tx] & 0xFFFFFF;
+                if (a == b) continue;
+                map.TryGetValue(a, out var la); map.TryGetValue(b, out var lb);
+                string k;
+                if (la == null || lb == null) k = $"{(la == null ? "ours-not-a-palette-colour" : "ours-ok")}/{(lb == null ? "theirs-not-a-palette-colour" : "theirs-ok")}";
+                else if (la.Any(p => lb.Any(q => p.e == q.e))) { var p = la.First(p => lb.Any(q => p.e == q.e)); var q = lb.First(q => q.e == p.e); k = $"same-entry mode {p.m}->{q.m}"; }
+                else k = "other entry" + (la.Any(p => lb.Any(q => p.m != q.m)) ? " (modes differ)" : " (same modes)");
+                kinds[k] = kinds.GetValueOrDefault(k) + 1;
+                if (firsts.Count < 6) firsts.Add($"({x},{y}) {k}");
+                if (layers != null && plain && shown < 30) { shown++; int o = y * MdVdp.PictureStride + x; Console.WriteLine($"      ({x},{y}) A={layers[0][o]:X2} B={layers[1][o]:X2} S={layers[2][o]:X2} ours {a:X6} theirs {b:X6} {k}"); }
+            }
+        Console.WriteLine("    classes: " + string.Join("; ", kinds.Select(kv => $"{kv.Key} {kv.Value}")) + "   e.g. " + string.Join(" ", firsts.Take(4)));
+    }
+
+    /// <summary>For the pixels where a plain sprite (not an operator) is on top in our index stage: which brightness the oracle shows it in, keyed by what lies under it.</summary>
+    private static void SpriteStats(Img c, Img t, int dx, int dy, ushort[] cram, byte[][] layers)
+    {
+        static uint Lv(int v, int mode) { int[] L = { 0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255 }; return (uint)(mode == 0 ? L[v * 2] : mode == 1 ? L[v] : L[v + 7]); }
+        for (int y = 0; y < c.H; y++) for (int x = 0; x < c.W; x++)
+            {
+                int o = y * MdVdp.PictureStride + x;
+                int sv = layers[2][o], av = layers[0][o], bv = layers[1][o];
+                if ((sv & 15) == 0 || (sv & 0x3F) == 0x3E || (sv & 0x3F) == 0x3F) continue;
+                int tx = x + dx, ty = y + dy; if (tx < 0 || tx >= t.W || ty < 0 || ty >= t.H) continue;
+                uint b = t.Px[ty * t.W + tx] & 0xFFFFFF;
+                int col = cram[sv & 0x3F];
+                string shown = "other";
+                for (int m = 0; m < 3; m++) { uint rgb = Lv(col >> 1 & 7, m) << 16 | Lv(col >> 5 & 7, m) << 8 | Lv(col >> 9 & 7, m); if (rgb == b) { shown = m == 0 ? "normal" : m == 1 ? "shadow" : "highlight"; break; } }
+                string pa = (av & 15) == 0 ? ((av & 0x80) != 0 ? "A:clear+prio" : "A:clear") : ((av & 0x80) != 0 ? "A:hi" : "A:lo");
+                string pb = (bv & 15) == 0 ? ((bv & 0x80) != 0 ? "B:clear+prio" : "B:clear") : ((bv & 0x80) != 0 ? "B:hi" : "B:lo");
+                string k = $"{((sv & 0x80) != 0 ? "S:hi" : "S:lo")} {pa} {pb} -> {shown}";
+                SprStat[k] = SprStat.GetValueOrDefault(k) + 1;
+            }
     }
 
     private static string Describe(JsonElement m)

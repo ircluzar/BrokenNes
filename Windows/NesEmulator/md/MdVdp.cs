@@ -103,11 +103,11 @@ public sealed partial class MdVdp
     /// <summary>The VBlank status flag rises (and falls) this long after the V counter's step: measured on the oracle by status reads against HV reads (drift sampling, Track B4a): 33 clocks in H40, 49 in H32.</summary>
     public int VBlankFlagDelay => H40 ? VBlankFlagDelayH40 : VBlankFlagDelayH32;
     public static int VBlankFlagDelayH40 = 33, VBlankFlagDelayH32 = 49;
-    /// <summary>The horizontal interrupt's counter steps this far into a line (experiment parameters until fitted to the oracle's handler entries: Track B4a).</summary>
+    /// <summary>The horizontal interrupt's counter steps this far into a line: 2642 clocks in H40, 2670 in H32 (fitted to the oracle's handler-entry histograms over 20,000 interrupts: about the V counter's step, not the start of horizontal blank).</summary>
     public int HIntOffset => H40 ? HIntOffsetH40 : HIntOffsetH32;
-    public static int HIntOffsetH40 = 2816, HIntOffsetH32 = 2816;
-    /// <summary>The lines whose end the interrupt counter counts: with this set, the pre-render line and lines 0 to ActiveLines-1 (the oracle's HINT handlers read the V counter 0 to 224, the counter's value after its step in the line); otherwise lines 0 to ActiveLines.</summary>
-    public static bool HIntPreRenderRule = false;
+    public static int HIntOffsetH40 = 2642, HIntOffsetH32 = 2670;
+    /// <summary>The lines whose end the interrupt counter counts: the pre-render line and lines 0 to ActiveLines-1 (the oracle's HINT handlers read the V counter 0 to 224: the line's end, after the counter's step; R10 = n first fires at the end of line n-1, then every n+1 lines, and never for n above 224); false: the old rule, lines 0 to ActiveLines.</summary>
+    public static bool HIntPreRenderRule = true;
     /// <summary>The horizontal-blank status flag is set from here to the end of the line (it falls with the next line's H counter 0): 2855 clocks in H40 (counter $165), 2975 in H32 (counter $129), measured on the oracle.</summary>
     public int HBlankStart => H40 ? HBlankStartH40 : HBlankStartH32;
     public static int HBlankStartH40 = 2855, HBlankStartH32 = 2975, HBlankEnd = 0;

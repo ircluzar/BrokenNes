@@ -108,6 +108,7 @@ internal static class MdPictureTest
         Console.WriteLine("== Genesis picture, session, saves and mappers self-test");
         Planes();
         Scroll();
+        ColumnScrollAndSizes();
         WindowTests();
         Sprites();
         ShadowHighlight();
@@ -260,6 +261,58 @@ internal static class MdPictureTest
     }
 
     // =====================================================================================================================
+
+    /// <summary>Column vertical scroll (R11 bit 2) with a fine horizontal scroll, and the plane sizes the VDP cannot hold: both measured on BlastEm with probe scenes (every pixel row of the plane readable).</summary>
+    private static void ColumnScrollAndSizes()
+    {
+        Group("2-cell column scroll with a horizontal scroll, and plane sizes that do not fit");
+        // plane A: each cell row cy is tile 1 + cy % 14 (a solid colour per row); column c of plane A scrolls by VSRAM[2c] = 8 * (c + 2), plane B by 0x7F8 ... the last column's pair is ANDed for the left stretch
+        int Colour(int vs) => (vs >> 3) % 14 + 1;
+        Pic Setup(int hscroll, bool h40 = true)
+        {
+            var q = new Pic(h40);
+            q.V.Reg[11] = 0x04;
+            for (int cy = 0; cy < 32; cy++) for (int cx = 0; cx < 64; cx++) q.Cell(PlaneA, cx, cy, 1 + cy % 14);
+            for (int c = 0; c < 20; c++) { q.V.Vsram[2 * c] = (ushort)(8 * (c + 2)); q.V.Vsram[2 * c + 1] = 0x7F8; }
+            q.V.Vsram[38] = 40; q.V.Vsram[39] = 24;            // the last column: 40 & 24 = 8
+            q.SetHScroll(0, hscroll, 0);
+            q.Frame();
+            return q;
+        }
+        var p = Setup(0);
+        Check("column scroll without a horizontal scroll: column c (16 pixels) uses VSRAM[2c]", p.Px(2, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(18, 0) == Argb(p.CramOf(0, Colour(24)), 0) && p.Px(302, 0) == Argb(p.CramOf(0, Colour(160)), 0));
+        p = Setup(13);
+        // hscroll 13: the plane's cell pairs start at screen x = 13 + 16 k; the entries count from the first of them, and the stretch before it uses the last column's two entries ANDed
+        Check("with a horizontal scroll of 13 the first column starts at x = 13 (hscroll mod 16), not at 0", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(28, 0) == Argb(p.CramOf(0, Colour(16)), 0), $"{p.Px(13, 0):X8} {p.Px(28, 0):X8}");
+        Check("... the second at x = 29", p.Px(29, 0) == Argb(p.CramOf(0, Colour(24)), 0) && p.Px(44, 0) == Argb(p.CramOf(0, Colour(24)), 0));
+        Check("... and the stretch to its left (x 0-12) scrolls by VSRAM[38] AND VSRAM[39] (the last column's pair: 40 and 24 give 8)", p.Px(2, 0) == Argb(p.CramOf(0, Colour(8)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0), $"{p.Px(2, 0):X8}");
+        p = Setup(29);
+        Check("a horizontal scroll of 29 starts the first column at x = 13 as well (29 mod 16)", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0));
+
+        // plane sizes: a width of 128 cells forces a height of 32; a height of 128 with a width of 64 is a 64 x 64 plane
+        var q = new Pic();
+        q.V.Reg[16] = 0x13;            // 128 wide, 64 high
+        q.V.Reg[11] = 0;
+        q.Cell(PlaneA, 0, 0, 2, 128);
+        q.V.Vram[PlaneA + 8192] = 0; q.V.Vram[PlaneA + 8193] = 3;        // what a 128 x 64 plane would show 32 rows down (cell row 32 starts 8 KB after the table's start)
+        q.V.Vsram[0] = 256;
+        q.Frame();
+        Check("a plane 128 cells wide is only 32 high (a height code of 64 does not give 128 x 64): a vertical scroll of 256 wraps to the first row", q.Px(2, 0) == Argb(q.CramOf(0, 2), 0), $"{q.Px(2, 0):X8}");
+        q = new Pic();
+        q.V.Reg[16] = 0x31;            // 64 wide, 128 high
+        q.Cell(PlaneA, 0, 0, 2, 64);
+        q.V.Vram[PlaneA + 8192] = 0; q.V.Vram[PlaneA + 8193] = 3;
+        q.V.Vsram[0] = 512;
+        q.Frame();
+        Check("a plane 64 cells wide with a height code of 128 is 64 x 64: a vertical scroll of 512 wraps to the first row", q.Px(2, 0) == Argb(q.CramOf(0, 2), 0), $"{q.Px(2, 0):X8}");
+        q = new Pic();
+        q.V.Reg[16] = 0x30;            // 32 wide, 128 high: valid
+        q.Cell(PlaneA, 0, 0, 2, 32);
+        q.Cell(PlaneA, 0, 64, 3, 32);
+        q.V.Vsram[0] = 512;
+        q.Frame();
+        Check("a plane 32 cells wide and 128 high is valid: a vertical scroll of 512 shows cell row 64", q.Px(2, 0) == Argb(q.CramOf(0, 3), 0), $"{q.Px(2, 0):X8}");
+    }
 
     private static void WindowTests()
     {
@@ -428,14 +481,14 @@ internal static class MdPictureTest
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Cell(PlaneA, 0, 0, 0x8002);
-        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, false, 0);      // palette 3 colour 15: shadow operator (tile 15 is solid colour 15)
+        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, true, 0);       // palette 3 colour 15: shadow operator (tile 15 is solid colour 15); with the priority bit it wins over the high-priority plane tile
         p.Frame();
         Check("a sprite pixel of palette 3 colour 15 shadows what is below it without drawing itself", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1));
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Cell(PlaneA, 0, 0, 0x8002);
         p.Tile(14, 14);
-        p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);      // colour 14 of palette 3: highlight operator
+        p.Sprite(0, 0, 0, 1, 1, 14, 3, true, 0);       // colour 14 of palette 3: highlight operator (with the priority bit: it wins over the high-priority plane tile)
         p.Frame();
         Check("palette 3 colour 14 highlights a normal pixel", p.Px(2, 2) == Argb(p.CramOf(0, 2), 2));
         p = new Pic();
@@ -445,6 +498,33 @@ internal static class MdPictureTest
         p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);
         p.Frame();
         Check("... and brings a shadowed pixel back to normal", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        // oracle scenes (random planes and sprites, 16 + 20 scenes against BlastEm): a sprite is part of the priority ladder before it acts
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x8002);                     // a high-priority plane A pixel (colour 2) under a LOW-priority shadow operator sprite
+        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, false, 0);
+        p.Frame();
+        Check("a low-priority operator sprite under a visible high-priority plane pixel does nothing (the plane wins the ladder, the pixel stays normal)", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(5, 5); p.Cell(PlaneB, 0, 0, 0x2);           // plane B: low priority, colour 2
+        p.Cell(PlaneA, 0, 0, 0x8000);                     // plane A: a high-priority tile that is transparent (tile 0) there
+        p.Sprite(0, 0, 0, 1, 1, 4, 0, false, 0);           // a low-priority sprite (colour 4)
+        p.Frame();
+        Check("a low-priority sprite shows over a low-priority plane even where plane A has a transparent high-priority tile (the pixel is then normal, not shadowed)", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0), $"{p.Px(2, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 4, 0, false, 0);
+        p.Frame();
+        Check("a low-priority sprite over low-priority planes is itself in shadow", p.Px(2, 2) == Argb(p.CramOf(0, 4), 1));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(14, 14);
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 14, 2, false, 0);          // colour 14 of palette 2 (an operator only in palette 3)
+        p.Frame();
+        Check("a low-priority sprite pixel of colour 14 outside palette 3 is drawn normal, not shadowed (oracle: every colour 14 and 15 sprite pixel over shadow)", p.Px(2, 2) == Argb(p.CramOf(2, 14), 0), $"{p.Px(2, 2):X8}");
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Sprite(0, 0, 0, 1, 1, 4, 0, true, 0); p.Sprite(1, 16, 0, 1, 1, 4, 0, false, 0); p.V.Vram[SatAddr + 3] = 1;
