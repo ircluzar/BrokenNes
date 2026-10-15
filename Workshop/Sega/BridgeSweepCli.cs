@@ -181,6 +181,7 @@ internal static class BridgeSweepCli
         var only = Opt("only", "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var games = JsonSerializer.Deserialize<ManifestFile>(File.ReadAllText(Opt("manifest", "games.json")), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!.Games
             .Where(g => only.Count == 0 || only.Contains(g.Console)).ToList();
+        foreach (var g in games) g.Rom = Environment.ExpandEnvironmentVariables(g.Rom);      // "%BN_SWEEP_ROMS%\\sml.zip": the manifest in the repo carries no machine's paths
         var overrides = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         foreach (var o in Opt("pictures", "").Split(';', StringSplitOptions.RemoveEmptyEntries)) { var kv = o.Split(':', 2); overrides[kv[0]] = kv[1].Split('+', StringSplitOptions.RemoveEmptyEntries); }
         string exe = Environment.ProcessPath!;
