@@ -59,6 +59,8 @@ internal static class BridgeSweepCli
         public double ColourError { get; set; }
         public int Recognisable { get; set; }
         public double AudioRms { get; set; }
+        /// <summary>The loudest audio window in the second half of the run (what a swap at the half-way point is judged against).</summary>
+        public double AudioRmsLate { get; set; }
         public long AudioSamples { get; set; }
         public int AudioChanges { get; set; }
         public Dictionary<string, long> Counters { get; set; } = new();
@@ -157,10 +159,11 @@ internal static class BridgeSweepCli
     }
 
     /// <summary>The sound of a run next to its control's: alive when it is audible, silent when the game's own chips make sound and this combination does not, static when the game itself is silent.</summary>
-    internal static string ClassifyAudio(double rms, Measure? control)
+    internal static string ClassifyAudio(double rms, Measure? control, bool lateOnly = false)
     {
         if (rms >= SilentRms) return "alive";
-        return control == null || control.AudioRms >= GameAudibleRms ? "silent" : "static";
+        double reference = control == null ? double.MaxValue : lateOnly ? control.AudioRmsLate : control.AudioRms;
+        return reference >= GameAudibleRms ? "silent" : "static";
     }
 
     // ------------------------------------------------------------------------------------------------------------------ the sweep (parent)
@@ -230,13 +233,15 @@ internal static class BridgeSweepCli
             c.Class = c.Kind == "control" ? (c.M.Refused ? "refused" : c.M.Crashed ? "crashed" : c.M.Timeout ? "hung" : "control")
                     : c.Kind == "swap" ? ClassifySwap(c.M, control)
                     : Classify(c.M, control, c.Kind == "sound");
-            c.AudioClass = c.M.Refused || c.M.Crashed || c.M.Timeout ? "" : ClassifyAudio(c.Kind == "swap" ? c.M.PostAudioRms : c.M.AudioRms, control);
+            c.AudioClass = c.M.Refused || c.M.Crashed || c.M.Timeout ? "" : ClassifyAudio(c.Kind == "swap" ? c.M.PostAudioRms : c.M.AudioRms, control, lateOnly: c.Kind == "swap");
             // does the game still look like itself? (same size picture as the control's: the mean luma difference of the last sampled frames)
             if (control != null && c.Kind is "cpu" or "swap" or "combo" && c.M.Thumb.Length > 0 && control.Thumb.Length == c.M.Thumb.Length && control.PicW == c.M.PicW && control.PicH == c.M.PicH)
             {
                 c.SameAsControl = control.FinalHash == c.M.FinalHash;
                 c.Diff = Enumerable.Range(0, c.M.Thumb.Length).Average(i => Math.Abs(c.M.Thumb[i] - control.Thumb[i])) / 255.0;
-                if (c.Class == "alive" && !(c.Kind == "swap" && c.Slot == "ppu") && c.Diff > DivergedLuma) c.Class = "diverged";
+                // a picture chip that draws another console's picture is meant to differ from the source chip's (the bridges measure that against the source chip in their own way: SSIM), so only the runs that keep the picture chip are judged here
+                bool pictureChipChanged = (c.Kind == "swap" && c.Slot == "ppu") || (c.Kind == "combo" && !c.Combo.Contains("ppu=own"));
+                if (c.Class == "alive" && !pictureChipChanged && c.Diff > DivergedLuma) c.Class = "diverged";
             }
         }
         File.WriteAllText(Path.Combine(outDir, "sweep.json"), JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
@@ -409,7 +414,7 @@ internal static class BridgeSweepCli
     {
         public readonly HashSet<ulong> Hashes = new(); public ulong Last; public bool First = true; public int Changes, ChangesLate, Colours, Samples;
         public readonly List<PictureMetrics.Result> Fid = new();
-        public double AudioMax; public long AudioSamples; public double AudioWindowSum, AudioWindowDc; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
+        public double AudioMax, AudioMaxLate; public bool Late; public long AudioSamples; public double AudioWindowSum, AudioWindowDc; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
 
         public int PicW, PicH; public byte[] Thumb = Array.Empty<byte>(); public ulong FinalHash;
 
@@ -452,14 +457,15 @@ internal static class BridgeSweepCli
         {
             if (AudioWindowN == 0) return;
             double mean = AudioWindowDc / AudioWindowN;
-            AudioMax = Math.Max(AudioMax, Math.Sqrt(Math.Max(0, AudioWindowSum / AudioWindowN - mean * mean)));
+            double w = Math.Sqrt(Math.Max(0, AudioWindowSum / AudioWindowN - mean * mean));
+            AudioMax = Math.Max(AudioMax, w); if (Late) AudioMaxLate = Math.Max(AudioMaxLate, w);
             AudioWindowSum = 0; AudioWindowDc = 0; AudioWindowN = 0;
         }
     }
 
     private static Measure Finish(Sampler s, int frames, double seconds, IPictureBridgeInfo? info, string description, Sampler? post = null, bool swapped = false, bool inPlace = false, string swapNote = "")
     {
-        var m = new Measure { Frames = frames, Fps = frames / Math.Max(seconds, 1e-6), Colours = s.Colours, Changes = s.Changes, ChangesLate = s.ChangesLate, Samples = s.Samples, AudioRms = s.AudioMax, AudioSamples = s.AudioSamples, Description = description };
+        var m = new Measure { Frames = frames, Fps = frames / Math.Max(seconds, 1e-6), Colours = s.Colours, Changes = s.Changes, ChangesLate = s.ChangesLate, Samples = s.Samples, AudioRms = s.AudioMax, AudioRmsLate = s.AudioMaxLate, AudioSamples = s.AudioSamples, Description = description };
         if (s.Fid.Count > 0)
         {
             m.FidSamples = s.Fid.Count; m.Ssim = s.Fid.Average(r => r.Ssim); m.SsimMin = s.Fid.Min(r => r.Ssim); m.BlockError = s.Fid.Average(r => r.BlockError); m.ColourError = s.Fid.Average(r => r.ColourError); m.Recognisable = s.Fid.Count(r => r.Recognisable);
@@ -520,7 +526,7 @@ internal static class BridgeSweepCli
             if (nes.IsCrashed()) return new Measure { Crashed = true, Frames = f, Message = "NES core crashed: " + nes.GetCrashInfo().Split('\n')[0] };
             var audio = nes.GetAudioBuffer();
             s.Audio(audio, audio.Length); post?.Audio(audio, audio.Length);
-            if (f % 20 == 0) { s.EndAudioWindow(); post?.EndAudioWindow(); }
+            if (f % 20 == 0) { s.Late = f > frames / 2; s.EndAudioWindow(); post?.EndAudioWindow(); }
             if (f > 30 && f % 10 == 0)
             {
                 var fb = nes.GetFrameBuffer(); var argb = new uint[256 * 240];
@@ -567,7 +573,7 @@ internal static class BridgeSweepCli
             int n; var mono = new List<float>();
             while ((n = session.ReadSamples(buf)) > 0) for (int i = 0; i + 1 < n; i += 2) mono.Add((buf[i] + buf[i + 1]) / 65536f);
             s.Audio(mono, mono.Count); post?.Audio(mono, mono.Count);
-            if (f % 20 == 0) { s.EndAudioWindow(); post?.EndAudioWindow(); }
+            if (f % 20 == 0) { s.Late = f > frames / 2; s.EndAudioWindow(); post?.EndAudioWindow(); }
             if (f > 30 && f % 10 == 0)
             {
                 var pic = session.Frame.AsSpan(0, session.FrameWidth * session.FrameHeight);

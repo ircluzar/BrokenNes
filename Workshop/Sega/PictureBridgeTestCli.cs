@@ -112,6 +112,18 @@ internal static class PictureBridgeTestCli
         Check("sound: silent where the game is silent too is static", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0), true) == "static");
         Check("sound: ... and static when the game's own level is only a chip's idle ripple (-50 dBFS)", C(M(m => m.AudioRms = 0), M(m => m.AudioRms = 0.0033), true) == "static");
         Check("sound: any real sound is alive", C(M(), ok, true) == "alive");
+        // round 4 (C4b): the hot-swap classes and the late-audio rule
+        string S(BridgeSweepCli.Measure m, BridgeSweepCli.Measure? control) => BridgeSweepCli.ClassifySwap(m, control);
+        var swapped = M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 5; });
+        Check("swap: in place, the picture still moving, is alive", S(swapped, M(m => m.ChangesLate = 6)) == "alive");
+        Check("swap: TrySwapCore refused is restart (the app would restart the game; the reason is in SwapNote), not a failure of the picture", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = false; }), ok) == "restart");
+        Check("swap: the picture gone after the swap is dead", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 1; }), ok) == "dead");
+        Check("swap: the picture stopped after the swap while the game goes on is frozen", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 0; }), M(m => m.ChangesLate = 6)) == "frozen");
+        Check("swap: ... and static when the game itself idles in the second half", S(M(m => { m.SwapAttempted = true; m.SwapInPlace = true; m.PostColours = 8; m.PostChanges = 0; }), M(m => m.ChangesLate = 0)) == "static");
+        Check("swap: refused, crashed and hung keep their own classes", S(M(m => m.Refused = true), ok) == "refused" && S(M(m => m.Crashed = true), ok) == "crashed" && S(M(m => m.Timeout = true), ok) == "hung");
+        Check("audio: silent where the game's own sound is audible, static where it is not", BridgeSweepCli.ClassifyAudio(0, ok) == "silent" && BridgeSweepCli.ClassifyAudio(0, M(m => m.AudioRms = 0)) == "static" && BridgeSweepCli.ClassifyAudio(0.05, ok) == "alive");
+        Check("audio after a swap is judged against the control's second half (a game silent by then is not blamed)", BridgeSweepCli.ClassifyAudio(0, M(m => { m.AudioRms = 0.05; m.AudioRmsLate = 0; }), lateOnly: true) == "static" && BridgeSweepCli.ClassifyAudio(0, M(m => { m.AudioRms = 0.05; m.AudioRmsLate = 0.05; }), lateOnly: true) == "silent");
+        Check("the menu entries of a console list every non-default option of its three menus (the sweep's input)", BridgeSweepCli.MenuEntries("sms", false).Count(e => e.slot == "apu") > 20 && BridgeSweepCli.MenuEntries("gb", false).Any(e => e.slot == "cpu" && e.id == "65816") && BridgeSweepCli.MenuEntries("nes", false).Any(e => e.slot == "cpu" && e.id == "Z80") && BridgeSweepCli.MenuEntries("nes", false).All(e => e.id != "FIX"));
     }
 
     // ------------------------------------------------------------------------------------------------------------------ games

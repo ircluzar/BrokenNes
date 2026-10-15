@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NesEmulator;
 using NesEmulator.Mix;
+using NesEmulator.Sega;
 
 namespace BrokenNes.Workshop.Sega;
 
@@ -37,13 +38,14 @@ internal static class PatchDistinctTests
         if (want("patches"))
         {
             Console.WriteLine("\n== the FM patch banks, by analysis (nobody has listened: this says whether the bank is a bank)");
-            Guard(() => Bank("Genesis (YM2612)", "MD", FmPatchBank.Count, i => FmPatchBank.Patches[i].Name, i => FmPatchBank.Patches[i].Psg, (a, p) => ((APU_MD)a).Patch = p), "Genesis bank");
-            Guard(() => Bank("Master System (YM2413)", "SMSFM", OpllPatchBank.Count, i => OpllPatchBank.Patches[i].Name, i => OpllPatchBank.Patches[i].Psg, (a, p) => ((APU_SMSFM)a).Patch = p), "Master System bank");
+            Guard(() => Bank("Genesis (YM2612)", "MD", FmPatchBank.Count, i => FmPatchBank.Patches[i].Name, i => FmPatchBank.Patches[i].Psg, (a, p) => ((APU_MD)a).Patch = p, settled: true), "Genesis bank");
+            Guard(() => Bank("Master System (YM2413)", "SMSFM", OpllPatchBank.Count, i => OpllPatchBank.Patches[i].Name, i => OpllPatchBank.Patches[i].Psg, (a, p) => ((APU_SMSFM)a).Patch = p, settled: false), "Master System bank");
         }
         return (passes, failures);
     }
 
-    private sealed record Print(double[] Harmonics, double[] Envelope, double Hz, double Rms);
+    /// <summary>Harmonics of the early part of the note (100 to 350 ms, where the modulators are still open and a pluck is bright) and of the late part (0.9 to 1.4 s, where it has settled), the loudness envelope, the pitch, and the early RMS (the calibration's own window).</summary>
+    private sealed record Print(double[] Early, double[] Late, double[] Envelope, double Hz, double Rms, double LateRms);
 
     private static Print Fingerprint(string chip, int patch, Action<IAPU, int> set)
     {
@@ -55,26 +57,35 @@ internal static class PatchDistinctTests
         var slices = new List<double>(); var all = new List<float>();
         for (int k = 0; k < 16; k++) { rig.Run(0.1, true); var part = rig.Take(); all.AddRange(part); slices.Add(SegaMeasure.Rms(part, 0, part.Length)); }
         var x = all.ToArray(); int rate = rig.Rate;
-        int from = (int)(rate * 0.9), to = Math.Min(x.Length, from + 16384);
-        var (f0, _) = SegaMeasure.Peak(x, rate, nesHz, from, to, 0.04);
-        var amps = new double[13]; double total = 0;
-        for (int h = 1; h <= 12; h++) { amps[h] = nesHz * h < rate * 0.45 ? SegaMeasure.Component(x, rate, nesHz * h, from, to) : 0; total += amps[h] * amps[h]; }
-        var hs = new double[12];
-        for (int h = 1; h <= 12; h++) hs[h - 1] = Math.Max(-60, 10 * Math.Log10(Math.Max(1e-12, amps[h] * amps[h] / Math.Max(1e-12, total))));
+        double[] Harmonics(int from, int to)
+        {
+            var amps = new double[13]; double total = 0;
+            for (int h = 1; h <= 12; h++) { amps[h] = nesHz * h < rate * 0.45 ? SegaMeasure.Component(x, rate, nesHz * h, from, to) : 0; total += amps[h] * amps[h]; }
+            var hs = new double[12];
+            for (int h = 1; h <= 12; h++) hs[h - 1] = Math.Max(-60, 10 * Math.Log10(Math.Max(1e-12, amps[h] * amps[h] / Math.Max(1e-12, total))));
+            return hs;
+        }
+        int e0 = (int)(rate * 0.10), e1 = (int)(rate * 0.35), l0 = (int)(rate * 0.9), l1 = Math.Min(x.Length, l0 + 16384);
+        var early = Harmonics(e0, e1);
+        // the pitch is the strongest harmonic's frequency over its number: a bell's fundamental can be absent by design (its carrier sits at the 6th), a wrong pitch is not
+        int strongest = Array.IndexOf(early, early.Max()) + 1;
+        var (fh, _) = SegaMeasure.Peak(x, rate, nesHz * strongest, e0, e1, 0.02);
+        double f0 = fh / strongest;
         double top = slices.Take(10).Max();
         var env = slices.Take(10).Select(s => Math.Max(-40, 20 * Math.Log10(Math.Max(1e-9, s / Math.Max(1e-9, top))))).ToArray();
-        return new Print(hs, env, f0, SegaMeasure.Rms(x, from, to));
+        return new Print(early, Harmonics(l0, l1), env, f0, SegaMeasure.Rms(x, e0, e1), SegaMeasure.Rms(x, l0, l1));
     }
 
     private static double Distance(Print a, Print b)
     {
         double s = 0; int n = 0;
-        for (int i = 0; i < 12; i++) { double d = a.Harmonics[i] - b.Harmonics[i]; s += d * d; n++; }
+        for (int i = 0; i < 12; i++) { double d = a.Early[i] - b.Early[i]; s += d * d; n++; }
+        for (int i = 0; i < 12; i++) { double d = a.Late[i] - b.Late[i]; s += d * d; n++; }
         for (int i = 0; i < 10; i++) { double d = a.Envelope[i] - b.Envelope[i]; s += d * d; n++; }
         return Math.Sqrt(s / n);
     }
 
-    private static void Bank(string label, string chip, int count, Func<int, string> name, Func<int, bool> isPsg, Action<IAPU, int> set)
+    private static void Bank(string label, string chip, int count, Func<int, string> name, Func<int, bool> isPsg, Action<IAPU, int> set, bool settled)
     {
         var prints = new Print[count];
         for (int p = 0; p < count; p++) prints[p] = Fingerprint(chip, p, set);
@@ -88,11 +99,13 @@ internal static class PatchDistinctTests
         Check($"{label}: no two patches are alike (every pair differs by at least {MinDistanceDb} dB RMS in harmonics and envelope)", close.Count == 0,
             close.Count == 0 ? $"closest pair {name(pairs[0].a)} / {name(pairs[0].b)} {pairs[0].d:F1} dB" : string.Join("; ", close.Take(5).Select(t => $"{name(t.a)} / {name(t.b)} {t.d:F1} dB")));
         Console.WriteLine($"        the closest pairs to listen to first: {string.Join("; ", pairs.Where(t => !isPsg(t.a) && !isPsg(t.b)).Take(4).Select(t => $"{name(t.a)} / {name(t.b)} {t.d:F1} dB"))}");
-        var levels = Enumerable.Range(0, count).Where(p => !isPsg(p)).Select(p => prints[p].Rms).ToList();
-        double spread = SegaMeasure.Db(levels.Max(), levels.Min());
-        Check($"{label}: the patches are within 3 dB of each other in level (the calibration the bridges rely on)", spread < 3.0, $"loudest {SegaMeasure.Db(levels.Max(), levels.Min()):F2} dB over the quietest");
+        // each bank is calibrated in its own way, and is measured in that way: the Genesis bank on the settled tone (volume steps of 0.75 dB), the Master System bank on the first 350 ms of a held note
+        // (decaying instruments such as a pluck have nothing left later; its volume register moves in 3 dB steps, so two patches can sit up to 3 dB apart)
+        var levels = Enumerable.Range(0, count).Where(p => !isPsg(p)).Select(p => settled ? prints[p].LateRms : prints[p].Rms).ToList();
+        double spread = SegaMeasure.Db(levels.Max(), levels.Min()), allowed = settled ? 3.0 : 3.5;
+        Check($"{label}: the patches are within {allowed:F1} dB of each other in level on the bank's own calibration ({(settled ? "settled tone" : "first 350 ms")}), the calibration the bridges rely on", spread < allowed, $"loudest {spread:F2} dB over the quietest");
         if (verbose)
             for (int p = 0; p < count; p++)
-                Console.WriteLine($"        [{p,2}] {name(p),-16} {prints[p].Hz:F1} Hz RMS {prints[p].Rms:F4}  harmonics {string.Join(" ", prints[p].Harmonics.Select(v => v.ToString("F0").PadLeft(3)))}  envelope {string.Join(" ", prints[p].Envelope.Select(v => v.ToString("F0").PadLeft(3)))}");
+                Console.WriteLine($"        [{p,2}] {name(p),-16} {prints[p].Hz:F1} Hz RMS {prints[p].Rms:F4}  early {string.Join(" ", prints[p].Early.Select(v => v.ToString("F0").PadLeft(3)))}  late {string.Join(" ", prints[p].Late.Select(v => v.ToString("F0").PadLeft(3)))}  envelope {string.Join(" ", prints[p].Envelope.Select(v => v.ToString("F0").PadLeft(3)))}");
     }
 }
