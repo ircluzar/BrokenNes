@@ -217,7 +217,7 @@ internal static class MdSceneCli
                 for (int m = 0; m < 3; m++) { uint rgb = Lv(col >> 1 & 7, m) << 16 | Lv(col >> 5 & 7, m) << 8 | Lv(col >> 9 & 7, m); if (rgb == b) { shown = m == 0 ? "normal" : m == 1 ? "shadow" : "highlight"; break; } }
                 string pa = (av & 15) == 0 ? ((av & 0x80) != 0 ? "A:clear+prio" : "A:clear") : ((av & 0x80) != 0 ? "A:hi" : "A:lo");
                 string pb = (bv & 15) == 0 ? ((bv & 0x80) != 0 ? "B:clear+prio" : "B:clear") : ((bv & 0x80) != 0 ? "B:hi" : "B:lo");
-                string k = $"{((sv & 0x80) != 0 ? "S:hi" : "S:lo")} {pa} {pb} -> {shown}";
+                string k = $"{((sv & 0x80) != 0 ? "S:hi" : "S:lo")}{((sv & 15) >= 14 ? " c" + (sv & 15) : "")} {pa} {pb} -> {shown}";
                 SprStat[k] = SprStat.GetValueOrDefault(k) + 1;
             }
     }

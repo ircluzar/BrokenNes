@@ -246,6 +246,9 @@ public sealed partial class MdVdp
     public static bool H32StretchZero = true;
     /// <summary>Interlace mode 2 uses eleven bits of the vertical scroll value (the oracle's 128-cell-high plane scenes need it), the other modes ten.</summary>
     public static bool VsramIm2Mask11 = true;
+    /// <summary>Experiment: the lowest sprite colour (palettes 0 to 2) that is drawn at normal brightness over shadow: 14 (colour 14 only) is what the oracle shows; 14 with 15 as well was the first guess.</summary>
+    public static int SpriteNormalFromColour = 14;
+    public static int SpriteNormalToColour = 14;
     private static bool WindowBugApplies(int hscroll) => WindowBugMode switch { 0 => (hscroll & 0xF) != 0, 1 => (hscroll & 8) != 0, 2 => false, _ => (hscroll & 0xF) != 0 };
 
     private void DrawWindowRun(byte[] dst, int xa, int xb)
@@ -492,7 +495,7 @@ public sealed partial class MdVdp
                     int sp = sv & 0x3F;
                     if (sp == 0x3E) state = state == 1 ? 0 : 2;          // highlight: a shadowed pixel becomes normal, a normal one brighter
                     else if (sp == 0x3F) state = 1;                       // shadow
-                    else { idx = sp; state = (sv & 0x80) != 0 || (sv & 15) >= 14 ? 0 : state; }
+                    else { idx = sp; state = (sv & 0x80) != 0 || (sv & 15) >= SpriteNormalFromColour && (sv & 15) <= SpriteNormalToColour ? 0 : state; }
                 }
                 o[x] = (byte)(idx | state << 6);
             }

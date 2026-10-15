@@ -538,7 +538,14 @@ internal static class MdPictureTest
         p.Cell(PlaneA, 0, 0, 0x0002);
         p.Sprite(0, 0, 0, 1, 1, 14, 2, false, 0);          // colour 14 of palette 2 (an operator only in palette 3)
         p.Frame();
-        Check("a low-priority sprite pixel of colour 14 outside palette 3 is drawn normal, not shadowed (oracle: every colour 14 and 15 sprite pixel over shadow)", p.Px(2, 2) == Argb(p.CramOf(2, 14), 0), $"{p.Px(2, 2):X8}");
+        Check("a low-priority sprite pixel of colour 14 outside palette 3 is drawn normal, not shadowed (oracle: random scenes, colour 14 over shadow is always normal)", p.Px(2, 2) == Argb(p.CramOf(2, 14), 0), $"{p.Px(2, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(15, 15);
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 15, 2, false, 0);          // colour 15 of palette 2 (an operator only in palette 3)
+        p.Frame();
+        Check("... but colour 15 outside palette 3 follows the state like any other colour: shadowed over shadow (oracle: 1,700 such pixels, never normal; the first guess had it normal)", p.Px(2, 2) == Argb(p.CramOf(2, 15), 1), $"{p.Px(2, 2):X8}");
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Sprite(0, 0, 0, 1, 1, 4, 0, true, 0); p.Sprite(1, 16, 0, 1, 1, 4, 0, false, 0); p.V.Vram[SatAddr + 3] = 1;
