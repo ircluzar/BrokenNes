@@ -24,7 +24,10 @@ def vint_enable(variant='A', h40=True, wait_lines=40):
     s = prologue(h40, True)           # reg 1 = $54: display on, DMA on, no vertical interrupt
     s += '    clr.w ($FF0100).l\n    clr.w ($FF0102).l\n    clr.w ($FF0104).l\n    clr.w ($FF0106).l\n'
     s += '    move.w #$2000,sr\n'     # interrupts allowed in the 68000; the VDP does not ask for one
-    if variant.startswith('G'):
+    if variant.startswith('L'):
+        # enabled late in the same VBlank: the VBlank began (status bit 3 rose), then the V counter is polled up to the byte given in hex (L F0, L FA: lines 245 and 255 of a 262-line frame) and the enable bit is written there
+        s += sync_vblank_rise() + wait_v(int(variant[1:], 16), 'gC')
+    elif variant.startswith('G'):
         # held for N whole frames: the VBlank begins N times while the vertical interrupt is disabled (no status register reads: the V counter is polled), then the enable bit is written in the display period
         frames = int(variant[1:])
         s += NL_.join(['    move.w #%d,d7' % (frames - 1), 'g0:']) + NL_ + wait_v(0xE8, 'gA') + wait_v(0x20, 'gB') + '    dbf d7,g0' + NL_
@@ -44,6 +47,27 @@ def vint_enable(variant='A', h40=True, wait_lines=40):
     s += '    move.w #$8154,(a4)\n'   # off again so that no later VBlank adds to the count
     s += '    nop\n' * 40
     s += '    move.w ($FF0100).l,($FF0108).l\n' + SPIN + HANDLER
+    return s
+
+
+def vint_pend(variant='P', h40=True):
+    """Fatal Rewind's sequence: the vertical interrupt is ENABLED in the VDP and the 68000's mask is 7, so the interrupt that the VBlank raises stays pending; late in the same VBlank the game writes VDP registers
+    and then lowers the mask. Is the interrupt still taken? RAM words: [0] the count after the mask was lowered (40 nops), [1] the count at the end.
+      P  nothing between (control: pending, then the mask is lowered)
+      M  the enable bit is cleared and set again (R1 = $54, nops, $74) while the interrupt is pending
+      N  R0 is rewritten ($14: horizontal interrupt on) and R1 with the same value ($74)
+      O  the status register is read six times
+      Q  as P but the mask is lowered at once after the VBlank began (no waiting)"""
+    s = prologue(h40, True, regs={1: 0x74, 0: 0x04})        # reg 1 = $74: display on, vertical interrupt on; the 68000 starts with mask 7
+    s += '    clr.w ($FF0100).l\n    clr.w ($FF0102).l\n'
+    s += sync_vblank_rise()
+    if variant != 'Q': s += wait_v(0xE8, 'gA')
+    if variant == 'M': s += '    move.w #$8154,(a4)\n    nop\n    nop\n    nop\n    nop\n    move.w #$8174,(a4)\n'
+    if variant == 'N': s += '    move.w #$8014,(a4)\n    move.w #$8174,(a4)\n'
+    if variant == 'O': s += '    move.w (a2),d6\n' * 6
+    if variant != 'Q': s += wait_v(0xF8, 'gD')
+    s += '    move.w #$2000,sr\n' + '    nop\n' * 40
+    s += '    move.w ($FF0100).l,($FF0102).l\n    move.w #$2700,sr\n' + SPIN + HANDLER
     return s
 
 
