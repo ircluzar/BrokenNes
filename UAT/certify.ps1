@@ -143,24 +143,6 @@ Run 'sega-preview' {
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
-Run 'notices' {
-    if (-not (Want 'notices')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
-    # the ledgers against the tree, and the folders the other entries built: the desktop app, the Lite site (when the web entry published one)
-    $app = Join-Path $workRoot 'uat_desktop\bin\BrokenNes.Windows\release_win-x64'
-    if (-not (Test-Path $app)) { $app = Join-Path $art 'bin\BrokenNes.Windows\release_win-x64' }
-    $lite = Join-Path $workRoot 'uat_web'
-    $a = @(); if (Test-Path $app) { $a += @('-AppDir', $app) }
-    $liteOut = Get-ChildItem $lite -Recurse -Directory -Filter wwwroot -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } | Select-Object -First 1
-    if ($liteOut) { $a += @('-LiteDir', (Split-Path $liteOut.FullName)) }
-    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\notices-check.ps1') @a 2>&1
-    $code = $LASTEXITCODE
-    $out | Out-File (Join-Path $outDir 'notices.txt')
-    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
-    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
-    $skipped = @($out | Where-Object { "$_" -like '`[SKIP`]*' }).Count
-    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($skipped) { ", $skipped folder check(s) skipped (no folder built by this run)" } else { '' })) }
-}
-
 Run 'plugin-host' {
     if (-not (Want 'plugin-host')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
     if (-not $SkipBuild) {
@@ -190,6 +172,7 @@ Run 'desktop' {
     if (-not (Want 'desktop')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
     $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\desktop-smoke.ps1') 2>&1
     $code = $LASTEXITCODE
+    $script:builtApp = Join-Path $workRoot 'uat_desktop\artifacts\bin\BrokenNes.Windows\release_win-x64'     # built by this run: the notices entry checks it
     $out | Out-File (Join-Path $outDir 'desktop-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
@@ -200,6 +183,8 @@ Run 'web-lite' {
     if (-not (Want 'web-lite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
     $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\web-smoke.ps1') 2>&1
     $code = $LASTEXITCODE
+    $liteWww = Get-ChildItem (Join-Path $workRoot 'uat_web') -Recurse -Directory -Filter wwwroot -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } | Select-Object -First 1
+    if ($liteWww) { $script:builtLite = Split-Path $liteWww.FullName }
     $out | Out-File (Join-Path $outDir 'web-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
@@ -244,8 +229,24 @@ Run 'plugin-synth' {
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
+Run 'notices' {
+    if (-not (Want 'notices')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    # the ledgers against the tree, and the folders THIS run's other entries built (a folder left by an earlier run says nothing about this tree): the desktop app
+    # (the desktop entry) and the Lite site (the web-lite entry). This entry runs after them for that reason.
+    $a = @()
+    if ($script:builtApp -and (Test-Path $script:builtApp)) { $a += @('-AppDir', $script:builtApp) }
+    if ($script:builtLite -and (Test-Path $script:builtLite)) { $a += @('-LiteDir', $script:builtLite) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\notices-check.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'notices.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $skipped = @($out | Where-Object { "$_" -like '`[SKIP`]*' }).Count
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($skipped) { ", $skipped folder check(s) skipped (no folder given: the desktop needs the desktop entry, the Lite site the web-lite entry; the installed plugin's folder is checked by plugin-install)" } else { '' })) }
+}
+
 # ----------------------------------------------------------------------------------------------------
-$summary = "# BrokenNes certification $stamp`n`n| Entrypoint | Result | Detail | Time |`n|---|---|---|---|`n"
+$summary ="# BrokenNes certification $stamp`n`n| Entrypoint | Result | Detail | Time |`n|---|---|---|---|`n"
 foreach ($r in $results) { $summary += "| $($r.entrypoint) | $($r.status) | $($r.detail -replace '\|', '/') | $($r.seconds)s |`n" }
 Set-Content (Join-Path $outDir 'summary.md') $summary
 $results | ConvertTo-Json | Set-Content (Join-Path $outDir 'summary.json')

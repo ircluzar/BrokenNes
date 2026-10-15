@@ -16,7 +16,11 @@
     tab_routing               with the Triangle tab selected, A plays the Triangle
     keyboard_switch_off       with "Computer keyboard plays notes" off, A does nothing (no note, no level)
     close_saves_state         closing the window exits 0 and writes synth.json and a synth-state.bin holding all four instances
-    settings_restored         starting again comes back on the Triangle tab, at the saved octave, with the engine running
+    settings_restored         starting again comes back on the Triangle tab
+    octave_restored           ... at the saved octave (NOT RUN when the octave keys were not exercised)
+    restored_plays            ... with the engine running: A plays again
+  A key check needs the synth window to hold the foreground; when another window keeps or takes it the check is reported NOT RUN (never PASS, never FAIL) and the
+  result line says status NOT RUN (exit 0).
     restart_to_synth          emulator: Config > Synthesizer Mode > Restart as Standalone Synth starts "--synth" and the emulator exits (exit 0)
     restart_to_emulator       synth: Synth > Restart as Emulator starts the emulator again and the synth exits
     missing_plugin_explained  a build with no Plugin\ folder: the synth says why (names the missing file) and starts the emulator instead
@@ -243,7 +247,10 @@ try {
     $triTab = $root2.FindFirst($TS::Descendants, (New-Object Windows.Automation.AndCondition((New-Object Windows.Automation.PropertyCondition($AE::NameProperty, 'Triangle')), (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::TabItem)))))
     $selected = $triTab.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected
     $octaveLabel = ($root2.FindAll($TS::Descendants, (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::Text))) | Where-Object { $_.Current.Name -like 'Keys A*' } | Select-Object -First 1).Current.Name
-    Check 'settings_restored' ($selected -and $octaveLabel -match '= C3') "Triangle tab selected=$selected; [$octaveLabel]"
+    Check 'settings_restored' $selected "Triangle tab selected=$selected (the tab was chosen through UI Automation, no keys)"
+    # the octave was set with the X / Z keys: if those key checks did not run, there is no octave to have saved
+    if ($checks['octave_keys'] -and $checks['octave_keys'].ok) { Check 'octave_restored' ($octaveLabel -match '= C3') "[$octaveLabel]" }
+    else { NotRun 'octave_restored' 'the octave keys were not exercised in this run (octave_keys did not pass), so no changed octave was saved' }
     if (Focus $p2) {
         $again = Hold $p2 $root2 0x41
         Check 'restored_plays' ($again.Peak -gt 0.01) "plays again after the restart (peak $($again.Peak))"

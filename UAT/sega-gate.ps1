@@ -4,7 +4,7 @@
 .DESCRIPTION
   Runs, one after the other (the machine is shared; nothing here runs in parallel except inside a verifier that says so):
 
-    --sega-test --sega-chips-test --sega-contracts-test --sega-bridge-test --sega-stems-test --picture-bridge-test --cpu-wall-test
+    --sega-test --sega-chips-test --sega-contracts-test --sega-bridge-test --sega-stems-test --picture-bridge-test --cpu-wall-test --swap-matrix-test
     --md-test --md-cart-test --md-pic-test --md-golden --m68ktest --z80test (self-test and the SingleStepTests vectors)
     --sega-oracle-test --ym-oracle-test --fm-oracle-test --smstest
 
@@ -135,6 +135,15 @@ foreach ($s in $steps) {
     $c = Get-Counts $r.Text
     $ok = $r.Code -eq 0 -and -not $r.TimedOut -and ($null -eq $c -or $c.Failed -eq 0)
     $note = if ($r.TimedOut) { 'TIMED OUT' } elseif ($r.Code -ne 0 -and $null -eq $c) { "exit $($r.Code), no result line (a stale exe falls through to the GUI)" } elseif ($r.Code -ne 0) { "exit $($r.Code)" } else { '' }
+    if (-not $ok) {
+        # say which checks failed, and when every one of them is a speed check, that a loaded machine can cause that (rerun on a quiet one before believing it)
+        $failing = @($r.Text -split "`n" | Where-Object { $_ -match '^\s*FAIL\s' } | ForEach-Object { ($_ -replace '^\s*FAIL\s+', '').Trim() })
+        if ($failing.Count) {
+            $short = ($failing | Select-Object -First 3 | ForEach-Object { $_.Substring(0, [Math]::Min(90, $_.Length)) }) -join ' ; '
+            $speedOnly = -not ($failing | Where-Object { $_ -notmatch 'real time|throughput|times faster|[0-9]x\b' })
+            $note = ($note + " failing: $short" + $(if ($failing.Count -gt 3) { " (+$($failing.Count - 3) more)" } else { '' }) + $(if ($speedOnly) { ' [every failing check is a speed check: a busy machine causes this; rerun on a quiet one]' } else { '' })).Trim()
+        }
+    }
     if ($c -and $c.Skipped -gt 0) { $note = ($note + " $($c.Skipped) check(s) skipped inside (missing input: see the step's report)").Trim() }
     [void]$rows.Add([pscustomobject]@{ Step = $s.n; Result = $(if ($ok) { 'PASS' } else { 'FAIL' }); Passed = $(if ($c) { $c.Passed } else { '' }); Failed = $(if ($c) { $c.Failed } else { '' }); Seconds = [math]::Round($r.Seconds); Note = $note })
     Write-Host ("`r{0,-22} {1,-5} {2,9} passed {3,3} failed {4,5:F0}s {5}" -f $s.n, $(if ($ok) { 'PASS' } else { 'FAIL' }), $(if ($c) { $c.Passed } else { '-' }), $(if ($c) { $c.Failed } else { '-' }), $r.Seconds, $note) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
