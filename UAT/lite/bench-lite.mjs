@@ -59,6 +59,8 @@ for (const [name, cons, rom, cores = {}, note = ''] of CASES) {
   try {
     const page = await lab.open('/?rom=' + encodeURIComponent('roms/' + rom), { timeout: 240000 });
     await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
+    // --twin name=0|1,name=0|1: switches the build's twins (SetTwin) before the measurement, so one build can be measured with an optimisation on and off
+    for (const t of String(a.twin || '').split(',').filter(Boolean)) { const [n, v] = t.split('='); const r = await page.eval(`nesInterop._dotNetRef.invokeMethodAsync('SetTwin', ${JSON.stringify(n)}, ${v !== '0'})`); console.log(`  twin ${n}=${v}: ${r}`); }
     for (const [slot, id] of Object.entries(cores)) {
       const ok = await page.eval(`(() => { const s = document.querySelector('select[aria-label="${slot[0].toUpperCase() + slot.slice(1)} core"]'); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(id)}); if (!o) return 'no option ' + [...s.options].map(x => x.value).join(','); s.value = ${JSON.stringify(id)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
       if (ok !== 'ok') throw new Error(`${name}: cannot pick ${slot} ${id}: ${ok}`);

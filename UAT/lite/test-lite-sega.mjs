@@ -6,7 +6,7 @@
 // to do on demand (keep a save that changes every run, switch the video width while running) are assembled in synth-roms.mjs. What it cannot see: sound through a loudspeaker (the audio is checked as samples
 // handed to the page, at the rate and amount a frame needs), a real phone's touch (a touch screen is emulated: taps land on the buttons), the PAL games.
 //
-// Groups: console, layout, rom, import, pickers, swap, saves, states, video, audio, control.
+// Groups: console, layout, rom, import, pickers, swap, saves, states, video, audio, control, speed.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -487,7 +487,25 @@ async function groupControl() {
   });
 }
 
-const groups = { console: groupConsole, layout: groupLayout, rom: groupRom, import: groupImport, pickers: groupPickers, swap: groupSwap, saves: groupSaves, states: groupStates, video: groupVideo, audio: groupAudio, control: groupControl };
+// ------------------------------------------------------------------------------------------------------------- the speed badge
+async function groupSpeed() {
+  await withLab({}, async lab => {
+    const page = await openRom(lab, GAMES.md);
+    await ready(page);
+    await page.eval('window.__resume()');
+    await sleep(2000);
+    const calm = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
+    // the Genesis at three times real time (the fast-forward button) is more than any device here can do: the page must say so, with the rate it manages
+    await page.eval(`document.querySelector('button[title^="Fast Forward"]').click()`);
+    await page.waitFor(`!!document.getElementById('speed-note')`, 20000).catch(() => {});
+    const note = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
+    check('speed', 'Genesis at 3x fast forward: the page shows a speed badge that names what it manages', /Slow: \d+ of 18\d frames a second/.test(note), `before: "${calm}" now: "${note}"`);
+    await page.eval(`document.querySelector('button[title^="Fast Forward"]').click()`);
+    await sleep(500);
+  });
+}
+
+const groups = { console: groupConsole, layout: groupLayout, rom: groupRom, import: groupImport, pickers: groupPickers, swap: groupSwap, saves: groupSaves, states: groupStates, video: groupVideo, audio: groupAudio, control: groupControl, speed: groupSpeed };
 for (const [g, fn] of Object.entries(groups)) {
   if (!wantGroup(g)) continue;
   try { await fn(); } catch (e) { check(g, 'group ran to the end', false, String(e.stack || e).split('\n').slice(0, 3).join(' | ')); }

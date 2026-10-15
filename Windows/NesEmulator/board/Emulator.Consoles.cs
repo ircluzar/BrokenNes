@@ -320,6 +320,23 @@ namespace BrokenNes
         [JSInvokable]
         public int SetPayloadMode(int mode) { PayloadMode = mode == 0 ? 0 : 1; return PayloadMode; }
 
+        /// <summary>
+        /// The speed suite's twins, switchable from the page so a browser measurement can alternate an optimised path and its reference inside one build (the answer is the same either way; see docs/projects/sega-track-c4a.md):
+        /// <c>md-loop</c> (the Genesis sound Z80's polling loops counted, not ticked), <c>idle-frame</c> (the picture bridges' NES run as one picture from the blank),
+        /// <c>payload</c> (the page's frame crossing). Returns what each is now, e.g. "md-loop=1 idle-frame=1 payload=1".
+        /// </summary>
+        [JSInvokable]
+        public string SetTwin(string name, bool on)
+        {
+            switch (name)
+            {
+                case "md-loop": NesEmulator.Sega.MdSoundUnit.FastLoops = on; break;
+                case "idle-frame": NesEmulator.Mix.NesPictureSink.IdleMode = on ? 2 : 0; break;
+                case "payload": PayloadMode = on ? 1 : 0; break;
+            }
+            return $"md-loop={(NesEmulator.Sega.MdSoundUnit.FastLoops ? 1 : 0)} idle-frame={(NesEmulator.Mix.NesPictureSink.IdleMode == 2 ? 1 : 0)} payload={PayloadMode}";
+        }
+
         // ---- a speed note, never a silent drop: when this device cannot keep the console at real time, the page says so (with what it manages) instead of just running slow
         private double slowSeconds;
         /// <summary>Empty while the game runs at its real frame rate; otherwise a sentence for the status badge ("Running at 41 of 60 frames a second on this device").</summary>
