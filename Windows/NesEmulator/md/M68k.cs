@@ -250,13 +250,21 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     /// <summary>True while the prefetch bus cycle (IRC becomes IR) is on the bus: the board can tell that cycle from the data and extension-word cycles of an instruction.</summary>
     public bool InPrefetch;
-    /// <summary>The board does not take the interrupt sample at the bus cycles that follow (set by an instruction whose last cycles must not sample; cleared when the next instruction starts). See <see cref="MovemFreezesIpl"/>.</summary>
+    /// <summary>The board does not take the interrupt sample at the bus cycles that follow (set by an instruction whose last cycles must not sample; cleared when the instruction ends). See <see cref="MovemFreezesIpl"/>.</summary>
     public bool IplFrozen;
-    /// <summary>Experiment: MOVEM to memory does not sample the interrupt lines at its final prefetch, so an interrupt that arrives while it runs is taken one instruction later (as BlastEm does).</summary>
+    /// <summary>
+    /// MOVEM (either direction) does not sample the interrupt lines after its first bus cycles, so an interrupt that arrives while it runs is taken one instruction later. BlastEm 1.0.0 does exactly this: a loop of MOVEM + BRA.S
+    /// is interrupted after the MOVEM 12.2 % of the time (the 10 cycles of the branch are the share of the loop that follows the MOVEM's sample), the same share as with the sample at the MOVEM's start (<c>run_rethist.py</c>,
+    /// Track B4b); sampling at the last bus cycle gives 88 %. On by default since B4b (the picture of every roster game is unchanged by it).
+    /// </summary>
     public static bool MovemFreezesIpl = true;
-    /// <summary>Experiment (see <see cref="BranchIplMask"/>): the instruction that is running takes its interrupt sample from the start of the instruction (the board hands over that level), not at its last bus cycle.</summary>
+    /// <summary>The instruction that is running takes its interrupt sample from the start of the instruction (the board hands over that level), not at its last bus cycle. Set by the jumps <see cref="BranchIplMask"/> names, cleared when the instruction ends.</summary>
     public bool IplFromStart;
-    /// <summary>Which taken jumps sample the interrupt lines where they start rather than at their last bus cycle: 1 = BRA/Bcc/DBcc/BSR that jump, 2 = JMP/JSR, 4 = RTS/RTR/RTE. The oracle's histograms (run_rethist.py) put the sample of a taken BRA about 7 cycles before ours.</summary>
+    /// <summary>
+    /// Which jumps that are taken sample the interrupt lines where they start rather than at their last bus cycle: 1 = BRA/Bcc/DBcc/BSR, 2 = JMP/JSR, 4 = RTS/RTR/RTE (7, all of them, by default). BlastEm's histograms (the share of
+    /// interrupts that come back to the instruction before a BRA.S, loops of 19 instruction kinds) put the sample of a taken branch about 6 cycles before ours: for NOP + BRA.S the oracle gives 0.789 (the old rule 0.286, this one
+    /// 0.714), for JSR + RTS + BRA.S the three returns 0.434 / 0.358 / 0.208 (this rule 0.436 / 0.346 / 0.218). The distance to the oracle over the 17 loops measured fell from 4.83 to 1.75. 0 = the old rule.
+    /// </summary>
     public static int BranchIplMask = 7;
 
     /// <summary>The prefetch bus cycle: IRC becomes IR and the next word is fetched.</summary>

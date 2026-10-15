@@ -11,6 +11,7 @@ import asm68k, oracle, probes_b4b
 ours_only = '-o' in sys.argv
 vs = [a for a in sys.argv[1:] if not a.startswith('-')]
 variants = vs[0] if vs else 'ABDEF'
+variants = variants.split(',') if ',' in variants or (len(variants) > 1 and variants[0] == 'G') else list(variants)       # 'ABDEF' (letters) or 'G1,G3,G7' (held for N frames, comma separated)
 for v in variants:
     name = 'vintenable_' + v
     src = probes_b4b.vint_enable(v)

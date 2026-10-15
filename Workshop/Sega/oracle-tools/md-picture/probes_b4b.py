@@ -24,7 +24,11 @@ def vint_enable(variant='A', h40=True, wait_lines=40):
     s = prologue(h40, True)           # reg 1 = $54: display on, DMA on, no vertical interrupt
     s += '    clr.w ($FF0100).l\n    clr.w ($FF0102).l\n    clr.w ($FF0104).l\n    clr.w ($FF0106).l\n'
     s += '    move.w #$2000,sr\n'     # interrupts allowed in the 68000; the VDP does not ask for one
-    if variant in ('A', 'B'):
+    if variant.startswith('G'):
+        # held for N whole frames: the VBlank begins N times while the vertical interrupt is disabled (no status register reads: the V counter is polled), then the enable bit is written in the display period
+        frames = int(variant[1:])
+        s += NL_.join(['    move.w #%d,d7' % (frames - 1), 'g0:']) + NL_ + wait_v(0xE8, 'gA') + wait_v(0x20, 'gB') + '    dbf d7,g0' + NL_
+    elif variant in ('A', 'B'):
         s += sync_vblank_rise()
     else:
         s += sync_vblank_fall()
