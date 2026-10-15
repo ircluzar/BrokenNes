@@ -147,6 +147,10 @@ internal static class BridgeSweepCli
     }
 
     /// <summary>A hot-swap run: the cells' picture after the swap is judged against the control's second half. <c>restart</c> is not a failure of the picture: it says TrySwapCore refused and the app would restart the game on the new core (the reason is in SwapNote).</summary>
+    /// <summary>An alive run whose last picture is further than <see cref="DivergedLuma"/> (mean luma, 0 to 1) from the control's is diverged: it runs, but the game no longer looks like itself. A run that changed the picture chip is exempt
+    /// (another console's chip draws the game differently by design), and only an alive run is re-labelled.</summary>
+    internal static string Diverged(string cls, bool pictureChipChanged, double diff) => cls == "alive" && !pictureChipChanged && diff > DivergedLuma ? "diverged" : cls;
+
     internal static string ClassifySwap(Measure m, Measure? control)
     {
         if (m.Refused) return "refused";
@@ -241,7 +245,7 @@ internal static class BridgeSweepCli
                 c.Diff = Enumerable.Range(0, c.M.Thumb.Length).Average(i => Math.Abs(c.M.Thumb[i] - control.Thumb[i])) / 255.0;
                 // a picture chip that draws another console's picture is meant to differ from the source chip's (the bridges measure that against the source chip in their own way: SSIM), so only the runs that keep the picture chip are judged here
                 bool pictureChipChanged = (c.Kind == "swap" && c.Slot == "ppu") || (c.Kind == "combo" && !c.Combo.Contains("ppu=own"));
-                if (c.Class == "alive" && !pictureChipChanged && c.Diff > DivergedLuma) c.Class = "diverged";
+                c.Class = Diverged(c.Class, pictureChipChanged, c.Diff);
             }
         }
         File.WriteAllText(Path.Combine(outDir, "sweep.json"), JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
