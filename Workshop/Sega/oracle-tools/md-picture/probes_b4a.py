@@ -69,6 +69,42 @@ def hv_in_handler_limited(kind='hint', limit=20000, h40=True, extra_regs=None, l
     return s
 
 
+LOOP_BODIES = {
+    'nop': ['nop'],
+    'move': ['move.w (a6),d1', 'move.w (a6),d1'],
+    'mulu': ['mulu d2,d3'],
+    'divu': ['divu d4,d3'],
+    'mixed': ['move.l (a6),d1', 'addq.w #1,d1', 'lsl.l #8,d3', 'move.w d1,(a6)', 'nop'],
+    'longmove': ['movem.l d0-d7,-(sp)', 'movem.l (sp)+,d0-d7'],
+}
+
+
+def hv_in_handler_loop(kind='vint', body='nop', h40=True):
+    """As hv_in_handler with a main loop of other instructions (LOOP_BODIES): the interrupt is taken after the instruction in progress, so the entry time depends on the instruction lengths and on the rule the
+    interrupt level is sampled by; fitting both a VINT time and a sampling shift to several loops tells them apart."""
+    regs = {1: 0x64, 0: 0x04} if kind == 'vint' else {1: 0x44, 0: 0x14, 10: 0}
+    s = prologue(h40, True, regs=regs)
+    s += _lines('    lea ($FF0002).l,a0', '    lea ($C00008).l,a1', '    lea ($FF8000).l,a6', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #7,d4', '    move.w #0,($FF0000).l',
+                '    move.w #$2000,sr', 'main:')
+    for ins in LOOP_BODIES[body]: s += '    ' + ins + NL
+    s += _lines('    bra.s main' if len(LOOP_BODIES[body]) < 20 else '    bra.w main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),(a0)+', '    addq.w #1,($FF0000).l', '    rte')
+    return s
+
+
+def irq_overhead(kind='vint', h40=True, frames=400, body='plain'):
+    """What an interrupt costs the interrupted program, in the VDP's own time. The main loop is a straight stream of HV counter reads stored one after the other (`move.w (a1),(a0)+`); the handler logs its own
+    first HV read (entry) and the nine samples around the point the PREVIOUS frame's interrupt cut into the stream (what was read before it, what was read after the return), then restarts the stream at
+    the buffer's start. RAM: frame f's log at $FF0100 + 20 f: word 0 = HV at the handler's first instruction, words 1-9 = the stream samples p-5..p+3 (p = the sample position of the interrupt)."""
+    regs = {1: 0x64, 0: 0x04} if kind == 'vint' else {1: 0x44, 0: 0x14, 10: 0}
+    s = prologue(h40, True, regs=regs)
+    s += _lines('    lea ($C00008).l,a1', '    lea ($FF2000).l,a0', '    lea ($FF2020).l,a6', '    lea ($FF0100).l,a2', '    lea ($FFA000).l,a5', '    move.w #$2000,sr', 'main:')
+    s += ('    move.w (a1),(a0)+' + NL) * 40
+    s += _lines('    cmpa.l a5,a0', '    bcs.s main', '    lea ($FF2000).l,a0', '    bra.w main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),(a2)+')
+    for k in range(-5, 4): s += '    move.w %d(a6),(a2)+\n' % (2 * k)
+    s += _lines('    movea.l a0,a6', '    rte')
+    return s
+
+
 def hv_in_handler(kind='vint', h40=True, extra_regs=None, loop_nops=1, v30=False):
     """The interrupt handler's first instruction reads the HV counter into RAM. kind 'vint' (R1 bit 5) or 'hint' (R0 bit 4, R10 = 0: every line). The main loop is `nop * loop_nops; bra` with the
     interrupts enabled (SR $2000). RAM word 0 = interrupt count; the HV words follow ($FF0002...). The handler is a fixed 68000 sequence on both machines; the machines are compared on the same values."""

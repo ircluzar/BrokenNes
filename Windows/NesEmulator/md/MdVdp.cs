@@ -139,6 +139,10 @@ public sealed partial class MdVdp
     private int fifoHead, fifoCount;
     private ushort lastFifoData;       // the last word the 68000 or a DMA put in the FIFO (a data port read while a write target is set returns it)
 
+    /// <summary>Census counters (Workshop --md-census): writes that land while a picture line is being drawn (mid-frame tricks), and the interrupts the 68000 took.</summary>
+    public long ActiveRegWrites, ActiveCramWrites, ActiveVsramWrites, ActiveVramWrites, HintTaken, VintTaken;
+    public readonly long[] ActiveRegWritesBy = new long[24];
+
     /// <summary>The writes the VDP has taken from the 68000 and Z80 (data port words and register/command writes), for tests.</summary>
     public long DataWrites, ControlWrites, FifoStalls, DmaWords;
     public long FifoStallClocks;
@@ -214,14 +218,15 @@ public sealed partial class MdVdp
         /// <summary>Master clocks from a line's H counter 0 to its picture pixel 0 (12 ticks).</summary>
         public static int OriginH40 = 192, OriginH32 = 240;
 
-        /// <summary>Where in a line the slot pattern of the next line takes over (the window boundary): offsets from H counter 0.</summary>
-        public static int CutH40 = 2640, CutH32 = 2640;
+        /// <summary>Where in a line the slot pattern of the next line takes over (the window boundary): offsets from H counter 0. H40: the V counter's step. H32: any value from 2790 to 2920 reproduces the oracle's picture of Nemesis'
+        /// CRAM flicker test pixel for pixel (the slots between the last picture line's dots and the tail slots; below 2790 the dots of the last line move, at 2960 the tail slots do): 2800 is the first slot start in that range.</summary>
+        public static int CutH40 = 2640, CutH32 = 2800;
 
         /// <summary>The picture pixel of each free slot of a drawn line (the oracle's dots sit at these columns on every line) and the H counter ticks (slot numbers) of the free slots before pixel 0.</summary>
         public static int[] ActivePixelsH40 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 236, 252, 268, 298, 300 };
         public static int[] ActivePixelsH32 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 234, 236 };
         public static int[] ActivePreTicksH40 = { 187, 2, 10 };
-        public static int[] ActivePreTicksH32 = { 2, 5, 8, 11 };
+        public static int[] ActivePreTicksH32 = { 148, 159, 2, 11 };
         /// <summary>Slots (counting from slot 0 at the line's H counter 0) that a blanked line cannot use: the refresh pairs. H40 has six pairs (five in the picture, the sixth in the horizontal blank); H32 four single slots.</summary>
         public static int[] BlankRefreshH40 = { 26, 29, 59, 62, 90, 93, 122, 125, 154, 157, 186, 189 };
         public static int[] BlankRefreshH32 = { 26, 58, 90, 122 };
@@ -473,8 +478,8 @@ public sealed partial class MdVdp
     /// <summary>The 68000 acknowledged an interrupt of <paramref name="level"/>: the matching latch clears.</summary>
     public void AcknowledgeInterrupt(int level)
     {
-        if (level == 6) vintPending = false;
-        else if (level == 4) hintPending = false;
+        if (level == 6) { vintPending = false; VintTaken++; }
+        else if (level == 4) { hintPending = false; HintTaken++; }
     }
 
     // =================================================================================================================
@@ -542,6 +547,7 @@ public sealed partial class MdVdp
         {
             case 1:      // VRAM: a word at an odd address lands byte-swapped
             {
+                if (LineIsActive) ActiveVramWrites++;
                 int a = (int)(addr & 0xFFFF);
                 if ((a & 1) != 0) data = (ushort)(data << 8 | data >> 8);
                 a &= ~1;
@@ -553,6 +559,7 @@ public sealed partial class MdVdp
             {
                 // VSRAM holds 40 words: a write to one of the other addresses of its 64-word range is lost, and a read there returns entry 0 (BlastEm and Nemesis' fill-to-VSRAM tests: entries 40-63 read as entry 0)
                 int i = (int)(addr >> 1) & 0x3F;
+                if (LineIsActive) ActiveVsramWrites++;
                 if (i < 40) Vsram[i] = (ushort)(data & 0x07FF);
                 break;
             }
@@ -661,6 +668,7 @@ public sealed partial class MdVdp
     {
         if (reg > 10 && !Mode5) return;       // the extra registers belong to mode 5
         bool vintBefore = VintEnabled, hintBefore = HintEnabled;
+        if (LineIsActive) { ActiveRegWrites++; if (reg < 24) ActiveRegWritesBy[reg]++; }
         SyncRender();
         if (reg is 1 or 7 or 12) RewindIndexStage();      // the display switch, the backdrop colour and the shadow mode act at the output, not at the fetch the stage runs ahead with
         Reg[reg] = value;

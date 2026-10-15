@@ -51,6 +51,8 @@ public sealed partial class MdVdp
     private int imgRow, cellShift = 3;
     private int hscrollA, hscrollB;
     private bool sprOverflow, sprCollision;
+    /// <summary>Census: picture lines on which more sprites than the per-line limit were found.</summary>
+    public long SpriteOverflowLines;
     private bool sprDirty;
     private bool prevLineDotLimit;     // the previous line used up its pixel budget: the first X=0 sprite of this line then masks (Nemesis' sprite masking test)
 
@@ -330,7 +332,7 @@ public sealed partial class MdVdp
             idx = link;
             if (idx == 0 || idx >= maxSprites) break;      // a link of 0 ends the list; one past the table (64 in H32, 80 in H40) does too
         }
-        if (lineSpriteOverflow) sprOverflow = true;
+        if (lineSpriteOverflow) { sprOverflow = true; SpriteOverflowLines++; }
         DrawSpritesToLine();
     }
 
@@ -444,8 +446,12 @@ public sealed partial class MdVdp
     //  Hooks the rest of the VDP calls
     // =================================================================================================================
 
+    /// <summary>A picture line is being drawn (the display may still be switched off).</summary>
+    public bool LineIsActive => lineActive;
+
     private void OnCramWrite(int index, ushort data)
     {
+        if (lineActive) ActiveCramWrites++;
         // colour RAM changes: what has been put out keeps the old colours; the pixel being output at the moment of the write shows the written colour (the colour RAM dot)
         SyncRender();
         Cram[index] = (ushort)(data & 0x0EEE);

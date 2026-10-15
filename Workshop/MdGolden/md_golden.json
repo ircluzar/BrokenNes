@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Genesis golden pictures: FNV-1a over width, height and ARGB pixels at the listed frame counts (frames run, 1-based). \u0027oracle\u0027 entries are frames that matched BlastEm 1.0.0\u0027s own screenshots pixel for pixel; \u0027regression\u0027 entries only pin this emulator. ROMs are not in git; a missing ROM is skipped.",
+  "note": "Genesis golden pictures: FNV-1a over width, height and ARGB pixels at the listed frame counts (frames run, 1-based). 'oracle' entries are frames that matched BlastEm 1.0.0's own screenshots pixel for pixel; 'regression' entries only pin this emulator. ROMs are not in git; a missing ROM is skipped.",
   "entries": [
     {
       "name": "md01 Flicky (title)",
@@ -173,7 +173,7 @@
       }
     },
     {
-      "name": "Fonzie\u0027s window test",
+      "name": "Fonzie's window test",
       "rom": "tests:window-test-by-fonzie.zip|Window Test by Fonzie (PD).bin",
       "verified": "oracle",
       "checkpoints": {
@@ -191,10 +191,10 @@
     {
       "name": "Nemesis CRAM flicker (H32)",
       "rom": "tests:cram-flicker.zip|cram flicker.bin",
-      "verified": "regression",
+      "verified": "oracle",
       "checkpoints": {
-        "400": "94CD16EF47D3437A",
-        "403": "B06C0672ABD7797A"
+        "400": "85ACBA2D69E933D5",
+        "403": "85ACBA2D69E933D5"
       }
     },
     {

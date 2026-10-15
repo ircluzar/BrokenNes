@@ -303,6 +303,7 @@ internal static class MdRunCli
                 case "hint40": MdVdp.HIntOffsetH40 = v[0]; break;
                 case "hint32": MdVdp.HIntOffsetH32 = v[0]; break;
                 case "hintrule": MdVdp.HIntPreRenderRule = v[0] != 0; break;
+                case "iplshift": BOARD_MD.IplSampleAdjustClocks = v[0]; break;
                 case "vstep40": MdVdp.VCounterStepH40 = v[0]; break;
                 case "vstep32": MdVdp.VCounterStepH32 = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;

@@ -108,6 +108,8 @@ def scene_asm(s, i, press):
     r1_on = 0x54 | (0x08 if v30 else 0)
     a('scene%d:' % i)
     a('    move.w #$%04X,(a4)' % (0x8100 | r1_off))
+    # registers first (the sprite attribute table address among them: the VDP's sprite cache follows writes to the table the register names), then the memories
+    for r, v in sorted(s['regs'].items()): a('    move.w #$%04X,(a4)' % (0x8000 | r << 8 | v))
     # the 64 KB of VRAM by DMA from the table window
     src = TABLE_AT + s['dma_window'] * 0x10000
     for v in (0x9300 | 0x00, 0x9400 | 0x80, 0x9500 | (src >> 1) & 0xFF, 0x9600 | (src >> 9) & 0xFF, 0x9700 | (src >> 17) & 0x7F, 0x8F02):
@@ -126,8 +128,7 @@ def scene_asm(s, i, press):
     a('    move.l #$%08X,(a4)' % vram_cmd(s['hs_addr']))
     hs = s['hscroll']
     for k in range(0, len(hs), 2): a('    move.w #$%04X,(a3)' % (hs[k] << 8 | hs[k + 1]))
-    # registers (R1 last, display on)
-    for r, v in sorted(s['regs'].items()): a('    move.w #$%04X,(a4)' % (0x8000 | r << 8 | v))
+    # display on
     a('    move.w #$%04X,(a4)' % (0x8100 | r1_on))
     # wait for Start (pressed, then released)
     a('wt%d:' % i)
