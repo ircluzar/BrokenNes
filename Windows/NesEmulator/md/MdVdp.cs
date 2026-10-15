@@ -565,6 +565,8 @@ public sealed partial class MdVdp
     public static bool SpriteCacheOn = true;
     /// <summary>The cache and the link list cover 80 sprites in H32 too: a link to sprite 64..79 is followed (the walk still stops after 64 sprites); a link of 80 or more ends the list. False: H32 stops at 64.</summary>
     public static bool SpriteLinks80 = true;
+    /// <summary>Experiment: H32 draws the sprites at indices 64 to 79 that the walk reaches (the first version of the link rule did; Nemesis' sprite masking ROM shows the oracle does not).</summary>
+    public static bool SpriteDrawPast64;
 
     private void SatNote(int addr, byte v)
     {

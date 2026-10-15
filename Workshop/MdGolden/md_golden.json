@@ -181,6 +181,15 @@
       }
     },
     {
+      "name": "Nemesis sprite masking ROM (H32 stage)",
+      "rom": "tests:SpriteMaskingTestRom.zip|SpriteMaskingTestRom.bin",
+      "verified": "oracle",
+      "checkpoints": {
+        "100": "C8A4A77C217F6A89",
+        "400": "C8A4A77C217F6A89"
+      }
+    },
+    {
       "name": "MacDonald window distortion bug",
       "rom": "tests:window-distortion-bug.zip|Window distortion bug.BIN",
       "verified": "oracle",

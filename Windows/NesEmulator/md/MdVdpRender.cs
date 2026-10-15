@@ -386,7 +386,8 @@ public sealed partial class MdVdp
             else { ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask; size = Vram[a + 2 & 0xFFFF]; link = Vram[a + 3 & 0xFFFF] & 0x7F; }
             int h = (size & 3) + 1;
             int top = ypos - (128 << (dbl ? 1 : 0));
-            if (imgRow >= top && imgRow < top + (h << cellShift))
+            bool inTable = H40 || idx < 64 || !SpriteLinks80 || SpriteDrawPast64;          // H32: the table has 64 entries; the walk may pass through 64..79 (the cache covers them) but nothing at those indices is drawn
+            if (inTable && imgRow >= top && imgRow < top + (h << cellShift))
             {
                 if (lineSpriteCount == maxLine) { lineSpriteOverflow = true; break; }
                 lineSprites[lineSpriteCount++] = idx;
