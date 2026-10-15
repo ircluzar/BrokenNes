@@ -486,6 +486,39 @@ internal static class MdBoardTest
             if (r.V.IplAt(r.T) == 4) { lines.Add(line); r.V.AcknowledgeInterrupt(4); }
         }
         Check("HINT with R10 = 3 fires every fourth line", lines.Count >= 4 && lines[1] - lines[0] == 4 && lines[2] - lines[1] == 4, string.Join(",", lines));
+        // the lines the horizontal interrupt fires on, measured on BlastEm (handlers reading the V counter, R10 = 0, 1, 3, 224, 225): the counter counts the pre-render line and lines 0 to 223; R10 = n first fires at the
+        // end of line n - 1, then every n + 1 lines; 0 is every line from the pre-render line on; above 224 never
+        System.Collections.Generic.List<int> HintLines(int r10)
+        {
+            var q = new Rig();
+            q.Reg(1, 0x44); q.Reg(0, 0x14); q.Reg(10, r10); q.Reg(12, 0x81);
+            var got = new System.Collections.Generic.List<int>();
+            for (int line = 0; line < 262 * 2; line++)
+            {
+                q.RunTo(q.LineStart(line) + 3000);
+                if (line >= 262 && q.V.IplAt(q.T) == 4) got.Add(line - 262);
+                if (q.V.IplAt(q.T) == 4) q.V.AcknowledgeInterrupt(4);
+            }
+            return got;
+        }
+        var h0 = HintLines(0); var h1 = HintLines(1); var h3 = HintLines(3); var h224 = HintLines(224); var h225 = HintLines(225);
+        Check("HINT, R10 = 0: every line from the pre-render line (261) through 223 (225 interrupts), none on 224-260", h0.Count == 225 && h0.Contains(261) && h0.Contains(0) && h0.Contains(223) && !h0.Contains(224) && !h0.Contains(260), $"{h0.Count}");
+        Check("HINT, R10 = 1: lines 0, 2, 4 ... 222 (the first at the end of line n - 1 = 0; the pre-render line only starts the count)", h1.Count == 112 && h1[0] == 0 && h1[1] == 2 && h1[^1] == 222, $"{h1.Count} {string.Join(",", h1.Take(3))}");
+        Check("HINT, R10 = 3: the first at the end of line 2, then every fourth line", h3.Count == 56 && h3[0] == 2 && h3[1] == 6 && h3[^1] == 222, $"{h3.Count} {string.Join(",", h3.Take(3))}");
+        Check("HINT, R10 = 224: once, at the end of line 223; R10 = 225: never (the counter never gets there)", h224.Count == 1 && h224[0] == 223 && h225.Count == 0, $"{h224.Count} {h225.Count}");
+
+        // the flags, as the oracle's status reads show them (H40: V step 2640, VBlank flag 33 later, HBlank flag from 2855 to the end of the line; H32: 2660, 49, 2975)
+        var fl = new Rig(); fl.Reg(1, 0x44); fl.Reg(12, 0x81);
+        fl.RunTo(fl.LineStart(100) + 2850); bool hb1 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        fl.RunTo(fl.LineStart(100) + 2865); bool hb2 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        fl.RunTo(fl.LineStart(101) + 5); bool hb3 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        Check("the horizontal blank flag (H40) is set from clock 2855 of a line and falls at the next line's start", !hb1 && hb2 && !hb3, $"{hb1} {hb2} {hb3}");
+        var f32 = new Rig(); f32.Reg(1, 0x44); f32.Reg(12, 0x00);
+        f32.RunTo(f32.LineStart(100) + 2650); int vs1 = f32.V.ReadHvCounter(f32.T) >> 8;
+        f32.RunTo(f32.LineStart(100) + 2670); int vs2 = f32.V.ReadHvCounter(f32.T) >> 8;
+        f32.RunTo(f32.LineStart(100) + 2970); bool h32a = (f32.V.ReadStatus(f32.T) & 4) != 0;
+        f32.RunTo(f32.LineStart(100) + 2985); bool h32b = (f32.V.ReadStatus(f32.T) & 4) != 0;
+        Check("H32: the V counter steps at clock 2660 (H counter $10A) and the horizontal blank flag is set from 2975", vs1 == 100 && vs2 == 101 && !h32a && h32b, $"{vs1} {vs2} {h32a} {h32b}");
         var fc = new Rig();
         fc.Reg(0, 0x14); fc.Reg(10, 9); fc.Reg(1, 0x64);
         int fired = 0;
