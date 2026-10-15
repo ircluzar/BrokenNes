@@ -31,8 +31,7 @@ namespace NesEmulator.Sega
         /// <summary>AC RMS the DAC's swing (0 to 1 of full scale) is replayed at, on the stock scale: a sample stream is noise-like, about 0.6 of its peak, and a full-scale 9-bit swing is 0.166 of the 16-bit range.</summary>
         public const double DacRmsPerSwing = 0.6 * 0.166;
         /// <summary>A tonal voice may take a NES triangle (a fixed level, no volume) only when it is at least this fraction of that level (0.35: not more than 9 dB below it); a quieter voice would play far too loud there and is left to the pulses.</summary>
-        public const double TriangleFloor = 0.35;
-        private static readonly double PulseMinHz = NesVoiceWriter.NesCpuHz / (16.0 * 2048), TriangleMinHz = NesVoiceWriter.NesCpuHz / (32.0 * 2048);
+        public const double TriangleFloor = HubReplayer.TriangleFloor;
 
         private readonly MdSoundUnit inner;
         private readonly NesApuHost host;
@@ -40,23 +39,21 @@ namespace NesEmulator.Sega
         private readonly NesVoiceWriter writer;
         private readonly double nesPerMaster;
         private readonly HubVoice[] voices = new HubVoice[MdSoundUnit.VoiceCount];
-        private readonly HubVoice[] output;
         private readonly short[] drain = new short[4096];
         private readonly float[] pull = new float[2048];
         private double nesAcc;
         private long lastMaster;
         private int nesDue, sinceSync;
 
-        // the allocator: which voice sits on which slot (-1 free); the voices' state at this and the last sync
-        private readonly int[] tonalOwner, noiseOwner;
-        private readonly bool[] audible = new bool[MdSoundUnit.VoiceCount], wasAudible = new bool[MdSoundUnit.VoiceCount], wanted = new bool[MdSoundUnit.VoiceCount], lowFlag = new bool[MdSoundUnit.VoiceCount];
-        private readonly double[] targetRms = new double[MdSoundUnit.VoiceCount], voiceHz = new double[MdSoundUnit.VoiceCount];
+        // the allocator and replayer (shared with the Master System FM bridge): which voice sits on which NES channel, and the registers that follow; the voices' state at this and the last sync
+        private readonly HubReplayer replay;
+        private readonly bool[] audible = new bool[MdSoundUnit.VoiceCount], wasAudible = new bool[MdSoundUnit.VoiceCount];
         private bool dacWasOn;
 
         /// <summary>The NES APU core the sound comes from.</summary>
         public string BackApuId { get; }
         /// <summary>What a note below the NES pulse's range does (the same two policies as <see cref="APU_SMS"/>); <see cref="APU_MD.DefaultLowNotes"/> when the unit is made.</summary>
-        public LowNotePolicy LowNotes { get; set; } = APU_MD.DefaultLowNotes;
+        public LowNotePolicy LowNotes { get => replay.LowNotes; set => replay.LowNotes = value; }
         /// <summary>The real sound unit inside (its Z80, YM2612 and PSG), for tools and tests.</summary>
         public MdSoundUnit Inner => inner;
         public NesVoiceWriter Writer => writer;
@@ -74,17 +71,17 @@ namespace NesEmulator.Sega
         /// <summary>Voice-syncs in which an FM voice with vibrato or tremolo sensitivity played with the LFO on (the NES has no LFO: the voice plays steady).</summary>
         public long LfoSyncs { get; private set; }
         /// <summary>Notes below the NES range played whole octaves up, once per note.</summary>
-        public long LowNotesTransposed { get; private set; }
+        public long LowNotesTransposed => replay.LowNotesTransposed;
         /// <summary>Notes below the NES range that were silenced, once per note.</summary>
-        public long LowNotesDropped { get; private set; }
+        public long LowNotesDropped => replay.LowNotesDropped;
         /// <summary>Voice-syncs in which an audible voice found no free NES channel and was not played.</summary>
-        public long VoicesWithoutChannel { get; private set; }
+        public long VoicesWithoutChannel => replay.VoicesWithoutChannel;
         /// <summary>Times a louder newcomer took the channel of a quieter voice.</summary>
-        public long VoicesStolen { get; private set; }
+        public long VoicesStolen => replay.VoicesStolen;
         /// <summary>Voice-syncs in which a tonal voice on a NES triangle (no volume control) was more than 1.5 dB from the triangle's fixed level.</summary>
-        public long TriangleLevelsLost { get; private set; }
+        public long TriangleLevelsLost => replay.TriangleLevelsLost;
         /// <summary>Voice-syncs in which a voice was more than 6 dB under the NES's quietest volume step and was not played.</summary>
-        public long VoicesBelowNesFloor { get; private set; }
+        public long VoicesBelowNesFloor => replay.VoicesBelowNesFloor;
 
         public MdSoundOnNes(SegaMachine machine, string? detail = null)
         {
@@ -94,10 +91,7 @@ namespace NesEmulator.Sega
             back = host.Apu;
             writer = new NesVoiceWriter(NesRegisterPorts.For(back));
             nesPerMaster = NesVoiceWriter.NesCpuHz / machine.Timeline.MasterHz;
-            tonalOwner = new int[writer.PulseSlots + writer.TriangleSlots];
-            noiseOwner = new int[writer.NoiseSlots];
-            output = new HubVoice[tonalOwner.Length + noiseOwner.Length];
-            Array.Fill(tonalOwner, -1); Array.Fill(noiseOwner, -1);
+            replay = new HubReplayer(writer, MdSoundUnit.VoiceCount, IsNoiseVoice, APU_MD.TriangleRms, APU_MD.DefaultLowNotes);
         }
 
         public string CoreName => $"NES:{back.CoreName}+{inner.CoreName}";
@@ -115,8 +109,8 @@ namespace NesEmulator.Sega
 
         private void ForgetVoices()
         {
-            Array.Fill(tonalOwner, -1); Array.Fill(noiseOwner, -1);
-            Array.Clear(wasAudible); Array.Clear(lowFlag); dacWasOn = false;
+            replay.Forget();
+            Array.Clear(wasAudible); dacWasOn = false;
         }
 
         // ---- the bus handshake and the 68000's window: the real unit's, unchanged ----
@@ -146,24 +140,6 @@ namespace NesEmulator.Sega
         }
 
         // ---- the replay ----
-
-        /// <summary>The NES pulse volume (1 to 15) whose loudness (AC RMS, 50% duty) is nearest, in decibels, to <paramref name="rms"/>; 0 when it is more than 6 dB under the quietest step.</summary>
-        private static int PulseVolumeFor(double rms)
-        {
-            if (!(rms > 0) || rms < APU_MD.PulseRms(2, 1) * 0.5) return 0;
-            int best = 1; double bd = double.MaxValue;
-            for (int v = 1; v <= 15; v++) { double d = Math.Abs(Math.Log(APU_MD.PulseRms(2, v) / rms)); if (d < bd) { bd = d; best = v; } }
-            return best;
-        }
-
-        /// <summary>The same for the NES noise (AC RMS of a binary noise is half its amplitude).</summary>
-        private static int NoiseVolumeFor(double rms)
-        {
-            if (!(rms > 0) || rms < 0.5 * 0.5 * APU_SMS.NoiseOut(1)) return 0;
-            int best = 1; double bd = double.MaxValue;
-            for (int v = 1; v <= 15; v++) { double d = Math.Abs(Math.Log(0.5 * APU_SMS.NoiseOut(v) / rms)); if (d < bd) { bd = d; best = v; } }
-            return best;
-        }
 
         /// <summary>The AC RMS an FM voice has on the stock unit, from its carriers' total level and envelope (the same quantities the chip attenuates them by); the carriers are taken as independent sines at full modulation-free power, so a modulator at a ratio of 1 or 2 moves the real figure by a few dB either way.</summary>
         private double FmRms(int ch)
@@ -201,15 +177,16 @@ namespace NesEmulator.Sega
             {
                 var v = voices[i];
                 audible[i] = v.Audible;
-                wanted[i] = v.Audible;
-                voiceHz[i] = v.Hz;
-                targetRms[i] = 0;
-                if (!v.Audible) { lowFlag[i] = false; continue; }
+                replay.Wanted[i] = v.Audible;
+                replay.VoiceHz[i] = v.Hz;
+                replay.ShortNoise[i] = v.ShortNoise;
+                replay.TargetRms[i] = 0;
+                if (!v.Audible) continue;
                 double rms;
                 if (i < 6) rms = FmRms(i);
                 else if (i == 6) { rms = DacRmsPerSwing * v.Level * inner.FmGain; DacSyncs++; }
                 else rms = 0.5 * psgAmp * v.Level;
-                targetRms[i] = rms * LevelScale;
+                replay.TargetRms[i] = rms * LevelScale;
                 if (i < 6)
                 {
                     int choffs = i % 3 + 0x100 * (i / 3);
@@ -226,102 +203,7 @@ namespace NesEmulator.Sega
             dacWasOn = dacOn;
             for (int i = 0; i < voices.Length; i++) wasAudible[i] = audible[i];
 
-            Allocate();
-
-            // ---- the NES chip's voices, in slot order (pulses, then triangles, then noises) ----
-            int pulses = writer.PulseSlots;
-            for (int slot = 0; slot < tonalOwner.Length; slot++)
-            {
-                bool tri = slot >= pulses;
-                var kind = tri ? HubVoiceKind.Triangle : HubVoiceKind.Pulse;
-                int owner = tonalOwner[slot];
-                if (owner < 0) { output[slot] = new HubVoice(kind, 0, 0f); continue; }
-                double hz = voiceHz[owner], min = tri ? TriangleMinHz : PulseMinHz;
-                if (hz < min)
-                {
-                    // below the NES channel's range: the policy (counted once per note)
-                    if (!lowFlag[owner]) { lowFlag[owner] = true; if (LowNotes == LowNotePolicy.Drop) LowNotesDropped++; else LowNotesTransposed++; }
-                    if (LowNotes == LowNotePolicy.Drop) { output[slot] = new HubVoice(kind, 0, 0f); continue; }
-                    while (hz < min) hz *= 2;
-                }
-                else lowFlag[owner] = false;
-                float level;
-                if (tri)
-                {
-                    level = 1f;
-                    if (Math.Abs(Math.Log(targetRms[owner] / APU_MD.TriangleRms)) > 0.1727) TriangleLevelsLost++;   // 1.5 dB
-                }
-                else
-                {
-                    int vol = PulseVolumeFor(targetRms[owner]);
-                    if (vol == 0) { VoicesBelowNesFloor++; output[slot] = new HubVoice(kind, 0, 0f); continue; }
-                    level = vol / 15f;
-                }
-                output[slot] = new HubVoice(kind, hz, level, Duty: 2);
-            }
-            int at = tonalOwner.Length;
-            for (int slot = 0; slot < noiseOwner.Length; slot++)
-            {
-                int owner = noiseOwner[slot];
-                if (owner < 0) { output[at + slot] = new HubVoice(HubVoiceKind.Noise, 0, 0f); continue; }
-                int vol = NoiseVolumeFor(targetRms[owner]);
-                if (vol == 0) { VoicesBelowNesFloor++; output[at + slot] = new HubVoice(HubVoiceKind.Noise, 0, 0f); continue; }
-                output[at + slot] = new HubVoice(HubVoiceKind.Noise, voices[owner].Hz, vol / 15f, ShortNoise: voices[owner].ShortNoise);
-            }
-            writer.Apply(output);
-        }
-
-        /// <summary>Gives the sounding voices NES channels: held voices keep theirs, new ones take a free one, and with none free the quietest pulse's voice gives way to a newcomer 6 dB louder.</summary>
-        private void Allocate()
-        {
-            // free the slots of voices that stopped
-            for (int s = 0; s < tonalOwner.Length; s++) if (tonalOwner[s] >= 0 && !wanted[tonalOwner[s]]) tonalOwner[s] = -1;
-            for (int s = 0; s < noiseOwner.Length; s++) if (noiseOwner[s] >= 0 && !wanted[noiseOwner[s]]) noiseOwner[s] = -1;
-
-            // newcomers, loudest first
-            while (true)
-            {
-                int pick = -1;
-                for (int i = 0; i < voices.Length; i++)
-                    if (wanted[i] && !Holds(i) && (pick < 0 || targetRms[i] > targetRms[pick])) pick = i;
-                if (pick < 0) break;
-                if (!Place(pick)) { VoicesWithoutChannel++; wanted[pick] = false; }
-            }
-        }
-
-        private bool Holds(int voice)
-        {
-            var owners = IsNoiseVoice(voice) ? noiseOwner : tonalOwner;
-            foreach (int o in owners) if (o == voice) return true;
-            return false;
-        }
-
-        private bool Place(int voice)
-        {
-            if (IsNoiseVoice(voice))
-            {
-                for (int s = 0; s < noiseOwner.Length; s++) if (noiseOwner[s] < 0) { noiseOwner[s] = voice; return true; }
-                return Steal(noiseOwner, voice, 0, noiseOwner.Length);
-            }
-            int pulses = writer.PulseSlots;
-            bool triangleOk = targetRms[voice] >= APU_MD.TriangleRms * TriangleFloor;      // loud enough for the triangle's one level
-            // a note below the pulse range goes to a free triangle (exact pitch down to 27 Hz) when it can; everything else prefers a pulse
-            if (triangleOk && voiceHz[voice] < PulseMinHz && voiceHz[voice] >= TriangleMinHz)
-                for (int s = pulses; s < tonalOwner.Length; s++) if (tonalOwner[s] < 0) { tonalOwner[s] = voice; return true; }
-            for (int s = 0; s < pulses; s++) if (tonalOwner[s] < 0) { tonalOwner[s] = voice; return true; }
-            if (triangleOk)
-                for (int s = pulses; s < tonalOwner.Length; s++) if (tonalOwner[s] < 0) { tonalOwner[s] = voice; return true; }
-            return Steal(tonalOwner, voice, 0, pulses);           // the pulses are full: take the quietest pulse's channel if this voice is much louder
-        }
-
-        private bool Steal(int[] owners, int voice, int from, int to)
-        {
-            int quiet = -1;
-            for (int s = from; s < to; s++) if (owners[s] >= 0 && (quiet < 0 || targetRms[owners[s]] < targetRms[owners[quiet]])) quiet = s;
-            if (quiet < 0 || !(targetRms[voice] > 2.0 * targetRms[owners[quiet]])) return false;     // 6 dB
-            owners[quiet] = voice;
-            VoicesStolen++;
-            return true;
+            replay.Replay();       // the NES channels (HubReplayer: the allocation policy, levels, low notes) and the registers
         }
 
         // ---- sound out: the NES chip's, mono, on both sides ----

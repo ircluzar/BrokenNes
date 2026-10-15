@@ -40,7 +40,7 @@ internal static class GbShades
     /// <summary>A shade as a SNES / CGB BGR555 colour in the chosen Game Boy look.</summary>
     public static ushort Bgr555(int shade) { var (r, g, b) = GbLook.Shades[shade]; return (ushort)(r >> 3 | (g >> 3) << 5 | (b >> 3) << 10); }
     /// <summary>Colour <paramref name="c"/> of a CGB palette as BGR555.</summary>
-    public static ushort Cgb(byte[] palRam, int palette, int c) { int o = palette * 8 + c * 2; return (ushort)(palRam[o] | palRam[o + 1] << 8); }
+    public static ushort Cgb(byte[] palRam, int palette, int c) { int o = palette * 8 + c * 2; return (ushort)((palRam[o] | palRam[o + 1] << 8) & 0x7FFF); }   // bit 15 is unused on the chip; a game may leave it set, and the SNES colour tables have 32,768 entries
 }
 
 /// <summary>Which Game Boy screen colours to show: the original DMG green, greyscale, the Game Boy Pocket's tamer

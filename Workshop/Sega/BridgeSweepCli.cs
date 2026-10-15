@@ -71,6 +71,11 @@ internal static class BridgeSweepCli
         public int PostColours { get; set; }
         public int PostChanges { get; set; }
         public double PostAudioRms { get; set; }
+        /// <summary>The last sampled picture, as a 64x60 luma thumbnail (and its size and hash), so a run can be compared with its control's: does the game still look like itself?</summary>
+        public int PicW { get; set; }
+        public int PicH { get; set; }
+        public byte[] Thumb { get; set; } = Array.Empty<byte>();
+        public string FinalHash { get; set; } = "";
     }
 
     public sealed class Cell
@@ -85,8 +90,14 @@ internal static class BridgeSweepCli
         public string Label { get; set; } = "";
         /// <summary>The sound class of the run (alive, silent, static, ""): reported for every kind, because a CPU or a picture chip that is fine for the picture can still leave the game mute.</summary>
         public string AudioClass { get; set; } = "";
+        /// <summary>Mean luma difference (0..1) between this run's last picture and its control's (-1: not comparable), and whether they are identical.</summary>
+        public double Diff { get; set; } = -1;
+        public bool SameAsControl { get; set; }
         public Measure M { get; set; } = new();
     }
+
+    /// <summary>A CPU, swap or combination run whose picture is alive but differs from the control's by more than this (mean luma, 0..1) is "diverged": it runs, but the game is not where it is on its own cores.</summary>
+    internal const double DivergedLuma = 0.05;
 
     /// <summary>One combination of cores (empty = the console's default) and, for a hot swap, the change made mid-run ("frame:slot:id", slot cpu|ppu|apu).</summary>
     public sealed record Spec(string Cpu = "", string Ppu = "", string Apu = "", string Swap = "");
@@ -170,6 +181,9 @@ internal static class BridgeSweepCli
         if (ids.Count > 0) games = games.Where(g => ids.Contains(g.Id)).ToList();
         bool menus = args.Contains("--menus", StringComparer.OrdinalIgnoreCase), swaps = args.Contains("--swaps", StringComparer.OrdinalIgnoreCase), cross = args.Contains("--cross", StringComparer.OrdinalIgnoreCase);
         bool includeNative = args.Contains("--include-native", StringComparer.OrdinalIgnoreCase);
+        var slotFilter = Opt("slots", "cpu,ppu,apu").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var entryFilter = Opt("entries", "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);   // only these menu ids (empty: all)
+        IEnumerable<(string slot, string id, string label)> Entries(string console) => MenuEntries(console, includeNative).Where(e => slotFilter.Contains(e.slot) && (entryFilter.Count == 0 || entryFilter.Contains(e.id)));
         if (menus || swaps || cross) pictures = false;     // the menu modes replace the older picture / sound lists
 
         // the jobs: control first, then every combination
@@ -180,10 +194,10 @@ internal static class BridgeSweepCli
             if (pictures) foreach (var p in overrides.TryGetValue(g.Console, out var ov) ? ov : DefaultPictures(g.Console)) work.Add((g, "picture", p, "ppu", p, new Spec(Ppu: p)));
             if (sound) foreach (var s in DefaultSounds(g.Console)) work.Add((g, "sound", s, "apu", s, new Spec(Apu: s)));
             if (menus)
-                foreach (var e in MenuEntries(g.Console, includeNative))
+                foreach (var e in Entries(g.Console))
                     work.Add((g, e.slot == "cpu" ? "cpu" : e.slot == "ppu" ? "picture" : "sound", e.id, e.slot, e.label, e.slot == "cpu" ? new Spec(Cpu: e.id) : e.slot == "ppu" ? new Spec(Ppu: e.id) : new Spec(Apu: e.id)));
             if (swaps)
-                foreach (var e in MenuEntries(g.Console, includeNative))
+                foreach (var e in Entries(g.Console))
                     work.Add((g, "swap", e.slot + ":" + e.id, e.slot, e.label, new Spec(Swap: $"{frames / 2}:{e.slot}:{e.id}")));
             if (cross)
                 foreach (var c in CrossEntries(g.Console)) work.Add((g, "combo", c.Label(), "", c.Label(), c));
@@ -217,6 +231,13 @@ internal static class BridgeSweepCli
                     : c.Kind == "swap" ? ClassifySwap(c.M, control)
                     : Classify(c.M, control, c.Kind == "sound");
             c.AudioClass = c.M.Refused || c.M.Crashed || c.M.Timeout ? "" : ClassifyAudio(c.Kind == "swap" ? c.M.PostAudioRms : c.M.AudioRms, control);
+            // does the game still look like itself? (same size picture as the control's: the mean luma difference of the last sampled frames)
+            if (control != null && c.Kind is "cpu" or "swap" or "combo" && c.M.Thumb.Length > 0 && control.Thumb.Length == c.M.Thumb.Length && control.PicW == c.M.PicW && control.PicH == c.M.PicH)
+            {
+                c.SameAsControl = control.FinalHash == c.M.FinalHash;
+                c.Diff = Enumerable.Range(0, c.M.Thumb.Length).Average(i => Math.Abs(c.M.Thumb[i] - control.Thumb[i])) / 255.0;
+                if (c.Class == "alive" && !(c.Kind == "swap" && c.Slot == "ppu") && c.Diff > DivergedLuma) c.Class = "diverged";
+            }
         }
         File.WriteAllText(Path.Combine(outDir, "sweep.json"), JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(Path.Combine(outDir, "sweep.csv"), Csv(all));
@@ -348,14 +369,14 @@ internal static class BridgeSweepCli
                 foreach (var entry in rows.Select(c => (c.Slot, c.Combo)).Distinct())
                 {
                     var cs = gamesHere.Select(gm => rows.FirstOrDefault(c => c.Game == gm && c.Slot == entry.Slot && c.Combo == entry.Combo)).ToList();
-                    string Show(Cell? c) => c == null ? "" : c.Class + (c.Class is "alive" or "lossy" && kind == "picture" && c.M.FidSamples > 0 ? $" {c.M.Ssim:F2}" : "") + (c.AudioClass is "silent" ? "/silent" : "");
+                    string Show(Cell? c) => c == null ? "" : c.Class + (c.Class is "alive" or "lossy" && kind == "picture" && c.M.FidSamples > 0 ? $" {c.M.Ssim:F2}" : "") + (c.Diff >= 0 ? (c.SameAsControl ? " (=)" : $" (d{c.Diff:F2})") : "") + (c.AudioClass is "silent" ? "/silent" : "");
                     string note = string.Join("; ", cs.Where(c => c != null && (c.M.Refused || c.M.Crashed || c.Class == "restart" || c.Class is "dead" or "frozen")).Select(c => $"{c!.Game}: {(c.M.Message + " " + c.M.SwapNote).Trim()}").Take(2));
                     sb.AppendLine($"| {entry.Slot} | {entry.Combo.Replace("|", "/")} | " + string.Join(" | ", cs.Select(Show)) + $" | {note.Replace("|", "/")} |");
                 }
             }
         }
         sb.AppendLine(); sb.AppendLine("### Totals"); sb.AppendLine();
-        var classes = new[] { "alive", "lossy", "restart", "static", "frozen", "dead", "refused", "crashed", "hung" };
+        var classes = new[] { "alive", "lossy", "diverged", "restart", "static", "frozen", "dead", "refused", "crashed", "hung" };
         sb.AppendLine("| kind | " + string.Join(" | ", classes) + " | silent |"); sb.AppendLine("|---|" + string.Join("|", Enumerable.Repeat("---", classes.Length + 1)) + "|");
         foreach (var kind in new[] { "cpu", "picture", "sound", "swap", "combo" })
         {
@@ -390,13 +411,33 @@ internal static class BridgeSweepCli
         public readonly List<PictureMetrics.Result> Fid = new();
         public double AudioMax; public long AudioSamples; public double AudioWindowSum, AudioWindowDc; public int AudioWindowN; public int AudioChanges; public ulong LastAudioHash;
 
-        public void Picture(ReadOnlySpan<uint> argb, bool late = false)
+        public int PicW, PicH; public byte[] Thumb = Array.Empty<byte>(); public ulong FinalHash;
+
+        public void Picture(ReadOnlySpan<uint> argb, bool late = false, int width = 256)
         {
             ulong h = 14695981039346656037UL; var set = new HashSet<uint>();
             foreach (uint c in argb) { h = (h ^ c) * 1099511628211UL; if (set.Count <= 64) set.Add(c & 0xFFFFFF); }
+            FinalHash = h; PicW = width; PicH = argb.Length / Math.Max(1, width); Thumb = MakeThumb(argb, PicW, PicH);
             Hashes.Add(h); Samples++;
             if (!First && h != Last) { Changes++; if (late) ChangesLate++; }
             First = false; Last = h; Colours = Math.Max(Colours, set.Count);
+        }
+
+        /// <summary>64 x 60 box-averaged luma (0..255).</summary>
+        private static byte[] MakeThumb(ReadOnlySpan<uint> argb, int w, int h)
+        {
+            const int TW = 64, TH = 60;
+            var t = new byte[TW * TH];
+            if (w <= 0 || h <= 0) return t;
+            for (int ty = 0; ty < TH; ty++)
+                for (int tx = 0; tx < TW; tx++)
+                {
+                    int x0 = tx * w / TW, x1 = Math.Max(x0 + 1, (tx + 1) * w / TW), y0 = ty * h / TH, y1 = Math.Max(y0 + 1, (ty + 1) * h / TH);
+                    long sum = 0; int n = 0;
+                    for (int y = y0; y < y1 && y < h; y++) for (int x = x0; x < x1 && x < w; x++) { uint c = argb[y * w + x]; sum += (((c >> 16) & 0xFF) * 77 + ((c >> 8) & 0xFF) * 150 + (c & 0xFF) * 29) >> 8; n++; }
+                    t[ty * TW + tx] = (byte)(n == 0 ? 0 : sum / n);
+                }
+            return t;
         }
 
         public void Audio(IEnumerable<float> mono, int count)
@@ -423,6 +464,7 @@ internal static class BridgeSweepCli
         {
             m.FidSamples = s.Fid.Count; m.Ssim = s.Fid.Average(r => r.Ssim); m.SsimMin = s.Fid.Min(r => r.Ssim); m.BlockError = s.Fid.Average(r => r.BlockError); m.ColourError = s.Fid.Average(r => r.ColourError); m.Recognisable = s.Fid.Count(r => r.Recognisable);
         }
+        m.PicW = s.PicW; m.PicH = s.PicH; m.Thumb = s.Thumb; m.FinalHash = s.FinalHash.ToString("X16");
         if (swapped) { m.SwapAttempted = true; m.SwapInPlace = inPlace; m.SwapNote = swapNote; }
         if (post != null) { post.EndAudioWindow(); m.PostColours = post.Colours; m.PostChanges = post.Changes; m.PostAudioRms = post.AudioMax; }
         if (info != null) foreach (var kv in info.Counters.Totals) m.Counters[kv.Key] = kv.Value;
@@ -529,7 +571,7 @@ internal static class BridgeSweepCli
             if (f > 30 && f % 10 == 0)
             {
                 var pic = session.Frame.AsSpan(0, session.FrameWidth * session.FrameHeight);
-                s.Picture(pic, f > frames / 2); post?.Picture(pic, true);
+                s.Picture(pic, f > frames / 2, session.FrameWidth); post?.Picture(pic, true, session.FrameWidth);
                 if (info != null)
                 {
                     var (rx, ry, rw, rh) = info.Region;

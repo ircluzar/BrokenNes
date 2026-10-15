@@ -205,7 +205,8 @@ internal static class SegaFoundationTestCli
         // Track C3a: the picture menus list the NES-family picture chips too (a Sega game's picture drawn by a NES, Game Boy or SNES chip, ids NES:<chip>, family of the chip)
         Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip> in the Master System / Game Gear / Genesis sound or picture menu)",
             expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => o.Family == Consoles.Family(e.Item1)
-                || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Family == "NES" && o.Id.StartsWith("NES:"))
+                // C4b: and the sound of another console's chip reached through the NES registers (NES:DMG, NES:SNES, NES:MD, ...: the family of that chip)
+                || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:"))
                 || (e.Item2 == CoreSlot.Ppu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:")))));
         Check("the NES, SNES and Game Boy menus are unchanged by the Sega kinds", CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Cpu) == "SFC" && CoreCatalog.Default(ConsoleKind.GameBoy, CoreSlot.Cpu) == "GB" && CoreCatalog.Default(ConsoleKind.Nes, CoreSlot.Cpu) == "FIX");
     }

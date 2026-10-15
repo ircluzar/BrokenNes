@@ -106,8 +106,9 @@ internal static class SmsFmBridgeTests
         Check("CoreRegistry discovers the NES-facing core as APU id SMSFM", CoreRegistry.ApuIds.Contains("SMSFM", StringComparer.OrdinalIgnoreCase) && CoreRegistry.ApuTypes["SMSFM"] == typeof(APU_SMSFM));
         var nes = CoreCatalog.Options(ConsoleKind.Nes, CoreSlot.Apu).FirstOrDefault(o => o.Id == "SMSFM");
         Check("the NES APU menu lists SMSFM under the Master System family ('From the Master System'), with an honest label", nes is { Family: "Master System" } && nes.Label.Contains("DMC is dropped") && nes.Label.Contains("YM2413"), nes?.Label ?? "(missing)");
-        Check("... it is not a NES chip: the other consoles' lists of NES sound chips leave it out", CoreCatalog.NesFamilyOf(CoreSlot.Apu, "SMSFM") == "Master System"
-            && new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.Snes, ConsoleKind.GameBoy }.All(c => CoreCatalog.Options(c, CoreSlot.Apu).All(o => o.Id != "NES:SMSFM")));
+        Check("... it is not a NES chip (its family is the Master System's) and the console's own menus do not offer it through a NES; the Genesis, SNES and Game Boy menus do, under its family (C4b: the sound hub both ways)", CoreCatalog.NesFamilyOf(CoreSlot.Apu, "SMSFM") == "Master System"
+            && new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear }.All(c => CoreCatalog.Options(c, CoreSlot.Apu).All(o => o.Id != "NES:SMSFM"))
+            && new[] { ConsoleKind.Genesis, ConsoleKind.Snes, ConsoleKind.GameBoy }.All(c => CoreCatalog.Options(c, CoreSlot.Apu).Any(o => o.Id == "NES:SMSFM" && o.Family == "Master System")));
         Check("... and the Master System's own sound menu is unchanged (the stock unit, SMS-FM, then NES chips)", CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Apu).Take(2).Select(o => o.Id).SequenceEqual(new[] { "SMS", "SMS-FM" }));
     }
 
