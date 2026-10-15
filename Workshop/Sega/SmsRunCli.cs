@@ -163,6 +163,12 @@ internal static class SmsRunCli
                 Console.WriteLine($"{(code == 3 ? "CRAM" : "VRAM")} f{fr} l{line} mc{mc} [{addr:X4}]={value:X2} pc={board.Cpu.PC:X4} cycles={board.Cycles}");
             };
         }
+        if (Opt("watch-dots") is { } wd)
+        {
+            // --watch-dots a-b: every colour RAM write that takes effect in frames a..b as "frame line x index colour" (x = where its one-pixel dot was drawn, -1: no dot) at the moment it lands
+            var fr2 = wd.Split('-'); int dlo = int.Parse(fr2[0]), dhi = int.Parse(fr2.Length > 1 ? fr2[1] : fr2[0]);
+            board.Vdp.CramDotHook = (line, x, index, col, mc) => { long fr = board.Frames + 1; if (fr >= dlo && fr <= dhi) Console.WriteLine($"DOT f{fr} l{line} x{x} i{index:X2} {col & 0xFFFFFF:X6} mc{mc}"); };
+        }
         if (Opt("watch-write") is { } ww)
         {
             // --watch-write <addr>[-<addr>] [--watch-frames a-b]: print every write to those Z80 addresses with the frame, line, cycle and the PC after the write
@@ -283,7 +289,7 @@ internal static class SmsRunCli
             if (shots.Contains(frameNo))
             {
                 string path = Path.Combine(outDir, $"{tag}_f{frameNo}.png");
-                if (mesenDir == null || shots.Count <= 12) SmsPng.Save(session.Frame, session.FrameWidth, session.FrameHeight, path);
+                if (mesenDir == null || shots.Count <= 12 || Flag("save-pngs")) SmsPng.Save(session.Frame, session.FrameWidth, session.FrameHeight, path);
                 if (mesenDir != null)
                 {
                     // --mesen-shift k: compare this emulator's frame N with the oracle's screenshot N+k (a lag test: the oracle may show the frame before the one just completed)

@@ -110,6 +110,8 @@ public sealed partial class SmsVdp
 
     /// <summary>Called with (frame line, master clock in the line, register, value) for every register write: the tracing hook of the Workshop.</summary>
     public Action<int, int, int, byte>? RegisterWriteHook;
+    /// <summary>A tool hook: a colour RAM write has just taken effect (line, the picture x the dot was drawn at or -1 when no dot was, the colour RAM byte index, the colour of the dot, the master clock into the line the chip is at).</summary>
+    public Action<int, int, int, uint, int>? CramDotHook;
     /// <summary>Called with (code register, address, value, frame line, master clock in the line) for every write to the data port (VRAM or colour RAM).</summary>
     public Action<int, int, byte, int, int>? DataWriteHook;
 
@@ -428,7 +430,11 @@ public sealed partial class SmsVdp
                 // With the display off the picture shows the backdrop, and a colour RAM write that lands while the line is being drawn shows through as a one-pixel dot of the colour written
                 // (the oracle does this; on the Master System the value is the 6-bit colour of the byte, on the Game Gear the colour the pair completes)
                 if (!lineDisplayOn && Line < activeHeight && renderedX < 256 && (!gg || (index & 1) != 0))
+                {
+                    CramDotHook?.Invoke(Line, renderedX, index, palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F], curMc);
                     Frame[Line * 256 + renderedX++] = palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F];
+                }
+                else CramDotHook?.Invoke(Line, -1, index, palArgb[gg ? (index >> 1) & 0x1F : index & 0x1F], curMc);   // no dot (a tool sees the write anyway)
                 break;
             default:
                 RegisterWriteHook?.Invoke(Line, curMc, index, value);
