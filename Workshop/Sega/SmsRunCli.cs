@@ -106,6 +106,12 @@ internal static class SmsRunCli
                 Console.WriteLine($"IO f{fr} l{line} c{cyc} {(write ? "W" : "R")} {port & 0xFF:X2} {value:X2}");
             };
         }
+        // --sound-regs <oracle psg file>: this emulator's PSG registers at the end of every frame (the three tone periods, the four attenuations, the noise register, the Game Gear stereo mask) against the oracle's, from the capture
+        // script run with MESEN_PSG=1 ("frame t0 t1 t2 v0 v1 v2 vn noise pan"); --fm-regs-file <oracle fm file> the same for the YM2413's 64 registers and the audio control (MESEN_FM=1). The result is the event-level
+        // comparison of what the game told the sound chips: per frame, how often the registers are the oracle's, and where they first differ.
+        var soundRegs = Opt("sound-regs") is { } srPath ? SoundRegs.Load(srPath, 9) : null;
+        var fmRegsFile = Opt("fm-regs-file") is { } frPath ? SoundRegs.Load(frPath, 65) : null;
+        var soundRegsOurs = new List<int[]>(); var fmRegsOurs = new List<int[]>();
         StreamWriter? watchLog = null;
         if (Opt("watch-pc") is { } wpcs)
         {
@@ -223,6 +229,12 @@ internal static class SmsRunCli
                     audioFrameMax = Math.Max(audioFrameMax, Math.Abs(mono));
                 }
             int frameNo = f + 1;
+            if (soundRegs != null || fmRegsFile != null)
+            {
+                var psgNow = board.Sound switch { SmsSound s0 => s0.Psg, SmsFmSound s1 => s1.Psg, _ => null };
+                if (psgNow != null) soundRegsOurs.Add(new[] { psgNow.Period(0), psgNow.Period(1), psgNow.Period(2), psgNow.Volume(0), psgNow.Volume(1), psgNow.Volume(2), psgNow.Volume(3), psgNow.NoiseControl, psgNow.StereoMask });
+                if (board.Sound is SmsFmSound fm0) { var fr = new int[65]; fr[0] = fm0.AudioControl; for (int i = 0; i < 64; i++) fr[1 + i] = fm0.Fm.Register(i); fmRegsOurs.Add(fr); }
+            }
             if (Flag("hash") || hashAt.Contains(frameNo))
             {
                 hashLast = HashFrame(session);
@@ -316,7 +328,10 @@ internal static class SmsRunCli
             Console.WriteLine($"mesen compare: stable frames {stableFrames}: {stableMatched} identical, {stableFrames - stableMatched} differ" + (firstDiffFrame > 0 ? $" (first at frame {firstDiffFrame})" : "") +
                               (mesenDirB != null ? $"; unstable frames (Mesen's two runs differ) {unstableFrames}: this emulator equals one of them in {unstableMatched}" : ""));
         }
-        return mesenDir != null && stableFrames > stableMatched ? 1 : 0;
+        int soundExit = 0;
+        if (soundRegs != null) soundExit |= SoundRegs.Report("PSG", new[] { "tone0", "tone1", "tone2", "att0", "att1", "att2", "attNoise", "noise", "stereo" }, soundRegsOurs, soundRegs);
+        if (fmRegsFile != null) soundExit |= SoundRegs.Report("YM2413", Enumerable.Range(0, 65).Select(i => i == 0 ? "audioControl" : $"reg{i - 1:X2}").ToArray(), fmRegsOurs, fmRegsFile);
+        return soundExit != 0 ? soundExit : mesenDir != null && stableFrames > stableMatched ? 1 : 0;
     }
 
     /// <summary>"60,120,300-310" into a set of frame numbers.</summary>
@@ -349,6 +364,43 @@ internal static class SmsRunCli
         w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate * 2); w.Write((short)2); w.Write((short)16);
         w.Write("data"u8); w.Write(mono.Length * 2);
         foreach (var s in mono) w.Write(s);
+    }
+}
+
+/// <summary>The sound chips' registers at the end of every frame, this emulator's against the oracle's (Mesen's state, written by the capture script as one line per frame): the event-level comparison of what the game told the chips.</summary>
+internal static class SoundRegs
+{
+    /// <summary>The oracle's file: "frame v1 v2 ..." per line (decimal, <paramref name="fields"/> values), indexed by frame (1-based).</summary>
+    public static Dictionary<int, int[]> Load(string path, int fields)
+    {
+        var d = new Dictionary<int, int[]>();
+        foreach (var line in File.ReadLines(path))
+        {
+            var p = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < fields + 1) continue;
+            d[int.Parse(p[0])] = p.Skip(1).Take(fields).Select(x => int.TryParse(x, out int v) ? v : (x == "true" ? 1 : 0)).ToArray();
+        }
+        return d;
+    }
+
+    /// <summary>One line: how many frames carry the oracle's registers (the same frame, and within one frame either way), the fields that differ and the first difference.</summary>
+    public static int Report(string chip, string[] names, List<int[]> ours, Dictionary<int, int[]> theirs)
+    {
+        int compared = 0, same = 0, near = 0, firstBad = -1;
+        var byField = new int[names.Length];
+        for (int i = 0; i < ours.Count; i++)
+        {
+            int frame = i + 1;
+            if (!theirs.TryGetValue(frame, out var t)) continue;
+            compared++;
+            if (ours[i].SequenceEqual(t)) { same++; near++; continue; }
+            for (int k = 0; k < names.Length; k++) if (ours[i][k] != t[k]) byField[k]++;
+            if (firstBad < 0) firstBad = frame;
+            if ((i > 0 && theirs.TryGetValue(frame - 1, out var tp) && ours[i].SequenceEqual(tp)) || (theirs.TryGetValue(frame + 1, out var tn) && ours[i].SequenceEqual(tn))) near++;
+        }
+        string fields = string.Join(" ", Enumerable.Range(0, names.Length).Where(k => byField[k] > 0).Select(k => $"{names[k]}:{byField[k]}"));
+        Console.WriteLine($"sound registers ({chip}): {compared} frames compared, {same} identical, {near} identical or equal to a neighbouring frame's" + (firstBad > 0 ? $"; {compared - same} differ (fields {fields}); first at frame {firstBad}: ours {string.Join(",", ours[firstBad - 1].Take(9))} oracle {string.Join(",", theirs[firstBad].Take(9))}" : "; no difference"));
+        return same == compared && compared > 0 ? 0 : 1;
     }
 }
 

@@ -22,6 +22,7 @@ param(
     [switch]$State,
     [switch]$Fm,
     [switch]$Ports,
+    [switch]$Psg,               # also write the PSG / stereo registers at the end of every frame (<tag>.psg.txt); with -Fm the YM2413 register file too (<tag>.fm.txt)
     [string]$Exec = "",
     [string]$Watch = "",
     [switch]$ExecRegs,
@@ -64,6 +65,7 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 $lua = Join-Path $PSScriptRoot "capture.lua"
 $env:MESEN_OUT = (Resolve-Path $OutDir).Path; $env:MESEN_TAG = $Tag; $env:MESEN_FRAMES = ($Frames -join ","); $env:MESEN_INPUT = $Pad
 $env:MESEN_PORTS = if ($Ports) { "1" } else { "" }
+$env:MESEN_PSG = if ($Psg) { "1" } else { "" }; $env:MESEN_FM = if ($Psg -and $Fm) { "1" } else { "" }
 $env:MESEN_EXEC = $Exec
 $env:MESEN_WATCH = $Watch
 $env:MESEN_EXECREGS = if ($ExecRegs) { "1" } else { "" }

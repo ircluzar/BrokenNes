@@ -188,6 +188,25 @@ do
   end
 end
 
+-- MESEN_PSG="1": the sound chips' registers at the end of every frame, one line per frame to <tag>.psg.txt as "frame tone0 tone1 tone2 vol0 vol1 vol2 volNoise noiseControl panning" (decimal: the three tone periods, the four
+-- attenuations, the noise register, the Game Gear stereo mask), and with MESEN_FM="1" <tag>.fm.txt as "frame audioControl reg0 ... reg63" (the YM2413's register file). The oracle's port-write callbacks do not fire (the SMS port space is not
+-- reachable by them), so the chips' state at the frame's end is what an event-level comparison with this emulator's chips can use (Workshop --sms-run --sound-regs / --fm-regs-file).
+local psgLog, fmLog = nil, nil
+if os.getenv("MESEN_PSG") == "1" then psgLog = assert(io.open(outDir .. "/" .. tag .. ".psg.txt", "wb")) end
+if os.getenv("MESEN_FM") == "1" then fmLog = assert(io.open(outDir .. "/" .. tag .. ".fm.txt", "wb")) end
+local function logSound(n)
+  local st = emu.getState()
+  if psgLog then
+    psgLog:write(string.format("%d %d %d %d %d %d %d %d %d %d\n", n, st["psg.tone[0].reloadValue"], st["psg.tone[1].reloadValue"], st["psg.tone[2].reloadValue"],
+      st["psg.tone[0].volume"], st["psg.tone[1].volume"], st["psg.tone[2].volume"], st["psg.noise.volume"], st["psg.noise.control"], st["psg.gameGearPanningReg"]))
+  end
+  if fmLog then
+    local t = { tostring(n), tostring(st["fmAudio.audioControl"]) }
+    for i = 0, 63 do t[#t + 1] = tostring(st["fmAudio.opll->reg" .. i]) end
+    fmLog:write(table.concat(t, " ") .. "\n")
+  end
+end
+
 -- the input of frame index f (0-based; the frame that starts at the end of the picture of frame f-1) is what the game reads when it polls while `done` frames have completed
 emu.addEventCallback(function()
   applyScript(done)
@@ -201,6 +220,7 @@ emu.addEventCallback(function()
   if wanted[done - LAG] and done - LAG >= 1 then
     writeFile(outDir .. "/" .. tag .. "_f" .. (done - LAG) .. ".png", emu.takeScreenshot())
   end
+  if (psgLog or fmLog) and done <= last then logSound(done) end
   -- state and memory are not delayed: they are the state at the end of frame N
   if wanted[done] then
     if os.getenv("MESEN_DUMP") == "1" or os.getenv("MESEN_STATE") == "1" then dumpState(done) end
@@ -212,6 +232,8 @@ emu.addEventCallback(function()
     if watchLog then watchLog:close() end
     if vwatchLog then vwatchLog:close() end
     if mwatchLog then mwatchLog:close() end
+    if psgLog then psgLog:close() end
+    if fmLog then fmLog:close() end
     emu.stop(0)
   end
 end, emu.eventType.endFrame)
