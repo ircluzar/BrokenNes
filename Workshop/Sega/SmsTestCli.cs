@@ -175,6 +175,8 @@ internal static class SmsSuites
             c => { }, "a VRAM byte left unrestored after the load"),
         new("swap", "hot swapping of every core slot of the Master System and the Game Gear mid-game through the session the apps build: every id of the CPU, picture (own chip and each NES:<chip>) and sound (own unit, SMS-FM, each NES:<chip>) menus on a tone-and-scroll program and, with --roms, on real games; the game, its picture and its tone carry on, a bad id is refused, chains and a swap per frame", SwapSuite.Run,
             c => { }, "a session whose TrySwapCore says yes to every id and silences the PSG on a sound swap"),
+        new("rosterstate", "save states (F7 / F5) on every roster game through the session the apps build: a state taken at frame 1,000 of the game's play script, loaded into a fresh session, runs on frame for frame, sample for sample and byte for byte as the session that carried on; another sound unit (a fresh session, or the same session after a sound swap) refuses it and stays as it was (needs --roms)", RosterStateSuite.Run,
+            c => { }, "a work RAM byte the load did not restore"),
         new("eeprom", "the 24C01 serial EEPROM of the Game Gear baseball cartridges (the SegaEeprom mapper) driven by a data-sheet bit-banging master: acknowledge, byte write, random and sequential read, page wrap, stop, save file, state in mid-transfer", EepromSuite.Run,
             c => { }, "a read started with the write bit"),
         new("bios", "BIOS images (names with BIOS as a word) run as the console's BIOS from a cold power-on with an empty slot: BIOS mapped, VDP cold, $3E switches it off, the name rule, state", EepromSuite.RunBios,
