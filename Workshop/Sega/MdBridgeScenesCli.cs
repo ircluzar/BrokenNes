@@ -23,6 +23,7 @@ internal static class MdBridgeScenesCli
     {
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         if (rom == null) { Console.WriteLine("usage: --md-bridge-scenes <rom> --count N [--chip NES:FIXS] [--first 8] [--period 12] [--only 3,5] [--bad 12] [--max-mask 0]"); return 2; }
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);      // an experiment setting of the VDP (B4a): which rule moves a scene
         int count = int.TryParse(M68kTestCli.Arg(args, "--count"), out int c0) ? c0 : 20;
         int first = int.TryParse(M68kTestCli.Arg(args, "--first"), out int f0) ? f0 : 8;
         int period = int.TryParse(M68kTestCli.Arg(args, "--period"), out int p0) ? p0 : 12;

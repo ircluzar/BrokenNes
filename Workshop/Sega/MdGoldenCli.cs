@@ -71,7 +71,12 @@ internal static class MdGoldenCli
         string file = M68kTestCli.Arg(args, "--file") ?? FindGoldenFile();
         string gamesRoot = M68kTestCli.Arg(args, "--games-root") ?? DefaultGames, testsRoot = M68kTestCli.Arg(args, "--tests-root") ?? DefaultTests;
         bool update = M68kTestCli.Flag(args, "--update"), poison = M68kTestCli.Flag(args, "--poison"), list = M68kTestCli.Flag(args, "--list");
+        // --shift: a timing change that moves a game's whole timeline by a frame or two leaves every picture as it was but changes the frame it appears at: for each pinned hash that no longer matches its frame, look for it in the
+        // frames around (--shift-window, default 12); --move-shifted rewrites the checkpoint to the frame it was found at (the pinned hash, and so the oracle label, stays: a hash that is nowhere near is reported and left)
+        bool shift = M68kTestCli.Flag(args, "--shift"), moveShifted = M68kTestCli.Flag(args, "--move-shifted");
+        int shiftWindow = int.TryParse(M68kTestCli.Arg(args, "--shift-window"), out int sw0) ? sw0 : 12;
         string? only = M68kTestCli.Arg(args, "--only");
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         if (!File.Exists(file)) { Console.WriteLine($"no golden file at {file}"); return 2; }
         var root = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
         var entries = root["entries"]!.AsArray();
@@ -91,6 +96,8 @@ internal static class MdGoldenCli
             var inputs = ParseInput((string?)e["input"]);
             var wanted = cps.Select(kv => (frame: int.Parse(kv.Key), hash: (string?)kv.Value)).OrderBy(x => x.frame).ToList();
             int last = wanted.Last().frame, next = 0;
+            if (shift) last += shiftWindow;
+            var seen = new Dictionary<int, string>();
             PadButtons pad = PadButtons.None;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var results = new List<string>();
@@ -100,7 +107,8 @@ internal static class MdGoldenCli
                 if (inputs.TryGetValue(f - 1, out var b)) pad = b;
                 session.SetPad(0, pad);
                 session.RunFrame();
-                while (next < wanted.Count && wanted[next].frame == f)
+                if (shift) seen[f] = PictureHash(session.Frame, session.FrameWidth, session.FrameHeight, false).ToString("X16");
+                while (!shift && next < wanted.Count && wanted[next].frame == f)
                 {
                     ulong h = PictureHash(session.Frame, session.FrameWidth, session.FrameHeight, poison);
                     string hex = h.ToString("X16");
@@ -110,10 +118,30 @@ internal static class MdGoldenCli
                     next++;
                 }
             }
-            sw.Stop(); totalMs += sw.ElapsedMilliseconds; frames += last;
-            Console.WriteLine($"  {(entryOk ? "PASS" : "FAIL")}  {name} [{(string?)e["verified"] ?? "regression"}]  {string.Join(" ", results)}  ({sw.Elapsed.TotalSeconds:F1} s, {last / Math.Max(0.001, sw.Elapsed.TotalSeconds):F0} frames/s)");
+            if (shift)
+            {
+                var moved = new List<(string from, string to)>();
+                foreach (var w in wanted)
+                {
+                    if (seen.TryGetValue(w.frame, out var hh) && hh == w.hash) { results.Add($"{w.frame}:ok"); ok++; continue; }
+                    int found = -1;
+                    for (int d = 1; d <= shiftWindow && found < 0; d++)
+                        foreach (int c in new[] { w.frame + d, w.frame - d })
+                            if (seen.TryGetValue(c, out var h2) && h2 == w.hash) { found = c; break; }
+                    if (found < 0) { results.Add($"{w.frame}:NOT-FOUND"); bad++; entryOk = false; }
+                    else { results.Add($"{w.frame}:at {found} ({found - w.frame:+#;-#})"); moved.Add((w.frame.ToString(), found.ToString())); }
+                }
+                if (moveShifted && moved.Count > 0)
+                {
+                    var nc = new JsonObject();
+                    var moveMap = moved.ToDictionary(x => x.from, x => x.to);
+                    foreach (var kv in cps) nc[moveMap.TryGetValue(kv.Key, out var to) ? to : kv.Key] = (string?)kv.Value;
+                    e["checkpoints"] = new JsonObject(nc.Select(kv => new KeyValuePair<string, JsonNode?>(kv.Key, kv.Value?.DeepClone())).OrderBy(kv => int.Parse(kv.Key)));
+                }
+            }
+            sw.Stop(); totalMs += sw.ElapsedMilliseconds; frames += last;            Console.WriteLine($"  {(entryOk ? "PASS" : "FAIL")}  {name} [{(string?)e["verified"] ?? "regression"}]  {string.Join(" ", results)}  ({sw.Elapsed.TotalSeconds:F1} s, {last / Math.Max(0.001, sw.Elapsed.TotalSeconds):F0} frames/s)");
         }
-        if (update) { File.WriteAllText(file, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); Console.WriteLine($"== updated {file}"); return 0; }
+        if (update || moveShifted) { File.WriteAllText(file, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); Console.WriteLine($"== updated {file}"); return 0; }
         if (!list) Console.WriteLine($"== {ok} frames match, {bad} changed, {skipped} entries skipped (ROM missing); {frames:N0} frames run in {totalMs / 1000.0:F1} s ({frames / Math.Max(0.001, totalMs / 1000.0):F0} frames/s overall)");
         return bad == 0 ? 0 : 1;
     }

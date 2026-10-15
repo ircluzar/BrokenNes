@@ -293,6 +293,33 @@ internal static class MdRunCli
                 case "dmafetch": MdVdp.DmaFetchClocks = v[0]; break;
                 case "dmafifo": MdVdp.DmaFifoLimit = v[0]; break;
                 case "dmablank": MdVdp.DmaBlankLimit = v[0]; break;
+                case "vinth40": MdVdp.VintFromStepH40 = v[0]; break;
+                case "vinth32": MdVdp.VintFromStepH32 = v[0]; break;
+                case "vblankdelay40": MdVdp.VBlankFlagDelayH40 = v[0]; break;
+                case "vblankdelay32": MdVdp.VBlankFlagDelayH32 = v[0]; break;
+                case "hblank40": MdVdp.HBlankStartH40 = v[0]; break;
+                case "hblank32": MdVdp.HBlankStartH32 = v[0]; break;
+                case "hblankend": MdVdp.HBlankEnd = v[0]; break;
+                case "hint40": MdVdp.HIntOffsetH40 = v[0]; break;
+                case "hint32": MdVdp.HIntOffsetH32 = v[0]; break;
+                case "hintrule": MdVdp.HIntPreRenderRule = v[0] != 0; break;
+                case "iplshift": BOARD_MD.IplSampleAdjustClocks = v[0]; break;
+                case "z80int": MdVdp.Z80IntClocks = v[0]; break;
+                case "winstretch": MdVdp.WindowStretchColumn = v[0] != 0; break;
+                case "h32stretch": MdVdp.H32StretchZero = v[0] != 0; break;
+                case "lbshadow": MdVdp.LeftBlankShadowRule = v[0]; break;
+                case "nextslotfix": MdVdp.NextFreeSlotMode = v[0]; break;
+                case "satcache": MdVdp.SpriteCacheOn = v[0] != 0; break;
+                case "spritey9": MdVdp.SpriteY9 = v[0] != 0; break;
+                case "h32links": MdVdp.SpriteLinks80 = v[0] != 0; break;
+                case "h32wrap": MdVdp.H32AttrWrap = v[0] != 0; break;
+                case "vsmask11": MdVdp.VsramIm2Mask11 = v[0] != 0; break;
+                case "sprnormal": MdVdp.SpriteNormalFromColour = v[0]; MdVdp.SpriteNormalToColour = v.Length > 1 ? v[1] : 15; break;
+                case "vsshift": MdVdp.VsramColumnShift = v[0]; break;
+                case "colpair": MdVdp.ColumnPairRule = v[0] != 0; break;
+                case "sizerule": MdVdp.PlaneSizeRule = v[0]; break;
+                case "vstep40": MdVdp.VCounterStepH40 = v[0]; break;
+                case "vstep32": MdVdp.VCounterStepH32 = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
                 case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
                 case "boot": BOARD_MD.BootOffsetClocks = v[0]; break;
@@ -309,6 +336,9 @@ internal static class MdRunCli
                 case "preh32": MdVdp.SlotTable.ActivePreTicksH32 = v; break;
                 case "refreshh40": MdVdp.SlotTable.BlankRefreshH40 = v; break;
                 case "refreshh32": MdVdp.SlotTable.BlankRefreshH32 = v; break;
+                case "refreshblock": MdVdp.SlotTable.RefreshBlockTicks = v[0]; break;
+                case "dmabubble": MdVdp.DmaRefreshBubble = v[0] != 0; break;
+                case "bubbleoff": MdVdp.SlotTable.BubbleOffset = v[0]; break;
                 default: throw new ArgumentException("unknown slot-set name " + name);
             }
         }
