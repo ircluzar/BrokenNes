@@ -182,7 +182,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "538B56BBB4B33C50",
-        "audioHash": "A96AF40A37E646A7",
+        "audioHash": "F4FB2FF73C0C9BF1",
         "framesRun": 300,
         "distinctColors": 30,
         "result": "ok"
@@ -315,7 +315,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "096ABAB4E7E1FEDF",
-        "audioHash": "977780EEEA8F621F",
+        "audioHash": "36FA54F474960885",
         "framesRun": 300,
         "distinctColors": 26,
         "result": "ok"
@@ -500,5 +500,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T16:03:00Z"
+  "goldenGeneratedUtc": "2026-10-15T23:20:10Z"
 }
