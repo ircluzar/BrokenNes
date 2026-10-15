@@ -25,11 +25,31 @@ internal static class MdCartTest
 
     private static void Group(string title) => Console.WriteLine($"-- {title}");
 
+    /// <summary>Which cartridges the app accepts as Genesis games: the header is "SEGA" at $100; a 32X, a Pico and an SVP cartridge (Virtua Racing: MK-1229) need hardware that is not emulated and are not accepted (a plain run would look like a bug of the game).</summary>
+    private static void Detection()
+    {
+        Group("cartridges the app takes for Genesis games (and the three it refuses because their hardware is not emulated)");
+        byte[] Rom(string console, string serial)
+        {
+            var r = new byte[0x20000];
+            Array.Fill(r, (byte)0xFF);
+            void Put(int at, string s) { for (int i = 0; i < s.Length; i++) r[at + i] = (byte)s[i]; }
+            Put(0x100, console.PadRight(16)); Put(0x180, serial.PadRight(14));
+            return r;
+        }
+        Check("a plain header (SEGA GENESIS, serial GM 00001009-00) is a Genesis game", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM 00001009-00"), "g.bin") == ConsoleKind.Genesis);
+        Check("a SEGA MEGA DRIVE header too", SegaRomFormat.Detect(Rom("SEGA MEGA DRIVE", "GM T-12345 -00"), "g.bin") == ConsoleKind.Genesis);
+        Check("a 32X header is refused", SegaRomFormat.Detect(Rom("SEGA 32X", "GM MK-84501-00"), "g.bin") == null);
+        Check("a Pico header is refused", SegaRomFormat.Detect(Rom("SEGA PICO", "GM 00000000-00"), "g.bin") == null);
+        Check("the SVP cartridge (Virtua Racing, serial MK-1229) is refused", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM MK-1229 -00"), "g.bin") == null);
+        Check("another MK- serial (Sonic 3 is MK-1079) is not", SegaRomFormat.Detect(Rom("SEGA GENESIS", "GM MK-1079 -00"), "g.bin") == ConsoleKind.Genesis);
+    }
+
     public static int Run(string[] args)
     {
         pass = fail = 0;
         // a group that throws is a failed check (with the exception), not a crashed run
-        foreach (var (name, group) in new (string, Action)[] { ("EEPROM chips", Eeprom), ("EEPROM wiring", Wiring), ("three-wire EEPROM", ThreeWire), ("SRAM", Sram), ("region", Region), ("STOP", Stop) })
+        foreach (var (name, group) in new (string, Action)[] { ("EEPROM chips", Eeprom), ("EEPROM wiring", Wiring), ("three-wire EEPROM", ThreeWire), ("SRAM", Sram), ("region", Region), ("STOP", Stop), ("detection", Detection) })
         {
             try { group(); }
             catch (Exception e) { Check($"group '{name}' ran to its end", false, e.ToString().Replace('\n', ' ')); }

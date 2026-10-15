@@ -130,7 +130,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// <summary>Power-on: the VDP, the sound unit and the pads at their reset state, the 68000 taking its stack pointer and start address from the cartridge's vectors.</summary>
     public void Reset()
     {
-        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; nextRefresh = RefreshPhaseClocks;
+        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; iplForStep = iplAtPrevStart = 0; nextRefresh = RefreshPhaseClocks;
         Array.Clear(Ram);
         Vdp.Reset();
         Sound.Reset();
@@ -202,7 +202,13 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     private int StepCpu()
     {
-        if (IplMode == 1) { iplForStep = iplAtPrevStart; iplAtPrevStart = Vdp.IplAt(t - IplLeadClocks); }
+        if (IplMode == 1)
+        {
+            iplForStep = iplAtPrevStart;
+            long at = t + IplLagClocks;                 // a little after the instruction starts (never past its first bus cycle's end: 28 clocks at most, the shortest instruction)
+            if (at > t) Vdp.RunTo(at);
+            iplAtPrevStart = Vdp.IplAt(at);
+        }
         return Cpu.Step();
     }
 
@@ -211,6 +217,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// before the instruction that follows it (the oracle takes an interrupt after the instruction that was running when the line went up, whatever its length).
     /// </summary>
     public static int IplMode = 0;
+    public static int IplLagClocks = 0;
     private int iplForStep, iplAtPrevStart;
 
     // =================================================================================================================
@@ -320,6 +327,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         Vdp.RunTo(t);
         Vdp.AcknowledgeInterrupt(level);
         iplSample = 0;
+        iplAtPrevStart = 0;           // (IplMode 1) the level that was seen when this interrupt began is spent
         return 24 + level;
     }
 
@@ -525,7 +533,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// </summary>
     public void SaveState(BinaryWriter w)
     {
-        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(lastOpenBus); w.Write(Ram);
+        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(iplForStep); w.Write(iplAtPrevStart); w.Write(lastOpenBus); w.Write(Ram);
         w.Write(BusReads); w.Write(BusWrites); w.Write(OpenBusReads); w.Write(LastOpenBusAddress); w.Write(LastUnclaimedWrite); w.Write(UnclaimedWrites); w.Write(TmssWrites);
         w.Write(TmssWords[0]); w.Write(TmssWords[1]);
         for (int i = 0; i < 16; i++) { w.Write(recentIoAddr[i]); w.Write(recentIoVal[i]); }
@@ -536,7 +544,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     public void LoadState(BinaryReader r)
     {
-        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); lastOpenBus = r.ReadUInt16(); MdVdp.ReadAll(r, Ram);
+        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); iplForStep = r.ReadInt32(); iplAtPrevStart = r.ReadInt32(); lastOpenBus = r.ReadUInt16(); MdVdp.ReadAll(r, Ram);
         BusReads = r.ReadInt64(); BusWrites = r.ReadInt64(); OpenBusReads = r.ReadInt64(); LastOpenBusAddress = r.ReadUInt32(); LastUnclaimedWrite = r.ReadUInt32(); UnclaimedWrites = r.ReadInt64(); TmssWrites = r.ReadInt64();
         TmssWords[0] = r.ReadUInt16(); TmssWords[1] = r.ReadUInt16();
         for (int i = 0; i < 16; i++) { recentIoAddr[i] = r.ReadUInt32(); recentIoVal[i] = r.ReadUInt16(); }

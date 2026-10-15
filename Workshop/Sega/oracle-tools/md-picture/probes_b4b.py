@@ -45,3 +45,39 @@ def vint_enable(variant='A', h40=True, wait_lines=40):
 
 def probes():
     return {v: vint_enable(v) for v in 'ABDEF'}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+#  How many instructions run after the interrupt mask is lowered before a pending vertical interrupt is taken
+# ---------------------------------------------------------------------------------------------------------------------
+
+# name -> (the instruction that lowers the mask, the instruction repeated after it); d6 = $2000, d2 = $FFFF, d3 = $7FFF0000
+SR_VARIANTS = {
+    'move_imm_addq': ('move.w #$2000,sr', 'addq.w #1,d5'),
+    'move_reg_addq': ('move.w d6,sr', 'addq.w #1,d5'),
+    'andi_addq': ('andi.w #$F8FF,sr', 'addq.w #1,d5'),
+    'move_imm_nop': ('move.w #$2000,sr', 'nop'),
+    'move_imm_mulu': ('move.w #$2000,sr', 'mulu d2,d3'),
+    'move_imm_movem': ('move.w #$2000,sr', 'movem.l d0-d3,(a6)'),
+}
+
+
+def sr_delay(variants=None, frames=30, h40=True, run=6):
+    """For each variant, `frames` times: with the 68000 mask at 7 wait until the vertical interrupt is pending (status bit 7), lower the mask with the variant's first instruction and run `run` copies of its second;
+    the handler logs the return address it was given (the first instruction that was NOT executed). Labels v<i>m (the mask instruction), v<i>r<k> (copy k), v<i>e (after): the logged address says after how many
+    copies the interrupt was taken (0 = right after the mask instruction). RAM: variant i, frame f: a long at $FF0100 + (i * frames + f) * 4."""
+    variants = variants or list(SR_VARIANTS)
+    s = prologue(h40, True, regs={1: 0x74, 0: 0x04})
+    s += NL_.join(['    lea ($FF0100).l,a0', '    lea ($FF8000).l,a6', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #$2000,d6', '    moveq #1,d5']) + NL_
+    for i, name in enumerate(variants):
+        mask_ins, ins = SR_VARIANTS[name]
+        s += NL_.join(['    move.w #%d,d7' % (frames - 1), 'f%d:' % i, '    move.w #$2700,sr', 'w%d: move.w (a2),d1' % i, '    btst #7,d1', '    beq.s w%d' % i, '    moveq #0,d0',
+                       'v%dm: %s' % (i, mask_ins)]) + NL_
+        for k in range(run):
+            s += 'v%dr%d: %s' % (i, k, ins) + NL_
+        s += NL_.join(['v%de: nop' % i, '    dbf d7,f%d' % i]) + NL_
+    s += NL_.join(['_spin: bra.s _spin', 'handler:', '    move.l 2(sp),(a0)+', '    rte']) + NL_
+    return s
+
+
+NL_ = '\n'

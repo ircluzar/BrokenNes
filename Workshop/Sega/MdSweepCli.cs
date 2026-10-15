@@ -147,6 +147,7 @@ internal static class MdSweepCli
         string dev = md.Length >= 0x110 ? Ascii(0x100, 16) : "";
         if (dev.Contains("32X")) return ("32X", "header says SEGA 32X: the 32X add-on is not emulated (and not planned)");
         if (dev.Contains("PICO")) return ("Pico", "header says SEGA PICO: the Pico is not emulated (and not planned)");
+        if (SegaRomFormat.IsSvpCartridge(md)) return ("SVP", "serial MK-1229 (Virtua Racing): the cartridge has the SVP signal processor (SSP1601), which draws the 3D view and is not emulated; as a plain ROM the game shows its HUD and a broken view");
         if (dev.Contains("TERA68K") || dev.Contains("TERA286")) return ("Teradrive", "header names the Tera Drive: not emulated");
         return null;
     }

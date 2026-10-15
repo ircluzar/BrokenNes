@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause, [string]$LockOwner = "b4b", [switch]$Saves)
+param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause, [string]$LockOwner = "b4b", [switch]$Saves, [string]$RomFile = "", [string]$Label = "", [switch]$PauseSnap)
 # The roster climb: each game of docs/projects/sega-rosters.md played through with the sweep's pad script (or --Pad) in lock-step with BlastEm (oraclerun.ps1: pause and frame advance, a picture every -ShotEvery
 # advances), one line per game in the log. Needs: the blastem lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem -Owner <you>), BN_ORACLE_ROOT (a private folder with blastem\, be_shots\, be_save\) and BN_ARTIFACTS
 # (the build folder of the Workshop exe). A capture the run itself calls unreliable (the screenshot count is wrong) is repeated up to -Retries times.
@@ -15,9 +15,10 @@ $roster = @{      # a plain hashtable: on an [ordered] dictionary an integer ind
 }
 $list = @()
 if ($Games -eq "all") { $list = 1..20 } else { foreach ($p in $Games.Split(',')) { if ($p -match '^(\d+)-(\d+)$') { $list += [int]$Matches[1]..[int]$Matches[2] } else { $list += [int]$p } } }
+if ($RomFile) { $roster[99] = $RomFile; $list = @(99) }       # any other ROM of the library: -RomFile "Rampart (UE) [!].bin" -Label rampart
 foreach ($n in $list) {
   $rom = Join-Path $dir $roster[$n]
-  $name = "g{0:D2}$Tag" -f $n
+  $name = if ($RomFile -and $Label) { "x_$Label$Tag" } else { "g{0:D2}$Tag" -f $n }
   $result = ""
   # where to pause: the middle of the first stretch (at least 80 boundaries long, after boundary 250) of a run without input whose pictures are seen nowhere else (a still picture matches many boundaries and makes the start ambiguous);
   # a pause at wall-clock t lands at about boundary 62 x (t + 1.3 s)
@@ -39,7 +40,7 @@ foreach ($n in $list) {
     $env:BN_ADV_MS = "$gap"
     $saveDir = Join-Path $work ("be_save\" + [IO.Path]::GetFileNameWithoutExtension($rom))
     if ($Saves) { Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue }      # the oracle starts from an empty battery, as ours does
-    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait -SaveOut:$Saves 2>&1 | Out-String
+    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait -SaveOut:$Saves -PauseSnap:$PauseSnap 2>&1 | Out-String
     if ($Saves) {
       # BlastEm writes its battery file when it exits: compare it with ours byte for byte
       $theirs = Get-ChildItem $saveDir -Include "save.sram","save.eeprom" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1

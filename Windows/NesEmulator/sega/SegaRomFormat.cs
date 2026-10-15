@@ -42,7 +42,7 @@ public static class SegaRomFormat
             bool sega = head[..4].SequenceEqual("SEGA"u8) || head.Slice(1, 4).SequenceEqual("SEGA"u8);
             if (sega)
             {
-                bool unsupported = head.IndexOf("32X"u8) >= 0 || head.IndexOf("PICO"u8) >= 0;
+                bool unsupported = head.IndexOf("32X"u8) >= 0 || head.IndexOf("PICO"u8) >= 0 || IsSvpCartridge(md);
                 return unsupported ? null : ConsoleKind.Genesis;
             }
         }
@@ -55,6 +55,12 @@ public static class SegaRomFormat
             _ => null,
         };
     }
+
+    /// <summary>
+    /// A cartridge with the SVP chip (a Samsung SSP1601 signal processor next to the ROM that draws the 3D view): Virtua Racing, the only game that has one, serial MK-1229. The chip is not emulated, so the cartridge is
+    /// not accepted (run as a plain ROM the game shows its menus and HUD with a broken 3D view, which would look like a bug of the games rather than a missing chip).
+    /// </summary>
+    public static bool IsSvpCartridge(byte[] md) => md.Length >= 0x190 && md.AsSpan(0x180, 14).IndexOf("GM MK-1229"u8) == 0;
 
     /// <summary>The bytes a Master System / Game Gear / SG-1000 cartridge holds: some dumps carry a 512-byte copier header (length % 16 KB == 512).</summary>
     public static byte[] StripCopierHeader(byte[] rom) =>
