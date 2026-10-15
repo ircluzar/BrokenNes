@@ -41,6 +41,11 @@ internal sealed class NesPictureSink
     private readonly bool backdoor;
     public string PpuId { get; }
 
+    /// <summary>How the sink's NES passes the frames a picture takes. 2 (default): the PPU alone is stepped from the vertical blank through one whole picture and back to the blank (<see cref="NES.RunIdleToVblank"/>): one
+    /// frame of PPU work. 1: two frames of the PPU alone, the first only latching the new state (<see cref="NES.RunIdleFrame"/>). 0: two frames of the full NES loop with its idle CPU, the original path. The output is the same in
+    /// all three (the speed suite's goldens, <c>--ab idle-frame</c>).</summary>
+    public static int IdleMode = 2;
+
     public NesPictureSink(string nesPpuId)
     {
         PpuId = nesPpuId;
@@ -60,6 +65,7 @@ internal sealed class NesPictureSink
     /// <summary>Program the NES PPU (rendering off while uploading), run two frames, return RGBA 256x240.</summary>
     public byte[] Present(NesPicture p)
     {
+        if (IdleMode == 2) nes.AlignIdleToVblank();   // the registers are written in the vertical blank, so the picture drawn next is a whole one
         // $3F10/$14/$18/$1C mirror $3F00/$04/$08/$0C: keep them equal or the last write (a sprite palette's unused
         // entry 0) replaces the universal background colour.
         for (int i = 0; i < 16; i += 4) p.Pal[16 + i] = p.Pal[i];
@@ -91,7 +97,9 @@ internal sealed class NesPictureSink
         _ = bus.Read(0x2002);
         W(0x2000, 0x08); W(0x2005, (byte)p.FineX); W(0x2005, (byte)p.FineY);
         W(0x2001, p.Blank ? (byte)0x00 : (byte)(p.Sprites ? 0x1E : 0x0E));
-        nes.RunFrame(); nes.RunFrame();   // one frame to latch the new picture, one to present it
+        if (IdleMode == 2) nes.RunIdleToVblank();
+        else if (IdleMode == 1) { nes.RunIdleFrame(); nes.RunIdleFrame(); }   // one frame to latch the new picture, one to present it
+        else { nes.RunFrame(); nes.RunFrame(); }
         return nes.GetFrameBuffer();
     }
 }

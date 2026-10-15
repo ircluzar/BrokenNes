@@ -142,13 +142,28 @@ public static class RomDetect
     {
         innerName = fileName;
         bool zip = data.Length > 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 3 && data[3] == 4;
-        if (!zip) return data;
+        if (!zip)
+        {
+            // an archive format the apps cannot open (the browser build has no 7-Zip): say so, rather than failing to recognise a ROM
+            if (IsUnsupportedArchive(data, out string kind))
+                throw new InvalidDataException($"'{fileName}' is a {kind} archive, which cannot be opened here. Unpack it first (for example with 7-Zip) and open the ROM inside, or put the ROM in a .zip.");
+            return data;
+        }
         using var archive = new ZipArchive(new MemoryStream(data), ZipArchiveMode.Read);
         var entry = archive.Entries.FirstOrDefault(e => Consoles.AllRomExtensions.Any(x => x != ".zip" && e.Name.EndsWith(x, StringComparison.OrdinalIgnoreCase)))
             ?? throw new InvalidDataException($"No ROM inside {fileName}");
         innerName = entry.Name;
         using var s = entry.Open(); using var ms = new MemoryStream(); s.CopyTo(ms);
         return ms.ToArray();
+    }
+
+    /// <summary>True for the archive formats the apps cannot open (7z and RAR: six-byte signatures no ROM starts with), by their first bytes; <paramref name="kind"/> names it.</summary>
+    public static bool IsUnsupportedArchive(byte[] data, out string kind)
+    {
+        kind = "";
+        if (data.Length > 6 && data[0] == 0x37 && data[1] == 0x7A && data[2] == 0xBC && data[3] == 0xAF && data[4] == 0x27 && data[5] == 0x1C) kind = "7z";
+        else if (data.Length > 7 && data[0] == 'R' && data[1] == 'a' && data[2] == 'r' && data[3] == '!' && data[4] == 0x1A && data[5] == 0x07) kind = "RAR";
+        return kind.Length > 0;
     }
 
     /// <summary>The console this ROM is for, or null when it looks like none of them.</summary>
