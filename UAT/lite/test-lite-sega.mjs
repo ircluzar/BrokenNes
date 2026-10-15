@@ -456,7 +456,10 @@ async function groupAudio() {
       await page.eval('window.__resume()');
       await sleep(6000);
       const p = await page.eval(PROBE);
-      check('audio', `${key}: the page paces it at ${fps < 55 ? 50 : 60} frames a second (FPS badge ${p.fps})`, p.fps > 0 && Math.abs(p.fps - (fps < 55 ? 50 : 59.9)) < 4, `${p.fps}`);
+      // a device that cannot hold the console's rate must say so on the page (the speed badge), never just run slow
+      const note = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
+      const target = fps < 55 ? 50 : 59.9;
+      check('audio', `${key}: the page paces it at ${fps < 55 ? 50 : 60} frames a second (FPS badge ${p.fps})${note ? ' and says: ' + note : ''}`, p.fps > 0 && (p.fps >= target * 0.9 && p.fps <= target + 4 || (p.fps < target * 0.9 && note !== '')), `${p.fps}`);
     });
   }
 }

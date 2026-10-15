@@ -26,6 +26,7 @@ internal static class SegaBenchCli
     /// <summary>Performance experiments that exist as a toggle in the cores: <c>--ab NAME</c> flips them between runs. Settled experiments are removed once decided.</summary>
     internal static readonly Dictionary<string, Action<bool>> AbSwitches = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["md-loop"] = on => NesEmulator.Sega.MdSoundUnit.FastLoops = on,   // the Genesis Z80's polling loops counted instead of ticked vs every T-state ticked
         ["idle-frame"] = on => NesEmulator.Mix.NesPictureSink.IdleMode = on ? 2 : 0,   // the picture bridges' NES: one frame of PPU work from the vertical blank vs two full NES frames with an idle CPU
         ["idle-frame-1"] = on => NesEmulator.Mix.NesPictureSink.IdleMode = on ? 1 : 0,   // two frames of PPU work without the CPU vs two full NES frames
     };
@@ -69,7 +70,12 @@ internal static class SegaBenchCli
         public string Description = "";
         public double Fps;                              // the console's real frame rate
         public int SizeChanges;
+        public List<ulong> StateTrace = new();
+        public ulong State = 14695981039346656037UL;    // a hash of the Genesis sound unit's whole state (the Z80, its RAM, the chips) taken every --state-every frames
     }
+
+    /// <summary>With --state-every N the Genesis sound unit's state is hashed every N frames, and the hashes of the runs must agree (the twin checks that a fast path leaves the machine in the same state at every moment it is looked at, not only in what it plays).</summary>
+    private static int StateEvery;
 
     private static string? Opt(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
     private static bool Flag(string[] a, string name) => Array.IndexOf(a, name) >= 0;
@@ -136,6 +142,12 @@ internal static class SegaBenchCli
             int w = s.FrameWidth, h = s.FrameHeight;
             if (w != lastW || h != lastH) { if (lastW >= 0) r.SizeChanges++; lastW = w; lastH = h; }
             video = Fnv(video, s.Frame.AsSpan(0, w * h)); video = (video ^ (uint)(w << 16 | h)) * 1099511628211UL;
+            if (StateEvery > 0 && f % StateEvery == 0 && (s as NesEmulator.Mix.SegaPictureSession)?.Inner is NesEmulator.Sega.MdSession dm && dm.Board.Sound is NesEmulator.Sega.MdSoundUnit du)
+            {
+                using var ms = new MemoryStream(); using (var bw = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) du.SaveState(bw);
+                ulong sh = 14695981039346656037UL; foreach (byte b0 in ms.ToArray()) { sh ^= b0; sh *= 1099511628211UL; }
+                r.StateTrace.Add(sh); r.State ^= sh; r.State *= 1099511628211UL;
+            }
             if (f % 250 == 0) r.Checkpoints.Add($"{f}:{video:x16}:{audio:x16}");
         }
         r.AllocBytes = GC.GetAllocatedBytesForCurrentThread() - alloc0;
@@ -153,6 +165,7 @@ internal static class SegaBenchCli
             int repeat = int.Parse(Opt(args, "--repeat") ?? "3");
             string? goldenPath = Opt(args, "--golden"), ab = Opt(args, "--ab"), only = Opt(args, "--only"), jsonOut = Opt(args, "--json");
             bool update = Flag(args, "--update");
+            StateEvery = int.Parse(Opt(args, "--state-every") ?? "0");
             if (Flag(args, "--reference-paths")) foreach (var kv in AbSwitches) kv.Value(false);
             if (ab != null && !AbSwitches.ContainsKey(ab)) { Console.Error.WriteLine($"unknown --ab switch '{ab}' ({(AbSwitches.Count == 0 ? "none defined" : string.Join(", ", AbSwitches.Keys))})"); return 2; }
 
@@ -199,7 +212,8 @@ internal static class SegaBenchCli
                     var r = RunOnce(console, rom, Path.GetFileName(c.Rom), c.Cpu, c.Ppu, c.Apu, c.Frames, script);
                     runs.Add(r); abRuns[on].Add(r);
                     first ??= r;
-                    if (r.Video != first.Video || r.Audio != first.Audio) { mismatch = true; Console.WriteLine($"  !! {c.Name}: run {i} hashes differ from run 0 (video {r.Video} vs {first.Video}, audio {r.Audio} vs {first.Audio}) {(ab != null ? $"[{ab}={(on ? "on" : "off")}]" : "")}"); }
+                    if (r.StateTrace.Count > 0 && r.State != first.State) { int k = 0; while (k < r.StateTrace.Count && r.StateTrace[k] == first.StateTrace[k]) k++; Console.WriteLine($"  !! first differing state after frame {(k + 1) * StateEvery}"); }
+                    if (r.Video != first.Video || r.Audio != first.Audio || r.State != first.State) { mismatch = true; Console.WriteLine($"  !! {c.Name}: run {i} hashes differ from run 0 (video {r.Video} vs {first.Video}, audio {r.Audio} vs {first.Audio}) {(ab != null ? $"[{ab}={(on ? "on" : "off")}]" : "")}"); }
                 }
                 if (ab != null) AbSwitches[ab](true);
                 double Med(IEnumerable<double> v) { var a = v.OrderBy(x => x).ToArray(); return a.Length == 0 ? 0 : a[a.Length / 2]; }
