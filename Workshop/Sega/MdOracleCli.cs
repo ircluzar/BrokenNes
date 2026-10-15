@@ -215,13 +215,28 @@ internal static class MdOracleCli
                 if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); }
             }
             var ramDiff = new Dictionary<int, int>();
+            var ramAll = new Dictionary<int, int>();
+            bool ramPick = false;
             for (int f = 0; f <= scanTo; f++)
             {
                 session0.SetPad(0, PadButtons.None);
                 session0.RunToLine(line);
                 long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, DyFor(dy, session0.FrameHeight, target.h), 0, best == long.MaxValue ? best : Math.Max(best, 1));
-                if (bad == 0) { exact.Add(f); if (pauseRam != null) { var ram = session0.Board.Ram; int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++; ramDiff[f] = n; } }
+                if (pauseRam != null)
+                {
+                    var ram = session0.Board.Ram; int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++;
+                    ramAll[f] = n;
+                    if (bad == 0) ramDiff[f] = n;
+                }
+                if (bad == 0) exact.Add(f);
                 if (bad < best) { best = bad; bestF = f; }
+            }
+            if (pauseRam != null && ramDiff.Count == 0 && ramAll.Count > 0)
+            {
+                // no boundary shows the pause picture exactly (a fade, a raster effect that differs): the work RAM alone decides, and says so
+                var byRamAll = ramAll.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key).ToList();
+                Console.WriteLine($"scan: no boundary shows the pause picture exactly; work RAM against the oracle's state, nearest boundaries by differing bytes: {string.Join(", ", byRamAll.Take(6).Select(kv => $"{kv.Key} ({kv.Value:N0})"))}");
+                bestF = byRamAll[0].Key; ramPick = true; Console.WriteLine($"scan: the start is boundary {bestF} (the fewest RAM bytes differ; the picture does not match, so this is a guess to be judged by the shots that follow)");
             }
             if (pauseRam != null && ramDiff.Count > 0)
             {
@@ -231,7 +246,7 @@ internal static class MdOracleCli
                 if (byRam.Count == 1 || byRam[0].Value == 0 || byRam[1].Value >= Math.Max(8, byRam[0].Value * 2)) { exact = new List<int> { byRam[0].Key }; bestF = byRam[0].Key; Console.WriteLine($"scan: the start is boundary {bestF} (RAM)"); }
                 else exact = byRam.Take(8).Select(kv => kv.Key).OrderBy(x => x).ToList();
             }
-            Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
+            if (!ramPick) Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
             if (exact.Count > 1)
             {
                 Console.WriteLine($"scan: AMBIGUOUS, {exact.Count} boundaries match exactly ({string.Join(",", exact.Take(12))}{(exact.Count > 12 ? ",..." : "")}): the picture is the same for several frames");

@@ -202,6 +202,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     private int StepCpu()
     {
+        if (M68k<MdBus>.BranchIplMask != 0) iplAtStart = Vdp.IplAt(t);
         if (IplMode == 1)
         {
             iplForStep = iplAtPrevStart;
@@ -209,7 +210,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             if (at > t) Vdp.RunTo(at);
             iplAtPrevStart = Vdp.IplAt(at);
         }
-        return Cpu.Step();
+        int cycles = Cpu.Step();
+        iplAtStart = 0;
+        return cycles;
     }
 
     /// <summary>
@@ -219,6 +222,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public static int IplMode = 0;
     public static int IplLagClocks = 0;
     private int iplForStep, iplAtPrevStart;
+    private int iplAtStart;                    // (BranchIplMask) the level at the start of the instruction that is running
 
     // =================================================================================================================
     //  The 68000's bus
@@ -228,7 +232,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         // the interrupt lines are sampled where this bus cycle starts (the last access of an instruction is its prefetch)
         long start = t + (long)(cycles - 4) * ClocksPer68k;
-        if (Cpu.IplFrozen) Vdp.RunTo(start);
+        if (Cpu.IplFromStart) { Vdp.RunTo(start); iplSample = iplAtStart; }
+        else if (Cpu.IplFrozen) Vdp.RunTo(start);
         else if (!IplAtLastPrefetch)
         {
             Vdp.RunTo(start);

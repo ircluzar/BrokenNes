@@ -332,6 +332,7 @@ internal static class MdRunCli
                 case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
                 case "iplprefetch": BOARD_MD.IplAtLastPrefetch = v[0] != 0; break;
                 case "movemipl": M68k<MdBus>.MovemFreezesIpl = v[0] != 0; break;
+                case "braipl": M68k<MdBus>.BranchIplMask = v[0]; break;
                 case "ipllead": BOARD_MD.IplLeadClocks = v[0]; break;
                 case "iplmode": BOARD_MD.IplMode = v[0]; break;
                 case "iplag": BOARD_MD.IplLagClocks = v[0]; break;

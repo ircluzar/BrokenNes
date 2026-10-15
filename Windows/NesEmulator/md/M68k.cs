@@ -253,7 +253,11 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     /// <summary>The board does not take the interrupt sample at the bus cycles that follow (set by an instruction whose last cycles must not sample; cleared when the next instruction starts). See <see cref="MovemFreezesIpl"/>.</summary>
     public bool IplFrozen;
     /// <summary>Experiment: MOVEM to memory does not sample the interrupt lines at its final prefetch, so an interrupt that arrives while it runs is taken one instruction later (as BlastEm does).</summary>
-    public static bool MovemFreezesIpl = false;
+    public static bool MovemFreezesIpl = true;
+    /// <summary>Experiment (see <see cref="BranchIplMask"/>): the instruction that is running takes its interrupt sample from the start of the instruction (the board hands over that level), not at its last bus cycle.</summary>
+    public bool IplFromStart;
+    /// <summary>Which taken jumps sample the interrupt lines where they start rather than at their last bus cycle: 1 = BRA/Bcc/DBcc/BSR that jump, 2 = JMP/JSR, 4 = RTS/RTR/RTE. The oracle's histograms (run_rethist.py) put the sample of a taken BRA about 7 cycles before ours.</summary>
+    public static int BranchIplMask = 7;
 
     /// <summary>The prefetch bus cycle: IRC becomes IR and the next word is fetched.</summary>
     private ushort Prefetch()
@@ -452,6 +456,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             frameIr = Ir;
             bool traced = Trace;
             IplFrozen = false;
+            IplFromStart = false;
             Execute(Ird);
             traceDue = traced;
         }
@@ -460,6 +465,8 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             try { AddressError(e); }
             catch (AddressErrorSignal) { Halted = true; pend = 0; }   // the stack itself is at an odd address: a double fault stops the processor
         }
+        IplFrozen = false;          // both interrupt-sample switches cover the instruction that set them and nothing after it (not the exception that may follow, and not a saved state: the processor is between instructions there)
+        IplFromStart = false;
         Flush();
         return (int)(Cycles - start);
     }
