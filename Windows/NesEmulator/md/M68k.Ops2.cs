@@ -364,6 +364,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         uint list = Extension(Word);
         uint addr = FetchEa(Long, ref to);
         bool pre = to.Mode == mPre;
+        IplFrozen = MovemFreezesIpl;       // the oracle takes an interrupt that arrives during the register writes one instruction later (inthist.py): the lines are not sampled from here to the end of the instruction
 
         for (int n = 0; n < 16; n++)
         {

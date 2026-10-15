@@ -207,13 +207,33 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         // the interrupt lines are sampled where this bus cycle starts (the last access of an instruction is its prefetch)
         long start = t + (long)(cycles - 4) * ClocksPer68k;
-        Vdp.RunTo(start);
-        iplSample = Vdp.IplAt(start);
+        if (Cpu.IplFrozen) Vdp.RunTo(start);
+        else if (!IplAtLastPrefetch)
+        {
+            Vdp.RunTo(start);
+            iplSample = Vdp.IplAt(start);
+        }
+        else if (Cpu.InPrefetch)
+        {
+            long at = start - IplLeadClocks;
+            Vdp.RunTo(at);
+            iplSample = Vdp.IplAt(at);
+            Vdp.RunTo(start);
+        }
+        else Vdp.RunTo(start);
         t += (long)cycles * ClocksPer68k;
         AddRefresh(cycles);
         Vdp.RunTo(t);
         SyncSound();
     }
+
+    /// <summary>
+    /// Where the interrupt lines are sampled. False (as it always was): at the start of the last bus cycle of each instruction, whatever kind of cycle it is. True: at the start of the last <i>prefetch</i> cycle (the one that loads the next
+    /// opcode), <see cref="IplLeadClocks"/> master clocks earlier. The oracle (BlastEm) takes an interrupt one instruction later than the first rule after instructions that end in data writes (MOVEM to memory, and the like), and it samples
+    /// about 1.6 of the 68000's cycles earlier than the first rule does: <c>inthist.py</c> and the record say how this was measured. Experiment switches until the roster comparisons decide.
+    /// </summary>
+    public static bool IplAtLastPrefetch = false;
+    public static int IplLeadClocks = 0;
 
     private void AddRefresh(int cycles)
     {

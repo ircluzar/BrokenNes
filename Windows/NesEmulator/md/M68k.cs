@@ -248,6 +248,13 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         return size == Byte ? (byte)word : word;
     }
 
+    /// <summary>True while the prefetch bus cycle (IRC becomes IR) is on the bus: the board can tell that cycle from the data and extension-word cycles of an instruction.</summary>
+    public bool InPrefetch;
+    /// <summary>The board does not take the interrupt sample at the bus cycles that follow (set by an instruction whose last cycles must not sample; cleared when the next instruction starts). See <see cref="MovemFreezesIpl"/>.</summary>
+    public bool IplFrozen;
+    /// <summary>Experiment: MOVEM to memory does not sample the interrupt lines at its final prefetch, so an interrupt that arrives while it runs is taken one instruction later (as BlastEm does).</summary>
+    public static bool MovemFreezesIpl = false;
+
     /// <summary>The prefetch bus cycle: IRC becomes IR and the next word is fetched.</summary>
     private ushort Prefetch()
     {
@@ -255,7 +262,9 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         Wait(4);
         Ir = Irc;
         frameIr = Ir;
+        InPrefetch = true;
         Irc = BusRead(Pc, true, true);
+        InPrefetch = false;
         Pc += 2;
         return Ir;
     }
@@ -442,6 +451,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             Ird = Ir;
             frameIr = Ir;
             bool traced = Trace;
+            IplFrozen = false;
             Execute(Ird);
             traceDue = traced;
         }

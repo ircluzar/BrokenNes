@@ -62,7 +62,10 @@ try {
     else { throw "bad action '$a'" }
   }
   Start-Sleep -Milliseconds 400
-} finally { if (-not $p.HasExited) { $p.Kill() } }
+} finally {
+  # a graceful close first: BlastEm writes its battery RAM and EEPROM files when it exits (be_save\<rom>\save.sram / save.eeprom), a kill would lose them
+  if (-not $p.HasExited) { $null = $p.CloseMainWindow(); if (-not $p.WaitForExit(4000)) { $p.Kill() } }
+}
 # collect the screenshots in order
 $files = Get-ChildItem $shotDir -Filter "blastem_*.png" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $before.AddSeconds(-1) } | Sort-Object LastWriteTime, Name
 $i = 0

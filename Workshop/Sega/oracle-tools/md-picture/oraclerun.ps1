@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [string]$Region = "", [string]$Pad = "", [int]$Offset = 90, [int]$ShotEvery = 100)
+param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [switch]$SaveOut, [string]$Region = "", [string]$Pad = "", [int]$Offset = 90, [int]$ShotEvery = 100, [string]$Snaps = "")
 # A scripted play-through compared with BlastEm frame by frame (see Workshop\Sega\MdOracleCli.cs for the protocol).
 #   -Script "0:Start,4:,400:Right,500:Right+C,520:Right"   step:buttons (buttons joined by +, empty = none); the pad changes before the advance of that step
 #   -Shots  "50,100,200"                                   compare the pictures after that many advances
@@ -18,6 +18,11 @@ if ($Pad) {
 $map = @{}
 foreach ($part in $Script.Split(',', [StringSplitOptions]::RemoveEmptyEntries)) { $c = $part.IndexOf(':'); if ($c -gt 0) { $map[[int]$part.Substring(0, $c)] = @($part.Substring($c + 1).Split('+', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { $_.Trim() }) } }
 $shotList = @($Shots.Split(',', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { [int]$_ })
+# -Snaps "400,800": at those steps (they must be shot steps too) BlastEm also saves its state (RAM, VDP, Z80 RAM) instead of the plain screenshot-and-advance: our RAM at the same steps is written and compared with it
+$snapList = @($Snaps.Split(',', [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { [int]$_ })
+foreach ($sn in $snapList) { if ($shotList -notcontains $sn) { $shotList += $sn } }
+$shotList = @($shotList | Sort-Object)
+$Shots = ($shotList -join ",")
 if ($Steps -le 0) { $Steps = if ($shotList.Count) { ($shotList | Measure-Object -Maximum).Maximum } else { 0 } }
 # BlastEm's script: pause, the pause-point shot, then the steps
 $a = New-Object System.Collections.Generic.List[string]
@@ -35,7 +40,7 @@ for ($s = 0; $s -lt $Steps; $s++) {
     $held = $now
   }
   $n = $s + 1
-  if ($shotList -contains $n) { FlushPlain; $a.Add("k:P"); $a.Add("adv1"); $a.Add("w1250") } else { $plain++ }
+  if ($shotList -contains $n) { FlushPlain; if ($snapList -contains $n) { $a.Add("snap"); $a.Add("w800") } else { $a.Add("k:P"); $a.Add("adv1"); $a.Add("w1250") } } else { $plain++ }
 }
 FlushPlain
 if ($held.Count) { foreach ($b in $held) { $a.Add("u:$b") } }
@@ -52,5 +57,17 @@ for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $
 $ws = Join-Path $root "ws.ps1"
 $wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $work "our\$Name"))
 if ($Region) { $wsArgs += @("--region", $Region) }
+if ($SaveOut) { $wsArgs += @("--save-out", (Join-Path $work "our\$Name\save.bin")) }
+if ($env:ORACLE_SLOTSET) { $wsArgs += @("--slot-set", $env:ORACLE_SLOTSET) }      # experiment switches for our side (see MdRunCli.ApplySlotSet), e.g. "movemipl=1"
+if ($snapList.Count) { $wsArgs += @("--ram-at", ($snapList -join ","), "--ram-dir", (Join-Path $work "our\$Name\ram")) }
 & $ws -TimeoutSec 1500 @wsArgs
+if ($snapList.Count) {
+  $states = @(Get-ChildItem $dir -Filter "s*.state" | Sort-Object Name)
+  "BlastEm states: $($states.Count) (expected $($snapList.Count))"
+  for ($i = 0; $i -lt [Math]::Min($states.Count, $snapList.Count); $i++) {
+    $step = $snapList[$i]
+    "--- work RAM at step ${step}:"
+    & $ws -TimeoutSec 120 --md-oracle --ramcmp (Join-Path $work ("our\$Name\ram\r{0:D5}.bin" -f $step)) $states[$i].FullName
+  }
+}
 

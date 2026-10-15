@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause, [string]$LockOwner = "b4b")
+param([string]$Games = "all", [int]$Steps = 1500, [int]$WaitMs = 5000, [string]$Pad = "default", [int]$Offset = 90, [int]$ShotEvery = 100, [int]$Retries = 2, [string]$Tag = "", [string]$Log = "", [switch]$AutoPause, [string]$LockOwner = "b4b", [switch]$Saves)
 # The roster climb: each game of docs/projects/sega-rosters.md played through with the sweep's pad script (or --Pad) in lock-step with BlastEm (oraclerun.ps1: pause and frame advance, a picture every -ShotEvery
 # advances), one line per game in the log. Needs: the blastem lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem -Owner <you>), BN_ORACLE_ROOT (a private folder with blastem\, be_shots\, be_save\) and BN_ARTIFACTS
 # (the build folder of the Workshop exe). A capture the run itself calls unreliable (the screenshot count is wrong) is repeated up to -Retries times.
@@ -37,11 +37,25 @@ foreach ($n in $list) {
   for ($try = 1; $try -le ($Retries + 1); $try++) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $env:BN_ADV_MS = "$gap"
-    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait 2>&1 | Out-String
+    $saveDir = Join-Path $work ("be_save\" + [IO.Path]::GetFileNameWithoutExtension($rom))
+    if ($Saves) { Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue }      # the oracle starts from an empty battery, as ours does
+    $out = & (Join-Path $here "oraclerun.ps1") -Rom $rom -Name $name -Pad $Pad -Steps $Steps -Offset $Offset -ShotEvery $ShotEvery -WaitMs $wait -SaveOut:$Saves 2>&1 | Out-String
+    if ($Saves) {
+      # BlastEm writes its battery file when it exits: compare it with ours byte for byte
+      $theirs = Get-ChildItem $saveDir -Include "save.sram","save.eeprom" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+      $mine = Join-Path $work "our\$name\save.bin"
+      if ($theirs -and (Test-Path $mine)) {
+        $tb = [IO.File]::ReadAllBytes($theirs.FullName); $mb = [IO.File]::ReadAllBytes($mine)
+        $nz = { param($x) ($x | Where-Object { $_ -ne 0 -and $_ -ne 0xFF }).Count }
+        if ($tb.Length -eq $mb.Length) { $diff = 0; $first = -1; for ($i = 0; $i -lt $tb.Length; $i++) { if ($tb[$i] -ne $mb[$i]) { $diff++; if ($first -lt 0) { $first = $i } } }
+          $out += "`r`nSAVE: $($theirs.Name) $($tb.Length) bytes ($(& $nz $tb) neither 00 nor FF) against ours $($mb.Length) bytes ($(& $nz $mb)): $(if ($diff -eq 0) { 'IDENTICAL' } else { "$diff bytes differ, first at offset $first (theirs $($tb[$first].ToString('X2')), ours $($mb[$first].ToString('X2')))" })" }
+        else { $out += "`r`nSAVE: sizes differ: $($theirs.Name) $($tb.Length) bytes ($(& $nz $tb) neither 00 nor FF), ours $($mb.Length) bytes ($(& $nz $mb))" }
+      } else { $out += "`r`nSAVE: no file to compare (oracle: $($theirs -ne $null), ours: $(Test-Path $mine))" }
+    }
     $lost = $out -match "advance\(s\) (behind|ahead)"
     $unreliable = ($out -match "CAPTURE UNRELIABLE") -or $lost
     if ($lost) { $out = "TAP LOSS (gap $gap ms): retrying slower`r`n" + $out; $gap = [int]($gap * 2.2) }
-    $summary = ($out -split "`r?`n" | Where-Object { $_ -match "^compared |^f0 =|AMBIGUOUS|CAPTURE UNRELIABLE|scan: the screenshot|no window|stopped after" }) -join " | "
+    $summary = ($out -split "`r?`n" | Where-Object { $_ -match "^compared |^f0 =|AMBIGUOUS|CAPTURE UNRELIABLE|scan: the screenshot|no window|stopped after|^SAVE:|^wrote the battery" }) -join " | "
     $result = "{0} try {1} ({2:N0} s): {3}" -f $name, $try, $sw.Elapsed.TotalSeconds, $summary
     Add-Content $Log ("=== #{0} {1}`r`n{2}`r`n{3}" -f $n, $roster[$n], $result, (($out -split "`r?`n" | Where-Object { $_ -match "^after " }) -join "`r`n"))
     if (-not $unreliable) { break }

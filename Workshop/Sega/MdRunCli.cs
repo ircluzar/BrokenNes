@@ -330,6 +330,9 @@ internal static class MdRunCli
                 case "dmablank": MdVdp.DmaBlankLimit = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
                 case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
+                case "iplprefetch": BOARD_MD.IplAtLastPrefetch = v[0] != 0; break;
+                case "movemipl": M68k<MdBus>.MovemFreezesIpl = v[0] != 0; break;
+                case "ipllead": BOARD_MD.IplLeadClocks = v[0]; break;
                 case "boot": BOARD_MD.BootOffsetClocks = v[0]; break;
                 case "refreshphase": BOARD_MD.RefreshPhaseClocks = v[0]; break;
                 case "refreshperiod": BOARD_MD.RefreshPeriodClocks = v[0]; break;

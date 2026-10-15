@@ -42,6 +42,12 @@ internal static class MdOracleCli
         return script;
     }
 
+    /// <summary>--ram-at 100,200 --ram-dir d: at those steps write our work RAM (r00100.bin), the Z80's RAM (z00100.bin) and VRAM (v00100.bin), for comparing with the oracle's saved states (--md-ramcmp).</summary>
+    /// <summary>The scanline the replay stops at between two steps (where the pad changes): 232 as measured on BlastEm; <c>--line N</c> to calibrate.</summary>
+    private static int ReplayLine = 232;
+    private static HashSet<int> RamAt = new();
+    private static string? RamDir;
+
     private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
     {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
@@ -65,9 +71,17 @@ internal static class MdOracleCli
         {
             if (script.TryGetValue(s, out var nb)) pad = nb;
             session.SetPad(0, pad);
-            session.RunToLine(232);
+            session.RunToLine(ReplayLine);
             int n = s + 1;
             if (lagRange > 0) { var copy = new uint[session.FrameWidth * session.FrameHeight]; Array.Copy(session.Frame, copy, copy.Length); history.Add((copy, session.FrameWidth, session.FrameHeight)); }
+            if (outDir != null && RamDir != null && RamAt.Contains(n))       // only the replay that is kept writes (the candidate searches pass no output folder)
+            {
+                var b = session.Board;
+                File.WriteAllBytes(Path.Combine(RamDir, $"r{n:D5}.bin"), b.Ram);
+                var z = b.Sound as MdSoundUnit ?? (b.Sound as MdSoundOnNes)?.Inner;
+                if (z != null) File.WriteAllBytes(Path.Combine(RamDir, $"z{n:D5}.bin"), z.Ram);
+                File.WriteAllBytes(Path.Combine(RamDir, $"v{n:D5}.bin"), b.Vdp.Vram);
+            }
             int idx = shots.IndexOf(n);
             if (idx < 0) continue;
             if (outDir != null) WritePng(session.Frame, session.FrameWidth, session.FrameHeight, Path.Combine(outDir, $"o{n:D5}.png"));
@@ -110,10 +124,37 @@ internal static class MdOracleCli
             Console.WriteLine(string.Join(",", parts));
             return 0;
         }
+        // --ramcmp ours.bin theirs.state [--at 10941] [--len 10000] [--name work-ram]: compare a block of memory of ours (the --ram-dir files) with the same block inside a BlastEm quick-save state (hexadecimal offset: the
+        // 68000's work RAM is a plain big-endian byte stream at $10941), as ranges of differing bytes with their values on both sides
+        if (M68kTestCli.Arg(args, "--ramcmp") is { } oursPath)
+        {
+            string? theirsPath = args.SkipWhile(a => a != "--ramcmp").Skip(2).FirstOrDefault(a => !a.StartsWith("--"));
+            if (theirsPath == null) { Console.WriteLine("usage: --ramcmp ours.bin theirs.state [--at 10941] [--len 10000]"); return 2; }
+            int at = Convert.ToInt32(M68kTestCli.Arg(args, "--at") ?? "10941", 16), len = Convert.ToInt32(M68kTestCli.Arg(args, "--len") ?? "10000", 16);
+            byte[] ours = File.ReadAllBytes(oursPath), stBytes = File.ReadAllBytes(theirsPath);
+            if (at + len > stBytes.Length || len > ours.Length) { Console.WriteLine($"sizes: ours {ours.Length}, state {stBytes.Length}, wanted {len:X} at {at:X}"); return 2; }
+            long baseAddr = Convert.ToInt64(M68kTestCli.Arg(args, "--base") ?? "FF0000", 16);
+            var diffs = new List<(int a, int b, int n)>();
+            int start = -1, last = -1, count = 0;
+            for (int i = 0; i < len; i++)
+            {
+                if (ours[i] == stBytes[at + i]) continue;
+                if (start >= 0 && i - last <= 3) { last = i; count++; continue; }
+                if (start >= 0) diffs.Add((start, last, count));
+                start = i; last = i; count = 1;
+            }
+            if (start >= 0) diffs.Add((start, last, count));
+            int total = diffs.Sum(d => d.n);
+            Console.WriteLine($"{Path.GetFileName(oursPath)} against {Path.GetFileName(theirsPath)}: {total:N0} differing bytes in {diffs.Count:N0} ranges of {len:N0}");
+            foreach (var (a, b, n) in diffs.Take(60))
+                Console.WriteLine($"   ${baseAddr + a:X6}-${baseAddr + b:X6} ({n} bytes): ours {BitConverter.ToString(ours, a, Math.Min(12, b - a + 1))}  theirs {BitConverter.ToString(stBytes, at + a, Math.Min(12, b - a + 1))}");
+            return total == 0 ? 0 : 1;
+        }
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
         int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
-        if (line != 232) Console.WriteLine("(note: Replay stops at line 232; --line only affects the scan and --windows)");
+        ReplayLine = line;
+        if (line != 232) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm's own stop is about 232, see the record)");
         int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : 9;
         string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
         if (outDir != null) Directory.CreateDirectory(outDir);
@@ -124,6 +165,9 @@ internal static class MdOracleCli
         int lagRange = int.TryParse(M68kTestCli.Arg(args, "--lags"), out int lg) ? lg : 400;
         int jobs = int.TryParse(M68kTestCli.Arg(args, "--jobs"), out int jb) ? Math.Clamp(jb, 1, 6) : 4;
         byte[] data = File.ReadAllBytes(rom);
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);       // experiment switches of the board and the VDP (names in MdRunCli.ApplySlotSet)
+        RamDir = M68kTestCli.Arg(args, "--ram-dir"); if (RamDir != null) Directory.CreateDirectory(RamDir);
+        RamAt = new HashSet<int>((M68kTestCli.Arg(args, "--ram-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
 
         // --windows N [--min 40]: with no input, the stretches of the first N boundaries whose pictures are all different from every other boundary's (including each other's): a pause inside one can be pinned to its
         // exact frame by --scan (a still or repeating picture cannot)
@@ -208,6 +252,8 @@ internal static class MdOracleCli
         var session = Boot(data, region, line, chosen + 1);
         var results = Replay(session, script, steps, shots, theirs, dy, lagRange, false, outDir, Console.WriteLine);
         if (M68kTestCli.Arg(args, "--ram-out") is { } ramOut) { File.WriteAllBytes(ramOut, session.Board.Ram); Console.WriteLine($"wrote the work RAM to {ramOut}"); }
+        // --save-out file: our battery image (SRAM or EEPROM) as the session would save it, after the replay: for comparing with the oracle's save file (written when it exits)
+        if (M68kTestCli.Arg(args, "--save-out") is { } saveOut) { var img = session.ExportSave(); File.WriteAllBytes(saveOut, img); Console.WriteLine($"wrote the battery image ({img.Length} bytes, {img.Count(x => x != 0 && x != 0xFF)} bytes neither 00 nor FF) to {saveOut}"); }
         long totalBad = results.Sum(r => r.Bad);
         if (results.Count > 0) Console.WriteLine($"compared {results.Count} picture(s): {results.Count(r => r.Bad == 0)} exact, {totalBad:N0} differing pixels in all");
         return results.Count > 0 && totalBad != 0 ? 1 : 0;
