@@ -110,5 +110,13 @@ public sealed class MdSession : IConsoleSession
         _ => id.Equals(apuId, StringComparison.OrdinalIgnoreCase),
     };
 
+    /// <summary>Why <see cref="TrySwapCore"/> says no (the apps print it when the game restarts on the new part). Added in C4b beside the contract's new member; track B4b owns this file and may replace the sound answer when the unit can be swapped live.</summary>
+    public string SwapRefusal(CoreSlot slot, string id) => slot switch
+    {
+        CoreSlot.Cpu => $"the Genesis has one main CPU, the 68000 ({cpuId}); {id} is not a choice it has",
+        CoreSlot.Ppu => $"the Genesis has one picture chip of its own ({ppuId}); {id} is not a choice it has",
+        _ => $"the Genesis sound unit (the Z80 sound driver, the YM2612 and the PSG with the bus handshake the 68000 sees) cannot yet hand its state to {id} while the game runs, so the game restarts on it",
+    };
+
     public void Dispose() { }
 }

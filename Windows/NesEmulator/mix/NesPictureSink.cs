@@ -13,6 +13,21 @@ internal sealed class NesPicture
     public bool Blank;
     /// <summary>Show sprites from pattern table 1 (the default) - off keeps the picture BG-only.</summary>
     public bool Sprites = true;
+
+    /// <summary>Back to what a new picture is: every table zero, no fine scroll, rendering on, sprites shown. A bridge keeps one picture and clears it for each frame instead of making a new one.</summary>
+    public void Clear()
+    {
+        Array.Clear(ChrBg); Array.Clear(ChrObj); Array.Clear(Nt0); Array.Clear(Nt1); Array.Clear(Pal); Array.Clear(Oam);
+        FineX = 0; FineY = 0; Blank = false; Sprites = true;
+    }
+
+    /// <summary>The picture of a frame that shows nothing (the backdrop only): rendering off, every palette entry colour $0F, every sprite off the screen.</summary>
+    public void ClearToBlank()
+    {
+        Clear();
+        Array.Fill(Pal, (byte)0x0F); Array.Fill(Oam, (byte)0xFF);
+        Blank = true;
+    }
 }
 
 /// <summary>
@@ -23,11 +38,18 @@ internal sealed class NesPictureSink
 {
     private readonly NES nes;
     private readonly Bus bus;
+    private readonly bool backdoor;
     public string PpuId { get; }
+
+    /// <summary>How the sink's NES passes the frames a picture takes. 2 (default): the PPU alone is stepped from the vertical blank through one whole picture and back to the blank (<see cref="NES.RunIdleToVblank"/>): one
+    /// frame of PPU work. 1: two frames of the PPU alone, the first only latching the new state (<see cref="NES.RunIdleFrame"/>). 0: two frames of the full NES loop with its idle CPU, the original path. The output is the same in
+    /// all three (the speed suite's goldens, <c>--ab idle-frame</c>).</summary>
+    public static int IdleMode = 2;
 
     public NesPictureSink(string nesPpuId)
     {
         PpuId = nesPpuId;
+        backdoor = Environment.GetEnvironmentVariable("MIX_BACKDOOR") != "0";      // read once: reading it for every frame made a string for every frame
         nes = new NES { RomName = "mixlab-idle.nes" };
         nes.LoadROM(SnesToNes.IdleRom());
         if (!nes.SetPpuCore(nesPpuId) || !string.Equals(nes.GetPpuCoreId(), "PPU_" + nesPpuId, StringComparison.OrdinalIgnoreCase))
@@ -43,6 +65,7 @@ internal sealed class NesPictureSink
     /// <summary>Program the NES PPU (rendering off while uploading), run two frames, return RGBA 256x240.</summary>
     public byte[] Present(NesPicture p)
     {
+        if (IdleMode == 2) nes.AlignIdleToVblank();   // the registers are written in the vertical blank, so the picture drawn next is a whole one
         // $3F10/$14/$18/$1C mirror $3F00/$04/$08/$0C: keep them equal or the last write (a sprite palette's unused
         // entry 0) replaces the universal background colour.
         for (int i = 0; i < 16; i += 4) p.Pal[16 + i] = p.Pal[i];
@@ -51,7 +74,7 @@ internal sealed class NesPictureSink
         // Instant register writes are fine for cores without a $2006 -> v delay, but PPU_FIX models the real 4-dot
         // delay: with no time passing between writes, every $2007 byte lands at the old address. Where the core has
         // a PPU-bus backdoor (IPpuProbe) and MIX_BACKDOOR is not 0, upload through it instead.
-        if (bus.ppu is IPpuProbe pb && Environment.GetEnvironmentVariable("MIX_BACKDOOR") != "0")
+        if (bus.ppu is IPpuProbe pb && backdoor)
         {
             for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)i, p.ChrBg[i]);
             for (int i = 0; i < 4096; i++) pb.ProbePpuBusWrite((ushort)(0x1000 + i), p.ChrObj[i]);
@@ -74,7 +97,9 @@ internal sealed class NesPictureSink
         _ = bus.Read(0x2002);
         W(0x2000, 0x08); W(0x2005, (byte)p.FineX); W(0x2005, (byte)p.FineY);
         W(0x2001, p.Blank ? (byte)0x00 : (byte)(p.Sprites ? 0x1E : 0x0E));
-        nes.RunFrame(); nes.RunFrame();   // one frame to latch the new picture, one to present it
+        if (IdleMode == 2) nes.RunIdleToVblank();
+        else if (IdleMode == 1) { nes.RunIdleFrame(); nes.RunIdleFrame(); }   // one frame to latch the new picture, one to present it
+        else { nes.RunFrame(); nes.RunFrame(); }
         return nes.GetFrameBuffer();
     }
 }

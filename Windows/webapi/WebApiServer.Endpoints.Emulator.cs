@@ -466,7 +466,7 @@ namespace BrokenNes.Windows.WebApi
                         success = _quickSaveState();
                     }
 
-                    return Results.Ok(new { success, gated = !success });
+                    return Results.Ok(StateResult(success));
                 }
                 catch (Exception ex)
                 {
@@ -494,7 +494,7 @@ namespace BrokenNes.Windows.WebApi
                         success = _quickLoadState();
                     }
 
-                    return Results.Ok(new { success, gated = !success });
+                    return Results.Ok(StateResult(success));
                 }
                 catch (Exception ex)
                 {

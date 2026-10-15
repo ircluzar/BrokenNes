@@ -63,13 +63,56 @@ namespace BrokenNes.Windows.Synth
             return "installed, a different build";
         }
 
+        /// <summary>The notice files that ride with the plugin DLL (the ported cores in it are under licenses that ask for their notices to accompany the binary): beside the program, else the repo above it.</summary>
+        public static readonly string[] NoticeFiles = { "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES-gb.md", "THIRD_PARTY_NOTICES-snes.md", "THIRD_PARTY_NOTICES-sega.md", "LICENSE.txt" };
+
+        /// <summary>Where the notice files are: the program's own folder, else (a developer's run) the repository's root and the ledgers beside the cores.</summary>
+        private static string? FindNotice(string file)
+        {
+            string here = Path.Combine(AppContext.BaseDirectory, file);
+            if (File.Exists(here)) return here;
+            for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+            {
+                string[] dev = file switch
+                {
+                    "THIRD_PARTY_NOTICES.md" or "LICENSE.txt" => new[] { Path.Combine(d.FullName, file) },
+                    _ => new[] { Path.Combine(d.FullName, "Windows", "NesEmulator", file["THIRD_PARTY_NOTICES-".Length..^3], "THIRD_PARTY_NOTICES.md") },
+                };
+                foreach (var p in dev) if (File.Exists(p)) return p;
+            }
+            return null;
+        }
+
+        /// <summary>Puts the notice files next to the installed DLL. Returns how many could not be copied (a missing source or a refused write); never throws.</summary>
+        public static int CopyNotices(string pluginDir)
+        {
+            int missing = 0;
+            foreach (var f in NoticeFiles)
+            {
+                try
+                {
+                    var src = FindNotice(f);
+                    if (src == null) { missing++; continue; }
+                    string dest = Path.Combine(pluginDir, f);
+                    if (File.Exists(dest) && new FileInfo(dest).Length == new FileInfo(src).Length && File.ReadAllBytes(dest).AsSpan().SequenceEqual(File.ReadAllBytes(src))) continue;
+                    File.Copy(src, dest, overwrite: true);
+                }
+                catch (Exception) { missing++; }
+            }
+            return missing;
+        }
+
         /// <summary>Installs into one FL Studio as the current user. A refusal for lack of rights is reported as <see cref="InstallOutcome.NeedsAdmin"/>, not an error.</summary>
         public static InstallResult TryInstall(FlStudioInstall target, string dll)
         {
             string dest = target.PluginPath, tmp = dest + ".new";
             try
             {
-                if (File.Exists(dest) && SameFile(dest, dll)) return new(target, InstallOutcome.AlreadyCurrent, "already installed and identical");
+                if (File.Exists(dest) && SameFile(dest, dll))
+                {
+                    int lacking = CopyNotices(target.PluginDir);
+                    return new(target, InstallOutcome.AlreadyCurrent, lacking == 0 ? "already installed and identical" : $"already installed and identical ({lacking} notice file(s) could not be put beside it)");
+                }
                 if (FlStudioLocator.IsRunning(target))
                     return new(target, InstallOutcome.FlRunning, "FL Studio is running from this installation: close it first (it keeps the plugin locked, and only looks for plugins at start-up)");
 
@@ -78,9 +121,10 @@ namespace BrokenNes.Windows.Synth
                 try { File.Copy(dll, tmp, overwrite: true); File.Move(tmp, dest, overwrite: true); }
                 finally { try { File.Delete(tmp); } catch (Exception) { } }
 
-                return SameFile(dest, dll)
-                    ? new(target, InstallOutcome.Installed, "installed")
-                    : new(target, InstallOutcome.Failed, "copied, but the installed file does not match");
+                if (!SameFile(dest, dll)) return new(target, InstallOutcome.Failed, "copied, but the installed file does not match");
+                // the licenses of the ported cores inside the DLL ask for their notices to accompany it: they go beside it (a failure here is said, it does not undo the install)
+                int notMoved = CopyNotices(target.PluginDir);
+                return new(target, InstallOutcome.Installed, notMoved == 0 ? "installed" : $"installed ({notMoved} notice file(s) could not be put beside it)");
             }
             catch (UnauthorizedAccessException) { return new(target, InstallOutcome.NeedsAdmin, "needs administrator rights"); }
             catch (IOException ex) { return new(target, InstallOutcome.Failed, ex.Message + " (is FL Studio running?)"); }

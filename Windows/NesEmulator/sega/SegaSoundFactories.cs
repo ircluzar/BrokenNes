@@ -26,6 +26,7 @@ public static class SmsSoundFactories
     {
         ["SMS"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),
         ["NES"] = r => new SmsSoundOnNes(r),   // Track C: the PSG replayed on a NES sound chip ("NES" = FIX, "NES:FIXS" ... name the chip)
+        ["NES-FM"] = r => new SmsFmSoundOnNes(r),   // Track C4b: the Japanese console's PSG and YM2413 replayed on a NES sound chip ("NES-FM:FIXS" ...; the real FM unit runs inside)
         ["GG"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Game Gear menu's id for the same unit (its stereo port is part of it)
         ["SMS-FM"] = r => new SmsFmSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Japanese console's sound: the PSG and the YM2413 (ports $F0-$F2)
     };

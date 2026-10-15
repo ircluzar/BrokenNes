@@ -82,8 +82,8 @@ namespace BrokenNes.Windows
             this.Deactivate += (_, _) => isMainWindowFocused = false;
             
             // Create menu bar
-            var menuStrip = new MenuStrip();
-            
+            var menuStrip = new MenuStrip { ShowItemToolTips = true };     // a MenuStrip shows no item tooltips unless asked: the core menus carry one each (what the part is and what it costs)
+
             // Emulator menu (merged File and Emulation)
             var emulatorMenu = new ToolStripMenuItem("&Emulator");
             
@@ -861,8 +861,8 @@ namespace BrokenNes.Windows
                         LoadContinueStateFromApi,  // Restore persistent continue checkpoint
                         QuickSaveStateFromApi,  // Quick save (F7 equivalent)
                         QuickLoadStateFromApi,  // Quick load (F5 equivalent)
-                        () => nes?.RomPath,  // Current ROM path
-                        () => nes?.RomName,  // Current ROM name
+                        () => nes?.RomPath ?? (session != null ? currentRomPath : null),  // Current ROM path (a console session's too)
+                        () => nes?.RomName ?? (session != null ? sessionRomName : null),  // Current ROM name
                         LoadRomFromApi,  // Load ROM by path
                         RefreshProgressionUi,  // Refresh progression-gated WinForms menus/state
                         OpenControllerConfig  // Open player controller config window

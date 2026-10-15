@@ -126,6 +126,20 @@ namespace NesEmulator
             set => requestedPatch = OpllPatchBank.Clamp(value);
         }
 
+        private static readonly System.Collections.Generic.List<WeakReference<APU_SMSFM>> Live = new();
+
+        /// <summary>The instrument every new core starts on and every running core switches to: the desktop's "Master System FM instrument" setting (the volume panel and <c>smsFmPatch</c> over the HTTP API), as <see cref="APU_MD.SetPatchEverywhere"/> is for the Genesis.</summary>
+        public static void SetPatchEverywhere(int index)
+        {
+            index = OpllPatchBank.Clamp(index);
+            DefaultPatch = index;
+            lock (Live)
+            {
+                for (int i = Live.Count - 1; i >= 0; i--)
+                    if (Live[i].TryGetTarget(out var core)) core.Patch = index; else Live.RemoveAt(i);
+            }
+        }
+
         public APU_SMSFM(Bus bus)
         {
             string frontId = MixConfig.NesFrontApu;
@@ -138,6 +152,7 @@ namespace NesEmulator
             fm = new Ym2413(ClockHz);
             resampler = new Ym2413Resampler(ClockHz / Ym2413.ClocksPerSample, rate);
             patchIndex = OpllPatchBank.Clamp(DefaultPatch); patch = OpllPatchBank.Patches[patchIndex]; patchDirty = true;
+            lock (Live) Live.Add(new WeakReference<APU_SMSFM>(this));
             PowerOn();
         }
 

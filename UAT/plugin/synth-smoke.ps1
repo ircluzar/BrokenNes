@@ -16,7 +16,11 @@
     tab_routing               with the Triangle tab selected, A plays the Triangle
     keyboard_switch_off       with "Computer keyboard plays notes" off, A does nothing (no note, no level)
     close_saves_state         closing the window exits 0 and writes synth.json and a synth-state.bin holding all four instances
-    settings_restored         starting again comes back on the Triangle tab, at the saved octave, with the engine running
+    settings_restored         starting again comes back on the Triangle tab
+    octave_restored           ... at the saved octave (NOT RUN when the octave keys were not exercised)
+    restored_plays            ... with the engine running: A plays again
+  A key check needs the synth window to hold the foreground; when another window keeps or takes it the check is reported NOT RUN (never PASS, never FAIL) and the
+  result line says status NOT RUN (exit 0).
     restart_to_synth          emulator: Config > Synthesizer Mode > Restart as Standalone Synth starts "--synth" and the emulator exits (exit 0)
     restart_to_emulator       synth: Synth > Restart as Emulator starts the emulator again and the synth exits
     missing_plugin_explained  a build with no Plugin\ folder: the synth says why (names the missing file) and starts the emulator instead
@@ -42,7 +46,10 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $checks = [ordered]@{}
 $result = [ordered]@{ pass = $false }
+$keyChecks = 'key_plays_pulse1', 'octave_keys', 'tab_routing', 'keyboard_switch_off', 'restored_plays'
 function Check($name, [bool]$ok, $detail) {
+    # a key check during which the synth lost the foreground proves nothing about the synth: a failure is NOT RUN, and so is the "does nothing" pass (the key may simply have gone elsewhere)
+    if ($script:fgLost -and ($keyChecks -contains $name) -and ((-not $ok) -or $name -eq 'keyboard_switch_off')) { NotRun $name "the synth window lost the foreground to [$([SynthWin]::ForegroundTitle())] while the keys were down (it measured: $detail)"; return }
     $checks[$name] = [ordered]@{ ok = $ok; detail = "$detail" }
     Write-Host ("{0,-26} {1}  {2}" -f $name, $(if ($ok) { 'ok  ' } else { 'FAIL' }), $detail) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
 }
@@ -55,6 +62,20 @@ public static class SynthWin {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint from, uint to, bool attach);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder sb, int max);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  /// <summary>Ask for the foreground the way a program is allowed to: by sharing the input queue of whoever holds it now. No keys are sent.</summary>
+  public static void TakeForeground(IntPtr h) {
+    uint pid; IntPtr fg = GetForegroundWindow(); uint theirs = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, out pid); uint mine = GetCurrentThreadId();
+    bool attached = theirs != 0 && theirs != mine && AttachThreadInput(mine, theirs, true);
+    ShowWindow(h, 9); BringWindowToTop(h); SetForegroundWindow(h);
+    if (attached) AttachThreadInput(mine, theirs, false);
+  }
+  public static string ForegroundTitle() { var sb = new System.Text.StringBuilder(256); GetWindowText(GetForegroundWindow(), sb, 256); return sb.ToString(); }
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
@@ -92,9 +113,27 @@ function StatusText($root) {
     foreach ($e in $root.FindAll($TS::Descendants, (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::Text)))) { if ($e.Current.Name -like 'Audio:*') { return $e.Current.Name } }
     ''
 }
+# A key check needs the synth's window to hold the foreground. Windows will not hand it to a background process while another program (an emulator
+# window another agent is driving, say) keeps it, and the keystrokes would go to that program. Then the check is NOT RUN: not a pass (a "key does
+# nothing" check passes trivially when the key goes elsewhere) and not a failure of the synth.
+function NotRun($name, $why) {
+    $checks[$name] = [ordered]@{ ok = $false; notRun = $true; detail = "NOT RUN: $why" }
+    Write-Host ("{0,-26} {1}  {2}" -f $name, 'NOT RUN', $why) -ForegroundColor Yellow
+}
 function LevelOf($status) { if ($status -match 'level ([0-9.]+)') { [double]$Matches[1] } else { -1 } }
-function Focus($p) { [void][SynthWin]::ShowWindow($p.MainWindowHandle, 9); [void][SynthWin]::SetForegroundWindow($p.MainWindowHandle); Start-Sleep -Milliseconds 500 }
-function KeyDown($vk) { [SynthWin]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero) }
+# true when the synth's window really holds the foreground afterwards; $script:fgHolder then names the window that kept it
+function Focus($p) {
+    $h = $p.MainWindowHandle; $script:fgHandle = $h; $script:fgLost = $false
+    for ($try = 0; $try -lt 4; $try++) {
+        [SynthWin]::TakeForeground($h); Start-Sleep -Milliseconds 400
+        if ([SynthWin]::GetForegroundWindow() -eq $h) { return $true }
+    }
+    $script:fgHolder = [SynthWin]::ForegroundTitle()
+    $false
+}
+$script:fgHolder = ''; $script:fgHandle = [IntPtr]::Zero; $script:fgLost = $false
+# another program (an agent's emulator window, a dialog) can take the foreground between Focus and the last key: a key check that saw it happen is NOT RUN, whatever it measured (see Check)
+function KeyDown($vk) { if ([SynthWin]::GetForegroundWindow() -ne $script:fgHandle) { $script:fgLost = $true }; [SynthWin]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero) }
 function KeyUp($vk) { [SynthWin]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero) }
 function Tap($vk) { KeyDown $vk; Start-Sleep -Milliseconds 80; KeyUp $vk; Start-Sleep -Milliseconds 150 }
 # hold a key, return the status text and the highest level seen while it was down (the status refreshes every 100 ms)
@@ -102,8 +141,15 @@ function Hold($p, $root, $vk, $ms = 700) {
     KeyDown $vk; $peak = 0.0; $text = ''
     $end = (Get-Date).AddMilliseconds($ms)
     while ((Get-Date) -lt $end) { Start-Sleep -Milliseconds 120; $text = StatusText $root; $peak = [Math]::Max($peak, (LevelOf $text)) }
+    if ([SynthWin]::GetForegroundWindow() -ne $script:fgHandle) { $script:fgLost = $true }
     KeyUp $vk
     [pscustomobject]@{ Text = $text; Peak = $peak }
+}
+# UI Automation finds things a moment after a window or menu appears, and longer on a busy machine: ask again for a while before giving up
+function WaitFor([scriptblock]$find, [string]$what, [int]$seconds = 20) {
+    $end = (Get-Date).AddSeconds($seconds)
+    do { $r = & $find; if ($r) { return $r }; Start-Sleep -Milliseconds 300 } while ((Get-Date) -lt $end)
+    throw "gave up waiting for $what ($seconds s)"
 }
 
 $started = New-Object System.Collections.Generic.List[int]   # PIDs this script started or whose children it identified: the only ones it may stop
@@ -147,34 +193,43 @@ try {
     $st = StatusText $root
     Check 'status_line' ($st -match 'Audio: null output' -and $st -match 'MIDI: ') "[$st]"
 
-    Focus $p
-    $r = Hold $p $root 0x41
-    $idle = (LevelOf (StatusText $root))
-    Start-Sleep -Milliseconds 700; $idle = (LevelOf (StatusText $root))
-    Check 'key_plays_pulse1' ($r.Text -match 'Pulse 1: key A plays note 60' -and $r.Peak -gt 0.02 -and $idle -le 0.005) "while held: [$($r.Text -replace '^.*MIDI: [^|]*\|\s*','')] peak $($r.Peak); after release $idle"
+    $fg = Focus $p
+    $whyNot = "another window holds the foreground ([$script:fgHolder]); the key presses would go to it"
+    if ($fg) {
+        $r = Hold $p $root 0x41
+        $idle = (LevelOf (StatusText $root))
+        Start-Sleep -Milliseconds 700; $idle = (LevelOf (StatusText $root))
+        Check 'key_plays_pulse1' ($r.Text -match 'Pulse 1: key A plays note 60' -and $r.Peak -gt 0.02 -and $idle -le 0.005) "while held: [$($r.Text -replace '^.*MIDI: [^|]*\|\s*','')] peak $($r.Peak); after release $idle"
+    } else { NotRun 'key_plays_pulse1' $whyNot }
 
-    Tap 0x58                                           # X: octave up
-    $up = Hold $p $root 0x41
-    Tap 0x5A; Tap 0x5A                                 # Z Z: octave down twice (net -1)
-    $down = Hold $p $root 0x41
-    $upNote = if ($up.Text -match 'plays note (\d+)') { [int]$Matches[1] } else { -1 }
-    $downNote = if ($down.Text -match 'plays note (\d+)') { [int]$Matches[1] } else { -1 }
-    Check 'octave_keys' ($upNote -eq 72 -and $downNote -eq 48) "X then A -> note $upNote (expect 72); Z Z then A -> note $downNote (expect 48)"
+    if ($fg -and (Focus $p)) {
+        Tap 0x58                                           # X: octave up
+        $up = Hold $p $root 0x41
+        Tap 0x5A; Tap 0x5A                                 # Z Z: octave down twice (net -1)
+        $down = Hold $p $root 0x41
+        $upNote = if ($up.Text -match 'plays note (\d+)') { [int]$Matches[1] } else { -1 }
+        $downNote = if ($down.Text -match 'plays note (\d+)') { [int]$Matches[1] } else { -1 }
+        Check 'octave_keys' ($upNote -eq 72 -and $downNote -eq 48) "X then A -> note $upNote (expect 72); Z Z then A -> note $downNote (expect 48)"
+    } else { NotRun 'octave_keys' $whyNot }
 
     # tab routing: select Triangle, A plays the Triangle
     ($root.FindFirst($TS::Descendants, (New-Object Windows.Automation.AndCondition((New-Object Windows.Automation.PropertyCondition($AE::NameProperty, 'Triangle')), (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::TabItem))))).GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select()
-    Start-Sleep -Milliseconds 500; Focus $p
-    $tri = Hold $p $root 0x41
-    Check 'tab_routing' ($tri.Text -match 'Triangle: key A' -and $tri.Peak -gt 0.01) "[$($tri.Text -replace '^.*MIDI: [^|]*\|\s*','')] peak $($tri.Peak)"
+    Start-Sleep -Milliseconds 500
+    if (Focus $p) {
+        $tri = Hold $p $root 0x41
+        Check 'tab_routing' ($tri.Text -match 'Triangle: key A' -and $tri.Peak -gt 0.01) "[$($tri.Text -replace '^.*MIDI: [^|]*\|\s*','')] peak $($tri.Peak)"
+    } else { NotRun 'tab_routing' $whyNot }
 
     # keyboard switch: off means off
     $box = $root.FindFirst($TS::Descendants, (New-Object Windows.Automation.PropertyCondition($AE::NameProperty, 'Computer keyboard plays notes')))
     $toggle = $box.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $toggle.Toggle(); Start-Sleep -Milliseconds 400
-    $before = StatusText $root; Focus $p
-    $off = Hold $p $root 0x41
-    $sameNote = ($before -replace 'level [0-9.]+', '') -eq ($off.Text -replace 'level [0-9.]+', '')
-    Check 'keyboard_switch_off' ($sameNote -and $off.Peak -le 0.005) "status unchanged=$sameNote, level while A held with the switch off: $($off.Peak)"
+    $before = StatusText $root
+    if (Focus $p) {
+        $off = Hold $p $root 0x41
+        $sameNote = ($before -replace 'level [0-9.]+', '') -eq ($off.Text -replace 'level [0-9.]+', '')
+        Check 'keyboard_switch_off' ($sameNote -and $off.Peak -le 0.005) "status unchanged=$sameNote, level while A held with the switch off: $($off.Peak)"
+    } else { NotRun 'keyboard_switch_off' "$whyNot (a key that reaches no synth would make 'does nothing' pass for nothing)" }
     $toggle.Toggle(); Start-Sleep -Milliseconds 400    # back on, so the saved setting is the default
 
     # ---------------- close, saved state, second run ----------------
@@ -192,8 +247,14 @@ try {
     $triTab = $root2.FindFirst($TS::Descendants, (New-Object Windows.Automation.AndCondition((New-Object Windows.Automation.PropertyCondition($AE::NameProperty, 'Triangle')), (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::TabItem)))))
     $selected = $triTab.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected
     $octaveLabel = ($root2.FindAll($TS::Descendants, (New-Object Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [Windows.Automation.ControlType]::Text))) | Where-Object { $_.Current.Name -like 'Keys A*' } | Select-Object -First 1).Current.Name
-    Focus $p2; $again = Hold $p2 $root2 0x41
-    Check 'settings_restored' ($selected -and $octaveLabel -match '= C3' -and $again.Peak -gt 0.01) "Triangle tab selected=$selected; [$octaveLabel]; plays again (peak $($again.Peak))"
+    Check 'settings_restored' $selected "Triangle tab selected=$selected (the tab was chosen through UI Automation, no keys)"
+    # the octave was set with the X / Z keys: if those key checks did not run, there is no octave to have saved
+    if ($checks['octave_keys'] -and $checks['octave_keys'].ok) { Check 'octave_restored' ($octaveLabel -match '= C3') "[$octaveLabel]" }
+    else { NotRun 'octave_restored' 'the octave keys were not exercised in this run (octave_keys did not pass), so no changed octave was saved' }
+    if (Focus $p2) {
+        $again = Hold $p2 $root2 0x41
+        Check 'restored_plays' ($again.Peak -gt 0.01) "plays again after the restart (peak $($again.Peak))"
+    } else { NotRun 'restored_plays' "another window holds the foreground ([$script:fgHolder]); the key presses would go to it" }
     [void]$p2.CloseMainWindow(); if (-not $p2.WaitForExit(15000)) { Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue }
 
     # ---------------- the restart handoff, through the emulator's real menus ----------------
@@ -203,10 +264,10 @@ try {
     Start-Sleep -Seconds 3; $emu.Refresh()
     if ($emu.MainWindowTitle -eq 'Audio Warning') { [void]$emu.CloseMainWindow(); Start-Sleep -Seconds 2 }   # a box with no playback device: the emulator says so once
     # the emulator's top-level window: by its process and the WinForms class prefix (the hash after it changes with the exe's path)
-    $main = $AE::RootElement.FindAll($TS::Children, (New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id))) | Where-Object { $_.Current.ClassName -like 'WindowsForms10.Window.8.app.*' } | Select-Object -First 1
-    Expand (ByName $main 'Config'); Start-Sleep -Milliseconds 500
-    Expand (ByName $AE::RootElement 'Synthesizer Mode'); Start-Sleep -Milliseconds 500
-    $item = ByName $AE::RootElement 'Restart as Standalone Synth'
+    $main = WaitFor { $AE::RootElement.FindAll($TS::Children, (New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id))) | Where-Object { $_.Current.ClassName -like 'WindowsForms10.Window.8.app.*' } | Select-Object -First 1 } 'the emulator window'
+    Expand (WaitFor { ByName $main 'Config' } 'the Config menu'); Start-Sleep -Milliseconds 500
+    Expand (WaitFor { ByName $AE::RootElement 'Synthesizer Mode' } 'the Synthesizer Mode menu'); Start-Sleep -Milliseconds 500
+    $item = WaitFor { ByName $AE::RootElement 'Restart as Standalone Synth' } 'the Restart as Standalone Synth item'
     $item.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
     $synth = $null
     for ($i = 0; $i -lt 100 -and -not $synth; $i++) { Start-Sleep -Milliseconds 200; $synth = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($emu.Id)" | Where-Object { $_.CommandLine -match '--synth' } | Select-Object -First 1 }
@@ -220,8 +281,8 @@ try {
         for ($i = 0; $i -lt 100 -and -not $sp.MainWindowHandle; $i++) { Start-Sleep -Milliseconds 200; $sp.Refresh() }
         Start-Sleep -Seconds 3; $sp.Refresh()
         $sroot = $AE::FromHandle($sp.MainWindowHandle)
-        Expand (ByName $sroot 'Synth'); Start-Sleep -Milliseconds 500
-        (ByName $AE::RootElement 'Restart as Emulator').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Expand (WaitFor { ByName $sroot 'Synth' } 'the Synth menu'); Start-Sleep -Milliseconds 500
+        (WaitFor { ByName $AE::RootElement 'Restart as Emulator' } 'the Restart as Emulator item').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         for ($i = 0; $i -lt 100 -and -not $emu2; $i++) { Start-Sleep -Milliseconds 200; $emu2 = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($synth.ProcessId)" | Where-Object { $_.Name -eq 'BrokenNes.Windows.exe' } | Select-Object -First 1 }
         if ($emu2) { $started.Add([int]$emu2.ProcessId) }
         $synthGone = $sp.WaitForExit(20000)
@@ -262,8 +323,11 @@ finally {
     foreach ($id in $started) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }   # by PID, only ours
     $result.checks = $checks
     $result.seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
-    $failed = @($checks.Values | Where-Object { -not $_.ok }).Count
-    $result.pass = (-not $result.Contains('error')) -and $checks.Count -ge 12 -and $failed -eq 0
+    $failed = @($checks.Values | Where-Object { -not $_.ok -and -not $_.notRun }).Count
+    $notRun = @($checks.Values | Where-Object { $_.notRun }).Count
+    $result.pass = (-not $result.Contains('error')) -and $checks.Count -ge 12 -and $failed -eq 0 -and $notRun -eq 0
+    # keys that could not reach the synth are not a failure of the synth: the run says NOT RUN (exit 0, like install-smoke) and names what was not exercised
+    if ($failed -eq 0 -and $notRun -gt 0 -and -not $result.Contains('error')) { $result.status = 'NOT RUN'; $result.error = "$notRun keyboard check(s) not run (another window took or kept the foreground; see their detail): $((@($checks.GetEnumerator() | Where-Object { $_.Value.notRun } | ForEach-Object { $_.Key })) -join ', ')" }
     Write-Output ($result | ConvertTo-Json -Depth 6 -Compress)
 }
-if ($result.pass) { exit 0 } else { exit 1 }
+if ($result.pass) { exit 0 } elseif ($result.Contains('status') -and $result.status -eq 'NOT RUN') { exit 0 } else { exit 1 }

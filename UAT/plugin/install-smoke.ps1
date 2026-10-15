@@ -111,6 +111,9 @@ try {
     $r = Install @('--fl', "`"$flA`"")
     Check 'install_replaces_build' ($r.Code -eq 0 -and $r.Lines[0] -cmatch '^Installed\t' -and (Hash $destA) -eq (Hash $shipped)) "exit=$($r.Code) line=$($r.Lines -join ' / ')"
     Check 'no_partial_file' (-not (Test-Path "$destA.new")) "leftover .new: $(Test-Path "$destA.new")"
+    # the ported cores inside the DLL (Z80, 68000, YM2612, YM2413 ...) are under licenses that ask for their notices to accompany the binary: they are installed beside it
+    $notices = & pwsh -NoProfile -File (Join-Path $repo 'UAT\entrypoints\notices-check.ps1') -PluginDir (Split-Path $destA) 2>&1 | Out-String
+    Check 'notices_beside_dll' ($LASTEXITCODE -eq 0 -and $notices -match 'FL plugin holds the notices') "$((($notices -split "`n") | Where-Object { $_ -match 'FL plugin|FAIL' }) -join ' / ')"
 
     $destB = Join-Path $flB 'Plugins\Fruity\Generators\BrokenNes2\BrokenNes2_x64.dll'
     $destC = Join-Path $flC 'Plugins\Fruity\Generators\BrokenNes2\BrokenNes2_x64.dll'
