@@ -140,6 +140,7 @@ Run 'sega-preview' {
     $out | Out-File (Join-Path $outDir 'sega-preview-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 

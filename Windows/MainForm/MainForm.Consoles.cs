@@ -591,6 +591,17 @@ namespace BrokenNes.Windows
             _ => b,
         };
 
+        private readonly bool[] observedPad1 = new bool[WebApi.ApiInputInjector.ButtonCount], observedPad2 = new bool[WebApi.ApiInputInjector.ButtonCount];
+
+        /// <summary>A pad as the API's button list (A, B, Select, Start, Up, Down, Left, Right, X, Y, L, R, C, Z, Mode).</summary>
+        private static void PadToButtons(PadButtons p, bool[] b)
+        {
+            b[0] = (p & PadButtons.A) != 0; b[1] = (p & PadButtons.B) != 0; b[2] = (p & PadButtons.Select) != 0; b[3] = (p & PadButtons.Start) != 0;
+            b[4] = (p & PadButtons.Up) != 0; b[5] = (p & PadButtons.Down) != 0; b[6] = (p & PadButtons.Left) != 0; b[7] = (p & PadButtons.Right) != 0;
+            b[8] = (p & PadButtons.X) != 0; b[9] = (p & PadButtons.Y) != 0; b[10] = (p & PadButtons.L) != 0; b[11] = (p & PadButtons.R) != 0;
+            b[12] = (p & PadButtons.C) != 0; b[13] = (p & PadButtons.Z) != 0; b[14] = (p & PadButtons.Mode) != 0;
+        }
+
         private static PadButtons FromNesOrder(bool[] b)
         {
             PadButtons p = 0;
@@ -610,6 +621,9 @@ namespace BrokenNes.Windows
             WebApi.ApiInputInjector.Apply(a1, a2);
             p1 |= FromNesOrder(a1) | WebApi.ApiInputInjector.ExtraButtons(0); p2 |= FromNesOrder(a2) | WebApi.ApiInputInjector.ExtraButtons(1);
             p1 = ForConsole(s.Console, p1); p2 = ForConsole(s.Console, p2);
+            // GET /api/input/state reports what the game was handed (real devices merged with the injection), for the consoles as it does for the NES
+            PadToButtons(p1, observedPad1); PadToButtons(p2, observedPad2);
+            WebApi.ApiInputInjector.PublishObserved(observedPad1, observedPad2);
             webModuleInputManager?.Poll();
 
             lock (emulationLock)
@@ -638,17 +652,27 @@ namespace BrokenNes.Windows
                 }
             }
 
-            int w = s.FrameWidth, h = s.FrameHeight;
-            // the aspect width is part of the size: a Genesis game in its 256-wide mode (PAL, H32) has the NES's pixel size but not its shape
-            if (backBuffer == null || backBuffer.Width != w || backBuffer.Height != h || displayWidth != s.DisplayWidth)
-            {
-                RequestDisplaySize(w, h, s.DisplayWidth);
-                return;   // this frame is dropped while the display is rebuilt at the new size
-            }
+            // The size, the picture and the buffer are read together under the lock a core swap takes: a swap between reading the size (256 x 240, a NES chip drawing the game) and reading the picture
+            // (160 x 144, the console's own chip again) read past the end of the picture, threw, and the loop below treats an exception as the end of the emulation - the game stopped for good
+            // (found by driving the swaps through the HTTP API: about one swap back in three).
+            int w, h, aw; bool resize = false;
             lock (emulationLock)
             {
-                var src = s.Frame; var dst = backBuffer.Bits;
-                for (int i = 0; i < w * h; i++) dst[i] = (int)src[i];
+                w = s.FrameWidth; h = s.FrameHeight; aw = s.DisplayWidth;
+                var bb = backBuffer;
+                // the aspect width is part of the size: a Genesis game in its 256-wide mode (PAL, H32) has the NES's pixel size but not its shape
+                if (bb == null || bb.Width != w || bb.Height != h || displayWidth != aw) resize = true;
+                else
+                {
+                    var src = s.Frame; var dst = bb.Bits;
+                    int n = Math.Min(w * h, Math.Min(src.Length, dst.Length));
+                    for (int i = 0; i < n; i++) dst[i] = (int)src[i];
+                }
+            }
+            if (resize)
+            {
+                RequestDisplaySize(w, h, aw);
+                return;   // this frame is dropped while the display is rebuilt at the new size
             }
             RequestRenderFrame();
         }
