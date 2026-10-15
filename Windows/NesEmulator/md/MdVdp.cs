@@ -171,9 +171,13 @@ public sealed partial class MdVdp
     /// <summary>How long after the command word a DMA waits before its first fetch (master clocks), and the time between fetches while the FIFO has room: a bus transfer reads the 68000's bus at its own pace and only the
     /// writes into VRAM, CRAM and VSRAM need slots. Measured against the oracle with FIFO-synchronised starts (the direct colour demo's lead-in): in blanked lines the 68000 runs again one tick (16 clocks) per word
     /// after the command; with the FIFO partly full the first two words are fetched together.</summary>
-    public static int DmaStartDelay = 56, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
+    public static int DmaStartDelay = 78, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
     /// <summary>The DMA engine fetches nothing while the VDP is in a refresh slot.</summary>
     public static bool DmaSkipsRefresh = true;
+    /// <summary>In a blanked line a word the DMA moves from the 68000 into CRAM or VSRAM (one slot a word) cannot be written in the slot after a refresh slot either: the oracle takes 198 slots for 198 words in H40 (204 free slots)
+    /// and 161 in H32 (166), measured with <c>cram_rate.py</c> (32 to 2048 words, 3 percent slower than the free slots) and by the direct colour demo, which sends exactly 198 words a line and shows a clean picture there (a
+    /// transfer into VRAM, two slots a word, is not slower: 102 words a line). False: the free slots alone.</summary>
+    public static bool DmaRefreshBubble = true;
 
     /// <summary>The VDP holds the 68000 while a bus DMA runs.</summary>
     public bool DmaHaltsCpu => dma == DmaKind.Bus;
@@ -247,6 +251,10 @@ public sealed partial class MdVdp
         }
 
         /// <summary>Clocks to wait from line offset <paramref name="off"/> (taken modulo the line) until the refresh slot it falls in is over (0 when it is not in one): the DMA engine fetches nothing during a refresh slot.</summary>
+        /// <summary>Experiment: how many ticks, from a refresh slot on, the DMA engine cannot fetch from the 68000's bus (the slot itself and what follows). 1 = the slot only. Two ticks lose 4 words in 204 of a one-word-a-slot
+        /// transfer, three lose 10: neither gives the 198 the oracle shows, see <see cref="MdVdp.DmaRefreshBubble"/>.</summary>
+        public static int RefreshBlockTicks = 1;
+
         public static int RefreshWait(bool h40, int off)
         {
             off %= ClocksPerLine;
@@ -254,8 +262,22 @@ public sealed partial class MdVdp
             int lo = 0, hi = t.Length - 1;
             while (lo < hi) { int mid = (lo + hi + 1) >> 1; if (t[mid] <= off) lo = mid; else hi = mid - 1; }     // the tick this offset is in
             foreach (int r in h40 ? BlankRefreshH40 : BlankRefreshH32)
-                if (r == lo) return (lo + 1 < t.Length ? t[lo + 1] : ClocksPerLine) - off;
+                if (lo >= r && lo < r + RefreshBlockTicks) { int end = r + RefreshBlockTicks; return (end < t.Length ? t[end] : ClocksPerLine) - off; }
             return 0;
+        }
+
+        /// <summary>Which tick, counted from a refresh slot, the one-word-a-slot DMA writes cannot use (1 = the slot after it, -1 = the one before).</summary>
+        public static int BubbleOffset = 3;
+
+        /// <summary>The slot at line offset <paramref name="off"/> is the bubble tick of a refresh slot.</summary>
+        public static bool AfterRefresh(bool h40, int off)
+        {
+            off %= ClocksPerLine; if (off < 0) off += ClocksPerLine;
+            var t = tickStart[h40 ? 1 : 0] ??= BuildTickStarts(h40);
+            int lo = 0, hi = t.Length - 1;
+            while (lo < hi) { int mid = (lo + hi + 1) >> 1; if (t[mid] <= off) lo = mid; else hi = mid - 1; }
+            foreach (int r in h40 ? BlankRefreshH40 : BlankRefreshH32) if (r + BubbleOffset == lo) return true;
+            return false;
         }
 
         private static int[] BuildTickStarts(bool h40)
@@ -511,6 +533,7 @@ public sealed partial class MdVdp
         if (fifoCount > 0)
         {
             ref var e = ref fifo[fifoHead];
+            if (DmaRefreshBubble && e.FromDma && SlotsFor(e.Code) == 1 && !(DisplayEnabled && (Line < ActiveLines || Line == linesPerFrame - 1)) && SlotTable.AfterRefresh(H40, (int)(Time - lineStart))) return;      // see DmaRefreshBubble
             if (--e.SlotsLeft <= 0)
             {
                 Trace?.Invoke($"fifo commit code {e.Code:X} at line {Line}+{LineOffset} left {fifoCount - 1}");

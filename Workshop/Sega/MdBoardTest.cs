@@ -581,6 +581,26 @@ internal static class MdBoardTest
         double linesBlank = (blank.T - startB) / (double)MdVdp.ClocksPerLine;
         Check("... and under one line during vertical blank (about 100 words a line)", linesBlank < 1.2, $"{linesBlank:F2} lines");
 
+        // one word a slot into CRAM in a blanked H40 line: 198 words a line, not the 204 free slots (the oracle: cram_rate.py; the direct colour demo is pixel-identical only with exactly 198)
+        var cr = new Rig();
+        cr.Reg(1, 0x34); cr.Reg(12, 0x81); cr.Reg(15, 2);            // display off: every line is blanked
+        cr.Reg(19, 0xA0); cr.Reg(20, 0x0F); cr.Reg(21, 0); cr.Reg(22, 0x08); cr.Reg(23, 0);       // 4000 words from $1000
+        cr.RunTo(cr.LineStart(30));
+        long startC = cr.T;
+        cr.Cmd(0x23, 0);
+        cr.Settle();
+        double linesCram = (cr.T - startC) / (double)MdVdp.ClocksPerLine;
+        Check("DMA of 4000 words into CRAM in a blanked H40 line writes 198 words a line (about 20.3 lines; 204 a line would be 19.7)", linesCram is > 20.0 and < 20.6, $"{linesCram:F2} lines");
+        var vr = new Rig();
+        vr.Reg(1, 0x34); vr.Reg(12, 0x81); vr.Reg(15, 2);
+        vr.Reg(19, 0xA0); vr.Reg(20, 0x0F); vr.Reg(21, 0); vr.Reg(22, 0x08); vr.Reg(23, 0);
+        vr.RunTo(vr.LineStart(30));
+        long startV = vr.T;
+        vr.Cmd(0x21, 0);
+        vr.Settle();
+        double linesVram = (vr.T - startV) / (double)MdVdp.ClocksPerLine;
+        Check("... while the same transfer into VRAM (two slots a word) is not slowed by it: the 68000 is let go after about 38.5 lines (it is let go at the last fetch, a FIFO ahead of the last write)", linesVram is > 38.2 and < 38.9, $"{linesVram:F2} lines");
+
         // fill: the data word that starts it is an ordinary write, the rest repeat its high byte at address^1 (Nemesis: DMA Fill FIFO Usage reads 1234 then 12 12 ...)
         var f = new Rig();
         f.Reg(1, 0x74); f.Reg(12, 0x81); f.Reg(15, 1);

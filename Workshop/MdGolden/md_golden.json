@@ -209,11 +209,11 @@
     {
       "name": "Chilly Willy direct colour DMA",
       "rom": "tests:Direct-Color-DMA.zip|Direct-Color-DMA.bin",
-      "verified": "regression",
+      "verified": "oracle",
       "checkpoints": {
-        "10": "D447F39FE9C80E25",
-        "101": "A0B500A0EAC5D149",
-        "400": "A0B500A0EAC5D149"
+        "10": "EE61A46843B3256F",
+        "101": "EE61A46843B3256F",
+        "400": "EE61A46843B3256F"
       }
     },
     {
@@ -221,7 +221,7 @@
       "rom": "tests:VDPFIFOTesting.zip|VDPFIFOTesting.bin",
       "verified": "regression",
       "checkpoints": {
-        "2600": "1E9334646EE4EB19"
+        "2600": "FE283CFB39CBB554"
       },
       "input": "400:Start,410:"
     }

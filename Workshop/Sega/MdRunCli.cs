@@ -336,6 +336,9 @@ internal static class MdRunCli
                 case "preh32": MdVdp.SlotTable.ActivePreTicksH32 = v; break;
                 case "refreshh40": MdVdp.SlotTable.BlankRefreshH40 = v; break;
                 case "refreshh32": MdVdp.SlotTable.BlankRefreshH32 = v; break;
+                case "refreshblock": MdVdp.SlotTable.RefreshBlockTicks = v[0]; break;
+                case "dmabubble": MdVdp.DmaRefreshBubble = v[0] != 0; break;
+                case "bubbleoff": MdVdp.SlotTable.BubbleOffset = v[0]; break;
                 default: throw new ArgumentException("unknown slot-set name " + name);
             }
         }
