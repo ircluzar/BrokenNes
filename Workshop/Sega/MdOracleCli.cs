@@ -48,6 +48,13 @@ internal static class MdOracleCli
     private static HashSet<int> RamAt = new();
     private static string? RamDir;
 
+    /// <summary>
+    /// The row of the oracle's screenshot that our row 0 sits on. <c>--dy N</c> fixes it; otherwise it follows the two picture heights: BlastEm centres the picture in its frame and its screenshot starts one row before
+    /// the centre, so a 224-line picture is at row 9 of a 240-row screenshot (NTSC), at row 17 of a 256-row one (PAL, 224 lines) and a 240-line PAL picture at row 9 of 256. (A wrong fixed value looked like a rendering
+    /// difference on PAL games: Gunstar Heroes, SoR3.)
+    /// </summary>
+    private static int DyFor(int dyArg, int oursH, int theirsH) => dyArg >= 0 ? dyArg : Math.Max(0, (theirsH - oursH) / 2 + 1);
+
     private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
     {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
@@ -87,14 +94,14 @@ internal static class MdOracleCli
             if (outDir != null) WritePng(session.Frame, session.FrameWidth, session.FrameHeight, Path.Combine(outDir, $"o{n:D5}.png"));
             if (idx >= theirs.Count) { log?.Invoke($"after {n,5} advances: picture hash {Hash(session.Frame, session.FrameWidth * session.FrameHeight):X16}"); continue; }
             var th = theirs[idx];
-            long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, dy, 0, long.MaxValue);
+            long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, DyFor(dy, session.FrameHeight, th.h), 0, long.MaxValue);
             int bestN = n; long bestBad = bad;
             if (bad != 0 && lagRange > 0)
             {
                 bestBad = long.MaxValue; bestN = -1;
                 for (int k = Math.Max(0, history.Count - 1 - lagRange); k < history.Count; k++)
                 {
-                    long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, dy, 0, bestBad);
+                    long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, DyFor(dy, history[k].h, th.h), 0, bestBad);
                     if (b2 < bestBad) { bestBad = b2; bestN = k + 1; }
                 }
             }
@@ -155,7 +162,7 @@ internal static class MdOracleCli
         int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
         ReplayLine = line;
         if (line != 232) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm's own stop is about 232, see the record)");
-        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : 9;
+        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : -1;
         string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
         if (outDir != null) Directory.CreateDirectory(outDir);
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
@@ -200,13 +207,29 @@ internal static class MdOracleCli
             int scanTo = int.TryParse(M68kTestCli.Arg(args, "--scan-to"), out int sto) ? sto : 900;
             var session0 = new MdSession(data, "M68K", "MD", "MD", region);
             long best = long.MaxValue; int bestF = -1; var exact = new List<int>();
+            // --scan-state pause.state: the oracle's state saved at the pause point (the same moment as the screenshot): among the boundaries whose picture matches, the one whose work RAM is closest to it is the start
+            byte[]? pauseRam = null;
+            if (M68kTestCli.Arg(args, "--scan-state") is { } pausePath && File.Exists(pausePath))
+            {
+                byte[] pauseState = File.ReadAllBytes(pausePath);
+                if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); }
+            }
+            var ramDiff = new Dictionary<int, int>();
             for (int f = 0; f <= scanTo; f++)
             {
                 session0.SetPad(0, PadButtons.None);
                 session0.RunToLine(line);
-                long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, dy, 0, best == long.MaxValue ? best : Math.Max(best, 1));
-                if (bad == 0) exact.Add(f);
+                long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, DyFor(dy, session0.FrameHeight, target.h), 0, best == long.MaxValue ? best : Math.Max(best, 1));
+                if (bad == 0) { exact.Add(f); if (pauseRam != null) { var ram = session0.Board.Ram; int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++; ramDiff[f] = n; } }
                 if (bad < best) { best = bad; bestF = f; }
+            }
+            if (pauseRam != null && ramDiff.Count > 0)
+            {
+                var byRam = ramDiff.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key).ToList();
+                Console.WriteLine($"scan: work RAM against the oracle's state at the pause point, picture-identical boundaries by differing bytes: {string.Join(", ", byRam.Take(6).Select(kv => $"{kv.Key} ({kv.Value:N0})"))}");
+                // a start whose RAM is clearly the closest (the next one has at least twice the differing bytes, or exactly zero differ) is taken without replaying
+                if (byRam.Count == 1 || byRam[0].Value == 0 || byRam[1].Value >= Math.Max(8, byRam[0].Value * 2)) { exact = new List<int> { byRam[0].Key }; bestF = byRam[0].Key; Console.WriteLine($"scan: the start is boundary {bestF} (RAM)"); }
+                else exact = byRam.Take(8).Select(kv => kv.Key).OrderBy(x => x).ToList();
             }
             Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
             if (exact.Count > 1)

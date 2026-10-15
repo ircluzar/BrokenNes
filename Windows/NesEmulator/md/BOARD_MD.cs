@@ -69,6 +69,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         get
         {
             if (Cpu.Stopped) iplSample = Vdp.IplAt(t);
+            else if (IplMode == 1) return iplForStep;
             return iplSample;
         }
     }
@@ -149,7 +150,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (!Vdp.FrameCompleted && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
-            Cpu.Step();
+            StepCpu();
             Vdp.RunTo(t);
         }
         Sound.RunTo(t);
@@ -169,7 +170,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (Vdp.Frames * perFrame + Vdp.Line < target && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
-            Cpu.Step();
+            StepCpu();
             Vdp.RunTo(t);
         }
         Sound.RunTo(t);
@@ -194,10 +195,23 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public int StepInstruction()
     {
         InstructionHook?.Invoke(Cpu.Pc - 4);
-        int c = Cpu.Step();
+        int c = StepCpu();
         Vdp.RunTo(t);
         return c;
     }
+
+    private int StepCpu()
+    {
+        if (IplMode == 1) { iplForStep = iplAtPrevStart; iplAtPrevStart = Vdp.IplAt(t - IplLeadClocks); }
+        return Cpu.Step();
+    }
+
+    /// <summary>
+    /// Experiment: 0 = the interrupt lines are sampled at the start of the last bus cycle of each instruction (as always); 1 = at the START of each instruction, minus <see cref="IplLeadClocks"/>, and used for the decision
+    /// before the instruction that follows it (the oracle takes an interrupt after the instruction that was running when the line went up, whatever its length).
+    /// </summary>
+    public static int IplMode = 0;
+    private int iplForStep, iplAtPrevStart;
 
     // =================================================================================================================
     //  The 68000's bus

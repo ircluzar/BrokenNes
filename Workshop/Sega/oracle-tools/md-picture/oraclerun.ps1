@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [switch]$SaveOut, [string]$Region = "", [string]$Pad = "", [int]$Offset = 90, [int]$ShotEvery = 100, [string]$Snaps = "")
+param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [string]$Script = "", [string]$Shots = "", [int]$Steps = 0, [int]$WaitMs = 5000, [int]$StartupMs = 1500, [string]$Extra = "", [switch]$NoCapture, [switch]$SaveOut, [string]$Region = "", [string]$Pad = "", [int]$Offset = 90, [int]$ShotEvery = 100, [string]$Snaps = "", [switch]$PauseSnap)
 # A scripted play-through compared with BlastEm frame by frame (see Workshop\Sega\MdOracleCli.cs for the protocol).
 #   -Script "0:Start,4:,400:Right,500:Right+C,520:Right"   step:buttons (buttons joined by +, empty = none); the pad changes before the advance of that step
 #   -Shots  "50,100,200"                                   compare the pictures after that many advances
@@ -26,7 +26,7 @@ $Shots = ($shotList -join ",")
 if ($Steps -le 0) { $Steps = if ($shotList.Count) { ($shotList | Measure-Object -Maximum).Maximum } else { 0 } }
 # BlastEm's script: pause, the pause-point shot, then the steps
 $a = New-Object System.Collections.Generic.List[string]
-$a.Add("w$WaitMs"); $a.Add("pause"); $a.Add("k:P"); $a.Add("adv1"); $a.Add("w1250")       # S0: the picture at the pause point, after its own advance (shown picture = machine state)
+$a.Add("w$WaitMs"); $a.Add("pause"); $a.Add("k:P"); $a.Add("adv1"); $a.Add("w1250"); if ($PauseSnap) { $a.Add("snap"); $a.Add("w800") }       # S0: the picture at the pause point, after its own advance (shown picture = machine state)
 # our f0 is that state: the advance that took the shot is part of the pause point, so the steps count from here
 $held = @(); $plain = 0
 function FlushPlain { if ($script:plain -gt 0) { $script:a.Add("adv$($script:plain)"); $script:plain = 0 } }
@@ -57,6 +57,8 @@ for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $
 $ws = Join-Path $root "ws.ps1"
 $wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $work "our\$Name"))
 if ($Region) { $wsArgs += @("--region", $Region) }
+if ($env:ORACLE_DY) { $wsArgs += @("--dy", $env:ORACLE_DY) }      # the row offset of our picture in BlastEm's screenshot (9 for an NTSC 224-line picture; a PAL one has more rows above it)
+if ($PauseSnap) { $pauseState = @(Get-ChildItem $dir -Filter "s*.state" | Sort-Object Name | Select-Object -First 1); if ($pauseState.Count) { $wsArgs += @("--scan-state", $pauseState[0].FullName) } }      # the oracle's state at the pause point: tells apart the boundaries whose picture is the same
 if ($SaveOut) { $wsArgs += @("--save-out", (Join-Path $work "our\$Name\save.bin")) }
 if ($env:ORACLE_SLOTSET) { $wsArgs += @("--slot-set", $env:ORACLE_SLOTSET) }      # experiment switches for our side (see MdRunCli.ApplySlotSet), e.g. "movemipl=1"
 if ($env:ORACLE_LINE) { $wsArgs += @("--line", $env:ORACLE_LINE) }      # experiment: the scanline our replay stops at between steps (default 232, where BlastEm stops)
@@ -64,6 +66,7 @@ if ($snapList.Count) { $wsArgs += @("--ram-at", ($snapList -join ","), "--ram-di
 & $ws -TimeoutSec 1500 @wsArgs
 if ($snapList.Count) {
   $states = @(Get-ChildItem $dir -Filter "s*.state" | Sort-Object Name)
+  if ($PauseSnap -and $states.Count -gt 0) { $states = @($states | Select-Object -Skip 1) }
   "BlastEm states: $($states.Count) (expected $($snapList.Count))"
   for ($i = 0; $i -lt [Math]::Min($states.Count, $snapList.Count); $i++) {
     $step = $snapList[$i]
