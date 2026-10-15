@@ -148,47 +148,67 @@ internal static class SegaScenes
     }
 
     /// <summary>Pixels of the bridge's picture that are not the colour of the plane row <paramref name="rowAt"/>(line, screen x) gives; <paramref name="dx"/>: the screen column of the picture's first column (32 in H40).</summary>
-    private static int RowMismatch(MdRig r, int dx, Func<int, int, int> rowAt)
+    private static int RowMismatch(MdRig r, int dx, Func<int, int, int> rowAt, int fromScreenX = 0)
     {
         var c = r.Wrap.BridgeCanvas; int bad = 0;
         for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++)
-            if (At(c, x, 8 + y) != MdLook(RowCram[1 + rowAt(y, x + dx) % 6])) bad++;
+            if (x + dx >= fromScreenX && At(c, x, 8 + y) != MdLook(RowCram[1 + rowAt(y, x + dx) % 6])) bad++;
         return bad;
     }
 
-    private static (int bad, int oldRuleBad) ColumnScrollScene(string chip, bool h40, bool planeB, Func<int, int> hsOf, int r11)
+    private static (int bad, int oldRuleBad) ColumnScrollScene(string chip, bool h40, bool planeB, Func<int, int> hsOf, int r11, int winW = 0)
     {
         int nt = planeB ? MdRig.PlaneB : MdRig.PlaneA, off = planeB ? 1 : 0, last = h40 ? 19 : 15, dx = h40 ? 32 : 0, mask = (r11 & 3) == 0 ? 0 : 0xF8;
         var r = PlaneRig(chip, nt, 64, 32, r11, h40 ? 0x81 : 0x00, 0x01);
         var vs = new int[40];
         for (int c = 0; c < 20; c++) { vs[2 * c + off] = 8 * ((5 * c + 1) % 32); vs[2 * c + 1 - off] = 8 * ((5 * c + 3) % 32); }
-        vs[2 * last + off] = h40 ? 144 : 96; vs[2 * last + 1 - off] = h40 ? 160 : 80;      // the last pair's two entries differ, and so does their AND (128 / 64) from both: the strip before the first pair shows which rule made it
+        vs[2 * last + off] = h40 ? 144 : 96; vs[2 * last + 1 - off] = h40 ? 160 : 80;      // the last pair's two entries differ, and so does their AND (128 / 64) from both
         for (int i = 0; i < 40; i++) r.V.Vsram[i] = (ushort)vs[i];
         for (int l = 0; l < 224; l += mask == 0 ? 224 : 8) r.W16(MdRig.HScroll + l * 4 + (planeB ? 2 : 0), hsOf(l));
-        r.Go();
-        int Row(int y, int sx, int b0)
+        if (winW > 0)
         {
-            int v = sx < b0 ? (vs[2 * last] & vs[2 * last + 1]) & 0x3FF : vs[2 * ((sx - b0) >> 4) + off] & 0x3FF;
-            return ((y + v) & 255) >> 3;
+            // a window at the left, winW pixels wide on every line (plane A shows only to its right); its cells are another colour so the split is visible
+            r.Color(7, 0x888); r.Tile(7, 7);
+            int cells = h40 ? 64 : 32;
+            for (int row = 0; row < 28; row++) for (int col = 0; col < cells; col++) r.Cell(MdRig.WindowNt, cells, row, col, 7);
+            r.V.Reg[17] = (byte)(winW / 16); r.V.Reg[18] = 0;
         }
-        return (RowMismatch(r, dx, (y, sx) => Row(y, sx, hsOf(y & mask) & 15)), RowMismatch(r, dx, (y, sx) => Row(y, sx, 0)));
+        r.Go();
+        // the rule (docs/projects/sega-track-b4a.md 1.2): the pairs start at hs mod 16; before the first pair the H40 value is the last pair's two entries ANDed and the H32 value 0;
+        // with a window at the left of winW = 16 w pixels and hs mod 16 != 0, plane A's first b0 pixels after the window use column w, not w - 1
+        int Row(int y, int sx, int b0, bool rule)
+        {
+            int v;
+            if (sx < b0) v = rule && !h40 ? 0 : vs[2 * last] & vs[2 * last + 1];
+            else
+            {
+                int col = (sx - b0) >> 4;
+                if (rule && winW > 0 && !planeB && b0 != 0 && sx >= winW && sx < winW + b0) col = winW >> 4;
+                v = vs[2 * col + off];
+            }
+            return ((y + (v & 0x3FF)) & 255) >> 3;
+        }
+        return (RowMismatch(r, dx, (y, sx) => Row(y, sx, hsOf(y & mask) & 15, true), winW), RowMismatch(r, dx, (y, sx) => Row(y, sx, 0, false), winW));
     }
 
     private static void MdRuleScenes()
     {
         const string chip = "NES:FIXS"; string tag = $"Genesis on {chip}";
         // ---- 1. 2-cell column vertical scroll: the pairs of cells start at the plane's scroll mod 16, the strip before the first pair takes the last column's two entries ANDed
-        var scenes = new (string name, bool h40, bool planeB, Func<int, int> hs, int r11, bool tellsApart)[]
+        var scenes = new (string name, bool h40, bool planeB, Func<int, int> hs, int r11, bool tellsApart, int winW)[]
         {
-            ("plane A, H32, scrolled 5 pixels", false, false, _ => 5, 0x04, true),
-            ("plane B, H32, scrolled 29 pixels", false, true, _ => 29, 0x04, true),
-            ("plane A, H40 (the picture's first column is screen column 32), scrolled 27 pixels", true, false, _ => 27, 0x04, true),
-            ("plane A, H32, a different scroll every 8 lines (0, 7, 14, ... mod 16 decide the pairs line by line)", false, false, l => (l >> 3) * 7 & 0x1FF, 0x04 | 0x02, true),
-            ("plane A, H32, not scrolled (the one case the old rule had right)", false, false, _ => 0, 0x04, false),
+            ("plane A, H32, scrolled 5 pixels (the strip before the first pair is column 0 of the table in H32: value 0)", false, false, _ => 5, 0x04, true, 0),
+            ("plane B, H32, scrolled 29 pixels", false, true, _ => 29, 0x04, true, 0),
+            ("plane A, H40 (the picture's first column is screen column 32), scrolled 27 pixels", true, false, _ => 27, 0x04, true, 0),
+            ("plane A, H32, a different scroll every 8 lines (0, 7, 14, ... mod 16 decide the pairs line by line)", false, false, l => (l >> 3) * 7 & 0x1FF, 0x04 | 0x02, true, 0),
+            ("plane A, H32, not scrolled (the one case the old rule had right)", false, false, _ => 0, 0x04, false, 0),
+            ("plane A, H32, scrolled 5, a window 32 pixels wide at the left (the 5 pixels after it take the NEXT pair's entry)", false, false, _ => 5, 0x04, true, 32),
+            ("plane A, H32, scrolled 13, a window 48 pixels wide at the left", false, false, _ => 13, 0x04, true, 48),
+            ("plane A, H40, scrolled 27, a window 64 pixels wide at the left (screen columns 64 to 74 are the strip)", true, false, _ => 27, 0x04, true, 64),
         };
         foreach (var s in scenes)
         {
-            var (bad, oldBad) = ColumnScrollScene(chip, s.h40, s.planeB, s.hs, s.r11);
+            var (bad, oldBad) = ColumnScrollScene(chip, s.h40, s.planeB, s.hs, s.r11, s.winW);
             Check($"{tag}: 2-cell column scroll, {s.name}: every pixel is the row the rule picks", bad == 0, $"{bad} pixels differ (the old rule would differ in {oldBad})");
             Check($"{tag}: ... and the scene tells the rules apart", s.tellsApart ? oldBad > 1000 : oldBad == 0, $"the old rule differs in {oldBad} pixels");
         }
@@ -228,6 +248,52 @@ internal static class SegaScenes
             Check($"{tag}: {mode}: a palette 0 sprite is drawn", P(200, 60) == MdLook(0x0E0), $"{P(200, 60):X6}");
             long ops = r.Wrap.Counters.Total("sprite pieces holding shadow/highlight operators (their pixels are not drawn, and neither is the shading they cause)");
             Check($"{tag}: {mode}: the operator pieces are counted ({(sh ? "2 distinct pieces a frame, over the frames run" : "none")})", sh ? ops >= 2 : ops == 0, $"{ops}; {r.Wrap.Counters}");
+        }
+
+        // ---- 4. register 0 bit 5, the left column blank: the first 8 pixels are the backdrop, sprites too; with shadow/highlight on, the planes of the second cell (x 8-15) are the first cell's planes (sprites stay)
+        foreach (bool sh in new[] { false, true })
+        {
+            var r = new MdRig(chip); r.Color(0, 0);
+            for (int i = 1; i <= 6; i++) { r.Color(i, RowCram[i]); r.Tile(i, i); }
+            r.Color(7, 0x888); r.Tile(7, 7);
+            for (int row = 0; row < 28; row++) for (int col = 0; col < 32; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1 + col % 6);        // screen cell c shows tile 1 + c % 6, so the cell a pixel comes from can be told from its colour
+            r.Sprite(0, 0, 40, 1, 1, 7, link: 1); r.Sprite(1, 8, 60, 1, 1, 7, link: 0);          // one wholly in the blank column, one wholly in the second cell
+            r.Regs(0x04 | 0x20, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, sh ? 0x08 : 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
+            r.Go();
+            var cv = r.Wrap.BridgeCanvas; string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
+            uint Cell(int c) => MdLook(RowCram[1 + c % 6]);
+            int blankBad = 0, secondBad = 0, restBad = 0;
+            for (int y = 100; y < 130; y++)
+            {
+                for (int x = 0; x < 8; x++) if (At(cv, x, 8 + y) != 0u) blankBad++;
+                for (int x = 8; x < 16; x++) if (At(cv, x, 8 + y) != Cell(sh ? 0 : 1)) secondBad++;
+                for (int x = 16; x < 256; x++) if (At(cv, x, 8 + y) != Cell(x >> 3)) restBad++;
+            }
+            Check($"{tag}: {mode}: the first 8 pixels are the backdrop, not the plane", blankBad == 0, $"{blankBad} pixels differ");
+            Check($"{tag}: {mode}: the second cell (x 8-15) shows {(sh ? "the FIRST cell's plane" : "its own plane")}", secondBad == 0, $"{secondBad} pixels differ");
+            Check($"{tag}: {mode}: the cells from x = 16 on are their own", restBad == 0, $"{restBad} pixels differ");
+            Check($"{tag}: {mode}: a sprite wholly in the blank column is hidden, one in the second cell is drawn", At(cv, 3, 8 + 43) == 0u && At(cv, 11, 8 + 63) == MdLook(0x888), $"{At(cv, 3, 8 + 43):X6} / {At(cv, 11, 8 + 63):X6}");
+            if (sh) Check($"{tag}: {mode}: the blank column is drawn in the plain backdrop and the frame says so (the shadowed backdrop is part of the shading this bridge does not draw)", r.Wrap.Counters.Total("lines with the left column blanked in shadow/highlight mode (the column shows the plain backdrop, not the shadowed one)") >= 200, r.Wrap.Counters.ToString());
+        }
+
+        // ---- 5. interlace mode 2: the cells are 8 x 16 (64-byte patterns); the field's lines show every other pattern row, the vertical scroll counts picture rows and has 11 bits
+        {
+            var r = new MdRig(chip); r.Color(0, 0); r.Color(1, RowCram[1]); r.Color(2, RowCram[2]);
+            for (int row16 = 0; row16 < 16; row16++) for (int k = 0; k < 4; k++) r.V.Vram[64 + row16 * 4 + k] = (byte)(row16 < 8 ? 0x11 : 0x22);       // pattern 1: rows 0-7 colour 1, rows 8-15 colour 2
+            for (int row = 0; row < 28; row++) for (int col = 0; col < 64; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1);
+            r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x06, 0x3F, 0, 0x02, 0x01, 0, 0);
+            r.Go();
+            var cv = r.Wrap.BridgeCanvas; int bad = 0;
+            for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++) if (At(cv, x, 8 + y) != MdLook(RowCram[(y & 7) < 4 ? 1 : 2])) bad++;
+            Check($"{tag}: interlace mode 2: a cell is 16 pattern rows tall, the field shows every other one (the top half colour 1, the bottom half colour 2)", bad == 0, $"{bad} pixels differ");
+            Check($"{tag}: ... and the frame counts it (double-height cells drawn as the field's even rows)", r.Wrap.Counters.Total("frames in interlace mode 2 (the field is drawn from the even rows of the 8x16 cells)") >= 2, r.Wrap.Counters.ToString());
+
+            // the vertical scroll has 11 bits in this mode: 0x410 = 1040 picture rows = 520 field lines; read with 10 bits it would be 16 rows = 8 lines
+            r = PlaneRig(chip, MdRig.PlaneA, 32, 128, 0x00, 0x06, 0x30);
+            for (int t = 1; t <= 6; t++) for (int i = 0; i < 64; i++) r.V.Vram[t * 64 + i] = (byte)(t << 4 | t);
+            r.V.Vsram[0] = 0x410; r.Go();
+            int bad11 = RowMismatch(r, 0, (y, _) => ((y + 520) & 1023) >> 3), bad10 = RowMismatch(r, 0, (y, _) => ((y + 8) & 1023) >> 3);
+            Check($"{tag}: interlace mode 2: the vertical scroll has 11 bits (0x410 scrolls 520 field lines of a 128-row plane, not 8)", bad11 == 0 && bad10 > 1000, $"{bad11} pixels differ (with 10 bits it would differ in {bad10})");
         }
     }
 

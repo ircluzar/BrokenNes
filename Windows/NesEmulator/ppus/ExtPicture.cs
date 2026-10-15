@@ -46,13 +46,26 @@ namespace NesEmulator
             public short[]? ColumnScroll;
             public short ColumnLeft;
             public readonly short[] ColumnShift = new short[Lines];
+            /// <summary>Per line, the Genesis's window-at-the-left quirk of the column scroll: for the <see cref="ColumnExtra"/> pixels from <see cref="ColumnExtraFrom"/> on, the pair number counts that many pixels further (the pair after the one the shift gives).</summary>
+            public readonly short[] ColumnExtraFrom = new short[Lines], ColumnExtra = new short[Lines];
             /// <summary>The column scroll at source x <paramref name="sx"/> of <paramref name="line"/> (only for a layer that has <see cref="ColumnScroll"/>).</summary>
-            public int ColumnValue(int line, int sx) { int ci = sx + ColumnShift[line]; return ci < 0 ? ColumnLeft : ColumnScroll![Math.Min(ci >> 4, ColumnScroll.Length - 1)]; }
+            public int ColumnValue(int line, int sx)
+            {
+                int ci = sx + ColumnShift[line];
+                int ex = ColumnExtra[line];
+                if (ex != 0 && sx >= ColumnExtraFrom[line] && sx < ColumnExtraFrom[line] + ex) ci += ex;
+                return ci < 0 ? ColumnLeft : ColumnScroll![Math.Min(ci >> 4, ColumnScroll.Length - 1)];
+            }
+            /// <summary>Per line, the Genesis's blank left column (register 0 bit 5): the first this-many output pixels show nothing of this layer.</summary>
+            public readonly byte[] BlankLeft = new byte[Lines];
+            /// <summary>Per line, the blank left column's quirk in shadow/highlight mode: from this source x (-1: never) the 8 pixels show this layer's pixels 8 to the left (the second cell shows the first cell's planes).</summary>
+            public readonly short[] CellOneStart = new short[Lines];
 
             public void Reset()
             {
                 Enabled = false; AnyHidden = false; ColumnScroll = null;
                 Array.Clear(On); Array.Clear(Map); Array.Clear(Attr);
+                Array.Clear(ColumnExtra); Array.Clear(BlankLeft); Array.Fill(CellOneStart, (short)-1);
             }
         }
 
@@ -164,13 +177,16 @@ namespace NesEmulator
                 int my = baseY & hMask, ty = my & 7, mapRow = (my >> 3) << shiftW;
                 var colScroll = L.ColumnScroll;
                 byte zl = L.ZLow[line], zh = L.ZHigh[line];
+                int blank = L.BlankLeft[line], cellOne = L.CellOneStart[line];
                 for (int i = 0; i < count; i++)
                 {
                     int sx = x0 + i;
                     if ((uint)sx >= Width) continue;
-                    if (L.AnyHidden && L.Hidden[row + sx]) continue;
-                    if (colScroll != null) { int cy = (baseY + L.ColumnValue(line, sx)) & hMask; ty = cy & 7; mapRow = (cy >> 3) << shiftW; }
-                    int mx = (L.ScrollX[line] + sx) & wMask, cell = mapRow + (mx >> 3);
+                    if (sx < blank) continue;                                           // the Genesis's blank left column: nothing of this layer
+                    int px = cellOne >= 0 && (uint)(sx - cellOne) < 8u ? sx - 8 : sx;   // ... whose second cell shows the first cell's pixels in shadow/highlight mode
+                    if (L.AnyHidden && L.Hidden[row + px]) continue;
+                    if (colScroll != null) { int cy = (baseY + L.ColumnValue(line, px)) & hMask; ty = cy & 7; mapRow = (cy >> 3) << shiftW; }
+                    int mx = (L.ScrollX[line] + px) & wMask, cell = mapRow + (mx >> 3);
                     int v = L.Tiles[L.Map[cell] * 64 + ty * 8 + (mx & 7)];
                     if (v == 0) continue;
                     int a = L.Attr[cell];

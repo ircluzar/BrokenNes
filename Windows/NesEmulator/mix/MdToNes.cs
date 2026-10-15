@@ -160,7 +160,8 @@ internal sealed class MdToNes
         if (cap.H40) c.Add("columns cropped from the 320-wide picture", 64);
         if (cap.ActiveLines > 224) c.Add("lines cropped from the 240-line picture", cap.ActiveLines - 224);
         if ((cap.RegEnd[12] & 8) != 0) c.Add("frames in shadow/highlight mode (the shading is not drawn)");
-        if (cap.Interlaced) c.Add("interlaced frames (drawn as normal frames)");
+        il2 = (cap.RegEnd[12] & 6) == 6;
+        if (cap.Interlaced) c.Add(il2 ? "frames in interlace mode 2 (the field is drawn from the even rows of the 8x16 cells)" : "interlaced frames (drawn as normal frames)");
         if ((cap.RegEnd[1] & 4) == 0) { c.Add("frames in the Master System compatibility mode (not translated)"); }
         var layered = sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront;
         if ((cap.RegEnd[1] & 4) == 0)
@@ -230,9 +231,13 @@ internal sealed class MdToNes
         return false;
     }
 
+    /// <summary>Interlace mode 2 (double resolution) in the frame being translated: the cells are 8 x 16, a pattern is 64 bytes, and the field's line y shows pattern row 2y (+ the field).
+    /// The bridge draws the field from the even rows (a row off where a cell is flipped vertically or the scroll is odd: the field flag is not visible from here).</summary>
+    private bool il2;
+
     private int TilePixel(int tile, int y, int x)
     {
-        int a = (tile << 5) + (y << 2);
+        int a = il2 ? (tile << 6) + (y << 3) : (tile << 5) + (y << 2);
         var v = cap.Vram;
         int b = v[(a + (x >> 1)) & 0xFFFF];
         return (x & 1) == 0 ? b >> 4 : b & 15;
@@ -247,17 +252,33 @@ internal sealed class MdToNes
 
     /// <summary>
     /// The vertical scroll the VDP applies to a plane at screen column <paramref name="screenX"/> of line <paramref name="l"/> (<paramref name="vsOff"/>: 0 plane A, 1 plane B; <paramref name="hs"/>: the plane's horizontal
-    /// scroll entry on that line). Full-screen mode: entry 0 / 1. 2-cell column mode: a vertical scroll entry covers a PAIR of the plane's cells, so the pairs start at screen x = hs mod 16 and the entry is the pair's number;
-    /// the stretch before the first pair uses the last column's two entries ANDed (the same for both planes). Measured on BlastEm (Track B4a: 17 probe scenes, H40 and H32, both planes, fine and coarse scroll,
-    /// pixel-identical); the rule before it counted the columns from the screen's edge (hs mod 16 = 0 is the old rule's one case).
+    /// scroll entry on that line), in lines of the picture drawn (field lines in interlace mode 2). Full-screen mode: entry 0 / 1. 2-cell column mode: a vertical scroll entry covers a PAIR of the plane's cells, so the
+    /// pairs start at screen x = hs mod 16 and the entry is the pair's number; before the first pair H40 uses the last column's two entries ANDed and H32 uses 0; with a window at the left (16 w pixels) and hs mod 16
+    /// != 0, plane A's first b0 pixels after the window take column w (the pair AFTER the one the count gives). The scroll has 10 bits, 11 in interlace mode 2 (where it counts picture rows: half as many field
+    /// lines). All measured on BlastEm (Track B4a, docs/projects/sega-track-b4a.md 1.2: the probe and random scene sets, pixel-identical); the first rule counted the columns from the screen's edge (hs mod 16 = 0
+    /// is its one case).
     /// </summary>
     private int VerticalScroll(int l, int vsOff, int screenX, int hs)
     {
         var vr = cap.Vsram[l];
-        if ((cap.RegEnd[11] & 4) == 0) return vr[vsOff] & 0x3FF;
-        int b0 = hs & 15, last = cap.H40 ? 19 : 15;
-        if (screenX < b0) return (vr[2 * last] & vr[2 * last + 1]) & 0x3FF;
-        return vr[Math.Min(2 * ((screenX - b0) >> 4) + vsOff, 39)] & 0x3FF;
+        int mask = il2 ? 0x7FF : 0x3FF, vs;
+        if ((cap.RegEnd[11] & 4) == 0) vs = vr[vsOff] & mask;
+        else
+        {
+            int b0 = hs & 15, last = cap.H40 ? 19 : 15;
+            if (screenX < b0) vs = (cap.H40 ? vr[2 * last] & vr[2 * last + 1] : 0) & mask;
+            else
+            {
+                int col = (screenX - b0) >> 4;
+                if (vsOff == 0 && b0 != 0)
+                {
+                    var (wf, wt) = WindowSpan(l);
+                    if (wf == 0 && wt > 0 && wt < (cap.H40 ? 320 : 256) && screenX >= wt && screenX < wt + b0) col = wt >> 4;      // the strip right after a window at the left
+                }
+                vs = vr[Math.Min(2 * col + vsOff, 39)] & mask;
+            }
+        }
+        return il2 ? vs >> 1 : vs;
     }
 
     // the window of a line: whole line, a part of it, or none (the VDP's rule, register 17 and 18 as the line was drawn)
@@ -288,6 +309,7 @@ internal sealed class MdToNes
         {
             int a = sat + idx * 8;
             int ypos = ((v[a & 0xFFFF] << 8 | v[a + 1 & 0xFFFF]) & 0x3FF) - 128;
+            if (il2) ypos = ((ypos + 128) - 256) >> 1;       // interlace mode 2 counts picture rows from 256: half as many field lines
             int size = v[a + 2 & 0xFFFF], link = v[a + 3 & 0xFFFF] & 0x7F;
             int attr = v[a + 4 & 0xFFFF] << 8 | v[a + 5 & 0xFFFF];
             int xraw = (v[a + 6 & 0xFFFF] << 8 | v[a + 7 & 0xFFFF]) & 0x1FF;
@@ -362,7 +384,7 @@ internal sealed class MdToNes
         if (windowUsed) layers.Add(new LayerSpec { Window = true, IsA = true });
         for (int k = 0; k < layers.Count; k++) { layers[k].Index = k; var X = e.Layers[k]; X.Reset(); layers[k].X = X; }
         e.LayerCount = layers.Count;
-        int vsLinesOff = 0;
+        int vsLinesOff = 0, blankShLines = 0;
 
         // ---- per line: which layers are on, their scroll, the masks
         bool anyBg = false;
@@ -376,10 +398,11 @@ internal sealed class MdToNes
             {
                 // one entry per PAIR of the plane's cells (the table is by pair number); each line says where its pairs start (ColumnShift: they follow the line's horizontal scroll) and the stretch
                 // before the first pair has a value of its own (ColumnLeft, the two entries of the last column ANDed)
+                int vmask = il2 ? 0x7FF : 0x3FF, vshift = il2 ? 1 : 0;      // 11 bits in interlace mode 2, where the scroll counts picture rows (half as many field lines)
                 X.ColumnScroll = new short[20];
-                for (int k = 0; k < 20; k++) X.ColumnScroll[k] = (short)(cap.VsramEnd[(2 * k + L.VsOff) & 0x3F] & 0x3FF);
+                for (int k = 0; k < 20; k++) X.ColumnScroll[k] = (short)((cap.VsramEnd[(2 * k + L.VsOff) & 0x3F] & vmask) >> vshift);
                 int last = cap.H40 ? 19 : 15;
-                X.ColumnLeft = (short)((cap.VsramEnd[2 * last] & cap.VsramEnd[2 * last + 1]) & 0x3FF);
+                X.ColumnLeft = (short)((cap.H40 ? (cap.VsramEnd[2 * last] & cap.VsramEnd[2 * last + 1]) & vmask : 0) >> vshift);      // H40: the last pair's entries ANDed; H32: 0
             }
         }
         int VsAt(int l, LayerSpec L, int screenX, int hs) => VerticalScroll(l, L.VsOff, screenX, hs);
@@ -408,6 +431,12 @@ internal sealed class MdToNes
                 if (!any) continue;
                 X.On[el] = true;
                 X.ZLow[el] = (byte)(L.IsA ? 2 : 1); X.ZHigh[el] = (byte)(L.IsA ? 5 : 4);
+                // register 0 bit 5, the left column blank: the first 8 pixels show nothing of the planes (the sprites are hidden below); in shadow/highlight mode the planes of the second cell are the first cell's
+                if ((R[0] & 0x20) != 0 && dx < 8)
+                {
+                    X.BlankLeft[el] = (byte)(8 - dx);
+                    if ((R[12] & 8) != 0) X.CellOneStart[el] = (short)(8 - dx);
+                }
                 if (L.Window) { X.ScrollX[el] = (short)dx; X.ScrollY[el] = (short)y0; }
                 else
                 {
@@ -418,6 +447,7 @@ internal sealed class MdToNes
                     if (colMode)
                     {
                         X.ColumnShift[el] = (short)(dx - (hs & 15));
+                        if (L.IsA && (hs & 15) != 0 && wf == 0 && wt > 0 && wt < width) { X.ColumnExtraFrom[el] = (short)(wt - dx); X.ColumnExtra[el] = (short)(hs & 15); }     // the strip after a window at the left
                         for (int ex = 0; ex < 256; ex++) if (vis[ex] && VsAt(l, L, ex + dx, hs) != X.ColumnValue(el, ex)) { vsLinesOff++; break; }
                     }
                 }
@@ -445,11 +475,22 @@ internal sealed class MdToNes
                     L.Seen[(py >> 3) * X.MapWidth + (((px0 + 7) & L.Plane.WMask) >> 3)] = true;
                 }
             }
-            // sprites are drawn on every line the display is on
+            // sprites are drawn on every line the display is on (not in a blank left column)
             e.ObjOn[el] = true;
+            if ((R[0] & 0x20) != 0)
+            {
+                if (dx < 8)
+                {
+                    if (!e.AnyObjHidden) Array.Clear(e.ObjHidden);       // BeginFrame clears the flag, not the mask: nothing of an earlier frame's mask may remain
+                    for (int x = 0; x < 8 - dx; x++) e.ObjHidden[el * 256 + x] = true;
+                    e.AnyObjHidden = true;
+                }
+                if ((R[12] & 8) != 0) blankShLines++;
+            }
             e.ObjZ[el * 4 + 0] = 3; e.ObjZ[el * 4 + 1] = 6; e.ObjZ[el * 4 + 2] = 3; e.ObjZ[el * 4 + 3] = 6;
         }
         c.Add("lines with a vertical scroll other than the frame's (column scroll taken from the end of the frame)", vsLinesOff);
+        c.Add("lines with the left column blanked in shadow/highlight mode (the column shows the plain backdrop, not the shadowed one)", blankShLines);
         if (!anyBg) return Finish(e, 0, 0, 0);
 
         // ---- background tiles: one item per (tile, palette line), 3 colours each, 8 palettes
@@ -611,6 +652,8 @@ internal sealed class MdToNes
         pic.FineX = fineX; pic.FineY = fineY;
         int linesOff = 0; for (int el = 0; el < h; el++) if ((-cap.HsA[y0 + el] & 7) != fineX) linesOff++;
         c.Add("lines with a fine scroll other than the frame's", linesOff);
+        int blankLines = 0; for (int el = 0; el < h; el++) if ((cap.Reg[y0 + el][0] & 0x20) != 0) blankLines++;
+        c.Add("lines with the left column blanked (the flat path draws the column)", blankLines);
 
         // composed cells (the cell under the middle of each NES cell)
         var cells = new Cell?[30, 33]; int hidden2 = 0;
@@ -782,8 +825,8 @@ internal sealed class MdToNes
     {
         tile &= 0x7FF;
         if (tileStamp[tile] == stamp) return tileContent[tile];
-        var v = cap.Vram; int a = tile << 5; ulong h = 14695981039346656037UL; bool opaque = false;
-        for (int i = 0; i < 32; i++) { byte b = v[(a + i) & 0xFFFF]; h = (h ^ b) * 1099511628211UL; if (b != 0) opaque = true; }
+        var v = cap.Vram; int a = tile << (il2 ? 6 : 5); ulong h = 14695981039346656037UL; bool opaque = false;
+        for (int i = 0; i < (il2 ? 64 : 32); i++) { byte b = v[(a + i) & 0xFFFF]; h = (h ^ b) * 1099511628211UL; if (b != 0) opaque = true; }
         if (!contentIds.TryGetValue(h, out int id))
         {
             if (contentIds.Count >= 60000) contentIds.Clear();
