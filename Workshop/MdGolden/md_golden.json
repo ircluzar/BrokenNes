@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Genesis golden pictures: FNV-1a over width, height and ARGB pixels at the listed frame counts (frames run, 1-based). 'oracle' entries are frames that matched BlastEm 1.0.0's own screenshots pixel for pixel; 'regression' entries only pin this emulator. ROMs are not in git; a missing ROM is skipped.",
+  "note": "Genesis golden pictures: FNV-1a over width, height and ARGB pixels at the listed frame counts (frames run, 1-based). \u0027oracle\u0027 entries are frames that matched BlastEm 1.0.0\u0027s own screenshots pixel for pixel; \u0027regression\u0027 entries only pin this emulator. ROMs are not in git; a missing ROM is skipped.",
   "entries": [
     {
       "name": "md01 Flicky (title)",
@@ -16,7 +16,7 @@
       "rom": "games:Altered Beast (JU) (REV 01) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "433": "BA80963B15CEEF60",
+        "436": "BA80963B15CEEF60",
         "623": "87E43F5C705FB2EA",
         "1176": "897A87F1B2D7C24A",
         "1364": "9BF21E9FC3E77092",
@@ -30,8 +30,8 @@
       "rom": "games:Sonic the Hedgehog (JUE) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "160": "43858905C862FB25",
-        "555": "0B7A6887CA78BDFB",
+        "161": "43858905C862FB25",
+        "557": "0B7A6887CA78BDFB",
         "815": "C8606B90AE2D4AD4"
       },
       "input": "737:Start,743:,1276:Right"
@@ -41,12 +41,12 @@
       "rom": "games:Golden Axe (JU) (REV 00) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "228": "6F78B95F86E328BF",
-        "495": "C9B81DA30456BE09",
+        "230": "6F78B95F86E328BF",
+        "497": "C9B81DA30456BE09",
         "924": "3DA1FBC5B4FC741A",
-        "1344": "F91DAA2E802A0886",
-        "1655": "084ECCAF14E3C940",
-        "1964": "6D58A4025E90CA9D"
+        "1345": "F91DAA2E802A0886",
+        "1656": "084ECCAF14E3C940",
+        "1965": "6D58A4025E90CA9D"
       },
       "input": "557:Start,563:,857:Start,863:,1156:Start,1162:"
     },
@@ -68,8 +68,8 @@
       "rom": "games:Streets of Rage (JUE) (REV 00) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "245": "056B3997DC91365C",
-        "493": "1145004E1838A432",
+        "247": "056B3997DC91365C",
+        "497": "1145004E1838A432",
         "763": "838AFD28C2AAD522"
       },
       "input": "737:Start,743:,1037:Start,1043:,1396:Start,1402:"
@@ -79,11 +79,11 @@
       "rom": "games:Mickey Mouse - Castle of Illusion (U) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "64": "C22DCAD2AA14B61D",
-        "452": "1401619842D2C8CB",
+        "65": "C22DCAD2AA14B61D",
+        "454": "1401619842D2C8CB",
         "745": "8D771F7E48F25980",
-        "1178": "E7768AE900072D6B",
-        "1693": "51430CDE1521D3C0"
+        "1179": "E7768AE900072D6B",
+        "1694": "51430CDE1521D3C0"
       },
       "input": "737:Start,743:,1216:Start,1222:"
     },
@@ -92,8 +92,8 @@
       "rom": "games:ECCO (U) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "221": "BF356E56ED4AF21A",
-        "615": "E480F5FE09AD7BE6",
+        "222": "BF356E56ED4AF21A",
+        "616": "E480F5FE09AD7BE6",
         "802": "8CE132C6EF758DB9",
         "1526": "31F1E693F2FCECC3",
         "1836": "7B6D14F7BAFE51AE"
@@ -105,9 +105,9 @@
       "rom": "games:Sonic the Hedgehog 2 (JUE) [!].bin",
       "verified": "oracle",
       "checkpoints": {
-        "243": "F018688F7F646425",
-        "475": "2A77C2954DBF3FDB",
-        "929": "81858163BED072DE"
+        "245": "F018688F7F646425",
+        "477": "2A77C2954DBF3FDB",
+        "934": "81858163BED072DE"
       },
       "input": "617:Start,623:,1097:Start,1103:,1456:Start,1462:"
     },
@@ -173,7 +173,7 @@
       }
     },
     {
-      "name": "Fonzie's window test",
+      "name": "Fonzie\u0027s window test",
       "rom": "tests:window-test-by-fonzie.zip|Window Test by Fonzie (PD).bin",
       "verified": "oracle",
       "checkpoints": {
@@ -193,8 +193,8 @@
       "rom": "tests:cram-flicker.zip|cram flicker.bin",
       "verified": "oracle",
       "checkpoints": {
-        "400": "85ACBA2D69E933D5",
-        "403": "85ACBA2D69E933D5"
+        "401": "3CB725DB8297E4B2",
+        "404": "3CB725DB8297E4B2"
       }
     },
     {
@@ -202,9 +202,9 @@
       "rom": "tests:Direct-Color-DMA.zip|Direct-Color-DMA.bin",
       "verified": "regression",
       "checkpoints": {
-        "10": "E5E9C4060F1FB13B",
-        "101": "E5E9C4060F1FB13B",
-        "400": "E5E9C4060F1FB13B"
+        "10": "D447F39FE9C80E25",
+        "101": "A0B500A0EAC5D149",
+        "400": "A0B500A0EAC5D149"
       }
     },
     {
@@ -212,7 +212,7 @@
       "rom": "tests:VDPFIFOTesting.zip|VDPFIFOTesting.bin",
       "verified": "regression",
       "checkpoints": {
-        "2600": "FE283CFB39CBB554"
+        "2600": "1E9334646EE4EB19"
       },
       "input": "400:Start,410:"
     }

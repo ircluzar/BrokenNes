@@ -218,18 +218,19 @@ public sealed partial class MdVdp
         /// <summary>Master clocks from a line's H counter 0 to its picture pixel 0 (12 ticks).</summary>
         public static int OriginH40 = 192, OriginH32 = 240;
 
-        /// <summary>Where in a line the slot pattern of the next line takes over (the window boundary): offsets from H counter 0. H40: the V counter's step. H32: any value from 2790 to 2920 reproduces the oracle's picture of Nemesis'
-        /// CRAM flicker test pixel for pixel (the slots between the last picture line's dots and the tail slots; below 2790 the dots of the last line move, at 2960 the tail slots do): 2800 is the first slot start in that range.</summary>
-        public static int CutH40 = 2640, CutH32 = 2800;
+        /// <summary>Where in a line the slot pattern of the next line takes over (the window boundary): offsets from H counter 0. H40: the V counter's step. H32: slot 135 (clock 2700): Nemesis' CRAM flicker test on
+        /// the oracle (a fresh capture, free-running and paused) has dots at the last picture line's pixels 246, 248, 250 and 254 and none at 252 (slots 135, 136, 137 and 139; slot 138 is a refresh slot); with the cut
+        /// at 2700 and the refresh slot at 138 the picture is identical, at 2680 five pixels differ, from 2720 on the dots are wrong. The earlier fit (2800: no dots) matched an older capture.</summary>
+        public static int CutH40 = 2640, CutH32 = 2700;
 
         /// <summary>The picture pixel of each free slot of a drawn line (the oracle's dots sit at these columns on every line) and the H counter ticks (slot numbers) of the free slots before pixel 0.</summary>
         public static int[] ActivePixelsH40 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 236, 252, 268, 298, 300 };
         public static int[] ActivePixelsH32 = { 12, 44, 60, 76, 108, 124, 140, 172, 188, 204, 234, 236 };
         public static int[] ActivePreTicksH40 = { 187, 2, 10 };
         public static int[] ActivePreTicksH32 = { 148, 159, 2, 11 };
-        /// <summary>Slots (counting from slot 0 at the line's H counter 0) that a blanked line cannot use: the refresh pairs. H40 has six pairs (five in the picture, the sixth in the horizontal blank); H32 four single slots.</summary>
-        public static int[] BlankRefreshH40 = { 26, 29, 59, 62, 90, 93, 122, 125, 154, 157, 186, 189 };
-        public static int[] BlankRefreshH32 = { 26, 58, 90, 122 };
+        /// <summary>Slots (counting from slot 0 at the line's H counter 0) that a blanked line cannot use: refresh slots. H40: six single slots, the first of each former pair (five in the picture, the sixth in the horizontal blank): the oracle's DMA fills, copies and transfers in blanked H40 lines run as long as with 204 free slots (within 0.2 percent; with the twelve of the old pairs they were 2 to 3 percent slow) and Titan Overdrive 2's frame 3709 matches it again (it does with the pair's first slot, not with its second). H32: five single slots (26, 58, 90, 122 in the picture's width, and 138 in the tail: the last picture line's dots on the oracle, and DMA in blanked H32 lines 0.6 percent slower than with 171 - 4 slots).</summary>
+        public static int[] BlankRefreshH40 = { 26, 59, 90, 122, 154, 186 };
+        public static int[] BlankRefreshH32 = { 26, 58, 90, 122, 138 };
 
         // a slot is one tick of the H counter's 8-bit value: tick i is the i-th value of the line's sequence ($00-$B6 then $E4-$FF in H40, $00-$93 then $E9-$FF in H32)
         private static readonly int[][] tickStart = new int[2][];
@@ -289,7 +290,7 @@ public sealed partial class MdVdp
                 foreach (int px in h40 ? ActivePixelsH40 : ActivePixelsH32) active.Add(origin + px * pxDiv);
                 t[w][0] = Window(blank, h40);
                 t[w][1] = Window(active, h40);
-                if (t[w][0].Length != (h40 ? 198 : 167)) throw new InvalidOperationException("slot table: blanked free-slot count");
+                if (t[w][0].Length != total - (h40 ? BlankRefreshH40.Length : BlankRefreshH32.Length)) throw new InvalidOperationException("slot table: blanked free-slot count");
                 if (t[w][1].Length != (h40 ? 18 : 16)) throw new InvalidOperationException("slot table: picture free-slot count");
             }
             return t;
@@ -324,10 +325,10 @@ public sealed partial class MdVdp
     /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: from the counter's step
     /// (<see cref="VCounterStepOffset"/>) on the next line's slots apply (see <see cref="SlotTable"/>: its window starts with the end of this line).
     /// </summary>
-    /// <summary>False restores the old search that went back to the next line's start (the freeze of D&D - Warriors of the Eternal Sun): only for the self-test's proof that its check can fail.</summary>
-    public static bool NextFreeSlotKeepsFrom = true;
+    /// <summary>The search for a free slot, when it goes on in the next line: 0 = the old search, which went back to that line's start (a slot before rom: a fill or copy started in the last 56 clocks of a blanked line\n    /// found a slot before the engine's start again and again and froze the VDP, D&D - Warriors of the Eternal Sun; fills and copies ran several times too fast), 2 = it keeps rom for the steps of a fill or copy\n    /// (the default), 1 = always (the roster games' golden frames, which matched the oracle with the old search for FIFO writes and data port reads, then change: the old behaviour stays for those).</summary>
+    public static int NextFreeSlotMode = 2;
 
-    private long NextFreeSlot(long from)
+    private long NextFreeSlot(long from, bool keepFrom = false)
     {
         int line = Line; long ls = lineStart; int cut = H40 ? SlotTable.CutH40 : SlotTable.CutH32;
         for (int guard = 0; guard < 4; guard++)
@@ -347,7 +348,7 @@ public sealed partial class MdVdp
             // the search goes on in the next line, from the same time or from its start, whichever is later: a time already inside that line (the clock is exactly at the end of this one and the slot
             // just used is behind it) must not go back to the line's start, or a slot at offset 0 is found again and again and the caller never gets on (D&D - Warriors of the Eternal Sun froze at
             // frame 541 in a VRAM copy)
-            line = next; ls += ClocksPerLine; from = NextFreeSlotKeepsFrom ? Math.Max(from, ls) : ls;
+            line = next; ls += ClocksPerLine; from = NextFreeSlotMode == 1 || NextFreeSlotMode == 2 && keepFrom ? Math.Max(from, ls) : ls;
         }
         return from;
     }
@@ -374,7 +375,7 @@ public sealed partial class MdVdp
             long evt = NextEvent();
             long slot = long.MaxValue;
             bool work = SlotWork;
-            if (work) slot = NextFreeSlot(WorkFrom());
+            if (work) slot = NextFreeSlot(WorkFrom(), DmaStepWork);
             long fetch = NextFetchTime();
             long next = t;
             if (evt < next) next = evt;
@@ -442,13 +443,16 @@ public sealed partial class MdVdp
     public long NextWorkTime()
     {
         long next = NextEvent();
-        if (SlotWork) { long s = NextFreeSlot(WorkFrom()); if (s < next) next = s; }
+        if (SlotWork) { long s = NextFreeSlot(WorkFrom(), DmaStepWork); if (s < next) next = s; }
         long fetch = NextFetchTime();
         if (fetch < next) next = fetch;
         return next;
     }
 
     /// <summary>Something waits for a free slot: a FIFO entry to write, or a fill or copy to step.</summary>
+    /// <summary>The slot being waited for is a fill's or copy's step (the FIFO has nothing to write): a search for it must not return a slot before the engine's start.</summary>
+    private bool DmaStepWork => fifoCount == 0 && (dma == DmaKind.Copy || dma == DmaKind.Fill && !fillArmed);
+
     private bool SlotWork => fifoCount > 0 || dma == DmaKind.Copy || (dma == DmaKind.Fill && !fillArmed);
 
     /// <summary>The earliest time work may use a slot: after the last slot, and when only a fill or copy is waiting (the FIFO has nothing to write) not before the DMA engine has started.</summary>
@@ -731,7 +735,7 @@ public sealed partial class MdVdp
             // (hardware, Nemesis' fill tests: the word that started the fill goes in as an ordinary write and the rest take the stale entry after it, which moves on when the 68000 writes meanwhile)
             fillData = value;
             dmaSlotsLeft = 1;
-            Trace?.Invoke($"fill start data={value:X4} len={dmaLength}");
+            Trace?.Invoke($"fill start data={value:X4} len={dmaLength} at line {Line}+{LineOffset}");
         }
     }
 
@@ -817,7 +821,7 @@ public sealed partial class MdVdp
         {
             fillSourceStart = Reg[22] << 8 | Reg[21]; fillLengthStart = dmaLength;
             fillArmed = true; dma = DmaKind.None;
-            Trace?.Invoke($"dma fill armed len={dmaLength} code {dmaTargetCode:X} addr {address:X4}");
+            Trace?.Invoke($"dma fill armed len={dmaLength} code {dmaTargetCode:X} addr {address:X4} at line {Line}+{LineOffset}");
         }
         else
         {
