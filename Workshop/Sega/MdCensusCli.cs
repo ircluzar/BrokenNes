@@ -52,6 +52,7 @@ internal static class MdCensusCli
         var partLock = new object();
         Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = jobs }, i =>
         {
+            if (M68kTestCli.Flag(args, "--verbose")) Console.Error.WriteLine($"  start {Path.GetFileName(files[i])}");
             try { rows[i] = RunOne(files[i], frames, script); }
             catch (Exception e) { rows[i] = new Row { File = Path.GetFileName(files[i]), Note = "crash: " + e.GetType().Name }; }
             if (partPath != null) lock (partLock) File.AppendAllText(partPath, RowLine(rows[i]) + "\n");

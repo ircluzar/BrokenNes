@@ -324,6 +324,9 @@ public sealed partial class MdVdp
     /// The master clock of the first free slot at or after <paramref name="from"/>. The VDP's idea of the line changes with the V counter, in the middle of the horizontal blank: from the counter's step
     /// (<see cref="VCounterStepOffset"/>) on the next line's slots apply (see <see cref="SlotTable"/>: its window starts with the end of this line).
     /// </summary>
+    /// <summary>False restores the old search that went back to the next line's start (the freeze of D&D - Warriors of the Eternal Sun): only for the self-test's proof that its check can fail.</summary>
+    public static bool NextFreeSlotKeepsFrom = true;
+
     private long NextFreeSlot(long from)
     {
         int line = Line; long ls = lineStart; int cut = H40 ? SlotTable.CutH40 : SlotTable.CutH32;
@@ -341,7 +344,10 @@ public sealed partial class MdVdp
             var b = FreeSlotsFor(next);
             int j = LowerBound(b, off - ClocksPerLine);
             if (j < b.Length && b[j] < 0) return ls + ClocksPerLine + b[j];       // a slot of the next window that falls before the line ends
-            line = next; ls += ClocksPerLine; from = ls;
+            // the search goes on in the next line, from the same time or from its start, whichever is later: a time already inside that line (the clock is exactly at the end of this one and the slot
+            // just used is behind it) must not go back to the line's start, or a slot at offset 0 is found again and again and the caller never gets on (D&D - Warriors of the Eternal Sun froze at
+            // frame 541 in a VRAM copy)
+            line = next; ls += ClocksPerLine; from = NextFreeSlotKeepsFrom ? Math.Max(from, ls) : ls;
         }
         return from;
     }

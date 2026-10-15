@@ -88,6 +88,8 @@ internal static class MdBoardTest
     public static int Run(string[] args)
     {
         Console.WriteLine("== Genesis board, VDP, pads, cartridge and handshake self-test");
+        // proof that the checks can fail: --slot-set "nextslotfix=0" (or any experiment name) runs the same checks on the old rule
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         MapAndOpenBus();
         Pads();
         Z80Handshake();
@@ -646,7 +648,21 @@ internal static class MdBoardTest
         oc.Reg(15, 1); oc.Reg(19, 0x01); oc.Reg(20, 0x02); oc.Reg(21, 0x00); oc.Reg(22, 0x90); oc.Reg(23, 0xC0);
         oc.Cmd(0x30, 0x8000); oc.Settle();
         Check("a copy of $201 bytes: the 513th lands on $8201 with the byte from $9201", oc.V.Vram[0x8201] == 0x23 && oc.V.Vram[0x8200] == 0x00, $"{oc.V.Vram[0x8200]:X2}{oc.V.Vram[0x8201]:X2}");
-        Check("VRAM copy: four bytes from $1000 to $2000", c.V.Vram[0x2000] == 0x01 && c.V.Vram[0x2001] == 0x02 && c.V.Vram[0x2002] == 0x03 && c.V.Vram[0x2003] == 0x04, $"{c.V.Vram[0x2000]:X2}{c.V.Vram[0x2001]:X2}{c.V.Vram[0x2002]:X2}{c.V.Vram[0x2003]:X2}");
+        // a DMA copy that starts in the last 56 clocks of a line (its engine starts 56 clocks later, in the next line): the search for the next free slot went back to the start of that line and found a slot
+        // before the engine's start over and over, so the VDP never got on (D&D - Warriors of the Eternal Sun froze at its frame 541). Run in a thread so that a failure is a failed check, not a hung test.
+        string hangAt = "";
+        for (int d = 0; d < 70 && hangAt == ""; d++)
+        {
+            var hs = new Rig(); hs.T = hs.LineStart(210) - 600; hs.V.RunTo(hs.T);
+            hs.Reg(1, 0x34); hs.Reg(12, 0x81); hs.Reg(15, 1); hs.Reg(19, 0x50); hs.Reg(20, 0x00); hs.Reg(21, 0x00); hs.Reg(22, 0xFC); hs.Reg(23, 0xC0);
+            hs.Ctl((ushort)(0x4000 | 0xC380 & 0x3FFF));              // the first control word of the command: the address and the VRAM write code
+            hs.T = hs.LineStart(211) - 70 + d;                        // the second word, which holds the DMA bit, arrives (70 - d) clocks before the end of line 210 (28 clocks more for its own bus cycle)
+            bool ok = false;
+            var th = new System.Threading.Thread(() => { hs.Ctl((ushort)(0x0080 | 0xC380 >> 14 & 3)); for (int k = 212; k < 220; k++) hs.RunTo(hs.LineStart(k)); ok = true; }) { IsBackground = true };
+            th.Start();
+            if (!th.Join(1500) || !ok) hangAt = $"{d - 70} clocks from the line end";
+        }
+        Check("a DMA copy started in the last 56 clocks of a blanked line goes on in the next line (the slot search used to freeze there: D&D - Warriors of the Eternal Sun)", hangAt == "", hangAt);        Check("VRAM copy: four bytes from $1000 to $2000", c.V.Vram[0x2000] == 0x01 && c.V.Vram[0x2001] == 0x02 && c.V.Vram[0x2002] == 0x03 && c.V.Vram[0x2003] == 0x04, $"{c.V.Vram[0x2000]:X2}{c.V.Vram[0x2001]:X2}{c.V.Vram[0x2002]:X2}{c.V.Vram[0x2003]:X2}");
     }
 
     private static bool DmaWordsInRing()
