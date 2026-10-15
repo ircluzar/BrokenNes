@@ -470,6 +470,10 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         ym.SaveState(w);
         psg.SaveState(w);
         z80.SaveState(w);
+        // the audio path: the FM chip's output as the band-limited mixers hold it (a restored unit's next samples are those of the one that saved, bit for bit), the last levels, the counters
+        fmLeft.SaveState(w); fmRight.SaveState(w);
+        w.Write(fmClock); w.Write(lastFmL); w.Write(lastFmR);
+        w.Write(BusRequests); w.Write(BankReads); w.Write(BankWrites); w.Write(PsgWrites); w.Write(YmWrites); w.Write(Z80Ticks);
     }
 
     public void LoadState(BinaryReader r)
@@ -480,10 +484,11 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         ym.LoadState(r);
         psg.LoadState(r);
         z80.LoadState(r);
-        // the audio buffers are not part of the state: start the FM stream afresh from the chip's output level
-        fmLeft.Reset(); fmRight.Reset();
+        fmLeft.LoadState(r); fmRight.LoadState(r);
+        fmClock = r.ReadInt64(); lastFmL = r.ReadSingle(); lastFmR = r.ReadSingle();
+        BusRequests = r.ReadInt64(); BankReads = r.ReadInt64(); BankWrites = r.ReadInt64(); PsgWrites = r.ReadInt64(); YmWrites = r.ReadInt64(); Z80Ticks = r.ReadInt64();
+        // the plugin's stems (one stream per voice, beside the mix) start again from the mix's time
         RealignStems();
-        lastFmL = ym.LastLeft * FmGain * (1f / 32768f); lastFmR = ym.LastRight * FmGain * (1f / 32768f);
     }
 
     public string Describe() =>

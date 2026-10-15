@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using NesEmulator.Systems;
 
 namespace NesEmulator.Sega;
@@ -150,4 +151,17 @@ public sealed class MdPads
     }
 
     public string Describe() => $"pads: P1 {ports[0].Kind} (ctrl {ports[0].Control:X2} data {ports[0].DataLatch:X2} falls {ports[0].Falls}), P2 {ports[1].Kind} (ctrl {ports[1].Control:X2} data {ports[1].DataLatch:X2})";
+
+    // ---- save state
+
+    /// <summary>The chip's registers and the pads' multiplexing state (what the console wrote, the TH edge count and the time of the last edge). Not the buttons held, which are the player's: the app sends them again every frame.</summary>
+    public void SaveState(BinaryWriter w)
+    {
+        foreach (var p in ports) { w.Write(p.DataLatch); w.Write(p.Control); w.Write(p.Falls); w.Write(p.Th); w.Write(p.LastEdge); }
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        foreach (var p in ports) { p.DataLatch = r.ReadByte(); p.Control = r.ReadByte(); p.Falls = r.ReadInt32(); p.Th = r.ReadBoolean(); p.LastEdge = r.ReadInt64(); }
+    }
 }

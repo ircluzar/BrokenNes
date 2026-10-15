@@ -41,6 +41,19 @@ public static class MdEepromTable
         new("GM 00000000-00", 0x168B, 1048576, MdEepromChip.C24C08, MdEepromWiring.Codemasters, "Micro Machines Military - It's a Blast!"),
     };
 
+    /// <summary>Games whose EEPROM is a three-wire 93C46 (<see cref="MdMicrowire"/>) on bits 2, 1, 0 of the byte at $200001 (CS, SK, DI; DO read back in bit 0): Mega Man: The Wily Wars (Europe) and Rockman Megaworld (Japan).</summary>
+    private static readonly (string Serial, string Games)[] MicrowireGames =
+    {
+        ("GM T-12046 -00", "Mega Man: The Wily Wars"),
+        ("GM T-12053 -00", "Rockman Megaworld"),
+    };
+
+    public static bool LookupMicrowire(string serial)
+    {
+        foreach (var e in MicrowireGames) if (e.Serial.Equals(serial, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     public static (MdEepromChip chip, MdEepromWiring wiring)? Lookup(string serial, int headerChecksum, int romLength)
     {
         foreach (var e in Entries)

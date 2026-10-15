@@ -74,6 +74,22 @@ internal static class MdRunCli
             cartTrace = new StreamWriter(cartTracePath, false, new UTF8Encoding(false));
             board.CartTrace = s => cartTrace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}");
         }
+        // --ram-watch FFE03E[,FF0000-FF00FF,...]: print each 68000 write to these work RAM addresses (or ranges) with the frame, line, the writing instruction's address and the value
+        if (M68kTestCli.Arg(args, "--ram-watch") is { } watchSpec)
+        {
+            var ranges = watchSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(s => { int d = s.IndexOf('-'); uint a = Convert.ToUInt32(d > 0 ? s[..d] : s, 16) & 0xFFFF, b = d > 0 ? Convert.ToUInt32(s[(d + 1)..], 16) & 0xFFFF : a; return (a, b); }).ToArray();
+            int printed = 0, limit = int.TryParse(M68kTestCli.Arg(args, "--watch-limit"), out int wl) ? wl : 200;
+            board.RamWriteHook = (off, upper, lower, data) =>
+            {
+                uint lo = (uint)off + (upper ? 0u : 1u), hi = (uint)off + (lower ? 1u : 0u);
+                foreach (var (a, b) in ranges)
+                    if (lo <= b && hi >= a)
+                    {
+                        if (printed++ < limit) Console.WriteLine($"   ram-watch f{board.Frames} l{board.Vdp.Line} pc {board.Cpu.Pc - 4:X6}: ${0xFF0000 + off:X6}{(upper && lower ? "" : upper ? " (high byte)" : " (low byte)")} = {(upper && lower ? data.ToString("X4") : upper ? (data >> 8).ToString("X2") : (data & 0xFF).ToString("X2"))}");
+                        break;
+                    }
+            };
+        }
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));

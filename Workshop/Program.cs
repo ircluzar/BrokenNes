@@ -61,6 +61,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--md-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.MdSweepCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-oracle", StringComparison.OrdinalIgnoreCase)) return Sega.MdOracleCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-cart-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdCartTest.Run(args);
+        if (args.Length > 0 && args[0].Equals("--md-state-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdStateTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-render", StringComparison.OrdinalIgnoreCase)) return Sega.MdRenderCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--img-diff", StringComparison.OrdinalIgnoreCase)) return Sega.ImgDiffCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-find", StringComparison.OrdinalIgnoreCase)) return Sega.MdFindCli.Run(args);

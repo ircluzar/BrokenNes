@@ -12,7 +12,10 @@ $cases = @(
   @{ name = "SRAM outside the ROM is not mapped at power-on"; file = "$md\MdCartridge.cs"; old = "SramMapped = !LockedOn && (start & ~1u) >= (uint)rom.Length;"; new = "SramMapped = !LockedOn && rom.Length <= 0x200000;" },
   @{ name = "SRAM addresses past the declared range are ROM instead of mirrors"; file = "$md\MdCartridge.cs"; old = "if (address < (start & ~1u)) return -1;"; new = "if (address < (start & ~1u) || HasSramHeader && address > (SramEnd | 1u)) return -1;" },
   @{ name = "a headerless cartridge's RAM is never mapped by a write"; file = "$md\MdCartridge.cs"; old = "if (SramHeaderless && !SramMapped && (address & 1) != 0 && address >= 0x200000 && address <= 0x3FFFFF) SramMapped = true;"; new = "/* poisoned */" },
-  @{ name = "Japan + Europe counts as overseas"; file = "$md\MdCartridge.cs"; old = "return u || e && !j;"; new = "return u || e;" }
+  @{ name = "Japan + Europe counts as overseas"; file = "$md\MdCartridge.cs"; old = "return u || e && !j;"; new = "return u || e;" },
+  @{ name = "the 93C46 programs without a write enable"; file = "$md\MdMicrowire.cs"; old = "pendingProgram = writeEnabled;"; new = "pendingProgram = true;" },
+  @{ name = "the 93C46 stores its words little-endian"; file = "$md\MdMicrowire.cs"; old = "private int Word(int a) => Data[a * 2] << 8 | Data[a * 2 + 1];"; new = "private int Word(int a) => Data[a * 2 + 1] << 8 | Data[a * 2];" },
+  @{ name = "the 93C46 takes a seven-bit address"; file = "$md\MdMicrowire.cs"; old = "if (++addrBits == (op == 0 ? 4 : 6)) AddressDone();"; new = "if (++addrBits == (op == 0 ? 4 : 7)) AddressDone();" }
 )
 Set-Location (Split-Path (Split-Path (Split-Path $MyInvocation.MyCommand.Path)))
 function Build { $log = dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path $Artifacts 2>&1 | Out-String; if ($LASTEXITCODE -ne 0) { throw "build failed: " + (($log -split "`n" | Where-Object { $_ -match ' error ' } | Select-Object -First 3) -join " | ") } }

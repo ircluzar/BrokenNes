@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using NesEmulator.Systems;
 
 namespace NesEmulator.Sega;
@@ -98,13 +100,89 @@ public sealed class MdSession : IConsoleSession
     public byte[] ExportSave() => (byte[])Board.Cart.Sram.Clone();
     public void ImportSave(byte[] data) { Array.Copy(data, Board.Cart.Sram, Math.Min(data.Length, Board.Cart.Sram.Length)); Board.Cart.SramImported(); }
 
-    /// <summary>Swapping a part needs a restart: the 68000 and the VDP have one choice each, and the sound unit's state cannot move between units yet.</summary>
-    public bool TrySwapCore(CoreSlot slot, string id) => slot switch
+    // ---- save states (the shared contract in ConsoleSystems.cs; the container in ConsoleStates.cs) ----
+
+    /// <summary>The layout of the board's payload: bump it whenever the board, the 68000, the VDP, the cartridge, the Z80 or a sound unit changes what it writes, so an old state is refused rather than misread.</summary>
+    public const string StateFormat = "md-1";
+
+    public bool SupportsState => true;
+
+    /// <summary>The parts a state depends on and that must be equal for it to load: the sound unit (a state saved with the stock unit does not fit the NES-chip unit), the board model and the timing region, and the payload layout.</summary>
+    private Dictionary<string, string> StateUnits() => new() { ["apu"] = apuId, ["model"] = Board.Model.ToString(), ["region"] = Board.Region.ToString(), ["format"] = StateFormat };
+
+    public byte[] SaveState()
     {
-        CoreSlot.Cpu => id.Equals(cpuId, StringComparison.OrdinalIgnoreCase),
-        CoreSlot.Ppu => id.Equals(ppuId, StringComparison.OrdinalIgnoreCase),
-        _ => id.Equals(apuId, StringComparison.OrdinalIgnoreCase),
-    };
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Board.SaveState(w);
+        var units = StateUnits();
+        units["cpu"] = cpuId; units["ppu"] = ppuId;   // information only: the 68000 and the VDP are what they are
+        return ConsoleStateFile.Wrap(Console, GameId, Title, units, ms.ToArray());
+    }
+
+    public void LoadState(byte[] state)
+    {
+        // the header is checked before anything is touched; a refusal leaves the machine as it was
+        byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        byte[] before = SnapshotForUndo();
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(payload), System.Text.Encoding.UTF8);
+            Board.LoadState(r);
+            if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
+            AfterStateLoad();
+        }
+        catch (Exception e)
+        {
+            // a payload that passed the checksum but does not fit (a layout the format name did not catch): put the machine back as it was and say so, never run on half a state
+            using var r = new BinaryReader(new MemoryStream(before), System.Text.Encoding.UTF8);
+            Board.LoadState(r);
+            AfterStateLoad();
+            throw new InvalidDataException("The state could not be loaded and the game was left as it was: " + e.Message, e);
+        }
+    }
+
+    private byte[] SnapshotForUndo()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Board.SaveState(w);
+        return ms.ToArray();
+    }
+
+    /// <summary>What the session derives from the board after a state load: the picture the VDP last finished (so the frame shown right after a load is the one that was saved).</summary>
+    private void AfterStateLoad()
+    {
+        if (DebugView) { Board.Vdp.RenderDebugView(frame, DebugPalette); frameWidth = DebugWidth; frameHeight = DebugHeight; return; }
+        frameWidth = Board.Vdp.PictureWidth; frameHeight = Board.Vdp.PictureHeight;
+        Board.Vdp.CopyPicture(frame);
+    }
+
+    // ---- hot swapping (the console's Core menus, mid-game) ----
+
+    /// <summary>
+    /// Swaps a core while the game runs. <b>CPU</b>: the 68000 is the only choice the Genesis has; asking for it again is a yes, anything else a no (the app then restarts the game on the new choice and says so). <b>PPU</b>:
+    /// the VDP is the only picture chip the board has; the NES picture chips (<c>NES:&lt;chip&gt;</c>) are drawn from the VDP's state by <c>SegaPictureSession</c>, which wraps this session and handles those swaps
+    /// itself, so here only the VDP's own id is a yes. <b>APU</b>: the sound unit is replaced in place (<see cref="BOARD_MD.SwapSound"/>): the Z80, its RAM, the YM2612 registers and the PSG are carried into the new unit, so the
+    /// game's sound driver goes on playing without noticing; an id that is not a Genesis sound unit, or a unit that cannot take the state, is a no and nothing changes.
+    /// </summary>
+    public bool TrySwapCore(CoreSlot slot, string id)
+    {
+        switch (slot)
+        {
+            case CoreSlot.Apu:
+            {
+                if (id.Equals(apuId, StringComparison.OrdinalIgnoreCase)) return true;
+                IGenesisSound next;
+                try { next = GenesisSoundFactories.Create(id, new SegaMachine(Board.Timeline, Board.Model, sampleRate)); }
+                catch (ArgumentException) { return false; }   // not a sound unit this console has
+                try { Board.SwapSound(next); }
+                catch (Exception e) when (e is InvalidDataException or EndOfStreamException or NotSupportedException) { return false; }   // a unit with a different state layout cannot take the Z80's: the game is restarted on it instead
+                apuId = id;
+                return true;
+            }
+            case CoreSlot.Ppu: return id.Equals(ppuId, StringComparison.OrdinalIgnoreCase);
+            default: return id.Equals(cpuId, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     public void Dispose() { }
 }

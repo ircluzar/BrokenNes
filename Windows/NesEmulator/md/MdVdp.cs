@@ -929,32 +929,5 @@ public sealed partial class MdVdp
         return sb.ToString();
     }
 
-    public void SaveState(BinaryWriter w)
-    {
-        w.Write(Vram); foreach (ushort c in Cram) w.Write(c); foreach (ushort v in Vsram) w.Write(v); w.Write(Reg);
-        w.Write(Time); w.Write(lineStart); w.Write(Line); w.Write(Frames); w.Write(oddFrame);
-        w.Write(vintPending); w.Write(hintPending); w.Write(hintCounter); w.Write(vintTime); w.Write(hintTime); w.Write(z80IntClear); w.Write(z80IntAsserted);
-        w.Write(pendingCommand); w.Write(commandFirst); w.Write(code); w.Write(address); w.Write(readBuffer); w.Write(readReadyAt); w.Write(readCacheCode); w.Write(readCacheAddress); w.Write(readStale); w.Write(hvLatched);
-        w.Write(fifoHead); w.Write(fifoCount);
-        foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); w.Write(e.FromDma); }
-        w.Write(dmaInFifo);
-        w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode); w.Write(fillSourceStart); w.Write(fillLengthStart);
-        w.Write(dmaStartTime); w.Write(dmaNextFetch);
-    }
-
-    public void LoadState(BinaryReader r)
-    {
-        r.Read(Vram, 0, Vram.Length); for (int i = 0; i < Cram.Length; i++) Cram[i] = r.ReadUInt16(); for (int i = 0; i < Vsram.Length; i++) Vsram[i] = r.ReadUInt16(); r.Read(Reg, 0, Reg.Length);
-        Time = r.ReadInt64(); lineStart = r.ReadInt64(); Line = r.ReadInt32(); Frames = r.ReadInt64(); oddFrame = r.ReadBoolean();
-        vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();
-        pendingCommand = r.ReadBoolean(); commandFirst = r.ReadUInt16(); code = r.ReadInt32(); address = r.ReadUInt32(); readBuffer = r.ReadUInt16(); readReadyAt = r.ReadInt64(); readCacheCode = r.ReadInt32(); readCacheAddress = r.ReadUInt32(); readStale = r.ReadBoolean(); hvLatched = r.ReadInt32();
-        fifoHead = r.ReadInt32(); fifoCount = r.ReadInt32();
-        for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32(), FromDma = r.ReadBoolean() };
-        dmaInFifo = r.ReadInt32();
-        dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
-        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64();
-        // the picture is not part of a state: the colours are rebuilt and the line in progress is drawn from where the state left it
-        for (int i = 0; i < 64; i++) UpdatePal(i);
-        BeginLineRender();
-    }
+    // SaveState / LoadState: see MdVdpState.cs
 }

@@ -80,6 +80,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public Action<string>? WriteTrace;
     /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
     public Action<string>? ReadTrace;
+    /// <summary>Called for each 68000 write to work RAM with the offset into it (even), which bytes were written and the word (watching what changes a RAM location; the DMA and the Z80 do not come through here); null in normal runs.</summary>
+    public Action<int, bool, bool, ushort>? RamWriteHook;
     /// <summary>Called for each 68000 access to $200000-$3FFFFF with a text describing it (the I2C EEPROM and mapper regions; traces); null in normal runs.</summary>
     public Action<string>? CartTrace;
     public long BusReads, BusWrites, OpenBusReads;
@@ -171,6 +173,21 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             Vdp.RunTo(t);
         }
         Sound.RunTo(t);
+    }
+
+    /// <summary>
+    /// Replaces the sound unit mid-game (the APU menu): the old unit is brought to the 68000's clock, its state (the Z80 and its RAM, the bus handshake, the YM2612 registers and timers, the PSG) is loaded into the new
+    /// one, and the new one takes over from the same instant. Throws, leaving the old unit in place, when the new unit cannot take that state.
+    /// </summary>
+    public void SwapSound(IGenesisSound unit)
+    {
+        Sound.RunTo(t);
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Sound.SaveState(w);
+        ms.Position = 0;
+        unit.Attach(this);
+        using (var r = new BinaryReader(ms, System.Text.Encoding.UTF8)) unit.LoadState(r);
+        Sound = unit;
     }
 
     /// <summary>One 68000 instruction (or interrupt, or stopped slice), then the VDP and the sound unit are brought to the 68000's clock. Returns the 68000 clocks it counted.</summary>
@@ -338,6 +355,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             int a = (int)(address & 0xFFFE);
             if (upper) Ram[a] = (byte)(data >> 8);
             if (lower) Ram[a + 1] = (byte)data;
+            RamWriteHook?.Invoke(a, upper, lower, data);
             return;
         }
         if (address >= 0xC00000 && address < 0xE00000) { WriteVdp(address, upper, lower, data, now); return; }
@@ -466,15 +484,30 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public string Describe() =>
         $"BOARD_MD {Region} {Model} t={t} frames={Vdp.Frames} | 68000 pc={Cpu.Pc - 4:X6} sr={Cpu.ReadSr():X4} instr={Cpu.Instructions} addr-errors={Cpu.AddressErrorCount}{(Cpu.Halted ? " HALTED" : "")} | {Vdp.Describe()} | {Sound.Describe()} | {Pads.Describe()}";
 
+    /// <summary>
+    /// The whole board between two frames: its clock and the refresh and interrupt-sampling state, work RAM, the 68000, the VDP (with the picture), the sound unit (Z80, YM2612, PSG, the Z80's RAM and bus handshake), the
+    /// I/O chip and the cartridge (battery RAM, mapper banks, the EEPROM chip). The cartridge ROM, the region and the model are not (they are the game and the settings: a state is only loaded into the same ones, which
+    /// <see cref="MdSession"/> checks). The buttons held are not either: the app sends them every frame.
+    /// </summary>
     public void SaveState(BinaryWriter w)
     {
-        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(Ram);
+        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(lastOpenBus); w.Write(Ram);
+        w.Write(BusReads); w.Write(BusWrites); w.Write(OpenBusReads); w.Write(LastOpenBusAddress); w.Write(LastUnclaimedWrite); w.Write(UnclaimedWrites); w.Write(TmssWrites);
+        w.Write(TmssWords[0]); w.Write(TmssWords[1]);
+        for (int i = 0; i < 16; i++) { w.Write(recentIoAddr[i]); w.Write(recentIoVal[i]); }
+        w.Write(recentIoPos);
+        Cpu.SaveState(w); Pads.SaveState(w);
         Vdp.SaveState(w); Sound.SaveState(w); Cart.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
     {
-        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); r.Read(Ram, 0, Ram.Length);
+        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); lastOpenBus = r.ReadUInt16(); MdVdp.ReadAll(r, Ram);
+        BusReads = r.ReadInt64(); BusWrites = r.ReadInt64(); OpenBusReads = r.ReadInt64(); LastOpenBusAddress = r.ReadUInt32(); LastUnclaimedWrite = r.ReadUInt32(); UnclaimedWrites = r.ReadInt64(); TmssWrites = r.ReadInt64();
+        TmssWords[0] = r.ReadUInt16(); TmssWords[1] = r.ReadUInt16();
+        for (int i = 0; i < 16; i++) { recentIoAddr[i] = r.ReadUInt32(); recentIoVal[i] = r.ReadUInt16(); }
+        recentIoPos = r.ReadInt32();
+        Cpu.LoadState(r); Pads.LoadState(r);
         Vdp.LoadState(r); Sound.LoadState(r); Cart.LoadState(r);
     }
 }

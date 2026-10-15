@@ -29,7 +29,7 @@ internal static class MdCartTest
     {
         pass = fail = 0;
         // a group that throws is a failed check (with the exception), not a crashed run
-        foreach (var (name, group) in new (string, Action)[] { ("EEPROM chips", Eeprom), ("EEPROM wiring", Wiring), ("SRAM", Sram), ("region", Region), ("STOP", Stop) })
+        foreach (var (name, group) in new (string, Action)[] { ("EEPROM chips", Eeprom), ("EEPROM wiring", Wiring), ("three-wire EEPROM", ThreeWire), ("SRAM", Sram), ("region", Region), ("STOP", Stop) })
         {
             try { group(); }
             catch (Exception e) { Check($"group '{name}' ran to its end", false, e.ToString().Replace('\n', ' ')); }
@@ -191,6 +191,105 @@ internal static class MdCartTest
         // a header that declares an EEPROM nobody knows: reported, not silently RAM
         var unknown = new MdCartridge(BareRom(0x100000, "U", "GM X-UNKNOWN 00", r => Header(r, 0x200001, 0x200001, 0xE8, 0x40)));
         Check("a header that declares an EEPROM for a game not in the table runs without one and says so", unknown.Eeprom == null && unknown.EepromUnsupported != null && !unknown.HasBattery && unknown.Mapper.Contains("no wiring"), unknown.Mapper);
+    }
+
+    // =====================================================================================================================
+    //  The three-wire EEPROM (Mega Man: The Wily Wars)
+    // =====================================================================================================================
+
+    /// <summary>A bit-banging master on the 93C46's lines as the cartridge exposes them: CS, SK and DI are bits 2, 1 and 0 of a write to $200001, DO is bit 0 of a read of it.</summary>
+    private sealed class Wire
+    {
+        private readonly MdCartridge c;
+        public Wire(MdCartridge cart) { c = cart; }
+        public void Pins(bool cs, bool sk, bool di) => c.WriteByte(0x200001, (byte)((cs ? 4 : 0) | (sk ? 2 : 0) | (di ? 1 : 0)));
+        public bool Do => (c.ReadByte(0x200001) & 1) != 0;
+        public void Begin() { Pins(false, false, false); Pins(true, false, false); }
+        public void End() { Pins(false, false, false); }
+        /// <summary>One bit in: DI set, a rising and a falling edge of SK.</summary>
+        public void Bit(bool b) { Pins(true, false, b); Pins(true, true, b); Pins(true, false, b); }
+        public void Bits(int value, int count) { for (int i = count - 1; i >= 0; i--) Bit((value >> i & 1) != 0); }
+        /// <summary>One clock with DI low and the level of DO read after the rising edge, as the game does.</summary>
+        public bool ClockRead() { Pins(true, false, false); Pins(true, true, false); bool v = Do; Pins(true, false, false); return v; }
+        public int Read(int word)
+        {
+            Begin(); Bits(0b0001_10, 6 - 0); Bits(word, 6);             // leading zeros are ignored; here: 0 0 0 1 | 1 0 | address
+            int v = 0; for (int i = 0; i < 16; i++) v = v << 1 | (ClockRead() ? 1 : 0);
+            End(); return v;
+        }
+        public void Command(int op, int arg6) { Begin(); Bit(true); Bits(op, 2); Bits(arg6, 6); End(); }
+        public void Write(int word, int value) { Begin(); Bit(true); Bits(1, 2); Bits(word, 6); Bits(value, 16); End(); }
+    }
+
+    private static void ThreeWire()
+    {
+        Group("the three-wire (Microwire 93C46) EEPROM: the datasheet protocol, through the cartridge's pins");
+        var cart = new MdCartridge(BareRom(0x200000, "E", "GM T-12046 -00"));
+        Check("a game in the table (Mega Man: The Wily Wars) gets a 128-byte three-wire EEPROM as its battery image", cart.Microwire != null && cart.Eeprom == null && cart.Sram.Length == 128 && ReferenceEquals(cart.Sram, cart.Microwire!.Data) && cart.HasBattery && cart.Mapper.Contains("three-wire"), cart.Mapper);
+        var w = new Wire(cart); var chip = cart.Microwire!;
+        Check("a blank chip reads $FFFF at every word", Enumerable.Range(0, 64).All(a => w.Read(a) == 0xFFFF));
+        Check("DO reads as 1 (ready) with CS low and between commands", w.Do);
+        w.Write(5, 0x1234);
+        Check("a WRITE with writing still disabled (power-up) changes nothing", w.Read(5) == 0xFFFF && chip.Writes == 0);
+        w.Command(0b00, 0b110000);          // EWEN: 1 00 11xxxx
+        Check("EWEN enables writing", chip.WriteEnabled);
+        w.Write(5, 0x1234); w.Write(63, 0xBEEF); w.Write(0, 0x0001);
+        Check("WRITE stores a 16-bit word at its 6-bit address (words 0, 5 and 63)", w.Read(5) == 0x1234 && w.Read(63) == 0xBEEF && w.Read(0) == 0x0001 && w.Read(6) == 0xFFFF, $"{w.Read(5):X4} {w.Read(63):X4} {w.Read(0):X4}");
+        Check("the battery image holds the words big-endian (word 5 at bytes 10 and 11)", cart.Sram[10] == 0x12 && cart.Sram[11] == 0x34 && cart.Sram[126] == 0xBE && cart.Sram[127] == 0xEF);
+        w.Command(0b11, 5);                 // ERASE word 5
+        Check("ERASE sets one word to $FFFF and leaves its neighbours", w.Read(5) == 0xFFFF && w.Read(63) == 0xBEEF);
+        // a sequential read: one command, the clocks run on into the next word
+        w.Begin(); w.Bits(0b110, 3); w.Bits(62, 6);
+        int a = 0, b = 0; for (int i = 0; i < 16; i++) a = a << 1 | (w.ClockRead() ? 1 : 0); for (int i = 0; i < 16; i++) b = b << 1 | (w.ClockRead() ? 1 : 0); w.End();
+        w.Begin(); w.Bits(0b110, 3); w.Bits(63, 6); int c63 = 0; for (int i = 0; i < 16; i++) c63 = c63 << 1 | (w.ClockRead() ? 1 : 0); int wrap = 0; for (int i = 0; i < 16; i++) wrap = wrap << 1 | (w.ClockRead() ? 1 : 0); w.End();
+        Check("a READ runs on into the next word while SK keeps clocking (62 then 63; 63 then 0)", a == 0xFFFF && b == 0xBEEF && c63 == 0xBEEF && wrap == 0x0001, $"{a:X4} {b:X4} {c63:X4} {wrap:X4}");
+        // the dummy zero bit: DO is low after the address and before the first data bit
+        w.Begin(); w.Bits(0b110, 3); w.Bits(63, 6);
+        Check("DO is a dummy zero after the last address bit's clock, before data bit 15", !w.Do);
+        w.End();
+        w.Command(0b00, 0b100000);          // ERAL: 1 00 10xxxx
+        Check("ERAL erases the whole chip", Enumerable.Range(0, 64).All(x => w.Read(x) == 0xFFFF));
+        w.Begin(); w.Bit(true); w.Bits(0b00, 2); w.Bits(0b01, 2); w.Bits(0, 4); w.Bits(0xA55A, 16); w.End();       // WRAL: 1 00 01xxxx + data
+        Check("WRAL writes one value to every word", Enumerable.Range(0, 64).All(x => w.Read(x) == 0xA55A));
+        w.Command(0b00, 0b000000);          // EWDS
+        w.Write(7, 0x0000);
+        Check("EWDS disables writing again (a WRITE after it changes nothing)", !chip.WriteEnabled && w.Read(7) == 0xA55A);
+        // the programming happens when CS falls, and only for a complete command
+        w.Command(0b00, 0b110000);
+        w.Begin(); w.Bit(true); w.Bits(1, 2); w.Bits(9, 6); w.Bits(0x7777, 15); w.End();          // one data bit short
+        Check("a WRITE cut short (15 of 16 data bits) is not programmed", w.Read(9) == 0xA55A);
+        w.Begin(); w.Bits(0b0001_01, 6); w.Bits(9, 6); w.Bits(0x7777, 16);
+        Check("the word is not changed before CS falls ...", chip.Data[18] == 0xA5);
+        w.End();
+        Check("... and is after it (three leading zero bits before the start bit were ignored)", w.Read(9) == 0x7777);
+        // the pad at $200000 (the even byte of a word write) is not the chip's
+        cart.WriteByte(0x200000, 0xFF);
+        Check("a write to the even byte $200000 does not touch the chip", w.Read(9) == 0x7777 && cart.StrayWrites == 0);
+        // the cartridge's state carries the chip
+        var ms = new MemoryStream(); var bw = new BinaryWriter(ms); cart.SaveState(bw); bw.Flush();
+        var other = new MdCartridge(BareRom(0x200000, "E", "GM T-12046 -00")); ms.Position = 0; other.LoadState(new BinaryReader(ms));
+        Check("a cartridge state restores the chip's words and its write-enable latch", other.Microwire!.Data.AsSpan().SequenceEqual(chip.Data) && other.Microwire.WriteEnabled == chip.WriteEnabled);
+        // Rockman Megaworld (Japan) is the same cartridge
+        var jp = new MdCartridge(BareRom(0x200000, "J", "GM T-12053 -00"));
+        Check("Rockman Megaworld (Japan, serial T-12053) has the same chip", jp.Microwire != null);
+        // the real game: it formats an empty chip at its first start (erase and write every word), then finds its data on the second
+        string? wily = Directory.Exists(MdRoster.Dir) ? Directory.EnumerateFiles(MdRoster.Dir, "Mega Man - The Wily Wars*").FirstOrDefault() : null;
+        if (wily == null) { Console.WriteLine("  SKIP  Mega Man: The Wily Wars from the library (not found)"); return; }
+        byte[] rom = File.ReadAllBytes(wily);
+        var s1 = new MdSession(rom, "M68K", "MD", "MD");
+        for (int f = 0; f < 600; f++) { s1.SetPad(0, PadButtons.None); s1.RunFrame(); }
+        var mw1 = s1.Board.Cart.Microwire!;
+        Check("Mega Man: The Wily Wars on a blank chip formats it at start (64 words erased and written, writing enabled by the game)", mw1.Writes >= 64 && mw1.Erases >= 64 && mw1.WriteEnabled, $"writes {mw1.Writes}, erases {mw1.Erases}, enabled {mw1.WriteEnabled}");
+        byte[] save = s1.ExportSave();
+        var s2 = new MdSession(rom, "M68K", "MD", "MD"); s2.ImportSave(save);
+        for (int f = 0; f < 600; f++) { s2.SetPad(0, PadButtons.None); s2.RunFrame(); }
+        var mw2 = s2.Board.Cart.Microwire!;
+        Check("started again from that save the game reads the chip and writes nothing (it recognises its own data)", mw2.Writes == 0 && mw2.Erases == 0 && mw2.Reads > 0 && s2.ExportSave().AsSpan().SequenceEqual(save), $"writes {mw2.Writes}, erases {mw2.Erases}, words read {mw2.Reads}");
+        var s3 = new MdSession(rom, "M68K", "MD", "MD");
+        var corrupt = (byte[])save.Clone(); for (int i = 0; i < corrupt.Length; i++) corrupt[i] ^= 0x5A;
+        s3.ImportSave(corrupt);
+        for (int f = 0; f < 600; f++) { s3.SetPad(0, PadButtons.None); s3.RunFrame(); }
+        Check("started from damaged data the game formats it again (the check can fail)", s3.Board.Cart.Microwire!.Writes >= 64, $"writes {s3.Board.Cart.Microwire!.Writes}");
     }
 
     // =====================================================================================================================

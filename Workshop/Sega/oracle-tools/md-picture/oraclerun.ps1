@@ -7,7 +7,8 @@ param([Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$Name, [
 # 1.25 s apart (BlastEm names screenshots by the second). The first screenshot is the pause point: our emulator finds the boundary it matches (--scan) and takes the script from there, so both machines get the same
 # buttons at the same frame boundaries. Window-driven: hold the BlastEm lock (Workshop\Sega\oracle-lock.ps1 -Acquire blastem) while this runs.
 $root = Split-Path $MyInvocation.MyCommand.Path
-$dir = Join-Path $root "be\$Name"
+$work = if ($env:BN_ORACLE_ROOT) { $env:BN_ORACLE_ROOT } else { $root }     # screenshots (be\) and our pictures (our\) go to the private working folder when there is one (keeps the repo clean)
+$dir = Join-Path $work "be\$Name"
 # -Pad default [-Offset 90] [-ShotEvery 100]: the script is the sweep's pad script from frame -Offset on (step 0 = that frame), shots every -ShotEvery steps
 if ($Pad) {
   if ($Steps -le 0) { throw "-Pad needs -Steps" }
@@ -46,10 +47,10 @@ if ($got.Count -lt 1) { return }
 # BlastEm names its screenshots by the second and now and then writes one more (or one fewer) than were asked for; shots are paired with ours by their order, so a count that is not exactly right cannot be compared
 if ($got.Count -ne $shotList.Count + 1) { "CAPTURE UNRELIABLE: $($got.Count) screenshots for $($shotList.Count + 1) requested; the shots cannot be paired with ours. Rerun."; return }
 # ours: scan S0 for the boundary, then replay; the other screenshots are s001.. in --shots order
-$theirs = Join-Path $root "be\${Name}_t"; Remove-Item $theirs -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force $theirs | Out-Null
+$theirs = Join-Path $work "be\${Name}_t"; Remove-Item $theirs -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force $theirs | Out-Null
 for ($i = 1; $i -lt $got.Count; $i++) { Copy-Item $got[$i].FullName (Join-Path $theirs ("s{0:D3}.png" -f ($i - 1))) }
 $ws = Join-Path $root "ws.ps1"
-$wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $root "our\$Name"))
+$wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([int]($WaitMs / 1000 * 62 + 400))", "--script", $Script, "--shots", $Shots, "--steps", "$Steps", "--theirs", $theirs, "--out", (Join-Path $work "our\$Name"))
 if ($Region) { $wsArgs += @("--region", $Region) }
 & $ws @wsArgs
 

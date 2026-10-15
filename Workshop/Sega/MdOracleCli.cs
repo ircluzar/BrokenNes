@@ -181,13 +181,23 @@ internal static class MdOracleCli
             // tell the candidates apart by replaying the script from each (first shot that differs ends a candidate): needs the later screenshots
             if (theirs.Count == 0 || shots.Count == 0 || steps == 0) { Console.WriteLine("ambiguous start and nothing to tell the candidates apart with: give --script, --shots and --theirs, or --pick"); return 3; }
             Console.WriteLine($"replaying the script from each of the {candidates.Count} candidates ({jobs} at a time) ...");
-            var scored = new (int f, int ok, long bad)[candidates.Count];
-            Parallel.For(0, candidates.Count, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
+            // in batches of --jobs, in boundary order; the search ends at the first batch with a candidate that matches every shot (77 equal candidates of a still title need not all be replayed: the first exact one is as good as any)
+            var scoredList = new List<(int f, int ok, long bad)>();
+            for (int off = 0; off < candidates.Count; off += jobs)
             {
-                var s = Boot(data, region, line, candidates[ci] + 1);
-                var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
-                scored[ci] = (candidates[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
-            });
+                var batch = candidates.Skip(off).Take(jobs).ToArray();
+                var part = new (int f, int ok, long bad)[batch.Length];
+                Parallel.For(0, batch.Length, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
+                {
+                    var s = Boot(data, region, line, batch[ci] + 1);
+                    var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
+                    part[ci] = (batch[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
+                });
+                scoredList.AddRange(part);
+                if (part.Any(x => x.bad == 0 && x.ok == shots.Count)) break;
+            }
+            var scored = scoredList.ToArray();
+            if (scored.Length < candidates.Count) Console.WriteLine($"   (stopped after {scored.Length} of the {candidates.Count} candidates: one matches every shot)");
             var order = scored.OrderByDescending(x => x.ok).ThenBy(x => x.bad).ToList();
             foreach (var x in order.Take(6)) Console.WriteLine($"   start {x.f,5}: {x.ok} of {shots.Count(sh => true)} shot(s) exact before the first difference, {x.bad:N0} differing pixels there");
             chosen = order[0].f;
@@ -205,7 +215,7 @@ internal static class MdOracleCli
 
     private static ulong Hash(uint[] px, int n) { ulong h = 14695981039346656037UL; for (int i = 0; i < n; i++) { h ^= px[i]; h *= 1099511628211UL; } return h; }
 
-    private static void WritePng(uint[] pixels, int width, int height, string path)
+    internal static void WritePng(uint[] pixels, int width, int height, string path)
     {
         using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         var data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
