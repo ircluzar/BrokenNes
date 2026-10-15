@@ -97,6 +97,7 @@ internal static class MdOracleCli
 
     public static int Run(string[] args)
     {
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         // --emit-script default [--offset 90] [--steps 1500]: print the sweep's pad script (see MdSweepCli) as "step:buttons" changes, step 0 being frame <offset> of it, for --script and for oraclerun.ps1
         if (M68kTestCli.Arg(args, "--emit-script") is { } emitName)
         {

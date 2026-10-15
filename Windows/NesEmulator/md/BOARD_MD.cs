@@ -190,8 +190,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         // the interrupt lines are sampled where this bus cycle starts (the last access of an instruction is its prefetch)
         long start = t + (long)(cycles - 4) * ClocksPer68k;
-        Vdp.RunTo(start);
-        iplSample = Vdp.IplAt(start);
+        Vdp.RunTo(start + (IplSampleAdjustClocks > 0 ? IplSampleAdjustClocks : 0));
+        iplSample = Vdp.IplAt(start + IplSampleAdjustClocks);
         t += (long)cycles * ClocksPer68k;
         AddRefresh(cycles);
         Vdp.RunTo(t);
@@ -219,6 +219,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             t += RefreshStallCycles * ClocksPer68k;
         }
     }
+
+    /// <summary>Experiment parameter (Track B4a): shifts the moment the interrupt priority lines are looked at within an instruction's last bus cycle, in master clocks.</summary>
+    public static int IplSampleAdjustClocks = 0;
 
     private long nextRefresh = RefreshPhaseClocks;
     /// <summary>Refresh follows the master clock instead of counting the cycles the 68000 ran.</summary>
