@@ -63,6 +63,11 @@ internal static class SegaBridgeTestCli
             var (p, f) = SmsFmBridgeTests.Run(args, s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), Arg(args, "--rom"), verbose);
             passes += p; failures += f;
         }
+        // round 4 (track C4b): the YM2413 on NES chips and the shared voice-slot allocator (`--only smsfmnes`)
+        {
+            var (p, f) = SmsFmOnNesTests.Run(s => only.Length == 0 || only.Equals(s, StringComparison.OrdinalIgnoreCase), verbose);
+            passes += p; failures += f;
+        }
         Console.WriteLine($"\n{passes} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
     }
