@@ -42,7 +42,10 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $checks = [ordered]@{}
 $result = [ordered]@{ pass = $false }
+$keyChecks = 'key_plays_pulse1', 'octave_keys', 'tab_routing', 'keyboard_switch_off', 'restored_plays'
 function Check($name, [bool]$ok, $detail) {
+    # a key check during which the synth lost the foreground proves nothing about the synth: a failure is NOT RUN, and so is the "does nothing" pass (the key may simply have gone elsewhere)
+    if ($script:fgLost -and ($keyChecks -contains $name) -and ((-not $ok) -or $name -eq 'keyboard_switch_off')) { NotRun $name "the synth window lost the foreground to [$([SynthWin]::ForegroundTitle())] while the keys were down (it measured: $detail)"; return }
     $checks[$name] = [ordered]@{ ok = $ok; detail = "$detail" }
     Write-Host ("{0,-26} {1}  {2}" -f $name, $(if ($ok) { 'ok  ' } else { 'FAIL' }), $detail) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
 }
@@ -116,7 +119,7 @@ function NotRun($name, $why) {
 function LevelOf($status) { if ($status -match 'level ([0-9.]+)') { [double]$Matches[1] } else { -1 } }
 # true when the synth's window really holds the foreground afterwards; $script:fgHolder then names the window that kept it
 function Focus($p) {
-    $h = $p.MainWindowHandle
+    $h = $p.MainWindowHandle; $script:fgHandle = $h; $script:fgLost = $false
     for ($try = 0; $try -lt 4; $try++) {
         [SynthWin]::TakeForeground($h); Start-Sleep -Milliseconds 400
         if ([SynthWin]::GetForegroundWindow() -eq $h) { return $true }
@@ -124,8 +127,9 @@ function Focus($p) {
     $script:fgHolder = [SynthWin]::ForegroundTitle()
     $false
 }
-$script:fgHolder = ''
-function KeyDown($vk) { [SynthWin]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero) }
+$script:fgHolder = ''; $script:fgHandle = [IntPtr]::Zero; $script:fgLost = $false
+# another program (an agent's emulator window, a dialog) can take the foreground between Focus and the last key: a key check that saw it happen is NOT RUN, whatever it measured (see Check)
+function KeyDown($vk) { if ([SynthWin]::GetForegroundWindow() -ne $script:fgHandle) { $script:fgLost = $true }; [SynthWin]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero) }
 function KeyUp($vk) { [SynthWin]::keybd_event([byte]$vk, 0, 2, [UIntPtr]::Zero) }
 function Tap($vk) { KeyDown $vk; Start-Sleep -Milliseconds 80; KeyUp $vk; Start-Sleep -Milliseconds 150 }
 # hold a key, return the status text and the highest level seen while it was down (the status refreshes every 100 ms)
@@ -133,8 +137,15 @@ function Hold($p, $root, $vk, $ms = 700) {
     KeyDown $vk; $peak = 0.0; $text = ''
     $end = (Get-Date).AddMilliseconds($ms)
     while ((Get-Date) -lt $end) { Start-Sleep -Milliseconds 120; $text = StatusText $root; $peak = [Math]::Max($peak, (LevelOf $text)) }
+    if ([SynthWin]::GetForegroundWindow() -ne $script:fgHandle) { $script:fgLost = $true }
     KeyUp $vk
     [pscustomobject]@{ Text = $text; Peak = $peak }
+}
+# UI Automation finds things a moment after a window or menu appears, and longer on a busy machine: ask again for a while before giving up
+function WaitFor([scriptblock]$find, [string]$what, [int]$seconds = 20) {
+    $end = (Get-Date).AddSeconds($seconds)
+    do { $r = & $find; if ($r) { return $r }; Start-Sleep -Milliseconds 300 } while ((Get-Date) -lt $end)
+    throw "gave up waiting for $what ($seconds s)"
 }
 
 $started = New-Object System.Collections.Generic.List[int]   # PIDs this script started or whose children it identified: the only ones it may stop
@@ -246,10 +257,10 @@ try {
     Start-Sleep -Seconds 3; $emu.Refresh()
     if ($emu.MainWindowTitle -eq 'Audio Warning') { [void]$emu.CloseMainWindow(); Start-Sleep -Seconds 2 }   # a box with no playback device: the emulator says so once
     # the emulator's top-level window: by its process and the WinForms class prefix (the hash after it changes with the exe's path)
-    $main = $AE::RootElement.FindAll($TS::Children, (New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id))) | Where-Object { $_.Current.ClassName -like 'WindowsForms10.Window.8.app.*' } | Select-Object -First 1
-    Expand (ByName $main 'Config'); Start-Sleep -Milliseconds 500
-    Expand (ByName $AE::RootElement 'Synthesizer Mode'); Start-Sleep -Milliseconds 500
-    $item = ByName $AE::RootElement 'Restart as Standalone Synth'
+    $main = WaitFor { $AE::RootElement.FindAll($TS::Children, (New-Object Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $emu.Id))) | Where-Object { $_.Current.ClassName -like 'WindowsForms10.Window.8.app.*' } | Select-Object -First 1 } 'the emulator window'
+    Expand (WaitFor { ByName $main 'Config' } 'the Config menu'); Start-Sleep -Milliseconds 500
+    Expand (WaitFor { ByName $AE::RootElement 'Synthesizer Mode' } 'the Synthesizer Mode menu'); Start-Sleep -Milliseconds 500
+    $item = WaitFor { ByName $AE::RootElement 'Restart as Standalone Synth' } 'the Restart as Standalone Synth item'
     $item.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
     $synth = $null
     for ($i = 0; $i -lt 100 -and -not $synth; $i++) { Start-Sleep -Milliseconds 200; $synth = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($emu.Id)" | Where-Object { $_.CommandLine -match '--synth' } | Select-Object -First 1 }
@@ -263,8 +274,8 @@ try {
         for ($i = 0; $i -lt 100 -and -not $sp.MainWindowHandle; $i++) { Start-Sleep -Milliseconds 200; $sp.Refresh() }
         Start-Sleep -Seconds 3; $sp.Refresh()
         $sroot = $AE::FromHandle($sp.MainWindowHandle)
-        Expand (ByName $sroot 'Synth'); Start-Sleep -Milliseconds 500
-        (ByName $AE::RootElement 'Restart as Emulator').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Expand (WaitFor { ByName $sroot 'Synth' } 'the Synth menu'); Start-Sleep -Milliseconds 500
+        (WaitFor { ByName $AE::RootElement 'Restart as Emulator' } 'the Restart as Emulator item').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         for ($i = 0; $i -lt 100 -and -not $emu2; $i++) { Start-Sleep -Milliseconds 200; $emu2 = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($synth.ProcessId)" | Where-Object { $_.Name -eq 'BrokenNes.Windows.exe' } | Select-Object -First 1 }
         if ($emu2) { $started.Add([int]$emu2.ProcessId) }
         $synthGone = $sp.WaitForExit(20000)
@@ -309,7 +320,7 @@ finally {
     $notRun = @($checks.Values | Where-Object { $_.notRun }).Count
     $result.pass = (-not $result.Contains('error')) -and $checks.Count -ge 12 -and $failed -eq 0 -and $notRun -eq 0
     # keys that could not reach the synth are not a failure of the synth: the run says NOT RUN (exit 0, like install-smoke) and names what was not exercised
-    if ($failed -eq 0 -and $notRun -gt 0 -and -not $result.Contains('error')) { $result.status = 'NOT RUN'; $result.error = "$notRun keyboard check(s) not run: the synth window could not take the foreground (held by [$script:fgHolder])" }
+    if ($failed -eq 0 -and $notRun -gt 0 -and -not $result.Contains('error')) { $result.status = 'NOT RUN'; $result.error = "$notRun keyboard check(s) not run (another window took or kept the foreground; see their detail): $((@($checks.GetEnumerator() | Where-Object { $_.Value.notRun } | ForEach-Object { $_.Key })) -join ', ')" }
     Write-Output ($result | ConvertTo-Json -Depth 6 -Compress)
 }
 if ($result.pass) { exit 0 } elseif ($result.Contains('status') -and $result.status -eq 'NOT RUN') { exit 0 } else { exit 1 }
