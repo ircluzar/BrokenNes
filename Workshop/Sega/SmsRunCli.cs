@@ -207,7 +207,7 @@ internal static class SmsRunCli
         var sw = System.Diagnostics.Stopwatch.StartNew();
         ulong hash = 0xcbf29ce484222325, hashLast = 0;
         PadButtons p1 = 0, p2 = 0;
-        int stableFrames = 0, stableMatched = 0, unstableFrames = 0, unstableMatched = 0;
+        int stableFrames = 0, stableMatched = 0, unstableFrames = 0, unstableMatched = 0, framesA = 0, framesAMatched = 0, firstDiffA = -1;
         int mesenShift = int.Parse(Opt("mesen-shift") ?? "0");
         long audioN = 0; double audioSqL = 0, audioSqR = 0; int audioPeakL = 0, audioPeakR = 0, audioFrameMax = 0, audioActiveFrames = 0, frameNo0 = -1;
         for (int f = 0; f < frames; f++)
@@ -283,6 +283,8 @@ internal static class SmsRunCli
                         }
                         bool sizeOk = aw == session.FrameWidth && ah == session.FrameHeight;
                         bool matchA = sizeOk && SmsPng.SameAsFrame(session.Frame, a);
+                        // against the oracle's first run alone, stable or not: this emulator starts its VDP at that run's power-on line, so with an exact machine it equals that run on every frame
+                        framesA++; if (matchA) framesAMatched++; else if (firstDiffA < 0) firstDiffA = frameNo;
                         if (stable)
                         {
                             stableFrames++;
@@ -328,6 +330,7 @@ internal static class SmsRunCli
             Console.WriteLine($"mesen compare: stable frames {stableFrames}: {stableMatched} identical, {stableFrames - stableMatched} differ" + (firstDiffFrame > 0 ? $" (first at frame {firstDiffFrame})" : "") +
                               (mesenDirB != null ? $"; unstable frames (Mesen's two runs differ) {unstableFrames}: this emulator equals one of them in {unstableMatched}" : ""));
         }
+        if (mesenDir != null && framesA > 0) Console.WriteLine($"mesen compare (first oracle run alone, power-on line replayed): {framesAMatched} of {framesA} frames identical" + (firstDiffA > 0 ? $"; first difference at frame {firstDiffA}" : ""));
         int soundExit = 0;
         if (soundRegs != null) soundExit |= SoundRegs.Report("PSG", new[] { "tone0", "tone1", "tone2", "att0", "att1", "att2", "attNoise", "noise", "stereo" }, soundRegsOurs, soundRegs);
         if (fmRegsFile != null) soundExit |= SoundRegs.Report("YM2413", Enumerable.Range(0, 65).Select(i => i == 0 ? "audioControl" : $"reg{i - 1:X2}").ToArray(), fmRegsOurs, fmRegsFile);

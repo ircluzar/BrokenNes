@@ -122,6 +122,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                     foreach ($m in [regex]::Matches($o, 'frame (\d+): (IDENTICAL to Mesen|(\d+) pixels differ|SIZE MISMATCH[^\r\n]*)')) { $per += "$($m.Groups[1].Value):$(if ($m.Groups[3].Success) { $m.Groups[3].Value } elseif ($m.Groups[2].Value -like 'IDENT*') { 0 } else { 'size' })" }
                     $row["$($mode.Name)_checkpoints"] = $per -join ","
                 }
+                if ($o -match 'mesen compare \(first oracle run alone[^)]*\): (\d+) of (\d+) frames identical(?:; first difference at frame (\d+))?') { $row["$($mode.Name)_a_identical"] = [int]$Matches[1]; $row["$($mode.Name)_a_frames"] = [int]$Matches[2]; $row["$($mode.Name)_a_first"] = if ($Matches[3]) { [int]$Matches[3] } else { "" } }
                 if ($o -match 'mesen compare: stable frames (\d+): (\d+) identical, (\d+) differ(?: \(first at frame (\d+)\))?(?:; unstable frames \(Mesen''s two runs differ\) (\d+): this emulator equals one of them in (\d+))?') {
                     $row["$($mode.Name)_stable"] = [int]$Matches[1]; $row["$($mode.Name)_identical"] = [int]$Matches[2]; $row["$($mode.Name)_differ"] = [int]$Matches[3]
                     $row["$($mode.Name)_first_diff"] = if ($Matches[4]) { [int]$Matches[4] } else { "" }
@@ -139,6 +140,6 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
     finally { ($using:slots).Enqueue($slot) }
 }
 $modeNames = ($Modes -split ";") | ForEach-Object { ($_ -split "=", 2)[0].Trim() }
-$cols = @("game", "console", "region") + ($modeNames | ForEach-Object { "$($_)_stable", "$($_)_identical", "$($_)_differ", "$($_)_first_diff", "$($_)_oo", "$($_)_oo_matched", "$($_)_checkpoints" }) + $(if ($Sound) { $modeNames | ForEach-Object { "$($_)_psg_frames", "$($_)_psg_identical", "$($_)_psg_near", "$($_)_psg_firstdiff", "$($_)_fm_frames", "$($_)_fm_identical", "$($_)_fm_near", "$($_)_fm_firstdiff" } }) + @("mesen_s", "total_s", "error")
+$cols = @("game", "console", "region") + ($modeNames | ForEach-Object { "$($_)_stable", "$($_)_identical", "$($_)_differ", "$($_)_first_diff", "$($_)_oo", "$($_)_oo_matched", "$($_)_a_identical", "$($_)_a_frames", "$($_)_a_first", "$($_)_checkpoints" }) + $(if ($Sound) { $modeNames | ForEach-Object { "$($_)_psg_frames", "$($_)_psg_identical", "$($_)_psg_near", "$($_)_psg_firstdiff", "$($_)_fm_frames", "$($_)_fm_identical", "$($_)_fm_near", "$($_)_fm_firstdiff" } }) + @("mesen_s", "total_s", "error")
 $results | Sort-Object game | Select-Object $cols | Export-Csv -Path $OutTsv -Delimiter "`t" -NoTypeInformation
 "wrote $OutTsv"

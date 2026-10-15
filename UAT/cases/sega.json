@@ -13,15 +13,15 @@
       "description": "Master System, the simplest roster game: title, then Galaxy Zone with fire held. Stock cores (Z80 / SMS / SMS).",
       "kind": "sega-run",
       "rom": "{sms}/Astro Warrior.7z",
-      "frames": 900,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "525B8259B3CC6B7D",
+        "frameBufferHash": "4D4ED2B3837B825D",
         "size": "256x192",
         "distinctColors": 12,
         "audioPeak": 18686,
@@ -34,18 +34,18 @@
       "description": "Master System Sonic The Hedgehog: Green Hill, line-interrupt water and scroll effects, PSG music.",
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
-      "frames": 900,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "F5B8FE57361EE2A8",
+        "frameBufferHash": "2CC576DB28816F8A",
         "size": "256x192",
         "distinctColors": 20,
-        "audioPeak": 13528,
+        "audioPeak": 13401,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -55,18 +55,18 @@
       "description": "Master System Alex Kidd in Miracle World (v1.1): title, map, platforming.",
       "kind": "sega-run",
       "rom": "{sms}/Alex Kidd in Miracle World.7z#(USA, Europe) (v1.1)",
-      "frames": 900,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "130A4D48CCF87532",
+        "frameBufferHash": "104A521374B403E1",
         "size": "256x192",
-        "distinctColors": 16,
-        "audioPeak": 8808,
+        "distinctColors": 14,
+        "audioPeak": 16809,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -76,8 +76,8 @@
       "description": "Master System Micro Machines (Europe): the 50 Hz machine (the region comes from the file name through the app's factory), the Codemasters mapper, 224-line mode.",
       "kind": "sega-run",
       "rom": "{sms}/Micro Machines (Europe).7z",
-      "frames": 900,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2800,
+      "input": "500:A,506:,700:Left+A,760:,900:A,906:,1050:A,1056:,1180:A,1186:,1250:Up,1500:Up+Left,1560:Up,1800:Up+Right,1860:Up,2000:Up+Left,2060:Up,2300:Up+Right,2360:Up",
       "tags": [
         "sega",
         "sms",
@@ -85,10 +85,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "94778F33A1F14472",
+        "frameBufferHash": "B64361E1695E8849",
         "size": "256x224",
-        "distinctColors": 9,
-        "audioPeak": 17449,
+        "distinctColors": 12,
+        "audioPeak": 21091,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -99,8 +99,8 @@
       "kind": "sega-run",
       "rom": "{sms}/Phantasy Star.7z#(Japan)",
       "apu": "SMS-FM",
-      "frames": 900,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms",
@@ -108,9 +108,9 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "D8A1E2C0277F7488",
+        "frameBufferHash": "F20F7E08E9AFFAEB",
         "size": "256x192",
-        "distinctColors": 16,
+        "distinctColors": 15,
         "audioPeak": 12265,
         "battery": "True",
         "swapsRefused": 0
@@ -121,18 +121,18 @@
       "description": "Master System Wonder Boy III: The Dragon's Trap, with the menu script that gets past the title (New Game, the story, the castle).",
       "kind": "sega-run",
       "rom": "{sms}/Wonder Boy III - The Dragon's Trap.7z",
-      "frames": 1100,
-      "input": "150:A,156:,215:Down,221:,260:A,266:,330:A,336:,400:A,406:,470:A,476:,540:Right,600:Right+A,610:Right,680:Right+B,690:Right,750:A,756:,820:Right,880:Right+A,890:Right",
+      "frames": 2400,
+      "input": "150:A,156:,215:Down,221:,260:A,266:,330:A,336:,400:A,406:,470:A,476:,540:Right,600:Right+A,610:Right,680:Right+B,690:Right,750:A,756:,820:Right,880:Right+A,890:Right,940:Right+A,952:Right,980:Right+B,986:Right,1030:Right+A,1042:Right,1070:Right+B,1076:Right,1120:Right+A,1132:Right,1160:Right+B,1166:Right,1210:Right+A,1222:Right,1250:Right+B,1256:Right,1300:Left,1340:Right,1380:Right+A,1392:Right,1420:Right+B,1426:Right,1470:Right+A,1482:Right,1510:Right+B,1516:Right,1560:Right+A,1572:Right,1600:Right+B,1606:Right,1650:Right+A,1662:Right,1690:Right+B,1696:Right,1740:Left,1780:Right,1820:Right+A,1832:Right,1860:Right+B,1866:Right,1910:Right+A,1922:Right,1950:Right+B,1956:Right,2000:Right+A,2012:Right,2040:Right+B,2046:Right,2090:Right+A,2102:Right,2130:Right+B,2136:Right,2180:Left,2220:Right,2260:Right+A,2272:Right,2300:Right+B,2306:Right,2350:Right+A,2362:Right,2390:Right+B,2396:Right",
       "tags": [
         "sega",
         "sms"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "451AFD0CA884CB24",
+        "frameBufferHash": "21C2FB6E3AD7DEDF",
         "size": "256x192",
         "distinctColors": 16,
-        "audioPeak": 15394,
+        "audioPeak": 15564,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -143,8 +143,8 @@
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
       "ppu": "NES:FIXS",
-      "frames": 600,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "frames": 900,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms",
@@ -152,10 +152,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "4FE81ADE5DD06AF7",
+        "frameBufferHash": "69E529E790D887CB",
         "size": "256x240",
-        "distinctColors": 18,
-        "audioPeak": 12269,
+        "distinctColors": 17,
+        "audioPeak": 13401,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -166,8 +166,8 @@
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
       "apu": "NES:FIX",
-      "frames": 600,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "frames": 900,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms",
@@ -175,10 +175,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "25E687F81CE78651",
+        "frameBufferHash": "248D1DD7E4865A38",
         "size": "256x192",
         "distinctColors": 20,
-        "audioPeak": 11497,
+        "audioPeak": 13668,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -188,9 +188,9 @@
       "description": "Master System Sonic with every slot swapped while it runs (sound to SMS-FM, picture to NES:FIXS, sound to NES:FIX, picture and sound back to the console's own); all swaps must be in place and the game goes on.",
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
-      "swap": "300:apu:SMS-FM,320:ppu:NES:FIXS,340:apu:NES:FIX,360:ppu:SMS,380:apu:SMS,390:cpu:Z80",
-      "frames": 600,
-      "input": "150:A,156:,210:A,216:,270:A,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "swap": "700:apu:SMS-FM,720:ppu:NES:FIXS,740:apu:NES:FIX,760:ppu:SMS,780:apu:SMS,790:cpu:Z80",
+      "frames": 1200,
+      "input": "90:A,95:,150:A,155:,210:A,215:,270:B,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:A,755:,810:A,815:,870:B,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:A,1355:,1410:A,1415:,1470:B,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:A,1955:,2010:A,2015:,2070:B,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "sms",
@@ -198,10 +198,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "25E687F81CE78651",
+        "frameBufferHash": "B8B0D9863389A912",
         "size": "256x192",
-        "distinctColors": 20,
-        "audioPeak": 11930,
+        "distinctColors": 19,
+        "audioPeak": 13401,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -211,18 +211,18 @@
       "description": "Game Gear Sonic The Hedgehog: the 160x144 window, 12-bit colour, stereo PSG.",
       "kind": "sega-run",
       "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
-      "frames": 900,
-      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:Start,155:,210:A,215:,270:Start,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:Start,755:,810:A,815:,870:Start,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:Start,1355:,1410:A,1415:,1470:Start,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:Start,1955:,2010:A,2015:,2070:Start,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "gg"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "95F65E5A6498760F",
+        "frameBufferHash": "024F5AA9F119EC6C",
         "size": "160x144",
-        "distinctColors": 14,
-        "audioPeak": 11824,
+        "distinctColors": 21,
+        "audioPeak": 13104,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -232,18 +232,18 @@
       "description": "Game Gear Columns: tile rewrites during play, the game whose timing only matches the oracle with its own Z80 instruction lengths (this build keeps the Zilog ones).",
       "kind": "sega-run",
       "rom": "{gg}/Columns (U) [!].gg",
-      "frames": 900,
-      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:Start,155:,210:A,215:,270:Start,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:Start,755:,810:A,815:,870:Start,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:Start,1355:,1410:A,1415:,1470:Start,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:Start,1955:,2010:A,2015:,2070:Start,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "gg"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "37108937F5F1D3C6",
+        "frameBufferHash": "6BCC49FF4E676505",
         "size": "160x144",
-        "distinctColors": 20,
-        "audioPeak": 9971,
+        "distinctColors": 22,
+        "audioPeak": 9573,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -253,15 +253,15 @@
       "description": "Game Gear Wonder Boy: line-interrupt status bar.",
       "kind": "sega-run",
       "rom": "{gg}/Wonder Boy (E) [!].gg",
-      "frames": 900,
-      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2400,
+      "input": "90:A,95:,150:Start,155:,210:A,215:,270:Start,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:Start,755:,810:A,815:,870:Start,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:Start,1355:,1410:A,1415:,1470:Start,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:Start,1955:,2010:A,2015:,2070:Start,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "gg"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "D949C5871679505E",
+        "frameBufferHash": "3886292B72DEDC38",
         "size": "160x144",
         "distinctColors": 17,
         "audioPeak": 9531,
@@ -274,17 +274,17 @@
       "description": "Game Gear Shining Force II: 4 Mbit cartridge with battery RAM, intro dialogue.",
       "kind": "sega-run",
       "rom": "{gg}/Shining Force II - The Sword of Hajya (U) [!].gg",
-      "frames": 900,
-      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right,580:Left+A,590:Left,640:Down,700:Up+A,710:Right,760:Right+A,770:Right",
+      "frames": 2600,
+      "input": "300:Start,306:,350:Start,356:,400:Start,406:,450:Start,456:,500:Start,506:,550:Start,556:,600:B,606:,650:B,656:,700:B,706:,750:B,756:,800:B,806:,850:B,856:,900:B,906:,950:B,956:,1000:B,1006:,1050:B,1056:,1100:B,1106:,1150:B,1156:,1200:B,1206:,1250:B,1256:,1300:B,1306:,1350:B,1356:,1400:B,1406:,1450:B,1456:,1500:B,1506:,1550:B,1556:,1600:B,1606:,1650:B,1656:,1700:B,1706:,1750:B,1756:,1800:B,1806:,1850:B,1856:,1900:B,1906:,1950:B,1956:,2000:B,2006:,2050:B,2056:,2200:Right",
       "tags": [
         "sega",
         "gg"
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "38B66EC370D36D87",
+        "frameBufferHash": "BB1163B053CC72A8",
         "size": "160x144",
-        "distinctColors": 17,
+        "distinctColors": 28,
         "audioPeak": 11734,
         "battery": "True",
         "swapsRefused": 0
@@ -295,9 +295,9 @@
       "description": "Game Gear Sonic with every slot swapped while it runs (sound to NES:FIXS, picture to NES:DMG, back to GG / GG); all swaps must be in place.",
       "kind": "sega-run",
       "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
-      "swap": "300:apu:NES:FIXS,320:ppu:NES:DMG,340:apu:GG,360:ppu:GG,380:cpu:Z80",
-      "frames": 600,
-      "input": "150:Start,156:,210:A,216:,270:Start,276:,330:A,336:,400:Right,460:Right+A,470:Right,520:Right+B,530:Right",
+      "swap": "700:apu:NES:FIXS,720:ppu:NES:DMG,740:apu:GG,760:ppu:GG,780:cpu:Z80",
+      "frames": 1200,
+      "input": "90:A,95:,150:Start,155:,210:A,215:,270:Start,275:,300:Right,335:Right+A,340:Right,380:Right+A,385:Right,420:Left,450:,455:B,460:,470:Down,500:,510:Up,530:,540:A,545:,560:Right,600:,690:A,695:,750:Start,755:,810:A,815:,870:Start,875:,900:Right,935:Right+A,940:Right,980:Right+A,985:Right,1020:Left,1050:,1055:B,1060:,1070:Down,1100:,1110:Up,1130:,1140:A,1145:,1160:Right,1200:,1290:A,1295:,1350:Start,1355:,1410:A,1415:,1470:Start,1475:,1500:Right,1535:Right+A,1540:Right,1580:Right+A,1585:Right,1620:Left,1650:,1655:B,1660:,1670:Down,1700:,1710:Up,1730:,1740:A,1745:,1760:Right,1800:,1890:A,1895:,1950:Start,1955:,2010:A,2015:,2070:Start,2075:,2100:Right,2135:Right+A,2140:Right,2180:Right+A,2185:Right,2220:Left,2250:,2255:B,2260:,2270:Down,2300:,2310:Up,2330:,2340:A,2345:,2360:Right",
       "tags": [
         "sega",
         "gg",
@@ -305,10 +305,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "95F65E5A6498760F",
+        "frameBufferHash": "C16C3AF17A429DE7",
         "size": "160x144",
-        "distinctColors": 14,
-        "audioPeak": 11226,
+        "distinctColors": 20,
+        "audioPeak": 11823,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -374,5 +374,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T15:20:51Z"
+  "goldenGeneratedUtc": "2026-10-15T16:10:25Z"
 }
