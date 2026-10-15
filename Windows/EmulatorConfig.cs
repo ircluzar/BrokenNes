@@ -141,6 +141,24 @@ namespace BrokenNes.Windows
         public int GenesisFmPatch { get; set; } = 0;
 
         /// <summary>
+        /// The YM2413 instrument the Master System FM chip (the NES APU core "SMSFM") plays the NES pulses with: an index into the instrument bank (0 to 14 the chip's own, 15 to 20 designed here, the last the PSG square).
+        /// </summary>
+        [JsonPropertyName("smsFmPatch")]
+        public int SmsFmPatch { get; set; } = 0;
+
+        /// <summary>
+        /// Sega machine settings (Console menu): the video standard ("auto", "ntsc", "pal"), the Genesis board ("auto", "1", "2", "3") and the Master System board ("auto", "markiii", "sms1", "sms2"). Auto reads them from the game.
+        /// </summary>
+        [JsonPropertyName("segaRegion")]
+        public string SegaRegion { get; set; } = "auto";
+
+        [JsonPropertyName("genesisModel")]
+        public string GenesisModel { get; set; } = "auto";
+
+        [JsonPropertyName("masterSystemModel")]
+        public string MasterSystemModel { get; set; } = "auto";
+
+        /// <summary>
         /// The Game Boy look: green (original DMG), grey, pocket, or color (Game Boy pictures run as a GBC)
         /// </summary>
         [JsonPropertyName("gbLook")]

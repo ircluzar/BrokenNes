@@ -22,17 +22,35 @@
                                               clock, not a sound card (BROKENNES_SYNTH_AUDIO=null)
     cores      shared emulator cores          Workshop headless run of a VRUN ROM on the FIX cores must reproduce a recorded
                                               picture hash (guards the shared tree both desktop and plugin modes use)
+    suite      golden-hash cases              UAT\run-suite.ps1 over every manifest: the NES cases, the story ROMs, the instruction-set walls and the Master
+                                              System, Game Gear and Genesis games (own cores, machine variants, bridges both ways, core swaps mid-run). Goldens
+                                              say "nothing moved", not "correct" (UAT\README.md); a ROM not on this machine SKIPs, never passes
+    sega-gate  Sega verifiers                 UAT\sega-gate.ps1: every Workshop verifier of the three Sega consoles in one table (the chips, the boards, the VDPs,
+                                              the oracles, the bridges, the stems, the CPU walls); refuses a stale exe
+    sega-preview  Sega in the desktop app     UAT\entrypoints\sega-preview-smoke.ps1: the Console menu, the real Master System / Game Gear / Genesis programs
+                                              through RomDetect into the real sessions, battery saves (UI-driven: rerun alone if it fails while the machine is busy)
+    lite-sega  Lite with the Sega consoles    UAT\entrypoints\lite-sega.ps1 (OPT-IN: -Only lite-sega; an AOT publish ~6 min and the suite ~15 min): the AOT build in a real Edge window over
+                                              the DevTools protocol, 100+ checks of the console dropdown, layouts, ROM loading, core pickers, swaps, saves, states, video, audio, pad.
+                                              NOT RUN, with the reason, when the script is not in the tree, node 22+ or Edge/Chrome is missing, the wasm-tools (AOT) workload is
+                                              missing, the -LitePublish folder holds no site, or the games are not on the machine (-LiteRoms); PASS or FAIL otherwise
+    notices    third-party notices            UAT\entrypoints\notices-check.ps1: the ledgers match the tree, the four license texts are there, and the desktop
+                                              folder, the Lite site and (in install-smoke) the installed plugin folder hold the notices
 
   Build output goes to %LOCALAPPDATA%\VRUN_Nes_Dev_work (never into the repo). Exit code 0 = nothing FAILED
   (NOT RUN entrypoints do not fail unless -RequireFl).
 .EXAMPLE
   pwsh -File UAT\certify.ps1                    # everything
   pwsh -File UAT\certify.ps1 -Only plugin-host  # one entrypoint
+  pwsh -File UAT\certify.ps1 -Only lite-sega    # the Lite Sega suite (opt-in: never part of a run without -Only); -LitePublish <dir> reuses an AOT publish, -LiteOnly rom,saves narrows it
 #>
 param(
     [string[]]$Only,
     [switch]$SkipBuild,
     [switch]$RequireFl,
+    # lite-sega only (see the entry): an existing AOT publish folder (default: the script publishes one), a folder with sms\ gg\ md\ games (default: the script gathers them from X:\EMULATION), the suite groups to run (default: all)
+    [string]$LitePublish,
+    [string]$LiteRoms,
+    [string[]]$LiteOnly,
     [string]$Rom = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-09-27_nes\vrun_game.nes'
 )
 $ErrorActionPreference = 'Stop'
@@ -64,8 +82,9 @@ function Invoke-Dotnet { & dotnet.exe @args --disable-build-servers -nodeReuse:f
 function CheckSummary($j) {
     if (-not $j) { return 'no result line' }
     $all = @($j.checks.PSObject.Properties)
-    $bad = @($all | Where-Object { -not $_.Value.ok } | ForEach-Object { $_.Name })
-    "$($all.Count - $bad.Count)/$($all.Count) checks" + $(if ($bad) { " (failed: $($bad -join ', '))" } else { '' })
+    $nr = @($all | Where-Object { $_.Value.notRun } | ForEach-Object { $_.Name })
+    $bad = @($all | Where-Object { -not $_.Value.ok -and -not $_.Value.notRun } | ForEach-Object { $_.Name })
+    "$($all.Count - $bad.Count - $nr.Count)/$($all.Count) checks" + $(if ($bad) { " (failed: $($bad -join ', '))" } else { '' }) + $(if ($nr) { " (not run: $($nr -join ', '))" } else { '' })
 }
 
 # ----------------------------------------------------------------------------------------------------
@@ -91,6 +110,47 @@ Run 'cores' {
     $bad = @('f300', 'f600') | Where-Object { $g.$_ -ne $now[$_] }
     if ($bad) { return @{ Status = 'FAIL'; Detail = "picture differs from the recorded run at: $($bad -join ', ')" } }
     @{ Status = 'PASS'; Detail = 'VRUN on CPU/PPU/APU FIX reproduces the recorded pictures (frames 300, 600)' }
+}
+
+# The Workshop build the next entries share (built once, into the same artifacts folder as `cores`).
+$script:workshopExe = $null
+function Get-WorkshopExe {
+    if ($script:workshopExe) { return $script:workshopExe }
+    if (-not $SkipBuild) { $o = Invoke-Dotnet build (Join-Path $repo 'Workshop\BrokenNes.Workshop.csproj') -c Release --artifacts-path $art; if ($LASTEXITCODE -ne 0) { throw "Workshop build failed: $($o.Substring([Math]::Max(0, $o.Length - 400)))" } }
+    $script:workshopExe = Join-Path $art 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
+    $script:workshopExe
+}
+
+Run 'suite' {
+    if (-not (Want 'suite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib\Prepare-SegaRoms.ps1') | Out-File (Join-Path $outDir 'prepare-sega-roms.txt')
+    $json = Join-Path $outDir 'suite.json'
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'run-suite.ps1') -Exe $exe -Json $json 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'suite.txt')
+    $line = ($out | Where-Object { "$_" -match '\d+ pass' } | Select-Object -Last 1)
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = "NES, story, cores, corpus, Sega and wall cases (golden hashes: nothing moved, not proof of accuracy): $line" }
+}
+
+Run 'sega-gate' {
+    if (-not (Want 'sega-gate')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'sega-gate.ps1') -Exe $exe -ReportDir (Join-Path $outDir 'sega-gate') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-gate.txt')
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ($out | Where-Object { "$_" -match 'step\(s\) passed' } | Select-Object -Last 1) }
+}
+
+Run 'sega-preview' {
+    if (-not (Want 'sega-preview')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\sega-preview-smoke.ps1') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-preview-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
 Run 'plugin-host' {
@@ -122,6 +182,7 @@ Run 'desktop' {
     if (-not (Want 'desktop')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
     $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\desktop-smoke.ps1') 2>&1
     $code = $LASTEXITCODE
+    $script:builtApp = Join-Path $workRoot 'uat_desktop\artifacts\bin\BrokenNes.Windows\release_win-x64'     # built by this run: the notices entry checks it
     $out | Out-File (Join-Path $outDir 'desktop-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
@@ -132,10 +193,50 @@ Run 'web-lite' {
     if (-not (Want 'web-lite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
     $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\web-smoke.ps1') 2>&1
     $code = $LASTEXITCODE
+    $liteWww = Get-ChildItem (Join-Path $workRoot 'uat_web') -Recurse -Directory -Filter wwwroot -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } | Select-Object -First 1
+    if ($liteWww) { $script:builtLite = Split-Path $liteWww.FullName }
     $out | Out-File (Join-Path $outDir 'web-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'lite-sega' {
+    # Opt-in: an AOT publish and a real browser window for a quarter of an hour do not belong in a default run. NOT RUN names what is missing; once it runs, its verdict is PASS or FAIL.
+    if (-not ($Only -contains 'lite-sega')) { return @{ Status = 'SKIPPED'; Detail = 'opt-in (an AOT publish ~6 min + the suite ~15 min in a real Edge window): -Only lite-sega' } }
+    $liteScript = Join-Path $PSScriptRoot 'entrypoints\lite-sega.ps1'
+    if (-not (Test-Path $liteScript)) { return @{ Status = 'NOT RUN'; Detail = "$liteScript is not in this tree" } }
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if (-not $node) { return @{ Status = 'NOT RUN'; Detail = 'node (22 or newer) is not installed: the suite drives the browser from node' } }
+    $nodeVer = (& $node --version 2>&1 | Out-String).Trim()
+    if ($nodeVer -notmatch '^v(\d+)\.' -or [int]$Matches[1] -lt 22) { return @{ Status = 'NOT RUN'; Detail = "node 22 or newer is needed (found '$nodeVer')" } }
+    $browsers = @($env:LITELAB_BROWSER, "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+                  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe") | Where-Object { $_ -and (Test-Path $_) }
+    if (-not $browsers) { return @{ Status = 'NOT RUN'; Detail = 'no Edge or Chrome is installed (the suite drives a real browser window; set LITELAB_BROWSER to another)' } }
+    $a = @()
+    if ($LitePublish) {
+        if (-not ((Test-Path (Join-Path $LitePublish 'wwwroot\index.html')) -or (Test-Path (Join-Path $LitePublish 'index.html')))) { return @{ Status = 'NOT RUN'; Detail = "no AOT publish in -LitePublish $LitePublish (it must hold wwwroot\index.html): publish one, or leave it out and the script publishes" } }
+        $a += @('-Publish', $LitePublish)
+    }
+    elseif (-not ((& dotnet.exe workload list 2>&1 | Out-String) -match 'wasm-tools')) {
+        return @{ Status = 'NOT RUN'; Detail = 'the wasm-tools workload is not installed, so no AOT publish can be made: dotnet workload install wasm-tools (or pass -LitePublish <an AOT publish folder>)' }
+    }
+    if ($LiteRoms) {
+        foreach ($d in 'sms', 'gg', 'md') { if (-not (Test-Path (Join-Path $LiteRoms $d))) { return @{ Status = 'NOT RUN'; Detail = "-LiteRoms $LiteRoms has no $d\ folder (it needs sms\ gg\ md\)" } } }
+        $a += @('-Roms', $LiteRoms)
+    }
+    elseif (-not (Test-Path 'X:\EMULATION')) { return @{ Status = 'NOT RUN'; Detail = 'the games library X:\EMULATION is not on this machine (the script gathers its games there): pass -LiteRoms <a folder with sms\ gg\ md\>' } }
+    elseif (-not (Test-Path 'C:\Program Files\7-Zip\7z.exe')) { return @{ Status = 'NOT RUN'; Detail = '7-Zip is not installed (the script opens the Master System archives with it): pass -LiteRoms <a folder with sms\ gg\ md\>' } }
+    if ($LiteOnly) { $a += @('-Only', ($LiteOnly -join ',')) }
+    $out = & pwsh -NoProfile -File $liteScript @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'lite-sega.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $sum = CheckSummary $j
+    if ($j -and $j.error) { $sum += "; error: $($j.error)" }
+    if ($j -and $j.notes) { $sum += "; $(@($j.notes) -join '; ')" }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = $sum }
 }
 
 Run 'plugin-fl' {
@@ -172,11 +273,28 @@ Run 'plugin-synth' {
     $out | Out-File (Join-Path $outDir 'synth-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
+Run 'notices' {
+    if (-not (Want 'notices')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    # the ledgers against the tree, and the folders THIS run's other entries built (a folder left by an earlier run says nothing about this tree): the desktop app
+    # (the desktop entry) and the Lite site (the web-lite entry). This entry runs after them for that reason.
+    $a = @()
+    if ($script:builtApp -and (Test-Path $script:builtApp)) { $a += @('-AppDir', $script:builtApp) }
+    if ($script:builtLite -and (Test-Path $script:builtLite)) { $a += @('-LiteDir', $script:builtLite) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\notices-check.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'notices.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $skipped = @($out | Where-Object { "$_" -like '`[SKIP`]*' }).Count
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($skipped) { ", $skipped folder check(s) skipped (no folder given: the desktop needs the desktop entry, the Lite site the web-lite entry; the installed plugin's folder is checked by plugin-install)" } else { '' })) }
+}
+
 # ----------------------------------------------------------------------------------------------------
-$summary = "# BrokenNes certification $stamp`n`n| Entrypoint | Result | Detail | Time |`n|---|---|---|---|`n"
+$summary ="# BrokenNes certification $stamp`n`n| Entrypoint | Result | Detail | Time |`n|---|---|---|---|`n"
 foreach ($r in $results) { $summary += "| $($r.entrypoint) | $($r.status) | $($r.detail -replace '\|', '/') | $($r.seconds)s |`n" }
 Set-Content (Join-Path $outDir 'summary.md') $summary
 $results | ConvertTo-Json | Set-Content (Join-Path $outDir 'summary.json')

@@ -21,7 +21,7 @@ namespace NesEmulator.Sega;
 /// band-limited mixer (<see cref="BandLimitedMixer"/>, the PSG's own resampler) that integrates it at the host rate, so the conversion to 44.1 or 48 kHz has no aliasing. The PSG and the FM are summed
 /// with <see cref="FmGain"/> and <see cref="Sn76489.Gain"/>, then clipped to 16 bits. No allocation per sample.</para>
 /// </remarks>
-public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, IVoiceStems
+public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, IVoiceStems
 {
     /// <summary>Z80 T-states a bank-window access stalls the Z80 for (about 3.3; the sources disagree, the plan lists them).</summary>
     public const double BankWindowZ80Stall = 3.3;
@@ -86,11 +86,11 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
 
     public string CoreName => $"MD (Z80, PSG, {(ym.Ladder ? "YM2612" : "YM3438")} FM + DAC)";
     public int SampleRate => machine.SampleRate;
-    public Z80<ZBus> Cpu => z80;
+    public Z80<ZBus> Cpu { get { Unpark(); return z80; } }   // a CPU whose polling loop is being fast-forwarded is brought up to date before anything outside looks at it
     public Sn76489 Psg => psg;
     public Ym2612 Fm => ym;
     public int BankRegister => bank;
-    public byte[] Ram => ram;
+    public byte[] Ram { get { Unpark(); return ram; } }   // a tool that writes the Z80's RAM must find the CPU up to date
 
     /// <summary>The FM chip's channel mask (bit 0 to 5 FM 1 to 6, bit 6 the DAC): a silenced channel keeps running and only its output is dropped. For stems and for isolating a voice.</summary>
     public int FmMuteMask { get => ym.MuteMask; set => ym.MuteMask = value; }
@@ -109,6 +109,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         lastFmL = lastFmR = 0;
         RealignStems();
         z80.Reset(); z80.Irq = false;
+        ResetLoops();
     }
 
     // =================================================================================================================
@@ -192,6 +193,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         {
             int ticks = machine.Timeline.Z80.Due(from > z80Master ? from : z80Master, masterClock);
             z80Master = Math.Max(z80Master, from);
+            if (parked) { ParkedAdvance(ticks); ticks = 0; }       // a polling loop that is being fast-forwarded: the T-states are counted (MdSoundUnitLoops.cs)
             for (int i = 0; i < ticks; i++)
             {
                 if (stallTicks > 0) { stallTicks--; z80Master += machine.Timeline.Z80.Divider; continue; }
@@ -199,6 +201,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
                 Z80Ticks++;
                 z80Master += machine.Timeline.Z80.Divider;
                 if (requested && z80.AtInstructionBoundary) { granted = true; grantTime = z80Master; break; }
+                if (FastLoops && z80.AtInstructionBoundary && LoopStep()) { ParkedAdvance(ticks - i - 1); break; }
             }
         }
         else z80Master = masterClock;
@@ -232,6 +235,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
     {
         RunTo(masterClock);
         if (request == requested) return;
+        LoopBreak();
         requested = request;
         if (request)
         {
@@ -269,6 +273,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
     public void WriteReset(bool released, long masterClock)
     {
         RunTo(masterClock);
+        LoopBreak();
         bool wasInReset = inReset;
         inReset = !released;
         if (inReset)
@@ -314,6 +319,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
     public void SetInterrupt(bool asserted, long masterClock)
     {
         RunTo(masterClock);
+        LoopBreak();
         interrupt = asserted;
         z80.Irq = asserted;
     }
@@ -348,6 +354,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
     private byte Z80Read(int address, long master, bool fromZ80)
     {
         if (address < 0x4000) return ram[address & 0x1FFF];
+        if (fromZ80) loopImpure = true;           // a read outside the Z80's own RAM (the YM2612's status, the bank window, the VDP) is not a read of something that only the 68000 can change
         if (address < 0x6000) return ym.Read(address & 3, master / MasterPerYmClock);
         if (address < 0x7F00) return 0xFF;
         if (address < 0x8000)
@@ -365,6 +372,8 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
 
     private void Z80Write(int address, byte value, long master, bool fromZ80)
     {
+        if (fromZ80) loopImpure = true;           // a write by the Z80 itself is a side effect: not a loop that can be skipped
+        else if (address < 0x4000) { loopImpure = true; if (parked) Unpark(); }   // the 68000 is about to change the RAM a loop is reading: a turn being recorded is spoilt, a parked CPU is brought up to date first
         if (address < 0x4000) { ram[address & 0x1FFF] = value; return; }
         if (address < 0x6000) { YmWrite(address & 3, value, master); return; }
         if (address < 0x6100) { bank = bank >> 1 | (value & 1) << 8; return; }
@@ -410,8 +419,8 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         public byte FetchOpcode(ushort address) => U.Z80Read(address, U.z80Master, true);
         public byte Read(ushort address) => U.Z80Read(address, U.z80Master, true);
         public void Write(ushort address, byte value) => U.Z80Write(address, value, U.z80Master, true);
-        public byte In(ushort port) => 0xFF;
-        public void Out(ushort port, byte value) { }
+        public byte In(ushort port) { U.loopImpure = true; return 0xFF; }
+        public void Out(ushort port, byte value) { U.loopImpure = true; }
         public byte InterruptVector() => 0xFF;
     }
 
@@ -470,6 +479,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
 
     public void SaveState(BinaryWriter w)
     {
+        Unpark();
         w.Write(ram); w.Write(requested); w.Write(inReset); w.Write(granted); w.Write(grantTime); w.Write(bank); w.Write(lastMaster); w.Write(z80Master); w.Write(stallTicks); w.Write(interrupt);
         w.Write(ymAddress0); w.Write(ymAddress1);
         ym.SaveState(w);
@@ -489,6 +499,7 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         ym.LoadState(r);
         psg.LoadState(r);
         z80.LoadState(r);
+        ResetLoops();       // (C4a) the loop detector starts again from the loaded Z80 state; SaveState settled any parked loop first
         fmLeft.LoadState(r); fmRight.LoadState(r);
         fmClock = r.ReadInt64(); lastFmL = r.ReadSingle(); lastFmR = r.ReadSingle();
         BusRequests = r.ReadInt64(); BankReads = r.ReadInt64(); BankWrites = r.ReadInt64(); PsgWrites = r.ReadInt64(); YmWrites = r.ReadInt64(); Z80Ticks = r.ReadInt64();
@@ -496,7 +507,9 @@ public sealed class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, I
         RealignStems();
     }
 
-    public string Describe() =>
+    public string Describe() { Unpark(); return DescribeCore(); }
+
+    private string DescribeCore() =>
         $"MD sound unit (Z80 + PSG + {ym.Describe()}): z80 pc={z80.PC:X4} {(inReset ? "RESET" : requested && granted ? "bus held" : requested ? "bus requested" : "running")} bank=${bank:X3} z80-int={interrupt} " +
-        $"psg-writes={PsgWrites} ym-writes={YmWrites} bank-reads={BankReads} z80-ticks={Z80Ticks}";
+        $"psg-writes={PsgWrites} ym-writes={YmWrites} bank-reads={BankReads} z80-ticks={Z80Ticks} (loops parked {LoopParks}x, {LoopParkedTicks} ticks counted)";
 }

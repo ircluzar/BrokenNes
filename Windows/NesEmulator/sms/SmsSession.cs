@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NesEmulator.Systems;
 
 namespace NesEmulator.Sega;
@@ -141,8 +142,14 @@ public class SmsSession : IConsoleSession
     /// <summary>What a session derives from the board after a state load (the Game Gear's window of the picture).</summary>
     protected virtual void AfterStateLoad() { }
 
+    /// <summary>
+    /// Swaps one core while the game runs. Only an id the console's own menu offers (<see cref="CoreCatalog"/>) is accepted: anything else is refused, never quietly taken (the app then restarts the game on it, which says so).
+    /// The sound slot builds the unit and hands it the PSG as it is; the picture slot has one chip in the board (the console's own), so naming it is the only in-place choice here (a NES picture chip is drawn by the wrapper,
+    /// <c>SegaPictureSession</c>, which this session does not know); the CPU slot has one Z80.
+    /// </summary>
     public bool TrySwapCore(CoreSlot slot, string id)
     {
+        if (string.IsNullOrEmpty(id) || !CoreCatalog.Options(Console, slot).Any(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) return false;
         switch (slot)
         {
             case CoreSlot.Apu:
@@ -162,7 +169,9 @@ public class SmsSession : IConsoleSession
                 apuId = id;
                 return true;
             }
-            case CoreSlot.Ppu: ppuId = id; return true;   // one picture chip per console; the id is a label
+            case CoreSlot.Ppu:
+                if (id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) return false;   // drawing the picture on a NES chip is the wrapper's work, not the board's
+                ppuId = id; return true;   // one picture chip per console: the one running
             default: cpuId = id; return true;
         }
     }

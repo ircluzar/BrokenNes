@@ -184,5 +184,23 @@ public sealed class MdSession : IConsoleSession
         }
     }
 
+    /// <summary>
+    /// Why <see cref="TrySwapCore"/> said no (the apps print it when the game restarts on the new part). The sound unit is swapped live (<see cref="BOARD_MD.SwapSound"/>), so the sound answer is one of two things: the id is not a
+    /// sound unit this console has, or its state layout cannot take the Z80, YM2612 and PSG state of the unit that is playing.
+    /// </summary>
+    public string SwapRefusal(CoreSlot slot, string id) => slot switch
+    {
+        CoreSlot.Cpu => $"the Genesis has one main CPU, the 68000 ({cpuId}); {id} is not a choice it has",
+        CoreSlot.Ppu => $"the Genesis has one picture chip of its own ({ppuId}); {id} is not a choice it has",
+        _ => SoundSwapRefusal(id),
+    };
+
+    private string SoundSwapRefusal(string id)
+    {
+        try { GenesisSoundFactories.Create(id, new SegaMachine(Board.Timeline, Board.Model, sampleRate)); }
+        catch (ArgumentException) { return $"{id} is not a sound unit the Genesis has (the Z80 sound driver with the YM2612 and the PSG)"; }
+        return $"{id} keeps its state in a layout that cannot take the Z80, YM2612 and PSG state of the unit that is playing, so the game restarts on it";
+    }
+
     public void Dispose() { }
 }

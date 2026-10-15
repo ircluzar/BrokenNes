@@ -23,7 +23,7 @@ namespace BrokenNes.Windows
         private CheckBox? highPitchCheck;
         private TrackBar? highPitchSlider;
         private Label? highPitchValueLabel, highPitchCaption;
-        private ComboBox? genesisPatchCombo;
+        private ComboBox? genesisPatchCombo, smsFmPatchCombo;
         private bool volumeDirty;
 
         private const int VolumeWheelStep = 5;
@@ -35,6 +35,7 @@ namespace BrokenNes.Windows
             ApplyEmulationVolume();
             ApplyPitchGuard();
             NesEmulator.APU_MD.SetPatchEverywhere(config.GenesisFmPatch);
+            NesEmulator.APU_SMSFM.SetPatchEverywhere(config.SmsFmPatch);
 
             volumeButton = new VolumeMenuButton
             {
@@ -66,7 +67,7 @@ namespace BrokenNes.Windows
         private Panel BuildVolumePanel()
         {
             var font = SystemFonts.MenuFont ?? Control.DefaultFont;
-            var panel = new Panel { Size = new Size(280, 296), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
+            var panel = new Panel { Size = new Size(280, 362), BackColor = SystemColors.Window, Padding = new Padding(12, 10, 12, 10) };
 
             var title = new Label { Text = "Emulation volume", AutoSize = true, Font = new Font(font, FontStyle.Bold), Location = new Point(12, 12) };
             volumeValueLabel = new Label
@@ -167,7 +168,28 @@ namespace BrokenNes.Windows
             };
             tip.SetToolTip(genesisPatchCombo, "The timbre a NES game's pulses get when the audio core is MD (the YM2612 FM chip and PSG of the Genesis). The triangle is always a sine, the noise the PSG's.");
             panel.Controls.Add(genesisPatchCombo);
+
+            // The Master System FM chip (the NES APU core "SMSFM"): the YM2413 instrument the pulses are played with.
+            panel.Controls.Add(new Label { BorderStyle = BorderStyle.Fixed3D, AutoSize = false, Location = new Point(12, 292), Size = new Size(panel.Width - 24, 2) });
+            panel.Controls.Add(new Label { Text = "Master System FM instrument (APU core SMSFM)", Font = font, AutoSize = true, Location = new Point(12, 302) });
+            smsFmPatchCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = font, Location = new Point(12, 326), Size = new Size(panel.Width - 24, 26), TabStop = false };
+            foreach (var p in NesEmulator.Mix.OpllPatchBank.Patches) smsFmPatchCombo.Items.Add(p.Name);
+            smsFmPatchCombo.SelectedIndexChanged += (_, _) =>
+            {
+                if (smsFmPatchCombo.SelectedIndex >= 0 && smsFmPatchCombo.SelectedIndex != config.SmsFmPatch) SetSmsFmPatch(smsFmPatchCombo.SelectedIndex);
+            };
+            tip.SetToolTip(smsFmPatchCombo, "The timbre a NES game's pulses get when the audio core is SMSFM (the YM2413 FM chip and PSG of the Japanese Master System): the chip's 15 own instruments, six designed for this project, and a plain PSG square. The triangle is a sine, the noise the PSG's.");
+            panel.Controls.Add(smsFmPatchCombo);
             return panel;
+        }
+
+        /// <summary>Choose the YM2413 instrument of the Master System FM chip: it applies to the running core and to every new one, and is saved in config.json (smsFmPatch).</summary>
+        private void SetSmsFmPatch(int index)
+        {
+            index = NesEmulator.Mix.OpllPatchBank.Clamp(index);
+            if (index != config.SmsFmPatch) { config.SmsFmPatch = index; volumeDirty = true; }
+            NesEmulator.APU_SMSFM.SetPatchEverywhere(index);
+            RefreshVolumeUi();
         }
 
         /// <summary>Turn "Remove high-pitched" on/off and/or move its ceiling (MIDI note). Null leaves that part as it is.</summary>
@@ -257,6 +279,11 @@ namespace BrokenNes.Windows
                 int patch = Math.Clamp(config.GenesisFmPatch, 0, NesEmulator.Mix.FmPatchBank.Count - 1);
                 if (genesisPatchCombo.SelectedIndex != patch) genesisPatchCombo.SelectedIndex = patch;
             }
+            if (smsFmPatchCombo != null)
+            {
+                int patch = NesEmulator.Mix.OpllPatchBank.Clamp(config.SmsFmPatch);
+                if (smsFmPatchCombo.SelectedIndex != patch) smsFmPatchCombo.SelectedIndex = patch;
+            }
         }
 
         private void WireVolumeApi(WebApi.WebApiServer server)
@@ -270,12 +297,15 @@ namespace BrokenNes.Windows
                 blockedNotes = System.Threading.Interlocked.Read(ref NesEmulator.Mix.PitchGuard.BlockedNotes),
                 genesisFmPatch = config.GenesisFmPatch,
                 genesisFmPatchName = NesEmulator.Mix.FmPatchBank.Patches[Math.Clamp(config.GenesisFmPatch, 0, NesEmulator.Mix.FmPatchBank.Count - 1)].Name,
+                smsFmPatch = NesEmulator.Mix.OpllPatchBank.Clamp(config.SmsFmPatch),
+                smsFmPatchName = NesEmulator.Mix.OpllPatchBank.Patches[NesEmulator.Mix.OpllPatchBank.Clamp(config.SmsFmPatch)].Name,
             };
             server.SetEmulationVolume = r => Invoke(() =>
             {
                 if (r.Volume != null || r.Muted != null) SetEmulationVolume(r.Volume, r.Muted);
                 if (r.RemoveHighPitched != null || r.HighPitchCeilingNote != null) SetHighPitchGuard(r.RemoveHighPitched, r.HighPitchCeilingNote);
                 if (r.GenesisFmPatch != null) SetGenesisFmPatch(r.GenesisFmPatch.Value);
+                if (r.SmsFmPatch != null) SetSmsFmPatch(r.SmsFmPatch.Value);
                 SaveVolumeIfDirty();
             });
         }

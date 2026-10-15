@@ -1089,7 +1089,12 @@ window.nesInterop = {
                     const r = await this._dotNetRef.invokeMethodAsync('FrameTick');
                     if (r && (token === this._loopToken) && this._loopActive) {
                         const fb = r.fb || r.Framebuffer;
-                        const audio = r.audio || r.Audio;
+                        let audio = r.audio || r.Audio;
+                        // BrokenNes 2 console sessions send the samples as raw float32 bytes (the interop's binary path); view them in place when aligned
+                        if (!audio && r.pcm && r.pcm.byteLength >= 4) {
+                            const u8 = r.pcm, n4 = u8.byteLength >> 2;
+                            audio = (u8.byteOffset & 3) === 0 ? new Float32Array(u8.buffer, u8.byteOffset, n4) : new Float32Array(u8.buffer.slice(u8.byteOffset, u8.byteOffset + (n4 << 2)));
+                        }
                         const sr = r.sr || r.SampleRate || 44100;
                         const haveAudio = !!(audio && audio.length);
                         const canSkip = this._frameSkipEnabled && behind && (this._skipsThisBurst < this._maxFrameSkips);
@@ -1252,6 +1257,12 @@ window.nesInterop = {
     document.addEventListener('keyup', legacyUp);
     this._legacyKeyDown = legacyDown; this._legacyKeyUp = legacyUp;
         }
+    },
+
+    // BrokenNes 2: a console session paces the page's frame loop at its own frame rate (a PAL Master System or Genesis game is 50 a second, not 60); 0 puts the NES's 60 back.
+    setSessionFps: function(fps){
+        this._targetFps = (typeof fps === 'number' && fps >= 20 && fps <= 120) ? fps : 60;
+        return this._targetFps;
     },
 
     // BrokenNes 2: the touch controller's layout follows the running console ("nes", "snes", "gb", "gbc").
@@ -1789,20 +1800,31 @@ window.nesInterop = {
         const lower = String(name).toLowerCase();
         return accept.split(',').some(x => { x = x.trim(); return x.startsWith('.') && lower.endsWith(x); });
     },
+    // An archive format the browser build cannot open (no 7-Zip here): reported to the page by name, never dropped silently.
+    unsupportedArchiveKind: function (name) {
+        const lower = String(name).toLowerCase();
+        return lower.endsWith('.7z') ? '7z' : lower.endsWith('.rar') ? 'RAR' : '';
+    },
+    // bytes -> base64 in chunks (a four megabyte Genesis ROM is a quarter of a second, not a string built a character at a time)
+    bytesToBase64: function (bytes) {
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+        return btoa(binary);
+    },
     readSelectedRoms: async function (inputElement) {
         try {
             const el = inputElement instanceof Element ? inputElement : (inputElement && inputElement.id ? document.getElementById(inputElement.id) : null);
             const files = el && el.files ? Array.from(el.files) : [];
             const results = [];
             for (const f of files) {
+                const archive = this.unsupportedArchiveKind(f.name);
+                if (archive) { results.push({ name: f.name, base64: '', unsupported: archive }); continue; }
                 if (!this.romNameAllowed(f.name)) continue;
                 const data = await f.arrayBuffer();
                 // size guard (4MB)
                 if (data.byteLength > 16 * 1024 * 1024) continue;
                 const bytes = new Uint8Array(data);
-                let binary = '';
-                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-                const base64 = btoa(binary);
+                const base64 = this.bytesToBase64(bytes);
                 results.push({ name: f.name, base64 });
                 // Persist in IndexedDB for later session recall (simple cache)
                 try { await this.saveRom(f.name, base64); } catch { /* ignore */ }
@@ -1849,16 +1871,16 @@ window.nesInterop = {
             highlight(false);
             const dt = e.dataTransfer;
             if (!dt || !dt.files) return;
-            const files = Array.from(dt.files).filter(f=>window.nesInterop.romNameAllowed(f.name));
+            const files = Array.from(dt.files).filter(f=>window.nesInterop.romNameAllowed(f.name) || window.nesInterop.unsupportedArchiveKind(f.name));
             const results=[];
             for (const f of files){
                 try {
+                    const archive = window.nesInterop.unsupportedArchiveKind(f.name);
+                    if (archive) { results.push({name:f.name, base64:'', unsupported:archive}); continue; }
                     const buf = await f.arrayBuffer();
                     if (buf.byteLength>16*1024*1024) continue;
                     const bytes = new Uint8Array(buf);
-                    let binary='';
-                    for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
-                    const base64=btoa(binary);
+                    const base64=window.nesInterop.bytesToBase64(bytes);
                     results.push({name:f.name, base64});
                     try { await window.nesInterop.saveRom(f.name, base64); } catch {}
                 } catch {}

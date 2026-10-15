@@ -623,8 +623,10 @@ namespace BrokenNes
         {
             if (roms == null || roms.Length == 0) return;
             int added = 0;
+            string? archiveNote = null;
             foreach (var f in roms)
             {
+                if (!string.IsNullOrEmpty(f.unsupported)) { archiveNote = NesController.ArchiveMessage(f.name, f.unsupported); continue; }
                 if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
                 try
                 {
@@ -639,9 +641,16 @@ namespace BrokenNes
                 }
                 catch { }
             }
-            Controller.RomFileName = roms.Last().name;
+            if (added == 0)
+            {
+                string msg = archiveNote ?? "No ROM in what was dropped (" + string.Join(", ", NesEmulator.Systems.Consoles.AllRomExtensions) + ").";
+                Controller.ErrorMessage = archiveNote ?? string.Empty; Status.Set(msg); StateHasChanged();
+                return;
+            }
+            Controller.RomFileName = roms.Last(r => Controller.UploadedRoms.ContainsKey(r.name)).name;
             await LoadSelectedRomPublic();
-            Status.Set($"Dropped {added} ROM(s).");
+            Status.Set($"Dropped {added} ROM(s)." + (archiveNote != null ? " " + archiveNote : ""));
+            if (archiveNote != null) Controller.ErrorMessage = archiveNote;
             if (!string.Equals(Controller.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
@@ -661,6 +670,7 @@ namespace BrokenNes
         [JSInvokable]
         public async Task JsVisibilityChanged(bool visible)
         {
+            PageHidden = !visible;
             try { _activeClock?.OnVisibilityChanged(visible); } catch {}
             if (!visible)
             {

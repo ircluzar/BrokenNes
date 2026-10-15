@@ -320,6 +320,31 @@
   #touch-controller[data-layout=gbc] .start-select-row .small-btn { transform:rotate(-24deg); min-width:70px; border-radius:18px; }
   #touch-controller[data-layout=gbc] .actions .ab-cluster .btn-a,
   #touch-controller[data-layout=gbc] .actions .ab-cluster .btn-b { background:#3a3f8f; border:1px solid #6f77cc; }
+  /* Sega consoles (data-layout = sms | gg | md). The Master System and the Game Gear have two round buttons, 1 (the left one, data-btn a) and 2 (data-btn b); the Master System has a Pause button (data-btn select) and no
+     Start, the Game Gear a Start (data-btn start) and nothing else. The Genesis pad has six face buttons in two rows, X Y Z over A B C (C is data-btn r, Z is data-btn l, Mode is data-btn select) and Start. */
+  #touch-controller .actions .ab-cluster .btn-c,
+  #touch-controller .actions .ab-cluster .btn-z { display:none; position:absolute; width:30%; aspect-ratio:1/1; border-radius:50%; font-weight:700; font-size:0.95rem; align-items:center; justify-content:center; box-shadow:0 5px 12px -3px #000c, inset 0 0 6px #0005; }
+  #touch-controller[data-layout=sms] .actions .ab-cluster > div,
+  #touch-controller[data-layout=gg] .actions .ab-cluster > div { width:40%; transform:none; font-size:1.2rem; }
+  #touch-controller[data-layout=sms] .actions .ab-cluster .btn-a,
+  #touch-controller[data-layout=gg] .actions .ab-cluster .btn-a { left:6%; right:auto; top:36%; bottom:auto; }
+  #touch-controller[data-layout=sms] .actions .ab-cluster .btn-b,
+  #touch-controller[data-layout=gg] .actions .ab-cluster .btn-b { left:auto; right:6%; top:22%; bottom:auto; }
+  #touch-controller[data-layout=sms] .actions .ab-cluster .btn-a,
+  #touch-controller[data-layout=sms] .actions .ab-cluster .btn-b { background:#2b2f36; border:1px solid #6b7381; color:#e8edf3; }
+  #touch-controller[data-layout=gg] .actions .ab-cluster .btn-a,
+  #touch-controller[data-layout=gg] .actions .ab-cluster .btn-b { background:#14181e; border:1px solid #8b94a3; color:#dfe6ee; }
+  #touch-controller[data-layout=sms] .start-select-row .small-btn[data-btn=select] { min-width:110px; }
+  #touch-controller[data-layout=md] .actions .ab-cluster > div { width:30%; transform:none; background:#1c1f26; border:1px solid #6a7080; color:#e6ebf2; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-x { display:flex; left:2%; top:4%; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-y { display:flex; left:35%; top:4%; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-z { display:flex; left:68%; top:4%; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-a { left:2%; right:auto; top:52%; bottom:auto; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-b { left:35%; right:auto; top:52%; bottom:auto; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-c { display:flex; left:68%; top:52%; background:#1c1f26; border:1px solid #6a7080; color:#e6ebf2; }
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-x,
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-y,
+  #touch-controller[data-layout=md] .actions .ab-cluster .btn-z { font-size:0.8rem; background:#262a33; }
   /* Interaction states */
   #touch-controller .pad-btn:active, #touch-controller .small-btn:active, #touch-controller .shoulder-btn:active { filter:brightness(1.25); }
   #touch-controller .pressed { outline:2px solid var(--nes-accent); box-shadow:0 0 0 4px var(--nes-accent-glow); }

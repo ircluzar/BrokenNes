@@ -19,6 +19,10 @@ namespace BrokenNes
             catch { return "uploaded"; }
         }
 
+        /// <summary>The message for an archive the browser build cannot open.</summary>
+        public static string ArchiveMessage(string name, string kind) =>
+            $"'{name}' is a {kind} archive, which the browser cannot open. Unpack it first (for example with 7-Zip) and import the ROM inside, or put the ROM in a .zip.";
+
         public async Task LoadRomUpload(Func<Task<UploadedRom[]>> getUploadedRoms, Action<string> setStatus, Action stateHasChanged, Func<string, Task> loadSelectedRom)
         {
             try
@@ -32,8 +36,11 @@ namespace BrokenNes
                     return;
                 }
                 int added = 0;
+                string? archiveNote = null;
                 foreach (var f in files)
                 {
+                    // an archive the browser cannot open (7z, RAR): say so, never drop it silently
+                    if (!string.IsNullOrEmpty(f.unsupported)) { archiveNote = ArchiveMessage(f.name, f.unsupported); continue; }
                     if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
                     // BrokenNes 2: NES, SNES, Game Boy / Color ROMs (and .zip holding one).
                     if (!NesEmulator.Systems.Consoles.AllRomExtensions.Any(x => f.name.EndsWith(x, StringComparison.OrdinalIgnoreCase))) continue;
@@ -55,7 +62,9 @@ namespace BrokenNes
                 }
                 if (added == 0)
                 {
-                    setStatus("No valid ROM files processed (.nes, .sfc, .smc, .gb, .gbc, .zip).");
+                    if (archiveNote != null) { ErrorMessage = archiveNote; setStatus(archiveNote); }
+                    else setStatus("No valid ROM files processed (" + string.Join(", ", NesEmulator.Systems.Consoles.AllRomExtensions) + ").");
+                    stateHasChanged();
                     return;
                 }
                 var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && UploadedRoms.ContainsKey(f.name));
@@ -64,7 +73,8 @@ namespace BrokenNes
                     RomFileName = last.name;
                     await loadSelectedRom(RomFileName);
                 }
-                setStatus(added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.");
+                setStatus((added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.") + (archiveNote != null ? " " + archiveNote : ""));
+                if (archiveNote != null) ErrorMessage = archiveNote;
                 stateHasChanged();
             }
             catch (Exception ex)
