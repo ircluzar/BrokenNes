@@ -452,12 +452,18 @@ internal static class MdBoardTest
         r.Reg(1, 0x64); r.Reg(12, 0x81);
         r.RunTo(r.LineStart(223) + 1000);
         bool beforeVbl = (r.V.ReadStatus(r.T) & 0x88) == 0;
-        r.RunTo(r.LineStart(224) + 100);
-        ushort sv = r.V.ReadStatus(r.T);
-        Check("line 223: not in vertical blank; line 224: the vertical blank flag (bit 3) is set, VINT not yet (788 clocks later)", beforeVbl && (sv & 0x88) == 0x08, $"{sv:X4}");
-        r.RunTo(r.LineStart(224) + 800);
-        Check("VINT arrives 788 master clocks after the vertical blank begins (status bit 7, IPL 6, Z80 interrupt line up)", (r.V.ReadStatus(r.T) & 0x80) != 0 && r.V.IplAt(r.T) == 6 && r.Z80Int);
-        r.RunTo(r.LineStart(225) + 900);
+        // the V counter steps to 224 at line 223's H counter $14A (clock 2640); the VBlank flag follows it by 33 clocks (oracle: status reads against HV reads, Track B4a)
+        r.RunTo(r.LineStart(223) + 2640 + 10);
+        ushort sv1 = r.V.ReadStatus(r.T); int v1 = r.V.ReadHvCounter(r.T) >> 8;
+        r.RunTo(r.LineStart(223) + 2640 + 45);
+        ushort sv2 = r.V.ReadStatus(r.T);
+        Check("line 223: not in vertical blank; the V counter steps to 224 at clock 2640 with the VBlank flag still low (it rises 33 clocks later) and VINT not yet", beforeVbl && v1 == 224 && (sv1 & 0x88) == 0 && (sv2 & 0x88) == 0x08, $"{sv1:X4} {v1} {sv2:X4}");
+        // VINT: 788 clocks (H40) after the step, which is 8 clocks into line 224
+        r.RunTo(r.LineStart(224) + 4);
+        ushort sv3 = r.V.ReadStatus(r.T); bool early = (sv3 & 0x80) == 0 && r.V.IplAt(r.T) == 0 && !r.Z80Int;
+        r.RunTo(r.LineStart(224) + 20);
+        Check("VINT arrives 788 master clocks after the V counter's step (8 clocks into line 224; the oracle's handler entry and flag agree to a few clocks): status bit 7, IPL 6, Z80 interrupt line up", early && (r.V.ReadStatus(r.T) & 0x80) != 0 && r.V.IplAt(r.T) == 6 && r.Z80Int, $"{sv3:X4}");
+        r.RunTo(r.LineStart(225) + 100);
         Check("the Z80 interrupt line drops after one line", !r.Z80Int);
         r.V.AcknowledgeInterrupt(6);
         Check("the acknowledge clears the pending VINT (status bit 7 and the IPL)", (r.V.ReadStatus(r.T) & 0x80) == 0 && r.V.IplAt(r.T) == 0);

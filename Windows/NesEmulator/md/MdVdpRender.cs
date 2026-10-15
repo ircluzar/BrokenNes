@@ -26,6 +26,14 @@ public sealed partial class MdVdp
     public uint[] Picture => picture;
     public int PictureWidth { get; private set; } = 320;
     public int PictureHeight { get; private set; } = 224;
+    private readonly uint[] woven = new uint[PictureStride * PictureMaxHeight * 2];
+    private bool wovenValid;
+    /// <summary>In interlace mode 2 the double-height picture: the lines of both fields woven (this field's rows are new, the other field's are from the frame before), <see cref="WovenHeight"/> rows at a stride of <see cref="PictureStride"/>.
+    /// <see cref="Picture"/> is always the one field this frame drew, so a consumer that knows nothing of interlace keeps seeing a normal picture.</summary>
+    public uint[] WovenPicture => woven;
+    public int WovenHeight { get; private set; } = 448;
+    /// <summary>The last finished frame was drawn in interlace mode 2: <see cref="WovenPicture"/> is the picture to show.</summary>
+    public bool WovenValid => wovenValid;
     /// <summary>Frames the renderer has finished.</summary>
     public long FramesRendered { get; private set; }
 
@@ -38,6 +46,9 @@ public sealed partial class MdVdp
     private readonly byte[] bufA = new byte[PictureStride + 32], bufB = new byte[PictureStride + 32], sprLine = new byte[PictureStride + 32];
     private bool lineActive;          // the current line is an active one and has been begun
     private int lineY, lineWidth, linePxDiv, renderX, colourX, rowBase;
+    // interlace mode 2 (double resolution): the field's line y is the picture row 2y + field of a picture twice as tall, cells are 8x16 (cellShift 4, tiles two patterns of 32 bytes)
+    private bool dbl;
+    private int imgRow, cellShift = 3;
     private int hscrollA, hscrollB;
     private bool sprOverflow, sprCollision;
     private bool sprDirty;
@@ -123,6 +134,9 @@ public sealed partial class MdVdp
         lineActive = Line < ActiveLines && Line < PictureMaxHeight;
         if (!lineActive) return;
         lineY = Line;
+        dbl = Interlace == 3;
+        imgRow = dbl ? lineY * 2 + (oddFrame ? 1 : 0) : lineY;
+        cellShift = dbl ? 4 : 3;
         lineWidth = H40 ? 320 : 256;
         linePxDiv = H40 ? 8 : 10;
         renderX = colourX = 0;
@@ -141,11 +155,13 @@ public sealed partial class MdVdp
         RenderTo(lineWidth);
         ConvertTo(lineWidth);
         lineActive = false;
+        if (dbl) Array.Copy(building, rowBase, woven, imgRow * PictureStride, lineWidth);       // the field's line goes to its row of the double-height picture; the other field's rows stay from the frame before
         if (Line + 1 >= ActiveLines || Line + 1 >= PictureMaxHeight)
         {
             // the last active line: the frame is finished, hand it over
             (picture, building) = (building, picture);
             PictureWidth = lineWidth; PictureHeight = Math.Min(ActiveLines, PictureMaxHeight);
+            wovenValid = dbl; WovenHeight = Math.Min(ActiveLines, PictureMaxHeight) * 2;
             FramesRendered++;
         }
     }
@@ -215,7 +231,7 @@ public sealed partial class MdVdp
     {
         int nt = (Reg[3] & (H40 ? 0x3C : 0x3E)) << 10;
         int cells = H40 ? 64 : 32;
-        int row = lineY >> 3, r = lineY & 7;
+        int row = imgRow >> cellShift, r = imgRow & (1 << cellShift) - 1;
         int x = xa;
         while (x < xb)
         {
@@ -234,7 +250,7 @@ public sealed partial class MdVdp
         int ws = Reg[16] & 3, hs2 = Reg[16] >> 4 & 3;
         int wCells = ws == 1 ? 64 : ws == 3 ? 128 : 32;
         int hCells = hs2 == 1 ? 64 : hs2 == 3 ? 128 : 32;
-        int wMask = wCells * 8 - 1, hMask = hCells * 8 - 1;
+        int wMask = wCells * 8 - 1, hMask = (hCells << cellShift) - 1;
         int rowStride = ws == 2 ? 0 : wCells;        // the invalid width code 2 makes every row read row 0 (MacDonald's window test: 'row 0 repeat')
         int hs = isA ? hscrollA : hscrollB;
         bool colV = (Reg[11] & 4) != 0;
@@ -247,15 +263,15 @@ public sealed partial class MdVdp
             int vs, limit = xb;
             if (colV) { int col = x >> 4; vs = Vsram[(col << 1) + vsOff & 0x3F] & 0x3FF; limit = Math.Min(xb, (col + 1) << 4); }
             else vs = vsFull;
-            int py = lineY + vs & hMask;
+            int py = imgRow + vs & hMask;
             int px = x - hs & wMask;
             int cell = px >> 3, fine = px & 7;
             int len = Math.Min(8 - fine, limit - x);
             // the window bug: the plane column (a pair of cells) that supplies the left part of the first screen column after the window is read from the column after it
             if (x >= bugX0 && x < bugX1 && (cell >> 1) == bugColumn0) cell = cell + 2 & (wCells - 1);
-            int ea = nt + ((py >> 3) * rowStride + cell) * 2;
+            int ea = nt + ((py >> cellShift) * rowStride + cell) * 2;
             int e = Vram[ea & 0xFFFF] << 8 | Vram[ea + 1 & 0xFFFF];
-            DrawTileRun(dst, x, len, e, py & 7, fine);
+            DrawTileRun(dst, x, len, e, py & (1 << cellShift) - 1, fine);
             x += len;
         }
     }
@@ -263,7 +279,7 @@ public sealed partial class MdVdp
     /// <summary>Put <paramref name="len"/> pixels of one tile row on the line at <paramref name="x"/>, starting at pixel <paramref name="fine"/> of the tile row; <paramref name="e"/> is the name table entry.</summary>
     private void DrawTileRun(byte[] dst, int x, int len, int e, int row, int fine)
     {
-        int a = ((e & 0x7FF) << 5) + (((e & 0x1000) != 0 ? 7 - row : row) << 2);
+        int a = ((e & 0x7FF) << cellShift + 2) + (((e & 0x1000) != 0 ? (1 << cellShift) - 1 - row : row) << 2);
         uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
         int flags = e >> 8 & 0x80 | e >> 9 & 0x30;
         if ((e & 0x800) != 0)
@@ -305,8 +321,8 @@ public sealed partial class MdVdp
             int ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF;
             int size = Vram[a + 2 & 0xFFFF], link = Vram[a + 3 & 0xFFFF] & 0x7F;
             int h = (size & 3) + 1;
-            int top = ypos - 128;
-            if (lineY >= top && lineY < top + h * 8)
+            int top = ypos - (128 << (dbl ? 1 : 0));
+            if (imgRow >= top && imgRow < top + (h << cellShift))
             {
                 if (lineSpriteCount == maxLine) { lineSpriteOverflow = true; break; }
                 lineSprites[lineSpriteCount++] = idx;
@@ -334,7 +350,7 @@ public sealed partial class MdVdp
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
             int attr = Vram[a + 4 & 0xFFFF] << 8 | Vram[a + 5 & 0xFFFF];
             int xraw = (Vram[a + 6 & 0xFFFF] << 8 | Vram[a + 7 & 0xFFFF]) & 0x1FF;
-            int ypos = ((Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF) - 128;
+            int ypos = ((Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & 0x3FF) - (128 << (dbl ? 1 : 0));
             // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
             if (xraw == 0) { if (seenVisible) masked = true; }
             else seenVisible = true;
@@ -343,10 +359,10 @@ public sealed partial class MdVdp
             if (draw < w) sprOverflow = true;
             if (cellsLeft <= 0) limitHit = true;
             if (masked) continue;
-            int sy = lineY - ypos;
+            int sy = imgRow - ypos;
             bool vflip = (attr & 0x1000) != 0, hflip = (attr & 0x800) != 0;
-            if (vflip) sy = h * 8 - 1 - sy;
-            int cellRow = sy >> 3, row = sy & 7;
+            if (vflip) sy = (h << cellShift) - 1 - sy;
+            int cellRow = sy >> cellShift, row = sy & (1 << cellShift) - 1;
             int tileBase = attr & 0x7FF;
             int flags = attr >> 8 & 0x80 | attr >> 9 & 0x30;
             int sx = xraw - 128;
@@ -357,7 +373,7 @@ public sealed partial class MdVdp
                 if (x0 + 8 <= 0) continue;
                 int c = hflip ? w - 1 - k : k;
                 int tile = tileBase + c * h + cellRow & 0x7FF;
-                int ta = (tile << 5) + (row << 2);
+                int ta = (tile << cellShift + 2) + (row << 2);
                 uint bits = (uint)(Vram[ta & 0xFFFF] << 24 | Vram[ta + 1 & 0xFFFF] << 16 | Vram[ta + 2 & 0xFFFF] << 8 | Vram[ta + 3 & 0xFFFF]);
                 for (int j = 0; j < 8; j++)
                 {
@@ -458,5 +474,12 @@ public sealed partial class MdVdp
     {
         int w = PictureWidth, h = PictureHeight;
         for (int y = 0; y < h; y++) Array.Copy(picture, y * PictureStride, dst, y * w, w);
+    }
+
+    /// <summary>The double-height picture of interlace mode 2 (see <see cref="WovenPicture"/>) as a compact <see cref="PictureWidth"/> x <see cref="WovenHeight"/> image.</summary>
+    public void CopyWovenPicture(uint[] dst)
+    {
+        int w = PictureWidth, h = WovenHeight;
+        for (int y = 0; y < h; y++) Array.Copy(woven, y * PictureStride, dst, y * w, w);
     }
 }

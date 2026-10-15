@@ -1,0 +1,82 @@
+"""Probe ROM sources for Track B4a (the interrupt timing and the VDP residue). Same conventions as probes.py: assembly text for asm68k.build_rom, results in work RAM from $FF0000, a spin loop at the end.
+
+Timing method shared by the interrupt probes ("drift sampling"): the 68000 runs at master/7 and a frame is 262*3420 = 896,040 master clocks, so a program that does the same thing every frame meets the frame
+five clocks later in 68000 phase each time (896,040 mod 7 = 5, and 5 is prime to every instruction length). Over a few hundred frames the event under test is sampled at every phase, and its exact time
+falls out of the fraction of frames in which a fixed-spacing sampler saw it one sample later. Differences between two machines are read from those fractions, so the answer does not depend on the cycle at
+which the machine begins (BlastEm's power-on phase differs from ours by 428 clocks, B3a).
+"""
+import probes
+from probes import prologue, wait_v, SPIN
+
+NL = '\n'
+
+
+def _lines(*ls):
+    return NL.join(ls) + NL
+
+
+def vint_flag_stream(frames=200, samples=40, pad_nops=100, h40=True, v30=False, rise_line=223):
+    """Per frame: wait for the V counter to reach `rise_line` (the last line before the VBlank flag rises), pad `pad_nops` nops, then read the status register `samples` times 12 cycles (84 master clocks)
+    apart into RAM. Status bit 3 is the VBlank flag, bit 7 the vertical interrupt pending flag. The 68000 runs with its interrupt mask at 7 during the stream (so nothing is acknowledged while the samples are
+    taken) and lowers it for a moment after the stream: the handler is a bare RTE, which acknowledges the interrupt and clears the flag for the next frame. VINT is enabled in the VDP.
+    RAM: frame f's samples at $FF0000 + f * samples * 2."""
+    s = prologue(h40, True, regs={1: 0x64 | (0x08 if v30 else 0), 0: 0x04})
+    s += _lines('    lea ($FF0000).l,a0', '    move.w #%d,d7' % (frames - 1), 'frame:')
+    s += wait_v(rise_line, 'wv')
+    s += ('    nop' + NL) * pad_nops
+    s += ('    move.w (a2),(a0)+' + NL) * samples
+    s += _lines('    move.w #$2000,sr', '    nop', '    nop', '    nop', '    move.w #$2700,sr', '    dbf d7,frame', '_spin: bra.s _spin', 'handler:', '    rte')
+    return s
+
+
+def vint_stream_hv(frames=200, pairs=24, pad_nops=90, h40=True, v30=False, rise_line=223, vint_on=True):
+    """Like vint_flag_stream, but the samples alternate status and HV counter reads (each 12 cycles = 84 clocks after the one before): the HV words put the status samples on the line, so a flag's rise
+    is bracketed in H/V counter time. RAM: frame f's words at $FF0000 + f * pairs * 4 (status, HV, status, HV ...)."""
+    s = prologue(h40, True, regs={1: (0x64 if vint_on else 0x44) | (0x08 if v30 else 0), 0: 0x04})
+    s += _lines('    lea ($FF0000).l,a0', '    move.w #%d,d7' % (frames - 1), 'frame:')
+    s += wait_v(rise_line, 'wv')
+    s += ('    nop' + NL) * pad_nops
+    s += ('    move.w (a2),(a0)+' + NL + '    move.w (a1),(a0)+' + NL) * pairs
+    s += _lines('    move.w #$2000,sr', '    nop', '    nop', '    nop', '    move.w #$2700,sr', '    dbf d7,frame', '_spin: bra.s _spin', 'handler:', '    rte')
+    return s
+
+
+def hint_lines(ns, frames_per=3, h40=True, v30=False, hint_first=False):
+    """Which lines the horizontal interrupt fires on. For each R10 value in `ns`: write it, then record the HV counter at the first instruction of the HINT handler for `frames_per` frames; the VINT handler adds
+    the marker word $7F7F to the record at each frame (the HV words of a HINT handler never look like it). RAM: $FF0100 + 4i = the record pointer where setting i began (long), the records from $FF1000.
+    The counter semantics (the line a given R10 first fires on, whether the pre-render and the first blank line count) fall out of the V values."""
+    s = prologue(h40, True, regs={1: 0x64 | (0x08 if v30 else 0), 0: 0x14, 10: ns[0]})
+    s += _lines('    lea ($FF1000).l,a0', '    move.w #0,($FF0002).l', '    move.w #$2000,sr')
+    for i, n in enumerate(ns):
+        s += _lines('    move.w #$%04X,(a4)' % (0x8A00 | n), '    move.l a0,($%X).l' % (0xFF0100 + 4 * i),
+                    'w%d: cmpi.w #%d,($FF0002).l' % (i, frames_per * (i + 1) + 1), '    bcs.s w%d' % i)
+    s += _lines('    move.l a0,($%X).l' % (0xFF0100 + 4 * len(ns)), '_spin: bra.s _spin',
+                'hhandler:', '    move.w (a1),(a0)+', '    rte',
+                'vhandler:', '    move.w #$7F7F,(a0)+', '    addq.w #1,($FF0002).l', '    rte')
+    return s
+
+
+def hv_in_handler_limited(kind='hint', limit=20000, h40=True, extra_regs=None, loop_nops=1, v30=False):
+    """As hv_in_handler, but the handler records at most `limit` readings (the count word keeps counting): the horizontal interrupt fires up to 224 times a frame and the work RAM is only 32,768 words."""
+    regs = dict(extra_regs or {})
+    if kind == 'vint': regs.update({1: 0x64 | (0x08 if v30 else 0), 0: 0x04})
+    else: regs.update({1: 0x44 | (0x08 if v30 else 0), 0: 0x14, 10: 0})
+    s = prologue(h40, True, regs=regs)
+    s += _lines('    lea ($FF0002).l,a0', '    lea ($C00008).l,a1', '    move.w #0,($FF0000).l', '    move.w #$2000,sr', 'main:')
+    s += ('    nop' + NL) * loop_nops
+    s += _lines('    bra.s main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),d1', '    cmpi.w #%d,($FF0000).l' % limit, '    bcc.s done', '    move.w d1,(a0)+',
+                '    addq.w #1,($FF0000).l', 'done:', '    rte')
+    return s
+
+
+def hv_in_handler(kind='vint', h40=True, extra_regs=None, loop_nops=1, v30=False):
+    """The interrupt handler's first instruction reads the HV counter into RAM. kind 'vint' (R1 bit 5) or 'hint' (R0 bit 4, R10 = 0: every line). The main loop is `nop * loop_nops; bra` with the
+    interrupts enabled (SR $2000). RAM word 0 = interrupt count; the HV words follow ($FF0002...). The handler is a fixed 68000 sequence on both machines; the machines are compared on the same values."""
+    regs = dict(extra_regs or {})
+    if kind == 'vint': regs.update({1: 0x64 | (0x08 if v30 else 0), 0: 0x04})
+    else: regs.update({1: 0x44 | (0x08 if v30 else 0), 0: 0x14, 10: 0})
+    s = prologue(h40, True, regs=regs)
+    s += _lines('    lea ($FF0002).l,a0', '    lea ($C00008).l,a1', '    move.w #0,($FF0000).l', '    move.w #$2000,sr', 'main:')
+    s += ('    nop' + NL) * loop_nops
+    s += _lines('    bra.s main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),(a0)+', '    addq.w #1,($FF0000).l', '    rte')
+    return s

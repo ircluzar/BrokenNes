@@ -97,14 +97,21 @@ public sealed partial class MdVdp
     /// <summary>The interrupt lines have a short delay after a register write (the VDP asserts IPL 90 to 210 ns later, which the 68000's sampling turns into the one-instruction latency).</summary>
     public const long IplDelayMasterClocks = 8;
 
-    /// <summary>VINT comes this long after the vertical blank begins (the plan's 788 master clocks in H40, 770 in H32).</summary>
-    public int VintDelay => H40 ? 788 : 770;
+    /// <summary>VINT comes this long after the V counter steps to the first line after the picture (the plan's 788 master clocks in H40, 770 in H32; the step is in the line before, see <see cref="VCounterStepOffset"/>).</summary>
+    public int VintDelay => H40 ? VintFromStepH40 : VintFromStepH32;
+    public static int VintFromStepH40 = 788, VintFromStepH32 = 770;
+    /// <summary>The VBlank status flag rises (and falls) this long after the V counter's step: measured on the oracle by status reads against HV reads (drift sampling, Track B4a): 33 clocks in H40, 49 in H32.</summary>
+    public int VBlankFlagDelay => H40 ? VBlankFlagDelayH40 : VBlankFlagDelayH32;
+    public static int VBlankFlagDelayH40 = 33, VBlankFlagDelayH32 = 49;
     /// <summary>The horizontal interrupt and the line's counter step fall here in the line (the start of horizontal blank).</summary>
     public const int HIntOffset = 2816;
-    /// <summary>Horizontal blank covers the line from here to its end and from its start to <see cref="HBlankEnd"/>.</summary>
-    public const int HBlankStart = 2816, HBlankEnd = 220;
-    /// <summary>The V counter steps this far into a line (hcount $A5 in H40, in the horizontal blank).</summary>
-    public const int VCounterStepOffset = 2640;
+    /// <summary>The horizontal-blank status flag is set from here to the end of the line (it falls with the next line's H counter 0): 2855 clocks in H40 (counter $165), 2975 in H32 (counter $129), measured on the oracle.</summary>
+    public int HBlankStart => H40 ? HBlankStartH40 : HBlankStartH32;
+    public static int HBlankStartH40 = 2855, HBlankStartH32 = 2975, HBlankEnd = 0;
+    /// <summary>The V counter steps this far into a line: H counter $14A (top byte $A5) in H40, $10A ($85) in H32, in the horizontal blank (measured on the oracle with straight HV scans: the first sample after a V change
+    /// reads $A5 at the earliest in H40 and $85 in H32).</summary>
+    public int VCounterStepOffset => H40 ? VCounterStepH40 : VCounterStepH32;
+    public static int VCounterStepH40 = 2640, VCounterStepH32 = 2660;
 
     // ---- the port protocol
     private bool pendingCommand;
@@ -405,7 +412,8 @@ public sealed partial class MdVdp
             oddFrame = Interlace != 0 && !oddFrame;
         }
         hintTime = lineStart + HIntOffset;
-        if (Line == ActiveLines) vintTime = lineStart + VintDelay;     // the vertical blank begins; VINT follows after its delay
+        // the vertical blank begins at the V counter's step in the last picture line; VINT follows that step by its delay (and so falls early in the first blank line)
+        if (Line == ActiveLines - 1) vintTime = lineStart + VCounterStepOffset + VintDelay;
         BeginLineRender();
     }
 
@@ -755,7 +763,7 @@ public sealed partial class MdVdp
     {
         get
         {
-            int vl = LineOffset >= VCounterStepOffset ? (Line + 1 >= linesPerFrame ? 0 : Line + 1) : Line;
+            int vl = LineOffset >= VCounterStepOffset + VBlankFlagDelay ? (Line + 1 >= linesPerFrame ? 0 : Line + 1) : Line;
             return vl >= ActiveLines && vl < linesPerFrame - 1;
         }
     }
