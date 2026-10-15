@@ -59,6 +59,7 @@ $wsArgs = @("--md-oracle", $Rom, "--scan", $got[0].FullName, "--scan-to", "$([in
 if ($Region) { $wsArgs += @("--region", $Region) }
 if ($SaveOut) { $wsArgs += @("--save-out", (Join-Path $work "our\$Name\save.bin")) }
 if ($env:ORACLE_SLOTSET) { $wsArgs += @("--slot-set", $env:ORACLE_SLOTSET) }      # experiment switches for our side (see MdRunCli.ApplySlotSet), e.g. "movemipl=1"
+if ($env:ORACLE_LINE) { $wsArgs += @("--line", $env:ORACLE_LINE) }      # experiment: the scanline our replay stops at between steps (default 232, where BlastEm stops)
 if ($snapList.Count) { $wsArgs += @("--ram-at", ($snapList -join ","), "--ram-dir", (Join-Path $work "our\$Name\ram")) }
 & $ws -TimeoutSec 1500 @wsArgs
 if ($snapList.Count) {

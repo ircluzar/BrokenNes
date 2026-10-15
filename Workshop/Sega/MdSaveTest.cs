@@ -19,6 +19,7 @@ namespace BrokenNes.Workshop.Sega;
 internal static class MdSaveTest
 {
     private static int pass, fail, skipped;
+    private static string poison = "";
 
     private static void Check(string name, bool ok, string detail = "")
     {
@@ -27,7 +28,7 @@ internal static class MdSaveTest
     }
 
     /// <summary>A game with a battery, the library's file name, the pad script that makes it write its save, and how long to play.</summary>
-    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind);
+    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind, bool PictureShowsIt = true);
 
     private static readonly Case[] Cases =
     {
@@ -35,12 +36,12 @@ internal static class MdSaveTest
         new("Sonic & Knuckles + Sonic 3", "Sonic and Knuckles & Sonic 3 (JUE) [!].bin", "default", 3000, "lock-on SRAM"),
         new("Phantasy Star IV", "Phantasy Star IV (4) [!].bin", "default", 3000, "SRAM 8 KB"),
         new("Shining Force", "Shining Force (U) [!].bin", "mash", 3600, "SRAM 8 KB"),
-        new("NBA Jam Tournament Edition", "NBA Jam Tournament Edition (JUE) (REV 00) [!].bin", "default", 3600, "I2C EEPROM (24C08)"),
-        new("College Slam", "College Slam (4) [!].bin", "default", 3600, "I2C EEPROM (24C02)"),
+        new("NBA Jam Tournament Edition", "NBA Jam Tournament Edition (JUE) (REV 00) [!].bin", "default", 3600, "I2C EEPROM (24C08)", false),
+        new("College Slam", "College Slam (4) [!].bin", "default", 3600, "I2C EEPROM (24C02)", false),
         new("Evander Holyfield's Real Deal Boxing", "Evander Holyfield's Real Deal Boxing (U) [!].bin", "default", 3600, "I2C EEPROM (X24C01)"),
         new("Phantasy Star II", "Phantasy Star II (UE) (REV 02) [!].bin", "default", 3000, "SRAM 8 KB"),
         new("Shining Force II", "Shining Force II (E) [!].bin", "mash", 3600, "SRAM 8 KB"),
-        new("Landstalker", "Landstalker - The Treasures of King Nole (E) (Eng) [!].bin", "default", 3000, "SRAM 8 KB"),
+        new("Landstalker", "Landstalker - The Treasures of King Nole (E) (Eng) [!].bin", "default", 3000, "SRAM 8 KB", false),
         new("Mega Man: The Wily Wars", "Mega Man - The Wily Wars (E).bin", "default", 1800, "3-wire EEPROM (93C46)"),
         new("Madden NFL 95", "Madden NFL 95 (JUE) [!].bin", "default", 3600, "headerless battery RAM"),
     };
@@ -48,6 +49,7 @@ internal static class MdSaveTest
     public static int Run(string[] args)
     {
         pass = fail = skipped = 0;
+        poison = M68kTestCli.Arg(args, "--poison") ?? "";       // "import": the loading session is not given the file (the check must notice)
         var only = M68kTestCli.Arg(args, "--games")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string tmp = Path.Combine(Path.GetTempPath(), "mdsave-" + Guid.NewGuid().ToString("N"));
         try
@@ -100,7 +102,7 @@ internal static class MdSaveTest
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllBytes(file, save);
         var b = Make(c, rom);
-        b.ImportSave(File.ReadAllBytes(file));
+        if (poison != "import") b.ImportSave(File.ReadAllBytes(file));
         Check($"{tag}: a new session given that file reports a battery and exports the same bytes", b.HasBattery && b.ExportSave().AsSpan().SequenceEqual(save), Describe(b.ExportSave()));
 
         // the game reads it: with the file and without, the same script shows different pictures; with the file twice the same ones
@@ -108,11 +110,12 @@ internal static class MdSaveTest
         var withSave = Play(b, c.Pad, look, 20);
         var blank1 = Play(Make(c, rom), c.Pad, look, 20);
         var blank2 = Play(Make(c, rom), c.Pad, look, 20);
-        var again = Make(c, rom); again.ImportSave(save); var withSave2 = Play(again, c.Pad, look, 20);
+        var again = Make(c, rom); if (poison != "import") again.ImportSave(save); var withSave2 = Play(again, c.Pad, look, 20);
         int differing = Enumerable.Range(0, Math.Min(withSave.Count, blank1.Count)).Count(i => withSave[i] != blank1[i]);
         Check($"{tag}: two blank sessions show the same pictures under the same script (the comparison is deterministic)", blank1.SequenceEqual(blank2));
         Check($"{tag}: two sessions started from the file show the same pictures", withSave.SequenceEqual(withSave2));
-        Check($"{tag}: the game reads the file: a session from it and a blank one show different pictures under the same script", differing > 0, $"{differing} of {withSave.Count} sampled pictures differ");
+        if (c.PictureShowsIt) Check($"{tag}: the game reads the file: a session from it and a blank one show different pictures under the same script", differing > 0, $"{differing} of {withSave.Count} sampled pictures differ");
+        else Console.WriteLine($"  INFO  {tag}: the pad script does not reach a screen that shows the save ({differing} of {withSave.Count} sampled pictures differ): not claimed");
 
         // a damaged file is not taken for a save game
         var bad = (byte[])save.Clone(); for (int i = 0; i < bad.Length; i++) bad[i] ^= 0xFF;
