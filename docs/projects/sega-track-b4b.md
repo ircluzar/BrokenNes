@@ -1,0 +1,89 @@
+# Sega track B4b: Genesis games, round 4 (record)
+
+Branch `worktree-agent-acbc82985d017c567`, 2026-10-15, on top of `docs/projects/sega-track-b3b.md`. B4a (the VDP) ran beside it on `worktree-agent-aa6d456623a384ca7` and owns `md/MdVdp*.cs`; B4b owns the board, the 68000 glue, saves, states, sound parity, the roster comparison and the library.
+**This record is written while the work goes on and says at each line what was run.** Where a number comes from a scratch tree that merges B4a's branch with this one, it says "merged tree" (the lead merges both; the roster pictures and the sound timing depend heavily on B4a's DMA and interrupt fixes, see below).
+
+## What was built (all in this branch)
+
+| Piece | Where | What it does |
+|---|---|---|
+| Save states | `md/M68k.State.cs`, `md/MdVdpState.cs`, `BOARD_MD.SaveState/LoadState`, `MdSession` (`md-1`, `ConsoleStateFile`), `SessionStateSuite`, `Workshop/Sega/MdStateTest.cs` (`--md-state-test`) | Every field of the 68000, the VDP (FIFO, DMA, renderer, both picture buffers), the board (clock, refresh, RAM, pads, serial port), the Z80, the YM2612 (registers, operator caches, LFO, CSM, DAC) and the PSG, the cartridge (SRAM, EEPROMs). F5/F7 and the Lite buttons come from the console layer; the picture session forwards. |
+| Hot swap of every core slot | `MdSession.TrySwapCore`, `BOARD_MD.SwapSound` | The sound unit is replaced in place: Z80, its RAM, YM2612 and PSG are carried by Save/LoadState (stock unit <-> `NES:<chip>` share the inner unit's state); a unit with another layout, an id the console does not have, another CPU: `false`, nothing changed. The NES picture chips swap through the picture session. |
+| Battery saves proven | `Workshop/Sega/MdSaveTest.cs` (`--md-save-test`) | 12 games with a battery (SRAM 512 B / 8 KB, lock-on, 3 I2C EEPROMs, the 3-wire EEPROM, headerless RAM): played until the game writes, file written the way the app does (`MdSaves\<id>.srm`), read back into a new session (same bytes), a session from the file and a blank one show different pictures (the game reads it), a damaged file is not taken for a save. |
+| 3-wire EEPROM (93C46) | `md/MdMicrowire.cs`, `MdCartridge`, `MdEepromTable` | Mega Man: The Wily Wars / Rockman Megaworld: start bit, READ with the dummy 0, WRITE/ERASE/EWEN/EWDS/ERAL/WRAL, programming on CS fall, writes only after EWEN. |
+| NBA Jam (Europe, REV 01) | `MdEepromTable`, `MdCartridge.EepromRead` | Stopped after its Iguana logo. Its writes 1, 3, 2, 0 to `$200000` are SDA bit 0 / SCL bit 1 (the Sega wiring, not Acclaim's), and it tests the whole word it reads for the acknowledge, so a Sega-wired read gives the SDA line alone (bits 1-7 were the ROM filler). Now 210 starts and 26 committed writes in 2,400 frames, title screen and a court at frame 2,400. |
+| Serial port registers | `MdPads` | `$A10013-$A1001F`: S-Ctrl reads `& 0xF8`, the receive register 0xFF: "nothing connected" (College Football's National Championship polled it forever). |
+| Z80 bus request | `MdSoundUnit.WriteBusRequest` | The grant comes at the end of a machine cycle (at most 6 T-states), not at an instruction boundary (Bugs Bunny in Double Trouble branches into the middle of a BTST). |
+| VDP livelock | `MdVdp.RunTo` | A fill or copy waiting for its start time asked for a slot that lay before it and the clock never moved (5 library games hung). **Overlaps B4a's root-cause fix (`NextFreeSlot`, commit 624b437): keep theirs and drop this guard at the merge.** |
+| SVP cartridge refused | `SegaRomFormat.IsSvpCartridge` (serial MK-1229) | Virtua Racing needs the SSP1601 signal processor, which is not emulated; as a plain ROM it showed the HUD over a broken 3D view and the sweep called it ok (180 fps, 2,400 changing frames). Now not detected as a Genesis game, like the 32X and the Pico; the sweep says `unsupported / SVP`. |
+| Sweep notes | `MdSweepCli.DumpNote` | A non-ok game gets `dump:` when its header declares more bytes than the file has or its checksum word is not the sum of the words from $200 to the declared end. |
+| Oracle tools | `Workshop/Sega/oracle-tools/md-picture/` | `rbatch.ps1` (roster batch, `-RomFile/-Label` for other games, `-Saves`, `-PauseSnap`), `oraclerun.ps1` (`-Snaps` RAM at chosen steps, `-PauseSnap`: the oracle's state at the pause point tells apart start boundaries whose picture is the same, `ORACLE_SLOTSET/LINE/DY`), `MdOracleCli` (`--scan-state`, screenshot row offset follows the picture heights: 9 for NTSC, 17 for a PAL 224-line picture; a fixed 9 made PAL games look different), `vgmlog.ps1` (BlastEm's VGM logger against ours), `iplloops.py`, `run_rethist.py`, `run_srdelay.py`, `run_b4b.py` (probes of the 68000's interrupt acceptance and the VDP's pending flag), `probes_b4b.py`. |
+
+## Verifiers (what was run on this branch, default build)
+
+| Check | Result |
+|---|---|
+| `--md-test` | 145 of 145 |
+| `--md-cart-test` | 77 of 77 (new: detection group 6 incl. the SVP cartridge, NBA Jam (EU) wiring and the word read; poison cases for each in `poison-cart.ps1`) |
+| `--m68ktest` | 1,284,785 passed, 0 failed, 32,775 excluded (the same documented classes) |
+| `--md-golden` | 75 of 75 on this branch alone |
+| `--md-state-test` | 126 of 126: round trip on all 20 roster games at four points (field by field, audio sample for sample), refusals (another game, console, unit, damaged data), hot swap on Sonic 1, Altered Beast, Streets of Rage 2 (frames identical to a control that never swapped, 68000 and Z80 state equal, every unit made sound); poison `swap` fails 9 |
+| `--md-save-test` | 69 passed, 0 failed over 12 games; poison `--poison import` (the loading session is not given the file) fails 4 of 12 on Sonic 3 and S&K+S3 |
+
+## What BlastEm was asked, and what it answered
+
+* **Does a vertical interrupt that came due while the VDP had it disabled stay pending?** Fatal Rewind enables it seven frames after the display came on and our 68000 takes it at once (the handler then jumps through a vector the game has just cleared). Five probe variants (`probes_b4b.vint_enable`): enable right after the VBlank flag rose, with the status register read twice, 40 lines into the display period, with a mask raise and lower in between: **BlastEm keeps the interrupt pending and takes it the moment it is enabled, status reads included, exactly as we do** (variant A, enabling before the interrupt is due, differs by B4a's fitted VINT time). So this is not Fatal Rewind's cause (open, see below).
+* **How many instructions run after the mask is lowered before a pending interrupt is taken?** `move.w #$2000,sr`, `move.w d6,sr`, `andi.w #$F8FF,sr` followed by `addq`, `nop`, `mulu`, `movem`: **right after the mask instruction, 30 of 30 frames each, BlastEm and ours alike.**
+* **Where does it take an interrupt relative to the instruction that is running** (B4a's table, section 4 of `sega-track-b4a.md`: nops equal, movem +91 clocks, jsr/rts +65, clr.l +38, movem pair +283)? Reproduced with my own probe (`iplloops.py`, HINT every line, one instruction and a `bra.s`, 10,000 interrupts, mean handler entry relative to the nop loop; BlastEm minus ours, in master clocks): move +6, divu +29, mulu +48, mixed -1, movem pair +262, movem out/in +74/+73, movem d0-d1 +54, jsr/rts +56, clr.l/add (a6) +33, tst.l +15, move.w/l to memory +25/+26, lea/pea +17, mulu1 -18, divu1 +13, lsl8 +22, lslr -19. The rule "sample the interrupt lines at the START of the instruction and take the interrupt after that instruction" (`BOARD_MD.IplMode = 1`) reproduces these gaps within about 10 clocks rms (B4a's table: 14.8 clocks rms against 89.5 for the current rule, measured on their numbers), **but it moves one oracle-pinned golden frame (Streets of Rage frame 245, a fade) and changes no roster picture**, so it stays off. The return-address histogram experiment (`run_rethist.py`, which instruction is the interrupt taken after) that would decide it is queued behind the BlastEm lock (see open items).
+
+## Roster against BlastEm (pictures)
+
+Method: pause BlastEm at a frame boundary, press the sweep's pad script (Start, C, A cycles, then walking) one frame advance at a time, a screenshot every 100 advances; our replay finds its start boundary from the pause picture (and from the oracle's saved work RAM at the pause point when the picture is the same for several frames), changes the pad at line 232 as BlastEm's key press falls, and compares pixel for pixel (`oraclerun.ps1`, `MdOracleCli`).
+
+| # | Game | Old tree (VDP before B4a) | Merged tree (B4a tip 9ee3432 + this branch) |
+|---|---|---|---|
+| 1 | Flicky | 15/15 | 15/15 |
+| 2 | Altered Beast | 15/15 (twice) | (recapture pending) |
+| 3 | Sonic the Hedgehog | 15/15 (B3b) | (recapture pending) |
+| 4 | Golden Axe | 10/15 (two identical tries) | (recapture pending) |
+| 5 | Strider | 4/15, 63,383 px | 4/15, 94,315 px |
+| 6 | Streets of Rage | 15/15 | **8/15: exact through step 800, diverges after the Start press at 960 (a regression of B4a's tip, reported to B4a)** |
+| 7 | Castle of Illusion | no result (static pause picture, ambiguous start) | (recapture pending) |
+| 8 | Ecco the Dolphin | 14/15 (step 500: 41,864 px, 600+ exact) | 14/15, same |
+| 9 | Sonic the Hedgehog 2 | 8/15 | **15/15** |
+| 10 | Kid Chameleon | 15/15 | 15/15 |
+| 11 | Gunstar Heroes (PAL) | wrong screenshot row offset | 5/15 (exact 400-800, diverges 1200+) |
+| 12 | Streets of Rage 2 | 15/15 | 15/15 |
+| 13 | Shinobi III | 2/15, 10,848 px | 3/15, 1,546 px in all |
+| 14 | Castlevania: Bloodlines | 4/15, 40,622 px | **14/15**, 3,380 px |
+| 15 | Comix Zone | 5/15 | 7/15, 40,334 px |
+| 16 | Contra: Hard Corps | 0/15 | 1/15, 377,618 px |
+| 17 | Phantasy Star IV | 12/15 | 13/15, 50 px |
+| 18 | Sonic the Hedgehog 3 | (merged tree only) | 14/15, 4,342 px |
+| 19 | Streets of Rage 3 (PAL) | (merged tree only) | 11/15, 12,830 px |
+| 20 | Sonic & Knuckles + Sonic 3 | (merged tree only) | **15/15** |
+
+Reading: the differences that remain are **a whole frame here and there at scene transitions** (a game's level load or fade ends one or two frames earlier or later than BlastEm's), not wrong pictures: the closest-picture search finds the oracle's picture in ours a frame or a few frames away. B4a's DMA/FIFO/slot fixes remove most of them (Sonic 2, Castlevania, S&K+S3, the sound timing below); what is left needs the final merged tree.
+
+## Sound against BlastEm's VGM logger (event level, not heard)
+
+`vgmlog.ps1`: BlastEm's own VGM logger (key `m`) on the game from power-on, 20 s with no input; ours `--md-run --vgm` for the same length; the key-on sequences (channel, operator mask, F-number, block) are compared in order from the best alignment and their timing is compared as differences of intervals (`oracle-tools/md-picture/vgmcmp.py`; `--ym-render --compare-logs` in the Workshop does the same from key-on 0). **On the 19 games with a log, the note sequences are identical to the end of the shorter log in 17 games** (Comix Zone after skipping the 3 notes BlastEm's log began after); Phantasy Star IV differs after 34 key-ons (a game whose driver is timing-dependent, not investigated) and Ecco's log has too few notes to align. Timing, our default build: 0.01-0.3 ms mean in 11 games, one whole frame (16.7 ms) steps in Sonic 1, Sonic 2, Sonic 3, S&K+S3, Hard Corps, Comix Zone, Streets of Rage, Castlevania, SoR3 (mean 8-22 ms). **Merged tree:** Sonic 1 0.01 ms, Sonic 2 0.03, Sonic 3 0.01, S&K+S3 0.02, Hard Corps 0.05, Comix Zone 0.13, Castle 0.05; Streets of Rage 4.2 ms (one frame step), Castlevania 6.0 ms, SoR3 1.4 ms. Kid Chameleon, which the B2b record had as 0 of 9 notes, is **173 of 173 identical, 0.2 ms mean** (the earlier comparison started at the wrong notes). The DAC sample streams have the same value distribution and write counts within 1 percent in most games (equal over 100 percent of the overlap in Altered Beast, Gunstar, Hard Corps); their step-by-step alignment is not claimed.
+
+## Whole library
+
+(To be filled from the last sweep on the merged tree.) Interim numbers: the first run of this session on the old tree is in `sega-track-b3b.md` (818 ok of 948); a run of the current branch alone gave the following causes for the non-ok games that are not 32X (the tags are the library's own file names):
+
+* **Bad or modified dumps** (about 20 files tagged `[b1]` or `[h1]`, plus two untagged): Centurion, Road Rash and Slap Fight declare more bytes than the file has (the sweep now prints `dump: truncated`), Championship Pro Am, Ninja Gaiden, Soldiers of Fortune and Magic Girl fail their own header checksum. **James Pond 3 (UEJ) [!] and Sesame Street: Counting Cafe (UEJ) [!]** run a ROM checksum at start and paint the screen red when it fails: our CPU computes exactly the sum the file has (`D0 = $36C4F032` against the game's `$36C4F132`, and `$91F54DF1` against `$91F54EF1`), both differ by exactly `$100` and both headers' checksum words are `$100` above the computed sums: the dumps are damaged or region-patched; the game does what it was written to do. (BlastEm comparison queued.)
+* **Hardware that is not emulated:** 32X (refused), Pico, **SVP (Virtua Racing: now refused)**, Pioneer LaserActive BIOS and Pro Action Replay (cartridges that need another cartridge).
+* **Pirate cartridges** with their own mapper or protection: Pocket Monsters (reads `$A13002`), Pocket Monsters 2 (11.8 million writes into the ROM area), Command & Conquer (Beta) (a `gChun` pirate), Mahjongg Lover (reads `$401000`), Golden 20 in 1 menu.
+* **Fatal Rewind / Killing Game Show:** double fault after any Start press, the same game. Chain found: the new-game init sets the VBlank vector's RAM cell (`$FFE03E`), a 13,932-iteration byte-clear loop (2.4 frames) then clears the whole work area including that cell, and the first vertical interrupt after the game switches it on (frame 120) jumps through the cleared cell. BlastEm does not crash there. The pending-flag semantics are not the difference (probe above). Open: the BlastEm RAM comparison with Start pressed is queued.
+* **NBA Jam (Europe) (REV 01): fixed** (EEPROM wiring above). **Lemmings 2: fixed on the merged tree** (B4a's HBlank/HINT rules; it waits on a counter its HINT chain increments).
+* Rampart (UE) [!], Hyper Dunk, International Superstar Soccer Deluxe, Superman (E), Thunder Force II, Theme Park, Double Dragon 2 (J) (the vertical interrupt is 780 clocks late on the old tree; B4a's fix): to be re-run on the merged tree and compared with BlastEm.
+
+## Open items and the exact next steps
+
+1. **Merge:** B4a's `MdVdp.SaveState` now ends with the 320-byte sprite attribute cache; my VDP state lives in `md/MdVdpState.cs` (a partial of `MdVdp`), so the cache bytes belong there after `dmaNextFetch` (resolved in the scratch merge), and B4a's `NextFreeSlot` fix replaces my `RunTo` guard. C4b's `SwapRefusal` override in `MdSession` meets my `TrySwapCore`: keep my Apu branch and put the reason where it returns false.
+2. **Roster:** recapture games 2, 3, 4, 7 with `-PauseSnap` (the RAM at the pause point makes the start boundary unique), then replay every capture offline on the final merged build (`oraclerun.ps1 -NoCapture`); for each game that still differs, find the first differing step with `-Snaps` (the RAM channel) and say which loop it is. Expect: Streets of Rage (regression on B4a's tip), Strider, Gunstar Heroes, Comix Zone and Hard Corps to need individual work.
+3. **Interrupt acceptance:** run `run_rethist.py` (return-address histograms, `tst.b ($8000).w`/nop/clr.l/movem/jsr loops, BlastEm lock) and fit `BOARD_MD.IplMode` from it; adopt only with `--md-test`, `--m68ktest` and the roster pictures green and the Streets of Rage frame 245 explained.
+4. **Fatal Rewind:** `snaprun.ps1` with Start pressed, RAM at every 5 steps against BlastEm; find the first differing byte after the new-game init.
+5. **Saves against BlastEm's files** (`saves_batch.ps1`), **whole-library re-sweep on the merged tree**, `poison-cart.ps1` on a clean tree, the Lite and Windows builds, `sega-preview-smoke.ps1` alone.
