@@ -128,7 +128,7 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                     $row["$($mode.Name)_first_diff"] = if ($Matches[4]) { [int]$Matches[4] } else { "" }
                     $row["$($mode.Name)_oo"] = if ($Matches[5]) { [int]$Matches[5] } else { 0 }
                     $row["$($mode.Name)_oo_matched"] = if ($Matches[6]) { [int]$Matches[6] } else { 0 }
-                } else { $row.error = "no compare line ($($mode.Name)): " + ($o.Trim() -split "`n" | Select-Object -Last 1) }
+                } else { $first3 = (($o.Trim() -split "`n") | Select-Object -First 3) -join " | "; $row.error = "no compare line ($($mode.Name)): " + $first3.Substring(0, [Math]::Min(400, $first3.Length)) }
             }
         }
         $row.total_s = [math]::Round($sw.Elapsed.TotalSeconds)
