@@ -46,6 +46,11 @@ public static class ConsoleSessions
 
     internal static string Sha1(byte[] data) => Convert.ToHexString(SHA1.HashData(data)).ToLowerInvariant();
 
+    /// <summary>True when the console's menu for <paramref name="slot"/> lists <paramref name="id"/>: a swap to anything else is refused (never accepted, never replaced by another core).</summary>
+    internal static bool Offers(ConsoleKind console, CoreSlot slot, string id) => System.Linq.Enumerable.Any(CoreCatalog.Options(console, slot), o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    internal static string NotOffered(ConsoleKind console, CoreSlot slot, string id) => $"the {Consoles.DisplayName(console)} {slot} menu does not offer '{id}'";
+
     /// <summary>RGBA bytes (a NES picture) to 0xAARRGGBB.</summary>
     internal static void RgbaToArgb(byte[] rgba, uint[] dst)
     {
@@ -113,8 +118,11 @@ public sealed class SnesSession : IConsoleSession
         }
     }
 
+    public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(ConsoleKind.Snes, slot, id);
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
+        if (!ConsoleSessions.Offers(ConsoleKind.Snes, slot, id)) return false;     // an id the menu does not list is refused, never accepted
         switch (slot)
         {
             case CoreSlot.Ppu:
@@ -261,8 +269,11 @@ public sealed class GbSession : IConsoleSession
         else if (ppu.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toSnes = new GbToSnes(ppu[5..]); }
     }
 
+    public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(Console, slot, id);
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
+        if (!ConsoleSessions.Offers(Console, slot, id)) return false;     // an id the menu does not list is refused: it would otherwise be swapped for the Game Boy's own chip under another name
         switch (slot)
         {
             case CoreSlot.Ppu:
