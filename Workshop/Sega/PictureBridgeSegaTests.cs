@@ -294,6 +294,19 @@ internal static class SegaScenes
             r.V.Vsram[0] = 0x410; r.Go();
             int bad11 = RowMismatch(r, 0, (y, _) => ((y + 520) & 1023) >> 3), bad10 = RowMismatch(r, 0, (y, _) => ((y + 8) & 1023) >> 3);
             Check($"{tag}: interlace mode 2: the vertical scroll has 11 bits (0x410 scrolls 520 field lines of a 128-row plane, not 8)", bad11 == 0 && bad10 > 1000, $"{bad11} pixels differ (with 10 bits it would differ in {bad10})");
+
+            // the console's own chip in this mode: whatever picture the session reports (the field, or the woven double-height one of a VDP that has it), the frame buffer holds it and the shape on screen stays 10:7;
+            // on a NES chip the bridge's canvas is the NES's 256 x 240 as always
+            foreach (int r12 in new[] { 0x87, 0x06 })
+            {
+                var own = new MdRig("MD"); own.Color(0, 0); own.Tile(1, 1);
+                own.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, r12, 0x3F, 0, 0x02, 0x01, 0, 0); own.Go();
+                var w = own.Wrap; double aspect = (double)w.DisplayWidth / w.FrameHeight;
+                Check($"{tag}: interlace mode 2 on the console's own chip ({(r12 == 0x87 ? "H40" : "H32")}): the picture is {w.FrameWidth} x {w.FrameHeight} shown {w.DisplayWidth} wide, 10:7, and the frame buffer holds it", !w.Bridged && w.Frame.Length >= w.FrameWidth * w.FrameHeight && Math.Abs(aspect - 10.0 / 7.0) < 0.01 && (w.FrameHeight == 224 || w.FrameHeight == 448), $"{w.FrameWidth}x{w.FrameHeight}, display width {w.DisplayWidth}, frame {w.Frame.Length}");
+            }
+            var onNes = new MdRig(chip); onNes.Color(0, 0); onNes.Tile(1, 1);
+            onNes.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x87, 0x3F, 0, 0x02, 0x01, 0, 0); onNes.Go();
+            Check($"{tag}: interlace mode 2 on a NES chip: the canvas is the NES's 256 x 240 shown 256 wide", onNes.Wrap.Bridged && onNes.Wrap.FrameWidth == 256 && onNes.Wrap.FrameHeight == 240 && onNes.Wrap.DisplayWidth == 256, $"{onNes.Wrap.FrameWidth}x{onNes.Wrap.FrameHeight}, {onNes.Wrap.DisplayWidth}");
         }
     }
 
