@@ -491,9 +491,9 @@ async function groupControl() {
 async function groupSpeed() {
   await withLab({}, async lab => {
     const page = await openRom(lab, GAMES.md);
-    await ready(page);
-    await page.eval('window.__resume()');
-    await sleep(2000);
+    await sleep(3000);   // the page's own loop runs the game (no frame helper here: __resume needs the ref that only __frames sets)
+    const p0 = await page.eval(PROBE);
+    check('speed', 'Genesis: the page runs the game on its own loop before the fast-forward button is pressed', p0.running && p0.fps > 0, `FPS badge ${p0.fps}`);
     const calm = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
     // the Genesis at three times real time (the fast-forward button) is more than any device here can do: the page must say so, with the rate it manages
     await page.eval(`document.querySelector('button[title^="Fast Forward"]').click()`);

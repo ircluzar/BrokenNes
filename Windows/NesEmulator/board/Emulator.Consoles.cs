@@ -431,7 +431,8 @@ namespace BrokenNes
                         nesController.Fps = (nesController.FrameCount - nesController.LastFrameCount) / (float)span;
                         nesController.LastFrameCount = nesController.FrameCount;
                         nesController.LastFpsUpdate = now;
-                        UpdateSpeedNote(nesController.Fps, s.FramesPerSecond * (nesController.FastForward ? 3 : 1), span);
+                        int ff = nesController.FastForward ? 3 : 1;   // one call of this method runs 3 console frames while fast-forwarding: the note counts console frames, the target is the console's rate times 3
+                        UpdateSpeedNote(nesController.Fps * ff, s.FramesPerSecond * ff, span);
                     }
                     StateHasChanged();
                 }

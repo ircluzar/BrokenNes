@@ -170,9 +170,12 @@ internal static class SegaBenchCli
             if (ab != null && !AbSwitches.ContainsKey(ab)) { Console.Error.WriteLine($"unknown --ab switch '{ab}' ({(AbSwitches.Count == 0 ? "none defined" : string.Join(", ", AbSwitches.Keys))})"); return 2; }
 
             var cases = new List<(Case c, byte[] rom)>();
-            string romsDir = Opt(args, "--roms") ?? @"C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bn_sega_c4a\roms";
+            string? romsDirArg = Opt(args, "--roms") ?? Environment.GetEnvironmentVariable("BROKENNES_SEGA_ROMS");
             if (Flag(args, "--suite"))
             {
+                // the games are never in the repository: a folder with sms\ gg\ md\ under it, from --roms or the BROKENNES_SEGA_ROMS variable
+                if (romsDirArg == null) { Console.Error.WriteLine("--suite needs --roms <folder with sms\\ gg\\ md\\ in it> (or set BROKENNES_SEGA_ROMS)"); return 2; }
+                string romsDir = romsDirArg;
                 foreach (var c in Cases)
                 {
                     if (only != null && !c.Name.Contains(only, StringComparison.OrdinalIgnoreCase)) continue;
