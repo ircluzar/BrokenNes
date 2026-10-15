@@ -24,6 +24,9 @@ f_window	fuzz	window	20	67
 f_sprites	fuzz	sprites	30	68
 f_il1	fuzz	interlace1	20	69
 f_satcache	fuzz	satcache	12	71
+f_satcache2	fuzz	satcache	12	72
+f_sprites2	fuzz	sprites	30	73
+f_il2b	fuzz	interlace2	30	76
 vsprobe	vsprobe	1	5	-
 vsprobe2	vsprobe	2	12	-
 vsprobe3	vsprobe	3	14	-

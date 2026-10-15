@@ -498,23 +498,24 @@ internal static class MdPictureTest
         p.Frame();
         Check("a sprite's Y word has 9 bits: with bit 9 set (Y = 512 + 178) the sprite is still at line 50 (oracle: attribute cache scenes with random Y words)", p.Px(102, 52) == t4, $"{p.Px(102, 52):X8}");
 
-        // the link list: H32 has a table of 64 sprites; the walk follows links up to 79 but nothing at indices 64 and up is drawn there (Nemesis' sprite masking ROM: sprite 63 links to a sprite 64 that is not drawn;
-        // the attribute cache scenes: a link to 65 leads on to sprites that are)
+        // the link list: H32 has a table of 64 sprites (512 bytes); the walk follows links up to 79 and the Y, size and link of those sprites come from the cache, but their position and attributes are read from the table
+        // modulo 512: sprite 70 takes them from sprite 6 (Nemesis' sprite masking ROM: sprite 64 is at the X of sprite 0, off the left edge; the attribute cache scenes: a link to 78 shows the position and palette of sprite 14)
         p = new Pic(h40: false);
         p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 70);           // 70 is past the 64 entries of an H32 table
-        p.Sprite(70, 60, 20, 1, 1, 6, 0, false, 5);
+        p.Sprite(70, 140, 20, 1, 1, 5, 0, false, 5);          // its own position and tile (140, 5) are not used ...
+        p.Sprite(6, 60, 20, 1, 1, 6, 0, false, 0);            // ... sprite 6's (60, 6) are
         p.Sprite(5, 100, 20, 1, 1, 7, 0, false, 85);
-        p.Sprite(85, 140, 20, 1, 1, 5, 0, false, 6);          // 85 is past the 80 the cache covers: the list ends at sprite 5
-        p.Sprite(6, 180, 20, 1, 1, 3, 0, false, 0);
+        p.Sprite(85, 160, 20, 1, 1, 2, 0, false, 7);          // 85 is past the 80 the cache covers: the list ends at sprite 5
+        p.Sprite(7, 200, 20, 1, 1, 3, 0, false, 0);
         p.Frame();
         Check("H32: the walk goes on through a link to sprite 70 (sprite 5 behind it is drawn) ...", p.Px(22, 22) == t4 && p.Px(102, 22) == Argb(p.CramOf(0, 7), 0), $"{p.Px(102, 22):X8}");
-        Check("... but sprite 70 itself is not drawn in H32 (only the table's 64 entries are)", p.Px(62, 22) != Argb(p.CramOf(0, 6), 0));
-        Check("... and a link of 80 or more ends the list", p.Px(142, 22) != Argb(p.CramOf(0, 5), 0) && p.Px(182, 22) != Argb(p.CramOf(0, 3), 0));
+        Check("... sprite 70 shows at the position and with the tile of sprite 6 (modulo 512), not its own", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0) && p.Px(142, 22) != Argb(p.CramOf(0, 5), 0), $"{p.Px(62, 22):X8} {p.Px(142, 22):X8}");
+        Check("... and a link of 80 or more ends the list", p.Px(162, 22) != Argb(p.CramOf(0, 2), 0) && p.Px(202, 22) != Argb(p.CramOf(0, 3), 0));
         p = new Pic();
         p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 70);
         p.Sprite(70, 60, 20, 1, 1, 6, 0, false, 0);
         p.Frame();
-        Check("H40: sprite 70 is part of the table and is drawn", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0));
+        Check("H40: sprite 70 is part of the table and is drawn at its own position", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0));
     }
 
     // =====================================================================================================================

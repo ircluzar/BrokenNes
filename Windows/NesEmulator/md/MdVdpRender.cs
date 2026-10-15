@@ -386,8 +386,7 @@ public sealed partial class MdVdp
             else { ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask; size = Vram[a + 2 & 0xFFFF]; link = Vram[a + 3 & 0xFFFF] & 0x7F; }
             int h = (size & 3) + 1;
             int top = ypos - (128 << (dbl ? 1 : 0));
-            bool inTable = H40 || idx < 64 || !SpriteLinks80 || SpriteDrawPast64;          // H32: the table has 64 entries; the walk may pass through 64..79 (the cache covers them) but nothing at those indices is drawn
-            if (inTable && imgRow >= top && imgRow < top + (h << cellShift))
+            if (imgRow >= top && imgRow < top + (h << cellShift))
             {
                 if (lineSpriteCount == maxLine) { lineSpriteOverflow = true; break; }
                 lineSprites[lineSpriteCount++] = idx;
@@ -413,8 +412,9 @@ public sealed partial class MdVdp
             int a = sat + lineSprites[i] * 8;
             int size = SpriteCacheOn ? SpriteCache[lineSprites[i] * 4 + 2] : Vram[a + 2 & 0xFFFF];
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
-            int attr = Vram[a + 4 & 0xFFFF] << 8 | Vram[a + 5 & 0xFFFF];
-            int xraw = (Vram[a + 6 & 0xFFFF] << 8 | Vram[a + 7 & 0xFFFF]) & 0x1FF;
+            int aa = H40 || !H32AttrWrap ? a : sat + (lineSprites[i] * 8 & 0x1FF);       // H32: the table is 0x200 bytes and the position and attributes of sprite 64 to 79 come from sprite 0 to 15 (the sprite cache holds all 80 sprites' first words)
+            int attr = Vram[aa + 4 & 0xFFFF] << 8 | Vram[aa + 5 & 0xFFFF];
+            int xraw = (Vram[aa + 6 & 0xFFFF] << 8 | Vram[aa + 7 & 0xFFFF]) & 0x1FF;
             int ypos = (SpriteCacheOn ? (SpriteCache[lineSprites[i] * 4] << 8 | SpriteCache[lineSprites[i] * 4 + 1]) & SpriteYMask : (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask) - (128 << (dbl ? 1 : 0));
             // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
             if (xraw == 0) { if (seenVisible) masked = true; }
