@@ -155,7 +155,7 @@ Verified by: `desktop-smoke.ps1` 9 / 9, `sega-preview-smoke.ps1` 47 / 47, `insta
 | `--sega-chips-test` | PASS | 34 / 0 | 1 |
 | `--sega-contracts-test` | PASS | 80 / 0 | 1 |
 | `--cpu-wall-test` (new) | PASS | 27 / 0 | 2 |
-| `--swap-matrix-test` (new) | PASS | 21 / 0 | 46 |
+| `--swap-matrix-test` (new) | PASS | 21 / 0 (35 / 0 since 14.6: the sound checks and the converter) | 46 |
 | `--sega-bridge-test` (incl. the new `smsfmnes` 28 and `patches` 6) | PASS | 356 / 0 | 202 |
 | `--sega-stems-test` | PASS | 38 / 0 | 15 |
 | `--picture-bridge-test` | **FAIL** | 236 / 1 (230 + the 6 synthetic allocation checks, 14.5) | 22 |
