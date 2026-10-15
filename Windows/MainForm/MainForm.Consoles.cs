@@ -426,7 +426,8 @@ namespace BrokenNes.Windows
         {
             byte[] rom = RomDetect.Unwrap(romData, romName, out string inner);
             var kind = RomDetect.Detect(rom, inner);
-            if (kind == null || kind == ConsoleKind.Nes)
+            if (kind == null) throw new InvalidDataException(RomDetect.UnrecognisedMessage(inner, rom.Length));      // not a NES message from the NES loader: say what this file is not and what is played
+            if (kind == ConsoleKind.Nes)
             {
                 if (kind == ConsoleKind.Nes && SelectedConsole != ConsoleKind.Nes) Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = "nes");
                 StopSession();
@@ -765,6 +766,7 @@ namespace BrokenNes.Windows
                         string card = slot switch { CoreSlot.Cpu => "cpu", CoreSlot.Ppu => "ppu", _ => "apu" };
                         item.MouseEnter += (s, e) => RequestOverlayDisplayCard(card, id);
                     }
+                    else item.ToolTipText = CoreCatalog.Tip(console, slot, opt);
                     menu.DropDownItems.Add(item);
                 }
             }

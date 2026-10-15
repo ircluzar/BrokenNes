@@ -209,6 +209,21 @@ internal static class SegaFoundationTestCli
                 || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && (o.Id.StartsWith("NES:") || o.Id.StartsWith("NES-FM:")))
                 || (e.Item2 == CoreSlot.Ppu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:")))));
         Check("the NES, SNES and Game Boy menus are unchanged by the Sega kinds", CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Cpu) == "SFC" && CoreCatalog.Default(ConsoleKind.GameBoy, CoreSlot.Cpu) == "GB" && CoreCatalog.Default(ConsoleKind.Nes, CoreSlot.Cpu) == "FIX");
+
+        // round 4 (C4b): every entry of every non-NES console's core menus has a tooltip that says what the entry is and what it costs: a part of another console is a bridge, and its losses are counted
+        var entries = Consoles.All.Where(k => k != ConsoleKind.Nes).SelectMany(k => new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu }.SelectMany(s => CoreCatalog.Options(k, s).Select(o => (k, s, o)))).ToList();
+        var tips = entries.Select(e => (e, tip: CoreCatalog.Tip(e.k, e.s, e.o))).ToList();
+        Check("every entry of every non-NES core menu has a tooltip that carries its label", tips.All(t => t.tip.Contains(t.e.o.Label)), $"{tips.Count} entries; without: {string.Join(",", tips.Where(t => !t.tip.Contains(t.e.o.Label)).Take(3).Select(t => t.e.o.Id))}");
+        bool Honest((ConsoleKind k, CoreSlot s, CoreOption o) e, string t) => e.o.Family == Consoles.Family(e.k) || e.o.Wall || t.Contains("counted") || t.Contains("approximated") || t.Contains("only where");
+        Check("a part from another console says what the choice costs (the losses are counted, the timbres approximated, the instruction sets must agree)", tips.All(t => Honest(t.e, t.tip)), $"without: {string.Join(",", tips.Where(t => !Honest(t.e, t.tip)).Take(3).Select(t => t.e.o.Id))}");
+        Check("the tooltips of the three slots are different texts (a picture chip, a sound chip, a processor)", CoreCatalog.Tip(ConsoleKind.MasterSystem, CoreSlot.Ppu, CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Ppu).First(o => o.Id == "NES:FIXS")) != CoreCatalog.Tip(ConsoleKind.MasterSystem, CoreSlot.Apu, CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Apu).First(o => o.Id == "NES:FIXS")));
+        Check("a wall's tooltip is its label: the game stops almost at once", CoreCatalog.Options(ConsoleKind.GameBoy, CoreSlot.Cpu).Where(o => o.Wall).All(o => CoreCatalog.Tip(ConsoleKind.GameBoy, CoreSlot.Cpu, o) == o.Label && o.Label.Contains("wall")));
+
+        // ... and a file no console recognises is told what it is not and what is played
+        Check("a text file is recognised by no console", RomDetect.Detect(System.Text.Encoding.ASCII.GetBytes("this is not a ROM"), "notes.txt") == null);
+        string msg = RomDetect.UnrecognisedMessage("notes.txt", 17);
+        Check("the message names the file and its size and lists what is played with the extensions (every console that is on, and zip)", msg.Contains("notes.txt") && msg.Contains("17 bytes") && msg.Contains(".nes") && msg.Contains(".sfc") && msg.Contains(".gb") && msg.Contains(".sms") && msg.Contains(".gg") && msg.Contains(".md") && msg.Contains(".zip"), msg.Replace("\n", " | "));
+        Check("a 32X cartridge gets its own sentence", RomDetect.UnrecognisedMessage("game.32x", 10).Contains("32X") && !msg.Contains("32X"));
     }
 
     private static void Keys()

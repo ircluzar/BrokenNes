@@ -170,6 +170,23 @@ public static class RomDetect
         };
     }
 
+    /// <summary>What a file no console recognises is told: its name and size, what BrokenNes plays (by console and file extension, only the consoles that are on), and the one near miss the Sega library has (a 32X cartridge).</summary>
+    public static string UnrecognisedMessage(string fileName, int length)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"BrokenNes does not recognise \"{fileName}\" ({length:N0} bytes) as a game for any console it plays.\n\nIt plays:\n");
+        foreach (var k in Consoles.All)
+        {
+            if (k == ConsoleKind.GameBoyColor || !Consoles.IsAvailable(k)) continue;
+            var ext = Consoles.Extensions(k);
+            if (k == ConsoleKind.GameBoy) ext = ext.Concat(Consoles.Extensions(ConsoleKind.GameBoyColor)).Distinct().ToArray();
+            sb.Append($"  - {(k == ConsoleKind.GameBoy ? "Game Boy / Color" : Consoles.DisplayName(k))}: {string.Join(", ", ext)}\n");
+        }
+        sb.Append("\nor a .zip holding one of them. A file with another extension is read by its contents (a NES header, a Game Boy logo, a Sega header), so a renamed ROM still loads; this one matched none.");
+        if (Path.GetExtension(fileName).Equals(".32x", StringComparison.OrdinalIgnoreCase)) sb.Append("\n\nA Sega 32X cartridge needs the 32X's own processors and is not supported.");
+        return sb.ToString();
+    }
+
     /// <summary>A SNES internal header (LoROM $7FC0 or HiROM $FFC0, after an optional 512-byte copier header): the
     /// checksum and its complement add up to $FFFF.</summary>
     private static bool LooksLikeSnes(byte[] rom)
@@ -236,6 +253,25 @@ public static class CoreCatalog
     {
         CoreSlot.Cpu => CoreRegistry.CpuIds, CoreSlot.Ppu => CoreRegistry.PpuIds, _ => CoreRegistry.ApuIds,
     };
+
+    /// <summary>
+    /// The tooltip of a core menu entry on a console other than the NES (the NES shows overlay cards): what the entry is in a line or two, and what it cannot do. The label says what the part is; this adds what the
+    /// choice costs: a part from another console is a bridge, and every bridge loses something that the status line and the HTTP API count.
+    /// </summary>
+    public static string Tip(ConsoleKind console, CoreSlot slot, CoreOption o)
+    {
+        string name = Consoles.DisplayName(console), own = Consoles.Family(console);
+        if (o.Wall) return o.Label;      // an instruction-set wall says so in its label: the game stops almost at once
+        if (o.Family == own) return $"{o.Label}\nThe {name}'s own {slot.ToString().ToUpperInvariant()} part: the game runs on it as it was made.";
+        string chip = o.Id.Contains(':') ? o.Id[(o.Id.IndexOf(':') + 1)..] : o.Id;
+        return slot switch
+        {
+            CoreSlot.Ppu => $"{o.Label}\nDraws the {name} picture with this {o.Family} picture part through a picture bridge. What the part cannot show (colours past its palette, more tiles than it holds, shading) is counted: the status line and GET /api/console list the losses.",
+            CoreSlot.Apu when o.Id.StartsWith("NES-FM:", StringComparison.OrdinalIgnoreCase) => $"{o.Label}\nPlays the Master System's PSG and its FM chip (the YM2413) as notes on the NES {chip} sound part. Voices the part cannot hold are dropped and counted; the chips' own timbres are approximated.",
+            CoreSlot.Apu => $"{o.Label}\nPlays the {name}'s sound chips as notes on this {o.Family} sound part (the {chip} chip). Voices it cannot hold are dropped and counted; the {name}'s own timbres are approximated, not reproduced.",
+            _ => $"{o.Label}\nRuns the game's code on another console's processor: this works only where the two instruction sets agree.",
+        };
+    }
 
     /// <summary>The menu for one slot of one console, own family first (and within the NES family, FIX first).</summary>
     public static IReadOnlyList<CoreOption> Options(ConsoleKind console, CoreSlot slot)

@@ -82,8 +82,8 @@ namespace BrokenNes.Windows
             this.Deactivate += (_, _) => isMainWindowFocused = false;
             
             // Create menu bar
-            var menuStrip = new MenuStrip();
-            
+            var menuStrip = new MenuStrip { ShowItemToolTips = true };     // a MenuStrip shows no item tooltips unless asked: the core menus carry one each (what the part is and what it costs)
+
             // Emulator menu (merged File and Emulation)
             var emulatorMenu = new ToolStripMenuItem("&Emulator");
             

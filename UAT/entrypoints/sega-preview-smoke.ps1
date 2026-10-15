@@ -459,6 +459,23 @@ try {
         Set-ConsoleCore $id 'ppu' 'SMS' | Out-Null     # leave the console on its own chip
     }
 
+    # ---- a file no console recognises: a box that says what it is not and what BrokenNes plays, and the game that was running goes on ----
+    Load-BrokenNesRom -ProcessId $id -Path (Join-Path $roms 'smoke.sms') | Out-Null
+    Wait-Picture $id 5 | Out-Null; Start-Sleep -Milliseconds 800
+    $junk = Join-Path $roms 'notes.txt'; [IO.File]::WriteAllText($junk, "this is not a ROM`n")
+    $gameBefore = (Get-ConsoleStatus $id).game
+    try { Load-BrokenNesRom -ProcessId $id -Path $junk -TimeoutSec 6 | Out-Null } catch { }      # the call waits for the box to be closed: it times out, the box is read, then closed
+    Start-Sleep -Milliseconds 600
+    $boxText = ''
+    foreach ($w in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $id)), (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty, '#32770'))))))
+    { $boxText += ' ' + (($w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) -join ' ') }
+    $closed = @(Dismiss-BrokenNesDialogs -ProcessId $id)
+    Check 'unrecognised_file_says_what_it_plays' ($closed.Count -ge 1 -and $boxText -match 'does not recognise' -and $boxText -match 'notes\.txt' -and $boxText -match '\.nes' -and $boxText -match '\.sms' -and $boxText -match '\.gg' -and $boxText -match '\.md' -and $boxText -match 'zip') "box(es) closed: $($closed.Count); text: [$($boxText.Trim() -replace '\s+', ' ')]"
+    Start-Sleep -Milliseconds 800
+    $s = Get-ConsoleStatus $id
+    Check 'unrecognised_file_leaves_the_game_running' ($s.console -eq 'sms' -and $s.game -eq $gameBefore -and (Test-InputChangesPicture $id (Get-Frame $id) -Button @('Right') -Seconds 10)) "console=$($s.console) game=[$($s.game)] (was [$gameBefore]); the program still answers the pad"
+
     $alive = [bool](Get-Process -Id $id -ErrorAction SilentlyContinue)
     $health = $false; if ($alive) { try { $health = [bool](Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/health') } catch { } }
     Check 'on_no_crash' ($alive -and $health) "alive=$alive api=$health"
