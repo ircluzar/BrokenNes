@@ -61,6 +61,6 @@ foreach ($n in $list) {
     Add-Content $Log ("=== #{0} {1}`r`n{2}`r`n{3}" -f $n, $roster[$n], $result, (($out -split "`r?`n" | Where-Object { $_ -match "^after " }) -join "`r`n"))
     if (-not $unreliable) { break }
   }
-  } finally { & pwsh -NoProfile -File $lock -Release blastem -Owner $LockOwner | Out-Null }
+  } finally { & pwsh -NoProfile -File $lock -Release blastem -Owner $LockOwner | Out-Null; Start-Sleep -Seconds 75 }      # a pause after the release: another agent's wait for a free lock counts a minute
   Write-Host "#$n $($roster[$n]): $result"
 }

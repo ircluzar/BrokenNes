@@ -11,7 +11,7 @@ Variants (what happens between "the VBlank has begun / ended" and "the enable bi
   E  display period, the status register read twice, enable
   F  as D but the enable bit written at the VDP only after the 68000 mask was raised and lowered again (the mask makes no difference to the pending state)
 """
-from probes import prologue, sync_vblank_fall, sync_vblank_rise, SPIN
+from probes import prologue, sync_vblank_fall, sync_vblank_rise, SPIN, wait_v
 
 HANDLER = '''
 vint:  addq.w #1,($FF0100).l
@@ -108,6 +108,21 @@ RET_LOOPS = {
     'btst_reg': ['btst #3,d1'],
     'cmp_mem': ['cmp.w (a6),d1'],
 }
+
+
+def timing_run(body, n1, n2, h40=True):
+    """How long does an instruction take on the oracle: the V counter (one line is 3420 master clocks) read (a) before, (b) after n1 copies of the body and (c) after n2 more, straight-line code, interrupts and DMA off, display off.
+    RAM words from $FF0000: V a, b, c. (c - b) - (b - a) lines are n2 - n1 copies of the body and nothing else (the reads' own cost cancels); n1 and n2 are chosen by the caller for about 40 and 160 lines."""
+    s = prologue(h40, False, regs={0: 0x04, 1: 0x14, 10: 0xFF})
+    s += NL_.join(['    lea ($FF0000).l,a0', '    lea ($C00008).l,a1', '    lea ($FF8000).l,a6', '    lea ($FF8100).l,a5', '    move.l #$7FFF0000,d3', '    move.w #$FFFF,d2', '    move.w #7,d4', '    moveq #0,d1',
+                   '    move.w #$2700,sr', '    move.b (a1),d6', 'tw: move.b (a1),d7', '    cmp.b d6,d7', '    beq.s tw', '    move.b (a1),d6']) + NL_      # start at a line boundary (within a few cycles)
+    body_text = ''.join('    %s' % ins + NL_ for ins in RET_LOOPS[body] if not ins.startswith('bra'))
+    s += '    move.w d6,(a0)+' + NL_
+    s += body_text * n1
+    s += '    move.b (a1),d6' + NL_ + '    move.w d6,(a0)+' + NL_
+    s += body_text * n2
+    s += '    move.b (a1),d6' + NL_ + '    move.w d6,(a0)+' + NL_ + '_spin: bra.s _spin' + NL_ + 'sub1: rts' + NL_
+    return s
 
 
 def ret_hist(body, n=4000, h40=True):
