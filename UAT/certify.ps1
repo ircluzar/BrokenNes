@@ -73,8 +73,9 @@ function Invoke-Dotnet { & dotnet.exe @args --disable-build-servers -nodeReuse:f
 function CheckSummary($j) {
     if (-not $j) { return 'no result line' }
     $all = @($j.checks.PSObject.Properties)
-    $bad = @($all | Where-Object { -not $_.Value.ok } | ForEach-Object { $_.Name })
-    "$($all.Count - $bad.Count)/$($all.Count) checks" + $(if ($bad) { " (failed: $($bad -join ', '))" } else { '' })
+    $nr = @($all | Where-Object { $_.Value.notRun } | ForEach-Object { $_.Name })
+    $bad = @($all | Where-Object { -not $_.Value.ok -and -not $_.Value.notRun } | ForEach-Object { $_.Name })
+    "$($all.Count - $bad.Count - $nr.Count)/$($all.Count) checks" + $(if ($bad) { " (failed: $($bad -join ', '))" } else { '' }) + $(if ($nr) { " (not run: $($nr -join ', '))" } else { '' })
 }
 
 # ----------------------------------------------------------------------------------------------------
@@ -239,6 +240,7 @@ Run 'plugin-synth' {
     $out | Out-File (Join-Path $outDir 'synth-smoke.txt')
     $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
 }
 
