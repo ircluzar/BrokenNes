@@ -1297,6 +1297,109 @@ namespace NesEmulator
 			RenderCrashScreen();
 		}
 
+		/// <summary>
+		/// One frame of a NES whose program is nothing but the picture sink's idle loop (<c>JMP $C000</c>, three cycles a turn): what <see cref="RunFrame"/> would have done, with the CPU not run. The cycle budget, the
+		/// overshoot carry, the dot budget and the PPU's progress through the frame are accounted exactly as <see cref="RunFrame"/> does for a loop of three-cycle instructions that touch no register; the PPU is stepped in
+		/// chunks of at most a scanline (so the entry into the post-render lines is seen and the finished frame presented as it always was) and the APU is not stepped, because nothing hears it and the CPU that
+		/// would have read it does not run. Used only by <c>NesPictureSink</c> (the picture bridges), whose output is bit for bit the same (checked by the speed suite's goldens).
+		/// </summary>
+		internal void RunIdleFrame()
+		{
+			if (bus == null || crashed) return;
+			framesExecutedTotal++;
+			int targetCycles;
+			if (bus!.SpeedConfig.NtscAccurateFrameRate)
+			{
+				if (!ntscWasEnabled) ntscDotBudget = globalCpuCycle * 3;
+				ntscWasEnabled = true;
+				ntscDotBudget += ntscFrameParityToggle ? 89341 : 89342;
+				ntscFrameParityToggle = !ntscFrameParityToggle;
+				targetCycles = (int)(ntscDotBudget / 3 - globalCpuCycle);
+			}
+			else
+			{
+				ntscWasEnabled = false;
+				targetCycles = BaseCyclesPerFrame;
+				extraCycleAccumulator += ExtraCyclesNumerator;
+				if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			}
+			if (overshootCarry > 0)
+			{
+				if (overshootCarry >= targetCycles) { overshootCarry -= targetCycles; return; }
+				targetCycles -= overshootCarry; overshootCarry = 0;
+			}
+			nextFrameBoundaryCycle = globalCpuCycle + targetCycles;
+			bool perInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming;
+			bool precisePpu = bus.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
+			bus.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
+			bus.PreciseSteppingActive = precisePpu;
+			bus.MarkInstructionStart(-1);
+			// the loop runs whole three-cycle instructions until the frame's cycles are spent
+			int executed = targetCycles > 0 ? (targetCycles + 2) / 3 * 3 : 0;
+			for (int left = executed; left > 0;)
+			{
+				int chunk = left < 114 ? left : 114;   // 114 = 38 instructions, a little over a scanline's 113.67 cycles
+				bus.ppu!.Step(chunk * 3);
+				globalCpuCycle += chunk;
+				NotePpuProgress();
+				left -= chunk;
+			}
+			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
+			if (bus.SpeedConfig.NtscAccurateFrameRate && !crashed && bus.ppu is not IPpuFixTiming)
+			{
+				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
+				if (dotDelta > 0) bus.ppu!.Step((int)dotDelta);
+			}
+			NotePpuProgress();
+			if (!crashed && !presentedThisRun) bus.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
+		}
+
+		/// <summary>
+		/// For the picture sink's idle NES: steps the PPU, a scanline at a time and with nothing else running, from where it stands in the vertical blank (lines 241 to 261) through one whole picture (lines 0 to 239, presented
+		/// as it always is when the PPU crosses line 240) to the vertical blank again. The sink then programs the PPU in the blank, so the picture it asks for is drawn whole from its first line: one frame of PPU work
+		/// where the sink used to run two (the first only latched the new state, drawing the old picture's lower part). A PPU that is not in the blank when this is called (the sink's first frame) is first brought to it.
+		/// </summary>
+		internal void RunIdleToVblank()
+		{
+			if (bus == null || crashed) return;
+			if (bus.ppu is not IPpuFrameClock clock) { RunIdleFrame(); RunIdleFrame(); return; }
+			PrepareIdleStepping();
+			if (!InBlank(clock)) AlignIdleToVblank();
+			bool seenVisible = false;
+			for (int guard = 0; guard < 600; guard++)
+			{
+				bus.ppu!.Step(342);              // 114 CPU cycles: a little over a scanline's 341 dots
+				globalCpuCycle += 114;
+				NotePpuProgress();
+				int sl = clock.ProbeScanline;
+				if (sl <= 239) seenVisible = true;
+				else if (seenVisible && sl >= 241 && sl <= 260) break;
+			}
+			if (!crashed && !presentedThisRun) bus.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
+		}
+
+		/// <summary>Steps the idle NES's PPU on, a scanline at a time, until it is in the vertical blank (the sink calls this once before it programs the PPU for the first time).</summary>
+		internal void AlignIdleToVblank()
+		{
+			if (bus == null || crashed || bus.ppu is not IPpuFrameClock clock) return;
+			PrepareIdleStepping();
+			for (int g = 0; g < 600 && !InBlank(clock); g++) { bus.ppu!.Step(342); globalCpuCycle += 114; NotePpuProgress(); }
+			presentedThisRun = false;
+		}
+
+		private static bool InBlank(IPpuFrameClock clock) { int s = clock.ProbeScanline; return s >= 241 && s <= 260; }
+
+		private void PrepareIdleStepping()
+		{
+			// the two flags RunFrame sets before its loop, from the same conditions
+			bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
+			bus.PpuCaughtUpPerInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming || precisePpu;
+			bus.PreciseSteppingActive = precisePpu;
+			bus.MarkInstructionStart(-1);
+		}
+
 		// Allow caller to rapidly run multiple frames (used for fast-forward / warm-up)
 		public void RunFrames(int frames)
 		{
