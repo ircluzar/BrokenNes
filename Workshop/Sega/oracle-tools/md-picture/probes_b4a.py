@@ -80,3 +80,50 @@ def hv_in_handler(kind='vint', h40=True, extra_regs=None, loop_nops=1, v30=False
     s += ('    nop' + NL) * loop_nops
     s += _lines('    bra.s main', '_spin: bra.s _spin', 'handler:', '    move.w (a1),(a0)+', '    addq.w #1,($FF0000).l', '    rte')
     return s
+
+
+def hv_scan_regs(h40=True, count=10500, regs=None, v30=False):
+    """A straight line of HV counter reads (12 cycles apart, as probes.hv_scan) with extra VDP registers (the interlace bits of R12 ...), started at the fall of the VBlank flag: a whole frame of V and H values."""
+    s = prologue(h40, True, regs=regs, v30=v30)
+    s += '    lea ($FF0000).l,a0\n' + probes.sync_vblank_fall()
+    s += ('    move.w (a1),(a0)+' + NL) * count
+    s += SPIN
+    return s
+
+
+def z80_int_repeats(ks, frames=20, h40=True, vint_on=True):
+    """How long the VDP holds the Z80's interrupt line. For each k in `ks` a Z80 program is loaded that, in its IM 1 handler at $38 (push af; ld a,(counter); inc a; ld (counter),a; k nops; ei; pop af; reti), counts
+    its entries in Z80 RAM $1000; the handler is about 55 + 4k Z80 cycles, and because it re-enables interrupts before RETI every entry while the line is still asserted is another one. After `frames` frames
+    the 68000 reads the counter: entries per frame = how many times the handler fitted into the time the line stayed up (a line is 228 Z80 cycles). RAM: word i ($FF0100 + 2i) = the counter for ks[i]."""
+    def z80(k):
+        code = [0xF3, 0xED, 0x56, 0x31, 0xF0, 0x1F, 0xAF, 0x32, 0x00, 0x10, 0xFB, 0x18, 0xFE]
+        code += [0x00] * (0x38 - len(code))
+        code += [0xF5, 0x3A, 0x00, 0x10, 0x3C, 0x32, 0x00, 0x10] + [0x00] * k + [0xFB, 0xF1, 0xED, 0x4D]
+        return code
+    s = prologue(h40, True, regs={1: 0x64 if vint_on else 0x44, 0: 0x04})
+    s += _lines('    lea ($A11100).l,a5', '    lea ($A11200).l,a6', '    lea ($FF0100).l,a0')
+    for i, k in enumerate(ks):
+        n = len(z80(k)); n += n & 1
+        s += _lines('    move.w #$0000,(a6)', '    move.w #$0100,(a5)', 'g%d: move.w (a5),d1' % i, '    btst #8,d1', '    bne.s g%d' % i,
+                    '    lea ($A00000).l,a1', '    lea z80prog%d,a2' % i, '    move.w #%d,d0' % (n - 1), 'c%d: move.b (a2)+,(a1)+' % i, '    dbf d0,c%d' % i,
+                    '    move.w #$0100,(a6)', '    move.w #$0000,(a5)', '    move.w #%d,d7' % (frames - 1),
+                    'f%d: move.w (a4),d1' % i, '    btst #3,d1', '    bne.s f%d' % i,
+                    'h%d: move.w (a4),d1' % i, '    btst #3,d1', '    beq.s h%d' % i, '    dbf d7,f%d' % i,
+                    '    move.w #$0100,(a5)', 'r%d: move.w (a5),d1' % i, '    btst #8,d1', '    bne.s r%d' % i,
+                    '    moveq #0,d1', '    move.b ($A01000).l,d1', '    move.w d1,(a0)+')
+    s += '_spin: bra.s _spin\n'
+    for i, k in enumerate(ks):
+        code = z80(k)
+        if len(code) & 1: code.append(0)
+        s += 'z80prog%d:\n' % i
+        for j in range(0, len(code), 8): s += '    dc.b ' + ','.join('$%02X' % b for b in code[j:j + 8]) + NL
+    return s
+
+
+def frame_phase(il=0, h40=True):
+    """The VINT handler reads the HV counter first and the status register second (field flag, bit 4), into RAM ($FF0004...: HV, status per frame). Interrupts on, a nop loop as the main program: successive HV
+    values drift by the 68000's phase against the frame, and a field that is a line longer shows as a jump. `il` is R12's interlace field (0, 1 or 3)."""
+    s = prologue(h40, True, regs={1: 0x64, 0: 0x04, 12: (0x81 if h40 else 0x00) | il << 1})
+    s += _lines('    lea ($FF0004).l,a0', '    lea ($C00008).l,a1', '    lea ($C00004).l,a2', '    move.w #0,($FF0000).l', '    move.w #$2000,sr', 'main:', '    nop', '    bra.s main', '_spin: bra.s _spin',
+                'handler:', '    move.w (a1),(a0)+', '    move.w (a2),(a0)+', '    addq.w #1,($FF0000).l', '    rte')
+    return s

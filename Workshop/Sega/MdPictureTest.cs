@@ -112,6 +112,7 @@ internal static class MdPictureTest
         Sprites();
         ShadowHighlight();
         ModesAndTiming();
+        Interlace();
         Session();
         Mappers();
         Console.WriteLine($"== {pass} passed, {fail} failed");
@@ -452,6 +453,64 @@ internal static class MdPictureTest
     }
 
     // =====================================================================================================================
+
+    /// <summary>A 8x16 cell pattern (interlace mode 2: 64 bytes, rows 0-7 then 8-15): <paramref name="top"/> colour in the first eight rows, <paramref name="bottom"/> in the last eight.</summary>
+    private static void Cell16(Pic p, int n, int top, int bottom)
+    {
+        for (int r = 0; r < 16; r++) for (int k = 0; k < 4; k++) p.V.Vram[n * 64 + r * 4 + k] = (byte)((r < 8 ? top : bottom) << 4 | (r < 8 ? top : bottom));
+    }
+
+    private static void Interlace()
+    {
+        Group("interlace (R12 bits 2-1): the field flag, and mode 2's double-height picture");
+        // mode 2: cells are 8 x 16 (a name table entry's pattern is 64 bytes), the picture is 448 rows of both fields woven
+        var p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 3, 1, 2);
+        p.Cell(PlaneA, 0, 0, 3);
+        p.Frame();
+        Check("interlace mode 2: the finished frame is a double-height picture (448 rows) and the one-field picture stays 224 rows", p.V.WovenValid && p.V.WovenHeight == 448 && p.V.PictureHeight == 224 && p.V.PictureWidth == 320);
+        uint c1 = Argb(p.CramOf(0, 1), 0), c2 = Argb(p.CramOf(0, 2), 0), bd = Argb(0, 0);
+        uint W(int x, int y) => p.V.WovenPicture[y * MdVdp.PictureStride + x];
+        Check("a cell is 16 rows tall: the first eight rows of its pattern, then the next eight (rows 0-7 colour 1, 8-15 colour 2, the cell below is empty)", W(2, 0) == c1 && W(2, 7) == c1 && W(2, 8) == c2 && W(2, 15) == c2 && W(2, 16) == bd, $"{W(2, 0):X8} {W(2, 8):X8} {W(2, 16):X8}");
+        Check("both fields are in it: the rows 6, 7, 8, 9 around the pattern's seam all come out right", W(2, 6) == c1 && W(2, 9) == c2);
+        Check("the one-field picture has the field's lines: line y is picture row 2y or 2y+1", p.Px(2, 3) == c1 && p.Px(2, 4) == c2 && p.Px(2, 7) == c2 && p.Px(2, 8) == bd);
+
+        // vertical scroll counts picture rows (a cell is 16): a scroll of 16 brings the cell row below to the top
+        p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 3, 1, 1); Cell16(p, 4, 5, 5);
+        p.Cell(PlaneA, 0, 0, 3); p.Cell(PlaneA, 0, 1, 4);
+        p.V.Vsram[0] = 16;
+        p.Frame();
+        Check("vertical scroll in mode 2 counts picture rows: a scroll of 16 shows the second cell row at the top", p.V.WovenPicture[2] == Argb(p.CramOf(0, 5), 0) && p.V.WovenPicture[15 * MdVdp.PictureStride + 2] == Argb(p.CramOf(0, 5), 0));
+
+        // sprites: Y is in picture rows (offset 256), a cell is 16 rows
+        p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 5, 1, 2);
+        Array.Clear(p.V.Vram, 0, 64);          // cell 0 (the planes' empty entries) must be blank in this pattern layout
+        p.Sprite(0, 100, 0, 1, 1, 5, 0, false, 0);
+        int ya = SatAddr; p.V.Vram[ya] = (byte)((40 + 256) >> 8 & 3); p.V.Vram[ya + 1] = (byte)((40 + 256) & 0xFF);
+        p.Frame();
+        Check("a sprite in mode 2 is 8 x 16 pixels at Y - 256 picture rows: rows 40-47 colour 1, 48-55 colour 2, nothing above or below", W(100, 40) == c1 && W(107, 47) == c1 && W(100, 48) == c2 && W(107, 55) == c2 && W(100, 39) == bd && W(100, 56) == bd, $"{W(100, 40):X8} {W(100, 48):X8} {W(100, 56):X8}");
+
+        // the field flag toggles every frame in either interlace mode, and is zero without interlace
+        foreach (var (mode, r12) in new[] { (1, 0x83), (2, 0x87), (0, 0x81) })
+        {
+            p = new Pic(); p.V.Reg[12] = (byte)r12;
+            p.V.ResetPictureState();
+            var bits = new System.Collections.Generic.List<int>();
+            long t = p.V.Time;
+            for (int f = 0; f < 6; f++) { t += p.V.Timeline.MasterClocksPerFrame; p.V.RunTo(t + 5000); bits.Add(p.V.ReadStatus(p.V.Time) >> 4 & 1); }
+            bool toggles = bits.Zip(bits.Skip(1), (a, b) => a != b).All(x => x);
+            Check(mode == 0 ? "without interlace the odd-frame flag (status bit 4) stays 0" : $"interlace mode {mode}: the odd-frame flag (status bit 4) toggles every frame", mode == 0 ? bits.All(b => b == 0) : toggles, string.Join("", bits));
+            Check(mode == 2 ? "mode 2 hands out the woven picture" : "no woven picture unless it is mode 2", p.V.WovenValid == (mode == 2));
+        }
+        p = new Pic(false, true); p.V.Reg[12] = 0x06; p.V.Reg[1] = 0x4C;
+        p.Frame();
+        Check("mode 2 with H32 and V30: the woven picture is 480 rows of 256", p.V.WovenValid && p.V.WovenHeight == 480 && p.V.PictureWidth == 256);
+    }
 
     private static void ModesAndTiming()
     {
