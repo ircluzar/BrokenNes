@@ -35,7 +35,8 @@ param(
     [string]$OracleDir = "C:\BrokenNes-tools\sega\oracles\mesen-2.1.1",
     [string]$RamPowerOn = "AllZeros",   # the oracle's work RAM at power-on: AllZeros (like this emulator), AllOnes or Random
     [string]$SmsRevision = "",   # the oracle's VDP revision setting (Sms.Revision: Compatibility, Sms1, Sms2); empty leaves its default
-    [string]$Work = ""           # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
+    [string]$Work = "",          # a private copy of the oracle to run from; default %LOCALAPPDATA%\BrokenNes\sega-mesen. Parallel runs each need their own (mesen-compare.ps1 gives every job slot one).
+    [string]$SaveIn = ""         # a battery file (the cartridge RAM's bytes) the oracle starts from, as the game's save: placed in its Saves folder after that is emptied (a restart of a game that saved)
 )
 $ErrorActionPreference = "Stop"
 if (-not $Tag) { $Tag = [IO.Path]::GetFileNameWithoutExtension($Rom) }
@@ -60,6 +61,11 @@ if ($SmsRevision) { $settings.Sms.Revision = $SmsRevision }
 $settings | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $work "settings.json") -Encoding utf8
 $saves = Join-Path $work "Saves"
 if (Test-Path $saves) { Get-ChildItem $saves -Recurse -File | Remove-Item -Force }
+if ($SaveIn) {
+    # the oracle names a cartridge's save after the ROM it was given (the plain copy "game.sms" below)
+    New-Item -ItemType Directory -Force $saves | Out-Null
+    Copy-Item -LiteralPath $SaveIn -Destination (Join-Path $saves "game.sav") -Force
+}
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $lua = Join-Path $PSScriptRoot "capture.lua"

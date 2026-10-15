@@ -33,7 +33,8 @@ param(
     [string]$ExtraArgs = "",        # added to every `--sms-run`
     [string]$RomDir = "",           # a list row that is a bare file name is looked up under this folder (the committed menu-scripts.tsv has names, not paths)
     [switch]$Sound,                 # also log the oracle's sound-chip registers at the end of every frame (its first run) and compare them with this emulator's in every mode: columns <mode>_psg_* (and _fm_* with -Apu SMS-FM)  (Workshop --sms-run --sound-regs / --fm-regs-file)
-    [string]$Apu = ""               # the sound unit of this emulator's runs (SMS-FM for the Japanese games: the oracle then runs with its FM chip on, and the YM2413 ports are part of the events)
+    [string]$Apu = "",              # the sound unit of this emulator's runs (SMS-FM for the Japanese games: the oracle then runs with its FM chip on, and the YM2413 ports are part of the events)
+    [switch]$Dump                   # the oracle also dumps its state at every compared frame (-Spec "600,1500"), including its cartridge RAM: this emulator's save is compared with it ("<mode>_save" column: "frame:identical" or "frame:N bytes differ")
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Workshop)) { throw "Workshop exe not found: $Workshop" }
@@ -47,7 +48,7 @@ $games = foreach ($line in Get-Content $List) {
     $f = $line -split "`t"
     $romPath = $f[0].Trim()
     if (-not (Test-Path -LiteralPath $romPath) -and $RomDir) { $hit = Get-ChildItem -LiteralPath $RomDir -Recurse -File -Filter $romPath | Select-Object -First 1; if ($hit) { $romPath = $hit.FullName } else { throw "ROM not found under ${RomDir}: $romPath" } }
-    [pscustomobject]@{ Rom = $romPath; Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" }; Frames = if ($f.Count -gt 3 -and $f[3].Trim()) { [int]$f[3].Trim() } else { 0 } }
+    [pscustomobject]@{ Rom = $romPath; Pad = if ($f.Count -gt 1 -and $f[1].Trim()) { $f[1].Trim() } else { "" }; Region = if ($f.Count -gt 2 -and $f[2].Trim()) { $f[2].Trim() } else { "" }; Frames = if ($f.Count -gt 3 -and $f[3].Trim()) { [int]$f[3].Trim() } else { 0 }; Battery = if ($f.Count -gt 4 -and $f[4].Trim()) { $f[4].Trim() } else { "" } }
 }
 "compare: $(@($games).Count) games, $Frames frames, $Jobs jobs"
 $slots = [System.Collections.Concurrent.ConcurrentQueue[int]]::new()
@@ -90,6 +91,8 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                 Remove-Item -Recurse -Force $run.Dir -ErrorAction SilentlyContinue
                 $capArgs = @("-NoProfile", "-File", $using:capture, "-Rom", "`"$rom`"", "-Frames", "`"$frameList`"", "-OutDir", "`"$($run.Dir)`"", "-Tag", $run.Tag, "-Pad", "`"$pad`"", "-Region", $region, "-Overscan", "0", "-Work", "`"$work`"", "-TimeoutSec", $using:TimeoutSec)
                 if ($using:Sound -and $run.Dir -eq $a) { $capArgs += "-Psg" }
+                if ($using:Dump) { $capArgs += "-Dump" }
+                if ($g.Battery) { $capArgs += @("-SaveIn", "`"$($g.Battery)`"") }       # a restart from a save: the oracle's Saves folder gets the file (list column 5)
                 if ($using:Apu -eq "SMS-FM") { $capArgs += "-Fm" }
                 $cap = Start-Process -FilePath pwsh -ArgumentList $capArgs -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput "$dir.cap.out" -RedirectStandardError "$dir.cap.err"
                 if ($cap.ExitCode -eq 0) { break }
@@ -104,6 +107,8 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                 $args2 = @("--sms-run", $rom, "--frames", $gFrames, "--input", $pad, "--png-at", $frameList, "--out", $mine, "--tag", $tag, "--mesen", $a, "--region", $region, "--diff-detail", $(if ($using:Spec) { "40" } else { "0" })) + $mode.Tune
                 if ($using:Runs -gt 1) { $args2 += @("--mesen-b", $b) }
                 if ($using:ExtraArgs) { $args2 += ($using:ExtraArgs -split " ") }
+                if ($g.Battery) { $args2 += @("--battery", $g.Battery) }
+                if ($using:Dump -and $using:Spec) { $args2 += @("--ram-at", $using:Spec) }      # this emulator's work RAM / VRAM / save at the compared frames, against the oracle's dumps
                 if ($using:Apu) { $args2 += @("--apu", $using:Apu) }
                 if ($using:Sound) { $args2 += @("--sound-regs", (Join-Path $a "$tag.psg.txt")); if ($using:Apu -eq "SMS-FM") { $args2 += @("--fm-regs-file", (Join-Path $a "$tag.fm.txt")) } }
                 $o = & $using:Workshop @args2 2>&1 | Out-String
@@ -115,6 +120,11 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
                         }
                         if ($o -match ('sound registers \(' + $chip[0] + '\):[^\r\n]*first at frame (\d+): ours ([^ ]+) oracle ([^\r\n]+)')) { $row["$($mode.Name)_$($chip[1])_firstdiff"] = "frame $($Matches[1]): ours $($Matches[2]) oracle $($Matches[3].Trim())" }
                     }
+                }
+                if ($using:Dump) {
+                    # "frame 1500: SAVE RAM identical over the oracle's 32,768 bytes (...)" or "frame 1500: SAVE RAM 12 bytes differ (first at $0201) ..."
+                    $sv = @(); foreach ($m in [regex]::Matches($o, 'frame (\d+): SAVE RAM (identical|(\d+) bytes differ)')) { $sv += "$($m.Groups[1].Value):$(if ($m.Groups[2].Value -eq 'identical') { 'identical' } else { $m.Groups[3].Value + ' bytes differ' })" }
+                    $row["$($mode.Name)_save"] = $sv -join ","
                 }
                 if ($using:Spec) {
                     # a short list of checkpoints: which were identical, and by how many pixels the others differ
@@ -140,6 +150,6 @@ $games | ForEach-Object -ThrottleLimit $Jobs -Parallel {
     finally { ($using:slots).Enqueue($slot) }
 }
 $modeNames = ($Modes -split ";") | ForEach-Object { ($_ -split "=", 2)[0].Trim() }
-$cols = @("game", "console", "region") + ($modeNames | ForEach-Object { "$($_)_stable", "$($_)_identical", "$($_)_differ", "$($_)_first_diff", "$($_)_oo", "$($_)_oo_matched", "$($_)_a_identical", "$($_)_a_frames", "$($_)_a_first", "$($_)_checkpoints" }) + $(if ($Sound) { $modeNames | ForEach-Object { "$($_)_psg_frames", "$($_)_psg_identical", "$($_)_psg_near", "$($_)_psg_firstdiff", "$($_)_fm_frames", "$($_)_fm_identical", "$($_)_fm_near", "$($_)_fm_firstdiff" } }) + @("mesen_s", "total_s", "error")
+$cols = @("game", "console", "region") + ($modeNames | ForEach-Object { "$($_)_stable", "$($_)_identical", "$($_)_differ", "$($_)_first_diff", "$($_)_oo", "$($_)_oo_matched", "$($_)_a_identical", "$($_)_a_frames", "$($_)_a_first", "$($_)_checkpoints" }) + $(if ($Dump) { $modeNames | ForEach-Object { "$($_)_save" } }) + $(if ($Sound) { $modeNames | ForEach-Object { "$($_)_psg_frames", "$($_)_psg_identical", "$($_)_psg_near", "$($_)_psg_firstdiff", "$($_)_fm_frames", "$($_)_fm_identical", "$($_)_fm_near", "$($_)_fm_firstdiff" } }) + @("mesen_s", "total_s", "error")
 $results | Sort-Object game | Select-Object $cols | Export-Csv -Path $OutTsv -Delimiter "`t" -NoTypeInformation
 "wrote $OutTsv"
