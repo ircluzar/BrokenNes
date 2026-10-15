@@ -303,10 +303,13 @@ internal static class SmsFmOnNesTests
         var r = new Rig("NES-FM:FIX"); r.Unit.WriteAudioControl(1);
         for (int ch = 0; ch < 9; ch++) r.Note(ch, 1 + ch, 2, 150 * Math.Pow(2, ch / 7.0));
         r.Run(0.3, false);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        // processor time, not wall time: a busy shared machine stretches the wall clock but not the work (the plugin's tests do the same)
+        var proc = System.Diagnostics.Process.GetCurrentProcess();
+        var cpu0 = proc.TotalProcessorTime; var sw = System.Diagnostics.Stopwatch.StartNew();
         r.Run(4.0, false);
-        double x = 4.0 / sw.Elapsed.TotalSeconds;
-        if (verbose) Console.WriteLine($"        speed: {x:F1}x real time for the FM bridge with nine FM voices");
-        Check($"the FM bridge runs at {x:F1}x real time (needs 8x or better for the unit alone, like APU_SMSFM: the console's Z80 and VDP come on top)", x > 8);
+        proc.Refresh();
+        double cpu = (proc.TotalProcessorTime - cpu0).TotalSeconds, x = 4.0 / Math.Max(cpu, 1e-3), wall = 4.0 / sw.Elapsed.TotalSeconds;
+        if (verbose) Console.WriteLine($"        speed: {x:F1}x real time of processor time ({wall:F1}x of wall time) for the FM bridge with nine FM voices");
+        Check($"the FM bridge runs at {x:F1}x real time in processor time (needs 8x or better for the unit alone, like APU_SMSFM: the console's Z80 and VDP come on top; wall time {wall:F1}x)", x > 8);
     }
 }

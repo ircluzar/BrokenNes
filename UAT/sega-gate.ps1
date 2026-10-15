@@ -68,6 +68,7 @@ $steps = @(
     @{ n = 'sega-chips-test';      a = @('--sega-chips-test') },
     @{ n = 'sega-contracts-test';  a = @('--sega-contracts-test') },
     @{ n = 'cpu-wall-test';        a = @('--cpu-wall-test') },
+    @{ n = 'swap-matrix-test';     a = @('--swap-matrix-test') },
     @{ n = 'sega-bridge-test';     a = @('--sega-bridge-test'); heavy = $true },
     @{ n = 'sega-stems-test';      a = @('--sega-stems-test'); heavy = $true },
     @{ n = 'picture-bridge-test';  a = @('--picture-bridge-test'); heavy = $true },
@@ -104,8 +105,16 @@ function Invoke-Step($step) {
 
 # the counts a verifier prints: "N passed, M failed" (the last such line), or "N/M"
 function Get-Counts([string]$text) {
-    $m = [regex]::Matches($text, '(\d[\d,]*)\s+passed,\s+(\d[\d,]*)\s+failed')
-    if ($m.Count) { $l = $m[$m.Count - 1]; return @{ Passed = [int64]($l.Groups[1].Value -replace ',', ''); Failed = [int64]($l.Groups[2].Value -replace ',', '') } }
+    # "N passed, M failed" (most), "smstest: N pass, M fail, K skip", "== N frames match, M changed, K entries skipped" (md-golden)
+    # z80test --vectors: "1604000/1604000 tests passed; 0 failed"; m68ktest: "TOTAL: N vectors: passed P, excluded E, failed F"
+    foreach ($pat in @('(\d[\d,]*)\s+passed,\s+(\d[\d,]*)\s+failed', '(\d[\d,]*)\s+pass,\s+(\d[\d,]*)\s+fail', '(\d[\d,]*)\s+frames match,\s+(\d[\d,]*)\s+changed', '(\d[\d,]*)/\d[\d,]*\s+tests passed;\s+(\d[\d,]*)\s+failed', 'vectors:\s+passed\s+(\d[\d,]*),\s+excluded\s+\d[\d,]*,\s+failed\s+(\d[\d,]*)')) {
+        $m = [regex]::Matches($text, $pat)
+        if ($m.Count) {
+            $l = $m[$m.Count - 1]
+            $skip = [regex]::Match($l.Value + $text.Substring($l.Index + $l.Length, [Math]::Min(60, $text.Length - $l.Index - $l.Length)), '(\d+)\s+(?:skip|entries skipped)')
+            return @{ Passed = [int64]($l.Groups[1].Value -replace ',', ''); Failed = [int64]($l.Groups[2].Value -replace ',', ''); Skipped = $(if ($skip.Success) { [int]$skip.Groups[1].Value } else { 0 }) }
+        }
+    }
     return $null
 }
 
@@ -126,6 +135,7 @@ foreach ($s in $steps) {
     $c = Get-Counts $r.Text
     $ok = $r.Code -eq 0 -and -not $r.TimedOut -and ($null -eq $c -or $c.Failed -eq 0)
     $note = if ($r.TimedOut) { 'TIMED OUT' } elseif ($r.Code -ne 0 -and $null -eq $c) { "exit $($r.Code), no result line (a stale exe falls through to the GUI)" } elseif ($r.Code -ne 0) { "exit $($r.Code)" } else { '' }
+    if ($c -and $c.Skipped -gt 0) { $note = ($note + " $($c.Skipped) check(s) skipped inside (missing input: see the step's report)").Trim() }
     [void]$rows.Add([pscustomobject]@{ Step = $s.n; Result = $(if ($ok) { 'PASS' } else { 'FAIL' }); Passed = $(if ($c) { $c.Passed } else { '' }); Failed = $(if ($c) { $c.Failed } else { '' }); Seconds = [math]::Round($r.Seconds); Note = $note })
     Write-Host ("`r{0,-22} {1,-5} {2,9} passed {3,3} failed {4,5:F0}s {5}" -f $s.n, $(if ($ok) { 'PASS' } else { 'FAIL' }), $(if ($c) { $c.Passed } else { '-' }), $(if ($c) { $c.Failed } else { '-' }), $r.Seconds, $note) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
 }

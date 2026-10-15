@@ -84,7 +84,7 @@ The gate matches on the **path**, not on which file registered the route - so `/
 
 ## Endpoint index
 
-148 routes across 19 registration files. Generated from the `app.MapX("...")` registrations in
+About 160 routes across 20 registration files (the tables below were generated for the first 148; the Console, Emulation volume and Input injection tables were added for BrokenNes 2). Generated from the `app.MapX("...")` registrations in
 `WebApiServer.Endpoints.*.cs`; each file's `Register*Endpoints(app)` is called from
 `WebApiServer.BuildApp`.
 
@@ -197,7 +197,30 @@ Memory domains (from `NesMemoryExtensions`): `System RAM` (2 KB), `CPU Bus` (64 
 
 | Verb | Route | Purpose |
 | --- | --- | --- |
-| GET | `/api/input/button-event` | Poll for the last webmodule X/Y button event (only if <100 ms old; reading clears it). There is **no** input-injection endpoint |
+| GET | `/api/input/button-event` | Poll for the last webmodule X/Y button event (only if <100 ms old; reading clears it) |
+| POST | `/api/input/set-buttons` | Hold buttons for a player (`{ player: 1 or 2, buttons: ["A","Right"], holdMs }`): names `A B Select Start Up Down Left Right X Y L R C Z Mode`, plus the aliases `sel`, `pause` (= Select, the Master System's Pause), `reset` (= Mode, the Master System's Reset), `u`, `d`, or an index 0-14. The NES reads the first eight; a console session reads all of them (the Genesis pad's C, Z and Mode are the last three) |
+| POST | `/api/input/clear` | Release everything for both players |
+| GET | `/api/input/state` | The held buttons (for a console session too, as injected) |
+
+### Console - `WebApiServer.Endpoints.Console.cs` (BrokenNes 2: the NES, SNES, Game Boy / Color, Master System, Game Gear and Genesis)
+
+The console keys are `nes`, `snes`, `gb`, `gbc`, `sms`, `gg`, `md`. Core ids are the ones in the menus (`GET /api/console/cores`): a console's own cores first, then the other consoles' parts that can stand in; an entry with `"wall": true` is an instruction-set wall (the chip really runs the game's machine code, which is another processor's, so the game stops almost at once; the label says so).
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/console` | The running console, game, cores, frame size, fps; for a picture drawn by a bridge its name, loss counters and a one-line summary; for a Sega game `region` and `model`; `hasBattery`, `supportsState` (and `stateUnsupportedReason` when it has none); `note` after a core swap that had to restart the game, and why |
+| GET | `/api/console/cores` | The CPU / PPU / APU menus of the selected console (`id`, `label`, `family`, `wall`) |
+| POST | `/api/console/select/{console}` | Switch the base console (a game the new console can run restarts on it) |
+| POST | `/api/console/core/{slot}/{id}` | Pick a core (`cpu`, `ppu`, `apu`; an id from the menu, 400 otherwise). The game keeps running when the session can swap the core in place; otherwise it restarts on it and `status.note` says why |
+| GET / POST | `/api/console/gb-look` | The Game Boy look (`look`: green, grey, pocket, color; `invertBackground`, `invertSprites`) |
+| GET / POST | `/api/console/sega` | The Sega machine settings: `region` (`auto`, `ntsc`, `pal`), `genesisModel` (`auto`, `1`, `2`, `3`), `masterSystemModel` (`auto`, `markiii`, `sms1`, `sms2`), the choices with their labels, and what the running game is. A change restarts a running game of a console it concerns |
+| GET | `/api/console/framebuffer` | The picture at its real size (RGBA), whichever console runs |
+
+### Emulation volume - `WebApiServer.Endpoints.Audio.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET / POST | `/api/audio/emulation-volume` | The menu bar's volume panel: `volume` 0-100, `muted`, `removeHighPitched`, `highPitchCeilingNote`, the Genesis FM patch (`genesisFmPatch` 0-15, used by the NES APU core MD) and the Master System FM instrument (`smsFmPatch` 0-21, used by the core SMSFM). Any field may be left out |
 
 ### Audio - `WebApiServer.Endpoints.Audio.cs`
 
