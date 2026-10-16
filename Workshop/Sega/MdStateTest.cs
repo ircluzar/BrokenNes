@@ -502,6 +502,43 @@ internal static class MdStateTest
             Check($"{tag}: the picture chip was drawn by a NES chip for {bridgedFrames} frames and the sound units made sound in turn", bridgedFrames == 80 && audioPeak.Count >= 3 && audioPeak.Values.All(p => p > 100), string.Join(", ", audioPeak.Select(kv => kv.Key + " peak " + kv.Value)));
             Check($"{tag}: the session's description follows the swaps", x.Description.Contains("MD") && Md(x).Description.Contains("APU MD"), Md(x).Description);
         }
+        // a state saved after a live swap to a NES chip names that unit, loads into a session built with it, and the two carry on sample for sample; a session with the stock unit refuses it
+        {
+            var g0 = candidates[0]; byte[] rom0 = g0.Load();
+            IConsoleSession Mk(string apu) => ConsoleSessions.Create(ConsoleKind.Genesis, rom0, "M68K", "MD", apu, null, g0.File);
+            foreach (string chip in new[] { "NES:FIX", "NES:FIXS" })
+            {
+                var live = Mk("MD");
+                Advance(live, 0, 300);
+                bool swapped = live.TrySwapCore(CoreSlot.Apu, chip);
+                Advance(live, 300, 340);
+                byte[] st = live.SaveState();
+                var fresh = Mk(chip);
+                Advance(fresh, 0, 1);
+                string why = "";
+                bool loaded; try { fresh.LoadState(st); loaded = true; } catch (Exception e) { loaded = false; why = e.Message; }
+                Check($"a state saved after a live swap to {chip} loads into a session built with {chip}", swapped && loaded, swapped ? why : "the swap was refused");
+                if (!loaded) continue;
+                // the stock unit inside is carried exactly (Z80, YM2612, PSG); the NES chip it drives is not state (its channel phases and the hub's ring start again from the voices), so the audio is alive but not sample-identical
+                var bufL = new short[16384]; int peakF = 0;
+                var picsL = new List<string>(); var picsF = new List<string>();
+                for (int f = 340; f < 400; f++)
+                {
+                    live.SetPad(0, MdSweepCli.PadAt("default", f)); fresh.SetPad(0, MdSweepCli.PadAt("default", f));
+                    live.RunFrame(); fresh.RunFrame();
+                    picsL.Add(PictureHash(live)); picsF.Add(PictureHash(fresh));
+                    while (live.ReadSamples(bufL) > 0) { }
+                    int n; while ((n = fresh.ReadSamples(bufL)) > 0) for (int i = 0; i < n; i++) peakF = Math.Max(peakF, Math.Abs((int)bufL[i]));
+                }
+                var ml = Md(live).Board; var mf = Md(fresh).Board; var ul = Core(ml); var uf = Core(mf);
+                Check($"... and the two carry on: the same pictures for 60 frames, the same 68000 and Z80 progress, the same YM2612 and PSG write counts, and the loaded session's sound is alive ({chip})",
+                    picsL.SequenceEqual(picsF) && ml.Cpu.Pc == mf.Cpu.Pc && ml.Cpu.Cycles == mf.Cpu.Cycles && ml.MasterClock == mf.MasterClock && ul.Cpu.PC == uf.Cpu.PC && ul.Z80Ticks == uf.Z80Ticks && ul.YmWrites == uf.YmWrites && ul.PsgWrites == uf.PsgWrites && peakF > 100,
+                    $"pictures {(picsL.SequenceEqual(picsF) ? "equal" : "differ")}, Z80 pc {ul.Cpu.PC:X4}/{uf.Cpu.PC:X4}, YM {ul.YmWrites}/{uf.YmWrites}, PSG {ul.PsgWrites}/{uf.PsgWrites}, peak {peakF}");
+                var stock = Mk("MD"); Advance(stock, 0, 1);
+                string refusal = ""; bool refused; try { stock.LoadState(st); refused = false; } catch (Exception e) { refused = true; refusal = e.Message; }
+                Check($"... a session with the stock unit refuses it and says why ({chip})", refused && refusal.Length > 10, refused ? refusal : "it was loaded");
+            }
+        }
         // the slots that cannot swap say so, and nothing changes
         var gm = candidates[0];
         var s = ConsoleSessions.Create(ConsoleKind.Genesis, gm.Load(), "M68K", "MD", "MD", null, gm.File);
