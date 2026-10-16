@@ -20,6 +20,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             WriteD(Word, dn, (uint)(result - 1));
             if (result != 0)
             {
+                if ((BranchIplMask & 1) != 0) IplFromStart = true;
                 Prefetch();
                 return;
             }
@@ -234,6 +235,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private void Jmp(int op)
     {
+        if ((BranchIplMask & 2) != 0) IplFromStart = true;
         var from = EaField(op);
         Pc = PrefetchedAddress(ref from);
         Prefetch();
@@ -242,6 +244,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private void Jsr(int op)
     {
+        if ((BranchIplMask & 2) != 0) IplFromStart = true;
         var from = EaField(op);
         uint target = PrefetchedAddress(ref from);
         uint pc = Pc;
@@ -364,6 +367,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         uint list = Extension(Word);
         uint addr = FetchEa(Long, ref to);
         bool pre = to.Mode == mPre;
+        IplFrozen = MovemFreezesIpl;       // the oracle takes an interrupt that arrives during the register writes one instruction later (inthist.py): the lines are not sampled from here to the end of the instruction
 
         for (int n = 0; n < 16; n++)
         {
@@ -388,6 +392,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         uint list = Extension(Word);
         uint addr = FetchEa(Long, ref from);
         bool pcRelative = from.Mode == mPcDisp || from.Mode == mPcIdx;
+        IplFrozen = MovemFreezesIpl;       // as MOVEM to memory: the oracle's histograms (run_rethist.py movem_in) show the same, the lines are sampled where the instruction starts
 
         for (int n = 0; n < 16; n++)
         {
@@ -574,6 +579,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     private void Rte()
     {
         if (!RequireSupervisor()) return;
+        if ((BranchIplMask & 4) != 0) IplFromStart = true;
         uint sr = Pop(Word);
         Pc = Pop(Long);
         WriteSr(sr);
@@ -583,6 +589,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private void Rtr()
     {
+        if ((BranchIplMask & 4) != 0) IplFromStart = true;
         WriteCcr(Pop(Word));
         Pc = Pop(Long);
         Prefetch();
@@ -591,6 +598,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private void Rts()
     {
+        if ((BranchIplMask & 4) != 0) IplFromStart = true;
         Pc = Pop(Long);
         Prefetch();
         Prefetch();

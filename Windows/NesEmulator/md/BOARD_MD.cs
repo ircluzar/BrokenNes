@@ -69,6 +69,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         get
         {
             if (Cpu.Stopped) iplSample = Vdp.IplAt(t);
+            else if (IplMode == 1) return iplForStep;
             return iplSample;
         }
     }
@@ -80,6 +81,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public Action<string>? WriteTrace;
     /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
     public Action<string>? ReadTrace;
+    /// <summary>Called for each 68000 write to work RAM with the offset into it (even), which bytes were written and the word (watching what changes a RAM location; the DMA and the Z80 do not come through here); null in normal runs.</summary>
+    public Action<int, bool, bool, ushort>? RamWriteHook;
     /// <summary>Called for each 68000 access to $200000-$3FFFFF with a text describing it (the I2C EEPROM and mapper regions; traces); null in normal runs.</summary>
     public Action<string>? CartTrace;
     public long BusReads, BusWrites, OpenBusReads;
@@ -127,7 +130,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// <summary>Power-on: the VDP, the sound unit and the pads at their reset state, the 68000 taking its stack pointer and start address from the cartridge's vectors.</summary>
     public void Reset()
     {
-        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; nextRefresh = RefreshPhaseClocks;
+        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; iplForStep = iplAtPrevStart = 0; nextRefresh = RefreshPhaseClocks;
         Array.Clear(Ram);
         Vdp.Reset();
         Sound.Reset();
@@ -147,7 +150,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (!Vdp.FrameCompleted && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
-            Cpu.Step();
+            StepCpu();
             Vdp.RunTo(t);
         }
         Sound.RunTo(t);
@@ -167,20 +170,59 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (Vdp.Frames * perFrame + Vdp.Line < target && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
-            Cpu.Step();
+            StepCpu();
             Vdp.RunTo(t);
         }
         Sound.RunTo(t);
+    }
+
+    /// <summary>
+    /// Replaces the sound unit mid-game (the APU menu): the old unit is brought to the 68000's clock, its state (the Z80 and its RAM, the bus handshake, the YM2612 registers and timers, the PSG) is loaded into the new
+    /// one, and the new one takes over from the same instant. Throws, leaving the old unit in place, when the new unit cannot take that state.
+    /// </summary>
+    public void SwapSound(IGenesisSound unit)
+    {
+        Sound.RunTo(t);
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Sound.SaveState(w);
+        ms.Position = 0;
+        unit.Attach(this);
+        using (var r = new BinaryReader(ms, System.Text.Encoding.UTF8)) unit.LoadState(r);
+        Sound = unit;
     }
 
     /// <summary>One 68000 instruction (or interrupt, or stopped slice), then the VDP and the sound unit are brought to the 68000's clock. Returns the 68000 clocks it counted.</summary>
     public int StepInstruction()
     {
         InstructionHook?.Invoke(Cpu.Pc - 4);
-        int c = Cpu.Step();
+        int c = StepCpu();
         Vdp.RunTo(t);
         return c;
     }
+
+    private int StepCpu()
+    {
+        if (M68k<MdBus>.BranchIplMask != 0) iplAtStart = Vdp.IplAt(t);
+        if (IplMode == 1)
+        {
+            iplForStep = iplAtPrevStart;
+            long at = t + IplLagClocks;                 // a little after the instruction starts (never past its first bus cycle's end: 28 clocks at most, the shortest instruction)
+            if (at > t) Vdp.RunTo(at);
+            iplAtPrevStart = Vdp.IplAt(at);
+        }
+        int cycles = Cpu.Step();
+        iplAtStart = 0;
+        return cycles;
+    }
+
+    /// <summary>
+    /// Experiment: 0 = the interrupt lines are sampled at the start of the last bus cycle of each instruction (as always); 1 = at the START of each instruction, minus <see cref="IplLeadClocks"/>, and used for the decision
+    /// before the instruction that follows it (the oracle takes an interrupt after the instruction that was running when the line went up, whatever its length).
+    /// </summary>
+    public static int IplMode = 0;
+    public static int IplLagClocks = 0;
+    private int iplForStep, iplAtPrevStart;
+    private int iplAtStart;                    // (BranchIplMask) the level at the start of the instruction that is running
 
     // =================================================================================================================
     //  The 68000's bus
@@ -190,13 +232,34 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     {
         // the interrupt lines are sampled where this bus cycle starts (the last access of an instruction is its prefetch)
         long start = t + (long)(cycles - 4) * ClocksPer68k;
-        Vdp.RunTo(start + (IplSampleAdjustClocks > 0 ? IplSampleAdjustClocks : 0));
-        iplSample = Vdp.IplAt(start + IplSampleAdjustClocks);
+        if (Cpu.IplFromStart) { Vdp.RunTo(start); iplSample = iplAtStart; }
+        else if (Cpu.IplFrozen) Vdp.RunTo(start);
+        else if (!IplAtLastPrefetch)
+        {
+            Vdp.RunTo(start + (IplSampleAdjustClocks > 0 ? IplSampleAdjustClocks : 0));
+            iplSample = Vdp.IplAt(start + IplSampleAdjustClocks);
+        }
+        else if (Cpu.InPrefetch)
+        {
+            long at = start - IplLeadClocks;
+            Vdp.RunTo(at);
+            iplSample = Vdp.IplAt(at);
+            Vdp.RunTo(start);
+        }
+        else Vdp.RunTo(start);
         t += (long)cycles * ClocksPer68k;
         AddRefresh(cycles);
         Vdp.RunTo(t);
         SyncSound();
     }
+
+    /// <summary>
+    /// Where the interrupt lines are sampled. False (as it always was): at the start of the last bus cycle of each instruction, whatever kind of cycle it is. True: at the start of the last <i>prefetch</i> cycle (the one that loads the next
+    /// opcode), <see cref="IplLeadClocks"/> master clocks earlier. The oracle (BlastEm) takes an interrupt one instruction later than the first rule after instructions that end in data writes (MOVEM to memory, and the like), and it samples
+    /// about 1.6 of the 68000's cycles earlier than the first rule does: <c>inthist.py</c> and the record say how this was measured. Experiment switches until the roster comparisons decide.
+    /// </summary>
+    public static bool IplAtLastPrefetch = false;
+    public static int IplLeadClocks = 0;
 
     private void AddRefresh(int cycles)
     {
@@ -272,6 +335,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         Vdp.RunTo(t);
         Vdp.AcknowledgeInterrupt(level);
         iplSample = 0;
+        iplAtPrevStart = 0;           // (IplMode 1) the level that was seen when this interrupt began is spent
         return 24 + level;
     }
 
@@ -341,6 +405,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             int a = (int)(address & 0xFFFE);
             if (upper) Ram[a] = (byte)(data >> 8);
             if (lower) Ram[a + 1] = (byte)data;
+            RamWriteHook?.Invoke(a, upper, lower, data);
             return;
         }
         if (address >= 0xC00000 && address < 0xE00000) { WriteVdp(address, upper, lower, data, now); return; }
@@ -469,15 +534,30 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public string Describe() =>
         $"BOARD_MD {Region} {Model} t={t} frames={Vdp.Frames} | 68000 pc={Cpu.Pc - 4:X6} sr={Cpu.ReadSr():X4} instr={Cpu.Instructions} addr-errors={Cpu.AddressErrorCount}{(Cpu.Halted ? " HALTED" : "")} | {Vdp.Describe()} | {Sound.Describe()} | {Pads.Describe()}";
 
+    /// <summary>
+    /// The whole board between two frames: its clock and the refresh and interrupt-sampling state, work RAM, the 68000, the VDP (with the picture), the sound unit (Z80, YM2612, PSG, the Z80's RAM and bus handshake), the
+    /// I/O chip and the cartridge (battery RAM, mapper banks, the EEPROM chip). The cartridge ROM, the region and the model are not (they are the game and the settings: a state is only loaded into the same ones, which
+    /// <see cref="MdSession"/> checks). The buttons held are not either: the app sends them every frame.
+    /// </summary>
     public void SaveState(BinaryWriter w)
     {
-        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(Ram);
+        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(iplForStep); w.Write(iplAtPrevStart); w.Write(lastOpenBus); w.Write(Ram);
+        w.Write(BusReads); w.Write(BusWrites); w.Write(OpenBusReads); w.Write(LastOpenBusAddress); w.Write(LastUnclaimedWrite); w.Write(UnclaimedWrites); w.Write(TmssWrites);
+        w.Write(TmssWords[0]); w.Write(TmssWords[1]);
+        for (int i = 0; i < 16; i++) { w.Write(recentIoAddr[i]); w.Write(recentIoVal[i]); }
+        w.Write(recentIoPos);
+        Cpu.SaveState(w); Pads.SaveState(w);
         Vdp.SaveState(w); Sound.SaveState(w); Cart.SaveState(w);
     }
 
     public void LoadState(BinaryReader r)
     {
-        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); r.Read(Ram, 0, Ram.Length);
+        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); iplForStep = r.ReadInt32(); iplAtPrevStart = r.ReadInt32(); lastOpenBus = r.ReadUInt16(); MdVdp.ReadAll(r, Ram);
+        BusReads = r.ReadInt64(); BusWrites = r.ReadInt64(); OpenBusReads = r.ReadInt64(); LastOpenBusAddress = r.ReadUInt32(); LastUnclaimedWrite = r.ReadUInt32(); UnclaimedWrites = r.ReadInt64(); TmssWrites = r.ReadInt64();
+        TmssWords[0] = r.ReadUInt16(); TmssWords[1] = r.ReadUInt16();
+        for (int i = 0; i < 16; i++) { recentIoAddr[i] = r.ReadUInt32(); recentIoVal[i] = r.ReadUInt16(); }
+        recentIoPos = r.ReadInt32();
+        Cpu.LoadState(r); Pads.LoadState(r);
         Vdp.LoadState(r); Sound.LoadState(r); Cart.LoadState(r);
     }
 }

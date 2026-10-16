@@ -42,6 +42,19 @@ internal static class MdOracleCli
         return script;
     }
 
+    /// <summary>--ram-at 100,200 --ram-dir d: at those steps write our work RAM (r00100.bin), the Z80's RAM (z00100.bin) and VRAM (v00100.bin), for comparing with the oracle's saved states (--md-ramcmp).</summary>
+    /// <summary>The scanline the replay stops at between two steps (where the pad changes): 232 as measured on BlastEm; <c>--line N</c> to calibrate.</summary>
+    private static int ReplayLine = 232;
+    private static HashSet<int> RamAt = new();
+    private static string? RamDir;
+
+    /// <summary>
+    /// The row of the oracle's screenshot that our row 0 sits on. <c>--dy N</c> fixes it; otherwise it follows the two picture heights: BlastEm centres the picture in its frame and its screenshot starts one row before
+    /// the centre, so a 224-line picture is at row 9 of a 240-row screenshot (NTSC), at row 17 of a 256-row one (PAL, 224 lines) and a 240-line PAL picture at row 9 of 256. (A wrong fixed value looked like a rendering
+    /// difference on PAL games: Gunstar Heroes, SoR3.)
+    /// </summary>
+    private static int DyFor(int dyArg, int oursH, int theirsH) => dyArg >= 0 ? dyArg : Math.Max(0, (theirsH - oursH) / 2 + 1);
+
     private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
     {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
@@ -65,22 +78,30 @@ internal static class MdOracleCli
         {
             if (script.TryGetValue(s, out var nb)) pad = nb;
             session.SetPad(0, pad);
-            session.RunToLine(232);
+            session.RunToLine(ReplayLine);
             int n = s + 1;
             if (lagRange > 0) { var copy = new uint[session.FrameWidth * session.FrameHeight]; Array.Copy(session.Frame, copy, copy.Length); history.Add((copy, session.FrameWidth, session.FrameHeight)); }
+            if (outDir != null && RamDir != null && RamAt.Contains(n))       // only the replay that is kept writes (the candidate searches pass no output folder)
+            {
+                var b = session.Board;
+                File.WriteAllBytes(Path.Combine(RamDir, $"r{n:D5}.bin"), b.Ram);
+                var z = b.Sound as MdSoundUnit ?? (b.Sound as MdSoundOnNes)?.Inner;
+                if (z != null) File.WriteAllBytes(Path.Combine(RamDir, $"z{n:D5}.bin"), z.Ram);
+                File.WriteAllBytes(Path.Combine(RamDir, $"v{n:D5}.bin"), b.Vdp.Vram);
+            }
             int idx = shots.IndexOf(n);
             if (idx < 0) continue;
             if (outDir != null) WritePng(session.Frame, session.FrameWidth, session.FrameHeight, Path.Combine(outDir, $"o{n:D5}.png"));
             if (idx >= theirs.Count) { log?.Invoke($"after {n,5} advances: picture hash {Hash(session.Frame, session.FrameWidth * session.FrameHeight):X16}"); continue; }
             var th = theirs[idx];
-            long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, dy, 0, long.MaxValue);
+            long bad = MdFindCli.Compare(session.Frame, session.FrameWidth, session.FrameHeight, th.px, th.w, th.h, 0, DyFor(dy, session.FrameHeight, th.h), 0, long.MaxValue);
             int bestN = n; long bestBad = bad;
             if (bad != 0 && lagRange > 0)
             {
                 bestBad = long.MaxValue; bestN = -1;
                 for (int k = Math.Max(0, history.Count - 1 - lagRange); k < history.Count; k++)
                 {
-                    long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, dy, 0, bestBad);
+                    long b2 = MdFindCli.Compare(history[k].px, history[k].w, history[k].h, th.px, th.w, th.h, 0, DyFor(dy, history[k].h, th.h), 0, bestBad);
                     if (b2 < bestBad) { bestBad = b2; bestN = k + 1; }
                 }
             }
@@ -111,11 +132,38 @@ internal static class MdOracleCli
             Console.WriteLine(string.Join(",", parts));
             return 0;
         }
+        // --ramcmp ours.bin theirs.state [--at 10941] [--len 10000] [--name work-ram]: compare a block of memory of ours (the --ram-dir files) with the same block inside a BlastEm quick-save state (hexadecimal offset: the
+        // 68000's work RAM is a plain big-endian byte stream at $10941), as ranges of differing bytes with their values on both sides
+        if (M68kTestCli.Arg(args, "--ramcmp") is { } oursPath)
+        {
+            string? theirsPath = args.SkipWhile(a => a != "--ramcmp").Skip(2).FirstOrDefault(a => !a.StartsWith("--"));
+            if (theirsPath == null) { Console.WriteLine("usage: --ramcmp ours.bin theirs.state [--at 10941] [--len 10000]"); return 2; }
+            int at = Convert.ToInt32(M68kTestCli.Arg(args, "--at") ?? "10941", 16), len = Convert.ToInt32(M68kTestCli.Arg(args, "--len") ?? "10000", 16);
+            byte[] ours = File.ReadAllBytes(oursPath), stBytes = File.ReadAllBytes(theirsPath);
+            if (at + len > stBytes.Length || len > ours.Length) { Console.WriteLine($"sizes: ours {ours.Length}, state {stBytes.Length}, wanted {len:X} at {at:X}"); return 2; }
+            long baseAddr = Convert.ToInt64(M68kTestCli.Arg(args, "--base") ?? "FF0000", 16);
+            var diffs = new List<(int a, int b, int n)>();
+            int start = -1, last = -1, count = 0;
+            for (int i = 0; i < len; i++)
+            {
+                if (ours[i] == stBytes[at + i]) continue;
+                if (start >= 0 && i - last <= 3) { last = i; count++; continue; }
+                if (start >= 0) diffs.Add((start, last, count));
+                start = i; last = i; count = 1;
+            }
+            if (start >= 0) diffs.Add((start, last, count));
+            int total = diffs.Sum(d => d.n);
+            Console.WriteLine($"{Path.GetFileName(oursPath)} against {Path.GetFileName(theirsPath)}: {total:N0} differing bytes in {diffs.Count:N0} ranges of {len:N0}");
+            foreach (var (a, b, n) in diffs.Take(60))
+                Console.WriteLine($"   ${baseAddr + a:X6}-${baseAddr + b:X6} ({n} bytes): ours {BitConverter.ToString(ours, a, Math.Min(12, b - a + 1))}  theirs {BitConverter.ToString(stBytes, at + a, Math.Min(12, b - a + 1))}");
+            return total == 0 ? 0 : 1;
+        }
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
         int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
-        if (line != 232) Console.WriteLine("(note: Replay stops at line 232; --line only affects the scan and --windows)");
-        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : 9;
+        ReplayLine = line;
+        if (line != 232) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm's own stop is about 232, see the record)");
+        int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : -1;
         string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
         if (outDir != null) Directory.CreateDirectory(outDir);
         RegionChoice? region = M68kTestCli.Arg(args, "--region")?.ToLowerInvariant() switch { "ntsc" => RegionChoice.Ntsc, "pal" => RegionChoice.Pal, _ => null };
@@ -125,6 +173,8 @@ internal static class MdOracleCli
         int lagRange = int.TryParse(M68kTestCli.Arg(args, "--lags"), out int lg) ? lg : 400;
         int jobs = int.TryParse(M68kTestCli.Arg(args, "--jobs"), out int jb) ? Math.Clamp(jb, 1, 6) : 4;
         byte[] data = File.ReadAllBytes(rom);
+        RamDir = M68kTestCli.Arg(args, "--ram-dir"); if (RamDir != null) Directory.CreateDirectory(RamDir);
+        RamAt = new HashSet<int>((M68kTestCli.Arg(args, "--ram-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
 
         // --windows N [--min 40]: with no input, the stretches of the first N boundaries whose pictures are all different from every other boundary's (including each other's): a pause inside one can be pinned to its
         // exact frame by --scan (a still or repeating picture cannot)
@@ -157,15 +207,46 @@ internal static class MdOracleCli
             int scanTo = int.TryParse(M68kTestCli.Arg(args, "--scan-to"), out int sto) ? sto : 900;
             var session0 = new MdSession(data, "M68K", "MD", "MD", region);
             long best = long.MaxValue; int bestF = -1; var exact = new List<int>();
+            // --scan-state pause.state: the oracle's state saved at the pause point (the same moment as the screenshot): among the boundaries whose picture matches, the one whose work RAM is closest to it is the start
+            byte[]? pauseRam = null;
+            if (M68kTestCli.Arg(args, "--scan-state") is { } pausePath && File.Exists(pausePath))
+            {
+                byte[] pauseState = File.ReadAllBytes(pausePath);
+                if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); }
+            }
+            var ramDiff = new Dictionary<int, int>();
+            var ramAll = new Dictionary<int, int>();
+            bool ramPick = false;
             for (int f = 0; f <= scanTo; f++)
             {
                 session0.SetPad(0, PadButtons.None);
                 session0.RunToLine(line);
-                long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, dy, 0, best == long.MaxValue ? best : Math.Max(best, 1));
+                long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, DyFor(dy, session0.FrameHeight, target.h), 0, best == long.MaxValue ? best : Math.Max(best, 1));
+                if (pauseRam != null)
+                {
+                    var ram = session0.Board.Ram; int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++;
+                    ramAll[f] = n;
+                    if (bad == 0) ramDiff[f] = n;
+                }
                 if (bad == 0) exact.Add(f);
                 if (bad < best) { best = bad; bestF = f; }
             }
-            Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
+            if (pauseRam != null && ramDiff.Count == 0 && ramAll.Count > 0)
+            {
+                // no boundary shows the pause picture exactly (a fade, a raster effect that differs): the work RAM alone decides, and says so
+                var byRamAll = ramAll.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key).ToList();
+                Console.WriteLine($"scan: no boundary shows the pause picture exactly; work RAM against the oracle's state, nearest boundaries by differing bytes: {string.Join(", ", byRamAll.Take(6).Select(kv => $"{kv.Key} ({kv.Value:N0})"))}");
+                bestF = byRamAll[0].Key; ramPick = true; Console.WriteLine($"scan: the start is boundary {bestF} (the fewest RAM bytes differ; the picture does not match, so this is a guess to be judged by the shots that follow)");
+            }
+            if (pauseRam != null && ramDiff.Count > 0)
+            {
+                var byRam = ramDiff.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key).ToList();
+                Console.WriteLine($"scan: work RAM against the oracle's state at the pause point, picture-identical boundaries by differing bytes: {string.Join(", ", byRam.Take(6).Select(kv => $"{kv.Key} ({kv.Value:N0})"))}");
+                // a start whose RAM is clearly the closest (the next one has at least twice the differing bytes, or exactly zero differ) is taken without replaying
+                if (byRam.Count == 1 || byRam[0].Value == 0 || byRam[1].Value >= Math.Max(8, byRam[0].Value * 2)) { exact = new List<int> { byRam[0].Key }; bestF = byRam[0].Key; Console.WriteLine($"scan: the start is boundary {bestF} (RAM)"); }
+                else exact = byRam.Take(8).Select(kv => kv.Key).OrderBy(x => x).ToList();
+            }
+            if (!ramPick) Console.WriteLine($"scan: the screenshot matches the picture at boundary {bestF} best ({best:N0} differing pixels; boundary n = after n+1 runs to line {line}, no input)");
             if (exact.Count > 1)
             {
                 Console.WriteLine($"scan: AMBIGUOUS, {exact.Count} boundaries match exactly ({string.Join(",", exact.Take(12))}{(exact.Count > 12 ? ",..." : "")}): the picture is the same for several frames");
@@ -182,13 +263,23 @@ internal static class MdOracleCli
             // tell the candidates apart by replaying the script from each (first shot that differs ends a candidate): needs the later screenshots
             if (theirs.Count == 0 || shots.Count == 0 || steps == 0) { Console.WriteLine("ambiguous start and nothing to tell the candidates apart with: give --script, --shots and --theirs, or --pick"); return 3; }
             Console.WriteLine($"replaying the script from each of the {candidates.Count} candidates ({jobs} at a time) ...");
-            var scored = new (int f, int ok, long bad)[candidates.Count];
-            Parallel.For(0, candidates.Count, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
+            // in batches of --jobs, in boundary order; the search ends at the first batch with a candidate that matches every shot (77 equal candidates of a still title need not all be replayed: the first exact one is as good as any)
+            var scoredList = new List<(int f, int ok, long bad)>();
+            for (int off = 0; off < candidates.Count; off += jobs)
             {
-                var s = Boot(data, region, line, candidates[ci] + 1);
-                var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
-                scored[ci] = (candidates[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
-            });
+                var batch = candidates.Skip(off).Take(jobs).ToArray();
+                var part = new (int f, int ok, long bad)[batch.Length];
+                Parallel.For(0, batch.Length, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
+                {
+                    var s = Boot(data, region, line, batch[ci] + 1);
+                    var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
+                    part[ci] = (batch[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
+                });
+                scoredList.AddRange(part);
+                if (part.Any(x => x.bad == 0 && x.ok == shots.Count)) break;
+            }
+            var scored = scoredList.ToArray();
+            if (scored.Length < candidates.Count) Console.WriteLine($"   (stopped after {scored.Length} of the {candidates.Count} candidates: one matches every shot)");
             var order = scored.OrderByDescending(x => x.ok).ThenBy(x => x.bad).ToList();
             foreach (var x in order.Take(6)) Console.WriteLine($"   start {x.f,5}: {x.ok} of {shots.Count(sh => true)} shot(s) exact before the first difference, {x.bad:N0} differing pixels there");
             chosen = order[0].f;
@@ -199,6 +290,8 @@ internal static class MdOracleCli
         var session = Boot(data, region, line, chosen + 1);
         var results = Replay(session, script, steps, shots, theirs, dy, lagRange, false, outDir, Console.WriteLine);
         if (M68kTestCli.Arg(args, "--ram-out") is { } ramOut) { File.WriteAllBytes(ramOut, session.Board.Ram); Console.WriteLine($"wrote the work RAM to {ramOut}"); }
+        // --save-out file: our battery image (SRAM or EEPROM) as the session would save it, after the replay: for comparing with the oracle's save file (written when it exits)
+        if (M68kTestCli.Arg(args, "--save-out") is { } saveOut) { var img = session.ExportSave(); File.WriteAllBytes(saveOut, img); Console.WriteLine($"wrote the battery image ({img.Length} bytes, {img.Count(x => x != 0 && x != 0xFF)} bytes neither 00 nor FF) to {saveOut}"); }
         long totalBad = results.Sum(r => r.Bad);
         if (results.Count > 0) Console.WriteLine($"compared {results.Count} picture(s): {results.Count(r => r.Bad == 0)} exact, {totalBad:N0} differing pixels in all");
         return results.Count > 0 && totalBad != 0 ? 1 : 0;
@@ -206,7 +299,7 @@ internal static class MdOracleCli
 
     private static ulong Hash(uint[] px, int n) { ulong h = 14695981039346656037UL; for (int i = 0; i < n; i++) { h ^= px[i]; h *= 1099511628211UL; } return h; }
 
-    private static void WritePng(uint[] pixels, int width, int height, string path)
+    internal static void WritePng(uint[] pixels, int width, int height, string path)
     {
         using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         var data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);

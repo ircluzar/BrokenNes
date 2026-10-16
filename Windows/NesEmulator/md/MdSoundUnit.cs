@@ -47,6 +47,8 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
     private long grantTime;
     private int bank;                      // the 9-bit bank register
     private long lastMaster;               // everything has been run up to here (the Z80 may be a few T-states ahead of it after a bus grant)
+    /// <summary>The master clock the unit has been run up to (a unit that wraps this one and keeps a clock of its own takes it over after a state is loaded).</summary>
+    public long Clock => lastMaster;
     private long z80Master;                // the master clock of the Z80's current T-state
     private int stallTicks;                // Z80 T-states still to burn for a bank-window stall
     private bool interrupt;
@@ -241,10 +243,13 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
         {
             BusRequests++;
             if (inReset) { granted = true; grantTime = masterClock; return; }
-            // the Z80 finishes the instruction it is in, then lets go of the bus
+            // The Z80 lets go of the bus at the end of the machine cycle it is in (at most about six T-states: BUSREQ is sampled at the end of each cycle; an instruction has up to 23), not at the end of the instruction:
+            // a game that starts its sound driver with "request the bus, release RESET, test BUSACK once" (Bugs Bunny in Double Trouble: its loop branches into the middle of the test if the first answer is "not yet")
+            // relies on the grant being quick, and an instruction boundary can be more than the 300 master clocks the 68000 takes to get to the test. The core has no machine-cycle marker: it is stopped where it stands after
+            // GrantLatencyTicks, which is a place between two micro-steps of the instruction, as the hardware's grant is between two cycles of it.
             granted = false;
             int guard = 0;
-            while (!z80.AtInstructionBoundary && guard++ < 64)
+            while (!z80.AtInstructionBoundary && guard++ < GrantLatencyTicks)
             {
                 if (stallTicks > 0) stallTicks--; else z80.Tick();
                 z80Master += machine.Timeline.Z80.Divider;
@@ -259,6 +264,8 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
         }
     }
 
+    /// <summary>The most Z80 T-states the unit lets pass between a BUSREQ and the grant when the Z80 is in the middle of an instruction (the end of the machine cycle it is in).</summary>
+    public static int GrantLatencyTicks = 6;
     public bool IsBusGranted(long masterClock)
     {
         RunTo(masterClock);
@@ -480,6 +487,10 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
         ym.SaveState(w);
         psg.SaveState(w);
         z80.SaveState(w);
+        // the audio path: the FM chip's output as the band-limited mixers hold it (a restored unit's next samples are those of the one that saved, bit for bit), the last levels, the counters
+        fmLeft.SaveState(w); fmRight.SaveState(w);
+        w.Write(fmClock); w.Write(lastFmL); w.Write(lastFmR);
+        w.Write(BusRequests); w.Write(BankReads); w.Write(BankWrites); w.Write(PsgWrites); w.Write(YmWrites); w.Write(Z80Ticks);
     }
 
     public void LoadState(BinaryReader r)
@@ -490,11 +501,12 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
         ym.LoadState(r);
         psg.LoadState(r);
         z80.LoadState(r);
-        ResetLoops();
-        // the audio buffers are not part of the state: start the FM stream afresh from the chip's output level
-        fmLeft.Reset(); fmRight.Reset();
+        ResetLoops();       // (C4a) the loop detector starts again from the loaded Z80 state; SaveState settled any parked loop first
+        fmLeft.LoadState(r); fmRight.LoadState(r);
+        fmClock = r.ReadInt64(); lastFmL = r.ReadSingle(); lastFmR = r.ReadSingle();
+        BusRequests = r.ReadInt64(); BankReads = r.ReadInt64(); BankWrites = r.ReadInt64(); PsgWrites = r.ReadInt64(); YmWrites = r.ReadInt64(); Z80Ticks = r.ReadInt64();
+        // the plugin's stems (one stream per voice, beside the mix) start again from the mix's time
         RealignStems();
-        lastFmL = ym.LastLeft * FmGain * (1f / 32768f); lastFmR = ym.LastRight * FmGain * (1f / 32768f);
     }
 
     public string Describe() { Unpark(); return DescribeCore(); }

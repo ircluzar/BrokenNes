@@ -147,6 +147,7 @@ internal static class MdSweepCli
         string dev = md.Length >= 0x110 ? Ascii(0x100, 16) : "";
         if (dev.Contains("32X")) return ("32X", "header says SEGA 32X: the 32X add-on is not emulated (and not planned)");
         if (dev.Contains("PICO")) return ("Pico", "header says SEGA PICO: the Pico is not emulated (and not planned)");
+        if (SegaRomFormat.IsSvpCartridge(md)) return ("SVP", "serial MK-1229 (Virtua Racing): the cartridge has the SVP signal processor (SSP1601), which draws the 3D view and is not emulated; as a plain ROM the game shows its HUD and a broken view");
         if (dev.Contains("TERA68K") || dev.Contains("TERA286")) return ("Teradrive", "header names the Tera Drive: not emulated");
         return null;
     }
@@ -156,7 +157,30 @@ internal static class MdSweepCli
     private static int Rank(string cls) => cls switch { "ok" => 0, "silent" => 1, "frozen" => 2, "no-picture" => 3, _ => 4 };
 
     /// <summary>Runs a game with the chosen pad script; a game that looks frozen or blank under it gets the other scripts too (a Start press that paused it, a menu that wants A or C): the best outcome is kept and says which script reached it.</summary>
+    /// <summary>What the header says about the dump itself when it contradicts the file: the ROM end it declares is past the file's end (a truncated dump), or its checksum word is not the sum of the words from $200 to the declared end. Null when the dump agrees with its header.</summary>
+    internal static string? DumpNote(byte[] rom)
+    {
+        byte[] md = SegaRomFormat.NormalizeGenesis(rom);
+        if (md.Length < 0x200) return $"file is {md.Length} bytes, shorter than the header area";
+        long end = ((long)md[0x1A4] << 24 | (long)md[0x1A5] << 16 | (long)md[0x1A6] << 8 | md[0x1A7]) + 1;
+        int ck = md[0x18E] << 8 | md[0x18F];
+        long stop = Math.Min(end, md.Length);
+        int sum = 0;
+        for (long i = 0x200; i + 1 < stop; i += 2) sum = (sum + (md[i] << 8 | md[i + 1])) & 0xFFFF;
+        var notes = new List<string>();
+        if (end > md.Length && end < 0x1000000) notes.Add($"the header declares {end:N0} bytes, the file has {md.Length:N0} (a truncated dump)");
+        if (sum != ck && end <= md.Length + 1) notes.Add($"the header's checksum word is {ck:X4}, the sum of the words from $200 to its declared end is {sum:X4} (a damaged or modified dump)");
+        return notes.Count == 0 ? null : string.Join("; ", notes);
+    }
+
     private static Result RunOne(string label, byte[] data, string script, int frames, Worker w, short[] drain, string? thumbDir, string apu, RegionChoice? region, GenesisModelChoice? model, bool retry)
+    {
+        var r = RunOneCore(label, data, script, frames, w, drain, thumbDir, apu, region, model, retry);
+        if (r.Class is not ("ok" or "unsupported" or "rejected" or "silent") && DumpNote(data) is { } note) r.Detail += " | dump: " + note;
+        return r;
+    }
+
+    private static Result RunOneCore(string label, byte[] data, string script, int frames, Worker w, short[] drain, string? thumbDir, string apu, RegionChoice? region, GenesisModelChoice? model, bool retry)
     {
         var first = RunScript(label, data, script, frames, w, drain, thumbDir, apu, region, model);
         if (!retry || Rank(first.Class) < 2 || Rank(first.Class) > 3) return first;

@@ -15,6 +15,28 @@ internal static class VgmCompare
 {
     internal readonly record struct Note(int Channel, int Mask, int Fnum, int Block);
 
+    /// <summary>The key-ons with the time each one fell at (in 44.1 kHz samples), in order.</summary>
+    private static List<(Note note, long sample)> TimedNotes(VgmFile v)
+    {
+        var low = new int[6]; var high = new int[6];
+        var notes = new List<(Note, long)>();
+        foreach (var e in v.Events)
+        {
+            if (e.Kind == VgmKind.Psg) continue;
+            int part = e.Part(), reg = e.A, val = e.B;
+            if (reg is 0xA0 or 0xA1 or 0xA2) low[reg - 0xA0 + 3 * part] = val;
+            else if (reg is 0xA4 or 0xA5 or 0xA6) high[reg - 0xA4 + 3 * part] = val;
+            else if (part == 0 && reg == 0x28 && (val & 0xF0) != 0)
+            {
+                int c = val & 7;
+                if ((c & 3) == 3) continue;
+                int ch = (c & 3) + ((c & 4) != 0 ? 3 : 0);
+                notes.Add((new Note(ch, val >> 4, (high[ch] & 7) << 8 | low[ch], high[ch] >> 3 & 7), e.Sample));
+            }
+        }
+        return notes;
+    }
+
     private static List<Note> Notes(VgmFile v)
     {
         var low = new int[6]; var high = new int[6];
@@ -56,6 +78,21 @@ internal static class VgmCompare
         if (agree < shorter)
             Console.WriteLine($"   first difference at key-on {agree}: a {notesA[agree]} versus b {notesB[agree]}; after it, a: {string.Join(" ", notesA.Skip(agree + 1).Take(3))} | b: {string.Join(" ", notesB.Skip(agree + 1).Take(3))}");
 
+        // timing: with the first key-on of each log as time 0, how far apart do the following key-ons fall (in samples at 44.1 kHz)? Two machines that run the driver alike agree to a few samples all the way
+        // through; a driver that runs on another clock (a Z80 that is held longer, a timer that ticks differently) drifts.
+        var ta = TimedNotes(a); var tb = TimedNotes(b);
+        int common = Math.Min(Math.Min(ta.Count, tb.Count), Math.Max(agree, 0));
+        if (common > 8)
+        {
+            long maxDev = 0; int maxAt = 0; double sum = 0; long lastDev = 0;
+            for (int i = 1; i < common; i++)
+            {
+                long da1 = ta[i].sample - ta[0].sample, db1 = tb[i].sample - tb[0].sample, dev = da1 - db1;
+                sum += Math.Abs(dev); lastDev = dev;
+                if (Math.Abs(dev) > Math.Abs(maxDev)) { maxDev = dev; maxAt = i; }
+            }
+            Console.WriteLine($"   timing over the first {common:N0} agreeing key-ons (first key-on = time 0 in each): mean |difference| {sum / (common - 1):F1} samples, largest {maxDev} samples ({maxDev / 44.1:F2} ms) at key-on {maxAt}, at the last one {lastDev} samples ({lastDev / 44.1:F2} ms); a spans {(ta[common - 1].sample - ta[0].sample) / 44100.0:F1} s, b {(tb[common - 1].sample - tb[0].sample) / 44100.0:F1} s");
+        }
         var da = Dac(a); var db = Dac(b);
         if (da.Length >= 64 && db.Length >= 64)
         {

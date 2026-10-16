@@ -63,7 +63,7 @@ public sealed class MdCartridge
     }
 
     /// <summary>A short description for status lines.</summary>
-    public string Mapper => SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
+    public string Mapper => Microwire != null ? $"plain ROM + {Microwire.Data.Length} byte 93C46 (three-wire) EEPROM" : SramHeaderless ? $"plain ROM + {Sram.Length / 1024} KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)" : Eeprom != null ? $"plain ROM + {Eeprom.Data.Length} byte EEPROM ({Eeprom.Chip}, {EepromWiring} wiring)" : EepromUnsupported != null ? "plain ROM (" + EepromUnsupported + ")" : bankMapper ? "SSF2 banked (ROM above 4 MB)" : LockedOn ? $"Sonic & Knuckles lock-on image, locked-on game's {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : HasBattery ? $"plain ROM + {Sram.Length} byte SRAM ({(SramOdd && SramEven ? "both bytes" : SramOdd ? "odd bytes" : "even bytes")})" : "plain ROM";
 
     public MdCartridge(byte[] file)
     {
@@ -132,7 +132,13 @@ public sealed class MdCartridge
         // MdEepromTable (by serial, header checksum and size) knows the ones this emulator has been checked against. A header that declares an EEPROM nobody can place is reported, not mapped as SRAM.
         EepromDeclared = rom[0x1B0] == (byte)'R' && rom[0x1B1] == (byte)'A' && rom[0x1B2] == 0xE8 && rom[0x1B3] == 0x40;
         var found = MdEepromTable.Lookup(Serial, HeaderChecksum, rom.Length);
-        if (found != null)
+        if (found == null && MdEepromTable.LookupMicrowire(Serial))
+        {
+            Microwire = new MdMicrowire();
+            Sram = Microwire.Data;
+            HasSramHeader = false; SramMapped = false;
+        }
+        else if (found != null)
         {
             Eeprom = new MdEeprom(found.Value.chip);
             EepromWiring = found.Value.wiring;
@@ -155,6 +161,8 @@ public sealed class MdCartridge
 
     /// <summary>The cartridge's serial EEPROM, or null.</summary>
     public MdEeprom? Eeprom { get; }
+    /// <summary>The cartridge's three-wire (Microwire) EEPROM, or null (Mega Man: The Wily Wars).</summary>
+    public MdMicrowire? Microwire { get; }
     public MdEepromWiring EepromWiring { get; }
     /// <summary>The header declares an EEPROM (type word $E840).</summary>
     public bool EepromDeclared { get; }
@@ -168,7 +176,7 @@ public sealed class MdCartridge
         value = 0; mask = 0;
         switch (EepromWiring)
         {
-            case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1; return true;
+            case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 0xFF; return true;
             case MdEepromWiring.Acclaim when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1; return true;
             case MdEepromWiring.Codemasters when address == 0x380001: value = (byte)(Eeprom!.SdaLine ? 0x80 : 0); mask = 0x80; return true;
         }
@@ -247,6 +255,7 @@ public sealed class MdCartridge
         int a = RomAddress(address);
         byte b = a < Rom.Length ? Rom[a] : (byte)0xFF;
         if (Eeprom != null && address >= 0x200000 && EepromRead(address, out byte ev, out byte mask)) b = (byte)(b & ~mask | ev);
+        if (Microwire != null && address == 0x200001) b = (byte)(b & ~1 | (Microwire.DoLine ? 1 : 0));
         return b;
     }
 
@@ -255,6 +264,7 @@ public sealed class MdCartridge
     {
         if (InSramWindow(address)) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
         if (Eeprom != null && (address == 0x200000 || address == 0x380000)) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
+        if (Microwire != null && address == 0x200000) return (ushort)(ReadByte(address) << 8 | ReadByte(address | 1));
         int a = RomAddress(address);
         if (a + 1 < Rom.Length) return (ushort)(Rom[a] << 8 | Rom[a + 1]);
         return 0xFFFF;
@@ -264,6 +274,8 @@ public sealed class MdCartridge
     public void WriteByte(uint address, byte value)
     {
         if (Eeprom != null && address >= 0x200000 && EepromWrite(address, value)) return;
+        // the three-wire EEPROM: CS, SK and DI are bits 2, 1 and 0 of the byte at $200001; the even byte of the same word is nobody's (a game writes the pins as a word)
+        if (Microwire != null && (address & ~1u) == 0x200000) { if ((address & 1) != 0) Microwire.Drive((value & 4) != 0, (value & 2) != 0, (value & 1) != 0); return; }
         // a headerless cartridge's RAM comes into the map with its first write (to the odd byte, where the low data lines are)
         if (SramHeaderless && !SramMapped && (address & 1) != 0 && address >= 0x200000 && address <= 0x3FFFFF) SramMapped = true;
         int s = SramIndex(address);
@@ -293,14 +305,29 @@ public sealed class MdCartridge
         else { OtherMapperWrites++; LastOtherMapperWrite = address; }
     }
 
-    public void SaveState(BinaryWriter w) { w.Write(Sram.Length); w.Write(Sram); w.Write(SramMapped); w.Write(SramWriteProtected); foreach (int b in banks) w.Write(b); w.Write(Eeprom != null); Eeprom?.SaveState(w); }
+    /// <summary>The battery RAM or EEPROM, the SRAM mapping bits, the mapper's bank registers, the EEPROM chip's protocol state and the stray-write counters. The ROM is the game and is not part of a state.</summary>
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(Sram.Length); w.Write(Sram); w.Write(SramMapped); w.Write(SramWriteProtected);
+        foreach (int b in banks) w.Write(b);
+        w.Write(StrayWrites); w.Write(OtherMapperWrites); w.Write(LastStrayWrite); w.Write(LastOtherMapperWrite);
+        w.Write(Eeprom != null); Eeprom?.SaveState(w);
+        w.Write(Microwire != null); Microwire?.SaveState(w);
+    }
 
     public void LoadState(BinaryReader r)
     {
-        int n = r.ReadInt32(); var data = r.ReadBytes(n);
-        Array.Copy(data, Sram, Math.Min(data.Length, Sram.Length));
+        int n = r.ReadInt32();
+        if (n != Sram.Length) throw new InvalidDataException($"The state's cartridge memory is {n} bytes; this cartridge has {Sram.Length}.");
+        MdVdp.ReadAll(r, Sram);
         SramMapped = r.ReadBoolean(); SramWriteProtected = r.ReadBoolean();
         for (int i = 0; i < banks.Length; i++) banks[i] = r.ReadInt32();
-        if (r.ReadBoolean()) Eeprom?.LoadState(r);
+        StrayWrites = r.ReadInt64(); OtherMapperWrites = r.ReadInt64(); LastStrayWrite = r.ReadUInt32(); LastOtherMapperWrite = r.ReadUInt32();
+        bool hadEeprom = r.ReadBoolean();
+        if (hadEeprom != (Eeprom != null)) throw new InvalidDataException("The state's EEPROM does not match this cartridge.");
+        if (hadEeprom) Eeprom!.LoadState(r);
+        bool hadMicrowire = r.ReadBoolean();
+        if (hadMicrowire != (Microwire != null)) throw new InvalidDataException("The state's three-wire EEPROM does not match this cartridge.");
+        if (hadMicrowire) Microwire!.LoadState(r);
     }
 }

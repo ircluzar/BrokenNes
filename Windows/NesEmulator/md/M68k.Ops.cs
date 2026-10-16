@@ -472,6 +472,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         }
         else
         {
+            if ((BranchIplMask & 1) != 0) IplFromStart = true;
             Idle(2);
             uint offset = displacement != 0 ? (uint)(sbyte)displacement : (uint)(short)Prefetched() - 2;
             Pc -= 2;
@@ -484,6 +485,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     private void Bra(int op)
     {
         int displacement = op & 0xFF;
+        if ((BranchIplMask & 1) != 0) IplFromStart = true;
         Idle(2);
         uint offset = displacement != 0 ? (uint)(sbyte)displacement : (uint)(short)Prefetched() - 2;
         Pc -= 2;
@@ -495,6 +497,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     private void Bsr(int op)
     {
         int displacement = op & 0xFF;
+        if ((BranchIplMask & 1) != 0) IplFromStart = true;
         Idle(2);
         uint offset = displacement != 0 ? (uint)(sbyte)displacement : (uint)(short)Prefetched() - 2;
         Pc -= 2;

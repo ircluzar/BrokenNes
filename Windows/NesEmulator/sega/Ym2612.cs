@@ -930,7 +930,15 @@ public sealed partial class Ym2612 : IHubVoiceSource
         foreach (var o in ops)
         {
             w.Write(o.Phase); w.Write(o.EnvAtt); w.Write(o.EnvState); w.Write(o.SsgInverted); w.Write(o.KeyState); w.Write(o.KeyonLive);
+            // the cached register data (ymfm's opdata_cache): saved as it stands, because a register written since the last sample leaves it stale until the next one rebuilds it
+            w.Write(o.PhaseStep); w.Write(o.TotalLevel); w.Write(o.BlockFreq); w.Write(o.Multiple); w.Write(o.EgSustainLevel); w.Write(o.Detune);
+            for (int k = 0; k < o.Rate.Length; k++) w.Write(o.Rate[k]);
+            w.Write(o.SsgEnable); w.Write(o.AmEnable); w.Write(o.SsgMode); w.Write(o.PmSens);
         }
+        w.Write(modifiedChannels); w.Write(csmPulse); w.Write(lfoAmUsed); w.Write(DebugLfoPm); w.Write(DataWrites); w.Write(dacSwing);
+        foreach (int v in lfoHistAm) w.Write(v);
+        foreach (int v in lfoHistPm) w.Write(v);
+        foreach (int v in opout) w.Write(v);
         for (int i = 0; i < Channels; i++) { w.Write(feedback0[i]); w.Write(feedback1[i]); w.Write(feedbackIn[i]); }
         foreach (int v in hist1) w.Write(v);
         foreach (int v in hist2) w.Write(v);
@@ -947,7 +955,14 @@ public sealed partial class Ym2612 : IHubVoiceSource
         foreach (var o in ops)
         {
             o.Phase = r.ReadUInt32(); o.EnvAtt = r.ReadInt32(); o.EnvState = r.ReadInt32(); o.SsgInverted = r.ReadInt32(); o.KeyState = r.ReadInt32(); o.KeyonLive = r.ReadInt32();
+            o.PhaseStep = r.ReadUInt32(); o.TotalLevel = r.ReadUInt32(); o.BlockFreq = r.ReadUInt32(); o.Multiple = r.ReadUInt32(); o.EgSustainLevel = r.ReadUInt32(); o.Detune = r.ReadInt32();
+            for (int k = 0; k < o.Rate.Length; k++) o.Rate[k] = r.ReadInt32();
+            o.SsgEnable = r.ReadBoolean(); o.AmEnable = r.ReadBoolean(); o.SsgMode = r.ReadInt32(); o.PmSens = r.ReadInt32();
         }
+        modifiedChannels = r.ReadInt32(); csmPulse = r.ReadInt32(); lfoAmUsed = r.ReadInt32(); DebugLfoPm = r.ReadInt32(); DataWrites = r.ReadInt64(); dacSwing = r.ReadSingle();
+        for (int i = 0; i < lfoHistAm.Length; i++) lfoHistAm[i] = r.ReadInt32();
+        for (int i = 0; i < lfoHistPm.Length; i++) lfoHistPm[i] = r.ReadInt32();
+        for (int i = 0; i < opout.Length; i++) opout[i] = r.ReadInt32();
         for (int i = 0; i < Channels; i++) { feedback0[i] = r.ReadInt16(); feedback1[i] = r.ReadInt16(); feedbackIn[i] = r.ReadInt16(); }
         for (int i = 0; i < hist1.Length; i++) hist1[i] = r.ReadInt32();
         for (int i = 0; i < hist2.Length; i++) hist2[i] = r.ReadInt32();
@@ -957,7 +972,6 @@ public sealed partial class Ym2612 : IHubVoiceSource
         busyStart = r.ReadInt64(); busyEnd = r.ReadInt64(); lastStatusRead = r.ReadByte(); sampleCount = r.ReadInt64(); clockReached = r.ReadInt64(); now = r.ReadInt64();
         LastLeft = r.ReadInt32(); LastRight = r.ReadInt32(); MuteMask = r.ReadInt32();
         RecomputeNextEvent();
-        modifiedChannels = AllChannels;       // the caches are rebuilt on the next sample (ymfm's invalidate_caches)
     }
 
     public string Describe()

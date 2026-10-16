@@ -98,6 +98,7 @@ internal static class MdBoardTest
         VdpCountersAndInterrupts();
         VdpDma();
         Timing();
+        InterruptSamplePoints();
         Cartridge();
         MdSoundTest.Run(Check, Group);
         Console.WriteLine($"== {pass} passed, {fail} failed");
@@ -222,6 +223,25 @@ internal static class MdBoardTest
         bool granted = (R16(b, 0xA11100) & 0x100) == 0;
         Check("BUSREQ with the Z80 running is granted within a few Z80 instructions", granted);
         Check("the program ran: the Z80 stored $42 at $0100", R8(b, 0xA00100) == 0x42, $"{R8(b, 0xA00100):X2}");
+
+        // the grant comes at the end of the machine cycle the Z80 is in, not at the end of its instruction: a Z80 looping on EX (SP),HL (19 T-states) is asked for the bus at 60 different phases of the loop
+        // and the 68000 looks 20 of its cycles (140 master clocks, 9 T-states) later; a grant at the instruction boundary is up to 19 T-states (285 clocks) late and misses some of them. Games start their
+        // sound drivers with "request, release RESET, test BUSACK once" and branch into the middle of the test if the first answer is "not yet" (Bugs Bunny in Double Trouble).
+        var slow = Board();
+        W16(slow, 0xA11100, 0x0100);
+        byte[] longLoop = { 0x31, 0x00, 0x01, 0xE3, 0x18, 0xFD };     // LD SP,$0100 ; loop: EX (SP),HL ; JR loop
+        for (int i = 0; i < longLoop.Length; i++) W8(slow, (uint)(0xA00000 + i), longLoop[i]);
+        W16(slow, 0xA11200, 0x0100); W16(slow, 0xA11100, 0x0000);
+        int notYet = 0;
+        for (int phase = 0; phase < 60; phase++)
+        {
+            Idle(slow, 300 + phase * 3);
+            W16(slow, 0xA11100, 0x0100);
+            Idle(slow, 20);
+            if ((R16(slow, 0xA11100) & 0x100) != 0) notYet++;
+            W16(slow, 0xA11100, 0x0000);
+        }
+        Check("BUSREQ is granted within 20 68000 cycles wherever a Z80 in a 19-T-state instruction loop is asked (60 phases)", notYet == 0, $"{notYet} of 60 not granted yet");
 
         // the bank window: ROM at the 68000 address (bank << 15) | (z80 address & $7FFF)
         var c = Board();
@@ -766,6 +786,67 @@ internal static class MdBoardTest
         var unit = (MdSoundUnit)z.Sound;
         long expected = 262L * 3420 / 15;
         Check("the Z80 ticks once per 15 master clocks while it runs (one NTSC frame)", Math.Abs(unit.Z80Ticks - expected) < 200, $"{unit.Z80Ticks} vs {expected}");
+    }
+
+    // =====================================================================================================================
+    //  Where an interrupt is taken (Track B4b: histograms of the oracle, BlastEm 1.0.0)
+    // =====================================================================================================================
+
+    /// <summary>
+    /// A horizontal interrupt every line while the 68000 runs a loop of <paramref name="body"/> and a BRA.S back. The handler logs the address it was given to return to (the first instruction NOT executed). Returns the share
+    /// of the interrupts that return to the BRA (they were taken after the body) and how many were taken.
+    /// </summary>
+    private static (double afterBody, int count) InterruptAfterBody(ushort[] body, int bodyBytes)
+    {
+        var code = new System.Collections.Generic.List<ushort>
+        {
+            0x41F9, 0x00FF, 0x0000,                     // lea ($FF0000).l,a0     (the log)
+            0x4DF9, 0x00FF, 0x8000,                     // lea ($FF8000).l,a6     (a place for MOVEM to write)
+            0x33FC, 0x8014, 0x00C0, 0x0004,             // move.w #$8014,($C00004).l   R0: horizontal interrupt on
+            0x33FC, 0x8144, 0x00C0, 0x0004,             // R1: display on, no vertical interrupt
+            0x33FC, 0x8A00, 0x00C0, 0x0004,             // R10 = 0: every line
+            0x46FC, 0x2000,                             // move.w #$2000,sr
+        };
+        int loop = 0x200 + code.Count * 2;
+        code.AddRange(body);
+        int disp = -(bodyBytes + 2);
+        code.Add((ushort)(0x6000 | (disp & 0xFF)));      // bra.s loop
+        var rom = MakeRom("JUE", code.ToArray());
+        const int handler = 0x500;
+        rom[0x70] = 0; rom[0x71] = 0; rom[0x72] = (byte)(handler >> 8 & 0xFF); rom[0x73] = (byte)(handler & 0xFF);       // level 4 autovector
+        ushort[] h = { 0x20EF, 0x0002, 0x4E73 };         // move.l 2(sp),(a0)+ ; rte
+        for (int i = 0; i < h.Length; i++) { rom[handler + i * 2] = (byte)(h[i] >> 8); rom[handler + i * 2 + 1] = (byte)h[i]; }
+        var b = Board(rom);
+        for (int f = 0; f < 24; f++) b.RunFrame();
+        int n = (int)((b.Cpu.A[0] - 0xFF0000) / 4), afterBody = 0;
+        for (int i = 0; i < n; i++)
+        {
+            uint ret = (uint)(b.Ram[i * 4] << 24 | b.Ram[i * 4 + 1] << 16 | b.Ram[i * 4 + 2] << 8 | b.Ram[i * 4 + 3]);
+            ret &= 0xFFFFFF;
+            if (ret == loop + bodyBytes) afterBody++;
+        }
+        return (n == 0 ? 0 : afterBody / (double)n, n);
+    }
+
+    private static void InterruptSamplePoints()
+    {
+        Group("68000: where a horizontal interrupt that comes every line is taken in a small loop (the shares BlastEm 1.0.0 gives: tools run_rethist.py)");
+        int savedMask = M68k<MdBus>.BranchIplMask; bool savedMovem = M68k<MdBus>.MovemFreezesIpl;
+        try
+        {
+            // NOP + BRA.S: BlastEm takes 78.9 % of the interrupts after the NOP (the branch samples about where it starts, so the NOP's share is the 10 of the loop's 14 cycles that follow the branch's sample, plus about one more)
+            var (nop, nopCount) = InterruptAfterBody(new ushort[] { 0x4E71 }, 2);
+            Check("NOP + BRA.S loop: about three quarters of the interrupts are taken after the NOP (BlastEm 0.789)", nopCount > 4000 && nop is > 0.66 and < 0.84, $"{nop:F3} of {nopCount}");
+            // MOVEM.L d0-d7,(a6) + BRA.S: BlastEm takes 12.2 % after the MOVEM (the lines are sampled where it starts, not at the end of its 72 cycles of writes)
+            var (movem, movemCount) = InterruptAfterBody(new ushort[] { 0x48D6, 0x00FF }, 4);
+            Check("MOVEM to memory + BRA.S loop: about an eighth of the interrupts are taken after the MOVEM (BlastEm 0.122)", movemCount > 4000 && movem is > 0.08 and < 0.18, $"{movem:F3} of {movemCount}");
+            // the same loops with the old rules (the sample at the start of the last bus cycle, a taken branch included): the checks above must fail
+            M68k<MdBus>.BranchIplMask = 0; M68k<MdBus>.MovemFreezesIpl = false;
+            var (nopOld, _) = InterruptAfterBody(new ushort[] { 0x4E71 }, 2);
+            var (movemOld, _) = InterruptAfterBody(new ushort[] { 0x48D6, 0x00FF }, 4);
+            Check("... and the old sampling (last bus cycle of every instruction) misses both windows, so the checks can fail", !(nopOld is > 0.66 and < 0.84) && !(movemOld is > 0.08 and < 0.18), $"nop {nopOld:F3}, movem {movemOld:F3}");
+        }
+        finally { M68k<MdBus>.BranchIplMask = savedMask; M68k<MdBus>.MovemFreezesIpl = savedMovem; }
     }
 
     // =====================================================================================================================

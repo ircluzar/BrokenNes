@@ -74,6 +74,22 @@ internal static class MdRunCli
             cartTrace = new StreamWriter(cartTracePath, false, new UTF8Encoding(false));
             board.CartTrace = s => cartTrace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}");
         }
+        // --ram-watch FFE03E[,FF0000-FF00FF,...]: print each 68000 write to these work RAM addresses (or ranges) with the frame, line, the writing instruction's address and the value
+        if (M68kTestCli.Arg(args, "--ram-watch") is { } watchSpec)
+        {
+            var ranges = watchSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(s => { int d = s.IndexOf('-'); uint a = Convert.ToUInt32(d > 0 ? s[..d] : s, 16) & 0xFFFF, b = d > 0 ? Convert.ToUInt32(s[(d + 1)..], 16) & 0xFFFF : a; return (a, b); }).ToArray();
+            int printed = 0, limit = int.TryParse(M68kTestCli.Arg(args, "--watch-limit"), out int wl) ? wl : 200;
+            board.RamWriteHook = (off, upper, lower, data) =>
+            {
+                uint lo = (uint)off + (upper ? 0u : 1u), hi = (uint)off + (lower ? 1u : 0u);
+                foreach (var (a, b) in ranges)
+                    if (lo <= b && hi >= a)
+                    {
+                        if (printed++ < limit) Console.WriteLine($"   ram-watch f{board.Frames} l{board.Vdp.Line} pc {board.Cpu.Pc - 4:X6}: ${0xFF0000 + off:X6}{(upper && lower ? "" : upper ? " (high byte)" : " (low byte)")} = {(upper && lower ? data.ToString("X4") : upper ? (data >> 8).ToString("X2") : (data & 0xFF).ToString("X2"))}");
+                        break;
+                    }
+            };
+        }
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
@@ -189,6 +205,25 @@ internal static class MdRunCli
         string? saveIn = M68kTestCli.Arg(args, "--save-in"), saveOut = M68kTestCli.Arg(args, "--save-out");
         if (saveIn != null) { try { session.ImportSave(File.ReadAllBytes(saveIn)); Console.WriteLine($"   loaded {saveIn} into the battery memory"); } catch (Exception e) { Console.WriteLine($"   cannot load {saveIn}: {e.Message}"); return 2; } }
         var sw = Stopwatch.StartNew();
+        // --watchdog S: if no frame completes for S seconds (an emulator loop), print where the machine is, three times a second apart, and exit with code 3
+        if (double.TryParse(M68kTestCli.Arg(args, "--watchdog"), out double wdSeconds) && wdSeconds > 0)
+        {
+            var dog = new System.Threading.Thread(() =>
+            {
+                long lastFrames = -1; var since = Stopwatch.StartNew();
+                while (true)
+                {
+                    System.Threading.Thread.Sleep(200);
+                    long fr = board.Frames;
+                    if (fr != lastFrames) { lastFrames = fr; since.Restart(); continue; }
+                    if (since.Elapsed.TotalSeconds < wdSeconds) continue;
+                    Console.WriteLine($"   WATCHDOG: no frame completed for {wdSeconds} s (frame {fr}); the machine at three moments:");
+                    for (int k = 0; k < 3; k++) { Console.WriteLine("   " + board.Describe()); System.Threading.Thread.Sleep(300); }
+                    Console.Out.Flush(); Environment.Exit(3);
+                }
+            }) { IsBackground = true };
+            dog.Start();
+        }
         PadButtons pad = PadButtons.None;
         long halts = 0;
         long allocAt = 0; int allocFrom = frames / 2;
@@ -329,6 +364,12 @@ internal static class MdRunCli
                 case "vstep32": MdVdp.VCounterStepH32 = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
                 case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
+                case "iplprefetch": BOARD_MD.IplAtLastPrefetch = v[0] != 0; break;
+                case "movemipl": M68k<MdBus>.MovemFreezesIpl = v[0] != 0; break;
+                case "braipl": M68k<MdBus>.BranchIplMask = v[0]; break;
+                case "ipllead": BOARD_MD.IplLeadClocks = v[0]; break;
+                case "iplmode": BOARD_MD.IplMode = v[0]; break;
+                case "iplag": BOARD_MD.IplLagClocks = v[0]; break;
                 case "boot": BOARD_MD.BootOffsetClocks = v[0]; break;
                 case "refreshphase": BOARD_MD.RefreshPhaseClocks = v[0]; break;
                 case "refreshperiod": BOARD_MD.RefreshPeriodClocks = v[0]; break;

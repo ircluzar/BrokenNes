@@ -220,6 +220,17 @@ namespace NesEmulator.Sega
         public void LoadState(BinaryReader r)
         {
             inner.LoadState(r);
+            // the NES side has no state of its own: it starts from the clock the loaded unit stands at (not from 0, which would run the chip through all the time since power-on at the first RunTo and hand the reader
+            // that much extra sound after a live swap or a load) and from an empty output, then replays the voices
+            lastMaster = inner.Clock; nesAcc = 0; nesDue = 0; sinceSync = 0;
+            output.Reset();
+            // a chip's sample pipeline has a start-up of its own (a few samples, 0.2 ms for the Master System's): it is spent here, silently, so that the first frames after a swap or a load deliver as many samples as the
+            // ones after them (a session that is built fresh spends it before the first frame is read)
+            for (int i = 0, spent = 0; i < 2048 && spent < 64; i++)         // until the chip has made 64 samples (a few hundred micro-seconds of its time at most for the chips that run at the machine's rate)
+            {
+                back.Step(StepCycles);
+                int n; while ((n = output.ReadStereo(drain)) > 0) spent += n / 2;
+            }
             ForgetVoices();
             Replay();
         }

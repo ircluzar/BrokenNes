@@ -339,9 +339,9 @@ try {
         Start-Sleep -Milliseconds 400
 
         # save state through the app's own quick save / quick load (the API calls the same methods as F7 and F5): save the still picture, scroll away, load, and the still picture is back.
-        # The Genesis has no state yet and must say so instead of pretending.
+        # All three Sega consoles have states (the Genesis since Track B4b: the 68000, the VDP with its picture, the Z80, the YM2612 and the PSG, the cartridge).
         $stateDir = Join-Path $env:APPDATA 'BrokenNes\States'
-        if ($e.Real -and $e.Key -in 'sms', 'gg') {
+        if ($e.Real -and $e.Key -in 'sms', 'gg', 'md') {
             $slot = Join-Path $stateDir "$($e.Key)\$(Get-RomSha1 ([IO.File]::ReadAllBytes((Join-Path $roms $e.File)))).quick.bnstate"
             if (Test-Path -LiteralPath $slot) { Remove-Item -LiteralPath $slot -Force }
             Load-BrokenNesRom -ProcessId $id -Path (Join-Path $roms $e.File) | Out-Null
@@ -355,9 +355,6 @@ try {
             $back = Wait-Frame $id { param($x) $x.Hash -eq $still.Hash } 6
             Check "$($e.Key)_quick_load_restores_the_picture" ([bool]$ld.success -and $away -and $back.Hash -eq $still.Hash) "load success=$($ld.success); the picture had moved away: $away; it is the saved one again: $($back.Hash -eq $still.Hash)"
             if (Test-Path -LiteralPath $slot) { Remove-Item -LiteralPath $slot -Force }
-        } elseif ($e.Key -eq 'md') {
-            $sv = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/quick-save-state'
-            Check 'md_quick_save_is_refused_not_faked' (-not [bool]$sv.success) "success=$($sv.success) (the Genesis session has no save state yet)"
         }
     }
     # ---- core swaps, all three consoles, through the desktop's own swap (POST /api/console/core/{slot}/{id}, the call the PPU and APU menus make) ----

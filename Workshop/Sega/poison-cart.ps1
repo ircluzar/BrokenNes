@@ -5,14 +5,20 @@ param([string]$Artifacts = "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_sega_b3b_pois
 $ErrorActionPreference = 'Stop'
 $md = "Windows\NesEmulator\md"
 $cases = @(
-  @{ name = "a stopped 68000 never samples the interrupt level again"; file = "$md\BOARD_MD.cs"; old = "if (Cpu.Stopped) iplSample = Vdp.IplAt(t);"; new = "/* poisoned */" },
+  @{ name = "a stopped 68000 never samples the interrupt level again"; file = "$md\BOARD_MD.cs"; old = "if (Cpu.Stopped) iplSample = Vdp.IplAt(t);"; new = "if (Cpu.Stopped) { /* poisoned */ }" },
   @{ name = "the 24Cxx page write does not wrap inside its page"; file = "$md\MdEeprom.cs"; old = "a = a & ~(pageSize - 1) | a + 1 & pageSize - 1;"; new = "a = a + 1;" },
   @{ name = "a read device byte is not acknowledged"; file = "$md\MdEeprom.cs"; old = "if (rd) Acknowledge(St.Read);"; new = "if (rd) { chipSda = true; state = St.Idle; }" },
   @{ name = "Acclaim's SCL is read as SDA (wiring swapped)"; file = "$md\MdCartridge.cs"; old = "case MdEepromWiring.Acclaim when address == 0x200000: e.Drive(e.MasterSda, (value & 1) != 0); return true;"; new = "case MdEepromWiring.Acclaim when address == 0x200000: e.Drive((value & 1) != 0, e.MasterScl); return true;" },
   @{ name = "SRAM outside the ROM is not mapped at power-on"; file = "$md\MdCartridge.cs"; old = "SramMapped = !LockedOn && (start & ~1u) >= (uint)rom.Length;"; new = "SramMapped = !LockedOn && rom.Length <= 0x200000;" },
   @{ name = "SRAM addresses past the declared range are ROM instead of mirrors"; file = "$md\MdCartridge.cs"; old = "if (address < (start & ~1u)) return -1;"; new = "if (address < (start & ~1u) || HasSramHeader && address > (SramEnd | 1u)) return -1;" },
   @{ name = "a headerless cartridge's RAM is never mapped by a write"; file = "$md\MdCartridge.cs"; old = "if (SramHeaderless && !SramMapped && (address & 1) != 0 && address >= 0x200000 && address <= 0x3FFFFF) SramMapped = true;"; new = "/* poisoned */" },
-  @{ name = "Japan + Europe counts as overseas"; file = "$md\MdCartridge.cs"; old = "return u || e && !j;"; new = "return u || e;" }
+  @{ name = "Japan + Europe counts as overseas"; file = "$md\MdCartridge.cs"; old = "return u || e && !j;"; new = "return u || e;" },
+  @{ name = "the SVP cartridge (Virtua Racing) is taken for a plain Genesis game"; file = "Windows\NesEmulator\sega\SegaRomFormat.cs"; old = "|| IsSvpCartridge(md);"; new = ";" },
+  @{ name = "NBA Jam (Europe, REV 01) is wired as an Acclaim cartridge"; file = "$md\MdEepromTable.cs"; old = "MdEepromChip.C24C02, MdEepromWiring.Sega, `"NBA Jam (Europe, REV 01)`""; new = "MdEepromChip.C24C02, MdEepromWiring.Acclaim, `"NBA Jam (Europe, REV 01)`"" },
+  @{ name = "a Sega-wired EEPROM read leaves bits 1 to 7 to the ROM"; file = "$md\MdCartridge.cs"; old = "case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 0xFF;"; new = "case MdEepromWiring.Sega when address == 0x200001: value = (byte)(Eeprom!.SdaLine ? 1 : 0); mask = 1;" },
+  @{ name = "the 93C46 programs without a write enable"; file = "$md\MdMicrowire.cs"; old = "pendingProgram = writeEnabled;"; new = "pendingProgram = true;" },
+  @{ name = "the 93C46 stores its words little-endian"; file = "$md\MdMicrowire.cs"; old = "private int Word(int a) => Data[a * 2] << 8 | Data[a * 2 + 1];"; new = "private int Word(int a) => Data[a * 2 + 1] << 8 | Data[a * 2];" },
+  @{ name = "the 93C46 takes a seven-bit address"; file = "$md\MdMicrowire.cs"; old = "if (++addrBits == (op == 0 ? 4 : 6)) AddressDone();"; new = "if (++addrBits == (op == 0 ? 4 : 7)) AddressDone();" }
 )
 Set-Location (Split-Path (Split-Path (Split-Path $MyInvocation.MyCommand.Path)))
 function Build { $log = dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path $Artifacts 2>&1 | Out-String; if ($LASTEXITCODE -ne 0) { throw "build failed: " + (($log -split "`n" | Where-Object { $_ -match ' error ' } | Select-Object -First 3) -join " | ") } }
