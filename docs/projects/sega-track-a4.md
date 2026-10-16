@@ -142,6 +142,58 @@ The same totals as the result file A3 left for its third pass (562 / 665 and 438
 * **The other 57 non-ok games** that are neither tagged bad dumps nor noisy (37 Game Gear, 20 Master System) were run against the oracle (pictures at 6 checkpoints in two timing modes, PSG registers on all 2,400 frames): **49 are identical to the oracle**: it hangs, shows black or plays no sound at exactly the same places. That covers: all 12 MOD2PSG players (black by design), the Simple Text Demo (text, then a halt), the GG Hi-Res demo, Frogs, the Nibbles, Hicolor, Twisty, Tween, Windows and Chaos 89 demos (no PSG writes by design), Mortal Kombat (U) (180 PSG writes, all silence: the oracle is silent too), the Super Tetris (Korea) dumps and the GG2SMS hacks (Frogger x3, Pop Breaker V1.1: black in the oracle too; a hack with a Game Gear header is run as a Game Gear by this emulator and as a Master System by the oracle, the header rule of Phase 0), the Marksman Shooting and Gangster Town light-gun games (silent without a gun), Lucky Dime Caper, Promocao Especial, Monopoly (the pattern's input does not start the game), Micro Machines (the select screen: see the roster), Wonder Boy III and Turma da Monica (the two `audio-bug?` games: with the menu script both play sound, 1,019 and 1,018 of 1,500 frames audible; the sweep's pad never starts the game). The eight not identical: two BIOS images (the oracle runs them as cartridges, this emulator as BIOS images by their name), Excellent Dizzy Collection (Master System) at one checkpoint (frame 300; identical from 600), GG Nibbles V4 (at most 7 pixels with the oracle's lengths), Jang Pung II (4 pixels on one line at frame 900 with the oracle's lengths; A3's "unresolved" game: it is the Z80 lengths class, not a mapper), Mortal Kombat (J) (3 pixels at frame 900), Pop Breaker (GG2SMS V1.0) (console detection above: identical when forced to a Master System), Sonic Chaos (3 PSG frames).
 * **Sonic Chaos (U) "blank"**: the game's player select fades to a dark screen under the sweep's pad; the oracle does the same on all 2,399 frames compared.
 
+### All 125 non-ok games screened against Mesen (follow-up, 2026-10-16)
+
+The sweep was run again on the tree with `main` (`0f9ceb5`) merged, both libraries (Game Gear 750 s, Master System 570 s, 2 jobs): the class of every one of the 1,125 files and the hash of its final picture are the same as in the third pass (562 of 665 and 438 of 460 ok). Then **every one of the 125 games that is not ok** (103 Game Gear, 22 Master System: the 44 tagged bad dumps and the 27 untagged noisy games included, which the first screen had left out) was run against two Mesen 2.1.1 runs (`mesen-compare.ps1`, the sweep's pad, power-on line replayed, pictures at frames 300, 600, 900, 1200, 1800 and 2400, the PSG registers on all 2,400 frames, in the app's own timing and with the oracle's Z80 lengths and R): about 30 minutes with 2 jobs. Verdict rule: **matches** = every checkpoint where the oracle's two runs agree is pixel-identical (a checkpoint where they differ and neither equals this emulator is the oracle's chaos and does not count) and the PSG registers are equal on every frame, in the app's timing, or only with the oracle's Z80 lengths (said); **differs** = a difference was seen (cause given or "not found"); **cannot-run** = the oracle gives no stable reference. The full list, one line per game, is `Workshop/Sega/mesen/library-screen-verdicts.tsv`.
+
+**102 match, 22 differ, 1 cannot be judged.** Of the 102 that match, 89 match in the app's own timing, 10 only with the oracle's Z80 lengths (the oracle-timing class of the roster) and 3 once the oracle is told what they are (below). The sweep's class is therefore the game's own behaviour (it hangs, shows black, plays no sound or draws dithered art in Mesen too) for 102 of the 125.
+
+| Library | Sweep class | Games | Match | Differ | Cannot judge |
+|---|---|---|---|---|---|
+| Game Gear | no-picture | 33 (18 tagged bad dumps) | 30 (1 once the oracle is told the file is a Game Gear one) | 3 | 0 |
+| Game Gear | noisy | 24 (5 tagged bad dumps) | 19 (7 only with the oracle's Z80 lengths) | 5 | 0 |
+| Game Gear | silent | 19 (5 tagged bad dumps) | 15 (1 only with the oracle's Z80 lengths, 1 once the oracle is told the file is a Game Gear one) | 4 | 0 |
+| Game Gear | hung | 17 (6 tagged bad dumps) | 17 (1 once the oracle is told the file is a Game Gear one) | 0 | 0 |
+| Game Gear | blank | 7 (5 tagged bad dumps) | 1 | 5 | 1 |
+| Game Gear | static | 3 (2 tagged bad dumps) | 2 (1 only with the oracle's Z80 lengths) | 1 | 0 |
+| Master System | noisy | 8 (0 tagged bad dumps) | 6 (1 only with the oracle's Z80 lengths) | 2 | 0 |
+| Master System | silent | 5 (1 tagged bad dumps) | 4 | 1 | 0 |
+| Master System | static | 4 (1 tagged bad dumps) | 3 | 1 | 0 |
+| Master System | hung | 2 (1 tagged bad dumps) | 2 | 0 | 0 |
+| Master System | audio-bug? | 2 (0 tagged bad dumps) | 2 | 0 | 0 |
+| Master System | blank | 1 (0 tagged bad dumps) | 1 | 0 | 0 |
+| **Total** | | **125** | **102** | **22** | **1** |
+
+The 23 that are not a plain match:
+
+| | Game | Class | Verdict | What was found |
+|---|---|---|---|---|
+| GG | Madou Monogatari III - Kyukyoku Joo-sama (J) | noisy | differs | pictures equal at all 6 checkpoints; the PSG attenuation fade is one step out in 303 of 2,400 frames (203 with the oracle lengths), first at frame 1908: sub-frame timing of the sound routine; cause not found |
+| GG | Mortal Kombat (J) | silent | differs | 3 pixels at frame 900, equal at the other 5 checkpoints (the known case of A3/A4) |
+| GG | Power Strike II (U) | noisy | differs | pictures equal at every checkpoint where the oracle agrees with itself (it does not at 2 of 6); the PSG differs from frame 262 where the oracle runs diverge: oracle chaos |
+| GG | Sonic Chaos (U) [!] | blank | differs | pictures equal on all checkpoints; the PSG is one frame out in 13 frames (1 with the oracle lengths): the known 3-frame case of A3/A4, timing at the frame boundary |
+| GG | Tale Spin (U) [!] | noisy | differs | a real game: pictures identical for 1,116 frames, then the player sprite blinks (invulnerability after a hit) one frame out of phase with the oracle in 173 of 1,299 frames (first 1117; the 204 differing pixels are the sprite), the PSG differs from frame 1148; the same in all three timing modes, so not the Z80 lengths; cause not found |
+| GG | Ultimate Soccer (E) | noisy | differs | the oracle disagrees with itself at 2 of 6 checkpoints; the stable ones are equal; the PSG differs from frame 1543: oracle chaos (also in A3) |
+| SMS | American Pro Football (Europe) | noisy | differs | with the oracle Z80 lengths the pictures are equal at 6 of 6 (4 of 6 with the app timing); the PSG noise register differs in 19 frames of 2,400 (first at frame 100: the oracle has 4, this emulator 0): a write landing in the next frame, timing at the frame boundary |
+| SMS | Ultimate Soccer (Europe) (En,Fr,De,Es,It) | noisy | differs | the oracle disagrees with itself at 4 of 6 checkpoints; the stable ones are equal; oracle chaos (also in A3) |
+| GG | Batter Up (U) [b1] | silent, bad dump | differs | bad dump: ours draws coloured stripes, the oracle a black screen |
+| GG | Bishoujo Senshi Sailor Moon S (J) [b1] | blank, bad dump | differs | bad dump: pictures equal; the music engine is one frame out in 14 frames (attenuation of one voice, from frame 1084) |
+| GG | Bishoujo Senshi Sailor Moon S (J) [b2] | blank, bad dump | differs | bad dump: pictures equal; the music engine is one frame out in 14 to 25 frames (from frame 1071) |
+| GG | Galaga '91 (J) [b1] | no-picture, bad dump | differs | bad dump: a single-colour picture in both, ours black, the oracle pink |
+| GG | Iron Man X-O Manowar in Heavy Metal (U) [b1] | no-picture, bad dump | differs | bad dump: pictures equal at all 6 checkpoints; the first PSG difference is at frame 39 (noise attenuation: the oracle 1, this emulator 15) and the PSG is equal on 38 of 2,400 frames; cause not found |
+| GG | Mortal Kombat (U) [b2] | silent, bad dump | differs | bad dump (also named .sms; as .gg the oracle runs it as a Game Gear): both run garbage and draw different noise; 2 of 5 stable checkpoints equal |
+| GG | NBA Jam Tournament Edition (U) [b1] | silent, bad dump | differs | bad dump (named .sms; as .gg both are Game Gears): the pictures are black in both at some checkpoints and ~21,000 pixels apart at others; garbage code |
+| GG | R.B.I. Baseball '94 (U) [b1] | noisy, bad dump | differs | bad dump: 5 of 6 checkpoints equal, 9 pixels at frame 2400 (26 with the oracle lengths); PSG differs from frame 2303 |
+| GG | SMSC Gamegear Demo (PD) [b1] | no-picture, bad dump | differs | bad dump: ours white, the oracle black at 4 of 6 checkpoints |
+| GG | Shining Force II - The Sword of Hajya (U) [b1] | static, bad dump | differs | bad dump (named .sms; as .gg both are Game Gears): this emulator draws a garbage tile pattern, the oracle a black screen; 13,705 pixels at every checkpoint |
+| GG | Sonic Chaos (U) [b1] | blank, bad dump | differs | bad dump of the same: the same PSG frames as the good dump |
+| GG | WWF Raw (U) [b1] | blank, bad dump | differs | bad dump: a single-colour picture in both at frame 600, of different colours (ours black, the oracle beige); 23,040 of 23,040 pixels differ at 4 of 6 checkpoints |
+| SMS | [BIOS] Sega Master System (USA) (M404) (Proto) | silent, bad dump | differs | a BIOS image: this emulator runs it as a BIOS by its name, the oracle as a cartridge (the Phase 0 rule); 1,095 pixels from frame 600 |
+| SMS | [BIOS] Sega Master System (USA) (v1.3) [b] | static, bad dump | differs | a BIOS image (bad dump): as above; 7,860 pixels from frame 600 |
+| GG | Judge Dredd (U) [b1] | blank, bad dump | cannot-run | the oracle disagrees with itself at all 6 checkpoints (bad dump running garbage with random power-on state): no stable reference |
+
+Reading the list: **15 of the 23 are tagged bad dumps** (including the two BIOS images below): seven run garbage and draw a different single colour, tile pattern or noise in the two emulators from frame 600 or earlier (Galaga '91, WWF Raw, SMSC Gamegear Demo, Batter Up, Mortal Kombat [b2], NBA Jam, Shining Force II [b1]), four have equal pictures and differ only in the PSG (Sailor Moon S twice, Iron Man, Sonic Chaos [b1]), R.B.I. Baseball '94 [b1] differs by 9 pixels at the last checkpoint and Judge Dredd [b1] has no stable oracle reference. **Three** (Fatal Fury Special [b2], Mortal Kombat II [b1], Pop Breaker V1.0) are Game Gear cartridges named `.sms`: the app reads the header (Phase 0's rule: the header decides), the oracle the extension; they match once renamed. **Two are BIOS images** (the oracle runs them as cartridges). The **real, untagged games** that differ are Tale Spin, Madou Monogatari III, Sonic Chaos, American Pro Football (timing at the frame boundary or a blink one frame out of phase), Mortal Kombat (J) (3 pixels), and the three where the oracle is itself unstable (Power Strike II, both Ultimate Soccers). **Nothing was fixed**: none of the differences is a cheap and safe change. Tale Spin is the one new finding in a real game: identical for 1,116 frames, then the player sprite's invulnerability blink is one frame out of phase with the oracle's (the same in the app's timing, with the oracle's Z80 lengths and with R, so not the instruction lengths); its cause was not found in the time given. Madou Monogatari III's PSG fade is one step out in 303 frames, also not found.
+
 ## Sound at the event level (item 4)
 
 The oracle's port-write callbacks never fire (its SMS port space is not reachable from its Lua API), so the record is the **chips' registers at the end of every frame**: `capture.lua -Psg` writes `frame tone0 tone1 tone2 att0 att1 att2 attNoise noise stereo` and, with the FM chip on, the YM2413's 64 registers and the audio control; `--sms-run --sound-regs` / `--fm-regs-file` compares them with this emulator's frame by frame. Results (with the oracle's Z80 lengths; by default the streams are the same notes one frame apart in timing-sensitive games):
@@ -185,6 +237,7 @@ The oracle's port-write callbacks never fire (its SMS port space is not reachabl
 
 * The desktop app's own close and start were driven only for the synthetic battery program (`sega-preview-smoke.ps1`); the five games' saves went through the same session (`ExportSave` / `ImportSave`) headless.
 * Black Belt and Space Harrier beyond the oracle's own agreement; Bubble Bobble (GG)'s colour dots (half-known rule, item 4); the oracle's lost data port writes (item 5, rule not found).
+* Two real library games that differ from the oracle for a reason not found: Tale Spin (Game Gear; the player's invulnerability blink one frame out of phase from frame 1117, the same in all three timing modes) and Madou Monogatari III (the PSG fade one step out in 303 frames); the rest of the 125 non-ok games each have a verdict (see "All 125 non-ok games screened").
 * Lite and the plugin were not touched or run (C4a and C4b); the desktop's menu path for a swap was not driven (only the session's side).
 * The one `[BIOS]` pair and `Excellent Dizzy Collection` at one checkpoint were not explained further.
 * Nobody has listened to anything.

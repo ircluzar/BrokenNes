@@ -1,6 +1,8 @@
-# BrokenNes: Sega work in progress, hand-off build {{TAG}}
+# BrokenNes: Sega cores, hand-off build {{TAG}}
 
-Built {{DATE}} from commit `{{COMMIT}}`. This is a **work-in-progress build for you to test**: three new consoles (Master System, Game Gear, Genesis), the sound **and picture** bridges to the NES cores, save states for the Master System and Game Gear, and the FL Studio plugin with the new chips, ROM mode for every Sega console, per-voice stems and Instrument Runaway. Everything below was checked by scripts on a machine **with no sound card**: nobody has listened to any of this yet, so sound is where your ears matter most. `CERTIFIED.txt` lists what the scripts did and did not cover for this exact build.
+Built {{DATE}} from commit `{{COMMIT}}`. This build carries the three Sega consoles (Master System, Game Gear, Genesis) at the finish the Game Boy and SNES got: playable rosters checked against the reference emulators, saves and save states, every core swappable while a game runs, picture and sound bridges to the NES, SNES and Game Boy cores, and the FL Studio plugin with the Sega chips, ROM mode, stems and Instrument Runaway. `CERTIFIED.txt` lists what the scripts did and did not cover for this exact build.
+
+**What only you can do:** nobody has heard any of the sound (the build machine has no sound card) and FL Studio itself has not run the plugin. Section 5 is a 15-minute listening checklist; that is the last open item of the whole exercise.
 
 ## 1. Put the plugin into FL Studio (the way you will normally do it)
 
@@ -9,53 +11,61 @@ Built {{DATE}} from commit `{{COMMIT}}`. This is a **work-in-progress build for 
 3. Start FL Studio, rescan plugins if it does not appear on its own, and add **BrokenNes 2** as an instrument. Delete nothing: the installer replaces the old plugin file.
 4. To go back to the previous plugin, run the installer from the previous build you were using.
 
-New in the plugin: a **Master System PSG** chip, a **Master System FM (YM2413 + PSG)** chip (the Instrument control picks one of 22 instruments: the chip's 15, six designed here, the PSG square), a **Genesis (YM2612 + PSG)** chip (Instrument = one of 16 FM patches), and **ROM mode for Master System, Game Gear and Genesis games**. In ROM mode every sound unit hands out its voices as **stems** (PSG tone 1-3 and noise; Genesis FM 1-6 and the DAC; Master System FM 1-9 and the five rhythm voices) that add up to the game's mix. **Instrument Runaway** works for the Sega chips: freeze a game, and the PSG, YM2413 and YM2612 (plus the sounds found in the Genesis DAC's write stream) play polyphonically from FL notes, saved with the project. The standalone synth (`Run standalone synth.cmd`) also works for a quick sound check without FL.
+In the plugin: a **Master System PSG** chip, a **Master System FM (YM2413 + PSG)** chip (the Instrument control picks one of 22 instruments: the chip's 15, six designed here, the PSG square), a **Genesis (YM2612 + PSG)** chip (Instrument = one of 16 FM patches), and **ROM mode for Master System, Game Gear and Genesis games**. In ROM mode every sound unit hands out its voices as **stems** (PSG tone 1-3 and noise; Genesis FM 1-6 and the DAC; Master System FM 1-9 and the five rhythm voices) that add up to the game's mix. **Instrument Runaway** works for the Sega chips: freeze a game, and the PSG, YM2413 and YM2612 (plus the sounds found in the Genesis DAC's write stream) play polyphonically from FL notes, saved with the project. The standalone synth (`Run standalone synth.cmd`) is a quick sound check without FL.
 
 ## 2. What is in the app
 
-| Console | Status | Notes |
+| Console | State | Notes |
 |---|---|---|
 | NES, SNES, Game Boy, Game Boy Color | unchanged | Regression-checked; the old joke Z80 CPU core is gone (saves that listed it still load). |
-| **Master System** | ready | Compared with Mesen 2.1.1 on 118 games (97.2 percent of stable frames identical; 99.2 percent with the oracle's Z80 timing); the 460 dumps of your library all run (438 classified fine, the rest explained or compared); FluBBa's VDP test 55 of 55; battery saves; save states. Pause = the **Select** key (Space). |
-| **Game Gear** | ready | 160x144 window, stereo PSG, save states. |
-| **Genesis / Mega Drive** | **new, rough** | All 948 ROMs of your library were run headless (most reach a picture; 32X carts are refused). The first ten roster games match BlastEm's pictures at the checked frames; **Sonic the Hedgehog 1 played with the pad is picture-for-picture identical to BlastEm over 1,500 frames; no other game has been played through**. 3 and 6 button pads, battery saves and EEPROM games. No save states. |
+| **Master System** | finished | 20 of 20 roster games played through against Mesen 2.1.1; 97.2 percent of 96,465 stable frames identical over 118 games (99.2 percent with Mesen's own Z80 timing); the 460 dumps of your library run (438 classified fine, the rest examined); FluBBa's VDP test 55 of 55; three battery games' saves match Mesen byte for byte; save states; every core swappable in a running game. Pause = the **Select** key (Space). |
+| **Game Gear** | finished | 19 of 20 roster games played through against Mesen (the 20th is a demo); two battery games' saves match Mesen; 160x144 window, stereo PSG, save states. |
+| **Genesis / Mega Drive** | nearly finished | About 15 of 20 roster games playable against BlastEm 1.0.0 (nine picture-for-picture identical over 1,500 frames of play: Flicky, Altered Beast, Sonic 1, Golden Axe, Sonic 2, Kid Chameleon, Streets of Rage 2, Castlevania Bloodlines, Sonic and Knuckles with Sonic 3); of 948 ROMs in your library about 890 run clean (32X carts and SVP games are refused); 3 and 6 button pads; battery and EEPROM saves; **save states**; interlace mode 2; the sound unit swaps live. |
 | SG-1000 / SC-3000 | test programs only | No real game exists in your library; `.sg` `.sc` files load. |
 
 **Games:** use your library under `X:\EMULATION` (Sega Master System, Sega Game Gear, Sega Genesis). The Master System files are `.7z` archives: **unzip them first** (the app takes `.zip`, not `.7z`). `docs\projects\sega-rosters.md` (in the repo) lists the 60 games the work was measured on, easiest first.
 
-**Keys (default):** arrows; **X** = A / button 1, **Z** = B / button 2, **Enter** = Start, **Space** = Select (Master System: Pause; Genesis: Mode). Genesis six-button pad: **A** = X, **S** = Y, **W** = C, **Q** = Z (the L and R keys). A game pad works too; remap in the controller window as usual.
+**Keys (default):** arrows; **X** = A / button 1, **Z** = B / button 2, **Enter** = Start, **Space** = Select (Master System: Pause; Genesis: Mode). Genesis six-button pad: **A** = X, **S** = Y, **W** = C, **Q** = Z. A game pad works too; remap in the controller window as usual.
 
-**Saves** live in `%APPDATA%\BrokenNes\SmsSaves`, `GgSaves`, `MdSaves` (one `.sav` per game, named by hash). **Save states** (new): **F7** = quick save, **F5** = quick load, and Save State... / Load State... in the menu, for Master System and Game Gear (and Game Boy) games; the quick slot is one file per game in `%APPDATA%\BrokenNes\States`. A state belongs to the sound unit it was saved with: switching the APU core and loading an old state is refused with a message. The Genesis and the SNES say they have no states yet.
+**Saves** live in `%APPDATA%\BrokenNes\SmsSaves`, `GgSaves`, `MdSaves` (one file per game, named by hash). **Save states:** **F7** = quick save, **F5** = quick load, and Save State... / Load State... in the menu, for Master System, Game Gear, Genesis and Game Boy games; the quick slot is one file per game in `%APPDATA%\BrokenNes\States`. A state belongs to the sound unit it was saved with: loading it after switching the APU core is refused with a message. The SNES has no save states yet.
 
-## 3. Sound options to try (this is the new part)
+## 3. Swap anything while the game runs (the Console menus)
 
-- **Master System** APU menu: `SMS` (the PSG), **`SMS-FM`** (adds the YM2413 FM chip: only Japanese games use it, and you must reload the ROM after switching), and `NES:<chip>` (the Sega sound replayed on a NES sound chip: mono, no FM).
-- **Genesis** APU menu: the stock unit (real Z80 + YM2612 + PSG) and `NES:<chip>` (replayed on NES chips; FM timbre is lost, the DAC becomes noise hits).
-- **NES** APU menu: new entries **`SMS`** ("From the Master System": a NES game played on the PSG) and **`MD`** ("From the Genesis": a NES game played on real YM2612 FM voices; the patch is chosen in the volume panel, "Genesis FM patch", 16 timbres). Notes below the PSG's lowest note (about 109 Hz) are played octaves up (counted, not hidden).
-- **Picture bridges (new):** the PPU menu of a Master System, Game Gear or Genesis game now also lists **`NES:<chip>`** (the picture drawn by a NES picture chip, e.g. `NES:FIXS`; `NES:DMG` shows the 160 x 144 Game Boy window, and the 4-shade Game Boy chips lose colour on purpose). The game keeps running while you switch. The NES PPU menu has two new entries, **`SMS`** and **`MD`** ("From the Master System / Genesis": a NES game drawn by that VDP). A bridged picture costs speed (measured headless on a busy machine: Master System 52-69 frames a second, Genesis 28-40, so a Genesis game on a NES picture chip may run **below real time**).
-- Your ears: is the **FM versus PSG balance** right on a Genesis game? (It is a choice, not calibrated: PSG is quieter.) Do Genesis games sound too bright or harsh (no analog low-pass is modelled)? Does the DAC (speech, drums) sound right? Sonic 1 and Streets of Rage are good tests.
+The **CPU**, **PPU** and **APU** menus of a Master System, Game Gear or Genesis game list the console's own chip and every other family's chip as `NES:<chip>`. Pick one while the game runs: the game keeps going. If a swap cannot be done in place the app restarts the game and says why in the title bar. Some combinations are dead on purpose and are marked so in the menu with the reason (for example a Z80 or 68000 running a NES game).
 
-## 4. A suggested test round (roughly in order of value)
+**The Sega machine menu** (new, in the app's menus): video standard (NTSC or PAL), the Genesis board model 1, 2 or 3, the Master System board. Saved in the config and applied when the next game loads.
 
-1. **FL Studio plugin**: install, load, play notes on each chip (NES chips as before, then SMS, then Genesis with a few patches), save and reload a project, try several instances. Anything crackling, out of tune or too loud?
-2. **Genesis**: Sonic the Hedgehog 1/2/3 (3 has saves), Streets of Rage 1/2/3, Golden Axe, Ecco, Gunstar Heroes, Comix Zone, Phantasy Star IV (save). Play past the first level; note pictures glitches, wrong colours, sprite flicker, input trouble, freezes, and anything with wrong or missing music.
-3. **Master System / Game Gear**: Alex Kidd, Sonic 1/2, Out Run, Space Harrier, Phantasy Star (save), Golden Axe Warrior (save), Wonder Boy, Shinobi; Game Gear Sonic Chaos, Shinobi, Castle of Illusion, Micro Machines (PAL). Try `SMS-FM` on a Japanese FM game (Phantasy Star Japan, Fantasy Zone II, Shinobi Japan).
-4. **Bridges**: a NES game on the `SMS` and `MD` APU cores and PPU cores; a Genesis and a Master System game on `NES:FIXS` (sound and picture); look for flicker, wrong colours, missing sprites.
-5. **Save states**: F7 then F5 on a Master System / Game Gear game after some play; switch away and back to the game.
-6. **Plugin extras**: the Master System FM chip, Genesis ROM mode, stems, Instrument Runaway on a Sega game.
-7. **Everything else** you normally use: NES, SNES, Game Boy games, TAS/ML tools, the standalone synth. Anything that behaves differently from before is a regression.
+## 4. Sound and picture options (this is the part to listen to)
 
-## 5. Known limits (so you do not report these as new)
+- **Master System** APU menu: `SMS` (the PSG), **`SMS-FM`** (adds the YM2413: only Japanese games use it; reload the ROM after switching), `NES:<chip>` (the Sega sound replayed on a NES sound chip) and **`NES-FM:<chip>`** (the YM2413 and PSG together on a NES chip, with a voice-stealing policy when there are more voices than channels: a loud newcomer takes the quietest pulse, the rest are dropped and counted).
+- **Genesis** APU menu: the stock unit (real Z80 + YM2612 + PSG) and `NES:<chip>` (FM timbre is lost, the DAC becomes noise hits). The sound chips of the SNES and Game Boy families are now converted to the console's sample rate (they used to play at the wrong speed).
+- **NES** APU menu: **`SMS`** ("From the Master System": a NES game on the PSG) and **`MD`** ("From the Genesis": a NES game on real YM2612 FM voices; the patch is chosen in the volume panel, 16 timbres). Notes below the PSG's lowest note (about 109 Hz) are played octaves up (counted, not hidden).
+- **Picture:** the PPU menu lists **`NES:<chip>`** (the picture drawn by a NES picture chip, e.g. `NES:FIXS`; `NES:DMG` shows the 160 x 144 Game Boy window; the 4-shade chips lose colour on purpose). The NES PPU menu has **`SMS`** and **`MD`** (a NES game drawn by that VDP). Cost: the Genesis drawn by a NES picture chip runs at about 2x real time on the desktop but **below real time in the browser build**.
 
-- **Genesis:** only Sonic 1 is verified playable against BlastEm; the other roster games are "working", not "playable". The **vertical interrupt arrives about 780 master clocks late** (found, measured, not fixed yet): games that time raster effects to it can misbehave. No interlace mode. Some later frames differ from BlastEm and nobody has traced why. Known visual residue: the H32 CRAM flicker scene is 7 pixels off on its last line, H40 phase, Chilly Willy's Direct Color DMA test, three scenes of Titan Overdrive 1. **Kid Chameleon's boot sound** differs from BlastEm's; **Fatal Rewind** halts after Start. Not implemented: 3-wire EEPROM games, the SVP (Virtua Racing), some pirate mappers; a real Super Street Fighter II dump was never run. Speed about 3.7x real time on one core.
-- **Master System / Game Gear:** a handful of games differ from Mesen in isolated frames (Fantastic Dizzy, Bubble Bobble and others; a VRAM access-timing question that the evidence says is not a hardware queue). Game Gear Castle of Illusion hangs at a blue screen (it does in Mesen too). Mesen's own Z80 timing differs from the Zilog manual in a few instructions; this emulator follows the manual. The Game Gear library sweep was not finished, and the menu-driven games' scripts are not compared with Mesen.
-- **Sound:** the FM chips and PSG were compared with oracles sample by sample, but the **YM2413's snare/cymbal/hi-hat noise sequence** is not the oracle's; YM2612 envelopes/SSG-EG/CSM are within stated bounds, not exact. Nothing was heard by anyone.
-- **Bridges:** a whole NES game on the `MD` core with the Brass patch measures about 3.6 dB louder than on the normal core; individual notes are within 1 dB.
-- **Lite (browser) build:** not part of this hand-off; its speed through the page is about 3.5x real time, and a Sega game drawn by a NES picture chip was never seen on screen in it.
-- **Not checked by anyone:** sound through a real playback device, FL Studio itself, the installer's administrator prompt, the plugin's real-mouse input test on a busy desktop.
+## 5. Listening and playing checklist (15 minutes, this closes the exercise)
 
-## 6. If something goes wrong
+Please note what is wrong, not what is right; a short description of a sound is enough.
 
-Note: which console and game, which APU core, what you did, and what you saw or heard (a screenshot helps; a short description of the sound is enough). The settings that matter are in `%APPDATA%\BrokenNes\config.json`; delete a console's `.sav` file to start a game fresh. If the app will not start after a test, delete `config.json` (it is rebuilt) and tell me what was selected.
+1. **Master System, 3 minutes:** Alex Kidd or Sonic 1 for the PSG (tone, noise, volume steps); then a Japanese FM game with `SMS-FM` (Phantasy Star Japan, Fantasy Zone II): does the FM music sound like an FM chip, and are the drums right?
+2. **Game Gear, 2 minutes:** Sonic Chaos or Shinobi: left/right panning of the PSG (the stereo port).
+3. **Genesis, 5 minutes:** Sonic 1 (green hill music, ring and jump effects), Streets of Rage 2 (drums and bass), Ecco. Is the **FM to PSG balance** right (PSG is a choice, quieter)? Is it too bright or harsh (no analog low-pass is modelled)? Do speech and drum samples (the DAC) sound right? Press F7 mid-song and F5 later: does the music resume cleanly?
+3b. **Swap while playing:** during a Genesis song switch APU `MD` to `NES:FIXS` and back: a brief change of voices is fine, a hang or a squeal is not.
+4. **FL Studio, 5 minutes:** play notes on the Master System PSG, Master System FM and Genesis chips (try several patches); load a Genesis ROM in ROM mode and solo two stems; freeze a game with Instrument Runaway and play it from the keyboard; save the project, reopen it.
+5. **Anything else you normally use** (NES, SNES, Game Boy, the standalone synth): anything that behaves differently from before is a regression.
 
-Come back with: what sounded wrong, what looked wrong, what froze, and which of the Known limits above bothers you most; the next milestone is picked from that.
+## 6. Known limits (so you do not report these as new)
+
+- **Genesis:** roughly five roster games are "working", not "playable": Strider (the 68000's VRAM write timing is fitted to BlastEm in the board code only partly), Comix Zone and Streets of Rage 3 (gameplay phase differences), Shinobi III (the game's random number is one iteration off: not an emulation rule), Streets of Rage (a stage fade two frames off). **Fatal Rewind** halts after Start. Not implemented: 3-wire EEPROM games, the SVP (Virtua Racing), some pirate mappers. One Titan Overdrive 1 frame (1007) is chaotic and differs from BlastEm; the H40 CRAM-flicker phase differs slightly (about 0.3 percent in the 68000's VDP write cost).
+- **Master System / Game Gear:** a handful of games differ from Mesen in isolated frames (Fantastic Dizzy, Bubble Bobble, Black Belt and others); Mesen's own Z80 instruction lengths differ from the Zilog manual in a few instructions and this emulator follows the manual (14 games match Mesen only with Mesen's lengths: that is a tool setting, not a bug). Game Gear Castle of Illusion hangs at a blue screen (it does in Mesen too). Mesen drops some fast VDP writes during the picture; this emulator keeps every byte.
+- **Sound:** the FM chips and PSG were compared with oracles sample by sample and by register logs, but the YM2413's snare/cymbal/hi-hat noise sequence is not the oracle's; YM2612 envelopes/SSG-EG/CSM are within stated bounds, not exact. The 6 designed YM2413 instruments and every patch are untested by ear.
+- **Lite (browser) build:** not bundled in this hand-off. Tested by script (111 browser checks on all three consoles); the stock Genesis runs at about 2 to 2.4 times real time there and the Genesis on a NES picture chip below real time.
+- **Not checked by any script:** sound through a real playback device, FL Studio itself, the installer's administrator prompt.
+
+## 7. If something goes wrong
+
+Note: which console and game, which CPU/PPU/APU core, what you did, and what you saw or heard (a screenshot helps). The settings that matter are in `%APPDATA%\BrokenNes\config.json`; delete a console's save file to start a game fresh. If the app will not start after a test, delete `config.json` (it is rebuilt) and tell me what was selected.
+
+Come back with: what sounded wrong, what looked wrong, what froze, and which known limit bothers you most. If nothing is wrong, say so: that closes the exercise.
+
+---
+For the repository: `pwsh UAT\certify.ps1 -Only cores,desktop,plugin-host,plugin-install,plugin-synth,suite,sega-gate,sega-preview,notices` (run with `-Command`, not `-File`) re-runs the automated certification; `pwsh UAT\sega-gate.ps1 -Build -Prove` runs every Sega verifier in one table.
