@@ -151,10 +151,13 @@ public sealed partial class Emulator
 
     /// <summary>Builds the game on a worker thread (it allocates a whole console) and hands it to the audio side. A bad file leaves
     /// the previous game running and says why in <see cref="RomStatus"/>. A console with no game chosen has nothing to run.</summary>
-    private void StartLoad()
+    private void StartLoad(RestoreRequest? request = null)
     {
         int gen = Interlocked.Increment(ref loadGeneration);
         ClearRunaway();                       // another game: whatever was frozen is gone
+        ClearStateNote();
+        Volatile.Write(ref stateRestore, 0);
+        carriedSection = null;
         int console = Console;
         string? path = romPaths[console];
         string name = RomDisplayName;
@@ -167,6 +170,12 @@ public sealed partial class Emulator
             loading = false;
             romStatus = $"No {Cx.RomNames[console]} game loaded: choose one in the Game list";
             return;
+        }
+        // a project's game: it starts frozen when the project was saved in Instrument Runaway (the game must never run before its state is in place), and a save made before the game is built writes the project's state back as it came
+        if (request?.Section is { } carried && carried.Console == console)
+        {
+            carriedSection = carried.Raw;
+            if (carried.Frozen) Volatile.Write(ref runaway, 1);
         }
         loading = true;
         romStatus = "loading " + name + " ...";
@@ -185,6 +194,7 @@ public sealed partial class Emulator
                     g = new SessionGame(rom, kind, chip, rate, Path.GetFileName(path!));
                 }
                 g.ChipIndex = chipIdx;
+                if (request != null && gen == Volatile.Read(ref loadGeneration)) ApplyRestore(g, request);
                 if (gen != Volatile.Read(ref loadGeneration)) { g.Dispose(); return; }
                 Interlocked.Exchange(ref pendingGame, g);
                 romStatus = "running " + name;
@@ -240,6 +250,7 @@ public sealed partial class Emulator
             {
                 game?.Dispose();
                 game = fresh;
+                carriedSection = null;                // the running game is the project's state now
                 Array.Clear(stems);
                 appliedChip = fresh.ChipIndex;
                 crashReported = false;
@@ -389,7 +400,7 @@ public sealed partial class Emulator
             var g = game;
             if (g == null || !g.StateSupported) return 0;
             ulong h = 1469598103934665603UL;
-            foreach (byte b in g.SaveGameState()) h = (h ^ b) * 1099511628211UL;
+            foreach (byte b in g is NesGame nes ? nes.SaveComparableState() : g.SaveGameState()) h = (h ^ b) * 1099511628211UL;
             return (long)(h | 1);
         }
     }

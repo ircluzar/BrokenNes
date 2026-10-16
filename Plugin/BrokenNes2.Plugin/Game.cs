@@ -134,6 +134,37 @@ internal sealed class NesGame : IGame
         m.Nes.SetApuLatch(latch, written);
     }
 
+    /// <summary>The state with the sound chip's audio-buffer bookkeeping zeroed (what is queued, the resampling phase, the output filters' memory): the NES core drops its queued audio on purpose when a state is loaded, so a machine that came back from a state and the machine
+    /// that never left have the same emulation state but different bookkeeping. Tests compare machines through this.</summary>
+    internal byte[] SaveComparableState()
+    {
+        var all = SaveGameState();
+        string json = System.Text.Encoding.UTF8.GetString(all, 8 + LatchLength, all.Length - 8 - LatchLength);
+        foreach (var name in new[] { "ringWrite", "ringRead", "ringCount", "samplePhase", "lpLast", "dcLastIn", "dcLastOut" }) json = ZeroField(json, name);
+        var body = System.Text.Encoding.UTF8.GetBytes(json);
+        return [.. all.AsSpan(0, 8 + LatchLength), .. body];
+    }
+
+    private static string ZeroField(string s, string name)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        int i = 0;
+        while (true)
+        {
+            int k = s.IndexOf(name, i, StringComparison.Ordinal);
+            if (k < 0) { sb.Append(s, i, s.Length - i); break; }
+            int p = k + name.Length;
+            while (p < s.Length && (s[p] == '\\' || s[p] == '"')) p++;           // the closing quote, escaped or not
+            if (p >= s.Length || s[p] != ':') { sb.Append(s, i, p - i); i = p; continue; }
+            p++;
+            int q = p;
+            while (q < s.Length && (char.IsDigit(s[q]) || s[q] is '-' or '+' or '.' or 'e' or 'E')) q++;
+            sb.Append(s, i, p - i).Append('0');
+            i = q;
+        }
+        return sb.ToString();
+    }
+
     public int WorkRamSize => 0x800;
     public int PeekWorkRam(int offset) => (uint)offset < 0x800u ? m.PeekRam((ushort)offset) : -1;
     public bool PokeWorkRam(int offset, byte value) { if ((uint)offset >= 0x800u) return false; m.PokeRam((ushort)offset, value); return true; }
@@ -421,7 +452,8 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public string GameId => s.GameId;
     public bool StateSupported => s.SupportsState;
-    public string StateUnsupportedReason => s.StateUnsupportedReason;
+    /// <summary>Said to the user when a project is saved or opened: short, and the same for every console that has no state (the session's own words are for its menus).</summary>
+    public string StateUnsupportedReason => s.SupportsState ? "" : $"{Cx.RomNames[Console]} games cannot keep their state in a project yet";
     public byte[] SaveGameState() => s.SaveState();
 
     public void LoadGameState(byte[] state, long framesRun)

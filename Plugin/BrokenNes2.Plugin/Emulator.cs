@@ -341,7 +341,7 @@ public sealed partial class Emulator : IDisposable
     }
 
     /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
-    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null)
+    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null)
     {
         lock (EmulatorHub.Gate)
         {
@@ -359,8 +359,14 @@ public sealed partial class Emulator : IDisposable
             if (Mode == 1)
             {
                 var path = romPaths[console];
-                if (path == null || File.Exists(path)) StartLoad();
-                else RomStatus = "the project's game was not found: " + path;
+                // the project's game state goes with the game: it is put back on the loading thread, before the game can run (a project saved in Instrument Runaway starts frozen)
+                var request = new RestoreRequest(restoredGame, gameProblem);
+                if (path == null || File.Exists(path)) StartLoad(request);
+                else
+                {
+                    RomStatus = "the project's game was not found: " + path;
+                    if (restoredGame != null || gameProblem != null) { Volatile.Write(ref stateRestore, 2); SetStateNote("The project's saved game state was not used, because its game file was not found"); }
+                }
                 if (restoredGb != null && console == Cx.GameBoy)
                 {
                     Volatile.Write(ref gbState, restoredGb);
@@ -392,8 +398,8 @@ public sealed partial class Emulator : IDisposable
     private int stateRestore;
 
     /// <summary>What the project could not do with the game's state, in words for the user (null: nothing to say): the SNES cannot keep a game's state yet, a state that does not belong to the game file now in place was not used, a state too big was not kept.
-    /// The editor shows it over the picture for as long as it is true.</summary>
-    public string? StateNote => Runaway && stateNoteRunaway != null ? stateNoteRunaway : stateNoteIdle;
+    /// The editor shows it over the picture for as long as it is true (while the game waits frozen at power-on, it says what switching Instrument Runaway off will do).</summary>
+    public string? StateNote => Runaway && stateNoteRunaway != null && FramesRun == 0 ? stateNoteRunaway : stateNoteIdle;
 
     /// <summary>How the last project restore went for the game's state: 0 none was in the project (or not tried yet), 1 put back, 2 refused or failed (<see cref="StateNote"/> says why).</summary>
     public int StateRestoreResult => Volatile.Read(ref stateRestore);

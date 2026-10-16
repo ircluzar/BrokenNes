@@ -59,7 +59,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private nint fontTitle, fontSection, fontLabel, fontSmall, fontBig, fontLead, fontLink;
     private nint memDc, memBmp, memOld, dimDc, dimBmp, dimOld;
     private long shownPicture = -1, lastSignature, paints;
-    private bool hasPicture, trackingLeave;
+    private bool hasPicture, trackingLeave, noteShown;
     private int picW = 256, picH = 240, shownW = 256, shownH = 240;
     private int hot, active, mouseX, mouseY;
 
@@ -488,6 +488,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Fill(dc, inner, Black);
             fixed (uint* bits = bgra)
                 Win32.StretchDIBits(dc, inner.Left + (512 - dw) / 2, inner.Top + (480 - dh) / 2, dw, dh, 0, 0, picW, picH, bits, &bmi, 0, Win32.SRCCOPY);
+            DrawStateNote(dc, inner, emu);
             return;
         }
 
@@ -503,6 +504,20 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Line_(dc, cx, cy, cx + dx * bl, cy, c);
             Line_(dc, cx, cy, cx, cy + dy * bl, c);
         }
+        DrawStateNote(dc, inner, emu);
+    }
+
+    /// <summary>What the project could not do with the game's state (a console that cannot keep it, a state that was not used, one that was too big), over the bottom of the screen for as long as it is true.</summary>
+    private void DrawStateNote(nint dc, RECT inner, Emulator? emu)
+    {
+        noteShown = false;
+        var note = emu?.StateNote;
+        if (note == null) return;
+        var box = R(inner.Left, inner.Bottom - 54, 512, 54);
+        Fill(dc, box, Win32.Rgb(46, 32, 12));
+        Line_(dc, box.Left, box.Top, box.Right, box.Top, Warn);
+        Txt(dc, note, R(box.Left + 12, box.Top + 4, 488, 46), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Text, fontSmall);
+        noteShown = true;
     }
 
     private void ToBgra()
@@ -928,7 +943,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
-            Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4);
+            Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4); Mix(e.StateNote?.GetHashCode() ?? 0);
             for (int c = 0; c < Ch.Total; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }
         }
         return h;
@@ -1307,6 +1322,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             case 38: return inputsOpen ? 1 : 0;
             case 39: return liveBits;
             case 37: return picW | (picH << 16);
+            case 90: return noteShown ? 1 : 0;           // the state note is drawn over the screen
         }
         return 0;
     }
