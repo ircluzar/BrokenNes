@@ -110,12 +110,15 @@ namespace BrokenNes
             if (session != null && sessionRom != null)
             {
                 string label = $"{slot.ToString().ToUpperInvariant()} {id}";
-                if (session.TrySwapCore(slot, id)) Status.Set($"{Consoles.DisplayName(console)}: {label} swapped in, the game runs on");
+                bool swapped; string why = "";
+                swapped = session.TrySwapCore(slot, id);
+                if (!swapped) why = session.SwapRefusal(slot, id);      // asked before the restart: it is the old session that knows
+                if (swapped) Status.Set($"{Consoles.DisplayName(console)}: {label} swapped in, the game runs on");
                 else
                 {
-                    // never silent: this session cannot swap that part under a running game, so the game starts again on it and the status says so
+                    // never silent: this session cannot swap that part under a running game, so the game starts again on it and the status says why
                     await StartSessionAsync(session.Console, sessionRom, sessionRomName);
-                    Status.Set($"{Consoles.DisplayName(console)} cannot swap {label} while a game runs: the game was restarted on it");
+                    Status.Set($"{Consoles.DisplayName(console)} cannot swap {label} while a game runs: the game was restarted on it ({why})");
                 }
             }
             StateHasChanged();
