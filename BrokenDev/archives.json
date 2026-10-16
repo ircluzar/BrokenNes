@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "_doc": "The archives BrokenDev restores into BROKENDEV_HOME. 'file' is relative to the archives folder (BROKENDEV_ARCHIVES, default: the parent of BROKENDEV_HOME, i.e. P:\\BrokenDev). 'stripTop' removes the archive's single top-level folder. 'include'/'exclude' are archive paths relative to that top folder (7-Zip wildcards); an empty include means everything. 'roots' name folders (relative to extractTo) that manifests refer to as {root:<name>}. 'sentinels' are files that must exist after a restore: a restore that lacks one is reported as failed. Nothing here is ever copied into git.",
+  "archives": {
+    "vrun_nes_dev": {
+      "title": "VRUN CTW (NES) + Nested VRUN (SNES) development package",
+      "file": "VRUN_Nes_Dev_2026-10-12.zip",
+      "extractTo": "vrun_nes_dev",
+      "stripTop": "VRUN_Nes_Dev",
+      "include": [],
+      "exclude": [],
+      "roots": {
+        "vrun": "sys0/simulations/VRUN",
+        "ctw": "sys0/simulations/mz/CTW",
+        "nested": "Nested_VRUN/Project-Nested",
+        "m30pipe": "Nested_VRUN/Project-Nested/tools/m30pipe",
+        "vrunpkg": "."
+      },
+      "sentinels": [
+        "START_HERE.md",
+        "sys0/simulations/VRUN/build.sh",
+        "sys0/simulations/VRUN/tools/nesfab/nesfab_legal.exe",
+        "sys0/simulations/VRUN/tools/mesen/Mesen.exe",
+        "Nested_VRUN/Project-Nested/tools/m30pipe/m30build.ps1",
+        "Nested_VRUN/Project-Nested/Project Nested/bin/Release/Project_Nested.exe"
+      ]
+    },
+    "supervrun_dev": {
+      "title": "Super VRUN (SNES) development package",
+      "file": "SuperVRUN_dev.zip",
+      "extractTo": "supervrun_dev",
+      "stripTop": "",
+      "include": [],
+      "exclude": [
+        "SuperVRUN\\snes-dev\\musiclab\\*",
+        "claude\\projects\\*"
+      ],
+      "excludeNote": "musiclab (1.3 GB of untracked music-benchmark renders) and the Claude transcripts (590 MB) are not needed to build; restore with -Full to get them.",
+      "roots": {
+        "svrunrepo": "SuperVRUN",
+        "supervrun": "SuperVRUN/snes-dev/supervrun",
+        "svrunpkg": "."
+      },
+      "sentinels": [
+        "dev_retrospective.md",
+        "SuperVRUN/snes-dev/supervrun/build.sh",
+        "SuperVRUN/snes-stub/toolchain/pvsneslib/devkitsnes/bin/816-tcc.exe",
+        "SuperVRUN/tools/Mesen2/Mesen.exe"
+      ]
+    },
+    "smb1_topaz": {
+      "title": "SMB1 NESFab remake (frame-accurate Super Mario Bros. remake), project of 2026-10-11",
+      "file": "SMB1 Topaz/SMB1_Remake_Project_20261011.zip",
+      "extractTo": "smb1_remake",
+      "stripTop": "SMB1_Remake_Project_20261011",
+      "include": [
+        "source\\*",
+        "roms\\*",
+        "memory\\*",
+        "dashboard\\*",
+        "pipeline\\handoff\\*",
+        "pipeline\\PROTOCOL.md",
+        "pipeline\\*_STATE.md",
+        "README.md",
+        "retrospective.md"
+      ],
+      "exclude": [],
+      "excludeNote": "pipeline/lagwork (4.2 GB), pipeline/castlework (0.7 GB), the stream repositories and the Claude conversation archives (0.7 GB) are working debris of the parity effort and are not needed to build; restore with -Full to get them.",
+      "roots": {
+        "smb1": "source/engine",
+        "smb1pkg": "."
+      },
+      "sentinels": [
+        "README.md",
+        "source/engine/build.sh",
+        "source/engine/tools/nesfab/nesfab.exe",
+        "source/engine/tools/mesen/Mesen.exe"
+      ]
+    }
+  }
+}

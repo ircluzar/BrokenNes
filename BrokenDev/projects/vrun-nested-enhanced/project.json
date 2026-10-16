@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "vrun-nested-enhanced",
+  "title": "Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font)",
+  "family": "vrun",
+  "kind": "nested",
+  "console": "snes",
+  "description": "The Nested VRUN ROM with the 'a notch above the NES' graphics pass (tools/snes_enhance.py, a post-build tool; the pinned core is untouched): a custom 16-colour text font, and hue-shifted bevel shading (warm highlights, cool shadows) on sprites and room art, using the 12 SNES palette entries per palette that a NES-recompiled game never touches. The shading planes are uploaded in the NMI; they follow the displayed CHR bank.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "Nested_VRUN/Project-Nested/tools/m30pipe/tools/snes_enhance.py (+ sys0/simulations/VRUN/src/game/anim_*.png)",
+    "docs": ["tools/m30pipe/tools/snes_enhance.py header", "claude/memory/nested/snes_qol_work.md (graphics enhancement, 2026-09-24)"]
+  },
+  "requires": {
+    "tools": ["gitbash", "python", "dotnet", "ps5", "workshop"],
+    "projects": ["vrun-nested"],
+    "inputs": [],
+    "toolchain": ["BrokenNes Workshop --brokendev dump-chr (replaces the Mesen CHR dump the tool's header describes)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "dump-chr",
+        "shell": "bash",
+        "cwd": "{root:vrun}",
+        "run": "mkdir -p \"$BD_WORK\" && \"$BD_WORKSHOP\" --brokendev dump-chr --rom \"$BD_ROOT_VRUN/build/vrun_game_nested.nes\" --frames 600 --out \"$BD_WORK/chr32k.bin\"",
+        "env": { "BROKENNES_DEV": "1" },
+        "timeoutSec": 300,
+        "note": "The game's CHR RAM (all four 8 KB banks) after 600 frames of the title, as the NES version uploads it. snes_enhance.py reads it to know the tile art (bank 0 = room art + font + sprites, bank 1 = the same art shifted one tile, bank 2 = title logo + font)."
+      },
+      {
+        "name": "enhance",
+        "shell": "bash",
+        "cwd": "{root:vrun}",
+        "run": "\"$BROKENDEV_PYTHON\" \"$BD_ROOT_M30PIPE/tools/snes_enhance.py\" \"$BD_HOME/out/vrun-nested/vrun_game_nested_SNES.smc\" \"$BD_WORK/vrun_game_SNES_enhanced.smc\" --chr \"$BD_WORK/chr32k.bin\" --full-bevel-from 64 --anim-png src/game/anim_*.png",
+        "timeoutSec": 600,
+        "note": "Command as recorded in the Nested notes (v2): --full-bevel-from 64 shades tiles 64 and up fully (objects and blocks), walls below it keep their dominant colour; animated tiles (found by matching src/game/anim_*.png) are skipped."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{work}/vrun_game_SNES_enhanced.smc", "publishAs": "vrun_game_SNES_enhanced.smc", "kind": "snes" },
+      { "id": "chr", "path": "{work}/chr32k.bin", "publishAs": "chr32k.bin", "kind": "data" }
+    ]
+  },
+  "run": { "console": "snes", "note": "Same game and controls as Nested VRUN; the picture has shaded sprites and blocks and a different font." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 1200,
+        "input": "",
+        "checkpoints": [120, 300, 600, 1200],
+        "expect": { "minDistinctColors": 8, "audio": { "fromFrame": 120, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
+      },
+      {
+        "id": "play",
+        "frames": 3000,
+        "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+        "checkpoints": [300, 600, 900, 1200, 2000, 3000],
+        "expect": { "minDistinctColors": 14, "pictureDiffers": [900, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 200 }, "minRealtime": 1.0 }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
+    ]
+  },
+  "knownIssues": [
+    "The enhancement is keyed to the game's tile layout (tile numbers in the CHR dump and src/game/anim_*.png): a change to VRUN's art needs a fresh dump and may need the tile ranges in the command revisited.",
+    "The pass uses WRAM $7E:10DA-10DF and ROM space in banks $81 and $C2 that the pinned core leaves free; a later core step that claims that space would collide (core/SPACE.md is the registry).",
+    "Same Nested limits as vrun-nested: no NES lag-frame emulation, no entry-point feedback in this recipe."
+  ]
+}

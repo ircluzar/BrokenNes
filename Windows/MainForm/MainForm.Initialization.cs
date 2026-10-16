@@ -438,6 +438,8 @@ namespace BrokenNes.Windows
             var consoleMenuItem = BuildConsoleMenu();
             menuStrip.Items.Clear();
             menuStrip.Items.AddRange(new ToolStripItem[] { emulatorMenu, consoleMenuItem, cpuMenu, ppuMenu, apuMenu, shaderMenu, configMenu, toolsMenu, webModulesMenu, legacyMenu, helpMenu, BuildVolumeMenu(menuStrip) });
+            // BrokenDev (developer-only): present only when switched on, so the menu bar of a normal install is unchanged.
+            if (BuildBrokenDevMenu() is { } brokenDevMenu) menuStrip.Items.Insert(menuStrip.Items.IndexOf(helpMenu), brokenDevMenu);
             
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);

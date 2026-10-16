@@ -107,6 +107,9 @@
          pulled from Windows/Rendering/ - none of the shader pipeline, procedural backgrounds,
          or DirectX machinery. -->
     <Compile Include="$(NesRoot)..\Rendering\DirectBitmap.cs" Link="Rendering\DirectBitmap.cs" />
+
+    <!-- BrokenDev (developer-only module): the one rule that decides whether it is switched on, shared with the desktop app. No UI dependencies. -->
+    <Compile Include="$(NesRoot)..\BrokenDev\BrokenDevGate.cs" Link="BrokenDev\BrokenDevGate.cs" />
   </ItemGroup>
 
   <!-- ==========================================================================

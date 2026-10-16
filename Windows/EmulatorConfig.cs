@@ -252,7 +252,12 @@ namespace BrokenNes.Windows
         /// <summary>Set once the BrokenNes 1 -> 2 settings migration has run (emulator-first boot).</summary>
         [JsonPropertyName("brokenNes2Migrated")]
         public bool BrokenNes2Migrated { get; set; } = true;
-        
+
+        /// <summary>BrokenDev, the developer-only devkit module (BrokenDev/ in the repository): off by default. The environment variable BROKENNES_DEV=1
+        /// switches it on as well; <c>BrokenNes.Dev.BrokenDevGate</c> is the one place that decides. When off, the app shows nothing of it.</summary>
+        [JsonPropertyName("brokenDevEnabled")]
+        public bool BrokenDevEnabled { get; set; } = false;
+
         /// <summary>
         /// Show the Webmodules menu in the menu bar
         /// </summary>
