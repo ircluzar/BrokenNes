@@ -95,9 +95,17 @@ public sealed partial class MdVdp
     {
         long off = Time - lineStart - PixelOrigin;
         if (off <= 0) return 0;
-        long p = off / linePxDiv;
+        long p = !FastDraw ? off / linePxDiv : linePxDiv == 8 ? off >> 3 : linePxDiv == 10 ? off / 10 : off / linePxDiv;      // linePxDiv is 8 (H40) or 10 (H32); off is positive: a shift or a division by a constant, not a 64-bit division by a variable
         return p > lineWidth ? lineWidth : (int)p;
     }
+
+    /// <summary>True: the line drawing uses its short forms (a whole eight-pixel tile row in one go, the plane's row address worked out once per run, the priority ladder without the sprite tests on a line with no sprites,
+    /// the clock-to-pixel division as a shift). False: the original loops, the reference twin (<c>--sega-bench --ab vdp-draw</c>; the pictures and the saved state are bit for bit the same either way).</summary>
+    public static bool FastDraw = true;
+
+    /// <summary>True (with <see cref="FastDraw"/>): a whole tile row and the priority ladder are worked out eight pixels at a time in 64-bit words (one byte lane a pixel). False: pixel by pixel, the reference twin
+    /// (<c>--sega-bench --ab vdp-swar</c>; the pictures and the saved state are bit for bit the same either way).</summary>
+    public static bool FastSwar = true;
 
     /// <summary>Draw what the hardware has put out up to now, so that a change made now only shows from here on.</summary>
     private void SyncRender()
@@ -210,6 +218,23 @@ public sealed partial class MdVdp
         if (x1 <= colourX) return;
         var dst = building; var idx = lineIdx; var p = pal;
         int o = rowBase;
+        if (FastDraw)
+        {
+            // the same table lookup over two spans (the range is checked once, not for every pixel)
+            var d = new Span<uint>(dst, o + colourX, x1 - colourX); var s = new ReadOnlySpan<byte>(idx, colourX, x1 - colourX);
+            int i = 0;
+            if (FastSwar)
+                for (; i + 8 <= s.Length; i += 8)
+                {
+                    // eight index bytes in one read, eight table lookups
+                    ulong w = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(s.Slice(i, 8));
+                    d[i] = p[(int)(w & 0xFF)]; d[i + 1] = p[(int)(w >> 8 & 0xFF)]; d[i + 2] = p[(int)(w >> 16 & 0xFF)]; d[i + 3] = p[(int)(w >> 24 & 0xFF)];
+                    d[i + 4] = p[(int)(w >> 32 & 0xFF)]; d[i + 5] = p[(int)(w >> 40 & 0xFF)]; d[i + 6] = p[(int)(w >> 48 & 0xFF)]; d[i + 7] = p[(int)(w >> 56)];
+                }
+            for (; i < s.Length; i++) d[i] = p[s[i]];
+            colourX = x1;
+            return;
+        }
         for (int x = colourX; x < x1; x++) dst[o + x] = p[idx[x]];
         colourX = x1;
     }
@@ -328,6 +353,23 @@ public sealed partial class MdVdp
         int vsFull = (VsFullLatch ? (isA ? vsLatchA : vsLatchB) : Vsram[vsOff]) & vsMask;
         int x = xa;
         int bugColumn0 = bugX0 >= 0 ? (bugX0 - hs & wMask) >> 4 : 0;
+        if (FastDraw && !colV && bugX0 < 0)
+        {
+            // the common case (one vertical scroll value for the whole line, no window bug): the row of the plane and its name table row are worked out once, then one tile row at a time
+            int fpy = imgRow + vsFull & hMask;
+            int ntRow = nt + (fpy >> cellShift) * rowStride * 2, frow = fpy & (1 << cellShift) - 1;
+            while (x < xb)
+            {
+                int px0 = x - hs & wMask;
+                int cell0 = px0 >> 3, fine0 = px0 & 7;
+                int len0 = Math.Min(8 - fine0, xb - x);
+                int ea0 = ntRow + cell0 * 2 & 0xFFFF;        // the entry's address is even: the two bytes never wrap apart
+                int e0 = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(new ReadOnlySpan<byte>(Vram, ea0, 2));
+                DrawTileRun(dst, x, len0, e0, frow, fine0);
+                x += len0;
+            }
+            return;
+        }
         while (x < xb)
         {
             int vs, limit = xb;
@@ -365,8 +407,58 @@ public sealed partial class MdVdp
     private void DrawTileRun(byte[] dst, int x, int len, int e, int row, int fine)
     {
         int a = ((e & 0x7FF) << cellShift + 2) + (((e & 0x1000) != 0 ? (1 << cellShift) - 1 - row : row) << 2);
-        uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
         int flags = e >> 8 & 0x80 | e >> 9 & 0x30;
+        if (FastDraw)
+        {
+            // a tile row is four bytes at an address that is a multiple of four (tiles are 32 or 64 bytes, rows 4): one big-endian word, and the 64 KB wrap cannot fall inside it
+            uint fb = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(new ReadOnlySpan<byte>(Vram, a & 0xFFFF, 4));
+            int hi = flags & 0x80;
+            if (len == 8)
+            {
+                // a whole tile row (fine is 0): eight pixels, no per-pixel shift counts, a transparent row in one fill
+                var d = new Span<byte>(dst, x, 8);
+                if (FastSwar)
+                {
+                    // the eight pixels as one 64-bit word: the nibbles spread to one per byte (lane k = nibble k from the low end, which is the flipped order; the normal order is the byte-reversed word),
+                    // then in every lane with a colour flags | colour, in the others the priority bit alone
+                    ulong t = fb;
+                    t = (t | t << 16) & 0x0000FFFF0000FFFFUL;
+                    t = (t | t << 8) & 0x00FF00FF00FF00FFUL;
+                    t = (t | t << 4) & 0x0F0F0F0F0F0F0F0FUL;
+                    ulong v = (e & 0x800) != 0 ? t : System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(t);
+                    ulong m = (((v + 0x7F7F7F7F7F7F7F7FUL) >> 7) & 0x0101010101010101UL) * 0xFF;       // 0xFF in every lane whose colour is not 0 (a colour is at most 15: the addition never carries into the next lane)
+                    ulong r = ((v | (ulong)flags * 0x0101010101010101UL) & m) | ((ulong)hi * 0x0101010101010101UL & ~m);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(d, r);
+                    return;
+                }
+                if (fb == 0) { d.Fill((byte)hi); return; }
+                int c;
+                if ((e & 0x800) == 0)
+                {
+                    c = (int)(fb >> 28); d[0] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 24) & 15; d[1] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 20) & 15; d[2] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 16) & 15; d[3] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 12) & 15; d[4] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 8) & 15; d[5] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 4) & 15; d[6] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)fb & 15; d[7] = c == 0 ? (byte)hi : (byte)(flags | c);
+                }
+                else
+                {
+                    c = (int)fb & 15; d[0] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 4) & 15; d[1] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 8) & 15; d[2] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 12) & 15; d[3] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 16) & 15; d[4] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 20) & 15; d[5] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 24) & 15; d[6] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 28); d[7] = c == 0 ? (byte)hi : (byte)(flags | c);
+                }
+                return;
+            }
+        }
+        uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
         if ((e & 0x800) != 0)
         {
             for (int k = 0; k < len; k++)
@@ -493,10 +585,63 @@ public sealed partial class MdVdp
     private void Compose(int x0, int x1, int bd)
     {
         var a = bufA; var b = bufB; var s = sprLine; var o = lineIdx;
-        if ((Reg[12] & 8) == 0)
+        int xs = x0;
+        if ((Reg[12] & 8) == 0 && FastDraw && FastSwar && x1 - x0 >= 8)
+        {
+            // eight pixels at a time, one byte lane each: the ladder is "first of sprite, A, B with the priority bit and a colour; then first of sprite, A, B with a colour; then the backdrop", as masks.
+            // Lane masks: Vis = colour (low four bits) not 0, Hi = priority bit set; a lane takes the first layer whose mask is set and that no earlier layer took.
+            const ulong L1 = 0x0101010101010101UL, L0F = 0x0F0F0F0F0F0F0F0FUL, L7F = 0x7F7F7F7F7F7F7F7FUL;
+            ulong bdw = (ulong)bd * L1;
+            bool spr = sprDirty;
+            for (; xs + 8 <= x1; xs += 8)
+            {
+                ulong av = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(a, xs, 8));
+                ulong bv = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(b, xs, 8));
+                ulong avis = ((((av & L0F) + L7F) >> 7) & L1) * 0xFF, bvis = ((((bv & L0F) + L7F) >> 7) & L1) * 0xFF;
+                ulong ahi = avis & (((av >> 7) & L1) * 0xFF), bhi = bvis & (((bv >> 7) & L1) * 0xFF);
+                ulong r, taken;
+                if (spr)
+                {
+                    ulong sv = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(s, xs, 8));
+                    ulong svis = ((((sv & L0F) + L7F) >> 7) & L1) * 0xFF;
+                    ulong shi = svis & (((sv >> 7) & L1) * 0xFF);
+                    r = sv & shi; taken = shi;
+                    ulong m = ahi & ~taken; r |= av & m; taken |= m;
+                    m = bhi & ~taken; r |= bv & m; taken |= m;
+                    m = svis & ~taken; r |= sv & m; taken |= m;
+                    m = avis & ~taken; r |= av & m; taken |= m;
+                    m = bvis & ~taken; r |= bv & m; taken |= m;
+                }
+                else
+                {
+                    r = av & ahi; taken = ahi;
+                    ulong m = bhi & ~taken; r |= bv & m; taken |= m;
+                    m = avis & ~taken; r |= av & m; taken |= m;
+                    m = bvis & ~taken; r |= bv & m; taken |= m;
+                }
+                r |= bdw & ~taken;
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(new Span<byte>(o, xs, 8), r & 0x3F3F3F3F3F3F3F3FUL);
+            }
+        }
+        if ((Reg[12] & 8) == 0 && FastDraw && !sprDirty)
+        {
+            // no sprite on this line (the sprite line is all zero): the ladder is A and B with the priority bit set, then A, then B, then the backdrop. (av & 0x8F) > 0x80 is "priority bit set and a colour"
+            var ao = new ReadOnlySpan<byte>(a, xs, x1 - xs); var bo = new ReadOnlySpan<byte>(b, xs, x1 - xs); var oo = new Span<byte>(o, xs, x1 - xs);
+            for (int i = 0; i < oo.Length; i++)
+            {
+                int av = ao[i], bv = bo[i], v;
+                if ((av & 0x8F) > 0x80) v = av;
+                else if ((bv & 0x8F) > 0x80) v = bv;
+                else if ((av & 15) != 0) v = av;
+                else if ((bv & 15) != 0) v = bv;
+                else v = bd;
+                oo[i] = (byte)(v & 0x3F);
+            }
+        }
+        else if ((Reg[12] & 8) == 0)
         {
             // priority ladder, top to bottom: sprite, A, B with the priority bit set; then sprite, A, B without it; then the backdrop
-            for (int x = x0; x < x1; x++)
+            for (int x = xs; x < x1; x++)
             {
                 int sv = s[x], av = a[x], bv = b[x], v;
                 if ((sv & 15) != 0 && (sv & 0x80) != 0) v = sv;

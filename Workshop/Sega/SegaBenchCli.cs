@@ -29,6 +29,10 @@ internal static class SegaBenchCli
         ["md-loop"] = on => NesEmulator.Sega.MdSoundUnit.FastLoops = on,   // the Genesis Z80's polling loops counted instead of ticked vs every T-state ticked
         ["idle-frame"] = on => NesEmulator.Mix.NesPictureSink.IdleMode = on ? 2 : 0,   // the picture bridges' NES: one frame of PPU work from the vertical blank vs two full NES frames with an idle CPU
         ["idle-frame-1"] = on => NesEmulator.Mix.NesPictureSink.IdleMode = on ? 1 : 0,   // two frames of PPU work without the CPU vs two full NES frames
+        ["vdp-run"] = on => NesEmulator.Sega.MdVdp.FastRun = on,   // MdVdp.RunTo returns at once for a stretch with nothing due vs every call takes the event loop
+        ["vdp-draw"] = on => NesEmulator.Sega.MdVdp.FastDraw = on,   // the Genesis picture's line drawing (tile runs, priority ladder, colour conversion) in its short forms vs the original loops
+        ["vdp-swar"] = on => NesEmulator.Sega.MdVdp.FastSwar = on,   // a whole tile row and the priority ladder eight pixels at a time in 64-bit words vs pixel by pixel
+        ["vdp"] = on => { NesEmulator.Sega.MdVdp.FastRun = on; NesEmulator.Sega.MdVdp.FastDraw = on; NesEmulator.Sega.MdVdp.FastSwar = on; },   // all three VDP switches together (the whole VDP speed pass against the original VDP)
     };
 
     private sealed record Case(string Name, string Console, string Rom, string Cpu = "", string Ppu = "", string Apu = "", int Frames = 900, string Note = "");
@@ -71,10 +75,10 @@ internal static class SegaBenchCli
         public double Fps;                              // the console's real frame rate
         public int SizeChanges;
         public List<ulong> StateTrace = new();
-        public ulong State = 14695981039346656037UL;    // a hash of the Genesis sound unit's whole state (the Z80, its RAM, the chips) taken every --state-every frames
+        public ulong State = 14695981039346656037UL;    // a hash of the whole Genesis board's state (68000, VDP and its half-drawn line, sound unit, cartridge) taken every --state-every frames
     }
 
-    /// <summary>With --state-every N the Genesis sound unit's state is hashed every N frames, and the hashes of the runs must agree (the twin checks that a fast path leaves the machine in the same state at every moment it is looked at, not only in what it plays).</summary>
+    /// <summary>With --state-every N the whole Genesis board's saved state is hashed every N frames, and the hashes of the runs must agree (the twin checks that a fast path leaves the machine in the same state at every moment it is looked at, not only in what it plays).</summary>
     private static int StateEvery;
 
     private static string? Opt(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
@@ -142,9 +146,10 @@ internal static class SegaBenchCli
             int w = s.FrameWidth, h = s.FrameHeight;
             if (w != lastW || h != lastH) { if (lastW >= 0) r.SizeChanges++; lastW = w; lastH = h; }
             video = Fnv(video, s.Frame.AsSpan(0, w * h)); video = (video ^ (uint)(w << 16 | h)) * 1099511628211UL;
-            if (StateEvery > 0 && f % StateEvery == 0 && (s as NesEmulator.Mix.SegaPictureSession)?.Inner is NesEmulator.Sega.MdSession dm && dm.Board.Sound is NesEmulator.Sega.MdSoundUnit du)
+            if (StateEvery > 0 && f % StateEvery == 0 && (s as NesEmulator.Mix.SegaPictureSession)?.Inner is NesEmulator.Sega.MdSession dm)
             {
-                using var ms = new MemoryStream(); using (var bw = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) du.SaveState(bw);
+                // the whole Genesis board (68000, VDP with its half-drawn line and both picture buffers, sound unit, cartridge): a fast path must leave all of it as the reference path does
+                using var ms = new MemoryStream(); using (var bw = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) dm.Board.SaveState(bw);
                 ulong sh = 14695981039346656037UL; foreach (byte b0 in ms.ToArray()) { sh ^= b0; sh *= 1099511628211UL; }
                 r.StateTrace.Add(sh); r.State ^= sh; r.State *= 1099511628211UL;
             }

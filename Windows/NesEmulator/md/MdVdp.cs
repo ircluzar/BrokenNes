@@ -336,10 +336,25 @@ public sealed partial class MdVdp
         return SlotTable.Free[H40 ? 1 : 0][active ? 1 : 0];
     }
 
+    // the answer of the last search (with <see cref="FastRun"/>): searches walk the slot table forwards, so the next answer is the same index or the one after. The pair is only a hint: it is checked against the
+    // definition of the answer every time (so a stale or torn pair is harmless, whichever VDP or thread left it)
+    private static int[]? lbTable;
+    private static int lbIndex;
+
     private static int LowerBound(int[] table, long off)
     {
+        if (FastRun && ReferenceEquals(table, lbTable))
+        {
+            int i = lbIndex, n = table.Length;
+            if ((uint)i <= (uint)n)
+            {
+                if ((i == n || table[i] >= off) && (i == 0 || table[i - 1] < off)) return i;
+                if (i < n && table[i] < off && (i + 1 == n || table[i + 1] >= off)) { lbIndex = i + 1; return i + 1; }
+            }
+        }
         int lo = 0, hi = table.Length;
         while (lo < hi) { int mid = (lo + hi) >> 1; if (table[mid] < off) lo = mid + 1; else hi = mid; }
+        lbTable = table; lbIndex = lo;
         return lo;
     }
 
@@ -391,10 +406,22 @@ public sealed partial class MdVdp
         return e;
     }
 
+    /// <summary>True: <see cref="RunTo"/> moves the clock straight to the target when nothing is due before it (no FIFO entry, no DMA, no line end, interrupt or Z80 interrupt release up to the target), which is
+    /// all the event loop would have done. False: every call takes the loop, the reference twin (<c>--sega-bench --ab vdp-run</c>; the output and the saved state are bit for bit the same either way).</summary>
+    public static bool FastRun = true;
+
     /// <summary>Bring the VDP to master clock <paramref name="t"/>: lines turn over, interrupts and flags change, queued work finishes in the slots it gets.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void RunTo(long t)
     {
         if (t <= Time) return;
+        // nothing queued (SlotWork and NextFetchTime are false and MaxValue) and the target is before every event: the loop below would set the clock to t and stop, and NextEvent() would not be due
+        if (FastRun && fifoCount == 0 && dma == DmaKind.None && t < lineStart + ClocksPerLine && t < hintTime && t < vintTime && t < z80IntClear) { Time = t; return; }
+        RunToLoop(t);
+    }
+
+    private void RunToLoop(long t)
+    {
         int spins = 0;
         while (Time < t)
         {
@@ -517,6 +544,7 @@ public sealed partial class MdVdp
     public int LineOffset => (int)(Time - lineStart);
 
     /// <summary>The interrupt priority level the VDP is driving at master clock <paramref name="t"/> (0 none, 6 vertical, 4 horizontal), after the delay a just-enabled interrupt has.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public int IplAt(long t)
     {
         if (vintPending && VintEnabled && t >= vintEnableFrom) return 6;
