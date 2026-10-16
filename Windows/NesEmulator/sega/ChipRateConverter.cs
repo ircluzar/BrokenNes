@@ -14,7 +14,7 @@ namespace NesEmulator.Sega;
 /// <para>The stream has no latency in samples: output sample k is the signal at input time k x (source rate / target rate) minus the kernel's half width, so N input samples give exactly the output samples that fit in N input
 /// samples' time (the first outputs come from silence before the stream's start), and the sound is delayed by 32 input samples, 0.7 to 1 millisecond.</para>
 /// </remarks>
-public sealed class StreamResampler
+public sealed class ChipRateConverter
 {
     private const int Half = 32, Width = 2 * Half, Phases = 512;
 
@@ -28,7 +28,7 @@ public sealed class StreamResampler
     public int SourceRate { get; }
     public int TargetRate { get; }
 
-    public StreamResampler(int sourceRate, int targetRate)
+    public ChipRateConverter(int sourceRate, int targetRate)
     {
         if (sourceRate <= 0 || targetRate <= 0) throw new ArgumentOutOfRangeException(nameof(sourceRate));
         SourceRate = sourceRate; TargetRate = targetRate;
