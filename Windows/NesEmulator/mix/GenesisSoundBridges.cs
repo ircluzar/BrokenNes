@@ -187,6 +187,7 @@ namespace NesEmulator
             sink.Reset();
             ymClock = 0; ymRemainder = 0;      // the chip's own clock starts again; the mixers' sample count keeps counting (as the Genesis sound unit's does across a reset)
             fmLeft.Reset(); fmRight.Reset();
+            PrimeRing();
             Array.Fill(period, -1); Array.Fill(volume, -1); noiseControl = -1; Array.Clear(outOfRange);
             aboveRange0 = aboveRange1 = aboveRange2 = false;
             foreach (var c in fm) { c.Block = c.Fnum = c.Att = -1; c.Keyed = false; c.Cents = 0; c.Hz = 0; }
@@ -414,6 +415,10 @@ namespace NesEmulator
             }
         }
 
+        /// <summary>The band-limited mixers hold back half their kernel (8 samples) before the first sample is final, so the stream starts that far behind the time that has passed and a unit started in the middle of a game hands out 8 samples fewer than
+        /// the stock units do for the same frames. Starting the ring with that much silence makes the count right (the sound is that much later, as it always was).</summary>
+        private void PrimeRing() { ringHead = 0; ringCount = BandLimitedMixer.Taps / 2; Array.Clear(ring, 0, ringCount); }
+
         // ---- IAPU ----
 
         public void Step(int cpuCycles)
@@ -488,7 +493,7 @@ namespace NesEmulator
             model = m;
         }
 
-        public void ClearAudioBuffers() { Drain(); ringHead = ringCount = 0; front.ClearAudioBuffers(); }
+        public void ClearAudioBuffers() { Drain(); PrimeRing(); front.ClearAudioBuffers(); }
 
         public void Reset()
         {

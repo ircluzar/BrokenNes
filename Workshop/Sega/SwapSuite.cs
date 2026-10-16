@@ -111,7 +111,8 @@ internal static class SwapSuite
         return mono;
     }
 
-    /// <summary>The pitch of a steady tone: rising zero crossings (with hysteresis a quarter of the peak) per second; also the peak.</summary>
+    /// <summary>The pitch of a steady tone, from the spectrum (the lowest strong component: <see cref="SwapMatrixTestCli.Fundamental"/>); also the peak. Rising zero crossings were used here first and read an FM voice with a strong second harmonic
+    /// (<c>NES:MD</c>: a Genesis FM voice playing the tone) as 878 Hz for 440, because its waveform crosses zero twice a cycle; the spectrum says 440.4 Hz, the pitch a listener hears. A unit that really played an octave away still fails.</summary>
     private static (double Hz, int Peak) Tone(List<short> mono, int rate)
     {
         if (mono.Count == 0) return (0, 0);
@@ -119,13 +120,8 @@ internal static class SwapSuite
         double min = double.MaxValue, max = double.MinValue; foreach (var v in mono) { min = Math.Min(min, v); max = Math.Max(max, v); }
         int peak = (int)Math.Max(Math.Abs(max - mean), Math.Abs(min - mean));
         if (peak < 50) return (0, peak);
-        double hi = mean + peak / 4.0, lo = mean - peak / 4.0; int crossings = 0; bool armed = false; int first = -1, last = -1;
-        for (int i = 0; i < mono.Count; i++)
-        {
-            if (mono[i] < lo) armed = true;
-            else if (armed && mono[i] > hi) { armed = false; crossings++; if (first < 0) first = i; last = i; }
-        }
-        return crossings < 3 ? (0, peak) : ((crossings - 1) * (double)rate / (last - first), peak);
+        var x = new float[mono.Count]; for (int i = 0; i < x.Length; i++) x[i] = mono[i] * (1f / 32768f);
+        return (SwapMatrixTestCli.Fundamental(x, rate).Hz, peak);
     }
 
     private static bool SameAudio(List<short> a, List<short> b) => a.Count == b.Count && a.SequenceEqual(b);
