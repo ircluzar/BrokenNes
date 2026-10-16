@@ -32,6 +32,7 @@ internal static class SegaBenchCli
         ["vdp-run"] = on => NesEmulator.Sega.MdVdp.FastRun = on,   // MdVdp.RunTo returns at once for a stretch with nothing due vs every call takes the event loop
         ["vdp-draw"] = on => NesEmulator.Sega.MdVdp.FastDraw = on,   // the Genesis picture's line drawing (tile runs, priority ladder, colour conversion) in its short forms vs the original loops
         ["vdp-swar"] = on => NesEmulator.Sega.MdVdp.FastSwar = on,   // a whole tile row and the priority ladder eight pixels at a time in 64-bit words vs pixel by pixel
+        ["vdp"] = on => { NesEmulator.Sega.MdVdp.FastRun = on; NesEmulator.Sega.MdVdp.FastDraw = on; NesEmulator.Sega.MdVdp.FastSwar = on; },   // all three VDP switches together (the whole VDP speed pass against the original VDP)
     };
 
     private sealed record Case(string Name, string Console, string Rom, string Cpu = "", string Ppu = "", string Apu = "", int Frames = 900, string Note = "");

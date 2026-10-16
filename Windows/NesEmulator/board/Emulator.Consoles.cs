@@ -336,6 +336,7 @@ namespace BrokenNes
                 case "vdp-run": NesEmulator.Sega.MdVdp.FastRun = on; break;
                 case "vdp-draw": NesEmulator.Sega.MdVdp.FastDraw = on; break;
                 case "vdp-swar": NesEmulator.Sega.MdVdp.FastSwar = on; break;
+                case "vdp": NesEmulator.Sega.MdVdp.FastRun = NesEmulator.Sega.MdVdp.FastDraw = NesEmulator.Sega.MdVdp.FastSwar = on; break;
             }
             return $"md-loop={(NesEmulator.Sega.MdSoundUnit.FastLoops ? 1 : 0)} idle-frame={(NesEmulator.Mix.NesPictureSink.IdleMode == 2 ? 1 : 0)} payload={PayloadMode} vdp-run={(NesEmulator.Sega.MdVdp.FastRun ? 1 : 0)} vdp-draw={(NesEmulator.Sega.MdVdp.FastDraw ? 1 : 0)} vdp-swar={(NesEmulator.Sega.MdVdp.FastSwar ? 1 : 0)}";
         }

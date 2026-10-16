@@ -336,10 +336,25 @@ public sealed partial class MdVdp
         return SlotTable.Free[H40 ? 1 : 0][active ? 1 : 0];
     }
 
+    // the answer of the last search (with <see cref="FastRun"/>): searches walk the slot table forwards, so the next answer is the same index or the one after. The pair is only a hint: it is checked against the
+    // definition of the answer every time (so a stale or torn pair is harmless, whichever VDP or thread left it)
+    private static int[]? lbTable;
+    private static int lbIndex;
+
     private static int LowerBound(int[] table, long off)
     {
+        if (FastRun && ReferenceEquals(table, lbTable))
+        {
+            int i = lbIndex, n = table.Length;
+            if ((uint)i <= (uint)n)
+            {
+                if ((i == n || table[i] >= off) && (i == 0 || table[i - 1] < off)) return i;
+                if (i < n && table[i] < off && (i + 1 == n || table[i + 1] >= off)) { lbIndex = i + 1; return i + 1; }
+            }
+        }
         int lo = 0, hi = table.Length;
         while (lo < hi) { int mid = (lo + hi) >> 1; if (table[mid] < off) lo = mid + 1; else hi = mid; }
+        lbTable = table; lbIndex = lo;
         return lo;
     }
 
@@ -529,6 +544,7 @@ public sealed partial class MdVdp
     public int LineOffset => (int)(Time - lineStart);
 
     /// <summary>The interrupt priority level the VDP is driving at master clock <paramref name="t"/> (0 none, 6 vertical, 4 horizontal), after the delay a just-enabled interrupt has.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public int IplAt(long t)
     {
         if (vintPending && VintEnabled && t >= vintEnableFrom) return 6;

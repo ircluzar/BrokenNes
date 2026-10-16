@@ -222,7 +222,16 @@ public sealed partial class MdVdp
         {
             // the same table lookup over two spans (the range is checked once, not for every pixel)
             var d = new Span<uint>(dst, o + colourX, x1 - colourX); var s = new ReadOnlySpan<byte>(idx, colourX, x1 - colourX);
-            for (int i = 0; i < s.Length; i++) d[i] = p[s[i]];
+            int i = 0;
+            if (FastSwar)
+                for (; i + 8 <= s.Length; i += 8)
+                {
+                    // eight index bytes in one read, eight table lookups
+                    ulong w = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(s.Slice(i, 8));
+                    d[i] = p[(int)(w & 0xFF)]; d[i + 1] = p[(int)(w >> 8 & 0xFF)]; d[i + 2] = p[(int)(w >> 16 & 0xFF)]; d[i + 3] = p[(int)(w >> 24 & 0xFF)];
+                    d[i + 4] = p[(int)(w >> 32 & 0xFF)]; d[i + 5] = p[(int)(w >> 40 & 0xFF)]; d[i + 6] = p[(int)(w >> 48 & 0xFF)]; d[i + 7] = p[(int)(w >> 56)];
+                }
+            for (; i < s.Length; i++) d[i] = p[s[i]];
             colourX = x1;
             return;
         }
