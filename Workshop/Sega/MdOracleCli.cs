@@ -200,6 +200,8 @@ internal static class MdOracleCli
         var theirs = theirsFiles.Select(MdFindCli.Load).ToList();
 
         // where the script starts: the boundary the oracle was paused at
+        // (with --scan-state the oracle's state was saved by a 'snap', which takes one more frame advance after saving it: the pause point the shot and the state show is one boundary before the one the script starts from)
+        int pauseAdvance = 0;
         List<int> candidates;
         if (M68kTestCli.Arg(args, "--scan") is { } scanPng)
         {
@@ -212,7 +214,7 @@ internal static class MdOracleCli
             if (M68kTestCli.Arg(args, "--scan-state") is { } pausePath && File.Exists(pausePath))
             {
                 byte[] pauseState = File.ReadAllBytes(pausePath);
-                if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); }
+                if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); pauseAdvance = M68kTestCli.Flag(args, "--no-pause-advance") ? 0 : 1; }
             }
             var ramDiff = new Dictionary<int, int>();
             var ramAll = new Dictionary<int, int>();
@@ -271,7 +273,7 @@ internal static class MdOracleCli
                 var part = new (int f, int ok, long bad)[batch.Length];
                 Parallel.For(0, batch.Length, new ParallelOptions { MaxDegreeOfParallelism = jobs }, ci =>
                 {
-                    var s = Boot(data, region, line, batch[ci] + 1);
+                    var s = Boot(data, region, line, batch[ci] + 1 + pauseAdvance);
                     var rs = Replay(s, script, steps, shots, theirs, dy, 0, true, null, null);
                     part[ci] = (batch[ci], rs.Count(r => r.Bad == 0), rs.Sum(r => r.Bad));
                 });
@@ -286,8 +288,8 @@ internal static class MdOracleCli
             if (order.Count > 1 && order[0].ok == order[1].ok && order[0].bad == order[1].bad) Console.WriteLine("   (the best two candidates are not told apart by these shots)");
         }
 
-        Console.WriteLine($"f0 = {chosen}: the oracle is paused here, the script starts");
-        var session = Boot(data, region, line, chosen + 1);
+        Console.WriteLine($"f0 = {chosen}: the oracle is paused here, the script starts{(pauseAdvance != 0 ? $" ({pauseAdvance} frame later: the pause snapshot's own advance; --no-pause-advance for the old reading)" : "")}");
+        var session = Boot(data, region, line, chosen + 1 + pauseAdvance);
         // --ram-watch FFE11B[,FF0000-FF00FF,...] [--watch-limit N]: print each 68000 write to these work RAM addresses during the replay (the script's steps counted from the start boundary: step = frame - f0 - 1), with the writing instruction's address and the value: for tracing the first differing byte of a --ramcmp back to the code that writes it
         if (M68kTestCli.Arg(args, "--ram-watch") is { } watchSpec)
         {

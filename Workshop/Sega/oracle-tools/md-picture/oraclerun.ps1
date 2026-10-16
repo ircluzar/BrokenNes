@@ -63,7 +63,7 @@ if ($PauseSnap) { $pauseState = @(Get-ChildItem $dir -Filter "s*.state" | Sort-O
 if ($SaveOut) { $wsArgs += @("--save-out", (Join-Path $work "our\$Name\save.bin")) }
 if ($env:ORACLE_SLOTSET) { $wsArgs += @("--slot-set", $env:ORACLE_SLOTSET) }      # experiment switches for our side (see MdRunCli.ApplySlotSet), e.g. "movemipl=1"
 if ($env:ORACLE_LINE) { $wsArgs += @("--line", $env:ORACLE_LINE) }      # experiment: the scanline our replay stops at between steps (default 232, where BlastEm stops)
-if ($snapList.Count) { $wsArgs += @("--ram-at", ($snapList -join ","), "--ram-dir", (Join-Path $work "our\$Name\ram")) }
+if ($snapList.Count) { $wsArgs += @("--ram-at", (($snapList | ForEach-Object { $_ - 1 }) -join ","), "--ram-dir", (Join-Path $work "our\$Name\ram")) }      # the state of a snap is saved at the START of its advance: it is ours after n-1 steps (the picture of the snap, taken after the advance, is ours after n)
 & $ws -TimeoutSec 1500 @wsArgs
 if ($snapList.Count) {
   $states = @(Get-ChildItem $dir -Filter "s*.state" | Sort-Object Name)
@@ -71,8 +71,8 @@ if ($snapList.Count) {
   "BlastEm states: $($states.Count) (expected $($snapList.Count))"
   for ($i = 0; $i -lt [Math]::Min($states.Count, $snapList.Count); $i++) {
     $step = $snapList[$i]
-    "--- work RAM at step ${step}:"
-    & $ws -TimeoutSec 120 --md-oracle --ramcmp (Join-Path $work ("our\$Name\ram\r{0:D5}.bin" -f $step)) $states[$i].FullName
+    "--- work RAM of the snap at step ${step} (the state is at the start of its advance: ours after $($step - 1) steps):"
+    & $ws -TimeoutSec 120 --md-oracle --ramcmp (Join-Path $work ("our\$Name\ram\r{0:D5}.bin" -f ($step - 1))) $states[$i].FullName
   }
 }
 
