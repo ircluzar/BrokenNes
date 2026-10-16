@@ -103,6 +103,7 @@ public sealed partial class MdVdp
     private void SyncRender()
     {
         LatchWindowIfDue();
+        LatchVscrollIfDue();
         if (!lineActive) return;
         int px = PixelNow();
         RenderTo(px + RenderLead);
@@ -113,6 +114,30 @@ public sealed partial class MdVdp
     // switches the window off, and the oracle still shows it on the line the counter names) first shows on the line after.
     public const int WindowLatchOffset = 2560;
     private bool winLatchDone;
+
+    // Full-screen vertical scroll (R11 bit 2 clear): the oracle takes plane A's and plane B's entries (VSRAM[0] and [1]) once a line, near the end of the line, for the NEXT line: a write during a line shows from the
+    // next line on whatever its time in the line before that point (probe vsmid.py, 20 lines with a write at H counter H0 and the next two lines read back from the picture; H40: the next line is scrolled for a write
+    // up to the H counter's top byte 142, not after; H32 up to about 126), and never on the line it is made in. The 2-cell column scroll reads the entries per column, as ours does.
+    public static bool VsFullLatch = true;
+    public static int VsFullLatchH40 = 2855, VsFullLatchH32 = 3000;        // clocks into the line at which the entries are taken: any time from the last free slot of the picture to the first of the next line's pre-slots (H40 2608 to 2911, H32 2960 to 3180) fits the probe; the start of the horizontal blank (2855) and just after the first pre-slot in H32
+    private bool vsNextTaken;
+    private ushort vsNextA, vsNextB, vsLatchA, vsLatchB;
+
+    private void LatchVscrollIfDue()
+    {
+        if (vsNextTaken || Time - lineStart < (H40 ? VsFullLatchH40 : VsFullLatchH32)) return;
+        vsNextA = Vsram[0]; vsNextB = Vsram[1]; vsNextTaken = true;
+    }
+
+    /// <summary>The vertical scroll entries of a line are the ones taken in the line before (or, if that line ended before the moment, now).</summary>
+    private void TakeLineVscroll()
+    {
+        if (!vsNextTaken) { vsNextA = Vsram[0]; vsNextB = Vsram[1]; }
+        vsLatchA = vsNextA; vsLatchB = vsNextB; vsNextTaken = false;
+    }
+
+    /// <summary>Tools and state loads: the latch holds the entries as they are.</summary>
+    public void ResetVscrollLatch() { vsNextA = vsLatchA = Vsram[0]; vsNextB = vsLatchB = Vsram[1]; vsNextTaken = false; }
     private byte winNext17, winNext18, winCur17, winCur18;
 
     private void LatchWindowIfDue()
@@ -133,6 +158,7 @@ public sealed partial class MdVdp
     {
         if (!winLatchDone) { winNext17 = Reg[17]; winNext18 = Reg[18]; }
         winCur17 = winNext17; winCur18 = winNext18; winLatchDone = false;
+        TakeLineVscroll();
         lineActive = Line < ActiveLines && Line < PictureMaxHeight;
         if (!lineActive) return;
         lineY = Line;
@@ -299,7 +325,7 @@ public sealed partial class MdVdp
         bool colV = (Reg[11] & 4) != 0;
         int vsOff = isA ? 0 : 1;
         int vsMask = dbl && VsramIm2Mask11 ? 0x7FF : 0x3FF;      // eleven bits of vertical scroll in interlace mode 2 (a 128-cell plane is 2048 lines there)
-        int vsFull = Vsram[vsOff] & vsMask;
+        int vsFull = (VsFullLatch ? (isA ? vsLatchA : vsLatchB) : Vsram[vsOff]) & vsMask;
         int x = xa;
         int bugColumn0 = bugX0 >= 0 ? (bugX0 - hs & wMask) >> 4 : 0;
         while (x < xb)
@@ -550,7 +576,7 @@ public sealed partial class MdVdp
     public void LoadColour(int index, ushort data) { Cram[index & 0x3F] = (ushort)(data & 0x0EEE); UpdatePal(index & 0x3F); }
 
     /// <summary>Tools: after the memories and registers were set directly, begin the current line afresh.</summary>
-    public void ResetPictureState() { for (int i = 0; i < 64; i++) UpdatePal(i); RebuildSpriteCache(); BeginLineRender(); }
+    public void ResetPictureState() { for (int i = 0; i < 64; i++) UpdatePal(i); RebuildSpriteCache(); ResetVscrollLatch(); BeginLineRender(); }
 
     /// <summary>The debug picture of the picture itself (what the session shows), for tools: a copy of the finished frame at its real size.</summary>
     public void CopyPicture(uint[] dst)
