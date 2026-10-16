@@ -336,7 +336,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "6D83D98DFC821C0C",
-        "audioHash": "05A66542E3E298DD",
+        "audioHash": "7F2B9605B3DBA051",
         "framesRun": 600,
         "distinctColors": 64,
         "result": "ok"
@@ -357,7 +357,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "FEF9FBF78EC745C5",
-        "audioHash": "1E1FFC404B128AD1",
+        "audioHash": "06E5CAF8BC214859",
         "framesRun": 600,
         "distinctColors": 66,
         "result": "ok"
@@ -401,7 +401,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "5E2049AD86DD58C7",
-        "audioHash": "DF3727ED3F7F4B8F",
+        "audioHash": "31DFD12C6CB9DC1B",
         "framesRun": 400,
         "distinctColors": 23,
         "result": "ok"
@@ -447,7 +447,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "5E2049AD86DD58C7",
-        "audioHash": "D9BB76578413A9E5",
+        "audioHash": "677BF2D7D5CE3E99",
         "framesRun": 400,
         "distinctColors": 23,
         "result": "ok"
@@ -471,7 +471,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "4D84C905C862FB25",
-        "audioHash": "92102F3AE9261617",
+        "audioHash": "901E0D7CD29C4977",
         "framesRun": 300,
         "distinctColors": 10,
         "result": "ok"
@@ -493,12 +493,12 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "5E2049AD86DD58C7",
-        "audioHash": "8EF6753CA29D5D7D",
+        "audioHash": "9BF3ACD6E8ED7F1D",
         "framesRun": 400,
         "distinctColors": 23,
         "result": "ok"
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T23:20:10Z"
+  "goldenGeneratedUtc": "2026-10-16T07:17:58Z"
 }
