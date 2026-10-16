@@ -503,8 +503,12 @@ async function groupAudio() {
       check('audio', `${key}: ${r.sr} Hz, ${perFrame.toFixed(1)} samples a frame (a ${fps} Hz console makes ${expect.toFixed(1)})`, r.sr >= 22050 && Math.abs(perFrame - expect) / expect < 0.02, `${r.samples} samples in 300 frames`);
       // the page's own loop paces the game at the console's rate (a PAL game is 50 a second, not the page's 60)
       await page.eval('window.__resume()');
-      await sleep(6000);
+      await sleep(3500);
+      // the badge is a half-second average: one stall on a busy machine (this one is shared) dips it, so the median of five readings over three seconds decides
+      const readings = [];
+      for (let i = 0; i < 5; i++) { readings.push((await page.eval(PROBE)).fps); await sleep(600); }
       const p = await page.eval(PROBE);
+      p.fps = readings.filter(x => x != null).sort((x, y) => x - y)[Math.floor(readings.length / 2)];
       // a device that cannot hold the console's rate must say so on the page (the speed badge), never just run slow
       const note = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
       const target = fps < 55 ? 50 : 59.9;
