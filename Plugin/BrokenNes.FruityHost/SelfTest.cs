@@ -165,6 +165,7 @@ public sealed unsafe partial class SelfTest
             ("runaway-sega", "Instrument Runaway on Master System, Game Gear and Genesis games: the PSG, the YM2413, the YM2612 and the Genesis DAC's sounds play from FL notes (pitch, level, polyphony, slides, the project, damaged projects, cost)", RunawaySega),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
             ("dpad", "D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
+            ("prefs", "Remembered settings: the new registry path is filled once from the old one (values of both kinds), the old key is never changed or created, a non-empty new key is left alone; on fake files and on real test registry keys", PrefsMigrationTest),
             ("runaway", "Instrument Runaway: the game freezes and goes silent; a SNES game's samples play from FL notes, polyphonically, and survive a saved project", RunawayTest),
             ("reset", "Reset Console: held notes and chips are cleared for every instance, a ROM-mode game restarts from power-on", ResetConsole),
             ("editor", "Editor: dropdowns, mode switch, channel strip and sliders work through real mouse input", Editor),
@@ -208,8 +209,8 @@ public sealed unsafe partial class SelfTest
         t.Expect(lib.HasExport("CreatePlugInstance"), "no CreatePlugInstance export");
         using var p = lib.Create();
         t.Expect(p.SdkVersion == 1, $"SDKVersion {p.SdkVersion}");
-        t.Expect(p.LongName == "Bogue :: BrokenNes 2", $"LongName '{p.LongName}'");
-        t.Expect(p.ShortName == "Bogue :: BrokenNes 2", $"ShortName '{p.ShortName}'");
+        t.Expect(p.LongName == "BrokenNes2", $"LongName '{p.LongName}'");
+        t.Expect(p.ShortName == "BrokenNes2", $"ShortName '{p.ShortName}'");
         t.Expect((p.Flags & Fpf.Generator) != 0, "FPF_Generator not set");
         t.Expect((p.Flags & Fpf.NewVoiceParams) != 0, "FPF_NewVoiceParams not set (the host would use the old voice struct)");
         t.Expect((p.Flags & Fpf.WantNewTick) != 0, "FPF_WantNewTick not set");
@@ -2778,7 +2779,7 @@ public sealed unsafe partial class SelfTest
         t.Expect(File.Exists(log), "no log file was written");
         if (!File.Exists(log)) return;
         var text = File.ReadAllText(log);
-        t.Expect(text.Contains("CreatePlugInstance Bogue :: BrokenNes 2"), "log has no CreatePlugInstance line");
+        t.Expect(text.Contains("CreatePlugInstance BrokenNes2"), "log has no CreatePlugInstance line");
         t.Expect(text.Contains("Dispatcher id=4"), "log has no SetSampleRate dispatcher line");
         t.Expect(!text.Contains("exception", StringComparison.OrdinalIgnoreCase), "the log reports an exception");
         File.Delete(log);

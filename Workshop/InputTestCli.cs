@@ -49,11 +49,12 @@ internal static class InputTestCli
 
     public static int Run(string[] args)
     {
-        string? repo = null;
-        for (int i = 1; i < args.Length - 1; i++) if (args[i] == "--repo") repo = args[i + 1];
+        string? repo = null, shot = null;
+        for (int i = 1; i < args.Length - 1; i++) { if (args[i] == "--repo") repo = args[i + 1]; if (args[i] == "--shot") shot = args[i + 1]; }
         Console.WriteLine("== the pure function"); PureFunction();
         Console.WriteLine("\n== the desktop InputManager, simulated keys"); DesktopInput();
         Console.WriteLine("\n== the player's config"); ConfigField();
+        Console.WriteLine("\n== the controller configuration window"); ControllerWindow(shot);
         Console.WriteLine("\n== recorded and programmatic input is untouched"); ProgrammaticInput();
         Console.WriteLine("\n== who calls the guard"); Callers(repo);
         Console.WriteLine($"\n{passes} passed, {failures} failed");
@@ -237,6 +238,51 @@ internal static class InputTestCli
         var m = new InputManager { KeyProbe = vk => held.Contains((Keys)vk) };
         m.SetPlayerConfig(loaded); m.Poll();
         Check("an InputManager built on that old config is protected", ReadDirs(m) == 0);
+    }
+
+    // ------------------------------------------------------------------------------------------------ the controller window
+
+    private static IEnumerable<Control> AllControls(Control root)
+    {
+        foreach (Control c in root.Controls) { yield return c; foreach (var d in AllControls(c)) yield return d; }
+    }
+
+    /// <summary>The real ControllerConfigWindow on a real config: the box is there, unticked by default, ticking it changes the config the InputManager reads, Cancel puts it back, a saved
+    /// ticked config opens ticked. (Reset to defaults asks with a message box and is not driven here.) With --shot &lt;file.png&gt; the window is also saved as a picture.</summary>
+    private static void ControllerWindow(string? shotPath)
+    {
+        var config = PlayerControllerConfig.CreateDefaultPlayer1();
+        using var form = new ControllerConfigWindow(config);
+        form.StartPosition = FormStartPosition.Manual; form.Location = new System.Drawing.Point(-10000, -10000);   // off screen: nobody is disturbed
+        form.Show(); Application.DoEvents();
+        var box = AllControls(form).OfType<CheckBox>().FirstOrDefault(c => c.Name == "allowOppositeDpad");
+        Check("the window has the 'Allow opposite d-pad directions' box", box != null && box.Text == "Allow opposite d-pad directions" && box.Visible);
+        if (box == null) { form.Close(); return; }
+        var held = new HashSet<Keys> { Keys.Left, Keys.Right };
+        var m = new InputManager { KeyProbe = vk => held.Contains((Keys)vk) };
+        m.SetPlayerConfig(config); m.Poll();
+        Check("... it is unticked on a default config, and the manager built on that config reads Left+Right as neutral", !box.Checked && ReadDirs(m) == 0);
+        box.Checked = true;      // raises CheckedChanged, as a click does
+        Application.DoEvents();
+        Check("... ticking it sets the player's config and the manager reads Left+Right at once", config.AllowOppositeDpad && ReadDirs(m) == 12, $"config {config.AllowOppositeDpad}, read {ReadDirs(m)}");
+        if (shotPath != null)
+        {
+            using var bmp = new System.Drawing.Bitmap(form.Width, form.Height);
+            form.DrawToBitmap(bmp, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
+            bmp.Save(shotPath, System.Drawing.Imaging.ImageFormat.Png);
+            Console.WriteLine($"  (window picture: {shotPath})");
+        }
+        var cancel = AllControls(form).OfType<Button>().First(b => b.Text == "Cancel");
+        cancel.PerformClick(); Application.DoEvents();
+        Check("... Cancel puts the setting back (the window restores its snapshot)", !config.AllowOppositeDpad && ReadDirs(m) == 0, $"config {config.AllowOppositeDpad}");
+
+        var saved = PlayerControllerConfig.CreateDefaultPlayer1(); saved.AllowOppositeDpad = true;
+        using var second = new ControllerConfigWindow(saved);
+        second.StartPosition = FormStartPosition.Manual; second.Location = new System.Drawing.Point(-10000, -10000);
+        second.Show(); Application.DoEvents();
+        var box2 = AllControls(second).OfType<CheckBox>().First(c => c.Name == "allowOppositeDpad");
+        Check("a config saved with the setting on opens ticked", box2.Checked);
+        second.Close();
     }
 
     // ------------------------------------------------------------------------------------------------ 3. recorded / programmatic input

@@ -1,4 +1,4 @@
-// The Bogue :: BrokenNes 2 editor: one dark, self-drawn window (no Win32 controls). Immediate mode: every paint lays the window out
+// The BrokenNes2 editor: one dark, self-drawn window (no Win32 controls). Immediate mode: every paint lays the window out
 // again and records where each control is; mouse events look the control up in that record. Everything runs on FL's GUI
 // thread, from a 30 ms timer that repaints only when something changed.
 //
@@ -28,7 +28,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdInputKey = 200, IdInputPad = 220, IdPadButton = 240;   // + pad button index 0..11
     public const int IdInstrument = 90, IdGbDuty = 91;
 
-    private const string ClassName = "BogueBrokenNes2Editor";
+    private const string ClassName = "BrokenNes2Editor";
     public const int Width = 904, Height = 664;
     private const int Margin = 16, HeaderH = 52;
     private const int ScreenX = Margin, ScreenY = 64, ScreenW = 520, ScreenH = 488;
@@ -440,16 +440,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
     private void DrawHeader(nint dc, Emulator? emu)
     {
-        // Bogue :: BrokenNes 2
+        // BrokenNes2
         int x = Margin;
-        Txt(dc, "Bogue", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Dim, fontTitle);
-        x += TextWidth(dc, "Bogue", fontTitle) + 8;
-        Txt(dc, "::", R(x, 8, 60, 36), Win32.DT_LEFT | Mid, Faint, fontTitle);
-        x += TextWidth(dc, "::", fontTitle) + 8;
         Txt(dc, "Broken", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Text, fontTitle);
         x += TextWidth(dc, "Broken", fontTitle);
-        Txt(dc, "Nes 2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
-        x += TextWidth(dc, "Nes 2", fontTitle);
+        Txt(dc, "Nes2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
+        x += TextWidth(dc, "Nes2", fontTitle);
         Txt(dc, "one instance = one channel", R(x + 16, 8, 300, 36), Win32.DT_LEFT | Mid, Faint, fontSmall);
 
         // About, and which emulator this instance sits on
@@ -845,13 +841,10 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
         // a small title: the whole point of this window is below it
         int tx = box.Left + 28;
-        Txt(dc, "Bogue", R(tx, box.Top + 14, 200, 38), Win32.DT_LEFT | Mid, Dim, fontBig);
-        int x = tx + TextWidth(dc, "Bogue", fontBig) + 8;
-        Txt(dc, "::", R(x, box.Top + 14, 40, 38), Win32.DT_LEFT | Mid, Faint, fontBig);
-        x += TextWidth(dc, "::", fontBig) + 8;
+        int x = tx;
         Txt(dc, "Broken", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Text, fontBig);
         x += TextWidth(dc, "Broken", fontBig);
-        Txt(dc, "Nes 2", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Accent, fontBig);
+        Txt(dc, "Nes2", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Accent, fontBig);
         Txt(dc, $"version {About.Version}", R(box.Right - 28 - 200, box.Top + 14, 200, 38), Win32.DT_RIGHT | Mid, Faint, fontSmall);
 
         // how it was made: transparency, plainly
@@ -1320,7 +1313,10 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 else { int mask = (int)value; Inputs.KeyProbe = vk => { for (int i = 0; i < 12; i++) if ((mask & (int)Inputs.Buttons[i]) != 0 && Inputs.Keys[i] == vk) return true; return false; }; }
                 return 0;
             case 91: return Inputs.AllowOpposite ? 1 : 0;
-            case 92: Inputs.Load(); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
+            case 92: Inputs.Load(); return 0;
+            // 93: a remembered setting by name (<value> points at the UTF-16 name; the integer, or -999 when absent), 94: write one (<index> points at the name, <value> is the integer)
+            case 93: return Prefs.GetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(value) ?? "", -999);
+            case 94: Prefs.SetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(index) ?? "", (int)value); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
         }
         return 0;
     }

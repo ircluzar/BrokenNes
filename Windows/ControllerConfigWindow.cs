@@ -48,8 +48,8 @@ namespace BrokenNes.Windows
         private void InitializeComponent()
         {
             Text = $"Player {config.PlayerNumber} Controller Configuration";
-            Size = new Size(500, 700);
-            MinimumSize = new Size(500, 700);
+            Size = new Size(500, 760);          // 60 taller than before the d-pad protection box was added, so all twelve rows still show without scrolling
+            MinimumSize = new Size(500, 760);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;

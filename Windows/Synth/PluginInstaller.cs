@@ -21,7 +21,7 @@ namespace BrokenNes.Windows.Synth
     /// </summary>
     internal static class PluginInstaller
     {
-        /// <summary>FL finds a native plugin by its file name: <c>Generators\BrokenNes2\BrokenNes2_x64.dll</c>. (FL shows it as "Bogue :: BrokenNes 2"; "::" is not valid in a file name.)</summary>
+        /// <summary>FL finds a native plugin by its file name: <c>Generators\BrokenNes2\BrokenNes2_x64.dll</c>. (FL lists the plugin by the name it reports, "BrokenNes2", which is also the file and folder name.)</summary>
         public const string PluginFolder = "BrokenNes2", PluginFile = "BrokenNes2_x64.dll";
 
         public static bool IsAdmin()

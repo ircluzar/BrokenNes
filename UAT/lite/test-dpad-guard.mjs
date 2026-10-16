@@ -203,6 +203,8 @@ async function testBrowser() {
       touchLeft === 4 && touchBoth === 0 && touchRaw === 12 && touchAfter === 4 && (await dirs()) === 0, `${dirName(touchLeft)} | ${dirName(touchBoth)} (raw ${touchRaw}) | ${dirName(touchAfter)} | ${dirName(await dirs())}`);
     const errs = page.consoleErrors();
     check('browser', 'no script errors in the page', errs.length === 0, errs.slice(0, 2).join(' / '));
+  } catch (e) {
+    check('browser', 'the browser test could not finish', false, e.message);
   } finally {
     await lab.close();
     try { fs.rmSync(site, { recursive: true, force: true }); } catch {}
@@ -272,6 +274,8 @@ async function testSite(publish) {
     check('site', 'an old saved input setting without the field: protected', (await page.eval('window.nesInterop._allowOpposite')) === false && (await leftRight()) === 0);
     const errs = page.consoleErrors().filter(e => !/favicon/.test(e));
     check('site', 'no script errors in the page', errs.length === 0, errs.slice(0, 2).join(' / '));
+  } catch (e) {
+    check('site', 'the site test could not finish (a page, control or script it needs is missing)', false, e.message);
   } finally { await lab.close(); }
   return 'ran';
 }

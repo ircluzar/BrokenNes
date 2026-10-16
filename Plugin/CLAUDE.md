@@ -1,4 +1,4 @@
-# Plugin/ - Bogue :: BrokenNes 2 (FL Studio native plugin)
+# Plugin/ - BrokenNes2 (FL Studio native plugin)
 
 Handoff note for whoever works here next (human or agent). **Development is paused; the state is very good.** Read `Plugin/README.md` for the
 full description of what the plugin does and how each test proves it; this file is the practical rest: where things are, how to run them, what bites.
@@ -62,7 +62,7 @@ What Genesis stems, Runaway and games need: `Plugin/README.md` ("The Genesis con
 | `../Core` | `BrokenNes.Core`: allocation-free NES audio path + `ApuStem` (per-channel stems from a Bus write tap) |
 | `../UAT/plugin`, `../UAT/certify.ps1` | FL render certification, installer (`fl/install-to-fl.cmd`), the four-entrypoint certification |
 
-Names: the plugin is branded "Bogue :: BrokenNes 2" but the DLL, folder and FL's plugin identity stay `BrokenNes2` (`::` is not valid in file names).
+Names: the plugin is called **BrokenNes2** everywhere (the name it reports to FL, the DLL `BrokenNes2_x64.dll`, the folder, FL's plugin identity, the editor header). Earlier builds reported a longer branded name; no user-visible text carries it any more.
 Params: 13 (`Bn2Params.cs`; Emulator, Console, Instrument and Voice are the later additions). State version 2; trailers after the params: ROM path,
 `EMU2` (emulator id + channel), then in Runaway one of `SPC1` (SNES sound memory), `GBS1` (Game Boy sound settings), `PSG1` / `OPL1` / `OPN1` (a Sega game's chips). Older projects load defaults.
 
@@ -116,7 +116,7 @@ dotnet build   Plugin/BrokenNes.FruityHost/BrokenNes.FruityHost.csproj -c Releas
 
 - FL Studio install path and `Plugins\Fruity\Generators\BrokenNes2\` (installer target); FL's `Vocoder.flp` as the render template.
 - `%LOCALAPPDATA%\VRUN_Nes_Dev_work\` (build output, certification work dirs). `certify.ps1` has a default VRUN ROM path in `VRUN_Nes_Dev`.
-- The plugin's remembered settings: registry `HKCU\Software\Bogue\BrokenNes2` (About shown, input mappings); tests use `BROKENNES_PREFS_FILE`.
+- The plugin's remembered settings: registry `HKCU\Software\BrokenNes\BrokenNes2` (About shown, input mappings, the d-pad setting); an older key is copied over once and never changed (see `Prefs.cs`); tests use `BROKENNES_PREFS_FILE` (and `BROKENNES_PREFS_OLD_FILE` / `_REGKEY` / `_OLD_REGKEY` for the migration check).
 - Spec for the ROM-driven mode: the VRUN project's `docs/26-live-audio-bridge-spec.md` (not copied here).
 
 ## Ideas parked
