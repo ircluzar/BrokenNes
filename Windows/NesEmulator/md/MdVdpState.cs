@@ -53,7 +53,7 @@ public sealed partial class MdVdp
     {
         w.Write(lineActive); w.Write(lineY); w.Write(lineWidth); w.Write(linePxDiv); w.Write(renderX); w.Write(colourX); w.Write(rowBase);
         w.Write(hscrollA); w.Write(hscrollB); w.Write(sprOverflow); w.Write(sprCollision); w.Write(sprDirty); w.Write(prevLineDotLimit);
-        w.Write(winLatchDone); w.Write(winNext17); w.Write(winNext18); w.Write(winCur17); w.Write(winCur18);
+        w.Write(winLatchDone); w.Write(winNext17); w.Write(winNext18); w.Write(winCur17); w.Write(winCur18); w.Write(vsNextTaken); w.Write(vsNextA); w.Write(vsNextB); w.Write(vsLatchA); w.Write(vsLatchB);
         foreach (int s in lineSprites) w.Write(s);
         w.Write(lineSpriteCount); w.Write(lineSpriteOverflow);
         w.Write(lineIdx); w.Write(bufA); w.Write(bufB); w.Write(sprLine);
@@ -68,7 +68,7 @@ public sealed partial class MdVdp
     {
         lineActive = r.ReadBoolean(); lineY = r.ReadInt32(); lineWidth = r.ReadInt32(); linePxDiv = r.ReadInt32(); renderX = r.ReadInt32(); colourX = r.ReadInt32(); rowBase = r.ReadInt32();
         hscrollA = r.ReadInt32(); hscrollB = r.ReadInt32(); sprOverflow = r.ReadBoolean(); sprCollision = r.ReadBoolean(); sprDirty = r.ReadBoolean(); prevLineDotLimit = r.ReadBoolean();
-        winLatchDone = r.ReadBoolean(); winNext17 = r.ReadByte(); winNext18 = r.ReadByte(); winCur17 = r.ReadByte(); winCur18 = r.ReadByte();
+        winLatchDone = r.ReadBoolean(); winNext17 = r.ReadByte(); winNext18 = r.ReadByte(); winCur17 = r.ReadByte(); winCur18 = r.ReadByte(); vsNextTaken = r.ReadBoolean(); vsNextA = r.ReadUInt16(); vsNextB = r.ReadUInt16(); vsLatchA = r.ReadUInt16(); vsLatchB = r.ReadUInt16();
         for (int i = 0; i < lineSprites.Length; i++) lineSprites[i] = r.ReadInt32();
         lineSpriteCount = r.ReadInt32(); lineSpriteOverflow = r.ReadBoolean();
         ReadAll(r, lineIdx); ReadAll(r, bufA); ReadAll(r, bufB); ReadAll(r, sprLine);

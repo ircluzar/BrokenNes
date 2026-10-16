@@ -606,6 +606,9 @@ public sealed partial class MdVdp
         for (int i = 0; i < 80; i++) for (int b = 0; b < 4; b++) SpriteCache[i * 4 + b] = Vram[sat + i * 8 + b & 0xFFFF];
     }
 
+    /// <summary>Pixels more than the index stage's lead (RenderLead) that the 2-cell column vertical scroll reads an entry ahead of the display: a write takes effect from a column that much further on (oracle probe vsmid.py with write times in the line: the column-10 threshold 10 H counter steps earlier than ours, the column-17 one 15).</summary>
+    public static int VsramExtraLead = 20;
+
     /// <summary>Write a word to VRAM, CRAM or VSRAM at <paramref name="addr"/> (the address register as the command left it).</summary>
     private void WriteTarget(int c, uint addr, ushort data)
     {
@@ -627,6 +630,7 @@ public sealed partial class MdVdp
                 // VSRAM holds 40 words: a write to one of the other addresses of its 64-word range is lost, and a read there returns entry 0 (BlastEm and Nemesis' fill-to-VSRAM tests: entries 40-63 read as entry 0)
                 int i = (int)(addr >> 1) & 0x3F;
                 if (LineIsActive) ActiveVsramWrites++;
+                if (VsramExtraLead > 0 && lineActive && (Reg[11] & 4) != 0) RenderTo(PixelNow() + RenderLead + VsramExtraLead);      // the 2-cell column scroll reads its entries this much ahead of the display (see VsramExtraLead)
                 if (i < 40) Vsram[i] = (ushort)(data & 0x07FF);
                 break;
             }

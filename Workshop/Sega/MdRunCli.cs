@@ -348,6 +348,10 @@ internal static class MdRunCli
                 case "spritey9": MdVdp.SpriteY9 = v[0] != 0; break;
                 case "h32links": MdVdp.SpriteLinks80 = v[0] != 0; break;
                 case "h32wrap": MdVdp.H32AttrWrap = v[0] != 0; break;
+                case "vslatch": MdVdp.VsFullLatch = v[0] != 0; break;
+                case "vslatchh40": MdVdp.VsFullLatchH40 = v[0]; break;
+                case "vslatchh32": MdVdp.VsFullLatchH32 = v[0]; break;
+                case "vslead": MdVdp.VsramExtraLead = v[0]; break;
                 case "vsmask11": MdVdp.VsramIm2Mask11 = v[0] != 0; break;
                 case "sprnormal": MdVdp.SpriteNormalFromColour = v[0]; MdVdp.SpriteNormalToColour = v.Length > 1 ? v[1] : 15; break;
                 case "vsshift": MdVdp.VsramColumnShift = v[0]; break;

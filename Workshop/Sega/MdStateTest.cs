@@ -112,6 +112,10 @@ internal static class MdStateTest
             case "z80": Core(b).Cpu.A ^= 1; break;
             case "cart": if (b.Cart.Sram.Length > 0) b.Cart.Sram[0] ^= 0xFF; else b.Ram[0x100] ^= 0xFF; break;
             case "vdp": b.Vdp.Reg[7] ^= 0x3F; break;
+            case "vscroll":      // a state that dropped the latched vertical scroll (B4a's full-screen latch): the field comparison after a mid-frame load must see it
+                typeof(MdVdp).GetField("vsLatchA", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(b.Vdp, (ushort)0x155);
+                typeof(MdVdp).GetField("vsNextTaken", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(b.Vdp, true);
+                break;
         }
     }
 
