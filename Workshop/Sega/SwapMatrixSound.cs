@@ -72,7 +72,7 @@ internal static partial class SwapMatrixTestCli
 
     private static float[] Resample(float[] input, int from, int to, int block = 0)
     {
-        var r = new NesEmulator.Sega.StreamResampler(from, to); var outp = new List<float>(); var tmp = new float[8192];
+        var r = new NesEmulator.Sega.ChipRateConverter(from, to); var outp = new List<float>(); var tmp = new float[8192];
         var rng = new Random(5);
         for (int i = 0; i < input.Length;)
         {
@@ -116,7 +116,7 @@ internal static partial class SwapMatrixTestCli
         }
         {
             // it runs inside the audio path of a game: nothing may be allocated once it is warm
-            var r = new NesEmulator.Sega.StreamResampler(32000, 44100); var tmp = new float[4096]; var block = Sine(1000, 32000, 533);
+            var r = new NesEmulator.Sega.ChipRateConverter(32000, 44100); var tmp = new float[4096]; var block = Sine(1000, 32000, 533);
             for (int i = 0; i < 300; i++) { r.Push(block); while (r.Pull(tmp) > 0) { } }
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 3000; i++) { r.Push(block); while (r.Pull(tmp) > 0) { } }
@@ -125,7 +125,7 @@ internal static partial class SwapMatrixTestCli
         }
         {
             // the stream has no latency in samples: the output of N input samples is N x rate ratio samples at every point, not N x ratio less a kernel (a unit started in the middle of a game must hand out as many samples as time has passed)
-            var r = new NesEmulator.Sega.StreamResampler(32000, 44100); var tmp = new float[4096]; var one = new float[32];
+            var r = new NesEmulator.Sega.ChipRateConverter(32000, 44100); var tmp = new float[4096]; var one = new float[32];
             int total = 0; for (int i = 0; i < 100; i++) { r.Push(one); int got; while ((got = r.Pull(tmp)) > 0) total += got; }
             Check($"resampler: 3200 samples at 32 kHz have given {total} at 44.1 kHz (want 4410 within 1)", Math.Abs(total - 4410) <= 1);
         }

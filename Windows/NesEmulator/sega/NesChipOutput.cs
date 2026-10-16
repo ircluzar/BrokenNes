@@ -4,13 +4,13 @@ namespace NesEmulator.Sega;
 
 /// <summary>
 /// What a Sega sound bridge hands its session: the mono samples of the NES-family sound core that plays the game's sound, as stereo 16-bit pairs at the machine's sample rate. Most chips run at the machine's 44.1 kHz and pass straight through
-/// (exactly as before); a chip with a rate of its own (the SNES's sound unit at 32 kHz, the Game Boy's at 48 kHz) is converted by a <see cref="StreamResampler"/>, so the unit delivers the same amount of sound for the same frames as the console's
+/// (exactly as before); a chip with a rate of its own (the SNES's sound unit at 32 kHz, the Game Boy's at 48 kHz) is converted by a <see cref="ChipRateConverter"/>, so the unit delivers the same amount of sound for the same frames as the console's
 /// own unit and says so in <see cref="SampleRate"/>.
 /// </summary>
 public sealed class NesChipOutput
 {
     private readonly IAPU back;
-    private readonly StreamResampler? resampler;
+    private readonly ChipRateConverter? resampler;
     private readonly float[] pull = new float[2048], converted = new float[2048];
 
     /// <summary>The rate the unit delivers: always the machine's.</summary>
@@ -22,7 +22,7 @@ public sealed class NesChipOutput
     {
         this.back = back;
         ChipRate = back.GetSampleRate();
-        if (ChipRate != machineRate) resampler = new StreamResampler(ChipRate, machineRate);
+        if (ChipRate != machineRate) resampler = new ChipRateConverter(ChipRate, machineRate);
         SampleRate = machineRate;
     }
 
