@@ -77,6 +77,14 @@ namespace BrokenNes.Windows
         [JsonPropertyName("gamepadIndex")]
         public int GamepadIndex { get; set; } = 0;
 
+        /// <summary>
+        /// D-pad protection is ON unless this is true: Left and Right held together (or Up and Down) are both held back, as on a real d-pad
+        /// (see <see cref="NesEmulator.Systems.DpadGuard"/>). A config saved before the setting existed has no such field and reads as false,
+        /// that is, protected. Only the human input (keyboard, pad) is affected, never the Web API, a movie or a replay.
+        /// </summary>
+        [JsonPropertyName("allowOppositeDpad")]
+        public bool AllowOppositeDpad { get; set; } = false;
+
         // NES button bindings
         [JsonPropertyName("a")]
         public ButtonBinding A { get; set; } = ButtonBinding.FromKey("X");

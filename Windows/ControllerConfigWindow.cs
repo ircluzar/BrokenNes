@@ -24,6 +24,7 @@ namespace BrokenNes.Windows
         // UI Controls
         private ComboBox inputModeCombo;
         private Button refreshButton;
+        private CheckBox allowOppositeCheck;
         private Dictionary<string, Button> bindingButtons = new();
         private bool isKeyboardMode = true;
         private int selectedControllerIndex = 0;
@@ -59,13 +60,14 @@ namespace BrokenNes.Windows
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 5,
+                RowCount = 6,
                 Padding = new Padding(15),
                 AutoSize = false
             };
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Title
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Input mode selector
             mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); // Bindings
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // D-pad protection
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Info
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Buttons
 
@@ -128,6 +130,38 @@ namespace BrokenNes.Windows
             };
             bindingsContainer.Controls.Add(bindingsPanel);
 
+            // D-pad protection: a real d-pad cannot press opposite directions, so by default neither is sent when both are held.
+            var dpadPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                Margin = new Padding(0, 10, 0, 0)
+            };
+            allowOppositeCheck = new CheckBox
+            {
+                Name = "allowOppositeDpad",
+                AccessibleName = "Allow opposite d-pad directions",
+                Text = "Allow opposite d-pad directions",
+                AutoSize = true,
+                Checked = config.AllowOppositeDpad,
+                Margin = new Padding(5, 0, 0, 0)
+            };
+            allowOppositeCheck.CheckedChanged += (s, e) => config.AllowOppositeDpad = allowOppositeCheck.Checked;
+            var dpadNote = new Label
+            {
+                Text = "Off (the default): Left and Right, or Up and Down, pressed together send neither, as on a real d-pad. Turn it on only for a glitch that needs both.",
+                AutoSize = false,
+                Width = 440,
+                Height = 32,
+                Margin = new Padding(24, 0, 0, 0),
+                ForeColor = Color.Gray,
+                Font = new Font(Font.FontFamily, 8)
+            };
+            dpadPanel.Controls.Add(allowOppositeCheck);
+            dpadPanel.Controls.Add(dpadNote);
+
             // Info label
             var infoLabel = new Label
             {
@@ -183,8 +217,9 @@ namespace BrokenNes.Windows
             mainPanel.Controls.Add(titleLabel, 0, 0);
             mainPanel.Controls.Add(selectorPanel, 0, 1);
             mainPanel.Controls.Add(bindingsContainer, 0, 2);
-            mainPanel.Controls.Add(infoLabel, 0, 3);
-            mainPanel.Controls.Add(buttonPanel, 0, 4);
+            mainPanel.Controls.Add(dpadPanel, 0, 3);
+            mainPanel.Controls.Add(infoLabel, 0, 4);
+            mainPanel.Controls.Add(buttonPanel, 0, 5);
 
             Controls.Add(mainPanel);
         }
@@ -470,6 +505,7 @@ namespace BrokenNes.Windows
                 Enabled = source.Enabled,
                 DeviceType = source.DeviceType,
                 GamepadIndex = source.GamepadIndex,
+                AllowOppositeDpad = source.AllowOppositeDpad,
                 A = CloneBinding(source.A),
                 B = CloneBinding(source.B),
                 Select = CloneBinding(source.Select),
@@ -491,6 +527,7 @@ namespace BrokenNes.Windows
             target.Enabled = source.Enabled;
             target.DeviceType = source.DeviceType;
             target.GamepadIndex = source.GamepadIndex;
+            target.AllowOppositeDpad = source.AllowOppositeDpad;
             target.A = CloneBinding(source.A);
             target.B = CloneBinding(source.B);
             target.Select = CloneBinding(source.Select);
@@ -624,6 +661,8 @@ namespace BrokenNes.Windows
                 config.L = defaults.L;
                 config.R = defaults.R;
                 config.DeviceType = InputDeviceType.Keyboard;
+                config.AllowOppositeDpad = defaults.AllowOppositeDpad;   // protected again
+                allowOppositeCheck.Checked = config.AllowOppositeDpad;
 
                 if (inputModeCombo.Items.Count > 0)
                 {
