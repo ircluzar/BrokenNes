@@ -891,6 +891,25 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 return bytes.Length;
             }
             case 80: return segaSampler != null && assignment.Channel == Ch.Sampler ? 1 : 0;
+            // the game's state in a project: 81 byte at work-RAM offset index (-1 outside), 82 write value at offset index (1 done, 0 outside), 83 run exactly value frames (returns the frame count; a frozen game does not run),
+            // 84 hash of the whole machine as its state is written (0 none), 85 the state note: copies up to index chars into the buffer at value and returns its length (-1 no note),
+            // 86 how the project restore of the game's state went (0 none in the project, 1 put back, 2 refused or failed), 87 sets the biggest state section a save may write (value bytes; 0 = the default),
+            // 88 the size in bytes of the state section this instance would save now (-1 none)
+            case 81: return emu?.PeekWorkRam((int)index) ?? -1;
+            case 82: return emu?.PokeWorkRam((int)index, (byte)value) == true ? 1 : 0;
+            case 83: return (nint)(emu?.RunFramesForTests((int)value) ?? -1);
+            case 84: return (nint)(emu?.GameStateHashForTests() ?? 0);
+            case 85:
+            {
+                var note = emu?.StateNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
+            case 86: return emu?.StateRestoreResult ?? 0;
+            case 87: return 0;
+            case 88: return -1;
+            case 89: return emu?.GameStateSupportedForTests() ?? -1;       // 89 whether the running game can keep its state in a project (1/0, -1 no game)
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

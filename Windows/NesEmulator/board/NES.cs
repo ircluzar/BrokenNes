@@ -1913,6 +1913,8 @@ namespace NesEmulator
 		public long ApuClock => bus?.ApuClock ?? 0;
 		/// <summary>The last value the ROM wrote to each APU register ($4000-$4017); returns the mask of registers written.</summary>
 		public uint CopyApuLatch(byte[] regs) => bus?.CopyApuLatch(regs) ?? 0;
+		/// <summary>Puts the APU register latch back (see <see cref="Bus.SetApuLatch"/>).</summary>
+		public void SetApuLatch(byte[] regs, uint written) => bus?.SetApuLatch(regs, written);
 
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()

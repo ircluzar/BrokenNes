@@ -347,6 +347,53 @@ public sealed partial class Emulator
         lock (romLock) { ApplyPending(); (game as SessionGame)?.PokeSnesTone(); }
     }
 
+    // ---- test hooks and the corruption hook: the game's memory and exact frame stepping, under the emulator's lock ----
+
+    /// <summary>Runs exactly <paramref name="frames"/> frames of the game, as if audio were pulled that long (nothing listens: the rings fill and readers skip over them). Returns the game's frame count, -1 with no game. A frozen game does not run.</summary>
+    internal long RunFramesForTests(int frames)
+    {
+        lock (romLock)
+        {
+            ApplyPending();
+            var g = game;
+            if (g == null) return -1;
+            for (int i = 0; i < frames && !g.Crashed; i++) Produce(g);
+            return g.FramesRun;
+        }
+    }
+
+    /// <summary>The byte at <paramref name="offset"/> of the running game's main work RAM (<see cref="IGame.PeekWorkRam"/>); -1 outside it or with no game.</summary>
+    public int PeekWorkRam(int offset)
+    {
+        lock (romLock) { ApplyPending(); return game?.PeekWorkRam(offset) ?? -1; }
+    }
+
+    /// <summary>Writes a byte into the running game's main work RAM, between frames, whether the game runs or is frozen: this is the hook for corrupting a game (the change is part of the state a project keeps). False outside the RAM or with no game.</summary>
+    public bool PokeWorkRam(int offset, byte value)
+    {
+        lock (romLock) { ApplyPending(); return game?.PokeWorkRam(offset, value) ?? false; }
+    }
+
+    /// <summary>1 when the running game can keep its state in a project, 0 when it cannot, -1 with no game.</summary>
+    internal int GameStateSupportedForTests()
+    {
+        lock (romLock) { ApplyPending(); return game == null ? -1 : game.StateSupported ? 1 : 0; }
+    }
+
+    /// <summary>A hash of the whole machine as <see cref="IGame.SaveGameState"/> writes it (0: no game, or a game with no state): two machines in the same state hash alike.</summary>
+    internal long GameStateHashForTests()
+    {
+        lock (romLock)
+        {
+            ApplyPending();
+            var g = game;
+            if (g == null || !g.StateSupported) return 0;
+            ulong h = 1469598103934665603UL;
+            foreach (byte b in g.SaveGameState()) h = (h ^ b) * 1099511628211UL;
+            return (long)(h | 1);
+        }
+    }
+
     /// <summary>For an open editor (GUI thread): when no instance is pulling audio (FL stopped, the plugin idle) the picture still has to
     /// move, so the game is advanced here in real time. Its sound goes into the rings, which a returning reader skips over. Several
     /// editors on one emulator share one clock, so the game never runs faster than real time.</summary>

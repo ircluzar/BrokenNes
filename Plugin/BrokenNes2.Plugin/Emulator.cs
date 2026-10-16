@@ -386,6 +386,18 @@ public sealed partial class Emulator : IDisposable
         }
     }
 
+    // ---- the game's state in a project (see GameState.cs) ----
+
+    private volatile string? stateNoteIdle, stateNoteRunaway;
+    private int stateRestore;
+
+    /// <summary>What the project could not do with the game's state, in words for the user (null: nothing to say): the SNES cannot keep a game's state yet, a state that does not belong to the game file now in place was not used, a state too big was not kept.
+    /// The editor shows it over the picture for as long as it is true.</summary>
+    public string? StateNote => Runaway && stateNoteRunaway != null ? stateNoteRunaway : stateNoteIdle;
+
+    /// <summary>How the last project restore went for the game's state: 0 none was in the project (or not tried yet), 1 put back, 2 refused or failed (<see cref="StateNote"/> says why).</summary>
+    public int StateRestoreResult => Volatile.Read(ref stateRestore);
+
     /// <summary>The current console's game file (null: the built-in game for the NES, none for the others).</summary>
     public string? RomPath { get { lock (EmulatorHub.Gate) return romPaths[Console]; } }
 

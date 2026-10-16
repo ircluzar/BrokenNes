@@ -40,7 +40,7 @@ public sealed unsafe partial class SelfTest
     /// <summary>A 16 KB Genesis ROM whose 68000 program sets the PSG going (tone 1 period 254 = 440.4 Hz at full volume, tone 2 period 338 = 330.9 Hz at -4 dB) and, with <paramref name="fm"/>, plays FM 1 and FM 2 as sines
     /// (261.7 Hz and 392.2 Hz) through the YM2612 the way a game does it: bus request, reset release, then the chip's registers at $A04000. With <paramref name="dac"/> it also turns the DAC on and streams a 32-sample sine at
     /// about 13 kHz (so about 415 Hz) in an endless loop. The code ends in a branch to itself.</summary>
-    internal static byte[] MakeMdRom(bool fm = true, bool dac = false)
+    internal static byte[] MakeMdRom(bool fm = true, bool dac = false, bool counter = false)
     {
         var c = new List<byte>();
         foreach (byte b in new byte[] { 0x8E, 0x0F, 0x90, 0xA2, 0x15, 0xB2 }) MdMoveB(c, b, 0xC00011);
@@ -78,6 +78,19 @@ public sealed unsafe partial class SelfTest
             }
             int back = top - (c.Count + 2);
             c.AddRange([0x60, 0x00, (byte)(back >> 8), (byte)back]);               // bra.w top
+        }
+        else if (counter)
+        {
+            // a counter in work RAM ($FF0000) that also picks the backdrop colour, over a palette of 64 different colours: the picture follows the machine
+            c.AddRange([0x23, 0xFC, 0xC0, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x04]);        // move.l #$C0000000,$C00004 : colour RAM write from 0
+            for (int i = 0; i < 64; i++) MdMoveW(c, (i * 37 + 0x111) & 0x0EEE, 0xC00000);
+            int top = c.Count;
+            c.AddRange([0x52, 0x39, 0x00, 0xFF, 0x00, 0x00]);                                // addq.b #1,$FF0000
+            c.AddRange([0x10, 0x39, 0x00, 0xFF, 0x00, 0x00]);                                // move.b $FF0000,d0
+            c.AddRange([0x02, 0x40, 0x00, 0x3F]);                                            // andi.w #$3F,d0
+            c.AddRange([0x00, 0x40, 0x87, 0x00]);                                            // ori.w #$8700,d0 : VDP register 7 (backdrop colour)
+            c.AddRange([0x33, 0xC0, 0x00, 0xC0, 0x00, 0x04]);                                // move.w d0,$C00004
+            c.AddRange([0x60, (byte)(top - (c.Count + 2))]);                                 // bra.s top
         }
         else c.AddRange([0x60, 0xFE]);              // bra.s *
         var rom = new byte[0x4000];
@@ -118,6 +131,41 @@ public sealed unsafe partial class SelfTest
         c.CopyTo(rom, 0);
         "TMR SEGA"u8.CopyTo(rom.AsSpan(0x7FF0));
         rom[0x7FFF] = (byte)(gameGear ? 0x6C : 0x4C);
+        return rom;
+    }
+
+    /// <summary>A 32 KB Master System / Game Gear ROM with a counter in work RAM ($C000) that also picks the backdrop colour, over a palette of 32 different colours: the picture follows the machine.</summary>
+    internal static byte[] MakeSmsCounterRom(bool gameGear = false)
+    {
+        var rom = new byte[0x8000];
+        byte[] code =
+        [
+            0xF3, 0x31, 0xF0, 0xDF,                  // DI ; LD SP,$DFF0
+            0x21, 0x00, 0xC0,                        // LD HL,$C000
+            0x3E, 0x00, 0xD3, 0xBF, 0x3E, 0xC0, 0xD3, 0xBF,   // colour RAM write from 0
+            0x06, 0x20, 0x3E, 0x00,                  // LD B,32 ; LD A,0
+            0xD3, 0xBE, 0xC6, 0x07, 0x10, 0xFA,      // pal: OUT ($BE),A ; ADD A,7 ; DJNZ pal
+            0x3E, 0x40, 0xD3, 0xBF, 0x3E, 0x81, 0xD3, 0xBF,   // VDP register 1 = $40 (display on)
+            0x34, 0x7E, 0xE6, 0x0F,                  // loop: INC (HL) ; LD A,(HL) ; AND $0F
+            0xD3, 0xBF, 0x3E, 0x87, 0xD3, 0xBF,      // VDP register 7 = A (backdrop colour)
+            0x18, 0xF4,                              // JR loop
+        ];
+        code.CopyTo(rom, 0);
+        "TMR SEGA"u8.CopyTo(rom.AsSpan(0x7FF0));
+        rom[0x7FFF] = (byte)(gameGear ? 0x6C : 0x4C);
+        return rom;
+    }
+
+    /// <summary>A NES ROM (NROM, 16 KB) with a counter in work RAM ($10) that is also written to the picture chip's mask register, so the picture follows the machine.</summary>
+    internal static byte[] MakeNesCounterRom()
+    {
+        var rom = new byte[16 + 0x4000 + 0x2000];
+        "NES\x1A"u8.CopyTo(rom);
+        rom[4] = 1; rom[5] = 1;
+        byte[] code = [0x78, 0xD8, 0xA2, 0xFF, 0x9A,          // SEI ; CLD ; LDX #$FF ; TXS
+                       0xE6, 0x10, 0xA5, 0x10, 0x8D, 0x01, 0x20, 0x4C, 0x05, 0xC0];   // loop: INC $10 ; LDA $10 ; STA $2001 ; JMP loop
+        code.CopyTo(rom, 16);
+        rom[16 + 0x3FFC] = 0x00; rom[16 + 0x3FFD] = 0xC0;     // reset vector $C000
         return rom;
     }
 
