@@ -164,6 +164,7 @@ public sealed unsafe partial class SelfTest
             ("runaway-snes", "Instrument Runaway on a SNES game: the picker lists the game's instruments, the chosen one plays", RunawaySnesPicker),
             ("runaway-sega", "Instrument Runaway on Master System, Game Gear and Genesis games: the PSG, the YM2413, the YM2612 and the Genesis DAC's sounds play from FL notes (pitch, level, polyphony, slides, the project, damaged projects, cost)", RunawaySega),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
+            ("dpad", "D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
             ("runaway", "Instrument Runaway: the game freezes and goes silent; a SNES game's samples play from FL notes, polyphonically, and survive a saved project", RunawayTest),
             ("reset", "Reset Console: held notes and chips are cleared for every instance, a ROM-mode game restarts from power-on", ResetConsole),
             ("editor", "Editor: dropdowns, mode switch, channel strip and sliders work through real mouse input", Editor),

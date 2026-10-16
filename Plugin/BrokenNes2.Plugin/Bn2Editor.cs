@@ -24,7 +24,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdConsole = 50;   // + console 0..2
     public const int IdItem = 100;     // + item index of the open list
     public const int IdAboutLink = 70;                                   // + link index in the About text
-    public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85;
+    public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85, IdInputsOpposite = 86;
     public const int IdInputKey = 200, IdInputPad = 220, IdPadButton = 240;   // + pad button index 0..11
     public const int IdInstrument = 90, IdGbDuty = 91;
 
@@ -35,7 +35,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private const int ColX = 556, ColW = 332;
     private const nuint TimerId = 1;
     private const int RowH = 28, RowPitch = 34, ItemH = 24, MaxRows = 12;
-    private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 560, HowH = 246, PlogueH = 150;
+    private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 600, HowH = 246, PlogueH = 150;
 
     private enum Kind { Button, Dropdown, Slider, Item, Cell }
     private readonly record struct Hit(int Id, RECT Rect, Kind Kind);
@@ -652,15 +652,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
     private RECT InputsBox => R((Width - InputsW) / 2, (Height - InputsH) / 2, InputsW, InputsH);
 
-    private void Check(nint dc, int id, string label, int x, int y, bool on, string? note)
+    private void Check(nint dc, int id, string label, int x, int y, bool on, string? note, int labelW = 120, int hitW = 160)
     {
         var box = R(x, y, 20, 20);
         bool isHot = hot == id;
         Box(dc, box, on ? Accent : (isHot ? FieldHot : Field), on ? Accent : Line, 4);
         if (on) { Line_(dc, x + 4, y + 10, x + 8, y + 14, White); Line_(dc, x + 8, y + 14, x + 16, y + 5, White); Line_(dc, x + 4, y + 11, x + 8, y + 15, White); Line_(dc, x + 8, y + 15, x + 16, y + 6, White); }
-        Txt(dc, label, R(x + 30, y - 2, 120, 24), Win32.DT_LEFT | Mid, Text, fontLabel);
+        Txt(dc, label, R(x + 30, y - 2, labelW, 24), Win32.DT_LEFT | Mid, Text, fontLabel);
         if (note != null) Txt(dc, note, R(x + 30, y + 20, 330, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, Faint, fontSmall);
-        AddHit(id, R(x, y - 2, 160, 24), Kind.Button);
+        AddHit(id, R(x, y - 2, hitW, 24), Kind.Button);
     }
 
     private void PadKey(nint dc, int index, RECT r, string label)
@@ -710,6 +710,11 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Txt(dc, capP ? "press a button" : Inputs.PadName(Inputs.Pads[i]), pc, Win32.DT_CENTER | Mid | Win32.DT_END_ELLIPSIS, capP ? White : (Inputs.Pads[i] == 0 ? Faint : Text), fontSmall);
             AddHit(IdInputPad + i, pc, Kind.Button);
         }
+
+        // the d-pad protection (on unless this box is ticked)
+        Check(dc, IdInputsOpposite, "Allow opposite d-pad directions", lx, ty + 12 * 27 + 8, Inputs.AllowOpposite, null, labelW: 230, hitW: 270);
+        Txt(dc, Inputs.AllowOpposite ? "Left+Right and Up+Down pass together" : "Left+Right or Up+Down together send neither, as on a real d-pad",
+            R(lx + 290, ty + 12 * 27 + 6, 440, 24), Win32.DT_LEFT | Mid, Faint, fontSmall);
 
         // the on-screen pad: hold a button with the mouse
         int px = box.Left + 480, py = box.Top + 112;
@@ -778,7 +783,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (Inputs.KeyboardEnabled && Inputs.IsForeground(Hwnd)) bits |= Inputs.PollKeyboard();
         if (Inputs.GamepadEnabled) bits |= Inputs.PollGamepad(out padConnected); else padConnected = false;
         if (heldPad >= 0) bits |= Inputs.Buttons[heldPad];
-        liveBits = (int)bits;
+        liveBits = (int)Inputs.Human(bits);                 // the d-pad protection, for the three human sources at once
         emu.SetPad(this, liveBits);
     }
 
@@ -925,7 +930,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(e?.Runaway == true ? 7 : 8);
+        Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
             Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4);
@@ -1120,6 +1125,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }
                 else if (h.Id == IdInputsGamepad) { Inputs.GamepadEnabled = !Inputs.GamepadEnabled; Inputs.Save(); }
+                else if (h.Id == IdInputsOpposite) { Inputs.AllowOpposite = !Inputs.AllowOpposite; Inputs.Save(); }
                 else if (h.Id == IdInputsDefaults) { Inputs.Defaults(); Inputs.Save(); captureIndex = -1; }
                 else if (h.Id >= IdInputKey && h.Id < IdInputKey + 12) { captureIndex = h.Id - IdInputKey; captureIsKey = true; captureWait = true; }
                 else if (h.Id >= IdInputPad && h.Id < IdInputPad + 12) { captureIndex = h.Id - IdInputPad; captureIsKey = false; captureWait = true; }
@@ -1307,6 +1313,14 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             case 38: return inputsOpen ? 1 : 0;
             case 39: return liveBits;
             case 37: return picW | (picH << 16);
+            // 90: simulated keyboard for the Inputs tests: index 1 puts the keys of the pad buttons in <value> (a PadButtons mask) "down" as far as the editor's
+            // poll can tell (their bound keys; the window counts as the foreground one), index 0 gives the keyboard back; 91: whether the opposite directions are allowed, 92: read the remembered input settings again
+            case 90:
+                if (index == 0) Inputs.KeyProbe = null;
+                else { int mask = (int)value; Inputs.KeyProbe = vk => { for (int i = 0; i < 12; i++) if ((mask & (int)Inputs.Buttons[i]) != 0 && Inputs.Keys[i] == vk) return true; return false; }; }
+                return 0;
+            case 91: return Inputs.AllowOpposite ? 1 : 0;
+            case 92: Inputs.Load(); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
         }
         return 0;
     }

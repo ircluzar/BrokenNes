@@ -20,6 +20,12 @@ internal static unsafe partial class Inputs
     /// <summary>XInput button mask per pad button (0 = none).</summary>
     public static readonly int[] Pads = new int[12];
     public static bool KeyboardEnabled = true, GamepadEnabled = true;
+    /// <summary>"Allow opposite d-pad directions". False (the default) means the d-pad protection is on: Left and Right, or Up and Down, held together send neither
+    /// (<see cref="DpadGuard"/>, called from <see cref="Human"/>, which the editor's poll uses for the keyboard, the gamepad and the on-screen pad together).</summary>
+    public static bool AllowOpposite;
+    /// <summary>For tests only (the editor hook 90): when set, it answers "is this virtual key down" in place of GetAsyncKeyState, and the window counts as the
+    /// foreground one, so the real polling code can be driven without a person at the keyboard. Always null in FL.</summary>
+    public static Func<int, bool>? KeyProbe;
 
     private static readonly object gate = new();
     static Inputs() => Load();
@@ -37,6 +43,7 @@ internal static unsafe partial class Inputs
             Array.Copy(keys, Keys, 12);
             Array.Copy(pads, Pads, 12);
             KeyboardEnabled = GamepadEnabled = true;
+            AllowOpposite = false;
         }
     }
 
@@ -53,6 +60,7 @@ internal static unsafe partial class Inputs
                 if (p is { Length: 12 }) for (int i = 0; i < 12; i++) if (int.TryParse(p[i], out int v)) Pads[i] = v;
                 KeyboardEnabled = Prefs.GetInt("InputKeyboard", 1) != 0;
                 GamepadEnabled = Prefs.GetInt("InputGamepad", 1) != 0;
+                AllowOpposite = Prefs.GetInt("InputAllowOpposite", 0) != 0;      // a project or an install from before the setting reads as protected
             }
             catch { }
         }
@@ -66,6 +74,7 @@ internal static unsafe partial class Inputs
             Prefs.Set("InputPads", string.Join(",", Pads));
             Prefs.SetInt("InputKeyboard", KeyboardEnabled ? 1 : 0);
             Prefs.SetInt("InputGamepad", GamepadEnabled ? 1 : 0);
+            Prefs.SetInt("InputAllowOpposite", AllowOpposite ? 1 : 0);
         }
     }
 
@@ -87,6 +96,7 @@ internal static unsafe partial class Inputs
     /// <summary>True when the window is in the foreground application's window: only then does the keyboard play the game, so typing elsewhere in FL is left alone.</summary>
     public static bool IsForeground(nint editorWindow)
     {
+        if (KeyProbe != null) return true;
         try
         {
             var fg = GetForegroundWindow();
@@ -97,7 +107,12 @@ internal static unsafe partial class Inputs
         catch { return false; }
     }
 
-    private static bool Down(int vk) => vk != 0 && (GetAsyncKeyState(vk) & 0x8000) != 0;
+    private static bool Down(int vk) => vk != 0 && (KeyProbe != null ? KeyProbe(vk) : (GetAsyncKeyState(vk) & 0x8000) != 0);
+
+    /// <summary>What a person at the keyboard, the gamepad and the on-screen pad sends to the game: the d-pad protection applied to the pad that the three
+    /// held together make (so the keyboard's Left and the stick's Right cancel too). Only the editor's poll calls it; the test hook SetPad and a project's
+    /// saved game do not.</summary>
+    public static PadButtons Human(PadButtons pad) => DpadGuard.Resolve(pad, AllowOpposite);
 
     public static PadButtons PollKeyboard()
     {
