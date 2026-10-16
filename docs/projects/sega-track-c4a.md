@@ -2,6 +2,8 @@
 
 Written 2026-10-15 at the end of the track. Branch `worktree-agent-af2b737cd5901fa8e`, cut from `main` e758833 (`main` had not moved when this was written, so the "merge main" step was a no-op and every number below is on the integrated tree). Plan: `sega-cores-plan.md`; rules: `sega-tracks-brief.md`. **Read "Open problems" first.**
 
+**Update 2026-10-16:** the lead merged this track into `main` (bd93150) and handed over the Genesis VDP files for a speed pass; the last section ("Follow-up: the Genesis VDP speed pass") has what was done and the new numbers, and corrects open problem 1 (the stock Genesis in the browser is now 2.0x to 2.4x in a quiet window).
+
 The job: make the Master System, Game Gear and Genesis first-class in BrokenNes Lite (the browser build), and fast enough on the desktop and in WebAssembly, the way the SNES speed pass and the Lite integration did for the SNES and the Game Boy. Both halves were measured in a real browser window (headless Edge over the DevTools protocol, the AOT build), not argued.
 
 ## What exists
@@ -229,3 +231,64 @@ pwsh -File UAT\entrypoints\lite-sega.ps1 -Publish <dir> -Roms <roms> [-Only rom,
 node UAT\lite\bench-lite.mjs --publish <dir> --roms <roms> [--cases md-sonic] [--frames 600] [--twin md-loop=0] [--json out.json]
 node UAT\lite\profile-lite.mjs --publish <dir> --roms <roms> --rom md/<file> --symbols WebLite\obj\Release\net10.0\wasm\for-publish\dotnet.native.js.symbols
 ```
+
+## Follow-up: the Genesis VDP speed pass (2026-10-16)
+
+The lead merged this track and B4a's last wave into `main` (bd93150), B4a finished, and the VDP files (`md/MdVdp*.cs`) were handed over for a speed pass. Scope: the VDP only; nothing may change a pixel, a timing or a saved byte; `md/BOARD_MD.cs`, `MdSession.cs`, `MdSoundUnit.cs` and `M68k*.cs` stay B4b's. The branch was fast-forwarded to `main` first, so everything below is on the merged tree.
+
+### Method, and one thing the merge changed
+- The bench golden was out of date after the merge (B4a's wave 5 changed nine Genesis pictures): it was re-recorded on the merged tree **on the reference paths** (`--reference-paths --update`, commit 3db9dfd). Against it the default paths are 22/22 IDENTICAL, and the earlier twin is still exact on B4b's timing: `--ab md-loop --state-every 10` on the nine Genesis cases is identical (open problem 8 above is settled: nothing but the golden needed re-recording).
+- `--sega-bench --state-every N` now hashes the **whole Genesis board** (68000, VDP with its half-drawn line and both picture buffers, sound unit, cartridge) instead of the sound unit alone, so a VDP fast path must leave the index buffers, the line state and both frame buffers as the reference leaves them.
+- Every change is behind a static switch, registered in `SegaBenchCli.AbSwitches` (so `--reference-paths` turns it off) and in `Emulator.SetTwin` (so the browser can flip it): `vdp-run`, `vdp-draw`, `vdp-swar`, and `vdp` for the three together.
+
+### What was done (all exact)
+1. **`vdp-run`**: `MdVdp.RunTo` is a small inlined method that moves the clock straight to the target when nothing is queued (no FIFO entry, no DMA) and nothing is due before it (line end, horizontal or vertical interrupt, Z80 interrupt release); that is exactly what the event loop would have done, and the loop is `RunToLoop` for every other case. The free-slot search (`LowerBound`) remembers its last answer (the next search is the same index or the one after; the hint is checked against the definition of the answer every time, so a stale or torn hint is harmless), and `IplAt` is inlined. RunTo was 6.9 % of the browser frame and is called two to three times per 68000 bus access.
+2. **`vdp-draw`**: a plane's row address and name-table row are worked out once per run instead of once per tile; a tile row is read as one big-endian word (tile rows are 4-byte aligned, so the 64 KB wrap cannot split one); a whole eight-pixel tile row is written without per-pixel shift counts; the priority ladder skips the sprite tests on a line with no sprites; the clock-to-pixel division is a shift or a division by a constant.
+3. **`vdp-swar`**: a whole tile row and the priority ladder are computed eight pixels at a time in 64-bit words (one byte lane a pixel; the nibbles spread with three mask-and-shift steps; "colour not 0" and "priority bit" as lane masks), and the colour conversion reads eight index bytes at once. In the browser build `Compose` fell from 2.7 % to 0.9 % of the frame.
+
+### Exactness
+Golden 22/22 IDENTICAL on the default (fast) paths; `--ab vdp-run`, `vdp-draw`, `vdp-swar` and `vdp` on the nine Genesis cases with the whole-board state hash every 10 frames: identical in all; `--md-test` 163; `--md-pic-test` 145; `--md-state-test` 168; `--picture-bridge-test` 250; `--md-golden` 78 of 79 (the known miss, Titan Overdrive 1 frame 1007, is the same on the baseline); the 638 pinned oracle scenes (`scenes-check.ps1`) 638/638; NES golden suite (`UAT/run-suite.ps1`) 93 pass, 0 fail, 16 skip; Lite functional suite on the AOT build **111/111**. Allocation: 0 bytes a frame on every stock Genesis case. No new VDP instance field was added (the slot-search hint is a static, validated cache), so `MdVdpState.cs` is unchanged.
+
+Shown able to fail (bugs injected into a copy of the source, built into a separate folder, run, reverted with `git checkout`):
+
+| Injected bug | Result |
+|---|---|
+| the tile SWAR treats colour 1 as transparent | golden `DIFFERENT (first differing checkpoint: frame 250; video differs, audio same)`, exit 1 |
+| the `RunTo` fast path does not look at the FIFO | `!! first differing state after frame 10`, video and audio hashes differ between the two paths, golden DIFFERENT, exit 1 |
+| the `RunTo` fast path forgets the Z80 interrupt release | **not detected** on Sonic 1 and 2 (a late release does not change what their sound drivers do within 900 frames). Recorded so nobody reads that check as proof; the line stays because the loop it replaces releases the line at the exact clock |
+
+### Speed
+**Desktop** (combined `--ab vdp`, process CPU ms a frame, 8 runs alternating, golden IDENTICAL and board state identical every 10 frames; one core, shared machine):
+
+| Case | reference VDP | VDP pass | gain |
+|---|---:|---:|---:|
+| md-sonic | 3.750 | 3.056 | +22.7 % |
+| md-sonic2 | 3.507 | 2.865 | +22.4 % |
+| md-streetsofrage | 3.403 | 2.760 | +23.3 % |
+| md-goldenaxe | 4.045 | 3.420 | +18.3 % |
+| md-gunstar | 3.490 | 2.882 | +21.1 % |
+| md-comixzone | 4.497 | 3.819 | +17.7 % |
+| md-sonic on NES:FIXS / NES:FIX | 7.483 / 6.962 | 6.632 / 6.250 | +12.8 % / +11.4 % |
+| md-sonic, sound on APU_FIX | 4.288 | 3.576 | +19.9 % |
+
+By piece (desktop, each twin alone): `vdp-run` +5 to +15 %, `vdp-draw` +4 to +9 %, `vdp-swar` +0 to +5 %.
+
+**Browser** (AOT build, headless Edge, 500 frames, three rounds with the order alternating, median of the rounds, the same build with the combined twin off and on; process CPU ms a frame and x real time at 60 Hz):
+
+| Case | reference VDP | VDP pass | gain |
+|---|---:|---:|---:|
+| md-sonic | 8.52 ms, 1.96x | 7.76 ms, 2.15x | +9.8 % |
+| md-sonic2 | 8.25 ms, 2.02x | 7.48 ms, 2.23x | +10 % |
+| md-streetsofrage | 8.05 ms, 2.07x | 7.06 ms, 2.36x | +14 % |
+| md-gunstar (PAL, 50 Hz) | 8.19 ms, 2.03x (2.44x of 50) | 7.18 ms, 2.32x (2.79x of 50) | +14 % |
+| md-sonic on NES:FIXS | 19.87 ms, 0.84x | 18.46 ms, 0.90x | +7.6 % |
+| md-sonic, sound on APU_FIX | 10.07 ms, 1.66x | 9.10 ms, 1.83x | +10.7 % |
+
+Full Lite table of the final build from `lite-sega.ps1 -Bench` (quiet-ish window; x real time by wall clock / by CPU): Master System 3.6x / 5.2-5.5x (YM2413 3.45x / 4.7x, PSG on a NES chip 3.4x / 4.2x), Master System on NES:FIXS / NES:FIX 2.2x / 2.2x, Game Gear 3.7x / 6.0x (on NES:FIXS 2.2x / 2.1x), Genesis Sonic 2.04x / 2.08x, Sonic 2 2.23x / 2.28x, Streets of Rage 2.45x / 2.45x, Gunstar 2.37x / 2.38x, Genesis on NES:FIXS 0.90x / 0.89x, Genesis sound on APU_FIX 1.85x / 1.81x. (The bridged paths are faster than in the first table of this record because C4b pooled the translators' arrays: the Genesis ones went from 364-378 KB a frame to 1-3 KB.)
+
+Profile of Genesis Sonic in the browser build (self time of a 6.85 ms frame, sampled): the VDP is **6.8 %** (was 18.5 %): `DrawTileRun` 2.7, `DrawScrollRun` 1.3, `ConvertTo` 1.0, `Compose` 0.9, `NextFreeSlot` 0.9, `RunToLoop` below 0.6; the rest of the frame is the sound unit's catch-up (`MdSoundUnit.RunInner` 16.1 + `BOARD_MD.SyncSound` 6.6 = 22.7 %), the 68000 engine about 17 %, the bus about 12 %, the YM2612 about 7 %.
+
+### Where it stops
+- The VDP's drawing is now bound by per-tile-run overhead (about 11 ns for each of the ~80 tile runs a line); going lower needs not drawing at all, which is frame skipping and is not exact, so it was not done. No further VDP change moves the frame by more than about 1 %.
+- The biggest item left is in B4b's files: the sound unit's catch-up (22.7 % of a Genesis frame). Syncing it only when the 68000 touches something the Z80, the YM or the PSG can see would remove most of the calls, but it can move chip time stamps, so it needs the same twin, golden and `--state-every` proof.
+- Open problem 1 above is out of date: the stock Genesis is now 2.0x to 2.4x real time in the browser in a quiet window (it was about 1.6x), so the 1.5x bar has margin there. A loaded window was not re-measured.

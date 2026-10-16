@@ -350,6 +350,7 @@ internal static class MdRunCli
                 case "h32wrap": MdVdp.H32AttrWrap = v[0] != 0; break;
                 case "sprcut": MdVdp.SpriteCutByTile = v[0] != 0; break;
                 case "hintlatch": MdVdp.HintLatchRule = v[0]; break;
+                case "hintkeep": MdVdp.HintKeepNonzero = v[0] != 0; break;
                 case "hintlatchclock": MdVdp.HintLatchClock = v[0]; break;
                 case "hintlatchclockh32": MdVdp.HintLatchClockH32 = v[0]; break;
                 case "vslatch": MdVdp.VsFullLatch = v[0] != 0; break;

@@ -336,10 +336,25 @@ public sealed partial class MdVdp
         return SlotTable.Free[H40 ? 1 : 0][active ? 1 : 0];
     }
 
+    // the answer of the last search (with <see cref="FastRun"/>): searches walk the slot table forwards, so the next answer is the same index or the one after. The pair is only a hint: it is checked against the
+    // definition of the answer every time (so a stale or torn pair is harmless, whichever VDP or thread left it)
+    private static int[]? lbTable;
+    private static int lbIndex;
+
     private static int LowerBound(int[] table, long off)
     {
+        if (FastRun && ReferenceEquals(table, lbTable))
+        {
+            int i = lbIndex, n = table.Length;
+            if ((uint)i <= (uint)n)
+            {
+                if ((i == n || table[i] >= off) && (i == 0 || table[i - 1] < off)) return i;
+                if (i < n && table[i] < off && (i + 1 == n || table[i + 1] >= off)) { lbIndex = i + 1; return i + 1; }
+            }
+        }
         int lo = 0, hi = table.Length;
         while (lo < hi) { int mid = (lo + hi) >> 1; if (table[mid] < off) lo = mid + 1; else hi = mid; }
+        lbTable = table; lbIndex = lo;
         return lo;
     }
 
@@ -391,10 +406,22 @@ public sealed partial class MdVdp
         return e;
     }
 
+    /// <summary>True: <see cref="RunTo"/> moves the clock straight to the target when nothing is due before it (no FIFO entry, no DMA, no line end, interrupt or Z80 interrupt release up to the target), which is
+    /// all the event loop would have done. False: every call takes the loop, the reference twin (<c>--sega-bench --ab vdp-run</c>; the output and the saved state are bit for bit the same either way).</summary>
+    public static bool FastRun = true;
+
     /// <summary>Bring the VDP to master clock <paramref name="t"/>: lines turn over, interrupts and flags change, queued work finishes in the slots it gets.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void RunTo(long t)
     {
         if (t <= Time) return;
+        // nothing queued (SlotWork and NextFetchTime are false and MaxValue) and the target is before every event: the loop below would set the clock to t and stop, and NextEvent() would not be due
+        if (FastRun && fifoCount == 0 && dma == DmaKind.None && t < lineStart + ClocksPerLine && t < hintTime && t < vintTime && t < z80IntClear) { Time = t; return; }
+        RunToLoop(t);
+    }
+
+    private void RunToLoop(long t)
+    {
         int spins = 0;
         while (Time < t)
         {
@@ -430,13 +457,17 @@ public sealed partial class MdVdp
     /// <summary>The clock of a line at which R0 bit 4 is sampled for the HINT due at the end of the next line (rule 1): a write before it counts, one after it does not. Measured on the oracle (H40): any value from 2701 to 3362 fits the replays (Titan Overdrive 2 frame 3709 needs 2800 or more, Super Hang-On 3362 or less); 2855 is the start of the horizontal blank. H32 was not measured: 2975, its horizontal blank start.</summary>
     public static int HintLatchClock = 2855, HintLatchClockH32 = 2975;
     private bool hintEnCur, hintEnNext;
+    /// <summary>With R10 other than 0 a line counter zero that comes while the horizontal interrupt is disabled leaves it pending (BlastEm: enabling it later, in the same line or many lines or a frame later, takes it at once;
+    /// measured with hintvb.py, R10 = $10, $30, $80, any enable line, with or without a vertical interrupt acknowledged in between, and B4b's Fatal Rewind probe variant A). With R10 = 0 (a zero every line) a disabled line's HINT is lost
+    /// (the latch rule below). Not in the first frame after power-on, where the counter has not been loaded yet (the oracle shows no pending HINT from it). False: the old behaviour for every R10 (<c>--slot-set hintkeep=0</c>).</summary>
+    public static bool HintKeepNonzero = true;
 
     private void FireHint()
     {
         // the lines in the counting phase step the counter; the others reload it
         if (HIntCounting(Line))
         {
-            if (hintCounter == 0) { if (HintLatchRule == 0 || (HintLatchRule == 1 ? hintEnCur : HintEnabled)) hintPending = true; hintCounter = Reg[10]; }
+            if (hintCounter == 0) { if (HintLatchRule == 0 || (HintKeepNonzero && Reg[10] != 0 && Frames > 0) || (HintLatchRule == 1 ? hintEnCur : HintEnabled)) hintPending = true; hintCounter = Reg[10]; }
             else hintCounter--;
         }
         else hintCounter = Reg[10];
@@ -517,6 +548,7 @@ public sealed partial class MdVdp
     public int LineOffset => (int)(Time - lineStart);
 
     /// <summary>The interrupt priority level the VDP is driving at master clock <paramref name="t"/> (0 none, 6 vertical, 4 horizontal), after the delay a just-enabled interrupt has.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public int IplAt(long t)
     {
         if (vintPending && VintEnabled && t >= vintEnableFrom) return 6;

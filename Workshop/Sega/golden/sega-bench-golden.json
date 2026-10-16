@@ -144,100 +144,100 @@
   },
   "md-sonic": {
     "frames": 900,
-    "video": "8c0151bc8156ac95",
-    "audio": "ae99da19495ccb67",
+    "video": "16073c678730ce9c",
+    "audio": "6c66c6728a50ee4d",
     "checkpoints": [
-      "250:3d450e226b57867c:4bc6f75e95a95e29",
-      "500:01b1d17c2854d788:30fa29bdd4b7cd95",
-      "750:36824491bf75e098:0d03bbeab05314d1"
+      "250:39ff23fdbc69bba4:4bc6f75e95a95e29",
+      "500:7c5106b58a99ff4d:30fa29bdd4b7cd95",
+      "750:88e225e8675a0579:0f1d5f42c1fedc1d"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-sonic2": {
     "frames": 900,
     "video": "bc81928233c31833",
-    "audio": "3dd5f6a90f3e39cf",
+    "audio": "6ecc5e9c8d6dc469",
     "checkpoints": [
-      "250:838a5e2fae80d6a9:317620ccc33d49d5",
-      "500:d2b6d21c0b75f3bc:1e6c2c739bef4711",
-      "750:0a3f8065315fb66c:159ceae415235697"
+      "250:838a5e2fae80d6a9:0041cba68648102f",
+      "500:d2b6d21c0b75f3bc:750d675082288147",
+      "750:0a3f8065315fb66c:497ef7b41c19d5bb"
     ],
     "description": "Genesis SONIC THE             HEDGEHOG 2 (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-streetsofrage": {
     "frames": 900,
     "video": "2a868fb665c40f9e",
-    "audio": "721e6cb9826139e3",
+    "audio": "1446297f182bfb1f",
     "checkpoints": [
-      "250:df7ac271b6d1c653:77aee78390995771",
-      "500:4efa0fcf93ca4c81:95c9982fa26f2fa9",
-      "750:18506136b5a51726:5c0007165880dd69"
+      "250:df7ac271b6d1c653:cf9c7bf6b932dce1",
+      "500:4efa0fcf93ca4c81:1b3707d1cd6c2d99",
+      "750:18506136b5a51726:d6524a1a31b14661"
     ],
     "description": "Genesis STREETS OF RAGE (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-goldenaxe": {
     "frames": 900,
-    "video": "40c6759690f95292",
-    "audio": "564906e1f488623f",
+    "video": "07f4b66eecb16dc1",
+    "audio": "4281f0f0861f1bc7",
     "checkpoints": [
-      "250:ee72826f283fa302:7c398aa5e51a1129",
-      "500:50dc6105968e6b0d:ab04829626a54aaf",
-      "750:af0c2b395ebadfc0:3c61d8fea2f83543"
+      "250:7f88f0aae6201e7d:28cfb1d8c9d091ad",
+      "500:23e2592f17e3a5ea:d46003d009a05fb5",
+      "750:c8b80be830dad40f:9663478b48cf2ff5"
     ],
     "description": "Genesis f n k c d m @ \u0060 w d @ @ @ @ @ @ (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-gunstar": {
     "frames": 900,
     "video": "f7d556a2c7abb426",
-    "audio": "0599f32545d0a1dd",
+    "audio": "a9ade623302b910a",
     "checkpoints": [
-      "250:636f54fd7909bc24:22d2b428c8a51a1b",
+      "250:636f54fd7909bc24:c08f8aad0cf89fa3",
       "500:55f8b18239d80311:305fe7b8f537361b",
-      "750:2d8aced203543bc6:36a09c16c2f21753"
+      "750:2d8aced203543bc6:dd149d072bf9521b"
     ],
     "description": "Genesis GUNSTAR HEROES (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Pal Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-comixzone": {
     "frames": 900,
     "video": "3edb1e4940f94161",
-    "audio": "5e014ab43d888e2a",
+    "audio": "719c997d5c6de666",
     "checkpoints": [
-      "250:67ad5343b1ca1ea2:d0253cd8c16b91b2",
-      "500:823853a6c3e9c2b1:085118b6e9e4dcec",
-      "750:797f86a12b73af7d:0d33bd761959bb9d"
+      "250:67ad5343b1ca1ea2:2f500904bad251bb",
+      "500:823853a6c3e9c2b1:87e18643b75091d6",
+      "750:797f86a12b73af7d:e625365ca4d16cc6"
     ],
     "description": "Genesis COMIX ZONE (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC)"
   },
   "md-sonic\u003Efixs": {
     "frames": 900,
-    "video": "ffa4041dcd7e1055",
-    "audio": "ae99da19495ccb67",
+    "video": "8e0c17f768604c55",
+    "audio": "6c66c6728a50ee4d",
     "checkpoints": [
-      "250:fd5d2360c1efb185:4bc6f75e95a95e29",
-      "500:6960adf5b30aa505:30fa29bdd4b7cd95",
-      "750:2058762ca4956595:0d03bbeab05314d1"
+      "250:edd4d8ef6a1f0585:4bc6f75e95a95e29",
+      "500:f7c3bd6dde314105:30fa29bdd4b7cd95",
+      "750:3a27a310fda9f195:0f1d5f42c1fedc1d"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC) | PICTURE NES:FIXS [no frames yet]"
   },
   "md-sonic\u003Efix": {
     "frames": 900,
     "video": "d72292906002fadd",
-    "audio": "ae99da19495ccb67",
+    "audio": "6c66c6728a50ee4d",
     "checkpoints": [
       "250:84b5a787bd52811d:4bc6f75e95a95e29",
       "500:21e0a8779feb6b11:30fa29bdd4b7cd95",
-      "750:ecf5edeefc56fe79:0d03bbeab05314d1"
+      "750:ecf5edeefc56fe79:0f1d5f42c1fedc1d"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU MD: MD (Z80, PSG, YM2612 FM \u002B DAC) | PICTURE NES:FIX [no frames yet]"
   },
   "md-sonic\u003Enesapu": {
     "frames": 900,
-    "video": "8c0151bc8156ac95",
-    "audio": "e62de2e6dae01e6b",
+    "video": "16073c678730ce9c",
+    "audio": "4a5688d900f2d74f",
     "checkpoints": [
-      "250:3d450e226b57867c:dae7f015f4aa5175",
-      "500:01b1d17c2854d788:7b23b782393cdfd1",
-      "750:36824491bf75e098:b5c049cabc84fe3b"
+      "250:39ff23fdbc69bba4:92039d07cbd10fb9",
+      "500:7c5106b58a99ff4d:78ec1500e178f5d1",
+      "750:88e225e8675a0579:a7fdc8e4217e4d45"
     ],
     "description": "Genesis SONIC THE               HEDGEHOG (plain ROM \u002B 32 KB battery RAM on the odd bytes of $200000 (no SRAM header: it appears with the first write)) | Ntsc Model1 | CPU M68K | PPU MD | APU NES:FIX: NES:Fix\u002BMD (Z80, PSG, YM2612 FM \u002B DAC)"
   }
