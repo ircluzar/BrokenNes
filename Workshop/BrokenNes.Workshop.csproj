@@ -88,6 +88,9 @@
     <Compile Include="$(NesRoot)sega\**\*.cs"    LinkBase="NesEmulator\sega" />
     <Compile Include="$(NesRoot)sms\**\*.cs"    LinkBase="NesEmulator\sms" />
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
+    <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
+    <!-- The plugin's copy of a SNES game's sound memory (what Instrument Runaway captures): the corruption tests build the very same object. One self-contained file. -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcSnapshot.cs" Link="PluginShared\SpcSnapshot.cs" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is
