@@ -842,6 +842,18 @@ internal static class MdBoardTest
         var unit = (MdSoundUnit)z.Sound;
         long expected = 262L * 3420 / 15;
         Check("the Z80 ticks once per 15 master clocks while it runs (one NTSC frame)", Math.Abs(unit.Z80Ticks - expected) < 200, $"{unit.Z80Ticks} vs {expected}");
+
+        // the stop of the oracle replay: BlastEm's frame advance stops about 200 master clocks before line 231 starts (wave 5, tools run_padlat.py); RunUntilLine(line, clocksEarly) stops in the tail of the line before
+        var s = Board(MakeRom("JUE", 0x60FE));
+        for (int f = 0; f < 2; f++) s.RunUntilLine(231, 200);
+        long sAfter2 = s.Vdp.Frames * 262L + s.Vdp.Line;
+        s.RunUntilLine(231, 200);
+        long sAfter3 = s.Vdp.Frames * 262L + s.Vdp.Line;
+        Check("RunUntilLine(231, 200) stops in the last 200 clocks (plus one instruction) of line 230, and the next call runs a whole frame on",
+            s.Vdp.Line == 230 && s.Vdp.LineOffset >= MdVdp.ClocksPerLine - 200 && sAfter3 - sAfter2 == 262, $"line {s.Vdp.Line} offset {s.Vdp.LineOffset}, {sAfter3 - sAfter2} lines between the stops");
+        var s0 = Board(MakeRom("JUE", 0x60FE));
+        s0.RunUntilLine(231); s0.RunUntilLine(231);
+        Check("... and without the offset it stops at the start of line 231 as before", s0.Vdp.Line == 231 && s0.Vdp.LineOffset < 100, $"line {s0.Vdp.Line} offset {s0.Vdp.LineOffset}");
     }
 
     // =====================================================================================================================

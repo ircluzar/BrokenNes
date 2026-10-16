@@ -158,16 +158,18 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     /// <summary>
     /// Run until the VDP reaches scanline <paramref name="line"/> (of this frame if it is still ahead, else of the next), the way an emulator that is stepped a frame at a time stops: BlastEm's pause and frame advance
-    /// stop at about line 232, after the vertical interrupt has begun (measured with a pad-polling probe ROM: a key pressed while it is paused is first seen by the game at V counter 232). Scripted input meant for
+    /// stop about 200 master clocks before line 231 starts, after the vertical interrupt has begun (measured with a pad-polling probe ROM, run_padlat.py: a key pressed while it is paused is first seen by the game at V counter $E7, H $F8-$FB). Scripted input meant for
     /// a comparison with it changes the pad here. Returns after the first instruction that starts the line (the 68000's granularity).
     /// </summary>
-    public void RunUntilLine(int line)
+    public void RunUntilLine(int line, int clocksEarly = 0)
     {
         int perFrame = Region == SegaRegion.Pal ? 313 : 262;
         long target = Vdp.Frames * perFrame + line;
-        if (Vdp.Frames * perFrame + Vdp.Line >= target) target += perFrame;
+        // clocksEarly: stop that many master clocks before the line starts (the first instruction boundary at or after that point), for the replay of BlastEm's frame advance, which stops a little before line 231 starts
+        bool Reached() { long cur = Vdp.Frames * perFrame + Vdp.Line; return cur >= target || clocksEarly > 0 && cur == target - 1 && Vdp.LineOffset >= MdVdp.ClocksPerLine - clocksEarly; }
+        if (Reached()) target += perFrame;
         long guard = t + Timeline.MasterClocksPerFrame * 4;
-        while (Vdp.Frames * perFrame + Vdp.Line < target && t < guard)
+        while (!Reached() && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
             StepCpu();

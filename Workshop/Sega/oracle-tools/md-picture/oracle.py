@@ -48,10 +48,22 @@ def blastem(rom_path, name, script='w1500,pause,snap', startup_ms=2500, out_root
     return out
 
 
+STATE_BASE_SIZE = 141640     # the size of a BlastEm 1.0.0 Genesis quick-save when a section in front of the work RAM is at its smallest
+
+
+def state_ram_offset(d):
+    """Where the work RAM is in a state file. It is not fixed: a section in front of it (it looks like the VDP's write FIFO, 12 bytes an entry) is longer while the FIFO holds entries, and the state is as much longer;
+    wave 5 found Comix Zone's states 12 to 48 bytes longer than the base size with the RAM that much later (comparing at $10941 then reported 13,000 differing bytes that were not there). Use the size to place it;
+    when it is not a multiple of 12 above the base (games with a cartridge section after the RAM: 15 and 63 were seen) compare with ours and take the best offset (MdOracleCli --ramcmp does)."""
+    extra = len(d) - STATE_BASE_SIZE
+    return STATE_RAM + (extra - extra % 12 if extra > 0 else 0)
+
+
 def state_ram(path):
     """The 32768 words of work RAM from a BlastEm state file."""
     d = open(path, 'rb').read()
-    return list(struct.unpack('>%dH' % 32768, d[STATE_RAM:STATE_RAM + 65536]))
+    off = state_ram_offset(d)
+    return list(struct.unpack('>%dH' % 32768, d[off:off + 65536]))
 
 
 def ram_words(path):
