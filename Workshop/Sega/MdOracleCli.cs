@@ -11,10 +11,11 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--md-oracle &lt;rom&gt; [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs 4] [--region ntsc|pal]</c>:
+/// <c>--md-oracle &lt;rom&gt; [--line 231] [--line-early 200] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs 4] [--region ntsc|pal]</c>:
 /// runs a game the way BlastEm is stepped by hand with its pause (F7) and frame advance (F8) keys, so a scripted play-through can be compared with the oracle frame by frame.
-/// <para>BlastEm stops a frame at about scanline 232 (measured with a pad-polling probe ROM: a key pressed while it is paused is first seen by the game at V counter 232 and, running freely, events are taken at
-/// 232-233 every frame). This command stops at that line too: it runs boundary after boundary (<see cref="MdSession.RunToLine"/>), changing the pad at the boundary exactly where the oracle's key press falls.
+/// <para>BlastEm stops a frame about 200 master clocks before scanline 231 starts, at the end of the line before (wave 5, <c>run_padlat.py</c>: a program that polls controller port 1 and records the HV counter
+/// first sees a key pressed while BlastEm is paused at V counter $E7, H $F8-$FB; the 232 used before was a line late and made Streets of Rage, Ecco and Comix Zone differ from BlastEm). This command stops there too:
+/// it runs boundary after boundary (<see cref="MdSession.RunToLine"/>, <c>--line</c> and <c>--line-early</c>), changing the pad at the boundary exactly where the oracle's key press falls.
 /// <b>Protocol:</b> BlastEm runs from reset without input until it is paused at some boundary F0 (found here with <c>--scan</c>: the boundary whose picture matches BlastEm's first screenshot, or given with
 /// <c>--f0</c>); from there both get the same buttons at the same boundaries (<c>--script</c>: "step:buttons", buttons joined by + or empty for none, the pad changes before the advance of that step) and
 /// are compared at the steps listed in <c>--shots</c> (the picture after that many advances): with <c>--theirs dir</c> holding BlastEm's screenshots s000.png, s001.png ... in the same order, each pair is diffed
@@ -43,8 +44,11 @@ internal static class MdOracleCli
     }
 
     /// <summary>--ram-at 100,200 --ram-dir d: at those steps write our work RAM (r00100.bin), the Z80's RAM (z00100.bin) and VRAM (v00100.bin), for comparing with the oracle's saved states (--md-ramcmp).</summary>
-    /// <summary>The scanline the replay stops at between two steps (where the pad changes): 232 as measured on BlastEm; <c>--line N</c> to calibrate.</summary>
-    private static int ReplayLine = 232;
+    /// <summary>The scanline the replay stops at between two steps (where the pad changes): 231, minus <see cref="ReplayEarly"/> clocks. Wave 5 measured it on BlastEm with a program that polls the pad and records the HV counter
+    /// (<c>run_padlat.py</c>: V counter $E7 at H $F8-$FB in six runs, the end of the line before 231 starts); 232, the value used until then, was a line late and made Streets of Rage, Ecco and Comix Zone differ. <c>--line N</c> to calibrate.</summary>
+    private static int ReplayLine = 231;
+    /// <summary>Master clocks before the start of <see cref="ReplayLine"/> at which the replay stops (<c>--line-early N</c>): BlastEm stops about 200 clocks before line 231 starts (wave 5, run_padlat.py; 0 to 300 give the same pictures in every game tried).</summary>
+    private static int ReplayEarly = 200;
     private static HashSet<int> RamAt = new();
     private static string? RamDir;
 
@@ -58,7 +62,7 @@ internal static class MdOracleCli
     private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
     {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
-        for (int f = 0; f < boundaries; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line); }
+        for (int f = 0; f < boundaries; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line, ReplayEarly); }
         return session;
     }
 
@@ -78,7 +82,7 @@ internal static class MdOracleCli
         {
             if (script.TryGetValue(s, out var nb)) pad = nb;
             session.SetPad(0, pad);
-            session.RunToLine(ReplayLine);
+            session.RunToLine(ReplayLine, ReplayEarly);
             int n = s + 1;
             if (lagRange > 0) { var copy = new uint[session.FrameWidth * session.FrameHeight]; Array.Copy(session.Frame, copy, copy.Length); history.Add((copy, session.FrameWidth, session.FrameHeight)); }
             if (outDir != null && RamDir != null && RamAt.Contains(n))       // only the replay that is kept writes (the candidate searches pass no output folder)
@@ -140,6 +144,19 @@ internal static class MdOracleCli
             if (theirsPath == null) { Console.WriteLine("usage: --ramcmp ours.bin theirs.state [--at 10941] [--len 10000]"); return 2; }
             int at = Convert.ToInt32(M68kTestCli.Arg(args, "--at") ?? "10941", 16), len = Convert.ToInt32(M68kTestCli.Arg(args, "--len") ?? "10000", 16);
             byte[] ours = File.ReadAllBytes(oursPath), stBytes = File.ReadAllBytes(theirsPath);
+            if (M68kTestCli.Arg(args, "--at") == null && len == 0x10000 && ours.Length >= len)
+            {
+                // BlastEm's quick-save is not a fixed layout: some section in front of the work RAM grows now and then (wave 5: Comix Zone's state after 759 advances is 48 bytes longer and the RAM sits 48 bytes
+                // later; comparing at $10941 then reported 13,000 differing bytes that were not there). The offset is taken where the most of a sample of our bytes agree with the state's, within 2 KB after $10941.
+                int best = at, bestScore = -1, defScore = 0;
+                for (int cand = at; cand < at + 0x800 && cand + len <= stBytes.Length; cand++)
+                {
+                    int sc = 0; for (int i = 0; i < len; i += 13) if (ours[i] == stBytes[cand + i]) sc++;
+                    if (cand == at) defScore = sc;
+                    if (sc > bestScore) { bestScore = sc; best = cand; }
+                }
+                if (best != at && bestScore > defScore + 100) { Console.WriteLine($"   (the state's layout is shifted: work RAM found at ${best:X} = ${at:X} + {best - at}, not at ${at:X})"); at = best; }
+            }
             if (at + len > stBytes.Length || len > ours.Length) { Console.WriteLine($"sizes: ours {ours.Length}, state {stBytes.Length}, wanted {len:X} at {at:X}"); return 2; }
             long baseAddr = Convert.ToInt64(M68kTestCli.Arg(args, "--base") ?? "FF0000", 16);
             var diffs = new List<(int a, int b, int n)>();
@@ -159,10 +176,11 @@ internal static class MdOracleCli
             return total == 0 ? 0 : 1;
         }
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
-        if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 232] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
-        int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 232;
+        if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 231] [--line-early 200] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
+        int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 231;
         ReplayLine = line;
-        if (line != 232) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm's own stop is about 232, see the record)");
+        ReplayEarly = int.TryParse(M68kTestCli.Arg(args, "--line-early"), out int early) ? early : 200;
+        if (line != 231) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm stops about 200 clocks before line 231 starts, see the record)");
         int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : -1;
         string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
         if (outDir != null) Directory.CreateDirectory(outDir);
@@ -183,7 +201,7 @@ internal static class MdOracleCli
             int min = int.TryParse(M68kTestCli.Arg(args, "--min"), out int mn) ? mn : 40;
             var session0 = new MdSession(data, "M68K", "MD", "MD", region);
             var hashes = new ulong[winN + 1];
-            for (int f = 0; f <= winN; f++) { session0.SetPad(0, PadButtons.None); session0.RunToLine(line); hashes[f] = Hash(session0.Frame, session0.FrameWidth * session0.FrameHeight) ^ (ulong)session0.FrameWidth; }
+            for (int f = 0; f <= winN; f++) { session0.SetPad(0, PadButtons.None); session0.RunToLine(line, ReplayEarly); hashes[f] = Hash(session0.Frame, session0.FrameWidth * session0.FrameHeight) ^ (ulong)session0.FrameWidth; }
             var counts = hashes.GroupBy(h => h).ToDictionary(g => g.Key, g => g.Count());
             var runs = new List<string>(); int start = -1;
             for (int f = 0; f <= winN + 1; f++)
@@ -210,28 +228,42 @@ internal static class MdOracleCli
             var session0 = new MdSession(data, "M68K", "MD", "MD", region);
             long best = long.MaxValue; int bestF = -1; var exact = new List<int>();
             // --scan-state pause.state: the oracle's state saved at the pause point (the same moment as the screenshot): among the boundaries whose picture matches, the one whose work RAM is closest to it is the start
-            byte[]? pauseRam = null;
+            byte[]? pauseRam = null, pauseState = null;
             if (M68kTestCli.Arg(args, "--scan-state") is { } pausePath && File.Exists(pausePath))
             {
-                byte[] pauseState = File.ReadAllBytes(pausePath);
+                pauseState = File.ReadAllBytes(pausePath);
                 if (pauseState.Length >= 0x10941 + 0x10000) { pauseRam = new byte[0x10000]; Array.Copy(pauseState, 0x10941, pauseRam, 0, 0x10000); pauseAdvance = M68kTestCli.Flag(args, "--no-pause-advance") ? 0 : 1; }
             }
             var ramDiff = new Dictionary<int, int>();
             var ramAll = new Dictionary<int, int>();
             bool ramPick = false;
+            var ramCopies = pauseRam != null ? new Dictionary<int, byte[]>() : null;
             for (int f = 0; f <= scanTo; f++)
             {
                 session0.SetPad(0, PadButtons.None);
-                session0.RunToLine(line);
+                session0.RunToLine(line, ReplayEarly);
                 long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, DyFor(dy, session0.FrameHeight, target.h), 0, best == long.MaxValue ? best : Math.Max(best, 1));
-                if (pauseRam != null)
-                {
-                    var ram = session0.Board.Ram; int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++;
-                    ramAll[f] = n;
-                    if (bad == 0) ramDiff[f] = n;
-                }
+                if (ramCopies != null) ramCopies[f] = (byte[])session0.Board.Ram.Clone();
                 if (bad == 0) exact.Add(f);
                 if (bad < best) { best = bad; bestF = f; }
+            }
+            if (pauseRam != null && pauseState != null && ramCopies != null)
+            {
+                // the work RAM's place in the state is not fixed (a section in front of it grows by 12 bytes now and then: 141,640 to 141,703 bytes in the roster's captures), so the offset is the one at which the RAM of the
+                // best-matching boundary agrees most with the state's, within 256 bytes after $10941; the counts below are against that
+                int ref0 = exact.Count > 0 ? exact[0] : bestF, shift = 0, bestSc = -1;
+                for (int sh = 0; sh < 0x100 && 0x10941 + sh + 0x10000 <= pauseState.Length; sh++)
+                {
+                    int sc = 0; var rr = ramCopies[ref0]; for (int i = 0; i < 0x10000; i += 7) if (rr[i] == pauseState[0x10941 + sh + i]) sc++;
+                    if (sc > bestSc) { bestSc = sc; shift = sh; }
+                }
+                if (shift != 0) { Array.Copy(pauseState, 0x10941 + shift, pauseRam, 0, 0x10000); Console.WriteLine($"scan: the state's layout is shifted: its work RAM is at $10941 + {shift}"); }
+                foreach (var (f, ram) in ramCopies)
+                {
+                    int n = 0; for (int i = 0; i < pauseRam.Length; i++) if (ram[i] != pauseRam[i]) n++;
+                    ramAll[f] = n;
+                }
+                foreach (int f in exact) ramDiff[f] = ramAll[f];
             }
             if (pauseRam != null && ramDiff.Count == 0 && ramAll.Count > 0)
             {
@@ -307,7 +339,7 @@ internal static class MdOracleCli
                     }
             };
         }
-        // --trace out.txt --trace-steps A,B [--trace-pc]: the bus writes (and the VDP's own events, and with --trace-pc every instruction's address) of the replay's steps A to B-1, each with the step, line and (instruction trace only) the pc
+        // --trace out.txt --trace-steps A,B [--trace-pc] [--trace-reads]: the bus writes (and the VDP's own events, with --trace-pc every instruction's address, with --trace-reads the reads outside the cartridge and the work RAM) of the replay's steps A to B-1, each with the step, line and (instruction trace only) the pc
         StreamWriter? replayTrace = null;
         if (M68kTestCli.Arg(args, "--trace") is { } tracePath)
         {
@@ -320,6 +352,8 @@ internal static class MdOracleCli
             board.WriteTrace = s => { if (On()) replayTrace.WriteLine($"{Tag()} {s}"); };
             board.Vdp.Trace = s => { if (On()) replayTrace.WriteLine($"{Tag()}   vdp {s}"); };
             if (M68kTestCli.Flag(args, "--trace-pc")) board.InstructionHook = pc => { if (On()) replayTrace.WriteLine($"{Tag()} pc {pc:X6}"); };
+            // --trace-reads: the 68000's reads outside the cartridge and the work RAM (the VDP's status and counters, the pads, the Z80 and YM2612 windows): what a game's branch looked at
+            if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (On()) replayTrace.WriteLine($"{Tag()} {s}"); };
         }
         var results = Replay(session, script, steps, shots, theirs, dy, lagRange, false, outDir, Console.WriteLine);
         replayTrace?.Dispose();

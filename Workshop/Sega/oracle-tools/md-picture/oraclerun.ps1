@@ -63,6 +63,7 @@ if ($PauseSnap) { $pauseState = @(Get-ChildItem $dir -Filter "s*.state" | Sort-O
 if ($SaveOut) { $wsArgs += @("--save-out", (Join-Path $work "our\$Name\save.bin")) }
 if ($env:ORACLE_SLOTSET) { $wsArgs += @("--slot-set", $env:ORACLE_SLOTSET) }      # experiment switches for our side (see MdRunCli.ApplySlotSet), e.g. "movemipl=1"
 if ($env:ORACLE_LINE) { $wsArgs += @("--line", $env:ORACLE_LINE) }      # experiment: the scanline our replay stops at between steps (default 232, where BlastEm stops)
+if ($env:ORACLE_EARLY) { $wsArgs += @("--line-early", $env:ORACLE_EARLY) }      # experiment: stop this many master clocks before that line starts (BlastEm stops about 200 clocks before line 231 starts)
 if ($snapList.Count) { $wsArgs += @("--ram-at", (($snapList | ForEach-Object { $_ - 1 }) -join ","), "--ram-dir", (Join-Path $work "our\$Name\ram")) }      # the state of a snap is saved at the START of its advance: it is ours after n-1 steps (the picture of the snap, taken after the advance, is ours after n)
 & $ws -TimeoutSec 1500 @wsArgs
 if ($snapList.Count) {

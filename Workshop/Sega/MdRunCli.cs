@@ -93,10 +93,15 @@ internal static class MdRunCli
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
-            board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            // --trace-cart-only: just the cartridge-space accesses (a game's I2C bit stream is tens of millions of lines over a minute of play; the VDP and I/O writes would add gigabytes)
+            bool cartOnly = M68kTestCli.Flag(args, "--trace-cart-only");
+            if (!cartOnly)
+            {
+                board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+                board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            }
             if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            if (M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+            if (cartOnly || M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
             if (board.Sound is MdSoundUnit unit)
             {
@@ -366,6 +371,10 @@ internal static class MdRunCli
                 case "vstep32": MdVdp.VCounterStepH32 = v[0]; break;
                 case "dmarefresh": MdVdp.DmaSkipsRefresh = v[0] != 0; break;
                 case "timerefresh": BOARD_MD.TimeBasedRefresh = v[0] != 0; break;
+                case "vdpq": BOARD_MD.VdpQuantum = v[0]; break;
+                case "vdpqr": BOARD_MD.VdpQuantumReads = v[0] != 0; break;
+                case "vdpqw": BOARD_MD.VdpQuantumWrites = v[0] != 0; break;
+                case "hintackvint": MdVdp.HintAckDropsVint = v[0] != 0; break;
                 case "iplprefetch": BOARD_MD.IplAtLastPrefetch = v[0] != 0; break;
                 case "movemipl": M68k<MdBus>.MovemFreezesIpl = v[0] != 0; break;
                 case "braipl": M68k<MdBus>.BranchIplMask = v[0]; break;

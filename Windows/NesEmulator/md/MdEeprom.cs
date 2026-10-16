@@ -95,7 +95,16 @@ public sealed class MdEeprom
     /// <summary>The 68000 side sets SDA and SCL (the cartridge calls this after any write that touches either).</summary>
     public void Drive(bool newSda, bool newScl)
     {
-        // when both change in one write: SDA first while SCL still has its old level (a START or STOP needs SCL high, a data change needs it low), then SCL
+        // when both change in one write the order matters, because a START or STOP is SDA changing while SCL is high and a data change is SDA changing while SCL is low:
+        //  - SCL falling together with SDA (NBA Jam writes the value 0 right after the acknowledge clock, SDA 1 -> 0 and SCL 1 -> 0 in one word write): the clock edge goes first and the
+        //    data change happens with SCL low. The other order sees a START there (wave 5: NBA Jam (EU) made 210 STARTs for 67 real ones and lost its whole format write);
+        //  - SCL rising together with SDA: SDA first while SCL is still low (the new bit is what the rising edge samples).
+        if (!newScl && scl && newSda != sda)
+        {
+            scl = false; Falling();
+            sda = newSda;
+            return;
+        }
         if (newSda != sda)
         {
             bool oldSda = sda;

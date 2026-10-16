@@ -123,6 +123,18 @@ NL_ = '\n'
 # ---------------------------------------------------------------------------------------------------------------------
 
 RET_LOOPS = {
+    # wave 5: instructions that write memory or read it, by their bus cycles (the fit of the interrupt sample point for the memory-access instructions)
+    'mw_ind': ['move.w d1,(a6)'],
+    'ml_ind': ['move.l d1,(a6)'],
+    'mw_abs': ['move.w d1,($8000).w'],
+    'ml_abs': ['move.l d1,($8000).w'],
+    'add_w_rmw': ['add.w d3,(a6)'],
+    'clr_w': ['clr.w (a6)'],
+    'mw_mm': ['move.w (a6),(a5)'],
+    'tst_l': ['tst.l (a6)'],
+    'cmp_l': ['cmp.l (a6),d1'],
+    'addq_ind': ['addq.w #1,(a6)'],
+    'move_mb': ['move.b (a6),d1'],
     'nop': ['nop'],
     'tst_abs': ['tst.b ($8000).w'],                       # the wait loop of Streets of Rage's intro: tst.b ($FA00).w / bne.s back (the branch costs what bra.s costs)
     'tst_abs2': ['tst.b ($8000).w', 'tst.b ($8000).w'],

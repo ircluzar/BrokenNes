@@ -99,6 +99,7 @@ internal static class MdBoardTest
         VdpDma();
         Timing();
         InterruptSamplePoints();
+        VdpPortLoops();
         Cartridge();
         MdSoundTest.Run(Check, Group);
         Console.WriteLine($"== {pass} passed, {fail} failed");
@@ -592,6 +593,34 @@ internal static class MdBoardTest
         ho.Reg(0, 0x14);
         ho.RunTo(ho.T + 600);
         Check("HINT disabled at the very end of line 119 (Super Hang-On: clock 3363 to 3417 of line 222): line 120's HINT, decided before, is kept and taken when HINT is enabled again", quiet && ho.V.IplAt(ho.T) == 4, $"{quiet} {ho.V.IplAt(ho.T)}");
+        // Fatal Rewind / Killing Game Show (BlastEm 1.0.0, probes run_fr.py E and F, run_vq.py): a horizontal interrupt pending from an earlier enable, the vertical one pending since the VBlank began and enabled in the next two
+        // writes: the CPU takes level 4 first and the oracle never takes the vertical one in the routine that follows (ours nested it in the horizontal handler: the game's empty handler cell, a double fault)
+        {
+            Rig fr()
+            {
+                var q = new Rig();
+                q.Reg(0, 0x04); q.Reg(1, 0x44); q.Reg(10, 0); q.Reg(12, 0x81); q.Reg(15, 2);
+                q.RunTo(q.LineStart(10)); q.Reg(0, 0x14); q.Wait(1500); q.Reg(0, 0x04);      // a few lines of an enabled horizontal interrupt (every line): one stays pending
+                q.RunTo(q.LineStart(240));                                                      // late in the VBlank in which the vertical interrupt came due (disabled)
+                q.Reg(0, 0x14); q.Reg(1, 0x64);                                                  // enabled in two writes
+                q.Wait(24);
+                return q;
+            }
+            var a = fr();
+            bool bothUp = (a.V.ReadStatus(a.T) & 0x80) != 0 && a.V.IplAt(a.T) == 6;
+            a.V.AcknowledgeInterrupt(4);        // the CPU took level 4 (its sample came before the vertical interrupt's enable was in effect)
+            a.Wait(200);
+            Check("a horizontal interrupt is acknowledged while the vertical one is pending and enabled: the vertical one is dropped (status bit 7 and the IPL clear), as on the oracle", bothUp && (a.V.ReadStatus(a.T) & 0x80) == 0 && a.V.IplAt(a.T) == 0, $"{bothUp} {a.V.ReadStatus(a.T):X4} {a.V.IplAt(a.T)}");
+            bool saved = MdVdp.HintAckDropsVint;
+            try
+            {
+                MdVdp.HintAckDropsVint = false;
+                var b = fr();
+                b.V.AcknowledgeInterrupt(4); b.Wait(200);
+                Check("... and without that rule the vertical interrupt survives the acknowledge, so the check can fail", b.V.IplAt(b.T) == 6, $"{b.V.IplAt(b.T)}");
+            }
+            finally { MdVdp.HintAckDropsVint = saved; }
+        }
         var hp = new Rig();
         hp.Reg(0, 0x14); hp.Reg(10, 0); hp.Reg(1, 0x64);
         hp.RunTo(hp.LineStart(119) + 2000);
@@ -813,6 +842,18 @@ internal static class MdBoardTest
         var unit = (MdSoundUnit)z.Sound;
         long expected = 262L * 3420 / 15;
         Check("the Z80 ticks once per 15 master clocks while it runs (one NTSC frame)", Math.Abs(unit.Z80Ticks - expected) < 200, $"{unit.Z80Ticks} vs {expected}");
+
+        // the stop of the oracle replay: BlastEm's frame advance stops about 200 master clocks before line 231 starts (wave 5, tools run_padlat.py); RunUntilLine(line, clocksEarly) stops in the tail of the line before
+        var s = Board(MakeRom("JUE", 0x60FE));
+        for (int f = 0; f < 2; f++) s.RunUntilLine(231, 200);
+        long sAfter2 = s.Vdp.Frames * 262L + s.Vdp.Line;
+        s.RunUntilLine(231, 200);
+        long sAfter3 = s.Vdp.Frames * 262L + s.Vdp.Line;
+        Check("RunUntilLine(231, 200) stops in the last 200 clocks (plus one instruction) of line 230, and the next call runs a whole frame on",
+            s.Vdp.Line == 230 && s.Vdp.LineOffset >= MdVdp.ClocksPerLine - 200 && sAfter3 - sAfter2 == 262, $"line {s.Vdp.Line} offset {s.Vdp.LineOffset}, {sAfter3 - sAfter2} lines between the stops");
+        var s0 = Board(MakeRom("JUE", 0x60FE));
+        s0.RunUntilLine(231); s0.RunUntilLine(231);
+        Check("... and without the offset it stops at the start of line 231 as before", s0.Vdp.Line == 231 && s0.Vdp.LineOffset < 100, $"line {s0.Vdp.Line} offset {s0.Vdp.LineOffset}");
     }
 
     // =====================================================================================================================
@@ -874,6 +915,54 @@ internal static class MdBoardTest
             Check("... and the old sampling (last bus cycle of every instruction) misses both windows, so the checks can fail", !(nopOld is > 0.66 and < 0.84) && !(movemOld is > 0.08 and < 0.18), $"nop {nopOld:F3}, movem {movemOld:F3}");
         }
         finally { M68k<MdBus>.BranchIplMask = savedMask; M68k<MdBus>.MovemFreezesIpl = savedMovem; }
+    }
+
+
+    // =====================================================================================================================
+    //  Loops of VDP port reads against the oracle's laps (Track B4b, wave 5)
+    // =====================================================================================================================
+
+    /// <summary>Laps a second frame of loop <c>per x move.w (a2),d1 ; addq.l #1,(a0) ; bra.w</c> (a2 = the VDP's control port, display off, H40, no interrupts) averaged over 300 frames after 100.</summary>
+    private static double VdpReadLoopLapsPerFrame(int per)
+    {
+        var code = new System.Collections.Generic.List<ushort>
+        {
+            0x41F9, 0x00FF, 0x0000,                     // lea ($FF0000).l,a0
+            0x45F9, 0x00C0, 0x0004,                     // lea ($C00004).l,a2
+            0x33FC, 0x8134, 0x00C0, 0x0004,             // R1: display off, DMA on
+            0x33FC, 0x8C81, 0x00C0, 0x0004,             // R12: H40
+            0x20BC, 0x0000, 0x0000,                     // move.l #0,(a0)
+        };
+        for (int i = 0; i < per; i++) code.Add(0x3212);        // move.w (a2),d1
+        code.Add(0x5290);                                       // addq.l #1,(a0)
+        code.Add(0x6000); code.Add((ushort)(-(per * 2 + 4) & 0xFFFF));       // bra.w loop
+        var b = Board(MakeRom("JUE", code.ToArray()));
+        for (int f = 0; f < 100; f++) b.RunFrame();
+        long c1 = (long)(uint)(b.Ram[0] << 24 | b.Ram[1] << 16 | b.Ram[2] << 8 | b.Ram[3]);
+        for (int f = 0; f < 300; f++) b.RunFrame();
+        long c2 = (long)(uint)(b.Ram[0] << 24 | b.Ram[1] << 16 | b.Ram[2] << 8 | b.Ram[3]);
+        return (c2 - c1) / 300.0;
+    }
+
+    private static void VdpPortLoops()
+    {
+        Group("68000: loops of VDP port reads run at the oracle's rate (laps a frame, BlastEm 1.0.0: tools rate.py, probes_b4b2.py)");
+        // the oracle's laps a frame with its vertical interrupt handler running (1, 2 and 16 reads a lap: 3,329.29, 2,746.79, 799.07), without the handler's share of the lap (about 0.3, 0.36 and 1.25 master clocks):
+        // 3,333.0, 2,749.8 and 800.0. The cycle counts alone give 3,328.9 less 0.3 %: the oracle's loops are faster than that and the 4-clock grid of the VDP cycles (BOARD_MD.VdpQuantum) is what makes them equal.
+        int[] per = { 1, 2, 16 }; double[] oracle = { 3333.0, 2749.8, 800.0 };
+        int saved = BOARD_MD.VdpQuantum;
+        try
+        {
+            for (int i = 0; i < per.Length; i++)
+            {
+                double laps = VdpReadLoopLapsPerFrame(per[i]);
+                Check($"{per[i]} VDP status read{(per[i] > 1 ? "s" : "")} + addq + bra: {oracle[i]:F1} laps a frame as on the oracle (within 0.15 %)", Math.Abs(laps / oracle[i] - 1) < 0.0015, $"{laps:F2}");
+            }
+            BOARD_MD.VdpQuantum = 0;
+            double off = VdpReadLoopLapsPerFrame(16);
+            Check("... and without the grid the 16-read loop is more than 0.15 % off, so the check can fail", Math.Abs(off / 800.0 - 1) > 0.0015, $"{off:F2}");
+        }
+        finally { BOARD_MD.VdpQuantum = saved; }
     }
 
     // =====================================================================================================================

@@ -7,6 +7,7 @@ $md = "Windows\NesEmulator\md"
 $cases = @(
   @{ name = "a stopped 68000 never samples the interrupt level again"; file = "$md\BOARD_MD.cs"; old = "if (Cpu.Stopped) iplSample = Vdp.IplAt(t);"; new = "if (Cpu.Stopped) { /* poisoned */ }" },
   @{ name = "the 24Cxx page write does not wrap inside its page"; file = "$md\MdEeprom.cs"; old = "a = a & ~(pageSize - 1) | a + 1 & pageSize - 1;"; new = "a = a + 1;" },
+  @{ name = "SCL falling together with SDA falling is taken for a START (the order of the two edges)"; file = "$md\MdEeprom.cs"; old = "if (!newScl && scl && newSda != sda)"; new = "if (false && !newScl && scl && newSda != sda)" },
   @{ name = "a read device byte is not acknowledged"; file = "$md\MdEeprom.cs"; old = "if (rd) Acknowledge(St.Read);"; new = "if (rd) { chipSda = true; state = St.Idle; }" },
   @{ name = "Acclaim's SCL is read as SDA (wiring swapped)"; file = "$md\MdCartridge.cs"; old = "case MdEepromWiring.Acclaim when address == 0x200000: e.Drive(e.MasterSda, (value & 1) != 0); return true;"; new = "case MdEepromWiring.Acclaim when address == 0x200000: e.Drive((value & 1) != 0, e.MasterScl); return true;" },
   @{ name = "SRAM outside the ROM is not mapped at power-on"; file = "$md\MdCartridge.cs"; old = "SramMapped = !LockedOn && (start & ~1u) >= (uint)rom.Length;"; new = "SramMapped = !LockedOn && rom.Length <= 0x200000;" },
