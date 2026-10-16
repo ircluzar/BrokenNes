@@ -749,6 +749,51 @@ internal static class MdPictureTest
         p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
         Check("the window position registers are taken at the end of the active line: a write after that point shows from the line after next (line 12, not 11)", p.Px(5, 10) != Argb(p.CramOf(0, 5), 0) && p.Px(5, 11) != Argb(p.CramOf(0, 5), 0) && p.Px(5, 12) == Argb(p.CramOf(0, 5), 0), $"{p.Px(5, 10):X8} {p.Px(5, 11):X8} {p.Px(5, 12):X8}");
 
+        // the full-screen vertical scroll (register 11 bit 2 clear) is taken once a line, near its end, for the next line (BlastEm, probe vsmid.py): a write never shows on the line it is made in
+        Pic Rows(bool h40 = true, bool column = false)
+        {
+            var q = new Pic(h40);
+            q.V.Reg[11] = (byte)(column ? 0x04 : 0x00);
+            for (int cy = 0; cy < 32; cy++) for (int cx = 0; cx < 64; cx++) q.Cell(PlaneA, cx, cy, 1 + cy % 14);
+            return q;
+        }
+        uint RowColour(Pic q, int y, int vs) => Argb(q.CramOf(0, 1 + ((y + vs) >> 3) % 32 % 14), 0);       // plane A cell row r is tile 1 + r % 14, a solid colour
+        void WriteVsram(Pic q, int entry, int v) { q.Cmd(5, entry * 2); q.Data((ushort)v); }
+        p = Rows();
+        p.V.ResetPictureState();
+        p.T = 20L * MdVdp.ClocksPerLine + p.V.PixelOrigin + 100 * 8; p.V.RunTo(p.T);
+        WriteVsram(p, 0, 8);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("a full-screen vertical scroll written in the middle of line 20 does not change line 20 (the entry is taken once, near the line's end, for the line after)", p.Px(250, 20) == RowColour(p, 20, 0) && p.Px(5, 20) == RowColour(p, 20, 0), $"{p.Px(250, 20):X8} {RowColour(p, 20, 0):X8} {RowColour(p, 20, 8):X8}");
+        Check("... and shows from line 21 on, over the whole line", p.Px(5, 21) == RowColour(p, 21, 8) && p.Px(300, 21) == RowColour(p, 21, 8) && p.Px(100, 40) == RowColour(p, 40, 8), $"{p.Px(5, 21):X8} {RowColour(p, 21, 8):X8}");
+        p = Rows();
+        p.V.Vsram[0] = 8; p.V.ResetPictureState();
+        p.T = 30L * MdVdp.ClocksPerLine + 3000; p.V.RunTo(p.T);
+        WriteVsram(p, 0, 16);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("a write after that point (clock 3000 of an H40 line) misses the next line too: line 31 still has the old scroll, line 32 the new", p.Px(100, 31) == RowColour(p, 31, 8) && p.Px(100, 32) == RowColour(p, 32, 16), $"{p.Px(100, 31):X8} {RowColour(p, 31, 8):X8} {RowColour(p, 31, 16):X8}");
+        p = Rows(h40: false);
+        p.V.ResetPictureState();
+        p.T = 20L * MdVdp.ClocksPerLine + 2700; p.V.RunTo(p.T);
+        WriteVsram(p, 0, 8);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("H32: a write at clock 2700 of line 20 shows on line 21, not on line 20", p.Px(100, 20) == RowColour(p, 20, 0) && p.Px(100, 21) == RowColour(p, 21, 8));
+
+        // the 2-cell column scroll reads each column's entry ahead of the picture (about 36 pixels): a column's entry written when the display is 10 pixels short of that is too late, one written 10 pixels earlier is in time
+        // (the writes take about 10 pixels to reach the VDP: two control words and a data word)
+        p = Rows(column: true);
+        p.V.ResetPictureState();
+        p.T = 20L * MdVdp.ClocksPerLine + p.V.PixelOrigin + 128 * 8; p.V.RunTo(p.T);
+        WriteVsram(p, 20, 8);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("column scroll: an entry written with the display at pixel 128 is too late for the column that starts at 160 (the entry is read about 36 pixels ahead of the display)", p.Px(160, 20) == RowColour(p, 20, 0) && p.Px(170, 20) == RowColour(p, 20, 0), $"{p.Px(160, 20):X8} {RowColour(p, 20, 0):X8} {RowColour(p, 20, 8):X8}");
+        p = Rows(column: true);
+        p.V.ResetPictureState();
+        p.T = 20L * MdVdp.ClocksPerLine + p.V.PixelOrigin + 110 * 8; p.V.RunTo(p.T);
+        WriteVsram(p, 22, 8);
+        p.T = 240L * MdVdp.ClocksPerLine; p.V.RunTo(p.T);
+        Check("... one written with the display at pixel 110 is in time for the column that starts at 176, and no other column changes", p.Px(176, 20) == RowColour(p, 20, 8) && p.Px(190, 20) == RowColour(p, 20, 8) && p.Px(160, 20) == RowColour(p, 20, 0) && p.Px(300, 20) == RowColour(p, 20, 0), $"{p.Px(176, 20):X8} {RowColour(p, 20, 0):X8} {RowColour(p, 20, 8):X8}");
+
         // the picture stage is part of what a state round trip keeps
         p = new Pic();
         p.Cell(PlaneA, 0, 0, 2);

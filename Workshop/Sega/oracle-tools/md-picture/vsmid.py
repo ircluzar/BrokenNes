@@ -13,24 +13,39 @@ H0S = [14 + 8 * k for k in range(NK)]
 VNEW = 13
 
 
-def build(out, h40=True, mode='full'):
+def build(out, h40=True, mode='full', col=None, h0s=None):
+    global H0S
+    if h0s: H0S = list(h0s)
     s = vsprobe.make(0, h40, 0, second=False)
-    s['regs'][11] = 0                                  # full-screen vertical scroll: VSRAM[0] (plane A) is the only entry read
+    s['regs'][11] = 0 if col is None else 4            # full-screen vertical scroll: VSRAM[0] (plane A) is the only entry read; with col the 2-cell column scroll, and only that column's entry is written
     s['vsram'] = [0] * 40
     asm = scenefuzz.scene_asm(s, 0, None)
     asm = asm[:asm.index('wt0:')]                      # the scene's loader, up to the display being switched on
-    loop = ['    lea ($C00008).l,a1', 'frame:']
+    loop = ['    lea ($C00008).l,a1', '    move.l #0,($FF0000).l', '    move.l #0,($FF0004).l', 'frame:', '    addq.l #1,($FF0000).l']       # RAM $FF0000: frames of the loop; $FF0004: lines measured
     for k in range(NK):
+        if mode == 'next':
+            loop += ['v%d: move.b (a1),d1' % k, '    cmpi.b #$%02X,d1' % LINES[k], '    bne.s v%d' % k,
+                     'w%d: move.w (a1),d1' % k, '    cmpi.b #$80,d1', '    bhs.s w%d' % k,
+                     '    move.l #$%04X0010,(a4)' % (0x4000 + (4 * col if col else 0)),
+                     'h%d: move.w (a1),d1' % k, '    cmpi.b #$%02X,d1' % H0S[k], '    bcs.s h%d' % k,
+                     '    move.w #%d,(a3)' % VNEW,
+                     '    move.l #$%04X0010,(a4)' % (0x4000 + (4 * col if col else 0)),
+                     'u%d: move.b (a1),d1' % k, '    cmpi.b #$%02X,d1' % (LINES[k] + 2), '    bne.s u%d' % k,
+                     'x%d: move.w (a1),d1' % k, '    cmpi.b #$80,d1', '    bhs.s x%d' % k,
+                     '    move.w #0,(a3)',
+                     '    addq.l #1,($FF0004).l']
+            continue
         loop += ['v%d: move.b (a1),d1' % k, '    cmpi.b #$%02X,d1' % LINES[k], '    bne.s v%d' % k,
                  'w%d: move.w (a1),d1' % k, '    cmpi.b #$80,d1', '    bhs.s w%d' % k,
-                 '    move.l #$40000010,(a4)',
+                 '    move.l #$%04X0010,(a4)' % (0x4000 + (4 * col if col else 0)),
                  'h%d: move.w (a1),d1' % k, '    cmpi.b #$%02X,d1' % H0S[k], '    bcs.s h%d' % k,
                  '    move.w #%d,(a3)' % VNEW,
-                 '    move.l #$40000010,(a4)',
+                 '    move.l #$%04X0010,(a4)' % (0x4000 + (4 * col if col else 0)),
                  'r%d: move.w (a1),d1' % k, '    cmpi.b #$B0,d1', '    bcs.s r%d' % k,
-                 '    move.w #0,(a3)']
-    if mode == 'static': loop = ['_hold: bra.s _hold']       # the loader only: does the oracle show the plane?
-    elif mode == 'poll': loop = [l for l in loop if 'move.w #%d,(a3)' % VNEW not in l and 'move.w #0,(a3)' not in l] + ['    bra.w frame']       # the polls, no VSRAM writes
+                 '    move.w #0,(a3)',
+                 '    addq.l #1,($FF0004).l']
+    if mode == 'static': loop = ['_hold: bra.s _hold']       # the loader only: does the oracle show the plane?
+    elif mode == 'poll': loop = [l for l in loop if 'move.w #%d,(a3)' % VNEW not in l and 'move.w #0,(a3)' not in l] + ['    bra.w frame']       # the polls, no VSRAM writes
     else: loop += ['    bra.w frame']
     src = '\n'.join(['    move.b #$40,($A10009).l', '    lea ($C00004).l,a4', '    lea ($C00000).l,a3']) + '\n' + asm + '\n'.join(loop) + '\n_spin: bra.s _spin\n'
     rom = bytearray(asm68k.build_rom(src, title='VSMID', size=scenefuzz.ROM_SIZE))
@@ -57,8 +72,49 @@ def decode(shot, yoff=0):
     return res
 
 
+def decode3(shot, yoff, col):
+    """for each measured line: is the plane row at the tile column `col` (x 16 col to 16 col + 15) on the line itself (y) the scrolled one (y + 13)?"""
+    sys.path.insert(0, os.environ.get('PYTHONPATH', HERE))
+    from pngio import read_png
+    w, h, px = read_png(shot)
+    out = []
+    for k in range(NK):
+        y = LINES[k]; got = []
+        for yy in (y, y + 1):
+            tiles = vsprobe.decode_row([tuple(p[:3]) for p in px[yy + yoff][:320]])
+            r = [R for x, R in tiles if 16 * col <= x < 16 * col + 16]
+            got.append('new' if (yy + VNEW) % 256 in r else 'old' if yy % 256 in r else '?')
+        out.append((k, y, H0S[k], got[0], got[1]))
+    return out
+
+
+def decode2(shot, yoff=0):
+    sys.path.insert(0, os.environ.get('PYTHONPATH', HERE))
+    from pngio import read_png
+    w, h, px = read_png(shot)
+    out = []
+    for k in range(NK):
+        y = LINES[k]; res = []
+        for yy in (y, y + 1):
+            tiles = vsprobe.decode_row([tuple(p[:3]) for p in px[yy + yoff][:320]])
+            res.append(next((x for x, R in tiles if R == (yy + VNEW) % 256), None))
+        out.append((k, y, H0S[k], res[0], res[1]))
+    return out
+
+
 if __name__ == '__main__':
     if sys.argv[1] == 'build': build(sys.argv[2])
-    elif sys.argv[1] == 'build-mode': build(sys.argv[2], mode=sys.argv[3])
+    elif sys.argv[1] == 'build-mode': build(sys.argv[2], mode=sys.argv[3])
+    elif sys.argv[1] == 'build-col':               # build-col out.bin col h0start h0step [h32]
+        h0s = [int(sys.argv[4]) + int(sys.argv[5]) * k for k in range(NK)]
+        build(sys.argv[2], h40=not (len(sys.argv) > 6 and sys.argv[6] == 'h32'), mode='next', col=int(sys.argv[3]), h0s=h0s)
+    elif sys.argv[1] == 'build-full':              # build-full out.bin h0start h0step [h32]: full-screen vertical scroll, writes in line L, restore at the start of line L + 2
+        h0s = [int(sys.argv[3]) + int(sys.argv[4]) * k for k in range(NK)]
+        build(sys.argv[2], h40=not (len(sys.argv) > 5 and sys.argv[5] == 'h32'), mode='next', col=None, h0s=h0s)
+    elif sys.argv[1] == 'decode3':                 # decode3 shot.png yoff col h0start h0step
+        H0S[:] = [int(sys.argv[5]) + int(sys.argv[6]) * k for k in range(NK)]
+        for k, y, h0, a, b in decode3(sys.argv[2], int(sys.argv[3]), int(sys.argv[4])): print('line %3d H0 %3d: column %s on the line itself, %s on the next line' % (y, h0, a, b))
+    elif sys.argv[1] == 'decode2':
+        for k, y, h0, f0, f1 in decode2(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 0): print('line %3d (H0 %3d): the scrolled row from x %s on line y, from x %s on line y+1' % (y, h0, f0, f1))
     elif sys.argv[1] == 'decode':
         for r in decode(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 0): print('line %3d (k %2d, H0 %3d): the scrolled row from x %s (last old tile at x %s, %d tiles decoded)' % (r[1], r[0], r[2], r[3], r[4], r[5]))
