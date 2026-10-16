@@ -23,7 +23,7 @@ internal static unsafe partial class Inputs
     /// <summary>"Allow opposite d-pad directions". False (the default) means the d-pad protection is on: Left and Right, or Up and Down, held together send neither
     /// (<see cref="DpadGuard"/>, called from <see cref="Human"/>, which the editor's poll uses for the keyboard, the gamepad and the on-screen pad together).</summary>
     public static bool AllowOpposite;
-    /// <summary>For tests only (the editor hook 90): when set, it answers "is this virtual key down" in place of GetAsyncKeyState, and the window counts as the
+    /// <summary>For tests only (the editor hook 130): when set, it answers "is this virtual key down" in place of GetAsyncKeyState, and the window counts as the
     /// foreground one, so the real polling code can be driven without a person at the keyboard. Always null in FL.</summary>
     public static Func<int, bool>? KeyProbe;
 

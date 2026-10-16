@@ -332,6 +332,8 @@ public class Bus : IBus
 		public long ApuClock;
 		/// <summary>Copies the last value written to each APU register ($4000-$4017) into <paramref name="regs"/> and returns the bitmask of those the ROM has written.</summary>
 		public uint CopyApuLatch(byte[] regs) { System.Array.Copy(apuRegLatch, regs, System.Math.Min(regs.Length, apuRegLatch.Length)); return apuRegLatchWritten; }
+		/// <summary>Puts the latch back as <see cref="CopyApuLatch"/> gave it (a host that restores a saved machine: the latch is not part of the state, and a per-channel stem is made from it). Changes no APU register.</summary>
+		public void SetApuLatch(byte[] regs, uint written) { System.Array.Copy(regs, apuRegLatch, System.Math.Min(regs.Length, apuRegLatch.Length)); apuRegLatchWritten = written & 0xFFFFFF; }
 		// MMC5 expansion audio
 		private MMC5Audio mmc5Audio;
 	public Cartridge cartridge;

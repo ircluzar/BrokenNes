@@ -59,7 +59,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private nint fontTitle, fontSection, fontLabel, fontSmall, fontBig, fontLead, fontLink;
     private nint memDc, memBmp, memOld, dimDc, dimBmp, dimOld;
     private long shownPicture = -1, lastSignature, paints;
-    private bool hasPicture, trackingLeave;
+    private bool hasPicture, trackingLeave, noteShown;
     private int picW = 256, picH = 240, shownW = 256, shownH = 240;
     private int hot, active, mouseX, mouseY;
 
@@ -484,6 +484,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Fill(dc, inner, Black);
             fixed (uint* bits = bgra)
                 Win32.StretchDIBits(dc, inner.Left + (512 - dw) / 2, inner.Top + (480 - dh) / 2, dw, dh, 0, 0, picW, picH, bits, &bmi, 0, Win32.SRCCOPY);
+            DrawStateNote(dc, inner, emu);
             return;
         }
 
@@ -499,6 +500,20 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Line_(dc, cx, cy, cx + dx * bl, cy, c);
             Line_(dc, cx, cy, cx, cy + dy * bl, c);
         }
+        DrawStateNote(dc, inner, emu);
+    }
+
+    /// <summary>What the project could not do with the game's state (a console that cannot keep it, a state that was not used, one that was too big), over the bottom of the screen for as long as it is true.</summary>
+    private void DrawStateNote(nint dc, RECT inner, Emulator? emu)
+    {
+        noteShown = false;
+        var note = emu?.StateNote;
+        if (note == null) return;
+        var box = R(inner.Left, inner.Bottom - 54, 512, 54);
+        Fill(dc, box, Win32.Rgb(46, 32, 12));
+        Line_(dc, box.Left, box.Top, box.Right, box.Top, Warn);
+        Txt(dc, note, R(box.Left + 12, box.Top + 4, 488, 46), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Text, fontSmall);
+        noteShown = true;
     }
 
     private void ToBgra()
@@ -926,7 +941,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
-            Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4);
+            Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4); Mix(e.StateNote?.GetHashCode() ?? 0);
             for (int c = 0; c < Ch.Total; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }
         }
         return h;
@@ -1306,17 +1321,18 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             case 38: return inputsOpen ? 1 : 0;
             case 39: return liveBits;
             case 37: return picW | (picH << 16);
-            // 90: simulated keyboard for the Inputs tests: index 1 puts the keys of the pad buttons in <value> (a PadButtons mask) "down" as far as the editor's
-            // poll can tell (their bound keys; the window counts as the foreground one), index 0 gives the keyboard back; 91: whether the opposite directions are allowed, 92: read the remembered input settings again
-            case 90:
+            case 90: return noteShown ? 1 : 0;           // the state note is drawn over the screen
+            // 130: simulated keyboard for the Inputs tests: index 1 puts the keys of the pad buttons in <value> (a PadButtons mask) "down" as far as the editor's
+            // poll can tell (their bound keys; the window counts as the foreground one), index 0 gives the keyboard back; 131: whether the opposite directions are allowed, 132: read the remembered input settings again
+            case 130:
                 if (index == 0) Inputs.KeyProbe = null;
                 else { int mask = (int)value; Inputs.KeyProbe = vk => { for (int i = 0; i < 12; i++) if ((mask & (int)Inputs.Buttons[i]) != 0 && Inputs.Keys[i] == vk) return true; return false; }; }
                 return 0;
-            case 91: return Inputs.AllowOpposite ? 1 : 0;
-            case 92: Inputs.Load(); return 0;
-            // 93: a remembered setting by name (<value> points at the UTF-16 name; the integer, or -999 when absent), 94: write one (<index> points at the name, <value> is the integer)
-            case 93: return Prefs.GetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(value) ?? "", -999);
-            case 94: Prefs.SetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(index) ?? "", (int)value); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
+            case 131: return Inputs.AllowOpposite ? 1 : 0;
+            case 132: Inputs.Load(); return 0;
+            // 133: a remembered setting by name (<value> points at the UTF-16 name; the integer, or -999 when absent), 134: write one (<index> points at the name, <value> is the integer)
+            case 133: return Prefs.GetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(value) ?? "", -999);
+            case 134: Prefs.SetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(index) ?? "", (int)value); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
         }
         return 0;
     }

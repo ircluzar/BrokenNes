@@ -162,6 +162,18 @@ public sealed class NesAudioMachine
         return dest.Length;
     }
 
+    /// <summary>Puts a state made by <c>Nes.SaveState()</c> back, for a host that keeps the whole machine (BrokenNes 2 projects): the machine is then
+    /// as the state was taken, the audio left over from before is dropped, and the frame count carries on from <paramref name="framesRun"/>.
+    /// Call it on a machine that has not run yet or between frames.</summary>
+    public void RestoreState(string stateJson, long framesRun)
+    {
+        nes.LoadState(stateJson);
+        resampler.Clear();
+        resampler.SetRates(NativeSampleRate, hostRate);
+        apuLogCount = 0;
+        FramesRun = framesRun;
+    }
+
     public byte PeekRam(ushort address) => nes.PeekSystemRam(address & 0x7FF);
     public void PokeRam(ushort address, byte value) => nes.PokeSystemRam(address & 0x7FF, value);
     public byte PeekRam(string symbol, int index = 0) => PeekRam((ushort)(Symbols.Ram(symbol) + index));

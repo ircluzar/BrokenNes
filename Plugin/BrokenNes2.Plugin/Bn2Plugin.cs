@@ -733,6 +733,15 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 stream.Write(&snapLen, 4);
                 fixed (byte* p = snapBytes) stream.Write(p, (uint)snapLen);
             }
+            // The whole machine of the game, last: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
+            if (a.Emulator?.CaptureGameSection() is { } gameSection)
+            {
+                uint gameMagic = GameStateSection.Tag;
+                int gameLen = gameSection.Length;
+                stream.Write(&gameMagic, 4);
+                stream.Write(&gameLen, 4);
+                fixed (byte* p = gameSection) stream.Write(p, (uint)gameLen);
+            }
             return;
         }
 
@@ -741,6 +750,8 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         SpcSnapshot? restoredSnapshot = null;
         GbSnapshot? restoredGb = null;
         SegaSnapshot? restoredSega = null;
+        GameStateSection? restoredGame = null;
+        string? gameProblem = null;
         restoring = true;
         try
         {
@@ -760,26 +771,38 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 if (ok && stream.Read(&magic, 4) && magic == PlaceMagic && stream.Read(&e, 4) && stream.Read(&c, 4))
                 {
                     hintEmu = e; hintCh = c;
-                    uint tag = 0; int slen = 0;
-                    if (stream.Read(&tag, 4) && stream.Read(&slen, 4))
+                    // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
+                    // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
+                    for (int sections = 0; sections < 8; sections++)
                     {
+                        uint tag = 0; int slen = 0;
+                        if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
                         if (tag == SpcMagic && slen == SpcSnapshot.AramSize + SpcSnapshot.DspSize)
                         {
                             var snapBuf = new byte[slen];
-                            fixed (byte* p = snapBuf) if (stream.Read(p, (uint)slen)) restoredSnapshot = SpcSnapshot.FromBytes(snapBuf);
+                            fixed (byte* p = snapBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSnapshot = SpcSnapshot.FromBytes(snapBuf);
                         }
                         else if (tag == GbMagic && slen == GbSnapshot.RegCount + GbSnapshot.WaveSize + 1)
                         {
                             var gbBuf = new byte[slen];
-                            fixed (byte* p = gbBuf) if (stream.Read(p, (uint)slen)) restoredGb = GbSnapshot.FromBytes(gbBuf);
+                            fixed (byte* p = gbBuf) if (!stream.Read(p, (uint)slen)) break; else restoredGb = GbSnapshot.FromBytes(gbBuf);
                         }
                         else if ((tag == SegaSnapshot.TagPsg || tag == SegaSnapshot.TagOpll || tag == SegaSnapshot.TagOpn) && slen is > 0 and <= MaxSegaSection)
                         {
                             // read and checked, never trusted: a stream that is not a snapshot of the kind its tag says is dropped
                             var segaBuf = new byte[slen];
-                            fixed (byte* p = segaBuf) if (stream.Read(p, (uint)slen)) restoredSega = SegaSnapshot.FromBytes(segaBuf);
+                            fixed (byte* p = segaBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSega = SegaSnapshot.FromBytes(segaBuf);
                             if (restoredSega != null && restoredSega.Tag != tag) restoredSega = null;
                         }
+                        else if (tag == GameStateSection.Tag)
+                        {
+                            if (slen < GameStateSection.HeaderSize || slen > GameStateSection.MaxRead) { gameProblem = "damaged"; break; }
+                            var gameBuf = new byte[slen];
+                            fixed (byte* p = gameBuf) if (!stream.Read(p, (uint)slen)) { gameProblem = "cut short"; break; }
+                            restoredGame = GameStateSection.Read(gameBuf, out gameProblem);
+                        }
+                        else if (slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen)) { }
+                        else break;                                          // a section nobody here knows, and cannot be skipped
                     }
                 }
             }
@@ -792,7 +815,21 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
-        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega);
+        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem);
+    }
+
+    /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
+    private static bool SkipSection(ComStream stream, int length)
+    {
+        var scratch = new byte[Math.Min(length, 65536)];
+        fixed (byte* p = scratch)
+            while (length > 0)
+            {
+                int take = Math.Min(length, scratch.Length);
+                if (!stream.Read(p, (uint)take)) return false;
+                length -= take;
+            }
+        return true;
     }
 
     // ---- test hooks (see Fpd.TestBase) ----
@@ -891,6 +928,25 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 return bytes.Length;
             }
             case 80: return segaSampler != null && assignment.Channel == Ch.Sampler ? 1 : 0;
+            // the game's state in a project: 81 byte at work-RAM offset index (-1 outside), 82 write value at offset index (1 done, 0 outside), 83 run exactly value frames (returns the frame count; a frozen game does not run),
+            // 84 hash of the whole machine as its state is written (0 none), 85 the state note: copies up to index chars into the buffer at value and returns its length (-1 no note),
+            // 86 how the project restore of the game's state went (0 none in the project, 1 put back, 2 refused or failed), 87 sets the biggest state section a save may write (value bytes; 0 = the default),
+            // 88 the size in bytes of the state section this instance would save now (-1 none)
+            case 81: return emu?.PeekWorkRam((int)index) ?? -1;
+            case 82: return emu?.PokeWorkRam((int)index, (byte)value) == true ? 1 : 0;
+            case 83: return (nint)(emu?.RunFramesForTests((int)value) ?? -1);
+            case 84: return (nint)(emu?.GameStateHashForTests() ?? 0);
+            case 85:
+            {
+                var note = emu?.StateNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
+            case 86: return emu?.StateRestoreResult ?? 0;
+            case 87: GameStateSection.MaxStored = value > 0 ? (int)value : GameStateSection.DefaultMaxStored; return 0;
+            case 88: return emu?.CaptureGameSection()?.Length ?? -1;
+            case 89: return emu?.GameStateSupportedForTests() ?? -1;       // 89 whether the running game can keep its state in a project (1/0, -1 no game)
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

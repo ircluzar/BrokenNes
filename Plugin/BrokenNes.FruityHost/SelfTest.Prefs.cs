@@ -9,7 +9,7 @@ namespace BrokenNes.FruityHost;
 public sealed unsafe partial class SelfTest
 {
     // ------------------------------------------------------------------------------------------------
-    // The migration, through the plugin's own Prefs code (editor hooks 93 = read an integer setting by name, 94 = write one). Two kinds of fake old store:
+    // The migration, through the plugin's own Prefs code (editor hooks 133 = read an integer setting by name, 134 = write one). Two kinds of fake old store:
     //   * files: BROKENNES_PREFS_FILE is the new store, BROKENNES_PREFS_OLD_FILE the old one;
     //   * the real registry code, on test keys under HKCU\Software\BrokenNes_Test\<guid>: BROKENNES_PREFS_REGKEY / BROKENNES_PREFS_OLD_REGKEY name the new and old key.
     // The real user's keys are never touched. NOT tested: the two production paths themselves (they are constants in Prefs.cs, and the real old key would have to be written);
@@ -17,12 +17,12 @@ public sealed unsafe partial class SelfTest
 
     private static int PrefInt(PluginInstance q, string name)
     {
-        fixed (char* p = name) return (int)q.Test(93, 0, (nint)p);
+        fixed (char* p = name) return (int)q.Test(133, 0, (nint)p);
     }
 
     private static void PrefSetInt(PluginInstance q, string name, int value)
     {
-        fixed (char* p = name) q.Test(94, (nint)p, value);
+        fixed (char* p = name) q.Test(134, (nint)p, value);
     }
 
     private static string FileHash(string path) => File.Exists(path) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))) : "(absent)";

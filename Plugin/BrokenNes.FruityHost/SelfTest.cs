@@ -163,6 +163,7 @@ public sealed unsafe partial class SelfTest
             ("runaway-gb", "Instrument Runaway on a Game Boy game: the frozen game's channels play from FL notes with its settings", RunawayGb),
             ("runaway-snes", "Instrument Runaway on a SNES game: the picker lists the game's instruments, the chosen one plays", RunawaySnesPicker),
             ("runaway-sega", "Instrument Runaway on Master System, Game Gear and Genesis games: the PSG, the YM2413, the YM2612 and the Genesis DAC's sounds play from FL notes (pitch, level, polyphony, slides, the project, damaged projects, cost)", RunawaySega),
+            ("runaway-state", "A project keeps the whole machine of a ROM-mode game, corruptions included: NES, Game Boy, Game Boy Color, Master System (PSG and FM), Game Gear, Genesis come back frozen or running exactly as saved, a game with no state says so, older / damaged / oversize / foreign states are survived", RunawayState),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
             ("dpad", "D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
             ("prefs", "Remembered settings: the new registry path is filled once from the old one (values of both kinds), the old key is never changed or created, a non-empty new key is left alone; on fake files and on real test registry keys", PrefsMigrationTest),
@@ -2047,7 +2048,7 @@ public sealed unsafe partial class SelfTest
     // ROM mode on Game Boy and SNES games (the plugin carries no such games: tiny ROMs are made here)
 
     /// <summary>A 32 KB Game Boy ROM with a valid header that does nothing forever (the Game Boy leaves its boot logo on the screen).</summary>
-    internal static byte[] MakeGbRom(bool tone = false)
+    internal static byte[] MakeGbRom(bool tone = false, bool counter = false, bool color = false)
     {
         var rom = new byte[0x8000];
         byte[] logo = [0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D, 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
@@ -2055,10 +2056,17 @@ public sealed unsafe partial class SelfTest
         logo.CopyTo(rom, 0x104);
         rom[0x100] = 0x00; rom[0x101] = 0xC3; rom[0x102] = 0x50; rom[0x103] = 0x01;          // NOP; JP $0150
         System.Text.Encoding.ASCII.GetBytes("BN2TEST").CopyTo(rom, 0x134);
+        if (color) rom[0x143] = 0x80;                                                          // a Game Boy Color game (it also runs on the old model)
         byte sum = 0;
         for (int i = 0x134; i <= 0x14C; i++) sum = (byte)(sum - rom[i] - 1);
         rom[0x14D] = sum;
         rom[0x150] = 0x18; rom[0x151] = 0xFE;                                                 // JR -2
+        if (counter)
+        {
+            // LD HL,$C000 ; loop: INC (HL) ; LD A,(HL) ; LDH ($47),A ; JR loop : a counter in work RAM that also drives the background palette, so the picture follows the machine
+            byte[] code = [0x21, 0x00, 0xC0, 0x34, 0x7E, 0xE0, 0x47, 0x18, 0xFA];
+            code.CopyTo(rom, 0x150);
+        }
         if (tone)
         {
             // sound on, full volume, both speakers; pulse 1: 50% duty, volume 15 without envelope, period $700 = 512 Hz, trigger; then idle
