@@ -566,6 +566,23 @@ internal static class MdBoardTest
         Check("HINT enabled in the display period of line 100 after a disabled stretch: line 100's own HINT (decided in line 99, disabled) is lost", hk.V.IplAt(hk.T) == 0);
         hk.RunTo(hk.LineStart(101) + 3000);
         Check("... line 101's (decided in line 100 with HINT enabled) is taken", hk.V.IplAt(hk.T) == 4);
+        // with R10 other than 0 a line counter zero while the HINT is disabled stays pending: BlastEm takes it at once when the HINT is enabled, in the same frame or in the next, however many lines later (hintvb.py: R10 $10, $30, $80,
+        // enable at any line after a zero; B4b's Fatal Rewind probe run_fr.py variant A); with R10 = 0 (every line) it does not (the check above), and a counter that never reaches zero in the frame (R10 = $FF) leaves nothing
+        foreach (int r10 in new[] { 0x10, 0x30, 0x80 })
+        {
+            var hq = new Rig();
+            hq.Reg(0, 0x04); hq.Reg(10, r10); hq.Reg(1, 0x44);
+            hq.RunTo(hq.LineStart(262 + 190) + 1000);       // the second frame: the counter has been loaded once
+            hq.Reg(0, 0x14);
+            hq.RunTo(hq.T + 400);
+            Check($"HINT enabled at line 190 of the second frame after a stretch with it disabled in which the counter reached zero (R10 = ${r10:X2}): the pending HINT is taken at once", hq.V.IplAt(hq.T) == 4, $"{hq.V.IplAt(hq.T)}");
+        }
+        var hz = new Rig();
+        hz.Reg(0, 0x04); hz.Reg(10, 0xFF); hz.Reg(1, 0x44);
+        hz.RunTo(hz.LineStart(262 + 190) + 1000);
+        hz.Reg(0, 0x14);
+        hz.RunTo(hz.T + 400);
+        Check("... and with R10 = $FF (the counter never reaches zero in the frame) nothing is pending", hz.V.IplAt(hz.T) == 0, $"{hz.V.IplAt(hz.T)}");
         var ho = new Rig();
         ho.Reg(0, 0x14); ho.Reg(10, 0); ho.Reg(1, 0x64);
         ho.RunTo(ho.LineStart(119) + 3380);

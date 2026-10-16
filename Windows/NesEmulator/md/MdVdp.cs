@@ -457,13 +457,17 @@ public sealed partial class MdVdp
     /// <summary>The clock of a line at which R0 bit 4 is sampled for the HINT due at the end of the next line (rule 1): a write before it counts, one after it does not. Measured on the oracle (H40): any value from 2701 to 3362 fits the replays (Titan Overdrive 2 frame 3709 needs 2800 or more, Super Hang-On 3362 or less); 2855 is the start of the horizontal blank. H32 was not measured: 2975, its horizontal blank start.</summary>
     public static int HintLatchClock = 2855, HintLatchClockH32 = 2975;
     private bool hintEnCur, hintEnNext;
+    /// <summary>With R10 other than 0 a line counter zero that comes while the horizontal interrupt is disabled leaves it pending (BlastEm: enabling it later, in the same line or many lines or a frame later, takes it at once;
+    /// measured with hintvb.py, R10 = $10, $30, $80, any enable line, with or without a vertical interrupt acknowledged in between, and B4b's Fatal Rewind probe variant A). With R10 = 0 (a zero every line) a disabled line's HINT is lost
+    /// (the latch rule below). Not in the first frame after power-on, where the counter has not been loaded yet (the oracle shows no pending HINT from it). False: the old behaviour for every R10 (<c>--slot-set hintkeep=0</c>).</summary>
+    public static bool HintKeepNonzero = true;
 
     private void FireHint()
     {
         // the lines in the counting phase step the counter; the others reload it
         if (HIntCounting(Line))
         {
-            if (hintCounter == 0) { if (HintLatchRule == 0 || (HintLatchRule == 1 ? hintEnCur : HintEnabled)) hintPending = true; hintCounter = Reg[10]; }
+            if (hintCounter == 0) { if (HintLatchRule == 0 || (HintKeepNonzero && Reg[10] != 0 && Frames > 0) || (HintLatchRule == 1 ? hintEnCur : HintEnabled)) hintPending = true; hintCounter = Reg[10]; }
             else hintCounter--;
         }
         else hintCounter = Reg[10];
