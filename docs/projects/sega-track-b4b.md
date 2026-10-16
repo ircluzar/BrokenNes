@@ -37,7 +37,7 @@ Branch `worktree-agent-acbc82985d017c567`, 2026-10-15, on top of `docs/projects/
 | `--picture-bridge-test` | **237 of 237** | 236 of 237 on main alone: its "2-cell column vertical scroll" check needs B4a's rule |
 | `--sega-bridge-test` / `--sega-stems-test` / `--sega-contracts-test` | 356 / 38 / 80, all passed | |
 | bench golden (`--sega-bench --suite --reference-paths --update`) | recorded on the reference paths: **9 Genesis cases changed, the 13 SMS/GG cases IDENTICAL**; `--ab md-loop --state-every 10` over the 9 Genesis cases: golden IDENTICAL, no `!!` line (the twin's saved machine state equals at every 10th frame) | C4a's own proof |
-| `UAT\sega-gate.ps1 -Build` | GATE_RESULT | |
+| `UAT\sega-gate.ps1 -Build` (19 steps: sega-test 72, chips 34, contracts 80, cpu-wall 27, swap-matrix 35, bridge 356, stems 38, picture-bridge 237, md-test 157, md-cart 77, md-pic 143, md-golden, z80 selftest 57 and vectors 1,604,000, m68ktest 1,284,785, sega-oracle 17, ym-oracle 43, fm-oracle 173, smstest 596) | **18 of 19 steps pass; the one that does not is `md-golden` 76 of 77** (Titan Overdrive 1 frame 1007, above), 774 s, no skip except 2 checks inside smstest for missing inputs | |
 | `--md-oracle`/roster | see the next section | |
 
 Failures that are not this branch's, found with the gate on `refs/heads/main` alone (7eb2d5b, built separately): `--smstest` 412 passed, 8 failed (Master System and Game Gear "swap Apu -> NES:SNES / DMG / DMGS / MD" counts) and `--picture-bridge-test` 236 of 237; the first was C4b's hub work (fixed on main since), the second needs B4a.
