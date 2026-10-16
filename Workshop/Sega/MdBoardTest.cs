@@ -88,6 +88,8 @@ internal static class MdBoardTest
     public static int Run(string[] args)
     {
         Console.WriteLine("== Genesis board, VDP, pads, cartridge and handshake self-test");
+        // proof that the checks can fail: --slot-set "nextslotfix=0" (or any experiment name) runs the same checks on the old rule
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         MapAndOpenBus();
         Pads();
         Z80Handshake();
@@ -472,13 +474,22 @@ internal static class MdBoardTest
         r.Reg(1, 0x64); r.Reg(12, 0x81);
         r.RunTo(r.LineStart(223) + 1000);
         bool beforeVbl = (r.V.ReadStatus(r.T) & 0x88) == 0;
-        r.RunTo(r.LineStart(224) + 100);
-        ushort sv = r.V.ReadStatus(r.T);
-        Check("line 223: not in vertical blank; line 224: the vertical blank flag (bit 3) is set, VINT not yet (788 clocks later)", beforeVbl && (sv & 0x88) == 0x08, $"{sv:X4}");
-        r.RunTo(r.LineStart(224) + 800);
-        Check("VINT arrives 788 master clocks after the vertical blank begins (status bit 7, IPL 6, Z80 interrupt line up)", (r.V.ReadStatus(r.T) & 0x80) != 0 && r.V.IplAt(r.T) == 6 && r.Z80Int);
-        r.RunTo(r.LineStart(225) + 900);
-        Check("the Z80 interrupt line drops after one line", !r.Z80Int);
+        // the V counter steps to 224 at line 223's H counter $14A (clock 2640); the VBlank flag follows it by 33 clocks (oracle: status reads against HV reads, Track B4a)
+        r.RunTo(r.LineStart(223) + 2640 + 10);
+        ushort sv1 = r.V.ReadStatus(r.T); int v1 = r.V.ReadHvCounter(r.T) >> 8;
+        r.RunTo(r.LineStart(223) + 2640 + 45);
+        ushort sv2 = r.V.ReadStatus(r.T);
+        Check("line 223: not in vertical blank; the V counter steps to 224 at clock 2640 with the VBlank flag still low (it rises 33 clocks later) and VINT not yet", beforeVbl && v1 == 224 && (sv1 & 0x88) == 0 && (sv2 & 0x88) == 0x08, $"{sv1:X4} {v1} {sv2:X4}");
+        // VINT: 788 clocks (H40) after the step, which is 8 clocks into line 224
+        r.RunTo(r.LineStart(224) + 4);
+        ushort sv3 = r.V.ReadStatus(r.T); bool early = (sv3 & 0x80) == 0 && r.V.IplAt(r.T) == 0 && !r.Z80Int;
+        r.RunTo(r.LineStart(224) + 20);
+        Check("VINT arrives 788 master clocks after the V counter's step (8 clocks into line 224; the oracle's handler entry and flag agree to a few clocks): status bit 7, IPL 6, Z80 interrupt line up", early && (r.V.ReadStatus(r.T) & 0x80) != 0 && r.V.IplAt(r.T) == 6 && r.Z80Int, $"{sv3:X4}");
+        r.RunTo(r.LineStart(224) + 8 + 2560);
+        bool z80Up = r.Z80Int;
+        r.RunTo(r.LineStart(224) + 8 + 2590);
+        Check("the Z80 interrupt line stays up 2573 master clocks (171.5 Z80 cycles, as the oracle's re-entry counts show) from the VINT and then drops, within line 224", z80Up && !r.Z80Int, $"{z80Up} {r.Z80Int}");
+        r.RunTo(r.LineStart(225) + 100);
         r.V.AcknowledgeInterrupt(6);
         Check("the acknowledge clears the pending VINT (status bit 7 and the IPL)", (r.V.ReadStatus(r.T) & 0x80) == 0 && r.V.IplAt(r.T) == 0);
         r.RunTo(r.LineStart(262) + 100);
@@ -500,6 +511,39 @@ internal static class MdBoardTest
             if (r.V.IplAt(r.T) == 4) { lines.Add(line); r.V.AcknowledgeInterrupt(4); }
         }
         Check("HINT with R10 = 3 fires every fourth line", lines.Count >= 4 && lines[1] - lines[0] == 4 && lines[2] - lines[1] == 4, string.Join(",", lines));
+        // the lines the horizontal interrupt fires on, measured on BlastEm (handlers reading the V counter, R10 = 0, 1, 3, 224, 225): the counter counts the pre-render line and lines 0 to 223; R10 = n first fires at the
+        // end of line n - 1, then every n + 1 lines; 0 is every line from the pre-render line on; above 224 never
+        System.Collections.Generic.List<int> HintLines(int r10)
+        {
+            var q = new Rig();
+            q.Reg(1, 0x44); q.Reg(0, 0x14); q.Reg(10, r10); q.Reg(12, 0x81);
+            var got = new System.Collections.Generic.List<int>();
+            for (int line = 0; line < 262 * 2; line++)
+            {
+                q.RunTo(q.LineStart(line) + 3000);
+                if (line >= 262 && q.V.IplAt(q.T) == 4) got.Add(line - 262);
+                if (q.V.IplAt(q.T) == 4) q.V.AcknowledgeInterrupt(4);
+            }
+            return got;
+        }
+        var h0 = HintLines(0); var h1 = HintLines(1); var h3 = HintLines(3); var h224 = HintLines(224); var h225 = HintLines(225);
+        Check("HINT, R10 = 0: every line from the pre-render line (261) through 223 (225 interrupts), none on 224-260", h0.Count == 225 && h0.Contains(261) && h0.Contains(0) && h0.Contains(223) && !h0.Contains(224) && !h0.Contains(260), $"{h0.Count}");
+        Check("HINT, R10 = 1: lines 0, 2, 4 ... 222 (the first at the end of line n - 1 = 0; the pre-render line only starts the count)", h1.Count == 112 && h1[0] == 0 && h1[1] == 2 && h1[^1] == 222, $"{h1.Count} {string.Join(",", h1.Take(3))}");
+        Check("HINT, R10 = 3: the first at the end of line 2, then every fourth line", h3.Count == 56 && h3[0] == 2 && h3[1] == 6 && h3[^1] == 222, $"{h3.Count} {string.Join(",", h3.Take(3))}");
+        Check("HINT, R10 = 224: once, at the end of line 223; R10 = 225: never (the counter never gets there)", h224.Count == 1 && h224[0] == 223 && h225.Count == 0, $"{h224.Count} {h225.Count}");
+
+        // the flags, as the oracle's status reads show them (H40: V step 2640, VBlank flag 33 later, HBlank flag from 2855 to the end of the line; H32: 2660, 49, 2975)
+        var fl = new Rig(); fl.Reg(1, 0x44); fl.Reg(12, 0x81);
+        fl.RunTo(fl.LineStart(100) + 2850); bool hb1 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        fl.RunTo(fl.LineStart(100) + 2865); bool hb2 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        fl.RunTo(fl.LineStart(101) + 5); bool hb3 = (fl.V.ReadStatus(fl.T) & 4) != 0;
+        Check("the horizontal blank flag (H40) is set from clock 2855 of a line and falls at the next line's start", !hb1 && hb2 && !hb3, $"{hb1} {hb2} {hb3}");
+        var f32 = new Rig(); f32.Reg(1, 0x44); f32.Reg(12, 0x00);
+        f32.RunTo(f32.LineStart(100) + 2650); int vs1 = f32.V.ReadHvCounter(f32.T) >> 8;
+        f32.RunTo(f32.LineStart(100) + 2670); int vs2 = f32.V.ReadHvCounter(f32.T) >> 8;
+        f32.RunTo(f32.LineStart(100) + 2970); bool h32a = (f32.V.ReadStatus(f32.T) & 4) != 0;
+        f32.RunTo(f32.LineStart(100) + 2985); bool h32b = (f32.V.ReadStatus(f32.T) & 4) != 0;
+        Check("H32: the V counter steps at clock 2660 (H counter $10A) and the horizontal blank flag is set from 2975", vs1 == 100 && vs2 == 101 && !h32a && h32b, $"{vs1} {vs2} {h32a} {h32b}");
         var fc = new Rig();
         fc.Reg(0, 0x14); fc.Reg(10, 9); fc.Reg(1, 0x64);
         int fired = 0;
@@ -556,6 +600,26 @@ internal static class MdBoardTest
         blank.Settle();
         double linesBlank = (blank.T - startB) / (double)MdVdp.ClocksPerLine;
         Check("... and under one line during vertical blank (about 100 words a line)", linesBlank < 1.2, $"{linesBlank:F2} lines");
+
+        // one word a slot into CRAM in a blanked H40 line: 198 words a line, not the 204 free slots (the oracle: cram_rate.py; the direct colour demo is pixel-identical only with exactly 198)
+        var cr = new Rig();
+        cr.Reg(1, 0x34); cr.Reg(12, 0x81); cr.Reg(15, 2);            // display off: every line is blanked
+        cr.Reg(19, 0xA0); cr.Reg(20, 0x0F); cr.Reg(21, 0); cr.Reg(22, 0x08); cr.Reg(23, 0);       // 4000 words from $1000
+        cr.RunTo(cr.LineStart(30));
+        long startC = cr.T;
+        cr.Cmd(0x23, 0);
+        cr.Settle();
+        double linesCram = (cr.T - startC) / (double)MdVdp.ClocksPerLine;
+        Check("DMA of 4000 words into CRAM in a blanked H40 line writes 198 words a line (about 20.3 lines; 204 a line would be 19.7)", linesCram is > 20.0 and < 20.6, $"{linesCram:F2} lines");
+        var vr = new Rig();
+        vr.Reg(1, 0x34); vr.Reg(12, 0x81); vr.Reg(15, 2);
+        vr.Reg(19, 0xA0); vr.Reg(20, 0x0F); vr.Reg(21, 0); vr.Reg(22, 0x08); vr.Reg(23, 0);
+        vr.RunTo(vr.LineStart(30));
+        long startV = vr.T;
+        vr.Cmd(0x21, 0);
+        vr.Settle();
+        double linesVram = (vr.T - startV) / (double)MdVdp.ClocksPerLine;
+        Check("... while the same transfer into VRAM (two slots a word) is not slowed by it: the 68000 is let go after about 38.5 lines (it is let go at the last fetch, a FIFO ahead of the last write)", linesVram is > 38.2 and < 38.9, $"{linesVram:F2} lines");
 
         // fill: the data word that starts it is an ordinary write, the rest repeat its high byte at address^1 (Nemesis: DMA Fill FIFO Usage reads 1234 then 12 12 ...)
         var f = new Rig();
@@ -624,7 +688,21 @@ internal static class MdBoardTest
         oc.Reg(15, 1); oc.Reg(19, 0x01); oc.Reg(20, 0x02); oc.Reg(21, 0x00); oc.Reg(22, 0x90); oc.Reg(23, 0xC0);
         oc.Cmd(0x30, 0x8000); oc.Settle();
         Check("a copy of $201 bytes: the 513th lands on $8201 with the byte from $9201", oc.V.Vram[0x8201] == 0x23 && oc.V.Vram[0x8200] == 0x00, $"{oc.V.Vram[0x8200]:X2}{oc.V.Vram[0x8201]:X2}");
-        Check("VRAM copy: four bytes from $1000 to $2000", c.V.Vram[0x2000] == 0x01 && c.V.Vram[0x2001] == 0x02 && c.V.Vram[0x2002] == 0x03 && c.V.Vram[0x2003] == 0x04, $"{c.V.Vram[0x2000]:X2}{c.V.Vram[0x2001]:X2}{c.V.Vram[0x2002]:X2}{c.V.Vram[0x2003]:X2}");
+        // a DMA copy that starts in the last 56 clocks of a line (its engine starts 56 clocks later, in the next line): the search for the next free slot went back to the start of that line and found a slot
+        // before the engine's start over and over, so the VDP never got on (D&D - Warriors of the Eternal Sun froze at its frame 541). Run in a thread so that a failure is a failed check, not a hung test.
+        string hangAt = "";
+        for (int d = 0; d < 70 && hangAt == ""; d++)
+        {
+            var hs = new Rig(); hs.T = hs.LineStart(210) - 600; hs.V.RunTo(hs.T);
+            hs.Reg(1, 0x34); hs.Reg(12, 0x81); hs.Reg(15, 1); hs.Reg(19, 0x50); hs.Reg(20, 0x00); hs.Reg(21, 0x00); hs.Reg(22, 0xFC); hs.Reg(23, 0xC0);
+            hs.Ctl((ushort)(0x4000 | 0xC380 & 0x3FFF));              // the first control word of the command: the address and the VRAM write code
+            hs.T = hs.LineStart(211) - 70 + d;                        // the second word, which holds the DMA bit, arrives (70 - d) clocks before the end of line 210 (28 clocks more for its own bus cycle)
+            bool ok = false;
+            var th = new System.Threading.Thread(() => { hs.Ctl((ushort)(0x0080 | 0xC380 >> 14 & 3)); for (int k = 212; k < 220; k++) hs.RunTo(hs.LineStart(k)); ok = true; }) { IsBackground = true };
+            th.Start();
+            if (!th.Join(1500) || !ok) hangAt = $"{d - 70} clocks from the line end";
+        }
+        Check("a DMA copy started in the last 56 clocks of a blanked line goes on in the next line (the slot search used to freeze there: D&D - Warriors of the Eternal Sun)", hangAt == "", hangAt);        Check("VRAM copy: four bytes from $1000 to $2000", c.V.Vram[0x2000] == 0x01 && c.V.Vram[0x2001] == 0x02 && c.V.Vram[0x2002] == 0x03 && c.V.Vram[0x2003] == 0x04, $"{c.V.Vram[0x2000]:X2}{c.V.Vram[0x2001]:X2}{c.V.Vram[0x2002]:X2}{c.V.Vram[0x2003]:X2}");
     }
 
     private static bool DmaWordsInRing()

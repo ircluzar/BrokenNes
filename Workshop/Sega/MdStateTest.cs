@@ -46,6 +46,7 @@ internal static class MdStateTest
             ("round trip on the roster", () => RoundTrips(games, quick)),
             ("every field", () => Fields(games)),
             ("a state saved while the sound Z80's loop is parked", () => ParkedLoop(games)),
+            ("a state saved in the middle of a frame", () => MidFrame(games)),
             ("refusals", Refusals),
             ("the app's own factory", Factory),
             ("hot swapping", HotSwap),
@@ -260,6 +261,57 @@ internal static class MdStateTest
             }
         }
         finally { MdSoundUnit.FastLoops = savedSwitch; }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------------
+    //  2c. A state saved in the middle of a frame
+    // ---------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The save point of the apps is a frame boundary, but the machine can be stopped at any line (<c>RunToLine</c>, the oracle tools do). A state taken there holds a line half drawn, a FIFO with entries, perhaps a DMA under
+    /// way, the VDP's sprite attribute cache and counters: a fresh session that loads it must finish the frame and play on exactly like the one that saved it (every picture, every audio sample, memory, and the state it writes
+    /// 40 frames later byte for byte).
+    /// </summary>
+    private static void MidFrame(List<MdRoster.Game> games)
+    {
+        Group("a state saved in the middle of a frame (early in the display, late in it, in the VBlank) carries on exactly");
+        var pick = games.Where(g => g.Number is 3 or 12 or 15).ToList();
+        if (pick.Count == 0) pick = games.Take(2).ToList();
+        if (pick.Count == 0) { Skip("mid-frame", "no roster ROM"); return; }
+        foreach (var g in pick)
+        {
+            byte[] rom = g.Load();
+            int bad = 0, badAudio = 0, badMachine = 0, badEnd = 0, fieldBad = 0, n = 0; string firstBad = "", firstFields = "";
+            foreach (int line in new[] { 30, 150, 226 })
+            {
+                n++;
+                var a = Make(rom);
+                Advance(a, 0, 400);
+                Md(a).RunToLine(line);
+                byte[] state = a.SaveState();
+                var b = Make(rom);
+                Advance(b, 0, 1);
+                b.LoadState(state);
+                ApplyPoison(b);
+                var fd = DeepCompare.Differences(a, b).Where(d => !IsLoopBookkeeping(d)).ToList();
+                if (fd.Count > 0) { fieldBad++; if (firstFields == "") firstFields = $"line {line}: " + string.Join("; ", fd.Take(4)); }
+                const int window = 41;
+                var carried = Play(a, 400, window);
+                byte[] endA = a.SaveState();
+                var restored = Play(b, 400, window);
+                byte[] endB = b.SaveState();
+                int first = Enumerable.Range(0, window).FirstOrDefault(i => carried.Pictures[i] != restored.Pictures[i], -1);
+                if (first >= 0) { bad++; if (firstBad == "") firstBad = $"line {line}, frame {400 + first}"; }
+                if (carried.Audio != restored.Audio) badAudio++;
+                if (!SameMachine(carried, restored)) badMachine++;
+                if (FirstDifference(endA, endB) >= 0) badEnd++;
+            }
+            string tag = $"#{g.Number} {g.Short}";
+            Check($"{tag}: right after the load every field equals the saved session's ({n} mid-frame save points)", fieldBad == 0, fieldBad == 0 ? "" : $"{fieldBad} of {n} differ: {firstFields}");
+            Check($"{tag}: {n} mid-frame save points: the pictures of the next 41 frames are the saved session's", bad == 0, bad == 0 ? "" : $"{bad} of {n} differ, first at {firstBad}");
+            Check($"{tag}: the audio, the memories and the CPUs agree", badAudio == 0 && badMachine == 0, $"audio {badAudio}, machine {badMachine} of {n} differ");
+            Check($"{tag}: the state each writes 41 frames later is identical, byte for byte", badEnd == 0, badEnd == 0 ? "" : $"{badEnd} of {n} differ");
+        }
     }
 
     /// <summary>The index of the first byte that differs (or the shorter length when one is a prefix of the other), -1 when they are equal.</summary>

@@ -19,7 +19,7 @@ public sealed class MdSession : IConsoleSession
     public const int DebugWidth = 512, DebugHeight = 272;
 
     public BOARD_MD Board { get; }
-    private readonly uint[] frame = new uint[Math.Max(DebugWidth * DebugHeight, MdVdp.PictureStride * MdVdp.PictureMaxHeight)];
+    private readonly uint[] frame = new uint[Math.Max(DebugWidth * DebugHeight, MdVdp.PictureStride * MdVdp.PictureMaxHeight * 2)];
     private int frameWidth = 320, frameHeight = 224;
     /// <summary>Show the VDP's memory view instead of the picture.</summary>
     public bool DebugView { get; set; }
@@ -72,17 +72,21 @@ public sealed class MdSession : IConsoleSession
             frameWidth = DebugWidth; frameHeight = DebugHeight;
             return;
         }
-        frameWidth = v.PictureWidth; frameHeight = v.PictureHeight;
-        v.CopyPicture(frame);
+        CopyPicture(v);
+    }
+
+    /// <summary>The picture the VDP finished: in interlace mode 2 the double-height one with both fields woven (448 or 480 rows, shown at twice the width so the proportions hold: see <see cref="DisplayWidth"/>), else the normal one.</summary>
+    private void CopyPicture(MdVdp v)
+    {
+        if (v.WovenValid) { frameWidth = v.PictureWidth; frameHeight = v.WovenHeight; v.CopyWovenPicture(frame); }
+        else { frameWidth = v.PictureWidth; frameHeight = v.PictureHeight; v.CopyPicture(frame); }
     }
 
     /// <summary>Run to scanline <paramref name="line"/> (see <see cref="BOARD_MD.RunUntilLine"/>) instead of to the end of the frame, and show the picture as it stands: for comparisons with an emulator that is stepped a frame at a time.</summary>
     public void RunToLine(int line)
     {
         Board.RunUntilLine(line);
-        var v = Board.Vdp;
-        frameWidth = v.PictureWidth; frameHeight = v.PictureHeight;
-        v.CopyPicture(frame);
+        CopyPicture(Board.Vdp);
     }
 
     public void Reset() => Board.Reset();
@@ -90,8 +94,8 @@ public sealed class MdSession : IConsoleSession
     public uint[] Frame => frame;
     public int FrameWidth => frameWidth;
     public int FrameHeight => frameHeight;
-    /// <summary>The picture fills the same width of screen in both modes (a 256-wide line is stretched to the 320 of the wide one).</summary>
-    public int DisplayWidth => DebugView ? DebugWidth : 320;
+    /// <summary>The picture fills the same width of screen in both modes (a 256-wide line is stretched to the 320 of the wide one); the double-height picture of interlace mode 2 (more than 240 rows) is shown at twice that width so that it keeps its proportions.</summary>
+    public int DisplayWidth => DebugView ? DebugWidth : frameHeight > 240 ? 640 : 320;
     public int SampleRate => sampleRate;
 
     public int ReadSamples(short[] buffer) => Board.Sound.ReadSamples(buffer);

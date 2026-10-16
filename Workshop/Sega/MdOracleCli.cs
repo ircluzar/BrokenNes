@@ -118,6 +118,7 @@ internal static class MdOracleCli
 
     public static int Run(string[] args)
     {
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         // --emit-script default [--offset 90] [--steps 1500]: print the sweep's pad script (see MdSweepCli) as "step:buttons" changes, step 0 being frame <offset> of it, for --script and for oraclerun.ps1
         if (M68kTestCli.Arg(args, "--emit-script") is { } emitName)
         {
@@ -172,7 +173,6 @@ internal static class MdOracleCli
         int lagRange = int.TryParse(M68kTestCli.Arg(args, "--lags"), out int lg) ? lg : 400;
         int jobs = int.TryParse(M68kTestCli.Arg(args, "--jobs"), out int jb) ? Math.Clamp(jb, 1, 6) : 4;
         byte[] data = File.ReadAllBytes(rom);
-        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) MdRunCli.ApplySlotSet(slotSet);       // experiment switches of the board and the VDP (names in MdRunCli.ApplySlotSet)
         RamDir = M68kTestCli.Arg(args, "--ram-dir"); if (RamDir != null) Directory.CreateDirectory(RamDir);
         RamAt = new HashSet<int>((M68kTestCli.Arg(args, "--ram-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
 

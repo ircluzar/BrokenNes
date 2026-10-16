@@ -21,7 +21,10 @@ public sealed partial class MdVdp
         foreach (var e in fifo) { w.Write(e.Code); w.Write(e.Address); w.Write(e.Data); w.Write(e.SlotsLeft); w.Write(e.FromDma); }
         w.Write(dmaInFifo);
         w.Write((int)dma); w.Write(fillArmed); w.Write(dmaSource); w.Write(dmaLength); w.Write(dmaSlotsLeft); w.Write(fillData); w.Write(dmaTargetCode); w.Write(fillSourceStart); w.Write(fillLengthStart);
-        w.Write(dmaStartTime); w.Write(dmaNextFetch);
+        w.Write(dmaStartTime); w.Write(dmaNextFetch); w.Write(SpriteCache);
+        // the census counters (B4a's --md-census reads them): carried so that a loaded session's numbers go on from the saved one's
+        w.Write(ActiveRegWrites); w.Write(ActiveCramWrites); w.Write(ActiveVsramWrites); w.Write(ActiveVramWrites); w.Write(HintTaken); w.Write(VintTaken);
+        foreach (long v in ActiveRegWritesBy) w.Write(v);
         w.Write(DataWrites); w.Write(ControlWrites); w.Write(FifoStalls); w.Write(DmaWords); w.Write(FifoStallClocks);
         SaveRenderState(w);
     }
@@ -37,7 +40,9 @@ public sealed partial class MdVdp
         for (int i = 0; i < fifo.Length; i++) fifo[i] = new FifoEntry { Code = r.ReadInt32(), Address = r.ReadUInt32(), Data = r.ReadUInt16(), SlotsLeft = r.ReadInt32(), FromDma = r.ReadBoolean() };
         dmaInFifo = r.ReadInt32();
         dma = (DmaKind)r.ReadInt32(); fillArmed = r.ReadBoolean(); dmaSource = r.ReadUInt32(); dmaLength = r.ReadInt32(); dmaSlotsLeft = r.ReadInt32(); fillData = r.ReadUInt16(); dmaTargetCode = r.ReadInt32(); fillSourceStart = r.ReadInt32(); fillLengthStart = r.ReadInt32();
-        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64();
+        dmaStartTime = r.ReadInt64(); dmaNextFetch = r.ReadInt64(); ReadAll(r, SpriteCache);
+        ActiveRegWrites = r.ReadInt64(); ActiveCramWrites = r.ReadInt64(); ActiveVsramWrites = r.ReadInt64(); ActiveVramWrites = r.ReadInt64(); HintTaken = r.ReadInt64(); VintTaken = r.ReadInt64();
+        for (int i = 0; i < ActiveRegWritesBy.Length; i++) ActiveRegWritesBy[i] = r.ReadInt64();
         DataWrites = r.ReadInt64(); ControlWrites = r.ReadInt64(); FifoStalls = r.ReadInt64(); DmaWords = r.ReadInt64(); FifoStallClocks = r.ReadInt64();
         LoadRenderState(r);
     }
@@ -54,6 +59,9 @@ public sealed partial class MdVdp
         w.Write(lineIdx); w.Write(bufA); w.Write(bufB); w.Write(sprLine);
         w.Write(PictureWidth); w.Write(PictureHeight); w.Write(FramesRendered);
         WriteWords(w, picture); WriteWords(w, building);
+        // interlace mode 2 (B4a): the field's row of the double-height picture, the cell height, and the woven picture itself when there is one (it is 1.3 MB: only in that mode)
+        w.Write(dbl); w.Write(imgRow); w.Write(cellShift); w.Write(wovenValid); w.Write(WovenHeight); w.Write(SpriteOverflowLines);
+        if (wovenValid) WriteWords(w, woven);
     }
 
     private void LoadRenderState(BinaryReader r)
@@ -66,6 +74,8 @@ public sealed partial class MdVdp
         ReadAll(r, lineIdx); ReadAll(r, bufA); ReadAll(r, bufB); ReadAll(r, sprLine);
         PictureWidth = r.ReadInt32(); PictureHeight = r.ReadInt32(); FramesRendered = r.ReadInt64();
         ReadWords(r, picture); ReadWords(r, building);
+        dbl = r.ReadBoolean(); imgRow = r.ReadInt32(); cellShift = r.ReadInt32(); wovenValid = r.ReadBoolean(); WovenHeight = r.ReadInt32(); SpriteOverflowLines = r.ReadInt64();
+        if (wovenValid) ReadWords(r, woven); else Array.Clear(woven);
         // the 192-entry colour table is derived from colour RAM
         for (int i = 0; i < 64; i++) UpdatePal(i);
     }

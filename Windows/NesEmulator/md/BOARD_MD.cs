@@ -236,8 +236,8 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         else if (Cpu.IplFrozen) Vdp.RunTo(start);
         else if (!IplAtLastPrefetch)
         {
-            Vdp.RunTo(start);
-            iplSample = Vdp.IplAt(start);
+            Vdp.RunTo(start + (IplSampleAdjustClocks > 0 ? IplSampleAdjustClocks : 0));
+            iplSample = Vdp.IplAt(start + IplSampleAdjustClocks);
         }
         else if (Cpu.InPrefetch)
         {
@@ -282,6 +282,9 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             t += RefreshStallCycles * ClocksPer68k;
         }
     }
+
+    /// <summary>Experiment parameter (Track B4a): shifts the moment the interrupt priority lines are looked at within an instruction's last bus cycle, in master clocks.</summary>
+    public static int IplSampleAdjustClocks = 0;
 
     private long nextRefresh = RefreshPhaseClocks;
     /// <summary>Refresh follows the master clock instead of counting the cycles the 68000 ran.</summary>

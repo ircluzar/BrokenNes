@@ -101,17 +101,23 @@ internal static class MdPictureTest
         public void Reg(int r, int val) => Ctl((ushort)(0x8000 | r << 8 | val));
         public void Cmd(int code, int addr) { Ctl((ushort)((code & 3) << 14 | addr & 0x3FFF)); Ctl((ushort)((code >> 2 & 0xF) << 4 | addr >> 14 & 3)); }
         public void Data(ushort v) { Tick(); V.WriteData(v, T); if (V.Time > T) T = V.Time; }
+        /// <summary>Let the FIFO empty: queued data port writes reach their memory at a later slot, and what they do (the sprite cache) depends on the registers at that moment.</summary>
+        public void Settle() { V.RunTo(V.Time + 20000); T = V.Time; }
     }
 
     public static int Run(string[] args)
     {
         Console.WriteLine("== Genesis picture, session, saves and mappers self-test");
+        // proof that the checks can fail: --slot-set "winstretch=0;h32stretch=0" (or any other experiment name) runs the same checks on the old rule
+        if (M68kTestCli.Arg(args, "--slot-set") is { } slotSet) { MdRunCli.ApplySlotSet(slotSet); Console.WriteLine($"   (experiment settings: {slotSet})"); }
         Planes();
         Scroll();
+        ColumnScrollAndSizes();
         WindowTests();
         Sprites();
         ShadowHighlight();
         ModesAndTiming();
+        Interlace();
         Session();
         Mappers();
         Console.WriteLine($"== {pass} passed, {fail} failed");
@@ -260,6 +266,70 @@ internal static class MdPictureTest
 
     // =====================================================================================================================
 
+    /// <summary>Column vertical scroll (R11 bit 2) with a fine horizontal scroll, and the plane sizes the VDP cannot hold: both measured on BlastEm with probe scenes (every pixel row of the plane readable).</summary>
+    private static void ColumnScrollAndSizes()
+    {
+        Group("2-cell column scroll with a horizontal scroll, and plane sizes that do not fit");
+        // plane A: each cell row cy is tile 1 + cy % 14 (a solid colour per row); column c of plane A scrolls by VSRAM[2c] = 8 * (c + 2), plane B by 0x7F8 ... the last column's pair is ANDed for the left stretch
+        int Colour(int vs) => (vs >> 3) % 14 + 1;
+        Pic Setup(int hscroll, bool h40 = true, int r17 = 0)
+        {
+            var q = new Pic(h40);
+            q.V.Reg[11] = 0x04;
+            q.V.Reg[17] = (byte)r17;
+            for (int cy = 0; cy < 32; cy++) for (int cx = 0; cx < 64; cx++) q.Cell(PlaneA, cx, cy, 1 + cy % 14);
+            for (int c = 0; c < 20; c++) { q.V.Vsram[2 * c] = (ushort)(8 * (c + 2)); q.V.Vsram[2 * c + 1] = 0x7F8; }
+            q.V.Vsram[38] = 40; q.V.Vsram[39] = 24;            // the last column: 40 & 24 = 8
+            q.SetHScroll(0, hscroll, 0);
+            q.Frame();
+            return q;
+        }
+        var p = Setup(0);
+        Check("column scroll without a horizontal scroll: column c (16 pixels) uses VSRAM[2c]", p.Px(2, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(18, 0) == Argb(p.CramOf(0, Colour(24)), 0) && p.Px(302, 0) == Argb(p.CramOf(0, Colour(160)), 0));
+        p = Setup(13);
+        // hscroll 13: the plane's cell pairs start at screen x = 13 + 16 k; the entries count from the first of them, and the stretch before it uses the last column's two entries ANDed
+        Check("with a horizontal scroll of 13 the first column starts at x = 13 (hscroll mod 16), not at 0", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(28, 0) == Argb(p.CramOf(0, Colour(16)), 0), $"{p.Px(13, 0):X8} {p.Px(28, 0):X8}");
+        Check("... the second at x = 29", p.Px(29, 0) == Argb(p.CramOf(0, Colour(24)), 0) && p.Px(44, 0) == Argb(p.CramOf(0, Colour(24)), 0));
+        Check("... and the stretch to its left (x 0-12) scrolls by VSRAM[38] AND VSRAM[39] (the last column's pair: 40 and 24 give 8)", p.Px(2, 0) == Argb(p.CramOf(0, Colour(8)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0), $"{p.Px(2, 0):X8}");
+        p = Setup(29);
+        Check("a horizontal scroll of 29 starts the first column at x = 13 as well (29 mod 16)", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(8)), 0));
+        // H32: the stretch at the left uses vertical scroll 0 (oracle: probe scenes vsprobe 3 and vsprobe2 5-7, 9, and the fuzz families on H32); H40 keeps the two ANDed entries (above)
+        p = Setup(13, false);
+        Check("H32: with a horizontal scroll of 13 the first column starts at x = 13 as in H40 ...", p.Px(13, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(28, 0) == Argb(p.CramOf(0, Colour(16)), 0) && p.Px(29, 0) == Argb(p.CramOf(0, Colour(24)), 0));
+        Check("... and the stretch to its left (x 0-12) scrolls by 0, not by the two last entries ANDed (VSRAM[30] and [31] would give 136)", p.Px(2, 0) == Argb(p.CramOf(0, Colour(0)), 0) && p.Px(12, 0) == Argb(p.CramOf(0, Colour(0)), 0), $"{p.Px(2, 0):X8} want {Argb(p.CramOf(0, Colour(0)), 0):X8}");
+        // a window at the left and a fine scroll: the part of the first pair the window leaves (from the window's edge to the edge + the fine scroll) takes the entry of the pair after it (oracle: vsprobe 3 scenes
+        // 3-11 and the fuzz family with window and column scroll; the entry index is the window's width in 16-pixel steps)
+        p = Setup(13, true, 2);        // window left of x = 32; plane pairs at 13 + 16 k
+        Check("a window at the left (x < 32) with a fine scroll of 13: the pair that would be column 1 (x 29-44) uses the entry of column 2 from the window's edge on (x 32-44) ...", p.Px(35, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(44, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0), $"{p.Px(35, 0):X8} want {Argb(p.CramOf(0, Colour(8 * 4)), 0):X8}");
+        Check("... column 2 (x 45-60) keeps its own entry and column 3 starts at x = 61", p.Px(50, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(60, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(62, 0) == Argb(p.CramOf(0, Colour(8 * 5)), 0));
+        p = Setup(0, true, 2);
+        Check("a window at the left without a fine scroll changes nothing: x 32-47 is column 2, x 48 column 3", p.Px(33, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(47, 0) == Argb(p.CramOf(0, Colour(8 * 4)), 0) && p.Px(49, 0) == Argb(p.CramOf(0, Colour(8 * 5)), 0));
+
+        // plane sizes: a width of 128 cells forces a height of 32; a height of 128 with a width of 64 is a 64 x 64 plane
+        var q = new Pic();
+        q.V.Reg[16] = 0x13;            // 128 wide, 64 high
+        q.V.Reg[11] = 0;
+        q.Cell(PlaneA, 0, 0, 2, 128);
+        q.V.Vram[PlaneA + 8192] = 0; q.V.Vram[PlaneA + 8193] = 3;        // what a 128 x 64 plane would show 32 rows down (cell row 32 starts 8 KB after the table's start)
+        q.V.Vsram[0] = 256;
+        q.Frame();
+        Check("a plane 128 cells wide is only 32 high (a height code of 64 does not give 128 x 64): a vertical scroll of 256 wraps to the first row", q.Px(2, 0) == Argb(q.CramOf(0, 2), 0), $"{q.Px(2, 0):X8}");
+        q = new Pic();
+        q.V.Reg[16] = 0x31;            // 64 wide, 128 high
+        q.Cell(PlaneA, 0, 0, 2, 64);
+        q.V.Vram[PlaneA + 8192] = 0; q.V.Vram[PlaneA + 8193] = 3;
+        q.V.Vsram[0] = 512;
+        q.Frame();
+        Check("a plane 64 cells wide with a height code of 128 is 64 x 64: a vertical scroll of 512 wraps to the first row", q.Px(2, 0) == Argb(q.CramOf(0, 2), 0), $"{q.Px(2, 0):X8}");
+        q = new Pic();
+        q.V.Reg[16] = 0x30;            // 32 wide, 128 high: valid
+        q.Cell(PlaneA, 0, 0, 2, 32);
+        q.Cell(PlaneA, 0, 64, 3, 32);
+        q.V.Vsram[0] = 512;
+        q.Frame();
+        Check("a plane 32 cells wide and 128 high is valid: a vertical scroll of 512 shows cell row 64", q.Px(2, 0) == Argb(q.CramOf(0, 3), 0), $"{q.Px(2, 0):X8}");
+    }
+
     private static void WindowTests()
     {
         Group("the window");
@@ -402,6 +472,50 @@ internal static class MdPictureTest
         p.Sprite(0, 12, 40, 1, 1, 7, 2, false, 0);
         p.Frame();
         Check("a sprite uses the palette line in its attributes", p.Px(14, 42) == Argb(p.CramOf(2, 7), 0));
+
+        // the sprite attribute cache (BlastEm, scenes whose table address register named another table while the memories were loaded): Y, size and link of each sprite are kept as the table is written
+        // through the data port while the register names it; the position, tile and attributes are read from VRAM when the line is drawn
+        p = new Pic();
+        p.Sprite(0, 100, 100, 1, 1, 4, 0, false, 0);          // poked into $6000: Y 100
+        p.V.ResetPictureState();                              // the cache is taken from it (as a tool or a bridge that sets the memories directly does)
+        p.Reg(5, 0x6800 >> 9);                                // the register names another table now ...
+        p.Cmd(1, 0x6800); p.Data((ushort)(50 + 128)); p.Data(0x0000);            // ... and a write there (Y 50, size 1 x 1, link 0) goes into the cache
+        p.Settle();
+        p.Cmd(1, SatAddr); p.Data((ushort)(170 + 128));       // a write to $6000 while the register names $6800 does not
+        p.Settle();
+        p.Reg(5, SatAddr >> 9);
+        p.V.RunTo(p.V.Time + p.V.Timeline.MasterClocksPerFrame * 2);
+        uint t4 = Argb(p.CramOf(0, 4), 0);
+        Check("the sprite attribute cache: a sprite's Y comes from the cache (50, written while the register named $6800), its X and tile from the table in VRAM", p.Px(102, 52) == t4 && p.Px(102, 102) != t4 && p.Px(102, 172) != t4, $"{p.Px(102, 52):X8} {p.Px(102, 102):X8} {p.Px(102, 172):X8}");
+        p.Cmd(1, SatAddr); p.Data((ushort)(150 + 128));
+        p.V.RunTo(p.V.Time + p.V.Timeline.MasterClocksPerFrame * 2);
+        Check("... and a write to the table the register names now moves it (Y 150)", p.Px(102, 152) == t4 && p.Px(102, 52) != t4);
+
+        // a sprite's Y word has nine bits outside interlace mode 2
+        p = new Pic();
+        p.Sprite(0, 100, 50, 1, 1, 4, 0, false, 0);
+        p.V.Vram[SatAddr] |= 2;                               // bit 9 of the Y word
+        p.Frame();
+        Check("a sprite's Y word has 9 bits: with bit 9 set (Y = 512 + 178) the sprite is still at line 50 (oracle: attribute cache scenes with random Y words)", p.Px(102, 52) == t4, $"{p.Px(102, 52):X8}");
+
+        // the link list: H32 has a table of 64 sprites (512 bytes); the walk follows links up to 79 and the Y, size and link of those sprites come from the cache, but their position and attributes are read from the table
+        // modulo 512: sprite 70 takes them from sprite 6 (Nemesis' sprite masking ROM: sprite 64 is at the X of sprite 0, off the left edge; the attribute cache scenes: a link to 78 shows the position and palette of sprite 14)
+        p = new Pic(h40: false);
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 70);           // 70 is past the 64 entries of an H32 table
+        p.Sprite(70, 140, 20, 1, 1, 5, 0, false, 5);          // its own position and tile (140, 5) are not used ...
+        p.Sprite(6, 60, 20, 1, 1, 6, 0, false, 0);            // ... sprite 6's (60, 6) are
+        p.Sprite(5, 100, 20, 1, 1, 7, 0, false, 85);
+        p.Sprite(85, 160, 20, 1, 1, 2, 0, false, 7);          // 85 is past the 80 the cache covers: the list ends at sprite 5
+        p.Sprite(7, 200, 20, 1, 1, 3, 0, false, 0);
+        p.Frame();
+        Check("H32: the walk goes on through a link to sprite 70 (sprite 5 behind it is drawn) ...", p.Px(22, 22) == t4 && p.Px(102, 22) == Argb(p.CramOf(0, 7), 0), $"{p.Px(102, 22):X8}");
+        Check("... sprite 70 shows at the position and with the tile of sprite 6 (modulo 512), not its own", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0) && p.Px(142, 22) != Argb(p.CramOf(0, 5), 0), $"{p.Px(62, 22):X8} {p.Px(142, 22):X8}");
+        Check("... and a link of 80 or more ends the list", p.Px(162, 22) != Argb(p.CramOf(0, 2), 0) && p.Px(202, 22) != Argb(p.CramOf(0, 3), 0));
+        p = new Pic();
+        p.Sprite(0, 20, 20, 1, 1, 4, 0, false, 70);
+        p.Sprite(70, 60, 20, 1, 1, 6, 0, false, 0);
+        p.Frame();
+        Check("H40: sprite 70 is part of the table and is drawn at its own position", p.Px(62, 22) == Argb(p.CramOf(0, 6), 0));
     }
 
     // =====================================================================================================================
@@ -427,14 +541,14 @@ internal static class MdPictureTest
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Cell(PlaneA, 0, 0, 0x8002);
-        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, false, 0);      // palette 3 colour 15: shadow operator (tile 15 is solid colour 15)
+        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, true, 0);       // palette 3 colour 15: shadow operator (tile 15 is solid colour 15); with the priority bit it wins over the high-priority plane tile
         p.Frame();
         Check("a sprite pixel of palette 3 colour 15 shadows what is below it without drawing itself", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1));
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Cell(PlaneA, 0, 0, 0x8002);
         p.Tile(14, 14);
-        p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);      // colour 14 of palette 3: highlight operator
+        p.Sprite(0, 0, 0, 1, 1, 14, 3, true, 0);       // colour 14 of palette 3: highlight operator (with the priority bit: it wins over the high-priority plane tile)
         p.Frame();
         Check("palette 3 colour 14 highlights a normal pixel", p.Px(2, 2) == Argb(p.CramOf(0, 2), 2));
         p = new Pic();
@@ -444,14 +558,137 @@ internal static class MdPictureTest
         p.Sprite(0, 0, 0, 1, 1, 14, 3, false, 0);
         p.Frame();
         Check("... and brings a shadowed pixel back to normal", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        // oracle scenes (random planes and sprites, 16 + 20 scenes against BlastEm): a sprite is part of the priority ladder before it acts
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x8002);                     // a high-priority plane A pixel (colour 2) under a LOW-priority shadow operator sprite
+        p.Sprite(0, 0, 0, 1, 1, 0xF, 3, false, 0);
+        p.Frame();
+        Check("a low-priority operator sprite under a visible high-priority plane pixel does nothing (the plane wins the ladder, the pixel stays normal)", p.Px(2, 2) == Argb(p.CramOf(0, 2), 0));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(5, 5); p.Cell(PlaneB, 0, 0, 0x2);           // plane B: low priority, colour 2
+        p.Cell(PlaneA, 0, 0, 0x8000);                     // plane A: a high-priority tile that is transparent (tile 0) there
+        p.Sprite(0, 0, 0, 1, 1, 4, 0, false, 0);           // a low-priority sprite (colour 4)
+        p.Frame();
+        Check("a low-priority sprite shows over a low-priority plane even where plane A has a transparent high-priority tile (the pixel is then normal, not shadowed)", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0), $"{p.Px(2, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 4, 0, false, 0);
+        p.Frame();
+        Check("a low-priority sprite over low-priority planes is itself in shadow", p.Px(2, 2) == Argb(p.CramOf(0, 4), 1));
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(14, 14);
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 14, 2, false, 0);          // colour 14 of palette 2 (an operator only in palette 3)
+        p.Frame();
+        Check("a low-priority sprite pixel of colour 14 outside palette 3 is drawn normal, not shadowed (oracle: random scenes, colour 14 over shadow is always normal)", p.Px(2, 2) == Argb(p.CramOf(2, 14), 0), $"{p.Px(2, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8;
+        p.Tile(15, 15);
+        p.Cell(PlaneA, 0, 0, 0x0002);
+        p.Sprite(0, 0, 0, 1, 1, 15, 2, false, 0);          // colour 15 of palette 2 (an operator only in palette 3)
+        p.Frame();
+        Check("... but colour 15 outside palette 3 follows the state like any other colour: shadowed over shadow (oracle: 1,700 such pixels, never normal; the first guess had it normal)", p.Px(2, 2) == Argb(p.CramOf(2, 15), 1), $"{p.Px(2, 2):X8}");
         p = new Pic();
         p.V.Reg[12] |= 8;
         p.Sprite(0, 0, 0, 1, 1, 4, 0, true, 0); p.Sprite(1, 16, 0, 1, 1, 4, 0, false, 0); p.V.Vram[SatAddr + 3] = 1;
         p.Frame();
         Check("an ordinary sprite is drawn at normal brightness with the priority bit and in shadow without it", p.Px(2, 2) == Argb(p.CramOf(0, 4), 0) && p.Px(18, 2) == Argb(p.CramOf(0, 4), 1));
+
+        // the left column blank in shadow/highlight mode (oracle, four random-scene families): the blank column is the backdrop in shadow; the planes in the next cell are the blanked cell's planes; sprites stay put
+        p = new Pic();
+        p.V.Reg[12] |= 8; p.V.Reg[0] |= 0x20; p.V.Reg[7] = 0x02;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003); p.Cell(PlaneA, 2, 0, 0x8004);
+        p.Frame();
+        Check("shadow/highlight with the left column blank: the blank column shows the backdrop in shadow (a high-priority tile hidden under it does not make it normal)", p.Px(2, 2) == Argb(p.CramOf(0, 2), 1) && p.Px(7, 5) == Argb(p.CramOf(0, 2), 1), $"{p.Px(2, 2):X8}");
+        Check("... the second cell (x 8-15) shows the first cell's plane pixels (tile 2) instead of its own (tile 3), the third its own", p.Px(10, 2) == Argb(p.CramOf(0, 2), 0) && p.Px(18, 2) == Argb(p.CramOf(0, 4), 0), $"{p.Px(10, 2):X8} {p.Px(18, 2):X8}");
+        p = new Pic();
+        p.V.Reg[12] |= 8; p.V.Reg[0] |= 0x20;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003);
+        p.Sprite(0, 8, 0, 1, 1, 5, 0, true, 0);
+        p.Frame();
+        Check("... a sprite in the second cell stays in the second cell", p.Px(10, 2) == Argb(p.CramOf(0, 5), 0), $"{p.Px(10, 2):X8}");
+        p = new Pic();
+        p.V.Reg[0] |= 0x20;
+        p.Cell(PlaneA, 0, 0, 0x8002); p.Cell(PlaneA, 1, 0, 0x8003);
+        p.Frame();
+        Check("... without shadow/highlight mode the second cell is its own and the blank column normal", p.Px(10, 2) == Argb(p.CramOf(0, 3), 0) && p.Px(2, 2) == Argb(0, 0));
     }
 
     // =====================================================================================================================
+
+    /// <summary>A 8x16 cell pattern (interlace mode 2: 64 bytes, rows 0-7 then 8-15): <paramref name="top"/> colour in the first eight rows, <paramref name="bottom"/> in the last eight.</summary>
+    private static void Cell16(Pic p, int n, int top, int bottom)
+    {
+        for (int r = 0; r < 16; r++) for (int k = 0; k < 4; k++) p.V.Vram[n * 64 + r * 4 + k] = (byte)((r < 8 ? top : bottom) << 4 | (r < 8 ? top : bottom));
+    }
+
+    private static void Interlace()
+    {
+        Group("interlace (R12 bits 2-1): the field flag, and mode 2's double-height picture");
+        // mode 2: cells are 8 x 16 (a name table entry's pattern is 64 bytes), the picture is 448 rows of both fields woven
+        var p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 3, 1, 2);
+        p.Cell(PlaneA, 0, 0, 3);
+        p.Frame();
+        Check("interlace mode 2: the finished frame is a double-height picture (448 rows) and the one-field picture stays 224 rows", p.V.WovenValid && p.V.WovenHeight == 448 && p.V.PictureHeight == 224 && p.V.PictureWidth == 320);
+        uint c1 = Argb(p.CramOf(0, 1), 0), c2 = Argb(p.CramOf(0, 2), 0), bd = Argb(0, 0);
+        uint W(int x, int y) => p.V.WovenPicture[y * MdVdp.PictureStride + x];
+        Check("a cell is 16 rows tall: the first eight rows of its pattern, then the next eight (rows 0-7 colour 1, 8-15 colour 2, the cell below is empty)", W(2, 0) == c1 && W(2, 7) == c1 && W(2, 8) == c2 && W(2, 15) == c2 && W(2, 16) == bd, $"{W(2, 0):X8} {W(2, 8):X8} {W(2, 16):X8}");
+        Check("both fields are in it: the rows 6, 7, 8, 9 around the pattern's seam all come out right", W(2, 6) == c1 && W(2, 9) == c2);
+        Check("the one-field picture has the field's lines: line y is picture row 2y or 2y+1", p.Px(2, 3) == c1 && p.Px(2, 4) == c2 && p.Px(2, 7) == c2 && p.Px(2, 8) == bd);
+
+        // vertical scroll counts picture rows (a cell is 16): a scroll of 16 brings the cell row below to the top
+        p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 3, 1, 1); Cell16(p, 4, 5, 5);
+        p.Cell(PlaneA, 0, 0, 3); p.Cell(PlaneA, 0, 1, 4);
+        p.V.Vsram[0] = 16;
+        p.Frame();
+        Check("vertical scroll in mode 2 counts picture rows: a scroll of 16 shows the second cell row at the top", p.V.WovenPicture[2] == Argb(p.CramOf(0, 5), 0) && p.V.WovenPicture[15 * MdVdp.PictureStride + 2] == Argb(p.CramOf(0, 5), 0));
+
+        // a 128-cell-high plane is 2048 picture rows in mode 2, and the vertical scroll has eleven bits there (oracle: a random scene with such a plane, 53,000 pixels off with ten bits, 15 with eleven)
+        p = new Pic();
+        p.V.Reg[12] = 0x87; p.V.Reg[16] = 0x30;
+        Cell16(p, 3, 1, 1); Cell16(p, 4, 5, 5);
+        p.Cell(PlaneA, 0, 0, 3, 32); p.Cell(PlaneA, 0, 64, 4, 32);
+        p.V.Vsram[0] = 0x400;
+        p.Frame();
+        Check("interlace mode 2 with a 32 x 128 plane: a vertical scroll of 1024 (eleven bits) shows cell row 64 (picture row 1024) at the top", p.V.WovenPicture[2] == Argb(p.CramOf(0, 5), 0), $"{p.V.WovenPicture[2]:X8}");
+
+        // sprites: Y is in picture rows (offset 256), a cell is 16 rows
+        p = new Pic();
+        p.V.Reg[12] = 0x87;
+        Cell16(p, 5, 1, 2);
+        Array.Clear(p.V.Vram, 0, 64);          // cell 0 (the planes' empty entries) must be blank in this pattern layout
+        p.Sprite(0, 100, 0, 1, 1, 5, 0, false, 0);
+        int ya = SatAddr; p.V.Vram[ya] = (byte)((40 + 256) >> 8 & 3); p.V.Vram[ya + 1] = (byte)((40 + 256) & 0xFF);
+        p.Frame();
+        Check("a sprite in mode 2 is 8 x 16 pixels at Y - 256 picture rows: rows 40-47 colour 1, 48-55 colour 2, nothing above or below", W(100, 40) == c1 && W(107, 47) == c1 && W(100, 48) == c2 && W(107, 55) == c2 && W(100, 39) == bd && W(100, 56) == bd, $"{W(100, 40):X8} {W(100, 48):X8} {W(100, 56):X8}");
+        p.V.Vram[ya] |= 2;
+        p.Frame();
+        Check("... Y keeps its tenth bit in mode 2: with bit 9 set the sprite is far below the picture (outside mode 2 the bit is ignored)", W(100, 40) == bd && W(100, 48) == bd, $"{W(100, 40):X8}");
+
+        // the field flag toggles every frame in either interlace mode, and is zero without interlace
+        foreach (var (mode, r12) in new[] { (1, 0x83), (2, 0x87), (0, 0x81) })
+        {
+            p = new Pic(); p.V.Reg[12] = (byte)r12;
+            p.V.ResetPictureState();
+            var bits = new System.Collections.Generic.List<int>();
+            long t = p.V.Time;
+            for (int f = 0; f < 6; f++) { t += p.V.Timeline.MasterClocksPerFrame; p.V.RunTo(t + 5000); bits.Add(p.V.ReadStatus(p.V.Time) >> 4 & 1); }
+            bool toggles = bits.Zip(bits.Skip(1), (a, b) => a != b).All(x => x);
+            Check(mode == 0 ? "without interlace the odd-frame flag (status bit 4) stays 0" : $"interlace mode {mode}: the odd-frame flag (status bit 4) toggles every frame", mode == 0 ? bits.All(b => b == 0) : toggles, string.Join("", bits));
+            Check(mode == 2 ? "mode 2 hands out the woven picture" : "no woven picture unless it is mode 2", p.V.WovenValid == (mode == 2));
+        }
+        p = new Pic(false, true); p.V.Reg[12] = 0x06; p.V.Reg[1] = 0x4C;
+        p.Frame();
+        Check("mode 2 with H32 and V30: the woven picture is 480 rows of 256", p.V.WovenValid && p.V.WovenHeight == 480 && p.V.PictureWidth == 256);
+    }
 
     private static void ModesAndTiming()
     {
