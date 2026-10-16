@@ -40,7 +40,7 @@ namespace NesEmulator.Sega
         private readonly double nesPerMaster;
         private readonly HubVoice[] voices = new HubVoice[MdSoundUnit.VoiceCount];
         private readonly short[] drain = new short[4096];
-        private readonly float[] pull = new float[2048];
+        private readonly NesChipOutput output;
         private double nesAcc;
         private long lastMaster;
         private int nesDue, sinceSync;
@@ -91,11 +91,12 @@ namespace NesEmulator.Sega
             back = host.Apu;
             writer = new NesVoiceWriter(NesRegisterPorts.For(back));
             nesPerMaster = NesVoiceWriter.NesCpuHz / machine.Timeline.MasterHz;
+            output = new NesChipOutput(back, machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
             replay = new HubReplayer(writer, MdSoundUnit.VoiceCount, IsNoiseVoice, APU_MD.TriangleRms, APU_MD.DefaultLowNotes);
         }
 
         public string CoreName => $"NES:{back.CoreName}+{inner.CoreName}";
-        public int SampleRate => back.GetSampleRate();
+        public int SampleRate => output.SampleRate;
 
         public void Attach(IGenesisSoundHost host) => inner.Attach(host);
 
@@ -103,6 +104,7 @@ namespace NesEmulator.Sega
         {
             inner.Reset();
             lastMaster = 0; nesAcc = 0; nesDue = 0; sinceSync = 0;
+            output.Reset();
             ForgetVoices();
             Replay();
         }
@@ -208,22 +210,7 @@ namespace NesEmulator.Sega
 
         // ---- sound out: the NES chip's, mono, on both sides ----
 
-        public int ReadSamples(Span<short> dest)
-        {
-            int written = 0;
-            while (written + 1 < dest.Length)
-            {
-                int want = Math.Min(pull.Length, (dest.Length - written) / 2);
-                int got = back.ReadSamples(pull.AsSpan(0, want));
-                if (got <= 0) break;
-                for (int i = 0; i < got; i++)
-                {
-                    short s = (short)Math.Clamp(pull[i] * 32767f, -32768f, 32767f);
-                    dest[written++] = s; dest[written++] = s;
-                }
-            }
-            return written;
-        }
+        public int ReadSamples(Span<short> dest) => output.ReadStereo(dest);
 
         /// <summary>The inner unit's eleven voices (what the bridge replays); reading them clears the DAC's swing, so a probe should not interleave with the running bridge.</summary>
         public int DescribeVoices(Span<HubVoice> dest) => inner.DescribeVoices(dest);

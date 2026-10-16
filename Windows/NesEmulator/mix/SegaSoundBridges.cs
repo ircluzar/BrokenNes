@@ -390,7 +390,7 @@ namespace NesEmulator.Sega
         private readonly NesVoiceWriter writer;
         private readonly double nesPerClock;
         private readonly HubVoice[] voices = new HubVoice[4];
-        private readonly float[] pull = new float[2048];
+        private readonly NesChipOutput output;
         private double nesAcc;
         private int nesDue, sinceSync;
 
@@ -415,14 +415,16 @@ namespace NesEmulator.Sega
             back = host.Apu;
             writer = new NesVoiceWriter(NesRegisterPorts.For(back));
             nesPerClock = NesVoiceWriter.NesCpuHz / request.CpuClockHz;
+            output = new NesChipOutput(back, request.Machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
         }
 
         public string CoreName => $"NES:{back.CoreName}+SN76489";
-        public int SampleRate => back.GetSampleRate();
+        public int SampleRate => output.SampleRate;
 
         public void Reset()
         {
             front.Reset();
+            output.Reset();
             Replay();
         }
 
@@ -479,22 +481,7 @@ namespace NesEmulator.Sega
         public void WriteAudioControl(byte value) { }
         public byte ReadAudioControl() => 0xFF;
 
-        public int ReadSamples(Span<short> dest)
-        {
-            int written = 0;
-            while (written + 1 < dest.Length)
-            {
-                int want = Math.Min(pull.Length, (dest.Length - written) / 2);
-                int got = back.ReadSamples(pull.AsSpan(0, want));
-                if (got <= 0) break;
-                for (int i = 0; i < got; i++)
-                {
-                    short s = (short)Math.Clamp(pull[i] * 32767f, -32768f, 32767f);
-                    dest[written++] = s; dest[written++] = s;
-                }
-            }
-            return written;
-        }
+        public int ReadSamples(Span<short> dest) => output.ReadStereo(dest);
 
         public int DescribeVoices(Span<HubVoice> dest) => front.DescribeVoices(dest);
 

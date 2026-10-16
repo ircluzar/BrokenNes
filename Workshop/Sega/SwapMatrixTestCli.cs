@@ -9,17 +9,18 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--swap-matrix-test [--only nes,snes,gb,gbc,sms,gg,md] [--frames N] [--nes-rom f] [--snes-rom f] [--gb-rom f] [--gbc-rom f] [--verbose]</c>: hot swapping, console by console, slot by slot, entry by entry. For every entry of the CPU, PPU and APU menu of each
+/// <c>--swap-matrix-test [--only nes,snes,gb,gbc,sms,gg,md,resampler] [--frames N] [--nes-rom f] [--snes-rom f] [--gb-rom f] [--gbc-rom f] [--verbose]</c>: hot swapping, console by console, slot by slot, entry by entry. For every entry of the CPU, PPU and APU menu of each
 /// console a fresh game runs a few frames on the default cores, the core is changed in the middle of the run (the way the apps do it: <c>IConsoleSession.TrySwapCore</c>, the NES core setters), and the game runs on. Each swap must be one of:
 /// <list type="bullet">
 /// <item><b>in place</b>: no exception, the session's description names the new core, the picture is still there (not blank) and sound can still be read;</item>
 /// <item><b>refused with a reason</b>: <c>TrySwapCore</c> says no and <c>SwapRefusal</c> says why (the app restarts the game on the new core and prints the reason). Only the swaps listed in <see cref="KnownRestarts"/> may do this; any other refusal fails the test, so a new gap cannot appear quietly;</item>
 /// <item>a CPU entry that is an instruction-set wall (<see cref="CoreOption.Wall"/>) is allowed to stop the game, because that is what it is, but it must still not throw.</item>
 /// </list>
-/// An id the menu does not list must be refused by every slot of every session (a swap to garbage is never accepted). Games: the Sega consoles run the hand-assembled programs of the smoke tests (they run anywhere), the NES the in-repo story ROM, the SNES and Game Boy the library's
+/// An id the menu does not list must be refused by every slot of every session (a swap to garbage is never accepted). For the three Sega consoles the sound slot is also measured (SwapMatrixSound.cs): every entry delivers the game's tone at the console's sample
+/// rate, the same number of samples as the console's own unit and the same pitch, read from the spectrum; <c>--only resampler</c> checks the converter the NES-chip bridges use to bring a chip's own rate (32, 48 kHz) to the console's. Games: the Sega consoles run the hand-assembled programs of the smoke tests (they run anywhere), the NES the in-repo story ROM, the SNES and Game Boy the library's
 /// Super Mario World / Super Mario Land / Link's Awakening DX when they are on this machine (otherwise that console is reported NOT RUN, not passed). Exit 0 = every check passed.
 /// </summary>
-internal static class SwapMatrixTestCli
+internal static partial class SwapMatrixTestCli
 {
     /// <summary>The swaps that restart the game today, each with the reason the session must give. Track B4b may make the Genesis sound unit swappable; an entry that stops refusing is not a failure.</summary>
     private static readonly (ConsoleKind Console, CoreSlot Slot, string ReasonContains)[] KnownRestarts =
@@ -49,9 +50,10 @@ internal static class SwapMatrixTestCli
         if (Want("snes")) Guard("SNES", () => Session(ConsoleKind.Snes, File.Exists(Opt("snes-rom", Lib(@"Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc"))) ? File.ReadAllBytes(Opt("snes-rom", Lib(@"Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc"))) : null, "smw.smc", frames, 150));
         if (Want("gb")) Guard("Game Boy", () => Session(ConsoleKind.GameBoy, LoadMaybe(Opt("gb-rom", Lib(@"GameBoy\Super Mario Land (W) (V1.0) [!].zip")), out string n1), n1, frames, 100));
         if (Want("gbc")) Guard("Game Boy Color", () => Session(ConsoleKind.GameBoyColor, LoadMaybe(Opt("gbc-rom", Lib(@"GameBoy Color\Legend of Zelda, The - Link's Awakening DX (USA, Europe) (Rev 2) (SGB Enhanced) (GB Compatible).gbc")), out string n2), n2, frames, 100));
-        if (Want("sms")) Guard("Master System", () => Session(ConsoleKind.MasterSystem, SmokeProgs.Picture(false), "smoke.sms", frames, 10));
-        if (Want("gg")) Guard("Game Gear", () => Session(ConsoleKind.GameGear, SmokeProgs.Picture(true), "smoke.gg", frames, 10));
-        if (Want("md")) Guard("Genesis", () => Session(ConsoleKind.Genesis, GenesisSmoke(), "smoke.md", frames, 10));
+        if (Want("sms")) Guard("Master System", () => { Session(ConsoleKind.MasterSystem, SmokeProgs.Picture(false), "smoke.sms", frames, 10); SoundRateAndPitch(ConsoleKind.MasterSystem); });
+        if (Want("gg")) Guard("Game Gear", () => { Session(ConsoleKind.GameGear, SmokeProgs.Picture(true), "smoke.gg", frames, 10); SoundRateAndPitch(ConsoleKind.GameGear); });
+        if (Want("md")) Guard("Genesis", () => { Session(ConsoleKind.Genesis, GenesisSmoke(), "smoke.md", frames, 10); SoundRateAndPitch(ConsoleKind.Genesis); });
+        if (Want("resampler")) Guard("The converter of the hub sound units", ResamplerChecks);
         Console.WriteLine($"\n{passes} passed, {fails} failed{(notRun > 0 ? $", {notRun} console(s) NOT RUN (no game on this machine)" : "")}");
         return fails == 0 ? 0 : 1;
     }
