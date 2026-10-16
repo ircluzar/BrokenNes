@@ -24,7 +24,14 @@ def vint_enable(variant='A', h40=True, wait_lines=40):
     s = prologue(h40, True)           # reg 1 = $54: display on, DMA on, no vertical interrupt
     s += '    clr.w ($FF0100).l\n    clr.w ($FF0102).l\n    clr.w ($FF0104).l\n    clr.w ($FF0106).l\n'
     s += '    move.w #$2000,sr\n'     # interrupts allowed in the 68000; the VDP does not ask for one
-    if variant.startswith('L'):
+    if variant[0] in 'XY' and variant[1:].isdigit():
+        # Fatal Rewind's sequence: the VBlank has begun N times while the vertical interrupt was disabled (V counter polled, no status reads), then in the NEXT VBlank, at line 250 (V counter $FA), the game rewrites R0
+        # (X: horizontal interrupt on, $14; Y: not) and enables the vertical interrupt
+        frames = int(variant[1:])
+        s += NL_.join(['    move.w #%d,d7' % (frames - 1), 'g0:']) + NL_ + wait_v(0xE8, 'gA') + wait_v(0x20, 'gB') + '    dbf d7,g0' + NL_
+        s += sync_vblank_rise() + wait_v(0xFA, 'gC')
+        if variant[0] == 'X': s += '    move.w #$8014,(a4)\n'
+    elif variant.startswith('L'):
         # enabled late in the same VBlank: the VBlank began (status bit 3 rose), then the V counter is polled up to the byte given in hex (L F0, L FA: lines 245 and 255 of a 262-line frame) and the enable bit is written there
         s += sync_vblank_rise() + wait_v(int(variant[1:], 16), 'gC')
     elif variant.startswith('G'):

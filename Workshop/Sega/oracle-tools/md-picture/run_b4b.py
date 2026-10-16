@@ -11,7 +11,7 @@ import asm68k, oracle, probes_b4b
 ours_only = '-o' in sys.argv
 vs = [a for a in sys.argv[1:] if not a.startswith('-')]
 variants = vs[0] if vs else 'ABDEF'
-variants = variants.split(',') if ',' in variants or (len(variants) > 1 and variants[0] in 'GLp') else list(variants)       # 'ABDEF' (letters), 'G1,G3,G7' (held for N frames), 'LFA' (late in the VBlank), 'pP,pM' (enabled all along, pending, probes_b4b.vint_pend)
+variants = variants.split(',') if ',' in variants or (len(variants) > 1 and variants[0] in 'GLpXY') else list(variants)       # 'ABDEF' (letters), 'G1,G3,G7' (held for N frames), 'LFA' (late in the VBlank), 'pP,pM' (enabled all along, pending, probes_b4b.vint_pend)
 for v in variants:
     name = 'vintenable_' + v
     src = probes_b4b.vint_pend(v[1:]) if v[0] == 'p' else probes_b4b.vint_enable(v)

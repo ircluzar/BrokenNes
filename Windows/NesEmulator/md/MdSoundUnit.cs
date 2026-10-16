@@ -47,6 +47,8 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
     private long grantTime;
     private int bank;                      // the 9-bit bank register
     private long lastMaster;               // everything has been run up to here (the Z80 may be a few T-states ahead of it after a bus grant)
+    /// <summary>The master clock the unit has been run up to (a unit that wraps this one and keeps a clock of its own takes it over after a state is loaded).</summary>
+    public long Clock => lastMaster;
     private long z80Master;                // the master clock of the Z80's current T-state
     private int stallTicks;                // Z80 T-states still to burn for a bank-window stall
     private bool interrupt;
