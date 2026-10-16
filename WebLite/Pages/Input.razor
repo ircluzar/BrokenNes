@@ -16,6 +16,11 @@
           <option value="2">Two</option>
         </select>
       </div>
+      <div class="opt-row">
+        <label>Allow opposite d-pad directions</label>
+        <input type="checkbox" id="allow-opposite-dpad" @bind="draft.AllowOppositeDpad" />
+      </div>
+      <div class="opt-row small-note">Off (the default): Left and Right, or Up and Down, pressed together send neither, as on a real d-pad. Turn it on only for a glitch that needs both.</div>
       <div class="player-grid">
         @for (var p = 1; p <= playerCount; p++)
         {
