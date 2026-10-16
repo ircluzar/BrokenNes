@@ -288,7 +288,39 @@ internal static class MdOracleCli
 
         Console.WriteLine($"f0 = {chosen}: the oracle is paused here, the script starts");
         var session = Boot(data, region, line, chosen + 1);
+        // --ram-watch FFE11B[,FF0000-FF00FF,...] [--watch-limit N]: print each 68000 write to these work RAM addresses during the replay (the script's steps counted from the start boundary: step = frame - f0 - 1), with the writing instruction's address and the value: for tracing the first differing byte of a --ramcmp back to the code that writes it
+        if (M68kTestCli.Arg(args, "--ram-watch") is { } watchSpec)
+        {
+            var wranges = watchSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(s => { int dd = s.IndexOf('-'); uint a = Convert.ToUInt32(dd > 0 ? s[..dd] : s, 16) & 0xFFFF, b = dd > 0 ? Convert.ToUInt32(s[(dd + 1)..], 16) & 0xFFFF : a; return (a, b); }).ToArray();
+            int wprinted = 0, wlimit = int.TryParse(M68kTestCli.Arg(args, "--watch-limit"), out int wl) ? wl : 200;
+            var wboard = session.Board; long wstart = wboard.Frames;
+            wboard.RamWriteHook = (off, upper, lower, val) =>
+            {
+                uint lo = (uint)off + (upper ? 0u : 1u), hi = (uint)off + (lower ? 1u : 0u);
+                foreach (var (a, b) in wranges)
+                    if (lo <= b && hi >= a)
+                    {
+                        if (wprinted++ < wlimit) Console.WriteLine($"   ram-watch step {wboard.Frames - wstart + (wboard.Vdp.Line > ReplayLine ? 1 : 0)} l{wboard.Vdp.Line} pc {wboard.Cpu.Pc - 4:X6}: ${0xFF0000 + off:X6}{(upper && lower ? "" : upper ? " (high byte)" : " (low byte)")} = {(upper && lower ? val.ToString("X4") : upper ? (val >> 8).ToString("X2") : (val & 0xFF).ToString("X2"))}");
+                        break;
+                    }
+            };
+        }
+        // --trace out.txt --trace-steps A,B [--trace-pc]: the bus writes (and the VDP's own events, and with --trace-pc every instruction's address) of the replay's steps A to B-1, each with the step, line and (instruction trace only) the pc
+        StreamWriter? replayTrace = null;
+        if (M68kTestCli.Arg(args, "--trace") is { } tracePath)
+        {
+            var tb = (M68kTestCli.Arg(args, "--trace-steps") ?? "0,1000000").Split(',', StringSplitOptions.TrimEntries).Select(int.Parse).ToArray();
+            replayTrace = new StreamWriter(tracePath, false, new System.Text.UTF8Encoding(false));
+            var board = session.Board; long tstart = board.Frames;
+            // the replay's step counter (n of "after n advances"): step n ends at the boundary line of frame start+n, so lines past the boundary line belong to the next step
+            bool On() { long st = board.Frames - tstart + (board.Vdp.Line > ReplayLine ? 1 : 0); return st >= tb[0] && st < tb[1]; }
+            string Tag() => $"s{board.Frames - tstart + (board.Vdp.Line > ReplayLine ? 1 : 0)} l{board.Vdp.Line}";
+            board.WriteTrace = s => { if (On()) replayTrace.WriteLine($"{Tag()} {s}"); };
+            board.Vdp.Trace = s => { if (On()) replayTrace.WriteLine($"{Tag()}   vdp {s}"); };
+            if (M68kTestCli.Flag(args, "--trace-pc")) board.InstructionHook = pc => { if (On()) replayTrace.WriteLine($"{Tag()} pc {pc:X6}"); };
+        }
         var results = Replay(session, script, steps, shots, theirs, dy, lagRange, false, outDir, Console.WriteLine);
+        replayTrace?.Dispose();
         if (M68kTestCli.Arg(args, "--ram-out") is { } ramOut) { File.WriteAllBytes(ramOut, session.Board.Ram); Console.WriteLine($"wrote the work RAM to {ramOut}"); }
         // --save-out file: our battery image (SRAM or EEPROM) as the session would save it, after the replay: for comparing with the oracle's save file (written when it exits)
         if (M68kTestCli.Arg(args, "--save-out") is { } saveOut) { var img = session.ExportSave(); File.WriteAllBytes(saveOut, img); Console.WriteLine($"wrote the battery image ({img.Length} bytes, {img.Count(x => x != 0 && x != 0xFF)} bytes neither 00 nor FF) to {saveOut}"); }

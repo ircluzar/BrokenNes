@@ -393,6 +393,9 @@ public sealed partial class MdVdp
     public static bool SpriteY9 = true;
     private int SpriteYMask => SpriteY9 && !dbl ? 0x1FF : 0x3FF;
 
+    /// <summary>Which cells of a horizontally flipped sprite survive the per-line cell limit: true = the first tile columns (the right-hand cells on screen), false = the left-hand cells on screen (the old rule).</summary>
+    public static bool SpriteCutByTile = true;
+
     private readonly int[] lineSprites = new int[24];
     private int lineSpriteCount;
     private bool lineSpriteOverflow;
@@ -457,7 +460,10 @@ public sealed partial class MdVdp
             int tileBase = attr & 0x7FF;
             int flags = attr >> 8 & 0x80 | attr >> 9 & 0x30;
             int sx = xraw - 128;
-            for (int k = 0; k < draw; k++)
+            // a sprite that the cell limit cuts keeps its first tile columns: for a horizontally flipped one those sit at the right, so the cut takes the cells at the left (SpriteCutByTile; the oracle's picture of a
+            // line where a flipped sprite is cut: its left cell is missing and the plane shows through, its right cell is drawn)
+            int firstCell = SpriteCutByTile && hflip ? w - draw : 0;
+            for (int k = firstCell; k < firstCell + draw; k++)
             {
                 int x0 = sx + k * 8;
                 if (x0 >= lineWidth) break;
