@@ -576,6 +576,34 @@ internal static class MdBoardTest
         ho.Reg(0, 0x14);
         ho.RunTo(ho.T + 600);
         Check("HINT disabled at the very end of line 119 (Super Hang-On: clock 3363 to 3417 of line 222): line 120's HINT, decided before, is kept and taken when HINT is enabled again", quiet && ho.V.IplAt(ho.T) == 4, $"{quiet} {ho.V.IplAt(ho.T)}");
+        // Fatal Rewind / Killing Game Show (BlastEm 1.0.0, probes run_fr.py E and F, run_vq.py): a horizontal interrupt pending from an earlier enable, the vertical one pending since the VBlank began and enabled in the next two
+        // writes: the CPU takes level 4 first and the oracle never takes the vertical one in the routine that follows (ours nested it in the horizontal handler: the game's empty handler cell, a double fault)
+        {
+            Rig fr()
+            {
+                var q = new Rig();
+                q.Reg(0, 0x04); q.Reg(1, 0x44); q.Reg(10, 0); q.Reg(12, 0x81); q.Reg(15, 2);
+                q.RunTo(q.LineStart(10)); q.Reg(0, 0x14); q.Wait(1500); q.Reg(0, 0x04);      // a few lines of an enabled horizontal interrupt (every line): one stays pending
+                q.RunTo(q.LineStart(240));                                                      // late in the VBlank in which the vertical interrupt came due (disabled)
+                q.Reg(0, 0x14); q.Reg(1, 0x64);                                                  // enabled in two writes
+                q.Wait(24);
+                return q;
+            }
+            var a = fr();
+            bool bothUp = (a.V.ReadStatus(a.T) & 0x80) != 0 && a.V.IplAt(a.T) == 6;
+            a.V.AcknowledgeInterrupt(4);        // the CPU took level 4 (its sample came before the vertical interrupt's enable was in effect)
+            a.Wait(200);
+            Check("a horizontal interrupt is acknowledged while the vertical one is pending and enabled: the vertical one is dropped (status bit 7 and the IPL clear), as on the oracle", bothUp && (a.V.ReadStatus(a.T) & 0x80) == 0 && a.V.IplAt(a.T) == 0, $"{bothUp} {a.V.ReadStatus(a.T):X4} {a.V.IplAt(a.T)}");
+            bool saved = MdVdp.HintAckDropsVint;
+            try
+            {
+                MdVdp.HintAckDropsVint = false;
+                var b = fr();
+                b.V.AcknowledgeInterrupt(4); b.Wait(200);
+                Check("... and without that rule the vertical interrupt survives the acknowledge, so the check can fail", b.V.IplAt(b.T) == 6, $"{b.V.IplAt(b.T)}");
+            }
+            finally { MdVdp.HintAckDropsVint = saved; }
+        }
         var hp = new Rig();
         hp.Reg(0, 0x14); hp.Reg(10, 0); hp.Reg(1, 0x64);
         hp.RunTo(hp.LineStart(119) + 2000);

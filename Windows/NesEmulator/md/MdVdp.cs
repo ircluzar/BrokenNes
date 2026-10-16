@@ -525,10 +525,20 @@ public sealed partial class MdVdp
     }
 
     /// <summary>The 68000 acknowledged an interrupt of <paramref name="level"/>: the matching latch clears.</summary>
+    /// <summary>A horizontal interrupt's acknowledge drops a vertical interrupt that is pending and enabled (the oracle's behaviour, see <see cref="AcknowledgeInterrupt"/>; <c>--slot-set hintackvint=0</c> turns it off).</summary>
+    public static bool HintAckDropsVint = true;
+
     public void AcknowledgeInterrupt(int level)
     {
         if (level == 6) { vintPending = false; VintTaken++; }
-        else if (level == 4) { hintPending = false; HintTaken++; }
+        else if (level == 4)
+        {
+            hintPending = false; HintTaken++;
+            // BlastEm 1.0.0 loses a vertical interrupt that is pending and enabled when a horizontal one is acknowledged: Fatal Rewind / Killing Game Show enables both in two writes with the horizontal one already pending from an earlier enable,
+            // the CPU takes level 4 first (the vertical one is not yet visible at its sample), and the oracle then never takes the vertical one in the routine that follows (it takes it at the next VBlank), where ours nests it in the horizontal
+            // handler and jumps through a handler cell that is still empty (a double fault). probes run_fr.py (E, F, L) and run_vq.py.
+            if (HintAckDropsVint && vintPending && VintEnabled) vintPending = false;
+        }
     }
 
     // =================================================================================================================
