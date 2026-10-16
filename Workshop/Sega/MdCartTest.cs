@@ -78,6 +78,24 @@ internal static class MdCartTest
             Set(true, false);
             return ack;
         }
+        /// <summary>One byte out with the acknowledge clock ended by one write that drops SCL and SDA together (as a game's word write does when the next bit is 0): the chip must see the clock edge first.</summary>
+        public bool Write(int b, bool dropBoth)
+        {
+            for (int i = 7; i >= 0; i--) { bool bit = (b >> i & 1) != 0; Set(bit, false); Set(bit, true); Set(bit, false); }
+            Set(true, false); Set(true, true);
+            bool ack = !E.SdaLine;
+            if (dropBoth) Set(false, false); else Set(true, false);
+            return ack;
+        }
+        /// <summary>One byte out where every data bit is set up in the same write that raises SCL (SDA and SCL rise or change together).</summary>
+        public bool WriteRise(int b)
+        {
+            for (int i = 7; i >= 0; i--) { bool bit = (b >> i & 1) != 0; Set(bit, true); Set(bit, false); }
+            Set(true, false); Set(true, true);
+            bool ack = !E.SdaLine;
+            Set(true, false);
+            return ack;
+        }
         /// <summary>One byte in (SDA released), then the master's acknowledge (true) or not.</summary>
         public int Read(bool ack)
         {
@@ -138,6 +156,17 @@ internal static class MdCartTest
         b3.Start(); b3.Set(true, false); b3.Set(true, true); b3.Set(false, false);    // three clocks of a byte, then
         b3.Start(); bool ok = b3.Write(0xA0); b3.Write(0x00); b3.Write(0x99); b3.Stop();
         Check("a START in the middle of a byte begins a new transfer", ok && c3.Data[0] == 0x99);
+
+        // SDA and SCL changing in one write (a word write to the cartridge's byte pair does that): NBA Jam writes the value 0 straight after the acknowledge clock, SDA 1 -> 0 together with SCL 1 -> 0
+        var c4 = new MdEeprom(MdEepromChip.C24C02); var b4 = new Bus(c4);
+        b4.Start();
+        bool s1 = b4.Write(0xA0, true), s2 = b4.Write(0x40, true), s3 = b4.Write(0x5A, true), s4 = b4.Write(0x5B, true);
+        b4.Stop();
+        Check("SCL falling together with SDA falling is the clock edge first, then a data change (not a START): a 24C02 write of two bytes whose acknowledge clocks end that way", s1 && s2 && s3 && s4 && c4.Starts == 1 && c4.Data[0x40] == 0x5A && c4.Data[0x41] == 0x5B, $"acks {s1} {s2} {s3} {s4}, starts {c4.Starts}, {c4.Data[0x40]:X2} {c4.Data[0x41]:X2}");
+        // SCL rising together with SDA changing: SDA changes first (SCL still low), so the rising edge samples the new level
+        var c5 = new MdEeprom(MdEepromChip.C24C02); var b5 = new Bus(c5);
+        b5.Start(); b5.WriteRise(0xA0); b5.WriteRise(0x10); b5.WriteRise(0xC6); b5.Stop();
+        Check("SCL rising together with SDA changing samples the new SDA", c5.Data[0x10] == 0xC6 && c5.Starts == 1 && c5.Stops == 1, $"{c5.Data[0x10]:X2}, starts {c5.Starts}, stops {c5.Stops}");
     }
 
     // =====================================================================================================================

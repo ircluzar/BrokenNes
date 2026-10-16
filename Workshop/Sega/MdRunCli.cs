@@ -93,10 +93,15 @@ internal static class MdRunCli
         if (tracePath != null)
         {
             trace = new StreamWriter(tracePath, false, new UTF8Encoding(false));
-            board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            // --trace-cart-only: just the cartridge-space accesses (a game's I2C bit stream is tens of millions of lines over a minute of play; the VDP and I/O writes would add gigabytes)
+            bool cartOnly = M68kTestCli.Flag(args, "--trace-cart-only");
+            if (!cartOnly)
+            {
+                board.WriteTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+                board.Vdp.Trace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line}   vdp {s}"); };
+            }
             if (M68kTestCli.Flag(args, "--trace-reads")) board.ReadTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
-            if (M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
+            if (cartOnly || M68kTestCli.Flag(args, "--trace-cart")) board.CartTrace = s => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} {s}"); };
             if (tracePc) board.InstructionHook = pc => { if (board.Frames >= traceFrom && board.Frames < traceFrames) trace.WriteLine($"f{board.Frames} l{board.Vdp.Line} pc {pc:X6}"); };
             if (board.Sound is MdSoundUnit unit)
             {

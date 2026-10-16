@@ -28,7 +28,8 @@ internal static class MdSaveTest
     }
 
     /// <summary>A game with a battery, the library's file name, the pad script that makes it write its save, and how long to play.</summary>
-    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind, bool PictureShowsIt = true, int Every = 20);
+    /// <param name="ExpectLen">With <paramref name="ExpectNeither"/>: the size of BlastEm's own file after the same scripted play and how many of its bytes are neither 00 nor FF (the files were compared byte for byte in wave 5; 0 / -1: no such file).</param>
+    private sealed record Case(string Label, string File, string Pad, int Frames, string Kind, bool PictureShowsIt = true, int Every = 20, int ExpectLen = 0, int ExpectNeither = -1);
 
     private static readonly Case[] Cases =
     {
@@ -37,7 +38,9 @@ internal static class MdSaveTest
         new("Phantasy Star IV", "Phantasy Star IV (4) [!].bin", "default", 3000, "SRAM 8 KB"),
         new("Shining Force", "Shining Force (U) [!].bin", "mash", 3600, "SRAM 8 KB"),
         new("NBA Jam Tournament Edition", "NBA Jam Tournament Edition (JUE) (REV 00) [!].bin", "default", 3600, "I2C EEPROM (24C08)", false),
-        new("College Slam", "College Slam (4) [!].bin", "default", 3600, "I2C EEPROM (24C02)", false),
+        new("College Slam", "College Slam (4) [!].bin", "default", 3600, "I2C EEPROM (24C64)", false, 20, 8192, 2734),
+        new("NBA Jam (Europe)", "NBA Jam (EU) (REV 01) [!].bin", "default", 3600, "I2C EEPROM (24C02, Sega wiring)", false, 20, 256, 32),
+        new("Frank Thomas Big Hurt Baseball", "Frank Thomas Big Hurt Baseball (F) [!].bin", "default", 3600, "I2C EEPROM (24C64)", false),
         new("Evander Holyfield's Real Deal Boxing", "Evander Holyfield's Real Deal Boxing (U) [!].bin", "default", 3600, "I2C EEPROM (X24C01)"),
         new("Phantasy Star II", "Phantasy Star II (UE) (REV 02) [!].bin", "default", 3000, "SRAM 8 KB"),
         new("Shining Force II", "Shining Force II (E) [!].bin", "mash", 3600, "SRAM 8 KB"),
@@ -97,6 +100,11 @@ internal static class MdSaveTest
         bool written = a.HasBattery && !save.AsSpan().SequenceEqual(initial);
         Check($"{tag} ({c.Kind}): played {c.Frames} frames, the battery was written and the session reports it", written, written ? Describe(save) : $"HasBattery {a.HasBattery}, image {(save.AsSpan().SequenceEqual(initial) ? "unchanged" : "changed")}: {Describe(save)}");
         if (!written) return;
+        if (c.ExpectNeither >= 0)
+        {
+            int neither = save.Count(x => x != 0 && x != 0xFF);
+            Check($"{tag}: the image has the size and the byte census of BlastEm's own file after the same play ({c.ExpectLen} bytes, {c.ExpectNeither} neither 00 nor FF; byte for byte equal when compared)", save.Length == c.ExpectLen && neither == c.ExpectNeither, Describe(save));
+        }
 
         // the desktop's file: MdSaves\<game id>.srm
         string file = Path.Combine(tmp, "MdSaves", a.GameId + ".srm");
