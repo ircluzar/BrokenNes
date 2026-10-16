@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using BrokenNes.CorruptorModels;
 using NesEmulator;
+using NesEmulator.Corruption;
+using StockpileFile = NesEmulator.Corruption.Stockpile;
 
 namespace BrokenNes
 {
@@ -11,7 +13,7 @@ namespace BrokenNes
     /// Headless Glitch Harvester engine that manages base states, stash, and stockpile.
     /// This class is completely detached from UI and can be used by both WinForms and Web API.
     /// </summary>
-    public class GlitchHarvesterEngine
+    public partial class GlitchHarvesterEngine
     {
         // State collections
         public List<HarvesterBaseState> BaseStates { get; } = new();
@@ -292,6 +294,7 @@ namespace BrokenNes
             Stash.Remove(entry);
             entry.Name = $"Entry {++_stockpileCounter}";
             Stockpile.Add(entry);
+            StockpileDirty = true;
             
             return entry;
         }
@@ -355,6 +358,18 @@ namespace BrokenNes
                 throw new ArgumentException("Name cannot be empty", nameof(newName));
             
             entry.Name = newName.Trim();
+            StockpileDirty = true;
+        }
+
+        /// <summary>Gives a stockpile entry a description (free text for the user; empty clears it).</summary>
+        public void DescribeStockpileEntry(string id, string description)
+        {
+            var entry = GetStockpileEntry(id);
+            if (entry == null)
+                throw new ArgumentException($"Stockpile entry with ID '{id}' not found");
+            entry.Description = (description ?? string.Empty).Trim();
+            if (entry.Description.Length > 65536) entry.Description = entry.Description[..65536];
+            StockpileDirty = true;
         }
         
         /// <summary>
@@ -364,57 +379,95 @@ namespace BrokenNes
         {
             var entry = GetStockpileEntry(id);
             if (entry != null)
+            {
                 Stockpile.Remove(entry);
+                StockpileDirty = true;
+            }
         }
         
-        /// <summary>
-        /// Export stockpile as JSON
-        /// </summary>
-        public string ExportStockpile()
+        // ---------------------------------------------------------------- the stockpile file (NesEmulator.Corruption, format v2)
+
+        /// <summary>The file the stockpile was last opened from or saved to (null: none yet).</summary>
+        public string? StockpilePath { get; private set; }
+        /// <summary>A name for the stockpile file (written into it).</summary>
+        public string StockpileName { get; set; } = string.Empty;
+        /// <summary>The stockpile changed since it was last saved to or opened from a file.</summary>
+        public bool StockpileDirty { get; private set; }
+
+        /// <summary>The stockpile as a v2 stockpile object (every entry mapped to the file's entry; shared bases are not used by this engine).</summary>
+        public StockpileFile ToStockpileFile()
         {
-            var exportData = Stockpile.Select(e => new
-            {
-                e.Id,
-                e.Name,
-                e.BaseStateId,
-                e.Created,
-                e.Writes,
-                e.State
-            }).ToList();
-            
-            return System.Text.Json.JsonSerializer.Serialize(exportData, new System.Text.Json.JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            var file = new StockpileFile { Name = StockpileName, Writer = "Glitch Harvester", Created = DateTime.UtcNow };
+            foreach (var e in Stockpile) file.Entries.Add(GhStockpileMap.ToFile(e, BaseStates));
+            return file;
         }
-        
+
         /// <summary>
-        /// Import stockpile from JSON
+        /// Export stockpile as JSON: the v2 stockpile file (see NesEmulator.Corruption.StockpileJson). The older export was a bare list of { Id, Name, BaseStateId, Created, Writes, State };
+        /// <see cref="ImportStockpile"/> still reads it.
         /// </summary>
-        public void ImportStockpile(string json)
+        public string ExportStockpile() => StockpileJson.Write(ToStockpileFile());
+
+        /// <summary>What reading a stockpile file added, and what it left out and why.</summary>
+        public sealed class StockpileImportResult
+        {
+            public int Added { get; set; }
+            public bool Legacy { get; set; }
+            public List<string> Refusals { get; } = new();
+            public List<string> Warnings { get; } = new();
+            public string Summary => $"{Added} entr{(Added == 1 ? "y" : "ies")} added" + (Refusals.Count > 0 ? $", {Refusals.Count} refused" : "");
+        }
+
+        /// <summary>
+        /// Import stockpile from JSON (the v2 file, or the older bare list). Entries keep their ids unless one is already in the stockpile (then it gets a new one). A file that cannot be read at all
+        /// throws <see cref="ArgumentException"/> with the reasons; entries refused one by one are listed in the result, never dropped silently.
+        /// </summary>
+        public StockpileImportResult ImportStockpile(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
                 throw new ArgumentException("JSON cannot be empty", nameof(json));
-            
-            try
-            {
-                var imported = System.Text.Json.JsonSerializer.Deserialize<List<HarvestEntry>>(json);
-                if (imported == null)
-                    throw new InvalidOperationException("Failed to deserialize stockpile");
-                
-                foreach (var entry in imported)
-                {
-                    // Ensure unique IDs
-                    entry.Id = Guid.NewGuid().ToString();
-                    Stockpile.Add(entry);
-                }
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                throw new ArgumentException($"Invalid JSON format: {ex.Message}", nameof(json), ex);
-            }
+            return AddFromFile(StockpileJson.Read(json), replace: false);
         }
-        
+
+        private StockpileImportResult AddFromFile(StockpileReadResult read, bool replace)
+        {
+            var result = new StockpileImportResult { Legacy = read.Legacy };
+            result.Refusals.AddRange(read.Refusals);
+            result.Warnings.AddRange(read.Warnings);
+            if (read.Stockpile == null)
+                throw new ArgumentException(read.Refusals.Count > 0 ? string.Join("; ", read.Refusals) : "this is not a stockpile");
+            if (replace) Stockpile.Clear();
+            var ids = new HashSet<string>(Stockpile.Select(x => x.Id), StringComparer.OrdinalIgnoreCase);
+            foreach (var fe in read.Stockpile.Entries)
+            {
+                var e = GhStockpileMap.FromFile(fe, read.Stockpile);
+                if (!ids.Add(e.Id)) { e.Id = Guid.NewGuid().ToString(); ids.Add(e.Id); }
+                Stockpile.Add(e);
+                result.Added++;
+            }
+            if (replace && read.Stockpile.Name.Length > 0) StockpileName = read.Stockpile.Name;
+            _stockpileCounter = Math.Max(_stockpileCounter, Stockpile.Count);
+            StockpileDirty = !replace || result.Refusals.Count > 0;
+            return result;
+        }
+
+        /// <summary>Saves the stockpile to a file (atomically). Throws on a failure to write; the stockpile in memory is untouched.</summary>
+        public void SaveStockpileFile(string path)
+        {
+            StockpileJson.SaveFile(path, ToStockpileFile());
+            StockpilePath = path;
+            StockpileDirty = false;
+        }
+
+        /// <summary>Opens a stockpile file: its entries replace the stockpile in memory (or, with <paramref name="replace"/> false, join it).</summary>
+        public StockpileImportResult OpenStockpileFile(string path, bool replace = true)
+        {
+            var read = StockpileJson.LoadFile(path);
+            var result = AddFromFile(read, replace);
+            if (replace) { StockpilePath = path; StockpileDirty = result.Refusals.Count > 0; }
+            return result;
+        }
+
         /// <summary>
         /// Common replay logic for both stash and stockpile
         /// </summary>

@@ -32,6 +32,8 @@ public sealed class StartResult
     public bool SessionIsNew { get; set; }
     public ApplyReport? Report { get; set; }
     public AnchorKind Used { get; set; }
+    /// <summary>The anchor the machine was really started from (the entry's own, or its alternative).</summary>
+    public Anchor? AnchorUsed { get; set; }
     public int FramesReplayed { get; set; }
     public bool Cancelled { get; set; }
     /// <summary>Writes for frames after the anchor (<see cref="CorruptionWrite.At"/> above 0), for a <see cref="CorruptionTimeline"/>.</summary>
@@ -135,11 +137,14 @@ public static class AnchorStart
                     session = Fresh(console, rom, entry.Machine, fileName, o, out isNew);
                     if (a.Battery is { Length: > 0 }) session.ImportSave(a.Battery);
                     var p1 = new InputScript.Player(in1); var p2 = new InputScript.Player(in2);
+                    var events = a.Events.OrderBy(x => x.Frame).ToList();      // writes made while the game was played, at the frames they landed
+                    int nextEvent = 0;
                     var buf = new short[32768];
                     var clock = Stopwatch.StartNew();
                     long lastReport = 0;
                     for (int f = 0; f < a.Frames; f++)
                     {
+                        ReplayEvents(events, ref nextEvent, f, session, r);
                         if (o.Cancelled?.Invoke() == true) { session.Dispose(); r.Cancelled = true; r.Ok = false; r.Message = $"stopped at frame {f:N0} of {a.Frames:N0}; nothing was applied"; why = "cancelled"; return false; }
                         session.SetPad(0, (PadButtons)p1.Bits(f));
                         session.SetPad(1, (PadButtons)p2.Bits(f));
@@ -151,6 +156,7 @@ public static class AnchorStart
                             o.Status($"replaying {f + 1:N0} / {a.Frames:N0} frames");
                         }
                     }
+                    ReplayEvents(events, ref nextEvent, a.Frames, session, r);
                     r.FramesReplayed = a.Frames;
                     r.Used = AnchorKind.Boot;
                     break;
@@ -169,7 +175,20 @@ public static class AnchorStart
         }
         r.Session = session;
         r.SessionIsNew = isNew || a.Kind == AnchorKind.Boot;
+        r.AnchorUsed = a;
         return true;
+    }
+
+    /// <summary>Applies the recorded events due at <paramref name="frame"/> (the frame about to run, or the end of the replay), between frames.</summary>
+    private static void ReplayEvents(List<AnchorEvent> events, ref int next, int frame, IConsoleSession session, StartResult r)
+    {
+        while (next < events.Count && events[next].Frame <= frame)
+        {
+            var ev = events[next++];
+            // (an event's writes carry no frame offset of their own: the event has the frame)
+            var rep = CorruptionApplier.Apply(MachineDomains.For(session), ev.Writes.Select(w => w with { At = 0 }), null, 0);
+            if (!rep.Complete) r.Warnings.Add($"a recorded corruption at frame {ev.Frame:N0} could not be applied whole in the replay: {rep.Describe()}");
+        }
     }
 
     private static IConsoleSession Fresh(ConsoleKind console, byte[] rom, MachineSpec m, string fileName, StartOptions o, out bool isNew)

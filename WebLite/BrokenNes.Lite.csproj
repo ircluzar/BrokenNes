@@ -130,6 +130,10 @@
     <Compile Include="$(NesRoot)corruptor\CorruptorModels.cs"       Link="NesEmulator\corruptor\CorruptorModels.cs" />
     <Compile Include="$(NesRoot)corruptor\GlitchHarvester.cs"       Link="NesEmulator\corruptor\GlitchHarvester.cs" />
     <Compile Include="$(NesRoot)corruptor\GlitchHarvesterEngine.cs" Link="NesEmulator\corruptor\GlitchHarvesterEngine.cs" />
+    <Compile Include="$(NesRoot)corruptor\GhStockpileMap.cs"          Link="NesEmulator\corruptor\GhStockpileMap.cs" />
+    <Compile Include="$(NesRoot)corruptor\GlitchHarvesterEngine.Console.cs" Link="NesEmulator\corruptor\GlitchHarvesterEngine.Console.cs" />
+    <!-- The stockpile file, memory domains and anchors (pure C#; the browser build uses the file format through the engine). -->
+    <Compile Include="$(NesRoot)corruption\**\*.cs"                  LinkBase="NesEmulator\corruption" />
 
     <!-- Whole-folder globs. ppus/ must include PPU_IMG.cs (declares ImagineTargetConfig and
          ImagineCaptureData, consumed by NES.cs). apus/ must include APU_WF + APU_MNES, but the

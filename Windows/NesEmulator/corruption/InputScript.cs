@@ -81,14 +81,14 @@ public static class InputScript
 /// </summary>
 public sealed class InputRecorder
 {
-    private readonly int[] frames;
+    private readonly int[] frames_;
     private readonly ushort[] bits;
     private int count;
     private ushort last;
     private string? poison;
     private int framesSeen;
 
-    public InputRecorder(int capacity = 4096) { frames = new int[capacity]; bits = new ushort[capacity]; }
+    public InputRecorder(int capacity = 4096) { frames_ = new int[capacity]; bits = new ushort[capacity]; }
 
     /// <summary>Why the recording cannot be replayed (null: it can).</summary>
     public string? Poisoned => poison;
@@ -105,16 +105,33 @@ public sealed class InputRecorder
     {
         if (pad != last)
         {
-            if (count == frames.Length) { poison ??= "the input log is full"; }
-            else { frames[count] = framesSeen; bits[count] = pad; count++; last = pad; }
+            if (count == frames_.Length) { poison ??= "the input log is full"; }
+            else { frames_[count] = framesSeen; bits[count] = pad; count++; last = pad; }
         }
         framesSeen++;
+    }
+
+    /// <summary>
+    /// Starts the recording as if the pad had followed <paramref name="script"/> for <paramref name="frames"/> frames: used when a machine was rebuilt by replaying that script, so that what is played next
+    /// is recorded after it. A script longer than the log can hold poisons the recording.
+    /// </summary>
+    public void Prime(IReadOnlyList<(int Frame, ushort Bits)> script, int frames)
+    {
+        Reset();
+        foreach (var (f, b) in script)
+        {
+            if (f >= frames) break;
+            if (count == frames_.Length) { poison ??= "the input log is full"; break; }
+            this.frames_[count] = f; bits[count] = b; count++;
+        }
+        last = InputScript.BitsAt(script, Math.Max(0, frames - 1));
+        framesSeen = frames;
     }
 
     public List<(int Frame, ushort Bits)> ToList()
     {
         var l = new List<(int, ushort)>(count);
-        for (int i = 0; i < count; i++) l.Add((frames[i], bits[i]));
+        for (int i = 0; i < count; i++) l.Add((frames_[i], bits[i]));
         return l;
     }
 

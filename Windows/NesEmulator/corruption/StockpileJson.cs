@@ -96,6 +96,8 @@ public static class StockpileJson
         w.WriteEndObject();
         w.WriteStartObject("machine");
         w.WriteString("cpu", e.Machine.Cpu); w.WriteString("ppu", e.Machine.Ppu); w.WriteString("apu", e.Machine.Apu);
+        if (e.Machine.Region.Length > 0) w.WriteString("region", e.Machine.Region);
+        if (e.Machine.Model.Length > 0) w.WriteString("model", e.Machine.Model);
         if (e.Machine.Note.Length > 0) w.WriteString("note", e.Machine.Note);
         w.WriteEndObject();
         w.WritePropertyName("anchor"); WriteAnchor(w, e.Anchor);
@@ -146,6 +148,20 @@ public static class StockpileJson
                 w.WriteString("inputs", a.Inputs);
                 if (a.Inputs2.Length > 0) w.WriteString("inputs2", a.Inputs2);
                 if (a.Battery is { Length: > 0 }) { w.WriteString("batteryEncoding", "deflate-base64"); w.WriteString("battery", DeflateBase64(a.Battery)); }
+                if (a.Events.Count > 0)
+                {
+                    w.WriteStartArray("events");
+                    foreach (var ev in a.Events)
+                    {
+                        w.WriteStartObject();
+                        w.WriteNumber("frame", ev.Frame);
+                        w.WriteStartArray("writes");
+                        foreach (var x in ev.Writes) w.WriteRawValue(RawWrite(x), skipInputValidation: true);
+                        w.WriteEndArray();
+                        w.WriteEndObject();
+                    }
+                    w.WriteEndArray();
+                }
                 break;
             case AnchorKind.Ref:
                 w.WriteString("base", a.BaseId);
@@ -266,6 +282,20 @@ public static class StockpileJson
         return r;
     }
 
+    private static bool TryReadWrite(JsonElement w, out CorruptionWrite result, out string why)
+    {
+        result = default; why = "";
+        if (w.ValueKind != JsonValueKind.Object) { why = "is not an object"; return false; }
+        string domain = Str(w, "domain");
+        if (!IsValidDomainId(domain)) { why = $"names a domain ('{Clip(domain, 24)}') that is not a domain id"; return false; }
+        if (!TryProp(w, "address", out var a) || a.ValueKind != JsonValueKind.Number || !a.TryGetInt32(out int addr) || addr < 0) { why = "has no valid address"; return false; }
+        if (!TryProp(w, "value", out var vv) || vv.ValueKind != JsonValueKind.Number || !vv.TryGetInt32(out int val) || val is < 0 or > 255) { why = "has a value that is not a byte"; return false; }
+        int was = TryProp(w, "was", out var wv) && wv.ValueKind == JsonValueKind.Number && wv.TryGetInt32(out int wasv) && wasv is >= 0 and <= 255 ? wasv : -1;
+        int at = TryProp(w, "at", out var av) && av.ValueKind == JsonValueKind.Number && av.TryGetInt32(out int atv) && atv >= 0 ? atv : 0;
+        result = new CorruptionWrite(domain, addr, (byte)val, was, at);
+        return true;
+    }
+
     private static StockpileEntry? ReadEntry(JsonElement e, StockpileReadResult r, int index, bool legacy)
     {
         if (e.ValueKind != JsonValueKind.Object) { r.Refusals.Add($"entry {index} refused: it is not an object"); return null; }
@@ -290,21 +320,15 @@ public static class StockpileJson
             foreach (var w in ws.EnumerateArray())
             {
                 wi++;
-                if (w.ValueKind != JsonValueKind.Object) { r.Refusals.Add($"{label} refused: write {wi} is not an object"); return null; }
-                string domain = Str(w, "domain");
-                if (!IsValidDomainId(domain)) { r.Refusals.Add($"{label} refused: write {wi} names a domain ('{Clip(domain, 24)}') that is not a domain id"); return null; }
-                if (!TryProp(w, "address", out var a) || a.ValueKind != JsonValueKind.Number || !a.TryGetInt32(out int addr) || addr < 0) { r.Refusals.Add($"{label} refused: write {wi} has no valid address"); return null; }
-                if (!TryProp(w, "value", out var vv) || vv.ValueKind != JsonValueKind.Number || !vv.TryGetInt32(out int val) || val is < 0 or > 255) { r.Refusals.Add($"{label} refused: write {wi} has a value that is not a byte"); return null; }
-                int was = TryProp(w, "was", out var wv) && wv.ValueKind == JsonValueKind.Number && wv.TryGetInt32(out int wasv) && wasv is >= 0 and <= 255 ? wasv : -1;
-                int at = TryProp(w, "at", out var av) && av.ValueKind == JsonValueKind.Number && av.TryGetInt32(out int atv) && atv >= 0 ? atv : 0;
-                entry.Writes.Add(new CorruptionWrite(domain, addr, (byte)val, was, at));
+                if (!TryReadWrite(w, out var cw, out string werr)) { r.Refusals.Add($"{label} refused: write {wi} {werr}"); return null; }
+                entry.Writes.Add(cw);
             }
         }
 
         if (TryProp(e, "game", out var g) && g.ValueKind == JsonValueKind.Object)
             entry.Game = new GameRef { Console = Str(g, "console"), Sha1 = Str(g, "sha1").ToLowerInvariant(), Sha256 = Str(g, "sha256").ToLowerInvariant(), Title = Clip(Str(g, "title"), 128), File = Clip(Path.GetFileName(Str(g, "file")), 256) };
         if (TryProp(e, "machine", out var m) && m.ValueKind == JsonValueKind.Object)
-            entry.Machine = new MachineSpec { Cpu = Str(m, "cpu"), Ppu = Str(m, "ppu"), Apu = Str(m, "apu"), Note = Clip(Str(m, "note"), 256) };
+            entry.Machine = new MachineSpec { Cpu = Str(m, "cpu"), Ppu = Str(m, "ppu"), Apu = Str(m, "apu"), Region = Clip(Str(m, "region"), 32), Model = Clip(Str(m, "model"), 32), Note = Clip(Str(m, "note"), 256) };
         if (TryProp(e, "source", out var src) && src.ValueKind == JsonValueKind.Object)
         {
             var bs = new BlastSource { Blast = Str(src, "blast"), SizeModel = Str(src, "sizeModel") };
@@ -325,7 +349,7 @@ public static class StockpileJson
             {
                 if (state.Length > MaxStateBytes) { r.Refusals.Add($"{label} refused: its saved machine is larger than {MaxStateBytes / 1048576} MB"); return null; }
                 entry.Anchor = new Anchor { Kind = AnchorKind.State, Console = "nes", StateFormat = "nes-json", StateData = Encoding.UTF8.GetBytes(state) };
-                ReadNesIdentity(state, entry.Game);
+                NesStateIdentity.Fill(entry.Game, state);
             }
             else
             {
@@ -345,19 +369,6 @@ public static class StockpileJson
             else entry.Anchor = new Anchor { Kind = AnchorKind.None };
         }
         return entry;
-    }
-
-    private static void ReadNesIdentity(string stateJson, GameRef game)
-    {
-        try
-        {
-            using var d = JsonDocument.Parse(stateJson);
-            if (d.RootElement.ValueKind != JsonValueKind.Object) return;
-            string hash = Str(d.RootElement, "romhash"), name = Str(d.RootElement, "romname");
-            if (hash.Length > 0) game.Sha256 = hash.ToLowerInvariant();
-            if (name.Length > 0) { game.File = Clip(Path.GetFileName(name), 256); game.Title = Clip(Path.GetFileNameWithoutExtension(name), 128); }
-        }
-        catch (JsonException) { /* the state is the NES's to judge when it is loaded */ }
     }
 
     private static Anchor? ReadAnchor(JsonElement a, StockpileReadResult r, string label, int depth)
@@ -386,6 +397,23 @@ public static class StockpileJson
                 anchor.Frames = frames;
                 anchor.Inputs = Str(a, "inputs"); anchor.Inputs2 = Str(a, "inputs2");
                 if (anchor.Inputs.Length > MaxInputChars || anchor.Inputs2.Length > MaxInputChars) { r.Refusals.Add($"{label} refused: its recorded input is too long"); return null; }
+                if (TryProp(a, "events", out var evs) && evs.ValueKind == JsonValueKind.Array)
+                {
+                    int total = 0;
+                    foreach (var ev in evs.EnumerateArray())
+                    {
+                        if (ev.ValueKind != JsonValueKind.Object || !TryProp(ev, "frame", out var evf) || !evf.TryGetInt32(out int evFrame) || evFrame < 0 || !TryProp(ev, "writes", out var evw) || evw.ValueKind != JsonValueKind.Array)
+                        { r.Refusals.Add($"{label} refused: one of its recorded corruption events is damaged"); return null; }
+                        var ae = new AnchorEvent { Frame = evFrame };
+                        foreach (var w in evw.EnumerateArray())
+                        {
+                            if (++total > MaxWritesPerEntry) { r.Refusals.Add($"{label} refused: its recorded events hold more than {MaxWritesPerEntry:N0} writes"); return null; }
+                            if (!TryReadWrite(w, out var cw, out string werr)) { r.Refusals.Add($"{label} refused: a recorded event's write {werr}"); return null; }
+                            ae.Writes.Add(cw);
+                        }
+                        anchor.Events.Add(ae);
+                    }
+                }
                 string bdata = Str(a, "battery");
                 if (bdata.Length > 0)
                 {

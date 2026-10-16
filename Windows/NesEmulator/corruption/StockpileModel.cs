@@ -17,6 +17,14 @@ namespace NesEmulator.Corruption;
 /// <param name="At">Frames after the anchor at which the write lands (0: at the anchor).</param>
 public readonly record struct CorruptionWrite(string Domain, int Address, byte Value, int Was = -1, int At = 0);
 
+/// <summary>Writes that landed in the machine while a boot anchor's game was being played (a blast, an auto-corrupt tick): at the moment <see cref="Frame"/> frames had run. A replay applies them at the same moments, so the machine it
+/// reaches has what the original had.</summary>
+public sealed class AnchorEvent
+{
+    public int Frame { get; set; }
+    public List<CorruptionWrite> Writes { get; set; } = new();
+}
+
 /// <summary>What kind of anchor places a corruption in a machine (see <see cref="Anchor"/>).</summary>
 public enum AnchorKind { None, State, Boot, Ref }
 
@@ -52,6 +60,8 @@ public sealed class Anchor
     public string Inputs2 { get; set; } = "";
     /// <summary>The cartridge save RAM the game started with (null: none, the game started with empty save RAM).</summary>
     public byte[]? Battery { get; set; }
+    /// <summary>Writes made to the machine while the game was played, with the frame each landed at (the machine a replay reaches has them too).</summary>
+    public List<AnchorEvent> Events { get; set; } = new();
 
     // ---- Ref ----
     public string BaseId { get; set; } = "";
@@ -91,6 +101,10 @@ public sealed class MachineSpec
     public string Cpu { get; set; } = "";
     public string Ppu { get; set; } = "";
     public string Apu { get; set; } = "";
+    /// <summary>The Sega consoles' region setting the game ran under (<c>SegaOptions</c> key: auto, ntsc-j ...; empty: the game's own).</summary>
+    public string Region { get; set; } = "";
+    /// <summary>The Sega consoles' board model setting (a Genesis model, a Master System board; empty: the game's own).</summary>
+    public string Model { get; set; } = "";
     /// <summary>Anything else that is part of the machine: the coprocessor and its firmware, say.</summary>
     public string Note { get; set; } = "";
 }
@@ -144,6 +158,7 @@ public sealed class StockpileEntry
     private static void AppendAnchor(StringBuilder sb, Anchor a)
     {
         sb.Append((int)a.Kind).Append('/').Append(a.Frames).Append('/').Append(a.Inputs).Append('/').Append(a.Inputs2).Append('/').Append(a.BaseId).Append('/').Append(a.StateFormat).Append('/');
+        foreach (var ev in a.Events) { sb.Append('e').Append(ev.Frame).Append('['); foreach (var w in ev.Writes) sb.Append(w.Domain).Append(':').Append(w.Address).Append('=').Append(w.Value).Append(','); sb.Append(']'); }
         if (a.StateData.Length > 0) sb.Append(Convert.ToHexString(SHA1.HashData(a.StateData)));
         if (a.Battery is { Length: > 0 }) sb.Append('/').Append(Convert.ToHexString(SHA1.HashData(a.Battery)));
         sb.Append('|');
