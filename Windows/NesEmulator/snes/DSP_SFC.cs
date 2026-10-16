@@ -18,7 +18,7 @@ namespace NesEmulator.Snes;
 /// RateOffset tables are copied from it verbatim. This is the SFC family's REFERENCE DSP; see
 /// THIRD_PARTY_NOTICES.md in this folder.
 /// </summary>
-public sealed class DSP_SFC
+public sealed partial class DSP_SFC
 {
     private readonly byte[] ram;          // the audio unit's 64KB ARAM (BRR samples, echo buffer)
     public readonly byte[] Regs = new byte[128];

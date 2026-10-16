@@ -104,6 +104,7 @@ public static class ConsoleStateFile
         "cpu" => $"This state was saved with the {saved ?? "unknown"} CPU core, but the game is running the {running} one. Switch the CPU core to {saved ?? "that one"} and load the state again.",
         "model" => $"This state was saved on a {saved ?? "different"} board model; the game is running as {running}.",
         "region" => $"This state was saved at {saved ?? "another"} timing; the game is running at {running} (the region setting is a part of the machine).",
+        "chip" => $"This state was saved with the cartridge chip \"{saved ?? "unknown"}\", but the game is running with \"{running}\" (a state is never loaded into a different chip: the homemade DSP-1 and Nintendo's DSP-1 firmware are different chips, so put the firmware back the way it was, or leave it out, and load the state again).",
         "format" => $"This state was saved by a different version of the core (state layout {saved ?? "unknown"}, this build uses {running}); it cannot be loaded.",
         _ => $"This state was saved with {unit} = {saved ?? "unknown"}; the game is running {unit} = {running}.",
     };

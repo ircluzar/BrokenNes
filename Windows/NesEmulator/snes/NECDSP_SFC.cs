@@ -14,7 +14,7 @@ namespace NesEmulator.Snes;
 /// master clock. A DSP spinning on "JRQM $" (waiting for the host) can do nothing until the host
 /// touches DR, so the rest of that time slice is skipped instead of emulated.
 /// </summary>
-public sealed class NECDSP_SFC : ISnesCoprocessor
+public sealed partial class NECDSP_SFC : ISnesCoprocessor
 {
     /// <summary>DSP-1 crystal. One instruction per clock.</summary>
     public const double DefaultFrequency = 7_600_000;

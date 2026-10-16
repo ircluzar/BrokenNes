@@ -13,7 +13,7 @@ namespace NesEmulator.Snes;
 /// Kept as a fallback and as a diagnostic: if a game boots on this but not on APU_SFC, the bug is
 /// in the SPC700/DSP, not in the CPU or board.
 /// </summary>
-public sealed class APU_HLE : ISnesApu
+public sealed partial class APU_HLE : ISnesApu
 {
     public string CoreName => "HLE";
 

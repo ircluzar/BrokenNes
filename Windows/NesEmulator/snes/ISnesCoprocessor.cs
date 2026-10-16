@@ -39,6 +39,20 @@ public interface ISnesCoprocessor
 
     /// <summary>One line of state for probe reports.</summary>
     string Describe();
+
+    // ---- save states (the board writes the chip inside its own state; see BOARD_SFC.State.cs) ----
+
+    /// <summary>
+    /// What a state saved with this chip depends on: its name, and for a chip that runs a firmware image the firmware's identity too. A state only loads into a session whose chip has the same id (a state saved with
+    /// the homemade DSP-1 does not load into one running Nintendo's firmware, and the other way round).
+    /// </summary>
+    string StateId => Name;
+
+    /// <summary>Writes everything a running game can change in the chip: registers, internal memories, clocks, interrupt lines. Memory shared with the cartridge (the battery RAM) is the cartridge's to write.</summary>
+    void SaveState(System.IO.BinaryWriter w);
+
+    /// <summary>Puts a state written by <see cref="SaveState"/> back, without touching the lines to the board (the board's own state carries those) and without asking it to remap pages (the board rebuilds its table after the load).</summary>
+    void LoadState(System.IO.BinaryReader r);
 }
 
 /// <summary>What the cartridge header says is on the board besides ROM/SRAM.</summary>
