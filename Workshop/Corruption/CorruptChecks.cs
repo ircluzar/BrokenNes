@@ -33,24 +33,31 @@ internal static class CorruptChecks
         var rom = SynthSnesRom.Build();
         Console.WriteLine($"the synthetic SNES game: {rom.Length:N0} bytes, sha1 {AnchorStart.Sha1Hex(rom)}");
 
-        if (Want("format")) { Section("stockpile file format"); Format(c); }
-        if (Want("legacy")) { Section("older stockpile files (the Glitch Harvester's export, Lite's export)"); Legacy(c); }
-        if (Want("hostile")) { Section("damaged and hostile files"); Hostile(c); }
-        if (Want("input")) { Section("input scripts and the recorder"); Input(c); }
-        if (Want("synth")) { Section("the synthetic game itself (the other checks stand on it)"); Synth(c, rom); }
-        if (Want("domains")) { Section("memory domains (SNES)"); Domains(c, rom); }
-        if (Want("apply")) { Section("applying and reverting writes"); Apply(c, rom); }
-        if (Want("blast")) { Section("generating corruptions (farming)"); Blast(c, rom); }
-        if (Want("anchors")) { Section("anchors: state, boot, none, the alternative, the refusals (a test machine)"); Anchors(c); }
-        if (Want("boot")) { Section("boot anchor: determinism of the replay"); Boot(c, rom); }
-        if (Want("audio")) { Section("an SPC700 audio-RAM corruption changes the sound, deterministically, and what Instrument Runaway captures"); Audio(c, rom); }
-        if (Want("cli")) { Section("--corrupt-apply"); Cli(c, rom); }
-        if (Want("state")) { Section("state anchors on the SNES (run once the SNES has save states)"); SnesState(c, rom); }
-        if (Want("smw")) { Section("a real game (Super Mario World), when its ROM is present"); Smw(c, smw); }
+        if (Want("format")) { Section("stockpile file format"); Guard(c, "format", () => Format(c)); }
+        if (Want("legacy")) { Section("older stockpile files (the Glitch Harvester's export, Lite's export)"); Guard(c, "legacy", () => Legacy(c)); }
+        if (Want("hostile")) { Section("damaged and hostile files"); Guard(c, "hostile", () => Hostile(c)); }
+        if (Want("input")) { Section("input scripts and the recorder"); Guard(c, "input", () => Input(c)); }
+        if (Want("synth")) { Section("the synthetic game itself (the other checks stand on it)"); Guard(c, "synth", () => Synth(c, rom)); }
+        if (Want("domains")) { Section("memory domains (SNES)"); Guard(c, "domains", () => Domains(c, rom)); }
+        if (Want("apply")) { Section("applying and reverting writes"); Guard(c, "apply", () => Apply(c, rom)); }
+        if (Want("blast")) { Section("generating corruptions (farming)"); Guard(c, "blast", () => Blast(c, rom)); }
+        if (Want("anchors")) { Section("anchors: state, boot, none, the alternative, the refusals (a test machine)"); Guard(c, "anchors", () => Anchors(c)); }
+        if (Want("boot")) { Section("boot anchor: determinism of the replay"); Guard(c, "boot", () => Boot(c, rom)); }
+        if (Want("audio")) { Section("an SPC700 audio-RAM corruption changes the sound, deterministically, and what Instrument Runaway captures"); Guard(c, "audio", () => Audio(c, rom)); }
+        if (Want("cli")) { Section("--corrupt-apply"); Guard(c, "cli", () => Cli(c, rom)); }
+        if (Want("state")) { Section("state anchors on the SNES (run once the SNES has save states)"); Guard(c, "state", () => SnesState(c, rom)); }
+        if (Want("smw")) { Section("a real game (Super Mario World), when its ROM is present"); Guard(c, "smw", () => Smw(c, smw)); }
         return c.Finish();
     }
 
     private static void Section(string name) { Console.WriteLine(); Console.WriteLine("== " + name); }
+
+    /// <summary>A group that throws is a failed group (and the other groups still run), not a crashed run.</summary>
+    private static void Guard(Checks c, string group, Action run)
+    {
+        try { run(); }
+        catch (Exception e) { c.Ok($"group '{group}' ran to the end", false, e.GetType().Name + ": " + e.Message); }
+    }
 
     // ===================================================================================================================== format
 
@@ -375,24 +382,26 @@ internal static class CorruptChecks
             var oam = MachineDomains.Find(d, "OAM")!;
             for (int n = 1; n < 128; n++) oam.Poke(n * 4 + 1, 240);
         }
-        ulong Picture(int spriteY, bool withHook, bool laterPoke)
+        // early: the sprite is put at Y before the machine has run a single frame (nothing is cached yet, so no hook is needed: this is the oracle that does not depend on the hook)
+        ulong Picture(int spriteY, bool early, bool withHook)
         {
             using var r = new SnesRun(rom);
-            r.Run(4);
+            if (!early) r.Run(4);
             var d = MachineDomains.For(r.Session);
             Setup(d);
             var oam = MachineDomains.Find(d, "OAM")!;
             // the control domain is the same memory without the hook
             IMemoryDomain target = withHook ? oam : new ArrayDomain("OAM", "OAM without the hook", DomainKind.Video, r.Snes.Board.Ppu.Oam);
-            if (!laterPoke) target.Poke(1, (byte)spriteY);
-            r.Run(2);                       // the sprite evaluation caches this state
-            if (laterPoke) { target.Poke(1, (byte)spriteY); r.Run(2); }
+            if (early) { target.Poke(1, (byte)spriteY); r.Run(6); return r.Picture(); }
+            r.Run(2);                       // the sprite evaluation caches this state (sprite 0 at Y=0)
+            target.Poke(1, (byte)spriteY);  // ... and the sprite is moved afterwards
+            r.Run(2);
             return r.Picture();
         }
-        ulong before = Picture(0, true, false);
-        ulong oracle = Picture(100, true, false);       // the sprite was at Y=100 from the start
-        ulong hooked = Picture(100, true, true);         // moved after the cache was built, through the domain
-        ulong unhooked = Picture(100, false, true);      // moved the same way, without the hook
+        ulong before = Picture(0, early: true, withHook: true);
+        ulong oracle = Picture(100, early: true, withHook: true);       // the sprite was at Y=100 from before the first frame
+        ulong hooked = Picture(100, early: false, withHook: true);       // moved after the cache was built, through the domain
+        ulong unhooked = Picture(100, early: false, withHook: false);    // moved the same way, without the hook
         c.Ok("the sprite is drawn, and where it is shows in the picture", before != oracle, $"Y=0 {before:X16}, Y=100 {oracle:X16}");
         c.Ok("OAM poke + hook: a sprite moved after the first frames gives the picture of a machine that had it there from the start", hooked == oracle, $"{hooked:X16} vs {oracle:X16}");
         c.Control("the same poke without the hook leaves the sprite cache stale and the picture is wrong", unhooked != oracle, $"{unhooked:X16}");
