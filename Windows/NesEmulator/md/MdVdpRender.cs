@@ -95,9 +95,13 @@ public sealed partial class MdVdp
     {
         long off = Time - lineStart - PixelOrigin;
         if (off <= 0) return 0;
-        long p = off / linePxDiv;
+        long p = !FastDraw ? off / linePxDiv : linePxDiv == 8 ? off >> 3 : linePxDiv == 10 ? off / 10 : off / linePxDiv;      // linePxDiv is 8 (H40) or 10 (H32); off is positive: a shift or a division by a constant, not a 64-bit division by a variable
         return p > lineWidth ? lineWidth : (int)p;
     }
+
+    /// <summary>True: the line drawing uses its short forms (a whole eight-pixel tile row in one go, the plane's row address worked out once per run, the priority ladder without the sprite tests on a line with no sprites,
+    /// the clock-to-pixel division as a shift). False: the original loops, the reference twin (<c>--sega-bench --ab vdp-draw</c>; the pictures and the saved state are bit for bit the same either way).</summary>
+    public static bool FastDraw = true;
 
     /// <summary>Draw what the hardware has put out up to now, so that a change made now only shows from here on.</summary>
     private void SyncRender()
@@ -210,6 +214,14 @@ public sealed partial class MdVdp
         if (x1 <= colourX) return;
         var dst = building; var idx = lineIdx; var p = pal;
         int o = rowBase;
+        if (FastDraw)
+        {
+            // the same table lookup over two spans (the range is checked once, not for every pixel)
+            var d = new Span<uint>(dst, o + colourX, x1 - colourX); var s = new ReadOnlySpan<byte>(idx, colourX, x1 - colourX);
+            for (int i = 0; i < s.Length; i++) d[i] = p[s[i]];
+            colourX = x1;
+            return;
+        }
         for (int x = colourX; x < x1; x++) dst[o + x] = p[idx[x]];
         colourX = x1;
     }
@@ -328,6 +340,23 @@ public sealed partial class MdVdp
         int vsFull = (VsFullLatch ? (isA ? vsLatchA : vsLatchB) : Vsram[vsOff]) & vsMask;
         int x = xa;
         int bugColumn0 = bugX0 >= 0 ? (bugX0 - hs & wMask) >> 4 : 0;
+        if (FastDraw && !colV && bugX0 < 0)
+        {
+            // the common case (one vertical scroll value for the whole line, no window bug): the row of the plane and its name table row are worked out once, then one tile row at a time
+            int fpy = imgRow + vsFull & hMask;
+            int ntRow = nt + (fpy >> cellShift) * rowStride * 2, frow = fpy & (1 << cellShift) - 1;
+            while (x < xb)
+            {
+                int px0 = x - hs & wMask;
+                int cell0 = px0 >> 3, fine0 = px0 & 7;
+                int len0 = Math.Min(8 - fine0, xb - x);
+                int ea0 = ntRow + cell0 * 2 & 0xFFFF;        // the entry's address is even: the two bytes never wrap apart
+                int e0 = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(new ReadOnlySpan<byte>(Vram, ea0, 2));
+                DrawTileRun(dst, x, len0, e0, frow, fine0);
+                x += len0;
+            }
+            return;
+        }
         while (x < xb)
         {
             int vs, limit = xb;
@@ -365,8 +394,44 @@ public sealed partial class MdVdp
     private void DrawTileRun(byte[] dst, int x, int len, int e, int row, int fine)
     {
         int a = ((e & 0x7FF) << cellShift + 2) + (((e & 0x1000) != 0 ? (1 << cellShift) - 1 - row : row) << 2);
-        uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
         int flags = e >> 8 & 0x80 | e >> 9 & 0x30;
+        if (FastDraw)
+        {
+            // a tile row is four bytes at an address that is a multiple of four (tiles are 32 or 64 bytes, rows 4): one big-endian word, and the 64 KB wrap cannot fall inside it
+            uint fb = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(new ReadOnlySpan<byte>(Vram, a & 0xFFFF, 4));
+            int hi = flags & 0x80;
+            if (len == 8)
+            {
+                // a whole tile row (fine is 0): eight pixels, no per-pixel shift counts, a transparent row in one fill
+                var d = new Span<byte>(dst, x, 8);
+                if (fb == 0) { d.Fill((byte)hi); return; }
+                int c;
+                if ((e & 0x800) == 0)
+                {
+                    c = (int)(fb >> 28); d[0] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 24) & 15; d[1] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 20) & 15; d[2] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 16) & 15; d[3] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 12) & 15; d[4] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 8) & 15; d[5] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 4) & 15; d[6] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)fb & 15; d[7] = c == 0 ? (byte)hi : (byte)(flags | c);
+                }
+                else
+                {
+                    c = (int)fb & 15; d[0] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 4) & 15; d[1] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 8) & 15; d[2] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 12) & 15; d[3] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 16) & 15; d[4] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 20) & 15; d[5] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 24) & 15; d[6] = c == 0 ? (byte)hi : (byte)(flags | c);
+                    c = (int)(fb >> 28); d[7] = c == 0 ? (byte)hi : (byte)(flags | c);
+                }
+                return;
+            }
+        }
+        uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
         if ((e & 0x800) != 0)
         {
             for (int k = 0; k < len; k++)
@@ -493,7 +558,22 @@ public sealed partial class MdVdp
     private void Compose(int x0, int x1, int bd)
     {
         var a = bufA; var b = bufB; var s = sprLine; var o = lineIdx;
-        if ((Reg[12] & 8) == 0)
+        if ((Reg[12] & 8) == 0 && FastDraw && !sprDirty)
+        {
+            // no sprite on this line (the sprite line is all zero): the ladder is A and B with the priority bit set, then A, then B, then the backdrop. (av & 0x8F) > 0x80 is "priority bit set and a colour"
+            var ao = new ReadOnlySpan<byte>(a, x0, x1 - x0); var bo = new ReadOnlySpan<byte>(b, x0, x1 - x0); var oo = new Span<byte>(o, x0, x1 - x0);
+            for (int i = 0; i < oo.Length; i++)
+            {
+                int av = ao[i], bv = bo[i], v;
+                if ((av & 0x8F) > 0x80) v = av;
+                else if ((bv & 0x8F) > 0x80) v = bv;
+                else if ((av & 15) != 0) v = av;
+                else if ((bv & 15) != 0) v = bv;
+                else v = bd;
+                oo[i] = (byte)(v & 0x3F);
+            }
+        }
+        else if ((Reg[12] & 8) == 0)
         {
             // priority ladder, top to bottom: sprite, A, B with the priority bit set; then sprite, A, B without it; then the backdrop
             for (int x = x0; x < x1; x++)

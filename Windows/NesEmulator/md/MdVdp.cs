@@ -391,10 +391,22 @@ public sealed partial class MdVdp
         return e;
     }
 
+    /// <summary>True: <see cref="RunTo"/> moves the clock straight to the target when nothing is due before it (no FIFO entry, no DMA, no line end, interrupt or Z80 interrupt release up to the target), which is
+    /// all the event loop would have done. False: every call takes the loop, the reference twin (<c>--sega-bench --ab vdp-run</c>; the output and the saved state are bit for bit the same either way).</summary>
+    public static bool FastRun = true;
+
     /// <summary>Bring the VDP to master clock <paramref name="t"/>: lines turn over, interrupts and flags change, queued work finishes in the slots it gets.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void RunTo(long t)
     {
         if (t <= Time) return;
+        // nothing queued (SlotWork and NextFetchTime are false and MaxValue) and the target is before every event: the loop below would set the clock to t and stop, and NextEvent() would not be due
+        if (FastRun && fifoCount == 0 && dma == DmaKind.None && t < lineStart + ClocksPerLine && t < hintTime && t < vintTime && t < z80IntClear) { Time = t; return; }
+        RunToLoop(t);
+    }
+
+    private void RunToLoop(long t)
+    {
         int spins = 0;
         while (Time < t)
         {
