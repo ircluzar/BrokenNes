@@ -78,11 +78,11 @@ Method: pause BlastEm at a frame boundary, press the sweep's pad script (Start, 
 | 15 | Comix Zone | 5/15 | 7/15 (34,535 px): RAM equal to 19-47 bytes until step 756, a scene change at 759 and the game's pause at 840 that the oracle does not enter: Wave 5, section 4 working |
 | 16 | Contra: Hard Corps | 0/15 | **15/15** playable |
 | 17 | Phantasy Star IV | 12/15 | **15/15** playable |
-| 18 | Sonic the Hedgehog 3 | (merged tree only) | **14/15**: step 100 only (4,342 px): the oracle's battery file from an earlier run makes its Data Select show a saved game; ours starts empty (a capture artifact: delete `be_save\<game>` first) playable |
+| 18 | Sonic the Hedgehog 3 | (merged tree only) | **15/15** with a clean oracle battery (recaptured with `be_save\<game>` deleted: 15 of 15; the earlier capture had 14/15, step 100 only, 4,342 px, because the oracle's file from an earlier run made its Data Select show a saved game) playable |
 | 19 | Streets of Rage 3 (PAL) | (merged tree only) | 12/15 (7,850 px): exact through step 1,100, then 843 to 5,116 px at 1,200-1,400 working |
 | 20 | Sonic & Knuckles + Sonic 3 | (merged tree only) | **15/15** playable |
 
-**13 games are pixel-identical on all 15 pictures (1, 2, 3, 4, 7, 9, 10, 11, 12, 14, 16, 17, 20); 2 more differ only in one picture that is explained (Ecco's one-pixel scroll phase, Sonic 3's battery file): 15 playable, 5 working (Strider, Streets of Rage, Shinobi III, Comix Zone, Streets of Rage 3).** (The table of the first rounds is in the git history of this file; the corrected start of a PauseSnap capture is Wave 5, section 1.)
+**14 games are pixel-identical on all 15 pictures (1, 2, 3, 4, 7, 9, 10, 11, 12, 14, 16, 17, 18, 20); Ecco differs in one picture (step 500, the whole background one pixel off in scroll: reproduced in a second capture, so not noise; B4a's raster side): 15 playable, 5 working (Strider, Streets of Rage, Shinobi III, Comix Zone, Streets of Rage 3).** (The table of the first rounds is in the git history of this file; the corrected start of a PauseSnap capture is Wave 5, section 1.)
 
 ## Sound against BlastEm's VGM logger (event level, not heard)
 
@@ -151,7 +151,7 @@ B4a took the horizontal-interrupt finding (probe H) and made it a rule in `MdVdp
 
 ## Open items and the exact next steps (to 20 of 20 playable)
 
-**State of the roster after wave 5: 15 playable (13 pixel-identical on 15 pictures; Ecco and Sonic 3 with one explained picture), 5 working (5 Strider, 6 Streets of Rage, 13 Shinobi III, 15 Comix Zone, 19 Streets of Rage 3).** To get the other 5:
+**State of the roster after wave 5: 15 playable (14 pixel-identical on 15 pictures; Ecco with one picture off by one pixel of scroll), 5 working (5 Strider, 6 Streets of Rage, 13 Shinobi III, 15 Comix Zone, 19 Streets of Rage 3).** To get the other 5:
 
 1. **Streets of Rage (6):** the oracle is two frames ahead in the stage fade (steps 841-858) and no knob moves it; `--slot-set nextslotfix=0` restores 15 of 15 (B4a's fill fix moved the boot). The cause is in how the fill's slots meet the boot's FIFO writes: B4a's side.
 2. **Strider (5):** the intro now matches (6 of 6); the gameplay shots from 600 differ after the Start press: B4a is on it (RAM snapshots of steps 143-148 done).
@@ -170,7 +170,7 @@ Everything below was run on builds of this branch merged with main (`refs/heads/
 
 ### 1. The start of a PauseSnap capture was one frame early (B4a's finding, used here)
 
-`oraclerun -PauseSnap` saves the pause-point state with a `snap`, which costs one more frame advance, so the oracle's script starts one frame after the moment the shot and the state show; `--scan-state` now returns the scanned boundary + 1 (B4a's `MdOracleCli`), and a snap's state `n` is the oracle's state at the START of advance `n` (compare it with ours after `n - 1`). The roster table above is the replay of the stored captures with the corrected start: **Hard Corps 2 -> 15 of 15, Gunstar Heroes 8 -> 15, Castle of Illusion 13 -> 15, Phantasy Star IV 13 -> 15, Sonic 3 stays 14** (its one difference, step 100, is the oracle's battery file from an earlier run showing a saved game: delete `be_save\<game>` before a capture), **13 games are identical on all 15 pictures**. Captures with the picture-only start (the `_d`/`_a` ones) can pick a start frame that is one off: recapture with `-PauseSnap` before believing a first difference.
+`oraclerun -PauseSnap` saves the pause-point state with a `snap`, which costs one more frame advance, so the oracle's script starts one frame after the moment the shot and the state show; `--scan-state` now returns the scanned boundary + 1 (B4a's `MdOracleCli`), and a snap's state `n` is the oracle's state at the START of advance `n` (compare it with ours after `n - 1`). The roster table above is the replay of the stored captures with the corrected start: **Hard Corps 2 -> 15 of 15, Gunstar Heroes 8 -> 15, Castle of Illusion 13 -> 15, Phantasy Star IV 13 -> 15, Sonic 3 stays 14** (its one difference, step 100, is the oracle's battery file from an earlier run showing a saved game: delete `be_save\<game>` before a capture), **13 games were identical on all 15 pictures in the replay of the existing captures, 14 after Sonic 3's recapture with a clean battery**. Captures with the picture-only start (the `_d`/`_a` ones) can pick a start frame that is one off: recapture with `-PauseSnap` before believing a first difference.
 
 ### 2. What the oracle's 68000 does on the bus (refresh and VDP port cycles), measured with loops
 
