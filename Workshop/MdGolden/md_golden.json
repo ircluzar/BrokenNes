@@ -58,7 +58,7 @@
         "125": "2B3EB8B48AEB109D",
         "558": "43881597385F3FEA",
         "639": "8C76834E55FB899C",
-        "1597": "CE70795833A73D70",
+        "1596": "CE70795833A73D70",
         "1864": "D711B6B86BF664C8"
       },
       "input": "617:Start,623:,1097:Start,1103:"
@@ -93,7 +93,7 @@
       "verified": "oracle",
       "checkpoints": {
         "222": "BF356E56ED4AF21A",
-        "616": "E480F5FE09AD7BE6",
+        "615": "E480F5FE09AD7BE6",
         "802": "8CE132C6EF758DB9",
         "1526": "31F1E693F2FCECC3",
         "1836": "7B6D14F7BAFE51AE"
@@ -212,8 +212,8 @@
       "rom": "tests:cram-flicker.zip|cram flicker.bin",
       "verified": "oracle",
       "checkpoints": {
-        "401": "3CB725DB8297E4B2",
-        "404": "3CB725DB8297E4B2"
+        "400": "3CB725DB8297E4B2",
+        "403": "3CB725DB8297E4B2"
       }
     },
     {

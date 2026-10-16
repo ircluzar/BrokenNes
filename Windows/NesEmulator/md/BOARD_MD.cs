@@ -308,6 +308,17 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         }
     }
 
+    /// <summary>The start of a 68000 bus cycle to the VDP's address window (data and control ports, the H/V counter, the PSG) is floored to a multiple of this many master clocks (0 = off: the cycle starts when the one before ended).
+    /// Found by Track B4b (wave 5) with loops of one VDP port instruction repeated, the laps counted per frame on BlastEm 1.0.0 (<c>oracle-tools/md-picture/rate.py</c>, <c>probes_b4b2.py</c>): the oracle's loops of VDP reads and writes
+    /// run 0 to 1 percent faster than the 68000's cycle counts say (0.2 clock per read in a loop of back-to-back reads, about 1 clock per <c>move.l</c> write) while its RAM loops run exactly at the cycle counts (its refresh is every 896
+    /// master clocks, 14 of them held, whatever the 68000 does: <c>TimeBasedRefresh</c>, not adopted: the direct colour demo does not tolerate it). Flooring the start of each VDP cycle to the 4-clock grid reproduces four of twelve probe loops
+    /// to 0.1 clock and lowers the squared error of all twelve from 771 to 395; it makes Strider's intro start a frame earlier than ours did, as the oracle's does (the six pictures after it were 0 of 6 exact, now 6; B4a's capture), and every
+    /// oracle-pinned golden picture still appears, one frame earlier (Strider, Ecco, the CRAM flicker test). It is not the whole rule: loops of 24 and 32 back-to-back reads, of 16 long reads and of a read between other cycles are 4 to 12 clocks a lap
+    /// off (record, Wave 5). With it <see cref="MdVdp.DmaStartDelay"/> is 72 (the demo's window is 69 to 74) and <see cref="MdVdp.DmaReleaseLatency"/> 12 (the Nemesis FIFO test passes for 8 to 13 and 20 to 24).</summary>
+    public static int VdpQuantum = 4;
+    /// <summary>Which of the VDP window's bus cycles the grid applies to (experiments: --slot-set vdpqr=0 / vdpqw=0).</summary>
+    public static bool VdpQuantumReads = true, VdpQuantumWrites = true;
+
     /// <summary>A VDP port access can leave the VDP busy (a full FIFO, a DMA); the 68000 resumes when it is not.</summary>
     private void AfterVdpAccess()
     {
@@ -339,8 +350,19 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         return 24 + level;
     }
 
+    /// <summary>A bus cycle to the VDP port starts on the quantum's grid (floor).</summary>
+    private void AlignVdpAccess(uint address, bool write)
+    {
+        if (VdpQuantum > 1 && (write ? VdpQuantumWrites : VdpQuantumReads) && address >= 0xC00000 && address < 0xE00000)
+        {
+            long f = t - ((t % VdpQuantum) + VdpQuantum) % VdpQuantum;
+            t = f;       // the VDP may then be up to quantum - 1 clocks ahead of the 68000: its RunTo ignores a time in its past
+        }
+    }
+
     public ushort BusRead(uint address, bool upper, bool lower, int cycles)
     {
+        AlignVdpAccess(address, false);
         BeginAccess(cycles);
         BusReads++;
         address &= 0xFFFFFE;
@@ -356,6 +378,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     public void BusWrite(uint address, bool upper, bool lower, ushort data, int cycles)
     {
+        AlignVdpAccess(address, true);
         BeginAccess(cycles);
         BusWrites++;
         address &= 0xFFFFFE;

@@ -99,6 +99,7 @@ internal static class MdBoardTest
         VdpDma();
         Timing();
         InterruptSamplePoints();
+        VdpPortLoops();
         Cartridge();
         MdSoundTest.Run(Check, Group);
         Console.WriteLine($"== {pass} passed, {fail} failed");
@@ -847,6 +848,54 @@ internal static class MdBoardTest
             Check("... and the old sampling (last bus cycle of every instruction) misses both windows, so the checks can fail", !(nopOld is > 0.66 and < 0.84) && !(movemOld is > 0.08 and < 0.18), $"nop {nopOld:F3}, movem {movemOld:F3}");
         }
         finally { M68k<MdBus>.BranchIplMask = savedMask; M68k<MdBus>.MovemFreezesIpl = savedMovem; }
+    }
+
+
+    // =====================================================================================================================
+    //  Loops of VDP port reads against the oracle's laps (Track B4b, wave 5)
+    // =====================================================================================================================
+
+    /// <summary>Laps a second frame of loop <c>per x move.w (a2),d1 ; addq.l #1,(a0) ; bra.w</c> (a2 = the VDP's control port, display off, H40, no interrupts) averaged over 300 frames after 100.</summary>
+    private static double VdpReadLoopLapsPerFrame(int per)
+    {
+        var code = new System.Collections.Generic.List<ushort>
+        {
+            0x41F9, 0x00FF, 0x0000,                     // lea ($FF0000).l,a0
+            0x45F9, 0x00C0, 0x0004,                     // lea ($C00004).l,a2
+            0x33FC, 0x8134, 0x00C0, 0x0004,             // R1: display off, DMA on
+            0x33FC, 0x8C81, 0x00C0, 0x0004,             // R12: H40
+            0x20BC, 0x0000, 0x0000,                     // move.l #0,(a0)
+        };
+        for (int i = 0; i < per; i++) code.Add(0x3212);        // move.w (a2),d1
+        code.Add(0x5290);                                       // addq.l #1,(a0)
+        code.Add(0x6000); code.Add((ushort)(-(per * 2 + 4) & 0xFFFF));       // bra.w loop
+        var b = Board(MakeRom("JUE", code.ToArray()));
+        for (int f = 0; f < 100; f++) b.RunFrame();
+        long c1 = (long)(uint)(b.Ram[0] << 24 | b.Ram[1] << 16 | b.Ram[2] << 8 | b.Ram[3]);
+        for (int f = 0; f < 300; f++) b.RunFrame();
+        long c2 = (long)(uint)(b.Ram[0] << 24 | b.Ram[1] << 16 | b.Ram[2] << 8 | b.Ram[3]);
+        return (c2 - c1) / 300.0;
+    }
+
+    private static void VdpPortLoops()
+    {
+        Group("68000: loops of VDP port reads run at the oracle's rate (laps a frame, BlastEm 1.0.0: tools rate.py, probes_b4b2.py)");
+        // the oracle's laps a frame with its vertical interrupt handler running (1, 2 and 16 reads a lap: 3,329.29, 2,746.79, 799.07), without the handler's share of the lap (about 0.3, 0.36 and 1.25 master clocks):
+        // 3,333.0, 2,749.8 and 800.0. The cycle counts alone give 3,328.9 less 0.3 %: the oracle's loops are faster than that and the 4-clock grid of the VDP cycles (BOARD_MD.VdpQuantum) is what makes them equal.
+        int[] per = { 1, 2, 16 }; double[] oracle = { 3333.0, 2749.8, 800.0 };
+        int saved = BOARD_MD.VdpQuantum;
+        try
+        {
+            for (int i = 0; i < per.Length; i++)
+            {
+                double laps = VdpReadLoopLapsPerFrame(per[i]);
+                Check($"{per[i]} VDP status read{(per[i] > 1 ? "s" : "")} + addq + bra: {oracle[i]:F1} laps a frame as on the oracle (within 0.15 %)", Math.Abs(laps / oracle[i] - 1) < 0.0015, $"{laps:F2}");
+            }
+            BOARD_MD.VdpQuantum = 0;
+            double off = VdpReadLoopLapsPerFrame(16);
+            Check("... and without the grid the 16-read loop is more than 0.15 % off, so the check can fail", Math.Abs(off / 800.0 - 1) > 0.0015, $"{off:F2}");
+        }
+        finally { BOARD_MD.VdpQuantum = saved; }
     }
 
     // =====================================================================================================================

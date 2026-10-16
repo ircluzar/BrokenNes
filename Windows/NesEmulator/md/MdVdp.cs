@@ -164,14 +164,14 @@ public sealed partial class MdVdp
     public static int ReleaseLatency = 16;
     /// <summary>The release latency and the fetch period scale with the slot length: H32 slots are 20 clocks, H40 ones 16.</summary>
     public int ReleaseClocks => ReleaseLatency * (H40 ? 16 : 20) / 16;
-    public static int DmaReleaseLatency = 16;
+    public static int DmaReleaseLatency = 12;      // 16 before the VDP bus cycles were put on the 4-clock grid (BOARD_MD.VdpQuantum): with the grid the Nemesis FIFO test's wait-state groups pass for 8 to 13 and 20 to 24 and fail for 14 to 19; B3a had found 12 with the time-based refresh
     public int DmaReleaseClocks => DmaReleaseLatency * (H40 ? 16 : 20) / 16;
     private int FetchClocks => DmaFetchClocks * (H40 ? 16 : 20) / 16;
 
     /// <summary>How long after the command word a DMA waits before its first fetch (master clocks), and the time between fetches while the FIFO has room: a bus transfer reads the 68000's bus at its own pace and only the
     /// writes into VRAM, CRAM and VSRAM need slots. Measured against the oracle with FIFO-synchronised starts (the direct colour demo's lead-in): in blanked lines the 68000 runs again one tick (16 clocks) per word
     /// after the command; with the FIFO partly full the first two words are fetched together.</summary>
-    public static int DmaStartDelay = 78, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
+    public static int DmaStartDelay = 72, DmaFetchClocks = 16, DmaFifoLimit = 4, DmaBlankLimit = 2;
     /// <summary>The DMA engine fetches nothing while the VDP is in a refresh slot.</summary>
     public static bool DmaSkipsRefresh = true;
     /// <summary>In a blanked line a word the DMA moves from the 68000 into CRAM or VSRAM (one slot a word) cannot be written in the slot after a refresh slot either: the oracle takes 198 slots for 198 words in H40 (204 free slots)
