@@ -112,6 +112,16 @@ internal static class MdStateTest
             case "z80": Core(b).Cpu.A ^= 1; break;
             case "cart": if (b.Cart.Sram.Length > 0) b.Cart.Sram[0] ^= 0xFF; else b.Ram[0x100] ^= 0xFF; break;
             case "vdp": b.Vdp.Reg[7] ^= 0x3F; break;
+            case "hintlatch":    // a state that dropped B4a's horizontal-interrupt enable latch (the enable bit as it stood at the previous line's HINT time): the loaded session has it the wrong way round
+            {
+                var bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                foreach (var name in new[] { "hintEnCur", "hintEnNext" })
+                {
+                    var f = typeof(MdVdp).GetField(name, bf);
+                    if (f != null) f.SetValue(b.Vdp, !(bool)f.GetValue(b.Vdp)!);
+                }
+                break;
+            }
             case "vscroll":      // a state that dropped the latched vertical scroll (B4a's full-screen latch): the field comparison after a mid-frame load must see it
                 typeof(MdVdp).GetField("vsLatchA", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(b.Vdp, (ushort)0x155);
                 typeof(MdVdp).GetField("vsNextTaken", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(b.Vdp, true);
