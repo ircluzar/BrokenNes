@@ -303,6 +303,27 @@ public sealed unsafe partial class SelfTest
         }
         finally { DeleteQuietly(other); }
 
+        // the same for a NES game, where the plugin's own check is the only one (the session states carry the game's id too, the NES core's state does not check it)
+        string otherNes = TempGame(".nes", MakeNesCounterRom());
+        byte[] nesMismatch;
+        using (var a = SegaGame(otherNes, 0, "FIX"))
+        {
+            a.Test(HkRun, 0, FramesBefore);
+            Corruption(a, 0x10);
+            nesMismatch = a.SaveState();
+        }
+        try
+        {
+            var changed = MakeNesCounterRom(); changed[16 + 0x100] ^= 0x01;
+            File.WriteAllBytes(otherNes, changed);
+            using var m = Reopen(nesMismatch);
+            m.Test(HkHash);
+            string? note = NoteOf(m);
+            t.Expect(m.Test(HkRestore) == 2 && note != null && note.Contains("different game") && m.Test(11) == 0 && m.Test(HkPeek, 0x10) != Corrupt, $"another NES game: restore {m.Test(HkRestore)}, note '{note}', frame {m.Test(11)}");
+            m.Test(HkRun, 0, 5);
+            t.Expect(m.Test(11) == 5 && m.Test(12) == 0, $"another NES game: the new game ran {m.Test(11)} frames");
+        }
+        finally { DeleteQuietly(otherNes); }
         // a state too big for the project is refused when it is saved, visibly, and again when the project is opened
         byte[] big;
         try
