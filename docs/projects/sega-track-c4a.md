@@ -24,8 +24,7 @@ The job: make the Master System, Game Gear and Genesis first-class in BrokenNes 
 Verified by `test-lite-sega.mjs` on the AOT publish of this branch's final code (109 of 109, below): the console dropdown lists NES, SNES, Game Boy, Game Boy Color and the three Sega consoles by name; choosing a console sets the layout; the layouts have exactly the right buttons (SMS: 1 2 PAUSE, Game Gear: 1 2 START, Genesis: A B C X Y Z MODE START and the pad), no two buttons overlap, every button is inside a 390 px screen; `?rom=` loads a game and the console follows the ROM; the picture is the right size and moves, sound reaches the page every frame at 44,100 Hz and the right amount per frame; the file input offers the Sega extensions and `.zip`, imports ROMs of all three consoles, unpacks a `.zip`, refuses a `.7z` (and a `.7z` renamed `.zip`) with a message that says why and what to do; the CPU / PPU / APU pickers list the catalog (the console's own chips first, then `NES:<chip>` entries, then the other consoles' chips labelled "From the ..."), and the NES pickers offer the Master System and Genesis chips; hot swapping through `TrySwapCore` (Master System APU to the FM unit, picture to a NES chip and back, in place, picture moving and sound unbroken; Genesis picture in place; a Genesis sound-unit swap says out loud that the game restarted); IndexedDB battery saves (`battery_v1:` keys) for all three consoles by a program that adds one to its save every run, across a page reload, plus the two EEPROM games (NBA Jam 24C02, Wonder Boy in Monster World X24C01) and Phantasy Star's cartridge RAM; Lite save states for the Master System and Game Gear (the next 60 frames are the same pictures after a load); the Genesis says in words that it has no save states yet; the Genesis 320x224 / 256x224 sizes and aspects, and a game that switches H32 to H40 while running; the PAL Genesis rate (50 frames a second, 887 samples a frame); pause, play and reset; the speed badge appears, with the rate the device manages, when a console cannot hold its rate.
 
 **Not Lite-complete**
-- Genesis save states: the Genesis sound unit cannot save one yet (B4b). The page says so; the test accepts that message and nothing else.
-- Genesis CPU and APU hot swap: it restarts the game on the new core with a visible message (the Z80 sound unit and the 68000 cannot be exchanged under a running game). The picture (PPU) swap is in place.
+- ~~Genesis save states and the Genesis sound-unit hot swap~~: done on 2026-10-16, see "Follow-up 2" at the end (the CPU has one choice, the 68000; the picture and the sound unit swap live).
 - Lite session audio is mono for every console (existing design: the frame crossing mixes the stereo down and the browser resamples); the Sega consoles' stereo is not heard in Lite.
 - `.7z` archives are refused (the browser has no 7z); unpack first or use `.zip`.
 - Sound through a loudspeaker, a real phone's touch, and PAL Master System games are not tested.
@@ -292,3 +291,27 @@ Profile of Genesis Sonic in the browser build (self time of a 6.85 ms frame, sam
 - The VDP's drawing is now bound by per-tile-run overhead (about 11 ns for each of the ~80 tile runs a line); going lower needs not drawing at all, which is frame skipping and is not exact, so it was not done. No further VDP change moves the frame by more than about 1 %.
 - The biggest item left is in B4b's files: the sound unit's catch-up (22.7 % of a Genesis frame). Syncing it only when the 68000 touches something the Z80, the YM or the PSG can see would remove most of the calls, but it can move chip time stamps, so it needs the same twin, golden and `--state-every` proof.
 - Open problem 1 above is out of date: the stock Genesis is now 2.0x to 2.4x real time in the browser in a quiet window (it was about 1.6x), so the 1.5x bar has margin there. A loaded window was not re-measured.
+
+
+## Follow-up 2: Genesis save states and live sound-unit swaps in Lite (2026-10-16)
+
+The lead asked for the last two Lite gaps to be closed once B4b had built the Genesis states (`MdSession.SupportsState/SaveState/LoadState`, `--md-state-test` 168) and the live sound swap (`MdSession.TrySwapCore(Apu, id)` -> `BOARD_MD.SwapSound`). Branch fast-forwarded to `main` (f76deb7) first.
+
+**What had to change in the page: almost nothing.** The Lite Save/Load buttons and the swap menu already went through the shared session contract (`IConsoleSession.SupportsState`, `SaveState`, `LoadState`, `TrySwapCore`, one IndexedDB slot per game under `state_v1:<console>:<game id>.quick`), so the Genesis worked through the same path the Master System and Game Gear use the moment B4b's session said yes. The one code change: `SetConsoleCoreAsync` now asks the session why (`SwapRefusal`) before it restarts the game, and the visible message ends with the reason ("... the game was restarted on it (<why>)"), as the desktop app's title does. The game restarts only when `TrySwapCore` says false.
+
+**What the suite checks now (116 of 116 on a fresh AOT publish of main plus this change, through `UAT/entrypoints/lite-sega.ps1`):**
+- md: Save state stores a state (27 KB compressed for Sonic 1).
+- md: after Load state the next 60 frames are the same pictures as the first time, and the sound goes on (the Master System and Game Gear checks, now for the Genesis too).
+- md: a state kept in the browser loads into a **fresh page** of the same game and the next 60 frames are the same pictures (the state is in IndexedDB, not in the page).
+- md: a state saved with the stock sound unit is **refused** after the sound unit was changed, with the reason ("This state was saved with the MD sound unit, but the game is running the NES:FIX sound unit ..."), and the game keeps running.
+- md: another game's state (Sonic's, put under Streets of Rage's slot) is **refused** with the reason ("This state belongs to ..., not to ..."), and the game keeps running.
+- md: the sound unit swaps live to NES:FIX, to NES:HI2 and back to MD, each time "swapped in, the game runs on" (never "restarted"), with the sound going on every frame.
+The old check "Save state either saves or says the Genesis has none" is gone.
+
+**Shown able to fail:** the same suite against the previous AOT build (`lite-p7`, before B4b's states and swap) fails 6 of the 20 checks of the states and swap groups: all three live swaps say "cannot swap ... the game was restarted on it", Save state says there are none, and both refusal checks fail.
+
+**Not exercisable from the menus:** the restart-with-a-reason path. The swap matrix (`--swap-matrix-test`) has no Genesis sound unit left that refuses a swap, so no entry of the Lite menus reaches the restart; the code path is read, not run. (If a unit is added that cannot take the Z80's state, `SwapRefusal` supplies the reason.)
+
+**Also changed in the suite:** the pacing checks of the audio group take the median of five readings of the FPS badge over three seconds instead of one reading, because the badge is a half-second average and a single stall on this shared machine dipped the Master System to 46-52 fps once in three full runs (rerun alone: 59.9). The "Slow" badge logic is untouched.
+
+So the Genesis is now Lite-complete: nothing in the "Not Lite-complete" list above about Genesis states or swaps applies any more (audio is still mono for every console; `.7z` is still refused).

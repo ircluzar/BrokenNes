@@ -11,9 +11,9 @@
   4. With -Bench also runs UAT\lite\bench-lite.mjs, the speed table (frames per second per console and per path in the browser window).
 
   VERIFIED: the console dropdown and the touch layouts (sms | gg | md: the right buttons, no two overlapping, all on screen), ?rom= routes, the file input including a .zip, a refused .7z (with its message), the core pickers from the
-  catalog, hot swapping through TrySwapCore (in place, or restarted with a visible message), IndexedDB battery saves round trip (a program that adds one to its save on every run), save states (the next 60 frames equal after a load),
+  catalog, hot swapping through TrySwapCore (in place, or restarted with a visible message), IndexedDB battery saves round trip (a program that adds one to its save on every run), save states of all three consoles (the next 60 frames equal after a load, also into a fresh page; a Genesis state of another game or sound unit is refused with the reason), live Genesis sound-unit swaps,
   the picture size and aspect for 256x192, 160x144, 320x224 and 256x224 and a width change while running, the audio rate and amount, pause and reset.
-  NOT VERIFIED: sound through a loudspeaker, a real phone's touch, PAL games, Genesis states until the sound unit can save one (the test accepts a clear message).
+  NOT VERIFIED: sound through a loudspeaker, a real phone's touch, PAL Master System games, a Genesis sound-unit swap that restarts the game (no Genesis unit refuses a swap any more, so the menus cannot reach that path).
 
 .EXAMPLE
   pwsh -File UAT\entrypoints\lite-sega.ps1                          # publish, gather games, run the functional suite

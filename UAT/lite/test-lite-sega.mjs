@@ -286,12 +286,16 @@ async function groupSwap() {
     const st = await page.eval(`document.body.innerText`);
     const r = await page.eval(`window.__frames(30)`);
     check('swap', 'Genesis: the picture swaps to a NES chip in place', /swapped in/.test(st) && r.w === 256 && r.h === 240, `${r.w}x${r.h}`);
-    await selectOption(page, 'select[aria-label="Apu core"]', 'NES:FIX');
-    await sleep(2500);
-    const st2 = await page.eval(`document.body.innerText`);
-    check('swap', 'Genesis: a sound-unit swap either happens in place or says out loud that the game was restarted', /swapped in, the game runs on|was restarted on it/.test(st2), (st2.match(/[^\n]*(swapped|restarted)[^\n]*/) || [''])[0]);
-    const r2 = await page.eval(`window.__frames(30)`);
-    check('swap', 'Genesis: it still runs after the swap', r2.withAudio >= 25 && r2.frames === 30, `audio ${r2.withAudio}/30`);
+    // the sound unit swaps live (BOARD_MD.SwapSound): the Z80, its RAM and the chips' registers move into the new unit and the game goes on. A swap the session cannot do would restart the game with a message that says why
+    // (the page's SetConsoleCoreAsync); no Genesis sound unit refuses any more, so the restart path is not reachable from the menus.
+    for (const id of ['NES:FIX', 'NES:HI2', 'MD']) {
+      await selectOption(page, 'select[aria-label="Apu core"]', id);
+      await sleep(1500);
+      const st2 = await page.eval(`document.body.innerText`);
+      const r2 = await page.eval(`window.__frames(60)`);
+      check('swap', `Genesis: the sound unit swaps to ${id} in place (the game is not restarted) and the sound goes on`, new RegExp(`APU ${id.replace(':', ':')} swapped in, the game runs on`).test(st2) && !/was restarted on it/.test(st2) && r2.withAudio >= 55 && r2.frames === 60, `${(st2.match(/[^\n]*(swapped|restarted)[^\n]*/) || [''])[0].slice(0, 120)}; audio ${r2.withAudio}/60, ${new Set(r2.hashes).size} distinct pictures`);
+    }
+    check('swap', 'no console error across the Genesis swaps', page.consoleErrors().length === 0, page.consoleErrors().slice(0, 2).join(' | '));
   });
 }
 
@@ -384,9 +388,8 @@ async function groupStates() {
       await page.eval(`window.__frames(20)`);
       const saved = await page.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsSaveState'); return document.body.innerText; })()`);
       const savedOk = /State saved/.test(saved);
-      const unsupported = /no save states/i.test(saved);
-      if (key === 'md') { check('states', 'md: Save state either saves or says in words that the Genesis has no states yet (no silent nothing)', savedOk || unsupported, (saved.match(/[^\n]*(State saved|save states)[^\n]*/) || [''])[0]); if (!savedOk) return; }
-      else check('states', `${key}: Save state stores a state`, savedOk, (saved.match(/[^\n]*State saved[^\n]*/) || [''])[0]);
+      check('states', `${key}: Save state stores a state`, savedOk, (saved.match(/[^\n]*State saved[^\n]*/) || [''])[0]);
+      if (!savedOk) return;
       const timeline = await page.eval(`window.__frames(60, [7])`);
       await page.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsLoadState'); })()`);
       await sleep(300);
@@ -394,7 +397,53 @@ async function groupStates() {
       const same = timeline.hashes.length === again.hashes.length && timeline.hashes.every((h, i) => h === again.hashes[i]);
       check('states', `${key}: after Load state the next 60 frames are the same pictures as the first time (the state is the whole machine)`, same, `${timeline.hashes.filter((h, i) => h === again.hashes[i]).length}/60 equal`);
       check('states', `${key}: sound continues after a load`, again.withAudio >= 55, `${again.withAudio}/60`);
+      if (key === 'md') {
+        // the state is in the browser's store: a fresh page of the same game loads it and runs on exactly as the first time
+        const page2 = await openRom(lab, rom);
+        await ready(page2);
+        await page2.eval(`window.__frames(30)`);
+        const loaded = await page2.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsLoadState'); return document.body.innerText; })()`);
+        await sleep(300);
+        const fresh = await page2.eval(`window.__frames(60, [7])`);
+        const sameFresh = timeline.hashes.length === fresh.hashes.length && timeline.hashes.every((h, i) => h === fresh.hashes[i]);
+        check('states', 'md: a state kept in the browser loads into a fresh page of the same game and the next 60 frames are the same pictures (the state is in IndexedDB, not in the page)', sameFresh && /State loaded/.test(loaded), `${timeline.hashes.filter((h, i) => h === fresh.hashes[i]).length}/60 equal; ${(loaded.match(/[^\n]*(State loaded|Load error)[^\n]*/) || [''])[0]}`);
+      }
     });
+  }
+  // the Genesis refuses a state that does not belong, with the reason, and the game keeps running as it was
+  {
+    const mdFile = path.join(a.roms, GAMES.md), md2File = path.join(a.roms, GAMES.md2);
+    if (fs.existsSync(mdFile) && fs.existsSync(md2File)) {
+      const slot = f => `state_v1:md:${sha1(fs.readFileSync(f))}.quick`;
+      // another sound unit: saved with the stock unit, loaded after the sound unit was changed (the swap happens live, or the game restarts on the new unit; either way the running unit differs)
+      await withLab({}, async lab => {
+        const page = await openRom(lab, GAMES.md);
+        await ready(page);
+        await page.eval(`window.__frames(150, [3])`);
+        await page.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsSaveState'); })()`);
+        await selectOption(page, 'select[aria-label="Apu core"]', 'NES:FIX');
+        await sleep(2500);
+        const msg = await page.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsLoadState'); return document.body.innerText; })()`);
+        await sleep(300);
+        const run = await page.eval(`window.__frames(30)`);
+        check('states', 'md: a state saved with the stock sound unit is refused after the sound unit was changed, with the reason, and the game keeps running', /saved with the MD sound unit, but the game is running the NES:FIX sound unit/.test(msg) && run.withAudio >= 25, (msg.match(/[^\n]*sound unit[^\n]*/) || [''])[0].slice(0, 160));
+      });
+      // another game: Sonic's state under Streets of Rage's slot
+      await withLab({}, async lab => {
+        const page = await openRom(lab, GAMES.md);
+        await ready(page);
+        await page.eval(`window.__frames(150, [3])`);
+        await page.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsSaveState'); })()`);
+        await page.eval(`(async () => { const b = await nesInterop.idbGetBytes(${JSON.stringify(slot(mdFile))}); await nesInterop.idbSetBytes(${JSON.stringify(slot(md2File))}, b); })()`);
+        const page2 = await openRom(lab, GAMES.md2);
+        await ready(page2);
+        await page2.eval(`window.__frames(60)`);
+        const msg = await page2.eval(`(async () => { await nesInterop._mainRef.invokeMethodAsync('JsLoadState'); return document.body.innerText; })()`);
+        await sleep(300);
+        const run = await page2.eval(`window.__frames(30)`);
+        check('states', "md: another game's state is refused with the reason and the game keeps running", /This state belongs to .*not to/.test(msg) && run.withAudio >= 25 && new Set(run.hashes).size > 1, (msg.match(/[^\n]*This state belongs[^\n]*/) || [''])[0].slice(0, 160));
+      });
+    } else check('states', 'md: refusal checks', false, 'missing ' + (fs.existsSync(mdFile) ? GAMES.md2 : GAMES.md));
   }
   // a state of another game is refused with a reason, the game keeps running
   await withLab({}, async lab => {
@@ -454,8 +503,12 @@ async function groupAudio() {
       check('audio', `${key}: ${r.sr} Hz, ${perFrame.toFixed(1)} samples a frame (a ${fps} Hz console makes ${expect.toFixed(1)})`, r.sr >= 22050 && Math.abs(perFrame - expect) / expect < 0.02, `${r.samples} samples in 300 frames`);
       // the page's own loop paces the game at the console's rate (a PAL game is 50 a second, not the page's 60)
       await page.eval('window.__resume()');
-      await sleep(6000);
+      await sleep(3500);
+      // the badge is a half-second average: one stall on a busy machine (this one is shared) dips it, so the median of five readings over three seconds decides
+      const readings = [];
+      for (let i = 0; i < 5; i++) { readings.push((await page.eval(PROBE)).fps); await sleep(600); }
       const p = await page.eval(PROBE);
+      p.fps = readings.filter(x => x != null).sort((x, y) => x - y)[Math.floor(readings.length / 2)];
       // a device that cannot hold the console's rate must say so on the page (the speed badge), never just run slow
       const note = await page.eval(`document.getElementById('speed-note')?.innerText || ''`);
       const target = fps < 55 ? 50 : 59.9;
