@@ -11,7 +11,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--md-oracle &lt;rom&gt; [--line 231] [--line-early 200] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs 4] [--region ntsc|pal]</c>:
+/// <c>--md-oracle &lt;rom&gt; [--line N [--line-early 200]] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script "0:Right,30:Right+B,90:"] [--steps N] [--shots 10,20,30] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs 4] [--region ntsc|pal]</c>:
 /// runs a game the way BlastEm is stepped by hand with its pause (F7) and frame advance (F8) keys, so a scripted play-through can be compared with the oracle frame by frame.
 /// <para>BlastEm stops a frame about 200 master clocks before scanline 231 starts, at the end of the line before (wave 5, <c>run_padlat.py</c>: a program that polls controller port 1 and records the HV counter
 /// first sees a key pressed while BlastEm is paused at V counter $E7, H $F8-$FB; the 232 used before was a line late and made Streets of Rage, Ecco and Comix Zone differ from BlastEm). This command stops there too:
@@ -49,6 +49,21 @@ internal static class MdOracleCli
     private static int ReplayLine = 231;
     /// <summary>Master clocks before the start of <see cref="ReplayLine"/> at which the replay stops (<c>--line-early N</c>): BlastEm stops about 200 clocks before line 231 starts (wave 5, run_padlat.py; 0 to 300 give the same pictures in every game tried).</summary>
     private static int ReplayEarly = 200;
+    /// <summary>True when <c>--line</c> was given: the stop is then that line (and <c>--line-early</c>) in every video mode; otherwise it follows the mode, see <see cref="RunStop"/>.</summary>
+    private static bool ReplayLineGiven;
+
+    /// <summary>
+    /// Runs to the oracle's frame-advance stop. Measured on BlastEm 1.0.0 with <c>run_padlat.py</c> (the V and H counter at which a polling program first sees a key pressed while the emulator is paused): NTSC 224 lines:
+    /// V $E7 (231), H $F8-$FB, the end of line 230 (so line 231 less 200 clocks); NTSC 240 lines: V 241, H $EC-$EE (line 241 less 200); PAL 224 lines: V 239, H $0B-$14 (the start of line 239); PAL 240 lines: V 247, H $F6-$FA
+    /// (line 247 less 200); the same for 256-pixel lines. The stop is not a fixed line: Streets of Rage 3 (PAL, 240 lines) stopped at 231 was in the middle of the picture (RAM 16-22 bytes from the oracle's at 247, 41-207 at 231).
+    /// </summary>
+    private static void RunStop(MdSession s)
+    {
+        if (ReplayLineGiven) { s.RunToLine(ReplayLine, ReplayEarly); return; }
+        bool pal = s.Board.Region == SegaRegion.Pal, v30 = s.Board.Vdp.V30;
+        if (pal) s.RunToLine(247, 200);          // measured 239 (+0) with a 224-line PAL program, but Streets of Rage 3 (PAL) switches between 240 and 224 lines and matches BlastEm only with 247 in both: the stop follows the mode the frame started in
+        else s.RunToLine(v30 ? 241 : 231, 200);
+    }
     private static HashSet<int> RamAt = new();
     private static string? RamDir;
 
@@ -62,7 +77,7 @@ internal static class MdOracleCli
     private static MdSession Boot(byte[] data, RegionChoice? region, int line, int boundaries)
     {
         var session = new MdSession(data, "M68K", "MD", "MD", region);
-        for (int f = 0; f < boundaries; f++) { session.SetPad(0, PadButtons.None); session.RunToLine(line, ReplayEarly); }
+        for (int f = 0; f < boundaries; f++) { session.SetPad(0, PadButtons.None); RunStop(session); }
         return session;
     }
 
@@ -82,7 +97,7 @@ internal static class MdOracleCli
         {
             if (script.TryGetValue(s, out var nb)) pad = nb;
             session.SetPad(0, pad);
-            session.RunToLine(ReplayLine, ReplayEarly);
+            RunStop(session);
             int n = s + 1;
             if (lagRange > 0) { var copy = new uint[session.FrameWidth * session.FrameHeight]; Array.Copy(session.Frame, copy, copy.Length); history.Add((copy, session.FrameWidth, session.FrameHeight)); }
             if (outDir != null && RamDir != null && RamAt.Contains(n))       // only the replay that is kept writes (the candidate searches pass no output folder)
@@ -178,9 +193,9 @@ internal static class MdOracleCli
         string? rom = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         if (rom == null) { Console.WriteLine("usage: --md-oracle <rom> [--line 231] [--line-early 200] [--f0 N | --scan shot.png [--scan-to N] [--pick F]] [--script \"0:Right,30:\"] [--steps N] [--shots 10,20] [--theirs dir] [--out dir] [--dy 9] [--lags N] [--jobs N] [--windows N [--min 40]] [--region ntsc|pal]"); return 2; }
         int line = int.TryParse(M68kTestCli.Arg(args, "--line"), out int l) ? l : 231;
-        ReplayLine = line;
+        ReplayLine = line; ReplayLineGiven = M68kTestCli.Arg(args, "--line") != null;
         ReplayEarly = int.TryParse(M68kTestCli.Arg(args, "--line-early"), out int early) ? early : 200;
-        if (line != 231) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line}; BlastEm stops about 200 clocks before line 231 starts, see the record)");
+        if (ReplayLineGiven) Console.WriteLine($"(note: boundaries, the scan and the replay all stop at line {line} less {ReplayEarly} clocks in every video mode; the default follows the region and mode: NTSC 224 lines 231, NTSC 240 lines 241, PAL 247, each less about 200 clocks, see the record)");
         int dy = int.TryParse(M68kTestCli.Arg(args, "--dy"), out int d) ? d : -1;
         string? theirsDir = M68kTestCli.Arg(args, "--theirs"), outDir = M68kTestCli.Arg(args, "--out");
         if (outDir != null) Directory.CreateDirectory(outDir);
@@ -201,7 +216,7 @@ internal static class MdOracleCli
             int min = int.TryParse(M68kTestCli.Arg(args, "--min"), out int mn) ? mn : 40;
             var session0 = new MdSession(data, "M68K", "MD", "MD", region);
             var hashes = new ulong[winN + 1];
-            for (int f = 0; f <= winN; f++) { session0.SetPad(0, PadButtons.None); session0.RunToLine(line, ReplayEarly); hashes[f] = Hash(session0.Frame, session0.FrameWidth * session0.FrameHeight) ^ (ulong)session0.FrameWidth; }
+            for (int f = 0; f <= winN; f++) { session0.SetPad(0, PadButtons.None); RunStop(session0); hashes[f] = Hash(session0.Frame, session0.FrameWidth * session0.FrameHeight) ^ (ulong)session0.FrameWidth; }
             var counts = hashes.GroupBy(h => h).ToDictionary(g => g.Key, g => g.Count());
             var runs = new List<string>(); int start = -1;
             for (int f = 0; f <= winN + 1; f++)
@@ -241,7 +256,7 @@ internal static class MdOracleCli
             for (int f = 0; f <= scanTo; f++)
             {
                 session0.SetPad(0, PadButtons.None);
-                session0.RunToLine(line, ReplayEarly);
+                RunStop(session0);
                 long bad = MdFindCli.Compare(session0.Frame, session0.FrameWidth, session0.FrameHeight, target.px, target.w, target.h, 0, DyFor(dy, session0.FrameHeight, target.h), 0, best == long.MaxValue ? best : Math.Max(best, 1));
                 if (ramCopies != null) ramCopies[f] = (byte[])session0.Board.Ram.Clone();
                 if (bad == 0) exact.Add(f);

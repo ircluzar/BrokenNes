@@ -9,6 +9,7 @@ python run_padlat.py [variant] [-o]   (-o: ours only). Needs the blastem lock.
   variants: 'c6'   pause, hold C for 6 advances, release, 2 advances   (the roster's tap)
             'c1'   hold C for 1 advance
             'c6x'  as c6 with a longer wait (400 ms) between the key down and the first advance
+            'pal', 'pal30', 'v30', 'h32', 'pal_h32', 'pal30_h32'  the c6 script on a PAL-region ROM (313 lines, 224 active), a PAL one in 240-line mode, an NTSC one in 240-line mode: where the stop is when the picture is taller / the frame longer
 """
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,10 +44,12 @@ SCRIPTS = {
     'c1': 'w2500,pause,adv1,w300,d:C,adv1,u:C,adv2,w300,snap',
     'c6x': 'w2500,pause,adv1,w300,d:C,w400,adv6,u:C,w400,adv2,w300,snap',
 }
+VARIANT = {'pal': ('E', False, True), 'pal30': ('E', True, True), 'v30': ('JUE', True, True), 'h32': ('JUE', False, False), 'pal_h32': ('E', False, False), 'pal30_h32': ('E', True, False)}
+for _v in VARIANT: SCRIPTS[_v] = SCRIPTS['c6']
 
 
-def program():
-    return prologue(True, True) + '    clr.l ($FF0100).l\n    clr.l ($FF0104).l\n    move.w #$2700,sr\n' + PROGRAM
+def program(v30=False, h40=True):
+    return prologue(h40, True, v30=v30) + '    clr.l ($FF0100).l\n    clr.l ($FF0104).l\n    move.w #$2700,sr\n' + PROGRAM
 
 
 def decode(words):
@@ -59,8 +62,9 @@ def decode(words):
 
 
 def run(variant, ours_only):
-    rom = asm68k.build_rom(program(), title='PADLAT')
-    path = os.path.join(oracle.ROOT, 'roms', 'padlat.bin')
+    region, v30, h40 = VARIANT.get(variant, ('JUE', False, True))
+    rom = asm68k.build_rom(program(v30, h40), title='PADLAT', region=region)
+    path = os.path.join(oracle.ROOT, 'roms', 'padlat_%s.bin' % variant)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     open(path, 'wb').write(rom)
     res = []
