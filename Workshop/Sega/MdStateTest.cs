@@ -10,7 +10,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--md-state-test [--games 1-20|3,5|all] [--poison vram|cpu|z80|cart|vdp|swap] [--quick]</c>: the Genesis session's save states and its hot swapping, through the session contract (the same members the apps call).
+/// <c>--md-state-test [--games 1-20|3,5|all] [--poison vram|cpu|z80|cart|vdp|swap|hintlatch|vscroll|sprites|interlace] [--quick]</c>: the Genesis session's save states and its hot swapping, through the session contract (the same members the apps call).
 /// <list type="number">
 /// <item><b>Is a round trip invisible?</b> Each roster game runs the sweep's scripted pad to a menu and to play; at each save point the state is taken, the session carries on, and a fresh session (that has already run a frame) loads the state and runs the
 /// same window: the picture of every frame, every audio sample, the work RAM, VRAM, colour RAM, the 68000's PC and cycle count and the Z80's PC are those of the session that carried on, and the picture right after the load is the one saved.</item>
@@ -120,6 +120,16 @@ internal static class MdStateTest
                     var f = typeof(MdVdp).GetField(name, bf);
                     if (f != null) f.SetValue(b.Vdp, !(bool)f.GetValue(b.Vdp)!);
                 }
+                break;
+            }
+            case "sprites":      // a state that dropped the sprite attribute cache (the 80 entries the VDP keeps apart from VRAM): one entry reads other than what the table says
+                b.Vdp.SpriteCache[5 * 4 + 1] ^= 0x7F;
+                break;
+            case "interlace":    // a state that dropped the double-height renderer's fields (image row of the line in progress, cell shift)
+            {
+                var bf = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                typeof(MdVdp).GetField("imgRow", bf)!.SetValue(b.Vdp, 77);
+                typeof(MdVdp).GetField("cellShift", bf)!.SetValue(b.Vdp, 4);
                 break;
             }
             case "vscroll":      // a state that dropped the latched vertical scroll (B4a's full-screen latch): the field comparison after a mid-frame load must see it

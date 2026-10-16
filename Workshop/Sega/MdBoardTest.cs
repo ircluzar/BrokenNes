@@ -557,6 +557,43 @@ internal static class MdBoardTest
         off.Reg(0, 0x04); off.Reg(10, 0); off.Reg(1, 0x64);
         off.RunTo(off.LineStart(10));
         Check("HINT disabled (R0 bit 4 clear): IPL stays 0", off.V.IplAt(off.T) == 0);
+        // whether a line's HINT is latched is decided by R0 bit 4 as it was at about the previous line's HINT time (clock 2642 of the line before): B4b's probe run_irqdelay.py H, and OutRunners and Super Hang-On on the oracle
+        var hk = new Rig();
+        hk.Reg(0, 0x04); hk.Reg(10, 0); hk.Reg(1, 0x64);
+        hk.RunTo(hk.LineStart(100) + 1000);
+        hk.Reg(0, 0x14);
+        hk.RunTo(hk.LineStart(100) + 3000);
+        Check("HINT enabled in the display period of line 100 after a disabled stretch: line 100's own HINT (decided in line 99, disabled) is lost", hk.V.IplAt(hk.T) == 0);
+        hk.RunTo(hk.LineStart(101) + 3000);
+        Check("... line 101's (decided in line 100 with HINT enabled) is taken", hk.V.IplAt(hk.T) == 4);
+        var ho = new Rig();
+        ho.Reg(0, 0x14); ho.Reg(10, 0); ho.Reg(1, 0x64);
+        ho.RunTo(ho.LineStart(119) + 3380);
+        ho.Reg(0, 0x04);
+        ho.RunTo(ho.LineStart(125));
+        bool quiet = ho.V.IplAt(ho.T) == 0;
+        ho.Reg(0, 0x14);
+        ho.RunTo(ho.T + 600);
+        Check("HINT disabled at the very end of line 119 (Super Hang-On: clock 3363 to 3417 of line 222): line 120's HINT, decided before, is kept and taken when HINT is enabled again", quiet && ho.V.IplAt(ho.T) == 4, $"{quiet} {ho.V.IplAt(ho.T)}");
+        var hp = new Rig();
+        hp.Reg(0, 0x14); hp.Reg(10, 0); hp.Reg(1, 0x64);
+        hp.RunTo(hp.LineStart(119) + 2000);
+        hp.Reg(0, 0x04);
+        hp.RunTo(hp.LineStart(125));
+        hp.V.AcknowledgeInterrupt(4);                      // the one decided before the write (line 119's) was kept; take it away
+        hp.Reg(0, 0x14);
+        hp.RunTo(hp.T + 600);
+        Check("HINT disabled in the middle of line 119 (before its HINT time): the HINTs of lines 120 to 124 are lost, nothing waits when HINT is enabled again (only line 119's, decided before, did)", hp.V.IplAt(hp.T) == 0);
+        var hd = new Rig();
+        hd.Reg(0, 0x14); hd.Reg(10, 0); hd.Reg(1, 0x64);
+        hd.RunTo(hd.LineStart(120) + 290);
+        hd.Reg(0, 0x04);
+        hd.RunTo(hd.LineStart(120) + 3000);
+        bool quiet2 = hd.V.IplAt(hd.T) == 0;
+        hd.Reg(0, 0x14);
+        hd.RunTo(hd.T + 600);
+        Check("HINT disabled early in line 120 (OutRunners: clock 290 of line 223): its HINT, decided in line 119, is kept and taken when HINT is enabled again", quiet2 && hd.V.IplAt(hd.T) == 4, $"{quiet2} {hd.V.IplAt(hd.T)}");
+
     }
 
     // =====================================================================================================================

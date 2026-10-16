@@ -14,7 +14,7 @@ public sealed partial class MdVdp
     {
         w.Write(Vram); foreach (ushort c in Cram) w.Write(c); foreach (ushort v in Vsram) w.Write(v); w.Write(Reg);
         w.Write(Time); w.Write(lineStart); w.Write(Line); w.Write(Frames); w.Write(FrameCompleted); w.Write(oddFrame);
-        w.Write(vintPending); w.Write(hintPending); w.Write(hintCounter); w.Write(vintTime); w.Write(hintTime); w.Write(z80IntClear); w.Write(z80IntAsserted);
+        w.Write(vintPending); w.Write(hintPending); w.Write(hintCounter); w.Write(hintEnCur); w.Write(hintEnNext); w.Write(vintTime); w.Write(hintTime); w.Write(z80IntClear); w.Write(z80IntAsserted);
         w.Write(vintEnableFrom); w.Write(hintEnableFrom); w.Write(slotCursor);
         w.Write(pendingCommand); w.Write(commandFirst); w.Write(code); w.Write(address); w.Write(readBuffer); w.Write(readReadyAt); w.Write(readCacheCode); w.Write(readCacheAddress); w.Write(readStale); w.Write(hvLatched);
         w.Write(fifoHead); w.Write(fifoCount); w.Write(lastFifoData);
@@ -33,7 +33,7 @@ public sealed partial class MdVdp
     {
         ReadAll(r, Vram); for (int i = 0; i < Cram.Length; i++) Cram[i] = r.ReadUInt16(); for (int i = 0; i < Vsram.Length; i++) Vsram[i] = r.ReadUInt16(); ReadAll(r, Reg);
         Time = r.ReadInt64(); lineStart = r.ReadInt64(); Line = r.ReadInt32(); Frames = r.ReadInt64(); FrameCompleted = r.ReadBoolean(); oddFrame = r.ReadBoolean();
-        vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();
+        vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); hintEnCur = r.ReadBoolean(); hintEnNext = r.ReadBoolean(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();
         vintEnableFrom = r.ReadInt64(); hintEnableFrom = r.ReadInt64(); slotCursor = r.ReadInt64();
         pendingCommand = r.ReadBoolean(); commandFirst = r.ReadUInt16(); code = r.ReadInt32(); address = r.ReadUInt32(); readBuffer = r.ReadUInt16(); readReadyAt = r.ReadInt64(); readCacheCode = r.ReadInt32(); readCacheAddress = r.ReadUInt32(); readStale = r.ReadBoolean(); hvLatched = r.ReadInt32();
         fifoHead = r.ReadInt32(); fifoCount = r.ReadInt32(); lastFifoData = r.ReadUInt16();

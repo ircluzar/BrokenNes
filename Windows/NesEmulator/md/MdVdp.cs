@@ -190,7 +190,7 @@ public sealed partial class MdVdp
     {
         Array.Clear(Vram); Array.Clear(Cram); Array.Clear(Vsram); Array.Clear(Reg); Array.Clear(SpriteCache);
         Time = 0; lineStart = 0; Line = 0; Frames = 0; FrameCompleted = false; oddFrame = false;
-        vintPending = hintPending = false; hintCounter = 0; vintTime = hintTime = z80IntClear = long.MaxValue; vintEnableFrom = hintEnableFrom = 0; z80IntAsserted = false;
+        vintPending = hintPending = false; hintCounter = 0; hintEnCur = hintEnNext = false; vintTime = hintTime = z80IntClear = long.MaxValue; vintEnableFrom = hintEnableFrom = 0; z80IntAsserted = false;
         pendingCommand = false; commandFirst = 0; code = 0; address = 0; readBuffer = 0; readReadyAt = 0; hvLatched = -1; readStale = false;
         fifoHead = fifoCount = 0; lastFifoData = 0;
         dma = DmaKind.None; fillArmed = false; dmaLength = 0; dmaSlotsLeft = 0; dmaStartTime = 0; dmaNextFetch = 0; dmaInFifo = 0;
@@ -425,12 +425,18 @@ public sealed partial class MdVdp
         if (lineStart + ClocksPerLine <= Time) StartNextLine();
     }
 
+    /// <summary>Whether the horizontal interrupt due at the end of a line is latched is decided by R0 bit 4 as it was in the line BEFORE, up to clock <see cref="HintLatchClock"/> of it (2855, the start of the horizontal blank): an interrupt due in a line whose previous line ended with HINT disabled is lost (B4b's probe run_irqdelay.py H on the oracle: a HINT disabled for a while and enabled in the display period is first taken at the end of the NEXT line, more than 150 nops later), and one decided while enabled is kept even if the game disables HINT before it is due and enables it again later (OutRunners disables it at clock 290 of line 223 and enables it in the vertical blank; Super Hang-On disables it at clock 3363 to 3417 of line 222 and enables it in the vertical blank: the oracle takes the interrupt there in both, 9 of 9 replayed pictures exact each; 6 and 3 of 9 when the enable bit at the interrupt's due time decides). Rule 0 is the old one (the interrupt is latched whatever R0 says), 2 lets the enable bit at the due time decide (experiments, <c>--slot-set hintlatch=N</c>).</summary>
+    public static int HintLatchRule = 1;
+    /// <summary>The clock of a line at which R0 bit 4 is sampled for the HINT due at the end of the next line (rule 1): a write before it counts, one after it does not. Measured on the oracle (H40): any value from 2701 to 3362 fits the replays (Titan Overdrive 2 frame 3709 needs 2800 or more, Super Hang-On 3362 or less); 2855 is the start of the horizontal blank. H32 was not measured: 2975, its horizontal blank start.</summary>
+    public static int HintLatchClock = 2855, HintLatchClockH32 = 2975;
+    private bool hintEnCur, hintEnNext;
+
     private void FireHint()
     {
         // the lines in the counting phase step the counter; the others reload it
         if (HIntCounting(Line))
         {
-            if (hintCounter == 0) { hintPending = true; hintCounter = Reg[10]; }
+            if (hintCounter == 0) { if (HintLatchRule == 0 || (HintLatchRule == 1 ? hintEnCur : HintEnabled)) hintPending = true; hintCounter = Reg[10]; }
             else hintCounter--;
         }
         else hintCounter = Reg[10];
@@ -461,6 +467,7 @@ public sealed partial class MdVdp
             oddFrame = Interlace != 0 && !oddFrame;
         }
         hintTime = lineStart + HIntOffset;
+        hintEnCur = hintEnNext; hintEnNext = HintEnabled;
         // the vertical blank begins at the V counter's step in the last picture line; VINT follows that step by its delay (and so falls early in the first blank line)
         if (Line == ActiveLines - 1) vintTime = lineStart + VCounterStepOffset + VintDelay;
         BeginLineRender();
@@ -746,6 +753,7 @@ public sealed partial class MdVdp
         if (reg == 0) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
         if (reg == 1 && VintEnabled && !vintBefore) vintEnableFrom = Time + IplDelayMasterClocks;
         if (reg == 0 && HintEnabled && !hintBefore) hintEnableFrom = Time + IplDelayMasterClocks;
+        if (reg == 0 && LineOffset < (H40 ? HintLatchClock : HintLatchClockH32)) hintEnNext = HintEnabled;
         Trace?.Invoke($"reg {reg:X2}={value:X2}");
         if (reg == 10 && !HIntCounting(Line)) hintCounter = value;
     }
