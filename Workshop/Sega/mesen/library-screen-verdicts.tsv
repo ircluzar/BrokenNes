@@ -1,0 +1,127 @@
+# every Master System / Game Gear library game the sweep did not call ok (2026-10-16, tree 0f9ceb5 + A4): verdict against Mesen 2.1.1 (two oracle runs, 6 checkpoints, PSG registers on 2,400 frames, app timing and the oracle's Z80 lengths)
+console	file	sweep class	bad dump tag	verdict	basis	what
+GG	Bishoujo Senshi Sailor Moon S (J) [b1].gg	blank	yes	differs		bad dump: pictures equal; the music engine is one frame out in 14 frames (attenuation of one voice, from frame 1084)
+GG	Bishoujo Senshi Sailor Moon S (J) [b2].gg	blank	yes	differs		bad dump: pictures equal; the music engine is one frame out in 14 to 25 frames (from frame 1071)
+GG	Excellent Dizzy Collection, The (Prototype) [S][!].gg	blank		matches	app timing	
+GG	Judge Dredd (U) [b1].sms	blank	yes	cannot-run		the oracle disagrees with itself at all 6 checkpoints (bad dump running garbage with random power-on state): no stable reference
+GG	Sonic Chaos (U) [!].gg	blank		differs		pictures equal on all checkpoints; the PSG is one frame out in 13 frames (1 with the oracle lengths): the known 3-frame case of A3/A4, timing at the frame boundary
+GG	Sonic Chaos (U) [b1].gg	blank	yes	differs		bad dump of the same: the same PSG frames as the good dump
+GG	WWF Raw (U) [b1].gg	blank	yes	differs		bad dump: a single-colour picture in both at frame 600, of different colours (ours black, the oracle beige); 23,040 of 23,040 pixels differ at 4 of 6 checkpoints
+GG	Fatal Fury Special (U) [b2].sms	hung	yes	matches	file type told to the oracle	a Game Gear cartridge with a .sms file name: this emulator reads the header and runs it as a Game Gear (160x144), the oracle goes by the extension and runs it as a Master System; copied as .gg, equal at 6 of 6 checkpoints and on every PSG frame
+GG	Frogger (Prototype) (GG2SMS V0.91 Hack) [o1].sms	hung		matches	app timing	
+GG	Frogger (Prototype) (GG2SMS V0.92 Hack).sms	hung		matches	app timing	
+GG	Frogger (Prototype) (GG2SMS V0.92 Hack) [o1].sms	hung		matches	app timing	
+GG	GG Hi-Res Graphics Demo by Charles McDonald (PD).gg	hung		matches	app timing	
+GG	Majesco Game Gear BIOS (U) [!].gg	hung		matches	app timing	
+GG	Pac-Man (J) [b1].gg	hung	yes	matches	app timing	
+GG	Pop Breaker (J) (GG2SMS V1.1 Hack).sms	hung		matches	app timing	
+GG	Robocop versus The Terminator (U) [b1].sms	hung	yes	matches	app timing	
+GG	Shinobi II - The Silent Fury (U) [b1].gg	hung	yes	matches	app timing	
+GG	Simple Text Demo by Charles Doty (PD).gg	hung		matches	app timing	
+GG	Simple Text Demo by Charles Doty (PD) [a1].gg	hung		matches	app timing	
+GG	Simple Text Demo by Charles Doty (PD) [o1].gg	hung		matches	app timing	
+GG	Sonic Labyrinth (U) [b1].gg	hung	yes	matches	app timing	
+GG	Star Wars (U) [b1].sms	hung	yes	matches	app timing	
+GG	Super Tetris (K) [S][!].sms	hung		matches	app timing	
+GG	Super Tetris (K) [S][o1].sms	hung		matches	app timing	
+GG	Batter Up (U) [b2].gg	no-picture	yes	matches	app timing	
+GG	Bishoujo Senshi Sailor Moon S (J) [b3].sms	no-picture	yes	matches	app timing	
+GG	Desert Strike - Return to the Gulf (U) [b1].gg	no-picture	yes	matches	app timing	
+GG	GG Shinobi (E) [b1].gg	no-picture	yes	matches	app timing	
+GG	Galaga '91 (J) [b1].gg	no-picture	yes	differs		bad dump: a single-colour picture in both, ours black, the oracle pink
+GG	Iron Man X-O Manowar in Heavy Metal (U) [b1].gg	no-picture	yes	differs		bad dump: pictures equal at all 6 checkpoints; the first PSG difference is at frame 39 (noise attenuation: the oracle 1, this emulator 15) and the PSG is equal on 38 of 2,400 frames; cause not found
+GG	MOD2PSG V1.0 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.1 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.2 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.3 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.3 - Shadow of the Beast (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.5 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.5 - Shadow of the Beast (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.6 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.6 - Shadow of the Beast (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.7 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.7 - Shadow of the Beast (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.8 - Secret of Monkey Island (PD).gg	no-picture		matches	app timing	
+GG	MOD2PSG V1.8 - Shadow of the Beast (PD).gg	no-picture		matches	app timing	
+GG	Megami Tensei Gaiden - Last Bible (J) [b1].sms	no-picture	yes	matches	app timing	
+GG	Pop Breaker (J) (GG2SMS V1.0 Hack).sms	no-picture		matches	file type told to the oracle	a Game Gear cartridge with a .sms file name: this emulator reads the header and runs it as a Game Gear (160x144), the oracle goes by the extension and runs it as a Master System; copied as .gg, equal at 6 of 6 checkpoints and on every PSG frame
+GG	Power Strike II (U) [b1].gg	no-picture	yes	matches	app timing	
+GG	Prince of Persia (U) [S][b2].gg	no-picture	yes	matches	app timing	
+GG	SMSC Gamegear Demo (PD) [b1].gg	no-picture	yes	differs		bad dump: ours white, the oracle black at 4 of 6 checkpoints
+GG	Shining Force Gaiden - Final Conflict (J) [T+Eng29Nov2005_SFC].gg	no-picture		matches	app timing	
+GG	Shining Force Gaiden - Final Conflict (J) [b2].gg	no-picture	yes	matches	app timing	
+GG	Shinobi II - The Silent Fury (U) [b2].gg	no-picture	yes	matches	app timing	
+GG	Shinobi II - The Silent Fury (U) [b4].sms	no-picture	yes	matches	app timing	
+GG	Sonic Labyrinth (U) [b2].sms	no-picture	yes	matches	app timing	
+GG	Sonic The Hedgehog 2 (U) [b1].gg	no-picture	yes	matches	app timing	
+GG	Virtua Fighter Animation (U) [b1].gg	no-picture	yes	matches	app timing	
+GG	Wagyan Land (J) [b2].gg	no-picture	yes	matches	app timing	
+GG	Wagyan Land (J) [b3].gg	no-picture	yes	matches	app timing	
+GG	Eternal Legend (J) [!].gg	noisy		matches	app timing	
+GG	FIFA Soccer 96 (UE) (M4) [!].gg	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths
+GG	Garfield - Caught in the Act (U) [!].gg	noisy		matches	app timing	
+GG	Greendog (U).gg	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths (the oracle disagrees with itself at 4 of 6 checkpoints)
+GG	Greendog (U) [b1].gg	noisy	yes	matches	oracle's Z80 lengths	with the oracle's Z80 lengths (the oracle disagrees with itself at 4 of 6 checkpoints)
+GG	Greendog (U) [b2].gg	noisy	yes	matches	oracle's Z80 lengths	with the oracle's Z80 lengths
+GG	Griffin (J).gg	noisy		matches	app timing	
+GG	Iron Man X-O Manowar in Heavy Metal (U).gg	noisy		matches	app timing	
+GG	Iron Man X-O Manowar in Heavy Metal (U) [a1].gg	noisy		matches	app timing	
+GG	Madou Monogatari III - Kyukyoku Joo-sama (J).gg	noisy		differs		pictures equal at all 6 checkpoints; the PSG attenuation fade is one step out in 303 of 2,400 frames (203 with the oracle lengths), first at frame 1908: sub-frame timing of the sound routine; cause not found
+GG	Monster Truck Wars (U) [!].gg	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths (the oracle disagrees with itself at 2 of 6 checkpoints)
+GG	Nazo Puyo Aruru no Ru (J).gg	noisy		matches	app timing	
+GG	Pokemon Legends (Eternal Legend Hack).gg	noisy		matches	app timing	
+GG	Poker Faced Paul's Solitaire (U) [!].gg	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths
+GG	Power Strike II (U).gg	noisy		differs		pictures equal at every checkpoint where the oracle agrees with itself (it does not at 2 of 6); the PSG differs from frame 262 where the oracle runs diverge: oracle chaos
+GG	R.B.I. Baseball '94 (U) [!].gg	noisy		matches	app timing	
+GG	R.B.I. Baseball '94 (U) [b1].gg	noisy	yes	differs		bad dump: 5 of 6 checkpoints equal, 9 pixels at frame 2400 (26 with the oracle lengths); PSG differs from frame 2303
+GG	Surf Ninjas (U) [!].gg	noisy		matches	app timing	
+GG	Surf Ninjas (U) [b1].gg	noisy	yes	matches	app timing	
+GG	Surf Ninjas (U) [b2].gg	noisy	yes	matches	app timing	
+GG	Tale Spin (U) [!].gg	noisy		differs		a real game: pictures identical for 1,116 frames, then the player sprite blinks (invulnerability after a hit) one frame out of phase with the oracle in 173 of 1,299 frames (first 1117; the 204 differing pixels are the sprite), the PSG differs from frame 1148; the same in all three timing modes, so not the Z80 lengths; cause not found
+GG	Ultimate Soccer (E).gg	noisy		differs		the oracle disagrees with itself at 2 of 6 checkpoints; the stable ones are equal; the PSG differs from frame 1543: oracle chaos (also in A3)
+GG	Yuu Yuu Hakusho (J).gg	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths
+GG	Zoop'em Up by Martin Konrad (PD).gg	noisy		matches	app timing	
+GG	Batter Up (U) [b1].gg	silent	yes	differs		bad dump: ours draws coloured stripes, the oracle a black screen
+GG	Chaos 89 (PD).gg	silent		matches	app timing	
+GG	GG Demo by Charles MacDonald (PD).gg	silent		matches	app timing	
+GG	GG Hicolor Demo by Chris Covell (PD).gg	silent		matches	app timing	
+GG	GG Hicolor Demo v1.05 by Chris Covell (PD).gg	silent		matches	app timing	
+GG	GG Nibbles by Martin Konrad V1 (PD).gg	silent		matches	app timing	
+GG	GG Nibbles by Martin Konrad V2 (PD).gg	silent		matches	app timing	
+GG	GG Nibbles by Martin Konrad V3 (PD).gg	silent		matches	app timing	
+GG	GG Nibbles by Martin Konrad V4 (PD).gg	silent		matches	oracle's Z80 lengths	with the oracle's Z80 lengths (the oracle disagrees with itself at 2 of 6 checkpoints)
+GG	Jang Pung II (K) [S].gg	silent		matches	app timing	
+GG	Mortal Kombat (J).gg	silent		differs		3 pixels at frame 900, equal at the other 5 checkpoints (the known case of A3/A4)
+GG	Mortal Kombat (U) [!].gg	silent		matches	app timing	
+GG	Mortal Kombat (U) [b1].gg	silent	yes	matches	app timing	
+GG	Mortal Kombat (U) [b2].sms	silent	yes	differs		bad dump (also named .sms; as .gg the oracle runs it as a Game Gear): both run garbage and draw different noise; 2 of 5 stable checkpoints equal
+GG	Mortal Kombat II (U) [b1].sms	silent	yes	matches	file type told to the oracle	a Game Gear cartridge with a .sms file name: this emulator reads the header and runs it as a Game Gear (160x144), the oracle goes by the extension and runs it as a Master System; copied as .gg, equal at 6 of 6 checkpoints and on every PSG frame
+GG	NBA Jam Tournament Edition (U) [b1].sms	silent	yes	differs		bad dump (named .sms; as .gg both are Game Gears): the pictures are black in both at some checkpoints and ~21,000 pixels apart at others; garbage code
+GG	Sega Tween (Normal) by Ben Ryves (PD).gg	silent		matches	app timing	
+GG	Twisty by Charles MacDonald (PD).gg	silent		matches	app timing	
+GG	Windows for GG by Victor Kemp (PD).gg	silent		matches	app timing	
+GG	Frogs by Charles Doty (PD).gg	static		matches	app timing	
+GG	Lion King, The (U) [b1].sms	static	yes	matches	oracle's Z80 lengths	with the oracle's Z80 lengths
+GG	Shining Force II - The Sword of Hajya (U) [b1].sms	static	yes	differs		bad dump (named .sms; as .gg both are Game Gears): this emulator draws a garbage tile pattern, the oracle a black screen; 13,705 pixels at every checkpoint
+SMS	Turma da Monica em O Resgate (Brazil).sms	audio-bug?		matches	app timing	
+SMS	Wonder Boy III - The Dragon's Trap (USA, Europe).sms	audio-bug?		matches	app timing	
+SMS	Excellent Dizzy Collection, The (USA, Europe) (En,Fr,De,Es,It) (Proto).sms	blank		matches	app timing	
+SMS	Promocao Especial M. System III Compact (Brazil) (Sample).sms	hung		matches	app timing	
+SMS	[BIOS] Sega Master System (USA) (Store Display Unit).sms	hung	yes	matches	app timing	
+SMS	American Pro Football (Europe).sms	noisy		differs		with the oracle Z80 lengths the pictures are equal at 6 of 6 (4 of 6 with the app timing); the PSG noise register differs in 19 frames of 2,400 (first at frame 100: the oracle has 4, this emulator 0): a write landing in the next frame, timing at the frame boundary
+SMS	Dynamite Dux (Europe).sms	noisy		matches	app timing	
+SMS	Golvellius (Japan).sms	noisy		matches	app timing	
+SMS	Golvellius (USA, Europe).sms	noisy		matches	app timing	
+SMS	Super Kick Off (Europe) (En,Fr,De,Es,It,Nl,Pt,Sv).sms	noisy		matches	app timing	
+SMS	Tecmo World Cup '93 (Europe).sms	noisy		matches	oracle's Z80 lengths	with the oracle's Z80 lengths (the oracle disagrees with itself at 2 of 6 checkpoints)
+SMS	Ultimate Soccer (Europe) (En,Fr,De,Es,It).sms	noisy		differs		the oracle disagrees with itself at 4 of 6 checkpoints; the stable ones are equal; oracle chaos (also in A3)
+SMS	Wimbledon (Europe).sms	noisy		matches	app timing	
+SMS	Gangster Town (USA, Europe).sms	silent		matches	app timing	
+SMS	Lucky Dime Caper Starring Donald Duck, The (Europe) (Beta).sms	silent		matches	app timing	
+SMS	Marksman Shooting & Trap Shooting & Safari Hunt (Europe).sms	silent		matches	app timing	
+SMS	Marksman Shooting & Trap Shooting (USA).sms	silent		matches	app timing	
+SMS	[BIOS] Sega Master System (USA) (M404) (Proto).sms	silent	yes	differs		a BIOS image: this emulator runs it as a BIOS by its name, the oracle as a cartridge (the Phase 0 rule); 1,095 pixels from frame 600
+SMS	Micro Machines (Europe).sms	static		matches	app timing	
+SMS	Monopoly (USA).sms	static		matches	app timing	
+SMS	Monopoly (USA, Europe).sms	static		matches	app timing	
+SMS	[BIOS] Sega Master System (USA) (v1.3) [b].sms	static	yes	differs		a BIOS image (bad dump): as above; 7,860 pixels from frame 600
