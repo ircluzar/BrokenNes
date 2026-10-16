@@ -31,6 +31,11 @@ BODIES = {
     # wave 5: Strider's tile upload (the loop at $8CC0 of its level load: control words and long data writes alternating), VRAM address $0000 each time
     'strider': 'move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3);move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3)',
     'ctrl2l': 'move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3)',
+    # wave 5: the instruction mix of Strider's fade routine at $85F4 (shifts by 8 and 3, andi, add, an indexed byte read, bclr): pure CPU, no VDP
+    'fade': 'move.w #$0123,d4;move.w #$0456,d5;lsr.w #8,d4;lsr.w #3,d5;andi.w #$FFE0,d5;add.w d5,d4;move.b 0(a5,d4.w),d4;bclr #7,d4',
+    'lsr': 'lsr.w #8,d4;lsr.w #3,d5',
+    'idx': 'move.b 0(a5,d4.w),d4',
+    'bclr': 'bclr #7,d4',
 }
 
 # the 68000's cycles of one body instruction (instruction timing without waits), for the readers of the results
