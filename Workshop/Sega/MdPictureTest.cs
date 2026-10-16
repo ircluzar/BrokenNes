@@ -444,6 +444,22 @@ internal static class MdPictureTest
         drawn = Enumerable.Range(0, 17).Count(i => p.Px(8 + i * 12 + 2, 102) == Argb(p.CramOf(0, 4), 0));
         Check("H32: at most 16 sprites on a line", drawn == 16 && p.V.PictureWidth == 256, $"{drawn} {p.V.PictureWidth}");
 
+        // the cell limit (32 in H32) cuts a sprite after its first tile columns: a horizontally flipped sprite shows its tile columns right to left, so the cut takes its LEFT cell and keeps the right-hand ones
+        // (BlastEm, the interlace-2 random scene f_il2 number 5: a flipped 4-cell sprite after 29 cells had its left cell missing and its right cell drawn; the old rule drew the left three)
+        for (int variant = 0; variant < 2; variant++)
+        {
+            p = new Pic(h40: false);
+            int filler = variant == 0 ? 8 : 7;                                         // 29 cells before the flipped sprite (7 sprites of 4 and one of 1), or 28
+            for (int i = 0; i < filler; i++) p.Sprite(i, 8, 100, i < 7 ? 4 : 1, 1, 1, 0, false, i + 1);
+            p.Sprite(filler, 100, 100, 4, 1, 4, 0, false, 0, hflip: true);            // tiles 4 to 7, shown 7 6 5 4 from left to right
+            p.Frame();
+            uint c4 = Argb(p.CramOf(0, 4), 0), c5 = Argb(p.CramOf(0, 5), 0), c6 = Argb(p.CramOf(0, 6), 0), c7 = Argb(p.CramOf(0, 7), 0);
+            if (variant == 0)
+                Check("H32: a flipped 4-cell sprite cut by the 32-cell limit (29 before it) keeps its right three cells, the left one is missing", p.Px(102, 102) != c7 && p.Px(110, 102) == c6 && p.Px(118, 102) == c5 && p.Px(126, 102) == c4, $"{p.Px(102, 102):X8} {p.Px(110, 102):X8} {p.Px(118, 102):X8} {p.Px(126, 102):X8}");
+            else
+                Check("... and with exactly 32 cells nothing is cut: all four cells show (tile 7 at the left)", p.Px(102, 102) == c7 && p.Px(110, 102) == c6 && p.Px(118, 102) == c5 && p.Px(126, 102) == c4, $"{p.Px(102, 102):X8} {p.Px(110, 102):X8} {p.Px(118, 102):X8} {p.Px(126, 102):X8}");
+        }
+
         p = new Pic();
         p.Sprite(0, 50, 50, 1, 1, 4, 0, false, 1);
         p.Sprite(1, 52, 52, 1, 1, 5, 0, false, 0);
