@@ -193,20 +193,38 @@ def write_rate_vint(kind='cram', h40=True, display=True, per=16, v30=False):
     return s
 
 
-def dma_rate(kind='68k_vram', h40=True, display=True, words=2048):
+def dma_rate(kind='68k_vram', h40=True, display=True, words=2048, inc=2, fdata=0x1234, z80=False, novint=False, sorseq=False, bootseq=False):
     """How long a DMA of `words` words takes, in laps per frame: one DMA, then a poll until the status register's DMA-busy bit is clear, then a counter increment; the vertical interrupt counts frames. RAM: long at
     $FF0000 = laps, word at $FF0004 = frames (the same layout as write_rate). kind: '68k_vram', '68k_cram', 'fill' (VRAM fill) or 'copy' (VRAM copy)."""
     lo, hi = words & 0xFF, words >> 8 & 0xFF
     if kind == '68k_vram': r23, cmd, extra = 0x00, '$40000080', []
     elif kind == '68k_cram': r23, cmd, extra = 0x00, '$C0000080', []
-    elif kind == 'fill': r23, cmd, extra = 0x80, '$40000080', ['    move.w #$1234,(a3)']
+    elif kind == 'fill': r23, cmd, extra = 0x80, '$40000080', ['    move.w #$%04X,(a3)' % fdata]
     else: r23, cmd, extra = 0xC0, '$40000080', []
-    s = prologue(h40, display, regs={1: (0x74 if display else 0x34), 0: 0x04, 15: 2})
-    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.w #$2000,sr', 'main:',
-                '    move.w #$%04X,(a4)' % (0x9300 | lo), '    move.w #$%04X,(a4)' % (0x9400 | hi), '    move.w #$9500,(a4)', '    move.w #$9608,(a4)', '    move.w #$%04X,(a4)' % (0x9700 | r23),
-                '    move.l #%s,(a4)' % cmd)
+    if novint:
+        # Streets of Rage's boot routine: the vertical interrupt off (R1 $14), interrupts masked, the frames counted by the V counter wrapping in the poll loop
+        s = prologue(h40, display, regs={1: (0x54 if display else 0x14), 0: 0x04, 15: inc})
+        s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.w #$2700,sr', '    moveq #0,d3', 'main:')
+    else:
+        s = prologue(h40, display, regs={1: (0x74 if display else 0x34), 0: 0x04, 15: inc})
+        s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.w #$2000,sr', 'main:')
+    if bootseq:
+        # the register writes Streets of Rage makes before its boot fill at frame 54 (its trace: R1 $04 earlier, then $14, R15 2, R1 $14 again, R15 2, R15 1, length, fill)
+        s += ''.join('    move.w #$%04X,(a4)' % w + NL for w in (0x8104,)) + ('    nop' + NL) * 40 + ''.join('    move.w #$%04X,(a4)' % w + NL for w in (0x8114, 0x8F02, 0x8114, 0x8F02))
+    if sorseq:
+        # the register writes Streets of Rage makes in the lines before its fill (trace of its stage start: R1 $34, R0, R1 $14, planes, size, window)
+        s += ''.join('    move.w #$%04X,(a4)' % w + NL for w in (0x8134, 0x8004, 0x8114, 0x8230, 0x8334, 0x8407, 0x8578, 0x8600, 0x8700, 0x8800, 0x8900, 0x8A00, 0x8B00, 0x8C81, 0x8D3D, 0x8E00, 0x8F02, 0x9001, 0x9100, 0x9200))
+    if z80: s += _lines('    move.w #$0100,($A11100).l')
+    if sorseq or bootseq:
+        s += _lines('    move.w #$8F01,(a4)', '    move.l #$93FF94FF,(a4)', '    move.w #$9780,(a4)', '    move.l #$40000080,(a4)')
+    else:
+        s += _lines('    move.w #$%04X,(a4)' % (0x9300 | lo), '    move.w #$%04X,(a4)' % (0x9400 | hi), '    move.w #$9500,(a4)', '    move.w #$9608,(a4)', '    move.w #$%04X,(a4)' % (0x9700 | r23),
+                    '    move.l #%s,(a4)' % cmd)
     s += ''.join(x + NL for x in extra)
-    s += _lines('poll: move.w (a2),d1', '    btst #1,d1', '    bne.s poll', '    addq.l #1,(a0)', '    bra.s main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    rte')
+    if novint: s += _lines('poll: move.w (a2),d1', '    move.b (a1),d2', '    cmp.b d3,d2', '    bhs.s nw', '    cmpi.b #$80,d2', '    bhs.s nw', '    addq.w #1,($FF0004).l', 'nw: move.b d2,d3', '    btst #1,d1', '    bne.s poll')
+    else: s += _lines('poll: move.w (a2),d1', '    btst #1,d1', '    bne.s poll')
+    if z80: s += _lines('    move.w #0,($A11100).l')
+    s += _lines('    addq.l #1,(a0)', '    bra.w main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    rte')
     return s
 
 

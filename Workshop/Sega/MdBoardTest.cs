@@ -700,6 +700,16 @@ internal static class MdBoardTest
         Check("a fill does not hold the 68000: the port write returned at once (the clock did not jump)", fd.V.Time - before2 < 200 * 7 && fd.V.DmaBusy);
         fd.Settle();
         Check("... and the bytes after it are $56 (the new high byte)", fd.V.Vram[0x800 + 40] == 0x56 || fd.V.Vram[0x800 + 39] == 0x56);
+        // Streets of Rage's boot and scene fills (64 KB, R15 = 1, display off, H40): BlastEm takes 321.7 to 322.6 lines a lap in six probe variants (fill_inc.py: R15 1, 2 and 4, data 0000 and FFFF, with the Z80 bus requested, the vertical interrupt off, the game's own register writes; its RAM snapshot in the
+        // middle of the fill has the CPU in the poll loop and 51,396 of 65,536 bytes zeroed where ours has 51,652); the old fast fills (nextslotfix=0) finished within a line
+        var fl = new Rig();
+        fl.Reg(1, 0x14); fl.Reg(12, 0x81); fl.Reg(15, 1);
+        fl.Reg(19, 0xFF); fl.Reg(20, 0xFF); fl.Reg(23, 0x80);
+        fl.Cmd(0x21, 0); fl.Data(0);
+        long flStart = fl.T;
+        for (int i = 0; i < 100000 && fl.V.DmaBusy; i++) { fl.T += 70; fl.V.RunTo(fl.T); }
+        double flLines = (fl.T - flStart) / (double)MdVdp.ClocksPerLine;
+        Check("a 64 KB VRAM fill with the display off (Streets of Rage's boot fill) lasts 321 to 324 lines", flLines is > 320.5 and < 324, $"{flLines:F2}");
         // the HV counter latch (R0 bit 1) freezes the counter
         var hv = new Rig();
         hv.Reg(0, 0x06); hv.Reg(1, 0x64); hv.Reg(12, 0x81);
