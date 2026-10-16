@@ -28,6 +28,9 @@ BODIES = {
     'ctrlr_moveq': 'move.w (a2),d1;moveq #1,d2',
     'tstctrl': 'tst.w (a2)',
     'cmpctrl': 'cmp.w (a2),d1',
+    # wave 5: Strider's tile upload (the loop at $8CC0 of its level load: control words and long data writes alternating), VRAM address $0000 each time
+    'strider': 'move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3);move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3)',
+    'ctrl2l': 'move.w d3,(a4);move.w d4,(a4);move.l (a5),(a3)',
 }
 
 # the 68000's cycles of one body instruction (instruction timing without waits), for the readers of the results
@@ -37,7 +40,7 @@ CYCLES = {'ctrlr_n1': 12, 'ctrlr_n3': 20, 'ctrlrl': 12, 'vdpw_n1': 12, 'ctrlr_ra
 def body_rate_vint(body, per=16, h40=True, display=True, v30=False, cmd='$C0000000'):
     ins = BODIES[body]
     s = prologue(h40, display, regs={1: (0x74 if display else 0x34) | (0x08 if v30 else 0), 0: 0x04, 15: 2})
-    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.l #%s,(a4)' % cmd, '    moveq #0,d0', '    move.w #$2000,sr', 'main:')
+    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.l #%s,(a4)' % cmd, '    moveq #0,d0', '    lea ($FF0200).l,a5', '    move.w #$4000,d3', '    moveq #0,d4', '    move.w #$2000,sr', 'main:')
     s += ''.join('    %s' % x + NL for x in ins.split(';')) * per
     s += _lines('    addq.l #1,(a0)', '    bra.w main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    cmpi.w #50,($FF0004).l', '    bne.s h1', '    move.l (a0),($FF000C).l', 'h1: move.l (a0),($FF0008).l', '    rte')
     return s
