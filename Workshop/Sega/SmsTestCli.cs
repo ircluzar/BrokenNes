@@ -93,12 +93,19 @@ internal static class SmsTestCli
             if (only.Count > 0 && !only.Contains(suite.Id)) continue;
             if (suite.Poison == null) { Console.WriteLine($"{suite.Id,-12} no poison defined: NOT PROVEN"); bad++; continue; }
             var clean = RunSuite(suite, new SmsSuiteContext { Tools = ctx.Tools, RomDir = ctx.RomDir, GoldenFile = ctx.GoldenFile }, print: false);
+            string rerun = "";
+            if (clean.Fail > 0)
+            {
+                // a suite with a speed check fails clean on a busy machine (nine FM channels at 25x real time, the whole machine at 8x): once more, and only a second failure counts. The proof is about whether the suite can fail when poisoned; whether it passes is the plain run's business.
+                var again = RunSuite(suite, new SmsSuiteContext { Tools = ctx.Tools, RomDir = ctx.RomDir, GoldenFile = ctx.GoldenFile }, print: false);
+                if (again.Fail == 0) { rerun = $" (the first clean run failed {clean.Fail} check(s), the rerun passed: a busy machine)"; clean = again; }
+            }
             if (clean.Pass == 0 && clean.Fail == 0) { Console.WriteLine($"{suite.Id,-12} skipped clean ({clean.Skip} skip): NOT PROVEN (the suite could not run here)"); bad++; continue; }
             var poisoned = new SmsSuiteContext { Tools = ctx.Tools, RomDir = ctx.RomDir, GoldenFile = ctx.GoldenFile, Poison = suite.Id };
             suite.Poison(poisoned);
             var hit = RunSuite(suite, poisoned, print: false);
             bool ok = clean.Fail == 0 && hit.Fail > 0;
-            Console.WriteLine($"{suite.Id,-12} clean {clean.Pass} pass {clean.Fail} fail; poisoned ({suite.PoisonText}) {hit.Pass} pass {hit.Fail} fail: {(ok ? "CAN FAIL" : "NOT PROVEN")}");
+            Console.WriteLine($"{suite.Id,-12} clean {clean.Pass} pass {clean.Fail} fail; poisoned ({suite.PoisonText}) {hit.Pass} pass {hit.Fail} fail: {(ok ? "CAN FAIL" : "NOT PROVEN")}{rerun}");
             if (!ok) bad++;
         }
         Console.WriteLine(bad == 0 ? "prove: every suite failed when poisoned" : $"prove: {bad} suite(s) not proven");

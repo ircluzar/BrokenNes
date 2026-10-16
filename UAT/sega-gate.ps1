@@ -19,6 +19,10 @@
   sets and the bridge test's real-game groups and finishes in about 2 minutes (it is a smoke check, not the gate; the report says QUICK).
 
   Every verifier is shown able to fail in the track records (docs\projects\sega-track-*.md); -Prove runs the ones that have a built-in proof of failure (--smstest --prove).
+
+  The real-game suites of --smstest (hot swaps in real games, save states on the 40 roster games, the golden frame hashes) need the roster folder (sms\ and gg\ inside, the file names of Workshop\Sega\mesen\roster-scripts.tsv): -Roms <folder>,
+  or BROKENNES_SMS_ROMS, or %LOCALAPPDATA%\VRUN_Nes_Dev_work\sega_roster, which UAT\lib\Prepare-SegaRoster.ps1 fills from the libraries (the gate runs it when the smstest steps are selected). Without a roster folder those suites skip
+  inside smstest (counted in the note) and a proof that could not run there (`--smstest --prove` says "NOT PROVEN (the suite could not run here)") is a SKIP, not a failure, unless -Strict.
 .EXAMPLE
   pwsh -File UAT\sega-gate.ps1                 # the gate, against the Workshop exe built by `dotnet build Workshop -c Release`
   pwsh -File UAT\sega-gate.ps1 -Build          # build first (own artifacts folder)
@@ -31,6 +35,7 @@ param(
     [switch]$Quick,
     [switch]$Strict,
     [switch]$Prove,
+    [string]$Roms,
     [string[]]$Only,
     [string]$ReportDir
 )
@@ -61,6 +66,19 @@ if ($newest -and $newest.LastWriteTimeUtc -gt $built.AddSeconds(2)) {
 }
 
 # ---------------------------------------------------------------------------------------------------- the steps
+# the roster folder for the smstest suites that play real games (see the description); none: those suites skip and say so
+function Test-RosterDir($d) { $d -and (Test-Path -LiteralPath (Join-Path $d 'sms')) -and (Test-Path -LiteralPath (Join-Path $d 'gg')) }
+$romDir = $null
+$wantsSmstest = (-not $Only) -or ($Only -contains 'smstest') -or ($Only -contains 'smstest-prove')
+if ($Roms) { if (-not (Test-RosterDir $Roms)) { Write-Host "-Roms $Roms has no sms\ and gg\ folders" -ForegroundColor Red; exit 2 }; $romDir = $Roms }
+elseif ($env:BROKENNES_SMS_ROMS -and (Test-RosterDir $env:BROKENNES_SMS_ROMS)) { $romDir = $env:BROKENNES_SMS_ROMS }
+elseif ($wantsSmstest) {
+    $default = Join-Path $work 'sega_roster'
+    if (-not (Test-RosterDir $default) -or -not (Test-Path (Join-Path $default 'sms\*'))) { & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib\Prepare-SegaRoster.ps1') -Out $default | Out-Null }
+    if (Test-RosterDir $default) { $romDir = $default }
+}
+$romArgs = if ($romDir) { @('--roms', $romDir) } else { @() }
+
 $z80Vectors = Join-Path $tools 'test-sets\singlesteptests-z80\v1'
 $libMd = 'X:\EMULATION\Sega Genesis'
 $steps = @(
@@ -82,9 +100,9 @@ $steps = @(
     @{ n = 'sega-oracle-test';     a = @('--sega-oracle-test'); needs = @((Join-Path $tools 'oracles\harness\psg_oracle.exe')) },
     @{ n = 'ym-oracle-test';       a = @('--ym-oracle-test'); needs = @((Join-Path $tools 'oracles\harness\ymfm_ref.exe'), (Join-Path $tools 'oracles\harness\opn2_oracle.exe')) },
     @{ n = 'fm-oracle-test';       a = @('--fm-oracle-test'); needs = @((Join-Path $tools 'oracles\harness\opll_oracle.exe')) },
-    @{ n = 'smstest';              a = @('--smstest'); needs = @((Join-Path $tools 'test-sets\sms-roms')) }
+    @{ n = 'smstest';              a = @('--smstest') + $romArgs; needs = @((Join-Path $tools 'test-sets\sms-roms')) }
 )
-if ($Prove) { $steps += @{ n = 'smstest-prove'; a = @('--smstest', '--prove'); needs = @((Join-Path $tools 'test-sets\sms-roms')); heavy = $true } }
+if ($Prove) { $steps += @{ n = 'smstest-prove'; a = @('--smstest', '--prove') + $romArgs; needs = @((Join-Path $tools 'test-sets\sms-roms')); heavy = $true; timeoutMin = 90 } }
 if ($Only) { $steps = @($steps | Where-Object { $Only -contains $_.n }) }
 if ($Quick) { $steps = @($steps | Where-Object { -not $_.heavy }) }
 if (-not $steps) { Write-Host 'no step selected' -ForegroundColor Yellow; exit 2 }
@@ -92,6 +110,7 @@ if (-not $steps) { Write-Host 'no step selected' -ForegroundColor Yellow; exit 2
 function Invoke-Step($step) {
     $psi = [Diagnostics.ProcessStartInfo]::new($Exe)
     $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+    $psi.WorkingDirectory = $repo     # some suites find their files (the golden hashes, the roster scripts) by walking up from the current folder
     foreach ($x in $step.a) { [void]$psi.ArgumentList.Add($x) }
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $p = [Diagnostics.Process]::Start($psi)
@@ -118,6 +137,17 @@ function Get-Counts([string]$text) {
     return $null
 }
 
+# --smstest --prove prints one line per suite ("<suite> clean N pass M fail; poisoned (...) K pass J fail: CAN FAIL" or "NOT PROVEN", the latter with "(the suite could not run here)" when it skipped clean for want of an input) and ends with
+# "prove: every suite failed when poisoned" or "prove: N suite(s) not proven" - no pass / fail counts, and exit 1 whenever any suite is not proven, so the proof is read from its lines.
+function Get-ProveCounts([string]$text) {
+    if ($text -notmatch 'prove: ') { return $null }
+    $lines = $text -split "`r?`n"
+    $first = { param($l) ($l.Trim() -split '\s+')[0] }
+    $skipped = @($lines | Where-Object { $_ -cmatch 'NOT PROVEN \(the suite could not run here\)' } | ForEach-Object { & $first $_ })
+    $failed = @($lines | Where-Object { $_ -cmatch 'NOT PROVEN' -and $_ -notmatch 'could not run here' } | ForEach-Object { & $first $_ })
+    return @{ Passed = @($lines | Where-Object { $_ -match ': CAN FAIL\b' }).Count; Failed = $failed.Count; Skipped = $skipped.Count; FailedNames = $failed; SkippedNames = $skipped }
+}
+
 $rows = New-Object System.Collections.ArrayList
 $total = [Diagnostics.Stopwatch]::StartNew()
 Write-Host ("Sega gate | exe {0} (built {1:u}) | {2}{3}" -f $Exe, $built, $(if ($Quick) { 'QUICK' } else { 'full' }), $(if ($Strict) { ' | strict' } else { '' })) -ForegroundColor Cyan
@@ -132,9 +162,15 @@ foreach ($s in $steps) {
     Write-Host ("{0,-22} running ..." -f $s.n) -NoNewline
     $r = Invoke-Step $s
     $r.Text | Set-Content (Join-Path $ReportDir ($s.n + '.txt'))
-    $c = Get-Counts $r.Text
-    $ok = $r.Code -eq 0 -and -not $r.TimedOut -and ($null -eq $c -or $c.Failed -eq 0)
-    $note = if ($r.TimedOut) { 'TIMED OUT' } elseif ($r.Code -ne 0 -and $null -eq $c) { "exit $($r.Code), no result line (a stale exe falls through to the GUI)" } elseif ($r.Code -ne 0) { "exit $($r.Code)" } else { '' }
+    $isProve = $s.n -eq 'smstest-prove'
+    $c = if ($isProve) { Get-ProveCounts $r.Text } else { Get-Counts $r.Text }
+    # the proof exits 1 for any suite not proven, a suite that could not run here included: it is judged from its lines, and a proof that could not run is a skip (a failure only under -Strict)
+    $ok = if ($isProve) { -not $r.TimedOut -and $null -ne $c -and $c.Failed -eq 0 -and (-not $Strict -or $c.Skipped -eq 0) } else { $r.Code -eq 0 -and -not $r.TimedOut -and ($null -eq $c -or $c.Failed -eq 0) }
+    $note = if ($r.TimedOut) { 'TIMED OUT' } elseif ($isProve) { if ($null -eq $c) { "exit $($r.Code), no ""prove:"" line (a stale exe falls through to the GUI)" } else { '' } } elseif ($r.Code -ne 0 -and $null -eq $c) { "exit $($r.Code), no result line (a stale exe falls through to the GUI)" } elseif ($r.Code -ne 0) { "exit $($r.Code)" } else { '' }
+    if ($isProve -and $c) {
+        if ($c.Failed -gt 0) { $note = ($note + " not proven: $($c.FailedNames -join ', ')").Trim() }
+        if ($c.Skipped -gt 0) { $note = ($note + " $($c.Skipped) proof(s) could not run here ($($c.SkippedNames -join ', '): no roster folder, see UAT\lib\Prepare-SegaRoster.ps1)").Trim() }
+    }
     if (-not $ok) {
         # say which checks failed, and when every one of them is a speed check, that a loaded machine can cause that (rerun on a quiet one before believing it)
         $failing = @($r.Text -split "`n" | Where-Object { $_ -match '^\s*FAIL\s' } | ForEach-Object { ($_ -replace '^\s*FAIL\s+', '').Trim() })
@@ -144,9 +180,10 @@ foreach ($s in $steps) {
             $note = ($note + " failing: $short" + $(if ($failing.Count -gt 3) { " (+$($failing.Count - 3) more)" } else { '' }) + $(if ($speedOnly) { ' [every failing check is a speed check: a busy machine causes this; rerun on a quiet one]' } else { '' })).Trim()
         }
     }
-    if ($c -and $c.Skipped -gt 0) { $note = ($note + " $($c.Skipped) check(s) skipped inside (missing input: see the step's report)").Trim() }
-    [void]$rows.Add([pscustomobject]@{ Step = $s.n; Result = $(if ($ok) { 'PASS' } else { 'FAIL' }); Passed = $(if ($c) { $c.Passed } else { '' }); Failed = $(if ($c) { $c.Failed } else { '' }); Seconds = [math]::Round($r.Seconds); Note = $note })
-    Write-Host ("`r{0,-22} {1,-5} {2,9} passed {3,3} failed {4,5:F0}s {5}" -f $s.n, $(if ($ok) { 'PASS' } else { 'FAIL' }), $(if ($c) { $c.Passed } else { '-' }), $(if ($c) { $c.Failed } else { '-' }), $r.Seconds, $note) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
+    if ($c -and $c.Skipped -gt 0 -and -not $isProve) { $note = ($note + " $($c.Skipped) check(s) skipped inside (missing input: see the step's report)").Trim() }
+    $result = if (-not $ok) { 'FAIL' } elseif ($isProve -and $c.Passed -eq 0 -and $c.Skipped -gt 0) { 'SKIP' } else { 'PASS' }
+    [void]$rows.Add([pscustomobject]@{ Step = $s.n; Result = $result; Passed = $(if ($c) { $c.Passed } else { '' }); Failed = $(if ($c) { $c.Failed } else { '' }); Seconds = [math]::Round($r.Seconds); Note = $note })
+    Write-Host ("`r{0,-22} {1,-5} {2,9} passed {3,3} failed {4,5:F0}s {5}" -f $s.n, $result, $(if ($c) { $c.Passed } else { '-' }), $(if ($c) { $c.Failed } else { '-' }), $r.Seconds, $note) -ForegroundColor $(if ($result -eq 'PASS') { 'Green' } elseif ($result -eq 'SKIP') { 'Yellow' } else { 'Red' })
 }
 
 $fail = @($rows | Where-Object { $_.Result -eq 'FAIL' }).Count

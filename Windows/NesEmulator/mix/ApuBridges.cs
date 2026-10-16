@@ -318,6 +318,7 @@ namespace NesEmulator
         private readonly short[] pull = new short[4096];
         private readonly int[] dspCache = new int[128];
         private long nesCycles; private int sinceSync; private int dmcSeen; private int channelMask = 0x1F;
+        private long bootClock;     // the unit's master clock when the driver was ready: the NES's time counts from there (the boot took the unit's clock ahead, and a chip held at its boot time makes no sound for that long: a swap to it lost about 7 ms of sound)
         public string Status { get; private set; } = "";
         public long DspWrites => drv.DspWrites;
         private string Dsp() { if (snes is not ISnesApuProbe pr) return ""; var r = pr.DspRegs; string V(int v) => $"v{v}(vol={(sbyte)r[v*16]} p={r[v*16+2] | r[v*16+3] << 8:X4} src={r[v*16+4]} adsr1={r[v*16+5]:X2} gain={r[v*16+7]:X2} envx={r[v*16+8]} outx={(sbyte)r[v*16+9]})"; return $"{V(0)} {V(1)} FLG={r[0x6C]:X2} MVOL={r[0x0C]:X2} KON={r[0x4C]:X2} KOF={r[0x5C]:X2} NON={r[0x3D]:X2} ENDX={r[0x7C]:X2}"; }
@@ -332,6 +333,7 @@ namespace NesEmulator
             snes = SnesCores.CreateApu(MixConfig.SnesApu);
             drv = new SpcDspDriver(snes);
             Boot();
+            bootClock = drv.MasterClock;
         }
 
         public string CoreName => $"SNES:{snes.CoreName}+{front.CoreName}";
@@ -405,7 +407,7 @@ namespace NesEmulator
             nesCycles += cpuCycles; sinceSync += cpuCycles;
             if (sinceSync >= 1864) { sinceSync = 0; Sync(); }
             if (DebugEvery > 0 && (dbgCycles += cpuCycles) >= DebugEvery) { dbgCycles = 0; var m = model; Console.Error.WriteLine($"t={nesCycles / 1789773.0:F2}s p0[en={m.P[0].Enabled} len={m.P[0].Len} vol={m.P[0].Volume} t={m.P[0].Timer} aud={m.P[0].Audible(true)}] p1[en={m.P[1].Enabled} len={m.P[1].Len} vol={m.P[1].Volume} t={m.P[1].Timer} aud={m.P[1].Audible(false)}] tri[en={m.TriEnabled} len={m.TriLen} lin={m.TriLinear} t={m.TriTimer}] noise[en={m.NoiseEnabled} len={m.NoiseLen} vol={m.NoiseVolume}] dmc={m.DmcStarts} writes={drv.DspWrites} failed={drv.Failed} ports={drv.Ports} | {Dsp()}"); }       // ~960 Hz
-            drv.RunTo(nesCycles * 12);
+            drv.RunTo(bootClock + nesCycles * 12);
             if (front.GetQueuedSampleCount() > 8192) front.GetAudioSamples();
         }
 

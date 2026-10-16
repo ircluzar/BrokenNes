@@ -30,7 +30,7 @@ namespace NesEmulator.Sega
         private readonly HubReplayer replay;
         private readonly bool[] wasAudible = new bool[VoiceTotal];
         private readonly short[] drain = new short[4096];
-        private readonly float[] pull = new float[2048];
+        private readonly NesChipOutput output;
         private double nesAcc;
         private int nesDue, sinceSync;
 
@@ -65,6 +65,7 @@ namespace NesEmulator.Sega
             back = host.Apu;
             writer = new NesVoiceWriter(NesRegisterPorts.For(back));
             nesPerClock = NesVoiceWriter.NesCpuHz / request.CpuClockHz;
+            output = new NesChipOutput(back, request.Machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
             replay = new HubReplayer(writer, VoiceTotal, IsNoiseVoice, APU_MD.TriangleRms, APU_SMS.DefaultLowNotes);
         }
 
@@ -72,13 +73,14 @@ namespace NesEmulator.Sega
         private static bool IsNoiseVoice(int i) => i == 3 || i == PsgVoices + 10 || i == PsgVoices + 12 || i == PsgVoices + 13;
 
         public string CoreName => $"NES-FM:{back.CoreName}+{inner.CoreName}";
-        public int SampleRate => back.GetSampleRate();
+        public int SampleRate => output.SampleRate;
 
         public void Reset()
         {
             inner.Reset();
             replay.Forget(); Array.Clear(wasAudible);
             nesAcc = 0; nesDue = 0; sinceSync = 0;
+            output.Reset();
             Replay();
         }
 
@@ -139,22 +141,7 @@ namespace NesEmulator.Sega
         public void WriteAudioControl(byte value) => inner.WriteAudioControl(value);
         public byte ReadAudioControl() => inner.ReadAudioControl();
 
-        public int ReadSamples(Span<short> dest)
-        {
-            int written = 0;
-            while (written + 1 < dest.Length)
-            {
-                int want = Math.Min(pull.Length, (dest.Length - written) / 2);
-                int got = back.ReadSamples(pull.AsSpan(0, want));
-                if (got <= 0) break;
-                for (int i = 0; i < got; i++)
-                {
-                    short s = (short)Math.Clamp(pull[i] * 32767f, -32768f, 32767f);
-                    dest[written++] = s; dest[written++] = s;
-                }
-            }
-            return written;
-        }
+        public int ReadSamples(Span<short> dest) => output.ReadStereo(dest);
 
         /// <summary>The inner unit's eighteen voices (what the bridge replays).</summary>
         public int DescribeVoices(Span<HubVoice> dest) => inner.DescribeVoices(dest);
