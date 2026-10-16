@@ -181,6 +181,18 @@ def write_rate(kind='cram', h40=True, display=True, per=16):
     return s
 
 
+def write_rate_vint(kind='cram', h40=True, display=True, per=16):
+    """write_rate with the lap count sampled by the vertical interrupt: the handler copies the lap counter (long at $FF0000) to $FF0008 and counts the frame in $FF0004, so a pause at any moment reads a lap count that
+    belongs exactly to the frame count (the plain write_rate reads the counter at an arbitrary point of a frame: an error of one frame in about 500, 0.2 percent; this one is exact to a lap in about 190,000, 0.0005 percent).
+    RAM as the machine sees it: long $FF0008 = laps at the last interrupt, long $FF000C = laps at frame 50, word $FF0004 = frames. NOTE: the oracle's quick-save RAM image starts 12 bytes late (RAM word 6 is $FF0000), see oracle.state_ram users."""
+    cmd = {'cram': '$C0000000', 'vram': '$40000000', 'vsram': '$40000010'}[kind]
+    s = prologue(h40, display, regs={1: (0x74 if display else 0x34), 0: 0x04, 15: 2})
+    s += _lines('    lea ($FF0000).l,a0', '    move.l #0,(a0)', '    move.w #0,($FF0004).l', '    move.l #%s,(a4)' % cmd, '    moveq #0,d0', '    move.w #$2000,sr', 'main:')
+    s += ('    move.w d0,(a3)' + NL) * per
+    s += _lines('    addq.l #1,(a0)', '    bra.s main', '_spin: bra.s _spin', 'handler:', '    addq.w #1,($FF0004).l', '    cmpi.w #50,($FF0004).l', '    bne.s h1', '    move.l (a0),($FF000C).l', 'h1: move.l (a0),($FF0008).l', '    rte')
+    return s
+
+
 def dma_rate(kind='68k_vram', h40=True, display=True, words=2048):
     """How long a DMA of `words` words takes, in laps per frame: one DMA, then a poll until the status register's DMA-busy bit is clear, then a counter increment; the vertical interrupt counts frames. RAM: long at
     $FF0000 = laps, word at $FF0004 = frames (the same layout as write_rate). kind: '68k_vram', '68k_cram', 'fill' (VRAM fill) or 'copy' (VRAM copy)."""

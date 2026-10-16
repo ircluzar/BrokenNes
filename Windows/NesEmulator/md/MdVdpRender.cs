@@ -119,7 +119,7 @@ public sealed partial class MdVdp
     // next line on whatever its time in the line before that point (probe vsmid.py, 20 lines with a write at H counter H0 and the next two lines read back from the picture; H40: the next line is scrolled for a write
     // up to the H counter's top byte 142, not after; H32 up to about 126), and never on the line it is made in. The 2-cell column scroll reads the entries per column, as ours does.
     public static bool VsFullLatch = true;
-    public static int VsFullLatchH40 = 2855, VsFullLatchH32 = 3000;        // clocks into the line at which the entries are taken: any time from the last free slot of the picture to the first of the next line's pre-slots (H40 2608 to 2911, H32 2960 to 3180) fits the probe; the start of the horizontal blank (2855) and just after the first pre-slot in H32
+    public static int VsFullLatchH40 = 2855, VsFullLatchH32 = 3000;        // clocks into the line at which the entries are taken: any time from the last free slot of the picture to the first of the next line's pre-slots (H40 2608 to 2911, H32 2960 to 3180) fits the probe; the start of the horizontal blank (2855) and just after the first pre-slot in H32. Confirmed with the HINT-timed probe vsh.py (the write time controlled to 2 CPU cycles, the same ROM on the oracle and on ours): the last write that reaches the next line is 172 cycles after the handler's fixed part on the oracle against 174 on ours in H40, 210 against 218 in H32; the slot quantisation of the writes and the interrupt start jitter of the two machines are of that size, so the values stay
     private bool vsNextTaken;
     private ushort vsNextA, vsNextB, vsLatchA, vsLatchB;
 
