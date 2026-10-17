@@ -30,7 +30,9 @@ public sealed partial class Emulator
                 var problems = new List<string>(r.Refusals);
                 problems.AddRange(r.Warnings);
                 Corruption.View = new StockpileView(r.Stockpile, path, problems, r.Legacy);
-                Corruption.Selected = r.Stockpile is { Entries.Count: > 0 } ? 0 : -1;
+                // the first corruption that fits the loaded game is the one selected
+                var fits = CorruptionRows();
+                Corruption.Selected = r.Stockpile is { Entries.Count: > 0 } ? Math.Max(0, fits.ToList().FindIndex(x => x.CanStart)) : -1;
                 string name = System.IO.Path.GetFileName(path);
                 if (r.Stockpile == null) Corruption.SetResult($"could not open {name}: {string.Join("; ", r.Refusals)}", false);
                 else Corruption.SetResult($"opened {name}: {r.Stockpile.Entries.Count} corruption{(r.Stockpile.Entries.Count == 1 ? "" : "s")}" + (r.Refusals.Count > 0 ? $"; {r.Refusals.Count} refused: {r.Refusals[0]}" : ""), r.Refusals.Count == 0);

@@ -14,6 +14,7 @@ using BrokenNes.SynthHost;
 using NesEmulator.Corruption;
 using NesEmulator.Systems;
 using SynthSnes = BrokenNes.Workshop.Corruption.SynthSnesRom;
+using SpcSnapshot = BrokenNes2.SpcSnapshot;
 
 namespace BrokenNes.FruityHost;
 
@@ -159,6 +160,7 @@ public sealed unsafe partial class SelfTest
                 if (made == null) continue;
                 if (f.Aram) snes = made;
                 CorrWindowFlow(t, f, made);
+                CorrRemove(t, f, made);
             }
             if (snes != null)
             {
@@ -166,10 +168,12 @@ public sealed unsafe partial class SelfTest
                 CorrSnesInstruments(t, f, snes);
                 CorrSnesProject(t, f, snes);
                 CorrAllocation(t, f, snes);
+                CorrScrolling(t, dir, f, snes);
                 CorrCancel(t, dir, f, snes);
                 CorrMessages(t, dir, f, snes);
             }
             CorrGbWave(t, dir);
+            CorrRealSmw(t);
         }
         finally
         {
@@ -231,6 +235,39 @@ public sealed unsafe partial class SelfTest
 
     // ------------------------------------------------------------------------------------------------
     // the window, start, the machine, the project
+
+    /// <summary>"Remove corruption": the game goes back to the place the corruption was made, without its writes (the farm's clean machine), and the plugin no longer says a corruption is on.</summary>
+    private void CorrRemove(T t, CorrFamily f, CorrMade m)
+    {
+        string name = f.Name + " remove";
+        using var p = SegaGame(m.Rom, f.Console, f.Chip);
+        p.Test(HkRun, 0, 25);
+        nint parent = Win32Host.CreateParent();
+        try
+        {
+            p.ShowEditor(parent);
+            for (int k = 0; k < 3; k++) Win32Host.Pump(40);
+            ClickControl(t, p, IdCor, name + ": Corruption button");
+            CorPick(p, m.Stock);
+            ClickControl(t, p, IdCorOpenBtn, name + ": Open stockpile");
+            t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 3, $"{name}: the stockpile did not open");
+            ClickControl(t, p, IdCorRow, name + ": row 0");
+            ClickControl(t, p, IdCorStart, name + ": Start");
+            t.Expect(CorWait(() => CorIdle(p), 90000) && p.Test(HkCorGood) == 1 && p.Test(HkWramHash) == m.Work0, $"{name}: the start said '{CorText(p, 0)}'");
+            Win32Host.Pump(80);                                  // (the window repaints: Cancel gives way to Remove)
+            ClickControl(t, p, IdCorRemove, name + ": Remove corruption");
+            t.Expect(CorWait(() => CorIdle(p), 90000), $"{name}: removing never finished");
+            string said = CorText(p, 0);
+            t.Expect(p.Test(HkCorGood) == 1 && said.Contains("without its writes"), $"{name}: removing said '{said}'");
+            t.Expect(p.Test(HkCorApplied) == 0, $"{name}: the plugin still says a corruption is on after it was removed");
+            t.Expect(p.Test(HkWramHash) == m.WorkClean && p.Test(HkWramHash) != m.Work0, $"{name}: the work RAM is not the farm's clean work RAM");
+            if (f.Aram) t.Expect(p.Test(HkAramHash) == m.AramClean && m.AramClean != m.Aram0, $"{name}: the audio RAM is not the farm's clean audio RAM");
+            t.Expect(p.Test(HkCorFrames) == m.FarmFrames, $"{name}: the game is at frame {p.Test(HkCorFrames)}, expected {m.FarmFrames}");
+            ClickControl(t, p, IdCorClose, name + ": Close");
+            p.HideEditor();
+        }
+        finally { Win32Host.DestroyParent(parent); }
+    }
 
     private void CorrWindowFlow(T t, CorrFamily f, CorrMade m)
     {
@@ -326,6 +363,7 @@ public sealed unsafe partial class SelfTest
         }
         int crp = FindSection(project, "CRP1"), gam = FindSection(project, "GAM1");
         t.Expect(crp >= 0, $"{name}: the project has no corruption section");
+        if (crp < 0) return;
         t.Expect(!state || gam >= 0, $"{name}: the project has no game-state section");
         if (f.Aram) t.Expect(snap != 0 && snap == m.AramEnd, $"{name}: the instrument snapshot is not the corrupted audio RAM");
 
@@ -501,6 +539,7 @@ public sealed unsafe partial class SelfTest
             ok = p2.SaveState();
         }
         int crp = FindSection(ok, "CRP1");
+        if (crp < 0) { t.Expect(false, "SNES history: the project has no corruption section"); return; }
         int mid = crp + 8 + BitConverter.ToInt32(ok, crp + 4) / 2;
         var damaged = (byte[])ok.Clone();
         damaged[mid] ^= 0x5A;                                                    // one flipped byte inside the section's JSON
@@ -551,6 +590,51 @@ public sealed unsafe partial class SelfTest
         t.Expect(p.Test(HkCorApplied) == 1 && p.Test(HkCorFrames) > m.FarmFrames, "allocation: the new game was not the one rendered afterwards");
         t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin on the audio thread while a corruption was starting and its game ran (must be 0)");
         t.Note($"allocation on the audio thread while a corruption starts and then plays 4 s: {alloc} B over {blocks} render calls");
+    }
+
+    /// <summary>A stockpile longer than the window shows: the first corruption that fits is selected and scrolled into view, the wheel scrolls, a click picks the row under the mouse.</summary>
+    private void CorrScrolling(T t, string dir, CorrFamily f, CorrMade m)
+    {
+        var sp = new Stockpile { Name = "long", Writer = "BrokenNes2 self-test" };
+        for (int i = 0; i < 12; i++)
+        {
+            var e = new StockpileEntry { Name = $"entry {i + 1:00}", Game = m.Entry.Game, Machine = m.Entry.Machine, Anchor = m.Entry.Anchor, Writes = m.Entry.Writes.ToList() };
+            if (i < 5) e = new StockpileEntry { Name = e.Name, Game = new GameRef { Console = e.Game.Console, Sha1 = new string('0', 40), Title = "Another Game" }, Machine = e.Machine, Anchor = e.Anchor, Writes = e.Writes };
+            sp.Entries.Add(e);
+        }
+        string path = Path.Combine(dir, "long" + Stockpile.FileSuffix);
+        StockpileJson.SaveFile(path, sp);
+        using var p = SegaGame(m.Rom, 2, "SNES");
+        p.Test(HkRun, 0, 10);
+        nint parent = Win32Host.CreateParent();
+        try
+        {
+            p.ShowEditor(parent);
+            for (int k = 0; k < 3; k++) Win32Host.Pump(40);
+            var hwnd = p.EditorHandle;
+            ClickControl(t, p, IdCor, "scrolling: Corruption button");
+            CorPick(p, path);
+            ClickControl(t, p, IdCorOpenBtn, "scrolling: Open stockpile");
+            t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 12, $"scrolling: the long stockpile did not open ({CorText(p, 0)})");
+            Win32Host.Pump(80);
+            t.Expect(CorText(p, 3) == "entry 06", $"scrolling: opening selected '{CorText(p, 3)}', expected the first one that fits, entry 06");
+            t.Expect(p.Test(EdCorScroll) == 1, $"scrolling: the list starts at row {p.Test(EdCorScroll)}, expected 1 (so that entry 06 is the last one shown)");
+            t.Expect(p.Test(30, IdCorRow + 4) != 0 && p.Test(30, IdCorRow + 5) == 0, "scrolling: the list should show five rows");
+            Win32Host.Wheel(hwnd, -3, 300, 280);
+            Win32Host.Pump(60);
+            t.Expect(p.Test(EdCorScroll) == 4, $"scrolling: three notches of the wheel left the list at row {p.Test(EdCorScroll)}, expected 4");
+            Win32Host.Wheel(hwnd, -30, 300, 280);
+            Win32Host.Pump(60);
+            t.Expect(p.Test(EdCorScroll) == 7, $"scrolling: the wheel went past the end of the list (row {p.Test(EdCorScroll)}, the last page starts at 7)");
+            ClickControl(t, p, IdCorRow + 1, "scrolling: second visible row");
+            t.Expect(CorText(p, 3) == "entry 09", $"scrolling: clicking the second visible row of the last page picked '{CorText(p, 3)}', expected entry 09");
+            Win32Host.Wheel(hwnd, 30, 300, 280);
+            Win32Host.Pump(60);
+            t.Expect(p.Test(EdCorScroll) == 0, $"scrolling: the wheel went above the start of the list (row {p.Test(EdCorScroll)})");
+            ClickControl(t, p, IdCorClose, "scrolling: Close");
+            p.HideEditor();
+        }
+        finally { Win32Host.DestroyParent(parent); }
     }
 
     /// <summary>A long replay can be stopped from the window: the game that was running goes on, and the window says what happened.</summary>
@@ -760,5 +844,94 @@ public sealed unsafe partial class SelfTest
         t.Expect(Audio.Rms(clean, 0, clean.Length) > 0.005 && Audio.Rms(corrupt, 0, corrupt.Length) > 0.005, "Game Boy wave: the wave channel is silent");
         t.Expect(cleanH > corruptH * 2, $"Game Boy wave: the corrupted wave RAM should be a softer, triangle sound (odd harmonics against the fundamental: clean {cleanH:0.000}, corrupted {corruptH:0.000})");
         t.Note($"Game Boy wave channel: the game's square wave has odd harmonics at {cleanH:0.000} of the fundamental, the corrupted triangle at {corruptH:0.000}");
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // a real game, when one is named (nothing of it is in the repository): Super Mario World's instruments, corrupted in a stockpile, taken over in the plugin
+
+    private void CorrRealSmw(T t)
+    {
+        string? path = Environment.GetEnvironmentVariable("BROKENNES_TEST_SMW");
+        if (string.IsNullOrEmpty(path)) path = @"C:\Users\philt\OneDrive\Documents\PROJECTS\!!! Experiments\AI SMW Hacker\smw.smc";
+        if (!File.Exists(path)) { t.Note("(no Super Mario World ROM at " + path + " and BROKENNES_TEST_SMW is not set: the real-game corruption check was skipped)"); return; }
+        string dir = Path.Combine(Path.GetTempPath(), "bn2_smw_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out _);
+            using var origin = new CorrRig(ConsoleKind.Snes, rom, Path.GetFileName(path));
+            origin.Run(900);                                                         // the title screen, music playing
+            var cap = origin.Farm.Capture();
+            t.Expect(cap.Anchor != null, $"SMW: the farm cannot say where the game is ({cap.Reason})");
+            if (cap.Anchor == null) return;
+            var domains = origin.Farm.Domains();
+            var aramDomain = MachineDomains.Find(domains, "ARAM")!; var dspDomain = MachineDomains.Find(domains, "DSP")!;
+            var aramBytes = new byte[SpcSnapshot.AramSize]; for (int i = 0; i < aramBytes.Length; i++) aramBytes[i] = aramDomain.Peek(i);
+            var dspBytes = new byte[SpcSnapshot.DspSize]; for (int i = 0; i < dspBytes.Length; i++) dspBytes[i] = dspDomain.Peek(i);
+            var list = new SpcSnapshot(aramBytes, dspBytes).Instruments();
+            t.Expect(list.Count > 0, "SMW: the instrument list of the title screen is empty");
+            if (list.Count == 0) return;
+            var pick = list.OrderByDescending(i => i.Sounding).ThenByDescending(i => i.Blocks).First();
+            var writes = new List<CorruptionWrite>();
+            for (int b = 1; b < Math.Min(pick.Blocks, 40); b++)
+                for (int k = 1; k <= 8; k++)
+                {
+                    int a = pick.Start + b * 9 + k;
+                    writes.Add(new CorruptionWrite("ARAM", a, (byte)(aramBytes[a] ^ 0xFF), aramBytes[a]));
+                }
+            long aramClean = origin.Hash("ARAM");
+            CorruptionApplier.Apply(domains, writes, null, 0);
+            origin.Farm.NoteWrites(writes);
+            long aramCorrupt = origin.Hash("ARAM"), wramAtStart = origin.Hash("WRAM");
+            var sp = new Stockpile { Name = "smw", Writer = "BrokenNes2 self-test" };
+            sp.Entries.Add(new StockpileEntry { Name = "SMW instrument", Game = origin.Farm.Game(), Machine = origin.Spec, Anchor = cap.Anchor, Writes = writes });
+            string stock = Path.Combine(dir, "smw" + Stockpile.FileSuffix);
+            StockpileJson.SaveFile(stock, sp);
+
+            // the clean game in Instrument Runaway, and the corrupted one started from the stockpile with the freeze tick
+            float[] clean; long cleanSnap;
+            using (var c = SegaGame(path, 2, "SNES"))
+            {
+                c.Test(HkRun, 0, 900);
+                c.Test(47, 0, 1);
+                cleanSnap = c.Test(HkSnapHash);
+                c.SetParam(PInstrument, pick.Slot);
+                clean = CorNote(c);
+            }
+            t.Expect(cleanSnap == aramClean, "SMW: the plugin's clean game at frame 900 is not the farm's clean game (audio RAM differs)");
+            byte[] project; long snap, aram, wram, farm;
+            float[] corrupt; double secs;
+            using (var p = SegaGame(path, 2, "SNES"))
+            {
+                CorOpenDirect(p, stock);
+                t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 1, $"SMW: the stockpile did not open ({CorText(p, 0)})");
+                p.Test(HkCorSelect, 0, 0); p.Test(HkCorFreeze, 0, 1);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                t.Expect(p.Test(HkCorStart) == 0, $"SMW: the start was refused ({CorText(p, 0)})");
+                t.Expect(CorWait(() => CorIdle(p), 180000) && p.Test(HkCorGood) == 1, $"SMW: the start said '{CorText(p, 0)}'");
+                secs = sw.Elapsed.TotalSeconds;
+                t.Expect(p.Test(45) == 1 && p.Test(48) == 1, $"SMW: Runaway {p.Test(45)}, sampler {p.Test(48)}");
+                snap = p.Test(HkSnapHash); aram = p.Test(HkAramHash); wram = p.Test(HkWramHash); farm = p.Test(HkCorFrames);
+                t.Expect(snap == aramCorrupt && snap != cleanSnap, "SMW: the plugin's instrument snapshot is not the farm's corrupted audio RAM");
+                t.Expect(wram == wramAtStart && farm == 900, $"SMW: the work RAM or the frame count (900) differ from the farm's: frame {farm}");
+                p.SetParam(PInstrument, pick.Slot);
+                corrupt = CorNote(p);
+                project = p.SaveState();
+            }
+            double rmsClean = Audio.Rms(clean, 0, clean.Length), rmsBad = Audio.Rms(corrupt, 0, corrupt.Length);
+            double corr = Math.Abs(Correlation(clean, corrupt, 0));
+            t.Expect(rmsClean > 0.001 && rmsBad > 0.001 && corrupt.All(float.IsFinite), $"SMW: an instrument is silent or not finite (rms {rmsClean:0.0000} / {rmsBad:0.0000})");
+            t.Expect(corr < 0.9, $"SMW: the corrupted instrument (slot {pick.Slot}) sounds like the clean one (correlation {corr:0.000})");
+            t.Note($"SMW (real game): slot {pick.Slot} at ${pick.Start:X4}, {pick.Blocks} blocks, {writes.Count} bytes inverted; the clean note has rms {rmsClean:0.0000}, the corrupted {rmsBad:0.0000}, correlation {corr:0.000}; starting replayed 900 frames in {secs:0.0} s; the project is {project.Length:N0} bytes");
+
+            // the project: a fresh plugin rebuilds the corrupted game by replaying its history and has the same instruments and machine
+            using var q = Reopen(project);
+            t.Expect(q.Test(HkCorApplied) == 1 && q.Test(45) == 1, $"SMW: after reopening the corruption is {q.Test(HkCorApplied)}, Runaway {q.Test(45)}");
+            t.Expect(q.Test(HkSnapHash) == snap && q.Test(HkAramHash) == aram && q.Test(HkWramHash) == wram && q.Test(HkCorFrames) == 900, "SMW: the game that came back from the project is not the corrupted game that was saved");
+            q.SetParam(PInstrument, pick.Slot);
+            var again = CorNote(q);
+            t.Expect(Math.Abs(Audio.Rms(again, 0, again.Length) - rmsBad) < rmsBad * 0.02, "SMW: the reopened corrupted instrument does not sound as it did");
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
     }
 }

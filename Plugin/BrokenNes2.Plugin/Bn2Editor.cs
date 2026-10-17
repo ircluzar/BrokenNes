@@ -86,7 +86,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
     // the Corruption window: the rows as of the last paint (the wheel and the clicks use them), the first visible row, and the note over the picture
     private bool corOpen, corNoteShown;
-    private int corScroll;
+    private int corScroll, corSeenSelection = -2;
     private IReadOnlyList<CorrRow> corRows = [];
     private string? testPickedPath;
 
@@ -822,6 +822,13 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         corRows = rows;
         corScroll = Math.Clamp(corScroll, 0, Math.Max(0, rows.Count - CorVisible));
         int sel = panel?.Selected ?? -1;
+        if (sel != corSeenSelection)
+        {
+            corSeenSelection = sel;
+            if (sel >= 0 && sel < corScroll) corScroll = sel;
+            else if (sel >= corScroll + CorVisible) corScroll = sel - CorVisible + 1;
+            corScroll = Math.Clamp(corScroll, 0, Math.Max(0, rows.Count - CorVisible));
+        }
         bool busy = panel?.Busy == true;
 
         Txt(dc, "Corruption", R(lx, box.Top + 14, 300, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
@@ -927,7 +934,14 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (emu == null) return;
         string? path = testPickedPath;
         testPickedPath = null;
-        path ??= Win32.ChooseFile(Hwnd, "Open a stockpile", "Stockpiles (*.json)|*.json|All files (*.*)|*.*");
+        if (path == null)
+        {
+            string? start = Prefs.Get("StockpileFolder");
+            if (string.IsNullOrEmpty(start) || !Directory.Exists(start))
+                start = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes", "Stockpiles");     // where the desktop app saves them
+            path = Win32.ChooseFile(Hwnd, "Open a stockpile", "Stockpiles (*.json)|*.json|All files (*.*)|*.*", Directory.Exists(start) ? start : null);
+            if (path != null && Path.GetDirectoryName(path) is { Length: > 0 } folder) Prefs.Set("StockpileFolder", folder);
+        }
         if (path != null) emu.OpenStockpile(path);
     }
 

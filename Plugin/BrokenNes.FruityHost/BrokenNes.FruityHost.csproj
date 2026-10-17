@@ -28,6 +28,7 @@
          the library's own tests use, then drives the plugin's Corruption window with real mouse messages. Test-only; the plugin DLL does not come through here. -->
     <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
     <Compile Include="..\..\Workshop\Corruption\SynthSnesRom.cs" Link="SynthSnesRom.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SpcSnapshot.cs" Link="SpcSnapshot.cs" />
   </ItemGroup>
 
 </Project>
