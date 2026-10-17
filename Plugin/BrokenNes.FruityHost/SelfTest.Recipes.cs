@@ -58,6 +58,7 @@ public sealed unsafe partial class SelfTest
             RecGame(t, rom);
             RecWindow(t, dir, rom);
             RecDamaged(t, rom);
+            RecGenesis(t);
         }
         finally
         {
@@ -294,5 +295,133 @@ public sealed unsafe partial class SelfTest
             var plainNote = RecNote(q);
             t.Expect(q.Test(45) == 1 && q.Test(48) == 1 && q.Test(HkRecipes) == 0 && Audio.Rms(plainNote, 3000, plainNote.Length - 3000) > 0.005, $"recipes (older project): runaway {q.Test(45)}, sampler {q.Test(48)}, recipes {q.Test(HkRecipes)}, the Recipe parameter {q.GetParam(PRecipe)} with no recipes plays the plain instrument at rms {Audio.Rms(plainNote, 3000, plainNote.Length - 3000):0.0000}");
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // the Genesis: the YM2612 and PSG notes of a game, learned and played
+
+    private static string RecGenText(PluginInstance p) => RecText(p, 132);
+
+    private void RecGenesis(T t)
+    {
+        string md = TempGame(".md", MakeMdRom(fm: true, dac: false));        // two FM notes of one patch (261.63 Hz and 392 Hz) and two PSG tones (440 Hz and 331 Hz), keyed at the start
+        try
+        {
+            byte[] project;
+            int fmRecipe = -1, psgRecipe = -1, count;
+            double fmHz, fmFifth, psgHz;
+            long[] hashes;
+            using (var p = SegaGame(md, 4, "MD"))
+            {
+                RenderBlocks(p, 1.0);
+                t.Expect(p.Test(12) == 0 && p.Test(11) > 30, "Genesis recipes: the test game did not run");
+                p.Test(47, 0, 1);
+                t.Expect(p.Test(45) == 1 && p.Test(71) == 3, $"Genesis recipes: Runaway on the Genesis game (runaway {p.Test(45)}, snapshot kind {p.Test(71)})");
+                count = (int)p.Test(130);
+                for (int i = 0; i < count; i++) { long kind = p.Test(131, i); if (kind == 0 && fmRecipe < 0) fmRecipe = i; if (kind == 1 && psgRecipe < 0) psgRecipe = i; }
+                t.Expect(fmRecipe >= 0 && psgRecipe >= 0, $"Genesis recipes: the game's FM note and PSG tone should each be a game voice ({count} recipes, FM {fmRecipe}, PSG {psgRecipe})");
+                if (fmRecipe < 0 || psgRecipe < 0) return;
+                string note = RecText(p, 132);
+                t.Expect(note.StartsWith("Listened for") && note.Contains("game voice"), $"Genesis recipes: the window's note says '{note}'");
+
+                // the picker lists Auto, the game's instruments, then the game voices
+                nint parent = Win32Host.CreateParent();
+                try
+                {
+                    p.ShowEditor(parent);
+                    for (int k = 0; k < 3; k++) Win32Host.Pump(40);
+                    ClickControl(t, p, 90, "Genesis recipes: instrument picker");
+                    long expected = 1 + p.Test(72) + count;
+                    t.Expect(p.Test(31) == 90 && p.Test(32) == expected, $"Genesis recipes: the picker lists {p.Test(32)} entries, expected {expected} (Auto, {p.Test(72)} instruments, {count} game voices)");
+                    var item = Centre(p, 100 + (int)(1 + p.Test(72)) + fmRecipe);
+                    t.Expect(item != null, "Genesis recipes: the picker has no entry for the FM game voice");
+                    if (item != null) Win32Host.Click(p.EditorHandle, item.Value.X, item.Value.Y);
+                    t.Expect(p.GetParam(PRecipe) == fmRecipe + 1 && p.Test(HkRecipeParam) == fmRecipe + 1, $"Genesis recipes: picking the FM game voice set the Recipe parameter to {p.GetParam(PRecipe)} (expected {fmRecipe + 1})");
+                    p.HideEditor();
+                }
+                finally { Win32Host.DestroyParent(parent); }
+
+                // played from FL: the game's own pitch at FL's C5, and FL's pitch on top
+                float[] Note(double key) { var m = new Mixer { SampleRate = 48000 }; var a = Mono(m.Run(p, One(key, 0, 0.5))); return a[(m.Log[0].StartSample + 6000)..(m.Log[0].EndSample - 3000)]; }
+                p.SetParam(PRecipe, fmRecipe + 1);
+                fmHz = Audio.Frequency(Note(60), 48000, 0, 24000 - 1);
+                fmFifth = Audio.Frequency(Note(67), 48000, 0, 24000 - 1);
+                t.Expect(Math.Abs(fmHz / 261.63 - 1) < 0.012 || Math.Abs(fmHz / 392.0 - 1) < 0.012, $"Genesis recipes: the FM game voice at FL's C5 plays {fmHz:0.0} Hz (the game's notes were 261.6 and 392.0 Hz)");
+                t.Expect(Math.Abs(fmFifth / fmHz - 1.4983) < 0.012, $"Genesis recipes: FL's note 67 plays {fmFifth:0.0} Hz against {fmHz:0.0} Hz at 60: a fifth is 1.498");
+                p.SetParam(PRecipe, psgRecipe + 1);
+                psgHz = Audio.Frequency(Note(60), 48000, 0, 24000 - 1);
+                t.Expect(Math.Abs(psgHz / 440.4 - 1) < 0.02 || Math.Abs(psgHz / 330.9 - 1) < 0.02, $"Genesis recipes: the PSG game voice at FL's C5 plays {psgHz:0.0} Hz (the game's tones were 440.4 and 330.9 Hz)");
+
+                // chords on both, no allocation on the audio thread
+                long Chord(int recipe)
+                {
+                    p.SetParam(PRecipe, recipe);
+                    long before = -1, after = -1;
+                    var mx = new Mixer { SampleRate = 48000, AfterBlock = sm => { if (sm >= 48000 * 0.3 && before < 0) before = p.Test(4); if (sm >= 48000 * 1.0 && after < 0) after = p.Test(4); } };
+                    var three = new Scenario { Name = "three", Tempo = 60, LengthBeats = 1.2 };
+                    foreach (var (key, start, length) in new[] { (60.0, 0.0, 0.8), (64.0, 0.1, 0.7), (67.0, 0.2, 0.6) }) three.Notes.Add(new SimNote { StartBeat = start, LengthBeats = length, Key = key, Channel = 0, Velocity = 0.78 });
+                    Mono(mx.Run(p, three));
+                    return after - before;
+                }
+                long aFm = Chord(fmRecipe + 1), aPsg = Chord(psgRecipe + 1);
+                t.Note($"Genesis recipes: bytes allocated on the audio thread while three notes play: FM game voice {aFm:N0}, PSG game voice {aPsg:N0}");
+                t.Expect(aFm == 0 && aPsg == 0, $"Genesis recipes: {aFm:N0} (FM) and {aPsg:N0} (PSG) bytes allocated on the audio thread while three game voices played (must be 0)");
+                p.SetParam(PRecipe, fmRecipe + 1);
+                hashes = Enumerable.Range(0, count).Select(i => p.Test(131, (5 << 16) | i)).ToArray();
+                project = p.SaveState();
+            }
+
+            // the project keeps the game voices
+            t.Expect(FindSection(project, "GNR1") >= 0 && FindSection(project, "OPN1") >= 0, "Genesis recipes: the project lacks its recipe or chip section");
+            using (var q = lib.Create())
+            {
+                q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                q.LoadState(project);
+                WaitForRom(q);
+                t.Expect(q.Test(45) == 1 && q.Test(130) == count && q.GetParam(PRecipe) == fmRecipe + 1, $"Genesis recipes: the reopened project has {q.Test(130)} game voices (expected {count}), Recipe parameter {q.GetParam(PRecipe)}");
+                bool same = Enumerable.Range(0, count).All(i => q.Test(131, (5 << 16) | i) == hashes[i]);
+                t.Expect(same, "Genesis recipes: a game voice came back from the project different from the one that was saved");
+                var m2 = new Mixer { SampleRate = 48000 };
+                var a2 = Mono(m2.Run(q, One(60, 0, 0.5)));
+                double hz2 = Audio.Frequency(a2[(m2.Log[0].StartSample + 6000)..(m2.Log[0].EndSample - 3000)], 48000, 0, 24000 - 1);
+                t.Expect(Math.Abs(hz2 / fmHz - 1) < 0.003, $"Genesis recipes: the reopened FM game voice plays {hz2:0.0} Hz, it played {fmHz:0.0} Hz");
+            }
+            t.Note($"Genesis recipes: the project's recipe section is {SectionLength(project, "GNR1"):N0} bytes (the chip registers next to it: {SectionLength(project, "OPN1"):N0})");
+
+            // damaged sections are survived
+            int at = FindSection(project, "GNR1");
+            int length = BitConverter.ToInt32(project, at + 4);
+            var rnd = new Random(11);
+            int survived = 0;
+            for (int i = 0; i < 20; i++)
+            {
+                var bad = (byte[])project.Clone();
+                for (int k = 0; k < 8; k++) bad[at + 8 + rnd.Next(length)] = (byte)rnd.Next(256);
+                using var q = lib.Create();
+                q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                q.LoadState(bad);
+                WaitForRom(q);
+                if (q.Test(12) == 0 && q.Test(45) == 1 && q.Test(71) == 3) survived++;
+            }
+            t.Expect(survived == 20, $"Genesis recipes (damaged): of 20 projects with damaged recipe sections {survived} loaded without a crash and kept their chips");
+            var lying = (byte[])project.Clone();
+            lying[at + 8 + 1] = 200;
+            using (var q = lib.Create())
+            {
+                q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                q.LoadState(lying);
+                WaitForRom(q);
+                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(130) == 0, $"Genesis recipes (damaged): a recipe count of 200 should drop the recipes and keep the chips (runaway {q.Test(45)}, recipes {q.Test(130)})");
+            }
+            var without = project.Take(at).Concat(project.Skip(at + 8 + length)).ToArray();
+            using (var q = lib.Create())
+            {
+                q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                q.LoadState(without);
+                WaitForRom(q);
+                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(130) == 0, $"Genesis recipes (older project): runaway {q.Test(45)}, snapshot {q.Test(71)}, recipes {q.Test(130)}");
+            }
+        }
+        finally { File.Delete(md); }
     }
 }
