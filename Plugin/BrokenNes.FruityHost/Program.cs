@@ -23,6 +23,9 @@ switch (args[0])
         SelfTest.LogProbe(args[1]);
         return 0;
 
+    case "inject-test":
+        return InjectChecks.Main(args);
+
     case "inject-probe":
         return InjectProbe.Main(args);
 

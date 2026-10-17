@@ -430,7 +430,7 @@ internal sealed class SessionGame : IGame, IGameStems
     public void SetPad(int buttons) { lastPad = buttons; s.SetPad(0, (PadButtons)buttons); }
 
     public SpcSnapshot? CaptureSpc() =>
-        s is SnesSession snes && snes.Apu is NesEmulator.Snes.APU_SFC spc ? new SpcSnapshot(spc.Aram, spc.Dsp.Regs) : null;
+        s is SnesSession snes && snes.Apu is NesEmulator.Snes.APU_SFC spc ? Instruments.SnesPusher.Carry(s, new SpcSnapshot(spc.Aram, spc.Dsp.Regs)) : null;     // (a game with instruments pushed into it hands the Runaway copy the same overrides)
 
     public GbSnapshot? CaptureGb() =>
         s is GbSession gb && gb.Apu is NesEmulator.Gb.APU_GB apu ? GbSnapshot.FromApu(apu) : null;

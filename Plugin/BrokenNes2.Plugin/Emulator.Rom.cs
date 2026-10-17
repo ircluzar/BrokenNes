@@ -208,6 +208,7 @@ public sealed partial class Emulator
                         g.Dispose();
                         g = rebuilt;
                         Volatile.Write(ref stateRestore, 1);
+                        DropInjectRestore("the game was rebuilt by replaying its history, which does not include them");
                     }
                     else ApplyRestore(g, request);
                 }
@@ -253,6 +254,7 @@ public sealed partial class Emulator
     {
         if (Interlocked.Exchange(ref unloadRequested, 0) != 0)
         {
+            NotePushesLost(game, null);
             game?.Dispose();
             game = null;
             Array.Clear(stems);
@@ -264,6 +266,7 @@ public sealed partial class Emulator
             if (fresh.Console != Console) fresh.Dispose();        // the console changed while it loaded: stale
             else
             {
+                NotePushesLost(game, fresh);
                 game?.Dispose();
                 game = fresh;
                 carriedSection = null;                // the running game is the project's state now

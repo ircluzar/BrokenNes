@@ -112,6 +112,17 @@ public interface IInstrumentModelProvider
 
     /// <summary>Writes the edited instrument into the running game's sound memory so the song resumes with it. The result says what persisted and what did not, or why it cannot be done on this console.</summary>
     ActionResult PushIntoGame(int instrument);
+
+    // ---- pushing into the game, part two (round 6, `inject`). Default members, so a model that knows nothing of pushes (the demonstration models) still fits the contract. ----
+
+    /// <summary>Whether this instrument is pushed into the running game right now (the tab enables "Remove from game" for it).</summary>
+    bool IsPushed(int instrument) => false;
+
+    /// <summary>Takes the instrument out of the running game: the bytes the push wrote go back where the game still has them, the overrides are removed. The edit in the frozen copy (what FL's notes play) stays.</summary>
+    ActionResult RemoveFromGame(int instrument) => ActionResult.Refused("this build cannot take a pushed instrument out of the game");
+
+    /// <summary>A standing note the tab shows while it has nothing else to say (a project whose pushed instruments could not be put back, a sound unit that was replaced): null when there is none.</summary>
+    string? Notice => null;
 }
 
 /// <summary>Creates the provider for the game frozen on <paramref name="emulator"/> (called when Instrument Runaway is on); null means this build cannot offer instruments for it.</summary>

@@ -62,6 +62,8 @@ internal sealed class InstrumentsPanel
     /// <summary>The history and seed texts as drawn on the last paint (what the self-test reads).</summary>
     public string ShownHistory { get; private set; } = "";
     public string ShownSeed { get; private set; } = "";
+    /// <summary>The model's standing note as drawn on the last paint (empty when none is shown).</summary>
+    public string ShownNotice { get; private set; } = "";
     public string Status => status;
     public bool StatusOk => statusOk;
     public bool WantsKeys => hex.Focused;
@@ -69,7 +71,7 @@ internal sealed class InstrumentsPanel
     public int Strength => strength;
 
     public long Signature() => (provider?.Version ?? -1) * 7 + list.Scroll * 131 + list.Selected * 17 + fieldBar.Pos * 1009 + blobIndex * 31 + strength * 3 + (selField?.GetHashCode() ?? 0)
-        + hex.Signature() + status.GetHashCode() + (int)drag + message.GetHashCode();
+        + hex.Signature() + status.GetHashCode() + (int)drag + message.GetHashCode() + (provider?.Notice?.GetHashCode() ?? 0);
 
     private void Act(ActionResult r) { status = r.Message; statusOk = r.Ok; }
 
@@ -302,16 +304,22 @@ internal sealed class InstrumentsPanel
         c.Txt(dc, seed.Length > 0 ? "seed " + seed : "", UiCanvas.R(x + 424, y, DetailW - 424, 28), Win32.DT_RIGHT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Dim, c.FontMono);
         // row 3: to the presets, into the game
         y += 32;
-        c.Button(dc, UiIds.SendToPresets, "Send to Presets", UiCanvas.R(x, y, 170, 28));
-        c.Button(dc, UiIds.Push, "Push into the game", UiCanvas.R(x + 176, y, 190, 28), primary: true);
-        c.Txt(dc, nudgeTarget.Length > 0 ? "Nudge: " + nudgeTarget : "Nudge: any field", UiCanvas.R(x + 376, y, DetailW - 376, 28), Win32.DT_LEFT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Faint, c.FontSmall);
+        bool pushed = inst >= 0 && p.IsPushed(inst);
+        c.Button(dc, UiIds.SendToPresets, "Send to Presets", UiCanvas.R(x, y, 128, 28));
+        c.Button(dc, UiIds.Push, pushed ? "Push again" : "Push into the game", UiCanvas.R(x + 134, y, 152, 28), primary: true);
+        c.Button(dc, UiIds.Remove, "Remove from game", UiCanvas.R(x + 292, y, 142, 28), enabled: pushed);
+        c.Txt(dc, nudgeTarget.Length > 0 ? "Nudge: " + nudgeTarget : "Nudge: any field", UiCanvas.R(x + 442, y, DetailW - 442, 28), Win32.DT_LEFT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Faint, c.FontSmall);
     }
 
     private void DrawStatus(nint dc)
     {
-        if (status.Length == 0) return;
-        c.Fill(dc, UiCanvas.R(DetailX, StatusY, 3, 36), statusOk ? UiCanvas.Good : UiCanvas.Warn);
-        c.Txt(dc, status, UiCanvas.R(DetailX + 12, StatusY, DetailW - 12, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, UiCanvas.Text, c.FontSmall);
+        // what the last action said; when nothing has been done yet, the model's standing note (a project's pushed instruments that could not be put back, ...)
+        string? notice = status.Length == 0 ? provider?.Notice : null;
+        ShownNotice = notice ?? "";
+        string text = status.Length > 0 ? status : notice ?? "";
+        if (text.Length == 0) return;
+        c.Fill(dc, UiCanvas.R(DetailX, StatusY, 3, 36), status.Length > 0 && statusOk ? UiCanvas.Good : UiCanvas.Warn);
+        c.Txt(dc, text, UiCanvas.R(DetailX + 12, StatusY, DetailW - 12, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, UiCanvas.Text, c.FontSmall);
     }
 
     // ---------------------------------------------------------------- events
@@ -380,6 +388,7 @@ internal sealed class InstrumentsPanel
             case UiIds.Redo: Act(p.CanRedo(inst) ? p.Redo(inst) : ActionResult.Refused("nothing to redo")); break;
             case UiIds.SendToPresets: SendToPresets(p, inst); break;
             case UiIds.Push: Act(p.PushIntoGame(inst)); break;
+            case UiIds.Remove: Act(p.IsPushed(inst) ? p.RemoveFromGame(inst) : ActionResult.Refused("this instrument is not pushed into the game")); break;
         }
         return false;
     }

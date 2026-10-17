@@ -761,6 +761,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&crpLen, 4);
                 fixed (byte* p = corruptionSection) stream.Write(p, (uint)crpLen);
             }
+            // The instruments pushed into the running game (Instruments/GamePush.cs): the table of overrides and the original bytes, which no machine state holds. Last, so a build that does not know the section stops reading here.
+            if (a.Emulator?.CaptureInjectSection() is { } injectSection)
+            {
+                uint injMagic = Instruments.GamePushFile.Tag;
+                int injLen = injectSection.Length;
+                stream.Write(&injMagic, 4);
+                stream.Write(&injLen, 4);
+                fixed (byte* p = injectSection) stream.Write(p, (uint)injLen);
+            }
             return;
         }
 
@@ -774,6 +783,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         GameStateSection? restoredGame = null;
         string? gameProblem = null;
         CorruptionSection? restoredCorruption = null;
+        byte[]? injectPayload = null;
+        string? injectProblem = null;
         restoring = true;
         try
         {
@@ -841,6 +852,22 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                             fixed (byte* p = crpBuf) if (!stream.Read(p, (uint)slen)) { restoredCorruption = CorruptionSection.Damaged("cut short"); break; }
                             restoredCorruption = CorruptionSection.Read(crpBuf, out _);          // damaged: the editor says so (the game-state section, if any, still brings the machine back)
                         }
+                        else if (tag == Instruments.GamePushFile.Tag)
+                        {
+                            // the instruments pushed into the game: read and checked when the game is built, never trusted (a damaged or newer one is dropped and the editor says so, see Emulator.InjectNote)
+                            if (slen < 11 || slen > Instruments.GamePushFile.MaxStored)
+                            {
+                                injectProblem = "damaged (its length)";
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var injBuf = new byte[slen];
+                                fixed (byte* p = injBuf) if (!stream.Read(p, (uint)slen)) { injectProblem = "cut short"; break; }
+                                Instruments.GamePushFile.Read(injBuf, out _, out injectProblem);     // (the check is made here so that a bad section is refused now, with its reason)
+                                if (injectProblem == null) injectPayload = injBuf;
+                            }
+                        }
                         else if (slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen)) { }
                         else break;                                          // a section nobody here knows, and cannot be skipped
                     }
@@ -859,6 +886,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         else if (restoredOverlay != null) overlayProblem = "the project has instrument edits but no sound memory to apply them to";
         if (emu2 != null && emu2.MemberCount == 1)
         {
+            emu2.SetInjectRestore(injectPayload, injectProblem);
             emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
             emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
         }
@@ -1042,7 +1070,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
-            default: return id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
+            default: return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
 

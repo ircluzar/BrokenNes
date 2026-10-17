@@ -35,7 +35,7 @@
     <Compile Include="..\BrokenNes2.Plugin\SegaSnapshot.cs" Link="SegaSnapshot.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
     <!-- (InstrumentsUi.cs is the glue to the plugin's tabs and emulator: it is tested through the DLL, not linked) -->
-    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs" LinkBase="Instruments" />
+    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="Instruments" />
   </ItemGroup>
 
 </Project>
