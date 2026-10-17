@@ -1147,15 +1147,15 @@ class Synth {
   /** Stops every sound at once. */
   panic(opts = {}) { this._post({ t: 'kill', at: this._at(opts) }); }
 
-  /** 'volume' (output gain; 1 = the chip's own level, default 1.5), 'pitchBend' (cents, all notes), 'tune' (cents, all notes), 'preset' (the default preset). */
-  setParam(name, value) {
+  /** 'volume' (output gain; 1 = the chip's own level, default 1.5), 'pitchBend' (cents, all notes), 'tune' (cents, all notes), 'preset' (the default preset). opts: {time | delay} as for noteOn. */
+  setParam(name, value, opts = {}) {
     switch (name) {
       case 'volume':
         if (!(value >= 0 && value <= 8)) throw new RangeError('volume must be from 0 to 8');
-        this._volume = value; this._post({ t: 'param', name, value }); break;
+        this._volume = value; this._post({ t: 'param', name, value, at: this._at(opts) }); break;
       case 'pitchBend': case 'tune':
         if (!isFinite(value)) throw new RangeError(name + ' must be a number of cents');
-        this._post({ t: 'param', name, value }); break;
+        this._post({ t: 'param', name, value, at: this._at(opts) }); break;
       case 'preset':
         if (!this._table[value]) throw new RangeError(`unknown preset '${value}'`);
         this._default = value; break;
@@ -1181,6 +1181,61 @@ class Synth {
     const o = { rate: opts.rate, loop: opts.loop, note: opts.note, pitched: opts.pitched, start: opts.start, label: opts.label, desc: opts.desc };
     this._table[name] = this._bank.add(name, bytes, o);
     this._post({ t: 'addSample', name, bytes, o });
+  }
+
+  /**
+   * Plays MIDI input through the synth (Web MIDI: Chromium browsers, Firefox with its MIDI permission; asks the user for permission). Note on / off, pitch bend,
+   * program change (picks a preset by number), CC 120 / 123 (all sound / notes off) and, on channel 10, General MIDI drum notes (kick, snare, hats, toms, crash).
+   * opts: {access (a MIDIAccess you already have; otherwise one is requested), input (a MIDIInput id or name; default every input), channel (0..15; default every
+   *        channel), bendRange (semitones, default 2), drums (channel 10 plays drums, default true)}.
+   * Returns a Promise of {close()}. Not testable without a device: the message handling is tested with synthetic messages, the browser's MIDI access is not.
+   */
+  async connectMidi(opts = {}) {
+    if (typeof navigator === 'undefined' || !navigator.requestMIDIAccess && !opts.access) throw fail('unsupported', 'this browser has no Web MIDI');
+    const access = opts.access || await navigator.requestMIDIAccess();
+    const handle = this._midiHandler(opts);
+    const wired = new Map();
+    const attach = (input) => {
+      if (wired.has(input.id) || (opts.input && opts.input !== input.id && opts.input !== input.name)) return;
+      const fn = (e) => handle(e.data);
+      input.addEventListener('midimessage', fn); wired.set(input.id, [input, fn]);
+    };
+    for (const input of access.inputs.values()) attach(input);
+    const onState = () => { for (const input of access.inputs.values()) attach(input); };
+    access.addEventListener('statechange', onState);
+    return { close: () => { access.removeEventListener('statechange', onState); for (const [input, fn] of wired.values()) input.removeEventListener('midimessage', fn); wired.clear(); handle.release(); } };
+  }
+
+  // The MIDI message handler (also used by the tests): returns f(data, time) where data is the raw message bytes and time an optional AudioContext time.
+  _midiHandler(opts = {}) {
+    const held = new Map(), bendRange = opts.bendRange ?? 2, drums = opts.drums !== false;
+    const names = Object.keys(this._table);
+    const DRUM = { 35: 'kick', 36: 'kick', 37: 'hit', 38: 'snare', 39: 'hit', 40: 'snare', 41: 'tom', 42: 'hat', 43: 'tom', 44: 'hat', 45: 'tom', 46: 'openhat', 47: 'tom', 48: 'tom', 49: 'crash', 50: 'tom', 51: 'crash', 57: 'crash' };
+    const f = (data, time) => {
+      if (!data || data.length < 1) return;
+      const status = data[0], type = status & 0xF0, ch = status & 15;
+      if (status >= 0xF0) return;
+      if (opts.channel !== undefined && opts.channel !== 'omni' && ch !== opts.channel) return;
+      const at = time === undefined ? {} : { time };
+      if (type === 0x90 && data[2] > 0 || type === 0x80 || type === 0x90) {
+        const key = ch + ':' + data[1];
+        const old = held.get(key);
+        if (type === 0x90 && data[2] > 0) {
+          if (old) old.off(at);
+          if (ch === 9 && drums) { const name = DRUM[data[1]]; if (name && this._table[name]) this.play(name, { ...at, velocity: data[2] / 127 }); return; }
+          held.set(key, this.noteOn(data[1], data[2] / 127, at));
+        } else if (old) { old.off(at); held.delete(key); }
+      } else if (type === 0xE0) {
+        this.setParam('pitchBend', ((data[2] << 7 | data[1]) - 8192) / 8192 * bendRange * 100, at);
+      } else if (type === 0xC0 && opts.program !== false) {
+        this.setParam('preset', names[data[1] % names.length]);
+      } else if (type === 0xB0 && (data[1] === 123 || data[1] === 120)) {
+        if (data[1] === 120) this.panic(at); else this.allOff(at);
+        held.clear();
+      }
+    };
+    f.release = () => { for (const h of held.values()) h.off(); held.clear(); };
+    return f;
   }
 
   /** Routes the sound somewhere else: synth.connect(myGainNode). By default it is connected to the context's destination. */

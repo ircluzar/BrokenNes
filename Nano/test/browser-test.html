@@ -158,6 +158,26 @@ async function runAll() {
     return compare(data, want).same && compare(data, want).peak > 0.1;
   });
 
+  await test('MIDI messages play notes, bends, drums and program changes (synthetic messages)', async () => {
+    const ctx = new OfflineAudioContext(1, RATE, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1, preset: 'square' });
+    const midi = s._midiHandler({});
+    midi([0x90, 69, 100], 0.02); midi([0x90, 76, 64], 0.02); midi([0xE0, 0, 96], 0.10); midi([0x80, 69, 0], 0.25);
+    midi([0x99, 38, 120], 0.30); midi([0x99, 36, 100], 0.40); midi([0xC0, 8], 0.5); midi([0x90, 60, 90], 0.52); midi([0x90, 60, 0], 0.70); midi([0xB0, 123, 0], 0.80);
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    // the same script by hand
+    const names = Object.keys(s._table);
+    const want = Nano.renderOffline([
+      { time: 0.02, type: 'on', note: 69, velocity: 100 / 127, preset: 'square', id: 1 }, { time: 0.02, type: 'on', note: 76, velocity: 64 / 127, preset: 'square', id: 2 },
+      { time: 0.10, type: 'param', name: 'pitchBend', value: ((96 << 7 | 0) - 8192) / 8192 * 200 }, { time: 0.25, type: 'off', id: 1 },
+      { time: 0.30, type: 'on', note: 38, velocity: 120 / 127, preset: 'snare', id: 3 }, { time: 0.40, type: 'on', note: 36, velocity: 100 / 127, preset: 'kick', id: 4 },
+      { time: 0.52, type: 'on', note: 60, velocity: 90 / 127, preset: names[8], id: 5 }, { time: 0.70, type: 'off', id: 5 }, { time: 0.80, type: 'alloff' },
+    ], 1, { sampleRate: RATE, volume: 1 });
+    const c = compare(data, want);
+    return c.same && c.peak > 0.05 ? { detail: 'note on/off, pitch bend, GM drums on channel 10, program change, all notes off' } : (record('  detail', 'fail', c.diffs + ' differ, first ' + c.first), false);
+  });
+
   await test('connect() routes the node into a page graph (a GainNode at 0.5 halves the samples)', async () => {
     const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
     const s = await Nano.create({ context: ctx, volume: 1, destination: false });

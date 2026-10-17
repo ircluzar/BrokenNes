@@ -106,6 +106,7 @@
       <label>Volume <input id="vol" type="range" min="0" max="3" step="0.05" value="1.5"></label>
       <label>Pitch bend <input id="bend" type="range" min="-200" max="200" step="1" value="0"></label>
       <button id="panic">All notes off</button>
+      <button id="midi">Use a MIDI keyboard</button> <span class="stats" id="midist"></span>
     </div>
     <div id="kb"></div>
     <div class="hint">Play with the mouse or the computer keyboard: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd><kbd>V</kbd><kbd>G</kbd><kbd>B</kbd><kbd>H</kbd><kbd>N</kbd><kbd>J</kbd><kbd>M</kbd> (low row) and <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd><kbd>E</kbd><kbd>R</kbd><kbd>5</kbd><kbd>T</kbd><kbd>6</kbd><kbd>Y</kbd><kbd>7</kbd><kbd>U</kbd><kbd>I</kbd> (high row). Hold two notes on a pulse instrument and they use both pulse channels; a third takes the oldest channel and gives it back.</div>
@@ -200,14 +201,14 @@ function addSamples(synth) {
   let ph = 0; for (let i = 0; i < thump.length; i++) { const t = i / rate; ph += 2 * Math.PI * (45 + 120 * Math.exp(-t * 30)) / rate; thump[i] = Math.sin(ph) * Math.exp(-t * 13) * 0.95 + (i < 60 ? 0.3 : 0); }
   synth.addSample('thump', thump, { sampleRate: rate, rate: 12, note: 36, label: 'DPCM thump', desc: 'a sampled kick, made in this page and encoded to the chip\'s 1-bit DPCM at 20 kHz' });
   const voice = new Float32Array(rate * 0.2);        // a looping buzzy vowel: harmonics under two formant peaks
-  for (let i = 0; i < voice.length; i++) { const t = i / rate; let v = 0; for (let h = 1; h <= 24; h++) { const f = 110 * h; v += Math.sin(2 * Math.PI * f * t) / h * (Math.exp(-((f - 700) / 250) ** 2) + 0.6 * Math.exp(-((f - 1200) / 300) ** 2)); } voice[i] = v * 0.7; }
+  for (let i = 0; i < voice.length; i++) { const t = i / rate; let v = 0; for (let h = 1; h <= 24; h++) { const f = 110 * h; v += Math.sin(2 * Math.PI * f * t) / h * (Math.exp(-(((f - 700) / 250) ** 2)) + 0.6 * Math.exp(-(((f - 1200) / 300) ** 2))); } voice[i] = v * 0.7; }
   synth.addSample('voice', voice, { sampleRate: rate, rate: 15, loop: true, pitched: true, note: 60, label: 'DPCM voice', desc: 'a looped vowel-like sample, hold a key; the note chooses the nearest of the chip\'s 16 sample rates' });
 }
 
 // ---- presets ----
 function buildPresets() {
   const root = $('presets'); root.textContent = '';
-  for (const p of Nano.presets) {
+  for (const p of (synth ? synth.presets : Nano.presets)) {
     const b = document.createElement('button');
     b.style.borderLeftColor = KIND_COLOR[p.kind]; b.dataset.name = p.name;
     b.innerHTML = `${p.label}<small>${p.kind}</small>`;
@@ -220,7 +221,7 @@ function buildPresets() {
 function setPreset(name) {
   preset = name; if (synth) synth.setParam('preset', name);
   document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('on', b.dataset.name === name));
-  const p = Nano.presets.find(x => x.name === name);
+  const p = (synth ? synth.presets : Nano.presets).find(x => x.name === name);
   $('desc').textContent = p.desc;
 }
 buildPresets();
@@ -275,6 +276,13 @@ $('octup').onclick = () => { octave = Math.min(7, octave + 1); $('octv').textCon
 $('vol').oninput = (e) => synth && synth.setParam('volume', Number(e.target.value));
 $('bend').oninput = (e) => synth && synth.setParam('pitchBend', Number(e.target.value));
 $('bend').onchange = (e) => { e.target.value = 0; synth && synth.setParam('pitchBend', 0); };
+let midiConn = null;
+$('midi').onclick = async () => {
+  if (!synth) return;
+  if (midiConn) { midiConn.close(); midiConn = null; $('midi').classList.remove('on'); $('midist').textContent = ''; return; }
+  try { midiConn = await synth.connectMidi(); $('midi').classList.add('on'); $('midist').textContent = 'listening on every MIDI input (channel 10 plays drums)'; }
+  catch (e) { $('midist').textContent = e.name + ': ' + e.message; }
+};
 $('panic').onclick = () => { held.clear(); document.querySelectorAll('.key.down').forEach(k => k.classList.remove('down')); synth && synth.panic(); };
 buildKeys();
 
@@ -378,7 +386,7 @@ $('snippet').textContent = `<script src="nano.js"><\/script>
 <\/script>`;
 function setupStats() {
   const ctx = synth.context;
-  const upd = () => { $('stats').textContent = `AudioContext ${ctx.state}, ${ctx.sampleRate} Hz, base latency ${(ctx.baseLatency * 1000).toFixed(1)} ms, ${Nano.presets.length} presets, Nano ${Nano.version}`; };
+  const upd = () => { $('stats').textContent = `AudioContext ${ctx.state}, ${ctx.sampleRate} Hz, base latency ${(ctx.baseLatency * 1000).toFixed(1)} ms, ${synth.presets.length} presets, Nano ${Nano.version}`; };
   upd(); setInterval(upd, 1000);
 }
 </script>
