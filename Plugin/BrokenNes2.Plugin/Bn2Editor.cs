@@ -9,10 +9,11 @@
 //   About  a modal window about how the plugin was made; it opens by itself the first time the plugin is opened
 using System.Runtime.InteropServices;
 using BrokenNes.Fruity;
+using BrokenNes2.Ui;
 
 namespace BrokenNes2;
 
-public sealed unsafe class Bn2Editor : IFruityEditor
+public sealed unsafe partial class Bn2Editor : IFruityEditor
 {
     // ---- control ids (also what the test hooks address) ----
     public const int IdEmulator = 1, IdModeDirect = 2, IdModeRom = 3, IdChip = 4, IdGame = 7, IdChannel = 9;
@@ -33,7 +34,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private const int RecipeValue = 1000;
 
     private const string ClassName = "BrokenNes2Editor";
-    public const int Width = 904, Height = 664;
+    public const int Height = UiLayout.Height;      // the width depends on the tab: see Ui/Bn2Editor.Tabs.cs (Width, 904 on the Emulator tab)
     private const int Margin = 16, HeaderH = 52;
     private const int ScreenX = Margin, ScreenY = 64, ScreenW = 520, ScreenH = 488;
     private const int ColX = 556, ColW = 332;
@@ -42,7 +43,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 600, HowH = 246, PlogueH = 150;
     private const int CorW = 800, CorH = 616, CorVisible = 5, CorRowH = 50, CorNoteSeconds = 12;
 
-    private enum Kind { Button, Dropdown, Slider, Item, Cell }
+    private enum Kind { Button, Dropdown, Slider, Item, Cell, Ui }
     private readonly record struct Hit(int Id, RECT Rect, Kind Kind);
     private enum BlockKind { Heading, Para, Bullet, Lead, Link }
     private readonly record struct Block(BlockKind Kind, string Text);
@@ -110,6 +111,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         fontLead = Win32.MakeFont("Segoe UI", 18, Win32.FW_SEMIBOLD);
         fontLink = Win32.MakeFont("Segoe UI", 15, Win32.FW_SEMIBOLD, underline: true);
         aboutOpen = About.ClaimFirstShowing();      // the first time the plugin opens on this machine, the About window opens by itself
+        UiBoot.Run();                               // the Instruments and Presets tabs' models register (Ui/UiBoot.cs)
         Win32.SetTimer(Hwnd, TimerId, 30, 0);
     }
 
@@ -119,6 +121,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Win32.SetWindowLongPtr(Hwnd, Win32.GWLP_USERDATA, 0);
         Win32.DestroyWindow(Hwnd);
         self.Free();
+        UiDispose();
         plugin.Emulator?.ClearPad(this);
         foreach (var f in new[] { fontTitle, fontBig, fontSection, fontLabel, fontSmall, fontLead, fontLink }) Win32.DeleteObject(f);
         foreach (var b in brushes.Values) Win32.DeleteObject(b);
@@ -302,9 +305,13 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         DrawHeader(dc, emu);
         DrawScreen(dc, emu);
         DrawStatus(dc, a, emu);
+        DrawTabStrip(dc);                                   // tabs (Ui/Bn2Editor.Tabs.cs)
+
+        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true;
+        if (tab == 0) {   // the Emulator tab: today's right column, untouched
 
         // EMULATOR
-        int x = ColX, y = 64, w = ColW;
+        int x = ColX, y = 64 + (UiMutate.Has(UiMutate.EmulatorShift) ? 1 : 0), w = ColW;
         Section(dc, "EMULATOR", "shared by every instance on it", x, y, w);
         y += 30;
         int er = plugin.Get(P.Emulator);
@@ -325,7 +332,6 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         y += RowPitch + 4;
 
         // channel strip (or, in Instrument Runaway, a banner)
-        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true;
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
@@ -409,6 +415,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Txt(dc, PatchBank(mode) == 1 ? "a sine on FM voice 3: the triangle's voice (the patch is for the pulses)" : "a sine on FM channel 3 (a designed instrument plays it too: the chip has one custom instrument)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
         else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
+        } else DrawTabContent(dc, emu);                     // the Instruments and Presets tabs (Ui/Bn2Editor.Tabs.cs)
 
         // Inputs and Instrument Runaway, bottom left
         int by = Height - Margin - 30;
@@ -423,7 +430,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         string runHint = frozen ? (sampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
         Txt(dc, runHint, R(runBtn.Right + 8, by, ColX - runBtn.Right - 16, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
-        // Reset Console, bottom right: starts this emulator over for every instance on it
+        // Reset Console, bottom right: starts this emulator over for every instance on it (the Emulator tab's; the other tabs leave it out)
+        if (tab == 0) {
         var reset = R(Width - Margin - 150, Height - Margin - 30, 150, 30);
         bool flash = Environment.TickCount64 < resetFlashUntil;
         if (emu != null)
@@ -432,6 +440,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Button(dc, IdReset, flash ? "Reset done" : "Reset Console", reset, primary: flash);
         }
         else Box(dc, reset, Panel, Line, 5);
+        }
 
         if (openId != 0) DrawList(dc);
         if (aboutOpen) DrawAbout(dc);
@@ -1010,7 +1019,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         }
 
         NesEmulator.Systems.PadButtons bits = 0;
-        if (Inputs.KeyboardEnabled && Inputs.IsForeground(Hwnd)) bits |= Inputs.PollKeyboard();
+        if (Inputs.KeyboardEnabled && Inputs.IsForeground(Hwnd) && !UiWantsKeys) bits |= Inputs.PollKeyboard();     // typing in a tab's text field does not press the game's buttons
         if (Inputs.GamepadEnabled) bits |= Inputs.PollGamepad(out padConnected); else padConnected = false;
         if (heldPad >= 0) bits |= Inputs.Buttons[heldPad];
         liveBits = (int)Inputs.Human(bits);                 // the d-pad protection, for the three human sources at once
@@ -1157,6 +1166,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
+        Mix(UiSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1203,7 +1213,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (memDc == 0)
         {
             memDc = Win32.CreateCompatibleDC(hdc);
-            memBmp = Win32.CreateCompatibleBitmap(hdc, Width, Height);
+            memBmp = Win32.CreateCompatibleBitmap(hdc, UiLayout.WideWidth, Height);      // big enough for every tab: the window is resized without making a new one
             memOld = Win32.SelectObject(memDc, memBmp);
         }
         Draw(memDc);
@@ -1387,6 +1397,9 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 Win32.SetCapture(Hwnd);
                 DragSlider(h, mouseX);
                 break;
+            case Kind.Ui:
+                UiDown(h, mouseX, mouseY);
+                break;
         }
     }
 
@@ -1419,6 +1432,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     {
         int x = (short)(lParam & 0xFFFF), y = (short)((lParam >> 16) & 0xFFFF);
         mouseX = x; mouseY = y;
+        uiShift = (wParam & 4) != 0; uiDbl = msg == Win32.WM_LBUTTONDBLCLK;     // for the tabs (Ui/Bn2Editor.Tabs.cs)
         switch (msg)
         {
             case Win32.WM_MOUSEMOVE:
@@ -1430,6 +1444,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                     trackingLeave = true;
                 }
                 var h = HitAt(x, y);
+                if (active >= UiIds.Tab) { UiMove(x, y); break; }                     // dragging one of the tabs' controls
                 if (active != 0) { var s = hits.FirstOrDefault(k => k.Id == active); if (s.Id != 0) DragSlider(s, x); break; }
                 if (openId != 0) { openHover = h is { Kind: Kind.Item } it ? it.Id - IdItem : -1; hot = 0; }
                 else hot = h?.Id ?? 0;
@@ -1451,6 +1466,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                     if (h is { Kind: Kind.Item } it) Pick(it.Id - IdItem); else CloseList();
                     return;
                 }
+                if (h is not { Kind: Kind.Ui }) UiBlur();                              // a press outside the tabs' controls: text fields let go of the keyboard
                 if (h is { } hit)
                 {
                     if (msg == Win32.WM_LBUTTONDBLCLK && hit.Kind == Kind.Slider)
@@ -1464,6 +1480,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 break;
             }
             case Win32.WM_LBUTTONUP:
+                UiUp();
                 if (active != 0) { active = 0; Win32.ReleaseCapture(); }
                 if (heldPad >= 0) { heldPad = -1; Win32.ReleaseCapture(); }
                 break;
@@ -1495,6 +1512,14 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 {
                     int rows = Math.Min(openItems.Length, MaxRows);
                     openScroll = Math.Clamp(openScroll - delta, 0, Math.Max(0, openItems.Length - rows));
+                    break;
+                }
+                if (tab != 0)                                                          // the Instruments and Presets tabs scroll their own lists
+                {
+                    var wp = new POINT { X = x, Y = y };                               // WM_MOUSEWHEEL carries the cursor in SCREEN coordinates
+                    UiNative.ScreenToClient(Hwnd, &wp);
+                    mouseX = wp.X; mouseY = wp.Y;
+                    UiWheel(delta, mouseX, mouseY);
                     break;
                 }
                 // the wheel arrives at screen coordinates: use the last known mouse position
@@ -1546,6 +1571,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     {
         switch (n)
         {
+            case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)
@@ -1609,8 +1635,14 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                         ed.OnMouse(msg, wParam, lParam);
                         return 0;
                     case Win32.WM_CAPTURECHANGED:
-                        ed.active = 0; ed.heldPad = -1;
+                        ed.active = 0; ed.heldPad = -1; ed.UiUp();
                         return 0;
+                    case UiNative.WM_CHAR:                                // typed text, for the tabs' text and hex fields
+                        if (ed.UiChar((char)wParam)) return 0;
+                        break;
+                    case Win32.WM_KEYDOWN:
+                        if (ed.UiKey((int)wParam)) return 0;
+                        break;
                     case Win32.WM_SETCURSOR:
                         if ((int)(lParam & 0xFFFF) == 1 /* HTCLIENT */)
                         {

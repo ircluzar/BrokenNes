@@ -21,6 +21,8 @@ internal static unsafe partial class Win32Host
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool EnumChildWindows(nint parent, delegate* unmanaged<nint, nint, int> proc, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool ClientToScreen(nint h, POINT* p);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool GetClientRect(nint h, RECT* r);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool PrintWindow(nint h, nint hdc, uint flags);
     [LibraryImport("user32.dll")] private static partial nint GetDC(nint h);
@@ -88,11 +90,45 @@ internal static unsafe partial class Win32Host
         SendMessage(hwnd, WM_LBUTTONUP_, 0, Pt(x1, y1));
     }
 
+    /// <summary>A typed character, as WM_CHAR delivers it to the window with the keyboard focus.</summary>
+    public static void Char(nint hwnd, char ch) => SendMessage(hwnd, 0x0102 /* WM_CHAR */, ch, 0);
+    public static void Text(nint hwnd, string s) { foreach (var ch in s) Char(hwnd, ch); }
+    /// <summary>A virtual key going down (WM_KEYDOWN): arrows, Home, End, Delete.</summary>
+    public static void Key(nint hwnd, int vk) => SendMessage(hwnd, 0x0100 /* WM_KEYDOWN */, vk, 0);
+    public const int VkLeft = 0x25, VkUp = 0x26, VkRight = 0x27, VkDown = 0x28, VkHome = 0x24, VkEnd = 0x23, VkDelete = 0x2E;
+
+    /// <summary>A click with Shift held (the editor's steppers step by ten).</summary>
+    public static void ShiftClick(nint hwnd, int x, int y)
+    {
+        MouseMove(hwnd, x, y);
+        SendMessage(hwnd, WM_LBUTTONDOWN_, 1 | 4 /* MK_LBUTTON | MK_SHIFT */, Pt(x, y));
+        SendMessage(hwnd, WM_LBUTTONUP_, 0, Pt(x, y));
+    }
+
+    /// <summary>The size of a window's client area.</summary>
+    public static (int W, int H) ClientSize(nint h) { RECT r; GetClientRect(h, &r); return (r.Right - r.Left, r.Bottom - r.Top); }
+
+    /// <summary>What FL does when a plugin says its editor was resized (FHD_EditorResized): the plugin's frame is fitted around the editor window again.</summary>
+    public static void FitFrame(nint frame, nint editor)
+    {
+        var (w, h) = ClientSize(editor);
+        SetWindowPos(frame, 0, 0, 0, w + 16, h + 39, 0x4 | 0x2 /* SWP_NOZORDER | SWP_NOMOVE */);
+    }
+
     /// <summary>One wheel notch per unit (positive = away from the user); at (x, y) when given.</summary>
     public static void Wheel(nint hwnd, int notches, int x = -1, int y = -1)
     {
         if (x >= 0) MouseMove(hwnd, x, y);
         SendMessage(hwnd, WM_MOUSEWHEEL_, (nint)((uint)(ushort)(short)(notches * 120) << 16), 0);
+    }
+
+    /// <summary>The wheel over the point (x, y) of the window the way Windows delivers it: the message carries the cursor's position in SCREEN coordinates (the tabs convert it).</summary>
+    public static void WheelAt(nint hwnd, int notches, int x, int y)
+    {
+        MouseMove(hwnd, x, y);
+        POINT pt = new() { X = x, Y = y };
+        ClientToScreen(hwnd, &pt);
+        SendMessage(hwnd, WM_MOUSEWHEEL_, (nint)((uint)(ushort)(short)(notches * 120) << 16), Pt(pt.X, pt.Y));
     }
 
     /// <summary>Resizes the parent frame to hold its child and saves what the window shows as a 32-bit BMP.</summary>
