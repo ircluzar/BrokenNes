@@ -302,7 +302,7 @@ function renderOffline(events, seconds, opts = {}) {
   const total = Math.round(seconds * sr);
   const out = new Float32Array(total);
   for (let o = 0; o < total; o += 128) eng.render(out, o, Math.min(128, total - o));
-  if (opts.trace) out.trace = eng.trace;
+  if (opts.trace) { out.trace = eng.trace; out.log = eng.log; out.logPresets = eng.logPresets; }
   return out;
 }
 

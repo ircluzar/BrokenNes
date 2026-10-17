@@ -115,6 +115,8 @@ class Engine {
     if (opts.presets) for (const k of Object.keys(opts.presets)) this.presets[k] = normalizePreset(opts.presets[k], k);
     this.voices = new Map();           // id -> Voice (alive ones)
     this.trace = opts.trace ? [] : null;   // [[0, reg, value], [1, samples]]: what the chip was asked to do, for tools/NanoParity
+    this.log = opts.trace ? [] : null;     // the events scheduled, in order, with the presets they used (tools/NanoParity runs its C# reference on them)
+    this.logPresets = {};
     this.peak = 0;
     this.stats = { stolen: 0, noteOns: 0 };
   }
@@ -130,6 +132,12 @@ class Engine {
   // frame: the engine time to apply it at (an earlier time means now)
   schedule(frame, ev) {
     ev.frame = frame; ev.seq = this.seq++;
+    if (this.log && !ev.internal) {   // the script in the form tools/NanoParity reads (presets by name)
+      const { seq, preset, ...rest } = ev;
+      const entry = { ...rest };
+      if (preset) { entry.preset = preset.name; this.logPresets[preset.name] = preset; }
+      this.log.push(entry);
+    }
     const evs = this.events;
     let i = evs.length;
     while (i > 0 && evs[i - 1].frame > frame) i--;
@@ -191,7 +199,7 @@ class Engine {
     if (st.length > MAX_STACK) { const old = st.shift(); this.voices.delete(old.id); }
     this.voices.set(v.id, v);
     this.applyChannel(ch);
-    if (o.duration > 0) this.noteOff(this.frame + Math.round(o.duration * this.sampleRate), v.id);
+    if (o.duration > 0) this.schedule(this.frame + Math.round(o.duration * this.sampleRate), { t: 'off', ref: v.id, internal: true });
   }
 
   // Which channel a new voice of this kind takes: a free one; else one whose voice is in its release tail (the longest gone); else the one whose
