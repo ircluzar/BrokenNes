@@ -30,6 +30,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         public int Dsp = -1;          // the S-DSP voice playing it in sampler mode
         public int Slot = -1;         // the slot of the Sega sampler playing it (see SegaSnapshot.SlotBase), -1 none
         public int Instr = -1;        // the instrument it was started on
+        public SpcRecipe? Recipe;     // the recipe it was started on (SNES Runaway), null for a plain instrument
         public bool Silenced;         // it lost its slot to a newer note: silent until released
     }
 
@@ -125,7 +126,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         segaFor = null;
         Array.Clear(dspUsed);
         Array.Clear(slotUsed);
-        foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; }
+        foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; v.Recipe = null; }
     }
 
     /// <summary>Makes the emulator-level parameter values show what the emulator it sits on has (the emulator owns them).</summary>
@@ -346,33 +347,39 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
     {
         int instrument = samplerFor?.Resolve(Get(P.Instrument)) ?? Get(P.Instrument);
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
+        // a recipe (Recipe parameter 1 and up) plays what the game's driver did with an instrument; a recipe plays whatever sample the game keyed, so the sample table's check does not apply to it
+        SpcRecipe? recipe = null;
+        int rp = Get(P.Recipe);
+        var recipes = samplerFor?.Recipes;
+        if (rp > 0 && recipes != null && rp <= recipes.Length) recipe = recipes[rp - 1];
         foreach (var v in voices)
         {
             if (v.Finished) continue;
             if (v.Released)
             {
-                if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; }
+                if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; v.Recipe = null; }
                 v.Finished = true;
                 continue;
             }
             ref var fl = ref v.Params->FinalLevels;
             double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
-            int pitch = SnesSampler.PitchFor(cents);
             int level = Math.Clamp((int)Math.Round(127 * fl.Vol), 0, 127);
             if (v.Dsp < 0)
             {
-                if (!hasSample) continue;
+                if (recipe == null && !hasSample) continue;
                 int dv = Array.IndexOf(dspUsed, false);
                 if (dv < 0)
                 {
-                    foreach (var other in voices) if (other != v && other.Dsp >= 0) { dv = other.Dsp; other.Dsp = -1; break; }   // the oldest note gives way
+                    foreach (var other in voices) if (other != v && other.Dsp >= 0) { dv = other.Dsp; other.Dsp = -1; other.Recipe = null; break; }   // the oldest note gives way
                     if (dv < 0) continue;
                 }
                 v.Dsp = dv;
                 dspUsed[dv] = true;
-                s.NoteOn(dv, instrument, pitch, level, level);
+                v.Recipe = recipe;
+                if (recipe != null) s.NoteOnRecipe(dv, recipe, SnesSampler.PitchFor(cents, recipe.Pitch), level);
+                else { int pitch = SnesSampler.PitchFor(cents); s.NoteOn(dv, instrument, pitch, level, level); }
             }
-            else s.Update(v.Dsp, pitch, level, level);
+            else s.Update(v.Dsp, v.Recipe != null ? SnesSampler.PitchFor(cents, v.Recipe.Pitch) : SnesSampler.PitchFor(cents), level, level);
         }
     }
 
@@ -732,6 +739,16 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 stream.Write(&spcMagic, 4);
                 stream.Write(&snapLen, 4);
                 fixed (byte* p = snapBytes) stream.Write(p, (uint)snapLen);
+                // what the game's driver was heard doing with its instruments (recipes), right after the memory it belongs to; a build that does not know the tag skips it
+                if (snap.Recipes.Length > 0)
+                {
+                    uint sprMagic = SpcRecipe.Tag;
+                    var sprBytes = SpcRecipe.Write(snap.Recipes);
+                    int sprLen = sprBytes.Length;
+                    stream.Write(&sprMagic, 4);
+                    stream.Write(&sprLen, 4);
+                    fixed (byte* p = sprBytes) stream.Write(p, (uint)sprLen);
+                }
             }
             // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
@@ -757,6 +774,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         string? romPath = null;
         int hintEmu = 0, hintCh = -1;
         SpcSnapshot? restoredSnapshot = null;
+        SpcRecipe[]? restoredRecipes = null;
         GbSnapshot? restoredGb = null;
         SegaSnapshot? restoredSega = null;
         GameStateSection? restoredGame = null;
@@ -791,6 +809,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                         {
                             var snapBuf = new byte[slen];
                             fixed (byte* p = snapBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSnapshot = SpcSnapshot.FromBytes(snapBuf);
+                        }
+                        else if (tag == SpcRecipe.Tag && slen is >= 2 and <= SpcRecipe.MaxSection)
+                        {
+                            // read and checked, never trusted: a stream that is not a recipe list is dropped (the memory it belonged to still plays plain instruments)
+                            var sprBuf = new byte[slen];
+                            fixed (byte* p = sprBuf) if (!stream.Read(p, (uint)slen)) break; else restoredRecipes = SpcRecipe.Read(sprBuf);
                         }
                         else if (tag == GbMagic && slen == GbSnapshot.RegCount + GbSnapshot.WaveSize + 1)
                         {
@@ -832,6 +856,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
+        if (restoredSnapshot != null && restoredRecipes != null) { restoredSnapshot.Recipes = restoredRecipes; restoredSnapshot.ListenNote = "Game voices from the project: " + restoredRecipes.Length; }
         if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
     }
 

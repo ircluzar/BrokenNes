@@ -252,6 +252,7 @@ internal sealed class SessionGame : IGame, IGameStems
         if (dac != null) dacRecorder = dac;
         HostSampleRate = hostRate;
         HookDacRecorder();
+        HookSpcLog();
         Farm = new NesEmulator.Corruption.ConsoleFarm();
         Farm.Attach(s, pristineRom, fileName, new NesEmulator.Corruption.MachineSpec { Cpu = CoreCatalog.Default(kind, CoreSlot.Cpu), Ppu = CoreCatalog.Default(kind, CoreSlot.Ppu), Apu = ApuFor(kind, chip), Note = s.Description }, coresAreOwn: true);
         if (anchor != null)
@@ -281,6 +282,24 @@ internal sealed class SessionGame : IGame, IGameStems
         dacHooked = unit;
     }
 
+    // ---- Instrument Runaway on a SNES game: every write the SPC700 makes to the S-DSP, kept so the recipes of what its driver does can be learned (see SpcRecipe.cs) ----
+    private SpcWriteLog? spcLog;
+    private NesEmulator.Snes.APU_SFC? spcHooked;
+    /// <summary>How many seconds of the driver's chip writes Instrument Runaway turns into recipes when it starts (the last ones: a game that has played for longer is listened to for its last <see cref="ListenWindowSeconds"/>).</summary>
+    public const double ListenWindowSeconds = SpcRecipes.ListenWindowSeconds;
+
+    /// <summary>Taps the SPC700's DSP writes (a unit that was swapped for another, or parked and swapped back, gets tapped when it first runs). The ring is made once, with the game.</summary>
+    private void HookSpcLog()
+    {
+        if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc || ReferenceEquals(spc, spcHooked)) return;
+        if (spcHooked != null) spcHooked.DspWriteTap = null;
+        spcLog ??= new SpcWriteLog();
+        spcLog.Attach(spc);                                  // the log starts from this unit's registers as they are now
+        spcHooked = spc;
+    }
+
+    internal SpcWriteLog? SpcLog => spcLog;
+
     public int Console { get; }
     public int ChipIndex { get; set; }
     public NesAudioMachine? Nes => null;
@@ -297,6 +316,7 @@ internal sealed class SessionGame : IGame, IGameStems
         try
         {
             HookDacRecorder();
+            HookSpcLog();
             Farm?.OnFrame((ushort)lastPad, 0);          // what the game was handed for this frame (allocation-free), so its place can be described
             s.RunFrame();
             frames++;
@@ -429,8 +449,16 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public void SetPad(int buttons) { lastPad = buttons; s.SetPad(0, (PadButtons)buttons); }
 
-    public SpcSnapshot? CaptureSpc() =>
-        s is SnesSession snes && snes.Apu is NesEmulator.Snes.APU_SFC spc ? new SpcSnapshot(spc.Aram, spc.Dsp.Regs) : null;
+    public SpcSnapshot? CaptureSpc()
+    {
+        if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc) return null;
+        var snap = new SpcSnapshot(spc.Aram, spc.Dsp.Regs);
+        if (spcLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return snap; }
+        var recipes = SpcRecipes.Derive(spcLog, spc.SamplesProduced, (long)(ListenWindowSeconds * 32000), out var stats);
+        snap.Recipes = recipes;
+        snap.ListenNote = recipes.Length > 0 ? "Listened to the game: " + stats : stats.KeyOns == 0 ? "The game played nothing in the time it was listened to: let it play (the Corruption window can wait before it freezes), then switch Instrument Runaway on." : "Listened to the game, but no voice could be learned: " + stats;
+        return snap;
+    }
 
     public GbSnapshot? CaptureGb() =>
         s is GbSession gb && gb.Apu is NesEmulator.Gb.APU_GB apu ? GbSnapshot.FromApu(apu) : null;
@@ -497,6 +525,7 @@ internal sealed class SessionGame : IGame, IGameStems
     {
         s.LoadState(state);                       // throws InvalidDataException and leaves the machine as it was
         frames = framesRun;
+        if (spcHooked != null) spcLog?.Begin(spcHooked.Dsp.Regs);         // the chip writes it holds are those of another machine: it starts again from the registers of this one
         Farm?.Poison("the project's saved machine was put back");         // what the farm recorded is the game since power-on, which is not how this machine got here
         // the sound that was queued before is not the sound of the restored machine: every resampler starts clean at the rates it runs at
         resampler.Clear();

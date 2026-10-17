@@ -20,10 +20,11 @@ internal static class SynthSnesRom
     /// <summary>The one-note instrument's BRR block: range 9, filter 0, loop + end; sixteen samples (eight high, eight low).</summary>
     public static readonly byte[] SampleBlock = { 0x93, 0x77, 0x77, 0x77, 0x77, 0x99, 0x99, 0x99, 0x99 };
 
-    public static byte[] Build()
+    /// <summary>The game. <paramref name="vibrato"/> builds the round-6 variant whose sound driver bends the voice's pitch back and forth (every 9 ms between $1000 and $1100) and fades its volume over about 1.4 s: a driver doing something with its instrument over time, for the Instrument Runaway recipe tests.</summary>
+    public static byte[] Build(bool vibrato = false)
     {
         var rom = new byte[0x8000];
-        BuildPayload().CopyTo(rom, PayloadRom);
+        BuildPayload(vibrato).CopyTo(rom, PayloadRom);
         var cpu = Cpu();
         if (cpu.Length > PayloadRom - 0x10) throw new InvalidOperationException("the 65816 program overlaps the payload");
         cpu.CopyTo(rom, 0);
@@ -49,7 +50,7 @@ internal static class SynthSnesRom
 
     // ---------------------------------------------------------------------------------------------------- the SPC700 side
 
-    private static byte[] BuildPayload()
+    private static byte[] BuildPayload(bool vibrato = false)
     {
         var p = new byte[PayloadLength];
         var code = new List<byte>();
@@ -66,11 +67,30 @@ internal static class SynthSnesRom
             (0x4C, 0x01),                   // key on voice 0
         };
         foreach (var (reg, val) in dsp) { code.AddRange(new byte[] { 0x8F, reg, 0xF2, 0x8F, val, 0xF3 }); }
-        // loop: MOV A,$F4 / OR A,$F5 / BEQ +2 / INCW $12 / BRA loop
-        int loop = code.Count;
-        code.AddRange(new byte[] { 0xE4, 0xF4, 0x04, 0xF5, 0xF0, 0x02, 0x3A, (byte)AramCounter });
-        int back = loop - (code.Count + 2);
-        code.AddRange(new byte[] { 0x2F, (byte)back });
+        if (vibrato)
+        {
+            // MOV $30,#$50 ; loop: pitch high byte $10, delay, $11, delay ; fade the volume one step if it is not zero ; BRA loop ; delay: Y x (256 x DEC A), about 9 ms
+            code.AddRange(new byte[] { 0x8F, 0x50, 0x30 });
+            int vloop = code.Count;
+            int delayAt = AramProgram + 160;                                // the delay routine sits at a fixed place after the loop (the loop is under 160 bytes)
+            byte[] step(byte hi) => new byte[] { 0x8F, 0x03, 0xF2, 0x8F, hi, 0xF3, 0x3F, Lo(delayAt), Hi(delayAt) };
+            code.AddRange(step(0x10)); code.AddRange(step(0x11));
+            // MOV A,$30 / BEQ skip (13 bytes) / DEC A / MOV $30,A / voice 0 volume left and right = A
+            code.AddRange(new byte[] { 0xE4, 0x30, 0xF0, 0x0D, 0x9C, 0xC4, 0x30, 0x8F, 0x00, 0xF2, 0xC4, 0xF3, 0x8F, 0x01, 0xF2, 0xC4, 0xF3 });
+            int back2 = vloop - (code.Count + 2);
+            code.AddRange(new byte[] { 0x2F, (byte)back2 });
+            if (code.Count > 160) throw new InvalidOperationException("the vibrato loop overlaps its delay routine");
+            while (code.Count < 160) code.Add(0x00);
+            code.AddRange(new byte[] { 0x8D, 0x06, 0xE8, 0x00, 0x9C, 0xD0, 0xFD, 0xDC, 0xD0, 0xF8, 0x6F });   // delay: MOV Y,#6 ; MOV A,#0 ; DEC A ; BNE -3 ; DEC Y ; BNE -8 ; RET
+        }
+        else
+        {
+            // loop: MOV A,$F4 / OR A,$F5 / BEQ +2 / INCW $12 / BRA loop
+            int loop = code.Count;
+            code.AddRange(new byte[] { 0xE4, 0xF4, 0x04, 0xF5, 0xF0, 0x02, 0x3A, (byte)AramCounter });
+            int back = loop - (code.Count + 2);
+            code.AddRange(new byte[] { 0x2F, (byte)back });
+        }
         code.CopyTo(p, 0);
         // sample directory entry 0: start and loop at $0500
         p[AramDirectory - AramProgram + 0] = Lo(AramSample); p[AramDirectory - AramProgram + 1] = Hi(AramSample);

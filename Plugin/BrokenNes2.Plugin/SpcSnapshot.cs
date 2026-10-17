@@ -16,6 +16,11 @@ public sealed class SpcSnapshot
         Array.Copy(dsp, Dsp, Math.Min(dsp.Length, DspSize));
     }
 
+    /// <summary>What the game's sound driver was heard doing with its instruments just before the capture (see <see cref="SpcRecipe"/>); empty when nothing was listened to. Set once, by the capture, before the snapshot is handed out.</summary>
+    public SpcRecipe[] Recipes { get; set; } = [];
+    /// <summary>A line for the window: what the listening found (or why it found nothing).</summary>
+    public string ListenNote { get; set; } = "";
+
     /// <summary>Where the game's sample directory is (the DSP's DIR register is the page): 4 bytes per sample, start and loop address.</summary>
     public int DirectoryBase => Dsp[0x5D] * 0x100;
 

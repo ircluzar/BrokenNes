@@ -29,6 +29,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdCor = 500, IdCorClose = 501, IdCorOpen = 502, IdCorStart = 503, IdCorCancel = 504, IdCorRemove = 505, IdCorFreeze = 506;
     public const int IdCorRow = 520;   // + visible row 0..CorVisible-1 of the Corruption window's list
     public const int IdInstrument = 90, IdGbDuty = 91;
+    /// <summary>In the SNES instrument list a value from here up is a game voice (recipe number + this); below it, a sample slot.</summary>
+    private const int RecipeValue = 1000;
 
     private const string ClassName = "BrokenNes2Editor";
     public const int Width = 904, Height = 664;
@@ -361,11 +363,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             var found = snap.Instruments();
             int ins = snap.Resolve(plugin.Get(P.Instrument));
             var current = found.FirstOrDefault(i => i.Slot == ins);
-            string value = found.Count == 0 ? "no instruments found" : current.Blocks > 0 ? $"#{ins}   ${current.Start:X4}" : $"#{ins}   (empty slot)";
+            int rp = plugin.Get(P.Recipe);
+            bool recipeOn = rp > 0 && rp <= snap.Recipes.Length;
+            string value = recipeOn ? snap.Recipes[rp - 1].Describe(rp - 1).Name : found.Count == 0 ? "no instruments found" : current.Blocks > 0 ? $"#{ins}   ${current.Start:X4}" : $"#{ins}   (empty slot)";
             Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, value);
-            string info = current.Blocks > 0 ? $"{current.Milliseconds:0} ms, {(current.Loops ? "loops" : "one-shot")}{(current.Sounding ? ", the game was playing it" : "")}   ({found.Count} found)"
+            string info = recipeOn ? snap.Recipes[rp - 1].Describe(rp - 1).Note
+                : current.Blocks > 0 ? $"{current.Milliseconds:0} ms, {(current.Loops ? "loops" : "one-shot")}{(current.Sounding ? ", the game was playing it" : "")}   ({found.Count} found, {snap.Recipes.Length} game voices)"
                 : found.Count == 0 ? "the game's sample table has no sample the plugin can read" : $"nothing in this slot   ({found.Count} found: pick one from the list)";
             Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            if (snap.ListenNote.Length > 0) Txt(dc, snap.ListenNote, R(x, y + RowH + 18, w, 32), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, snap.Recipes.Length > 0 ? Dim : Warn, fontSmall);
         }
         else if (segaSampler)
         {
@@ -1254,9 +1260,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             }
             case IdInstrument:
             {
+                // the game's samples (read from its sample table), then the game voices: how its driver played them (recipes; values RecipeValue + n)
                 var found = emu?.Snapshot?.Instruments() ?? [];
-                var items = found.Select(i => ($"#{i.Slot}   ${i.Start:X4}", (string?)$"{i.Milliseconds:0} ms, {(i.Loops ? "loops" : "one-shot")}{(i.Sounding ? ", game was playing it" : "")}")).ToArray();
-                return (items, found.Select(i => i.Slot).ToArray(), emu?.Snapshot?.Resolve(plugin.Get(P.Instrument)) ?? plugin.Get(P.Instrument));
+                var recipes = emu?.Snapshot?.Recipes ?? [];
+                var items = found.Select(i => ($"#{i.Slot}   ${i.Start:X4}", (string?)$"{i.Milliseconds:0} ms, {(i.Loops ? "loops" : "one-shot")}{(i.Sounding ? ", game was playing it" : "")}"))
+                    .Concat(recipes.Select((r, k) => { var (n, note) = r.Describe(k); return (n, (string?)note); })).ToArray();
+                var values = found.Select(i => i.Slot).Concat(recipes.Select((_, k) => RecipeValue + k)).ToArray();
+                int rp = plugin.Get(P.Recipe);
+                int cur = rp > 0 && rp <= recipes.Length ? RecipeValue + rp - 1 : emu?.Snapshot?.Resolve(plugin.Get(P.Instrument)) ?? plugin.Get(P.Instrument);
+                return (items, values, cur);
             }
             case IdGbDuty:
             {
@@ -1319,6 +1331,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         openId = 0;
         openHover = -1;
         if (id == IdGame) PickGame(value);
+        else if (id == IdInstrument && plugin.Emulator?.SamplerMode == true)
+        {
+            // a game voice (a recipe) or a plain instrument of the sample table: picking one clears the other
+            if (value >= RecipeValue) plugin.SetFromUi(P.Recipe, value - RecipeValue + 1);
+            else { plugin.SetFromUi(P.Recipe, 0); plugin.SetFromUi(P.Instrument, value); }
+        }
         else if (id == IdChannel && !(plugin.Emulator?.GbSamplerMode == true)) plugin.SetChannelFromUi(value - 1);
         else plugin.SetFromUi(ParamOf(id), value);
         Refresh();
