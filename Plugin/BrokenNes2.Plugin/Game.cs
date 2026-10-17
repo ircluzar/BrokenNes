@@ -277,10 +277,18 @@ internal sealed class SessionGame : IGame, IGameStems
     private void HookDacRecorder()
     {
         if (Concrete is not NesEmulator.Sega.MdSession md || md.Board.Sound is not MdSoundUnit unit || ReferenceEquals(unit, dacHooked)) return;
-        if (dacHooked != null) dacHooked.YmPortTap = null;
-        unit.YmPortTap = dacRecorder.OnWrite;
+        if (dacHooked != null) { dacHooked.YmPortTap = null; dacHooked.PsgPortTap = null; }
+        genLog ??= new GenWriteLog();
+        genLog.Begin(unit, md.Board.Timeline.MasterHz);       // the log of the chips' writes starts from this unit's registers as they are now
+        unit.YmPortTap = TapYm;
+        unit.PsgPortTap = TapPsg;
         dacHooked = unit;
     }
+
+    // ---- Instrument Runaway on a Genesis game: every write to the YM2612's registers and the PSG, kept so the recipes of what its driver does can be learned (see GenRecipe.cs) ----
+    private GenWriteLog? genLog;
+    private void TapYm(long master, int port, byte value) { dacRecorder.OnWrite(master, port, value); genLog!.OnYm(master, port, value); }
+    private void TapPsg(long master, byte value) => genLog!.OnPsg(master, value);
 
     // ---- Instrument Runaway on a SNES game: every write the SPC700 makes to the S-DSP, kept so the recipes of what its driver does can be learned (see SpcRecipe.cs) ----
     private SpcWriteLog? spcLog;
@@ -304,6 +312,7 @@ internal sealed class SessionGame : IGame, IGameStems
     internal void RestartListening()
     {
         if (spcHooked != null) spcLog?.Begin(spcHooked.Dsp.Regs);
+        if (dacHooked != null && Concrete is NesEmulator.Sega.MdSession md) genLog?.Begin(dacHooked, md.Board.Timeline.MasterHz);
     }
 
     public int Console { get; }
@@ -485,7 +494,19 @@ internal sealed class SessionGame : IGame, IGameStems
                 };
             }
             case NesEmulator.Sega.MdSession md when md.Board.Sound is MdSoundUnit unit:
-                return SegaSnapshot.FromOpn(unit, md.Board.Timeline.MasterHz, dacRecorder);
+            {
+                var snap = SegaSnapshot.FromOpn(unit, md.Board.Timeline.MasterHz, dacRecorder);
+                if (genLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return snap; }
+                // which voices sound now (a voice that sounds when the listening ends and was not keyed on inside it is a held voice)
+                Span<NesEmulator.Sega.HubVoice> voices = stackalloc NesEmulator.Sega.HubVoice[Ym2612.VoiceCount];
+                unit.Fm.DescribeVoices(voices);
+                var fmNow = new bool[6]; var psgNow = new bool[4];
+                for (int i = 0; i < 6; i++) fmNow[i] = voices[i].Level > 0;
+                for (int i = 0; i < 4; i++) psgNow[i] = unit.Psg.Volume(i) < 15;
+                snap.Recipes = GenRecipes.Derive(genLog, unit.Clock, (long)(GenRecipes.ListenWindowSeconds * 32000), fmNow, psgNow, out var stats);
+                snap.ListenNote = snap.Recipes.Length > 0 ? stats.Short() : stats.KeyOns == 0 ? $"The game played no notes in the {stats.WindowSeconds:0.#} s it was listened to: let it play, then switch Runaway on." : "Listened, but no voice could be learned: " + stats;
+                return snap;
+            }
         }
         return null;
     }
@@ -531,7 +552,7 @@ internal sealed class SessionGame : IGame, IGameStems
     {
         s.LoadState(state);                       // throws InvalidDataException and leaves the machine as it was
         frames = framesRun;
-        if (spcHooked != null) spcLog?.Begin(spcHooked.Dsp.Regs);         // the chip writes it holds are those of another machine: it starts again from the registers of this one
+        RestartListening();                                               // the chip writes it holds are those of another machine: it starts again from the registers of this one
         Farm?.Poison("the project's saved machine was put back");         // what the farm recorded is the game since power-on, which is not how this machine got here
         // the sound that was queued before is not the sound of the restored machine: every resampler starts clean at the rates it runs at
         resampler.Clear();

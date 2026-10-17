@@ -19,6 +19,9 @@ internal static class RunawayLab
             case "snes-probe": return LabSnes.Probe(args);
             case "snes-matrix": return LabSnes.Matrix(args);
             case "snes-resynth": return LabSnes.ResynthLab(args);
+            case "md-probe": return LabMd.Probe(args);
+            case "md-resynth": return LabMd.ResynthLab(args);
+            case "md-matrix": return LabMd.Matrix(args);
             default:
                 Console.Error.WriteLine("usage: --runaway-lab snes-probe --rom X [--frames N] [--input script]");
                 return 2;

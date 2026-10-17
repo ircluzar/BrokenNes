@@ -100,6 +100,9 @@
     <!-- Round 6 (Instrument Runaway lab): the plugin's SNES and Sega samplers and snapshots, linked as they are so the lab measures what the plugin plays. -->
     <Compile Include="..\Plugin\BrokenNes2.Plugin\SnesSampler.cs" Link="PluginShared\SnesSampler.cs" />
     <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcRecipe.cs" Link="PluginShared\SpcRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSnapshot.cs" Link="PluginShared\SegaSnapshot.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\GenRecipe.cs" Link="PluginShared\GenRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSamplers.cs" Link="PluginShared\SegaSamplers.cs" />
     <Compile Include="..\Core\StreamResampler.cs" Link="PluginShared\StreamResampler.cs" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,

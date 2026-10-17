@@ -420,7 +420,11 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
     /// oldest note gives way for one more), with pitch and level re-read from FL's live values like in Direct mode, so slides and bends work. A note that lost its slot stays silent until it ends.</summary>
     private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap)
     {
-        int instrument = snap.Resolve(Get(P.Instrument));
+        // a game voice (the Recipe parameter, 1 and up) plays what the game's driver did with a channel; the slots it may take are its chip's
+        GenRecipe? recipe = null;
+        int rp = Get(P.Recipe);
+        if (rp > 0 && rp <= snap.Recipes.Length && snap.Kind == SegaSnapshot.KindOpn) recipe = snap.Recipes[rp - 1];
+        int instrument = recipe != null ? RecipeInstrument + rp : snap.Resolve(Get(P.Instrument));
         foreach (var v in voices)
         {
             if (v.Finished) continue;
@@ -437,7 +441,10 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             double velocity = Math.Clamp(fl.Vol, 0.0, 1.0);
             if (v.Slot >= 0 && v.Instr != instrument) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }     // another instrument was picked under a held note: it starts again on that one
             if (v.Slot >= 0) { s.Update(v.Slot, hz, velocity); continue; }
-            int first = snap.SlotBase(instrument), count = snap.Slots(instrument), slot = -1;
+            int first, count, slot = -1;
+            if (recipe == null) { first = snap.SlotBase(instrument); count = snap.Slots(instrument); }
+            else if (recipe.IsFm) { first = 0; count = OpnSampler.FmSlots; }
+            else { bool noise = recipe.Kind == GenRecipe.KindPsgNoise; first = snap.SlotBase(snap.PsgInstrument + (noise ? 1 : 0)); count = noise ? 1 : 3; }
             for (int i = first; i < first + count && i < slotUsed.Length; i++) if (!slotUsed[i]) { slot = i; break; }
             if (slot < 0)
             {
@@ -454,7 +461,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             }
             slotUsed[slot] = true;
             v.Slot = slot; v.Instr = instrument;
-            s.NoteOn(slot, instrument, hz, velocity);
+            if (recipe != null) s.NoteOnRecipe(slot, recipe, hz, velocity); else s.NoteOn(slot, instrument, hz, velocity);
         }
     }
 
@@ -689,6 +696,8 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
     private const uint PlaceMagic = 0x32554D45; // "EMU2"
     private const uint SpcMagic = 0x31435053;   // "SPC1"
     private const uint GbMagic = 0x31534247;    // "GBS1"
+    /// <summary>The value a Sega voice's Instr takes while it plays a game voice (recipe n is this + n): above every instrument number a snapshot offers.</summary>
+    private const int RecipeInstrument = 1000;
     /// <summary>The biggest Sega snapshot section a project may carry: the largest real one (12 DAC sounds of 64 KB at most 4 in all, the chip registers) is under 270,000 bytes.</summary>
     private const int MaxSegaSection = 300_000;
 
@@ -721,6 +730,16 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 stream.Write(&segaMagic, 4);
                 stream.Write(&segaLen, 4);
                 fixed (byte* p = segaBytes) stream.Write(p, (uint)segaLen);
+                // what the Genesis game's driver was heard doing with its channels (recipes), right after the chips they belong to
+                if (segaSnap.Recipes.Length > 0)
+                {
+                    uint gnrMagic = GenRecipe.Tag;
+                    var gnrBytes = GenRecipe.Write(segaSnap.Recipes);
+                    int gnrLen = gnrBytes.Length;
+                    stream.Write(&gnrMagic, 4);
+                    stream.Write(&gnrLen, 4);
+                    fixed (byte* p = gnrBytes) stream.Write(p, (uint)gnrLen);
+                }
             }
             if (gbSnap != null)
             {
@@ -775,6 +794,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int hintEmu = 0, hintCh = -1;
         SpcSnapshot? restoredSnapshot = null;
         SpcRecipe[]? restoredRecipes = null;
+        GenRecipe[]? restoredGenRecipes = null;
         GbSnapshot? restoredGb = null;
         SegaSnapshot? restoredSega = null;
         GameStateSection? restoredGame = null;
@@ -816,6 +836,11 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                             var sprBuf = new byte[slen];
                             fixed (byte* p = sprBuf) if (!stream.Read(p, (uint)slen)) break; else restoredRecipes = SpcRecipe.Read(sprBuf);
                         }
+                        else if (tag == GenRecipe.Tag && slen is >= 2 and <= GenRecipe.MaxSection)
+                        {
+                            var gnrBuf = new byte[slen];
+                            fixed (byte* p = gnrBuf) if (!stream.Read(p, (uint)slen)) break; else restoredGenRecipes = GenRecipe.Read(gnrBuf);
+                        }
                         else if (tag == GbMagic && slen == GbSnapshot.RegCount + GbSnapshot.WaveSize + 1)
                         {
                             var gbBuf = new byte[slen];
@@ -856,6 +881,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
+        if (restoredSega != null && restoredGenRecipes != null) { restoredSega.Recipes = restoredGenRecipes; restoredSega.ListenNote = "Game voices from the project: " + restoredGenRecipes.Length; }
         if (restoredSnapshot != null && restoredRecipes != null) { restoredSnapshot.Recipes = restoredRecipes; restoredSnapshot.ListenNote = "Game voices from the project: " + restoredRecipes.Length; }
         if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
     }
@@ -1022,7 +1048,29 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
                 return note.Length;
             }
-            case 129: { var rs = emu?.Snapshot?.Recipes; int rp = Get(P.Recipe); return rs != null && rp > 0 && rp <= rs.Length ? rp : 0; }
+            case 129: { int n = emu?.RecipeCount ?? 0; int rp = Get(P.Recipe); return rp > 0 && rp <= n ? rp : 0; }
+            // Genesis recipes: 130 recipes the Sega snapshot holds (-1 none), 131 a recipe's field, index = field << 16 | recipe: 0 kind (0 FM, 1 PSG tone, 2 PSG noise), 1 block, 2 fnum, 3 events, 4 held, 5 hash (30 bits), 6 uses,
+            // 7 pitch events, 8 length in samples, 9 patch changes, 10 volume changes, 11 largest pitch change in cents, 12 algorithm, 13 PSG period; 132 the Sega snapshot's listening note (copied like 85)
+            case 130: return emu?.SegaState?.Recipes.Length ?? -1;
+            case 131:
+            {
+                var rs = emu?.SegaState?.Recipes;
+                int rec = (int)(index & 0xFFFF), field = (int)(index >> 16);
+                if (rs == null || (uint)rec >= (uint)rs.Length) return -1;
+                var r = rs[rec];
+                return field switch
+                {
+                    0 => r.Kind, 1 => r.Block, 2 => r.Fnum, 3 => r.Events.Length, 4 => r.Held ? 1 : 0, 5 => (nint)(r.Hash() & 0x3FFFFFFF), 6 => r.Uses, 7 => r.Count(GenEv.Pitch), 8 => r.LengthSamples,
+                    9 => r.Count(GenEv.Param), 10 => r.Count(GenEv.Vol), 11 => r.Events.Where(e => e.Kind == GenEv.Pitch).Select(e => Math.Abs(e.Value)).DefaultIfEmpty(0).Max(), 12 => r.Patch[28] & 7, 13 => r.Period, _ => -1,
+                };
+            }
+            case 132:
+            {
+                var note = emu?.SegaState?.ListenNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
             case 121: SessionGame.NoStateForTests = value != 0; return 0;      // 121 tests only: console games report that they cannot keep their state (value 1), or go back to the truth (0)
             case 120: Emulator.NoPumpForTests = value != 0; return 0;      // 120 tests only: the editor stops running the game to keep the picture moving (value 1), or goes back to it (0)
             case 100: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); if (emu == null || path == null) return 1; emu.OpenStockpile(path); return 0; }

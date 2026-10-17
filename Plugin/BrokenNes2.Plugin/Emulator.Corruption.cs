@@ -234,8 +234,8 @@ public sealed partial class Emulator
                 Thread.Sleep(50);
             }
             SetRunaway(true);
-            string note = Snapshot?.ListenNote ?? "";
-            Corruption.SetResult($"Instrument Runaway is on after {seconds} s of the corrupted game" + (note.Length > 0 ? ". " + note : ""), Snapshot?.Recipes.Length > 0 || Snapshot == null);
+            string note = ListenNote;
+            Corruption.SetResult($"Instrument Runaway is on after {seconds} s of the corrupted game" + (note.Length > 0 ? ". " + note : ""), RecipeCount > 0 || note.Length == 0);
         }
         catch (Exception e)
         {

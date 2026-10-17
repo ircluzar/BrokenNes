@@ -329,7 +329,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
-        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
+        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
 
         // THIS INSTANCE
@@ -377,10 +377,13 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             // the picker lists the game's instruments: what its chips were set up with, and the sounds found in the Genesis DAC's stream
             var sn = emu!.SegaState!;
             int pv = plugin.Get(P.Instrument), ins = sn.Resolve(pv);
+            int grp = plugin.Get(P.Recipe);
+            bool gameVoice = grp > 0 && grp <= sn.Recipes.Length;
             var (iname, inote) = sn.Instrument(ins);
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, pv == 0 ? $"Auto  ->  {iname}" : iname);
-            int n = sn.Slots(ins);
-            Txt(dc, (inote != null ? inote + "   -   " : "") + (n == 1 ? "one note at a time" : $"{n} notes at once") + $"   ({sn.InstrumentCount} found)", R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, gameVoice ? sn.Recipes[grp - 1].Describe(grp - 1).Name : pv == 0 ? $"Auto  ->  {iname}" : iname);
+            int n = gameVoice ? (sn.Recipes[grp - 1].Kind == GenRecipe.KindPsgNoise ? 1 : sn.Recipes[grp - 1].IsFm ? 6 : 3) : sn.Slots(ins);
+            string line = gameVoice ? sn.Recipes[grp - 1].Describe(grp - 1).Note : (inote != null ? inote + "   -   " : "") + (n == 1 ? "one note at a time" : $"{n} notes at once") + $"   ({sn.InstrumentCount} found, {sn.Recipes.Length} game voices)";
+            Txt(dc, line, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (gbSampler)
         {
@@ -443,7 +446,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         var r = R(x, y, w, 56);
         Box(dc, r, AccentDim, Accent, 6);
         string title = kind == 1 ? "GAME FROZEN  -  INSTRUMENTS LIVE" : kind == 2 ? "GAME FROZEN  -  GAME BOY CHANNELS LIVE" : kind == 3 ? "GAME FROZEN  -  SOUND CHIPS LIVE" : "GAME FROZEN  -  SILENT";
-        string text = kind == 1 ? (listenNote.Length > 0 ? listenNote : "Pick one of the game's own instruments below.") : kind == 2 ? "Pick a Game Boy channel for each instance." : kind == 3 ? "Pick one of the game's own instruments below." : "Instrument playing works on SNES, Game Boy, Master System, Game Gear and Genesis games.";
+        string text = kind == 1 ? (listenNote.Length > 0 ? listenNote : "Pick one of the game's own instruments below.") : kind == 2 ? "Pick a Game Boy channel for each instance." : kind == 3 ? (listenNote.Length > 0 ? listenNote : "Pick one of the game's own instruments below.") : "Instrument playing works on SNES, Game Boy, Master System, Game Gear and Genesis games.";
         Txt(dc, title, R(r.Left + 12, r.Top + 8, w - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE, White, fontSection);
         Txt(dc, text, R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
     }
@@ -1252,7 +1255,9 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 var items = new List<(string, string?)> { ("Auto", "the game's choice: " + sn.Instrument(sn.Resolve(0)).Name) };
                 var vals = new List<int> { 0 };
                 for (int i = 0; i < sn.InstrumentCount; i++) { var (name, note) = sn.Instrument(i); items.Add((name, note)); vals.Add(i + 1); }
-                return (items.ToArray(), vals.ToArray(), Math.Clamp(plugin.Get(P.Instrument), 0, sn.InstrumentCount));
+                for (int k = 0; k < sn.Recipes.Length; k++) { var (name, note) = sn.Recipes[k].Describe(k); items.Add((name, note)); vals.Add(RecipeValue + k); }
+                int grp = plugin.Get(P.Recipe);
+                return (items.ToArray(), vals.ToArray(), grp > 0 && grp <= sn.Recipes.Length ? RecipeValue + grp - 1 : Math.Clamp(plugin.Get(P.Instrument), 0, sn.InstrumentCount));
             }
             case IdInstrument when PatchBank(plugin.Get(P.Mode)) != 0 && emu?.SamplerMode != true:
             {
@@ -1334,7 +1339,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         openId = 0;
         openHover = -1;
         if (id == IdGame) PickGame(value);
-        else if (id == IdInstrument && plugin.Emulator?.SamplerMode == true)
+        else if (id == IdInstrument && (plugin.Emulator?.SamplerMode == true || plugin.Emulator?.SegaSamplerMode == true))
         {
             // a game voice (a recipe) or a plain instrument of the sample table: picking one clears the other
             if (value >= RecipeValue) plugin.SetFromUi(P.Recipe, value - RecipeValue + 1);
