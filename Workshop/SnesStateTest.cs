@@ -248,6 +248,7 @@ internal static class SnesStateTest
             ("the app's own factory and the quick-save file", "factory", () => Factory(games)),
             ("a program that counts frames while Right is held", "program", ProgramGroup),
             ("size and time", "size", () => SizeAndTime(games)),
+            ("allocation", "alloc", () => Allocation(games)),
         })
         {
             if (only != null && !only.Contains(key)) continue;
@@ -381,6 +382,7 @@ internal static class SnesStateTest
             var (vsFresh, _, _) = SnesFieldWalker.Compare(wa, wf);
             Check($"{g.Short}: the comparison can see the state: a freshly started machine differs from the saved one in {vsFresh.Count} of those fields (its own proof of failure)", vsFresh.Count > 100, $"e.g. {string.Join(", ", vsFresh.Take(3))}");
             Info($"excluded as not machine state: {wa.Excluded.Sum(x => x.Value)} paths in {wa.Excluded.Count} patterns");
+            Info("fields by component: " + string.Join(", ", wa.Slots.GroupBy(sl => ComponentOf(sl.Path)).OrderByDescending(grp => grp.Count()).Select(grp => $"{grp.Key} {grp.Count()}")));
 
             // each field in turn
             MutationSweep(g, script, quick);
@@ -391,6 +393,18 @@ internal static class SnesStateTest
     }
 
     /// <summary>The samples every SPC700 + S-DSP of the session holds unread (the output ring's logical content, read without consuming it): the active unit's, the one behind a NES chip and the one parked behind the stand-in.</summary>
+    /// <summary>The component a field belongs to, from its path (SnesSession.board.Ppu.m7a is the S-PPU's).</summary>
+    private static string ComponentOf(string path)
+    {
+        var p = path.Split('.');                         // SnesSession.board.Apu.Smp.PC
+        if (p.Length < 3 || p[1] != "board") return p.Length >= 2 && p[1] == "parkedSpc" ? "parked unit" : "session";
+        if (p.Length == 3) return "board";
+        string c = p[2];
+        if (c == "Apu" && p.Length > 4 && (p[3] is "Smp" or "Dsp")) return "Apu." + p[3];
+        if (c == "Coprocessor" && p.Length > 4 && p[3] == "Cpu") return "Coprocessor.Cpu";
+        return c is "Cpu" or "Ppu" or "Cart" or "Apu" or "Coprocessor" ? c : "board";
+    }
+
     private static short[] Unread(SnesSession s)
     {
         var all = new List<short>();
@@ -825,6 +839,27 @@ internal static class SnesStateTest
     }
 
     // ---------------------------------------------------------------------------------------------------------------------
+    //  7b. Allocation of the frame loop
+    // ---------------------------------------------------------------------------------------------------------------------
+
+    private static void Allocation(List<Game> games)
+    {
+        Group("the frame loop allocates nothing (the state code is not on it)");
+        foreach (var g in games.Where(x => x.Key is "smw" or "alttp" or "kss" or "starfox").Take(4))
+        {
+            var script = ScriptOf(g);
+            var s = Make(g); Advance(s, script, 0, 400);               // warm: tables, caches, the JIT
+            var buf = new short[32768]; long n = 0; var held = HeldAt(script, 400);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int f = 400; f < 700; f++) Frame(s, script, ref held, f, null, null, buf, ref n);
+            long perFrame = (GC.GetAllocatedBytesForCurrentThread() - before) / 300;
+            // Star Fox allocates about 3 KB a frame on the build before round 5 too (917,672 bytes over 300 frames by `--alloc-probe` on commit 15795e6 and on this one, to the byte): not the state code, which is not on the frame loop
+            long allowed = g.Key == "starfox" ? 4096 : 64;
+            Check($"{g.Short}: 300 frames of play allocate {perFrame} bytes a frame", perFrame <= allowed, g.Key == "starfox" ? "the same 3 KB a frame the build before the state code had (--alloc-probe on both: 917,672 bytes in 300 frames)" : "measured with GC.GetAllocatedBytesForCurrentThread over frames 400-700");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------------
     //  7. Size and time
     // ---------------------------------------------------------------------------------------------------------------------
 
@@ -836,15 +871,39 @@ internal static class SnesStateTest
             var script = ScriptOf(g);
             var a = Make(g); Advance(a, script, 0, g.Points[0]);
             byte[] state = a.SaveState();                       // warm
-            var sw = Stopwatch.StartNew(); const int reps = 10;
+            const int reps = 10;
+            var sw = Stopwatch.StartNew();
             for (int i = 0; i < reps; i++) state = a.SaveState();
             double save = sw.Elapsed.TotalMilliseconds / reps;
+            byte[] payload = a.PayloadForTest();
+            sw.Restart();
+            for (int i = 0; i < reps; i++) payload = a.PayloadForTest();
+            double write = sw.Elapsed.TotalMilliseconds / reps;
             var b = Make(g); Advance(b, script, 0, 2); b.LoadState(state);
             sw.Restart();
             for (int i = 0; i < reps; i++) b.LoadState(state);
             double load = sw.Elapsed.TotalMilliseconds / reps;
-            byte[] payload = a.PayloadForTest();
-            Check($"{g.Short}: state {state.Length / 1024.0:F0} KB packed ({payload.Length / 1024.0:F0} KB raw); save {save:F1} ms, load {load:F1} ms", state.Length < 1_500_000 && save < 250 && load < 250);
+            sw.Restart();
+            for (int i = 0; i < reps; i++) b.LoadPayloadForTest(payload);
+            double read = sw.Elapsed.TotalMilliseconds / reps;
+            Check($"{g.Short}: state {state.Length / 1024.0:F0} KB packed ({payload.Length / 1024.0:F0} KB raw); save {save:F1} ms ({write:F1} ms of it writing the machine), load {load:F1} ms ({read:F1} ms of it reading it back; the rest is the undo copy a load keeps)", state.Length < 1_500_000 && save < 250 && load < 250);
         }
+        // the other sound units
+        var smw = games.FirstOrDefault(x => x.Key == "smw");
+        if (smw != null)
+            foreach (string apu in new[] { "HLE", "NES:FIX", "NES:FIXS" })
+            {
+                var script = ScriptOf(smw);
+                var a = Make(smw, apu); Advance(a, script, 0, smw.Points[0]);
+                byte[] state = a.SaveState();
+                var b = Make(smw, apu); Advance(b, script, 0, 2);
+                var sw = Stopwatch.StartNew(); const int reps = 5;
+                for (int i = 0; i < reps; i++) state = a.SaveState();
+                double save = sw.Elapsed.TotalMilliseconds / reps;
+                sw.Restart();
+                for (int i = 0; i < reps; i++) b.LoadState(state);
+                double load = sw.Elapsed.TotalMilliseconds / reps;
+                Check($"{smw.Short} on the {apu} sound unit: state {state.Length / 1024.0:F0} KB packed; save {save:F1} ms, load {load:F1} ms", state.Length < 1_500_000 && save < 250 && load < 400);
+            }
     }
 }

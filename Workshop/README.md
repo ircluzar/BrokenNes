@@ -21,6 +21,8 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
 | `--snestest` | SFC (SNES) core-family spec verifier: runs gilyon/snes-tests and lists every failing test with its inputs and expected output | a `.sfc` from `Windows/Resources/snes-test-roms` | **Yes** |
+| `--snes-state-test` | SNES save states through the session contract: 120-frame round trips on 11 roster games (every coprocessor), field-by-field reflection compare, one-field-at-a-time sweep, mid-frame loads, refusals, sound-unit / picture-chip swaps, a no-game-data counter program; `--poison NAME` breaks a load to show the test fails | the SNES library (`BROKENNES_SNES_ROMS`, default `X:\EMULATION\Super Nintendo\Super Nintendo (U)`) | **Yes** |
+| `--state-audit` | Which save states every console really gives, for every core of every menu (CPU, picture chip, sound unit): SUPPORTED / PARTIAL / REFUSED with the reason / BROKEN | one real game per console from `X:\EMULATION` | **Yes** |
 | `--snes` | Interactive SNES player window (SFC cores): keyboard + XInput, audio-paced, battery saves | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--snesrun` | SFC "how far does this game get?" probe: N frames, scripted input, PNGs at chosen frames, hottest PCs (hang loops), sound-CPU upload state | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--trace` | Per-frame CPU regs + work-RAM hash in a shared, emulator-independent format, for diffing against Mesen | any `.nes` | **Yes** |

@@ -11,8 +11,8 @@ namespace NesEmulator.Systems;
 /// the cartridge chip) followed by the sound unit that was playing, whichever it is:
 /// <list type="bullet">
 /// <item><b>SFC</b> (the SPC700 + S-DSP): its whole state.</item>
-/// <item><b>NES:&lt;chip&gt;</b> (the game's sound replayed on a NES sound chip): the SPC700 + S-DSP that keeps running the game's sound program behind the bridge, whole. The NES chip is a listener, not part of the machine: it starts again
-/// from the loaded voices (same as the Genesis), so the audio of such a session after a load is alive but not sample-identical to the session that carried on; the machine, the pictures and the SPC700 / S-DSP are.</item>
+/// <item><b>NES:&lt;chip&gt;</b> (the game's sound replayed on a NES sound chip): the SPC700 + S-DSP that keeps running the game's sound program behind the bridge, whole. The NES chip is a listener, not part of the machine: it keeps playing
+/// what it was and listens to the loaded voices from the next sync on (<see cref="NesApuOnSnes.Rebase"/>), so the audio of such a session after a load is alive but not sample-identical to the session that carried on; the machine, the pictures and the SPC700 / S-DSP are.</item>
 /// <item><b>HLE</b> (the silent stand-in): the stand-in's state, and the real SPC700 + S-DSP that was swapped out behind it, if the game ran on one first (swapping back resumes it).</item>
 /// </list>
 /// A state belongs to the sound unit it was saved with (<c>apu</c> in the header) and to the cartridge chip it ran with (<c>chip</c>: the homemade DSP-1 and Nintendo's firmware are different chips, and the firmware's hash is part of the id):
@@ -129,12 +129,10 @@ public sealed partial class SnesSession
                 if (r.ReadBoolean()) { parkedSpc ??= new APU_SFC(); parkedSpc.LoadState(r); }
                 else parkedSpc = null;
                 break;
-            case NesApuOnSnes { Front: APU_SFC front }:
+            case NesApuOnSnes { Front: APU_SFC front } bridge:
                 RequireUnit(unit, UnitNes);
                 front.LoadState(r);
-                // the NES chip listens to the loaded voices from here (its own phases are not part of the machine); a bridge built at the board's time, as the live swap does
-                MixConfig.NesBackApu = apuId[4..];
-                board.SwapApu(new NesApuOnSnes(front, board.MasterClock));
+                bridge.Rebase(board.MasterClock);   // the NES chip listens to the loaded voices from the board's new time; its own phases are not part of the machine
                 break;
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be loaded.");
         }

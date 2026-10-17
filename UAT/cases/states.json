@@ -1,0 +1,444 @@
+﻿{
+    "schema":  1,
+    "suite":  "states",
+    "description":  "Save states through the console sessions, by REWINDING: each game is played for a fixed number of frames twice, once straight and once with a state taken after frame N and loaded back after frame M (frames N+1 to M are played again with the same pad; the sound of the first pass is dropped). A complete state ends the run on the very picture, sound and colours of the straight run, so both cases of a pair carry the SAME golden: if one field of the machine were left out of the state, the rewind case would differ from the plain one. Every case is a console session built the way the apps build it (UAT run-suite, kind session, Workshop --session-test --rewind). The SNES cases cover the plain boards, the DSP-1 (homemade), the SA-1 and the Super FX / Super FX 2; the others are one game each of the Game Boy, Master System, Game Gear and Genesis. The goldens say what this build did when they were recorded (nothing moved); the proof that a state is complete is that the two cases of a pair agree, and Workshop --snes-state-test (and --md-state-test, --smstest --only sessionstate) which compare every field. A ROM that is not on this machine SKIPs.",
+    "roots":  {
+                  "snes":  "X:/EMULATION/Super Nintendo/Super Nintendo (U)",
+                  "gb":  "X:/EMULATION/GameBoy",
+                  "sms":  "%LOCALAPPDATA%/VRUN_Nes_Dev_work/sega_roms/sms",
+                  "gg":  "X:/EMULATION/Sega Game Gear",
+                  "md":  "X:/EMULATION/Sega Genesis"
+              },
+    "cases":  [
+                  {
+                      "id":  "state-smw-plain",
+                      "description":  "Super Mario World: 1500 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "500:Start,508:,700:A,708:,900:A,908:,1100:A,1108:,1300:A,1308:,1400:Right",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "972DC5F3AC1AE5A6",
+                                     "audioHash":  "06F3CFC0C7716483",
+                                     "framesRun":  1500,
+                                     "distinctColors":  207,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-smw-rewind",
+                      "description":  "Super Mario World: the same 1500 frames, but a save state is taken after frame 700 and loaded back after frame 900; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "500:Start,508:,700:A,708:,900:A,908:,1100:A,1108:,1300:A,1308:,1400:Right",
+                      "rewind":  "700:900",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "972DC5F3AC1AE5A6",
+                                     "audioHash":  "06F3CFC0C7716483",
+                                     "framesRun":  1500,
+                                     "distinctColors":  207,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-alttp-plain",
+                      "description":  "The Legend of Zelda: A Link to the Past: 1500 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Legend of Zelda, The - A Link to the Past (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "1300:Start,1308:,1400:Start,1406:,1460:A,1466:",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "8EFA9075FCE30494",
+                                     "audioHash":  "7A4555F86E17C9FC",
+                                     "framesRun":  1500,
+                                     "distinctColors":  175,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-alttp-rewind",
+                      "description":  "The Legend of Zelda: A Link to the Past: the same 1500 frames, but a save state is taken after frame 1100 and loaded back after frame 1300; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Legend of Zelda, The - A Link to the Past (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "1300:Start,1308:,1400:Start,1406:,1460:A,1466:",
+                      "rewind":  "1100:1300",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "8EFA9075FCE30494",
+                                     "audioHash":  "7A4555F86E17C9FC",
+                                     "framesRun":  1500,
+                                     "distinctColors":  175,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-smk-plain",
+                      "description":  "Super Mario Kart (the homemade DSP-1): 1500 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario Kart (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "250:Up,260:,300:B,306:,345:B,351:,390:Right,396:,435:B,441:,480:A,486:,525:B,531:,570:Start,576:,615:B,621:,660:B,666:,705:Right,711:,750:B,756:,795:A,801:,840:B,846:,885:Start,891:,930:B,936:,975:B,981:,1020:Right,1026:,1065:B,1071:,1110:A,1116:,1155:B,1161:,1200:Start,1206:,1245:B,1251:,1290:B,1296:,1335:Right,1341:,1380:B,1386:,1425:A,1431:,1470:B,1476:",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "4C411D8A245A5DC9",
+                                     "audioHash":  "CF4D9563AABEEED1",
+                                     "framesRun":  1500,
+                                     "distinctColors":  403,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-smk-rewind",
+                      "description":  "Super Mario Kart (the homemade DSP-1): the same 1500 frames, but a save state is taken after frame 900 and loaded back after frame 1100; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario Kart (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "250:Up,260:,300:B,306:,345:B,351:,390:Right,396:,435:B,441:,480:A,486:,525:B,531:,570:Start,576:,615:B,621:,660:B,666:,705:Right,711:,750:B,756:,795:A,801:,840:B,846:,885:Start,891:,930:B,936:,975:B,981:,1020:Right,1026:,1065:B,1071:,1110:A,1116:,1155:B,1161:,1200:Start,1206:,1245:B,1251:,1290:B,1296:,1335:Right,1341:,1380:B,1386:,1425:A,1431:,1470:B,1476:",
+                      "rewind":  "900:1100",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "4C411D8A245A5DC9",
+                                     "audioHash":  "CF4D9563AABEEED1",
+                                     "framesRun":  1500,
+                                     "distinctColors":  403,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-kirbyss-plain",
+                      "description":  "Kirby Super Star (the SA-1): 1450 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Kirby Super Star (U) [!].smc",
+                      "frames":  1450,
+                      "input":  "150:Start,156:,195:A,201:,240:A,246:,285:Start,291:,330:Right,336:,375:B,381:,420:Start,426:,465:A,471:,510:A,516:,555:Start,561:,600:Right,606:,645:B,651:,690:Start,696:,735:A,741:,780:A,786:,825:Start,831:,870:Right,876:,915:B,921:,960:Start,966:,1005:A,1011:,1050:A,1056:,1095:Start,1101:,1140:Right,1146:,1185:B,1191:,1230:Start,1236:,1275:A,1281:,1320:A,1326:,1365:Start,1371:,1410:Right,1416:,1455:B,1461:",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "D7341DBD0D5EC14E",
+                                     "audioHash":  "1AEDB0179353269C",
+                                     "framesRun":  1450,
+                                     "distinctColors":  991,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-kirbyss-rewind",
+                      "description":  "Kirby Super Star (the SA-1): the same 1450 frames, but a save state is taken after frame 800 and loaded back after frame 1000; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Kirby Super Star (U) [!].smc",
+                      "frames":  1450,
+                      "input":  "150:Start,156:,195:A,201:,240:A,246:,285:Start,291:,330:Right,336:,375:B,381:,420:Start,426:,465:A,471:,510:A,516:,555:Start,561:,600:Right,606:,645:B,651:,690:Start,696:,735:A,741:,780:A,786:,825:Start,831:,870:Right,876:,915:B,921:,960:Start,966:,1005:A,1011:,1050:A,1056:,1095:Start,1101:,1140:Right,1146:,1185:B,1191:,1230:Start,1236:,1275:A,1281:,1320:A,1326:,1365:Start,1371:,1410:Right,1416:,1455:B,1461:",
+                      "rewind":  "800:1000",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "D7341DBD0D5EC14E",
+                                     "audioHash":  "1AEDB0179353269C",
+                                     "framesRun":  1450,
+                                     "distinctColors":  991,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-starfox-plain",
+                      "description":  "Star Fox (the Super FX): 1450 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Star Fox (U) (V1.2) [!].smc",
+                      "frames":  1450,
+                      "input":  "200:Start,208:,400:Start,408:,600:A,606:,650:Start,656:,700:Right,706:,750:Left,756:,800:B,806:,850:A,856:,900:Start,906:,950:Right,956:,1000:Left,1006:,1050:B,1056:,1100:A,1106:,1150:Start,1156:,1200:Right,1206:,1250:Left,1256:,1300:B,1306:,1350:A,1356:,1400:Start,1406:,1450:Right,1456:",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "03AC5A5A9ECD00B2",
+                                     "audioHash":  "7DA214760DAD4152",
+                                     "framesRun":  1450,
+                                     "distinctColors":  1610,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-starfox-rewind",
+                      "description":  "Star Fox (the Super FX): the same 1450 frames, but a save state is taken after frame 700 and loaded back after frame 900; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Star Fox (U) (V1.2) [!].smc",
+                      "frames":  1450,
+                      "input":  "200:Start,208:,400:Start,408:,600:A,606:,650:Start,656:,700:Right,706:,750:Left,756:,800:B,806:,850:A,856:,900:Start,906:,950:Right,956:,1000:Left,1006:,1050:B,1056:,1100:A,1106:,1150:Start,1156:,1200:Right,1206:,1250:Left,1256:,1300:B,1306:,1350:A,1356:,1400:Start,1406:,1450:Right,1456:",
+                      "rewind":  "700:900",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "03AC5A5A9ECD00B2",
+                                     "audioHash":  "7DA214760DAD4152",
+                                     "framesRun":  1450,
+                                     "distinctColors":  1610,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-yoshi-plain",
+                      "description":  "Yoshi\u0027s Island (the Super FX 2): 1500 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World 2 - Yoshi\u0027s Island (U) (M3) (V1.1).smc",
+                      "frames":  1500,
+                      "input":  "150:Start,156:,195:A,201:,240:A,246:,285:B,291:,330:Right,336:,375:Start,381:,420:Start,426:,465:A,471:,510:A,516:,555:B,561:,600:Right,606:,645:Start,651:,690:Start,696:,735:A,741:,780:A,786:,825:B,831:,870:Right,876:,915:Start,921:,960:Start,966:,1005:A,1011:,1050:A,1056:,1095:B,1101:,1140:Right,1146:,1185:Start,1191:,1230:Start,1236:,1275:A,1281:,1320:A,1326:,1365:B,1371:,1410:Right,1416:,1455:Start,1461:",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "01883F749B4CEBAE",
+                                     "audioHash":  "5B20323A334430AA",
+                                     "framesRun":  1500,
+                                     "distinctColors":  1252,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-yoshi-rewind",
+                      "description":  "Yoshi\u0027s Island (the Super FX 2): the same 1500 frames, but a save state is taken after frame 800 and loaded back after frame 1000; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World 2 - Yoshi\u0027s Island (U) (M3) (V1.1).smc",
+                      "frames":  1500,
+                      "input":  "150:Start,156:,195:A,201:,240:A,246:,285:B,291:,330:Right,336:,375:Start,381:,420:Start,426:,465:A,471:,510:A,516:,555:B,561:,600:Right,606:,645:Start,651:,690:Start,696:,735:A,741:,780:A,786:,825:B,831:,870:Right,876:,915:Start,921:,960:Start,966:,1005:A,1011:,1050:A,1056:,1095:B,1101:,1140:Right,1146:,1185:Start,1191:,1230:Start,1236:,1275:A,1281:,1320:A,1326:,1365:B,1371:,1410:Right,1416:,1455:Start,1461:",
+                      "rewind":  "800:1000",
+                      "tags":  [
+                                   "state",
+                                   "snes",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "01883F749B4CEBAE",
+                                     "audioHash":  "5B20323A334430AA",
+                                     "framesRun":  1500,
+                                     "distinctColors":  1252,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-gb-sml-plain",
+                      "description":  "Super Mario Land (Game Boy): 700 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{gb}/Super Mario Land (W) (V1.1) [!].zip",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A,210:,300:Right",
+                      "tags":  [
+                                   "state",
+                                   "gb",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "4FD0F9AB37B5EE44",
+                                     "audioHash":  "46ABA37E017E48FC",
+                                     "framesRun":  700,
+                                     "distinctColors":  4,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-gb-sml-rewind",
+                      "description":  "Super Mario Land (Game Boy): the same 700 frames, but a save state is taken after frame 300 and loaded back after frame 500; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{gb}/Super Mario Land (W) (V1.1) [!].zip",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A,210:,300:Right",
+                      "rewind":  "300:500",
+                      "tags":  [
+                                   "state",
+                                   "gb",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "4FD0F9AB37B5EE44",
+                                     "audioHash":  "46ABA37E017E48FC",
+                                     "framesRun":  700,
+                                     "distinctColors":  4,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-sms-alexkidd-plain",
+                      "description":  "Alex Kidd in Miracle World (Master System): 700 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{sms}/alexkidd.sms",
+                      "frames":  700,
+                      "input":  "120:A,126:,260:A,266:,400:Right",
+                      "tags":  [
+                                   "state",
+                                   "sms",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "2025AE9F110B2F07",
+                                     "audioHash":  "BCF054988F50615D",
+                                     "framesRun":  700,
+                                     "distinctColors":  17,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-sms-alexkidd-rewind",
+                      "description":  "Alex Kidd in Miracle World (Master System): the same 700 frames, but a save state is taken after frame 300 and loaded back after frame 500; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{sms}/alexkidd.sms",
+                      "frames":  700,
+                      "input":  "120:A,126:,260:A,266:,400:Right",
+                      "rewind":  "300:500",
+                      "tags":  [
+                                   "state",
+                                   "sms",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "2025AE9F110B2F07",
+                                     "audioHash":  "BCF054988F50615D",
+                                     "framesRun":  700,
+                                     "distinctColors":  17,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-gg-columns-plain",
+                      "description":  "Columns (Game Gear): 700 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{gg}/Columns (U) [!].gg",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A",
+                      "tags":  [
+                                   "state",
+                                   "gg",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "EB3D613C5FA6FB72",
+                                     "audioHash":  "E550D8CADED25DD3",
+                                     "framesRun":  700,
+                                     "distinctColors":  43,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-gg-columns-rewind",
+                      "description":  "Columns (Game Gear): the same 700 frames, but a save state is taken after frame 300 and loaded back after frame 500; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{gg}/Columns (U) [!].gg",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A",
+                      "rewind":  "300:500",
+                      "tags":  [
+                                   "state",
+                                   "gg",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "EB3D613C5FA6FB72",
+                                     "audioHash":  "E550D8CADED25DD3",
+                                     "framesRun":  700,
+                                     "distinctColors":  43,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-md-sonic1-plain",
+                      "description":  "Sonic the Hedgehog (Genesis): 700 frames of scripted play, no state involved (the golden the rewind case below must equal).",
+                      "kind":  "session",
+                      "rom":  "{md}/Sonic the Hedgehog (JUE) [!].bin",
+                      "frames":  700,
+                      "input":  "200:Start,210:,300:Right",
+                      "tags":  [
+                                   "state",
+                                   "md",
+                                   "plain"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "759C504E0E1B519F",
+                                     "audioHash":  "FC628FF066D843E9",
+                                     "framesRun":  700,
+                                     "distinctColors":  64,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "state-md-sonic1-rewind",
+                      "description":  "Sonic the Hedgehog (Genesis): the same 700 frames, but a save state is taken after frame 300 and loaded back after frame 500; the frames in between are played again with the same pad. A complete state ends the run on exactly the plain run\u0027s picture, sound and colours: this case carries the plain case\u0027s golden.",
+                      "kind":  "session",
+                      "rom":  "{md}/Sonic the Hedgehog (JUE) [!].bin",
+                      "frames":  700,
+                      "input":  "200:Start,210:,300:Right",
+                      "rewind":  "300:500",
+                      "tags":  [
+                                   "state",
+                                   "md",
+                                   "rewind"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "759C504E0E1B519F",
+                                     "audioHash":  "FC628FF066D843E9",
+                                     "framesRun":  700,
+                                     "distinctColors":  64,
+                                     "result":  "ok"
+                                 }
+                  }
+              ]
+}

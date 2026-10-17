@@ -64,6 +64,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--md-state-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdStateTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--snes-state-test", StringComparison.OrdinalIgnoreCase)) return SnesStateTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--state-audit", StringComparison.OrdinalIgnoreCase)) return StateAuditCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--alloc-probe", StringComparison.OrdinalIgnoreCase)) return AllocProbeCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-save-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdSaveTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-render", StringComparison.OrdinalIgnoreCase)) return Sega.MdRenderCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--img-diff", StringComparison.OrdinalIgnoreCase)) return Sega.ImgDiffCli.Run(args);

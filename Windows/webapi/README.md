@@ -116,8 +116,8 @@ Memory domains (from `NesMemoryExtensions`): `System RAM` (2 KB), `CPU Bus` (64 
 | POST | `/api/emulator/load-builtin-rom` | Load a bundled ROM by filename (`{ Filename, PreserveShader }`) |
 | POST | `/api/emulator/close-rom` | Unload and fall back to the embedded test ROM |
 | GET | `/api/emulator/current-rom` | `{ success, path, name, isTestRom }` |
-| POST | `/api/emulator/quick-save-state` | Quick save (F7); `{ success, gated }` |
-| POST | `/api/emulator/quick-load-state` | Quick load (F5); `{ success, gated }` |
+| POST | `/api/emulator/quick-save-state` | Quick save (F7); `{ success, gated, reason }`; `reason` says why it failed (the opt-in flag is off, the session has no states, the state belongs to another game / sound unit / chip). NES, SNES, Game Boy, Master System, Game Gear and Genesis all have states |
+| POST | `/api/emulator/quick-load-state` | Quick load (F5); `{ success, gated, reason }` (a refused state leaves the game running as it was) |
 | POST | `/api/emulator/save-continue-state` | Capture the persistent continue checkpoint |
 | POST | `/api/emulator/load-continue-state` | Restore it (`{ ExpectedRomName }`, rejects a ROM mismatch) |
 | GET | `/api/emulator/backgrounds` | List available backgrounds |
