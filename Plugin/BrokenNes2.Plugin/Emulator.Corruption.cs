@@ -217,12 +217,14 @@ public sealed partial class Emulator
             applied = Corruption.Applied;
             if (applied == null) return carriedCorruption;
             frozen = Runaway;
-            if (g.StateSupported) note = "the game's machine is in the game-state section";
+            if (g.StateSupported && !stateNoteIsSave) note = "the game's machine is in the game-state section";
             else
             {
-                // a console with no saved state: the place of the game as a replay recipe (the pads it was handed and the corruption writes made to it)
+                // a console with no saved state, or one whose state the project could not hold (too big, refused): the place of the game as a replay recipe (the pads it was handed and the corruption writes made to it).
+                // A console with states describes itself by a saved state with the recipe beside it; the recipe is what is wanted here.
                 var cap = g.Farm.Capture();
-                if (cap.Anchor is { Kind: AnchorKind.Boot } boot)
+                var boot = cap.Anchor is { Kind: AnchorKind.Boot } direct ? direct : cap.Anchor?.Alt is { Kind: AnchorKind.Boot } alt ? alt : null;
+                if (boot != null)
                     history = new StockpileEntry { Name = "project history", Game = g.Farm.Game(), Machine = new MachineSpec { Cpu = OwnMachine(g.Kind).cpu, Apu = OwnMachine(g.Kind).apu }, Anchor = boot };
                 else note = cap.Reason.Length > 0 ? cap.Reason : "the game's place cannot be replayed";
             }

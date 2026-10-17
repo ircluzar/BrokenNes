@@ -241,6 +241,8 @@ namespace BrokenNes.Windows
                 sha1 = farm.Game().Sha1,
                 positions = how,      // how a position is stored: "state" (a saved machine), "boot" (a replay from power-on), "none" (cannot be stored now)
                 reason,
+                replayRecipe = farm.PoisonReason == null,        // whether the replay from power-on can be stored beside (or instead of) a saved machine
+                replayReason = farm.PoisonReason ?? "",
                 frames = farm.Frames, recordedWrites = farm.RecordedWrites, replayCapFrames = new StartOptions().MaxReplayFrames,
                 saveRamProtected = farm.SaveRamTouched,
                 busy = farmBusy, status = farmStatus, last = farmLastMessage,

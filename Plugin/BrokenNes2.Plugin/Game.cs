@@ -485,9 +485,12 @@ internal sealed class SessionGame : IGame, IGameStems
     // ---- the whole machine: the session's own state file (a ConsoleStateFile: it names the game and the sound unit it belongs to, and loading refuses another) ----
 
     public string GameId => s.GameId;
-    public bool StateSupported => s.SupportsState;
+    /// <summary>Tests only (hook 121): every console game reports that it cannot keep its state, as a console without save states would, so the project path that rebuilds a game by replaying its history stays tested now that every console has states.</summary>
+    internal static volatile bool NoStateForTests;
+
+    public bool StateSupported => s.SupportsState && !NoStateForTests;
     /// <summary>Said to the user when a project is saved or opened: short, and the same for every console that has no state (the session's own words are for its menus).</summary>
-    public string StateUnsupportedReason => s.SupportsState ? "" : $"{Cx.RomNames[Console]} games cannot keep their state in a project yet";
+    public string StateUnsupportedReason => StateSupported ? "" : $"{Cx.RomNames[Console]} games cannot keep their state in a project yet";
     public byte[] SaveGameState() => s.SaveState();
 
     public void LoadGameState(byte[] state, long framesRun)

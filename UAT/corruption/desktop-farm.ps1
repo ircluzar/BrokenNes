@@ -9,9 +9,9 @@
     - loads the game, reads GET /api/gh/status (how a position is stored), the memories (GET /api/console/domains, GET /api/rtc/domains)
     - Manual Blast on the audio RAM (POST /api/rtc/blast) and shows by reading the memory back that bytes changed, and only in the audio RAM
     - adds a base, corrupt-and-stash from the current position, keeps it, saves the stockpile file
-    - reads the file: format, version, boot anchor, game identity; starts the entry with the Workshop's --corrupt-apply (the same library the FL plugin uses)
+    - reads the file: format, version, the anchor (a saved machine, with the replay recipe beside it: the SNES has save states), game identity; starts the entry with the Workshop's --corrupt-apply (the same library the FL plugin uses)
     - replays the entry in the app (POST /api/gh/stockpile/{id}/replay): the machine reached has the same audio RAM as the one that was corrupted
-    - a reset-like event (swapping the sound unit) makes the app refuse to store a position, with the reason
+    - a reset-like event (swapping the sound unit): a saved machine can still be stored but no replay recipe is offered beside it, and the status says why
     - opens the file back; an older (Lite) export imports
     - the NES path: a NES game loads, blasts as before, the RTC domain sizes show the probed sizes and, with the setting on, the true ones
   It changes the app's config (selected console, corruptionTrueDomainSizes) and puts both back at the end.
@@ -86,7 +86,7 @@ try {
 
     # ---- what the farm can do
     $st = (Api GET '/api/gh/status').Body
-    Check 'status: a console game is being farmed, positions are stored as a replay from power-on (the SNES has no save state yet) or a saved state' ($st.farm.active -eq $true -and $st.farm.positions -in @('boot', 'state')) "positions=$($st.farm.positions) frames=$($st.farm.frames)"
+    Check 'status: a console game is being farmed; the SNES has save states, so a position is stored as a saved machine with the replay recipe beside it' ($st.farm.active -eq $true -and $st.farm.positions -eq 'state' -and $st.farm.replayRecipe -eq $true) "positions=$($st.farm.positions) replayRecipe=$($st.farm.replayRecipe) frames=$($st.farm.frames)"
     $dom = (Api GET '/api/console/domains').Body.domains
     $ids = ($dom | ForEach-Object { $_.id }) -join ','
     Check 'the game has its eight memories at their true sizes (ARAM 65,536, WRAM 131,072)' ($ids -eq 'WRAM,VRAM,CGRAM,OAM,SRAM,ROM,ARAM,DSP' -and ($dom | Where-Object id -eq 'ARAM').size -eq 65536 -and ($dom | Where-Object id -eq 'WRAM').size -eq 131072) $ids
@@ -106,11 +106,11 @@ try {
 
     # ---- base, corrupt-and-stash, keep, save the file
     $base = Api POST '/api/gh/base-state' @{ Name = 'synth' }
-    Check 'a base is taken as a replay from power-on' ($base.Body.success -eq $true -and $base.Body.baseState.anchor -in @('boot', 'state')) "$($base.Body.baseState.anchor)"
+    Check 'a base is taken as a saved machine' ($base.Body.success -eq $true -and $base.Body.baseState.anchor -eq 'state') "$($base.Body.baseState.anchor)"
     Api POST '/api/gh/load-on-operation' @{ Enabled = $false } | Out-Null
     Api POST '/api/rtc/domains/selection' @{ SelectedDomains = @('ARAM') } | Out-Null
     $stash = Api POST '/api/gh/corrupt-and-stash' @{}
-    Check 'corrupt-and-stash blasts the running game from where it is and stores the position' ($stash.Body.success -eq $true -and $stash.Body.entry.writeCount -eq 8 -and $stash.Body.entry.anchor -in @('boot', 'state')) "$($stash.Body.entry.summary)"
+    Check 'corrupt-and-stash blasts the running game from where it is and stores the position' ($stash.Body.success -eq $true -and $stash.Body.entry.writeCount -eq 8 -and $stash.Body.entry.anchor -eq 'state') "$($stash.Body.entry.summary)"
     $entryId = $stash.Body.entry.id
     $afterStash = Aram                                 # the machine that was corrupted
     $kept = Api POST "/api/gh/stash/$entryId/promote"
@@ -124,7 +124,7 @@ try {
 
     # ---- the file itself
     $j = Get-Content $file -Raw | ConvertFrom-Json
-    Check 'the file is a v2 stockpile with one entry whose game is this ROM (sha1) and whose anchor is a replay recipe' ($j.format -eq 'brokennes-stockpile' -and $j.version -eq 2 -and $j.entries.Count -eq 1 -and $j.entries[0].game.sha1 -eq $sha1 -and $j.entries[0].game.console -eq 'snes' -and $j.entries[0].anchor.kind -in @('boot', 'state')) "anchor $($j.entries[0].anchor.kind), $((Get-Item $file).Length) bytes"
+    Check 'the file is a v2 stockpile with one entry whose game is this ROM (sha1) and whose anchor is a saved machine with the replay recipe beside it' ($j.format -eq 'brokennes-stockpile' -and $j.version -eq 2 -and $j.entries.Count -eq 1 -and $j.entries[0].game.sha1 -eq $sha1 -and $j.entries[0].game.console -eq 'snes' -and $j.entries[0].anchor.kind -eq 'state' -and $j.entries[0].anchor.alt.kind -eq 'boot' -and $j.entries[0].anchor.alt.frames -gt 0) "anchor $($j.entries[0].anchor.kind) + alt $($j.entries[0].anchor.alt.kind) $($j.entries[0].anchor.alt.frames) frames, $((Get-Item $file).Length) bytes"
     Check 'no path of this machine is in the file' (-not ((Get-Content $file -Raw) -match [regex]::Escape($env:USERNAME)))
 
     # ---- the same file started by the headless tool (the library the FL plugin uses)
@@ -133,13 +133,13 @@ try {
 
     # ---- the app replays it
     $rep = Api POST "/api/gh/stockpile/$entryId/replay"
-    Check 'replay in the app: the game is rebuilt from power-on and the writes land' ($rep.Body.success -eq $true -and $rep.Body.message -match 'replayed|loaded|applied') "$($rep.Body.message)"
+    Check 'start in the app: the saved machine is loaded and the writes land' ($rep.Body.success -eq $true -and $rep.Body.message -match 'loaded its saved machine' -and $rep.Body.message -match '8 of 8 writes applied') "$($rep.Body.message)"
     Start-Sleep -Milliseconds 700
     $afterReplay = Aram
     $dd = ByteDiff $afterStash $afterReplay
-    Check 'the replayed machine has the very audio RAM of the machine that was corrupted' ($dd.Count -eq 0) "$($dd.Count) bytes differ"
+    Check 'the started machine has the very audio RAM of the machine that was corrupted' ($dd.Count -eq 0) "$($dd.Count) bytes differ"
     $st2 = (Api GET '/api/gh/status').Body.farm
-    Check 'the game''s save RAM is protected after a replay (nothing from the replayed machine is written over a player''s save)' ($st2.saveRamProtected -eq $true)
+    Check 'the game''s save RAM is protected after a start (nothing from the started machine is written over a player''s save)' ($st2.saveRamProtected -eq $true)
 
     # ---- open the file again
     Api DELETE "/api/gh/stockpile/$entryId" | Out-Null
@@ -154,11 +154,13 @@ try {
     $rn = Api POST '/api/gh/stockpile/22222222-2222-2222-2222-222222222222/replay'
     Check 'a NES entry is refused on a console game, with the reason' ($rn.StatusCode -ge 400 -and $rn.Content -match 'NES')
 
-    # ---- an event that a replay cannot reproduce: the sound unit swapped
+    # ---- an event that a replay cannot reproduce: the sound unit swapped (the saved machine is still a position; the replay recipe is not offered, and the status says why)
     Api POST '/api/console/core/apu/HLE' | Out-Null
     Start-Sleep -Milliseconds 500
+    $stSwap = (Api GET '/api/gh/status').Body.farm
+    Check 'after the sound unit was swapped the status says no replay recipe can be stored, and why' ($stSwap.replayRecipe -eq $false -and $stSwap.replayReason -match 'swapped') "replayRecipe=$($stSwap.replayRecipe): $($stSwap.replayReason)"
     $bs = Api POST '/api/gh/base-state' @{ Name = 'after the swap' }
-    Check 'after the sound unit was swapped no position can be stored, and the message says why' ($bs.StatusCode -ge 400 -and $bs.Content -match 'swapped|not the SNES') "$($bs.Content)"
+    Check 'a base is still stored as a saved machine (it belongs to the sound unit it was taken under), with no replay recipe beside it' ($bs.StatusCode -lt 300 -and $bs.Body.baseState.anchor -eq 'state') "$($bs.Content)"
     Api POST '/api/console/core/apu/SFC' | Out-Null
 
     # ---- the NES path
