@@ -41,10 +41,15 @@ internal sealed class InstrumentsPanel
     private string status = "", message = "";
     private bool statusOk = true;
     private InstrumentBlob? hexBlob;
+    // "Send to Presets" asks for a name first (Round 6, presets): the draft the model packaged waits here while the name field is open
+    private readonly TextInput nameInput = new(UiIds.SendName) { MaxLength = 48, Placeholder = "Name of the preset" };
+    private PresetDraft? pendingDraft;
 
     public InstrumentsPanel(UiCanvas canvas)
     {
         c = canvas;
+        nameInput.Committed = text => CommitName(text);
+        nameInput.Cancelled = _ => CancelName();
         for (int r = 0; r < UiIds.MaxFieldRows; r++)
         {
             sliders[r] = new Slider(UiIds.FieldBase + r * UiIds.FieldStride + UiIds.PartControl);
@@ -64,24 +69,28 @@ internal sealed class InstrumentsPanel
     public string ShownSeed { get; private set; } = "";
     public string Status => status;
     public bool StatusOk => statusOk;
-    public bool WantsKeys => hex.Focused;
+    public bool WantsKeys => hex.Focused || nameInput.Focused;
+    /// <summary>Whether the name field of "Send to Presets" is open, and what it holds (what the self-test reads).</summary>
+    public bool Naming => pendingDraft != null;
+    public string NameText => nameInput.Text;
     public int SelectedInstrument => list.Selected;
     public int Strength => strength;
 
     public long Signature() => (provider?.Version ?? -1) * 7 + list.Scroll * 131 + list.Selected * 17 + fieldBar.Pos * 1009 + blobIndex * 31 + strength * 3 + (selField?.GetHashCode() ?? 0)
-        + hex.Signature() + status.GetHashCode() + (int)drag + message.GetHashCode();
+        + hex.Signature() + nameInput.Signature() + (pendingDraft != null ? 17 : 0) + status.GetHashCode() + (int)drag + message.GetHashCode();
 
     private void Act(ActionResult r) { status = r.Message; statusOk = r.Ok; }
 
     /// <summary>A model threw while handling an event: say so on the status line.</summary>
     public void Fail(string why) => Act(ActionResult.Refused("A model behind this tab failed: " + why));
 
-    public void Blur() { hex.Blur(); }
+    public void Blur() { hex.Blur(); nameInput.Blur(); }
 
-    /// <summary>The tab went away or the game did: let go of everything (a drag, the keyboard).</summary>
+    /// <summary>The tab went away or the game did: let go of everything (a drag, the keyboard, a name being asked for).</summary>
     public void Cancel()
     {
         drag = Drag.None; list.BarUp(); fieldBar.Up(); hex.BarUp(); hex.Blur();
+        pendingDraft = null; nameInput.Blur();
     }
 
     // ---------------------------------------------------------------- drawing
@@ -309,6 +318,14 @@ internal sealed class InstrumentsPanel
 
     private void DrawStatus(nint dc)
     {
+        if (pendingDraft != null)
+        {
+            // "Send to Presets" is asking for a name: the field, Add and Cancel take the status line's place
+            nameInput.Draw(c, dc, UiCanvas.R(DetailX, StatusY, DetailW - 160, 30));
+            c.Button(dc, UiIds.SendOk, "Add", UiCanvas.R(DetailX + DetailW - 154, StatusY, 74, 30), primary: true);
+            c.Button(dc, UiIds.SendCancel, "Cancel", UiCanvas.R(DetailX + DetailW - 74, StatusY, 74, 30));
+            return;
+        }
         if (status.Length == 0) return;
         c.Fill(dc, UiCanvas.R(DetailX, StatusY, 3, 36), statusOk ? UiCanvas.Good : UiCanvas.Warn);
         c.Txt(dc, status, UiCanvas.R(DetailX + 12, StatusY, DetailW - 12, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, UiCanvas.Text, c.FontSmall);
@@ -323,6 +340,10 @@ internal sealed class InstrumentsPanel
         if (p == null || message.Length > 0) return false;
         int inst = list.Selected;
         hex.Blur();
+        if (id != UiIds.SendName) nameInput.Blur();
+        if (id == UiIds.SendName) { nameInput.Click(x, doubleClick); return false; }
+        if (id == UiIds.SendOk) { CommitName(nameInput.Text); return false; }
+        if (id == UiIds.SendCancel) { CancelName(); return false; }
 
         if (list.OwnsBar(id)) { if (list.BarDown(y)) { drag = Drag.ListBar; return true; } return false; }
         int row = list.RowOf(id);
@@ -330,6 +351,7 @@ internal sealed class InstrumentsPanel
         {
             if (UiMutate.Has(UiMutate.RowOffByOne)) row = Math.Min(row + 1, summaries.Count - 1);
             list.Selected = row; blobIndex = 0; selField = null; fieldBar.Pos = 0;
+            pendingDraft = null;                          // another instrument: the name being asked for belonged to the one before
             return false;
         }
         if (id == UiIds.FieldsBar) { if (fieldBar.Down(y)) { drag = Drag.FieldsBar; return true; } return false; }
@@ -413,7 +435,31 @@ internal sealed class InstrumentsPanel
         if (draft == null) { Act(ActionResult.Refused(refusal ?? "the model could not take this instrument")); return; }
         var lib = UiServices.Presets;
         if (lib == null) { Act(ActionResult.Refused(UiServices.NoPresetLibrary)); return; }
-        Act(lib.Add(draft));
+        // ask for a name (the model's own is the start), then add: Enter or Add keeps it, Esc or Cancel does not
+        pendingDraft = draft;
+        nameInput.Text = draft.Name;
+        nameInput.Focus(selectAll: true);
+        Act(ActionResult.Done("Name the preset, then press Enter."));
+    }
+
+    private void CommitName(string text)
+    {
+        var draft = pendingDraft;
+        var lib = UiServices.Presets;
+        if (draft == null || lib == null) return;
+        string name = (text ?? "").Trim();
+        if (name.Length == 0) { Act(ActionResult.Refused("A preset needs a name.")); return; }
+        pendingDraft = null;
+        nameInput.Blur();
+        Act(lib.Add(draft with { Name = name }));
+    }
+
+    private void CancelName()
+    {
+        if (pendingDraft == null) return;
+        pendingDraft = null;
+        nameInput.Blur();
+        Act(ActionResult.Done("Cancelled: nothing was added to the library."));
     }
 
     public void Move(int x, int y)
@@ -451,8 +497,8 @@ internal sealed class InstrumentsPanel
         return false;
     }
 
-    public bool Char(char ch) => hex.Char(ch);
-    public bool Key(int vk) => hex.Key(vk);
+    public bool Char(char ch) => hex.Char(ch) || nameInput.Char(ch);
+    public bool Key(int vk) => hex.Key(vk) || nameInput.Key(vk);
 
     // ---- what the self-test reads ----
     /// <summary>"Name=value text" of the field in visible row <paramref name="slot"/> ("" when none).</summary>

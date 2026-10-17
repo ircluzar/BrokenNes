@@ -23,12 +23,27 @@ public sealed partial class Emulator
         if (Cx.IsPresetChip(chip)) Volatile.Write(ref chip, Cx.DefaultChip(Cx.ConsoleOf(chip)));
     }
 
+    /// <summary>Why this emulator cannot play presets right now (a game runs on it), or null.</summary>
+    internal string? PresetBlocker => Mode == 1 && RomLoaded ? $"emulator #{Id} runs a game: give this instance another emulator (the Emulator row), or switch this one to Direct mode, to play presets" : null;
+
+    /// <summary>Test hook: puts a made-up Game Boy snapshot in place of the captured one (a test ROM has no instruments worth the name).</summary>
+    internal void ReplaceGbForTests(GbSnapshot snap)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            Volatile.Write(ref gbState, snap);
+            Volatile.Write(ref runaway, 1);
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
+
     /// <summary>Puts this emulator on the Presets chip (Direct mode) so its instances play presets; the chip of the console they are on already when it is a Presets chip is kept. Refused, with the reason, while a game runs on it.</summary>
     internal string? EnterPresetMode(string? filter = null)
     {
         lock (EmulatorHub.Gate)
         {
-            if (Mode == 1 && RomLoaded) return $"emulator #{Id} runs a game: pick another emulator (or switch it to Direct mode) to play presets";
+            if (PresetBlocker is { } blocked) return blocked;
             if (PresetMode) return null;
             SetChipLocked(Cx.IndexOfChip(Cx.PresetChips.First(p => p.Filter == filter).Id));
             Changed();

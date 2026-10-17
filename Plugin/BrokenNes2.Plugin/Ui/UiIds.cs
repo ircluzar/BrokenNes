@@ -35,6 +35,7 @@ internal static class UiIds
     public const int Wave = 1170, Hex = 1171, HexBar = 1172, LockBlob = 1173;
     public const int Strength = 1180, Randomise = 1181, NudgeDown = 1182, NudgeUp = 1183, LockAll = 1184, UnlockAll = 1185,
         Undo = 1187, Redo = 1188, SendToPresets = 1189, Push = 1190;
+    public const int SendName = 1191, SendOk = 1192, SendCancel = 1193;       // the name field that "Send to Presets" opens (Round 6, presets)
     public const int FieldBase = 1200;            // + visible row 0..11 * FieldStride + part
     public const int FieldStride = 8;
     public const int PartControl = 0, PartMinus = 1, PartPlus = 2, PartLock = 3, PartSelect = 4;

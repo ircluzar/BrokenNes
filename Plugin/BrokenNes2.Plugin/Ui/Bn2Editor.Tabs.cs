@@ -265,6 +265,7 @@ public sealed unsafe partial class Bn2Editor
                     7 => presetPanel?.SelectedId,
                     8 => instPanel == null ? null : instPanel.StatusOk ? "1" : "0",
                     9 => instPanel?.SelectedName,
+                    14 => instPanel?.NameText,                // the name field "Send to Presets" opens (round 6, presets)
                     12 => tabError,
                     10 => instPanel?.ShownHistory,
                     11 => instPanel?.ShownSeed,
@@ -282,7 +283,7 @@ public sealed unsafe partial class Bn2Editor
                 {
                     0 => instPanel.ListFirstRow, 1 => instPanel.ListCount, 2 => instPanel.SelectedInstrument, 3 => instPanel.FieldFirstRow, 4 => instPanel.FieldCount,
                     5 => instPanel.HexSelected, 6 => instPanel.HexFirstRow, 7 => instPanel.BlobIndex, 8 => instPanel.WaveColumns, 9 => instPanel.Strength,
-                    10 => instPanel.WantsKeys ? 1 : 0, 11 => instPanel.StatusOk ? 1 : 0, _ => -1,
+                    10 => instPanel.WantsKeys ? 1 : 0, 11 => instPanel.StatusOk ? 1 : 0, 12 => instPanel.Naming ? 1 : 0, _ => -1,
                 };
             case 421:
                 if (presetPanel == null) return -1;
